@@ -1,13 +1,14 @@
 import type { MeshGeometry } from "../Mesh";
+import type { BuildingType } from "../../generated";
 
 export interface BuildingDef {
-  id: string;
+  id: BuildingType;
   label: string;
   color: string;
 }
 
 export const BUILDINGS: BuildingDef[] = [
-  { id: "car_spawner", label: "Car Spawner", color: "#4a9eff" },
+  { id: "CarSpawner", label: "Car Spawner", color: "#4a9eff" },
 ];
 
 export const BUILDING_HEIGHT = 0.6;

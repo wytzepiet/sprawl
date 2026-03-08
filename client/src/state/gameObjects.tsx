@@ -6,7 +6,7 @@ import {
   type ParentProps,
   createStore,
 } from "solid-js";
-import { createConnection } from "../network/connection";
+import { createConnection, updateClockOffset } from "../network/connection";
 import type { GameObjectEntry, ClientMessage, Operation } from "../generated";
 
 type Objects = Record<string, GameObjectEntry>;
@@ -62,9 +62,16 @@ export function GameProvider(props: ParentProps) {
       for (const op of ops) {
         switch (op.op) {
           case "Upsert": {
-            const old = objects[op.data.id];
-            if (old) removeFromSpatial(old);
-            objects[op.data.id] = op.data;
+            const existing = objects[op.data.id];
+            if (existing) {
+              // Mutate in place to preserve store reference identity,
+              // so <For> doesn't remount components on updates.
+              removeFromSpatial(existing);
+              existing.object = op.data.object;
+              existing.position = op.data.position;
+            } else {
+              objects[op.data.id] = op.data;
+            }
             addToSpatial(op.data);
             break;
           }
@@ -84,12 +91,14 @@ export function GameProvider(props: ParentProps) {
     (msg) => {
       switch (msg.type) {
         case "Update":
-          applyOps(msg.data);
+          updateClockOffset(msg.data.server_time);
+          applyOps(msg.data.ops);
           break;
         case "Error":
           console.error("[ws] server error:", msg.data.message);
           break;
         case "Pong":
+          updateClockOffset(msg.data);
           break;
       }
     },

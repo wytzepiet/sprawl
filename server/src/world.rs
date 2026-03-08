@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::protocol::{Building, EntityId, GameObject, GridCoord, RoadNode};
+use crate::intersection::IntersectionRegistry;
+use crate::protocol::{Building, BuildingType, EntityId, GameObject, GridCoord, RoadNode};
 use crate::tracked::Tracked;
 
 pub struct World {
     pub objects: Tracked,
     spatial: HashMap<GridCoord, HashSet<EntityId>>,
+    pub intersections: IntersectionRegistry,
 }
 
 impl World {
@@ -13,6 +15,7 @@ impl World {
         Self {
             objects: Tracked::new(),
             spatial: HashMap::new(),
+            intersections: IntersectionRegistry::new(),
         }
     }
 
@@ -50,7 +53,7 @@ impl World {
     }
 
     /// Find the road node entity ID at a coord, if any.
-    fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
+    pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
         let ids = self.spatial.get(&coord)?;
         for &id in ids {
             if let Some(entry) = self.objects.get(id) {
@@ -79,6 +82,29 @@ impl World {
     pub fn reset(&mut self) {
         self.objects.clear();
         self.spatial.clear();
+        self.intersections.clear();
+    }
+
+    /// A node is an intersection if it has 3+ unique connections (neighbors + incoming).
+    pub fn is_intersection(&self, node_id: EntityId) -> bool {
+        if let Some(entry) = self.objects.get(node_id) {
+            if let GameObject::RoadNode(ref node) = entry.object {
+                let mut unique: HashSet<EntityId> = HashSet::new();
+                unique.extend(&node.neighbors);
+                unique.extend(&node.incoming);
+                return unique.len() >= 3;
+            }
+        }
+        false
+    }
+
+    /// Update intersection manager status for a node: create or remove manager as needed.
+    fn update_intersection_status(&mut self, node_id: EntityId) {
+        if self.is_intersection(node_id) {
+            self.intersections.ensure_manager(node_id);
+        } else {
+            self.intersections.remove_manager(node_id);
+        }
     }
 
     /// Check if adding a connection in direction (dx, dy) at `coord` would create
@@ -202,24 +228,154 @@ impl World {
                 }
             }
         }
+
+        // Update intersection status for both endpoints
+        self.update_intersection_status(from_id);
+        self.update_intersection_status(to_id);
     }
 
-    /// Place a building at the given position.
+    /// Find the road node at the same position as a building.
+    pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
+        let entry = self.objects.get(building_id)?;
+        let pos = entry.position?;
+        self.road_node_at(pos)
+    }
+
+    /// Return all Car Spawner buildings as (id, position) pairs.
+    pub fn all_car_spawners(&self) -> Vec<(EntityId, GridCoord)> {
+        let mut result = Vec::new();
+        for entry in self.objects.all_entries() {
+            if let GameObject::Building(ref b) = entry.object {
+                if b.building_type == BuildingType::CarSpawner {
+                    if let Some(pos) = entry.position {
+                        result.push((entry.id, pos));
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    /// Despawn a car, unregistering it from any intersection it's waiting at.
+    pub fn despawn_car(&mut self, car_id: EntityId) -> Option<EntityId> {
+        let waiting_at = if let Some(entry) = self.objects.get(car_id) {
+            if let GameObject::Car(ref car) = entry.object {
+                car.waiting_at_intersection
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(node_id) = waiting_at {
+            self.intersections.remove_car(car_id, node_id);
+        }
+        self.objects.remove(car_id);
+        waiting_at
+    }
+
+    /// Find all car IDs whose current segment touches the given node.
+    pub fn cars_on_node(&self, node_id: EntityId) -> Vec<EntityId> {
+        let mut result = Vec::new();
+        for entry in self.objects.all_entries() {
+            if let GameObject::Car(ref car) = entry.object {
+                let from = car.route[car.route_index - 1];
+                let to = car.route[car.route_index];
+                if from == node_id || to == node_id {
+                    result.push(entry.id);
+                }
+            }
+        }
+        result
+    }
+
+    /// Compute the cosine of the turn angle at route[node_index].
+    /// Returns 1.0 (straight) for route endpoints (first/last node).
+    pub fn turn_cos_angle(&self, route: &[EntityId], node_index: usize) -> f64 {
+        if node_index == 0 || node_index >= route.len() - 1 {
+            return 1.0;
+        }
+        let prev_pos = self.objects.get(route[node_index - 1]).and_then(|e| e.position);
+        let curr_pos = self.objects.get(route[node_index]).and_then(|e| e.position);
+        let next_pos = self.objects.get(route[node_index + 1]).and_then(|e| e.position);
+
+        match (prev_pos, curr_pos, next_pos) {
+            (Some(p), Some(c), Some(n)) => {
+                let dx1 = (c.x - p.x) as f64;
+                let dy1 = (c.y - p.y) as f64;
+                let dx2 = (n.x - c.x) as f64;
+                let dy2 = (n.y - c.y) as f64;
+                let len1 = (dx1 * dx1 + dy1 * dy1).sqrt();
+                let len2 = (dx2 * dx2 + dy2 * dy2).sqrt();
+                if len1 < 1e-9 || len2 < 1e-9 {
+                    return 1.0;
+                }
+                (dx1 * dx2 + dy1 * dy2) / (len1 * len2)
+            }
+            _ => 1.0,
+        }
+    }
+
+    /// Get the Euclidean distance between two road nodes (used for A* pathfinding).
+    pub fn segment_length(&self, from: EntityId, to: EntityId) -> f64 {
+        let a = self.objects.get(from).and_then(|e| e.position);
+        let b = self.objects.get(to).and_then(|e| e.position);
+        match (a, b) {
+            (Some(a), Some(b)) => {
+                let dx = (b.x - a.x) as f64;
+                let dy = (b.y - a.y) as f64;
+                (dx * dx + dy * dy).sqrt()
+            }
+            _ => 1.0,
+        }
+    }
+
+    /// Collect world positions (tile center) for each node in a route.
+    pub fn route_positions(&self, route: &[EntityId]) -> Vec<[f64; 2]> {
+        route
+            .iter()
+            .filter_map(|&id| {
+                self.objects.get(id).and_then(|e| {
+                    e.position.map(|p| [p.x as f64 + 0.5, p.y as f64 + 0.5])
+                })
+            })
+            .collect()
+    }
+
+    /// Get the path length for a route segment (straight + bezier corners).
+    /// `route_index` is 1-based (matches Car.route_index).
+    pub fn spline_segment_length(&self, route: &[EntityId], route_index: usize) -> f64 {
+        self.segment_geometry(route, route_index).total()
+    }
+
+    /// Get the geometry (straight + corner arc) for a route segment.
+    /// `route_index` is 1-based (matches Car.route_index).
+    pub fn segment_geometry(&self, route: &[EntityId], route_index: usize) -> crate::bezier::SegmentGeometry {
+        let positions = self.route_positions(route);
+        if positions.len() < 2 || route_index == 0 || route_index >= positions.len() {
+            return crate::bezier::SegmentGeometry { straight: 1.0, corner_arc: 0.0 };
+        }
+        let seg_idx = route_index - 1;
+        crate::bezier::segment_geometry(&positions, seg_idx)
+    }
+
+    /// Place a building at the given position. Returns the building ID if placed.
     /// Only allowed on empty squares or dead-end roads (exactly 1 unique connection).
-    pub fn handle_place_building(&mut self, pos: GridCoord, building_type: String) {
+    pub fn handle_place_building(&mut self, pos: GridCoord, building_type: BuildingType) -> Option<EntityId> {
         if let Some(ids) = self.spatial.get(&pos) {
             for &id in ids {
                 if let Some(entry) = self.objects.get(id) {
                     match &entry.object {
-                        GameObject::Building(_) => return,
+                        GameObject::Building(_) => return None,
                         GameObject::RoadNode(node) => {
                             let mut unique: HashSet<EntityId> = HashSet::new();
                             unique.extend(&node.neighbors);
                             unique.extend(&node.incoming);
                             if unique.len() != 1 {
-                                return;
+                                return None;
                             }
                         }
+                        GameObject::Car(_) => {}
                     }
                 }
             }
@@ -230,6 +386,7 @@ impl World {
             Some(pos),
         );
         self.spatial.entry(pos).or_default().insert(id);
+        Some(id)
     }
 
     /// Remove the road node at `pos` and clean up all references to it from neighbors.
@@ -261,8 +418,16 @@ impl World {
             }
         }
 
+        // Remove intersection manager for this node
+        self.intersections.remove_manager(id);
+
         // Remove the node itself
         self.objects.remove(id);
         self.spatial.get_mut(&pos).map(|ids| ids.remove(&id));
+
+        // Re-check intersection status for neighbors (they may no longer be intersections)
+        for nid in neighbor_ids.iter().chain(incoming_ids.iter()) {
+            self.update_intersection_status(*nid);
+        }
     }
 }

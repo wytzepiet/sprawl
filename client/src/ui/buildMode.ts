@@ -1,4 +1,5 @@
 import { createSignal } from "solid-js";
+import type { BuildingType } from "../generated";
 
 const modes = ["select", "road", "demolish"] as const;
 export type BuildMode = (typeof modes)[number];
@@ -8,5 +9,5 @@ const [roadOneWay, setRoadOneWay] = createSignal(false);
 export { buildMode, setBuildMode, roadOneWay, setRoadOneWay };
 
 // Building placement
-const [placingBuilding, setPlacingBuilding] = createSignal<string | null>(null);
+const [placingBuilding, setPlacingBuilding] = createSignal<BuildingType | null>(null);
 export { placingBuilding, setPlacingBuilding };

@@ -1,5 +1,18 @@
 import { encode, decode } from "@msgpack/msgpack";
 import type { ClientMessage, ServerMessage } from "../generated";
+import { trackMessage } from "../ui/DebugOverlay";
+
+let clockOffset = 0;
+const SMOOTH = 0.2;
+
+export function getClockOffset(): number {
+  return clockOffset;
+}
+
+export function updateClockOffset(serverTime: number) {
+  const sample = Date.now() - serverTime;
+  clockOffset = clockOffset === 0 ? sample : clockOffset + SMOOTH * (sample - clockOffset);
+}
 
 export interface Connection {
   send(msg: ClientMessage): void;
@@ -23,6 +36,7 @@ export function createConnection(
 
     ws.onmessage = (ev) => {
       const msg = decode(new Uint8Array(ev.data)) as ServerMessage;
+      trackMessage(msg);
       onMessage(msg);
     };
 

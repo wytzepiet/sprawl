@@ -23,9 +23,11 @@ interface MeshProps {
   name: string;
   geometry: MeshGeometry;
   position?: [number, number, number];
+  rotation?: [number, number, number];
   color: Color3;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  meshRef?: (mesh: BabylonMesh) => void;
 }
 
 function tint(color: Color3, amb: Color3): Color3 {
@@ -68,6 +70,16 @@ export default function Mesh(props: MeshProps) {
     mesh.position.z = props.position[2];
   }
 
+  if (props.rotation) {
+    mesh.rotation.x = props.rotation[0];
+    mesh.rotation.y = props.rotation[1];
+    mesh.rotation.z = props.rotation[2];
+  }
+
+  if (props.meshRef) {
+    props.meshRef(mesh);
+  }
+
   if (props.castShadow) {
     shadowGenerator.addShadowCaster(mesh);
   }
@@ -107,6 +119,24 @@ export default function Mesh(props: MeshProps) {
     () => props.position?.[2],
     (z) => {
       if (z != null) mesh.position.z = z;
+    },
+  );
+  createDeferredEffect(
+    () => props.rotation?.[0],
+    (x) => {
+      if (x != null) mesh.rotation.x = x;
+    },
+  );
+  createDeferredEffect(
+    () => props.rotation?.[1],
+    (y) => {
+      if (y != null) mesh.rotation.y = y;
+    },
+  );
+  createDeferredEffect(
+    () => props.rotation?.[2],
+    (z) => {
+      if (z != null) mesh.rotation.z = z;
     },
   );
   createDeferredEffect(

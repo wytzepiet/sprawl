@@ -7,6 +7,7 @@ import { RoadDrawer } from "./RoadDrawer";
 import { BuildingPlacer } from "./BuildingPlacer";
 import GameObject from "./GameObject";
 import BuildModeToolbar from "../ui/BuildModeToolbar";
+import DebugOverlay from "../ui/DebugOverlay";
 import { GameProvider, useGame } from "../state/gameObjects";
 
 function SceneInner() {
@@ -20,12 +21,16 @@ function SceneInner() {
           <Grid />
           <RoadDrawer />
           <BuildingPlacer />
-          <For each={Object.values(objects).filter(Boolean)}>
+          <For
+            each={Object.values(objects).filter(Boolean)}
+            keyed={(e) => e.id}
+          >
             {(entry) => <GameObject entry={entry()} />}
           </For>
         </DayNightCycle>
       </Canvas>
       <BuildModeToolbar />
+      <DebugOverlay />
     </>
   );
 }

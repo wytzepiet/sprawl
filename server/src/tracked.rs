@@ -38,6 +38,11 @@ impl Tracked {
         self.data.get_mut(&id)
     }
 
+    /// Mutable access without marking dirty (for internal state updates).
+    pub fn get_mut_silent(&mut self, id: EntityId) -> Option<&mut GameObjectEntry> {
+        self.data.get_mut(&id)
+    }
+
     pub fn remove(&mut self, id: EntityId) {
         if self.data.remove(&id).is_some() {
             self.dirty.remove(&id);

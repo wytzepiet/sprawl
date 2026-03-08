@@ -1,6 +1,7 @@
 import { For, Show, createMemo } from "solid-js";
 import { Color3 } from "@babylonjs/core";
 import Mesh, { type MeshGeometry } from "../Mesh";
+import type { KindEntry } from "../GameObject";
 import { useTheme } from "../theme";
 import { useGame } from "../../state/gameObjects";
 import type { GameObjectEntry } from "../../generated";
@@ -257,7 +258,7 @@ function armsKey(arms: ArmInfo[]): string {
 
 // --- Component ---
 
-export default function RoadNode(props: { entry: GameObjectEntry }) {
+export default function RoadNode(props: { entry: KindEntry<"RoadNode"> }) {
   const { objects } = useGame();
   const theme = useTheme();
 
