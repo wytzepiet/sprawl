@@ -56,8 +56,21 @@ export function BuildMenuSheet() {
                     class="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-black/[0.04] transition-colors cursor-grab active:cursor-grabbing"
                     onPointerDown={(e) => {
                       e.preventDefault();
-                      setPlacingBuilding(building().id);
-                      setBuildMenuOpen(false);
+                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                      const buildingId = building().id;
+                      const onMove = () => {
+                        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                        (e.currentTarget as HTMLElement).removeEventListener("pointermove", onMove);
+                        (e.currentTarget as HTMLElement).removeEventListener("pointerup", onUp);
+                        setPlacingBuilding(buildingId);
+                        setBuildMenuOpen(false);
+                      };
+                      const onUp = () => {
+                        (e.currentTarget as HTMLElement).removeEventListener("pointermove", onMove);
+                        (e.currentTarget as HTMLElement).removeEventListener("pointerup", onUp);
+                      };
+                      (e.currentTarget as HTMLElement).addEventListener("pointermove", onMove);
+                      (e.currentTarget as HTMLElement).addEventListener("pointerup", onUp);
                     }}
                   >
                     <MultiCanvasView

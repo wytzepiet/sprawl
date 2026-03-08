@@ -294,6 +294,7 @@ export default function RoadNode(props: { entry: GameObjectEntry }) {
             geometry={geo()}
             position={pos()}
             color={theme.road}
+            receiveShadow
           />
         )}
       </Show>

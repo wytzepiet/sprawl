@@ -25,6 +25,7 @@ interface MeshProps {
   position?: [number, number, number];
   color: Color3;
   castShadow?: boolean;
+  receiveShadow?: boolean;
 }
 
 function tint(color: Color3, amb: Color3): Color3 {
@@ -37,8 +38,21 @@ export default function Mesh(props: MeshProps) {
 
   const mesh = new BabylonMesh(props.name, scene);
   const material = new StandardMaterial(`${props.name}_mat`, scene);
-  material.disableLighting = true;
   material.backFaceCulling = false;
+  material.specularColor = Color3.Black();
+
+  if (props.receiveShadow) {
+    // Lit material: uses diffuse so shadows from the light pipeline are visible.
+    // Emissive adds a baseline so the mesh is never fully dark.
+    material.diffuseColor = props.color;
+    material.emissiveColor = tint(props.color, new Color3(0.15, 0.15, 0.15));
+    mesh.receiveShadows = true;
+  } else {
+    // Unlit material: emissive with ambient tinting (reliable, no lighting issues)
+    material.disableLighting = true;
+    material.emissiveColor = tint(props.color, untrack(ambientColor));
+  }
+
   mesh.material = material;
 
   // Apply initial state synchronously
@@ -54,10 +68,6 @@ export default function Mesh(props: MeshProps) {
     mesh.position.z = props.position[2];
   }
 
-  material.emissiveColor = tint(props.color, untrack(ambientColor));
-
-  // Shadow casting works regardless of material lighting mode —
-  // the shadow generator only needs the mesh geometry.
   if (props.castShadow) {
     shadowGenerator.addShadowCaster(mesh);
   }
@@ -102,7 +112,11 @@ export default function Mesh(props: MeshProps) {
   createDeferredEffect(
     () => [props.color, ambientColor()] as const,
     ([color, amb]) => {
-      material.emissiveColor = tint(color, amb);
+      if (props.receiveShadow) {
+        material.diffuseColor = color;
+      } else {
+        material.emissiveColor = tint(color, amb);
+      }
     },
   );
 

@@ -59,7 +59,11 @@ function lerp4(a: Color4, b: Color4, t: number): Color4 {
   );
 }
 
-function ramp<T>(stops: [number, T][], t: number, fn: (a: T, b: T, f: number) => T): T {
+function ramp<T>(
+  stops: [number, T][],
+  t: number,
+  fn: (a: T, b: T, f: number) => T,
+): T {
   if (t <= stops[0][0]) return stops[0][1];
   for (let i = 1; i < stops.length; i++) {
     if (t <= stops[i][0]) {
@@ -154,16 +158,29 @@ export default function DayNightCycle(props: ParentProps) {
   sunLight.intensity = 0.5 * sunElevation(0.35);
   sunLight.specular = Color3.Black();
   sunLight.position = new Vector3(0, 0, 5);
-  sunLight.autoCalcShadowZBounds = true;
+  sunLight.shadowMinZ = -10;
+  sunLight.shadowMaxZ = 10;
+  // Fixed large frustum so shadows always cover the visible area
+  sunLight.autoUpdateExtends = false;
+  sunLight.orthoLeft = -50;
+  sunLight.orthoRight = 50;
+  sunLight.orthoTop = 50;
+  sunLight.orthoBottom = -50;
 
   // --- Shadow generator ---
-  const shadowGen = new ShadowGenerator(2048, sunLight);
-  shadowGen.useBlurExponentialShadowMap = true;
-  shadowGen.blurKernel = 32;
+  const shadowGen = new ShadowGenerator(4096, sunLight);
+  shadowGen.usePercentageCloserFiltering = true;
+  shadowGen.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+  shadowGen.bias = 0.005;
+  shadowGen.normalBias = 0.02;
 
   // --- Shadow-receiving ground ---
   // Sits below the grid shader, visible through transparent areas between grid lines
-  const shadowGround = MeshBuilder.CreateGround("shadowGround", { width: 200, height: 200 }, scene);
+  const shadowGround = MeshBuilder.CreateGround(
+    "shadowGround",
+    { width: 200, height: 200 },
+    scene,
+  );
   shadowGround.rotation.x = Math.PI / 2;
   shadowGround.position.z = -0.01;
   shadowGround.receiveShadows = true;
@@ -193,7 +210,7 @@ export default function DayNightCycle(props: ParentProps) {
     sunLight.direction = sunDirection(t);
     sunLight.intensity = 0.5 * elev;
 
-    // Keep shadow frustum centered on camera
+    // Keep light position centered on camera so shadow frustum covers visible area
     sunLight.position.x = camera.position.x;
     sunLight.position.y = camera.position.y;
 
@@ -214,11 +231,11 @@ export default function DayNightCycle(props: ParentProps) {
     groundMat.dispose();
   });
 
-  const state: DayNightState = { timeOfDay, ambientColor: ambient, shadowGenerator: shadowGen };
+  const state: DayNightState = {
+    timeOfDay,
+    ambientColor: ambient,
+    shadowGenerator: shadowGen,
+  };
 
-  return (
-    <DayNightCtx value={state}>
-      {props.children}
-    </DayNightCtx>
-  );
+  return <DayNightCtx value={state}>{props.children}</DayNightCtx>;
 }
