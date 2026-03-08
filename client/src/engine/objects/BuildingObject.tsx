@@ -13,7 +13,7 @@ function getBuildingColor(buildingType: string): Color3 {
 export default function BuildingObject(props: { entry: GameObjectEntry }) {
   const pos = (): [number, number, number] | undefined =>
     props.entry.position
-      ? [props.entry.position.x + 0.5, props.entry.position.y + 0.5, BUILDING_HEIGHT / 2]
+      ? [props.entry.position.x + 0.5, props.entry.position.y + 0.5, 0]
       : undefined;
 
   const color = () => {

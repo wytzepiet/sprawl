@@ -40,7 +40,8 @@ export function buildingCubeGeometry(): MeshGeometry {
       positions.push(...p);
       normals.push(...n);
     }
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    // Winding: Babylon left-handed expects (0,2,1) order for front-facing toward +Z
+    indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
   }
 
   // Top face (z = h, normal up toward camera)

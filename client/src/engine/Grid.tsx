@@ -41,7 +41,6 @@ export function Grid() {
   const ground = MeshBuilder.CreateGround("grid", { width: 200, height: 200 }, scene);
   ground.rotation.x = Math.PI / 2;
   ground.position.z = 0.005; // above shadow ground, below roads
-  ground.isPickable = false;
 
   const material = new ShaderMaterial("gridMat", scene, { vertex: "grid", fragment: "grid" }, {
     attributes: ["position"],

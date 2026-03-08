@@ -28,12 +28,12 @@ const DAY_DURATION_SECONDS = 120;
 // Color palette per time-of-day
 // ---------------------------------------------------------------------------
 
-const AMB_MIDNIGHT = new Color3(0.12, 0.12, 0.28);
+const AMB_MIDNIGHT = new Color3(0.35, 0.35, 0.5);
 const AMB_DAWN = new Color3(0.85, 0.55, 0.35);
 const AMB_NOON = new Color3(1.0, 1.0, 0.95);
 const AMB_DUSK = new Color3(0.85, 0.45, 0.3);
 
-const SKY_MIDNIGHT = new Color4(0.04, 0.04, 0.12, 1);
+const SKY_MIDNIGHT = new Color4(0.15, 0.15, 0.25, 1);
 const SKY_DAWN = new Color4(0.58, 0.42, 0.3, 1);
 const SKY_NOON = new Color4(0.78, 0.85, 0.69, 1);
 const SKY_DUSK = new Color4(0.52, 0.32, 0.22, 1);
@@ -105,11 +105,12 @@ function sunElevation(t: number): number {
 }
 
 function sunDirection(t: number): Vector3 {
-  if (t < 0.25 || t > 0.75) return new Vector3(0, 0, -1);
+  if (t < 0.25 || t > 0.75) return new Vector3(0, -0.4, -1).normalize();
   const angle = ((t - 0.25) / 0.5) * Math.PI; // 0=dawn, π/2=noon, π=dusk
   const elev = Math.max(Math.sin(angle), 0.15);
   const horiz = Math.cos(angle);
-  return new Vector3(-horiz, 0, -elev).normalize();
+  // Sun comes from slightly above (positive Y), so shadows fall downward on screen
+  return new Vector3(-horiz, -0.4, -elev).normalize();
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +160,6 @@ export default function DayNightCycle(props: ParentProps) {
   const shadowGen = new ShadowGenerator(2048, sunLight);
   shadowGen.useBlurExponentialShadowMap = true;
   shadowGen.blurKernel = 32;
-  shadowGen.depthScale = 0;
 
   // --- Shadow-receiving ground ---
   // Sits below the grid shader, visible through transparent areas between grid lines

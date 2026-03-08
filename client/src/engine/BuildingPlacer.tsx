@@ -77,7 +77,7 @@ export function BuildingPlacer() {
         <Mesh
           name="building_ghost"
           geometry={cube}
-          position={[spring.pos()[0], spring.pos()[1], BUILDING_HEIGHT / 2]}
+          position={[spring.pos()[0], spring.pos()[1], 0]}
           color={GHOST_COLOR}
         />
       )}

@@ -1,4 +1,4 @@
-import { onCleanup, createEffect } from "solid-js";
+import { onCleanup, createEffect, untrack } from "solid-js";
 import {
   Mesh as BabylonMesh,
   VertexData,
@@ -25,19 +25,23 @@ interface MeshProps {
   position?: [number, number, number];
   color: Color3;
   castShadow?: boolean;
-  receiveShadow?: boolean;
+}
+
+function tint(color: Color3, amb: Color3): Color3 {
+  return new Color3(color.r * amb.r, color.g * amb.g, color.b * amb.b);
 }
 
 export default function Mesh(props: MeshProps) {
   const { scene } = useEngine();
-  const { shadowGenerator } = useDayNight();
+  const { ambientColor, shadowGenerator } = useDayNight();
 
   const mesh = new BabylonMesh(props.name, scene);
   const material = new StandardMaterial(`${props.name}_mat`, scene);
-  material.specularColor = Color3.Black();
+  material.disableLighting = true;
+  material.backFaceCulling = false;
   mesh.material = material;
 
-  // Apply initial state synchronously — one VertexData call, not three separate ones
+  // Apply initial state synchronously
   const vd = new VertexData();
   vd.positions = props.geometry.positions;
   vd.indices = props.geometry.indices;
@@ -50,13 +54,12 @@ export default function Mesh(props: MeshProps) {
     mesh.position.z = props.position[2];
   }
 
-  material.diffuseColor = props.color;
+  material.emissiveColor = tint(props.color, untrack(ambientColor));
 
+  // Shadow casting works regardless of material lighting mode —
+  // the shadow generator only needs the mesh geometry.
   if (props.castShadow) {
     shadowGenerator.addShadowCaster(mesh);
-  }
-  if (props.receiveShadow) {
-    mesh.receiveShadows = true;
   }
 
   // Reactive updates for subsequent changes only
@@ -97,9 +100,9 @@ export default function Mesh(props: MeshProps) {
     },
   );
   createDeferredEffect(
-    () => props.color,
-    (color) => {
-      material.diffuseColor = color;
+    () => [props.color, ambientColor()] as const,
+    ([color, amb]) => {
+      material.emissiveColor = tint(color, amb);
     },
   );
 
