@@ -1,0 +1,14 @@
+[package]
+name = "sprawl-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["ws"] }
+serde = { version = "1", features = ["derive"] }
+rmp-serde = "1"
+ts-rs = { version = "10", features = ["serde-compat"] }
+tower-http = { version = "0.6", features = ["cors"] }
+futures = "0.3"
+cargo-watch = "8.5.3"

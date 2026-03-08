@@ -1,0 +1,54 @@
+import { encode, decode } from "@msgpack/msgpack";
+import type { ClientMessage, ServerMessage } from "../generated";
+
+export interface Connection {
+  send(msg: ClientMessage): void;
+  close(): void;
+}
+
+export function createConnection(
+  url: string,
+  onMessage: (msg: ServerMessage) => void,
+): Connection {
+  let ws: WebSocket | null = null;
+  let closed = false;
+
+  function connect() {
+    ws = new WebSocket(url);
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = () => {
+      console.log("[ws] connected");
+    };
+
+    ws.onmessage = (ev) => {
+      const msg = decode(new Uint8Array(ev.data)) as ServerMessage;
+      onMessage(msg);
+    };
+
+    ws.onclose = () => {
+      console.log("[ws] disconnected");
+      if (!closed) {
+        setTimeout(connect, 1000);
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.error("[ws] error", e);
+    };
+  }
+
+  connect();
+
+  return {
+    send(msg: ClientMessage) {
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(encode(msg));
+      }
+    },
+    close() {
+      closed = true;
+      ws?.close();
+    },
+  };
+}
