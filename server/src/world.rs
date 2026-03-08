@@ -2,12 +2,14 @@ use std::collections::{HashMap, HashSet};
 
 use crate::intersection::IntersectionRegistry;
 use crate::protocol::{Building, BuildingType, EntityId, GameObject, GridCoord, RoadNode};
+use crate::segment_tracker::SegmentTracker;
 use crate::tracked::Tracked;
 
 pub struct World {
     pub objects: Tracked,
     spatial: HashMap<GridCoord, HashSet<EntityId>>,
     pub intersections: IntersectionRegistry,
+    pub segment_tracker: SegmentTracker,
 }
 
 impl World {
@@ -16,6 +18,7 @@ impl World {
             objects: Tracked::new(),
             spatial: HashMap::new(),
             intersections: IntersectionRegistry::new(),
+            segment_tracker: SegmentTracker::new(),
         }
     }
 
@@ -83,6 +86,7 @@ impl World {
         self.objects.clear();
         self.spatial.clear();
         self.intersections.clear();
+        self.segment_tracker.clear();
     }
 
     /// A node is an intersection if it has 3+ unique connections (neighbors + incoming).
@@ -256,22 +260,54 @@ impl World {
         result
     }
 
-    /// Despawn a car, unregistering it from any intersection it's waiting at.
+    /// Despawn a car. Returns the follower (if any) so the caller can wake it.
     pub fn despawn_car(&mut self, car_id: EntityId) -> Option<EntityId> {
-        let waiting_at = if let Some(entry) = self.objects.get(car_id) {
-            if let GameObject::Car(ref car) = entry.object {
-                car.waiting_at_intersection
-            } else {
-                None
+        // Read car state before removing
+        let (from, to, leader, follower) = match self.objects.get(car_id) {
+            Some(entry) => {
+                if let GameObject::Car(ref car) = entry.object {
+                    let ri = car.route_index;
+                    (car.route[ri - 1], car.route[ri], car.leader, car.follower)
+                } else {
+                    self.objects.remove(car_id);
+                    return None;
+                }
             }
-        } else {
-            None
+            None => return None,
         };
-        if let Some(node_id) = waiting_at {
-            self.intersections.remove_car(car_id, node_id);
+
+        // Remove from segment tracker
+        self.segment_tracker.remove(from, to, car_id);
+
+        // Remove from all intersection queues
+        for mgr in self.intersections.managers.values_mut() {
+            mgr.remove(car_id);
         }
+
+        // Unsubscribe from leader
+        if let Some(leader_id) = leader {
+            if let Some(entry) = self.objects.get_mut_silent(leader_id) {
+                if let GameObject::Car(ref mut lcar) = entry.object {
+                    if lcar.follower == Some(car_id) {
+                        lcar.follower = None;
+                    }
+                }
+            }
+        }
+
+        // Clear follower's leader reference
+        if let Some(follower_id) = follower {
+            if let Some(entry) = self.objects.get_mut_silent(follower_id) {
+                if let GameObject::Car(ref mut fcar) = entry.object {
+                    if fcar.leader == Some(car_id) {
+                        fcar.leader = None;
+                    }
+                }
+            }
+        }
+
         self.objects.remove(car_id);
-        waiting_at
+        follower
     }
 
     /// Find all car IDs whose current segment touches the given node.

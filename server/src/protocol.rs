@@ -82,14 +82,18 @@ pub struct Car {
     #[serde(skip)]
     #[ts(skip)]
     pub target_speeds: Vec<f64>,
-    /// Which intersection this car is currently waiting at
-    #[serde(skip)]
-    #[ts(skip)]
-    pub waiting_at_intersection: Option<EntityId>,
     /// Precomputed route indices that are intersections (interior nodes only)
     #[serde(skip)]
     #[ts(skip)]
     pub intersection_stops: Vec<usize>,
+    /// The car ahead that this car is following (subscribed to)
+    #[serde(skip)]
+    #[ts(skip)]
+    pub leader: Option<EntityId>,
+    /// The car behind that is following this car (subscribed to this car)
+    #[serde(skip)]
+    #[ts(skip)]
+    pub follower: Option<EntityId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

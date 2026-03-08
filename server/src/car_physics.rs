@@ -2,6 +2,7 @@ pub const CRUISE_SPEED: f64 = 2.0; // tiles/sec
 pub const MIN_TURN_SPEED: f64 = 0.5; // tiles/sec
 pub const ACCELERATION: f64 = 1.0; // tiles/sec²
 pub const DECELERATION: f64 = 1.0; // tiles/sec²
+pub const SAFE_FOLLOWING_GAP: f64 = 0.3; // tiles
 
 /// Max speed allowed at a node given the cosine of the turn angle.
 /// cos_angle = 1.0 means straight, 0.0 means 90°, -1.0 means U-turn.

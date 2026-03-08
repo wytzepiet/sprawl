@@ -6,6 +6,7 @@ mod intersection;
 mod network;
 mod pathfinding;
 mod protocol;
+mod segment_tracker;
 mod tracked;
 mod world;
 

@@ -34,31 +34,39 @@ impl<E> Eq for Scheduled<E> {}
 /// A min-heap priority queue for discrete event simulation.
 pub struct EventQueue<E> {
     heap: BinaryHeap<Scheduled<E>>,
+    now: GameTime,
 }
 
 impl<E> EventQueue<E> {
     pub fn new() -> Self {
         Self {
             heap: BinaryHeap::new(),
+            now: 0,
         }
     }
 
-    /// Schedule an event at a future game time.
-    pub fn schedule(&mut self, time: GameTime, event: E) {
-        self.heap.push(Scheduled { time, event });
+    /// Update the current time.
+    pub fn set_now(&mut self, now: GameTime) {
+        self.now = now;
+    }
+
+    #[allow(dead_code)]
+    pub fn now(&self) -> GameTime {
+        self.now
+    }
+
+    /// Schedule an event `delay` milliseconds from now.
+    pub fn schedule(&mut self, delay: u64, event: E) {
+        self.heap.push(Scheduled { time: self.now + delay, event });
     }
 
     /// Pop and return the next event if its time <= `now`.
-    pub fn pop_due(&mut self, now: GameTime) -> Option<Scheduled<E>> {
-        if self.heap.peek().is_some_and(|s| s.time <= now) {
+    pub fn pop_due(&mut self) -> Option<Scheduled<E>> {
+        if self.heap.peek().is_some_and(|s| s.time <= self.now) {
             self.heap.pop()
         } else {
             None
         }
-    }
-
-    pub fn len(&self) -> usize {
-        self.heap.len()
     }
 
     /// Drain all events, regardless of time. Useful for reset.
