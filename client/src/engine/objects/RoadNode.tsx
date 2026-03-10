@@ -217,10 +217,10 @@ function getConnectionArms(
 ): ArmInfo[] {
   if (entry.object.kind !== "RoadNode" || !entry.position) return [];
   const { x, y } = entry.position;
-  const { neighbors, incoming } = entry.object.data;
+  const { outgoing, incoming } = entry.object.data;
   const arms: ArmInfo[] = [];
 
-  for (const nId of neighbors) {
+  for (const nId of outgoing) {
     const neighbor = objects[String(nId)];
     if (!neighbor?.position) continue;
     const dx = neighbor.position.x - x;
@@ -238,7 +238,7 @@ function getConnectionArms(
   for (const nId of incoming) {
     const neighbor = objects[String(nId)];
     if (!neighbor?.position) continue;
-    if (neighbors.includes(nId)) continue;
+    if (outgoing.includes(nId)) continue;
     const dx = neighbor.position.x - x;
     const dy = neighbor.position.y - y;
     if (dx === 0 && dy === 0) continue;

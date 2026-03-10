@@ -5,8 +5,15 @@ use futures::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
-use crate::game_loop::Command;
 use crate::protocol::{ClientMessage, ServerMessage};
+
+pub type ClientId = u64;
+
+pub enum Command {
+    PlayerAction { client_id: ClientId, message: ClientMessage },
+    ClientConnect { id: ClientId, sender: mpsc::UnboundedSender<ServerMessage> },
+    ClientDisconnect { id: ClientId },
+}
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);
 

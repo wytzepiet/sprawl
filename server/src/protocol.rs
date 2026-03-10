@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub type EntityId = u64;
+pub type SegmentId = u64;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq, Hash)]
 #[ts(export)]
@@ -22,7 +23,7 @@ pub struct PlaceRoad {
 #[ts(export)]
 pub struct RoadNode {
     #[ts(type = "Array<number>")]
-    pub neighbors: Vec<EntityId>,
+    pub outgoing: Vec<EntityId>,
     #[ts(type = "Array<number>")]
     pub incoming: Vec<EntityId>,
 }
@@ -51,49 +52,49 @@ pub struct PlaceBuilding {
 pub struct Car {
     #[ts(type = "Array<number>")]
     pub route: Vec<EntityId>,
-    /// Cumulative distance along the route
+    /// Cumulative distance along the route.
     pub progress: f64,
     pub speed: f64,
     pub acceleration: f64,
-    /// Total arc length of the entire route
+    /// Total arc length of the entire route.
     pub total_route_length: f64,
     #[ts(type = "number")]
     pub updated_at: u64,
-    #[serde(skip)]
-    #[ts(skip)]
-    pub plan_gen: u32,
-    /// Current segment index (1-based, internal only)
-    #[serde(skip)]
-    #[ts(skip)]
+    /// Current segment (1-based). The car is between route[ri-1] and route[ri].
     pub route_index: usize,
-    /// Cumulative distance to start of current segment
+    /// Fraction (0–1) of the current segment the car has traveled.
+    pub seg_fraction: f64,
+    /// Arc length of the current segment (for extrapolation).
+    pub seg_length: f64,
+    /// Cumulative distance to start of current segment.
     #[serde(skip)]
     #[ts(skip)]
     pub seg_start_dist: f64,
-    /// Arc length of current segment
+    /// Precomputed arc length of each segment. segment_lengths[i] = length from
+    /// route[i-1] to route[i]. Index 0 is unused (always 0.0).
     #[serde(skip)]
     #[ts(skip)]
-    pub seg_length: f64,
-    /// Distance into segment where the bezier corner starts
+    pub segment_lengths: Vec<f64>,
+    /// Which intersection-to-intersection segment the car is currently on.
     #[serde(skip)]
     #[ts(skip)]
-    pub seg_corner_start: f64,
-    /// Precomputed target speed at each route node (backward pass)
+    pub current_segment: SegmentId,
+    /// Sequence of segment IDs along the car's route.
     #[serde(skip)]
     #[ts(skip)]
-    pub target_speeds: Vec<f64>,
-    /// Precomputed route indices that are intersections (interior nodes only)
+    pub segment_route: Vec<SegmentId>,
+    /// Index into segment_route for the current segment.
     #[serde(skip)]
     #[ts(skip)]
-    pub intersection_stops: Vec<usize>,
-    /// The car ahead that this car is following (subscribed to)
+    pub segment_route_index: usize,
+    /// For each segment in segment_route, the route_index where it starts.
     #[serde(skip)]
     #[ts(skip)]
-    pub leader: Option<EntityId>,
-    /// The car behind that is following this car (subscribed to this car)
+    pub segment_start_ris: Vec<usize>,
+    /// For each segment in segment_route, the cumulative distance from route start.
     #[serde(skip)]
     #[ts(skip)]
-    pub follower: Option<EntityId>,
+    pub segment_dist_starts: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -141,7 +142,7 @@ pub enum ClientMessage {
 #[ts(export)]
 #[serde(tag = "op", content = "data")]
 pub enum Operation {
-    Upsert(GameObjectEntry),
+    Upsert(Box<GameObjectEntry>),
     Delete(#[ts(type = "number")] EntityId),
 }
 

@@ -36,8 +36,10 @@ export function createConnection(
 
     ws.onmessage = (ev) => {
       const msg = decode(new Uint8Array(ev.data)) as ServerMessage;
-      trackMessage(msg);
-      onMessage(msg);
+      setTimeout(() => {
+        trackMessage(msg);
+        onMessage(msg);
+      }, 20);
     };
 
     ws.onclose = () => {

@@ -1,13 +1,10 @@
-mod car_physics;
-mod bezier;
-mod event_queue;
+mod car;
+mod engine;
 mod game_loop;
 mod intersection;
 mod network;
-mod pathfinding;
+mod persistence;
 mod protocol;
-mod segment_tracker;
-mod tracked;
 mod world;
 
 use axum::Router;

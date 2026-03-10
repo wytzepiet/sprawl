@@ -27,6 +27,8 @@ function colorFor(key: string): string {
 
 // Buffer: timestamps per event kind
 const buffer: Record<string, number[]> = {};
+// Live car count from upserts/deletes
+const activeCars = new Set<number>();
 const [tick, setTick] = createSignal(0);
 let rafId: number | null = null;
 
@@ -43,8 +45,13 @@ export function trackMessage(msg: ServerMessage) {
   const now = performance.now();
   if (msg.type === "Update") {
     for (const op of msg.data.ops) {
-      const key = op.op === "Upsert" ? `${op.data.object.kind}` : `Delete`;
-      (buffer[key] ??= []).push(now);
+      if (op.op === "Upsert") {
+        (buffer[op.data.object.kind] ??= []).push(now);
+        if (op.data.object.kind === "Car") activeCars.add(op.data.id);
+      } else {
+        (buffer["Delete"] ??= []).push(now);
+        activeCars.delete(op.data);
+      }
     }
   } else {
     (buffer[msg.type] ??= []).push(now);
@@ -88,7 +95,12 @@ export default function DebugOverlay() {
     return result;
   });
 
-  const totalH = () => Math.max(rows().length * ROW_H, ROW_H);
+  const eventsPerCar = createMemo(() => {
+    const carRow = rows().find((r) => r.key === "Car");
+    const count = activeCars.size;
+    if (!carRow || count === 0) return 0;
+    return (carRow.rate / count).toFixed(1);
+  });
 
   return (
     <div class="fixed top-3 right-3 z-50 p-3 rounded-xl bg-black/60 backdrop-blur-md text-[11px] font-mono text-white/80 select-none pointer-events-none">
@@ -116,6 +128,12 @@ export default function DebugOverlay() {
           </div>
         )}
       </For>
+      {activeCars.size > 0 && (
+        <div class="mt-2 pt-2 border-t border-white/10 flex justify-between text-[9px] text-white/50">
+          <span>{activeCars.size} cars</span>
+          <span>{eventsPerCar()} ev/car/s</span>
+        </div>
+      )}
     </div>
   );
 }

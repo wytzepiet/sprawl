@@ -32,8 +32,8 @@ export function BuildingPlacer() {
     for (const entry of getObjectsAt(pos.x, pos.y)) {
       if (entry.object.kind === "Building") return false;
       if (entry.object.kind === "RoadNode") {
-        const { neighbors, incoming } = entry.object.data;
-        const unique = new Set([...neighbors, ...incoming]);
+        const { outgoing, incoming } = entry.object.data;
+        const unique = new Set([...outgoing, ...incoming]);
         if (unique.size !== 1) return false;
       }
     }

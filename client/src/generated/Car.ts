@@ -2,10 +2,22 @@
 
 export type Car = { route: Array<number>, 
 /**
- * Cumulative distance along the route
+ * Cumulative distance along the route.
  */
 progress: number, speed: number, acceleration: number, 
 /**
- * Total arc length of the entire route
+ * Total arc length of the entire route.
  */
-total_route_length: number, updated_at: number, };
+total_route_length: number, updated_at: number, 
+/**
+ * Current segment (1-based). The car is between route[ri-1] and route[ri].
+ */
+route_index: number, 
+/**
+ * Fraction (0–1) of the current segment the car has traveled.
+ */
+seg_fraction: number, 
+/**
+ * Arc length of the current segment (for extrapolation).
+ */
+seg_length: number, };
