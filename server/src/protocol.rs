@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 pub type EntityId = u64;
-pub type SegmentId = u64;
+pub type EdgeKey = (EntityId, EntityId);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq, Hash)]
 #[ts(export)]
@@ -75,26 +75,6 @@ pub struct Car {
     #[serde(skip)]
     #[ts(skip)]
     pub segment_lengths: Vec<f64>,
-    /// Which intersection-to-intersection segment the car is currently on.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub current_segment: SegmentId,
-    /// Sequence of segment IDs along the car's route.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub segment_route: Vec<SegmentId>,
-    /// Index into segment_route for the current segment.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub segment_route_index: usize,
-    /// For each segment in segment_route, the route_index where it starts.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub segment_start_ris: Vec<usize>,
-    /// For each segment in segment_route, the cumulative distance from route start.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub segment_dist_starts: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -134,6 +114,7 @@ pub enum ClientMessage {
     PlaceRoad(PlaceRoad),
     PlaceBuilding(PlaceBuilding),
     DemolishRoad(DemolishRoad),
+    DespawnAllCars,
     ResetWorld,
     Ping,
 }

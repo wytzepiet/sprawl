@@ -139,8 +139,13 @@ impl IntersectionRegistry {
         results
     }
 
-    pub fn clear(&mut self) {
-        self.managers.clear();
+    /// Clear a car from a specific node's manager (if it exists). Returns woken car IDs.
+    pub fn clear_car(&mut self, node_id: EntityId, car_id: EntityId) -> Vec<EntityId> {
+        if let Some(manager) = self.managers.get_mut(&node_id) {
+            manager.clear(car_id)
+        } else {
+            Vec::new()
+        }
     }
 
     pub fn remove_node(&mut self, node_id: EntityId) {

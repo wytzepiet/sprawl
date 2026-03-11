@@ -192,11 +192,6 @@ impl World {
         self.unique_connection_count(node_id) > 2
     }
 
-    /// Junction = dead-end (0-1 connections) or intersection (3+). Pass-throughs have exactly 2.
-    pub fn is_junction(&self, node_id: EntityId) -> bool {
-        self.unique_connection_count(node_id) != 2
-    }
-
     fn unique_connection_count(&self, node_id: EntityId) -> usize {
         if let Some(entry) = self.objects.get(node_id)
             && let GameObject::RoadNode(ref node) = entry.object {

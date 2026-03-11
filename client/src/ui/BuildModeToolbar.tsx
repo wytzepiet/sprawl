@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { MousePointer2, Route, Trash2, RotateCcw } from "./icons";
+import { MousePointer2, Route, Trash2, CarOff, RotateCcw } from "./icons";
 import { buildMode, setBuildMode, roadOneWay, setRoadOneWay, type BuildMode } from "./buildMode";
 import { useGame } from "../state/gameObjects";
 import { BuildButton, BuildMenuSheet, buildMenuOpen, setBuildMenuOpen } from "./BuildMenu";
@@ -99,6 +99,13 @@ export default function BuildModeToolbar() {
           }}
         </For>
         <div class="w-px h-6 bg-black/10 mx-1" />
+        <button
+          onClick={() => send({ type: "DespawnAllCars" })}
+          class="group flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-300 cursor-pointer text-stone-400 hover:text-orange-500 hover:bg-orange-50/50"
+          title="Despawn all cars"
+        >
+          <CarOff size={18} stroke-width={1.5} />
+        </button>
         <button
           onClick={() => send({ type: "ResetWorld" })}
           class="group flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-300 cursor-pointer text-stone-400 hover:text-red-500 hover:bg-red-50/50"

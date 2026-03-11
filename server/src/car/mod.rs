@@ -4,14 +4,14 @@ pub mod spawn;
 
 use crate::protocol::EntityId;
 
-pub const CRUISE_SPEED: f64 = 1.6;
-pub const MIN_GAP: f64 = 0.2;
-pub const MIN_TURN_SPEED: f64 = 0.6;
+pub const CRUISE_SPEED: f64 = 1.5;
+pub const MIN_GAP: f64 = 0.3;
+pub const MIN_TURN_SPEED: f64 = 0.5;
 pub const ACCELERATION: f64 = 0.3;
-pub const DECELERATION: f64 = 0.5;
+pub const DECELERATION: f64 = 0.4;
 pub const INTERSECTION_STOP_MARGIN: f64 = 0.4;
-pub const CAR_NOSE: f64 = 0.225;
-pub const CAR_TAIL: f64 = 0.225;
+pub const CAR_NOSE: f64 = 0.175;
+pub const CAR_TAIL: f64 = 0.175;
 
 pub enum Obstacle {
     SpeedLimit {

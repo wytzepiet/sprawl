@@ -10,7 +10,6 @@ import { createConnection, updateClockOffset } from "../network/connection";
 import type { GameObjectEntry, ClientMessage, Operation } from "../generated";
 
 type Objects = Record<string, GameObjectEntry>;
-type SpatialIndex = Record<string, number[]>;
 
 function posKey(x: number, y: number): string {
   return `${x},${y}`;
@@ -18,7 +17,6 @@ function posKey(x: number, y: number): string {
 
 interface GameContext {
   objects: Objects;
-  /** Get all game objects at a grid position. */
   getObjectsAt(x: number, y: number): GameObjectEntry[];
   send(msg: ClientMessage): void;
 }
@@ -27,34 +25,24 @@ const Ctx = createContext<GameContext>();
 
 export function GameProvider(props: ParentProps) {
   const [objects, setObjects] = createStore<Objects>({});
-  const [spatial, setSpatial] = createStore<SpatialIndex>({});
+  const spatial = new Map<string, number[]>();
 
-  function removeFromSpatial(entry: GameObjectEntry) {
-    if (!entry.position) return;
-    const key = posKey(entry.position.x, entry.position.y);
-    setSpatial((s) => {
-      const ids = s[key];
-      if (!ids) return;
-      const filtered = ids.filter((id) => id !== entry.id);
-      if (filtered.length === 0) {
-        delete s[key];
-      } else {
-        s[key] = filtered;
-      }
-    });
+  function spatialRemove(id: number, pos: { x: number; y: number } | null | undefined) {
+    if (!pos) return;
+    const key = posKey(pos.x, pos.y);
+    const ids = spatial.get(key);
+    if (!ids) return;
+    const filtered = ids.filter((i) => i !== id);
+    if (filtered.length === 0) spatial.delete(key);
+    else spatial.set(key, filtered);
   }
 
-  function addToSpatial(entry: GameObjectEntry) {
-    if (!entry.position) return;
-    const key = posKey(entry.position.x, entry.position.y);
-    setSpatial((s) => {
-      const ids = s[key];
-      if (!ids) {
-        s[key] = [entry.id];
-      } else if (!ids.includes(entry.id)) {
-        s[key] = [...ids, entry.id];
-      }
-    });
+  function spatialAdd(id: number, pos: { x: number; y: number } | null | undefined) {
+    if (!pos) return;
+    const key = posKey(pos.x, pos.y);
+    const ids = spatial.get(key);
+    if (!ids) spatial.set(key, [id]);
+    else if (!ids.includes(id)) ids.push(id);
   }
 
   function applyOps(ops: Operation[]) {
@@ -64,20 +52,18 @@ export function GameProvider(props: ParentProps) {
           case "Upsert": {
             const existing = objects[op.data.id];
             if (existing) {
-              // Mutate in place to preserve store reference identity,
-              // so <For> doesn't remount components on updates.
-              removeFromSpatial(existing);
+              spatialRemove(existing.id, existing.position);
               existing.object = op.data.object;
               existing.position = op.data.position;
             } else {
               objects[op.data.id] = op.data;
             }
-            addToSpatial(op.data);
+            spatialAdd(op.data.id, op.data.position);
             break;
           }
           case "Delete": {
             const old = objects[String(op.data)];
-            if (old) removeFromSpatial(old);
+            if (old) spatialRemove(old.id, old.position);
             delete objects[String(op.data)];
             break;
           }
@@ -107,7 +93,7 @@ export function GameProvider(props: ParentProps) {
   onCleanup(close);
 
   function getObjectsAt(x: number, y: number): GameObjectEntry[] {
-    const ids = spatial[posKey(x, y)];
+    const ids = spatial.get(posKey(x, y));
     if (!ids) return [];
     const result: GameObjectEntry[] = [];
     for (const id of ids) {

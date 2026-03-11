@@ -5,21 +5,31 @@ use crate::car::{
 use crate::engine::GameTime;
 use crate::engine::event_queue::EventQueue;
 use crate::intersection::IntersectionRegistry;
-use crate::protocol::{Car, EntityId, GameObject};
+use crate::protocol::{Car, EdgeKey, EntityId, GameObject};
 use crate::world::World;
 
-/// Despawn a car and clean up intersection registrations and segment deques.
+/// Despawn a car and clean up intersection registrations and edge deques.
 pub fn despawn_car_fully(
     world: &mut World,
     intersections: &mut IntersectionRegistry,
     events: &mut EventQueue<GameEvent>,
     car_id: EntityId,
 ) {
-    if let Some(entry) = world.objects.get(car_id)
-        && let GameObject::Car(ref car) = entry.object
-        && let Some(behind) = world.car_behind_on_segment(car.current_segment, car_id)
-    {
-        events.schedule(0, GameEvent::CarWakeUp { car_id: behind }, Some(behind));
+    let car_info = world.objects.get(car_id).and_then(|entry| {
+        if let GameObject::Car(ref car) = entry.object {
+            Some((car.route.clone(), car.route_index))
+        } else {
+            None
+        }
+    });
+    if let Some((route, route_index)) = car_info {
+        world.unregister_car_route(car_id, &route);
+        if route_index >= 1 {
+            let edge = (route[route_index - 1], route[route_index]);
+            if let Some(behind) = world.car_behind_on_edge(edge, car_id) {
+                events.schedule(0, GameEvent::CarWakeUp { car_id: behind }, Some(behind));
+            }
+        }
     }
 
     let woken = intersections.remove_car_from_all(car_id);
@@ -30,12 +40,11 @@ pub fn despawn_car_fully(
     world.despawn_car(car_id);
 }
 
-/// Compute gap to a lead car. Works both same-segment and cross-segment:
-/// finds the lead's index for the shared segment via segment_route lookup.
+/// Compute gap to a lead car on a shared edge.
 fn lead_car_obstacle(
     world: &World,
     car: &Car,
-    car_seg_idx: usize,
+    edge: EdgeKey,
     cur_progress: f64,
     lead_id: EntityId,
     now: GameTime,
@@ -45,17 +54,19 @@ fn lead_car_obstacle(
         return None;
     };
 
-    let expected_seg = car.segment_route[car_seg_idx];
-    let lead_seg_idx = lead.segment_route.iter().position(|&s| s == expected_seg)?;
+    // Both cars must be on this edge — find their seg_start_dist for the edge.
+    // For the current car, use its seg_start_dist if it's on this edge, otherwise compute.
+    let my_seg_start = edge_start_dist(car, edge)?;
+    let lead_seg_start = edge_start_dist(lead, edge)?;
 
     let dt = (now - lead.updated_at) as f64 / 1000.0;
     let (lead_progress, lead_speed) =
         physics::catch_up(lead.progress, lead.speed, lead.acceleration, dt);
 
-    let my_seg_pos = cur_progress - car.segment_dist_starts[car_seg_idx];
-    let lead_seg_pos = lead_progress - lead.segment_dist_starts[lead_seg_idx];
+    let my_pos = cur_progress - my_seg_start;
+    let lead_pos = lead_progress - lead_seg_start;
 
-    let gap = lead_seg_pos - my_seg_pos;
+    let gap = lead_pos - my_pos;
     if gap <= 0.0 {
         return None;
     }
@@ -65,6 +76,20 @@ fn lead_car_obstacle(
         speed: lead_speed,
         accel: lead.acceleration,
     })
+}
+
+/// Find the cumulative distance to the start of an edge for a car.
+/// The edge (from, to) starts at the route index where `from` is route[k] and `to` is route[k+1].
+fn edge_start_dist(car: &Car, edge: EdgeKey) -> Option<f64> {
+    let (from, to) = edge;
+    for i in 1..car.route.len() {
+        if car.route[i - 1] == from && car.route[i] == to {
+            // seg_start_dist for route_index i = sum of segment_lengths[1..i]
+            let dist: f64 = car.segment_lengths[1..i].iter().sum();
+            return Some(dist);
+        }
+    }
+    None
 }
 
 /// Main car wake-up handler: ADVANCE → SCAN → DECIDE.
@@ -107,12 +132,7 @@ pub fn handle_car_wake_up(
             if cur_speed > expected + 0.3 {
                 eprintln!(
                     "WARN [car {}] crossed node {} (ri={}) at speed {:.2}, turn_speed={:.2} (dt={:.0}ms)",
-                    car_id,
-                    node,
-                    ri,
-                    cur_speed,
-                    expected,
-                    dt * 1000.0
+                    car_id, node, ri, cur_speed, expected, dt * 1000.0
                 );
             }
         }
@@ -121,11 +141,7 @@ pub fn handle_car_wake_up(
         if world.is_intersection(node) && !intersections.has_passage(node, car_id) {
             eprintln!(
                 "WARN [car {}] crossed BLOCKED intersection {} (ri={}) at speed {:.2} (dt={:.0}ms)",
-                car_id,
-                node,
-                ri,
-                cur_speed,
-                dt * 1000.0
+                car_id, node, ri, cur_speed, dt * 1000.0
             );
         }
 
@@ -137,42 +153,25 @@ pub fn handle_car_wake_up(
         ri += 1;
     }
 
-    // Detect segment transitions
-    let old_segment_route_index = car.segment_route_index;
-    let mut segment_route_index = car.segment_route_index;
-
-    loop {
-        let seg_id = car.segment_route[segment_route_index];
-        let seg_nodes_len = match world.segments.get(&seg_id) {
-            Some(s) => s.nodes.len(),
-            None => break,
-        };
-        let seg_end_ri = car.segment_start_ris[segment_route_index] + seg_nodes_len - 1;
-        if ri <= seg_end_ri {
-            break;
+    // Handle edge transitions: remove from old edges, wake cars behind, add to new edge
+    for k in old_ri..ri {
+        let old_edge: EdgeKey = (car.route[k - 1], car.route[k]);
+        let car_behind = world.car_behind_on_edge(old_edge, car_id);
+        if let Some(seg) = world.edges.get_mut(&old_edge) {
+            seg.cars.retain(|&id| id != car_id);
         }
-        if segment_route_index + 1 >= car.segment_route.len() {
-            break;
+        if let Some(behind) = car_behind {
+            events.schedule(0, GameEvent::CarWakeUp { car_id: behind }, Some(behind));
         }
-        segment_route_index += 1;
+        // Car has fully left route[k-1] — remove from node_cars index
+        if let Some(set) = world.node_cars.get_mut(&car.route[k - 1]) {
+            set.remove(&car_id);
+        }
     }
-
-    let current_segment = car.segment_route[segment_route_index];
-
-    // Handle segment transitions: remove from old segments, wake cars behind
-    if segment_route_index != old_segment_route_index {
-        for idx in old_segment_route_index..segment_route_index {
-            let old_seg_id = car.segment_route[idx];
-            let car_behind = world.car_behind_on_segment(old_seg_id, car_id);
-            if let Some(seg) = world.segments.get_mut(&old_seg_id) {
-                seg.cars.retain(|&id| id != car_id);
-            }
-            if let Some(behind) = car_behind {
-                events.schedule(0, GameEvent::CarWakeUp { car_id: behind }, Some(behind));
-            }
-        }
-        // Add to new segment (may already be there from pre-registration)
-        if let Some(seg) = world.segments.get_mut(&current_segment)
+    // Add to current edge if we transitioned
+    if ri != old_ri {
+        let current_edge: EdgeKey = (car.route[ri - 1], car.route[ri]);
+        if let Some(seg) = world.edges.get_mut(&current_edge)
             && !seg.cars.contains(&car_id)
         {
             seg.cars.push_back(car_id);
@@ -182,19 +181,18 @@ pub fn handle_car_wake_up(
     // Clear intersections the car drove through
     for k in old_ri..ri {
         let node = car.route[k];
-        if world.is_intersection(node) {
-            for woken_id in intersections.get_or_create(node).clear(car_id) {
-                events.schedule(0, GameEvent::CarWakeUp { car_id: woken_id }, Some(woken_id));
-            }
+        for woken_id in intersections.clear_car(node, car_id) {
+            events.schedule(0, GameEvent::CarWakeUp { car_id: woken_id }, Some(woken_id));
         }
     }
 
     // === SCAN ===
+    let current_edge: EdgeKey = (car.route[ri - 1], car.route[ri]);
     let seg_progress = cur_progress - seg_start;
     let remaining = car.segment_lengths[ri] - seg_progress;
     let mut obstacles = Vec::<Obstacle>::new();
 
-    // Register at upcoming intersections (all within lookahead, not just the first)
+    // Register at upcoming intersections
     let lookahead = (ri + 3).min(car.route.len());
     for k in ri..lookahead {
         if world.is_intersection(car.route[k]) && k > 0 && k + 1 < car.route.len() {
@@ -208,25 +206,18 @@ pub fn handle_car_wake_up(
                     .get_or_create(car.route[k])
                     .register(car_id, from_dir, to_dir);
             }
-            // Stop looking past an intersection we're still waiting for
             if !intersections.has_passage(car.route[k], car_id) {
                 break;
             }
         }
     }
 
-    // Pre-register on next segment when passage is granted.
-    // Stay in current segment too — removal happens at physical crossing (above).
-    // This way the car behind still sees us as a lead car while we cross.
-    if segment_route_index + 1 < car.segment_route.len()
-        && let Some(current_seg) = world.segments.get(&current_segment)
-    {
-        let end_junction = current_seg.end_junction();
-        if world.is_intersection(end_junction)
-            && intersections.has_passage(end_junction, car_id)
-        {
-            let next_seg_id = car.segment_route[segment_route_index + 1];
-            if let Some(next_seg) = world.segments.get_mut(&next_seg_id)
+    // Pre-register on next edge when passage is granted at the junction
+    if ri + 1 < car.route.len() {
+        let end_node = car.route[ri];
+        if !world.is_intersection(end_node) || intersections.has_passage(end_node, car_id) {
+            let next_edge: EdgeKey = (car.route[ri], car.route[ri + 1]);
+            if let Some(next_seg) = world.edges.get_mut(&next_edge)
                 && !next_seg.cars.contains(&car_id)
             {
                 next_seg.cars.push_back(car_id);
@@ -234,28 +225,28 @@ pub fn handle_car_wake_up(
         }
     }
 
-    // Lead car: check current segment deque, then next segment if pre-registered
-    if let Some(seg) = world.segments.get(&current_segment)
+    // Lead car: check current edge deque
+    if let Some(seg) = world.edges.get(&current_edge)
         && let Some(my_pos) = seg.car_position(car_id)
         && my_pos > 0
     {
         let lead_id = seg.cars[my_pos - 1];
         if let Some(obs) =
-            lead_car_obstacle(world, &car, segment_route_index, cur_progress, lead_id, now)
+            lead_car_obstacle(world, &car, current_edge, cur_progress, lead_id, now)
         {
             obstacles.push(obs);
         }
     }
-    // Also check the next segment — we may be pre-registered there
-    if segment_route_index + 1 < car.segment_route.len() {
-        let next_seg_id = car.segment_route[segment_route_index + 1];
-        if let Some(next_seg) = world.segments.get(&next_seg_id)
+    // Also check the next edge — we may be pre-registered there
+    if ri + 1 < car.route.len() {
+        let next_edge: EdgeKey = (car.route[ri], car.route[ri + 1]);
+        if let Some(next_seg) = world.edges.get(&next_edge)
             && let Some(my_pos) = next_seg.car_position(car_id)
             && my_pos > 0
         {
             let lead_id = next_seg.cars[my_pos - 1];
             if let Some(obs) =
-                lead_car_obstacle(world, &car, segment_route_index + 1, cur_progress, lead_id, now)
+                lead_car_obstacle(world, &car, next_edge, cur_progress, lead_id, now)
             {
                 obstacles.push(obs);
             }
@@ -263,7 +254,6 @@ pub fn handle_car_wake_up(
     }
 
     // SpeedLimit at approaching node route[ri]
-    // Target curve entry: curve starts 0.5 * segment_length before the node
     let entry_ri = remaining - 0.5 * car.segment_lengths[ri] - CAR_NOSE;
     if entry_ri > 0.0 {
         if ri > 0 && ri < car.route.len() - 1 {
@@ -281,7 +271,7 @@ pub fn handle_car_wake_up(
         }
     }
 
-    // Scan forward nodes: segment_lengths[k] = distance from route[k-1] to route[k]
+    // Scan forward nodes
     let mut node_dist = remaining;
     let limit = car.route.len().min(ri + 30);
 
@@ -312,26 +302,31 @@ pub fn handle_car_wake_up(
         .map(|o| o.required_accel(cur_speed))
         .fold(ACCELERATION, f64::min);
 
-    let wake_ms = obstacles
+    let mut wake_ms = obstacles
         .iter()
         .map(|o| o.wake_time(cur_speed, new_accel))
-        .fold(5000, u64::min);
+        .fold(5000u64, u64::min);
+
+    // Ensure wake before edge boundary for deque transition
+    if cur_speed > 1e-3 {
+        let time_to_edge_end = remaining / cur_speed;
+        wake_ms = wake_ms.min(((time_to_edge_end * 1000.0) as u64).max(10));
+    }
 
     events.schedule(wake_ms, GameEvent::CarWakeUp { car_id }, Some(car_id));
 
-    let accel_changed = ((new_accel - car.acceleration) / ACCELERATION).abs() > 0.1;
+    let accel_changed = ((new_accel - car.acceleration) / ACCELERATION).abs() > 0.02;
 
-    // Wake car behind on acceleration change (braking propagates fast, acceleration slow)
+    // Wake car behind on acceleration change
     if accel_changed {
         let delay = if new_accel < 0.0 { 50 } else { 400 };
-        // Same-segment: car behind in deque
-        if let Some(behind) = world.car_behind_on_segment(current_segment, car_id) {
+        if let Some(behind) = world.car_behind_on_edge(current_edge, car_id) {
             events.schedule(delay, GameEvent::CarWakeUp { car_id: behind }, Some(behind));
         }
-        // Cross-segment: front car on previous segment (it sees us as cross-segment lead)
-        if segment_route_index > 0 {
-            let prev_seg_id = car.segment_route[segment_route_index - 1];
-            if let Some(prev_seg) = world.segments.get(&prev_seg_id)
+        // Cross-edge: front car on previous edge
+        if ri >= 2 {
+            let prev_edge: EdgeKey = (car.route[ri - 2], car.route[ri - 1]);
+            if let Some(prev_seg) = world.edges.get(&prev_edge)
                 && let Some(&front_id) = prev_seg.cars.front()
                 && front_id != car_id
             {
@@ -360,8 +355,6 @@ pub fn handle_car_wake_up(
         };
         c.seg_length = seg_len;
         c.seg_start_dist = seg_start;
-        c.segment_route_index = segment_route_index;
-        c.current_segment = current_segment;
         if accel_changed {
             c.acceleration = new_accel;
         }

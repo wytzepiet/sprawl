@@ -3,4 +3,4 @@ import type { DemolishRoad } from "./DemolishRoad";
 import type { PlaceBuilding } from "./PlaceBuilding";
 import type { PlaceRoad } from "./PlaceRoad";
 
-export type ClientMessage = { "type": "PlaceRoad", "data": PlaceRoad } | { "type": "PlaceBuilding", "data": PlaceBuilding } | { "type": "DemolishRoad", "data": DemolishRoad } | { "type": "ResetWorld" } | { "type": "Ping" };
+export type ClientMessage = { "type": "PlaceRoad", "data": PlaceRoad } | { "type": "PlaceBuilding", "data": PlaceBuilding } | { "type": "DemolishRoad", "data": DemolishRoad } | { "type": "DespawnAllCars" } | { "type": "ResetWorld" } | { "type": "Ping" };

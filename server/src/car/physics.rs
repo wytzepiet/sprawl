@@ -55,7 +55,7 @@ impl Obstacle {
             } => {
                 // Dead zone: close enough to lead car, just match its acceleration.
                 // Prevents accelerate→brake oscillation for micro-gaps.
-                if distance < 0.1 && my_speed <= speed + 1e-3 {
+                if distance < 0.05 && my_speed <= speed + 1e-3 {
                     return accel.min(0.0);
                 }
                 let effective = if accel < 0.0 && my_speed > 1e-6 {
@@ -72,6 +72,8 @@ impl Obstacle {
         if distance < 0.01 {
             if my_speed > target_speed + 0.05 {
                 -(my_speed * my_speed) / 0.02
+            } else if my_speed < target_speed - 0.05 {
+                ACCELERATION
             } else {
                 0.0
             }
@@ -79,7 +81,7 @@ impl Obstacle {
             -((my_speed * my_speed - target_speed * target_speed) / (2.0 * distance))
         } else {
             let max_speed = (target_speed * target_speed + 2.0 * DECELERATION * distance).sqrt();
-            if my_speed < CRUISE_SPEED.min(max_speed) - 0.15 {
+            if my_speed < CRUISE_SPEED.min(max_speed) - 0.05 {
                 ACCELERATION
             } else {
                 0.0

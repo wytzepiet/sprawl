@@ -67,6 +67,18 @@ export function Trash2(props: IconProps) {
   );
 }
 
+export function CarOff(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M14 2a2 2 0 0 1 2 2v4h-2V4h-4v2H8V4a2 2 0 0 1 2-2z" />
+      <rect x="3" y="10" width="18" height="8" rx="2" />
+      <circle cx="7" cy="22" r="2" />
+      <circle cx="17" cy="22" r="2" />
+      <line x1="2" y1="2" x2="22" y2="22" stroke-width="2" />
+    </Icon>
+  );
+}
+
 export function RotateCcw(props: IconProps) {
   return (
     <Icon {...props}>

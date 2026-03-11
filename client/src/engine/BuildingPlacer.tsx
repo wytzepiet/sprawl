@@ -4,7 +4,7 @@ import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
 import { useGame } from "../state/gameObjects";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
-import { buildingCubeGeometry, BUILDING_HEIGHT } from "./objects/buildings";
+import { buildingCubeGeometry } from "./objects/buildings";
 import { createSpring2D } from "./spring";
 import type { GridCoord } from "../generated";
 
@@ -21,10 +21,10 @@ export function BuildingPlacer() {
   function screenToGrid(e: PointerEvent): GridCoord {
     const rect = canvas.getBoundingClientRect();
     const cam = scene.activeCamera!;
-    const nx = -((e.clientX - rect.left) / rect.width * 2 - 1);
-    const ny = 1 - (e.clientY - rect.top) / rect.height * 2;
-    const wx = cam.position.x + nx * (cam.orthoRight! - cam.orthoLeft!) / 2;
-    const wy = cam.position.y + ny * (cam.orthoTop! - cam.orthoBottom!) / 2;
+    const nx = -(((e.clientX - rect.left) / rect.width) * 2 - 1);
+    const ny = 1 - ((e.clientY - rect.top) / rect.height) * 2;
+    const wx = cam.position.x + (nx * (cam.orthoRight! - cam.orthoLeft!)) / 2;
+    const wy = cam.position.y + (ny * (cam.orthoTop! - cam.orthoBottom!)) / 2;
     return { x: Math.floor(wx), y: Math.floor(wy) };
   }
 
