@@ -14,3 +14,4 @@ tower-http = { version = "0.6", features = ["cors"] }
 futures = "0.3"
 rand = "0.9"
 rusqlite = { version = "0.34", features = ["bundled"] }
+noise = "0.9"

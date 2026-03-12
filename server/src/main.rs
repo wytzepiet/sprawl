@@ -5,6 +5,7 @@ mod intersection;
 mod network;
 mod persistence;
 mod protocol;
+mod terrain;
 mod world;
 
 use axum::Router;

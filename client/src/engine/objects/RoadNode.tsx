@@ -1,6 +1,7 @@
 import { For, Show, createMemo } from "solid-js";
 import { Color3 } from "@babylonjs/core";
 import Mesh, { type MeshGeometry } from "../Mesh";
+import InstancedMesh from "../InstancePool";
 import type { KindEntry } from "../GameObject";
 import { useTheme } from "../theme";
 import { useGame } from "../../state/gameObjects";
@@ -290,8 +291,8 @@ export default function RoadNode(props: { entry: KindEntry<"RoadNode"> }) {
     <>
       <Show when={roadGeometry()}>
         {(geo) => (
-          <Mesh
-            name={`road_${props.entry.id}`}
+          <InstancedMesh
+            poolKey={`road_${arms().key}`}
             geometry={geo()}
             position={pos()}
             color={theme.road}

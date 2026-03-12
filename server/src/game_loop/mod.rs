@@ -26,6 +26,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let mut intersections = IntersectionRegistry::new();
     let mut clients: HashMap<ClientId, mpsc::UnboundedSender<ServerMessage>> = HashMap::new();
 
+    // Generate terrain if world is empty (first startup)
+    if world.objects.all_entries().is_empty() {
+        let seed = rand::random::<u32>();
+        crate::terrain::generate(&mut world, seed);
+        println!("generated terrain ({} tiles)", world.objects.all_entries().len());
+    }
+
     // Rebuild edges/indices and schedule car spawns for loaded buildings
     if !world.objects.all_entries().is_empty() {
         world.rebuild_edges();
@@ -63,7 +70,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         events = EventQueue::new();
                         intersections = IntersectionRegistry::new();
                         let _ = std::fs::remove_file(&db_path);
-                        println!("reset: world cleared, db deleted");
+                        crate::terrain::generate(&mut world, rand::random::<u32>());
+                        let terrain_ops: Vec<Operation> = world.objects.all_entries()
+                            .into_iter()
+                            .map(|e| Operation::Upsert(Box::new(e)))
+                            .collect();
+                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops: terrain_ops, server_time: now }));
+                        println!("reset: world cleared, terrain regenerated");
                     } else {
                         handle_player_action(&mut world, &mut events, &mut intersections, message, now);
                     }

@@ -1,7 +1,7 @@
 import { Color3 } from "@babylonjs/core";
-import Mesh from "../Mesh";
+import InstancedMesh from "../InstancePool";
 import type { KindEntry } from "../GameObject";
-import { buildingCubeGeometry, BUILDING_HEIGHT, BUILDINGS } from "./buildings";
+import { buildingCubeGeometry, BUILDINGS } from "./buildings";
 import type { BuildingType } from "../../generated";
 
 const cube = buildingCubeGeometry();
@@ -12,19 +12,14 @@ function getBuildingColor(buildingType: BuildingType): Color3 {
 }
 
 export default function BuildingObject(props: { entry: KindEntry<"Building"> }) {
-  const pos = (): [number, number, number] | undefined =>
-    props.entry.position
-      ? [props.entry.position.x + 0.5, props.entry.position.y + 0.5, 0]
-      : undefined;
-
-  const color = () => getBuildingColor(props.entry.object.data.building_type);
+  const pos = props.entry.position;
 
   return (
-    <Mesh
-      name={`building_${props.entry.id}`}
+    <InstancedMesh
+      poolKey={`building_${props.entry.object.data.building_type}`}
       geometry={cube}
-      position={pos()}
-      color={color()}
+      position={pos ? [pos.x + 0.5, pos.y + 0.5, 0] : undefined}
+      color={getBuildingColor(props.entry.object.data.building_type)}
       castShadow
     />
   );

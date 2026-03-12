@@ -2,5 +2,7 @@
 import type { Building } from "./Building";
 import type { Car } from "./Car";
 import type { RoadNode } from "./RoadNode";
+import type { TerrainBorder } from "./TerrainBorder";
+import type { TerrainTile } from "./TerrainTile";
 
-export type GameObject = { "kind": "RoadNode", "data": RoadNode } | { "kind": "Building", "data": Building } | { "kind": "Car", "data": Car };
+export type GameObject = { "kind": "RoadNode", "data": RoadNode } | { "kind": "Building", "data": Building } | { "kind": "Car", "data": Car } | { "kind": "Terrain", "data": TerrainTile } | { "kind": "TerrainBorder", "data": TerrainBorder };

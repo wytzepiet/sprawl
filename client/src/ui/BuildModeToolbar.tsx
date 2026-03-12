@@ -19,7 +19,7 @@ export default function BuildModeToolbar() {
       setRoadOneWay((v) => !v);
       return;
     }
-    if (e.key.toLowerCase() === "b") {
+if (e.key.toLowerCase() === "b") {
       setBuildMenuOpen((v) => !v);
       return;
     }

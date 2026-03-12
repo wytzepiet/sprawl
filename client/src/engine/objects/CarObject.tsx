@@ -1,12 +1,10 @@
-import { onCleanup, createEffect } from "solid-js";
+import { onCleanup } from "solid-js";
 import {
   Color3,
   Path3D,
   Vector3,
-  type Mesh,
-  type StandardMaterial,
 } from "@babylonjs/core";
-import MeshComponent from "../Mesh";
+import InstancedMesh, { type InstanceHandle } from "../InstancePool";
 import { useEngine } from "../Canvas";
 import type { KindEntry } from "../GameObject";
 import { useGame } from "../../state/gameObjects";
@@ -14,8 +12,6 @@ import { boxGeometry } from "./buildings";
 import { getClockOffset } from "../../network/connection";
 
 const CAR_COLOR = new Color3(0.9, 0.25, 0.2);
-const FLASH_COLOR = new Color3(1, 1, 1);
-const FLASH_DURATION_MS = 300;
 const carGeo = boxGeometry(0.18, 0.35, 0.15);
 const LANE_OFFSET = 0.11;
 const BEZIER_SAMPLES = 8;
@@ -64,8 +60,7 @@ export default function CarObject(props: { entry: KindEntry<"Car"> }) {
   const { scene } = useEngine();
   const { objects } = useGame();
 
-  let meshRef: Mesh | null = null;
-  let flashStart = 0;
+  let handle: InstanceHandle | null = null;
 
   function nodePos(nodeId: number): Vector3 | null {
     const entry = objects[String(nodeId)];
@@ -181,43 +176,10 @@ export default function CarObject(props: { entry: KindEntry<"Car"> }) {
     }
   }
 
-  // Flash when updated_at changes (server sent an update event)
-  createEffect(
-    () => props.entry.object.data.updated_at,
-    () => {
-      flashStart = performance.now();
-    },
-    undefined,
-    { defer: true },
-  );
-
   const observer = scene.onBeforeRenderObservable.add(() => {
-    if (!meshRef) return;
-
-    const car = props.entry.object.data;
-    const result = carPosition(car);
-    if (!result) return;
-
-    const p = cachedPath!.getPointAt(result.normalized);
-    const tangent = cachedPath!.getTangentAt(result.normalized);
-
-    meshRef.position.x = p.x;
-    meshRef.position.y = p.y;
-    meshRef.position.z = 0.3;
-    meshRef.rotation.z = Math.atan2(tangent.y, tangent.x) - Math.PI / 2;
-
-    // Flash effect: lerp from white back to car color
-    if (flashStart > 0) {
-      const elapsed = performance.now() - flashStart;
-      const mat = meshRef.material as StandardMaterial;
-      if (elapsed < FLASH_DURATION_MS) {
-        const t = elapsed / FLASH_DURATION_MS;
-        Color3.LerpToRef(FLASH_COLOR, CAR_COLOR, t, mat.emissiveColor);
-      } else {
-        mat.emissiveColor.copyFrom(CAR_COLOR);
-        flashStart = 0;
-      }
-    }
+    if (!handle) return;
+    const result = computePosition();
+    if (result) handle.setMatrix(result.pos, result.rot);
   });
 
   onCleanup(() => {
@@ -225,16 +187,14 @@ export default function CarObject(props: { entry: KindEntry<"Car"> }) {
   });
 
   return (
-    <MeshComponent
-      name={`car_${props.entry.id}`}
+    <InstancedMesh
+      poolKey="car"
       geometry={carGeo}
       position={initial?.pos ?? [0, 0, -10]}
       rotation={initial?.rot ?? [0, 0, 0]}
       color={CAR_COLOR}
       castShadow
-      meshRef={(m) => {
-        meshRef = m;
-      }}
+      ref={(h) => { handle = h; }}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { Switch, Match, type JSX } from "solid-js";
+import { Switch, Match } from "solid-js";
 import type {
   GameObject as GameObjectType,
   GameObjectEntry,
@@ -6,35 +6,38 @@ import type {
 import RoadNode from "./objects/RoadNode";
 import BuildingObject from "./objects/BuildingObject";
 import CarObject from "./objects/CarObject";
+import TerrainTile from "./objects/TerrainTile";
+import TerrainBorder from "./objects/TerrainBorder";
 
 export type KindEntry<K extends GameObjectType["kind"]> = GameObjectEntry & {
   object: Extract<GameObjectType, { kind: K }>;
 };
 
 function MatchKind<K extends GameObjectType["kind"]>(props: {
-  entry: GameObjectEntry;
   kind: K;
-  children: (entry: () => KindEntry<K>) => JSX.Element;
+  entry: () => GameObjectEntry;
+  component: (props: { entry: KindEntry<K> }) => any;
 }) {
   return (
-    <Match when={props.entry.object.kind === props.kind && (props.entry as KindEntry<K>)}>
-      {props.children}
+    <Match when={props.entry().object.kind === props.kind}>
+      {(() => {
+        const C = props.component;
+        return <C entry={props.entry() as KindEntry<K>} />;
+      })()}
     </Match>
   );
 }
 
 export default function GameObject(props: { entry: GameObjectEntry }) {
+  const e = () => props.entry;
+
   return (
     <Switch>
-      <MatchKind entry={props.entry} kind="RoadNode">
-        {(entry) => <RoadNode entry={entry()} />}
-      </MatchKind>
-      <MatchKind entry={props.entry} kind="Building">
-        {(entry) => <BuildingObject entry={entry()} />}
-      </MatchKind>
-      <MatchKind entry={props.entry} kind="Car">
-        {(entry) => <CarObject entry={entry()} />}
-      </MatchKind>
+      <MatchKind kind="RoadNode" entry={e} component={RoadNode} />
+      <MatchKind kind="Building" entry={e} component={BuildingObject} />
+      <MatchKind kind="Car" entry={e} component={CarObject} />
+      <MatchKind kind="Terrain" entry={e} component={TerrainTile} />
+      <MatchKind kind="TerrainBorder" entry={e} component={TerrainBorder} />
     </Switch>
   );
 }

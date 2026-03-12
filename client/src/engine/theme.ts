@@ -1,28 +1,19 @@
 import { Color3, Color4 } from "@babylonjs/core";
 
-function getCSSColor(varName: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-}
+const hex3 = (h: string) => Color3.FromHexString(h);
+const hex4 = (h: string) => new Color4(...hex3(h).asArray(), 1);
 
-function hexToColor3(hex: string): Color3 {
-  return Color3.FromHexString(hex);
-}
+export const theme = {
+  land: hex4("#C7D9B1"),
+  water: hex3("#5B8FAF"),
+  forest: hex3("#6B8E5A"),
+  mountain: hex3("#9A9A8E"),
+  grid: hex3("#8BA87A"),
+  road: hex3("#4D5365"),
+};
 
-function hexToColor4(hex: string, alpha = 1): Color4 {
-  const c = Color3.FromHexString(hex);
-  return new Color4(c.r, c.g, c.b, alpha);
-}
-
-function readTheme() {
-  return {
-    land: hexToColor4(getCSSColor("--color-land")),
-    grid: hexToColor3(getCSSColor("--color-grid")),
-    road: hexToColor3(getCSSColor("--color-road")),
-  };
-}
-
-export type Theme = ReturnType<typeof readTheme>;
+export type Theme = typeof theme;
 
 export function useTheme(): Theme {
-  return readTheme();
+  return theme;
 }

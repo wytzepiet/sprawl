@@ -77,6 +77,30 @@ pub struct Car {
     pub segment_lengths: Vec<f64>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub enum TerrainType {
+    Water,
+    Grass,
+    Forest,
+    Mountain,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TerrainTile {
+    pub terrain_type: TerrainType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TerrainBorder {
+    pub type_a: TerrainType,
+    pub type_b: TerrainType,
+    /// Bitmask: which cardinal sides have type_a. Bit 0=S, 1=E, 2=N, 3=W.
+    pub type_a_dirs: u8,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "kind", content = "data")]
@@ -84,6 +108,8 @@ pub enum GameObject {
     RoadNode(RoadNode),
     Building(Building),
     Car(Car),
+    Terrain(TerrainTile),
+    TerrainBorder(TerrainBorder),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

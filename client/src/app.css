@@ -1,11 +1,5 @@
 @import "tailwindcss";
 
-@theme {
-  --color-land: #C7D9B1;
-  --color-grid: #8BA87A;
-  --color-road: #4D5365;
-}
-
 html, body {
   margin: 0;
   padding: 0;
