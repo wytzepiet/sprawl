@@ -1,4 +1,4 @@
-import { onCleanup, createEffect } from "solid-js";
+import { onCleanup, createEffect, on } from "solid-js";
 import { FreeCamera, Vector3, Camera } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { buildMode, placingBuilding } from "../ui/buildMode";
@@ -47,7 +47,7 @@ export function OrthoCamera() {
   });
 
   // React to build mode changes
-  createEffect(
+  createEffect(on(
     () => ({ mode: buildMode(), placing: placingBuilding() }),
     ({ mode, placing }) => {
       if (mode === "select" && !placing) {
@@ -57,7 +57,7 @@ export function OrthoCamera() {
         targetOrthoSize = BUILD_ZOOM;
       }
     },
-  );
+  ));
 
   // Mouse panning
   let panning = false;

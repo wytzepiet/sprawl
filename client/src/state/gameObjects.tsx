@@ -3,9 +3,10 @@ import {
   useContext,
   createSignal,
   onCleanup,
+  batch,
   type ParentProps,
-  createStore,
 } from "solid-js";
+import { createStore } from "solid-js/store";
 import { createConnection, updateClockOffset } from "../network/connection";
 import type { GameObjectEntry, ClientMessage, Operation } from "../generated";
 
@@ -17,7 +18,6 @@ function posKey(x: number, y: number): string {
 
 interface GameContext {
   objects: Objects;
-  objectIds: readonly number[];
   terrainSeed(): number;
   getObjectsAt(x: number, y: number): GameObjectEntry[];
   send(msg: ClientMessage): void;
@@ -28,7 +28,6 @@ const Ctx = createContext<GameContext>();
 export function GameProvider(props: ParentProps) {
   const [objects, setObjects] = createStore<Objects>({});
   const [terrainSeed, setTerrainSeed] = createSignal(0);
-  const [objectIds, setObjectIds] = createStore<number[]>([]);
   const [spatial, setSpatial] = createStore<Record<string, number[]>>({});
 
   function applyOps(ops: Operation[]) {
@@ -58,53 +57,37 @@ export function GameProvider(props: ParentProps) {
       }
     }
 
-    const added: number[] = [];
-    const deleted: number[] = [];
-
-    setObjects((objects) => {
+    batch(() => {
       for (const op of ops) {
         switch (op.op) {
           case "Upsert": {
-            const existing = objects[op.data.id];
-            if (existing) {
-              existing.object = op.data.object;
-              existing.position = op.data.position;
+            const key = String(op.data.id);
+            if (objects[key]) {
+              setObjects(key, "object", op.data.object);
+              setObjects(key, "position", op.data.position);
             } else {
-              objects[op.data.id] = op.data;
-              added.push(op.data.id);
+              setObjects(key, op.data);
             }
             break;
           }
-          case "Delete":
-            delete objects[String(op.data)];
-            deleted.push(op.data as number);
+          case "Delete": {
+            setObjects(String(op.data), undefined as any);
             break;
+          }
         }
       }
-    });
 
-    if (added.length || deleted.length) {
-      setObjectIds((ids) => {
-        for (const id of deleted) {
-          const idx = ids.indexOf(id);
-          if (idx !== -1) ids.splice(idx, 1);
-        }
-        ids.push(...added);
-      });
-    }
-
-    setSpatial((s) => {
       for (const { id, key } of removals) {
-        const ids = s[key];
+        const ids = spatial[key];
         if (!ids) continue;
-        const filtered = ids.filter((i) => i !== id);
-        if (filtered.length === 0) delete s[key];
-        else s[key] = filtered;
+        const filtered = ids.filter(i => i !== id);
+        if (filtered.length === 0) setSpatial(key, undefined as any);
+        else setSpatial(key, filtered);
       }
       for (const { id, key } of additions) {
-        const ids = s[key];
-        if (!ids) s[key] = [id];
-        else if (!ids.includes(id)) s[key] = [...ids, id];
+        const ids = spatial[key];
+        if (!ids) setSpatial(key, [id]);
+        else if (!ids.includes(id)) setSpatial(key, [...ids, id]);
       }
     });
   }
@@ -135,9 +118,9 @@ export function GameProvider(props: ParentProps) {
   }
 
   return (
-    <Ctx value={{ objects, objectIds, terrainSeed, getObjectsAt, send }}>
+    <Ctx.Provider value={{ objects, terrainSeed, getObjectsAt, send }}>
       {props.children}
-    </Ctx>
+    </Ctx.Provider>
   );
 }
 

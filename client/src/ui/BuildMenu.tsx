@@ -57,7 +57,7 @@ export function BuildMenuSheet() {
                     onPointerDown={(e) => {
                       e.preventDefault();
                       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                      const buildingId = building().id;
+                      const buildingId = building.id;
                       const onMove = () => {
                         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
                         (e.currentTarget as HTMLElement).removeEventListener("pointermove", onMove);
@@ -82,9 +82,9 @@ export function BuildMenuSheet() {
                       }}
                       class="bg-stone-100"
                     >
-                      <BuildingPreview color={Color3.FromHexString(building().color)} />
+                      <BuildingPreview color={Color3.FromHexString(building.color)} />
                     </MultiCanvasView>
-                    <span class="text-[11px] font-medium text-stone-500">{building().label}</span>
+                    <span class="text-[11px] font-medium text-stone-500">{building.label}</span>
                   </button>
                 )}
               </For>

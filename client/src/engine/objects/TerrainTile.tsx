@@ -34,21 +34,44 @@ function nextRand(s: number): [number, number] {
 
 const TREE_SEGMENTS = 12;
 
-function buildDiscGeo(radius: number): MeshGeometry {
-  const positions: number[] = [0, 0, 0];
-  const normals: number[] = [0, 0, 1];
+function buildCylinderGeo(radius: number, height: number): MeshGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
   const indices: number[] = [];
+
+  // Side wall
   for (let i = 0; i <= TREE_SEGMENTS; i++) {
     const a = (i / TREE_SEGMENTS) * Math.PI * 2;
-    positions.push(Math.cos(a) * radius, Math.sin(a) * radius, 0);
+    const cx = Math.cos(a), cy = Math.sin(a);
+    // bottom
+    positions.push(cx * radius, cy * radius, 0);
+    normals.push(cx, cy, 0);
+    // top
+    positions.push(cx * radius, cy * radius, height);
+    normals.push(cx, cy, 0);
+  }
+  for (let i = 0; i < TREE_SEGMENTS; i++) {
+    const b = i * 2;
+    indices.push(b, b + 2, b + 1, b + 1, b + 2, b + 3);
+  }
+
+  // Top cap
+  const topCenter = positions.length / 3;
+  positions.push(0, 0, height);
+  normals.push(0, 0, 1);
+  for (let i = 0; i <= TREE_SEGMENTS; i++) {
+    const a = (i / TREE_SEGMENTS) * Math.PI * 2;
+    positions.push(Math.cos(a) * radius, Math.sin(a) * radius, height);
     normals.push(0, 0, 1);
   }
-  for (let i = 0; i < TREE_SEGMENTS; i++) indices.push(0, i + 1, i + 2);
+  for (let i = 0; i < TREE_SEGMENTS; i++) {
+    indices.push(topCenter, topCenter + i + 1, topCenter + i + 2);
+  }
+
   return { positions, indices, normals };
 }
 
-// Unit-radius canopy disc, scaled per tree
-const TREE_CANOPY = buildDiscGeo(1);
+const TREE_TRUNK = buildCylinderGeo(1, 1);
 interface TreeInfo {
   x: number;
   y: number;
@@ -480,14 +503,14 @@ export default function TerrainTile(props: { entry: KindEntry<"Terrain"> }) {
       {props.entry.object.data.terrain_type === "Forest" && (
         <For each={treesForTile(pos().x, pos().y)}>
           {(tree) => {
-            const s = () => tree().scale;
+            const s = () => tree.scale;
             const visible = () => !getObjectsAt(pos().x, pos().y).some((o) => o.object.kind === "RoadNode");
             return (
               <InstancedMesh
-                poolKey="tree_canopy"
-                geometry={TREE_CANOPY}
-                position={[pos().x + tree().x, pos().y + tree().y, s()]}
-                scale={[s() * 0.35, s() * 0.35, 1]}
+                poolKey="tree_trunk"
+                geometry={TREE_TRUNK}
+                position={[pos().x + tree.x, pos().y + tree.y, 0]}
+                scale={[s() * 0.35, s() * 0.35, s()]}
                 color={terrainColor("Forest", theme()).scale(0.7)}
                 enabled={visible()}
                 castShadow
@@ -499,13 +522,13 @@ export default function TerrainTile(props: { entry: KindEntry<"Terrain"> }) {
       )}
       <For each={sameElev()}>
         {(corner) => {
-          const buildable = () => ELEVATION[corner().type] === 0;
+          const buildable = () => ELEVATION[corner.type] === 0;
           return (
             <InstancedMesh
-              poolKey={`corner_${corner().index}_${corner().type}_${corner().variant}${buildable() ? "_b" : ""}`}
-              geometry={CORNER_GEOS[corner().index][corner().variant]}
+              poolKey={`corner_${corner.index}_${corner.type}_${corner.variant}${buildable() ? "_b" : ""}`}
+              geometry={CORNER_GEOS[corner.index][corner.variant]}
               position={[pos().x, pos().y, baseElev() + 0.01]}
-              color={terrainColor(corner().type, theme())}
+              color={terrainColor(corner.type, theme())}
               texture={buildable() ? borderTex : undefined}
               receiveShadow
             />
@@ -515,30 +538,30 @@ export default function TerrainTile(props: { entry: KindEntry<"Terrain"> }) {
       <For each={diffElev()}>
         {(corner) => {
           const be = () => baseElev();
-          const upperZ = () => Math.max(be(), corner().cornerElev);
-          const lowerZ = () => Math.min(be(), corner().cornerElev);
+          const upperZ = () => Math.max(be(), corner.cornerElev);
+          const lowerZ = () => Math.min(be(), corner.cornerElev);
           const height = () => upperZ() - lowerZ();
           const higherType = () =>
-            corner().cornerElev > be()
-              ? corner().type
+            corner.cornerElev > be()
+              ? corner.type
               : props.entry.object.data.terrain_type;
           const cliffColor = () =>
             terrainColor(higherType(), theme()).scale(0.7);
           return (
             <>
               <InstancedMesh
-                poolKey={`corner_${corner().index}_${corner().type}_${corner().variant}${corner().cornerElev === 0 ? "_b" : ""}`}
-                geometry={CORNER_GEOS[corner().index][corner().variant]}
-                position={[pos().x, pos().y, corner().cornerElev]}
-                color={terrainColor(corner().type, theme())}
-                texture={corner().cornerElev === 0 ? borderTex : undefined}
+                poolKey={`corner_${corner.index}_${corner.type}_${corner.variant}${corner.cornerElev === 0 ? "_b" : ""}`}
+                geometry={CORNER_GEOS[corner.index][corner.variant]}
+                position={[pos().x, pos().y, corner.cornerElev]}
+                color={terrainColor(corner.type, theme())}
+                texture={corner.cornerElev === 0 ? borderTex : undefined}
                 receiveShadow
               />
               <InstancedMesh
-                poolKey={`cliff_${corner().index}_${corner().variant}_${height()}_${higherType()}`}
+                poolKey={`cliff_${corner.index}_${corner.variant}_${height()}_${higherType()}`}
                 geometry={buildCliffGeo(
-                  corner().index,
-                  corner().variant,
+                  corner.index,
+                  corner.variant,
                   height(),
                 )}
                 position={[pos().x, pos().y, lowerZ()]}
@@ -557,9 +580,9 @@ export default function TerrainTile(props: { entry: KindEntry<"Terrain"> }) {
             );
           return (
             <InstancedMesh
-              poolKey={`edge_cliff_${edge().edgeIdx}_${edge().height}_${props.entry.object.data.terrain_type}`}
-              geometry={buildEdgeCliffGeo(edge().edgeIdx, edge().height)}
-              position={[pos().x, pos().y, baseElev() - edge().height]}
+              poolKey={`edge_cliff_${edge.edgeIdx}_${edge.height}_${props.entry.object.data.terrain_type}`}
+              geometry={buildEdgeCliffGeo(edge.edgeIdx, edge.height)}
+              position={[pos().x, pos().y, baseElev() - edge.height]}
               color={cliffColor()}
               castShadow
             />

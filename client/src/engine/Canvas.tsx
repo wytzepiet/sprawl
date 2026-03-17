@@ -55,7 +55,7 @@ export default function Canvas(props: ParentProps) {
         style={{ width: "100vw", height: "100vh", display: "block" }}
       />
       <Show when={ctx()}>
-        {(c) => <BabylonContext value={c()}>{props.children}</BabylonContext>}
+        {(c) => <BabylonContext.Provider value={c()}>{props.children}</BabylonContext.Provider>}
       </Show>
     </>
   );

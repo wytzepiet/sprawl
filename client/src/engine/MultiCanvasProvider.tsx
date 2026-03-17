@@ -85,9 +85,9 @@ export default function MultiCanvasProvider(props: Props) {
       />
       <Show when={ctx()}>
         {(c) => (
-          <MultiCanvasContext value={c()}>
+          <MultiCanvasContext.Provider value={c()}>
             {props.children}
-          </MultiCanvasContext>
+          </MultiCanvasContext.Provider>
         )}
       </Show>
     </>
