@@ -17,6 +17,7 @@ pub struct World {
     pub edges: HashMap<EdgeKey, EdgeSegment>,
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
+    pub terrain_seed: u32,
 }
 
 use crate::protocol::GridCoord;
@@ -28,14 +29,16 @@ impl World {
             spatial: HashMap::new(),
             edges: HashMap::new(),
             node_cars: HashMap::new(),
+            terrain_seed: 0,
         }
     }
 
-    pub fn from_loaded(objects: Tracked) -> Self {
+    pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
         let mut world = Self {
             spatial: HashMap::new(),
             edges: HashMap::new(),
             node_cars: HashMap::new(),
+            terrain_seed,
             objects,
         };
         // Rebuild spatial index from loaded objects

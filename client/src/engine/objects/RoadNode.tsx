@@ -13,8 +13,10 @@ type Point = { x: number; y: number };
 
 const ROAD_WIDTH = 0.4;
 const HALF_W = ROAD_WIDTH / 2;
+const BORDER_HALF_W = HALF_W + 0.04;
 const CURVE_SEGMENTS = 8;
 const ROAD_Z = 0.02;
+const BORDER_Z = 0.015;
 const CHEVRON_Z = 0.03;
 const CHEVRON_DEPTH = 0.12;
 
@@ -42,7 +44,7 @@ function fanGeometry(
   return { positions, indices, normals };
 }
 
-function arcPoints(startAngle: number, endAngle: number): Point[] {
+function arcPoints(startAngle: number, endAngle: number, hw: number): Point[] {
   let span = endAngle - startAngle;
   if (span <= 0) span += 2 * Math.PI;
   const numSegs = Math.max(
@@ -52,7 +54,7 @@ function arcPoints(startAngle: number, endAngle: number): Point[] {
   const pts: Point[] = [];
   for (let j = 0; j <= numSegs; j++) {
     const angle = startAngle + span * (j / numSegs);
-    pts.push({ x: HALF_W * Math.cos(angle), y: HALF_W * Math.sin(angle) });
+    pts.push({ x: hw * Math.cos(angle), y: hw * Math.sin(angle) });
   }
   return pts;
 }
@@ -65,15 +67,15 @@ function quadBezier(p0: Point, p1: Point, p2: Point, t: number): Point {
   };
 }
 
-function edgePoints(a: number): { right: Point; left: Point } {
+function edgePoints(a: number, hw: number): { right: Point; left: Point } {
   const armLen = 0.5 / Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)));
   const ex = armLen * Math.cos(a);
   const ey = armLen * Math.sin(a);
   const px = -Math.sin(a);
   const py = Math.cos(a);
   return {
-    left: { x: ex + HALF_W * px, y: ey + HALF_W * py },
-    right: { x: ex - HALF_W * px, y: ey - HALF_W * py },
+    left: { x: ex + hw * px, y: ey + hw * py },
+    right: { x: ex - hw * px, y: ey - hw * py },
   };
 }
 
@@ -82,14 +84,15 @@ function curveControlPoint(
   aNext: number,
   start: Point,
   end: Point,
+  hw: number,
 ): Point {
   const det = Math.sin(aNext - aCurr);
   if (Math.abs(det) < 1e-6) {
     return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   }
   return {
-    x: (HALF_W * (Math.cos(aNext) + Math.cos(aCurr))) / det,
-    y: (HALF_W * (Math.sin(aCurr) + Math.sin(aNext))) / det,
+    x: (hw * (Math.cos(aNext) + Math.cos(aCurr))) / det,
+    y: (hw * (Math.sin(aCurr) + Math.sin(aNext))) / det,
   };
 }
 
@@ -100,10 +103,11 @@ function smoothCurve(
   aNext: number,
   currEdge: { left: Point },
   nextEdge: { right: Point },
+  hw: number,
 ): Point[] {
   let gap = aNext - aCurr;
   if (gap <= 0) gap += 2 * Math.PI;
-  const cp = curveControlPoint(aCurr, aNext, currEdge.left, nextEdge.right);
+  const cp = curveControlPoint(aCurr, aNext, currEdge.left, nextEdge.right, hw);
   const numSegs = Math.max(
     2,
     Math.round((gap / (Math.PI / 2)) * CURVE_SEGMENTS),
@@ -115,8 +119,8 @@ function smoothCurve(
   return pts;
 }
 
-function deadEndCap(aCurr: number, aNext: number): Point[] {
-  return arcPoints(aCurr + Math.PI / 2, aNext - Math.PI / 2);
+function deadEndCap(aCurr: number, aNext: number, hw: number): Point[] {
+  return arcPoints(aCurr + Math.PI / 2, aNext - Math.PI / 2, hw);
 }
 
 function sharpCorner(
@@ -137,7 +141,7 @@ function sharpCorner(
 
 // --- Geometry builders ---
 
-function buildRoadGeometry(arms: ArmInfo[]): MeshGeometry | null {
+function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshGeometry | null {
   if (arms.length === 0) return null;
 
   const sorted = [...arms].sort((a, b) => a.angle - b.angle);
@@ -145,17 +149,17 @@ function buildRoadGeometry(arms: ArmInfo[]): MeshGeometry | null {
 
   if (sorted.length === 1) {
     const a = sorted[0].angle;
-    const edge = edgePoints(a);
+    const edge = edgePoints(a, hw);
     boundary.push(edge.right, edge.left);
-    boundary.push(...arcPoints(a + Math.PI / 2, a + (3 * Math.PI) / 2));
+    boundary.push(...arcPoints(a + Math.PI / 2, a + (3 * Math.PI) / 2, hw));
   } else {
     for (let i = 0; i < sorted.length; i++) {
       const curr = sorted[i];
       const next = sorted[(i + 1) % sorted.length];
       const aCurr = curr.angle;
       const aNext = next.angle;
-      const currEdge = edgePoints(aCurr);
-      const nextEdge = edgePoints(aNext);
+      const currEdge = edgePoints(aCurr, hw);
+      const nextEdge = edgePoints(aNext, hw);
 
       boundary.push(currEdge.right, currEdge.left);
 
@@ -173,9 +177,9 @@ function buildRoadGeometry(arms: ArmInfo[]): MeshGeometry | null {
         curr.flow !== next.flow;
 
       if (gap > Math.PI && !isContinuous) {
-        boundary.push(...deadEndCap(aCurr, aNext));
+        boundary.push(...deadEndCap(aCurr, aNext, hw));
       } else if (isDrivable) {
-        boundary.push(...smoothCurve(aCurr, aNext, currEdge, nextEdge));
+        boundary.push(...smoothCurve(aCurr, aNext, currEdge, nextEdge, hw));
       } else {
         boundary.push(
           ...sharpCorner(aCurr, aNext, currEdge.left, nextEdge.right),
@@ -184,7 +188,7 @@ function buildRoadGeometry(arms: ArmInfo[]): MeshGeometry | null {
     }
   }
 
-  return fanGeometry(boundary, ROAD_Z);
+  return fanGeometry(boundary, z);
 }
 
 interface ChevronData {
@@ -268,7 +272,8 @@ export default function RoadNode(props: { entry: KindEntry<"RoadNode"> }) {
     return { arms: a, key: armsKey(a) };
   });
 
-  const roadGeometry = createMemo(() => buildRoadGeometry(arms().arms));
+  const roadGeometry = createMemo(() => buildRoadGeometry(arms().arms, HALF_W, ROAD_Z));
+  const borderGeometry = createMemo(() => buildRoadGeometry(arms().arms, BORDER_HALF_W, BORDER_Z));
 
   const chevrons = createMemo(() =>
     arms().arms
@@ -276,11 +281,11 @@ export default function RoadNode(props: { entry: KindEntry<"RoadNode"> }) {
       .map((arm) => buildChevronGeometry(arm.angle)),
   );
 
-  const arrowColor = new Color3(
-    Math.min(1, theme.road.r + 0.25),
-    Math.min(1, theme.road.g + 0.25),
-    Math.min(1, theme.road.b + 0.25),
-  );
+  const arrowColor = createMemo(() => new Color3(
+    Math.min(1, theme().road.r + 0.25),
+    Math.min(1, theme().road.g + 0.25),
+    Math.min(1, theme().road.b + 0.25),
+  ));
 
   const pos = (): [number, number, number] | undefined =>
     props.entry.position
@@ -289,13 +294,24 @@ export default function RoadNode(props: { entry: KindEntry<"RoadNode"> }) {
 
   return (
     <>
+      <Show when={borderGeometry()}>
+        {(geo) => (
+          <InstancedMesh
+            poolKey={`road_border_${arms().key}`}
+            geometry={geo()}
+            position={pos()}
+            color={theme().roadBorder}
+            receiveShadow
+          />
+        )}
+      </Show>
       <Show when={roadGeometry()}>
         {(geo) => (
           <InstancedMesh
             poolKey={`road_${arms().key}`}
             geometry={geo()}
             position={pos()}
-            color={theme.road}
+            color={theme().road}
             receiveShadow
           />
         )}
@@ -306,7 +322,7 @@ export default function RoadNode(props: { entry: KindEntry<"RoadNode"> }) {
             name={`chevron_${props.entry.id}`}
             geometry={chevron().geometry}
             position={pos()}
-            color={arrowColor}
+            color={arrowColor()}
           />
         )}
       </For>

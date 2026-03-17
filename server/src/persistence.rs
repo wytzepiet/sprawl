@@ -17,9 +17,9 @@ CREATE TABLE IF NOT EXISTS metadata (
 );
 ";
 
-pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64) {
+pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64, u32) {
     if !path.exists() {
-        return (vec![], 1);
+        return (vec![], 1, 0);
     }
 
     let conn = Connection::open(path).expect("failed to open db");
@@ -47,10 +47,18 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64) {
         )
         .unwrap_or(1);
 
-    (entries, next_id)
+    let terrain_seed: u32 = conn
+        .query_row(
+            "SELECT value FROM metadata WHERE key = 'terrain_seed'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    (entries, next_id, terrain_seed)
 }
 
-pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: u64) {
+pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: u64, terrain_seed: u32) {
     let mut conn = Connection::open(path).expect("failed to open db");
     conn.execute_batch(SCHEMA).expect("failed to create schema");
     let tx = conn.transaction().expect("failed to begin transaction");
@@ -78,9 +86,15 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: 
 
     tx.execute(
         "INSERT OR REPLACE INTO metadata (key, value) VALUES ('next_id', ?1)",
-        [next_id],
+        [next_id as i64],
     )
     .expect("failed to save next_id");
+
+    tx.execute(
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES ('terrain_seed', ?1)",
+        [terrain_seed as i64],
+    )
+    .expect("failed to save terrain_seed");
 
     tx.commit().expect("failed to commit");
 }

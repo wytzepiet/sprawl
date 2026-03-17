@@ -12,8 +12,6 @@ import {
   DirectionalLight,
   HemisphericLight,
   ShadowGenerator,
-  MeshBuilder,
-  StandardMaterial,
 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 
@@ -30,12 +28,12 @@ const DAY_DURATION_SECONDS = 120;
 
 const AMB_MIDNIGHT = new Color3(0.35, 0.35, 0.5);
 const AMB_DAWN = new Color3(0.85, 0.55, 0.35);
-const AMB_NOON = new Color3(1.0, 1.0, 0.95);
+const AMB_NOON = new Color3(0.82, 0.82, 0.8);
 const AMB_DUSK = new Color3(0.85, 0.45, 0.3);
 
 const SKY_MIDNIGHT = new Color4(0.15, 0.15, 0.25, 1);
 const SKY_DAWN = new Color4(0.58, 0.42, 0.3, 1);
-const SKY_NOON = new Color4(0.78, 0.85, 0.69, 1);
+const SKY_NOON = new Color4(0.72, 0.8, 0.75, 1);
 const SKY_DUSK = new Color4(0.52, 0.32, 0.22, 1);
 
 // ---------------------------------------------------------------------------
@@ -150,46 +148,20 @@ export default function DayNightCycle(props: ParentProps) {
 
   // Hemisphere light: ambient fill (always on, color varies with time)
   const hemiLight = new HemisphericLight("hemi", new Vector3(0, 0, 1), scene);
-  hemiLight.intensity = 0.7;
+  hemiLight.intensity = 0.65;
   hemiLight.specular = Color3.Black();
 
   // Directional light: sun (casts shadows, direction/intensity vary with time)
   const sunLight = new DirectionalLight("sun", sunDirection(0.35), scene);
-  sunLight.intensity = 0.5 * sunElevation(0.35);
+  sunLight.intensity = 0.4 * sunElevation(0.35);
   sunLight.specular = Color3.Black();
-  sunLight.position = new Vector3(0, 0, 5);
-  sunLight.shadowMinZ = -10;
-  sunLight.shadowMaxZ = 10;
-  // Fixed large frustum so shadows always cover the visible area
   sunLight.autoUpdateExtends = false;
-  sunLight.orthoLeft = -50;
-  sunLight.orthoRight = 50;
-  sunLight.orthoTop = 50;
-  sunLight.orthoBottom = -50;
 
   // --- Shadow generator ---
   const shadowGen = new ShadowGenerator(4096, sunLight);
   shadowGen.usePercentageCloserFiltering = true;
-  shadowGen.filteringQuality = ShadowGenerator.QUALITY_HIGH;
-  shadowGen.bias = 0.005;
-  shadowGen.normalBias = 0.02;
-
-  // --- Shadow-receiving ground ---
-  // Sits below the grid shader, visible through transparent areas between grid lines
-  const shadowGround = MeshBuilder.CreateGround(
-    "shadowGround",
-    { width: 200, height: 200 },
-    scene,
-  );
-  shadowGround.rotation.x = Math.PI / 2;
-  shadowGround.position.z = -0.01;
-  shadowGround.receiveShadows = true;
-  shadowGround.isPickable = false;
-
-  const groundMat = new StandardMaterial("shadowGroundMat", scene);
-  groundMat.diffuseColor = Color3.FromHexString("#C7D9B1");
-  groundMat.specularColor = Color3.Black();
-  shadowGround.material = groundMat;
+  shadowGen.filteringQuality = ShadowGenerator.QUALITY_LOW;
+  shadowGen.bias = 0.001;
 
   // --- Per-frame update ---
   const camera = scene.activeCamera!;
@@ -208,11 +180,22 @@ export default function DayNightCycle(props: ParentProps) {
     // Sun direction and intensity
     const elev = sunElevation(t);
     sunLight.direction = sunDirection(t);
-    sunLight.intensity = 0.5 * elev;
+    sunLight.intensity = 0.4 * elev;
 
-    // Keep light position centered on camera so shadow frustum covers visible area
-    sunLight.position.x = camera.position.x;
-    sunLight.position.y = camera.position.y;
+    // Sun orbits camera center at a radius derived from the ortho view size
+    const orthoW = camera.orthoRight! - camera.orthoLeft!;
+    const orthoH = camera.orthoTop! - camera.orthoBottom!;
+    const radius = Math.max(orthoW, orthoH) / 2;
+    const dir = sunLight.direction;
+    sunLight.position.x = camera.position.x - dir.x * radius;
+    sunLight.position.y = camera.position.y - dir.y * radius;
+    sunLight.position.z = -dir.z * radius;
+    sunLight.shadowMinZ = 0;
+    sunLight.shadowMaxZ = radius * 2;
+    sunLight.orthoLeft = -radius;
+    sunLight.orthoRight = radius;
+    sunLight.orthoTop = radius;
+    sunLight.orthoBottom = -radius;
 
     // Scene background
     const sky = ramp(skyStops, t, lerp4);
@@ -227,8 +210,6 @@ export default function DayNightCycle(props: ParentProps) {
     hemiLight.dispose();
     shadowGen.dispose();
     sunLight.dispose();
-    shadowGround.dispose();
-    groundMat.dispose();
   });
 
   const state: DayNightState = {

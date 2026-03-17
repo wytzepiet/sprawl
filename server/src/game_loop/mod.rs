@@ -29,6 +29,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     // Generate terrain if world is empty (first startup)
     if world.objects.all_entries().is_empty() {
         let seed = rand::random::<u32>();
+        world.terrain_seed = seed;
         crate::terrain::generate(&mut world, seed);
         println!("generated terrain ({} tiles)", world.objects.all_entries().len());
     }
@@ -65,17 +66,19 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                     if let ClientMessage::ResetWorld = &message {
                         let all_ids: Vec<EntityId> = world.objects.all_entries().iter().map(|e| e.id).collect();
                         let ops = all_ids.iter().map(|&id| Operation::Delete(id)).collect();
-                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops, server_time: now }));
+                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
                         world = World::new();
                         events = EventQueue::new();
                         intersections = IntersectionRegistry::new();
                         let _ = std::fs::remove_file(&db_path);
-                        crate::terrain::generate(&mut world, rand::random::<u32>());
+                        let seed = rand::random::<u32>();
+                        world.terrain_seed = seed;
+                        crate::terrain::generate(&mut world, seed);
                         let terrain_ops: Vec<Operation> = world.objects.all_entries()
                             .into_iter()
                             .map(|e| Operation::Upsert(Box::new(e)))
                             .collect();
-                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops: terrain_ops, server_time: now }));
+                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops: terrain_ops, server_time: now, terrain_seed: world.terrain_seed }));
                         println!("reset: world cleared, terrain regenerated");
                     } else {
                         handle_player_action(&mut world, &mut events, &mut intersections, message, now);
@@ -87,7 +90,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         .map(|e| Operation::Upsert(Box::new(e)))
                         .collect();
                     if !ops.is_empty() {
-                        let _ = sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now }));
+                        let _ = sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
                     }
                     clients.insert(id, sender);
                 }
@@ -112,11 +115,11 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 }
 
 fn load_world(db_path: &Path) -> World {
-    let (entries, next_id) = persistence::load(db_path);
+    let (entries, next_id, terrain_seed) = persistence::load(db_path);
     if entries.is_empty() {
         World::new()
     } else {
-        World::from_loaded(Tracked::load(entries, next_id))
+        World::from_loaded(Tracked::load(entries, next_id), terrain_seed)
     }
 }
 
@@ -132,7 +135,7 @@ fn persist(world: &mut World, db_path: &Path) {
         .cloned()
         .collect();
 
-    persistence::save(db_path, &changed, &removed_ids, world.objects.next_id());
+    persistence::save(db_path, &changed, &removed_ids, world.objects.next_id(), world.terrain_seed);
     println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());
 }
 
@@ -364,7 +367,7 @@ fn flush_dirty(
     }
 
     if !ops.is_empty() {
-        broadcast(clients, &ServerMessage::Update(StateUpdate { ops, server_time: now }));
+        broadcast(clients, &ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
     }
 }
 

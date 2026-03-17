@@ -6,28 +6,27 @@ import { InstancePoolProvider } from "./InstancePool";
 import { RoadDrawer } from "./RoadDrawer";
 import { BuildingPlacer } from "./BuildingPlacer";
 import GameObject from "./GameObject";
-import GridOverlay from "./GridOverlay";
 import BuildModeToolbar from "../ui/BuildModeToolbar";
 import DebugOverlay from "../ui/DebugOverlay";
 import { GameProvider, useGame } from "../state/gameObjects";
+import { ThemeProvider } from "./theme";
 
 function SceneInner() {
-  const { objects } = useGame();
-
-  const allObjects = () =>
-    Object.values(objects) as (typeof objects[string])[];
+  const { objects, objectIds } = useGame();
 
   return (
     <>
       <Canvas>
         <OrthoCamera />
         <DayNightCycle>
-          <GridOverlay />
           <InstancePoolProvider>
             <RoadDrawer />
             <BuildingPlacer />
-            <For each={allObjects()} keyed={(e) => e!.id}>
-              {(entry) => <GameObject entry={entry()!} />}
+            <For each={objectIds} keyed={(id) => id}>
+              {(id) => {
+                console.log("For item", id());
+                return <GameObject entry={objects[id()]} />;
+              }}
             </For>
           </InstancePoolProvider>
         </DayNightCycle>
@@ -40,8 +39,10 @@ function SceneInner() {
 
 export default function Scene() {
   return (
-    <GameProvider>
-      <SceneInner />
-    </GameProvider>
+    <ThemeProvider>
+      <GameProvider>
+        <SceneInner />
+      </GameProvider>
+    </ThemeProvider>
   );
 }

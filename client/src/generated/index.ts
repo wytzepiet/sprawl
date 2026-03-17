@@ -8,7 +8,6 @@ export type { BuildingType } from "./BuildingType";
 export type { Car } from "./Car";
 export type { TerrainType } from "./TerrainType";
 export type { TerrainTile } from "./TerrainTile";
-export type { TerrainBorder } from "./TerrainBorder";
 export type { GameObject } from "./GameObject";
 export type { GameObjectEntry } from "./GameObjectEntry";
 export type { Operation } from "./Operation";

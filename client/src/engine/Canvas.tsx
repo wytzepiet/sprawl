@@ -1,8 +1,19 @@
-import { createContext, useContext, createSignal, onCleanup, Show, type ParentProps } from "solid-js";
+import {
+  createContext,
+  useContext,
+  createSignal,
+  onCleanup,
+  Show,
+  type ParentProps,
+} from "solid-js";
 import { Engine, Scene } from "@babylonjs/core";
 import { useTheme } from "./theme";
 
-export type EngineContext = { engine: Engine; scene: Scene; canvas: HTMLCanvasElement };
+export type EngineContext = {
+  engine: Engine;
+  scene: Scene;
+  canvas: HTMLCanvasElement;
+};
 
 export const BabylonContext = createContext<EngineContext>();
 
@@ -13,13 +24,13 @@ export function useEngine() {
 }
 
 export default function Canvas(props: ParentProps) {
+  const theme = useTheme();
   const [ctx, setCtx] = createSignal<EngineContext>();
 
   const initCanvas = (el: HTMLCanvasElement) => {
     const engine = new Engine(el, true, { adaptToDeviceRatio: true }, true);
     const scene = new Scene(engine);
-    const theme = useTheme();
-    scene.clearColor = theme.land;
+    scene.clearColor = theme().land.clone();
 
     // Resize after first frame so canvas has layout dimensions
     requestAnimationFrame(() => engine.resize());
@@ -44,11 +55,7 @@ export default function Canvas(props: ParentProps) {
         style={{ width: "100vw", height: "100vh", display: "block" }}
       />
       <Show when={ctx()}>
-        {(c) => (
-          <BabylonContext value={c()}>
-            {props.children}
-          </BabylonContext>
-        )}
+        {(c) => <BabylonContext value={c()}>{props.children}</BabylonContext>}
       </Show>
     </>
   );

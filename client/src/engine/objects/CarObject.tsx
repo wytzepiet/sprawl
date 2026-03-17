@@ -158,7 +158,7 @@ export default function CarObject(props: { entry: KindEntry<"Car"> }) {
     const p = cachedPath!.getPointAt(result.normalized);
     const tangent = cachedPath!.getTangentAt(result.normalized);
     return {
-      pos: [p.x, p.y, 0.3],
+      pos: [p.x, p.y, 0.095],
       rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2],
     };
   }

@@ -39,7 +39,7 @@ impl World {
                                 return None;
                             }
                         }
-                        GameObject::Car(_) | GameObject::Terrain(_) | GameObject::TerrainBorder(_) => {}
+                        GameObject::Car(_) | GameObject::Terrain(_) => {}
                     }
                 }
             }

@@ -17,6 +17,7 @@ export interface MeshGeometry {
   positions: number[];
   indices: number[];
   normals: number[];
+  uvs?: number[];
 }
 
 interface MeshProps {
@@ -27,6 +28,7 @@ interface MeshProps {
   color: Color3;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  enabled?: boolean;
   meshRef?: (mesh: BabylonMesh) => void;
 }
 
@@ -75,6 +77,8 @@ export default function Mesh(props: MeshProps) {
     mesh.rotation.y = props.rotation[1];
     mesh.rotation.z = props.rotation[2];
   }
+
+  mesh.setEnabled(props.enabled ?? true);
 
   if (props.meshRef) {
     props.meshRef(mesh);
@@ -148,6 +152,10 @@ export default function Mesh(props: MeshProps) {
         material.emissiveColor = tint(color, amb);
       }
     },
+  );
+  createDeferredEffect(
+    () => props.enabled,
+    (enabled) => mesh.setEnabled(enabled ?? true),
   );
 
   onCleanup(() => {

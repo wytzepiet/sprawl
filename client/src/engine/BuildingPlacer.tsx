@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
@@ -72,15 +72,12 @@ export function BuildingPlacer() {
   });
 
   return (
-    <Show when={placingBuilding() && ghostPos()}>
-      {(pos) => (
-        <Mesh
-          name="building_ghost"
-          geometry={cube}
-          position={[spring.pos()[0], spring.pos()[1], 0]}
-          color={GHOST_COLOR}
-        />
-      )}
-    </Show>
+    <Mesh
+      name="building_ghost"
+      geometry={cube}
+      position={[spring.pos()[0], spring.pos()[1], 0]}
+      color={GHOST_COLOR}
+      enabled={!!(placingBuilding() && ghostPos())}
+    />
   );
 }

@@ -14,6 +14,7 @@ import {
   Quaternion,
   Vector3,
 } from "@babylonjs/core";
+import type { BaseTexture } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
 import type { MeshGeometry } from "./Mesh";
@@ -54,6 +55,7 @@ class InstancePool {
     color: Color3,
     castShadow: boolean,
     receiveShadow: boolean,
+    texture?: BaseTexture,
   ): Bucket {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
@@ -70,11 +72,16 @@ class InstancePool {
       mat.emissiveColor = color.clone();
     }
 
+    if (texture) {
+      mat.diffuseTexture = texture;
+    }
+
     const mesh = new Mesh(`inst_${key}`, this.scene);
     const vd = new VertexData();
     vd.positions = geometry.positions;
     vd.indices = geometry.indices;
     vd.normals = geometry.normals;
+    if (geometry.uvs) vd.uvs = geometry.uvs;
     vd.applyToMesh(mesh);
     mesh.material = mat;
     mesh.isPickable = false;
@@ -182,7 +189,10 @@ const InstancePoolCtx = createContext<InstancePool>();
 
 function useInstancePool(): InstancePool {
   const ctx = useContext(InstancePoolCtx);
-  if (!ctx) throw new Error("useInstancePool must be used within <InstancePoolProvider>");
+  if (!ctx)
+    throw new Error(
+      "useInstancePool must be used within <InstancePoolProvider>",
+    );
   return ctx;
 }
 
@@ -211,6 +221,7 @@ const tmpQuat = new Quaternion();
 function buildMatrix(
   pos?: [number, number, number],
   rot?: [number, number, number],
+  scale?: number | [number, number, number],
 ): Float32Array {
   const px = pos?.[0] ?? 0;
   const py = pos?.[1] ?? 0;
@@ -218,14 +229,13 @@ function buildMatrix(
   const rx = rot?.[0] ?? 0;
   const ry = rot?.[1] ?? 0;
   const rz = rot?.[2] ?? 0;
+  const sv = scale == null ? Vector3.One()
+    : typeof scale === "number" ? new Vector3(scale, scale, scale)
+    : new Vector3(scale[0], scale[1], scale[2]);
 
   Quaternion.FromEulerAnglesToRef(rx, ry, rz, tmpQuat);
-  const m = Matrix.Compose(
-    Vector3.One(),
-    tmpQuat,
-    new Vector3(px, py, pz),
-  );
-  return m.toArray() as unknown as Float32Array;
+  const m = Matrix.Compose(sv, tmpQuat, new Vector3(px, py, pz));
+  return m.asArray() as unknown as Float32Array;
 }
 
 interface InstancedMeshProps {
@@ -233,69 +243,67 @@ interface InstancedMeshProps {
   geometry: MeshGeometry;
   position?: [number, number, number];
   rotation?: [number, number, number];
+  scale?: number | [number, number, number];
   color: Color3;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  texture?: BaseTexture;
+  enabled?: boolean;
+
   ref?: (handle: InstanceHandle) => void;
 }
 
 export default function InstancedMesh(props: InstancedMeshProps) {
   const pool = useInstancePool();
 
-  let currentKey = props.poolKey;
-  pool.ensureBucket(
-    currentKey,
-    props.geometry,
-    props.color,
-    props.castShadow ?? false,
-    props.receiveShadow ?? false,
-  );
+  let currentKey: string | undefined;
+  let id: number;
 
-  const matrix = buildMatrix(props.position, props.rotation);
-  let id = pool.addInstance(currentKey, matrix);
-
-  if (props.ref) {
-    props.ref({
-      setMatrix(pos, rot) {
-        const m = buildMatrix(pos, rot);
-        pool.updateInstance(currentKey, id, m);
-      },
-    });
-  }
-
-  // React to poolKey/geometry changes — move instance to new bucket
   createEffect(
-    () => ({ poolKey: props.poolKey, geometry: props.geometry }),
-    ({ poolKey, geometry }) => {
-      pool.removeInstance(currentKey, id);
-      pool.ensureBucket(
-        poolKey,
-        geometry,
-        props.color,
-        props.castShadow ?? false,
-        props.receiveShadow ?? false,
-      );
-      const m = buildMatrix(props.position, props.rotation);
-      id = pool.addInstance(poolKey, m);
-      currentKey = poolKey;
+    () => ({
+      key: props.poolKey,
+      geo: props.geometry,
+      color: props.color,
+      cast: props.castShadow ?? false,
+      recv: props.receiveShadow ?? false,
+      tex: props.texture,
+      pos: props.position,
+      rot: props.rotation,
+      scale: props.scale,
+      enabled: props.enabled ?? true,
+      ref: props.ref,
+    }),
+    ({ key, geo, color, cast, recv, tex, pos, rot, scale, enabled, ref }) => {
+      if (currentKey !== undefined) {
+        pool.removeInstance(currentKey, id);
+        currentKey = undefined;
+      }
+      if (!enabled) return;
+      pool.ensureBucket(key, geo, color, cast, recv, tex);
+      id = pool.addInstance(key, buildMatrix(pos, rot, scale));
+      currentKey = key;
+
+      ref?.({
+        setMatrix(p, r) {
+          pool.updateInstance(currentKey!, id, buildMatrix(p, r, props.scale));
+        },
+      });
     },
-    undefined,
-    { defer: true },
   );
 
-  // React to position/rotation changes
+  // React to position/rotation/scale changes
   createEffect(
-    () => [props.position, props.rotation] as const,
-    ([pos, rot]) => {
-      const m = buildMatrix(pos, rot);
-      pool.updateInstance(currentKey, id, m);
+    () => ({ pos: props.position, rot: props.rotation, scale: props.scale }),
+    ({ pos, rot, scale }) => {
+      if (currentKey === undefined) return;
+      pool.updateInstance(currentKey, id, buildMatrix(pos, rot, scale));
     },
     undefined,
     { defer: true },
   );
 
   onCleanup(() => {
-    pool.removeInstance(currentKey, id);
+    if (currentKey !== undefined) pool.removeInstance(currentKey, id);
   });
 
   return <></>;
