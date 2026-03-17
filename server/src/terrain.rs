@@ -134,16 +134,14 @@ pub fn generate(world: &mut World, seed: u32) {
                 if corner_type.is_none() { continue; }
                 let [edge_a, edge_b] = EDGE_CHECKS[i];
 
-                if let Some(nc) = all_corners.get(&(x + edge_a.0, y + edge_a.1)) {
-                    if nc[edge_a.2].is_some() {
+                if let Some(nc) = all_corners.get(&(x + edge_a.0, y + edge_a.1))
+                    && nc[edge_a.2].is_some() {
                         corner_mask |= 1 << (i * 2);
                     }
-                }
-                if let Some(nc) = all_corners.get(&(x + edge_b.0, y + edge_b.1)) {
-                    if nc[edge_b.2].is_some() {
+                if let Some(nc) = all_corners.get(&(x + edge_b.0, y + edge_b.1))
+                    && nc[edge_b.2].is_some() {
                         corner_mask |= 1 << (i * 2 + 1);
                     }
-                }
             }
 
             // Cardinal edges: [bottom, right, top, left]. Empty if tile has corners.

@@ -75,15 +75,13 @@ pub fn handle_car_spawn(
         && let Some(&last_id) = seg.cars.back()
         && let Some(entry) = world.objects.get(last_id)
         && let GameObject::Car(ref blocker) = entry.object
-    {
-        if let Some(edge_start) = blocker_edge_start(blocker, first_edge) {
+        && let Some(edge_start) = blocker_edge_start(blocker, first_edge) {
             let dt = (now - blocker.updated_at) as f64 / 1000.0;
             let (bp, _) = physics::catch_up(blocker.progress, blocker.speed, blocker.acceleration, dt);
             if bp - edge_start < MIN_GAP + CAR_NOSE + CAR_TAIL {
                 return;
             }
         }
-    }
 
     let car_id = world.objects.insert(
         GameObject::Car(Car {

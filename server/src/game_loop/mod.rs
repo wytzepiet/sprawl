@@ -242,11 +242,10 @@ fn handle_road_demolish(
             .filter_map(|(bid, _)| world.road_node_for_building(bid))
             .find(|&n| n != from_node && n != dest);
 
-        if let Some(alt) = alt_dest {
-            if try_reroute(world, intersections, events, car_id, from_node, alt, ri, now) {
+        if let Some(alt) = alt_dest
+            && try_reroute(world, intersections, events, car_id, from_node, alt, ri, now) {
                 continue;
             }
-        }
 
         despawn_car_fully(world, intersections, events, car_id);
     }
@@ -321,13 +320,11 @@ fn try_reroute(
             Some((car.route[0], car.route[1]))
         } else { None }
     });
-    if let Some(edge) = first_edge {
-        if let Some(seg) = world.edges.get_mut(&edge) {
-            if !seg.cars.contains(&car_id) {
+    if let Some(edge) = first_edge
+        && let Some(seg) = world.edges.get_mut(&edge)
+            && !seg.cars.contains(&car_id) {
                 seg.cars.push_back(car_id);
             }
-        }
-    }
     events.schedule(0, GameEvent::CarWakeUp { car_id }, Some(car_id));
     true
 }
