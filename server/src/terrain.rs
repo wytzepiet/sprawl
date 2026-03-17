@@ -9,6 +9,24 @@ const WIDTH: i32 = 100;
 const HEIGHT: i32 = 100;
 const FREQ: f64 = 0.06;
 
+fn elev(t: TerrainType) -> i32 {
+    match t {
+        TerrainType::Water | TerrainType::Water2 | TerrainType::Water3 => -1,
+        TerrainType::Beach | TerrainType::Grass | TerrainType::Forest => 0,
+        TerrainType::Mountain => 2,
+    }
+}
+
+fn corner_priority(t: TerrainType) -> u8 {
+    match t {
+        TerrainType::Beach => 4,
+        TerrainType::Grass => 3,
+        TerrainType::Forest => 2,
+        TerrainType::Mountain => 1,
+        TerrainType::Water | TerrainType::Water2 | TerrainType::Water3 => 0,
+    }
+}
+
 // For each corner [BL, BR, TR, TL], the two cardinal neighbors to check.
 const CORNER_NEIGHBORS: [[(i32, i32); 2]; 4] = [
     [(-1, 0), (0, -1)], // BL: left + below
@@ -65,31 +83,18 @@ pub fn generate(world: &mut World, seed: u32) {
         }
     }
 
-    // Pass 1b: smooth — if 3+ cardinal neighbors share a type, convert the cell
+    // Pass 1b: smooth — if 3+ cardinal neighbors have a different elevation, adopt most common neighbor type
     let cardinal: [(i32, i32); 4] = [(0, 1), (0, -1), (1, 0), (-1, 0)];
     let mut flips: Vec<((i32, i32), TerrainType)> = Vec::new();
     for y in origin_y..(origin_y + HEIGHT) {
         for x in origin_x..(origin_x + WIDTH) {
-            let my_type = types[&(x, y)];
-            let mut counts = [0u8; 7];
-            for &(dx, dy) in &cardinal {
-                if let Some(&nt) = types.get(&(x + dx, y + dy)) {
-                    counts[nt as usize] += 1;
-                }
-            }
-            for (i, &c) in counts.iter().enumerate() {
-                if c >= 3 && i != my_type as usize {
-                    flips.push(((x, y), match i {
-                        0 => TerrainType::Water,
-                        1 => TerrainType::Water2,
-                        2 => TerrainType::Water3,
-                        3 => TerrainType::Beach,
-                        4 => TerrainType::Grass,
-                        5 => TerrainType::Forest,
-                        _ => TerrainType::Mountain,
-                    }));
-                    break;
-                }
+            let my_elev = elev(types[&(x, y)]);
+            let neighbors: Vec<TerrainType> = cardinal.iter().filter_map(|&(dx, dy)| {
+                types.get(&(x + dx, y + dy)).copied()
+            }).collect();
+            let diff_count = neighbors.iter().filter(|&&nt| elev(nt) != my_elev).count();
+            if diff_count >= 3 {
+                flips.push(((x, y), neighbors[0]));
             }
         }
     }
@@ -105,12 +110,13 @@ pub fn generate(world: &mut World, seed: u32) {
             let corners: Vec<Option<TerrainType>> = CORNER_NEIGHBORS
                 .iter()
                 .map(|&[d1, d2]| {
-                    let n1 = types.get(&(x + d1.0, y + d1.1)).copied();
-                    let n2 = types.get(&(x + d2.0, y + d2.1)).copied();
-                    match (n1, n2) {
-                        (Some(t1), Some(t2)) if t1 == t2 && t1 != my_type => Some(t1),
-                        _ => None,
-                    }
+                    let t1 = *types.get(&(x + d1.0, y + d1.1))?;
+                    let t2 = *types.get(&(x + d2.0, y + d2.1))?;
+                    if t1 == my_type || t2 == my_type || elev(t1) != elev(t2) { return None; }
+                    if t1 == t2 { return Some(t1); }
+                    let diag = types.get(&(x + d1.0 + d2.0, y + d1.1 + d2.1)).copied();
+                    if diag != Some(t1) && diag != Some(t2) { return None; }
+                    Some(if corner_priority(t1) >= corner_priority(t2) { t1 } else { t2 })
                 })
                 .collect();
             all_corners.insert((x, y), corners);

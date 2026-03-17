@@ -320,7 +320,7 @@ export default function RoadNode(props: { entry: KindEntry<"RoadNode"> }) {
         {(chevron) => (
           <Mesh
             name={`chevron_${props.entry.id}`}
-            geometry={chevron().geometry}
+            geometry={chevron.geometry}
             position={pos()}
             color={arrowColor()}
           />

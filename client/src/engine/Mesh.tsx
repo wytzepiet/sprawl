@@ -1,4 +1,4 @@
-import { onCleanup, createEffect, untrack } from "solid-js";
+import { onCleanup, createEffect, on, untrack } from "solid-js";
 import {
   Mesh as BabylonMesh,
   VertexData,
@@ -10,7 +10,7 @@ import { useDayNight } from "./DayNightCycle";
 
 /** Deferred effect — tracks a reactive expression, only runs the apply fn on changes (skips initial). */
 function createDeferredEffect<T>(track: () => T, apply: (value: T) => void) {
-  createEffect(track, apply, undefined, { defer: true });
+  createEffect(on(track, apply, { defer: true }));
 }
 
 export interface MeshGeometry {

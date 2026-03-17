@@ -1,5 +1,5 @@
 /* @refresh reload */
-import { render } from "@solidjs/web";
+import { render } from "solid-js/web";
 
 import App from "./App";
 

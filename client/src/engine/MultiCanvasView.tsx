@@ -47,7 +47,7 @@ export default function MultiCanvasView(props: Props) {
         class={props.class}
       />
       <Show when={ctx()}>
-        {(c) => <BabylonContext value={c()}>{props.children}</BabylonContext>}
+        {(c) => <BabylonContext.Provider value={c()}>{props.children}</BabylonContext.Provider>}
       </Show>
     </>
   );

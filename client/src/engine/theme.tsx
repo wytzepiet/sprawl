@@ -54,9 +54,9 @@ export function ThemeProvider(props: ParentProps) {
   const theme = createMemo(() => themes[mode()]);
 
   return (
-    <ThemeContext value={{ theme, mode, setMode }}>
+    <ThemeContext.Provider value={{ theme, mode, setMode }}>
       {props.children}
-    </ThemeContext>
+    </ThemeContext.Provider>
   );
 }
 

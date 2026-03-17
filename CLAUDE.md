@@ -31,7 +31,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 ## Structure
 
 - `server/` — Rust (DES, WebSocket, SQLite)
-- `client/` — SolidJS 2.0 + Babylon.js (Vite)
+- `client/` — SolidJS 1.x + Babylon.js (Vite)
 
 ## Tools
 
@@ -39,21 +39,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Client dev:** `cd client && bun run dev`
 - **Generated types:** `cd client && bun run generate`
 
-## Solid 2.0
+## Solid 1.x
 
-Docs: https://github.com/solidjs/solid/tree/next/documentation/solid-2.0
-
-Key differences from Solid 1.x:
-
-- `solid-js/web` → `@solidjs/web`, `solid-js/store` → `solid-js`
-- `batch()` removed — use `flush()`
-- `onMount` → `onSettled`
-- `createResource` → async `createMemo` + `<Loading>`
-- `createSelector` → `createProjection`
-- `Suspense` → `<Loading>`, `ErrorBoundary` → `<Errored>`
-- `mergeProps` → `merge`, `splitProps` → `omit`, `unwrap` → `snapshot`
-- Stores use draft setters: `setStore(s => { s.user.name = "Alice"; })`
-- `<For>` children receive accessors: `{(item, i) => <div>{item()}</div>}`
+- Stores: `createStore` from `solid-js/store`, mutate with `produce`
+- `<For>` children receive direct values: `{(item, i) => <div>{item.name}</div>}`
+- `<Show>` callback children receive accessors: `{(v) => v()}`
 - Don't destructure props — breaks reactivity
-- Effects split into compute + apply (see Solid 2.0 docs)
-- Context: no `.Provider` — `<Ctx value={val}>{children}</Ctx>`
+- Context: `<Ctx.Provider value={val}>{children}</Ctx.Provider>`
+- Deferred effects: `createEffect(on(trackFn, applyFn, { defer: true }))`

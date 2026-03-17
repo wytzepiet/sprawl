@@ -12,7 +12,7 @@ import { GameProvider, useGame } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 
 function SceneInner() {
-  const { objects, objectIds } = useGame();
+  const { objects } = useGame();
 
   return (
     <>
@@ -22,11 +22,8 @@ function SceneInner() {
           <InstancePoolProvider>
             <RoadDrawer />
             <BuildingPlacer />
-            <For each={objectIds} keyed={(id) => id}>
-              {(id) => {
-                console.log("For item", id());
-                return <GameObject entry={objects[id()]} />;
-              }}
+            <For each={Object.keys(objects)}>
+              {(id) => <GameObject entry={objects[id]} />}
             </For>
           </InstancePoolProvider>
         </DayNightCycle>

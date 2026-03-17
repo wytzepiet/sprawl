@@ -3,6 +3,7 @@ import {
   useContext,
   onCleanup,
   createEffect,
+  on,
   type ParentProps,
 } from "solid-js";
 import {
@@ -211,7 +212,7 @@ export function InstancePoolProvider(props: ParentProps) {
     pool.dispose();
   });
 
-  return <InstancePoolCtx value={pool}>{props.children}</InstancePoolCtx>;
+  return <InstancePoolCtx.Provider value={pool}>{props.children}</InstancePoolCtx.Provider>;
 }
 
 // --- InstancedMesh component ---
@@ -259,7 +260,7 @@ export default function InstancedMesh(props: InstancedMeshProps) {
   let currentKey: string | undefined;
   let id: number;
 
-  createEffect(
+  createEffect(on(
     () => ({
       key: props.poolKey,
       geo: props.geometry,
@@ -289,18 +290,17 @@ export default function InstancedMesh(props: InstancedMeshProps) {
         },
       });
     },
-  );
+  ));
 
   // React to position/rotation/scale changes
-  createEffect(
+  createEffect(on(
     () => ({ pos: props.position, rot: props.rotation, scale: props.scale }),
     ({ pos, rot, scale }) => {
       if (currentKey === undefined) return;
       pool.updateInstance(currentKey, id, buildMatrix(pos, rot, scale));
     },
-    undefined,
     { defer: true },
-  );
+  ));
 
   onCleanup(() => {
     if (currentKey !== undefined) pool.removeInstance(currentKey, id);

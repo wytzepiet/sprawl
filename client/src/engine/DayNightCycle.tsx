@@ -218,5 +218,5 @@ export default function DayNightCycle(props: ParentProps) {
     shadowGenerator: shadowGen,
   };
 
-  return <DayNightCtx value={state}>{props.children}</DayNightCtx>;
+  return <DayNightCtx.Provider value={state}>{props.children}</DayNightCtx.Provider>;
 }

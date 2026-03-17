@@ -1,4 +1,4 @@
-import { Dynamic } from "@solidjs/web";
+import { Dynamic } from "solid-js/web";
 import type {
   GameObject as GameObjectType,
   GameObjectEntry,

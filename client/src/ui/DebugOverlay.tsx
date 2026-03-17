@@ -111,20 +111,20 @@ export default function DebugOverlay() {
       <For each={rows()} fallback={<div class="text-white/30">waiting...</div>}>
         {(row) => (
           <div class="flex items-center gap-3" style={{ height: `${ROW_H}px` }}>
-            <span class="w-20 truncate text-right" style={{ color: row().color }}>{row().key}</span>
+            <span class="w-20 truncate text-right" style={{ color: row.color }}>{row.key}</span>
             <svg width={TIMELINE_W} height={ROW_H} class="block shrink-0">
               {/* lane line */}
               <line x1="0" y1={ROW_H / 2} x2={TIMELINE_W} y2={ROW_H / 2}
                 stroke="white" stroke-opacity="0.06" stroke-width="1" />
               {/* dots */}
-              <For each={row().dots}>
+              <For each={row.dots}>
                 {(x) => (
-                  <circle cx={x()} cy={ROW_H / 2} r={DOT_R}
-                    fill={row().color} opacity={0.8} />
+                  <circle cx={x} cy={ROW_H / 2} r={DOT_R}
+                    fill={row.color} opacity={0.8} />
                 )}
               </For>
             </svg>
-            <span class="w-8 text-right tabular-nums text-white/60">{row().rate}</span>
+            <span class="w-8 text-right tabular-nums text-white/60">{row.rate}</span>
           </div>
         )}
       </For>

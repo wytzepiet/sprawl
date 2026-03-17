@@ -15,7 +15,7 @@ import {
   setBuildMenuOpen,
 } from "./BuildMenu";
 import { placingBuilding, setPlacingBuilding } from "./buildMode";
-import { Dynamic } from "@solidjs/web";
+import { Dynamic } from "solid-js/web";
 
 const modes = [
   { id: "select" as BuildMode, label: "Select", icon: MousePointer2, key: "V" },
@@ -90,31 +90,31 @@ export default function BuildModeToolbar() {
               {(m) => {
                 return (
                   <button
-                    onClick={() => setBuildMode(m().id)}
+                    onClick={() => setBuildMode(m.id)}
                     class={`group relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-300 cursor-pointer
                   ${
-                    buildMode() === m().id
+                    buildMode() === m.id
                       ? "bg-white text-stone-800 shadow-[0_1px_3px_rgba(0,0,0,0.1),0_0_0_1px_rgba(0,0,0,0.04)]"
                       : "text-stone-400 hover:text-stone-600 hover:bg-white/50"
                   }`}
-                    title={`${m().label} (${m().key})`}
+                    title={`${m.label} (${m.key})`}
                   >
                     <Dynamic
-                      component={m().icon}
+                      component={m.icon}
                       size={18}
-                      stroke-width={buildMode() === m().id ? 2.25 : 1.5}
+                      stroke-width={buildMode() === m.id ? 2.25 : 1.5}
                     />
                     <span
                       class={`text-xs font-semibold tracking-wide uppercase transition-all duration-300
-                  ${buildMode() === m().id ? "opacity-100 max-w-20" : "opacity-0 max-w-0 overflow-hidden group-hover:opacity-60 group-hover:max-w-20"}`}
+                  ${buildMode() === m.id ? "opacity-100 max-w-20" : "opacity-0 max-w-0 overflow-hidden group-hover:opacity-60 group-hover:max-w-20"}`}
                     >
-                      {m().label}
+                      {m.label}
                     </span>
                     <kbd
                       class={`pointer-events-none absolute -top-1.5 -right-0.5 text-[9px] font-mono px-1 py-0.5 rounded-md bg-white border border-black/[0.06] text-stone-400 leading-none shadow-sm transition-opacity
-                  ${buildMode() === m().id ? "opacity-0" : "opacity-0 group-hover:opacity-80"}`}
+                  ${buildMode() === m.id ? "opacity-0" : "opacity-0 group-hover:opacity-80"}`}
                     >
-                      {m().key}
+                      {m.key}
                     </kbd>
                   </button>
                 );
