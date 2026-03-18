@@ -7,7 +7,7 @@ pub mod segments;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::protocol::{EdgeKey, EntityId, GameObject};
+use crate::protocol::{EdgeKey, EntityId, GameObject, ViewportBounds};
 use crate::engine::tracked::Tracked;
 use crate::world::segments::EdgeSegment;
 
@@ -135,6 +135,20 @@ impl World {
                 set.remove(&car_id);
             }
         }
+    }
+
+    /// Collect all entity IDs at grid positions within the given bounds.
+    pub fn entities_in_rect(&self, bounds: &ViewportBounds) -> HashSet<EntityId> {
+        let mut result = HashSet::new();
+        for y in bounds.min_y..=bounds.max_y {
+            for x in bounds.min_x..=bounds.max_x {
+                let coord = GridCoord { x, y };
+                if let Some(ids) = self.spatial.get(&coord) {
+                    result.extend(ids);
+                }
+            }
+        }
+        result
     }
 
     /// Rebuild node_cars index from all existing cars.

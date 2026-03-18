@@ -29,7 +29,7 @@ function SceneInner() {
         </DayNightCycle>
       </Canvas>
       <BuildModeToolbar />
-      <DebugOverlay />
+      {/* <DebugOverlay /> */}
     </>
   );
 }

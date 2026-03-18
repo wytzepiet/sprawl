@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, interval, Duration};
@@ -12,9 +12,17 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingType, ClientMessage, EntityId, GameObject, Operation, ServerMessage, StateUpdate};
+use crate::protocol::{BuildingType, ClientMessage, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate, ViewportBounds};
 use crate::world::World;
 use crate::world::pathfinding;
+
+const VIEWPORT_MARGIN: i32 = 5;
+
+struct ClientState {
+    sender: mpsc::UnboundedSender<ServerMessage>,
+    viewport: Option<ViewportBounds>,
+    known: HashSet<EntityId>,
+}
 
 const DB_FILE: &str = "sprawl.db";
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
@@ -24,7 +32,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let mut world = load_world(&db_path);
     let mut events: EventQueue<GameEvent> = EventQueue::new();
     let mut intersections = IntersectionRegistry::new();
-    let mut clients: HashMap<ClientId, mpsc::UnboundedSender<ServerMessage>> = HashMap::new();
+    let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
 
     // Generate terrain if world is empty (first startup)
     if world.objects.all_entries().is_empty() {
@@ -59,14 +67,23 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         while let Ok(cmd) = commands.try_recv() {
             match cmd {
                 Command::PlayerAction { client_id, message } => {
-                    if let ClientMessage::Ping = &message
-                        && let Some(sender) = clients.get(&client_id) {
-                            let _ = sender.send(ServerMessage::Pong(now));
+                    if let ClientMessage::Ping = &message {
+                        if let Some(cs) = clients.get(&client_id) {
+                            let _ = cs.sender.send(ServerMessage::Pong(now));
                         }
-                    if let ClientMessage::ResetWorld = &message {
-                        let all_ids: Vec<EntityId> = world.objects.all_entries().iter().map(|e| e.id).collect();
-                        let ops = all_ids.iter().map(|&id| Operation::Delete(id)).collect();
-                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+                        continue;
+                    }
+                    if let ClientMessage::SetViewport(bounds) = &message {
+                        handle_set_viewport(&world, &mut clients, client_id, *bounds, now);
+                    } else if let ClientMessage::ResetWorld = &message {
+                        // Send deletes for each client's known set, then clear
+                        for cs in clients.values_mut() {
+                            let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
+                            if !ops.is_empty() {
+                                let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+                            }
+                            // viewport stays — client will send SetViewport again after reset
+                        }
                         world = World::new();
                         events = EventQueue::new();
                         intersections = IntersectionRegistry::new();
@@ -74,25 +91,21 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         let seed = rand::random::<u32>();
                         world.terrain_seed = seed;
                         crate::terrain::generate(&mut world, seed);
-                        let terrain_ops: Vec<Operation> = world.objects.all_entries()
-                            .into_iter()
-                            .map(|e| Operation::Upsert(Box::new(e)))
-                            .collect();
-                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops: terrain_ops, server_time: now, terrain_seed: world.terrain_seed }));
+                        // Send terrain_seed so clients know it changed; objects come via SetViewport
+                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops: vec![], server_time: now, terrain_seed: seed }));
                         println!("reset: world cleared, terrain regenerated");
                     } else {
                         handle_player_action(&mut world, &mut events, &mut intersections, message, now);
                     }
                 }
                 Command::ClientConnect { id, sender } => {
-                    let ops: Vec<Operation> = world.objects.all_entries()
-                        .into_iter()
-                        .map(|e| Operation::Upsert(Box::new(e)))
-                        .collect();
-                    if !ops.is_empty() {
-                        let _ = sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
-                    }
-                    clients.insert(id, sender);
+                    // Send empty update with terrain_seed; objects come via SetViewport
+                    let _ = sender.send(ServerMessage::Update(StateUpdate { ops: vec![], server_time: now, terrain_seed: world.terrain_seed }));
+                    clients.insert(id, ClientState {
+                        sender,
+                        viewport: None,
+                        known: HashSet::new(),
+                    });
                 }
                 Command::ClientDisconnect { id } => {
                     clients.remove(&id);
@@ -105,7 +118,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             handle_game_event(&mut world, &mut events, &mut intersections, scheduled.event, now);
         }
 
-        flush_dirty(&mut world, &clients, now);
+        flush_dirty(&mut world, &mut clients, now);
 
         if last_persist.elapsed() >= PERSIST_INTERVAL {
             persist(&mut world, &db_path);
@@ -186,6 +199,7 @@ fn handle_player_action(
             }
         }
         ClientMessage::ResetWorld => unreachable!("handled in run()"),
+        ClientMessage::SetViewport(_) => unreachable!("handled in run()"),
         ClientMessage::Ping => {}
     }
 }
@@ -200,6 +214,14 @@ fn handle_road_demolish(
     let node_id = match world.road_node_at(pos) {
         Some(id) => id,
         None => return,
+    };
+
+    // Collect neighbor IDs before removing anything (to check for orphans later)
+    let neighbor_ids: Vec<EntityId> = match world.objects.get(node_id) {
+        Some(entry) => if let GameObject::RoadNode(ref node) = entry.object {
+            node.outgoing.iter().chain(node.incoming.iter()).copied().collect()
+        } else { vec![] },
+        None => vec![],
     };
 
     // Snapshot affected cars before removing anything
@@ -248,6 +270,28 @@ fn handle_road_demolish(
             }
 
         despawn_car_fully(world, intersections, events, car_id);
+    }
+
+    // Clean up neighbors left with 0 connections
+    for nid in neighbor_ids {
+        let is_orphan = match world.objects.get(nid) {
+            Some(entry) => if let GameObject::RoadNode(ref node) = entry.object {
+                node.outgoing.is_empty() && node.incoming.is_empty()
+            } else { false },
+            None => false,
+        };
+        if is_orphan {
+            if let Some(pos) = world.objects.get(nid).and_then(|e| e.position) {
+                // Despawn any cars registered on this orphan
+                let orphan_cars: Vec<EntityId> = world.node_cars.get(&nid).cloned().unwrap_or_default().into_iter().collect();
+                for car_id in orphan_cars {
+                    despawn_car_fully(world, intersections, events, car_id);
+                }
+                intersections.remove_node(nid);
+                world.objects.remove(nid);
+                world.spatial.get_mut(&pos).map(|ids| ids.remove(&nid));
+            }
+        }
     }
 }
 
@@ -346,33 +390,112 @@ fn handle_game_event(
     }
 }
 
+fn handle_set_viewport(
+    world: &World,
+    clients: &mut HashMap<ClientId, ClientState>,
+    client_id: ClientId,
+    bounds: ViewportBounds,
+    now: GameTime,
+) {
+    let padded = bounds.with_margin(VIEWPORT_MARGIN);
+    let in_viewport = world.entities_in_rect(&padded);
+
+    let cs = match clients.get_mut(&client_id) {
+        Some(cs) => cs,
+        None => return,
+    };
+    cs.viewport = Some(padded);
+
+    // Enter: in viewport but not known
+    let mut ops = Vec::new();
+    for &id in &in_viewport {
+        if !cs.known.contains(&id)
+            && let Some(entry) = world.objects.get(id) {
+                ops.push(Operation::Upsert(Box::new(entry.clone())));
+            }
+    }
+
+    // Exit: known but not in viewport (skip cars — they have no position)
+    let exits: Vec<EntityId> = cs.known.iter()
+        .filter(|id| {
+            !in_viewport.contains(id) && !is_car(world, **id)
+        })
+        .copied()
+        .collect();
+    for id in &exits {
+        ops.push(Operation::Delete(*id));
+    }
+
+    // Update known set
+    cs.known = in_viewport;
+    // Also keep cars that were already known
+    // (cars have no spatial position so won't be in entities_in_rect)
+    // We re-add exits that are cars — but we filtered them out above, so they stay in known.
+    // Actually we need to preserve car IDs. Let's just re-add all known cars.
+    // Cars are already known from previous flushes; exits filtered them out. So known is correct.
+
+    if !ops.is_empty() {
+        let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+    }
+}
+
+fn is_car(world: &World, id: EntityId) -> bool {
+    world.objects.get(id).is_some_and(|e| matches!(e.object, GameObject::Car(_)))
+}
+
 fn flush_dirty(
     world: &mut World,
-    clients: &HashMap<ClientId, mpsc::UnboundedSender<ServerMessage>>,
+    clients: &mut HashMap<ClientId, ClientState>,
     now: GameTime,
 ) {
     let (changed, removed) = world.objects.drain_dirty();
+    if changed.is_empty() && removed.is_empty() {
+        return;
+    }
 
-    let mut ops = Vec::new();
-    for id in &changed {
-        if let Some(entry) = world.objects.get(*id) {
-            ops.push(Operation::Upsert(Box::new(entry.clone())));
+    // Build per-entry data once
+    let changed_entries: Vec<GameObjectEntry> = changed.iter()
+        .filter_map(|id| world.objects.get(*id).cloned())
+        .collect();
+
+    for cs in clients.values_mut() {
+        let viewport = match &cs.viewport {
+            Some(v) => v,
+            None => continue, // no viewport yet — send nothing
+        };
+
+        let mut ops = Vec::new();
+
+        for entry in &changed_entries {
+            let in_vp = entry.position.is_none() // cars (no position) → always send
+                || entry.position.is_some_and(|pos| viewport.contains(pos));
+
+            if in_vp {
+                ops.push(Operation::Upsert(Box::new(entry.clone())));
+                cs.known.insert(entry.id);
+            } else if cs.known.remove(&entry.id) {
+                // Dirty but outside viewport and was known → delete
+                ops.push(Operation::Delete(entry.id));
+            }
         }
-    }
-    for id in removed {
-        ops.push(Operation::Delete(id));
-    }
 
-    if !ops.is_empty() {
-        broadcast(clients, &ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+        for &id in &removed {
+            if cs.known.remove(&id) {
+                ops.push(Operation::Delete(id));
+            }
+        }
+
+        if !ops.is_empty() {
+            let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+        }
     }
 }
 
 fn broadcast(
-    clients: &HashMap<ClientId, mpsc::UnboundedSender<ServerMessage>>,
+    clients: &HashMap<ClientId, ClientState>,
     msg: &ServerMessage,
 ) {
-    for sender in clients.values() {
-        let _ = sender.send(msg.clone());
+    for cs in clients.values() {
+        let _ = cs.sender.send(msg.clone());
     }
 }

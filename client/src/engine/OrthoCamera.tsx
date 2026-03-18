@@ -1,13 +1,16 @@
 import { onCleanup, createEffect, on } from "solid-js";
 import { FreeCamera, Vector3, Camera } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
+import { useGame } from "../state/gameObjects";
 import { buildMode, placingBuilding } from "../ui/buildMode";
 
 const BUILD_ZOOM = 8;
 const ZOOM_LERP_SPEED = 0.08;
+const VIEWPORT_THROTTLE_MS = 200;
 
 export function OrthoCamera() {
   const { engine, scene, canvas } = useEngine();
+  const { send } = useGame();
 
   const camera = new FreeCamera("ortho", new Vector3(0, 0, 10), scene);
   camera.setTarget(Vector3.Zero());
@@ -19,6 +22,8 @@ export function OrthoCamera() {
   let targetCamY = camera.position.y;
   let locked = false;
   let debugMode = false;
+  let lastVpMinX = 0, lastVpMinY = 0, lastVpMaxX = 0, lastVpMaxY = 0;
+  let lastVpSend = 0;
 
   function updateOrtho() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
@@ -30,6 +35,25 @@ export function OrthoCamera() {
 
   updateOrtho();
   const resizeObs = engine.onResizeObservable.add(updateOrtho);
+
+  function sendViewportIfChanged() {
+    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
+    const minX = Math.floor(camera.position.x - orthoSize * aspect);
+    const maxX = Math.ceil(camera.position.x + orthoSize * aspect);
+    const minY = Math.floor(camera.position.y - orthoSize);
+    const maxY = Math.ceil(camera.position.y + orthoSize);
+
+    const now = performance.now();
+    if (minX === lastVpMinX && minY === lastVpMinY && maxX === lastVpMaxX && maxY === lastVpMaxY) return;
+    if (now - lastVpSend < VIEWPORT_THROTTLE_MS) return;
+
+    lastVpMinX = minX; lastVpMinY = minY; lastVpMaxX = maxX; lastVpMaxY = maxY;
+    lastVpSend = now;
+    send({ type: "SetViewport", data: { min_x: minX, min_y: minY, max_x: maxX, max_y: maxY } });
+  }
+
+  // Send initial viewport once ortho is set up
+  sendViewportIfChanged();
 
   // Smooth zoom animation
   const renderObs = scene.onBeforeRenderObservable.add(() => {
@@ -44,6 +68,7 @@ export function OrthoCamera() {
       camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
       updateOrtho();
     }
+    sendViewportIfChanged();
   });
 
   // React to build mode changes
@@ -128,14 +153,12 @@ export function OrthoCamera() {
       camera.position = new Vector3(targetCamX, targetCamY - 10, 8);
       camera.setTarget(new Vector3(targetCamX, targetCamY, 0));
       camera.attachControl(canvas, true);
-      console.log("Debug camera ON (WASD + mouse)");
     } else {
       camera.detachControl();
       camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
       camera.position = new Vector3(targetCamX, targetCamY, 10);
       camera.setTarget(new Vector3(targetCamX, targetCamY, 0));
       updateOrtho();
-      console.log("Debug camera OFF");
     }
   };
 

@@ -92,12 +92,41 @@ export function GameProvider(props: ParentProps) {
     });
   }
 
+  // Chunked upsert processing — deletes flush immediately, upserts drain across frames
+  const UPSERTS_PER_FRAME = 100;
+  let upsertQueue: Operation[] = [];
+  let drainScheduled = false;
+
+  function enqueueOps(ops: Operation[]) {
+    const deletes: Operation[] = [];
+    const upserts: Operation[] = [];
+    for (const op of ops) {
+      if (op.op === "Delete") deletes.push(op);
+      else upserts.push(op);
+    }
+
+    if (deletes.length) applyOps(deletes);
+
+    upsertQueue.push(...upserts);
+    if (!drainScheduled) scheduleDrain();
+  }
+
+  function scheduleDrain() {
+    if (upsertQueue.length === 0) { drainScheduled = false; return; }
+    drainScheduled = true;
+    requestAnimationFrame(() => {
+      const chunk = upsertQueue.splice(0, UPSERTS_PER_FRAME);
+      if (chunk.length) applyOps(chunk);
+      scheduleDrain();
+    });
+  }
+
   const { send, close } = createConnection("ws://localhost:3001/ws", (msg) => {
     switch (msg.type) {
       case "Update":
         updateClockOffset(msg.data.server_time);
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
-        applyOps(msg.data.ops);
+        enqueueOps(msg.data.ops);
         break;
       case "Error":
         console.error("[ws] server error:", msg.data.message);
@@ -111,7 +140,6 @@ export function GameProvider(props: ParentProps) {
   onCleanup(close);
 
   function getObjectsAt(x: number, y: number): GameObjectEntry[] {
-    console.log("getObjectsAt", x, y);
     return (spatial[posKey(x, y)] ?? [])
       .map((id) => objects[id])
       .filter((e) => !!e);

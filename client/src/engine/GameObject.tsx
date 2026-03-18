@@ -20,6 +20,5 @@ const components: Record<GameObjectType["kind"], any> = {
 };
 
 export default function GameObject(props: { entry: GameObjectEntry }) {
-  console.log("GameObject render", props.entry.id, props.entry.object.kind);
   return <Dynamic component={components[props.entry.object.kind]} entry={props.entry} />;
 }

@@ -31,7 +31,6 @@ export function createConnection(
     ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
-      console.log("[ws] connected");
     };
 
     ws.onmessage = (ev) => {
@@ -43,7 +42,6 @@ export function createConnection(
     };
 
     ws.onclose = () => {
-      console.log("[ws] disconnected");
       if (!closed) {
         setTimeout(connect, 1000);
       }

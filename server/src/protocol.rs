@@ -137,6 +137,31 @@ pub struct DemolishRoad {
     pub pos: GridCoord,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ViewportBounds {
+    pub min_x: i32,
+    pub min_y: i32,
+    pub max_x: i32,
+    pub max_y: i32,
+}
+
+impl ViewportBounds {
+    pub fn contains(&self, coord: GridCoord) -> bool {
+        coord.x >= self.min_x && coord.x <= self.max_x
+            && coord.y >= self.min_y && coord.y <= self.max_y
+    }
+
+    pub fn with_margin(&self, margin: i32) -> Self {
+        Self {
+            min_x: self.min_x - margin,
+            min_y: self.min_y - margin,
+            max_x: self.max_x + margin,
+            max_y: self.max_y + margin,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
@@ -146,6 +171,7 @@ pub enum ClientMessage {
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
     ResetWorld,
+    SetViewport(ViewportBounds),
     Ping,
 }
 

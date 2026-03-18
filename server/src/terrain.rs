@@ -89,12 +89,14 @@ pub fn generate(world: &mut World, seed: u32) {
     for y in origin_y..(origin_y + HEIGHT) {
         for x in origin_x..(origin_x + WIDTH) {
             let my_elev = elev(types[&(x, y)]);
-            let neighbors: Vec<TerrainType> = cardinal.iter().filter_map(|&(dx, dy)| {
-                types.get(&(x + dx, y + dy)).copied()
-            }).collect();
+            let neighbors: Vec<TerrainType> = cardinal
+                .iter()
+                .filter_map(|&(dx, dy)| types.get(&(x + dx, y + dy)).copied())
+                .collect();
             let diff_count = neighbors.iter().filter(|&&nt| elev(nt) != my_elev).count();
             if diff_count >= 3 {
-                flips.push(((x, y), neighbors[0]));
+                let replacement = neighbors.iter().find(|&&nt| elev(nt) != my_elev).unwrap();
+                flips.push(((x, y), *replacement));
             }
         }
     }
@@ -112,11 +114,21 @@ pub fn generate(world: &mut World, seed: u32) {
                 .map(|&[d1, d2]| {
                     let t1 = *types.get(&(x + d1.0, y + d1.1))?;
                     let t2 = *types.get(&(x + d2.0, y + d2.1))?;
-                    if t1 == my_type || t2 == my_type || elev(t1) != elev(t2) { return None; }
-                    if t1 == t2 { return Some(t1); }
+                    if t1 == my_type || t2 == my_type || elev(t1) != elev(t2) {
+                        return None;
+                    }
+                    if t1 == t2 {
+                        return Some(t1);
+                    }
                     let diag = types.get(&(x + d1.0 + d2.0, y + d1.1 + d2.1)).copied();
-                    if diag != Some(t1) && diag != Some(t2) { return None; }
-                    Some(if corner_priority(t1) >= corner_priority(t2) { t1 } else { t2 })
+                    if diag != Some(t1) && diag != Some(t2) {
+                        return None;
+                    }
+                    Some(if corner_priority(t1) >= corner_priority(t2) {
+                        t1
+                    } else {
+                        t2
+                    })
                 })
                 .collect();
             all_corners.insert((x, y), corners);
@@ -131,17 +143,21 @@ pub fn generate(world: &mut World, seed: u32) {
             let mut corner_mask: u8 = 0;
 
             for (i, corner_type) in corners.iter().enumerate() {
-                if corner_type.is_none() { continue; }
+                if corner_type.is_none() {
+                    continue;
+                }
                 let [edge_a, edge_b] = EDGE_CHECKS[i];
 
                 if let Some(nc) = all_corners.get(&(x + edge_a.0, y + edge_a.1))
-                    && nc[edge_a.2].is_some() {
-                        corner_mask |= 1 << (i * 2);
-                    }
+                    && nc[edge_a.2].is_some()
+                {
+                    corner_mask |= 1 << (i * 2);
+                }
                 if let Some(nc) = all_corners.get(&(x + edge_b.0, y + edge_b.1))
-                    && nc[edge_b.2].is_some() {
-                        corner_mask |= 1 << (i * 2 + 1);
-                    }
+                    && nc[edge_b.2].is_some()
+                {
+                    corner_mask |= 1 << (i * 2 + 1);
+                }
             }
 
             // Cardinal edges: [bottom, right, top, left]. Empty if tile has corners.
@@ -149,9 +165,15 @@ pub fn generate(world: &mut World, seed: u32) {
             let edges = if corners.iter().any(|c| c.is_some()) {
                 vec![None; 4]
             } else {
-                EDGE_DIRS.iter().map(|&(dx, dy)| {
-                    types.get(&(x + dx, y + dy)).copied().filter(|&t| t != my_type)
-                }).collect()
+                EDGE_DIRS
+                    .iter()
+                    .map(|&(dx, dy)| {
+                        types
+                            .get(&(x + dx, y + dy))
+                            .copied()
+                            .filter(|&t| t != my_type)
+                    })
+                    .collect()
             };
 
             world.objects.insert(

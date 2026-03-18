@@ -2,5 +2,6 @@
 import type { DemolishRoad } from "./DemolishRoad";
 import type { PlaceBuilding } from "./PlaceBuilding";
 import type { PlaceRoad } from "./PlaceRoad";
+import type { ViewportBounds } from "./ViewportBounds";
 
-export type ClientMessage = { "type": "PlaceRoad", "data": PlaceRoad } | { "type": "PlaceBuilding", "data": PlaceBuilding } | { "type": "DemolishRoad", "data": DemolishRoad } | { "type": "DespawnAllCars" } | { "type": "ResetWorld" } | { "type": "Ping" };
+export type ClientMessage = { "type": "PlaceRoad", "data": PlaceRoad } | { "type": "PlaceBuilding", "data": PlaceBuilding } | { "type": "DemolishRoad", "data": DemolishRoad } | { "type": "DespawnAllCars" } | { "type": "ResetWorld" } | { "type": "SetViewport", "data": ViewportBounds } | { "type": "Ping" };

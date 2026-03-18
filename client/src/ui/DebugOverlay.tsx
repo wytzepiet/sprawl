@@ -1,4 +1,4 @@
-import { createSignal, createMemo, For } from "solid-js";
+import { createSignal, createMemo, onCleanup, For } from "solid-js";
 import type { ServerMessage } from "../generated";
 
 const TIMELINE_MS = 5000;
@@ -6,6 +6,7 @@ const WINDOW_MS = 1000;
 const TIMELINE_W = 260;
 const ROW_H = 20;
 const DOT_R = 2;
+const UPDATE_INTERVAL = 200; // ms between UI refreshes (5 fps is plenty for a debug display)
 
 const COLORS: Record<string, string> = {
   Car: "#60a5fa",
@@ -29,19 +30,11 @@ function colorFor(key: string): string {
 const buffer: Record<string, number[]> = {};
 // Live car count from upserts/deletes
 const activeCars = new Set<number>();
-const [tick, setTick] = createSignal(0);
-let rafId: number | null = null;
 
-function startLoop() {
-  if (rafId != null) return;
-  const loop = () => {
-    setTick((t) => t + 1);
-    rafId = requestAnimationFrame(loop);
-  };
-  rafId = requestAnimationFrame(loop);
-}
+let active = false;
 
 export function trackMessage(msg: ServerMessage) {
+  if (!active) return;
   const now = performance.now();
   if (msg.type === "Update") {
     for (const op of msg.data.ops) {
@@ -66,7 +59,10 @@ interface Row {
 }
 
 export default function DebugOverlay() {
-  startLoop();
+  active = true;
+  const [tick, setTick] = createSignal(0);
+  const interval = setInterval(() => setTick((t) => t + 1), UPDATE_INTERVAL);
+  onCleanup(() => { active = false; clearInterval(interval); });
 
   const rows = createMemo<Row[]>(() => {
     tick();
@@ -77,8 +73,10 @@ export default function DebugOverlay() {
 
     for (const key in buffer) {
       const times = buffer[key];
-      // prune entries older than timeline window
-      while (times.length > 0 && times[0] < timelineCutoff) times.shift();
+      // prune entries older than timeline window — binary search for cutoff
+      let lo = 0;
+      while (lo < times.length && times[lo] < timelineCutoff) lo++;
+      if (lo > 0) times.splice(0, lo);
       if (times.length === 0) continue;
 
       let rateCount = 0;
