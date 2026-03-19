@@ -50,8 +50,10 @@ pub struct PlaceBuilding {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Car {
-    #[ts(type = "Array<number>")]
+    #[serde(skip)]
+    #[ts(skip)]
     pub route: Vec<EntityId>,
+    pub route_positions: Vec<[f64; 2]>,
     /// Cumulative distance along the route.
     pub progress: f64,
     pub speed: f64,
@@ -152,14 +154,6 @@ impl ViewportBounds {
             && coord.y >= self.min_y && coord.y <= self.max_y
     }
 
-    pub fn with_margin(&self, margin: i32) -> Self {
-        Self {
-            min_x: self.min_x - margin,
-            min_y: self.min_y - margin,
-            max_x: self.max_x + margin,
-            max_y: self.max_y + margin,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

@@ -1,31 +1,28 @@
-import { For } from "solid-js";
 import Canvas from "./Canvas";
 import { OrthoCamera } from "./OrthoCamera";
 import DayNightCycle from "./DayNightCycle";
 import { InstancePoolProvider } from "./InstancePool";
+import Headlights from "./Headlights";
 import { RoadDrawer } from "./RoadDrawer";
 import { BuildingPlacer } from "./BuildingPlacer";
-import GameObject from "./GameObject";
+import World from "./World";
 import BuildModeToolbar from "../ui/BuildModeToolbar";
-import DebugOverlay from "../ui/DebugOverlay";
-import { GameProvider, useGame } from "../state/gameObjects";
+import { GameProvider } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 
 function SceneInner() {
-  const { objects } = useGame();
-
   return (
     <>
       <Canvas>
         <OrthoCamera />
         <DayNightCycle>
-          <InstancePoolProvider>
-            <RoadDrawer />
-            <BuildingPlacer />
-            <For each={Object.keys(objects)}>
-              {(id) => <GameObject entry={objects[id]} />}
-            </For>
-          </InstancePoolProvider>
+          <Headlights>
+            <InstancePoolProvider>
+              <RoadDrawer />
+              <BuildingPlacer />
+              <World />
+            </InstancePoolProvider>
+          </Headlights>
         </DayNightCycle>
       </Canvas>
       <BuildModeToolbar />

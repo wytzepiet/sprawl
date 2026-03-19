@@ -157,6 +157,49 @@ impl World {
             }
     }
 
+    /// Place road nodes along a path and connect consecutive nodes bidirectionally.
+    /// Used by procedural road generation — skips player-input validation.
+    pub fn place_road_path(&mut self, path: &[GridCoord]) {
+        if path.len() < 2 {
+            return;
+        }
+        // Expand diagonal steps through existing road nodes to avoid triangles
+        let mut expanded: Vec<GridCoord> = vec![path[0]];
+        for pair in path.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            if dx != 0 && dy != 0 {
+                let mid1 = GridCoord { x: a.x + dx, y: a.y };
+                let mid2 = GridCoord { x: a.x, y: a.y + dy };
+                if self.road_node_at(mid1).is_some() {
+                    expanded.push(mid1);
+                } else if self.road_node_at(mid2).is_some() {
+                    expanded.push(mid2);
+                }
+            }
+            expanded.push(b);
+        }
+        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road(c)).collect();
+        for pair in ids.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            // Add outgoing a→b
+            if let Some(entry) = self.objects.get_mut(a)
+                && let GameObject::RoadNode(ref mut node) = entry.object
+                    && !node.outgoing.contains(&b) {
+                        node.outgoing.push(b);
+                    }
+            // Add outgoing b→a
+            if let Some(entry) = self.objects.get_mut(b)
+                && let GameObject::RoadNode(ref mut node) = entry.object
+                    && !node.outgoing.contains(&a) {
+                        node.outgoing.push(a);
+                    }
+            self.insert_edge(a, b);
+            self.insert_edge(b, a);
+        }
+    }
+
     /// Remove the road node at `pos` and clean up all references to it from outgoing.
     pub fn handle_demolish_road(&mut self, pos: GridCoord) {
         let id = match self.road_node_at(pos) {

@@ -67,6 +67,7 @@ pub fn handle_car_spawn(
         total_len,
     );
 
+    let route_positions = world.route_positions(&route);
     let first_edge = (route[0], route[1]);
     let route_nodes = route.clone();
 
@@ -83,9 +84,11 @@ pub fn handle_car_spawn(
             }
         }
 
+    let start_pos = world.objects.get(route_nodes[0]).and_then(|e| e.position);
     let car_id = world.objects.insert(
         GameObject::Car(Car {
             route,
+            route_positions,
             progress: 0.0,
             speed: 0.0,
             acceleration: ACCELERATION,
@@ -97,8 +100,11 @@ pub fn handle_car_spawn(
             seg_start_dist: 0.0,
             segment_lengths,
         }),
-        None,
+        start_pos,
     );
+    if let Some(pos) = start_pos {
+        world.spatial.entry(pos).or_default().insert(car_id);
+    }
 
     world.register_car_route(car_id, &route_nodes);
 

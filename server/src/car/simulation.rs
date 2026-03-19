@@ -335,6 +335,13 @@ pub fn handle_car_wake_up(
         }
     }
 
+    // Update spatial position when car crosses a node
+    if ri != old_ri {
+        if let Some(node_pos) = world.objects.get(car.route[ri - 1]).and_then(|e| e.position) {
+            world.update_position(car_id, node_pos);
+        }
+    }
+
     let entry = if accel_changed {
         world.objects.get_mut(car_id)
     } else {

@@ -2,6 +2,7 @@ mod car;
 mod engine;
 mod game_loop;
 mod intersection;
+mod road_gen;
 mod network;
 mod persistence;
 mod protocol;
