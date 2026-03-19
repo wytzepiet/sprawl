@@ -16,8 +16,6 @@ use crate::protocol::{BuildingType, ClientMessage, EntityId, GameObject, GameObj
 use crate::world::World;
 use crate::world::pathfinding;
 
-const VIEWPORT_MARGIN: i32 = 5;
-
 struct ClientState {
     sender: mpsc::UnboundedSender<ServerMessage>,
     viewport: Option<ViewportBounds>,
@@ -38,7 +36,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     if world.objects.all_entries().is_empty() {
         let seed = rand::random::<u32>();
         world.terrain_seed = seed;
-        crate::terrain::generate(&mut world, seed);
+        let terrain = crate::terrain::generate(&mut world, seed);
+        crate::road_gen::generate(&mut world, seed, &terrain);
         println!("generated terrain ({} tiles)", world.objects.all_entries().len());
     }
 
@@ -90,7 +89,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         let _ = std::fs::remove_file(&db_path);
                         let seed = rand::random::<u32>();
                         world.terrain_seed = seed;
-                        crate::terrain::generate(&mut world, seed);
+                        let terrain = crate::terrain::generate(&mut world, seed);
+                        crate::road_gen::generate(&mut world, seed, &terrain);
                         // Send terrain_seed so clients know it changed; objects come via SetViewport
                         broadcast(&clients, &ServerMessage::Update(StateUpdate { ops: vec![], server_time: now, terrain_seed: seed }));
                         println!("reset: world cleared, terrain regenerated");
@@ -341,11 +341,17 @@ fn try_reroute(
     world.register_car_route(car_id, &new_route);
     let segment_lengths = world.compute_segment_lengths(&new_route);
     let total: f64 = segment_lengths.iter().sum();
+    let route_positions = world.route_positions(&new_route);
+
+    if let Some(pos) = world.objects.get(new_route[0]).and_then(|e| e.position) {
+        world.update_position(car_id, pos);
+    }
 
     if let Some(entry) = world.objects.get_mut(car_id)
         && let GameObject::Car(ref mut car) = entry.object
     {
         car.route = new_route;
+        car.route_positions = route_positions;
         car.segment_lengths = segment_lengths;
         car.total_route_length = total;
         car.route_index = 1;
@@ -397,14 +403,13 @@ fn handle_set_viewport(
     bounds: ViewportBounds,
     now: GameTime,
 ) {
-    let padded = bounds.with_margin(VIEWPORT_MARGIN);
-    let in_viewport = world.entities_in_rect(&padded);
+    let in_viewport = world.entities_in_rect(&bounds);
 
     let cs = match clients.get_mut(&client_id) {
         Some(cs) => cs,
         None => return,
     };
-    cs.viewport = Some(padded);
+    cs.viewport = Some(bounds);
 
     // Enter: in viewport but not known
     let mut ops = Vec::new();
@@ -415,32 +420,20 @@ fn handle_set_viewport(
             }
     }
 
-    // Exit: known but not in viewport (skip cars — they have no position)
+    // Exit: known but no longer in viewport
     let exits: Vec<EntityId> = cs.known.iter()
-        .filter(|id| {
-            !in_viewport.contains(id) && !is_car(world, **id)
-        })
+        .filter(|id| !in_viewport.contains(id))
         .copied()
         .collect();
     for id in &exits {
         ops.push(Operation::Delete(*id));
     }
 
-    // Update known set
     cs.known = in_viewport;
-    // Also keep cars that were already known
-    // (cars have no spatial position so won't be in entities_in_rect)
-    // We re-add exits that are cars — but we filtered them out above, so they stay in known.
-    // Actually we need to preserve car IDs. Let's just re-add all known cars.
-    // Cars are already known from previous flushes; exits filtered them out. So known is correct.
 
     if !ops.is_empty() {
         let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
     }
-}
-
-fn is_car(world: &World, id: EntityId) -> bool {
-    world.objects.get(id).is_some_and(|e| matches!(e.object, GameObject::Car(_)))
 }
 
 fn flush_dirty(
@@ -453,7 +446,6 @@ fn flush_dirty(
         return;
     }
 
-    // Build per-entry data once
     let changed_entries: Vec<GameObjectEntry> = changed.iter()
         .filter_map(|id| world.objects.get(*id).cloned())
         .collect();
@@ -461,20 +453,18 @@ fn flush_dirty(
     for cs in clients.values_mut() {
         let viewport = match &cs.viewport {
             Some(v) => v,
-            None => continue, // no viewport yet — send nothing
+            None => continue,
         };
 
         let mut ops = Vec::new();
 
         for entry in &changed_entries {
-            let in_vp = entry.position.is_none() // cars (no position) → always send
-                || entry.position.is_some_and(|pos| viewport.contains(pos));
+            let in_vp = entry.position.is_some_and(|pos| viewport.contains(pos));
 
             if in_vp {
                 ops.push(Operation::Upsert(Box::new(entry.clone())));
                 cs.known.insert(entry.id);
             } else if cs.known.remove(&entry.id) {
-                // Dirty but outside viewport and was known → delete
                 ops.push(Operation::Delete(entry.id));
             }
         }

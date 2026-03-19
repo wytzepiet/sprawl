@@ -11,9 +11,7 @@ import {
   VertexData,
   StandardMaterial,
   Color3,
-  Matrix,
-  Quaternion,
-  Vector3,
+  type InstancedMesh as BabylonInstancedMesh,
 } from "@babylonjs/core";
 import type { BaseTexture } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
@@ -31,16 +29,45 @@ function tint(color: Color3, amb: Color3): Color3 {
 interface Bucket {
   mesh: Mesh;
   material: StandardMaterial;
-  instances: Map<number, Float32Array>;
+  instances: Map<number, BabylonInstancedMesh>;
+  free: BabylonInstancedMesh[];
   baseColor: Color3;
   castShadow: boolean;
   receiveShadow: boolean;
-  dirty: boolean;
 }
 
-let nextInstanceId = 0;
+let nextId = 0;
 
-class InstancePool {
+function applyTransform(
+  inst: BabylonInstancedMesh,
+  pos?: [number, number, number],
+  rot?: [number, number, number],
+  scale?: number | [number, number, number],
+): void {
+  if (pos) {
+    inst.position.x = pos[0];
+    inst.position.y = pos[1];
+    inst.position.z = pos[2];
+  }
+  if (rot) {
+    inst.rotation.x = rot[0];
+    inst.rotation.y = rot[1];
+    inst.rotation.z = rot[2];
+  }
+  if (scale != null) {
+    if (typeof scale === "number") {
+      inst.scaling.x = scale;
+      inst.scaling.y = scale;
+      inst.scaling.z = scale;
+    } else {
+      inst.scaling.x = scale[0];
+      inst.scaling.y = scale[1];
+      inst.scaling.z = scale[2];
+    }
+  }
+}
+
+export class InstancePool {
   private buckets = new Map<string, Bucket>();
   private scene: any;
   private shadowGenerator: any;
@@ -61,7 +88,7 @@ class InstancePool {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
 
-    const mat = new StandardMaterial(`inst_${key}_mat`, this.scene);
+    const mat = new StandardMaterial(`mat_${key}`, this.scene);
     mat.backFaceCulling = false;
     mat.specularColor = Color3.Black();
 
@@ -86,49 +113,84 @@ class InstancePool {
     vd.applyToMesh(mesh);
     mesh.material = mat;
     mesh.isPickable = false;
+    mesh.isVisible = false;
+    mesh.freezeWorldMatrix();
+    mesh.doNotSyncBoundingInfo = true;
 
     if (receiveShadow) {
       mesh.receiveShadows = true;
     }
     if (castShadow) {
-      this.shadowGenerator.addShadowCaster(mesh);
+      this.shadowGenerator.addShadowCaster(mesh, true);
     }
 
     bucket = {
       mesh,
       material: mat,
       instances: new Map(),
+      free: [],
       baseColor: color,
       castShadow,
       receiveShadow,
-      dirty: true,
     };
     this.buckets.set(key, bucket);
     return bucket;
   }
 
-  addInstance(key: string, matrix: Float32Array): number {
+  addInstance(
+    key: string,
+    pos?: [number, number, number],
+    rot?: [number, number, number],
+    scale?: number | [number, number, number],
+    dynamic?: boolean,
+  ): number {
     const bucket = this.buckets.get(key)!;
-    const id = nextInstanceId++;
-    bucket.instances.set(id, matrix);
-    bucket.dirty = true;
+    const id = nextId++;
+    let inst: BabylonInstancedMesh;
+    if (bucket.free.length > 0) {
+      inst = bucket.free.pop()!;
+      inst.setEnabled(true);
+      inst.doNotSyncBoundingInfo = false;
+    } else {
+      inst = bucket.mesh.createInstance(`${key}_${id}`);
+      inst.isPickable = false;
+      if (bucket.receiveShadow) inst.receiveShadows = true;
+      if (bucket.castShadow) this.shadowGenerator.addShadowCaster(inst);
+    }
+    applyTransform(inst, pos, rot, scale);
+    if (!dynamic) {
+      inst.freezeWorldMatrix();
+      inst.doNotSyncBoundingInfo = true;
+    }
+    bucket.instances.set(id, inst);
     return id;
   }
 
-  updateInstance(key: string, id: number, matrix: Float32Array): void {
+  updateInstance(
+    key: string,
+    id: number,
+    pos?: [number, number, number],
+    rot?: [number, number, number],
+  ): void {
     const bucket = this.buckets.get(key);
     if (!bucket) return;
-    bucket.instances.set(id, matrix);
-    bucket.dirty = true;
+    const inst = bucket.instances.get(id);
+    if (!inst) return;
+    applyTransform(inst, pos, rot);
   }
 
   removeInstance(key: string, id: number): void {
     const bucket = this.buckets.get(key);
     if (!bucket) return;
+    const inst = bucket.instances.get(id);
+    if (!inst) return;
     bucket.instances.delete(id);
-    bucket.dirty = true;
 
-    if (bucket.instances.size === 0) {
+    inst.setEnabled(false);
+    inst.unfreezeWorldMatrix();
+    bucket.free.push(inst);
+
+    if (bucket.instances.size === 0 && bucket.free.length === 0) {
       if (bucket.castShadow) {
         this.shadowGenerator.removeShadowCaster(bucket.mesh);
       }
@@ -138,9 +200,8 @@ class InstancePool {
     }
   }
 
-  flush(ambientColor: Color3): void {
+  updateMaterials(ambientColor: Color3): void {
     for (const bucket of this.buckets.values()) {
-      // Update materials for day/night
       if (bucket.receiveShadow) {
         bucket.material.diffuseColor = bucket.baseColor;
         bucket.material.emissiveColor = new Color3(
@@ -151,24 +212,6 @@ class InstancePool {
       } else {
         bucket.material.emissiveColor = tint(bucket.baseColor, ambientColor);
       }
-
-      // Rebuild buffers for dirty buckets
-      if (!bucket.dirty) continue;
-      bucket.dirty = false;
-
-      const count = bucket.instances.size;
-      if (count === 0) {
-        bucket.mesh.thinInstanceCount = 0;
-        continue;
-      }
-
-      const buf = new Float32Array(count * 16);
-      let i = 0;
-      for (const matrix of bucket.instances.values()) {
-        buf.set(matrix, i * 16);
-        i++;
-      }
-      bucket.mesh.thinInstanceSetBuffer("matrix", buf, 16);
     }
   }
 
@@ -177,6 +220,8 @@ class InstancePool {
       if (bucket.castShadow) {
         this.shadowGenerator.removeShadowCaster(bucket.mesh);
       }
+      for (const inst of bucket.free) inst.dispose();
+      for (const inst of bucket.instances.values()) inst.dispose();
       bucket.mesh.dispose();
       bucket.material.dispose();
     }
@@ -188,7 +233,7 @@ class InstancePool {
 
 const InstancePoolCtx = createContext<InstancePool>();
 
-function useInstancePool(): InstancePool {
+export function useInstancePool(): InstancePool {
   const ctx = useContext(InstancePoolCtx);
   if (!ctx)
     throw new Error(
@@ -203,12 +248,11 @@ export function InstancePoolProvider(props: ParentProps) {
 
   const pool = new InstancePool(scene, shadowGenerator);
 
-  const obs = scene.onBeforeRenderObservable.add(() => {
-    pool.flush(ambientColor());
-  });
+  createEffect(on(ambientColor, (amb) => {
+    pool.updateMaterials(amb);
+  }));
 
   onCleanup(() => {
-    scene.onBeforeRenderObservable.remove(obs);
     pool.dispose();
   });
 
@@ -216,28 +260,6 @@ export function InstancePoolProvider(props: ParentProps) {
 }
 
 // --- InstancedMesh component ---
-
-const tmpQuat = new Quaternion();
-
-function buildMatrix(
-  pos?: [number, number, number],
-  rot?: [number, number, number],
-  scale?: number | [number, number, number],
-): Float32Array {
-  const px = pos?.[0] ?? 0;
-  const py = pos?.[1] ?? 0;
-  const pz = pos?.[2] ?? 0;
-  const rx = rot?.[0] ?? 0;
-  const ry = rot?.[1] ?? 0;
-  const rz = rot?.[2] ?? 0;
-  const sv = scale == null ? Vector3.One()
-    : typeof scale === "number" ? new Vector3(scale, scale, scale)
-    : new Vector3(scale[0], scale[1], scale[2]);
-
-  Quaternion.FromEulerAnglesToRef(rx, ry, rz, tmpQuat);
-  const m = Matrix.Compose(sv, tmpQuat, new Vector3(px, py, pz));
-  return m.asArray() as unknown as Float32Array;
-}
 
 interface InstancedMeshProps {
   poolKey: string;
@@ -281,23 +303,23 @@ export default function InstancedMesh(props: InstancedMeshProps) {
       }
       if (!enabled) return;
       pool.ensureBucket(key, geo, color, cast, recv, tex);
-      id = pool.addInstance(key, buildMatrix(pos, rot, scale));
+      id = pool.addInstance(key, pos, rot, scale);
       currentKey = key;
 
       ref?.({
         setMatrix(p, r) {
-          pool.updateInstance(currentKey!, id, buildMatrix(p, r, props.scale));
+          pool.updateInstance(currentKey!, id, p, r);
         },
       });
     },
   ));
 
-  // React to position/rotation/scale changes
   createEffect(on(
     () => ({ pos: props.position, rot: props.rotation, scale: props.scale }),
     ({ pos, rot, scale }) => {
       if (currentKey === undefined) return;
-      pool.updateInstance(currentKey, id, buildMatrix(pos, rot, scale));
+      pool.removeInstance(currentKey, id);
+      id = pool.addInstance(currentKey, pos, rot, scale);
     },
     { defer: true },
   ));

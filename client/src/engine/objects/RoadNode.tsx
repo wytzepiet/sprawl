@@ -1,10 +1,7 @@
-import { For, Show, createMemo } from "solid-js";
 import { Color3 } from "@babylonjs/core";
-import Mesh, { type MeshGeometry } from "../Mesh";
-import InstancedMesh from "../InstancePool";
-import type { KindEntry } from "../GameObject";
-import { useTheme } from "../theme";
-import { useGame } from "../../state/gameObjects";
+import type { InstancePool } from "../InstancePool";
+import type { MeshGeometry } from "../Mesh";
+import type { Theme } from "../theme";
 import type { GameObjectEntry } from "../../generated";
 
 type Flow = "twoway" | "out" | "in";
@@ -191,11 +188,7 @@ function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshGeometry
   return fanGeometry(boundary, z);
 }
 
-interface ChevronData {
-  geometry: MeshGeometry;
-}
-
-function buildChevronGeometry(a: number): ChevronData {
+function buildChevronGeometry(a: number): MeshGeometry {
   const fwd = { x: Math.cos(a), y: Math.sin(a) };
   const side = { x: -Math.sin(a), y: Math.cos(a) };
   const armLen = 0.5 / Math.max(Math.abs(fwd.x), Math.abs(fwd.y));
@@ -211,14 +204,14 @@ function buildChevronGeometry(a: number): ChevronData {
   const pts = [along(tip, 0), along(back, HALF_W), along(back, -HALF_W)];
   const cx = (pts[0].x + pts[1].x + pts[2].x) / 3;
   const cy = (pts[0].y + pts[1].y + pts[2].y) / 3;
-  return { geometry: fanGeometry(pts, CHEVRON_Z, { x: cx, y: cy }) };
+  return fanGeometry(pts, CHEVRON_Z, { x: cx, y: cy });
 }
 
 // --- Connection detection ---
 
 function getConnectionArms(
   entry: GameObjectEntry,
-  objects: Record<string, GameObjectEntry | undefined>,
+  getEntity: (id: number) => GameObjectEntry | undefined,
 ): ArmInfo[] {
   if (entry.object.kind !== "RoadNode" || !entry.position) return [];
   const { x, y } = entry.position;
@@ -226,7 +219,7 @@ function getConnectionArms(
   const arms: ArmInfo[] = [];
 
   for (const nId of outgoing) {
-    const neighbor = objects[String(nId)];
+    const neighbor = getEntity(nId);
     if (!neighbor?.position) continue;
     const dx = neighbor.position.x - x;
     const dy = neighbor.position.y - y;
@@ -241,7 +234,7 @@ function getConnectionArms(
   }
 
   for (const nId of incoming) {
-    const neighbor = objects[String(nId)];
+    const neighbor = getEntity(nId);
     if (!neighbor?.position) continue;
     if (outgoing.includes(nId)) continue;
     const dx = neighbor.position.x - x;
@@ -261,71 +254,52 @@ function armsKey(arms: ArmInfo[]): string {
     .join(",");
 }
 
-// --- Component ---
+// --- Mount function ---
 
-export default function RoadNode(props: { entry: KindEntry<"RoadNode"> }) {
-  const { objects } = useGame();
-  const theme = useTheme();
+export function mountRoad(
+  entry: GameObjectEntry,
+  pool: InstancePool,
+  theme: Theme,
+  getEntity: (id: number) => GameObjectEntry | undefined,
+): () => void {
+  const instances: { key: string; id: number }[] = [];
 
-  const arms = createMemo(() => {
-    const a = getConnectionArms(props.entry, objects);
-    return { arms: a, key: armsKey(a) };
-  });
+  const arms = getConnectionArms(entry, getEntity);
+  const key = armsKey(arms);
+  const pos: [number, number, number] | undefined =
+    entry.position ? [entry.position.x + 0.5, entry.position.y + 0.5, 0] : undefined;
 
-  const roadGeometry = createMemo(() => buildRoadGeometry(arms().arms, HALF_W, ROAD_Z));
-  const borderGeometry = createMemo(() => buildRoadGeometry(arms().arms, BORDER_HALF_W, BORDER_Z));
+  // Border
+  const borderGeo = buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z);
+  if (borderGeo) {
+    const bk = `road_border_${key}`;
+    pool.ensureBucket(bk, borderGeo, theme.roadBorder, false, true);
+    instances.push({ key: bk, id: pool.addInstance(bk, pos) });
+  }
 
-  const chevrons = createMemo(() =>
-    arms().arms
-      .filter((a) => a.flow === "out")
-      .map((arm) => buildChevronGeometry(arm.angle)),
+  // Road surface
+  const roadGeo = buildRoadGeometry(arms, HALF_W, ROAD_Z);
+  if (roadGeo) {
+    const rk = `road_${key}`;
+    pool.ensureBucket(rk, roadGeo, theme.road, false, true);
+    instances.push({ key: rk, id: pool.addInstance(rk, pos) });
+  }
+
+  // Chevrons (one-way arrows)
+  const arrowColor = new Color3(
+    Math.min(1, theme.road.r + 0.25),
+    Math.min(1, theme.road.g + 0.25),
+    Math.min(1, theme.road.b + 0.25),
   );
+  for (const arm of arms) {
+    if (arm.flow !== "out") continue;
+    const chevronGeo = buildChevronGeometry(arm.angle);
+    const ck = `chevron_${arm.angle}`;
+    pool.ensureBucket(ck, chevronGeo, arrowColor, false, false);
+    instances.push({ key: ck, id: pool.addInstance(ck, pos) });
+  }
 
-  const arrowColor = createMemo(() => new Color3(
-    Math.min(1, theme().road.r + 0.25),
-    Math.min(1, theme().road.g + 0.25),
-    Math.min(1, theme().road.b + 0.25),
-  ));
-
-  const pos = (): [number, number, number] | undefined =>
-    props.entry.position
-      ? [props.entry.position.x + 0.5, props.entry.position.y + 0.5, 0]
-      : undefined;
-
-  return (
-    <>
-      <Show when={borderGeometry()}>
-        {(geo) => (
-          <InstancedMesh
-            poolKey={`road_border_${arms().key}`}
-            geometry={geo()}
-            position={pos()}
-            color={theme().roadBorder}
-            receiveShadow
-          />
-        )}
-      </Show>
-      <Show when={roadGeometry()}>
-        {(geo) => (
-          <InstancedMesh
-            poolKey={`road_${arms().key}`}
-            geometry={geo()}
-            position={pos()}
-            color={theme().road}
-            receiveShadow
-          />
-        )}
-      </Show>
-      <For each={chevrons()}>
-        {(chevron) => (
-          <Mesh
-            name={`chevron_${props.entry.id}`}
-            geometry={chevron.geometry}
-            position={pos()}
-            color={arrowColor()}
-          />
-        )}
-      </For>
-    </>
-  );
+  return () => {
+    for (const { key, id } of instances) pool.removeInstance(key, id);
+  };
 }

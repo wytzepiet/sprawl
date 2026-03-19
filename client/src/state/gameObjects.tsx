@@ -3,130 +3,105 @@ import {
   useContext,
   createSignal,
   onCleanup,
-  batch,
   type ParentProps,
 } from "solid-js";
-import { createStore } from "solid-js/store";
 import { createConnection, updateClockOffset } from "../network/connection";
 import type { GameObjectEntry, ClientMessage, Operation } from "../generated";
-
-type Objects = Record<string, GameObjectEntry>;
 
 function posKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
+// --- Module-level state (plain data, no reactivity) ---
+
+const entities = new Map<string, GameObjectEntry>();
+const spatial = new Map<string, number[]>();
+export function getEntity(id: number): GameObjectEntry | undefined {
+  return entities.get(String(id));
+}
+
+export function getObjectsAt(x: number, y: number): GameObjectEntry[] {
+  return (spatial.get(posKey(x, y)) ?? [])
+    .map((id) => entities.get(String(id)))
+    .filter((e): e is GameObjectEntry => !!e);
+}
+
+// --- Ops listener for ECS ---
+
+type OpsListener = (ops: Operation[]) => void;
+let opsListener: OpsListener | null = null;
+export function setOpsListener(fn: OpsListener | null) {
+  opsListener = fn;
+}
+
+// --- Ops processing ---
+
+function applyOps(ops: Operation[]) {
+  ops.sort((a, b) => (a.op === "Delete" ? 0 : 1) - (b.op === "Delete" ? 0 : 1));
+  for (const op of ops) {
+    switch (op.op) {
+      case "Upsert": {
+        const key = String(op.data.id);
+        const existing = entities.get(key);
+        if (existing?.position) {
+          const pk = posKey(existing.position.x, existing.position.y);
+          const ids = spatial.get(pk);
+          if (ids) {
+            const filtered = ids.filter((i) => i !== existing.id);
+            if (filtered.length === 0) spatial.delete(pk);
+            else spatial.set(pk, filtered);
+          }
+        }
+        if (op.data.position) {
+          const pk = posKey(op.data.position.x, op.data.position.y);
+          const ids = spatial.get(pk);
+          if (!ids) spatial.set(pk, [op.data.id]);
+          else if (!ids.includes(op.data.id)) ids.push(op.data.id);
+        }
+        entities.set(key, op.data);
+        break;
+      }
+      case "Delete": {
+        const key = String(op.data);
+        const existing = entities.get(key);
+        if (existing) {
+          if (existing.position) {
+            const pk = posKey(existing.position.x, existing.position.y);
+            const ids = spatial.get(pk);
+            if (ids) {
+              const filtered = ids.filter((i) => i !== existing.id);
+              if (filtered.length === 0) spatial.delete(pk);
+              else spatial.set(pk, filtered);
+            }
+          }
+          entities.delete(key);
+        }
+        break;
+      }
+    }
+  }
+  opsListener?.(ops);
+}
+
+// --- Context (thin — just what UI needs) ---
+
 interface GameContext {
-  objects: Objects;
   terrainSeed(): number;
-  getObjectsAt(x: number, y: number): GameObjectEntry[];
   send(msg: ClientMessage): void;
+  getObjectsAt(x: number, y: number): GameObjectEntry[];
 }
 
 const Ctx = createContext<GameContext>();
 
 export function GameProvider(props: ParentProps) {
-  const [objects, setObjects] = createStore<Objects>({});
   const [terrainSeed, setTerrainSeed] = createSignal(0);
-  const [spatial, setSpatial] = createStore<Record<string, number[]>>({});
-
-  function applyOps(ops: Operation[]) {
-    // Collect spatial changes before mutating objects
-    const removals: { id: number; key: string }[] = [];
-    const additions: { id: number; key: string }[] = [];
-
-    for (const op of ops) {
-      switch (op.op) {
-        case "Upsert": {
-          const existing = objects[op.data.id];
-          if (existing?.position) {
-            removals.push({ id: existing.id, key: posKey(existing.position.x, existing.position.y) });
-          }
-          if (op.data.position) {
-            additions.push({ id: op.data.id, key: posKey(op.data.position.x, op.data.position.y) });
-          }
-          break;
-        }
-        case "Delete": {
-          const old = objects[String(op.data)];
-          if (old?.position) {
-            removals.push({ id: old.id, key: posKey(old.position.x, old.position.y) });
-          }
-          break;
-        }
-      }
-    }
-
-    batch(() => {
-      for (const op of ops) {
-        switch (op.op) {
-          case "Upsert": {
-            const key = String(op.data.id);
-            if (objects[key]) {
-              setObjects(key, "object", op.data.object);
-              setObjects(key, "position", op.data.position);
-            } else {
-              setObjects(key, op.data);
-            }
-            break;
-          }
-          case "Delete": {
-            setObjects(String(op.data), undefined as any);
-            break;
-          }
-        }
-      }
-
-      for (const { id, key } of removals) {
-        const ids = spatial[key];
-        if (!ids) continue;
-        const filtered = ids.filter(i => i !== id);
-        if (filtered.length === 0) setSpatial(key, undefined as any);
-        else setSpatial(key, filtered);
-      }
-      for (const { id, key } of additions) {
-        const ids = spatial[key];
-        if (!ids) setSpatial(key, [id]);
-        else if (!ids.includes(id)) setSpatial(key, [...ids, id]);
-      }
-    });
-  }
-
-  // Chunked upsert processing — deletes flush immediately, upserts drain across frames
-  const UPSERTS_PER_FRAME = 100;
-  let upsertQueue: Operation[] = [];
-  let drainScheduled = false;
-
-  function enqueueOps(ops: Operation[]) {
-    const deletes: Operation[] = [];
-    const upserts: Operation[] = [];
-    for (const op of ops) {
-      if (op.op === "Delete") deletes.push(op);
-      else upserts.push(op);
-    }
-
-    if (deletes.length) applyOps(deletes);
-
-    upsertQueue.push(...upserts);
-    if (!drainScheduled) scheduleDrain();
-  }
-
-  function scheduleDrain() {
-    if (upsertQueue.length === 0) { drainScheduled = false; return; }
-    drainScheduled = true;
-    requestAnimationFrame(() => {
-      const chunk = upsertQueue.splice(0, UPSERTS_PER_FRAME);
-      if (chunk.length) applyOps(chunk);
-      scheduleDrain();
-    });
-  }
 
   const { send, close } = createConnection("ws://localhost:3001/ws", (msg) => {
     switch (msg.type) {
       case "Update":
         updateClockOffset(msg.data.server_time);
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
-        enqueueOps(msg.data.ops);
+        applyOps(msg.data.ops);
         break;
       case "Error":
         console.error("[ws] server error:", msg.data.message);
@@ -139,14 +114,8 @@ export function GameProvider(props: ParentProps) {
 
   onCleanup(close);
 
-  function getObjectsAt(x: number, y: number): GameObjectEntry[] {
-    return (spatial[posKey(x, y)] ?? [])
-      .map((id) => objects[id])
-      .filter((e) => !!e);
-  }
-
   return (
-    <Ctx.Provider value={{ objects, terrainSeed, getObjectsAt, send }}>
+    <Ctx.Provider value={{ terrainSeed, send, getObjectsAt }}>
       {props.children}
     </Ctx.Provider>
   );

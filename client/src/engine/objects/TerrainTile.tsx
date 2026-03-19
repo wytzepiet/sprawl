@@ -1,12 +1,7 @@
-import { For, createMemo } from "solid-js";
 import { Color3, RawTexture } from "@babylonjs/core";
-import InstancedMesh from "../InstancePool";
-import { useEngine } from "../Canvas";
-import type { KindEntry } from "../GameObject";
-
-import { useTheme, type Theme } from "../theme";
-import { useGame } from "../../state/gameObjects";
-import type { TerrainType } from "../../generated";
+import type { InstancePool } from "../InstancePool";
+import type { Theme } from "../theme";
+import type { GameObjectEntry, TerrainType } from "../../generated";
 import type { MeshGeometry } from "../Mesh";
 
 const ELEVATION: Record<TerrainType, number> = {
@@ -78,7 +73,7 @@ interface TreeInfo {
   scale: number;
 }
 
-const GRID = 3; // 3x3 jittered grid = 9 trees
+const GRID = 2; // 2x2 jittered grid = 4 trees
 const CELL = 1 / GRID;
 
 function treesForTile(tx: number, ty: number): TreeInfo[] {
@@ -103,22 +98,23 @@ const TEX_SIZE = 32;
 const BORDER = 1;
 
 function createBorderTexture(scene: any): RawTexture {
-  const data = new Uint8Array(TEX_SIZE * TEX_SIZE * 3);
+  const data = new Uint8Array(TEX_SIZE * TEX_SIZE * 4);
   for (let y = 0; y < TEX_SIZE; y++) {
     for (let x = 0; x < TEX_SIZE; x++) {
-      const i = (y * TEX_SIZE + x) * 3;
+      const i = (y * TEX_SIZE + x) * 4;
       const edge =
         x < BORDER ||
         x >= TEX_SIZE - BORDER ||
         y < BORDER ||
         y >= TEX_SIZE - BORDER;
-      const v = edge ? 230 : 255; // border darkens to ~90%
+      const v = edge ? 230 : 255;
       data[i] = v;
       data[i + 1] = v;
       data[i + 2] = v;
+      data[i + 3] = 255;
     }
   }
-  return RawTexture.CreateRGBTexture(
+  return RawTexture.CreateRGBATexture(
     data,
     TEX_SIZE,
     TEX_SIZE,
@@ -423,172 +419,120 @@ const EDGE_DIRS: [number, number][] = [
   [-1, 0],
 ];
 
-export default function TerrainTile(props: { entry: KindEntry<"Terrain"> }) {
-  const { scene } = useEngine();
-  const theme = useTheme();
-  const { getObjectsAt } = useGame();
+export function mountTerrain(
+  entry: GameObjectEntry,
+  pool: InstancePool,
+  theme: Theme,
+  getObjectsAt: (x: number, y: number) => GameObjectEntry[],
+  scene: any,
+): () => void {
   if (!borderTex) borderTex = createBorderTexture(scene);
 
-  const pos = () => props.entry.position!;
-  const baseElev = () => ELEVATION[props.entry.object.data.terrain_type];
+  const d = entry.object.data as { terrain_type: TerrainType; corners: (TerrainType | null)[]; corner_mask: number };
+  const p = entry.position!;
+  const tt = d.terrain_type;
+  const be = ELEVATION[tt];
 
-  const activeCorners = createMemo(() => {
-    const d = props.entry.object.data;
-    return d.corners
-      .map((c, i) => {
-        if (!c) return null;
-        let variant = (d.corner_mask >> (i * 2)) & 3;
-        if (!(variant & 1) && !d.corners[(i + 1) % 4]) variant |= 4;
-        if (!(variant & 2) && !d.corners[(i + 3) % 4]) variant |= 8;
-        const cornerElev = ELEVATION[c];
-        return {
-          index: i,
-          type: c,
-          variant,
-          sameElev: cornerElev === baseElev(),
-          cornerElev,
-        };
-      })
-      .filter((c): c is NonNullable<typeof c> => c !== null);
-  });
+  const instances: { key: string; id: number }[] = [];
 
-  const sameElev = createMemo(() => activeCorners().filter((c) => c.sameElev));
-  const diffElev = createMemo(() => activeCorners().filter((c) => !c.sameElev));
+  function add(key: string, geo: MeshGeometry, pos: [number, number, number], color: Color3, opts?: { cast?: boolean; recv?: boolean; tex?: any; scale?: [number, number, number] }) {
+    pool.ensureBucket(key, geo, color, opts?.cast ?? false, opts?.recv ?? false, opts?.tex);
+    instances.push({ key, id: pool.addInstance(key, pos, undefined, opts?.scale) });
+  }
 
-  // Edge i touches corners i and (i+1)%4
-  const edgeCliffs = createMemo(() => {
-    const p = pos();
-    const be = baseElev();
-    const de = diffElev();
-    const diffSet = new Set(de.map((c) => c.index));
-    const result: { edgeIdx: number; height: number }[] = [];
-    for (let i = 0; i < 4; i++) {
-      if (diffSet.has(i) || diffSet.has((i + 1) % 4)) continue;
-      const [dx, dy] = EDGE_DIRS[i];
-      const neighbors = getObjectsAt(p.x + dx, p.y + dy);
-      const terrain = neighbors.find((n) => n.object.kind === "Terrain");
-      if (!terrain) continue;
-      const neighborElev =
-        ELEVATION[
-          (terrain.object.data as { terrain_type: TerrainType }).terrain_type
-        ];
-      if (neighborElev >= be) continue;
-      result.push({ edgeIdx: i, height: be - neighborElev });
+  // Corners
+  const corners = d.corners
+    .map((c, i) => {
+      if (!c) return null;
+      let variant = (d.corner_mask >> (i * 2)) & 3;
+      if (!(variant & 1) && !d.corners[(i + 1) % 4]) variant |= 4;
+      if (!(variant & 2) && !d.corners[(i + 3) % 4]) variant |= 8;
+      const cornerElev = ELEVATION[c];
+      return { index: i, type: c, variant, sameElev: cornerElev === be, cornerElev };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+
+  const diff = corners.filter((c) => !c.sameElev);
+
+  // Base
+  const baseGeo = diff.length === 0 ? FULL_SQUARE : buildCutoutBaseGeo(diff);
+  const baseKey = diff.length === 0
+    ? `terrain_${tt}`
+    : `terrain_${tt}_c${diff.map((c) => `${c.index}v${c.variant}`).join("_")}`;
+  add(baseKey, baseGeo, [p.x, p.y, be], terrainColor(tt, theme), { recv: true, tex: be === 0 ? borderTex : undefined });
+
+  // Same-elevation corners
+  for (const c of corners.filter((c) => c.sameElev)) {
+    const buildable = ELEVATION[c.type] === 0;
+    add(
+      `corner_${c.index}_${c.type}_${c.variant}${buildable ? "_b" : ""}`,
+      CORNER_GEOS[c.index][c.variant],
+      [p.x, p.y, be + 0.01],
+      terrainColor(c.type, theme),
+      { recv: true, tex: buildable ? borderTex : undefined },
+    );
+  }
+
+  // Diff-elevation corners (overlay + cliff)
+  for (const c of diff) {
+    const upperZ = Math.max(be, c.cornerElev);
+    const lowerZ = Math.min(be, c.cornerElev);
+    const height = upperZ - lowerZ;
+    const higherType = c.cornerElev > be ? c.type : tt;
+
+    add(
+      `corner_${c.index}_${c.type}_${c.variant}${c.cornerElev === 0 ? "_b" : ""}`,
+      CORNER_GEOS[c.index][c.variant],
+      [p.x, p.y, c.cornerElev],
+      terrainColor(c.type, theme),
+      { recv: true, tex: c.cornerElev === 0 ? borderTex : undefined },
+    );
+    add(
+      `cliff_${c.index}_${c.variant}_${height}_${higherType}`,
+      buildCliffGeo(c.index, c.variant, height),
+      [p.x, p.y, lowerZ],
+      terrainColor(higherType, theme).scale(0.7),
+      { cast: true },
+    );
+  }
+
+  // Edge cliffs
+  const diffSet = new Set(diff.map((c) => c.index));
+  for (let i = 0; i < 4; i++) {
+    if (diffSet.has(i) || diffSet.has((i + 1) % 4)) continue;
+    const [dx, dy] = EDGE_DIRS[i];
+    const neighbors = getObjectsAt(p.x + dx, p.y + dy);
+    const terrain = neighbors.find((n) => n.object.kind === "Terrain");
+    if (!terrain) continue;
+    const neighborElev = ELEVATION[(terrain.object.data as { terrain_type: TerrainType }).terrain_type];
+    if (neighborElev >= be) continue;
+    const height = be - neighborElev;
+    add(
+      `edge_cliff_${i}_${height}_${tt}`,
+      buildEdgeCliffGeo(i, height),
+      [p.x, p.y, be - height],
+      terrainColor(tt, theme).scale(0.7),
+      { cast: true },
+    );
+  }
+
+  // Trees
+  if (tt === "Forest") {
+    const hasRoad = getObjectsAt(p.x, p.y).some((o) => o.object.kind === "RoadNode");
+    if (!hasRoad) {
+      const treeColor = terrainColor("Forest", theme);
+      pool.ensureBucket("tree_trunk", TREE_TRUNK, treeColor, true, true);
+      for (const tree of treesForTile(p.x, p.y)) {
+        const s = tree.scale;
+        instances.push({
+          key: "tree_trunk",
+          id: pool.addInstance("tree_trunk", [p.x + tree.x, p.y + tree.y, 0], undefined, [s * 0.35, s * 0.35, s]),
+        });
+      }
     }
-    return result;
-  });
+  }
 
-  const baseGeo = createMemo(() =>
-    diffElev().length === 0 ? FULL_SQUARE : buildCutoutBaseGeo(diffElev()),
-  );
-
-  const basePoolKey = createMemo(() => {
-    const tt = props.entry.object.data.terrain_type;
-    const de = diffElev();
-    return de.length === 0
-      ? `terrain_${tt}`
-      : `terrain_${tt}_c${de.map((c) => `${c.index}v${c.variant}`).join("_")}`;
-  });
-
-  return (
-    <>
-      <InstancedMesh
-        poolKey={basePoolKey()}
-        geometry={baseGeo()}
-        position={[pos().x, pos().y, baseElev()]}
-        color={terrainColor(props.entry.object.data.terrain_type, theme())}
-        texture={baseElev() === 0 ? borderTex : undefined}
-        receiveShadow
-      />
-      {props.entry.object.data.terrain_type === "Forest" && (
-        <For each={treesForTile(pos().x, pos().y)}>
-          {(tree) => {
-            const s = () => tree.scale;
-            const visible = () => !getObjectsAt(pos().x, pos().y).some((o) => o.object.kind === "RoadNode");
-            return (
-              <InstancedMesh
-                poolKey="tree_trunk"
-                geometry={TREE_TRUNK}
-                position={[pos().x + tree.x, pos().y + tree.y, 0]}
-                scale={[s() * 0.35, s() * 0.35, s()]}
-                color={terrainColor("Forest", theme()).scale(0.7)}
-                enabled={visible()}
-                castShadow
-                receiveShadow
-              />
-            );
-          }}
-        </For>
-      )}
-      <For each={sameElev()}>
-        {(corner) => {
-          const buildable = () => ELEVATION[corner.type] === 0;
-          return (
-            <InstancedMesh
-              poolKey={`corner_${corner.index}_${corner.type}_${corner.variant}${buildable() ? "_b" : ""}`}
-              geometry={CORNER_GEOS[corner.index][corner.variant]}
-              position={[pos().x, pos().y, baseElev() + 0.01]}
-              color={terrainColor(corner.type, theme())}
-              texture={buildable() ? borderTex : undefined}
-              receiveShadow
-            />
-          );
-        }}
-      </For>
-      <For each={diffElev()}>
-        {(corner) => {
-          const be = () => baseElev();
-          const upperZ = () => Math.max(be(), corner.cornerElev);
-          const lowerZ = () => Math.min(be(), corner.cornerElev);
-          const height = () => upperZ() - lowerZ();
-          const higherType = () =>
-            corner.cornerElev > be()
-              ? corner.type
-              : props.entry.object.data.terrain_type;
-          const cliffColor = () =>
-            terrainColor(higherType(), theme()).scale(0.7);
-          return (
-            <>
-              <InstancedMesh
-                poolKey={`corner_${corner.index}_${corner.type}_${corner.variant}${corner.cornerElev === 0 ? "_b" : ""}`}
-                geometry={CORNER_GEOS[corner.index][corner.variant]}
-                position={[pos().x, pos().y, corner.cornerElev]}
-                color={terrainColor(corner.type, theme())}
-                texture={corner.cornerElev === 0 ? borderTex : undefined}
-                receiveShadow
-              />
-              <InstancedMesh
-                poolKey={`cliff_${corner.index}_${corner.variant}_${height()}_${higherType()}`}
-                geometry={buildCliffGeo(
-                  corner.index,
-                  corner.variant,
-                  height(),
-                )}
-                position={[pos().x, pos().y, lowerZ()]}
-                color={cliffColor()}
-                castShadow
-              />
-            </>
-          );
-        }}
-      </For>
-      <For each={edgeCliffs()}>
-        {(edge) => {
-          const cliffColor = () =>
-            terrainColor(props.entry.object.data.terrain_type, theme()).scale(
-              0.7,
-            );
-          return (
-            <InstancedMesh
-              poolKey={`edge_cliff_${edge.edgeIdx}_${edge.height}_${props.entry.object.data.terrain_type}`}
-              geometry={buildEdgeCliffGeo(edge.edgeIdx, edge.height)}
-              position={[pos().x, pos().y, baseElev() - edge.height]}
-              color={cliffColor()}
-              castShadow
-            />
-          );
-        }}
-      </For>
-    </>
-  );
+  return () => {
+    for (const { key, id } of instances) pool.removeInstance(key, id);
+  };
 }

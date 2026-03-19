@@ -90,7 +90,32 @@ impl World {
                 }
             }
         }
+        if let Some(entry) = self.objects.get(car_id)
+            && let Some(pos) = entry.position
+        {
+            if let Some(ids) = self.spatial.get_mut(&pos) {
+                ids.remove(&car_id);
+            }
+        }
         self.objects.remove(car_id);
+    }
+
+    /// Update the spatial position of an entity.
+    pub fn update_position(&mut self, id: EntityId, new_pos: GridCoord) {
+        if let Some(entry) = self.objects.get(id) {
+            if entry.position == Some(new_pos) {
+                return;
+            }
+            if let Some(old_pos) = entry.position {
+                if let Some(ids) = self.spatial.get_mut(&old_pos) {
+                    ids.remove(&id);
+                }
+            }
+        }
+        self.spatial.entry(new_pos).or_default().insert(id);
+        if let Some(entry) = self.objects.get_mut_silent(id) {
+            entry.position = Some(new_pos);
+        }
     }
 
     /// Find the car behind a given car on the same edge.

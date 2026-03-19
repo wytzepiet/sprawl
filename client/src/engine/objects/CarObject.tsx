@@ -1,15 +1,14 @@
-import { onCleanup } from "solid-js";
 import {
   Color3,
   Path3D,
+  SpotLight,
   Vector3,
 } from "@babylonjs/core";
-import InstancedMesh, { type InstanceHandle } from "../InstancePool";
-import { useEngine } from "../Canvas";
-import type { KindEntry } from "../GameObject";
-import { useGame } from "../../state/gameObjects";
+import type { Scene, ClusteredLightContainer } from "@babylonjs/core";
+import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { getClockOffset } from "../../network/connection";
+import type { GameObjectEntry } from "../../generated";
 
 const CAR_COLOR = new Color3(0.9, 0.25, 0.2);
 const carGeo = boxGeometry(0.18, 0.35, 0.15);
@@ -30,7 +29,6 @@ function quadBezier(
   );
 }
 
-/** Offset each node to the right of the travel direction. */
 function offsetNodes(nodes: Vector3[], offset: number): Vector3[] {
   const result: Vector3[] = [];
   for (let i = 0; i < nodes.length; i++) {
@@ -56,145 +54,123 @@ function offsetNodes(nodes: Vector3[], offset: number): Vector3[] {
   return result;
 }
 
-export default function CarObject(props: { entry: KindEntry<"Car"> }) {
-  const { scene } = useEngine();
-  const { objects } = useGame();
+export function mountCar(
+  entry: GameObjectEntry,
+  pool: InstancePool,
+  scene: Scene,
+  headlights: { container: ClusteredLightContainer; headlightIntensity: () => number },
+): () => void {
+  const data = entry.object.data as {
+    route_positions: [number, number][];
+    progress: number;
+    speed: number;
+    acceleration: number;
+    total_route_length: number;
+    updated_at: number;
+  };
 
-  let handle: InstanceHandle | null = null;
+  const centerNodes = data.route_positions.map(([x, y]) => new Vector3(x, y, 0));
+  const nodes = offsetNodes(centerNodes, LANE_OFFSET);
+  const pathPoints: Vector3[] = [];
 
-  function nodePos(nodeId: number): Vector3 | null {
-    const entry = objects[String(nodeId)];
-    if (!entry?.position) return null;
-    return new Vector3(entry.position.x + 0.5, entry.position.y + 0.5, 0);
-  }
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i];
+    const b = nodes[i + 1];
+    const segLen = Vector3.Distance(a, b);
+    if (segLen < 1e-9) continue;
+    const dir = b.subtract(a).scaleInPlace(1 / segLen);
 
-  let cachedPath: Path3D | null = null;
-  let cachedRouteKey = "";
+    const start = i > 0 ? a.add(dir.scale(segLen * 0.5)) : a.clone();
 
-  function buildPath(route: number[]): boolean {
-    const key = route.join(",");
-    if (key === cachedRouteKey && cachedPath) return true;
-
-    const centerNodes: Vector3[] = [];
-    for (const id of route) {
-      const p = nodePos(id);
-      if (!p) {
-        console.warn(
-          `[car] buildPath fail: node ${id} not found, route=${route.length} nodes`,
-        );
-        return false;
-      }
-      centerNodes.push(p);
-    }
-    if (centerNodes.length < 2) return false;
-
-    const nodes = offsetNodes(centerNodes, LANE_OFFSET);
-    const pathPoints: Vector3[] = [];
-
-    for (let i = 0; i < nodes.length - 1; i++) {
-      const a = nodes[i];
-      const b = nodes[i + 1];
-      const segLen = Vector3.Distance(a, b);
-      if (segLen < 1e-9) continue;
-      const dir = b.subtract(a).scaleInPlace(1 / segLen);
-
-      const start = i > 0 ? a.add(dir.scale(segLen * 0.5)) : a.clone();
-
-      if (i === 0) {
-        pathPoints.push(start);
-      }
-
-      if (i + 2 < nodes.length) {
-        const r1 = segLen * 0.5;
-        const beforeB = b.subtract(dir.scale(r1));
-        pathPoints.push(beforeB);
-
-        const c = nodes[i + 2];
-        const nextLen = Vector3.Distance(b, c);
-        const r2 = nextLen * 0.5;
-        const nextDir = c.subtract(b).scaleInPlace(1 / Math.max(nextLen, 1e-9));
-        const afterB = b.add(nextDir.scale(r2));
-
-        for (let s = 1; s <= BEZIER_SAMPLES; s++) {
-          pathPoints.push(quadBezier(beforeB, b, afterB, s / BEZIER_SAMPLES));
-        }
-      } else {
-        pathPoints.push(b);
-      }
+    if (i === 0) {
+      pathPoints.push(start);
     }
 
-    cachedPath = new Path3D(pathPoints);
-    cachedRouteKey = key;
-    return true;
+    if (i + 2 < nodes.length) {
+      const r1 = segLen * 0.5;
+      const beforeB = b.subtract(dir.scale(r1));
+      pathPoints.push(beforeB);
+
+      const c = nodes[i + 2];
+      const nextLen = Vector3.Distance(b, c);
+      const r2 = nextLen * 0.5;
+      const nextDir = c.subtract(b).scaleInPlace(1 / Math.max(nextLen, 1e-9));
+      const afterB = b.add(nextDir.scale(r2));
+
+      for (let s = 1; s <= BEZIER_SAMPLES; s++) {
+        pathPoints.push(quadBezier(beforeB, b, afterB, s / BEZIER_SAMPLES));
+      }
+    } else {
+      pathPoints.push(b);
+    }
   }
 
-  function carPosition(
-    car: KindEntry<"Car">["object"]["data"],
-  ): { normalized: number } | null {
-    if (!buildPath(car.route)) return null;
+  const path = pathPoints.length >= 2 ? new Path3D(pathPoints) : null;
+
+  function computePosition(): { pos: [number, number, number]; rot: [number, number, number]; tangent: Vector3 } | null {
+    if (!path) return null;
 
     const offset = getClockOffset();
-    let dt = Math.max(0, (Date.now() - (car.updated_at + offset)) / 1000);
-    if (car.acceleration < 0) {
-      const tStop = -car.speed / car.acceleration;
+    let dt = Math.max(0, (Date.now() - (data.updated_at + offset)) / 1000);
+    if (data.acceleration < 0) {
+      const tStop = -data.speed / data.acceleration;
       if (dt > tStop) dt = tStop;
     }
-    const dist =
-      car.progress + car.speed * dt + 0.5 * car.acceleration * dt * dt;
-    const distances = cachedPath!.getDistances();
+    const dist = data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt;
+    const distances = path!.getDistances();
     const pathLength = distances[distances.length - 1];
     const normalized = Math.min(Math.max(0, dist / pathLength), 1);
 
-    return { normalized };
-  }
-
-  function computePosition(): {
-    pos: [number, number, number];
-    rot: [number, number, number];
-  } | null {
-    const result = carPosition(props.entry.object.data);
-    if (!result) return null;
-
-    const p = cachedPath!.getPointAt(result.normalized);
-    const tangent = cachedPath!.getTangentAt(result.normalized);
+    const p = path!.getPointAt(normalized);
+    const tangent = path!.getTangentAt(normalized);
     return {
       pos: [p.x, p.y, 0.095],
       rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2],
+      tangent,
     };
   }
 
   const initial = computePosition();
-  const car0 = props.entry.object.data;
-  if (buildPath(car0.route)) {
-    const clientLen = cachedPath!.getDistances().at(-1)!;
-    const serverLen = car0.total_route_length;
-    const diff = Math.abs(clientLen - serverLen) / serverLen;
-    if (diff > 0.01) {
-      console.warn(
-        `[car ${props.entry.id}] PATH LENGTH MISMATCH: client=${clientLen.toFixed(3)} server=${serverLen.toFixed(3)} diff=${(diff * 100).toFixed(1)}%`,
-      );
-    }
-  }
+
+  pool.ensureBucket("car", carGeo, CAR_COLOR, true, true);
+  const instanceId = pool.addInstance("car",
+    initial?.pos ?? [0, 0, -10],
+    initial?.rot ?? [0, 0, 0],
+    undefined,
+    true, // dynamic — cars move every frame
+  );
+
+  // Headlight
+  const spot = new SpotLight(
+    `headlight_${entry.id}`,
+    Vector3.Zero(),
+    Vector3.Forward(),
+    (160 * Math.PI) / 180,
+    2,
+    scene,
+    true,
+  );
+  spot.range = 3;
+  spot.diffuse = new Color3(1, 0.95, 0.8);
+  spot.specular = Color3.Black();
+  spot.intensity = 0;
+  headlights.container.addLight(spot);
 
   const observer = scene.onBeforeRenderObservable.add(() => {
-    if (!handle) return;
     const result = computePosition();
-    if (result) handle.setMatrix(result.pos, result.rot);
+    if (result) {
+      pool.updateInstance("car", instanceId, result.pos, result.rot);
+      const t = result.tangent;
+      spot.position.set(result.pos[0] + t.x * 0.18, result.pos[1] + t.y * 0.18, result.pos[2] + 0.1);
+      spot.direction.set(t.x, t.y, -0.1);
+      spot.intensity = headlights.headlightIntensity() * 1.5;
+    }
   });
 
-  onCleanup(() => {
+  return () => {
     scene.onBeforeRenderObservable.remove(observer);
-  });
-
-  return (
-    <InstancedMesh
-      poolKey="car"
-      geometry={carGeo}
-      position={initial?.pos ?? [0, 0, -10]}
-      rotation={initial?.rot ?? [0, 0, 0]}
-      color={CAR_COLOR}
-      castShadow
-      ref={(h) => { handle = h; }}
-    />
-  );
+    headlights.container.removeLight(spot);
+    spot.dispose();
+    pool.removeInstance("car", instanceId);
+  };
 }

@@ -49,7 +49,7 @@ const EDGE_CHECKS: [[(i32, i32, usize); 2]; 4] = [
     [(-1, 0, 1), (0, 1, 1)],
 ];
 
-pub fn generate(world: &mut World, seed: u32) {
+pub fn generate(world: &mut World, seed: u32) -> HashMap<(i32, i32), TerrainType> {
     let elevation = Simplex::new(seed);
     let moisture = Simplex::new(seed.wrapping_add(1));
 
@@ -187,4 +187,6 @@ pub fn generate(world: &mut World, seed: u32) {
             );
         }
     }
+
+    types
 }

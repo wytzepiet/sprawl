@@ -36,12 +36,14 @@ export function OrthoCamera() {
   updateOrtho();
   const resizeObs = engine.onResizeObservable.add(updateOrtho);
 
+  const VIEWPORT_MARGIN = 8; // extra tiles beyond visible edge
+
   function sendViewportIfChanged() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-    const minX = Math.floor(camera.position.x - orthoSize * aspect);
-    const maxX = Math.ceil(camera.position.x + orthoSize * aspect);
-    const minY = Math.floor(camera.position.y - orthoSize);
-    const maxY = Math.ceil(camera.position.y + orthoSize);
+    const minX = Math.floor(camera.position.x - orthoSize * aspect) - VIEWPORT_MARGIN;
+    const maxX = Math.ceil(camera.position.x + orthoSize * aspect) + VIEWPORT_MARGIN;
+    const minY = Math.floor(camera.position.y - orthoSize) - VIEWPORT_MARGIN;
+    const maxY = Math.ceil(camera.position.y + orthoSize) + VIEWPORT_MARGIN;
 
     const now = performance.now();
     if (minX === lastVpMinX && minY === lastVpMinY && maxX === lastVpMaxX && maxY === lastVpMaxY) return;
