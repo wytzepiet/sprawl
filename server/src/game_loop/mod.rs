@@ -86,7 +86,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                             if !ops.is_empty() {
                                 let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
                             }
-                            // viewport stays — client will send SetViewport again after reset
                         }
                         world = World::new();
                         events = EventQueue::new();
@@ -99,8 +98,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         for pos in edge_anchors {
                             world.place_building_unchecked(pos, BuildingType::CarSpawner);
                         }
-                        // Send terrain_seed so clients know it changed; objects come via SetViewport
-                        broadcast(&clients, &ServerMessage::Update(StateUpdate { ops: vec![], server_time: now, terrain_seed: seed }));
+                        // Re-send viewport contents for all connected clients
+                        let viewports: Vec<_> = clients.iter()
+                            .filter_map(|(id, cs)| cs.viewport.map(|v| (*id, v)))
+                            .collect();
+                        for (cid, bounds) in viewports {
+                            handle_set_viewport(&world, &mut clients, cid, bounds, now);
+                        }
                         println!("reset: world cleared, terrain regenerated");
                     } else {
                         handle_player_action(&mut world, &mut events, &mut intersections, message, now);
@@ -489,11 +493,3 @@ fn flush_dirty(
     }
 }
 
-fn broadcast(
-    clients: &HashMap<ClientId, ClientState>,
-    msg: &ServerMessage,
-) {
-    for cs in clients.values() {
-        let _ = cs.sender.send(msg.clone());
-    }
-}
