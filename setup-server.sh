@@ -10,11 +10,13 @@ fi
 IP=$1
 DOMAIN=$2
 
-ssh root@$IP "bash -s $DOMAIN" << 'REMOTE'
+ssh-keygen -R $IP 2>/dev/null
+
+ssh -o StrictHostKeyChecking=accept-new root@$IP "bash -s $DOMAIN" << 'REMOTE'
 set -e
 DOMAIN=$1
 
-apt update && apt install -y build-essential debian-keyring debian-archive-keyring apt-transport-https curl
+apt update && apt install -y build-essential debian-keyring debian-archive-keyring apt-transport-https curl unzip
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source ~/.cargo/env
 
