@@ -173,7 +173,7 @@ export function mountCar(
         result.pos[2] + 0.1,
       );
       spot.direction.set(t.x, t.y, -0.5);
-      spot.intensity = headlights.headlightIntensity() * 1.5;
+      spot.intensity = 0; // TEMP: headlights disabled for perf testing
     }
   });
 
