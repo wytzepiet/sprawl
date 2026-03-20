@@ -3,8 +3,8 @@ import { createSignal, Show } from "solid-js";
 import Scene from "./engine/Scene";
 
 const servers = [
-  ...(import.meta.env.DEV ? [{ name: "Local", host: "localhost:3001" }] : []),
-  { name: "Hetzner", host: "178.104.84.207:3001" },
+  ...(import.meta.env.DEV ? [{ name: "Local", ws: "ws://localhost:3001/ws" }] : []),
+  { name: "EU 1", ws: "wss://eu-1.sprawl.nl/ws" },
 ];
 
 export default function App() {
@@ -20,7 +20,7 @@ export default function App() {
             {servers.map((s) => (
               <button
                 class="px-6 py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-lg cursor-pointer"
-                onClick={() => setWsUrl(`ws://${s.host}/ws`)}
+                onClick={() => setWsUrl(s.ws)}
               >
                 {s.name}
               </button>
