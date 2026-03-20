@@ -3,15 +3,16 @@ use std::collections::HashMap;
 use noise::{NoiseFn, Simplex};
 
 use crate::protocol::{GameObject, GridCoord, TerrainTile, TerrainType};
+use crate::road_gen;
 use crate::world::World;
 
-const WIDTH: i32 = 100;
-const HEIGHT: i32 = 100;
-const FREQ: f64 = 0.06;
+const WIDTH: i32 = 200;
+const HEIGHT: i32 = 200;
+const FREQ: f64 = 0.05;
 
 fn elev(t: TerrainType) -> i32 {
     match t {
-        TerrainType::Water | TerrainType::Water2 | TerrainType::Water3 => -1,
+        TerrainType::Water => -1,
         TerrainType::Beach | TerrainType::Grass | TerrainType::Forest => 0,
         TerrainType::Mountain => 2,
     }
@@ -23,7 +24,7 @@ fn corner_priority(t: TerrainType) -> u8 {
         TerrainType::Grass => 3,
         TerrainType::Forest => 2,
         TerrainType::Mountain => 1,
-        TerrainType::Water | TerrainType::Water2 | TerrainType::Water3 => 0,
+        TerrainType::Water => 0,
     }
 }
 
@@ -63,11 +64,7 @@ pub fn generate(world: &mut World, seed: u32) -> HashMap<(i32, i32), TerrainType
             let e = elevation.get([x as f64 * FREQ, y as f64 * FREQ]);
             let m = moisture.get([x as f64 * FREQ, y as f64 * FREQ]);
 
-            let terrain_type = if e < -0.55 {
-                TerrainType::Water3
-            } else if e < -0.35 {
-                TerrainType::Water2
-            } else if e < -0.05 {
+            let terrain_type = if e < -0.05 {
                 TerrainType::Water
             } else if e < 0.05 {
                 TerrainType::Beach
@@ -176,15 +173,17 @@ pub fn generate(world: &mut World, seed: u32) -> HashMap<(i32, i32), TerrainType
                     .collect()
             };
 
-            world.objects.insert(
-                GameObject::Terrain(TerrainTile {
-                    terrain_type: my_type,
-                    corners: corners.clone(),
-                    corner_mask,
-                    edges,
-                }),
-                Some(GridCoord { x, y }),
-            );
+            if !road_gen::is_edge_chunk_tile(x, y) {
+                world.objects.insert(
+                    GameObject::Terrain(TerrainTile {
+                        terrain_type: my_type,
+                        corners: corners.clone(),
+                        corner_mask,
+                        edges,
+                    }),
+                    Some(GridCoord { x, y }),
+                );
+            }
         }
     }
 

@@ -7,9 +7,14 @@ use rand::{Rng, SeedableRng};
 use crate::protocol::{GridCoord, TerrainType};
 use crate::world::World;
 
-#[derive(PartialEq, PartialOrd, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 struct F(f64);
 impl Eq for F {}
+impl PartialOrd for F {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 impl Ord for F {
     fn cmp(&self, other: &Self) -> Ordering {
         self.0.total_cmp(&other.0)
@@ -17,11 +22,17 @@ impl Ord for F {
 }
 
 const CHUNK_SIZE: i32 = 32;
-const CHUNKS_PER_AXIS: i32 = 3;
-const WIDTH: i32 = 100;
+const CHUNKS_PER_AXIS: i32 = 6;
+const WIDTH: i32 = 200;
 const ORIGIN: i32 = -(WIDTH / 2);
 
-pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) {
+pub fn is_edge_chunk_tile(x: i32, y: i32) -> bool {
+    let cx = (x - ORIGIN) / CHUNK_SIZE;
+    let cy = (y - ORIGIN) / CHUNK_SIZE;
+    cx == 0 || cx == CHUNKS_PER_AXIS - 1 || cy == 0 || cy == CHUNKS_PER_AXIS - 1
+}
+
+pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> Vec<GridCoord> {
     let mut rng = SmallRng::seed_from_u64(seed as u64);
     let mut anchors: HashMap<(i32, i32), (i32, i32)> = HashMap::new();
 
@@ -46,7 +57,7 @@ pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), Terr
         }
     }
 
-    let mut placed_roads: HashSet<(i32, i32)> = HashSet::new();
+    let mut road_edges: HashSet<((i32, i32), (i32, i32))> = HashSet::new();
 
     // Connect each chunk to right and top neighbors
     let pairs: Vec<_> = anchors.keys().copied().collect();
@@ -60,9 +71,10 @@ pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), Terr
                 Some(&b) => b,
                 None => continue,
             };
-            if let Some(path) = astar(a, b, terrain, &placed_roads) {
-                for &tile in &path {
-                    placed_roads.insert(tile);
+            if let Some(path) = astar(a, b, terrain, &road_edges) {
+                for w in path.windows(2) {
+                    road_edges.insert((w[0], w[1]));
+                    road_edges.insert((w[1], w[0]));
                 }
                 let coords: Vec<GridCoord> =
                     path.iter().map(|&(x, y)| GridCoord { x, y }).collect();
@@ -70,22 +82,43 @@ pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), Terr
             }
         }
     }
+
+    // Collect edge anchors
+    anchors
+        .iter()
+        .filter(|&(&(cx, cy), _)| cx == 0 || cx == CHUNKS_PER_AXIS - 1 || cy == 0 || cy == CHUNKS_PER_AXIS - 1)
+        .map(|(_, &(x, y))| GridCoord { x, y })
+        .collect()
 }
 
 const SQRT2: f64 = std::f64::consts::SQRT_2;
 
 fn tile_cost(
-    pos: (i32, i32),
+    from: (i32, i32),
+    to: (i32, i32),
     terrain: &HashMap<(i32, i32), TerrainType>,
-    placed_roads: &HashSet<(i32, i32)>,
+    road_edges: &HashSet<((i32, i32), (i32, i32))>,
 ) -> Option<f64> {
-    if placed_roads.contains(&pos) {
-        return Some(0.5);
+    if road_edges.contains(&(from, to)) {
+        return Some(1.0);
     }
-    match terrain.get(&pos)? {
+    // Forbid cells that sit between two diagonally-connected road cells.
+    // The 4 pairs of cardinal neighbors that are diagonal to each other:
+    let (tx, ty) = to;
+    for &(a, b) in &[
+        ((tx - 1, ty), (tx, ty - 1)),
+        ((tx + 1, ty), (tx, ty - 1)),
+        ((tx - 1, ty), (tx, ty + 1)),
+        ((tx + 1, ty), (tx, ty + 1)),
+    ] {
+        if road_edges.contains(&(a, b)) {
+            return None;
+        }
+    }
+    match terrain.get(&to)? {
         TerrainType::Mountain => None,
-        TerrainType::Water | TerrainType::Water2 | TerrainType::Water3 => Some(10.0),
-        _ => Some(2.0),
+        TerrainType::Water => Some(20.0),
+        _ => Some(4.0),
     }
 }
 
@@ -93,7 +126,7 @@ fn astar(
     start: (i32, i32),
     goal: (i32, i32),
     terrain: &HashMap<(i32, i32), TerrainType>,
-    placed_roads: &HashSet<(i32, i32)>,
+    road_edges: &HashSet<((i32, i32), (i32, i32))>,
 ) -> Option<Vec<(i32, i32)>> {
     let heuristic = |p: (i32, i32)| {
         let dx = (p.0 - goal.0).abs() as f64;
@@ -135,16 +168,18 @@ fn astar(
         }
 
         let current_g = g[&pos];
-        let prev_dir = came_from.get(&pos).map(|&prev| (x - prev.0, y - prev.1));
+        let prev = came_from.get(&pos).copied();
         for &(dx, dy) in &DIRS {
-            // Reject sharp turns (< 90°): dot product of prev and next direction must be >= 0
-            if let Some((pdx, pdy)) = prev_dir {
+            // Reject sharp turns relative to our own path
+            if let Some(p) = prev {
+                let pdx = x - p.0;
+                let pdy = y - p.1;
                 if pdx * dx + pdy * dy < 0 {
                     continue;
                 }
             }
             let next = (x + dx, y + dy);
-            let base_cost = match tile_cost(next, terrain, placed_roads) {
+            let base_cost = match tile_cost(pos, next, terrain, road_edges) {
                 Some(c) => c,
                 None => continue,
             };

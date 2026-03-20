@@ -6,8 +6,6 @@ import type { MeshGeometry } from "../Mesh";
 
 const ELEVATION: Record<TerrainType, number> = {
   Water: -0.5,
-  Water2: -0.5,
-  Water3: -0.5,
   Beach: 0,
   Grass: 0,
   Forest: 0,
@@ -73,23 +71,23 @@ interface TreeInfo {
   scale: number;
 }
 
-const GRID = 2; // 2x2 jittered grid = 4 trees
-const CELL = 1 / GRID;
+const CELLS: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
+const CELL_W = 0.5;
 
 function treesForTile(tx: number, ty: number): TreeInfo[] {
   let s = seed(tx, ty);
   const trees: TreeInfo[] = [];
-  for (let gy = 0; gy < GRID; gy++) {
-    for (let gx = 0; gx < GRID; gx++) {
-      let v: number;
+  for (const [cx, cy] of CELLS) {
+    let v: number, x: number, y: number;
+    do {
       [s, v] = nextRand(s);
-      const x = (gx + v) * CELL;
+      x = cx * CELL_W + v * CELL_W;
       [s, v] = nextRand(s);
-      const y = (gy + v) * CELL;
-      [s, v] = nextRand(s);
-      const scale = 0.5 + v * 1;
-      trees.push({ x, y, scale });
-    }
+      y = cy * CELL_W + v * CELL_W;
+    } while ((x - 0.5) ** 2 + (y - 0.5) ** 2 > 0.25);
+    [s, v] = nextRand(s);
+    const scale = 0.5 + v * 0.5;
+    trees.push({ x, y, scale });
   }
   return trees;
 }
@@ -395,10 +393,6 @@ export function terrainColor(type: TerrainType, theme: Theme): Color3 {
   switch (type) {
     case "Water":
       return theme.water;
-    case "Water2":
-      return theme.water2;
-    case "Water3":
-      return theme.water3;
     case "Beach":
       return theme.beach;
     case "Grass":

@@ -1,9 +1,4 @@
-import {
-  Color3,
-  Path3D,
-  SpotLight,
-  Vector3,
-} from "@babylonjs/core";
+import { Color3, Path3D, SpotLight, Vector3 } from "@babylonjs/core";
 import type { Scene, ClusteredLightContainer } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
@@ -58,7 +53,10 @@ export function mountCar(
   entry: GameObjectEntry,
   pool: InstancePool,
   scene: Scene,
-  headlights: { container: ClusteredLightContainer; headlightIntensity: () => number },
+  headlights: {
+    container: ClusteredLightContainer;
+    headlightIntensity: () => number;
+  },
 ): () => void {
   const data = entry.object.data as {
     route_positions: [number, number][];
@@ -69,7 +67,9 @@ export function mountCar(
     updated_at: number;
   };
 
-  const centerNodes = data.route_positions.map(([x, y]) => new Vector3(x, y, 0));
+  const centerNodes = data.route_positions.map(
+    ([x, y]) => new Vector3(x, y, 0),
+  );
   const nodes = offsetNodes(centerNodes, LANE_OFFSET);
   const pathPoints: Vector3[] = [];
 
@@ -107,7 +107,11 @@ export function mountCar(
 
   const path = pathPoints.length >= 2 ? new Path3D(pathPoints) : null;
 
-  function computePosition(): { pos: [number, number, number]; rot: [number, number, number]; tangent: Vector3 } | null {
+  function computePosition(): {
+    pos: [number, number, number];
+    rot: [number, number, number];
+    tangent: Vector3;
+  } | null {
     if (!path) return null;
 
     const offset = getClockOffset();
@@ -116,7 +120,8 @@ export function mountCar(
       const tStop = -data.speed / data.acceleration;
       if (dt > tStop) dt = tStop;
     }
-    const dist = data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt;
+    const dist =
+      data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt;
     const distances = path!.getDistances();
     const pathLength = distances[distances.length - 1];
     const normalized = Math.min(Math.max(0, dist / pathLength), 1);
@@ -133,7 +138,8 @@ export function mountCar(
   const initial = computePosition();
 
   pool.ensureBucket("car", carGeo, CAR_COLOR, true, true);
-  const instanceId = pool.addInstance("car",
+  const instanceId = pool.addInstance(
+    "car",
     initial?.pos ?? [0, 0, -10],
     initial?.rot ?? [0, 0, 0],
     undefined,
@@ -161,8 +167,12 @@ export function mountCar(
     if (result) {
       pool.updateInstance("car", instanceId, result.pos, result.rot);
       const t = result.tangent;
-      spot.position.set(result.pos[0] + t.x * 0.18, result.pos[1] + t.y * 0.18, result.pos[2] + 0.1);
-      spot.direction.set(t.x, t.y, -0.1);
+      spot.position.set(
+        result.pos[0] + t.x * 0.18,
+        result.pos[1] + t.y * 0.18,
+        result.pos[2] + 0.1,
+      );
+      spot.direction.set(t.x, t.y, -0.5);
       spot.intensity = headlights.headlightIntensity() * 1.5;
     }
   });

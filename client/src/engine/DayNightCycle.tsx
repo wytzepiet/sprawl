@@ -116,42 +116,67 @@ function sunDirection(t: number): Vector3 {
 }
 
 // ---------------------------------------------------------------------------
-// Context
+// Context — time signals (no Babylon dependency)
 // ---------------------------------------------------------------------------
 
 export interface DayNightState {
   timeOfDay: () => number;
-  /** Ambient tint for custom shaders (grid). */
+  setTimeOfDay: (t: number) => void;
+  paused: () => boolean;
+  setPaused: (p: boolean) => void;
   ambientColor: () => Color3;
-  shadowGenerator: ShadowGenerator;
+  shadowGenerator: () => ShadowGenerator | undefined;
+  /** @internal used by DayNightLights */
+  _setAmbient: (v: Color3) => void;
+  /** @internal used by DayNightLights */
+  _setShadowGen: (v: ShadowGenerator) => void;
 }
 
 const DayNightCtx = createContext<DayNightState>();
 
 export function useDayNight(): DayNightState {
   const ctx = useContext(DayNightCtx);
-  if (!ctx) throw new Error("useDayNight must be used within <DayNightCycle>");
+  if (!ctx) throw new Error("useDayNight must be used within <DayNightProvider>");
   return ctx;
 }
 
 // ---------------------------------------------------------------------------
-// Component
+// Provider — pure signals, no Babylon
 // ---------------------------------------------------------------------------
 
-export default function DayNightCycle(props: ParentProps) {
-  const { scene } = useEngine();
-
+export function DayNightProvider(props: ParentProps) {
   const [timeOfDay, setTimeOfDay] = createSignal(0.35);
+  const [paused, setPaused] = createSignal(false);
   const [ambient, setAmbient] = createSignal(ramp(ambientStops, 0.35, lerp3));
+  const [shadowGen, setShadowGen] = createSignal<ShadowGenerator>();
+
+  const state: DayNightState = {
+    timeOfDay,
+    setTimeOfDay,
+    paused,
+    setPaused,
+    ambientColor: ambient,
+    shadowGenerator: shadowGen,
+    _setAmbient: setAmbient,
+    _setShadowGen: setShadowGen,
+  };
+
+  return <DayNightCtx.Provider value={state}>{props.children}</DayNightCtx.Provider>;
+}
+
+// ---------------------------------------------------------------------------
+// Lights — Babylon lights + render loop (must be inside Canvas)
+// ---------------------------------------------------------------------------
+
+export default function DayNightLights(props: ParentProps) {
+  const { scene } = useEngine();
+  const { timeOfDay, paused, setTimeOfDay, _setAmbient: setAmbient, _setShadowGen: setShadowGen } = useDayNight();
 
   // --- Lights ---
-
-  // Hemisphere light: ambient fill (always on, color varies with time)
   const hemiLight = new HemisphericLight("hemi", new Vector3(0, 0, 1), scene);
   hemiLight.intensity = 0.65;
   hemiLight.specular = Color3.Black();
 
-  // Directional light: sun (casts shadows, direction/intensity vary with time)
   const sunLight = new DirectionalLight("sun", sunDirection(0.35), scene);
   sunLight.intensity = 0.4 * sunElevation(0.35);
   sunLight.specular = Color3.Black();
@@ -162,27 +187,28 @@ export default function DayNightCycle(props: ParentProps) {
   shadowGen.usePercentageCloserFiltering = true;
   shadowGen.filteringQuality = ShadowGenerator.QUALITY_LOW;
   shadowGen.bias = 0.001;
+  setShadowGen(shadowGen);
 
   // --- Per-frame update ---
   const camera = scene.activeCamera!;
   const obs = scene.onBeforeRenderObservable.add(() => {
-    const dt = scene.getEngine().getDeltaTime() / 1000;
-    let t = timeOfDay() + dt / DAY_DURATION_SECONDS;
-    if (t >= 1) t -= 1;
-    setTimeOfDay(t);
+    let t = timeOfDay();
+    if (!paused()) {
+      const dt = scene.getEngine().getDeltaTime() / 1000;
+      t += dt / DAY_DURATION_SECONDS;
+      if (t >= 1) t -= 1;
+      setTimeOfDay(t);
+    }
 
     const amb = ramp(ambientStops, t, lerp3);
     setAmbient(amb);
 
-    // Hemisphere light color tracks ambient
     hemiLight.diffuse = amb;
 
-    // Sun direction and intensity
     const elev = sunElevation(t);
     sunLight.direction = sunDirection(t);
     sunLight.intensity = 0.4 * elev;
 
-    // Sun orbits camera center at a radius derived from the ortho view size
     const orthoW = camera.orthoRight! - camera.orthoLeft!;
     const orthoH = camera.orthoTop! - camera.orthoBottom!;
     const radius = Math.max(orthoW, orthoH) / 2;
@@ -197,7 +223,6 @@ export default function DayNightCycle(props: ParentProps) {
     sunLight.orthoTop = radius;
     sunLight.orthoBottom = -radius;
 
-    // Scene background
     const sky = ramp(skyStops, t, lerp4);
     scene.clearColor.r = sky.r;
     scene.clearColor.g = sky.g;
@@ -212,11 +237,5 @@ export default function DayNightCycle(props: ParentProps) {
     sunLight.dispose();
   });
 
-  const state: DayNightState = {
-    timeOfDay,
-    ambientColor: ambient,
-    shadowGenerator: shadowGen,
-  };
-
-  return <DayNightCtx.Provider value={state}>{props.children}</DayNightCtx.Provider>;
+  return <>{props.children}</>;
 }

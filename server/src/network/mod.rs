@@ -5,7 +5,7 @@ use futures::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
-use crate::protocol::{ClientMessage, ServerMessage};
+use crate::protocol::{ClientMessage, Operation, ServerMessage, StateUpdate};
 
 pub type ClientId = u64;
 
@@ -40,12 +40,50 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     let (mut sink, mut stream) = socket.split();
 
-    // Write task: forward ServerMessages from game loop to WebSocket
+    // Write task: batch ServerMessages over a 50ms window before sending
     let write_task = tokio::spawn(async move {
-        while let Some(msg) = msg_rx.recv().await {
-            let bytes = rmp_serde::to_vec_named(&msg).unwrap();
-            if sink.send(Message::Binary(bytes.into())).await.is_err() {
-                break;
+        let mut buf: Vec<ServerMessage> = Vec::new();
+        loop {
+            let first = match msg_rx.recv().await {
+                Some(msg) => msg,
+                None => return,
+            };
+            buf.push(first);
+
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+            while let Ok(msg) = msg_rx.try_recv() {
+                buf.push(msg);
+            }
+
+            let mut ops: Vec<Operation> = Vec::new();
+            let mut server_time: u64 = 0;
+            let mut terrain_seed: u32 = 0;
+            let mut has_update = false;
+
+            for msg in buf.drain(..) {
+                match msg {
+                    ServerMessage::Update(su) => {
+                        has_update = true;
+                        ops.extend(su.ops);
+                        server_time = server_time.max(su.server_time);
+                        terrain_seed = su.terrain_seed;
+                    }
+                    other => {
+                        let bytes = rmp_serde::to_vec_named(&other).unwrap();
+                        if sink.send(Message::Binary(bytes.into())).await.is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if has_update {
+                let merged = ServerMessage::Update(StateUpdate { ops, server_time, terrain_seed });
+                let bytes = rmp_serde::to_vec_named(&merged).unwrap();
+                if sink.send(Message::Binary(bytes.into())).await.is_err() {
+                    return;
+                }
             }
         }
     });

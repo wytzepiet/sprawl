@@ -83,8 +83,6 @@ pub struct Car {
 #[ts(export)]
 pub enum TerrainType {
     Water,
-    Water2,
-    Water3,
     Beach,
     Grass,
     Forest,

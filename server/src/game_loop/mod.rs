@@ -22,11 +22,13 @@ struct ClientState {
     known: HashSet<EntityId>,
 }
 
-const DB_FILE: &str = "sprawl.db";
+fn db_path() -> PathBuf {
+    std::env::var("SPRAWL_DB").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("sprawl.db"))
+}
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
-    let db_path = PathBuf::from(DB_FILE);
+    let db_path = db_path();
     let mut world = load_world(&db_path);
     let mut events: EventQueue<GameEvent> = EventQueue::new();
     let mut intersections = IntersectionRegistry::new();
@@ -37,7 +39,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         let seed = rand::random::<u32>();
         world.terrain_seed = seed;
         let terrain = crate::terrain::generate(&mut world, seed);
-        crate::road_gen::generate(&mut world, seed, &terrain);
+        let edge_anchors = crate::road_gen::generate(&mut world, seed, &terrain);
+        for pos in edge_anchors {
+            world.place_building_unchecked(pos, BuildingType::CarSpawner);
+        }
         println!("generated terrain ({} tiles)", world.objects.all_entries().len());
     }
 
@@ -90,7 +95,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         let seed = rand::random::<u32>();
                         world.terrain_seed = seed;
                         let terrain = crate::terrain::generate(&mut world, seed);
-                        crate::road_gen::generate(&mut world, seed, &terrain);
+                        let edge_anchors = crate::road_gen::generate(&mut world, seed, &terrain);
+                        for pos in edge_anchors {
+                            world.place_building_unchecked(pos, BuildingType::CarSpawner);
+                        }
                         // Send terrain_seed so clients know it changed; objects come via SetViewport
                         broadcast(&clients, &ServerMessage::Update(StateUpdate { ops: vec![], server_time: now, terrain_seed: seed }));
                         println!("reset: world cleared, terrain regenerated");

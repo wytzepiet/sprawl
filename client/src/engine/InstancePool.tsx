@@ -67,6 +67,8 @@ function applyTransform(
   }
 }
 
+const MAX_FREE = 32;
+
 export class InstancePool {
   private buckets = new Map<string, Bucket>();
   private scene: any;
@@ -186,9 +188,13 @@ export class InstancePool {
     if (!inst) return;
     bucket.instances.delete(id);
 
-    inst.setEnabled(false);
-    inst.unfreezeWorldMatrix();
-    bucket.free.push(inst);
+    if (bucket.free.length < MAX_FREE) {
+      inst.setEnabled(false);
+      bucket.free.push(inst);
+    } else {
+      if (bucket.castShadow) this.shadowGenerator.removeShadowCaster(inst);
+      inst.dispose();
+    }
 
     if (bucket.instances.size === 0 && bucket.free.length === 0) {
       if (bucket.castShadow) {
@@ -246,7 +252,7 @@ export function InstancePoolProvider(props: ParentProps) {
   const { scene } = useEngine();
   const { ambientColor, shadowGenerator } = useDayNight();
 
-  const pool = new InstancePool(scene, shadowGenerator);
+  const pool = new InstancePool(scene, shadowGenerator()!);
 
   createEffect(on(ambientColor, (amb) => {
     pool.updateMaterials(amb);

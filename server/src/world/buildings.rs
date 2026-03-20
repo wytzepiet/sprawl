@@ -24,6 +24,16 @@ impl World {
         result
     }
 
+    /// Place a building without validation (for system-placed buildings like edge spawners).
+    pub fn place_building_unchecked(&mut self, pos: GridCoord, building_type: BuildingType) -> EntityId {
+        let id = self.objects.insert(
+            GameObject::Building(Building { building_type }),
+            Some(pos),
+        );
+        self.spatial.entry(pos).or_default().insert(id);
+        id
+    }
+
     /// Place a building at the given position. Returns the building ID if placed.
     pub fn handle_place_building(&mut self, pos: GridCoord, building_type: BuildingType) -> Option<EntityId> {
         if let Some(ids) = self.spatial.get(&pos) {

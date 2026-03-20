@@ -93,10 +93,11 @@ interface GameContext {
 
 const Ctx = createContext<GameContext>();
 
-export function GameProvider(props: ParentProps) {
+export function GameProvider(props: ParentProps & { wsUrl: string }) {
   const [terrainSeed, setTerrainSeed] = createSignal(0);
 
-  const { send, close } = createConnection("ws://localhost:3001/ws", (msg) => {
+  const wsUrl = props.wsUrl;
+  const { send, close } = createConnection(wsUrl, (msg) => {
     switch (msg.type) {
       case "Update":
         updateClockOffset(msg.data.server_time);

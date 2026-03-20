@@ -16,15 +16,25 @@ export function useHeadlights(): HeadlightState {
   return ctx;
 }
 
+const TARGET_TILES = 512;
+
 export default function Headlights(props: ParentProps) {
-  const { scene } = useEngine();
+  const { engine, scene } = useEngine();
   const { timeOfDay } = useDayNight();
 
   const container = new ClusteredLightContainer("headlights", [], scene);
-  container.horizontalTiles = 32;
-  container.verticalTiles = 32;
   container.depthSlices = 1;
   container.maxRange = 5;
+
+  function updateTiles() {
+    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
+    // TARGET_TILES = h * w = h * (h * aspect) = h² * aspect
+    const h = Math.max(1, Math.round(Math.sqrt(TARGET_TILES / aspect)));
+    container.verticalTiles = h;
+    container.horizontalTiles = Math.max(1, Math.round(h * aspect));
+  }
+  updateTiles();
+  window.addEventListener("resize", updateTiles);
 
   const headlightIntensity = createMemo(() => {
     const t = timeOfDay();
@@ -34,7 +44,10 @@ export default function Headlights(props: ParentProps) {
     return 0.0;
   });
 
-  onCleanup(() => container.dispose());
+  onCleanup(() => {
+    window.removeEventListener("resize", updateTiles);
+    container.dispose();
+  });
 
   const state: HeadlightState = { container, headlightIntensity };
 

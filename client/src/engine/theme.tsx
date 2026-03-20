@@ -13,8 +13,6 @@ const hex4 = (h: string) => new Color4(...hex3(h).asArray(), 1);
 const light = {
   land: hex4("#D5F2A4"),
   water: hex3("#85D7FA"),
-  water2: hex3("#78CFF6"),
-  water3: hex3("#6BC7F2"),
   beach: hex3("#F5F1D8"),
   forest: hex3("#B3E590"),
   mountain: hex3("#F8F7F6"),
@@ -26,8 +24,6 @@ const light = {
 const dark = {
   land: hex4("#1A3028"),
   water: hex3("#0A1535"),
-  water2: hex3("#091330"),
-  water3: hex3("#08112B"),
   beach: hex3("#2A2518"),
   forest: hex3("#053030"),
   mountain: hex3("#4D4D47"),

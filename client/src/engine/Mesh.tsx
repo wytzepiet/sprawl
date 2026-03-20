@@ -38,7 +38,9 @@ function tint(color: Color3, amb: Color3): Color3 {
 
 export default function Mesh(props: MeshProps) {
   const { scene } = useEngine();
-  const { ambientColor, shadowGenerator } = useDayNight();
+  const dayNight = useDayNight();
+  const ambientColor = dayNight.ambientColor;
+  const shadowGenerator = dayNight.shadowGenerator()!;
 
   const mesh = new BabylonMesh(props.name, scene);
   const material = new StandardMaterial(`${props.name}_mat`, scene);
