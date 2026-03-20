@@ -18,6 +18,11 @@ apt update && apt install -y build-essential debian-keyring debian-archive-keyri
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source ~/.cargo/env
 
+# Bun
+curl -fsSL https://bun.sh/install | bash
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
 # Caddy
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
@@ -32,6 +37,7 @@ systemctl restart caddy
 
 # Build
 git clone https://github.com/wytzepiet/sprawl.git /opt/sprawl
+cd /opt/sprawl/client && bun install && bun run build
 cd /opt/sprawl/server && cargo build --release
 
 # Persistence

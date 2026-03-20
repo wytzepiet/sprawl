@@ -1,8 +1,12 @@
 #!/bin/bash
 set -e
 
-SERVER=${SPRAWL_HOST:-root@178.104.84.207}
+SERVERS=(
+  root@178.104.84.207
+)
 
-ssh $SERVER 'source ~/.cargo/env && cd /opt/sprawl && git pull && cd server && cargo build --release && systemctl restart sprawl'
-
-echo "Deployed. Check: ssh $SERVER systemctl status sprawl"
+for SERVER in "${SERVERS[@]}"; do
+  echo "Deploying to $SERVER..."
+  ssh -o StrictHostKeyChecking=accept-new $SERVER 'source ~/.cargo/env && export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH" && cd /opt/sprawl && git pull && cd client && bun install && bun run build && cd ../server && cargo build --release && systemctl restart sprawl'
+  echo "Done: $SERVER"
+done

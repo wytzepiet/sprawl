@@ -12,6 +12,7 @@ mod world;
 use axum::Router;
 use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 
 use network::AppState;
 
@@ -21,10 +22,14 @@ async fn main() {
 
     tokio::spawn(game_loop::run(command_rx));
 
+    let client_dir = std::env::var("CLIENT_DIR").unwrap_or_else(|_| "../client/dist".into());
+    let index = format!("{}/index.html", client_dir);
+
     let app = Router::new()
         .route("/ws", axum::routing::get(network::ws_handler))
         .layer(CorsLayer::permissive())
-        .with_state(AppState { command_tx });
+        .with_state(AppState { command_tx })
+        .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
         .await
