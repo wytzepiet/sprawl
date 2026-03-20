@@ -52,6 +52,7 @@ Description=Sprawl
 After=network.target
 
 [Service]
+Environment=CLIENT_DIR=/opt/sprawl/client/dist
 Environment=SPRAWL_DB=/mnt/HC_Volume_105179622/sprawl/sprawl.db
 ExecStart=/opt/sprawl/server/target/release/sprawl-server
 Restart=always
