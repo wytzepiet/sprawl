@@ -86,27 +86,71 @@ export function OrthoCamera() {
     },
   ));
 
-  // Mouse panning
+  // Panning & pinch-to-zoom
   let panning = false;
   let lastX = 0;
   let lastY = 0;
+  const pointers = new Map<number, { x: number; y: number }>();
+  let lastPinchDist = 0;
+
+  function pinchDistance(): number {
+    const pts = [...pointers.values()];
+    const dx = pts[0].x - pts[1].x;
+    const dy = pts[0].y - pts[1].y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function pinchCenter(): { x: number; y: number } {
+    const pts = [...pointers.values()];
+    return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+  }
 
   const onPointerDown = (e: PointerEvent) => {
     if (locked) return;
-    panning = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     canvas.setPointerCapture(e.pointerId);
+
+    if (pointers.size === 2) {
+      panning = false;
+      lastPinchDist = pinchDistance();
+    } else if (pointers.size === 1) {
+      panning = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    }
   };
 
   const onPointerMove = (e: PointerEvent) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.size === 2 && !debugMode && !locked) {
+      const dist = pinchDistance();
+      const center = pinchCenter();
+      const rect = canvas.getBoundingClientRect();
+      const nx = -((center.x - rect.left) / rect.width * 2 - 1);
+      const ny = 1 - (center.y - rect.top) / rect.height * 2;
+      const aspect = engine.getRenderWidth() / engine.getRenderHeight();
+      const worldX = targetCamX + nx * targetOrthoSize * aspect;
+      const worldY = targetCamY + ny * targetOrthoSize;
+
+      const scale = lastPinchDist / Math.max(dist, 1);
+      const newSize = Math.max(2, Math.min(100, targetOrthoSize * scale));
+
+      targetCamX = worldX - nx * newSize * aspect;
+      targetCamY = worldY - ny * newSize;
+      targetOrthoSize = newSize;
+      lastPinchDist = dist;
+      return;
+    }
+
     if (!panning) return;
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
 
-    if (debugMode) return; // let Babylon handle it
+    if (debugMode) return;
 
     const rect = canvas.getBoundingClientRect();
     const worldPerPixelX = (camera.orthoRight! - camera.orthoLeft!) / rect.width;
@@ -121,8 +165,16 @@ export function OrthoCamera() {
   };
 
   const onPointerUp = (e: PointerEvent) => {
-    panning = false;
+    pointers.delete(e.pointerId);
     canvas.releasePointerCapture(e.pointerId);
+    if (pointers.size === 1) {
+      const remaining = [...pointers.values()][0];
+      panning = true;
+      lastX = remaining.x;
+      lastY = remaining.y;
+    } else {
+      panning = false;
+    }
   };
 
   const onWheel = (e: WheelEvent) => {

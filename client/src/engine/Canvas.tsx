@@ -63,7 +63,7 @@ export default function Canvas(props: ParentProps) {
     <>
       <canvas
         ref={initCanvas}
-        style={{ width: "100vw", height: "100vh", display: "block" }}
+        style={{ width: "100vw", height: "100vh", display: "block", "touch-action": "none" }}
       />
       <Show when={ctx()}>
         {(c) => <BabylonContext.Provider value={c()}>{props.children}</BabylonContext.Provider>}
