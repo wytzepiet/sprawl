@@ -92,6 +92,8 @@ export function OrthoCamera() {
   let lastY = 0;
   const pointers = new Map<number, { x: number; y: number }>();
   let lastPinchDist = 0;
+  let lastPinchCenterX = 0;
+  let lastPinchCenterY = 0;
 
   function pinchDistance(): number {
     const pts = [...pointers.values()];
@@ -113,6 +115,9 @@ export function OrthoCamera() {
     if (pointers.size === 2) {
       panning = false;
       lastPinchDist = pinchDistance();
+      const c = pinchCenter();
+      lastPinchCenterX = c.x;
+      lastPinchCenterY = c.y;
     } else if (pointers.size === 1) {
       panning = true;
       lastX = e.clientX;
@@ -128,6 +133,21 @@ export function OrthoCamera() {
       const dist = pinchDistance();
       const center = pinchCenter();
       const rect = canvas.getBoundingClientRect();
+
+      // Pan by pinch center movement
+      const worldPerPxX = (camera.orthoRight! - camera.orthoLeft!) / rect.width;
+      const worldPerPxY = (camera.orthoTop! - camera.orthoBottom!) / rect.height;
+      const panX = (center.x - lastPinchCenterX) * worldPerPxX;
+      const panY = (center.y - lastPinchCenterY) * worldPerPxY;
+      camera.position.x += panX;
+      camera.position.y += panY;
+      targetCamX += panX;
+      targetCamY += panY;
+      camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
+      lastPinchCenterX = center.x;
+      lastPinchCenterY = center.y;
+
+      // Zoom toward pinch center
       const nx = -((center.x - rect.left) / rect.width * 2 - 1);
       const ny = 1 - (center.y - rect.top) / rect.height * 2;
       const aspect = engine.getRenderWidth() / engine.getRenderHeight();
