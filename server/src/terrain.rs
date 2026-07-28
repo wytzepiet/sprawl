@@ -174,7 +174,7 @@ pub fn generate(world: &mut World, seed: u32) -> HashMap<(i32, i32), TerrainType
             };
 
             if !road_gen::is_edge_chunk_tile(x, y) {
-                world.objects.insert(
+                world.insert_at(
                     GameObject::Terrain(TerrainTile {
                         terrain_type: my_type,
                         corners: corners.clone(),

@@ -1,7 +1,7 @@
 import { Color3, RawTexture } from "@babylonjs/core";
-import type { InstancePool } from "../InstancePool";
+import type { Scene } from "@babylonjs/core";
 import type { Theme } from "../theme";
-import type { GameObjectEntry, TerrainType } from "../../generated";
+import type { TerrainType } from "../../generated";
 import type { MeshGeometry } from "../Mesh";
 
 const ELEVATION: Record<TerrainType, number> = {
@@ -64,7 +64,7 @@ function buildCylinderGeo(radius: number, height: number): MeshGeometry {
   return { positions, indices, normals };
 }
 
-const TREE_TRUNK = buildCylinderGeo(1, 1);
+export const TREE_TRUNK = buildCylinderGeo(1, 1);
 interface TreeInfo {
   x: number;
   y: number;
@@ -95,7 +95,7 @@ function treesForTile(tx: number, ty: number): TreeInfo[] {
 const TEX_SIZE = 32;
 const BORDER = 1;
 
-function createBorderTexture(scene: any): RawTexture {
+export function createBorderTexture(scene: Scene): RawTexture {
   const data = new Uint8Array(TEX_SIZE * TEX_SIZE * 4);
   for (let y = 0; y < TEX_SIZE; y++) {
     for (let x = 0; x < TEX_SIZE; x++) {
@@ -404,8 +404,6 @@ export function terrainColor(type: TerrainType, theme: Theme): Color3 {
   }
 }
 
-let borderTex: RawTexture | undefined;
-
 const EDGE_DIRS: [number, number][] = [
   [0, -1],
   [1, 0],
@@ -413,34 +411,97 @@ const EDGE_DIRS: [number, number][] = [
   [-1, 0],
 ];
 
-export function mountTerrain(
-  entry: GameObjectEntry,
-  pool: InstancePool,
-  theme: Theme,
-  getObjectsAt: (x: number, y: number) => GameObjectEntry[],
-  scene: any,
-): () => void {
-  if (!borderTex) borderTex = createBorderTexture(scene);
+// --- Chunk buffers -------------------------------------------------------
 
-  const d = entry.object.data as { terrain_type: TerrainType; corners: (TerrainType | null)[]; corner_mask: number };
-  const p = entry.position!;
-  const tt = d.terrain_type;
+export interface TerrainBuffers {
+  positions: number[];
+  normals: number[];
+  uvs: number[];
+  colors: number[];
+  indices: number[];
+}
+
+export function emptyBuffers(): TerrainBuffers {
+  return { positions: [], normals: [], uvs: [], colors: [], indices: [] };
+}
+
+export interface TileData {
+  type: TerrainType;
+  corners: (TerrainType | null)[];
+  mask: number;
+}
+
+/** Cutout base geometries are shared across every tile with the same corner set. */
+const baseGeoCache = new Map<string, MeshGeometry>();
+
+/**
+ * Copy a unit-space geometry into a chunk buffer, translated to (ox, oy, oz).
+ * Colour goes into the vertex buffer so a whole chunk shares one material.
+ * Unbordered geometry samples the texture interior, which is flat white.
+ */
+function append(
+  buf: TerrainBuffers,
+  geo: MeshGeometry,
+  ox: number,
+  oy: number,
+  oz: number,
+  color: Color3,
+  bordered: boolean,
+): void {
+  const base = buf.positions.length / 3;
+  const p = geo.positions;
+  for (let i = 0; i < p.length; i += 3) {
+    buf.positions.push(p[i] + ox, p[i + 1] + oy, p[i + 2] + oz);
+  }
+  for (let i = 0; i < geo.normals.length; i++) buf.normals.push(geo.normals[i]);
+
+  const vertexCount = p.length / 3;
+  for (let i = 0; i < vertexCount; i++) {
+    buf.colors.push(color.r, color.g, color.b, 1);
+  }
+  if (bordered && geo.uvs) {
+    for (let i = 0; i < geo.uvs.length; i++) buf.uvs.push(geo.uvs[i]);
+  } else {
+    for (let i = 0; i < vertexCount; i++) buf.uvs.push(0.5, 0.5);
+  }
+  for (let i = 0; i < geo.indices.length; i++) {
+    buf.indices.push(base + geo.indices[i]);
+  }
+}
+
+export interface ChunkSink {
+  ground: TerrainBuffers;
+  cliffs: TerrainBuffers;
+  /** Flat 4x4 column-major matrices, 16 floats per tree. */
+  trees: number[];
+}
+
+/**
+ * Append one tile's geometry into a chunk. Coordinates are emitted relative to
+ * (originX, originY) so the chunk mesh can sit at its own origin.
+ */
+export function appendTile(
+  sink: ChunkSink,
+  x: number,
+  y: number,
+  originX: number,
+  originY: number,
+  tile: TileData,
+  theme: Theme,
+  typeAt: (x: number, y: number) => TerrainType | undefined,
+  hasRoad: (x: number, y: number) => boolean,
+): void {
+  const lx = x - originX;
+  const ly = y - originY;
+  const tt = tile.type;
   const be = ELEVATION[tt];
 
-  const instances: { key: string; id: number }[] = [];
-
-  function add(key: string, geo: MeshGeometry, pos: [number, number, number], color: Color3, opts?: { cast?: boolean; recv?: boolean; tex?: any; scale?: [number, number, number] }) {
-    pool.ensureBucket(key, geo, color, opts?.cast ?? false, opts?.recv ?? false, opts?.tex);
-    instances.push({ key, id: pool.addInstance(key, pos, undefined, opts?.scale) });
-  }
-
-  // Corners
-  const corners = d.corners
+  const corners = tile.corners
     .map((c, i) => {
       if (!c) return null;
-      let variant = (d.corner_mask >> (i * 2)) & 3;
-      if (!(variant & 1) && !d.corners[(i + 1) % 4]) variant |= 4;
-      if (!(variant & 2) && !d.corners[(i + 3) % 4]) variant |= 8;
+      let variant = (tile.mask >> (i * 2)) & 3;
+      if (!(variant & 1) && !tile.corners[(i + 1) % 4]) variant |= 4;
+      if (!(variant & 2) && !tile.corners[(i + 3) % 4]) variant |= 8;
       const cornerElev = ELEVATION[c];
       return { index: i, type: c, variant, sameElev: cornerElev === be, cornerElev };
     })
@@ -449,84 +510,91 @@ export function mountTerrain(
   const diff = corners.filter((c) => !c.sameElev);
 
   // Base
-  const baseGeo = diff.length === 0 ? FULL_SQUARE : buildCutoutBaseGeo(diff);
-  const baseKey = diff.length === 0
-    ? `terrain_${tt}`
-    : `terrain_${tt}_c${diff.map((c) => `${c.index}v${c.variant}`).join("_")}`;
-  add(baseKey, baseGeo, [p.x, p.y, be], terrainColor(tt, theme), { recv: true, tex: be === 0 ? borderTex : undefined });
+  let baseGeo: MeshGeometry;
+  if (diff.length === 0) {
+    baseGeo = FULL_SQUARE;
+  } else {
+    const key = diff.map((c) => `${c.index}v${c.variant}`).join("_");
+    let cached = baseGeoCache.get(key);
+    if (!cached) {
+      cached = buildCutoutBaseGeo(diff);
+      baseGeoCache.set(key, cached);
+    }
+    baseGeo = cached;
+  }
+  append(sink.ground, baseGeo, lx, ly, be, terrainColor(tt, theme), be === 0);
 
-  // Same-elevation corners
-  for (const c of corners.filter((c) => c.sameElev)) {
-    const buildable = ELEVATION[c.type] === 0;
-    add(
-      `corner_${c.index}_${c.type}_${c.variant}${buildable ? "_b" : ""}`,
+  // Same-elevation corner overlays
+  for (const c of corners) {
+    if (!c.sameElev) continue;
+    append(
+      sink.ground,
       CORNER_GEOS[c.index][c.variant],
-      [p.x, p.y, be + 0.01],
+      lx,
+      ly,
+      be + 0.01,
       terrainColor(c.type, theme),
-      { recv: true, tex: buildable ? borderTex : undefined },
+      ELEVATION[c.type] === 0,
     );
   }
 
-  // Diff-elevation corners (overlay + cliff)
+  // Differing-elevation corners: overlay at its own height plus a cliff wall
   for (const c of diff) {
     const upperZ = Math.max(be, c.cornerElev);
     const lowerZ = Math.min(be, c.cornerElev);
-    const height = upperZ - lowerZ;
     const higherType = c.cornerElev > be ? c.type : tt;
 
-    add(
-      `corner_${c.index}_${c.type}_${c.variant}${c.cornerElev === 0 ? "_b" : ""}`,
+    append(
+      sink.ground,
       CORNER_GEOS[c.index][c.variant],
-      [p.x, p.y, c.cornerElev],
+      lx,
+      ly,
+      c.cornerElev,
       terrainColor(c.type, theme),
-      { recv: true, tex: c.cornerElev === 0 ? borderTex : undefined },
+      c.cornerElev === 0,
     );
-    add(
-      `cliff_${c.index}_${c.variant}_${height}_${higherType}`,
-      buildCliffGeo(c.index, c.variant, height),
-      [p.x, p.y, lowerZ],
+    append(
+      sink.cliffs,
+      buildCliffGeo(c.index, c.variant, upperZ - lowerZ),
+      lx,
+      ly,
+      lowerZ,
       terrainColor(higherType, theme).scale(0.7),
-      { cast: true },
+      false,
     );
   }
 
-  // Edge cliffs
+  // Cardinal edge cliffs, where no corner already covers that edge
   const diffSet = new Set(diff.map((c) => c.index));
   for (let i = 0; i < 4; i++) {
     if (diffSet.has(i) || diffSet.has((i + 1) % 4)) continue;
     const [dx, dy] = EDGE_DIRS[i];
-    const neighbors = getObjectsAt(p.x + dx, p.y + dy);
-    const terrain = neighbors.find((n) => n.object.kind === "Terrain");
-    if (!terrain) continue;
-    const neighborElev = ELEVATION[(terrain.object.data as { terrain_type: TerrainType }).terrain_type];
+    const neighbor = typeAt(x + dx, y + dy);
+    if (neighbor === undefined) continue;
+    const neighborElev = ELEVATION[neighbor];
     if (neighborElev >= be) continue;
-    const height = be - neighborElev;
-    add(
-      `edge_cliff_${i}_${height}_${tt}`,
-      buildEdgeCliffGeo(i, height),
-      [p.x, p.y, be - height],
+    append(
+      sink.cliffs,
+      buildEdgeCliffGeo(i, be - neighborElev),
+      lx,
+      ly,
+      neighborElev,
       terrainColor(tt, theme).scale(0.7),
-      { cast: true },
+      false,
     );
   }
 
   // Trees
-  if (tt === "Forest") {
-    const hasRoad = getObjectsAt(p.x, p.y).some((o) => o.object.kind === "RoadNode");
-    if (!hasRoad) {
-      const treeColor = terrainColor("Forest", theme);
-      pool.ensureBucket("tree_trunk", TREE_TRUNK, treeColor, true, true);
-      for (const tree of treesForTile(p.x, p.y)) {
-        const s = tree.scale;
-        instances.push({
-          key: "tree_trunk",
-          id: pool.addInstance("tree_trunk", [p.x + tree.x, p.y + tree.y, 0], undefined, [s * 0.35, s * 0.35, s]),
-        });
-      }
+  if (tt === "Forest" && !hasRoad(x, y)) {
+    for (const tree of treesForTile(x, y)) {
+      const s = tree.scale;
+      // Column-major 4x4: scale on the diagonal, translation in the last row.
+      sink.trees.push(
+        s * 0.35, 0, 0, 0,
+        0, s * 0.35, 0, 0,
+        0, 0, s, 0,
+        lx + tree.x, ly + tree.y, 0, 1,
+      );
     }
   }
-
-  return () => {
-    for (const { key, id } of instances) pool.removeInstance(key, id);
-  };
 }

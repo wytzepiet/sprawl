@@ -52,12 +52,10 @@ impl World {
             return id;
         }
 
-        let id = self.objects.insert(
+        self.insert_at(
             GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![] }),
             Some(coord),
-        );
-        self.spatial.entry(coord).or_default().insert(id);
-        id
+        )
     }
 
     /// Check if adding a connection in direction (dx, dy) at `coord` would create

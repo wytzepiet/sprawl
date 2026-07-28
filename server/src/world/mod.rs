@@ -100,6 +100,18 @@ impl World {
         self.objects.remove(car_id);
     }
 
+    /// Insert an entity and register it in the spatial index.
+    ///
+    /// Everything positioned must go through here: the viewport query reads
+    /// `spatial`, so an entity missing from it is invisible to clients.
+    pub fn insert_at(&mut self, object: GameObject, pos: Option<GridCoord>) -> EntityId {
+        let id = self.objects.insert(object, pos);
+        if let Some(pos) = pos {
+            self.spatial.entry(pos).or_default().insert(id);
+        }
+        id
+    }
+
     /// Update the spatial position of an entity.
     pub fn update_position(&mut self, id: EntityId, new_pos: GridCoord) {
         if let Some(entry) = self.objects.get(id) {

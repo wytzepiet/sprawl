@@ -22,6 +22,9 @@ import { useEngine } from "./Canvas";
 /** Real seconds for one full game day. */
 const DAY_DURATION_SECONDS = 120;
 
+/** Half-extent of the sun's ortho frustum beyond which shadows stop rendering. */
+const SHADOW_MAX_RADIUS = 50;
+
 // ---------------------------------------------------------------------------
 // Color palette per time-of-day
 // ---------------------------------------------------------------------------
@@ -191,6 +194,7 @@ export default function DayNightLights(props: ParentProps) {
 
   // --- Per-frame update ---
   const camera = scene.activeCamera!;
+  let lastColorStep = -1;
   const obs = scene.onBeforeRenderObservable.add(() => {
     let t = timeOfDay();
     if (!paused()) {
@@ -200,10 +204,24 @@ export default function DayNightLights(props: ParentProps) {
       setTimeOfDay(t);
     }
 
-    const amb = ramp(ambientStops, t, lerp3);
-    setAmbient(amb);
+    // Ambient drives a material walk over every bucket, so only recompute it
+    // when the quantized time actually moves. 1/1024 of a day is below the
+    // 8-bit color step — invisible, and ~8 updates/sec instead of 60.
+    const colorStep = Math.floor(t * 1024);
+    if (colorStep !== lastColorStep) {
+      lastColorStep = colorStep;
+      const qt = colorStep / 1024;
 
-    hemiLight.diffuse = amb;
+      const amb = ramp(ambientStops, qt, lerp3);
+      setAmbient(amb);
+      hemiLight.diffuse = amb;
+
+      const sky = ramp(skyStops, qt, lerp4);
+      scene.clearColor.r = sky.r;
+      scene.clearColor.g = sky.g;
+      scene.clearColor.b = sky.b;
+      scene.clearColor.a = sky.a;
+    }
 
     const elev = sunElevation(t);
     sunLight.direction = sunDirection(t);
@@ -223,11 +241,9 @@ export default function DayNightLights(props: ParentProps) {
     sunLight.orthoTop = radius;
     sunLight.orthoBottom = -radius;
 
-    const sky = ramp(skyStops, t, lerp4);
-    scene.clearColor.r = sky.r;
-    scene.clearColor.g = sky.g;
-    scene.clearColor.b = sky.b;
-    scene.clearColor.a = sky.a;
+    // Zoomed out far enough that shadows are sub-pixel: skip the whole shadow
+    // pass rather than re-render every caster into a map nobody can read.
+    sunLight.shadowEnabled = radius < SHADOW_MAX_RADIUS;
   });
 
   onCleanup(() => {
