@@ -5,7 +5,12 @@ import { useDayNight } from "./DayNightCycle";
 import { useTheme } from "./theme";
 import { useHeadlights } from "./Headlights";
 import { TerrainChunks } from "./TerrainChunks";
-import { setOpsListener, getEntity, getObjectsAt } from "../state/gameObjects";
+import {
+  setOpsListener,
+  setTerrainListener,
+  getEntity,
+  getObjectsAt,
+} from "../state/gameObjects";
 import type { Operation, GameObjectEntry } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
@@ -58,11 +63,6 @@ export default function World() {
         case "Upsert": {
           const key = String(op.data.id);
 
-          if (op.data.object.kind === "Terrain" && op.data.position) {
-            const { x, y } = op.data.position;
-            terrain.setTile(op.data.id, x, y, op.data.object.data.terrain_type);
-            break;
-          }
 
           const existing = mounted.get(key);
           if (existing) {
@@ -99,8 +99,6 @@ export default function World() {
         }
         case "Delete": {
           const key = String(op.data);
-          if (terrain.removeTile(op.data)) break;
-
           const existing = mounted.get(key);
           if (existing) {
             if (existing.neighbors) markDirty(existing.neighbors, dirtyRoads);
@@ -143,9 +141,14 @@ export default function World() {
   }
 
   setOpsListener(processOps);
+  setTerrainListener({
+    setChunk: (chunk) => terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles),
+    unloadChunk: (coord) => terrain.unloadChunk(coord.cx, coord.cy),
+  });
 
   onCleanup(() => {
     setOpsListener(null);
+    setTerrainListener(null);
     for (const m of mounted.values()) m.cleanup();
     mounted.clear();
     terrain.dispose();

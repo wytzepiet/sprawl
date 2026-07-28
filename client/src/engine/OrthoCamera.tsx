@@ -3,10 +3,10 @@ import { FreeCamera, Vector3, Camera } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { buildMode, placingBuilding } from "../ui/buildMode";
+import { CHUNK_SIZE } from "./TerrainChunks";
 
 const BUILD_ZOOM = 8;
 const ZOOM_LERP_SPEED = 0.08;
-const VIEWPORT_THROTTLE_MS = 200;
 
 export function OrthoCamera() {
   const { engine, scene, canvas } = useEngine();
@@ -23,7 +23,6 @@ export function OrthoCamera() {
   let locked = false;
   let debugMode = false;
   let lastVpMinX = 0, lastVpMinY = 0, lastVpMaxX = 0, lastVpMaxY = 0;
-  let lastVpSend = 0;
 
   function updateOrtho() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
@@ -36,21 +35,21 @@ export function OrthoCamera() {
   updateOrtho();
   const resizeObs = engine.onResizeObservable.add(updateOrtho);
 
-  const VIEWPORT_MARGIN = 8; // extra tiles beyond visible edge
-
+  // Snap the viewport out to whole chunks. Panning within a chunk then changes
+  // nothing, so there is no rescan to throttle and no margin to pad with.
   function sendViewportIfChanged() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-    const minX = Math.floor(camera.position.x - orthoSize * aspect) - VIEWPORT_MARGIN;
-    const maxX = Math.ceil(camera.position.x + orthoSize * aspect) + VIEWPORT_MARGIN;
-    const minY = Math.floor(camera.position.y - orthoSize) - VIEWPORT_MARGIN;
-    const maxY = Math.ceil(camera.position.y + orthoSize) + VIEWPORT_MARGIN;
+    const snapLow = (v: number) => Math.floor(v / CHUNK_SIZE) * CHUNK_SIZE;
+    const snapHigh = (v: number) => Math.ceil(v / CHUNK_SIZE) * CHUNK_SIZE - 1;
 
-    const now = performance.now();
+    const minX = snapLow(camera.position.x - orthoSize * aspect);
+    const maxX = snapHigh(camera.position.x + orthoSize * aspect);
+    const minY = snapLow(camera.position.y - orthoSize);
+    const maxY = snapHigh(camera.position.y + orthoSize);
+
     if (minX === lastVpMinX && minY === lastVpMinY && maxX === lastVpMaxX && maxY === lastVpMaxY) return;
-    if (now - lastVpSend < VIEWPORT_THROTTLE_MS) return;
 
     lastVpMinX = minX; lastVpMinY = minY; lastVpMaxX = maxX; lastVpMaxY = maxY;
-    lastVpSend = now;
     send({ type: "SetViewport", data: { min_x: minX, min_y: minY, max_x: maxX, max_y: maxY } });
   }
 

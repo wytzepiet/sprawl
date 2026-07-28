@@ -22,7 +22,13 @@ import {
   type TerrainBuffers,
 } from "./objects/terrainGeometry";
 
+/** Must match the server's CHUNK_SIZE / CHUNK_SKIRT. */
 export const CHUNK_SIZE = 32;
+const CHUNK_SKIRT = 2;
+const CHUNK_STRIDE = CHUNK_SIZE + CHUNK_SKIRT * 2;
+
+/** Wire encoding, in the server's TerrainType::to_byte order. */
+const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain"];
 
 /** Chunks rebuilt per frame. Caps the hitch while a viewport streams in. */
 const REBUILDS_PER_FRAME = 2;
@@ -47,8 +53,7 @@ const floorDiv = (a: number, b: number) => Math.floor(a / b);
  * once per frame — so a tile edit and a streaming burst cost the same rebuild.
  */
 export class TerrainChunks {
-  private tiles = new Map<string, TerrainType>();
-  private tilePos = new Map<number, [number, number]>();
+  private tiles = new Map<string, Uint8Array>();
   private chunks = new Map<string, ChunkMeshes>();
   private dirty = new Set<string>();
 
@@ -93,38 +98,27 @@ export class TerrainChunks {
 
   // --- Tile data ---------------------------------------------------------
 
-  setTile(id: number, x: number, y: number, type: TerrainType): void {
-    this.tiles.set(`${x},${y}`, type);
-    this.tilePos.set(id, [x, y]);
-    this.markNeighborhood(x, y);
+  /**
+   * A chunk arrives with a skirt of surrounding tiles, so it can be meshed
+   * without consulting its neighbours -- no cross-chunk dependency, and the
+   * shared skirt keeps the seams consistent.
+   */
+  setChunk(cx: number, cy: number, tiles: Uint8Array): void {
+    const key = `${cx},${cy}`;
+    this.tiles.set(key, tiles);
+    this.dirty.add(key);
   }
 
-  /** Returns true if the id was a terrain tile. */
-  removeTile(id: number): boolean {
-    const pos = this.tilePos.get(id);
-    if (!pos) return false;
-    this.tilePos.delete(id);
-    this.tiles.delete(`${pos[0]},${pos[1]}`);
-    this.markNeighborhood(pos[0], pos[1]);
-    return true;
+  unloadChunk(cx: number, cy: number): void {
+    const key = `${cx},${cy}`;
+    this.tiles.delete(key);
+    this.dirty.delete(key);
+    this.disposeChunk(key);
   }
 
   /** A road appearing or vanishing changes tree placement on that tile. */
   markTile(x: number, y: number): void {
     this.dirty.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
-  }
-
-  /**
-   * A tile's appearance depends on types up to two tiles away -- corner masks
-   * read the neighbours' corners, which read their own neighbours -- so a
-   * change can reach into the adjacent chunk.
-   */
-  private markNeighborhood(x: number, y: number): void {
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        this.markTile(x + dx, y + dy);
-      }
-    }
   }
 
   /** Rebuild every chunk — used when the theme changes all terrain colours. */
@@ -156,12 +150,25 @@ export class TerrainChunks {
       trees: [],
     };
 
-    const sampler = createSampler((x, y) => this.tiles.get(`${x},${y}`));
+    const tiles = this.tiles.get(key);
+    if (!tiles) {
+      this.disposeChunk(key);
+      return;
+    }
+
+    const skirtX = originX - CHUNK_SKIRT;
+    const skirtY = originY - CHUNK_SKIRT;
+    const sampler = createSampler((x, y) => {
+      const ix = x - skirtX;
+      const iy = y - skirtY;
+      if (ix < 0 || iy < 0 || ix >= CHUNK_STRIDE || iy >= CHUNK_STRIDE) return undefined;
+      return TYPE_BY_BYTE[tiles[iy * CHUNK_STRIDE + ix]];
+    });
 
     let tileCount = 0;
     for (let y = originY; y < originY + CHUNK_SIZE; y++) {
       for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-        const type = this.tiles.get(`${x},${y}`);
+        const type = sampler.typeAt(x, y);
         if (!type) continue;
         tileCount++;
         appendTile(sink, x, y, originX, originY, type, theme, sampler, this.hasRoad);
@@ -292,7 +299,6 @@ export class TerrainChunks {
     this.treeMat.dispose();
     this.borderTex.dispose();
     this.tiles.clear();
-    this.tilePos.clear();
     this.dirty.clear();
   }
 }

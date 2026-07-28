@@ -89,10 +89,49 @@ pub enum TerrainType {
     Mountain,
 }
 
+/// Tiles per chunk edge. Shared by terrain transport and client meshing.
+pub const CHUNK_SIZE: i32 = 32;
+/// Extra tiles sent around a chunk so the client can derive corner shapes.
+pub const CHUNK_SKIRT: i32 = 2;
+/// Edge length of a chunk payload, in tiles.
+pub const CHUNK_STRIDE: i32 = CHUNK_SIZE + CHUNK_SKIRT * 2;
+
+/// Marks a tile outside the generated world in a chunk payload.
+pub const TILE_ABSENT: u8 = 255;
+
+impl TerrainType {
+    /// Wire encoding. The client decodes by the same order, so this must not
+    /// be reordered without updating it there.
+    pub fn to_byte(self) -> u8 {
+        match self {
+            TerrainType::Water => 0,
+            TerrainType::Beach => 1,
+            TerrainType::Grass => 2,
+            TerrainType::Forest => 3,
+            TerrainType::Mountain => 4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq, Hash)]
+#[ts(export)]
+pub struct ChunkCoord {
+    pub cx: i32,
+    pub cy: i32,
+}
+
+/// Terrain is static, so it travels as a block of tile types rather than as
+/// entities. The payload carries CHUNK_SKIRT tiles of margin on every side:
+/// the client derives corner shapes from surrounding types, reaching up to
+/// two tiles past the one it is drawing.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct TerrainTile {
-    pub terrain_type: TerrainType,
+pub struct TerrainChunk {
+    pub coord: ChunkCoord,
+    /// CHUNK_STRIDE^2 bytes, row-major from the chunk origin minus the skirt.
+    #[serde(with = "serde_bytes")]
+    #[ts(type = "Uint8Array")]
+    pub tiles: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -102,7 +141,6 @@ pub enum GameObject {
     RoadNode(RoadNode),
     Building(Building),
     Car(Car),
-    Terrain(TerrainTile),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -179,6 +217,8 @@ pub struct StateUpdate {
 #[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
     Update(StateUpdate),
+    TerrainChunk(TerrainChunk),
+    UnloadChunk(ChunkCoord),
     Error(ErrorMessage),
     Pong(#[ts(type = "number")] u64),
 }

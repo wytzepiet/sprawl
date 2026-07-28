@@ -6,7 +6,13 @@ import {
   type ParentProps,
 } from "solid-js";
 import { createConnection, updateClockOffset } from "../network/connection";
-import type { GameObjectEntry, ClientMessage, Operation } from "../generated";
+import type {
+  GameObjectEntry,
+  ClientMessage,
+  ChunkCoord,
+  Operation,
+  TerrainChunk,
+} from "../generated";
 
 function posKey(x: number, y: number): string {
   return `${x},${y}`;
@@ -32,6 +38,16 @@ type OpsListener = (ops: Operation[]) => void;
 let opsListener: OpsListener | null = null;
 export function setOpsListener(fn: OpsListener | null) {
   opsListener = fn;
+}
+
+/** Terrain arrives per chunk rather than as entities, so it bypasses ops. */
+export interface TerrainListener {
+  setChunk(chunk: TerrainChunk): void;
+  unloadChunk(coord: ChunkCoord): void;
+}
+let terrainListener: TerrainListener | null = null;
+export function setTerrainListener(fn: TerrainListener | null) {
+  terrainListener = fn;
 }
 
 // --- Ops processing ---
@@ -106,6 +122,12 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         break;
       case "Error":
         console.error("[ws] server error:", msg.data.message);
+        break;
+      case "TerrainChunk":
+        terrainListener?.setChunk(msg.data);
+        break;
+      case "UnloadChunk":
+        terrainListener?.unloadChunk(msg.data);
         break;
       case "Pong":
         updateClockOffset(msg.data);

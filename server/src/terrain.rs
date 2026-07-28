@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 use noise::{NoiseFn, Simplex};
 
-use crate::protocol::{GameObject, GridCoord, TerrainTile, TerrainType};
-use crate::road_gen;
-use crate::world::World;
+use crate::protocol::TerrainType;
 
 const WIDTH: i32 = 200;
 const HEIGHT: i32 = 200;
@@ -18,7 +16,9 @@ fn elev(t: TerrainType) -> i32 {
     }
 }
 
-pub fn generate(world: &mut World, seed: u32) -> HashMap<(i32, i32), TerrainType> {
+/// Terrain is derived state: deterministic in the seed, never persisted,
+/// and never an entity. Returns the tile types for the whole world.
+pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
     let elevation = Simplex::new(seed);
     let moisture = Simplex::new(seed.wrapping_add(1));
 
@@ -67,19 +67,6 @@ pub fn generate(world: &mut World, seed: u32) -> HashMap<(i32, i32), TerrainType
     }
     for ((x, y), t) in flips {
         types.insert((x, y), t);
-    }
-
-    // Pass 2: insert tiles. Corner shapes are derived client-side from the
-    // types of surrounding tiles, so only the type is stored.
-    for y in origin_y..(origin_y + HEIGHT) {
-        for x in origin_x..(origin_x + WIDTH) {
-            if !road_gen::is_edge_chunk_tile(x, y) {
-                world.insert_at(
-                    GameObject::Terrain(TerrainTile { terrain_type: types[&(x, y)] }),
-                    Some(GridCoord { x, y }),
-                );
-            }
-        }
     }
 
     types

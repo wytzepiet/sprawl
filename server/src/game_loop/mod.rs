@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingType, ClientMessage, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate, ViewportBounds};
+use crate::protocol::{BuildingType, CHUNK_SIZE, ChunkCoord, ClientMessage, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate, ViewportBounds};
 use crate::world::World;
 use crate::world::pathfinding;
 
@@ -20,6 +20,7 @@ struct ClientState {
     sender: mpsc::UnboundedSender<ServerMessage>,
     viewport: Option<ViewportBounds>,
     known: HashSet<EntityId>,
+    known_chunks: HashSet<ChunkCoord>,
 }
 
 fn db_path() -> PathBuf {
@@ -34,16 +35,22 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let mut intersections = IntersectionRegistry::new();
     let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
 
-    // Generate terrain if world is empty (first startup)
-    if world.objects.all_entries().is_empty() {
-        let seed = rand::random::<u32>();
-        world.terrain_seed = seed;
-        let terrain = crate::terrain::generate(&mut world, seed);
+    // Terrain is derived from the seed, so it is regenerated on every start
+    // rather than persisted. A fresh world also gets its roads laid out.
+    let fresh = world.objects.all_entries().is_empty();
+    if fresh {
+        world.terrain_seed = rand::random::<u32>();
+    }
+    world.terrain = crate::terrain::generate(world.terrain_seed);
+    println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
+
+    if fresh {
+        let seed = world.terrain_seed;
+        let terrain = world.terrain.clone();
         let edge_anchors = crate::road_gen::generate(&mut world, seed, &terrain);
         for pos in edge_anchors {
             world.place_building_unchecked(pos, BuildingType::CarSpawner);
         }
-        println!("generated terrain ({} tiles)", world.objects.all_entries().len());
     }
 
     // Rebuild edges/indices and schedule car spawns for loaded buildings
@@ -80,11 +87,16 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                     if let ClientMessage::SetViewport(bounds) = &message {
                         handle_set_viewport(&world, &mut clients, client_id, *bounds, now);
                     } else if let ClientMessage::ResetWorld = &message {
-                        // Send deletes for each client's known set, then clear
+                        // Send deletes for each client's known set, then clear.
+                        // Terrain is regenerated below, so drop the known chunks
+                        // too or the client keeps the old seed's tiles.
                         for cs in clients.values_mut() {
                             let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
                             if !ops.is_empty() {
                                 let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+                            }
+                            for coord in cs.known_chunks.drain() {
+                                let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
                             }
                         }
                         world = World::new();
@@ -93,7 +105,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         let _ = std::fs::remove_file(&db_path);
                         let seed = rand::random::<u32>();
                         world.terrain_seed = seed;
-                        let terrain = crate::terrain::generate(&mut world, seed);
+                        world.terrain = crate::terrain::generate(seed);
+                        let terrain = world.terrain.clone();
                         let edge_anchors = crate::road_gen::generate(&mut world, seed, &terrain);
                         for pos in edge_anchors {
                             world.place_building_unchecked(pos, BuildingType::CarSpawner);
@@ -116,6 +129,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                     clients.insert(id, ClientState {
                         sender,
                         viewport: None,
+                        known_chunks: HashSet::new(),
                         known: HashSet::new(),
                     });
                 }
@@ -416,12 +430,30 @@ fn handle_set_viewport(
     now: GameTime,
 ) {
     let in_viewport = world.entities_in_rect(&bounds);
+    let visible_chunks = chunks_covering(&bounds);
 
     let cs = match clients.get_mut(&client_id) {
         Some(cs) => cs,
         None => return,
     };
     cs.viewport = Some(bounds);
+
+    // Terrain travels per chunk, so only the chunks that just came into view
+    // are sent, and panning inside a chunk sends nothing at all.
+    for &coord in visible_chunks.iter() {
+        if cs.known_chunks.insert(coord) {
+            let _ = cs.sender.send(ServerMessage::TerrainChunk(world.terrain_chunk(coord)));
+        }
+    }
+    let dropped: Vec<ChunkCoord> = cs.known_chunks
+        .iter()
+        .filter(|c| !visible_chunks.contains(c))
+        .copied()
+        .collect();
+    for coord in dropped {
+        cs.known_chunks.remove(&coord);
+        let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
+    }
 
     // Enter: in viewport but not known
     let mut ops = Vec::new();
@@ -446,6 +478,18 @@ fn handle_set_viewport(
     if !ops.is_empty() {
         let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
     }
+}
+
+/// Chunk coordinates overlapping a viewport rectangle.
+fn chunks_covering(bounds: &ViewportBounds) -> HashSet<ChunkCoord> {
+    let div = |v: i32| (v as f32 / CHUNK_SIZE as f32).floor() as i32;
+    let mut out = HashSet::new();
+    for cy in div(bounds.min_y)..=div(bounds.max_y) {
+        for cx in div(bounds.min_x)..=div(bounds.max_x) {
+            out.insert(ChunkCoord { cx, cy });
+        }
+    }
+    out
 }
 
 fn flush_dirty(

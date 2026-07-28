@@ -7,7 +7,10 @@ pub mod segments;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::protocol::{EdgeKey, EntityId, GameObject, ViewportBounds};
+use crate::protocol::{
+    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, EdgeKey, EntityId, GameObject, TILE_ABSENT,
+    TerrainChunk, TerrainType, ViewportBounds,
+};
 use crate::engine::tracked::Tracked;
 use crate::world::segments::EdgeSegment;
 
@@ -18,6 +21,8 @@ pub struct World {
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     pub terrain_seed: u32,
+    /// Tile types for the whole world, regenerated from the seed at startup.
+    pub terrain: HashMap<(i32, i32), TerrainType>,
 }
 
 use crate::protocol::GridCoord;
@@ -30,6 +35,7 @@ impl World {
             edges: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed: 0,
+            terrain: HashMap::new(),
         }
     }
 
@@ -39,6 +45,7 @@ impl World {
             edges: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed,
+            terrain: HashMap::new(),
             objects,
         };
         // Rebuild spatial index from loaded objects
@@ -172,6 +179,25 @@ impl World {
                 set.remove(&car_id);
             }
         }
+    }
+
+    /// Serialise one chunk's tile types, including the skirt the client needs
+    /// to derive corner shapes. Tiles outside the world, and the unplayable rim,
+    /// are marked absent so the client renders nothing there.
+    pub fn terrain_chunk(&self, coord: ChunkCoord) -> TerrainChunk {
+        let origin_x = coord.cx * CHUNK_SIZE - CHUNK_SKIRT;
+        let origin_y = coord.cy * CHUNK_SIZE - CHUNK_SKIRT;
+        let mut tiles = Vec::with_capacity((CHUNK_STRIDE * CHUNK_STRIDE) as usize);
+        for dy in 0..CHUNK_STRIDE {
+            for dx in 0..CHUNK_STRIDE {
+                let (x, y) = (origin_x + dx, origin_y + dy);
+                tiles.push(match self.terrain.get(&(x, y)) {
+                    Some(&t) if !crate::road_gen::is_edge_chunk_tile(x, y) => t.to_byte(),
+                    _ => TILE_ABSENT,
+                });
+            }
+        }
+        TerrainChunk { coord, tiles }
     }
 
     /// Collect all entity IDs at grid positions within the given bounds.
