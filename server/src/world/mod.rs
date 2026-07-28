@@ -7,22 +7,55 @@ pub mod segments;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::protocol::{EdgeKey, EntityId, GameObject, ViewportBounds};
+use crate::protocol::{
+    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, EdgeKey, EntityId, GameObject, TILE_ABSENT,
+    TerrainChunk, TerrainType,
+};
 use crate::engine::tracked::Tracked;
 use crate::world::segments::EdgeSegment;
 
 pub struct World {
     pub objects: Tracked,
-    pub(super) spatial: HashMap<GridCoord, HashSet<EntityId>>,
+    /// Entities by chunk. Chunk-granular because that is the unit clients
+    /// subscribe to; exact-tile queries filter a chunk's set, which stays small
+    /// now that terrain is not an entity.
+    pub(super) spatial: HashMap<ChunkCoord, HashSet<EntityId>>,
     pub edges: HashMap<EdgeKey, EdgeSegment>,
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     pub terrain_seed: u32,
+    /// Tile types for the whole world, regenerated from the seed at startup.
+    pub terrain: HashMap<(i32, i32), TerrainType>,
 }
 
 use crate::protocol::GridCoord;
 
+pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
+    ChunkCoord {
+        cx: coord.x.div_euclid(CHUNK_SIZE),
+        cy: coord.y.div_euclid(CHUNK_SIZE),
+    }
+}
+
 impl World {
+    /// Entity ids at an exact tile.
+    pub(super) fn ids_at(&self, coord: GridCoord) -> Vec<EntityId> {
+        let Some(ids) = self.spatial.get(&chunk_of(coord)) else {
+            return Vec::new();
+        };
+        ids.iter()
+            .copied()
+            .filter(|id| {
+                self.objects.get(*id).and_then(|e| e.position) == Some(coord)
+            })
+            .collect()
+    }
+
+    pub fn unindex(&mut self, id: EntityId, coord: GridCoord) {
+        if let Some(ids) = self.spatial.get_mut(&chunk_of(coord)) {
+            ids.remove(&id);
+        }
+    }
     pub fn new() -> Self {
         Self {
             objects: Tracked::new(),
@@ -30,6 +63,7 @@ impl World {
             edges: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed: 0,
+            terrain: HashMap::new(),
         }
     }
 
@@ -39,12 +73,13 @@ impl World {
             edges: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed,
+            terrain: HashMap::new(),
             objects,
         };
         // Rebuild spatial index from loaded objects
         for entry in world.objects.all_entries() {
             if let Some(pos) = entry.position {
-                world.spatial.entry(pos).or_default().insert(entry.id);
+                world.spatial.entry(chunk_of(pos)).or_default().insert(entry.id);
             }
         }
         world
@@ -93,11 +128,21 @@ impl World {
         if let Some(entry) = self.objects.get(car_id)
             && let Some(pos) = entry.position
         {
-            if let Some(ids) = self.spatial.get_mut(&pos) {
-                ids.remove(&car_id);
-            }
+            self.unindex(car_id, pos);
         }
         self.objects.remove(car_id);
+    }
+
+    /// Insert an entity and register it in the spatial index.
+    ///
+    /// Everything positioned must go through here: the viewport query reads
+    /// `spatial`, so an entity missing from it is invisible to clients.
+    pub fn insert_at(&mut self, object: GameObject, pos: Option<GridCoord>) -> EntityId {
+        let id = self.objects.insert(object, pos);
+        if let Some(pos) = pos {
+            self.spatial.entry(chunk_of(pos)).or_default().insert(id);
+        }
+        id
     }
 
     /// Update the spatial position of an entity.
@@ -107,12 +152,12 @@ impl World {
                 return;
             }
             if let Some(old_pos) = entry.position {
-                if let Some(ids) = self.spatial.get_mut(&old_pos) {
-                    ids.remove(&id);
+                if chunk_of(old_pos) != chunk_of(new_pos) {
+                    self.unindex(id, old_pos);
                 }
             }
         }
-        self.spatial.entry(new_pos).or_default().insert(id);
+        self.spatial.entry(chunk_of(new_pos)).or_default().insert(id);
         if let Some(entry) = self.objects.get_mut_silent(id) {
             entry.position = Some(new_pos);
         }
@@ -162,15 +207,31 @@ impl World {
         }
     }
 
-    /// Collect all entity IDs at grid positions within the given bounds.
-    pub fn entities_in_rect(&self, bounds: &ViewportBounds) -> HashSet<EntityId> {
+    /// Serialise one chunk's tile types, including the skirt the client needs
+    /// to derive corner shapes. Tiles outside the world, and the unplayable rim,
+    /// are marked absent so the client renders nothing there.
+    pub fn terrain_chunk(&self, coord: ChunkCoord) -> TerrainChunk {
+        let origin_x = coord.cx * CHUNK_SIZE - CHUNK_SKIRT;
+        let origin_y = coord.cy * CHUNK_SIZE - CHUNK_SKIRT;
+        let mut tiles = Vec::with_capacity((CHUNK_STRIDE * CHUNK_STRIDE) as usize);
+        for dy in 0..CHUNK_STRIDE {
+            for dx in 0..CHUNK_STRIDE {
+                let (x, y) = (origin_x + dx, origin_y + dy);
+                tiles.push(match self.terrain.get(&(x, y)) {
+                    Some(&t) if !crate::road_gen::is_edge_chunk_tile(x, y) => t.to_byte(),
+                    _ => TILE_ABSENT,
+                });
+            }
+        }
+        TerrainChunk { coord, tiles }
+    }
+
+    /// Every entity in the given chunks.
+    pub fn entities_in_chunks(&self, chunks: &HashSet<ChunkCoord>) -> HashSet<EntityId> {
         let mut result = HashSet::new();
-        for y in bounds.min_y..=bounds.max_y {
-            for x in bounds.min_x..=bounds.max_x {
-                let coord = GridCoord { x, y };
-                if let Some(ids) = self.spatial.get(&coord) {
-                    result.extend(ids);
-                }
+        for coord in chunks {
+            if let Some(ids) = self.spatial.get(coord) {
+                result.extend(ids);
             }
         }
         result

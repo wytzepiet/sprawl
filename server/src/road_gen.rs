@@ -21,7 +21,7 @@ impl Ord for F {
     }
 }
 
-const CHUNK_SIZE: i32 = 32;
+use crate::protocol::CHUNK_SIZE;
 const CHUNKS_PER_AXIS: i32 = 6;
 const WIDTH: i32 = 200;
 const ORIGIN: i32 = -(WIDTH / 2);

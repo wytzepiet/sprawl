@@ -85,7 +85,7 @@ pub fn handle_car_spawn(
         }
 
     let start_pos = world.objects.get(route_nodes[0]).and_then(|e| e.position);
-    let car_id = world.objects.insert(
+    let car_id = world.insert_at(
         GameObject::Car(Car {
             route,
             route_positions,
@@ -102,9 +102,6 @@ pub fn handle_car_spawn(
         }),
         start_pos,
     );
-    if let Some(pos) = start_pos {
-        world.spatial.entry(pos).or_default().insert(car_id);
-    }
 
     world.register_car_route(car_id, &route_nodes);
 

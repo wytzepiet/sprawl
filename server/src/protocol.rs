@@ -89,21 +89,49 @@ pub enum TerrainType {
     Mountain,
 }
 
+/// Tiles per chunk edge. Shared by terrain transport and client meshing.
+pub const CHUNK_SIZE: i32 = 32;
+/// Extra tiles sent around a chunk so the client can derive corner shapes.
+pub const CHUNK_SKIRT: i32 = 2;
+/// Edge length of a chunk payload, in tiles.
+pub const CHUNK_STRIDE: i32 = CHUNK_SIZE + CHUNK_SKIRT * 2;
+
+/// Marks a tile outside the generated world in a chunk payload.
+pub const TILE_ABSENT: u8 = 255;
+
+impl TerrainType {
+    /// Wire encoding. The client decodes by the same order, so this must not
+    /// be reordered without updating it there.
+    pub fn to_byte(self) -> u8 {
+        match self {
+            TerrainType::Water => 0,
+            TerrainType::Beach => 1,
+            TerrainType::Grass => 2,
+            TerrainType::Forest => 3,
+            TerrainType::Mountain => 4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq, Hash)]
+#[ts(export)]
+pub struct ChunkCoord {
+    pub cx: i32,
+    pub cy: i32,
+}
+
+/// Terrain is static, so it travels as a block of tile types rather than as
+/// entities. The payload carries CHUNK_SKIRT tiles of margin on every side:
+/// the client derives corner shapes from surrounding types, reaching up to
+/// two tiles past the one it is drawing.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct TerrainTile {
-    pub terrain_type: TerrainType,
-    /// Corner overlays: [BL, BR, TR, TL]. Each is Some(type) when both
-    /// cardinal neighbors at that corner share a type different from this cell.
-    #[ts(type = "Array<TerrainType | null>")]
-    pub corners: Vec<Option<TerrainType>>,
-    /// 2 bits per corner encoding edge connectivity.
-    /// For corner i: bits (i*2) = edge A continues, (i*2+1) = edge B continues.
-    pub corner_mask: u8,
-    /// Cardinal edges: [bottom, right, top, left].
-    /// Some(type) when this tile has exactly 1 differing neighbor, or 2 on opposing sides.
-    #[ts(type = "Array<TerrainType | null>")]
-    pub edges: Vec<Option<TerrainType>>,
+pub struct TerrainChunk {
+    pub coord: ChunkCoord,
+    /// CHUNK_STRIDE^2 bytes, row-major from the chunk origin minus the skirt.
+    #[serde(with = "serde_bytes")]
+    #[ts(type = "Uint8Array")]
+    pub tiles: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -113,7 +141,6 @@ pub enum GameObject {
     RoadNode(RoadNode),
     Building(Building),
     Car(Car),
-    Terrain(TerrainTile),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -139,19 +166,18 @@ pub struct DemolishRoad {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct ViewportBounds {
-    pub min_x: i32,
-    pub min_y: i32,
-    pub max_x: i32,
-    pub max_y: i32,
+pub struct ChunkBounds {
+    pub min_cx: i32,
+    pub min_cy: i32,
+    pub max_cx: i32,
+    pub max_cy: i32,
 }
 
-impl ViewportBounds {
-    pub fn contains(&self, coord: GridCoord) -> bool {
-        coord.x >= self.min_x && coord.x <= self.max_x
-            && coord.y >= self.min_y && coord.y <= self.max_y
+impl ChunkBounds {
+    pub fn coords(&self) -> impl Iterator<Item = ChunkCoord> + '_ {
+        (self.min_cy..=self.max_cy)
+            .flat_map(move |cy| (self.min_cx..=self.max_cx).map(move |cx| ChunkCoord { cx, cy }))
     }
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -163,7 +189,7 @@ pub enum ClientMessage {
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
     ResetWorld,
-    SetViewport(ViewportBounds),
+    SetChunks(ChunkBounds),
     Ping,
 }
 
@@ -190,6 +216,8 @@ pub struct StateUpdate {
 #[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
     Update(StateUpdate),
+    TerrainChunk(TerrainChunk),
+    UnloadChunk(ChunkCoord),
     Error(ErrorMessage),
     Pong(#[ts(type = "number")] u64),
 }

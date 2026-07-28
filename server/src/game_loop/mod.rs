@@ -12,14 +12,16 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingType, ClientMessage, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate, ViewportBounds};
+use crate::protocol::{BuildingType, ChunkBounds, ChunkCoord, ClientMessage, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate};
+use crate::world::chunk_of;
 use crate::world::World;
 use crate::world::pathfinding;
 
 struct ClientState {
     sender: mpsc::UnboundedSender<ServerMessage>,
-    viewport: Option<ViewportBounds>,
+    subscribed: Option<ChunkBounds>,
     known: HashSet<EntityId>,
+    known_chunks: HashSet<ChunkCoord>,
 }
 
 fn db_path() -> PathBuf {
@@ -34,16 +36,22 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let mut intersections = IntersectionRegistry::new();
     let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
 
-    // Generate terrain if world is empty (first startup)
-    if world.objects.all_entries().is_empty() {
-        let seed = rand::random::<u32>();
-        world.terrain_seed = seed;
-        let terrain = crate::terrain::generate(&mut world, seed);
+    // Terrain is derived from the seed, so it is regenerated on every start
+    // rather than persisted. A fresh world also gets its roads laid out.
+    let fresh = world.objects.all_entries().is_empty();
+    if fresh {
+        world.terrain_seed = rand::random::<u32>();
+    }
+    world.terrain = crate::terrain::generate(world.terrain_seed);
+    println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
+
+    if fresh {
+        let seed = world.terrain_seed;
+        let terrain = world.terrain.clone();
         let edge_anchors = crate::road_gen::generate(&mut world, seed, &terrain);
         for pos in edge_anchors {
             world.place_building_unchecked(pos, BuildingType::CarSpawner);
         }
-        println!("generated terrain ({} tiles)", world.objects.all_entries().len());
     }
 
     // Rebuild edges/indices and schedule car spawns for loaded buildings
@@ -77,14 +85,19 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         }
                         continue;
                     }
-                    if let ClientMessage::SetViewport(bounds) = &message {
-                        handle_set_viewport(&world, &mut clients, client_id, *bounds, now);
+                    if let ClientMessage::SetChunks(bounds) = &message {
+                        handle_set_chunks(&world, &mut clients, client_id, *bounds, now);
                     } else if let ClientMessage::ResetWorld = &message {
-                        // Send deletes for each client's known set, then clear
+                        // Send deletes for each client's known set, then clear.
+                        // Terrain is regenerated below, so drop the known chunks
+                        // too or the client keeps the old seed's tiles.
                         for cs in clients.values_mut() {
                             let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
                             if !ops.is_empty() {
                                 let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+                            }
+                            for coord in cs.known_chunks.drain() {
+                                let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
                             }
                         }
                         world = World::new();
@@ -93,17 +106,18 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         let _ = std::fs::remove_file(&db_path);
                         let seed = rand::random::<u32>();
                         world.terrain_seed = seed;
-                        let terrain = crate::terrain::generate(&mut world, seed);
+                        world.terrain = crate::terrain::generate(seed);
+                        let terrain = world.terrain.clone();
                         let edge_anchors = crate::road_gen::generate(&mut world, seed, &terrain);
                         for pos in edge_anchors {
                             world.place_building_unchecked(pos, BuildingType::CarSpawner);
                         }
-                        // Re-send viewport contents for all connected clients
-                        let viewports: Vec<_> = clients.iter()
-                            .filter_map(|(id, cs)| cs.viewport.map(|v| (*id, v)))
+                        // Re-send subscribed chunks for all connected clients
+                        let subs: Vec<_> = clients.iter()
+                            .filter_map(|(id, cs)| cs.subscribed.map(|b| (*id, b)))
                             .collect();
-                        for (cid, bounds) in viewports {
-                            handle_set_viewport(&world, &mut clients, cid, bounds, now);
+                        for (cid, bounds) in subs {
+                            handle_set_chunks(&world, &mut clients, cid, bounds, now);
                         }
                         println!("reset: world cleared, terrain regenerated");
                     } else {
@@ -115,7 +129,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                     let _ = sender.send(ServerMessage::Update(StateUpdate { ops: vec![], server_time: now, terrain_seed: world.terrain_seed }));
                     clients.insert(id, ClientState {
                         sender,
-                        viewport: None,
+                        subscribed: None,
+                        known_chunks: HashSet::new(),
                         known: HashSet::new(),
                     });
                 }
@@ -211,7 +226,7 @@ fn handle_player_action(
             }
         }
         ClientMessage::ResetWorld => unreachable!("handled in run()"),
-        ClientMessage::SetViewport(_) => unreachable!("handled in run()"),
+        ClientMessage::SetChunks(_) => unreachable!("handled in run()"),
         ClientMessage::Ping => {}
     }
 }
@@ -301,7 +316,7 @@ fn handle_road_demolish(
                 }
                 intersections.remove_node(nid);
                 world.objects.remove(nid);
-                world.spatial.get_mut(&pos).map(|ids| ids.remove(&nid));
+                world.unindex(nid, pos);
             }
         }
     }
@@ -408,40 +423,60 @@ fn handle_game_event(
     }
 }
 
-fn handle_set_viewport(
+/// Reconcile a client's subscription. Chunk-granular, so panning within a
+/// chunk produces no work at all — which is why there is no throttle.
+fn handle_set_chunks(
     world: &World,
     clients: &mut HashMap<ClientId, ClientState>,
     client_id: ClientId,
-    bounds: ViewportBounds,
+    bounds: ChunkBounds,
     now: GameTime,
 ) {
-    let in_viewport = world.entities_in_rect(&bounds);
+    let visible_chunks: HashSet<ChunkCoord> = bounds.coords().collect();
+    let in_view = world.entities_in_chunks(&visible_chunks);
 
     let cs = match clients.get_mut(&client_id) {
         Some(cs) => cs,
         None => return,
     };
-    cs.viewport = Some(bounds);
+    cs.subscribed = Some(bounds);
 
-    // Enter: in viewport but not known
+    // Terrain travels per chunk, so only the chunks that just came into view
+    // are sent, and panning inside a chunk sends nothing at all.
+    for &coord in visible_chunks.iter() {
+        if cs.known_chunks.insert(coord) {
+            let _ = cs.sender.send(ServerMessage::TerrainChunk(world.terrain_chunk(coord)));
+        }
+    }
+    let dropped: Vec<ChunkCoord> = cs.known_chunks
+        .iter()
+        .filter(|c| !visible_chunks.contains(c))
+        .copied()
+        .collect();
+    for coord in dropped {
+        cs.known_chunks.remove(&coord);
+        let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
+    }
+
+    // Enter: in view but not known
     let mut ops = Vec::new();
-    for &id in &in_viewport {
+    for &id in &in_view {
         if !cs.known.contains(&id)
             && let Some(entry) = world.objects.get(id) {
                 ops.push(Operation::Upsert(Box::new(entry.clone())));
             }
     }
 
-    // Exit: known but no longer in viewport
+    // Exit: known but no longer in view
     let exits: Vec<EntityId> = cs.known.iter()
-        .filter(|id| !in_viewport.contains(id))
+        .filter(|id| !in_view.contains(id))
         .copied()
         .collect();
     for id in &exits {
         ops.push(Operation::Delete(*id));
     }
 
-    cs.known = in_viewport;
+    cs.known = in_view;
 
     if !ops.is_empty() {
         let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
@@ -463,15 +498,14 @@ fn flush_dirty(
         .collect();
 
     for cs in clients.values_mut() {
-        let viewport = match &cs.viewport {
-            Some(v) => v,
-            None => continue,
-        };
+        if cs.subscribed.is_none() {
+            continue;
+        }
 
         let mut ops = Vec::new();
 
         for entry in &changed_entries {
-            let in_vp = entry.position.is_some_and(|pos| viewport.contains(pos));
+            let in_vp = entry.position.is_some_and(|pos| cs.known_chunks.contains(&chunk_of(pos)));
 
             if in_vp {
                 ops.push(Operation::Upsert(Box::new(entry.clone())));

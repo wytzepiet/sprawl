@@ -6,15 +6,11 @@ use crate::world::World;
 impl World {
     /// Check if a building exists at the given coordinate.
     pub fn has_building_at(&self, coord: GridCoord) -> bool {
-        if let Some(ids) = self.spatial.get(&coord) {
-            for &id in ids {
-                if let Some(entry) = self.objects.get(id)
-                    && matches!(entry.object, GameObject::Building(_)) {
-                        return true;
-                    }
-            }
-        }
-        false
+        self.ids_at(coord).into_iter().any(|id| {
+            self.objects
+                .get(id)
+                .is_some_and(|e| matches!(e.object, GameObject::Building(_)))
+        })
     }
 
     /// Check if a building at this coord already has a road connection.
@@ -22,28 +18,23 @@ impl World {
         if !self.has_building_at(coord) {
             return false;
         }
-        if let Some(ids) = self.spatial.get(&coord) {
-            for &id in ids {
-                if let Some(entry) = self.objects.get(id)
-                    && let GameObject::RoadNode(ref node) = entry.object
-                        && (!node.outgoing.is_empty() || !node.incoming.is_empty()) {
-                            return true;
-                        }
-            }
-        }
-        false
+        self.ids_at(coord).into_iter().any(|id| {
+            self.objects.get(id).is_some_and(|e| match &e.object {
+                GameObject::RoadNode(node) => {
+                    !node.outgoing.is_empty() || !node.incoming.is_empty()
+                }
+                _ => false,
+            })
+        })
     }
 
     /// Find the road node entity ID at a coord, if any.
     pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
-        let ids = self.spatial.get(&coord)?;
-        for &id in ids {
-            if let Some(entry) = self.objects.get(id)
-                && matches!(entry.object, GameObject::RoadNode(_)) {
-                    return Some(id);
-                }
-        }
-        None
+        self.ids_at(coord).into_iter().find(|&id| {
+            self.objects
+                .get(id)
+                .is_some_and(|e| matches!(e.object, GameObject::RoadNode(_)))
+        })
     }
 
     /// Place a road node at coord. Idempotent: returns existing ID if one exists.
@@ -52,12 +43,10 @@ impl World {
             return id;
         }
 
-        let id = self.objects.insert(
+        self.insert_at(
             GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![] }),
             Some(coord),
-        );
-        self.spatial.entry(coord).or_default().insert(id);
-        id
+        )
     }
 
     /// Check if adding a connection in direction (dx, dy) at `coord` would create
@@ -227,7 +216,7 @@ impl World {
         }
 
         self.objects.remove(id);
-        self.spatial.get_mut(&pos).map(|ids| ids.remove(&id));
+        self.unindex(id, pos);
     }
 
     /// Check if a node is an intersection (>2 unique connections).

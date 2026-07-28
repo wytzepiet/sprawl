@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 use noise::{NoiseFn, Simplex};
 
-use crate::protocol::{GameObject, GridCoord, TerrainTile, TerrainType};
-use crate::road_gen;
-use crate::world::World;
+use crate::protocol::TerrainType;
 
 const WIDTH: i32 = 200;
 const HEIGHT: i32 = 200;
@@ -18,39 +16,9 @@ fn elev(t: TerrainType) -> i32 {
     }
 }
 
-fn corner_priority(t: TerrainType) -> u8 {
-    match t {
-        TerrainType::Beach => 4,
-        TerrainType::Grass => 3,
-        TerrainType::Forest => 2,
-        TerrainType::Mountain => 1,
-        TerrainType::Water => 0,
-    }
-}
-
-// For each corner [BL, BR, TR, TL], the two cardinal neighbors to check.
-const CORNER_NEIGHBORS: [[(i32, i32); 2]; 4] = [
-    [(-1, 0), (0, -1)], // BL: left + below
-    [(1, 0), (0, -1)],  // BR: right + below
-    [(1, 0), (0, 1)],   // TR: right + above
-    [(-1, 0), (0, 1)],  // TL: left + above
-];
-
-// For each corner i, edge connectivity checks:
-// (neighbor_dx, neighbor_dy, their_corner_index) for edge A and edge B.
-// Same-slope pairs: BL(slope -1) ↔ TR(slope -1), BR(slope +1) ↔ TL(slope +1).
-const EDGE_CHECKS: [[(i32, i32, usize); 2]; 4] = [
-    // BL(0): A=below TR(2), B=left TR(2)
-    [(0, -1, 2), (-1, 0, 2)],
-    // BR(1): A=right TL(3), B=below TL(3)
-    [(1, 0, 3), (0, -1, 3)],
-    // TR(2): A=above BL(0), B=right BL(0)
-    [(0, 1, 0), (1, 0, 0)],
-    // TL(3): A=left BR(1), B=above BR(1)
-    [(-1, 0, 1), (0, 1, 1)],
-];
-
-pub fn generate(world: &mut World, seed: u32) -> HashMap<(i32, i32), TerrainType> {
+/// Terrain is derived state: deterministic in the seed, never persisted,
+/// and never an entity. Returns the tile types for the whole world.
+pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
     let elevation = Simplex::new(seed);
     let moisture = Simplex::new(seed.wrapping_add(1));
 
@@ -99,92 +67,6 @@ pub fn generate(world: &mut World, seed: u32) -> HashMap<(i32, i32), TerrainType
     }
     for ((x, y), t) in flips {
         types.insert((x, y), t);
-    }
-
-    // Pass 2: compute corners for each cell
-    let mut all_corners: HashMap<(i32, i32), Vec<Option<TerrainType>>> = HashMap::new();
-    for y in origin_y..(origin_y + HEIGHT) {
-        for x in origin_x..(origin_x + WIDTH) {
-            let my_type = types[&(x, y)];
-            let corners: Vec<Option<TerrainType>> = CORNER_NEIGHBORS
-                .iter()
-                .map(|&[d1, d2]| {
-                    let t1 = *types.get(&(x + d1.0, y + d1.1))?;
-                    let t2 = *types.get(&(x + d2.0, y + d2.1))?;
-                    if t1 == my_type || t2 == my_type || elev(t1) != elev(t2) {
-                        return None;
-                    }
-                    if t1 == t2 {
-                        return Some(t1);
-                    }
-                    let diag = types.get(&(x + d1.0 + d2.0, y + d1.1 + d2.1)).copied();
-                    if diag != Some(t1) && diag != Some(t2) {
-                        return None;
-                    }
-                    Some(if corner_priority(t1) >= corner_priority(t2) {
-                        t1
-                    } else {
-                        t2
-                    })
-                })
-                .collect();
-            all_corners.insert((x, y), corners);
-        }
-    }
-
-    // Pass 3: compute edge connectivity mask and insert entities
-    for y in origin_y..(origin_y + HEIGHT) {
-        for x in origin_x..(origin_x + WIDTH) {
-            let my_type = types[&(x, y)];
-            let corners = &all_corners[&(x, y)];
-            let mut corner_mask: u8 = 0;
-
-            for (i, corner_type) in corners.iter().enumerate() {
-                if corner_type.is_none() {
-                    continue;
-                }
-                let [edge_a, edge_b] = EDGE_CHECKS[i];
-
-                if let Some(nc) = all_corners.get(&(x + edge_a.0, y + edge_a.1))
-                    && nc[edge_a.2].is_some()
-                {
-                    corner_mask |= 1 << (i * 2);
-                }
-                if let Some(nc) = all_corners.get(&(x + edge_b.0, y + edge_b.1))
-                    && nc[edge_b.2].is_some()
-                {
-                    corner_mask |= 1 << (i * 2 + 1);
-                }
-            }
-
-            // Cardinal edges: [bottom, right, top, left]. Empty if tile has corners.
-            const EDGE_DIRS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
-            let edges = if corners.iter().any(|c| c.is_some()) {
-                vec![None; 4]
-            } else {
-                EDGE_DIRS
-                    .iter()
-                    .map(|&(dx, dy)| {
-                        types
-                            .get(&(x + dx, y + dy))
-                            .copied()
-                            .filter(|&t| t != my_type)
-                    })
-                    .collect()
-            };
-
-            if !road_gen::is_edge_chunk_tile(x, y) {
-                world.objects.insert(
-                    GameObject::Terrain(TerrainTile {
-                        terrain_type: my_type,
-                        corners: corners.clone(),
-                        corner_mask,
-                        edges,
-                    }),
-                    Some(GridCoord { x, y }),
-                );
-            }
-        }
     }
 
     types

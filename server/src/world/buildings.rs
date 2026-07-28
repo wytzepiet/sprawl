@@ -26,40 +26,35 @@ impl World {
 
     /// Place a building without validation (for system-placed buildings like edge spawners).
     pub fn place_building_unchecked(&mut self, pos: GridCoord, building_type: BuildingType) -> EntityId {
-        let id = self.objects.insert(
+        self.insert_at(
             GameObject::Building(Building { building_type }),
             Some(pos),
-        );
-        self.spatial.entry(pos).or_default().insert(id);
-        id
+        )
     }
 
     /// Place a building at the given position. Returns the building ID if placed.
     pub fn handle_place_building(&mut self, pos: GridCoord, building_type: BuildingType) -> Option<EntityId> {
-        if let Some(ids) = self.spatial.get(&pos) {
-            for &id in ids {
-                if let Some(entry) = self.objects.get(id) {
-                    match &entry.object {
-                        GameObject::Building(_) => return None,
-                        GameObject::RoadNode(node) => {
-                            let mut unique: HashSet<EntityId> = HashSet::new();
-                            unique.extend(&node.outgoing);
-                            unique.extend(&node.incoming);
-                            if unique.len() != 1 {
-                                return None;
-                            }
+        for id in self.ids_at(pos) {
+            if let Some(entry) = self.objects.get(id) {
+                match &entry.object {
+                    GameObject::Building(_) => return None,
+                    GameObject::RoadNode(node) => {
+                        let mut unique: HashSet<EntityId> = HashSet::new();
+                        unique.extend(&node.outgoing);
+                        unique.extend(&node.incoming);
+                        if unique.len() != 1 {
+                            return None;
                         }
-                        GameObject::Car(_) | GameObject::Terrain(_) => {}
                     }
+                    GameObject::Car(_) => {}
                 }
             }
         }
 
-        let id = self.objects.insert(
+        let id = self.insert_at(
             GameObject::Building(Building { building_type }),
             Some(pos),
         );
-        self.spatial.entry(pos).or_default().insert(id);
         Some(id)
     }
 }
