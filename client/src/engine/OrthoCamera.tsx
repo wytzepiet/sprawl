@@ -22,7 +22,7 @@ export function OrthoCamera() {
   let targetCamY = camera.position.y;
   let locked = false;
   let debugMode = false;
-  let lastVpMinX = 0, lastVpMinY = 0, lastVpMaxX = 0, lastVpMaxY = 0;
+  let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN;
 
   function updateOrtho() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
@@ -35,22 +35,20 @@ export function OrthoCamera() {
   updateOrtho();
   const resizeObs = engine.onResizeObservable.add(updateOrtho);
 
-  // Snap the viewport out to whole chunks. Panning within a chunk then changes
-  // nothing, so there is no rescan to throttle and no margin to pad with.
+  // Subscription is chunk-granular, so panning within a chunk sends nothing.
   function sendViewportIfChanged() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-    const snapLow = (v: number) => Math.floor(v / CHUNK_SIZE) * CHUNK_SIZE;
-    const snapHigh = (v: number) => Math.ceil(v / CHUNK_SIZE) * CHUNK_SIZE - 1;
+    const chunk = (v: number) => Math.floor(v / CHUNK_SIZE);
 
-    const minX = snapLow(camera.position.x - orthoSize * aspect);
-    const maxX = snapHigh(camera.position.x + orthoSize * aspect);
-    const minY = snapLow(camera.position.y - orthoSize);
-    const maxY = snapHigh(camera.position.y + orthoSize);
+    const minCx = chunk(camera.position.x - orthoSize * aspect);
+    const maxCx = chunk(camera.position.x + orthoSize * aspect);
+    const minCy = chunk(camera.position.y - orthoSize);
+    const maxCy = chunk(camera.position.y + orthoSize);
 
-    if (minX === lastVpMinX && minY === lastVpMinY && maxX === lastVpMaxX && maxY === lastVpMaxY) return;
+    if (minCx === lastMinCx && minCy === lastMinCy && maxCx === lastMaxCx && maxCy === lastMaxCy) return;
 
-    lastVpMinX = minX; lastVpMinY = minY; lastVpMaxX = maxX; lastVpMaxY = maxY;
-    send({ type: "SetViewport", data: { min_x: minX, min_y: minY, max_x: maxX, max_y: maxY } });
+    lastMinCx = minCx; lastMinCy = minCy; lastMaxCx = maxCx; lastMaxCy = maxCy;
+    send({ type: "SetChunks", data: { min_cx: minCx, min_cy: minCy, max_cx: maxCx, max_cy: maxCy } });
   }
 
   // Send initial viewport once ortho is set up

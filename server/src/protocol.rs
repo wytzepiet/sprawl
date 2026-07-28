@@ -166,19 +166,18 @@ pub struct DemolishRoad {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct ViewportBounds {
-    pub min_x: i32,
-    pub min_y: i32,
-    pub max_x: i32,
-    pub max_y: i32,
+pub struct ChunkBounds {
+    pub min_cx: i32,
+    pub min_cy: i32,
+    pub max_cx: i32,
+    pub max_cy: i32,
 }
 
-impl ViewportBounds {
-    pub fn contains(&self, coord: GridCoord) -> bool {
-        coord.x >= self.min_x && coord.x <= self.max_x
-            && coord.y >= self.min_y && coord.y <= self.max_y
+impl ChunkBounds {
+    pub fn coords(&self) -> impl Iterator<Item = ChunkCoord> + '_ {
+        (self.min_cy..=self.max_cy)
+            .flat_map(move |cy| (self.min_cx..=self.max_cx).map(move |cx| ChunkCoord { cx, cy }))
     }
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -190,7 +189,7 @@ pub enum ClientMessage {
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
     ResetWorld,
-    SetViewport(ViewportBounds),
+    SetChunks(ChunkBounds),
     Ping,
 }
 

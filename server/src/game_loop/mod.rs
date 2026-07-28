@@ -12,13 +12,14 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingType, CHUNK_SIZE, ChunkCoord, ClientMessage, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate, ViewportBounds};
+use crate::protocol::{BuildingType, ChunkBounds, ChunkCoord, ClientMessage, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate};
+use crate::world::chunk_of;
 use crate::world::World;
 use crate::world::pathfinding;
 
 struct ClientState {
     sender: mpsc::UnboundedSender<ServerMessage>,
-    viewport: Option<ViewportBounds>,
+    subscribed: Option<ChunkBounds>,
     known: HashSet<EntityId>,
     known_chunks: HashSet<ChunkCoord>,
 }
@@ -84,8 +85,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         }
                         continue;
                     }
-                    if let ClientMessage::SetViewport(bounds) = &message {
-                        handle_set_viewport(&world, &mut clients, client_id, *bounds, now);
+                    if let ClientMessage::SetChunks(bounds) = &message {
+                        handle_set_chunks(&world, &mut clients, client_id, *bounds, now);
                     } else if let ClientMessage::ResetWorld = &message {
                         // Send deletes for each client's known set, then clear.
                         // Terrain is regenerated below, so drop the known chunks
@@ -111,12 +112,12 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         for pos in edge_anchors {
                             world.place_building_unchecked(pos, BuildingType::CarSpawner);
                         }
-                        // Re-send viewport contents for all connected clients
-                        let viewports: Vec<_> = clients.iter()
-                            .filter_map(|(id, cs)| cs.viewport.map(|v| (*id, v)))
+                        // Re-send subscribed chunks for all connected clients
+                        let subs: Vec<_> = clients.iter()
+                            .filter_map(|(id, cs)| cs.subscribed.map(|b| (*id, b)))
                             .collect();
-                        for (cid, bounds) in viewports {
-                            handle_set_viewport(&world, &mut clients, cid, bounds, now);
+                        for (cid, bounds) in subs {
+                            handle_set_chunks(&world, &mut clients, cid, bounds, now);
                         }
                         println!("reset: world cleared, terrain regenerated");
                     } else {
@@ -128,7 +129,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                     let _ = sender.send(ServerMessage::Update(StateUpdate { ops: vec![], server_time: now, terrain_seed: world.terrain_seed }));
                     clients.insert(id, ClientState {
                         sender,
-                        viewport: None,
+                        subscribed: None,
                         known_chunks: HashSet::new(),
                         known: HashSet::new(),
                     });
@@ -225,7 +226,7 @@ fn handle_player_action(
             }
         }
         ClientMessage::ResetWorld => unreachable!("handled in run()"),
-        ClientMessage::SetViewport(_) => unreachable!("handled in run()"),
+        ClientMessage::SetChunks(_) => unreachable!("handled in run()"),
         ClientMessage::Ping => {}
     }
 }
@@ -315,7 +316,7 @@ fn handle_road_demolish(
                 }
                 intersections.remove_node(nid);
                 world.objects.remove(nid);
-                world.spatial.get_mut(&pos).map(|ids| ids.remove(&nid));
+                world.unindex(nid, pos);
             }
         }
     }
@@ -422,21 +423,23 @@ fn handle_game_event(
     }
 }
 
-fn handle_set_viewport(
+/// Reconcile a client's subscription. Chunk-granular, so panning within a
+/// chunk produces no work at all — which is why there is no throttle.
+fn handle_set_chunks(
     world: &World,
     clients: &mut HashMap<ClientId, ClientState>,
     client_id: ClientId,
-    bounds: ViewportBounds,
+    bounds: ChunkBounds,
     now: GameTime,
 ) {
-    let in_viewport = world.entities_in_rect(&bounds);
-    let visible_chunks = chunks_covering(&bounds);
+    let visible_chunks: HashSet<ChunkCoord> = bounds.coords().collect();
+    let in_view = world.entities_in_chunks(&visible_chunks);
 
     let cs = match clients.get_mut(&client_id) {
         Some(cs) => cs,
         None => return,
     };
-    cs.viewport = Some(bounds);
+    cs.subscribed = Some(bounds);
 
     // Terrain travels per chunk, so only the chunks that just came into view
     // are sent, and panning inside a chunk sends nothing at all.
@@ -455,41 +458,29 @@ fn handle_set_viewport(
         let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
     }
 
-    // Enter: in viewport but not known
+    // Enter: in view but not known
     let mut ops = Vec::new();
-    for &id in &in_viewport {
+    for &id in &in_view {
         if !cs.known.contains(&id)
             && let Some(entry) = world.objects.get(id) {
                 ops.push(Operation::Upsert(Box::new(entry.clone())));
             }
     }
 
-    // Exit: known but no longer in viewport
+    // Exit: known but no longer in view
     let exits: Vec<EntityId> = cs.known.iter()
-        .filter(|id| !in_viewport.contains(id))
+        .filter(|id| !in_view.contains(id))
         .copied()
         .collect();
     for id in &exits {
         ops.push(Operation::Delete(*id));
     }
 
-    cs.known = in_viewport;
+    cs.known = in_view;
 
     if !ops.is_empty() {
         let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
     }
-}
-
-/// Chunk coordinates overlapping a viewport rectangle.
-fn chunks_covering(bounds: &ViewportBounds) -> HashSet<ChunkCoord> {
-    let div = |v: i32| (v as f32 / CHUNK_SIZE as f32).floor() as i32;
-    let mut out = HashSet::new();
-    for cy in div(bounds.min_y)..=div(bounds.max_y) {
-        for cx in div(bounds.min_x)..=div(bounds.max_x) {
-            out.insert(ChunkCoord { cx, cy });
-        }
-    }
-    out
 }
 
 fn flush_dirty(
@@ -507,15 +498,14 @@ fn flush_dirty(
         .collect();
 
     for cs in clients.values_mut() {
-        let viewport = match &cs.viewport {
-            Some(v) => v,
-            None => continue,
-        };
+        if cs.subscribed.is_none() {
+            continue;
+        }
 
         let mut ops = Vec::new();
 
         for entry in &changed_entries {
-            let in_vp = entry.position.is_some_and(|pos| viewport.contains(pos));
+            let in_vp = entry.position.is_some_and(|pos| cs.known_chunks.contains(&chunk_of(pos)));
 
             if in_vp {
                 ops.push(Operation::Upsert(Box::new(entry.clone())));

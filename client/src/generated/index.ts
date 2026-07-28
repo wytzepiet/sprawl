@@ -13,7 +13,7 @@ export type { GameObject } from "./GameObject";
 export type { GameObjectEntry } from "./GameObjectEntry";
 export type { Operation } from "./Operation";
 export type { ErrorMessage } from "./ErrorMessage";
-export type { ViewportBounds } from "./ViewportBounds";
+export type { ChunkBounds } from "./ChunkBounds";
 export type { ClientMessage } from "./ClientMessage";
 export type { StateUpdate } from "./StateUpdate";
 export type { ServerMessage } from "./ServerMessage";

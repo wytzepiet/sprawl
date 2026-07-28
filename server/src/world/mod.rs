@@ -9,14 +9,17 @@ use std::collections::{HashMap, HashSet};
 
 use crate::protocol::{
     CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, EdgeKey, EntityId, GameObject, TILE_ABSENT,
-    TerrainChunk, TerrainType, ViewportBounds,
+    TerrainChunk, TerrainType,
 };
 use crate::engine::tracked::Tracked;
 use crate::world::segments::EdgeSegment;
 
 pub struct World {
     pub objects: Tracked,
-    pub(super) spatial: HashMap<GridCoord, HashSet<EntityId>>,
+    /// Entities by chunk. Chunk-granular because that is the unit clients
+    /// subscribe to; exact-tile queries filter a chunk's set, which stays small
+    /// now that terrain is not an entity.
+    pub(super) spatial: HashMap<ChunkCoord, HashSet<EntityId>>,
     pub edges: HashMap<EdgeKey, EdgeSegment>,
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
@@ -27,7 +30,32 @@ pub struct World {
 
 use crate::protocol::GridCoord;
 
+pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
+    ChunkCoord {
+        cx: coord.x.div_euclid(CHUNK_SIZE),
+        cy: coord.y.div_euclid(CHUNK_SIZE),
+    }
+}
+
 impl World {
+    /// Entity ids at an exact tile.
+    pub(super) fn ids_at(&self, coord: GridCoord) -> Vec<EntityId> {
+        let Some(ids) = self.spatial.get(&chunk_of(coord)) else {
+            return Vec::new();
+        };
+        ids.iter()
+            .copied()
+            .filter(|id| {
+                self.objects.get(*id).and_then(|e| e.position) == Some(coord)
+            })
+            .collect()
+    }
+
+    pub fn unindex(&mut self, id: EntityId, coord: GridCoord) {
+        if let Some(ids) = self.spatial.get_mut(&chunk_of(coord)) {
+            ids.remove(&id);
+        }
+    }
     pub fn new() -> Self {
         Self {
             objects: Tracked::new(),
@@ -51,7 +79,7 @@ impl World {
         // Rebuild spatial index from loaded objects
         for entry in world.objects.all_entries() {
             if let Some(pos) = entry.position {
-                world.spatial.entry(pos).or_default().insert(entry.id);
+                world.spatial.entry(chunk_of(pos)).or_default().insert(entry.id);
             }
         }
         world
@@ -100,9 +128,7 @@ impl World {
         if let Some(entry) = self.objects.get(car_id)
             && let Some(pos) = entry.position
         {
-            if let Some(ids) = self.spatial.get_mut(&pos) {
-                ids.remove(&car_id);
-            }
+            self.unindex(car_id, pos);
         }
         self.objects.remove(car_id);
     }
@@ -114,7 +140,7 @@ impl World {
     pub fn insert_at(&mut self, object: GameObject, pos: Option<GridCoord>) -> EntityId {
         let id = self.objects.insert(object, pos);
         if let Some(pos) = pos {
-            self.spatial.entry(pos).or_default().insert(id);
+            self.spatial.entry(chunk_of(pos)).or_default().insert(id);
         }
         id
     }
@@ -126,12 +152,12 @@ impl World {
                 return;
             }
             if let Some(old_pos) = entry.position {
-                if let Some(ids) = self.spatial.get_mut(&old_pos) {
-                    ids.remove(&id);
+                if chunk_of(old_pos) != chunk_of(new_pos) {
+                    self.unindex(id, old_pos);
                 }
             }
         }
-        self.spatial.entry(new_pos).or_default().insert(id);
+        self.spatial.entry(chunk_of(new_pos)).or_default().insert(id);
         if let Some(entry) = self.objects.get_mut_silent(id) {
             entry.position = Some(new_pos);
         }
@@ -200,15 +226,12 @@ impl World {
         TerrainChunk { coord, tiles }
     }
 
-    /// Collect all entity IDs at grid positions within the given bounds.
-    pub fn entities_in_rect(&self, bounds: &ViewportBounds) -> HashSet<EntityId> {
+    /// Every entity in the given chunks.
+    pub fn entities_in_chunks(&self, chunks: &HashSet<ChunkCoord>) -> HashSet<EntityId> {
         let mut result = HashSet::new();
-        for y in bounds.min_y..=bounds.max_y {
-            for x in bounds.min_x..=bounds.max_x {
-                let coord = GridCoord { x, y };
-                if let Some(ids) = self.spatial.get(&coord) {
-                    result.extend(ids);
-                }
+        for coord in chunks {
+            if let Some(ids) = self.spatial.get(coord) {
+                result.extend(ids);
             }
         }
         result
