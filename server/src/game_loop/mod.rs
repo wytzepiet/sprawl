@@ -489,13 +489,27 @@ fn flush_dirty(
     now: GameTime,
 ) {
     let (changed, removed) = world.objects.drain_dirty();
-    if changed.is_empty() && removed.is_empty() {
+    let crossings: Vec<(EntityId, ChunkCoord, ChunkCoord)> =
+        std::mem::take(&mut world.chunk_crossings)
+            .into_iter()
+            .filter(|(id, ..)| !removed.contains(id))
+            .collect();
+
+    if changed.is_empty() && removed.is_empty() && crossings.is_empty() {
         return;
     }
 
-    let changed_entries: Vec<GameObjectEntry> = changed.iter()
-        .filter_map(|id| world.objects.get(*id).cloned())
-        .collect();
+    // Group by chunk so a client walks the chunks it subscribes to rather than
+    // every entity that changed. A client sees a handful of chunks; the world
+    // can have hundreds of moving cars.
+    let mut by_chunk: HashMap<ChunkCoord, Vec<GameObjectEntry>> = HashMap::new();
+    for id in &changed {
+        if let Some(entry) = world.objects.get(*id)
+            && let Some(pos) = entry.position
+        {
+            by_chunk.entry(chunk_of(pos)).or_default().push(entry.clone());
+        }
+    }
 
     for cs in clients.values_mut() {
         if cs.subscribed.is_none() {
@@ -504,20 +518,33 @@ fn flush_dirty(
 
         let mut ops = Vec::new();
 
-        for entry in &changed_entries {
-            let in_vp = entry.position.is_some_and(|pos| cs.known_chunks.contains(&chunk_of(pos)));
-
-            if in_vp {
-                ops.push(Operation::Upsert(Box::new(entry.clone())));
+        for coord in &cs.known_chunks {
+            for entry in by_chunk.get(coord).into_iter().flatten() {
                 cs.known.insert(entry.id);
-            } else if cs.known.remove(&entry.id) {
-                ops.push(Operation::Delete(entry.id));
+                ops.push(Operation::Upsert(Box::new(entry.clone())));
             }
         }
 
-        for &id in &removed {
-            if cs.known.remove(&id) {
-                ops.push(Operation::Delete(id));
+        // A crossing is the only way an entity leaves a view without being
+        // deleted, and the only way one enters without being dirty.
+        for &(id, from, to) in &crossings {
+            let had = cs.known_chunks.contains(&from);
+            let has = cs.known_chunks.contains(&to);
+            if had && !has {
+                if cs.known.remove(&id) {
+                    ops.push(Operation::Delete(id));
+                }
+            } else if has && !had && !cs.known.contains(&id)
+                && let Some(entry) = world.objects.get(id)
+            {
+                cs.known.insert(id);
+                ops.push(Operation::Upsert(Box::new(entry.clone())));
+            }
+        }
+
+        for id in &removed {
+            if cs.known.remove(id) {
+                ops.push(Operation::Delete(*id));
             }
         }
 

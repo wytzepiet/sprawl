@@ -26,6 +26,10 @@ pub struct World {
     pub terrain_seed: u32,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
+    /// Entities that changed chunk since the last flush, as (id, from, to).
+    /// Chunks are what clients subscribe to, so a crossing is the exact moment
+    /// an entity enters or leaves someone's view.
+    pub chunk_crossings: Vec<(EntityId, ChunkCoord, ChunkCoord)>,
 }
 
 use crate::protocol::GridCoord;
@@ -64,6 +68,7 @@ impl World {
             node_cars: HashMap::new(),
             terrain_seed: 0,
             terrain: HashMap::new(),
+            chunk_crossings: Vec::new(),
         }
     }
 
@@ -74,6 +79,7 @@ impl World {
             node_cars: HashMap::new(),
             terrain_seed,
             terrain: HashMap::new(),
+            chunk_crossings: Vec::new(),
             objects,
         };
         // Rebuild spatial index from loaded objects
@@ -152,8 +158,10 @@ impl World {
                 return;
             }
             if let Some(old_pos) = entry.position {
-                if chunk_of(old_pos) != chunk_of(new_pos) {
+                let (from, to) = (chunk_of(old_pos), chunk_of(new_pos));
+                if from != to {
                     self.unindex(id, old_pos);
+                    self.chunk_crossings.push((id, from, to));
                 }
             }
         }
