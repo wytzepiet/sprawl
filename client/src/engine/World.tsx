@@ -6,7 +6,7 @@ import { useTheme } from "./theme";
 import { useHeadlights } from "./Headlights";
 import { TerrainChunks } from "./TerrainChunks";
 import { setOpsListener, getEntity, getObjectsAt } from "../state/gameObjects";
-import type { Operation, GameObjectEntry, TerrainType } from "../generated";
+import type { Operation, GameObjectEntry } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
@@ -59,16 +59,8 @@ export default function World() {
           const key = String(op.data.id);
 
           if (op.data.object.kind === "Terrain" && op.data.position) {
-            const d = op.data.object.data as {
-              terrain_type: TerrainType;
-              corners: (TerrainType | null)[];
-              corner_mask: number;
-            };
-            terrain.setTile(op.data.id, op.data.position.x, op.data.position.y, {
-              type: d.terrain_type,
-              corners: d.corners,
-              mask: d.corner_mask,
-            });
+            const { x, y } = op.data.position;
+            terrain.setTile(op.data.id, x, y, op.data.object.data.terrain_type);
             break;
           }
 

@@ -14,12 +14,12 @@ import type { TerrainType } from "../generated";
 import {
   appendTile,
   createBorderTexture,
+  createSampler,
   emptyBuffers,
   terrainColor,
   TREE_TRUNK,
   type ChunkSink,
   type TerrainBuffers,
-  type TileData,
 } from "./objects/terrainGeometry";
 
 export const CHUNK_SIZE = 32;
@@ -47,7 +47,7 @@ const floorDiv = (a: number, b: number) => Math.floor(a / b);
  * once per frame — so a tile edit and a streaming burst cost the same rebuild.
  */
 export class TerrainChunks {
-  private tiles = new Map<string, TileData>();
+  private tiles = new Map<string, TerrainType>();
   private tilePos = new Map<number, [number, number]>();
   private chunks = new Map<string, ChunkMeshes>();
   private dirty = new Set<string>();
@@ -93,8 +93,8 @@ export class TerrainChunks {
 
   // --- Tile data ---------------------------------------------------------
 
-  setTile(id: number, x: number, y: number, tile: TileData): void {
-    this.tiles.set(`${x},${y}`, tile);
+  setTile(id: number, x: number, y: number, type: TerrainType): void {
+    this.tiles.set(`${x},${y}`, type);
     this.tilePos.set(id, [x, y]);
     this.markNeighborhood(x, y);
   }
@@ -114,10 +114,14 @@ export class TerrainChunks {
     this.dirty.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
   }
 
-  /** Edge cliffs read across tile boundaries, so a change can cross chunks. */
+  /**
+   * A tile's appearance depends on types up to two tiles away -- corner masks
+   * read the neighbours' corners, which read their own neighbours -- so a
+   * change can reach into the adjacent chunk.
+   */
   private markNeighborhood(x: number, y: number): void {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
         this.markTile(x + dx, y + dy);
       }
     }
@@ -152,16 +156,15 @@ export class TerrainChunks {
       trees: [],
     };
 
-    const typeAt = (x: number, y: number): TerrainType | undefined =>
-      this.tiles.get(`${x},${y}`)?.type;
+    const sampler = createSampler((x, y) => this.tiles.get(`${x},${y}`));
 
     let tileCount = 0;
     for (let y = originY; y < originY + CHUNK_SIZE; y++) {
       for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-        const tile = this.tiles.get(`${x},${y}`);
-        if (!tile) continue;
+        const type = this.tiles.get(`${x},${y}`);
+        if (!type) continue;
         tileCount++;
-        appendTile(sink, x, y, originX, originY, tile, theme, typeAt, this.hasRoad);
+        appendTile(sink, x, y, originX, originY, type, theme, sampler, this.hasRoad);
       }
     }
 

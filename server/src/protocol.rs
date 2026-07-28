@@ -93,17 +93,6 @@ pub enum TerrainType {
 #[ts(export)]
 pub struct TerrainTile {
     pub terrain_type: TerrainType,
-    /// Corner overlays: [BL, BR, TR, TL]. Each is Some(type) when both
-    /// cardinal neighbors at that corner share a type different from this cell.
-    #[ts(type = "Array<TerrainType | null>")]
-    pub corners: Vec<Option<TerrainType>>,
-    /// 2 bits per corner encoding edge connectivity.
-    /// For corner i: bits (i*2) = edge A continues, (i*2+1) = edge B continues.
-    pub corner_mask: u8,
-    /// Cardinal edges: [bottom, right, top, left].
-    /// Some(type) when this tile has exactly 1 differing neighbor, or 2 on opposing sides.
-    #[ts(type = "Array<TerrainType | null>")]
-    pub edges: Vec<Option<TerrainType>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

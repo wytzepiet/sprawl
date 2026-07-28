@@ -425,10 +425,100 @@ export function emptyBuffers(): TerrainBuffers {
   return { positions: [], normals: [], uvs: [], colors: [], indices: [] };
 }
 
-export interface TileData {
-  type: TerrainType;
-  corners: (TerrainType | null)[];
-  mask: number;
+// --- Corner derivation ---------------------------------------------------
+//
+// A tile's corner overlays are a pure function of the terrain types around it,
+// so the server only sends types. `corners[i]` needs the 3x3 neighbourhood;
+// `cornerMask` needs the neighbours' corners, so it reaches two tiles out.
+
+export type TypeAt = (x: number, y: number) => TerrainType | undefined;
+
+/** Which terrain type wins when two differing neighbours meet at a corner. */
+const CORNER_PRIORITY: Record<TerrainType, number> = {
+  Beach: 4,
+  Grass: 3,
+  Forest: 2,
+  Mountain: 1,
+  Water: 0,
+};
+
+/** For each corner [BL, BR, TR, TL], the two cardinal neighbours to check. */
+const CORNER_NEIGHBORS: [[number, number], [number, number]][] = [
+  [[-1, 0], [0, -1]], // BL: left + below
+  [[1, 0], [0, -1]],  // BR: right + below
+  [[1, 0], [0, 1]],   // TR: right + above
+  [[-1, 0], [0, 1]],  // TL: left + above
+];
+
+// For each corner i, edge connectivity: (dx, dy, their corner index) for edge
+// A and edge B. Same-slope pairs: BL <-> TR, BR <-> TL.
+const EDGE_CHECKS: [[number, number, number], [number, number, number]][] = [
+  [[0, -1, 2], [-1, 0, 2]], // BL
+  [[1, 0, 3], [0, -1, 3]],  // BR
+  [[0, 1, 0], [1, 0, 0]],   // TR
+  [[-1, 0, 1], [0, 1, 1]],  // TL
+];
+
+/** Corner overlays for one tile, or nulls where the corner is square. */
+function cornersAt(x: number, y: number, typeAt: TypeAt): (TerrainType | null)[] {
+  const mine = typeAt(x, y);
+  if (mine === undefined) return [null, null, null, null];
+
+  return CORNER_NEIGHBORS.map(([d1, d2]) => {
+    const t1 = typeAt(x + d1[0], y + d1[1]);
+    const t2 = typeAt(x + d2[0], y + d2[1]);
+    if (t1 === undefined || t2 === undefined) return null;
+    if (t1 === mine || t2 === mine || ELEVATION[t1] !== ELEVATION[t2]) return null;
+    if (t1 === t2) return t1;
+
+    // Types differ: only round the corner if the diagonal agrees with one.
+    const diag = typeAt(x + d1[0] + d2[0], y + d1[1] + d2[1]);
+    if (diag !== t1 && diag !== t2) return null;
+    return CORNER_PRIORITY[t1] >= CORNER_PRIORITY[t2] ? t1 : t2;
+  });
+}
+
+/** 2 bits per corner: whether the curve continues into the neighbour on each edge. */
+function cornerMask(
+  x: number,
+  y: number,
+  corners: (TerrainType | null)[],
+  sampler: TerrainSampler,
+): number {
+  let mask = 0;
+  for (let i = 0; i < 4; i++) {
+    if (!corners[i]) continue;
+    const [a, b] = EDGE_CHECKS[i];
+    if (sampler.cornersOf(x + a[0], y + a[1])[a[2]]) mask |= 1 << (i * 2);
+    if (sampler.cornersOf(x + b[0], y + b[1])[b[2]]) mask |= 1 << (i * 2 + 1);
+  }
+  return mask;
+}
+
+export interface TerrainSampler {
+  typeAt: TypeAt;
+  cornersOf(x: number, y: number): (TerrainType | null)[];
+}
+
+/**
+ * Every tile reads its own corners and, for the mask, its neighbours' — so
+ * each tile's corners are wanted several times over. Memoise them for the
+ * duration of one chunk rebuild.
+ */
+export function createSampler(typeAt: TypeAt): TerrainSampler {
+  const cache = new Map<string, (TerrainType | null)[]>();
+  return {
+    typeAt,
+    cornersOf(x, y) {
+      const key = `${x},${y}`;
+      let corners = cache.get(key);
+      if (corners === undefined) {
+        corners = cornersAt(x, y, typeAt);
+        cache.set(key, corners);
+      }
+      return corners;
+    },
+  };
 }
 
 /** Cutout base geometries are shared across every tile with the same corner set. */
@@ -486,22 +576,24 @@ export function appendTile(
   y: number,
   originX: number,
   originY: number,
-  tile: TileData,
+  tt: TerrainType,
   theme: Theme,
-  typeAt: (x: number, y: number) => TerrainType | undefined,
+  sampler: TerrainSampler,
   hasRoad: (x: number, y: number) => boolean,
 ): void {
   const lx = x - originX;
   const ly = y - originY;
-  const tt = tile.type;
   const be = ELEVATION[tt];
 
-  const corners = tile.corners
+  const tileCorners = sampler.cornersOf(x, y);
+  const mask = cornerMask(x, y, tileCorners, sampler);
+
+  const corners = tileCorners
     .map((c, i) => {
       if (!c) return null;
-      let variant = (tile.mask >> (i * 2)) & 3;
-      if (!(variant & 1) && !tile.corners[(i + 1) % 4]) variant |= 4;
-      if (!(variant & 2) && !tile.corners[(i + 3) % 4]) variant |= 8;
+      let variant = (mask >> (i * 2)) & 3;
+      if (!(variant & 1) && !tileCorners[(i + 1) % 4]) variant |= 4;
+      if (!(variant & 2) && !tileCorners[(i + 3) % 4]) variant |= 8;
       const cornerElev = ELEVATION[c];
       return { index: i, type: c, variant, sameElev: cornerElev === be, cornerElev };
     })
@@ -569,7 +661,7 @@ export function appendTile(
   for (let i = 0; i < 4; i++) {
     if (diffSet.has(i) || diffSet.has((i + 1) % 4)) continue;
     const [dx, dy] = EDGE_DIRS[i];
-    const neighbor = typeAt(x + dx, y + dy);
+    const neighbor = sampler.typeAt(x + dx, y + dy);
     if (neighbor === undefined) continue;
     const neighborElev = ELEVATION[neighbor];
     if (neighborElev >= be) continue;
