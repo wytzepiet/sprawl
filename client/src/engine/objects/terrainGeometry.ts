@@ -416,13 +416,23 @@ const EDGE_DIRS: [number, number][] = [
 export interface TerrainBuffers {
   positions: number[];
   normals: number[];
-  uvs: number[];
-  colors: number[];
   indices: number[];
+  /** Absent on geometry the camera never sees. */
+  uvs?: number[];
+  colors?: number[];
 }
 
 export function emptyBuffers(): TerrainBuffers {
-  return { positions: [], normals: [], uvs: [], colors: [], indices: [] };
+  return { positions: [], normals: [], indices: [], uvs: [], colors: [] };
+}
+
+/**
+ * Buffers for geometry that only ever casts shadows. The camera looks straight
+ * down, so cliff walls are edge-on and never rasterised — only the shadow pass
+ * reads them, and that reads depth alone.
+ */
+export function emptyDepthBuffers(): TerrainBuffers {
+  return { positions: [], normals: [], indices: [] };
 }
 
 // --- Corner derivation ---------------------------------------------------
@@ -546,13 +556,17 @@ function append(
   for (let i = 0; i < geo.normals.length; i++) buf.normals.push(geo.normals[i]);
 
   const vertexCount = p.length / 3;
-  for (let i = 0; i < vertexCount; i++) {
-    buf.colors.push(color.r, color.g, color.b, 1);
+  if (buf.colors) {
+    for (let i = 0; i < vertexCount; i++) {
+      buf.colors.push(color.r, color.g, color.b, 1);
+    }
   }
-  if (bordered && geo.uvs) {
-    for (let i = 0; i < geo.uvs.length; i++) buf.uvs.push(geo.uvs[i]);
-  } else {
-    for (let i = 0; i < vertexCount; i++) buf.uvs.push(0.5, 0.5);
+  if (buf.uvs) {
+    if (bordered && geo.uvs) {
+      for (let i = 0; i < geo.uvs.length; i++) buf.uvs.push(geo.uvs[i]);
+    } else {
+      for (let i = 0; i < vertexCount; i++) buf.uvs.push(0.5, 0.5);
+    }
   }
   for (let i = 0; i < geo.indices.length; i++) {
     buf.indices.push(base + geo.indices[i]);

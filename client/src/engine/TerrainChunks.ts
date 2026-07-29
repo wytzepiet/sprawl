@@ -16,6 +16,7 @@ import {
   createBorderTexture,
   createSampler,
   emptyBuffers,
+  emptyDepthBuffers,
   terrainColor,
   TREE_TRUNK,
   type ChunkSink,
@@ -146,7 +147,7 @@ export class TerrainChunks {
 
     const sink: ChunkSink = {
       ground: emptyBuffers(),
-      cliffs: emptyBuffers(),
+      cliffs: emptyDepthBuffers(),
       trees: [],
     };
 
@@ -239,8 +240,8 @@ export class TerrainChunks {
     data.positions = buf.positions;
     data.indices = buf.indices;
     data.normals = buf.normals;
-    data.uvs = buf.uvs;
-    data.colors = buf.colors;
+    if (buf.uvs) data.uvs = buf.uvs;
+    if (buf.colors) data.colors = buf.colors;
     data.applyToMesh(mesh);
     // Vertex colours are opaque; without this Babylon routes the mesh through
     // the alpha-blended pass and it sorts against the rest of the terrain.
@@ -279,7 +280,7 @@ export class TerrainChunks {
     // and the shader multiplies the two.
     this.groundMat.diffuseColor = Color3.White();
     this.groundMat.emissiveColor = ambient.scale(0.15);
-    this.cliffMat.emissiveColor = ambient.clone();
+    this.cliffMat.emissiveColor = ambient.scale(0.7);
 
     // Trees are a single colour, so they keep it on the material.
     const tree = terrainColor("Forest", this.theme());
