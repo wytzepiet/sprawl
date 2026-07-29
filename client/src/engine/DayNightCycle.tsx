@@ -25,6 +25,17 @@ const DAY_DURATION_SECONDS = 120;
 /** Half-extent of the sun's ortho frustum beyond which shadows stop rendering. */
 const SHADOW_MAX_RADIUS = 50;
 
+/**
+ * Shadow map resolution. The sun's frustum is at most SHADOW_MAX_RADIUS across,
+ * so 2048 still gives ~20 texels per tile — the map is cleared and written every
+ * refresh, and 4096 was costing 67MB of bandwidth per frame for detail this
+ * top-down view cannot show.
+ */
+const SHADOW_MAP_SIZE = 2048;
+
+/** Frames between shadow map refreshes. The sun crosses the sky in two minutes. */
+const SHADOW_REFRESH_RATE = 2;
+
 // ---------------------------------------------------------------------------
 // Color palette per time-of-day
 // ---------------------------------------------------------------------------
@@ -186,10 +197,12 @@ export default function DayNightLights(props: ParentProps) {
   sunLight.autoUpdateExtends = false;
 
   // --- Shadow generator ---
-  const shadowGen = new ShadowGenerator(4096, sunLight);
+  const shadowGen = new ShadowGenerator(SHADOW_MAP_SIZE, sunLight);
   shadowGen.usePercentageCloserFiltering = true;
   shadowGen.filteringQuality = ShadowGenerator.QUALITY_LOW;
   shadowGen.bias = 0.001;
+  const shadowMap = shadowGen.getShadowMap();
+  if (shadowMap) shadowMap.refreshRate = SHADOW_REFRESH_RATE;
   setShadowGen(shadowGen);
 
   // --- Per-frame update ---
