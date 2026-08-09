@@ -1,41 +1,59 @@
 import {
   Color3,
   Mesh,
+  RawTexture,
   StandardMaterial,
   VertexData,
   type Nullable,
   type Observer,
-  type RawTexture,
   type Scene,
   type ShadowGenerator,
 } from "@babylonjs/core";
+import * as Comlink from "comlink";
 import type { Theme } from "./theme";
-import type { TerrainType } from "../generated";
 import {
-  appendTile,
-  createBorderTexture,
-  createSampler,
-  emptyBuffers,
-  emptyDepthBuffers,
-  terrainColor,
+  buildTrees,
+  CHUNK_SIZE,
   TREE_TRUNK,
-  type ChunkSink,
-  type TerrainBuffers,
+  type ChunkGeometry,
+  type MeshBuffers,
+  type TerrainPalette,
 } from "./objects/terrainGeometry";
+import type { TerrainApi } from "./terrainWorker";
 
-/** Must match the server's CHUNK_SIZE / CHUNK_SKIRT. */
-export const CHUNK_SIZE = 32;
-const CHUNK_SKIRT = 2;
-const CHUNK_STRIDE = CHUNK_SIZE + CHUNK_SKIRT * 2;
+export { CHUNK_SIZE };
 
-/** Wire encoding, in the server's TerrainType::to_byte order. */
-const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain"];
-
-/** Chunks rebuilt per frame. Caps the hitch while a viewport streams in. */
-const REBUILDS_PER_FRAME = 2;
+/**
+ * Finished chunks uploaded per frame. The build is off-thread now, but the
+ * upload is not — this caps how much GPU work one frame can take on.
+ */
+const APPLIES_PER_FRAME = 2;
 
 /** Sun frustum half-extent beyond which per-chunk detail is dropped. */
 const DETAIL_MAX_ORTHO = 30;
+
+const TEX_SIZE = 32;
+const BORDER = 1;
+
+function createBorderTexture(scene: Scene): RawTexture {
+  const data = new Uint8Array(TEX_SIZE * TEX_SIZE * 4);
+  for (let y = 0; y < TEX_SIZE; y++) {
+    for (let x = 0; x < TEX_SIZE; x++) {
+      const i = (y * TEX_SIZE + x) * 4;
+      const edge =
+        x < BORDER ||
+        x >= TEX_SIZE - BORDER ||
+        y < BORDER ||
+        y >= TEX_SIZE - BORDER;
+      const v = edge ? 230 : 255;
+      data[i] = v;
+      data[i + 1] = v;
+      data[i + 2] = v;
+      data[i + 3] = 255;
+    }
+  }
+  return RawTexture.CreateRGBATexture(data, TEX_SIZE, TEX_SIZE, scene, false, false);
+}
 
 interface ChunkMeshes {
   ground: Mesh;
@@ -47,16 +65,33 @@ interface ChunkMeshes {
 }
 
 const floorDiv = (a: number, b: number) => Math.floor(a / b);
+const parseKey = (key: string) => key.split(",").map(Number) as [number, number];
 
 /**
  * Terrain rendered as one merged mesh per chunk rather than per-tile instances.
- * Tiles arrive individually, mark their chunk dirty, and the chunk is rebuilt
- * once per frame — so a tile edit and a streaming burst cost the same rebuild.
+ *
+ * Ground and cliff geometry is a pure function of the chunk's tiles, so it is
+ * built on a worker. Trees are not: they yield to roads, which are live game
+ * state, so they stay here and are cheap enough to rebuild on demand.
  */
 export class TerrainChunks {
   private tiles = new Map<string, Uint8Array>();
   private chunks = new Map<string, ChunkMeshes>();
-  private dirty = new Set<string>();
+
+  private dirtyGeometry = new Set<string>();
+  private dirtyTrees = new Set<string>();
+  /**
+   * Bumped whenever a chunk's geometry is invalidated. A build carries the
+   * generation it started with, so results that arrive after the chunk was
+   * unloaded or re-dirtied are dropped instead of resurrecting it.
+   */
+  private generation = new Map<string, number>();
+  private ready: { key: string; geometry: ChunkGeometry }[] = [];
+
+  private worker = new Worker(new URL("./terrainWorker.ts", import.meta.url), {
+    type: "module",
+  });
+  private builder = Comlink.wrap<TerrainApi>(this.worker);
 
   private groundMat: StandardMaterial;
   private cliffMat: StandardMaterial;
@@ -97,6 +132,18 @@ export class TerrainChunks {
     });
   }
 
+  /** The worker has no Babylon, so the theme crosses as plain floats. */
+  private palette(): TerrainPalette {
+    const t = this.theme();
+    return {
+      Water: { r: t.water.r, g: t.water.g, b: t.water.b },
+      Beach: { r: t.beach.r, g: t.beach.g, b: t.beach.b },
+      Grass: { r: t.land.r, g: t.land.g, b: t.land.b },
+      Forest: { r: t.forest.r, g: t.forest.g, b: t.forest.b },
+      Mountain: { r: t.mountain.r, g: t.mountain.g, b: t.mountain.b },
+    };
+  }
+
   // --- Tile data ---------------------------------------------------------
 
   /**
@@ -107,92 +154,100 @@ export class TerrainChunks {
   setChunk(cx: number, cy: number, tiles: Uint8Array): void {
     const key = `${cx},${cy}`;
     this.tiles.set(key, tiles);
-    this.dirty.add(key);
+    this.invalidate(key);
   }
 
   unloadChunk(cx: number, cy: number): void {
     const key = `${cx},${cy}`;
     this.tiles.delete(key);
-    this.dirty.delete(key);
+    this.invalidate(key);
     this.disposeChunk(key);
   }
 
   /** A road appearing or vanishing changes tree placement on that tile. */
   markTile(x: number, y: number): void {
-    this.dirty.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
+    this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
   }
 
   /** Rebuild every chunk — used when the theme changes all terrain colours. */
   markAllDirty(): void {
-    for (const key of this.chunks.keys()) this.dirty.add(key);
+    for (const key of this.chunks.keys()) this.invalidate(key);
+  }
+
+  private invalidate(key: string): void {
+    this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
+    this.dirtyGeometry.add(key);
+    this.dirtyTrees.delete(key);
   }
 
   // --- Rendering ---------------------------------------------------------
 
   private flush(): void {
-    if (this.dirty.size === 0) return;
-    let budget = REBUILDS_PER_FRAME;
-    for (const key of this.dirty) {
-      if (budget-- <= 0) break;
-      this.dirty.delete(key);
-      this.rebuild(key);
+    for (const key of this.dirtyTrees) this.rebuildTrees(key);
+    this.dirtyTrees.clear();
+
+    // Dispatch is free — the worker does the work. Only the uploads are capped.
+    for (const key of this.dirtyGeometry) void this.requestBuild(key);
+    this.dirtyGeometry.clear();
+
+    let budget = APPLIES_PER_FRAME;
+    while (this.ready.length > 0 && budget-- > 0) {
+      const { key, geometry } = this.ready.shift()!;
+      this.applyGeometry(key, geometry);
     }
   }
 
-  private rebuild(key: string): void {
-    const [cx, cy] = key.split(",").map(Number);
-    const originX = cx * CHUNK_SIZE;
-    const originY = cy * CHUNK_SIZE;
-    const theme = this.theme();
-
-    const sink: ChunkSink = {
-      ground: emptyBuffers(),
-      cliffs: emptyDepthBuffers(),
-      trees: [],
-    };
-
+  private async requestBuild(key: string): Promise<void> {
     const tiles = this.tiles.get(key);
     if (!tiles) {
       this.disposeChunk(key);
       return;
     }
+    const [cx, cy] = parseKey(key);
+    const generation = this.generation.get(key);
 
-    const skirtX = originX - CHUNK_SKIRT;
-    const skirtY = originY - CHUNK_SKIRT;
-    const sampler = createSampler((x, y) => {
-      const ix = x - skirtX;
-      const iy = y - skirtY;
-      if (ix < 0 || iy < 0 || ix >= CHUNK_STRIDE || iy >= CHUNK_STRIDE) return undefined;
-      return TYPE_BY_BYTE[tiles[iy * CHUNK_STRIDE + ix]];
-    });
-
-    let tileCount = 0;
-    for (let y = originY; y < originY + CHUNK_SIZE; y++) {
-      for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-        const type = sampler.typeAt(x, y);
-        if (!type) continue;
-        tileCount++;
-        appendTile(sink, x, y, originX, originY, type, theme, sampler, this.hasRoad);
-      }
-    }
-
-    if (tileCount === 0) {
-      this.disposeChunk(key);
+    let geometry: ChunkGeometry | null;
+    try {
+      // tiles is cloned, not transferred — we keep it for tree rebuilds.
+      geometry = await this.builder.build(tiles, cx, cy, this.palette());
+    } catch (e) {
+      console.error("[terrain] chunk build failed", key, e);
       return;
     }
 
-    const meshes = this.chunks.get(key) ?? this.createChunk(key, originX, originY);
+    if (this.generation.get(key) !== generation) return; // superseded
+    if (!geometry) {
+      this.disposeChunk(key);
+      return;
+    }
+    this.ready.push({ key, geometry });
+  }
 
-    meshes.ground.setEnabled(this.applyBuffers(meshes.ground, sink.ground));
+  private applyGeometry(key: string, geometry: ChunkGeometry): void {
+    const [cx, cy] = parseKey(key);
+    const meshes =
+      this.chunks.get(key) ?? this.createChunk(key, cx * CHUNK_SIZE, cy * CHUNK_SIZE);
 
-    meshes.hasCliffs = this.applyBuffers(meshes.cliffs, sink.cliffs);
-    meshes.hasTrees = sink.trees.length > 0;
+    meshes.ground.setEnabled(this.applyBuffers(meshes.ground, geometry.ground));
+    meshes.hasCliffs = this.applyBuffers(meshes.cliffs, geometry.cliffs);
+    this.applyDetail(meshes);
 
-    meshes.trees.thinInstanceSetBuffer("matrix", new Float32Array(sink.trees), 16, true);
+    this.rebuildTrees(key);
+  }
+
+  /** Cheap enough to run on demand: placement is seeded off the tile coords. */
+  private rebuildTrees(key: string): void {
+    const meshes = this.chunks.get(key);
+    const tiles = this.tiles.get(key);
+    if (!meshes || !tiles) return;
+
+    const [cx, cy] = parseKey(key);
+    const matrices = buildTrees(tiles, cx, cy, this.hasRoad);
+    meshes.hasTrees = matrices.length > 0;
+    meshes.trees.thinInstanceSetBuffer("matrix", matrices, 16, true);
     // Without this the mesh keeps the lone base cylinder's bounds and the
     // whole chunk's trees get frustum-culled as soon as the origin leaves view.
     meshes.trees.thinInstanceRefreshBoundingInfo(true);
-
     this.applyDetail(meshes);
   }
 
@@ -233,7 +288,7 @@ export class TerrainChunks {
    * old index count — WebGPU rejects it and drops the entire frame — so an
    * empty chunk mesh is left alone and disabled instead.
    */
-  private applyBuffers(mesh: Mesh, buf: TerrainBuffers): boolean {
+  private applyBuffers(mesh: Mesh, buf: MeshBuffers): boolean {
     if (buf.indices.length === 0) return false;
 
     const data = new VertexData();
@@ -283,7 +338,7 @@ export class TerrainChunks {
     this.cliffMat.emissiveColor = ambient.scale(0.7);
 
     // Trees are a single colour, so they keep it on the material.
-    const tree = terrainColor("Forest", this.theme());
+    const tree = this.theme().forest;
     this.treeMat.diffuseColor = tree;
     this.treeMat.emissiveColor = new Color3(
       tree.r * ambient.r * 0.15,
@@ -299,7 +354,10 @@ export class TerrainChunks {
     this.cliffMat.dispose();
     this.treeMat.dispose();
     this.borderTex.dispose();
+    this.worker.terminate();
     this.tiles.clear();
-    this.dirty.clear();
+    this.dirtyGeometry.clear();
+    this.dirtyTrees.clear();
+    this.ready.length = 0;
   }
 }
