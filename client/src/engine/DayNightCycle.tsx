@@ -30,11 +30,13 @@ const SHADOW_MAX_RADIUS = 50;
  * so 2048 still gives ~20 texels per tile — the map is cleared and written every
  * refresh, and 4096 was costing 67MB of bandwidth per frame for detail this
  * top-down view cannot show.
+ *
+ * The map refreshes every frame (Babylon's default). It has to: the sun moves
+ * every frame, so a map rendered at half rate lags the shading that samples it
+ * and the mismatch beats at 30Hz — which reads as dense geometry like trees
+ * blinking. Resolution is the bandwidth lever here, not refresh rate.
  */
 const SHADOW_MAP_SIZE = 2048;
-
-/** Frames between shadow map refreshes. The sun crosses the sky in two minutes. */
-const SHADOW_REFRESH_RATE = 2;
 
 // ---------------------------------------------------------------------------
 // Color palette per time-of-day
@@ -201,8 +203,10 @@ export default function DayNightLights(props: ParentProps) {
   shadowGen.usePercentageCloserFiltering = true;
   shadowGen.filteringQuality = ShadowGenerator.QUALITY_LOW;
   shadowGen.bias = 0.001;
-  const shadowMap = shadowGen.getShadowMap();
-  if (shadowMap) shadowMap.refreshRate = SHADOW_REFRESH_RATE;
+  // Tree trunks are cylinders, so most of their surface sits at a grazing angle
+  // to a low sun — the case a constant bias cannot cover without detaching the
+  // shadows from the flat ground. Slope-scaled bias handles it per-fragment.
+  shadowGen.normalBias = 0.02;
   setShadowGen(shadowGen);
 
   // --- Per-frame update ---
@@ -253,6 +257,11 @@ export default function DayNightLights(props: ParentProps) {
     sunLight.orthoRight = radius;
     sunLight.orthoTop = radius;
     sunLight.orthoBottom = -radius;
+    // The ortho extents are plain fields — writing them does not invalidate the
+    // cached projection. Babylon otherwise only rebuilds it when the light's
+    // position or direction moves, so a zoom (camera still, extents changed)
+    // would keep rendering the shadow map at the previous scale.
+    sunLight.forceProjectionMatrixCompute();
 
     // Zoomed out far enough that shadows are sub-pixel: skip the whole shadow
     // pass rather than re-render every caster into a map nobody can read.

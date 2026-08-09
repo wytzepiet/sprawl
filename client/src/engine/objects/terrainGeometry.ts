@@ -1,8 +1,46 @@
-import { Color3, RawTexture } from "@babylonjs/core";
-import type { Scene } from "@babylonjs/core";
-import type { Theme } from "../theme";
 import type { TerrainType } from "../../generated";
 import type { MeshGeometry } from "../Mesh";
+
+// This module has no runtime imports, and must keep it that way: it is the
+// unit of work handed to the terrain worker, where Babylon and the DOM do not
+// exist. Colours arrive as plain floats, tiles as bytes.
+
+/** Must match the server's CHUNK_SIZE / CHUNK_SKIRT. */
+export const CHUNK_SIZE = 32;
+export const CHUNK_SKIRT = 2;
+export const CHUNK_STRIDE = CHUNK_SIZE + CHUNK_SKIRT * 2;
+
+export interface RGB {
+  r: number;
+  g: number;
+  b: number;
+}
+
+export type TerrainPalette = Record<TerrainType, RGB>;
+
+/** One mesh's vertex data. All transferable. */
+export interface MeshBuffers {
+  positions: Float32Array;
+  normals: Float32Array;
+  indices: Uint32Array;
+  /** Absent on geometry the camera never sees. */
+  uvs?: Float32Array;
+  colors?: Float32Array;
+}
+
+export interface ChunkGeometry {
+  ground: MeshBuffers;
+  cliffs: MeshBuffers;
+}
+
+/** Every ArrayBuffer in a result, for postMessage's transfer list. */
+export function transferables(g: ChunkGeometry): ArrayBuffer[] {
+  return [g.ground, g.cliffs].flatMap((m) =>
+    [m.positions, m.normals, m.indices, m.uvs, m.colors]
+      .filter((a) => a !== undefined)
+      .map((a) => a.buffer as ArrayBuffer),
+  );
+}
 
 const ELEVATION: Record<TerrainType, number> = {
   Water: -0.5,
@@ -90,36 +128,6 @@ function treesForTile(tx: number, ty: number): TreeInfo[] {
     trees.push({ x, y, scale });
   }
   return trees;
-}
-
-const TEX_SIZE = 32;
-const BORDER = 1;
-
-export function createBorderTexture(scene: Scene): RawTexture {
-  const data = new Uint8Array(TEX_SIZE * TEX_SIZE * 4);
-  for (let y = 0; y < TEX_SIZE; y++) {
-    for (let x = 0; x < TEX_SIZE; x++) {
-      const i = (y * TEX_SIZE + x) * 4;
-      const edge =
-        x < BORDER ||
-        x >= TEX_SIZE - BORDER ||
-        y < BORDER ||
-        y >= TEX_SIZE - BORDER;
-      const v = edge ? 230 : 255;
-      data[i] = v;
-      data[i + 1] = v;
-      data[i + 2] = v;
-      data[i + 3] = 255;
-    }
-  }
-  return RawTexture.CreateRGBATexture(
-    data,
-    TEX_SIZE,
-    TEX_SIZE,
-    scene,
-    false,
-    false,
-  );
 }
 
 const FULL_SQUARE: MeshGeometry = {
@@ -389,19 +397,16 @@ function buildCliffGeo(
   return { positions, indices, normals };
 }
 
-export function terrainColor(type: TerrainType, theme: Theme): Color3 {
-  switch (type) {
-    case "Water":
-      return theme.water;
-    case "Beach":
-      return theme.beach;
-    case "Grass":
-      return new Color3(theme.land.r, theme.land.g, theme.land.b);
-    case "Forest":
-      return theme.forest;
-    case "Mountain":
-      return theme.mountain;
-  }
+/**
+ * Cliff walls are the terrain colour darkened. Reused scratch: `append` reads
+ * the floats out immediately and never retains the object.
+ */
+const SHADED: RGB = { r: 0, g: 0, b: 0 };
+function shade(c: RGB, f: number): RGB {
+  SHADED.r = c.r * f;
+  SHADED.g = c.g * f;
+  SHADED.b = c.b * f;
+  return SHADED;
 }
 
 const EDGE_DIRS: [number, number][] = [
@@ -413,26 +418,67 @@ const EDGE_DIRS: [number, number][] = [
 
 // --- Chunk buffers -------------------------------------------------------
 
-export interface TerrainBuffers {
-  positions: number[];
-  normals: number[];
-  indices: number[];
-  /** Absent on geometry the camera never sees. */
-  uvs?: number[];
-  colors?: number[];
-}
-
-export function emptyBuffers(): TerrainBuffers {
-  return { positions: [], normals: [], indices: [], uvs: [], colors: [] };
-}
-
 /**
- * Buffers for geometry that only ever casts shadows. The camera looks straight
- * down, so cliff walls are edge-on and never rasterised — only the shadow pass
- * reads them, and that reads depth alone.
+ * Vertex data written straight into typed arrays. The arrays are scratch,
+ * reused across rebuilds and grown by doubling, so a steady-state rebuild
+ * allocates nothing until the caller copies out the exact-sized slice Babylon
+ * keeps. Writing `number[]` here instead would cost a boxed push per float
+ * and a second full pass inside Babylon to convert.
  */
-export function emptyDepthBuffers(): TerrainBuffers {
-  return { positions: [], normals: [], indices: [] };
+export class TerrainBuffers {
+  positions = new Float32Array(0);
+  normals = new Float32Array(0);
+  indices = new Uint32Array(0);
+  /** Absent on geometry the camera never sees. */
+  uvs: Float32Array<ArrayBuffer> | null;
+  colors: Float32Array<ArrayBuffer> | null;
+
+  vertices = 0;
+  indexCount = 0;
+
+  constructor(shaded: boolean) {
+    this.uvs = shaded ? new Float32Array(0) : null;
+    this.colors = shaded ? new Float32Array(0) : null;
+  }
+
+  reset(): void {
+    this.vertices = 0;
+    this.indexCount = 0;
+  }
+
+  /** Exact-sized copies. Copies, not views — the scratch is reused. */
+  take(): MeshBuffers {
+    const v = this.vertices;
+    return {
+      positions: this.positions.slice(0, v * 3),
+      normals: this.normals.slice(0, v * 3),
+      indices: this.indices.slice(0, this.indexCount),
+      uvs: this.uvs?.slice(0, v * 2),
+      colors: this.colors?.slice(0, v * 4),
+    };
+  }
+
+  /** Grow to fit `verts` more vertices and `indices` more indices. */
+  reserve(verts: number, indices: number): void {
+    if (this.vertices + verts > this.positions.length / 3) {
+      const n = Math.max(1024, (this.vertices + verts) * 2);
+      this.positions = grow(this.positions, n * 3);
+      this.normals = grow(this.normals, n * 3);
+      if (this.uvs) this.uvs = grow(this.uvs, n * 2);
+      if (this.colors) this.colors = grow(this.colors, n * 4);
+    }
+    if (this.indexCount + indices > this.indices.length) {
+      const next = new Uint32Array(Math.max(2048, (this.indexCount + indices) * 2));
+      next.set(this.indices);
+      this.indices = next;
+    }
+  }
+}
+
+function grow(src: Float32Array, length: number): Float32Array<ArrayBuffer> {
+  const next = new Float32Array(length);
+  next.set(src);
+  return next;
 }
 
 // --- Corner derivation ---------------------------------------------------
@@ -510,21 +556,43 @@ export interface TerrainSampler {
   cornersOf(x: number, y: number): (TerrainType | null)[];
 }
 
+/** Wire encoding, in the server's TerrainType::to_byte order. */
+const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain"];
+
+const NO_CORNERS: (TerrainType | null)[] = [null, null, null, null];
+
 /**
  * Every tile reads its own corners and, for the mask, its neighbours' — so
  * each tile's corners are wanted several times over. Memoise them for the
- * duration of one chunk rebuild.
+ * duration of one chunk rebuild, indexed by the same flat grid the tiles
+ * arrive in. Tiles outside the grid have no corners and need no slot.
  */
-export function createSampler(typeAt: TypeAt): TerrainSampler {
-  const cache = new Map<string, (TerrainType | null)[]>();
+export function createSampler(
+  tiles: Uint8Array,
+  stride: number,
+  originX: number,
+  originY: number,
+): TerrainSampler {
+  const cache = new Array<(TerrainType | null)[] | undefined>(stride * stride);
+
+  const typeAt: TypeAt = (x, y) => {
+    const ix = x - originX;
+    const iy = y - originY;
+    if (ix < 0 || iy < 0 || ix >= stride || iy >= stride) return undefined;
+    return TYPE_BY_BYTE[tiles[iy * stride + ix]];
+  };
+
   return {
     typeAt,
     cornersOf(x, y) {
-      const key = `${x},${y}`;
-      let corners = cache.get(key);
+      const ix = x - originX;
+      const iy = y - originY;
+      if (ix < 0 || iy < 0 || ix >= stride || iy >= stride) return NO_CORNERS;
+      const i = iy * stride + ix;
+      let corners = cache[i];
       if (corners === undefined) {
         corners = cornersAt(x, y, typeAt);
-        cache.set(key, corners);
+        cache[i] = corners;
       }
       return corners;
     },
@@ -545,55 +613,81 @@ function append(
   ox: number,
   oy: number,
   oz: number,
-  color: Color3,
+  color: RGB,
   bordered: boolean,
 ): void {
-  const base = buf.positions.length / 3;
   const p = geo.positions;
-  for (let i = 0; i < p.length; i += 3) {
-    buf.positions.push(p[i] + ox, p[i + 1] + oy, p[i + 2] + oz);
-  }
-  for (let i = 0; i < geo.normals.length; i++) buf.normals.push(geo.normals[i]);
-
   const vertexCount = p.length / 3;
+  buf.reserve(vertexCount, geo.indices.length);
+
+  const base = buf.vertices;
+  const positions = buf.positions;
+  const normals = buf.normals;
+  let v3 = base * 3;
+  for (let i = 0; i < p.length; i += 3, v3 += 3) {
+    positions[v3] = p[i] + ox;
+    positions[v3 + 1] = p[i + 1] + oy;
+    positions[v3 + 2] = p[i + 2] + oz;
+    normals[v3] = geo.normals[i];
+    normals[v3 + 1] = geo.normals[i + 1];
+    normals[v3 + 2] = geo.normals[i + 2];
+  }
+
   if (buf.colors) {
-    for (let i = 0; i < vertexCount; i++) {
-      buf.colors.push(color.r, color.g, color.b, 1);
+    const colors = buf.colors;
+    for (let i = 0, c = base * 4; i < vertexCount; i++, c += 4) {
+      colors[c] = color.r;
+      colors[c + 1] = color.g;
+      colors[c + 2] = color.b;
+      colors[c + 3] = 1;
     }
   }
   if (buf.uvs) {
-    if (bordered && geo.uvs) {
-      for (let i = 0; i < geo.uvs.length; i++) buf.uvs.push(geo.uvs[i]);
-    } else {
-      for (let i = 0; i < vertexCount; i++) buf.uvs.push(0.5, 0.5);
+    const uvs = buf.uvs;
+    const src = bordered ? geo.uvs : undefined;
+    for (let i = 0, u = base * 2; i < vertexCount; i++, u += 2) {
+      uvs[u] = src ? src[i * 2] : 0.5;
+      uvs[u + 1] = src ? src[i * 2 + 1] : 0.5;
     }
   }
-  for (let i = 0; i < geo.indices.length; i++) {
-    buf.indices.push(base + geo.indices[i]);
+
+  const indices = buf.indices;
+  for (let i = 0, n = buf.indexCount; i < geo.indices.length; i++, n++) {
+    indices[n] = base + geo.indices[i];
   }
+
+  buf.vertices += vertexCount;
+  buf.indexCount += geo.indices.length;
 }
 
-export interface ChunkSink {
-  ground: TerrainBuffers;
-  cliffs: TerrainBuffers;
-  /** Flat 4x4 column-major matrices, 16 floats per tree. */
-  trees: number[];
+class ChunkSink {
+  ground = new TerrainBuffers(true);
+  /**
+   * Cliffs only ever cast shadows. The camera looks straight down, so cliff
+   * walls are edge-on and never rasterised — only the shadow pass reads them,
+   * and that reads depth alone.
+   */
+  cliffs = new TerrainBuffers(false);
+
+  reset(): void {
+    this.ground.reset();
+    this.cliffs.reset();
+  }
 }
 
 /**
  * Append one tile's geometry into a chunk. Coordinates are emitted relative to
  * (originX, originY) so the chunk mesh can sit at its own origin.
  */
-export function appendTile(
+function appendTile(
   sink: ChunkSink,
   x: number,
   y: number,
   originX: number,
   originY: number,
   tt: TerrainType,
-  theme: Theme,
+  palette: TerrainPalette,
   sampler: TerrainSampler,
-  hasRoad: (x: number, y: number) => boolean,
 ): void {
   const lx = x - originX;
   const ly = y - originY;
@@ -628,7 +722,7 @@ export function appendTile(
     }
     baseGeo = cached;
   }
-  append(sink.ground, baseGeo, lx, ly, be, terrainColor(tt, theme), be === 0);
+  append(sink.ground, baseGeo, lx, ly, be, palette[tt], be === 0);
 
   // Same-elevation corner overlays
   for (const c of corners) {
@@ -639,7 +733,7 @@ export function appendTile(
       lx,
       ly,
       be + 0.01,
-      terrainColor(c.type, theme),
+      palette[c.type],
       ELEVATION[c.type] === 0,
     );
   }
@@ -656,7 +750,7 @@ export function appendTile(
       lx,
       ly,
       c.cornerElev,
-      terrainColor(c.type, theme),
+      palette[c.type],
       c.cornerElev === 0,
     );
     append(
@@ -665,7 +759,7 @@ export function appendTile(
       lx,
       ly,
       lowerZ,
-      terrainColor(higherType, theme).scale(0.7),
+      shade(palette[higherType], 0.7),
       false,
     );
   }
@@ -685,22 +779,86 @@ export function appendTile(
       lx,
       ly,
       neighborElev,
-      terrainColor(tt, theme).scale(0.7),
+      shade(palette[tt], 0.7),
       false,
     );
   }
+}
 
-  // Trees
-  if (tt === "Forest" && !hasRoad(x, y)) {
-    for (const tree of treesForTile(x, y)) {
-      const s = tree.scale;
-      // Column-major 4x4: scale on the diagonal, translation in the last row.
-      sink.trees.push(
-        s * 0.35, 0, 0, 0,
-        0, s * 0.35, 0, 0,
-        0, 0, s, 0,
-        lx + tree.x, ly + tree.y, 0, 1,
-      );
+/** Scratch, reused across builds — see TerrainBuffers. */
+const SINK = new ChunkSink();
+
+/**
+ * Ground and cliff geometry for one chunk. A pure function of the tiles and
+ * the palette: no scene, no game state, no DOM. This is what the worker runs.
+ *
+ * `tiles` carries CHUNK_SKIRT tiles of margin on every side, so a chunk meshes
+ * without consulting its neighbours and the shared skirt keeps seams consistent.
+ * Returns null when the chunk holds no tiles at all.
+ */
+export function buildChunk(
+  tiles: Uint8Array,
+  chunkX: number,
+  chunkY: number,
+  palette: TerrainPalette,
+): ChunkGeometry | null {
+  SINK.reset();
+  const originX = chunkX * CHUNK_SIZE;
+  const originY = chunkY * CHUNK_SIZE;
+  const sampler = createSampler(
+    tiles,
+    CHUNK_STRIDE,
+    originX - CHUNK_SKIRT,
+    originY - CHUNK_SKIRT,
+  );
+
+  let tileCount = 0;
+  for (let y = originY; y < originY + CHUNK_SIZE; y++) {
+    for (let x = originX; x < originX + CHUNK_SIZE; x++) {
+      const type = sampler.typeAt(x, y);
+      if (!type) continue;
+      tileCount++;
+      appendTile(SINK, x, y, originX, originY, type, palette, sampler);
     }
   }
+  if (tileCount === 0) return null;
+
+  return { ground: SINK.ground.take(), cliffs: SINK.cliffs.take() };
+}
+
+/**
+ * Tree instance matrices for one chunk, 16 floats each. Trees yield to roads,
+ * and roads are live game state — so unlike buildChunk this stays on the main
+ * thread. It is cheap: placement is a pure seeded function of the tile coords.
+ */
+export function buildTrees(
+  tiles: Uint8Array,
+  chunkX: number,
+  chunkY: number,
+  hasRoad: (x: number, y: number) => boolean,
+): Float32Array {
+  const originX = chunkX * CHUNK_SIZE;
+  const originY = chunkY * CHUNK_SIZE;
+  const out: number[] = [];
+
+  for (let y = originY; y < originY + CHUNK_SIZE; y++) {
+    for (let x = originX; x < originX + CHUNK_SIZE; x++) {
+      const ix = x - originX + CHUNK_SKIRT;
+      const iy = y - originY + CHUNK_SKIRT;
+      if (TYPE_BY_BYTE[tiles[iy * CHUNK_STRIDE + ix]] !== "Forest") continue;
+      if (hasRoad(x, y)) continue;
+
+      for (const tree of treesForTile(x, y)) {
+        const s = tree.scale;
+        // Column-major 4x4: scale on the diagonal, translation in the last row.
+        out.push(
+          s * 0.35, 0, 0, 0,
+          0, s * 0.35, 0, 0,
+          0, 0, s, 0,
+          x - originX + tree.x, y - originY + tree.y, 0, 1,
+        );
+      }
+    }
+  }
+  return new Float32Array(out);
 }
