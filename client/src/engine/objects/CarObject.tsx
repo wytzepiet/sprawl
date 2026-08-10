@@ -1,5 +1,5 @@
-import { Color3, Path3D, SpotLight, Vector3 } from "@babylonjs/core";
-import type { Scene, ClusteredLightContainer } from "@babylonjs/core";
+import { Color3, Path3D, Vector3 } from "@babylonjs/core";
+import type { Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { getClockOffset } from "../../network/connection";
@@ -53,10 +53,6 @@ export function mountCar(
   entry: GameObjectEntry,
   pool: InstancePool,
   scene: Scene,
-  headlights: {
-    container: ClusteredLightContainer;
-    headlightIntensity: () => number;
-  },
 ): () => void {
   const data = entry.object.data as {
     route_positions: [number, number][];
@@ -142,45 +138,17 @@ export function mountCar(
     "car",
     initial?.pos ?? [0, 0, -10],
     initial?.rot ?? [0, 0, 0],
-    undefined,
-    true, // dynamic — cars move every frame
   );
-
-  // Headlight
-  const spot = new SpotLight(
-    `headlight_${entry.id}`,
-    Vector3.Zero(),
-    Vector3.Forward(),
-    (160 * Math.PI) / 180,
-    2,
-    scene,
-    true,
-  );
-  spot.range = 3;
-  spot.diffuse = new Color3(1, 0.95, 0.8);
-  spot.specular = Color3.Black();
-  spot.intensity = 0;
-  headlights.container.addLight(spot);
 
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = computePosition();
     if (result) {
       pool.updateInstance("car", instanceId, result.pos, result.rot);
-      const t = result.tangent;
-      spot.position.set(
-        result.pos[0] + t.x * 0.18,
-        result.pos[1] + t.y * 0.18,
-        result.pos[2] + 0.1,
-      );
-      spot.direction.set(t.x, t.y, -0.5);
-      spot.intensity = 0; // TEMP: headlights disabled for perf testing
     }
   });
 
   return () => {
     scene.onBeforeRenderObservable.remove(observer);
-    headlights.container.removeLight(spot);
-    spot.dispose();
     pool.removeInstance("car", instanceId);
   };
 }
