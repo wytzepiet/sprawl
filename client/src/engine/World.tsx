@@ -3,7 +3,6 @@ import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
 import { useTheme } from "./theme";
-import { useHeadlights } from "./Headlights";
 import { TerrainChunks } from "./TerrainChunks";
 import {
   setOpsListener,
@@ -29,7 +28,6 @@ export default function World() {
   const { scene } = useEngine();
   const { ambientColor, shadowGenerator } = useDayNight();
   const theme = useTheme();
-  const headlights = useHeadlights();
 
   const mounted = new Map<string, MountedEntry>();
 
@@ -47,7 +45,7 @@ export default function World() {
       case "Building":
         return mountBuilding(entry, pool);
       case "Car":
-        return mountCar(entry, pool, scene, headlights);
+        return mountCar(entry, pool, scene);
       case "RoadNode":
         return mountRoad(entry, pool, th, getEntity);
       default:

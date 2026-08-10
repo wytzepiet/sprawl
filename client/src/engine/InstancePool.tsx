@@ -11,7 +11,9 @@ import {
   VertexData,
   StandardMaterial,
   Color3,
-  type InstancedMesh as BabylonInstancedMesh,
+  Matrix,
+  Quaternion,
+  Vector3,
 } from "@babylonjs/core";
 import type { BaseTexture } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
@@ -26,48 +28,63 @@ function tint(color: Color3, amb: Color3): Color3 {
   return new Color3(color.r * amb.r, color.g * amb.g, color.b * amb.b);
 }
 
+/**
+ * One draw call per bucket, however many instances it holds. Thin instances
+ * carry no scene node, so a moving instance costs a matrix write rather than a
+ * world-matrix recompute, a bounding sync, a frustum test and a slot in the
+ * active-mesh walk.
+ */
 interface Bucket {
   mesh: Mesh;
   material: StandardMaterial;
-  instances: Map<number, BabylonInstancedMesh>;
-  free: BabylonInstancedMesh[];
+  /** 16 floats per instance. Capacity may exceed count. */
+  matrices: Float32Array;
+  /** pos(3) + rot(3) + scale(3), so a partial update can recompose. */
+  transforms: Float32Array;
+  count: number;
+  idToIndex: Map<number, number>;
+  indexToId: number[];
+  /** Contents changed; re-upload before the next render. */
+  dirty: boolean;
+  /** Buffer was reallocated, so Babylon needs the new reference. */
+  resized: boolean;
   baseColor: Color3;
   castShadow: boolean;
   receiveShadow: boolean;
 }
 
-let nextId = 0;
+const STRIDE = 9;
+const _scale = new Vector3();
+const _rot = new Quaternion();
+const _pos = new Vector3();
+const _mat = new Matrix();
 
-function applyTransform(
-  inst: BabylonInstancedMesh,
-  pos?: [number, number, number],
-  rot?: [number, number, number],
-  scale?: number | [number, number, number],
-): void {
-  if (pos) {
-    inst.position.x = pos[0];
-    inst.position.y = pos[1];
-    inst.position.z = pos[2];
-  }
-  if (rot) {
-    inst.rotation.x = rot[0];
-    inst.rotation.y = rot[1];
-    inst.rotation.z = rot[2];
-  }
-  if (scale != null) {
-    if (typeof scale === "number") {
-      inst.scaling.x = scale;
-      inst.scaling.y = scale;
-      inst.scaling.z = scale;
-    } else {
-      inst.scaling.x = scale[0];
-      inst.scaling.y = scale[1];
-      inst.scaling.z = scale[2];
-    }
-  }
+/** Compose one instance's stored transform into its slot in the matrix buffer. */
+function composeMatrix(bucket: Bucket, index: number): void {
+  const t = index * STRIDE;
+  const tr = bucket.transforms;
+  _pos.set(tr[t], tr[t + 1], tr[t + 2]);
+  Quaternion.FromEulerAnglesToRef(tr[t + 3], tr[t + 4], tr[t + 5], _rot);
+  _scale.set(tr[t + 6], tr[t + 7], tr[t + 8]);
+  Matrix.ComposeToRef(_scale, _rot, _pos, _mat);
+  _mat.copyToArray(bucket.matrices, index * 16);
+  bucket.dirty = true;
 }
 
-const MAX_FREE = 32;
+function grow(bucket: Bucket): void {
+  const capacity = Math.max(64, (bucket.count + 1) * 2);
+  const m = new Float32Array(capacity * 16);
+  m.set(bucket.matrices);
+  bucket.matrices = m;
+  const t = new Float32Array(capacity * STRIDE);
+  t.set(bucket.transforms);
+  bucket.transforms = t;
+  bucket.resized = true;
+}
+
+let nextId = 0;
+
+
 
 export class InstancePool {
   private buckets = new Map<string, Bucket>();
@@ -114,9 +131,13 @@ export class InstancePool {
     vd.applyToMesh(mesh);
     mesh.material = mat;
     mesh.isPickable = false;
-    mesh.isVisible = false;
     mesh.freezeWorldMatrix();
     mesh.doNotSyncBoundingInfo = true;
+    // Instances span the whole world, so the base mesh's own bounds say
+    // nothing useful -- skip the frustum test rather than rebuild bounds each
+    // frame, which would walk every instance.
+    mesh.alwaysSelectAsActiveMesh = true;
+    mesh.setEnabled(false);
 
     if (receiveShadow) {
       mesh.receiveShadows = true;
@@ -128,8 +149,13 @@ export class InstancePool {
     bucket = {
       mesh,
       material: mat,
-      instances: new Map(),
-      free: [],
+      matrices: new Float32Array(0),
+      transforms: new Float32Array(0),
+      count: 0,
+      idToIndex: new Map(),
+      indexToId: [],
+      dirty: false,
+      resized: true,
       baseColor: color,
       castShadow,
       receiveShadow,
@@ -143,27 +169,28 @@ export class InstancePool {
     pos?: [number, number, number],
     rot?: [number, number, number],
     scale?: number | [number, number, number],
-    dynamic?: boolean,
   ): number {
     const bucket = this.buckets.get(key)!;
     const id = nextId++;
-    let inst: BabylonInstancedMesh;
-    if (bucket.free.length > 0) {
-      inst = bucket.free.pop()!;
-      inst.setEnabled(true);
-      inst.doNotSyncBoundingInfo = false;
-    } else {
-      inst = bucket.mesh.createInstance(`${key}_${id}`);
-      inst.isPickable = false;
-      if (bucket.receiveShadow) inst.receiveShadows = true;
-      if (bucket.castShadow) this.shadowGenerator.addShadowCaster(inst);
-    }
-    applyTransform(inst, pos, rot, scale);
-    if (!dynamic) {
-      inst.freezeWorldMatrix();
-      inst.doNotSyncBoundingInfo = true;
-    }
-    bucket.instances.set(id, inst);
+    if ((bucket.count + 1) * 16 > bucket.matrices.length) grow(bucket);
+
+    const index = bucket.count++;
+    const t = index * STRIDE;
+    const tr = bucket.transforms;
+    tr[t] = pos?.[0] ?? 0;
+    tr[t + 1] = pos?.[1] ?? 0;
+    tr[t + 2] = pos?.[2] ?? 0;
+    tr[t + 3] = rot?.[0] ?? 0;
+    tr[t + 4] = rot?.[1] ?? 0;
+    tr[t + 5] = rot?.[2] ?? 0;
+    const s3 = scale == null ? [1, 1, 1] : typeof scale === "number" ? [scale, scale, scale] : scale;
+    tr[t + 6] = s3[0];
+    tr[t + 7] = s3[1];
+    tr[t + 8] = s3[2];
+
+    bucket.idToIndex.set(id, index);
+    bucket.indexToId[index] = id;
+    composeMatrix(bucket, index);
     return id;
   }
 
@@ -175,33 +202,63 @@ export class InstancePool {
   ): void {
     const bucket = this.buckets.get(key);
     if (!bucket) return;
-    const inst = bucket.instances.get(id);
-    if (!inst) return;
-    applyTransform(inst, pos, rot);
+    const index = bucket.idToIndex.get(id);
+    if (index === undefined) return;
+    const t = index * STRIDE;
+    const tr = bucket.transforms;
+    if (pos) { tr[t] = pos[0]; tr[t + 1] = pos[1]; tr[t + 2] = pos[2]; }
+    if (rot) { tr[t + 3] = rot[0]; tr[t + 4] = rot[1]; tr[t + 5] = rot[2]; }
+    composeMatrix(bucket, index);
   }
 
   removeInstance(key: string, id: number): void {
     const bucket = this.buckets.get(key);
     if (!bucket) return;
-    const inst = bucket.instances.get(id);
-    if (!inst) return;
-    bucket.instances.delete(id);
+    const index = bucket.idToIndex.get(id);
+    if (index === undefined) return;
 
-    if (bucket.free.length < MAX_FREE) {
-      inst.setEnabled(false);
-      bucket.free.push(inst);
-    } else {
-      if (bucket.castShadow) this.shadowGenerator.removeShadowCaster(inst);
-      inst.dispose();
+    // Swap-remove: move the last instance into the freed slot so the buffer
+    // stays contiguous and only one slot has to be rewritten.
+    const last = --bucket.count;
+    if (index !== last) {
+      bucket.transforms.copyWithin(index * STRIDE, last * STRIDE, (last + 1) * STRIDE);
+      const movedId = bucket.indexToId[last];
+      bucket.indexToId[index] = movedId;
+      bucket.idToIndex.set(movedId, index);
+      composeMatrix(bucket, index);
     }
+    bucket.idToIndex.delete(id);
+    bucket.dirty = true;
 
-    if (bucket.instances.size === 0 && bucket.free.length === 0) {
+    if (bucket.count === 0) {
       if (bucket.castShadow) {
         this.shadowGenerator.removeShadowCaster(bucket.mesh);
       }
       bucket.mesh.dispose();
       bucket.material.dispose();
       this.buckets.delete(key);
+    }
+  }
+
+  /**
+   * Upload whatever changed, once per bucket per frame. Instances write into
+   * the buffer freely during the frame; nothing reaches the GPU until here.
+   */
+  flush(): void {
+    for (const bucket of this.buckets.values()) {
+      if (!bucket.dirty) continue;
+      if (bucket.resized) {
+        bucket.mesh.thinInstanceSetBuffer("matrix", bucket.matrices, 16, false);
+        bucket.resized = false;
+      } else {
+        bucket.mesh.thinInstanceBufferUpdated("matrix");
+      }
+      bucket.mesh.thinInstanceCount = bucket.count;
+      // An empty thin-instance buffer leaves a zero-sized draw behind a call
+      // that still carries the old count -- WebGPU rejects it and drops the
+      // frame. Same reason TerrainChunks disables empty chunk meshes.
+      bucket.mesh.setEnabled(bucket.count > 0);
+      bucket.dirty = false;
     }
   }
 
@@ -225,8 +282,6 @@ export class InstancePool {
       if (bucket.castShadow) {
         this.shadowGenerator.removeShadowCaster(bucket.mesh);
       }
-      for (const inst of bucket.free) inst.dispose();
-      for (const inst of bucket.instances.values()) inst.dispose();
       bucket.mesh.dispose();
       bucket.material.dispose();
     }
@@ -252,6 +307,10 @@ export function InstancePoolProvider(props: ParentProps) {
   const { ambientColor, shadowGenerator } = useDayNight();
 
   const pool = new InstancePool(scene, shadowGenerator()!);
+
+  // Instances are written during the frame; this pushes them to the GPU once.
+  const obs = scene.onBeforeRenderObservable.add(() => pool.flush());
+  onCleanup(() => scene.onBeforeRenderObservable.remove(obs));
 
   createEffect(on(ambientColor, (amb) => {
     pool.updateMaterials(amb);

@@ -118,6 +118,12 @@ export class TerrainChunks {
     this.groundMat.diffuseTexture = this.borderTex;
 
     this.cliffMat = new StandardMaterial("terrain_cliff", scene);
+    // The one material that genuinely wants both sides. Cliff walls exist only
+    // to cast shadows, and the sun swings through 360 degrees while a wall's
+    // facing is fixed -- culled, a wall pointing away from the sun writes no
+    // depth into the shadow map and its cliff stops casting for half the day.
+    // They are edge-on to the camera, so the second side costs no fill.
+    this.cliffMat.backFaceCulling = false;
     this.cliffMat.specularColor = Color3.Black();
     this.cliffMat.disableLighting = true;
 
