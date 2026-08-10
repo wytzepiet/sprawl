@@ -111,17 +111,17 @@ export class TerrainChunks {
     // One material per pass, shared by every chunk — colour lives in the
     // vertex buffer, so terrain type costs nothing at the material level.
     this.groundMat = new StandardMaterial("terrain_ground", scene);
-    this.groundMat.backFaceCulling = false;
+    // Back faces are never visible from a fixed top-down camera, and the
+    // ground covers every pixel -- shading it twice cost half the framerate.
+    // Culling is Babylon's default; all geometry winds to match it.
     this.groundMat.specularColor = Color3.Black();
     this.groundMat.diffuseTexture = this.borderTex;
 
     this.cliffMat = new StandardMaterial("terrain_cliff", scene);
-    this.cliffMat.backFaceCulling = false;
     this.cliffMat.specularColor = Color3.Black();
     this.cliffMat.disableLighting = true;
 
     this.treeMat = new StandardMaterial("terrain_tree", scene);
-    this.treeMat.backFaceCulling = false;
     this.treeMat.specularColor = Color3.Black();
 
     this.updateMaterials(new Color3(1, 1, 1));

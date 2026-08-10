@@ -44,7 +44,6 @@ export default function Mesh(props: MeshProps) {
 
   const mesh = new BabylonMesh(props.name, scene);
   const material = new StandardMaterial(`${props.name}_mat`, scene);
-  material.backFaceCulling = false;
   material.specularColor = Color3.Black();
 
   if (props.receiveShadow) {

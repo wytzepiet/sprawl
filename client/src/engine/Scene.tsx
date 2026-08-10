@@ -11,12 +11,14 @@ import TimeSlider from "../ui/TimeSlider";
 import { GameProvider } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
+import FrameStats from "../ui/FrameStats";
 
 function SceneInner() {
   return (
     <DayNightProvider>
       <Canvas>
         <OrthoCamera />
+        {/* <FrameStats /> */}
         <DayNightLights>
           <Headlights>
             <InstancePoolProvider>

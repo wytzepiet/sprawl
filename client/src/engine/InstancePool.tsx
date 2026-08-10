@@ -91,7 +91,6 @@ export class InstancePool {
     if (bucket) return bucket;
 
     const mat = new StandardMaterial(`mat_${key}`, this.scene);
-    mat.backFaceCulling = false;
     mat.specularColor = Color3.Black();
 
     if (receiveShadow) {
