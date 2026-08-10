@@ -90,7 +90,10 @@ export function boxGeometry(w: number, h: number, d: number): MeshGeometry {
   const indices: number[] = [];
   for (let face = 0; face < 6; face++) {
     const b = face * 4;
-    indices.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    // Same (0,2,1) winding as buildingGeometry and the road fans -- outward
+    // faces front-facing under Babylon's left-handed default, so back-face
+    // culling works without any per-material orientation override.
+    indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
   }
   return { positions, indices, normals };
 }

@@ -83,7 +83,7 @@ function buildCylinderGeo(radius: number, height: number): MeshGeometry {
   }
   for (let i = 0; i < TREE_SEGMENTS; i++) {
     const b = i * 2;
-    indices.push(b, b + 2, b + 1, b + 1, b + 2, b + 3);
+    indices.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
   }
 
   // Top cap
@@ -96,7 +96,7 @@ function buildCylinderGeo(radius: number, height: number): MeshGeometry {
     normals.push(0, 0, 1);
   }
   for (let i = 0; i < TREE_SEGMENTS; i++) {
-    indices.push(topCenter, topCenter + i + 1, topCenter + i + 2);
+    indices.push(topCenter, topCenter + i + 2, topCenter + i + 1);
   }
 
   return { positions, indices, normals };
@@ -132,7 +132,7 @@ function treesForTile(tx: number, ty: number): TreeInfo[] {
 
 const FULL_SQUARE: MeshGeometry = {
   positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0],
-  indices: [0, 1, 2, 0, 2, 3],
+  indices: [0, 2, 1, 0, 3, 2],
   normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
   uvs: [0, 0, 1, 0, 1, 1, 0, 1],
 };
@@ -259,7 +259,7 @@ function buildCornerGeo(defIdx: number, variant: number): MeshGeometry {
   }
 
   for (let i = 0; i < pts.length - 1; i++) {
-    indices.push(0, i + 1, i + 2);
+    indices.push(0, i + 2, i + 1);
   }
 
   return { positions, indices, normals, uvs };
@@ -312,7 +312,7 @@ function buildCutoutBaseGeo(
 
   const n = boundary.length;
   for (let i = 0; i < n; i++) {
-    indices.push(0, i + 1, ((i + 1) % n) + 1);
+    indices.push(0, ((i + 1) % n) + 1, i + 1);
   }
 
   return { positions, indices, normals, uvs };
@@ -351,7 +351,7 @@ function buildEdgeCliffGeo(edgeIdx: number, height: number): MeshGeometry {
   return {
     positions: [x0, y0, 0, x1, y1, 0, x1, y1, height, x0, y0, height],
     normals: [nx, ny, 0, nx, ny, 0, nx, ny, 0, nx, ny, 0],
-    indices: [0, 2, 1, 0, 3, 2],
+    indices: [0, 1, 2, 0, 2, 3],
   };
 }
 
@@ -391,7 +391,7 @@ function buildCliffGeo(
     const base = positions.length / 3;
     positions.push(x0, y0, 0, x1, y1, 0, x1, y1, height, x0, y0, height);
     normals.push(nx, ny, 0, nx, ny, 0, nx, ny, 0, nx, ny, 0);
-    indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 
   return { positions, indices, normals };
