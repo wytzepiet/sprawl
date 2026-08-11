@@ -1,7 +1,8 @@
 import { onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
+import { pickWorld } from "./pickWorld";
 import { useGame } from "../state/gameObjects";
-import { buildMode, roadOneWay } from "../ui/buildMode";
+import { activeTool, roadOneWay } from "../ui/buildMode";
 import type { GridCoord } from "../generated";
 
 // 8-directional step offsets, indexed by sector (0 = right, going counter-clockwise)
@@ -23,15 +24,7 @@ export function RoadDrawer() {
   let accDx = 0;
   let accDy = 0;
 
-  function pickWorld(e: PointerEvent): { wx: number; wy: number } {
-    const rect = canvas.getBoundingClientRect();
-    const cam = scene.activeCamera!;
-    const nx = -(((e.clientX - rect.left) / rect.width) * 2 - 1);
-    const ny = 1 - ((e.clientY - rect.top) / rect.height) * 2;
-    const wx = cam.position.x + (nx * (cam.orthoRight! - cam.orthoLeft!)) / 2;
-    const wy = cam.position.y + (ny * (cam.orthoTop! - cam.orthoBottom!)) / 2;
-    return { wx, wy };
-  }
+  const pick = (e: { clientX: number; clientY: number }) => pickWorld(scene, canvas, e);
 
   function demolishAt(pos: GridCoord) {
     send({ type: "DemolishRoad", data: { pos } });
@@ -59,9 +52,10 @@ export function RoadDrawer() {
   }
 
   const onPointerDown = (e: PointerEvent) => {
-    const mode = buildMode();
+    if (e.button !== 0) return;
+    const mode = activeTool();
     if (mode !== "road" && mode !== "demolish") return;
-    const w = pickWorld(e);
+    const w = pick(e);
     current = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
     prevWorld = w;
     accDx = 0;
@@ -74,15 +68,15 @@ export function RoadDrawer() {
 
   const onPointerMove = (e: PointerEvent) => {
     if (!current || !prevWorld) return;
-    const mode = buildMode();
-    const w = pickWorld(e);
+    const mode = activeTool();
+    const w = pick(e);
 
     if (mode === "demolish") {
       // The browser merges every sample it took since the last frame into one
       // event. Walking them keeps a curved flick on the path the mouse took,
       // rather than the chord across it, which cuts corners off the arc.
       const merged = e.getCoalescedEvents?.() ?? [];
-      for (const ce of merged.length ? merged : [e]) demolishTo(pickWorld(ce));
+      for (const ce of merged.length ? merged : [e]) demolishTo(pick(ce));
       prevWorld = w;
       return;
     }
@@ -120,7 +114,7 @@ export function RoadDrawer() {
   const onPointerUp = (e: PointerEvent) => {
     // A flick releases the button past the last pointermove, so without this
     // the tail of every fast drag survives.
-    if (current && buildMode() === "demolish") demolishTo(pickWorld(e));
+    if (current && activeTool() === "demolish") demolishTo(pick(e));
     current = null;
     prevWorld = null;
   };

@@ -2,18 +2,14 @@ import { onCleanup, createEffect, on } from "solid-js";
 import { FreeCamera, Vector3, Camera } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
-import { buildMode, placingBuilding } from "../ui/buildMode";
+import { appMode, placingBuilding } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 
-const BUILD_ZOOM = 8;
 /**
  * Fraction of the remaining distance covered each frame. Zooming is a direct
- * response to the wheel and wants to arrive under the cursor at once; dropping
- * into build mode is a move the camera makes on its own, and reads better with
- * some travel to it.
+ * response to the wheel and wants to arrive under the cursor at once.
  */
 const ZOOM_LERP_SPEED = 0.35;
-const BUILD_LERP_SPEED = 0.15;
 
 /** Chunks of unsurveyed ground the camera is allowed to see past the frontier. */
 const PAN_MARGIN_CHUNKS = 1;
@@ -43,11 +39,7 @@ export function OrthoCamera() {
   let targetCamY = camera.position.y;
   let locked = false;
   let debugMode = false;
-  // Where a zoom with no pointer of its own aims. Build mode is entered from a
-  // key or a toolbar button, so it borrows the last place the mouse was over
-  // the map; before that has happened, the middle of the view.
-  let cursorX = innerWidth / 2;
-  let cursorY = innerHeight / 2;
+  // The last subscription the server acknowledged.
   let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN;
 
   function updateOrtho() {
@@ -147,17 +139,14 @@ export function OrthoCamera() {
     sendViewportIfChanged();
   });
 
-  // React to build mode changes
+  // Build mode hands the left button to the tools; the camera keeps the right
+  // one and the wheel. It does not move of its own accord — toggling the mode
+  // is now a keystroke you make constantly, and a view that jumps each time is
+  // a view you have to find again.
   createEffect(on(
-    () => ({ mode: buildMode(), placing: placingBuilding() }),
-    ({ mode, placing }) => {
-      if (mode === "select" && !placing) {
-        locked = false;
-      } else {
-        locked = true;
-        zoomToward(BUILD_ZOOM, cursorX, cursorY);
-        lerpSpeed = BUILD_LERP_SPEED;
-      }
+    () => appMode() === "build" || placingBuilding() !== null,
+    (building) => {
+      locked = building;
     },
   ));
 
@@ -183,7 +172,9 @@ export function OrthoCamera() {
   }
 
   const onPointerDown = (e: PointerEvent) => {
-    if (locked) return;
+    // Build mode gives the left button to the tools, so the right one always
+    // pans -- otherwise a mode you live in is a mode you cannot move around in.
+    if (locked && e.button !== 2) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     canvas.setPointerCapture(e.pointerId);
 
@@ -201,8 +192,6 @@ export function OrthoCamera() {
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    cursorX = e.clientX;
-    cursorY = e.clientY;
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -264,8 +253,11 @@ export function OrthoCamera() {
     }
   };
 
+  // Right-drag is a pan, so the menu it would otherwise raise is in the way.
+  const preventContextMenu = (e: Event) => e.preventDefault();
+
   const onWheel = (e: WheelEvent) => {
-    if (locked || debugMode) return;
+    if (debugMode) return;
     e.preventDefault();
 
     zoomToward(targetOrthoSize * (1 + e.deltaY * 0.001), e.clientX, e.clientY);
@@ -294,6 +286,7 @@ export function OrthoCamera() {
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("wheel", onWheel, { passive: false });
+  canvas.addEventListener("contextmenu", preventContextMenu);
   window.addEventListener("keydown", onKeyDown);
 
   onCleanup(() => {
@@ -303,6 +296,7 @@ export function OrthoCamera() {
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
     canvas.removeEventListener("wheel", onWheel);
+    canvas.removeEventListener("contextmenu", preventContextMenu);
     window.removeEventListener("keydown", onKeyDown);
     camera.dispose();
   });
