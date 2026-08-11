@@ -5,6 +5,7 @@ import {
   onCleanup,
   type ParentProps,
 } from "solid-js";
+import { timeOfDay as simTimeOfDay } from "../network/clock";
 import {
   Color3,
   Color4,
@@ -20,8 +21,6 @@ import { useEngine } from "./Canvas";
 // ---------------------------------------------------------------------------
 
 /** Real seconds for one full game day. */
-const DAY_DURATION_SECONDS = 120;
-
 /** Half-extent of the sun's ortho frustum beyond which shadows stop rendering. */
 const SHADOW_MAX_RADIUS = 50;
 
@@ -137,11 +136,10 @@ function sunDirection(t: number): Vector3 {
 
 export interface DayNightState {
   timeOfDay: () => number;
-  setTimeOfDay: (t: number) => void;
-  paused: () => boolean;
-  setPaused: (p: boolean) => void;
   ambientColor: () => Color3;
   shadowGenerator: () => ShadowGenerator | undefined;
+  /** @internal used by DayNightLights */
+  _setTimeOfDay: (t: number) => void;
   /** @internal used by DayNightLights */
   _setAmbient: (v: Color3) => void;
   /** @internal used by DayNightLights */
@@ -162,16 +160,13 @@ export function useDayNight(): DayNightState {
 
 export function DayNightProvider(props: ParentProps) {
   const [timeOfDay, setTimeOfDay] = createSignal(0.35);
-  const [paused, setPaused] = createSignal(false);
   const [ambient, setAmbient] = createSignal(ramp(ambientStops, 0.35, lerp3));
   const [shadowGen, setShadowGen] = createSignal<ShadowGenerator>();
 
   const state: DayNightState = {
     timeOfDay,
-    setTimeOfDay,
-    paused,
-    setPaused,
     ambientColor: ambient,
+    _setTimeOfDay: setTimeOfDay,
     shadowGenerator: shadowGen,
     _setAmbient: setAmbient,
     _setShadowGen: setShadowGen,
@@ -186,7 +181,7 @@ export function DayNightProvider(props: ParentProps) {
 
 export default function DayNightLights(props: ParentProps) {
   const { scene } = useEngine();
-  const { timeOfDay, paused, setTimeOfDay, _setAmbient: setAmbient, _setShadowGen: setShadowGen } = useDayNight();
+  const { timeOfDay, _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setShadowGen: setShadowGen } = useDayNight();
 
   // --- Lights ---
   const hemiLight = new HemisphericLight("hemi", new Vector3(0, 0, 1), scene);
@@ -213,13 +208,10 @@ export default function DayNightLights(props: ParentProps) {
   const camera = scene.activeCamera!;
   let lastColorStep = -1;
   const obs = scene.onBeforeRenderObservable.add(() => {
-    let t = timeOfDay();
-    if (!paused()) {
-      const dt = scene.getEngine().getDeltaTime() / 1000;
-      t += dt / DAY_DURATION_SECONDS;
-      if (t >= 1) t -= 1;
-      setTimeOfDay(t);
-    }
+    // The sun follows the simulation, not the render loop — so fast-forwarding
+    // moves the light with the traffic, and a reconnect resumes the same hour.
+    const t = simTimeOfDay();
+    setTimeOfDay(t);
 
     // Ambient drives a material walk over every bucket, so only recompute it
     // when the quantized time actually moves. 1/1024 of a day is below the

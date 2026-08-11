@@ -195,6 +195,8 @@ pub enum ClientMessage {
     PlaceBuilding(PlaceBuilding),
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
+    /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
+    SetSpeed(u32),
     ResetWorld,
     SetChunks(ChunkBounds),
     Ping,
@@ -208,12 +210,28 @@ pub enum Operation {
     Delete(#[ts(type = "number")] EntityId),
 }
 
+/// Simulated time of one full day/night cycle.
+pub const DAY_MS: u32 = 120_000;
+
+/// The simulation's clock, as the client needs to see it.
+///
+/// `speed` is how many 10ms steps the server runs per tick, so it is also the
+/// rate sim time advances relative to wall time — the client extrapolates car
+/// positions with it between updates.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Clock {
+    #[ts(type = "number")]
+    pub now: u64,
+    pub speed: u32,
+    pub day_ms: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct StateUpdate {
     pub ops: Vec<Operation>,
-    #[ts(type = "number")]
-    pub server_time: u64,
+    pub clock: Clock,
     #[ts(type = "number")]
     pub terrain_seed: u32,
     /// Extent of the surveyed world, which the client keeps its camera inside.

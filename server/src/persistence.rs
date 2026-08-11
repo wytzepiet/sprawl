@@ -17,9 +17,9 @@ CREATE TABLE IF NOT EXISTS metadata (
 );
 ";
 
-pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64, u32) {
+pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64, u32, u64) {
     if !path.exists() {
-        return (vec![], 1, 0);
+        return (vec![], 1, 0, 0);
     }
 
     let conn = Connection::open(path).expect("failed to open db");
@@ -55,10 +55,20 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64, u32) {
         )
         .unwrap_or(0);
 
-    (entries, next_id, terrain_seed)
+    // Sim time is persisted so a restart continues the day rather than
+    // snapping the world back to midnight.
+    let sim_time: u64 = conn
+        .query_row(
+            "SELECT value FROM metadata WHERE key = 'sim_time'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    (entries, next_id, terrain_seed, sim_time)
 }
 
-pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: u64, terrain_seed: u32) {
+pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: u64, terrain_seed: u32, sim_time: u64) {
     let mut conn = Connection::open(path).expect("failed to open db");
     conn.execute_batch(SCHEMA).expect("failed to create schema");
     let tx = conn.transaction().expect("failed to begin transaction");
@@ -95,6 +105,12 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: 
         [terrain_seed as i64],
     )
     .expect("failed to save terrain_seed");
+
+    tx.execute(
+        "INSERT OR REPLACE INTO metadata (key, value) VALUES ('sim_time', ?1)",
+        [sim_time as i64],
+    )
+    .expect("failed to save sim_time");
 
     tx.commit().expect("failed to commit");
 }

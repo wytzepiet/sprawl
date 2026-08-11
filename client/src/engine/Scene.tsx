@@ -7,7 +7,7 @@ import { RoadDrawer } from "./RoadDrawer";
 import { BuildingPlacer } from "./BuildingPlacer";
 import World from "./World";
 import BuildModeToolbar from "../ui/BuildModeToolbar";
-import TimeSlider from "../ui/TimeSlider";
+import TimeControls from "../ui/TimeControls";
 import { GameProvider } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
@@ -30,7 +30,7 @@ function SceneInner() {
         </DayNightLights>
       </Canvas>
       <BuildModeToolbar />
-      <TimeSlider />
+      <TimeControls />
       {/* <DebugOverlay /> */}
     </DayNightProvider>
   );

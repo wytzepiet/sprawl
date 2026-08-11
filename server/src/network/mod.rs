@@ -5,7 +5,7 @@ use futures::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
-use crate::protocol::{ChunkBounds, ClientMessage, Operation, ServerMessage, StateUpdate};
+use crate::protocol::{ChunkBounds, ClientMessage, Clock, DAY_MS, Operation, ServerMessage, StateUpdate};
 
 pub type ClientId = u64;
 
@@ -57,7 +57,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             }
 
             let mut ops: Vec<Operation> = Vec::new();
-            let mut server_time: u64 = 0;
+            let mut clock = Clock { now: 0, speed: 1, day_ms: DAY_MS };
             let mut terrain_seed: u32 = 0;
             let mut revealed_bounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
             let mut has_update = false;
@@ -67,7 +67,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                     ServerMessage::Update(su) => {
                         has_update = true;
                         ops.extend(su.ops);
-                        server_time = server_time.max(su.server_time);
+                        clock = su.clock;
                         terrain_seed = su.terrain_seed;
                         revealed_bounds = su.revealed_bounds;
                     }
@@ -83,7 +83,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             if has_update {
                 let merged = ServerMessage::Update(StateUpdate {
                     ops,
-                    server_time,
+                    clock,
                     terrain_seed,
                     revealed_bounds,
                 });

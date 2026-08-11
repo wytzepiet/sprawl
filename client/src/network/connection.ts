@@ -2,18 +2,6 @@ import { encode, decode } from "@msgpack/msgpack";
 import type { ClientMessage, ServerMessage } from "../generated";
 import { trackMessage } from "../ui/DebugOverlay";
 
-let clockOffset = 0;
-const SMOOTH = 0.2;
-
-export function getClockOffset(): number {
-  return clockOffset;
-}
-
-export function updateClockOffset(serverTime: number) {
-  const sample = Date.now() - serverTime;
-  clockOffset = clockOffset === 0 ? sample : clockOffset + SMOOTH * (sample - clockOffset);
-}
-
 export interface Connection {
   /** False when the socket was not open and the message was dropped. */
   send(msg: ClientMessage): boolean;

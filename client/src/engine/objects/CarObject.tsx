@@ -2,7 +2,7 @@ import { Color3, Path3D, Vector3 } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
-import { getClockOffset } from "../../network/connection";
+import { simNow } from "../../network/clock";
 import type { GameObjectEntry } from "../../generated";
 
 const CAR_COLOR = new Color3(0.9, 0.25, 0.2);
@@ -110,8 +110,7 @@ export function mountCar(
   } | null {
     if (!path) return null;
 
-    const offset = getClockOffset();
-    let dt = Math.max(0, (Date.now() - (data.updated_at + offset)) / 1000);
+    let dt = Math.max(0, (simNow() - data.updated_at) / 1000);
     if (data.acceleration < 0) {
       const tStop = -data.speed / data.acceleration;
       if (dt > tStop) dt = tStop;

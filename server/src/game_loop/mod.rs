@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingType, ChunkBounds, ChunkCoord, ClientMessage, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate};
+use crate::protocol::{BuildingType, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate};
 use crate::world::chunk_of;
 use crate::world::World;
 use crate::world::pathfinding;
@@ -28,10 +28,15 @@ fn db_path() -> PathBuf {
     std::env::var("SPRAWL_DB").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("sprawl.db"))
 }
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
+/// Simulated milliseconds per step. Fixed: speed adds steps rather than making
+/// them longer, so running fast cannot change what the simulation does.
+const STEP_MS: GameTime = 10;
+/// Guards against a speed that would peg the loop and stall the socket.
+const MAX_SPEED: u32 = 50;
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
-    let mut world = load_world(&db_path);
+    let (mut world, mut sim_time) = load_world(&db_path);
     let mut events: EventQueue<GameEvent> = EventQueue::new();
     let mut intersections = IntersectionRegistry::new();
     let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
@@ -69,13 +74,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         println!("loaded {} objects from db", world.objects.all_entries().len());
     }
 
-    let mut tick_interval = interval(Duration::from_millis(10));
-    let start = Instant::now();
+    let mut tick_interval = interval(Duration::from_millis(STEP_MS));
     let mut last_persist = Instant::now();
+    let mut speed: u32 = 1;
 
     loop {
         tick_interval.tick().await;
-        let now: GameTime = start.elapsed().as_millis() as u64;
+        let mut now: GameTime = sim_time;
 
         while let Ok(cmd) = commands.try_recv() {
             match cmd {
@@ -86,8 +91,20 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         }
                         continue;
                     }
+                    if let ClientMessage::SetSpeed(s) = &message {
+                        speed = (*s).min(MAX_SPEED);
+                        println!("speed: {speed} steps/tick");
+                        // Paused, nothing goes dirty and no update would ever be
+                        // sent — so clients would keep extrapolating cars against
+                        // a stopped world. Push the new clock instead of waiting.
+                        let clk = clock(now, speed);
+                        for cs in clients.values() {
+                            let _ = cs.sender.send(state_update(&world, vec![], clk));
+                        }
+                        continue;
+                    }
                     if let ClientMessage::SetChunks(bounds) = &message {
-                        handle_set_chunks(&world, &mut clients, client_id, *bounds, now);
+                        handle_set_chunks(&world, &mut clients, client_id, *bounds, clock(now, speed));
                     } else if let ClientMessage::ResetWorld = &message {
                         // Send deletes for each client's known set, then clear.
                         // Terrain is regenerated below, so drop the known chunks
@@ -95,7 +112,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         for cs in clients.values_mut() {
                             let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
                             if !ops.is_empty() {
-                                let _ = cs.sender.send(state_update(&world, ops, now));
+                                let _ = cs.sender.send(state_update(&world, ops, clock(now, speed)));
                             }
                             for coord in cs.known_chunks.drain() {
                                 let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
@@ -119,7 +136,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                             .filter_map(|(id, cs)| cs.subscribed.map(|b| (*id, b)))
                             .collect();
                         for (cid, bounds) in subs {
-                            handle_set_chunks(&world, &mut clients, cid, bounds, now);
+                            handle_set_chunks(&world, &mut clients, cid, bounds, clock(now, speed));
                         }
                         println!("reset: world cleared, terrain regenerated");
                     } else {
@@ -128,7 +145,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 }
                 Command::ClientConnect { id, sender } => {
                     // Send empty update with terrain_seed; objects come via SetViewport
-                    let _ = sender.send(state_update(&world, vec![], now));
+                    let _ = sender.send(state_update(&world, vec![], clock(now, speed)));
                     clients.insert(id, ClientState {
                         sender,
                         subscribed: None,
@@ -142,41 +159,52 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             }
         }
 
-        events.set_now(now);
-        while let Some(scheduled) = events.pop_due() {
-            handle_game_event(&mut world, &mut events, &mut intersections, scheduled.event, now);
+        // One step per unit of speed, each the same length as at speed 1, so a
+        // fast-forwarded hour is the same hour — just less wall time spent on it.
+        for _ in 0..speed {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(scheduled) = events.pop_due() {
+                handle_game_event(&mut world, &mut events, &mut intersections, scheduled.event, now);
+            }
         }
+        sim_time = now;
 
-        flush_dirty(&mut world, &mut clients, now);
+        flush_dirty(&mut world, &mut clients, clock(now, speed));
 
         if last_persist.elapsed() >= PERSIST_INTERVAL {
-            persist(&mut world, &db_path);
+            persist(&mut world, &db_path, sim_time);
             last_persist = Instant::now();
         }
     }
 }
 
+fn clock(now: GameTime, speed: u32) -> Clock {
+    Clock { now, speed, day_ms: DAY_MS }
+}
+
 /// Every update carries the ambient world state alongside its ops, so a client
 /// never has to ask for the seed or the surveyed extent separately.
-fn state_update(world: &World, ops: Vec<Operation>, now: GameTime) -> ServerMessage {
+fn state_update(world: &World, ops: Vec<Operation>, clk: Clock) -> ServerMessage {
     ServerMessage::Update(StateUpdate {
         ops,
-        server_time: now,
+        clock: clk,
         terrain_seed: world.terrain_seed,
         revealed_bounds: world.revealed_bounds,
     })
 }
 
-fn load_world(db_path: &Path) -> World {
-    let (entries, next_id, terrain_seed) = persistence::load(db_path);
-    if entries.is_empty() {
+fn load_world(db_path: &Path) -> (World, GameTime) {
+    let (entries, next_id, terrain_seed, sim_time) = persistence::load(db_path);
+    let world = if entries.is_empty() {
         World::new()
     } else {
         World::from_loaded(Tracked::load(entries, next_id), terrain_seed)
-    }
+    };
+    (world, sim_time)
 }
 
-fn persist(world: &mut World, db_path: &Path) {
+fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
     let (changed_ids, removed_ids) = world.objects.drain_persist_dirty();
     if changed_ids.is_empty() && removed_ids.is_empty() {
         return;
@@ -188,7 +216,7 @@ fn persist(world: &mut World, db_path: &Path) {
         .cloned()
         .collect();
 
-    persistence::save(db_path, &changed, &removed_ids, world.objects.next_id(), world.terrain_seed);
+    persistence::save(db_path, &changed, &removed_ids, world.objects.next_id(), world.terrain_seed, sim_time);
     println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());
 }
 
@@ -238,6 +266,7 @@ fn handle_player_action(
                 despawn_car_fully(world, intersections, events, car_id);
             }
         }
+        ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),
         ClientMessage::ResetWorld => unreachable!("handled in run()"),
         ClientMessage::SetChunks(_) => unreachable!("handled in run()"),
         ClientMessage::Ping => {}
@@ -443,7 +472,7 @@ fn handle_set_chunks(
     clients: &mut HashMap<ClientId, ClientState>,
     client_id: ClientId,
     bounds: ChunkBounds,
-    now: GameTime,
+    clk: Clock,
 ) {
     let visible_chunks: HashSet<ChunkCoord> = bounds.coords().collect();
     let in_view = world.entities_in_chunks(&visible_chunks);
@@ -493,14 +522,14 @@ fn handle_set_chunks(
     cs.known = in_view;
 
     if !ops.is_empty() {
-        let _ = cs.sender.send(state_update(world, ops, now));
+        let _ = cs.sender.send(state_update(world, ops, clk));
     }
 }
 
 fn flush_dirty(
     world: &mut World,
     clients: &mut HashMap<ClientId, ClientState>,
-    now: GameTime,
+    clk: Clock,
 ) {
     let (changed, removed) = world.objects.drain_dirty();
     let crossings: Vec<(EntityId, ChunkCoord, ChunkCoord)> =
@@ -576,7 +605,7 @@ fn flush_dirty(
         }
 
         if !ops.is_empty() {
-            let _ = cs.sender.send(state_update(world, ops, now));
+            let _ = cs.sender.send(state_update(world, ops, clk));
         }
     }
 }

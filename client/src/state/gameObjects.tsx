@@ -5,7 +5,8 @@ import {
   onCleanup,
   type ParentProps,
 } from "solid-js";
-import { createConnection, updateClockOffset } from "../network/connection";
+import { createConnection } from "../network/connection";
+import { syncClock, syncFromClock } from "../network/clock";
 import type {
   GameObjectEntry,
   ClientMessage,
@@ -125,7 +126,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
   const { send, close } = createConnection(wsUrl, (msg) => {
     switch (msg.type) {
       case "Update":
-        updateClockOffset(msg.data.server_time);
+        syncFromClock(msg.data.clock);
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
         setRevealedBounds(msg.data.revealed_bounds);
         applyOps(msg.data.ops);
@@ -140,7 +141,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         terrainListener?.unloadChunk(msg.data);
         break;
       case "Pong":
-        updateClockOffset(msg.data);
+        syncClock(msg.data);
         break;
     }
   });
