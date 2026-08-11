@@ -6,7 +6,14 @@ import { buildMode, placingBuilding } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 
 const BUILD_ZOOM = 8;
-const ZOOM_LERP_SPEED = 0.08;
+/**
+ * Fraction of the remaining distance covered each frame. Zooming is a direct
+ * response to the wheel and wants to arrive under the cursor at once; dropping
+ * into build mode is a move the camera makes on its own, and reads better with
+ * some travel to it.
+ */
+const ZOOM_LERP_SPEED = 0.35;
+const BUILD_LERP_SPEED = 0.15;
 
 /** Chunks of unsurveyed ground the camera is allowed to see past the frontier. */
 const PAN_MARGIN_CHUNKS = 1;
@@ -31,10 +38,16 @@ export function OrthoCamera() {
 
   let orthoSize = 15;
   let targetOrthoSize = orthoSize;
+  let lerpSpeed = ZOOM_LERP_SPEED;
   let targetCamX = camera.position.x;
   let targetCamY = camera.position.y;
   let locked = false;
   let debugMode = false;
+  // Where a zoom with no pointer of its own aims. Build mode is entered from a
+  // key or a toolbar button, so it borrows the last place the mouse was over
+  // the map; before that has happened, the middle of the view.
+  let cursorX = innerWidth / 2;
+  let cursorY = innerHeight / 2;
   let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN;
 
   function updateOrtho() {
@@ -75,6 +88,25 @@ export function OrthoCamera() {
     }
   }
 
+  /**
+   * Zoom to `size` while keeping whatever sits under (clientX, clientY) pinned
+   * there. Only the targets move, so the same lerp that carries a wheel zoom
+   * carries this one.
+   */
+  function zoomToward(size: number, clientX: number, clientY: number) {
+    const rect = canvas.getBoundingClientRect();
+    const nx = -((clientX - rect.left) / rect.width * 2 - 1);
+    const ny = 1 - (clientY - rect.top) / rect.height * 2;
+    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
+    const worldX = targetCamX + nx * targetOrthoSize * aspect;
+    const worldY = targetCamY + ny * targetOrthoSize;
+
+    const newSize = Math.max(2, Math.min(100, size));
+    targetCamX = worldX - nx * newSize * aspect;
+    targetCamY = worldY - ny * newSize;
+    targetOrthoSize = newSize;
+  }
+
   // Subscription is chunk-granular, so panning within a chunk sends nothing.
   function sendViewportIfChanged() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
@@ -105,9 +137,9 @@ export function OrthoCamera() {
     const dX = targetCamX - camera.position.x;
     const dY = targetCamY - camera.position.y;
     if (Math.abs(dSize) > 0.01 || Math.abs(dX) > 0.001 || Math.abs(dY) > 0.001) {
-      orthoSize += dSize * ZOOM_LERP_SPEED;
-      camera.position.x += dX * ZOOM_LERP_SPEED;
-      camera.position.y += dY * ZOOM_LERP_SPEED;
+      orthoSize += dSize * lerpSpeed;
+      camera.position.x += dX * lerpSpeed;
+      camera.position.y += dY * lerpSpeed;
       camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
       updateOrtho();
     }
@@ -123,7 +155,8 @@ export function OrthoCamera() {
         locked = false;
       } else {
         locked = true;
-        targetOrthoSize = BUILD_ZOOM;
+        zoomToward(BUILD_ZOOM, cursorX, cursorY);
+        lerpSpeed = BUILD_LERP_SPEED;
       }
     },
   ));
@@ -168,6 +201,8 @@ export function OrthoCamera() {
   };
 
   const onPointerMove = (e: PointerEvent) => {
+    cursorX = e.clientX;
+    cursorY = e.clientY;
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -190,18 +225,8 @@ export function OrthoCamera() {
       lastPinchCenterY = center.y;
 
       // Zoom toward pinch center
-      const nx = -((center.x - rect.left) / rect.width * 2 - 1);
-      const ny = 1 - (center.y - rect.top) / rect.height * 2;
-      const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-      const worldX = targetCamX + nx * targetOrthoSize * aspect;
-      const worldY = targetCamY + ny * targetOrthoSize;
-
-      const scale = lastPinchDist / Math.max(dist, 1);
-      const newSize = Math.max(2, Math.min(100, targetOrthoSize * scale));
-
-      targetCamX = worldX - nx * newSize * aspect;
-      targetCamY = worldY - ny * newSize;
-      targetOrthoSize = newSize;
+      zoomToward(targetOrthoSize * (lastPinchDist / Math.max(dist, 1)), center.x, center.y);
+      lerpSpeed = ZOOM_LERP_SPEED;
       lastPinchDist = dist;
       return;
     }
@@ -243,21 +268,8 @@ export function OrthoCamera() {
     if (locked || debugMode) return;
     e.preventDefault();
 
-    // World position under cursor before zoom
-    const rect = canvas.getBoundingClientRect();
-    const nx = -((e.clientX - rect.left) / rect.width * 2 - 1);
-    const ny = 1 - (e.clientY - rect.top) / rect.height * 2;
-    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-    const worldX = targetCamX + nx * targetOrthoSize * aspect;
-    const worldY = targetCamY + ny * targetOrthoSize;
-
-    const zoomFactor = 1 + e.deltaY * 0.001;
-    const newSize = Math.max(2, Math.min(100, targetOrthoSize * zoomFactor));
-
-    // Adjust camera so cursor world position stays fixed
-    targetCamX = worldX - nx * newSize * aspect;
-    targetCamY = worldY - ny * newSize;
-    targetOrthoSize = newSize;
+    zoomToward(targetOrthoSize * (1 + e.deltaY * 0.001), e.clientX, e.clientY);
+    lerpSpeed = ZOOM_LERP_SPEED;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
