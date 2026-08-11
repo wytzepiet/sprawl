@@ -260,6 +260,24 @@ mod tests {
         assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (1, 1), Rotation::North).is_none());
     }
 
+    fn diagonal_world() -> World {
+        world_with_road(&[(0, 0), (1, 1), (2, 2)])
+    }
+
+    /// A diagonal road leaves its elbow tiles free, and a plot there is
+    /// orthogonally adjacent to both ends of the diagonal.
+    #[test]
+    fn plot_in_the_elbow_of_a_diagonal_has_access() {
+        let world = diagonal_world();
+        assert!(world.road_for_plot(GridCoord { x: 1, y: 0 }, (1, 1), Rotation::North).is_some());
+    }
+
+    #[test]
+    fn plot_beside_a_diagonal_reaches_it_by_corner() {
+        let world = diagonal_world();
+        assert!(world.road_for_plot(GridCoord { x: 2, y: 0 }, (1, 1), Rotation::North).is_some());
+    }
+
     #[test]
     fn footprint_covers_every_tile_and_rotation_swaps_axes() {
         let pos = GridCoord { x: 10, y: 10 };
