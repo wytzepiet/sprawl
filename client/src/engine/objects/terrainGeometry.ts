@@ -31,11 +31,32 @@ export interface MeshBuffers {
 export interface ChunkGeometry {
   ground: MeshBuffers;
   cliffs: MeshBuffers;
+  /** Solid category-coloured plot boundaries. */
+  zoneLines: MeshBuffers;
 }
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
+/** Category colours by zone byte; index 0 is unzoned and never read. */
+export type ZonePalette = (RGB | null)[];
+
+/** How far the fill leans toward its category colour. Deliberately slight —
+ * the boundary lines carry the signal, the fill only hints. */
+const ZONE_FILL = 0.22;
+/** Boundary line width, in tiles. */
+const ZONE_LINE = 0.09;
+
+const TINTED: RGB = { r: 0, g: 0, b: 0 };
+
+/** Scratch return — read straight into a vertex buffer, never retained. */
+function tinted(base: RGB, zone: RGB): RGB {
+  TINTED.r = base.r + (zone.r - base.r) * ZONE_FILL;
+  TINTED.g = base.g + (zone.g - base.g) * ZONE_FILL;
+  TINTED.b = base.b + (zone.b - base.b) * ZONE_FILL;
+  return TINTED;
+}
+
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  return [g.ground, g.cliffs].flatMap((m) =>
+  return [g.ground, g.cliffs, g.zoneLines].flatMap((m) =>
     [m.positions, m.normals, m.indices, m.uvs, m.colors]
       .filter((a) => a !== undefined)
       .map((a) => a.buffer as ArrayBuffer),
@@ -662,6 +683,7 @@ function append(
 
 class ChunkSink {
   ground = new TerrainBuffers(true);
+  zoneLines = new TerrainBuffers(true);
   /**
    * Cliffs only ever cast shadows. The camera looks straight down, so cliff
    * walls are edge-on and never rasterised — only the shadow pass reads them,
@@ -672,6 +694,81 @@ class ChunkSink {
   reset(): void {
     this.ground.reset();
     this.cliffs.reset();
+    this.zoneLines.reset();
+  }
+}
+
+/**
+ * A flat coloured rectangle. Plot boundaries are the one thing whose colour is
+ * not the ground's, so they cannot ride the shared border texture — which only
+ * ever darkens whatever is beneath it.
+ */
+function emitRect(
+  buf: TerrainBuffers,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  z: number,
+  color: RGB,
+): void {
+  buf.reserve(4, 6);
+  const base = buf.vertices;
+  const pts: [number, number][] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  for (let i = 0; i < 4; i++) {
+    const v = (base + i) * 3;
+    buf.positions[v] = pts[i][0];
+    buf.positions[v + 1] = pts[i][1];
+    buf.positions[v + 2] = z;
+    buf.normals[v] = 0;
+    buf.normals[v + 1] = 0;
+    buf.normals[v + 2] = 1;
+    if (buf.colors) {
+      const c = (base + i) * 4;
+      buf.colors[c] = color.r;
+      buf.colors[c + 1] = color.g;
+      buf.colors[c + 2] = color.b;
+      buf.colors[c + 3] = 1;
+    }
+    if (buf.uvs) {
+      const u = (base + i) * 2;
+      buf.uvs[u] = 0.5;
+      buf.uvs[u + 1] = 0.5;
+    }
+  }
+  let k = buf.indexCount;
+  for (const o of [0, 2, 1, 0, 3, 2]) buf.indices[k++] = base + o;
+  buf.vertices += 4;
+  buf.indexCount += 6;
+}
+
+/**
+ * Boundaries of one zoned tile.
+ *
+ * West and south are always drawn; east and north only where the neighbour is
+ * unzoned. A grid line shared by two zoned tiles therefore gets drawn exactly
+ * once, by the tile on its far side — otherwise every interior line would be
+ * two coplanar quads fighting over the same depth.
+ */
+function appendZoneLines(
+  buf: TerrainBuffers,
+  lx: number,
+  ly: number,
+  z: number,
+  color: RGB,
+  x: number,
+  y: number,
+  zoneAt: (x: number, y: number) => number,
+): void {
+  const half = ZONE_LINE / 2;
+  const zz = z + 0.015;
+  emitRect(buf, lx - half, ly - half, ZONE_LINE, 1 + ZONE_LINE, zz, color);
+  emitRect(buf, lx - half, ly - half, 1 + ZONE_LINE, ZONE_LINE, zz, color);
+  if (zoneAt(x + 1, y) === 0) {
+    emitRect(buf, lx + 1 - half, ly - half, ZONE_LINE, 1 + ZONE_LINE, zz, color);
+  }
+  if (zoneAt(x, y + 1) === 0) {
+    emitRect(buf, lx - half, ly + 1 - half, 1 + ZONE_LINE, ZONE_LINE, zz, color);
   }
 }
 
@@ -688,10 +785,14 @@ function appendTile(
   tt: TerrainType,
   palette: TerrainPalette,
   sampler: TerrainSampler,
+  zoneAt: (x: number, y: number) => number,
+  zonePalette: ZonePalette,
 ): void {
   const lx = x - originX;
   const ly = y - originY;
   const be = ELEVATION[tt];
+  const zone = zonePalette[zoneAt(x, y)] ?? null;
+  const g = (c: RGB) => (zone ? tinted(c, zone) : c);
 
   const tileCorners = sampler.cornersOf(x, y);
   const mask = cornerMask(x, y, tileCorners, sampler);
@@ -722,7 +823,7 @@ function appendTile(
     }
     baseGeo = cached;
   }
-  append(sink.ground, baseGeo, lx, ly, be, palette[tt], be === 0);
+  append(sink.ground, baseGeo, lx, ly, be, g(palette[tt]), be === 0);
 
   // Same-elevation corner overlays
   for (const c of corners) {
@@ -733,7 +834,7 @@ function appendTile(
       lx,
       ly,
       be + 0.01,
-      palette[c.type],
+      g(palette[c.type]),
       ELEVATION[c.type] === 0,
     );
   }
@@ -750,7 +851,7 @@ function appendTile(
       lx,
       ly,
       c.cornerElev,
-      palette[c.type],
+      g(palette[c.type]),
       c.cornerElev === 0,
     );
     append(
@@ -783,6 +884,8 @@ function appendTile(
       false,
     );
   }
+
+  if (zone) appendZoneLines(sink.zoneLines, lx, ly, be, zone, x, y, zoneAt);
 }
 
 /** Scratch, reused across builds — see TerrainBuffers. */
@@ -798,9 +901,11 @@ const SINK = new ChunkSink();
  */
 export function buildChunk(
   tiles: Uint8Array,
+  zones: Uint8Array,
   chunkX: number,
   chunkY: number,
   palette: TerrainPalette,
+  zonePalette: ZonePalette,
 ): ChunkGeometry | null {
   SINK.reset();
   const originX = chunkX * CHUNK_SIZE;
@@ -812,18 +917,29 @@ export function buildChunk(
     originY - CHUNK_SKIRT,
   );
 
+  const zoneAt = (x: number, y: number): number => {
+    const ix = x - (originX - CHUNK_SKIRT);
+    const iy = y - (originY - CHUNK_SKIRT);
+    if (ix < 0 || iy < 0 || ix >= CHUNK_STRIDE || iy >= CHUNK_STRIDE) return 0;
+    return zones[iy * CHUNK_STRIDE + ix];
+  };
+
   let tileCount = 0;
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
       const type = sampler.typeAt(x, y);
       if (!type) continue;
       tileCount++;
-      appendTile(SINK, x, y, originX, originY, type, palette, sampler);
+      appendTile(SINK, x, y, originX, originY, type, palette, sampler, zoneAt, zonePalette);
     }
   }
   if (tileCount === 0) return null;
 
-  return { ground: SINK.ground.take(), cliffs: SINK.cliffs.take() };
+  return {
+    ground: SINK.ground.take(),
+    cliffs: SINK.cliffs.take(),
+    zoneLines: SINK.zoneLines.take(),
+  };
 }
 
 /**

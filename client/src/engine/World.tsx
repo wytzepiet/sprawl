@@ -13,6 +13,9 @@ import {
 } from "../state/gameObjects";
 import type { Operation, GameObjectEntry } from "../generated";
 
+import { KIND_CATEGORY, ZONE_BYTE } from "./objects/buildings";
+import type { Building, Rotation } from "../generated";
+
 import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
 import { mountRoad } from "./objects/RoadNode";
@@ -20,6 +23,9 @@ import { mountRoad } from "./objects/RoadNode";
 interface MountedEntry {
   kind: string;
   cleanup: () => void;
+  /** Tile keys this building tinted, kept because the store has already
+   *  dropped the entity by the time a Delete reaches us. */
+  zoned?: string[];
   neighbors?: number[]; // road node neighbor IDs for dirty tracking
   pos?: { x: number; y: number }; // road node position, for tree suppression
 }
@@ -35,7 +41,47 @@ export default function World() {
   const hasRoad = (x: number, y: number) =>
     getObjectsAt(x, y).some((o) => o.object.kind === "RoadNode");
 
-  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, hasRoad);
+  /**
+   * Tile → category byte, mirroring the server's occupancy index. The store
+   * only knows a building at its origin tile, so without this a footprint would
+   * tint one corner of itself.
+   */
+  const zoneTiles = new Map<string, number>();
+  const zoneAt = (x: number, y: number) => zoneTiles.get(`${x},${y}`) ?? 0;
+
+  function footprint(pos: { x: number; y: number }, size: [number, number], rotation: Rotation) {
+    const swap = rotation === "East" || rotation === "West";
+    const w = swap ? size[1] : size[0];
+    const h = swap ? size[0] : size[1];
+    const tiles: { x: number; y: number }[] = [];
+    for (let dy = 0; dy < h; dy++) {
+      for (let dx = 0; dx < w; dx++) tiles.push({ x: pos.x + dx, y: pos.y + dy });
+    }
+    return tiles;
+  }
+
+  /** Tint a building's tiles, returning the keys so they can be cleared later. */
+  function addZone(entry: GameObjectEntry): string[] {
+    if (entry.object.kind !== "Building" || !entry.position) return [];
+    const b = entry.object.data as Building;
+    const byte = ZONE_BYTE[KIND_CATEGORY[b.kind]];
+    return footprint(entry.position, b.size, b.rotation).map((t) => {
+      const key = `${t.x},${t.y}`;
+      zoneTiles.set(key, byte);
+      terrain.markZone(t.x, t.y);
+      return key;
+    });
+  }
+
+  function clearZone(keys: string[] | undefined) {
+    for (const key of keys ?? []) {
+      zoneTiles.delete(key);
+      const [x, y] = key.split(",").map(Number);
+      terrain.markZone(x, y);
+    }
+  }
+
+  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, hasRoad, zoneAt);
   const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
@@ -67,6 +113,7 @@ export default function World() {
           const existing = mounted.get(key);
           if (existing) {
             if (existing.neighbors) markDirty(existing.neighbors, dirtyRoads);
+            clearZone(existing.zoned);
             existing.cleanup();
           }
 
@@ -74,6 +121,7 @@ export default function World() {
           const cleanup = mount(entry);
           if (cleanup) {
             const m: MountedEntry = { kind: entry.object.kind, cleanup };
+            if (entry.object.kind === "Building") m.zoned = addZone(entry);
             if (entry.object.kind === "RoadNode") {
               const rd = entry.object.data;
               m.neighbors = [...rd.outgoing, ...rd.incoming];
@@ -103,6 +151,7 @@ export default function World() {
           if (existing) {
             if (existing.neighbors) markDirty(existing.neighbors, dirtyRoads);
             if (existing.pos) terrain.markTile(existing.pos.x, existing.pos.y);
+            clearZone(existing.zoned);
             existing.cleanup();
             mounted.delete(key);
           }

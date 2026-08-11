@@ -14,11 +14,15 @@ import type { Theme } from "./theme";
 import {
   buildTrees,
   CHUNK_SIZE,
+  CHUNK_SKIRT,
+  CHUNK_STRIDE,
   TREE_TRUNK,
   type ChunkGeometry,
   type MeshBuffers,
   type TerrainPalette,
+  type ZonePalette,
 } from "./objects/terrainGeometry";
+import { ZONE_PALETTE } from "./objects/buildings";
 import type { TerrainApi } from "./terrainWorker";
 
 export { CHUNK_SIZE };
@@ -59,6 +63,7 @@ interface ChunkMeshes {
   ground: Mesh;
   cliffs: Mesh;
   trees: Mesh;
+  zoneLines: Mesh;
   /** Empty meshes must stay disabled — see applyBuffers. */
   hasCliffs: boolean;
   hasTrees: boolean;
@@ -94,6 +99,7 @@ export class TerrainChunks {
   private builder = Comlink.wrap<TerrainApi>(this.worker);
 
   private groundMat: StandardMaterial;
+  private zoneMat: StandardMaterial;
   private cliffMat: StandardMaterial;
   private treeMat: StandardMaterial;
   private borderTex: RawTexture;
@@ -105,6 +111,7 @@ export class TerrainChunks {
     private shadowGenerator: ShadowGenerator,
     private theme: () => Theme,
     private hasRoad: (x: number, y: number) => boolean,
+    private zoneAt: (x: number, y: number) => number,
   ) {
     this.borderTex = createBorderTexture(scene);
 
@@ -126,6 +133,12 @@ export class TerrainChunks {
     this.cliffMat.backFaceCulling = false;
     this.cliffMat.specularColor = Color3.Black();
     this.cliffMat.disableLighting = true;
+
+    // Plot boundaries are their own geometry because the shared border texture
+    // can only darken the ground, never recolour it.
+    this.zoneMat = new StandardMaterial("terrain_zone", scene);
+    this.zoneMat.specularColor = Color3.Black();
+    this.zoneMat.diffuseColor = Color3.White();
 
     this.treeMat = new StandardMaterial("terrain_tree", scene);
     this.treeMat.specularColor = Color3.Black();
@@ -175,6 +188,23 @@ export class TerrainChunks {
     this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
   }
 
+  /**
+   * A building appearing or vanishing changes the tint and the boundary lines,
+   * which live in the meshed geometry — so this needs a full rebuild, not the
+   * cheap tree pass. The skirt means a tile near an edge shows up in its
+   * neighbour's mesh too.
+   */
+  markZone(x: number, y: number): void {
+    const cx = floorDiv(x, CHUNK_SIZE);
+    const cy = floorDiv(y, CHUNK_SIZE);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const key = `${cx + dx},${cy + dy}`;
+        if (this.tiles.has(key)) this.invalidate(key);
+      }
+    }
+  }
+
   /** Rebuild every chunk — used when the theme changes all terrain colours. */
   markAllDirty(): void {
     for (const key of this.chunks.keys()) this.invalidate(key);
@@ -212,10 +242,19 @@ export class TerrainChunks {
     const [cx, cy] = parseKey(key);
     const generation = this.generation.get(key);
 
+    const zones = this.zoneBytes(cx, cy);
+
     let geometry: ChunkGeometry | null;
     try {
       // tiles is cloned, not transferred — we keep it for tree rebuilds.
-      geometry = await this.builder.build(tiles, cx, cy, this.palette());
+      geometry = await this.builder.build(
+        tiles,
+        zones,
+        cx,
+        cy,
+        this.palette(),
+        ZONE_PALETTE as ZonePalette,
+      );
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
       // leaves a permanent hole that now reads as fog. Queue it again instead.
@@ -232,6 +271,19 @@ export class TerrainChunks {
     this.ready.push({ key, geometry });
   }
 
+  /** Category byte per tile, laid out exactly like the tile payload. */
+  private zoneBytes(cx: number, cy: number): Uint8Array {
+    const out = new Uint8Array(CHUNK_STRIDE * CHUNK_STRIDE);
+    const ox = cx * CHUNK_SIZE - CHUNK_SKIRT;
+    const oy = cy * CHUNK_SIZE - CHUNK_SKIRT;
+    for (let dy = 0; dy < CHUNK_STRIDE; dy++) {
+      for (let dx = 0; dx < CHUNK_STRIDE; dx++) {
+        out[dy * CHUNK_STRIDE + dx] = this.zoneAt(ox + dx, oy + dy);
+      }
+    }
+    return out;
+  }
+
   private applyGeometry(key: string, geometry: ChunkGeometry): void {
     const [cx, cy] = parseKey(key);
     const meshes =
@@ -239,6 +291,7 @@ export class TerrainChunks {
 
     meshes.ground.setEnabled(this.applyBuffers(meshes.ground, geometry.ground));
     meshes.hasCliffs = this.applyBuffers(meshes.cliffs, geometry.cliffs);
+    meshes.zoneLines.setEnabled(this.applyBuffers(meshes.zoneLines, geometry.zoneLines));
     this.applyDetail(meshes);
 
     this.rebuildTrees(key);
@@ -277,8 +330,12 @@ export class TerrainChunks {
     treeData.normals = TREE_TRUNK.normals;
     treeData.applyToMesh(trees);
 
-    const meshes: ChunkMeshes = { ground, cliffs, trees, hasCliffs: false, hasTrees: false };
-    for (const mesh of [ground, cliffs, trees]) {
+    const zoneLines = new Mesh(`chunk_${key}_zone`, this.scene);
+    zoneLines.material = this.zoneMat;
+    zoneLines.receiveShadows = true;
+
+    const meshes: ChunkMeshes = { ground, cliffs, trees, zoneLines, hasCliffs: false, hasTrees: false };
+    for (const mesh of [ground, cliffs, trees, zoneLines]) {
       mesh.isPickable = false;
       mesh.position.x = originX;
       mesh.position.y = originY;
@@ -321,6 +378,7 @@ export class TerrainChunks {
     meshes.ground.dispose();
     meshes.cliffs.dispose();
     meshes.trees.dispose();
+    meshes.zoneLines.dispose();
     this.chunks.delete(key);
   }
 
@@ -344,6 +402,7 @@ export class TerrainChunks {
     // and the shader multiplies the two.
     this.groundMat.diffuseColor = Color3.White();
     this.groundMat.emissiveColor = ambient.scale(0.15);
+    this.zoneMat.emissiveColor = ambient.scale(0.15);
     this.cliffMat.emissiveColor = ambient.scale(0.7);
 
     // Trees are a single colour, so they keep it on the material.
@@ -360,6 +419,7 @@ export class TerrainChunks {
     this.scene.onBeforeRenderObservable.remove(this.observer);
     for (const key of [...this.chunks.keys()]) this.disposeChunk(key);
     this.groundMat.dispose();
+    this.zoneMat.dispose();
     this.cliffMat.dispose();
     this.treeMat.dispose();
     this.borderTex.dispose();
