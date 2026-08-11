@@ -40,6 +40,10 @@ pub struct World {
     /// Extent of `revealed`. The client clamps the camera to it, so it has to
     /// know the whole survey, not just the part it happens to be looking at.
     pub revealed_bounds: ChunkBounds,
+    /// Tile → building covering it. Buildings span several tiles but carry one
+    /// position, so without this "what is on this tile" would only ever find a
+    /// building at its origin corner. Derived, like every other index.
+    pub occupied: HashMap<(i32, i32), EntityId>,
 }
 
 /// Marks an empty box: max below min, so the first reveal replaces it outright.
@@ -89,6 +93,7 @@ impl World {
             revealed: HashSet::new(),
             newly_revealed: Vec::new(),
             revealed_bounds: NO_BOUNDS,
+            occupied: HashMap::new(),
         }
     }
 
@@ -103,6 +108,7 @@ impl World {
             revealed: HashSet::new(),
             newly_revealed: Vec::new(),
             revealed_bounds: NO_BOUNDS,
+            occupied: HashMap::new(),
             objects,
         };
         // Rebuild spatial index from loaded objects

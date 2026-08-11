@@ -4,30 +4,6 @@ use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
 
 impl World {
-    /// Check if a building exists at the given coordinate.
-    pub fn has_building_at(&self, coord: GridCoord) -> bool {
-        self.ids_at(coord).into_iter().any(|id| {
-            self.objects
-                .get(id)
-                .is_some_and(|e| matches!(e.object, GameObject::Building(_)))
-        })
-    }
-
-    /// Check if a building at this coord already has a road connection.
-    fn building_has_road(&self, coord: GridCoord) -> bool {
-        if !self.has_building_at(coord) {
-            return false;
-        }
-        self.ids_at(coord).into_iter().any(|id| {
-            self.objects.get(id).is_some_and(|e| match &e.object {
-                GameObject::RoadNode(node) => {
-                    !node.outgoing.is_empty() || !node.incoming.is_empty()
-                }
-                _ => false,
-            })
-        })
-    }
-
     /// Find the road node entity ID at a coord, if any.
     pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
         self.ids_at(coord).into_iter().find(|&id| {
@@ -101,7 +77,8 @@ impl World {
         let dx = to.x - from.x;
         let dy = to.y - from.y;
 
-        if self.building_has_road(from) || self.building_has_road(to) {
+        // Buildings sit beside roads now, never on them.
+        if self.has_building_at(from) || self.has_building_at(to) {
             return;
         }
         if self.are_connected(from, to) {

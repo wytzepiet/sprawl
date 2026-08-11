@@ -12,9 +12,10 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingType, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate};
+use crate::protocol::{BuildingKind, Category, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, Rotation, ServerMessage, StateUpdate};
 use crate::world::chunk_of;
 use crate::world::World;
+use crate::protocol::GridCoord;
 use crate::world::pathfinding;
 
 struct ClientState {
@@ -33,6 +34,9 @@ const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 const STEP_MS: GameTime = 10;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
+/// Until zoning exists, the starting network gets a spread of categories so
+/// there is somewhere to drive to and from.
+const STARTING_MIX: [Category; 3] = [Category::Residential, Category::Commercial, Category::Industrial];
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
@@ -54,8 +58,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         let seed = world.terrain_seed;
         let terrain = world.terrain.clone();
         let anchors = crate::road_gen::generate(&mut world, seed, &terrain);
-        for pos in anchors {
-            world.place_building_unchecked(pos, BuildingType::CarSpawner);
+        for (i, pos) in anchors.into_iter().enumerate() {
+            seed_building(&mut world, pos, STARTING_MIX[i % STARTING_MIX.len()]);
         }
     }
 
@@ -63,11 +67,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     if !world.objects.all_entries().is_empty() {
         world.rebuild_edges();
         world.rebuild_node_cars();
+        world.rebuild_occupied();
         world.rebuild_revealed();
         for entry in world.objects.all_entries() {
-            if let GameObject::Building(ref b) = entry.object
-                && b.building_type == BuildingType::CarSpawner
-            {
+            if matches!(entry.object, GameObject::Building(_)) {
                 schedule_car_spawn(&mut events, entry.id);
             }
         }
@@ -127,8 +130,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         world.terrain = crate::terrain::generate(seed);
                         let terrain = world.terrain.clone();
                         let anchors = crate::road_gen::generate(&mut world, seed, &terrain);
-                        for pos in anchors {
-                            world.place_building_unchecked(pos, BuildingType::CarSpawner);
+                        for (i, pos) in anchors.into_iter().enumerate() {
+                            seed_building(&mut world, pos, STARTING_MIX[i % STARTING_MIX.len()]);
                         }
                         world.newly_revealed.clear();
                         // Re-send subscribed chunks for all connected clients
@@ -175,6 +178,20 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         if last_persist.elapsed() >= PERSIST_INTERVAL {
             persist(&mut world, &db_path, sim_time);
             last_persist = Instant::now();
+        }
+    }
+}
+
+/// Put a starting building on a free tile beside a road node, facing it.
+fn seed_building(world: &mut World, road: GridCoord, category: Category) {
+    for rotation in Rotation::ALL {
+        let (dx, dy) = rotation.facing();
+        // The building sits on the far side, so its door looks back at the road.
+        let pos = GridCoord { x: road.x - dx, y: road.y - dy };
+        if world.is_buildable(pos) {
+            let kind = BuildingKind::for_plot(category, 1);
+            world.spawn_building(pos, kind, (1, 1), rotation);
+            return;
         }
     }
 }
@@ -248,10 +265,11 @@ fn handle_player_action(
             }
         }
         ClientMessage::PlaceBuilding(place) => {
-            if let Some(building_id) = world.handle_place_building(place.pos, place.building_type)
-                && place.building_type == BuildingType::CarSpawner {
-                    schedule_car_spawn(events, building_id);
-                }
+            if let Some(rotation) = world.rotation_facing_road(place.pos, (1, 1))
+                && let Some(building_id) = world.spawn_building(place.pos, place.kind, (1, 1), rotation)
+            {
+                schedule_car_spawn(events, building_id);
+            }
         }
         ClientMessage::DemolishRoad(demolish) => {
             handle_road_demolish(world, events, intersections, demolish.pos, now);
@@ -329,7 +347,7 @@ fn handle_road_demolish(
         }
 
         // Original destination unreachable — try any other car spawner
-        let alt_dest = world.all_car_spawners().into_iter()
+        let alt_dest = world.all_buildings().into_iter()
             .filter_map(|(bid, _)| world.road_node_for_building(bid))
             .find(|&n| n != from_node && n != dest);
 

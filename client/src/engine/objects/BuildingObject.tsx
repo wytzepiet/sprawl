@@ -1,20 +1,15 @@
 import { Color3 } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
-import { buildingCubeGeometry, BUILDINGS } from "./buildings";
-import type { BuildingType, GameObjectEntry } from "../../generated";
+import { buildingCubeGeometry, CATEGORY_COLOR, KIND_CATEGORY } from "./buildings";
+import type { BuildingKind, GameObjectEntry } from "../../generated";
 
 const cube = buildingCubeGeometry();
 
-function getBuildingColor(buildingType: BuildingType): Color3 {
-  const def = BUILDINGS.find((b) => b.id === buildingType);
-  return def ? Color3.FromHexString(def.color) : new Color3(0.5, 0.5, 0.5);
-}
-
 export function mountBuilding(entry: GameObjectEntry, pool: InstancePool): () => void {
-  const data = entry.object.data as { building_type: BuildingType };
+  const data = entry.object.data as { kind: BuildingKind };
   const pos = entry.position;
-  const color = getBuildingColor(data.building_type);
-  const poolKey = `building_${data.building_type}`;
+  const color = Color3.FromHexString(CATEGORY_COLOR[KIND_CATEGORY[data.kind]]);
+  const poolKey = `building_${data.kind}`;
 
   pool.ensureBucket(poolKey, cube, color, true, false);
   const id = pool.addInstance(poolKey,

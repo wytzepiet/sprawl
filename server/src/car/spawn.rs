@@ -32,7 +32,7 @@ pub fn handle_car_spawn(
         None => return,
     };
 
-    let spawners = world.all_car_spawners();
+    let spawners = world.all_buildings();
     let destinations: Vec<&(EntityId, _)> = spawners
         .iter()
         .filter(|(id, _)| *id != building_id)

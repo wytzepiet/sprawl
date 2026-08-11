@@ -30,21 +30,91 @@ pub struct RoadNode {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
 #[ts(export)]
-pub enum BuildingType {
-    CarSpawner,
+pub enum Category {
+    Residential,
+    Commercial,
+    Industrial,
+}
+
+/// What stands on a plot. The kind follows from the footprint the layout chose,
+/// so a wide plot becomes an Apartment where a single tile becomes a House.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub enum BuildingKind {
+    House,
+    Apartment,
+    Shop,
+    Office,
+    Workshop,
+    Factory,
+}
+
+impl BuildingKind {
+    pub fn category(self) -> Category {
+        match self {
+            BuildingKind::House | BuildingKind::Apartment => Category::Residential,
+            BuildingKind::Shop | BuildingKind::Office => Category::Commercial,
+            BuildingKind::Workshop | BuildingKind::Factory => Category::Industrial,
+        }
+    }
+
+    /// The kind a plot of this size gets, per category.
+    pub fn for_plot(category: Category, tiles: u32) -> BuildingKind {
+        match (category, tiles > 1) {
+            (Category::Residential, false) => BuildingKind::House,
+            (Category::Residential, true) => BuildingKind::Apartment,
+            (Category::Commercial, false) => BuildingKind::Shop,
+            (Category::Commercial, true) => BuildingKind::Office,
+            (Category::Industrial, false) => BuildingKind::Workshop,
+            (Category::Industrial, true) => BuildingKind::Factory,
+        }
+    }
+}
+
+/// Which way a building faces. The entrance is always the middle of the front
+/// edge, so this is the only thing that decides where its door is.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub enum Rotation {
+    North,
+    East,
+    South,
+    West,
+}
+
+impl Rotation {
+    /// Unit step from the door tile out to the road it faces.
+    pub fn facing(self) -> (i32, i32) {
+        match self {
+            Rotation::North => (0, 1),
+            Rotation::East => (1, 0),
+            Rotation::South => (0, -1),
+            Rotation::West => (-1, 0),
+        }
+    }
+
+    /// Footprints are stored unrotated, so a quarter turn swaps their axes.
+    pub fn swaps_axes(self) -> bool {
+        matches!(self, Rotation::East | Rotation::West)
+    }
+
+    pub const ALL: [Rotation; 4] = [Rotation::North, Rotation::East, Rotation::South, Rotation::West];
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Building {
-    pub building_type: BuildingType,
+    pub kind: BuildingKind,
+    /// Footprint in tiles, before rotation.
+    pub size: (u8, u8),
+    pub rotation: Rotation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PlaceBuilding {
     pub pos: GridCoord,
-    pub building_type: BuildingType,
+    pub kind: BuildingKind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

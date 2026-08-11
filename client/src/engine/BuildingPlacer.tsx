@@ -57,7 +57,7 @@ export function BuildingPlacer() {
     if (!buildingId) return;
     const pos = ghostPos();
     if (pos) {
-      send({ type: "PlaceBuilding", data: { pos, building_type: buildingId } });
+      send({ type: "PlaceBuilding", data: { pos, kind: buildingId } });
     }
     setPlacingBuilding(null);
     setGhostPos(null);

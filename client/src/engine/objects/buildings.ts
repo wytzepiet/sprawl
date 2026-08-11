@@ -1,15 +1,42 @@
 import type { MeshGeometry } from "../Mesh";
-import type { BuildingType } from "../../generated";
+import type { BuildingKind, Category } from "../../generated";
+
+/**
+ * Zone palette. The three sit 120 degrees apart in hue *and* step in lightness,
+ * so they stay apart in greyscale and for red-green colour deficiency, where
+ * clay and ochre would otherwise both read as "warm".
+ *
+ * Green is unavailable (the land is green) and pale blue reads as water, which
+ * is why this is not the usual green/blue/yellow.
+ */
+export const CATEGORY_COLOR: Record<Category, string> = {
+  Residential: "#F0A58C",
+  Commercial: "#7B87DC",
+  Industrial: "#C9922B",
+};
+
+export const KIND_CATEGORY: Record<BuildingKind, Category> = {
+  House: "Residential",
+  Apartment: "Residential",
+  Shop: "Commercial",
+  Office: "Commercial",
+  Workshop: "Industrial",
+  Factory: "Industrial",
+};
 
 export interface BuildingDef {
-  id: BuildingType;
+  id: BuildingKind;
   label: string;
   color: string;
 }
 
-export const BUILDINGS: BuildingDef[] = [
-  { id: "CarSpawner", label: "Car Spawner", color: "#4a9eff" },
-];
+export const BUILDINGS: BuildingDef[] = (
+  [
+    ["House", "House"],
+    ["Shop", "Shop"],
+    ["Workshop", "Workshop"],
+  ] as [BuildingKind, string][]
+).map(([id, label]) => ({ id, label, color: CATEGORY_COLOR[KIND_CATEGORY[id]] }));
 
 export const BUILDING_HEIGHT = 0.6;
 
