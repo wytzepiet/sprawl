@@ -68,7 +68,7 @@ export function mountRoad(
   pool: InstancePool,
   theme: Theme,
   getEntity: (id: number) => GameObjectEntry | undefined,
-): () => void {
+): (() => void) | null {
   const instances: { key: string; id: number }[] = [];
 
   const arms = getConnectionArms(entry, getEntity);
@@ -105,6 +105,11 @@ export function mountRoad(
     pool.ensureBucket(ck, chevronGeo, arrowColor, false, false);
     instances.push({ key: ck, id: pool.addInstance(ck, pos) });
   }
+
+  // Null, not an empty cleanup: a node whose neighbours have not arrived yet
+  // resolves no arms and draws nothing. Reporting that as a successful mount
+  // would record it as done and it would never be drawn again.
+  if (instances.length === 0) return null;
 
   return () => {
     for (const { key, id } of instances) pool.removeInstance(key, id);

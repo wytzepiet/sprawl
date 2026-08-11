@@ -119,6 +119,7 @@ export default function World() {
 
           const entry = getEntity(op.data.id)!;
           const cleanup = mount(entry);
+          if (!cleanup) mounted.delete(key);
           if (cleanup) {
             const m: MountedEntry = { kind: entry.object.kind, cleanup };
             if (entry.object.kind === "Building") m.zoned = addZone(entry);
@@ -160,13 +161,18 @@ export default function World() {
       }
     }
 
-    // Recompute dirty road neighbors
+    // Recompute dirty road neighbours.
+    //
+    // A node that is not currently mounted still belongs here: one whose
+    // neighbours had not arrived drew nothing and was left out, and this is the
+    // moment its neighbour turned up. Skipping those is what left roads
+    // invisible until a reload.
     for (const id of dirtyRoads) {
       const m = mounted.get(id);
-      if (!m || m.kind !== "RoadNode") continue;
-      m.cleanup();
+      if (m && m.kind !== "RoadNode") continue;
+      m?.cleanup();
       const entry = getEntity(Number(id));
-      if (!entry) {
+      if (!entry || entry.object.kind !== "RoadNode") {
         mounted.delete(id);
         continue;
       }
