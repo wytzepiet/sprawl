@@ -250,10 +250,12 @@ export class InstancePool {
       if (bucket.resized) {
         bucket.mesh.thinInstanceSetBuffer("matrix", bucket.matrices, 16, false);
         bucket.resized = false;
-      } else {
-        bucket.mesh.thinInstanceBufferUpdated("matrix");
       }
+      // Count first, then upload: an upload only pushes as many instances as
+      // the mesh currently claims, so a slot filled since the last flush would
+      // otherwise be drawn from whatever the GPU still held there.
       bucket.mesh.thinInstanceCount = bucket.count;
+      bucket.mesh.thinInstanceBufferUpdated("matrix");
       // An empty thin-instance buffer leaves a zero-sized draw behind a call
       // that still carries the old count -- WebGPU rejects it and drops the
       // frame. Same reason TerrainChunks disables empty chunk meshes.
