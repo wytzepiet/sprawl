@@ -27,7 +27,7 @@ impl World {
 
     /// Check if adding a connection in direction (dx, dy) at `coord` would create
     /// an angle sharper than 90° with existing connections.
-    fn would_be_too_sharp(&self, coord: GridCoord, dx: i32, dy: i32, outgoing_only: bool) -> bool {
+    pub(super) fn would_be_too_sharp(&self, coord: GridCoord, dx: i32, dy: i32, outgoing_only: bool) -> bool {
         let id = match self.road_node_at(coord) {
             Some(id) => id,
             None => return false,

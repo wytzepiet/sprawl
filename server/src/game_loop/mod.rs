@@ -184,12 +184,21 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 
 /// Put a starting building on a free tile beside a road node, facing it.
 fn seed_building(world: &mut World, road: GridCoord, category: Category) {
-    for rotation in Rotation::ALL {
-        let (dx, dy) = rotation.facing();
-        let pos = GridCoord { x: road.x - dx, y: road.y - dy };
-        if world.is_buildable(pos) {
-            let kind = BuildingKind::for_plot(category, 1);
-            world.spawn_building(pos, kind, (1, 1), rotation);
+    // All eight, not just the four: beside a diagonal street the only legal
+    // driveway is itself diagonal, so the orthogonal offsets are dead ends.
+    const AROUND: [(i32, i32); 8] =
+        [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)];
+    for (dx, dy) in AROUND {
+        let pos = GridCoord { x: road.x + dx, y: road.y + dy };
+        if !world.is_buildable(pos) {
+            continue;
+        }
+        let Some(node) = world.road_for_plot(pos, (1, 1), Rotation::North) else {
+            continue;
+        };
+        let rotation = world.rotation_toward(pos, (1, 1), node);
+        let kind = BuildingKind::for_plot(category, 1);
+        if world.spawn_building(pos, kind, (1, 1), rotation).is_some() {
             return;
         }
     }

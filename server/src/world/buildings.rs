@@ -61,6 +61,17 @@ impl World {
         }
     }
 
+    /// Could a driveway run from this road node to this tile?
+    ///
+    /// A driveway is an ordinary road, so it answers to the same geometry as
+    /// any other: it may not meet the road it joins at a hairpin. Off a
+    /// straight run only the perpendicular is legal — which for a diagonal
+    /// street is itself diagonal, so a plot squarely beside one cannot be
+    /// connected at all.
+    fn driveway_reaches(&self, from: GridCoord, to: GridCoord) -> bool {
+        !self.would_be_too_sharp(from, to.x - from.x, to.y - from.y, false)
+    }
+
     /// The road a plot's traffic would use, if any.
     ///
     /// Straight-on neighbours are tried before corners, so a building touching
@@ -78,7 +89,9 @@ impl World {
                 if Self::building_covers(pos, size, rotation, n) {
                     continue;
                 }
-                if let Some(id) = self.road_node_at(n) {
+                if let Some(id) = self.road_node_at(n)
+                    && self.driveway_reaches(n, *tile)
+                {
                     return Some(id);
                 }
             }
@@ -91,8 +104,11 @@ impl World {
             (0, h - 1, -1, 1),
             (w - 1, h - 1, 1, 1),
         ] {
-            let n = GridCoord { x: pos.x + cx + dx, y: pos.y + cy + dy };
-            if let Some(id) = self.road_node_at(n) {
+            let corner = GridCoord { x: pos.x + cx, y: pos.y + cy };
+            let n = GridCoord { x: corner.x + dx, y: corner.y + dy };
+            if let Some(id) = self.road_node_at(n)
+                && self.driveway_reaches(n, corner)
+            {
                 return Some(id);
             }
         }
@@ -264,16 +280,18 @@ mod tests {
         world_with_road(&[(0, 0), (1, 1), (2, 2)])
     }
 
-    /// A diagonal road leaves its elbow tiles free, and a plot there is
-    /// orthogonally adjacent to both ends of the diagonal.
+    /// Adjacency is not access. A plot in a diagonal's elbow touches the road
+    /// on two sides, but a driveway to either would be a hairpin, so it has no
+    /// way to connect and cannot be built.
     #[test]
-    fn plot_in_the_elbow_of_a_diagonal_has_access() {
+    fn plot_in_the_elbow_of_a_diagonal_cannot_connect() {
         let world = diagonal_world();
-        assert!(world.road_for_plot(GridCoord { x: 1, y: 0 }, (1, 1), Rotation::North).is_some());
+        assert!(world.road_for_plot(GridCoord { x: 1, y: 0 }, (1, 1), Rotation::North).is_none());
     }
 
+    /// The perpendicular of a diagonal is diagonal, so this one connects.
     #[test]
-    fn plot_beside_a_diagonal_reaches_it_by_corner() {
+    fn plot_offset_diagonally_from_a_diagonal_connects() {
         let world = diagonal_world();
         assert!(world.road_for_plot(GridCoord { x: 2, y: 0 }, (1, 1), Rotation::North).is_some());
     }
