@@ -8,8 +8,8 @@ pub mod segments;
 use std::collections::{HashMap, HashSet};
 
 use crate::protocol::{
-    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, EdgeKey, EntityId, GameObject, TILE_ABSENT,
-    TerrainChunk, TerrainType,
+    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkBounds, ChunkCoord, EdgeKey, EntityId, GameObject,
+    TILE_ABSENT, TerrainChunk, TerrainType,
 };
 use crate::engine::tracked::Tracked;
 use crate::world::segments::EdgeSegment;
@@ -30,7 +30,24 @@ pub struct World {
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
     pub chunk_crossings: Vec<(EntityId, ChunkCoord, ChunkCoord)>,
+    /// Chunks the world has been revealed in. Terrain outside this set is not
+    /// sent, so looking somewhere is not enough to see it — a building has to
+    /// have reached. Derived from building positions, like every other index.
+    pub revealed: HashSet<ChunkCoord>,
+    /// Chunks revealed since the last flush, for pushing terrain to clients
+    /// already looking at them.
+    pub newly_revealed: Vec<ChunkCoord>,
+    /// Extent of `revealed`. The client clamps the camera to it, so it has to
+    /// know the whole survey, not just the part it happens to be looking at.
+    pub revealed_bounds: ChunkBounds,
 }
+
+/// Marks an empty box: max below min, so the first reveal replaces it outright.
+const NO_BOUNDS: ChunkBounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
+
+/// How far a building sees, in tiles. Generous on purpose: the frontier has to
+/// stay ahead of what you have built, or you are siting blind.
+const REVEAL_RADIUS: i32 = 48;
 
 use crate::protocol::GridCoord;
 
@@ -69,6 +86,9 @@ impl World {
             terrain_seed: 0,
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
+            revealed: HashSet::new(),
+            newly_revealed: Vec::new(),
+            revealed_bounds: NO_BOUNDS,
         }
     }
 
@@ -80,6 +100,9 @@ impl World {
             terrain_seed,
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
+            revealed: HashSet::new(),
+            newly_revealed: Vec::new(),
+            revealed_bounds: NO_BOUNDS,
             objects,
         };
         // Rebuild spatial index from loaded objects
@@ -215,9 +238,55 @@ impl World {
         }
     }
 
+    /// Reveal everything within REVEAL_RADIUS of a tile, chunk-granular.
+    ///
+    /// Monotonic: a chunk never leaves the set. Terrain does not change, so
+    /// re-hiding it would only make the map flicker as a city's shape shifts.
+    pub fn reveal_around(&mut self, pos: GridCoord) {
+        let min = chunk_of(GridCoord { x: pos.x - REVEAL_RADIUS, y: pos.y - REVEAL_RADIUS });
+        let max = chunk_of(GridCoord { x: pos.x + REVEAL_RADIUS, y: pos.y + REVEAL_RADIUS });
+        for cy in min.cy..=max.cy {
+            for cx in min.cx..=max.cx {
+                let coord = ChunkCoord { cx, cy };
+                if self.revealed.insert(coord) {
+                    self.newly_revealed.push(coord);
+                    self.grow_bounds(coord);
+                }
+            }
+        }
+    }
+
+    fn grow_bounds(&mut self, c: ChunkCoord) {
+        let b = &mut self.revealed_bounds;
+        if b.max_cx < b.min_cx {
+            *b = ChunkBounds { min_cx: c.cx, min_cy: c.cy, max_cx: c.cx, max_cy: c.cy };
+            return;
+        }
+        b.min_cx = b.min_cx.min(c.cx);
+        b.min_cy = b.min_cy.min(c.cy);
+        b.max_cx = b.max_cx.max(c.cx);
+        b.max_cy = b.max_cy.max(c.cy);
+    }
+
+    /// Rebuild the revealed set from building positions on startup. Nothing is
+    /// newly revealed from a client's point of view, so the queue is dropped.
+    pub fn rebuild_revealed(&mut self) {
+        let positions: Vec<GridCoord> = self
+            .objects
+            .all_entries()
+            .iter()
+            .filter(|e| matches!(e.object, GameObject::Building(_)))
+            .filter_map(|e| e.position)
+            .collect();
+        for pos in positions {
+            self.reveal_around(pos);
+        }
+        self.newly_revealed.clear();
+    }
+
     /// Serialise one chunk's tile types, including the skirt the client needs
-    /// to derive corner shapes. Tiles outside the world, and the unplayable rim,
-    /// are marked absent so the client renders nothing there.
+    /// to derive corner shapes. Tiles outside the generated world are marked
+    /// absent so the client renders nothing there.
     pub fn terrain_chunk(&self, coord: ChunkCoord) -> TerrainChunk {
         let origin_x = coord.cx * CHUNK_SIZE - CHUNK_SKIRT;
         let origin_y = coord.cy * CHUNK_SIZE - CHUNK_SKIRT;
@@ -226,8 +295,8 @@ impl World {
             for dx in 0..CHUNK_STRIDE {
                 let (x, y) = (origin_x + dx, origin_y + dy);
                 tiles.push(match self.terrain.get(&(x, y)) {
-                    Some(&t) if !crate::road_gen::is_edge_chunk_tile(x, y) => t.to_byte(),
-                    _ => TILE_ABSENT,
+                    Some(&t) => t.to_byte(),
+                    None => TILE_ABSENT,
                 });
             }
         }

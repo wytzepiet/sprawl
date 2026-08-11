@@ -4,8 +4,8 @@ use noise::{NoiseFn, Simplex};
 
 use crate::protocol::TerrainType;
 
-const WIDTH: i32 = 200;
-const HEIGHT: i32 = 200;
+const WIDTH: i32 = 512;
+const HEIGHT: i32 = 512;
 const FREQ: f64 = 0.05;
 
 fn elev(t: TerrainType) -> i32 {

@@ -15,7 +15,8 @@ export function updateClockOffset(serverTime: number) {
 }
 
 export interface Connection {
-  send(msg: ClientMessage): void;
+  /** False when the socket was not open and the message was dropped. */
+  send(msg: ClientMessage): boolean;
   close(): void;
 }
 
@@ -54,9 +55,9 @@ export function createConnection(
 
   return {
     send(msg: ClientMessage) {
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(encode(msg));
-      }
+      if (ws?.readyState !== WebSocket.OPEN) return false;
+      ws.send(encode(msg));
+      return true;
     },
     close() {
       closed = true;

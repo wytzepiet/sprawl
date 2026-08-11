@@ -4,6 +4,7 @@ import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
 import { useTheme } from "./theme";
 import { TerrainChunks } from "./TerrainChunks";
+import { FogOfWar } from "./FogOfWar";
 import {
   setOpsListener,
   setTerrainListener,
@@ -35,6 +36,7 @@ export default function World() {
     getObjectsAt(x, y).some((o) => o.object.kind === "RoadNode");
 
   const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, hasRoad);
+  const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
   createEffect(on(theme, () => terrain.markAllDirty(), { defer: true }));
@@ -140,8 +142,14 @@ export default function World() {
 
   setOpsListener(processOps);
   setTerrainListener({
-    setChunk: (chunk) => terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles),
-    unloadChunk: (coord) => terrain.unloadChunk(coord.cx, coord.cy),
+    setChunk: (chunk) => {
+      terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles);
+      fog.setChunk(chunk.coord.cx, chunk.coord.cy);
+    },
+    unloadChunk: (coord) => {
+      terrain.unloadChunk(coord.cx, coord.cy);
+      fog.unloadChunk(coord.cx, coord.cy);
+    },
   });
 
   onCleanup(() => {
@@ -150,6 +158,7 @@ export default function World() {
     for (const m of mounted.values()) m.cleanup();
     mounted.clear();
     terrain.dispose();
+    fog.dispose();
   });
 
   return <></>;

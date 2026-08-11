@@ -48,8 +48,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     if fresh {
         let seed = world.terrain_seed;
         let terrain = world.terrain.clone();
-        let edge_anchors = crate::road_gen::generate(&mut world, seed, &terrain);
-        for pos in edge_anchors {
+        let anchors = crate::road_gen::generate(&mut world, seed, &terrain);
+        for pos in anchors {
             world.place_building_unchecked(pos, BuildingType::CarSpawner);
         }
     }
@@ -58,6 +58,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     if !world.objects.all_entries().is_empty() {
         world.rebuild_edges();
         world.rebuild_node_cars();
+        world.rebuild_revealed();
         for entry in world.objects.all_entries() {
             if let GameObject::Building(ref b) = entry.object
                 && b.building_type == BuildingType::CarSpawner
@@ -94,7 +95,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         for cs in clients.values_mut() {
                             let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
                             if !ops.is_empty() {
-                                let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+                                let _ = cs.sender.send(state_update(&world, ops, now));
                             }
                             for coord in cs.known_chunks.drain() {
                                 let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
@@ -108,10 +109,11 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         world.terrain_seed = seed;
                         world.terrain = crate::terrain::generate(seed);
                         let terrain = world.terrain.clone();
-                        let edge_anchors = crate::road_gen::generate(&mut world, seed, &terrain);
-                        for pos in edge_anchors {
+                        let anchors = crate::road_gen::generate(&mut world, seed, &terrain);
+                        for pos in anchors {
                             world.place_building_unchecked(pos, BuildingType::CarSpawner);
                         }
+                        world.newly_revealed.clear();
                         // Re-send subscribed chunks for all connected clients
                         let subs: Vec<_> = clients.iter()
                             .filter_map(|(id, cs)| cs.subscribed.map(|b| (*id, b)))
@@ -126,7 +128,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 }
                 Command::ClientConnect { id, sender } => {
                     // Send empty update with terrain_seed; objects come via SetViewport
-                    let _ = sender.send(ServerMessage::Update(StateUpdate { ops: vec![], server_time: now, terrain_seed: world.terrain_seed }));
+                    let _ = sender.send(state_update(&world, vec![], now));
                     clients.insert(id, ClientState {
                         sender,
                         subscribed: None,
@@ -152,6 +154,17 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             last_persist = Instant::now();
         }
     }
+}
+
+/// Every update carries the ambient world state alongside its ops, so a client
+/// never has to ask for the seed or the surveyed extent separately.
+fn state_update(world: &World, ops: Vec<Operation>, now: GameTime) -> ServerMessage {
+    ServerMessage::Update(StateUpdate {
+        ops,
+        server_time: now,
+        terrain_seed: world.terrain_seed,
+        revealed_bounds: world.revealed_bounds,
+    })
 }
 
 fn load_world(db_path: &Path) -> World {
@@ -442,9 +455,10 @@ fn handle_set_chunks(
     cs.subscribed = Some(bounds);
 
     // Terrain travels per chunk, so only the chunks that just came into view
-    // are sent, and panning inside a chunk sends nothing at all.
+    // are sent, and panning inside a chunk sends nothing at all. Unrevealed
+    // chunks are withheld entirely — that withholding is the fog.
     for &coord in visible_chunks.iter() {
-        if cs.known_chunks.insert(coord) {
+        if world.revealed.contains(&coord) && cs.known_chunks.insert(coord) {
             let _ = cs.sender.send(ServerMessage::TerrainChunk(world.terrain_chunk(coord)));
         }
     }
@@ -479,7 +493,7 @@ fn handle_set_chunks(
     cs.known = in_view;
 
     if !ops.is_empty() {
-        let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+        let _ = cs.sender.send(state_update(world, ops, now));
     }
 }
 
@@ -494,9 +508,22 @@ fn flush_dirty(
             .into_iter()
             .filter(|(id, ..)| !removed.contains(id))
             .collect();
+    let newly_revealed = std::mem::take(&mut world.newly_revealed);
 
-    if changed.is_empty() && removed.is_empty() && crossings.is_empty() {
+    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && newly_revealed.is_empty()
+    {
         return;
+    }
+
+    // A building can reveal ground someone is already looking at, and nothing
+    // about their subscription changed — so the terrain has to be pushed.
+    for cs in clients.values_mut() {
+        let Some(bounds) = cs.subscribed else { continue };
+        for &coord in &newly_revealed {
+            if bounds.contains(coord) && cs.known_chunks.insert(coord) {
+                let _ = cs.sender.send(ServerMessage::TerrainChunk(world.terrain_chunk(coord)));
+            }
+        }
     }
 
     // Group by chunk so a client walks the chunks it subscribes to rather than
@@ -549,7 +576,7 @@ fn flush_dirty(
         }
 
         if !ops.is_empty() {
-            let _ = cs.sender.send(ServerMessage::Update(StateUpdate { ops, server_time: now, terrain_seed: world.terrain_seed }));
+            let _ = cs.sender.send(state_update(world, ops, now));
         }
     }
 }

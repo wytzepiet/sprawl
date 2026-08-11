@@ -9,6 +9,7 @@ import { createConnection, updateClockOffset } from "../network/connection";
 import type {
   GameObjectEntry,
   ClientMessage,
+  ChunkBounds,
   ChunkCoord,
   Operation,
   TerrainChunk,
@@ -103,7 +104,9 @@ function applyOps(ops: Operation[]) {
 
 interface GameContext {
   terrainSeed(): number;
-  send(msg: ClientMessage): void;
+  /** Surveyed extent, in chunks. max < min means nothing is surveyed yet. */
+  revealedBounds(): ChunkBounds;
+  send(msg: ClientMessage): boolean;
   getObjectsAt(x: number, y: number): GameObjectEntry[];
 }
 
@@ -111,6 +114,12 @@ const Ctx = createContext<GameContext>();
 
 export function GameProvider(props: ParentProps & { wsUrl: string }) {
   const [terrainSeed, setTerrainSeed] = createSignal(0);
+  const [revealedBounds, setRevealedBounds] = createSignal<ChunkBounds>({
+    min_cx: 0,
+    min_cy: 0,
+    max_cx: -1,
+    max_cy: -1,
+  });
 
   const wsUrl = props.wsUrl;
   const { send, close } = createConnection(wsUrl, (msg) => {
@@ -118,6 +127,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
       case "Update":
         updateClockOffset(msg.data.server_time);
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
+        setRevealedBounds(msg.data.revealed_bounds);
         applyOps(msg.data.ops);
         break;
       case "Error":
@@ -138,7 +148,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ terrainSeed, send, getObjectsAt }}>
+    <Ctx.Provider value={{ terrainSeed, revealedBounds, send, getObjectsAt }}>
       {props.children}
     </Ctx.Provider>
   );

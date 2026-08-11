@@ -5,7 +5,7 @@ use futures::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
-use crate::protocol::{ClientMessage, Operation, ServerMessage, StateUpdate};
+use crate::protocol::{ChunkBounds, ClientMessage, Operation, ServerMessage, StateUpdate};
 
 pub type ClientId = u64;
 
@@ -59,6 +59,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             let mut ops: Vec<Operation> = Vec::new();
             let mut server_time: u64 = 0;
             let mut terrain_seed: u32 = 0;
+            let mut revealed_bounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
             let mut has_update = false;
 
             for msg in buf.drain(..) {
@@ -68,6 +69,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
                         ops.extend(su.ops);
                         server_time = server_time.max(su.server_time);
                         terrain_seed = su.terrain_seed;
+                        revealed_bounds = su.revealed_bounds;
                     }
                     other => {
                         let bytes = rmp_serde::to_vec_named(&other).unwrap();
@@ -79,7 +81,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             }
 
             if has_update {
-                let merged = ServerMessage::Update(StateUpdate { ops, server_time, terrain_seed });
+                let merged = ServerMessage::Update(StateUpdate {
+                    ops,
+                    server_time,
+                    terrain_seed,
+                    revealed_bounds,
+                });
                 let bytes = rmp_serde::to_vec_named(&merged).unwrap();
                 if sink.send(Message::Binary(bytes.into())).await.is_err() {
                     return;

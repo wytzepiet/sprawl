@@ -8,9 +8,22 @@ import { CHUNK_SIZE } from "./TerrainChunks";
 const BUILD_ZOOM = 8;
 const ZOOM_LERP_SPEED = 0.08;
 
+/** Chunks of unsurveyed ground the camera is allowed to see past the frontier. */
+const PAN_MARGIN_CHUNKS = 1;
+
+/**
+ * Keep `v` inside [lo, hi] allowing for a viewport of half-width `half`. When
+ * the surveyed world is narrower than the viewport there is nothing to pan
+ * along, so it centres instead.
+ */
+function clampAxis(v: number, lo: number, hi: number, half: number): number {
+  if (hi - lo <= half * 2) return (lo + hi) / 2;
+  return Math.min(Math.max(v, lo + half), hi - half);
+}
+
 export function OrthoCamera() {
   const { engine, scene, canvas } = useEngine();
-  const { send } = useGame();
+  const { send, revealedBounds } = useGame();
 
   const camera = new FreeCamera("ortho", new Vector3(0, 0, 10), scene);
   camera.setTarget(Vector3.Zero());
@@ -35,24 +48,55 @@ export function OrthoCamera() {
   updateOrtho();
   const resizeObs = engine.onResizeObservable.add(updateOrtho);
 
+  /**
+   * Hold the view inside the surveyed world plus a chunk of margin. Panning off
+   * into unsurveyed ground would only ever show empty grid, and the fog mask is
+   * finite — this is what keeps the camera inside it.
+   */
+  function clampToSurveyed() {
+    const b = revealedBounds();
+    if (b.max_cx < b.min_cx) return; // nothing surveyed yet
+
+    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
+    const m = PAN_MARGIN_CHUNKS;
+    const minX = (b.min_cx - m) * CHUNK_SIZE;
+    const maxX = (b.max_cx + 1 + m) * CHUNK_SIZE;
+    const minY = (b.min_cy - m) * CHUNK_SIZE;
+    const maxY = (b.max_cy + 1 + m) * CHUNK_SIZE;
+
+    targetCamX = clampAxis(targetCamX, minX, maxX, targetOrthoSize * aspect);
+    targetCamY = clampAxis(targetCamY, minY, maxY, targetOrthoSize);
+    const x = clampAxis(camera.position.x, minX, maxX, orthoSize * aspect);
+    const y = clampAxis(camera.position.y, minY, maxY, orthoSize);
+    if (x !== camera.position.x || y !== camera.position.y) {
+      camera.position.x = x;
+      camera.position.y = y;
+      camera.setTarget(new Vector3(x, y, 0));
+    }
+  }
+
   // Subscription is chunk-granular, so panning within a chunk sends nothing.
   function sendViewportIfChanged() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
     const chunk = (v: number) => Math.floor(v / CHUNK_SIZE);
 
-    const minCx = chunk(camera.position.x - orthoSize * aspect);
-    const maxCx = chunk(camera.position.x + orthoSize * aspect);
-    const minCy = chunk(camera.position.y - orthoSize);
-    const maxCy = chunk(camera.position.y + orthoSize);
+    // A margin beyond the viewport: the fog fade is derived from which chunks
+    // exist, so without it the client cannot tell "unrevealed" from "not asked
+    // for yet" and paints a frontier along the edge of the screen.
+    const PAD = 2;
+    const minCx = chunk(camera.position.x - orthoSize * aspect) - PAD;
+    const maxCx = chunk(camera.position.x + orthoSize * aspect) + PAD;
+    const minCy = chunk(camera.position.y - orthoSize) - PAD;
+    const maxCy = chunk(camera.position.y + orthoSize) + PAD;
 
     if (minCx === lastMinCx && minCy === lastMinCy && maxCx === lastMaxCx && maxCy === lastMaxCy) return;
 
+    // Only remember bounds the server actually heard. The socket is still
+    // opening on the first frames, and caching a dropped send would leave the
+    // client subscribed to nothing until it happened to pan across a chunk.
+    if (!send({ type: "SetChunks", data: { min_cx: minCx, min_cy: minCy, max_cx: maxCx, max_cy: maxCy } })) return;
     lastMinCx = minCx; lastMinCy = minCy; lastMaxCx = maxCx; lastMaxCy = maxCy;
-    send({ type: "SetChunks", data: { min_cx: minCx, min_cy: minCy, max_cx: maxCx, max_cy: maxCy } });
   }
-
-  // Send initial viewport once ortho is set up
-  sendViewportIfChanged();
 
   // Smooth zoom animation
   const renderObs = scene.onBeforeRenderObservable.add(() => {
@@ -67,6 +111,7 @@ export function OrthoCamera() {
       camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
       updateOrtho();
     }
+    clampToSurveyed();
     sendViewportIfChanged();
   });
 

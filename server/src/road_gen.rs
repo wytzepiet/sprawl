@@ -22,25 +22,24 @@ impl Ord for F {
 }
 
 use crate::protocol::CHUNK_SIZE;
-const CHUNKS_PER_AXIS: i32 = 6;
-const WIDTH: i32 = 200;
-const ORIGIN: i32 = -(WIDTH / 2);
+/// Chunks per axis in the starting network, centred on the origin. The world
+/// itself is unbounded from the player's side — this is only how much road
+/// exists before anyone builds.
+const START_CHUNKS: i32 = 3;
+const START_MIN: i32 = -(START_CHUNKS / 2);
+const START_MAX: i32 = START_MIN + START_CHUNKS;
 
-pub fn is_edge_chunk_tile(x: i32, y: i32) -> bool {
-    let cx = (x - ORIGIN) / CHUNK_SIZE;
-    let cy = (y - ORIGIN) / CHUNK_SIZE;
-    cx == 0 || cx == CHUNKS_PER_AXIS - 1 || cy == 0 || cy == CHUNKS_PER_AXIS - 1
-}
-
+/// Lays the starting road network and returns the anchor of each chunk it
+/// touched, for the caller to put starting buildings on.
 pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> Vec<GridCoord> {
     let mut rng = SmallRng::seed_from_u64(seed as u64);
     let mut anchors: HashMap<(i32, i32), (i32, i32)> = HashMap::new();
 
     // Pick one buildable anchor per chunk
-    for cy in 0..CHUNKS_PER_AXIS {
-        for cx in 0..CHUNKS_PER_AXIS {
-            let base_x = ORIGIN + cx * CHUNK_SIZE;
-            let base_y = ORIGIN + cy * CHUNK_SIZE;
+    for cy in START_MIN..START_MAX {
+        for cx in START_MIN..START_MAX {
+            let base_x = cx * CHUNK_SIZE;
+            let base_y = cy * CHUNK_SIZE;
             for _ in 0..CHUNK_SIZE {
                 let x = base_x + rng.random_range(0..CHUNK_SIZE);
                 let y = base_y + rng.random_range(0..CHUNK_SIZE);
@@ -83,12 +82,7 @@ pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), Terr
         }
     }
 
-    // Collect edge anchors
-    anchors
-        .iter()
-        .filter(|&(&(cx, cy), _)| cx == 0 || cx == CHUNKS_PER_AXIS - 1 || cy == 0 || cy == CHUNKS_PER_AXIS - 1)
-        .map(|(_, &(x, y))| GridCoord { x, y })
-        .collect()
+    anchors.values().map(|&(x, y)| GridCoord { x, y }).collect()
 }
 
 const SQRT2: f64 = std::f64::consts::SQRT_2;

@@ -24,12 +24,14 @@ impl World {
         result
     }
 
-    /// Place a building without validation (for system-placed buildings like edge spawners).
+    /// Place a building without validation (for the starting network).
     pub fn place_building_unchecked(&mut self, pos: GridCoord, building_type: BuildingType) -> EntityId {
-        self.insert_at(
+        let id = self.insert_at(
             GameObject::Building(Building { building_type }),
             Some(pos),
-        )
+        );
+        self.reveal_around(pos);
+        id
     }
 
     /// Place a building at the given position. Returns the building ID if placed.
@@ -55,6 +57,7 @@ impl World {
             GameObject::Building(Building { building_type }),
             Some(pos),
         );
+        self.reveal_around(pos);
         Some(id)
     }
 }

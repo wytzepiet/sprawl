@@ -217,7 +217,10 @@ export class TerrainChunks {
       // tiles is cloned, not transferred — we keep it for tree rebuilds.
       geometry = await this.builder.build(tiles, cx, cy, this.palette());
     } catch (e) {
-      console.error("[terrain] chunk build failed", key, e);
+      // Terrain is sent once and never re-requested, so dropping a failed build
+      // leaves a permanent hole that now reads as fog. Queue it again instead.
+      console.error("[terrain] chunk build failed, retrying", key, e);
+      this.dirtyGeometry.add(key);
       return;
     }
 
