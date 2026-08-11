@@ -186,7 +186,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 fn seed_building(world: &mut World, road: GridCoord, category: Category) {
     for rotation in Rotation::ALL {
         let (dx, dy) = rotation.facing();
-        // The building sits on the far side, so its door looks back at the road.
         let pos = GridCoord { x: road.x - dx, y: road.y - dy };
         if world.is_buildable(pos) {
             let kind = BuildingKind::for_plot(category, 1);
@@ -265,10 +264,11 @@ fn handle_player_action(
             }
         }
         ClientMessage::PlaceBuilding(place) => {
-            if let Some(rotation) = world.rotation_facing_road(place.pos, (1, 1))
-                && let Some(building_id) = world.spawn_building(place.pos, place.kind, (1, 1), rotation)
-            {
-                schedule_car_spawn(events, building_id);
+            if let Some(road) = world.road_for_plot(place.pos, (1, 1), Rotation::North) {
+                let rotation = world.rotation_toward(place.pos, (1, 1), road);
+                if let Some(id) = world.spawn_building(place.pos, place.kind, (1, 1), rotation) {
+                    schedule_car_spawn(events, id);
+                }
             }
         }
         ClientMessage::DemolishRoad(demolish) => {

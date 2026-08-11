@@ -2,17 +2,18 @@ import type { MeshGeometry } from "../Mesh";
 import type { BuildingKind, Category } from "../../generated";
 
 /**
- * Zone palette. The three sit 120 degrees apart in hue *and* step in lightness,
- * so they stay apart in greyscale and for red-green colour deficiency, where
- * clay and ochre would otherwise both read as "warm".
+ * Zone palette.
  *
- * Green is unavailable (the land is green) and pale blue reads as water, which
- * is why this is not the usual green/blue/yellow.
+ * These have to survive being laid over the terrain rather than beside it, so
+ * each is picked to separate from the tile it will most often sit on: the land
+ * is a very light yellow-green (#D5F2A4), so residential goes mid-value and
+ * cooler; water is a light cyan (#85D7FA), so commercial goes deeper and more
+ * indigo; the beaches are near-cream, so industrial leans on saturation.
  */
 export const CATEGORY_COLOR: Record<Category, string> = {
-  Residential: "#F0A58C",
-  Commercial: "#7B87DC",
-  Industrial: "#C9922B",
+  Residential: "#6FBF73",
+  Commercial: "#5B8DD9",
+  Industrial: "#E8933F",
 };
 
 export const KIND_CATEGORY: Record<BuildingKind, Category> = {

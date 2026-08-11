@@ -40,37 +40,79 @@ impl World {
         )
     }
 
-    /// The tile the entrance sits on: the middle of the front edge.
-    pub fn door_tile(&self, building_id: EntityId) -> Option<GridCoord> {
+    /// Perimeter tiles of a footprint, in a fixed order. Every one can host a
+    /// door by default; a kind that wants a single gate narrows this later.
+    fn perimeter(pos: GridCoord, size: (u8, u8), rotation: Rotation) -> Vec<GridCoord> {
+        let (w, h) = Self::extent(size, rotation);
+        Self::footprint(pos, size, rotation)
+            .filter(move |t| {
+                let (dx, dy) = (t.x - pos.x, t.y - pos.y);
+                dx == 0 || dy == 0 || dx == w - 1 || dy == h - 1
+            })
+            .collect()
+    }
+
+    /// Footprint width and height after rotation.
+    pub fn extent(size: (u8, u8), rotation: Rotation) -> (i32, i32) {
+        if rotation.swaps_axes() {
+            (size.1 as i32, size.0 as i32)
+        } else {
+            (size.0 as i32, size.1 as i32)
+        }
+    }
+
+    /// The road a plot's traffic would use, if any.
+    ///
+    /// Straight-on neighbours are tried before corners, so a building touching
+    /// both takes the road it faces squarely. Diagonals are only checked at the
+    /// four corners: anywhere else along an edge, the diagonal tile is already
+    /// orthogonally adjacent to the next perimeter tile along, so allowing it
+    /// would just find the same road twice.
+    pub fn road_for_plot(&self, pos: GridCoord, size: (u8, u8), rotation: Rotation) -> Option<EntityId> {
+        const ORTHOGONAL: [(i32, i32); 4] = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+        let tiles = Self::perimeter(pos, size, rotation);
+
+        for tile in &tiles {
+            for (dx, dy) in ORTHOGONAL {
+                let n = GridCoord { x: tile.x + dx, y: tile.y + dy };
+                if Self::building_covers(pos, size, rotation, n) {
+                    continue;
+                }
+                if let Some(id) = self.road_node_at(n) {
+                    return Some(id);
+                }
+            }
+        }
+
+        let (w, h) = Self::extent(size, rotation);
+        for (cx, cy, dx, dy) in [
+            (0, 0, -1, -1),
+            (w - 1, 0, 1, -1),
+            (0, h - 1, -1, 1),
+            (w - 1, h - 1, 1, 1),
+        ] {
+            let n = GridCoord { x: pos.x + cx + dx, y: pos.y + cy + dy };
+            if let Some(id) = self.road_node_at(n) {
+                return Some(id);
+            }
+        }
+        None
+    }
+
+    fn building_covers(pos: GridCoord, size: (u8, u8), rotation: Rotation, t: GridCoord) -> bool {
+        let (w, h) = Self::extent(size, rotation);
+        t.x >= pos.x && t.y >= pos.y && t.x < pos.x + w && t.y < pos.y + h
+    }
+
+    /// The road this building's traffic uses.
+    ///
+    /// Derived rather than stored, so it cannot go stale — and if the road it
+    /// was using is demolished, it simply falls back to another one it touches.
+    pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
         let entry = self.objects.get(building_id)?;
         let pos = entry.position?;
         let GameObject::Building(ref b) = entry.object else { return None };
-
-        let (w, h) = if b.rotation.swaps_axes() {
-            (b.size.1 as i32, b.size.0 as i32)
-        } else {
-            (b.size.0 as i32, b.size.1 as i32)
-        };
-        // Walk to the middle of whichever edge faces out.
-        Some(match b.rotation {
-            Rotation::North => GridCoord { x: pos.x + (w - 1) / 2, y: pos.y + h - 1 },
-            Rotation::South => GridCoord { x: pos.x + (w - 1) / 2, y: pos.y },
-            Rotation::East => GridCoord { x: pos.x + w - 1, y: pos.y + (h - 1) / 2 },
-            Rotation::West => GridCoord { x: pos.x, y: pos.y + (h - 1) / 2 },
-        })
-    }
-
-    /// The road a building's traffic uses.
-    ///
-    /// Derived from the door rather than stored, so it cannot go stale: demolish
-    /// the road and the building is simply orphaned, with no reference to clean
-    /// up and no trips able to start or end there.
-    pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
-        let entry = self.objects.get(building_id)?;
-        let GameObject::Building(ref b) = entry.object else { return None };
-        let door = self.door_tile(building_id)?;
-        let (dx, dy) = b.rotation.facing();
-        self.road_node_at(GridCoord { x: door.x + dx, y: door.y + dy })
+        self.road_for_plot(pos, b.size, b.rotation)
     }
 
     /// Every building, as (id, position).
@@ -83,24 +125,22 @@ impl World {
             .collect()
     }
 
-    /// A rotation whose door lands against a road, if any. Tried in a fixed
-    /// order so the same plot always produces the same building.
-    pub fn rotation_facing_road(&self, pos: GridCoord, size: (u8, u8)) -> Option<Rotation> {
-        Rotation::ALL.into_iter().find(|&rotation| {
-            let (w, h) = if rotation.swaps_axes() {
-                (size.1 as i32, size.0 as i32)
-            } else {
-                (size.0 as i32, size.1 as i32)
-            };
-            let door = match rotation {
-                Rotation::North => GridCoord { x: pos.x + (w - 1) / 2, y: pos.y + h - 1 },
-                Rotation::South => GridCoord { x: pos.x + (w - 1) / 2, y: pos.y },
-                Rotation::East => GridCoord { x: pos.x + w - 1, y: pos.y + (h - 1) / 2 },
-                Rotation::West => GridCoord { x: pos.x, y: pos.y + (h - 1) / 2 },
-            };
-            let (dx, dy) = rotation.facing();
-            self.road_node_at(GridCoord { x: door.x + dx, y: door.y + dy }).is_some()
-        })
+    /// Which way to face a building so it looks at the road it uses. Appearance
+    /// only — access does not depend on it.
+    pub fn rotation_toward(&self, pos: GridCoord, size: (u8, u8), road: EntityId) -> Rotation {
+        let Some(rp) = self.objects.get(road).and_then(|e| e.position) else {
+            return Rotation::North;
+        };
+        let (w, h) = Self::extent(size, Rotation::North);
+        let (cx, cy) = (pos.x as f64 + w as f64 / 2.0, pos.y as f64 + h as f64 / 2.0);
+        let (dx, dy) = (rp.x as f64 + 0.5 - cx, rp.y as f64 + 0.5 - cy);
+        if dx.abs() > dy.abs() {
+            if dx > 0.0 { Rotation::East } else { Rotation::West }
+        } else if dy > 0.0 {
+            Rotation::North
+        } else {
+            Rotation::South
+        }
     }
 
     /// The one way a building comes into existence.
@@ -119,6 +159,8 @@ impl World {
         if !tiles.iter().all(|&t| self.is_buildable(t)) {
             return None;
         }
+        // A building nobody can drive to would be a purchase with no feedback.
+        self.road_for_plot(pos, size, rotation)?;
 
         let id = self.insert_at(
             GameObject::Building(Building { kind, size, rotation }),
@@ -168,5 +210,62 @@ impl World {
                 self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(id);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::Rotation;
+
+    /// A world with nothing in it but the given road path.
+    fn world_with_road(path: &[(i32, i32)]) -> World {
+        let mut world = World::new();
+        let coords: Vec<GridCoord> = path.iter().map(|&(x, y)| GridCoord { x, y }).collect();
+        world.place_road_path(&coords);
+        world
+    }
+
+    #[test]
+    fn takes_a_road_straight_on() {
+        let world = world_with_road(&[(0, 1), (1, 1)]);
+        assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (1, 1), Rotation::North).is_some());
+    }
+
+    /// The case the corner rule exists for: no perimeter tile is orthogonally
+    /// adjacent to this road, only the corner touches it.
+    #[test]
+    fn takes_a_road_off_its_corner() {
+        let world = world_with_road(&[(1, 1), (2, 2)]);
+        assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (1, 1), Rotation::North).is_some());
+    }
+
+    #[test]
+    fn corner_rule_reaches_past_a_wide_footprint() {
+        // Footprint covers (0,0) and (1,0); the road only meets its far corner.
+        let world = world_with_road(&[(2, 1), (3, 2)]);
+        assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (2, 1), Rotation::North).is_some());
+    }
+
+    #[test]
+    fn no_road_in_reach_is_no_access() {
+        let world = world_with_road(&[(5, 5), (6, 5)]);
+        assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (1, 1), Rotation::North).is_none());
+    }
+
+    /// A road two tiles out is not access, diagonally or otherwise.
+    #[test]
+    fn diagonals_do_not_reach_two_tiles() {
+        let world = world_with_road(&[(2, 2), (3, 3)]);
+        assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (1, 1), Rotation::North).is_none());
+    }
+
+    #[test]
+    fn footprint_covers_every_tile_and_rotation_swaps_axes() {
+        let pos = GridCoord { x: 10, y: 10 };
+        let north: Vec<_> = World::footprint(pos, (2, 3), Rotation::North).collect();
+        assert_eq!(north.len(), 6);
+        assert_eq!(World::extent((2, 3), Rotation::North), (2, 3));
+        assert_eq!(World::extent((2, 3), Rotation::East), (3, 2));
     }
 }
