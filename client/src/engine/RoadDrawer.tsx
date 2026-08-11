@@ -57,11 +57,21 @@ export function RoadDrawer() {
     const w = pickWorld(e);
 
     if (mode === "demolish") {
+      // A pointer event lands wherever the mouse got to, which on a fast drag
+      // is several tiles on from the last one. Walk the line between the two
+      // rather than only the tile sampled, or the drag punches a dotted line
+      // through the road and leaves the tiles in between standing.
       const cell = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
-      if (cell.x !== current.x || cell.y !== current.y) {
-        current = cell;
-        demolishAt(current);
+      const dx = cell.x - current.x;
+      const dy = cell.y - current.y;
+      const steps = Math.max(Math.abs(dx), Math.abs(dy));
+      for (let i = 1; i <= steps; i++) {
+        demolishAt({
+          x: current.x + Math.round((dx * i) / steps),
+          y: current.y + Math.round((dy * i) / steps),
+        });
       }
+      current = cell;
       prevWorld = w;
       return;
     }
