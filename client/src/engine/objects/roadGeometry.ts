@@ -125,7 +125,8 @@ function roundedOutside(aCurr: number, aNext: number, hw: number): Point[] {
   return arcPoints(aCurr + Math.PI / 2, aNext - Math.PI / 2, hw);
 }
 
-function sharpCorner(
+/** Where two outer edges meet, extended back along their arms. */
+function outerCorner(
   aCurr: number,
   aNext: number,
   currLeft: Point,
@@ -178,17 +179,23 @@ export function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshG
         next.flow === "twoway" ||
         curr.flow !== next.flow;
 
-      // A reflex gap is the *outside* of a turn. curveControlPoint solves for
-      // a fillet tangent to both edges, which is the inside of one — used out
-      // here it folds the boundary back through the node instead of bulging
-      // around it, and the fan then emits triangles wound the wrong way.
+      // A reflex gap is the *outside* of a turn, where the two outer edges
+      // simply meet. curveControlPoint solves for a fillet tangent to both —
+      // the inside of a corner — and used out here it folds the boundary back
+      // through the node, which the fan then triangulates inside out. An arc
+      // of the road's own half-width is wrong the other way: it never reaches
+      // the corner, chamfering it off.
       if (gap > Math.PI) {
-        boundary.push(...roundedOutside(aCurr, aNext, hw));
+        boundary.push(
+          ...(isContinuous
+            ? outerCorner(aCurr, aNext, currEdge.left, nextEdge.right)
+            : roundedOutside(aCurr, aNext, hw)),
+        );
       } else if (isDrivable) {
         boundary.push(...smoothCurve(aCurr, aNext, currEdge, nextEdge, hw));
       } else {
         boundary.push(
-          ...sharpCorner(aCurr, aNext, currEdge.left, nextEdge.right),
+          ...outerCorner(aCurr, aNext, currEdge.left, nextEdge.right),
         );
       }
     }

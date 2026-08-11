@@ -66,3 +66,22 @@ test("no outline folds back through its own node", () => {
     }
   }
 });
+
+/**
+ * The outside of a turn is where the two outer edges meet. An arc of the road's
+ * own half-width never reaches that point and visibly chamfers the corner off,
+ * so require the outline to get out past it.
+ */
+test("the outside of a right-angle turn reaches its corner", () => {
+  const arms: ArmInfo[] = [
+    { angle: 0, flow: "twoway" },
+    { angle: Math.PI / 2, flow: "twoway" },
+  ];
+  const geo = buildRoadGeometry(arms, HALF_W, 0.02)!;
+  let furthest = 0;
+  for (let i = 1; i * 3 < geo.positions.length; i++) {
+    const x = geo.positions[i * 3], y = geo.positions[i * 3 + 1];
+    if (x < 0 && y < 0) furthest = Math.max(furthest, Math.hypot(x, y));
+  }
+  expect(furthest).toBeCloseTo(Math.hypot(HALF_W, HALF_W), 5);
+});
