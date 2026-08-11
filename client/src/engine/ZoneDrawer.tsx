@@ -12,18 +12,20 @@ const PREVIEW_Z = 0.05;
 const PREVIEW_ALPHA = 0.35;
 
 /**
- * The build brush: drag a rectangle, get buildings.
+ * The build brush: paint tiles, get buildings.
  *
- * The rectangle is only a wish — the server lays out whatever plots actually
- * fit and leaves the rest, so the preview promises coverage rather than a
- * particular set of houses.
+ * The stroke is only a wish — the server lays out whatever plots actually fit
+ * and leaves the rest, so the brush promises coverage rather than a particular
+ * set of houses. It is laid out as one piece on release, which is what lets a
+ * lone house become half an apartment as the stroke widens.
  */
 export function ZoneDrawer() {
   const { scene, canvas } = useEngine();
   const { send } = useGame();
 
-  let anchor: GridCoord | null = null;
-  let cursor: GridCoord | null = null;
+  /** Tiles painted since pointerdown, keyed to dedupe a wandering cursor. */
+  const painted = new Map<string, GridCoord>();
+  let last: GridCoord | null = null;
 
   const material = new StandardMaterial("zonePreview", scene);
   material.disableLighting = true;
@@ -44,32 +46,50 @@ export function ZoneDrawer() {
     return { x: Math.floor(wx), y: Math.floor(wy) };
   };
 
-  /** Every tile in the rectangle the drag spans, inclusive of both corners. */
-  function selection(): GridCoord[] {
-    if (!anchor || !cursor) return [];
-    const tiles: GridCoord[] = [];
-    for (let y = Math.min(anchor.y, cursor.y); y <= Math.max(anchor.y, cursor.y); y++) {
-      for (let x = Math.min(anchor.x, cursor.x); x <= Math.max(anchor.x, cursor.x); x++) {
-        tiles.push({ x, y });
-      }
-    }
-    return tiles;
+  function add(tile: GridCoord) {
+    painted.set(`${tile.x},${tile.y}`, tile);
   }
 
-  /** One quad, so the whole selection is a single draw however large it gets. */
+  /**
+   * Paint every tile between where the brush was and where it now is. A pointer
+   * event lands wherever the mouse got to, which on a fast drag is several
+   * tiles on, so walking the line is what makes the stroke continuous rather
+   * than a row of dots.
+   */
+  function paintTo(tile: GridCoord) {
+    const dx = tile.x - last!.x;
+    const dy = tile.y - last!.y;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy));
+    for (let i = 1; i <= steps; i++) {
+      add({
+        x: last!.x + Math.round((dx * i) / steps),
+        y: last!.y + Math.round((dy * i) / steps),
+      });
+    }
+    last = tile;
+  }
+
+  /** One quad per painted tile, rebuilt only when the set actually grows. */
   function redraw() {
-    if (!anchor || !cursor) {
+    if (painted.size === 0) {
       mesh.setEnabled(false);
       return;
     }
-    const x0 = Math.min(anchor.x, cursor.x);
-    const y0 = Math.min(anchor.y, cursor.y);
-    const x1 = Math.max(anchor.x, cursor.x) + 1;
-    const y1 = Math.max(anchor.y, cursor.y) + 1;
-
+    const positions: number[] = [];
+    const indices: number[] = [];
+    for (const t of painted.values()) {
+      const b = positions.length / 3;
+      positions.push(
+        t.x, t.y, PREVIEW_Z,
+        t.x + 1, t.y, PREVIEW_Z,
+        t.x + 1, t.y + 1, PREVIEW_Z,
+        t.x, t.y + 1, PREVIEW_Z,
+      );
+      indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
+    }
     const data = new VertexData();
-    data.positions = [x0, y0, PREVIEW_Z, x1, y0, PREVIEW_Z, x1, y1, PREVIEW_Z, x0, y1, PREVIEW_Z];
-    data.indices = [0, 2, 1, 0, 3, 2];
+    data.positions = positions;
+    data.indices = indices;
     data.applyToMesh(mesh, true);
 
     material.emissiveColor = Color3.FromHexString(CATEGORY_COLOR[paintCategory()]);
@@ -79,26 +99,32 @@ export function ZoneDrawer() {
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
     if (activeTool() !== "zone") return;
-    anchor = pick(e);
-    cursor = anchor;
+    last = pick(e);
+    add(last);
     redraw();
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!anchor) return;
-    const cell = pick(e);
-    if (cell.x === cursor!.x && cell.y === cursor!.y) return;
-    cursor = cell;
-    redraw();
+    if (!last) return;
+    const before = painted.size;
+    // The browser merges every sample it took since the last frame into one
+    // event. Walking them keeps a curved stroke on the path the mouse took
+    // rather than the chord across it.
+    const merged = e.getCoalescedEvents?.() ?? [];
+    for (const ce of merged.length ? merged : [e]) paintTo(pick(ce));
+    if (painted.size !== before) redraw();
   };
 
-  const onPointerUp = () => {
-    if (!anchor) return;
-    const tiles = selection();
-    anchor = null;
-    cursor = null;
+  const onPointerUp = (e: PointerEvent) => {
+    if (!last) return;
+    // A flick releases the button past the last pointermove, so without this
+    // the tail of every fast stroke is lost.
+    paintTo(pick(e));
+    const tiles = [...painted.values()];
+    painted.clear();
+    last = null;
     redraw();
-    if (tiles.length) send({ type: "PaintArea", data: { tiles, category: paintCategory() } });
+    send({ type: "PaintArea", data: { tiles, category: paintCategory() } });
   };
 
   canvas.addEventListener("pointerdown", onPointerDown);
