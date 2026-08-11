@@ -42,8 +42,15 @@ export type ZonePalette = (RGB | null)[];
 /** How far the fill leans toward its category colour. Deliberately slight —
  * the boundary lines carry the signal, the fill only hints. */
 const ZONE_FILL = 0.22;
-/** Boundary line width, in tiles. */
-const ZONE_LINE = 0.09;
+/**
+ * Width of a line drawn along a tile boundary, in tiles.
+ *
+ * The ordinary grid comes from a border texture where each tile contributes
+ * half of a shared edge, so this is what both must agree on — the plot outlines
+ * are meant to read as the same grid, recoloured.
+ */
+export const GRID_LINE = 1 / 16;
+const ZONE_LINE = GRID_LINE;
 
 const TINTED: RGB = { r: 0, g: 0, b: 0 };
 

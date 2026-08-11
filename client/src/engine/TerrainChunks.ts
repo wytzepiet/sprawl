@@ -16,6 +16,7 @@ import {
   CHUNK_SIZE,
   CHUNK_SKIRT,
   CHUNK_STRIDE,
+  GRID_LINE,
   TREE_TRUNK,
   type ChunkGeometry,
   type MeshBuffers,
@@ -37,7 +38,8 @@ const APPLIES_PER_FRAME = 2;
 const DETAIL_MAX_ORTHO = 30;
 
 const TEX_SIZE = 32;
-const BORDER = 1;
+/** Each tile draws half of every boundary it shares, hence the halving. */
+const BORDER = Math.round((GRID_LINE / 2) * TEX_SIZE);
 
 function createBorderTexture(scene: Scene): RawTexture {
   const data = new Uint8Array(TEX_SIZE * TEX_SIZE * 4);
