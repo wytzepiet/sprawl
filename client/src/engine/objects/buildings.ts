@@ -54,8 +54,8 @@ export const BUILDING_COLOR = "#EFEDE8";
 export const BUILDING_HEIGHT = 0.6;
 
 /** Margin from the plot edge, which is what leaves the category tint visible. */
-const M = 0.15;
-const BUILDING_SIZE = 1.0 - 2 * M;
+export const PLOT_MARGIN = 0.15;
+export const BUILDING_SIZE = 1.0 - 2 * PLOT_MARGIN;
 
 /**
  * Building cube geometry — top face + 4 side walls, no bottom.

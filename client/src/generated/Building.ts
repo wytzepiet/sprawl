@@ -4,6 +4,7 @@ import type { Rotation } from "./Rotation";
 
 export type Building = { kind: BuildingKind, 
 /**
- * Footprint in tiles, before rotation.
+ * Footprint in tiles, as it lies on the grid. Rotation does not turn it:
+ * a plot that was validated one shape cannot become another.
  */
 size: [number, number], rotation: Rotation, };

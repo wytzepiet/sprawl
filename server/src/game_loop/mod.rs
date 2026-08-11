@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingKind, Category, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, Rotation, ServerMessage, StateUpdate};
+use crate::protocol::{BuildingKind, Category, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate};
 use crate::world::chunk_of;
 use crate::world::World;
 use crate::protocol::GridCoord;
@@ -193,7 +193,7 @@ fn seed_building(world: &mut World, road: GridCoord, category: Category) {
         if !world.is_buildable(pos) {
             continue;
         }
-        let Some((node, _)) = world.road_for_plot(pos, (1, 1), Rotation::North) else {
+        let Some((node, _)) = world.road_for_plot(pos, (1, 1)) else {
             continue;
         };
         let rotation = world.rotation_toward(pos, (1, 1), node);
@@ -273,11 +273,16 @@ fn handle_player_action(
             }
         }
         ClientMessage::PlaceBuilding(place) => {
-            if let Some((road, _)) = world.road_for_plot(place.pos, (1, 1), Rotation::North) {
+            if let Some((road, _)) = world.road_for_plot(place.pos, (1, 1)) {
                 let rotation = world.rotation_toward(place.pos, (1, 1), road);
                 if let Some(id) = world.spawn_building(place.pos, place.kind, (1, 1), rotation) {
                     schedule_car_spawn(events, id);
                 }
+            }
+        }
+        ClientMessage::PaintArea(paint) => {
+            for id in world.paint_area(&paint.tiles, paint.category) {
+                schedule_car_spawn(events, id);
             }
         }
         ClientMessage::DemolishRoad(demolish) => {

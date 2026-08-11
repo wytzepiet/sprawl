@@ -14,7 +14,7 @@ import {
 import type { Operation, GameObjectEntry } from "../generated";
 
 import { KIND_CATEGORY, ZONE_BYTE } from "./objects/buildings";
-import type { Building, Rotation } from "../generated";
+import type { Building } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
@@ -49,10 +49,7 @@ export default function World() {
   const zoneTiles = new Map<string, number>();
   const zoneAt = (x: number, y: number) => zoneTiles.get(`${x},${y}`) ?? 0;
 
-  function footprint(pos: { x: number; y: number }, size: [number, number], rotation: Rotation) {
-    const swap = rotation === "East" || rotation === "West";
-    const w = swap ? size[1] : size[0];
-    const h = swap ? size[0] : size[1];
+  function footprint(pos: { x: number; y: number }, [w, h]: [number, number]) {
     const tiles: { x: number; y: number }[] = [];
     for (let dy = 0; dy < h; dy++) {
       for (let dx = 0; dx < w; dx++) tiles.push({ x: pos.x + dx, y: pos.y + dy });
@@ -65,7 +62,7 @@ export default function World() {
     if (entry.object.kind !== "Building" || !entry.position) return [];
     const b = entry.object.data as Building;
     const byte = ZONE_BYTE[KIND_CATEGORY[b.kind]];
-    return footprint(entry.position, b.size, b.rotation).map((t) => {
+    return footprint(entry.position, b.size).map((t) => {
       const key = `${t.x},${t.y}`;
       zoneTiles.set(key, byte);
       terrain.markZone(t.x, t.y);

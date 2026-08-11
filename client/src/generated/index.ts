@@ -1,6 +1,7 @@
 export type { GridCoord } from "./GridCoord";
 export type { PlaceRoad } from "./PlaceRoad";
 export type { PlaceBuilding } from "./PlaceBuilding";
+export type { PaintArea } from "./PaintArea";
 export type { DemolishRoad } from "./DemolishRoad";
 export type { RoadNode } from "./RoadNode";
 export type { Building } from "./Building";

@@ -82,18 +82,12 @@ pub enum Rotation {
     West,
 }
 
-impl Rotation {
-    /// Footprints are stored unrotated, so a quarter turn swaps their axes.
-    pub fn swaps_axes(self) -> bool {
-        matches!(self, Rotation::East | Rotation::West)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Building {
     pub kind: BuildingKind,
-    /// Footprint in tiles, before rotation.
+    /// Footprint in tiles, as it lies on the grid. Rotation does not turn it:
+    /// a plot that was validated one shape cannot become another.
     pub size: (u8, u8),
     pub rotation: Rotation,
 }
@@ -103,6 +97,15 @@ pub struct Building {
 pub struct PlaceBuilding {
     pub pos: GridCoord,
     pub kind: BuildingKind,
+}
+
+/// A stroke of the build brush. The tiles are a wish, not an instruction: the
+/// server lays out whatever plots actually fit and ignores the rest.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PaintArea {
+    pub tiles: Vec<GridCoord>,
+    pub category: Category,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -251,6 +254,7 @@ impl ChunkBounds {
 pub enum ClientMessage {
     PlaceRoad(PlaceRoad),
     PlaceBuilding(PlaceBuilding),
+    PaintArea(PaintArea),
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
