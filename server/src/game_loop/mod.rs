@@ -193,7 +193,7 @@ fn seed_building(world: &mut World, road: GridCoord, category: Category) {
         if !world.is_buildable(pos) {
             continue;
         }
-        let Some(node) = world.road_for_plot(pos, (1, 1), Rotation::North) else {
+        let Some((node, _)) = world.road_for_plot(pos, (1, 1), Rotation::North) else {
             continue;
         };
         let rotation = world.rotation_toward(pos, (1, 1), node);
@@ -273,7 +273,7 @@ fn handle_player_action(
             }
         }
         ClientMessage::PlaceBuilding(place) => {
-            if let Some(road) = world.road_for_plot(place.pos, (1, 1), Rotation::North) {
+            if let Some((road, _)) = world.road_for_plot(place.pos, (1, 1), Rotation::North) {
                 let rotation = world.rotation_toward(place.pos, (1, 1), road);
                 if let Some(id) = world.spawn_building(place.pos, place.kind, (1, 1), rotation) {
                     schedule_car_spawn(events, id);

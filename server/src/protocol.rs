@@ -71,8 +71,8 @@ impl BuildingKind {
     }
 }
 
-/// Which way a building faces. The entrance is always the middle of the front
-/// edge, so this is the only thing that decides where its door is.
+/// Which way a building faces. Appearance only — the entrance is wherever the
+/// driveway runs in, which is a road node standing on one of the plot's tiles.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
 #[ts(export)]
 pub enum Rotation {
@@ -83,22 +83,10 @@ pub enum Rotation {
 }
 
 impl Rotation {
-    /// Unit step from the door tile out to the road it faces.
-    pub fn facing(self) -> (i32, i32) {
-        match self {
-            Rotation::North => (0, 1),
-            Rotation::East => (1, 0),
-            Rotation::South => (0, -1),
-            Rotation::West => (-1, 0),
-        }
-    }
-
     /// Footprints are stored unrotated, so a quarter turn swaps their axes.
     pub fn swaps_axes(self) -> bool {
         matches!(self, Rotation::East | Rotation::West)
     }
-
-    pub const ALL: [Rotation; 4] = [Rotation::North, Rotation::East, Rotation::South, Rotation::West];
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

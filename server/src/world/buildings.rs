@@ -79,7 +79,12 @@ impl World {
     /// four corners: anywhere else along an edge, the diagonal tile is already
     /// orthogonally adjacent to the next perimeter tile along, so allowing it
     /// would just find the same road twice.
-    pub fn road_for_plot(&self, pos: GridCoord, size: (u8, u8), rotation: Rotation) -> Option<EntityId> {
+    pub fn road_for_plot(
+        &self,
+        pos: GridCoord,
+        size: (u8, u8),
+        rotation: Rotation,
+    ) -> Option<(EntityId, GridCoord)> {
         const ORTHOGONAL: [(i32, i32); 4] = [(0, 1), (1, 0), (0, -1), (-1, 0)];
         let tiles = Self::perimeter(pos, size, rotation);
 
@@ -92,7 +97,7 @@ impl World {
                 if let Some(id) = self.road_node_at(n)
                     && self.driveway_reaches(n, *tile)
                 {
-                    return Some(id);
+                    return Some((id, *tile));
                 }
             }
         }
@@ -109,7 +114,7 @@ impl World {
             if let Some(id) = self.road_node_at(n)
                 && self.driveway_reaches(n, corner)
             {
-                return Some(id);
+                return Some((id, corner));
             }
         }
         None
@@ -120,15 +125,17 @@ impl World {
         t.x >= pos.x && t.y >= pos.y && t.x < pos.x + w && t.y < pos.y + h
     }
 
-    /// The road this building's traffic uses.
+    /// The building's own driveway node — the road that runs into it.
     ///
-    /// Derived rather than stored, so it cannot go stale — and if the road it
-    /// was using is demolished, it simply falls back to another one it touches.
+    /// Derived rather than stored: it is simply the road node standing on one
+    /// of the building's own tiles, so redrawing the driveway moves it with no
+    /// bookkeeping, and demolishing it leaves the building visibly cut off
+    /// rather than holding a dangling reference.
     pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
         let entry = self.objects.get(building_id)?;
         let pos = entry.position?;
         let GameObject::Building(ref b) = entry.object else { return None };
-        self.road_for_plot(pos, b.size, b.rotation)
+        Self::footprint(pos, b.size, b.rotation).find_map(|t| self.road_node_at(t))
     }
 
     /// Every building, as (id, position).
@@ -176,7 +183,8 @@ impl World {
             return None;
         }
         // A building nobody can drive to would be a purchase with no feedback.
-        self.road_for_plot(pos, size, rotation)?;
+        let (street, door) = self.road_for_plot(pos, size, rotation)?;
+        let street_pos = self.objects.get(street).and_then(|e| e.position)?;
 
         let id = self.insert_at(
             GameObject::Building(Building { kind, size, rotation }),
@@ -190,6 +198,11 @@ impl World {
             // anyone looking at the other half.
             self.spatial.entry(crate::world::chunk_of(*tile)).or_default().insert(id);
         }
+        // The driveway is an ordinary road that happens to end inside the
+        // building: the car drives in and despawns there. Laid after the
+        // footprint is claimed, since a road on the plot would fail is_buildable.
+        self.place_road_path(&[street_pos, door]);
+
         self.reveal_around(pos);
         Some(id)
     }
@@ -201,9 +214,15 @@ impl World {
         let GameObject::Building(ref b) = entry.object else { return };
         let tiles: Vec<GridCoord> = Self::footprint(pos, b.size, b.rotation).collect();
 
-        for tile in tiles {
+        for tile in &tiles {
+            if let Some(node) = self.road_node_at(*tile) {
+                for edge in self.edges_involving(node) {
+                    self.remove_edge(edge.0, edge.1);
+                }
+                self.handle_demolish_road(*tile);
+            }
             self.occupied.remove(&(tile.x, tile.y));
-            self.unindex(id, tile);
+            self.unindex(id, *tile);
         }
         self.objects.remove(id);
     }
