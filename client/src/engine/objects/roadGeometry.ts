@@ -37,8 +37,23 @@ function fanGeometry(
     positions.push(pt.x, pt.y, z);
     normals.push(0, 0, 1);
   }
+  // A fan only winds one way if the boundary is star-shaped about its centre,
+  // and a road outline is not always: on the outside of a turn it can pass back
+  // inside the node. Those triangles used to render anyway, because the
+  // material was two-sided — under back-face culling they simply vanish, which
+  // is what put holes in corners. Emit each one whichever way round faces the
+  // camera, rather than reshaping the outline to suit the triangulator.
   for (let i = 0; i < n; i++) {
-    indices.push(0, ((i + 1) % n) + 1, i + 1);
+    const b = ((i + 1) % n) + 1;
+    const d = i + 1;
+    const bx = positions[b * 3] - c.x;
+    const by = positions[b * 3 + 1] - c.y;
+    const dx = positions[d * 3] - c.x;
+    const dy = positions[d * 3 + 1] - c.y;
+    // Front-facing toward +Z is a negative cross product here, matching the
+    // (0,2,1) order the rest of the project emits.
+    if (bx * dy - by * dx > 0) indices.push(0, d, b);
+    else indices.push(0, b, d);
   }
 
   return { positions, indices, normals };
@@ -119,14 +134,11 @@ function smoothCurve(
   return pts;
 }
 
-/** Sweeps the road's own half-width around the node: a dead end, or the far
- *  side of a turn. */
-function roundedOutside(aCurr: number, aNext: number, hw: number): Point[] {
+function deadEndCap(aCurr: number, aNext: number, hw: number): Point[] {
   return arcPoints(aCurr + Math.PI / 2, aNext - Math.PI / 2, hw);
 }
 
-/** Where two outer edges meet, extended back along their arms. */
-function outerCorner(
+function sharpCorner(
   aCurr: number,
   aNext: number,
   currLeft: Point,
@@ -179,23 +191,13 @@ export function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshG
         next.flow === "twoway" ||
         curr.flow !== next.flow;
 
-      // A reflex gap is the *outside* of a turn, where the two outer edges
-      // simply meet. curveControlPoint solves for a fillet tangent to both —
-      // the inside of a corner — and used out here it folds the boundary back
-      // through the node, which the fan then triangulates inside out. An arc
-      // of the road's own half-width is wrong the other way: it never reaches
-      // the corner, chamfering it off.
-      if (gap > Math.PI) {
-        boundary.push(
-          ...(isContinuous
-            ? outerCorner(aCurr, aNext, currEdge.left, nextEdge.right)
-            : roundedOutside(aCurr, aNext, hw)),
-        );
+      if (gap > Math.PI && !isContinuous) {
+        boundary.push(...deadEndCap(aCurr, aNext, hw));
       } else if (isDrivable) {
         boundary.push(...smoothCurve(aCurr, aNext, currEdge, nextEdge, hw));
       } else {
         boundary.push(
-          ...outerCorner(aCurr, aNext, currEdge.left, nextEdge.right),
+          ...sharpCorner(aCurr, aNext, currEdge.left, nextEdge.right),
         );
       }
     }
