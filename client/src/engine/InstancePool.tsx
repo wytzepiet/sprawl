@@ -104,6 +104,7 @@ export class InstancePool {
     receiveShadow: boolean,
     texture?: BaseTexture,
     alpha = 1,
+    lift = 0,
   ): Bucket {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
@@ -146,6 +147,12 @@ export class InstancePool {
     // frame, which would walk every instance.
     mesh.alwaysSelectAsActiveMesh = true;
     mesh.setEnabled(false);
+    if (alpha < 1) {
+      // Depth is written by neither, and they lie within a hundredth of the
+      // ground, so distance cannot separate them: the sort order has to be
+      // stated. Higher draws later, and so on top.
+      mesh.alphaIndex = Math.round(lift * 1000);
+    }
 
     if (receiveShadow) {
       mesh.receiveShadows = true;

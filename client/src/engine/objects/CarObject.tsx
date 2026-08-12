@@ -136,7 +136,7 @@ export function mountCar(
 
   const bucket = `car${look.key}`;
   pool.ensureBucket(
-    bucket, carGeo, look.tint(CAR_COLOR), look.castShadow, true, undefined, look.alpha,
+    bucket, carGeo, look.tint(CAR_COLOR), look.castShadow, true, undefined, look.alpha, look.lift,
   );
   const instanceId = pool.addInstance(
     bucket,

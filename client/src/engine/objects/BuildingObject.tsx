@@ -22,7 +22,7 @@ export function mountBuilding(
   // instead of growing with the building.
   const span = (n: number) => (n - 2 * PLOT_MARGIN) / BUILDING_SIZE;
 
-  pool.ensureBucket(poolKey, cube, color, look.castShadow, false, undefined, look.alpha);
+  pool.ensureBucket(poolKey, cube, color, look.castShadow, false, undefined, look.alpha, look.lift);
   const id = pool.addInstance(
     poolKey,
     pos ? [pos.x + w / 2, pos.y + h / 2, 0] : undefined,

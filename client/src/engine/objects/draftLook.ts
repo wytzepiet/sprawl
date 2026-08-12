@@ -19,9 +19,15 @@ export interface Look {
   alpha: number;
   tint(base: Color3): Color3;
   castShadow: boolean;
+  /**
+   * Height offset, in world units. Roads all sit within a hundredth of the
+   * ground, so a draft has to be nudged off that plane to settle the order:
+   * what is arriving lies over what is leaving.
+   */
+  lift: number;
 }
 
-const COMMITTED: Look = { key: "", alpha: 1, tint: (c) => c, castShadow: true };
+const COMMITTED: Look = { key: "", alpha: 1, tint: (c) => c, castShadow: true, lift: 0 };
 
 /** Other people's pending work: present and reserving its land, but not yours. */
 const THEIRS: Look = {
@@ -34,9 +40,10 @@ const THEIRS: Look = {
     return new Color3(grey, grey, grey);
   },
   castShadow: false,
+  lift: 0.004,
 };
 
-const MINE: Look = { key: "_mine", alpha: 0.55, tint: (c) => c, castShadow: false };
+const MINE: Look = { key: "_mine", alpha: 0.55, tint: (c) => c, castShadow: false, lift: 0.004 };
 
 /**
  * Staged for demolition. Still drawn, and still carrying traffic — the marker
@@ -47,11 +54,15 @@ const MINE: Look = { key: "_mine", alpha: 0.55, tint: (c) => c, castShadow: fals
  * on top of it: rerouting an artery means building over the old alignment, and
  * the road on its way out has to give the new work the foreground.
  */
-const DOOMED_LOOK: Look = {
+export const DOOMED_LOOK: Look = {
   key: "_doomed",
-  alpha: 0.5,
+  alpha: 0.32,
   tint: (c) => Color3.Lerp(c, DOOMED, 0.75),
   castShadow: false,
+  // Under the live network, and under all of it: a road is a border at 0.015
+  // with its surface at 0.020, so anything shallower than -0.005 leaves the
+  // demolished tarmac riding over the surviving pavement.
+  lift: -0.008,
 };
 
 /**
@@ -64,6 +75,7 @@ export const DOOMED_TRAFFIC: Look = {
   alpha: 0.35,
   tint: (c) => c,
   castShadow: false,
+  lift: 0,
 };
 
 export function lookOf(draft: Draft | null | undefined, me: number): Look {

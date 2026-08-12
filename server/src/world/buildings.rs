@@ -579,6 +579,42 @@ mod tests {
         assert!(world.edges.contains_key(&(west, doomed)), "traffic still uses it");
     }
 
+    /// Demolish half a straight road and the survivor is a dead end, free to
+    /// turn a corner it could never have turned while the other half stood.
+    ///
+    /// The demolished half keeps carrying traffic and keeps its own shape; it
+    /// is simply no longer something the surviving road reaches for.
+    #[test]
+    fn a_road_demolished_up_to_a_point_frees_the_survivor_to_turn() {
+        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0), (3, 0)]);
+        let survivor = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
+        let doomed = world.road_node_at(GridCoord { x: 2, y: 0 }).unwrap();
+
+        // While the whole road stands, turning back on itself is too sharp.
+        assert!(world.would_be_too_sharp(GridCoord { x: 1, y: 0 }, 1, 1, false));
+
+        world.acting_as = Some(ME);
+        world.draft_remove(doomed);
+        world.draft_remove(world.road_node_at(GridCoord { x: 3, y: 0 }).unwrap());
+
+        assert!(
+            !world.would_be_too_sharp(GridCoord { x: 1, y: 0 }, 1, 1, false),
+            "the arm toward the demolished half should no longer be in the way",
+        );
+        assert!(
+            !world.arms_of(survivor, false).contains(&doomed),
+            "the survivor still reaches for what is leaving",
+        );
+        assert!(
+            world.arms_of(doomed, false).contains(&survivor),
+            "the demolished road should still draw through to where it reached",
+        );
+
+        // And the turn can actually be laid.
+        world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 2, y: 1 }]);
+        assert!(world.road_node_at(GridCoord { x: 2, y: 1 }).is_some());
+    }
+
     /// A plot will not take a driveway onto a road that is on its way out.
     #[test]
     fn a_road_staged_for_removal_is_not_access() {

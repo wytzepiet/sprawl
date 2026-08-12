@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
+use crate::protocol::{Draft, EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
 
 impl World {
@@ -44,6 +44,34 @@ impl World {
         )
     }
 
+    /// The neighbours a node shares a world with.
+    ///
+    /// A node only ever reaches for nodes on its own side of a draft: what is
+    /// arriving does not reach for what is leaving, and vice versa. That is
+    /// what lets a road be demolished up to a point and the survivor turn a
+    /// corner it could not have turned before — the arm toward the demolished
+    /// half is simply not there to be too sharp against, and the survivor stops
+    /// being drawn curved toward it.
+    ///
+    /// The doomed node keeps its own arms, so it still draws through to
+    /// everything it used to reach. It is its own record of what was there;
+    /// nothing has to be unlinked, which is what keeps discard free.
+    pub fn arms_of(&self, id: EntityId, outgoing_only: bool) -> Vec<EntityId> {
+        let Some(entry) = self.objects.get(id) else { return Vec::new() };
+        let GameObject::RoadNode(ref node) = entry.object else { return Vec::new() };
+        let leaving = self.is_going_away(id);
+        let same_world = |&&n: &&EntityId| match self.draft_of(n) {
+            Some(Draft::Removed(_)) => leaving,
+            Some(Draft::Added(_)) => !leaving,
+            None => true,
+        };
+        if outgoing_only {
+            node.outgoing.iter().filter(same_world).copied().collect()
+        } else {
+            node.outgoing.iter().chain(node.incoming.iter()).filter(same_world).copied().collect()
+        }
+    }
+
     /// Check if adding a connection in direction (dx, dy) at `coord` would create
     /// an angle sharper than 90° with existing connections.
     pub(super) fn would_be_too_sharp(&self, coord: GridCoord, dx: i32, dy: i32, outgoing_only: bool) -> bool {
@@ -51,17 +79,7 @@ impl World {
             Some(id) => id,
             None => return false,
         };
-        let entry = match self.objects.get(id) {
-            Some(e) => e,
-            None => return false,
-        };
-        let GameObject::RoadNode(ref node) = entry.object else { return false };
-        let check_ids: Vec<EntityId> = if outgoing_only {
-            node.outgoing.clone()
-        } else {
-            node.outgoing.iter().chain(node.incoming.iter()).copied().collect()
-        };
-        for nid in check_ids {
+        for nid in self.arms_of(id, outgoing_only) {
             if let Some(neighbor) = self.objects.get(nid)
                 && let Some(npos) = neighbor.position {
                     let ndx = npos.x - coord.x;
@@ -226,14 +244,10 @@ impl World {
         self.unique_connection_count(node_id) > 2
     }
 
+    /// Counts only arms in this node's own world: a drafted road carries no
+    /// cars, so it cannot make a junction the simulation has to arbitrate.
     fn unique_connection_count(&self, node_id: EntityId) -> usize {
-        if let Some(entry) = self.objects.get(node_id)
-            && let GameObject::RoadNode(ref node) = entry.object {
-                let mut unique: HashSet<EntityId> = HashSet::new();
-                unique.extend(&node.outgoing);
-                unique.extend(&node.incoming);
-                return unique.len();
-            }
-        0
+        let unique: HashSet<EntityId> = self.arms_of(node_id, false).into_iter().collect();
+        unique.len()
     }
 }
