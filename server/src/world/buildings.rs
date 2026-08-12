@@ -57,6 +57,21 @@ impl World {
             .collect()
     }
 
+    /// May a plot take its access from this road?
+    ///
+    /// Today that reads as: is it a street rather than a driveway. A driveway
+    /// stands on a building's own tile — that is exactly what makes it that
+    /// building's — so it is already spoken for, and a plot fronting onto one
+    /// would run its door through somebody else's hallway.
+    ///
+    /// This is where access rules about a road belong, and the only place they
+    /// belong. More road types are coming, and a motorway that admits no
+    /// frontage answers here too, rather than at each call site in turn.
+    fn is_street(&self, id: EntityId) -> bool {
+        let Some(pos) = self.objects.get(id).and_then(|e| e.position) else { return false };
+        !self.occupied.contains_key(&(pos.x, pos.y))
+    }
+
     /// Could a driveway run from this road node to this tile?
     ///
     /// A driveway is an ordinary road, so it answers to the same geometry as
@@ -86,6 +101,7 @@ impl World {
                     continue;
                 }
                 if let Some(id) = self.road_node_at(n)
+                    && self.is_street(id)
                     && self.driveway_reaches(n, *tile)
                 {
                     return Some((id, *tile));
@@ -103,6 +119,7 @@ impl World {
             let corner = GridCoord { x: pos.x + cx, y: pos.y + cy };
             let n = GridCoord { x: corner.x + dx, y: corner.y + dy };
             if let Some(id) = self.road_node_at(n)
+                && self.is_street(id)
                 && self.driveway_reaches(n, corner)
             {
                 return Some((id, corner));
@@ -613,6 +630,33 @@ mod tests {
         // And the turn can actually be laid.
         world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 2, y: 1 }]);
         assert!(world.road_node_at(GridCoord { x: 2, y: 1 }).is_some());
+    }
+
+    /// A driveway is not a street. Without this a plot behind a house takes its
+    /// access off that house's driveway, and you get a road running into one
+    /// building and straight on into the next.
+    #[test]
+    fn a_plot_cannot_front_onto_someone_elses_driveway() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
+
+        // A house on the street, which lays a driveway on its own tile.
+        let house = world
+            .spawn_building(GridCoord { x: 1, y: 0 }, BuildingKind::House, (1, 1), Rotation::North)
+            .unwrap();
+        let driveway = world.road_node_for_building(house).unwrap();
+        assert_eq!(
+            world.objects.get(driveway).and_then(|e| e.position),
+            Some(GridCoord { x: 1, y: 0 }),
+            "the driveway stands on the house's own tile",
+        );
+
+        // The plot behind it touches that driveway and nothing else.
+        assert!(
+            world.road_for_plot(GridCoord { x: 1, y: -1 }, (1, 1)).is_none(),
+            "a driveway is spoken for; it cannot be another plot's street",
+        );
+        // And the street one row further along still serves normally.
+        assert!(world.road_for_plot(GridCoord { x: 2, y: 0 }, (1, 1)).is_some());
     }
 
     /// A plot will not take a driveway onto a road that is on its way out.
