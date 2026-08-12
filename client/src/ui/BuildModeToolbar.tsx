@@ -13,7 +13,7 @@ import {
   setPlacingBuilding,
   type Tool,
 } from "./buildMode";
-import { useGame } from "../state/gameObjects";
+import { useGame, pending } from "../state/gameObjects";
 import {
   BuildButton,
   BuildMenuSheet,
@@ -47,6 +47,12 @@ export default function BuildModeToolbar() {
     if (e.code === "Space") {
       e.preventDefault();
       setAppMode((m) => (m === "build" ? "view" : "build"));
+      return;
+    }
+    // Committing has a key; discarding does not. Throwing away a morning's
+    // layout should take aim, not a stray keystroke.
+    if (e.key === "Enter" && pending() > 0) {
+      send({ type: "Commit" });
       return;
     }
     if (e.key === "Escape") {
@@ -86,12 +92,40 @@ export default function BuildModeToolbar() {
 
   return (
     <>
+      <div class="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+        {/* Uncommitted work is shown in both modes. Hidden behind a mode
+            toggle it would be work you forget you have, and it expires. */}
+        <Show when={pending() > 0}>
+          <div class="flex items-center gap-1 p-1 rounded-xl bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_16px_rgba(0,0,0,0.10)]">
+            <span class="px-3 text-xs font-semibold tracking-wide uppercase text-stone-400">
+              {pending()} pending
+            </span>
+            <button
+              onClick={() => send({ type: "Discard" })}
+              class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase cursor-pointer transition-colors duration-200 text-stone-400 hover:text-red-500 hover:bg-red-50"
+              title="Throw away everything you have drafted"
+            >
+              Discard
+            </button>
+            <button
+              onClick={() => send({ type: "Commit" })}
+              class="group relative flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase cursor-pointer transition-colors duration-200 bg-stone-800 text-white hover:bg-stone-900"
+              title="Make it real (Enter)"
+            >
+              Build
+              <kbd class="text-[9px] font-mono px-1 py-0.5 rounded-md bg-white/20 text-white/80 leading-none">
+                Enter
+              </kbd>
+            </button>
+          </div>
+        </Show>
+
       <Show
         when={appMode() === "build"}
         fallback={
           <button
             onClick={() => setAppMode("build")}
-            class="fixed bottom-6 left-1/2 -translate-x-1/2 group flex items-center gap-2 px-5 py-3 rounded-2xl cursor-pointer transition-all duration-300
+            class="group flex items-center gap-2 px-5 py-3 rounded-2xl cursor-pointer transition-all duration-300
               bg-white/70 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_20px_rgba(0,0,0,0.08),0_0_0_1px_rgba(255,255,255,0.7)_inset]
               text-stone-500 hover:text-stone-800 hover:bg-white/90"
           >
@@ -103,7 +137,7 @@ export default function BuildModeToolbar() {
           </button>
         }
       >
-        <div class="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+        <div class="flex flex-col items-center gap-2">
           <Show when={tool() === "road"}>
             <div class={PANEL}>
               <For each={[false, true]}>
@@ -223,6 +257,7 @@ export default function BuildModeToolbar() {
           </div>
         </div>
       </Show>
+      </div>
       <BuildMenuSheet />
     </>
   );

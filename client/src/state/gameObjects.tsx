@@ -24,6 +24,26 @@ function posKey(x: number, y: number): string {
 
 const entities = new Map<string, GameObjectEntry>();
 const spatial = new Map<string, number[]>();
+
+/**
+ * Who the server says we are. Module-level rather than owned by the provider
+ * because the ops pass reads it, and that runs outside any component.
+ */
+const [me, setMe] = createSignal(0);
+export { me };
+
+/**
+ * Our own uncommitted entities. Kept as ops arrive rather than derived on
+ * demand, since it decides whether the commit bar is on screen at all.
+ */
+const myDrafts = new Set<number>();
+const [pending, setPending] = createSignal(0);
+export { pending };
+
+function trackDraft(entry: GameObjectEntry) {
+  if (entry.draft != null && entry.draft.owner === me()) myDrafts.add(entry.id);
+  else myDrafts.delete(entry.id);
+}
 export function getEntity(id: number): GameObjectEntry | undefined {
   return entities.get(String(id));
 }
@@ -77,6 +97,7 @@ function applyOps(ops: Operation[]) {
           else if (!ids.includes(op.data.id)) ids.push(op.data.id);
         }
         entities.set(key, op.data);
+        trackDraft(op.data);
         break;
       }
       case "Delete": {
@@ -94,10 +115,12 @@ function applyOps(ops: Operation[]) {
           }
           entities.delete(key);
         }
+        myDrafts.delete(Number(key));
         break;
       }
     }
   }
+  setPending(myDrafts.size);
   opsListener?.(ops);
 }
 
@@ -117,7 +140,6 @@ interface GameContext {
 const Ctx = createContext<GameContext>();
 
 export function GameProvider(props: ParentProps & { wsUrl: string }) {
-  const [me, setMe] = createSignal(0);
   const [terrainSeed, setTerrainSeed] = createSignal(0);
   const [revealedBounds, setRevealedBounds] = createSignal<ChunkBounds>({
     min_cx: 0,
