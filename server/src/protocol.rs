@@ -349,3 +349,24 @@ pub enum ServerMessage {
     Error(ErrorMessage),
     Pong(#[ts(type = "number")] u64),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The client keys its rendering off this field, so it has to survive the
+    /// wire. Adjacently-tagged enums inside an Option are the kind of thing a
+    /// binary format can quietly drop.
+    #[test]
+    fn a_draft_survives_the_wire() {
+        let entry = GameObjectEntry {
+            id: 7,
+            object: GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![] }),
+            position: Some(GridCoord { x: 1, y: 2 }),
+            draft: Some(Draft::Added(99)),
+        };
+        let bytes = rmp_serde::to_vec_named(&entry).unwrap();
+        let back: GameObjectEntry = rmp_serde::from_slice(&bytes).unwrap();
+        assert_eq!(back.draft, Some(Draft::Added(99)));
+    }
+}

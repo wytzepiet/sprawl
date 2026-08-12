@@ -10,7 +10,9 @@ import {
   setTerrainListener,
   getEntity,
   getObjectsAt,
+  useGame,
 } from "../state/gameObjects";
+import { lookOf } from "./objects/draftLook";
 import type { Operation, GameObjectEntry } from "../generated";
 
 import { KIND_CATEGORY, ZONE_BYTE } from "./objects/buildings";
@@ -32,6 +34,7 @@ interface MountedEntry {
 
 export default function World() {
   const pool = useInstancePool();
+  const { me } = useGame();
   const { scene } = useEngine();
   const { ambientColor, shadowGenerator } = useDayNight();
   const theme = useTheme();
@@ -86,13 +89,16 @@ export default function World() {
 
   function mount(entry: GameObjectEntry): (() => void) | null {
     const th = theme();
+    // Uncommitted work is drawn, just visibly unfinished. Whose it is decides
+    // how: yours keeps its colour, everyone else's is drained of it.
+    const look = lookOf(entry.draft, me());
     switch (entry.object.kind) {
       case "Building":
-        return mountBuilding(entry, pool);
+        return mountBuilding(entry, pool, look);
       case "Car":
         return mountCar(entry, pool, scene);
       case "RoadNode":
-        return mountRoad(entry, pool, th, getEntity);
+        return mountRoad(entry, pool, th, getEntity, look);
       default:
         return null;
     }

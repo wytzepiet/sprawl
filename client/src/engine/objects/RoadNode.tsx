@@ -12,6 +12,7 @@ import {
   type Flow,
 } from "./roadGeometry";
 import type { Theme } from "../theme";
+import type { Look } from "./draftLook";
 import type { GameObjectEntry } from "../../generated";
 
 // --- Connection detection ---
@@ -68,11 +69,12 @@ export function mountRoad(
   pool: InstancePool,
   theme: Theme,
   getEntity: (id: number) => GameObjectEntry | undefined,
+  look: Look,
 ): (() => void) | null {
   const instances: { key: string; id: number }[] = [];
 
   const arms = getConnectionArms(entry, getEntity);
-  const key = armsKey(arms);
+  const key = armsKey(arms) + look.key;
   const pos: [number, number, number] | undefined =
     entry.position ? [entry.position.x + 0.5, entry.position.y + 0.5, 0] : undefined;
 
@@ -80,7 +82,7 @@ export function mountRoad(
   const borderGeo = buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z);
   if (borderGeo) {
     const bk = `road_border_${key}`;
-    pool.ensureBucket(bk, borderGeo, theme.roadBorder, false, true);
+    pool.ensureBucket(bk, borderGeo, look.tint(theme.roadBorder), false, true, undefined, look.alpha);
     instances.push({ key: bk, id: pool.addInstance(bk, pos) });
   }
 
@@ -88,7 +90,7 @@ export function mountRoad(
   const roadGeo = buildRoadGeometry(arms, HALF_W, ROAD_Z);
   if (roadGeo) {
     const rk = `road_${key}`;
-    pool.ensureBucket(rk, roadGeo, theme.road, false, true);
+    pool.ensureBucket(rk, roadGeo, look.tint(theme.road), false, true, undefined, look.alpha);
     instances.push({ key: rk, id: pool.addInstance(rk, pos) });
   }
 
@@ -101,8 +103,8 @@ export function mountRoad(
   for (const arm of arms) {
     if (arm.flow !== "out") continue;
     const chevronGeo = buildChevronGeometry(arm.angle);
-    const ck = `chevron_${arm.angle}`;
-    pool.ensureBucket(ck, chevronGeo, arrowColor, false, false);
+    const ck = `chevron_${arm.angle}${look.key}`;
+    pool.ensureBucket(ck, chevronGeo, look.tint(arrowColor), false, false, undefined, look.alpha);
     instances.push({ key: ck, id: pool.addInstance(ck, pos) });
   }
 

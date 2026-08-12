@@ -103,12 +103,20 @@ export class InstancePool {
     castShadow: boolean,
     receiveShadow: boolean,
     texture?: BaseTexture,
+    alpha = 1,
   ): Bucket {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
 
     const mat = new StandardMaterial(`mat_${key}`, this.scene);
     mat.specularColor = Color3.Black();
+    mat.alpha = alpha;
+    if (alpha < 1) {
+      // Every thin instance in a bucket shares one material, so they cannot be
+      // depth-sorted against each other. Writing no depth lets the pile read as
+      // one translucent object instead of flickering over itself.
+      mat.disableDepthWrite = true;
+    }
 
     if (receiveShadow) {
       mat.diffuseColor = color;
