@@ -2,7 +2,7 @@ import { onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { pickWorld } from "./pickWorld";
 import { useGame } from "../state/gameObjects";
-import { activeTool, roadOneWay } from "../ui/buildMode";
+import { buildMode, roadOneWay } from "../ui/buildMode";
 import type { GridCoord } from "../generated";
 
 // 8-directional step offsets, indexed by sector (0 = right, going counter-clockwise)
@@ -53,7 +53,7 @@ export function RoadDrawer() {
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
-    const mode = activeTool();
+    const mode = buildMode();
     if (mode !== "road" && mode !== "demolish") return;
     const w = pick(e);
     current = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
@@ -68,7 +68,7 @@ export function RoadDrawer() {
 
   const onPointerMove = (e: PointerEvent) => {
     if (!current || !prevWorld) return;
-    const mode = activeTool();
+    const mode = buildMode();
     const w = pick(e);
 
     if (mode === "demolish") {
@@ -114,7 +114,7 @@ export function RoadDrawer() {
   const onPointerUp = (e: PointerEvent) => {
     // A flick releases the button past the last pointermove, so without this
     // the tail of every fast drag survives.
-    if (current && activeTool() === "demolish") demolishTo(pick(e));
+    if (current && buildMode() === "demolish") demolishTo(pick(e));
     current = null;
     prevWorld = null;
   };

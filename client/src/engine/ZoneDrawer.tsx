@@ -3,7 +3,7 @@ import { Color3, Mesh, StandardMaterial, VertexData } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { pickWorld } from "./pickWorld";
 import { useGame } from "../state/gameObjects";
-import { activeTool, paintCategory } from "../ui/buildMode";
+import { buildMode, paintCategory } from "../ui/buildMode";
 import { CATEGORY_COLOR } from "./objects/buildings";
 import type { GridCoord } from "../generated";
 
@@ -98,7 +98,7 @@ export function ZoneDrawer() {
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
-    if (activeTool() !== "zone") return;
+    if (buildMode() !== "zone") return;
     last = pick(e);
     add(last);
     redraw();
