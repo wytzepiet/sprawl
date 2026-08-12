@@ -78,7 +78,7 @@ const parseKey = (key: string) => key.split(",").map(Number) as [number, number]
  * Terrain rendered as one merged mesh per chunk rather than per-tile instances.
  *
  * Ground and cliff geometry is a pure function of the chunk's tiles, so it is
- * built on a worker. Trees are not: they yield to roads, which are live game
+ * built on a worker. Trees are not: they yield to what is built, which is live game
  * state, so they stay here and are cheap enough to rebuild on demand.
  */
 export class TerrainChunks {
@@ -112,7 +112,7 @@ export class TerrainChunks {
     private scene: Scene,
     private shadowGenerator: ShadowGenerator,
     private theme: () => Theme,
-    private hasRoad: (x: number, y: number) => boolean,
+    private isBuilt: (x: number, y: number) => boolean,
     private zoneAt: (x: number, y: number) => number,
   ) {
     this.borderTex = createBorderTexture(scene);
@@ -185,7 +185,7 @@ export class TerrainChunks {
     this.disposeChunk(key);
   }
 
-  /** A road appearing or vanishing changes tree placement on that tile. */
+  /** Something built appearing or vanishing changes tree placement there. */
   markTile(x: number, y: number): void {
     this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
   }
@@ -306,7 +306,7 @@ export class TerrainChunks {
     if (!meshes || !tiles) return;
 
     const [cx, cy] = parseKey(key);
-    const matrices = buildTrees(tiles, cx, cy, this.hasRoad);
+    const matrices = buildTrees(tiles, cx, cy, this.isBuilt);
     meshes.hasTrees = matrices.length > 0;
     meshes.trees.thinInstanceSetBuffer("matrix", matrices, 16, true);
     // Without this the mesh keeps the lone base cylinder's bounds and the

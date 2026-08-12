@@ -44,6 +44,13 @@ export default function World() {
   const hasRoad = (x: number, y: number) =>
     getObjectsAt(x, y).some((o) => o.object.kind === "RoadNode");
 
+  /**
+   * Trees give way to anything built — a road, or any tile of a plot. Drafts
+   * count: clearing the ground is part of seeing what you are about to build,
+   * and discarding puts the trees back.
+   */
+  const isBuilt = (x: number, y: number) => hasRoad(x, y) || zoneTiles.has(`${x},${y}`);
+
   const onDoomedRoad = (entry: GameObjectEntry) => {
     const p = entry.position;
     if (!p) return false;
@@ -89,7 +96,7 @@ export default function World() {
     }
   }
 
-  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, hasRoad, zoneAt);
+  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt, zoneAt);
   const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));

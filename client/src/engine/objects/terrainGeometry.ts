@@ -958,7 +958,7 @@ export function buildTrees(
   tiles: Uint8Array,
   chunkX: number,
   chunkY: number,
-  hasRoad: (x: number, y: number) => boolean,
+  isBuilt: (x: number, y: number) => boolean,
 ): Float32Array {
   const originX = chunkX * CHUNK_SIZE;
   const originY = chunkY * CHUNK_SIZE;
@@ -969,7 +969,7 @@ export function buildTrees(
       const ix = x - originX + CHUNK_SKIRT;
       const iy = y - originY + CHUNK_SKIRT;
       if (TYPE_BY_BYTE[tiles[iy * CHUNK_STRIDE + ix]] !== "Forest") continue;
-      if (hasRoad(x, y)) continue;
+      if (isBuilt(x, y)) continue;
 
       for (const tree of treesForTile(x, y)) {
         const s = tree.scale;

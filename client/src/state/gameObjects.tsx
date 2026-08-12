@@ -74,8 +74,21 @@ export function setTerrainListener(fn: TerrainListener | null) {
 
 // --- Ops processing ---
 
+/**
+ * Ops are applied in the order they arrive, and must not be reordered.
+ *
+ * They are causal: the server emits a tick's upserts before its deletes, and
+ * the socket batches several ticks into one message, so a batch can carry an
+ * entity being created and then destroyed. Sorting deletes to the front — as
+ * this used to — applied that pair backwards and left the entity in the store
+ * for good, a ghost the server had already forgotten. Redrawing a paint stroke
+ * churns entities every tick, which is what made it show.
+ *
+ * Nothing needs the reordering: the spatial index is keyed by entity id, so an
+ * upsert and a delete touching one tile cannot tread on each other whichever
+ * way round they land.
+ */
 function applyOps(ops: Operation[]) {
-  ops.sort((a, b) => (a.op === "Delete" ? 0 : 1) - (b.op === "Delete" ? 0 : 1));
   for (const op of ops) {
     switch (op.op) {
       case "Upsert": {
