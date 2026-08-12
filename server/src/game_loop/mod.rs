@@ -328,7 +328,7 @@ fn handle_player_action(
             // erasing something real stages it for the commit.
             let pos = demolish.pos;
             let target = world
-                .any_road_node_at(pos)
+                .road_node_at(pos)
                 .or_else(|| world.occupied.get(&(pos.x, pos.y)).copied());
             let Some(id) = target else { return };
             if !world.erase_draft(id) && world.draft_of(id).is_none() {
@@ -356,10 +356,9 @@ fn handle_player_action(
             // Demolition last: it has to see the network as the commit left it,
             // and it despawns the cars that were using what is going away.
             for id in committed.removed {
-                let Some(pos) = world.objects.get(id).and_then(|e| e.position) else { continue };
                 match world.objects.get(id).map(|e| &e.object) {
                     Some(GameObject::RoadNode(_)) => {
-                        handle_road_demolish(world, events, intersections, pos, now)
+                        handle_road_demolish(world, events, intersections, id, now)
                     }
                     Some(GameObject::Building(_)) => world.remove_building(id),
                     _ => {}
@@ -378,17 +377,17 @@ fn handle_player_action(
     }
 }
 
+/// Take a road out of the world, rerouting or despawning whatever was on it.
+///
+/// By id rather than by tile: while a new road crosses one being demolished the
+/// tile holds a node for each world, and only one of them is going.
 fn handle_road_demolish(
     world: &mut World,
     events: &mut EventQueue<GameEvent>,
     intersections: &mut IntersectionRegistry,
-    pos: crate::protocol::GridCoord,
+    node_id: EntityId,
     now: GameTime,
 ) {
-    let node_id = match world.any_road_node_at(pos) {
-        Some(id) => id,
-        None => return,
-    };
 
     // Collect neighbor IDs before removing anything (to check for orphans later)
     let neighbor_ids: Vec<EntityId> = match world.objects.get(node_id) {
@@ -419,7 +418,7 @@ fn handle_road_demolish(
     for &edge in &removed_edges {
         world.remove_edge(edge.0, edge.1);
     }
-    world.handle_demolish_road(pos);
+    world.demolish_node(node_id);
 
     // Now reroute — pathfinder sees the correct graph
     for (car_id, route, ri, dest) in car_entries {

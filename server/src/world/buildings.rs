@@ -29,14 +29,15 @@ impl World {
     /// one, drop a factory on the old alignment, and commit the lot, so the
     /// traffic never sees a gap.
     pub fn is_buildable(&self, coord: GridCoord) -> bool {
-        // Checked apart rather than together: a driveway stands on a tile of
-        // its own building, so one tile can hold both.
-        for holder in [self.occupied.get(&(coord.x, coord.y)).copied(), self.road_node_at(coord)] {
-            if let Some(id) = holder
-                && !self.is_going_away(id)
-            {
-                return false;
-            }
+        // A building staged for demolition holds nothing; road_node_at already
+        // answers for the world after the commit, so it needs no such check.
+        if let Some(id) = self.occupied.get(&(coord.x, coord.y)).copied()
+            && !self.is_going_away(id)
+        {
+            return false;
+        }
+        if self.road_node_at(coord).is_some() {
+            return false;
         }
         matches!(
             self.terrain.get(&(coord.x, coord.y)),
@@ -281,7 +282,7 @@ impl World {
         let tiles: Vec<GridCoord> = Self::footprint(pos, b.size).collect();
 
         for tile in &tiles {
-            if let Some(node) = self.any_road_node_at(*tile) {
+            if let Some(node) = self.road_node_at(*tile) {
                 for edge in self.edges_involving(node) {
                     self.remove_edge(edge.0, edge.1);
                 }
@@ -494,9 +495,9 @@ mod tests {
         assert!(!factory.is_empty(), "the old alignment should now be buildable");
 
         let committed = world.commit_drafts(ME);
+        // By id, as the game loop does: the tile may hold a node for each world.
         for id in committed.removed {
-            let pos = world.objects.get(id).and_then(|e| e.position).unwrap();
-            world.handle_demolish_road(pos);
+            world.demolish_node(id);
         }
         world.acting_as = None;
 
@@ -538,24 +539,44 @@ mod tests {
         assert!(!arms(doomed).contains(&fresh), "the leaving road reached for a new one");
     }
 
-    /// Drawing over your own staged demolition calls it off, which is what
-    /// keeps one road node to a tile.
+    /// A tile where the two worlds disagree holds a node for each: the one
+    /// being demolished, still carrying traffic, and the one arriving. Neither
+    /// borrows the other's shape, which is what stops a crossing drawing a
+    /// junction that belongs to neither.
     #[test]
-    fn redrawing_over_a_staged_demolition_keeps_the_road() {
+    fn a_crossing_gives_the_tile_a_node_for_each_world() {
         let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0)]);
         let doomed = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
 
         world.acting_as = Some(ME);
         world.draft_remove(doomed);
-        assert!(world.road_node_at(GridCoord { x: 1, y: 0 }).is_none(), "staged: gone to the planner");
+        // A new road crossing it at right angles, straight through the tile.
+        world.place_road_path(&[
+            GridCoord { x: 1, y: -1 },
+            GridCoord { x: 1, y: 0 },
+            GridCoord { x: 1, y: 1 },
+        ]);
 
-        world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 1, y: 1 }]);
+        let fresh = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
+        assert_ne!(fresh, doomed, "the crossing must not take over the doomed node");
         assert_eq!(
-            world.road_node_at(GridCoord { x: 1, y: 0 }),
-            Some(doomed),
-            "the same node, kept rather than duplicated",
+            world.objects.get(doomed).and_then(|e| e.position),
+            Some(GridCoord { x: 1, y: 0 }),
+            "the doomed node still stands on the same tile",
         );
-        assert!(!world.is_going_away(doomed), "and no longer on its way out");
+
+        let arms = |id| match &world.objects.get(id).unwrap().object {
+            GameObject::RoadNode(n) => {
+                n.outgoing.iter().chain(n.incoming.iter()).copied().collect::<Vec<_>>()
+            }
+            _ => unreachable!(),
+        };
+        assert!(!arms(fresh).contains(&doomed), "the two worlds shared an arm");
+        assert!(!arms(doomed).contains(&fresh), "the two worlds shared an arm");
+
+        // The old artery keeps running through the tile until the commit.
+        let west = world.road_node_at(GridCoord { x: 0, y: 0 }).unwrap();
+        assert!(world.edges.contains_key(&(west, doomed)), "traffic still uses it");
     }
 
     /// A plot will not take a driveway onto a road that is on its way out.

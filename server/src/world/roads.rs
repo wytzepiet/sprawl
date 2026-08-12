@@ -4,14 +4,8 @@ use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
 
 impl World {
-    /// Whatever road node physically stands on this tile, including one staged
-    /// for demolition.
-    ///
-    /// Only demolition itself and driveway adoption want this. Everything that
-    /// plans wants `road_node_at`, or it will reason about a road that is on
-    /// its way out.
-    pub fn any_road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
-        self.ids_at(coord).into_iter().find(|&id| {
+    fn road_nodes_at(&self, coord: GridCoord) -> impl Iterator<Item = EntityId> + '_ {
+        self.ids_at(coord).into_iter().filter(|&id| {
             self.objects
                 .get(id)
                 .is_some_and(|e| matches!(e.object, GameObject::RoadNode(_)))
@@ -23,28 +17,24 @@ impl World {
     /// A draft splits the world in two: *now* is committed plus everything
     /// staged for demolition, and that is what traffic drives on; *after* is
     /// committed plus everything drafted, and that is what you build against.
-    /// Nothing belongs to both, so a road on its way out is simply not here as
-    /// far as planning is concerned — a new road must not junction with it, a
-    /// plot must not take access from it, and a building may stand on it.
     ///
-    /// It keeps carrying its traffic all the same. That runs off `edges`, which
-    /// this does not touch.
+    /// Where the two disagree the tile holds one node for each, so a new road
+    /// can cross one being demolished without either borrowing the other's
+    /// shape. This is the one everything that plans wants — placement,
+    /// geometry, access, occupancy.
     pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
-        self.any_road_node_at(coord).filter(|&id| !self.is_going_away(id))
+        self.road_nodes_at(coord).find(|&id| !self.is_going_away(id))
     }
 
-    /// Place a road node at coord. Idempotent: returns existing ID if one exists.
+    /// Place a road node at coord. Idempotent within a world: returns the node
+    /// already standing here if one will still be here after the commit.
     ///
-    /// Drawing over a demolition that was staged here calls it off — you have
-    /// decided there is a road on this tile after all. That keeps the rule that
-    /// a tile holds at most one road node, which every by-tile lookup depends
-    /// on, and it is also how a building adopts the road on its door tile as a
-    /// driveway.
+    /// A road staged for demolition is not that node, so drawing across one
+    /// lays a second node on the tile rather than taking the old one over. The
+    /// two never share an arm, which is what lets a new road cross a doomed one
+    /// without drawing a junction that belongs to neither.
     fn place_road(&mut self, coord: GridCoord) -> EntityId {
-        if let Some(id) = self.any_road_node_at(coord) {
-            if self.is_going_away(id) {
-                self.unstage(id);
-            }
+        if let Some(id) = self.road_node_at(coord) {
             return id;
         }
 
@@ -195,13 +185,19 @@ impl World {
         }
     }
 
-    /// Remove the road node at `pos` and clean up all references to it from outgoing.
+    /// Remove the road node standing at `pos`, if the commit would leave one.
     pub fn handle_demolish_road(&mut self, pos: GridCoord) {
-        let id = match self.any_road_node_at(pos) {
-            Some(id) => id,
-            None => return,
-        };
+        if let Some(id) = self.road_node_at(pos) {
+            self.demolish_node(id);
+        }
+    }
 
+    /// Remove a road node by id and clean up every reference to it.
+    ///
+    /// By id rather than by tile: a tile can hold two nodes while a new road
+    /// crosses one being demolished, and only one of them is going.
+    pub fn demolish_node(&mut self, id: EntityId) {
+        let Some(pos) = self.objects.get(id).and_then(|e| e.position) else { return };
         let (neighbor_ids, incoming_ids) = match self.objects.get(id) {
             Some(entry) => {
                 if let GameObject::RoadNode(ref node) = entry.object {
