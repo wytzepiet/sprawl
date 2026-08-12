@@ -212,6 +212,11 @@ impl World {
         self.objects.get(id).and_then(|e| e.draft)
     }
 
+    /// Is this staged for demolition — present now, absent after the commit?
+    pub fn is_going_away(&self, id: EntityId) -> bool {
+        matches!(self.draft_of(id), Some(Draft::Removed(_)))
+    }
+
     /// Mark a committed entity for demolition. Purely a marker: it keeps
     /// carrying traffic until commit, so staging a demolition never reroutes
     /// anyone else's cars for a change that may not happen.

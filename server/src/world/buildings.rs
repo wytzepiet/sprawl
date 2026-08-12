@@ -56,15 +56,6 @@ impl World {
             .collect()
     }
 
-    /// Is this road staged for demolition?
-    ///
-    /// The planner sees the world as it will be after commit, so a road on its
-    /// way out is not access — otherwise a plot would take a driveway onto it
-    /// and the commit that removes the road would strand the house.
-    fn is_going_away(&self, id: EntityId) -> bool {
-        matches!(self.draft_of(id), Some(Draft::Removed(_)))
-    }
-
     /// Could a driveway run from this road node to this tile?
     ///
     /// A driveway is an ordinary road, so it answers to the same geometry as
@@ -94,7 +85,6 @@ impl World {
                     continue;
                 }
                 if let Some(id) = self.road_node_at(n)
-                    && !self.is_going_away(id)
                     && self.driveway_reaches(n, *tile)
                 {
                     return Some((id, *tile));
@@ -112,7 +102,6 @@ impl World {
             let corner = GridCoord { x: pos.x + cx, y: pos.y + cy };
             let n = GridCoord { x: corner.x + dx, y: corner.y + dy };
             if let Some(id) = self.road_node_at(n)
-                && !self.is_going_away(id)
                 && self.driveway_reaches(n, corner)
             {
                 return Some((id, corner));
@@ -135,9 +124,7 @@ impl World {
         let entry = self.objects.get(building_id)?;
         let pos = entry.position?;
         let GameObject::Building(ref b) = entry.object else { return None };
-        Self::footprint(pos, b.size)
-            .filter_map(|t| self.road_node_at(t))
-            .find(|&id| !self.is_going_away(id))
+        Self::footprint(pos, b.size).find_map(|t| self.road_node_at(t))
     }
 
     /// Every building, as (id, position).
@@ -189,19 +176,6 @@ impl World {
         // A building nobody can drive to would be a purchase with no feedback.
         let (street, door) = self.road_for_plot(pos, size)?;
         let street_pos = self.objects.get(street).and_then(|e| e.position)?;
-
-        // Building over a road you staged for removal keeps one tile of it: the
-        // node on the door tile is not being demolished, it is being kept as the
-        // way in. Without this the commit would lift the old alignment and take
-        // the new building's driveway with it. Someone else's staged removal is
-        // not ours to reinterpret, so that plot simply has no access.
-        if let Some(node) = self.road_node_at(door) {
-            match self.draft_of(node) {
-                Some(Draft::Removed(o)) if Some(o) == self.acting_as => self.unstage(node),
-                Some(Draft::Removed(_)) => return None,
-                _ => {}
-            }
-        }
 
         let id = self.insert_at(
             GameObject::Building(Building { kind, size, rotation }),
@@ -307,7 +281,7 @@ impl World {
         let tiles: Vec<GridCoord> = Self::footprint(pos, b.size).collect();
 
         for tile in &tiles {
-            if let Some(node) = self.road_node_at(*tile) {
+            if let Some(node) = self.any_road_node_at(*tile) {
                 for edge in self.edges_involving(node) {
                     self.remove_edge(edge.0, edge.1);
                 }
@@ -539,6 +513,49 @@ mod tests {
                 "old alignment is lifted, bar the tile that became the driveway",
             );
         }
+    }
+
+    /// A road on its way out and a road arriving belong to different worlds —
+    /// one to *now*, one to *after* — so they must never form a junction.
+    #[test]
+    fn a_new_road_does_not_junction_with_one_being_demolished() {
+        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0)]);
+        let doomed = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
+
+        world.acting_as = Some(ME);
+        world.draft_remove(doomed);
+        // Straight past it, one tile north.
+        world.place_road_path(&[GridCoord { x: 0, y: 1 }, GridCoord { x: 1, y: 1 }, GridCoord { x: 2, y: 1 }]);
+        let fresh = world.road_node_at(GridCoord { x: 1, y: 1 }).unwrap();
+
+        let arms = |id| match &world.objects.get(id).unwrap().object {
+            GameObject::RoadNode(n) => {
+                n.outgoing.iter().chain(n.incoming.iter()).copied().collect::<Vec<_>>()
+            }
+            _ => unreachable!(),
+        };
+        assert!(!arms(fresh).contains(&doomed), "the new road reached for one that is leaving");
+        assert!(!arms(doomed).contains(&fresh), "the leaving road reached for a new one");
+    }
+
+    /// Drawing over your own staged demolition calls it off, which is what
+    /// keeps one road node to a tile.
+    #[test]
+    fn redrawing_over_a_staged_demolition_keeps_the_road() {
+        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0)]);
+        let doomed = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
+
+        world.acting_as = Some(ME);
+        world.draft_remove(doomed);
+        assert!(world.road_node_at(GridCoord { x: 1, y: 0 }).is_none(), "staged: gone to the planner");
+
+        world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 1, y: 1 }]);
+        assert_eq!(
+            world.road_node_at(GridCoord { x: 1, y: 0 }),
+            Some(doomed),
+            "the same node, kept rather than duplicated",
+        );
+        assert!(!world.is_going_away(doomed), "and no longer on its way out");
     }
 
     /// A plot will not take a driveway onto a road that is on its way out.

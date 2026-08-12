@@ -328,7 +328,7 @@ fn handle_player_action(
             // erasing something real stages it for the commit.
             let pos = demolish.pos;
             let target = world
-                .road_node_at(pos)
+                .any_road_node_at(pos)
                 .or_else(|| world.occupied.get(&(pos.x, pos.y)).copied());
             let Some(id) = target else { return };
             if !world.erase_draft(id) && world.draft_of(id).is_none() {
@@ -385,7 +385,7 @@ fn handle_road_demolish(
     pos: crate::protocol::GridCoord,
     now: GameTime,
 ) {
-    let node_id = match world.road_node_at(pos) {
+    let node_id = match world.any_road_node_at(pos) {
         Some(id) => id,
         None => return,
     };

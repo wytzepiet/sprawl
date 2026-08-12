@@ -4,8 +4,13 @@ use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
 
 impl World {
-    /// Find the road node entity ID at a coord, if any.
-    pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
+    /// Whatever road node physically stands on this tile, including one staged
+    /// for demolition.
+    ///
+    /// Only demolition itself and driveway adoption want this. Everything that
+    /// plans wants `road_node_at`, or it will reason about a road that is on
+    /// its way out.
+    pub fn any_road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
         self.ids_at(coord).into_iter().find(|&id| {
             self.objects
                 .get(id)
@@ -13,9 +18,33 @@ impl World {
         })
     }
 
+    /// The road that will stand on this tile once pending work is committed.
+    ///
+    /// A draft splits the world in two: *now* is committed plus everything
+    /// staged for demolition, and that is what traffic drives on; *after* is
+    /// committed plus everything drafted, and that is what you build against.
+    /// Nothing belongs to both, so a road on its way out is simply not here as
+    /// far as planning is concerned — a new road must not junction with it, a
+    /// plot must not take access from it, and a building may stand on it.
+    ///
+    /// It keeps carrying its traffic all the same. That runs off `edges`, which
+    /// this does not touch.
+    pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
+        self.any_road_node_at(coord).filter(|&id| !self.is_going_away(id))
+    }
+
     /// Place a road node at coord. Idempotent: returns existing ID if one exists.
+    ///
+    /// Drawing over a demolition that was staged here calls it off — you have
+    /// decided there is a road on this tile after all. That keeps the rule that
+    /// a tile holds at most one road node, which every by-tile lookup depends
+    /// on, and it is also how a building adopts the road on its door tile as a
+    /// driveway.
     fn place_road(&mut self, coord: GridCoord) -> EntityId {
-        if let Some(id) = self.road_node_at(coord) {
+        if let Some(id) = self.any_road_node_at(coord) {
+            if self.is_going_away(id) {
+                self.unstage(id);
+            }
             return id;
         }
 
@@ -168,7 +197,7 @@ impl World {
 
     /// Remove the road node at `pos` and clean up all references to it from outgoing.
     pub fn handle_demolish_road(&mut self, pos: GridCoord) {
-        let id = match self.road_node_at(pos) {
+        let id = match self.any_road_node_at(pos) {
             Some(id) => id,
             None => return,
         };
