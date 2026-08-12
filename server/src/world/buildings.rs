@@ -659,6 +659,29 @@ mod tests {
         assert!(world.road_for_plot(GridCoord { x: 2, y: 0 }, (1, 1)).is_some());
     }
 
+    /// Painting a deep block, not just a frontage strip: no driveway may ever
+    /// run into a building and on into the next one.
+    #[test]
+    fn no_driveway_chains_through_a_painted_block() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1)]);
+        world.acting_as = Some(ME);
+        // Several rows deep, so the back rows can only reach the street through
+        // the front row's driveways.
+        world.paint_area(&painted(0..6, -4..1), Category::Residential);
+
+        let occupied_tiles: HashSet<(i32, i32)> = world.occupied.keys().copied().collect();
+        for (id, _) in world.all_buildings() {
+            let Some(drive) = world.road_node_for_building(id) else { continue };
+            for arm in world.arms_of(drive, false) {
+                let pos = world.objects.get(arm).and_then(|e| e.position).unwrap();
+                assert!(
+                    !occupied_tiles.contains(&(pos.x, pos.y)),
+                    "a driveway reaches into another building at {pos:?}",
+                );
+            }
+        }
+    }
+
     /// A plot will not take a driveway onto a road that is on its way out.
     #[test]
     fn a_road_staged_for_removal_is_not_access() {
