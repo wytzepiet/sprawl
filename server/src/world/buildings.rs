@@ -1,5 +1,5 @@
 use crate::protocol::{
-    Building, BuildingKind, Category, EntityId, GameObject, GridCoord, Rotation, TerrainType,
+    Building, BuildingKind, Category, Draft, EntityId, GameObject, GridCoord, Rotation, TerrainType,
 };
 use crate::world::World;
 use std::collections::HashSet;
@@ -44,6 +44,15 @@ impl World {
             .collect()
     }
 
+    /// Is this road staged for demolition?
+    ///
+    /// The planner sees the world as it will be after commit, so a road on its
+    /// way out is not access — otherwise a plot would take a driveway onto it
+    /// and the commit that removes the road would strand the house.
+    fn is_going_away(&self, id: EntityId) -> bool {
+        matches!(self.draft_of(id), Some(Draft::Removed(_)))
+    }
+
     /// Could a driveway run from this road node to this tile?
     ///
     /// A driveway is an ordinary road, so it answers to the same geometry as
@@ -73,6 +82,7 @@ impl World {
                     continue;
                 }
                 if let Some(id) = self.road_node_at(n)
+                    && !self.is_going_away(id)
                     && self.driveway_reaches(n, *tile)
                 {
                     return Some((id, *tile));
@@ -90,6 +100,7 @@ impl World {
             let corner = GridCoord { x: pos.x + cx, y: pos.y + cy };
             let n = GridCoord { x: corner.x + dx, y: corner.y + dy };
             if let Some(id) = self.road_node_at(n)
+                && !self.is_going_away(id)
                 && self.driveway_reaches(n, corner)
             {
                 return Some((id, corner));
@@ -182,7 +193,11 @@ impl World {
         // footprint is claimed, since a road on the plot would fail is_buildable.
         self.place_road_path(&[street_pos, door]);
 
-        self.reveal_around(pos);
+        // A draft has not been built yet, so it has not seen anything either;
+        // the survey widens when it commits.
+        if self.acting_as.is_none() {
+            self.reveal_around(pos);
+        }
         Some(id)
     }
 
@@ -195,6 +210,13 @@ impl World {
         // Widest first, so a run of frontage becomes a few big plots rather
         // than a row of huts. Both orientations of each are offered.
         const PLOTS: [(u8, u8); 6] = [(3, 2), (2, 3), (2, 2), (2, 1), (1, 2), (1, 1)];
+
+        // A stroke replaces your own drafts that it covers rather than laying
+        // around them. That is the whole growth mechanic: widen a stroke and
+        // the client re-sends the larger set, so a lone house is torn up and
+        // laid again as half an apartment. Committed buildings — and other
+        // people's drafts — are never disturbed.
+        self.clear_own_drafts_on(tiles);
 
         let mut free: HashSet<(i32, i32)> = tiles
             .iter()
@@ -230,6 +252,24 @@ impl World {
             }
         }
         spawned
+    }
+
+    /// Tear up this owner's uncommitted buildings standing on any of `tiles`.
+    fn clear_own_drafts_on(&mut self, tiles: &[GridCoord]) {
+        let Some(owner) = self.acting_as else { return };
+        let mut doomed: Vec<EntityId> = tiles
+            .iter()
+            .filter_map(|t| self.occupied.get(&(t.x, t.y)).copied())
+            .filter(|&id| self.draft_of(id) == Some(Draft::Added(owner)))
+            .collect();
+        doomed.sort_unstable();
+        doomed.dedup();
+        for id in doomed {
+            // Takes the driveway with it: that road stands on one of the
+            // building's own tiles, which is what makes it the building's.
+            self.remove_building(id);
+            self.drafts.entry(owner).or_default().remove(&id);
+        }
     }
 
     /// The one way a building leaves.
@@ -277,9 +317,14 @@ impl World {
 mod tests {
     use super::*;
 
-    /// A world with nothing in it but the given road path.
+    /// A world with nothing in it but grass and the given road path.
     fn world_with_road(path: &[(i32, i32)]) -> World {
         let mut world = World::new();
+        for y in -8..8 {
+            for x in -8..8 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
         let coords: Vec<GridCoord> = path.iter().map(|&(x, y)| GridCoord { x, y }).collect();
         world.place_road_path(&coords);
         world
@@ -337,6 +382,91 @@ mod tests {
     fn plot_offset_diagonally_from_a_diagonal_connects() {
         let world = diagonal_world();
         assert!(world.road_for_plot(GridCoord { x: 2, y: 0 }, (1, 1)).is_some());
+    }
+
+    const ME: crate::protocol::OwnerId = 1;
+    const SOMEONE_ELSE: crate::protocol::OwnerId = 2;
+
+    fn painted(xs: std::ops::Range<i32>, ys: std::ops::Range<i32>) -> Vec<GridCoord> {
+        ys.flat_map(|y| xs.clone().map(move |x| GridCoord { x, y })).collect()
+    }
+
+    /// The rule the whole feature rests on: a draft is drawn but not driven on.
+    #[test]
+    fn a_drafted_road_carries_no_traffic_until_committed() {
+        let mut world = world_with_road(&[(0, 0), (1, 0)]);
+        let before = world.edges.len();
+
+        world.acting_as = Some(ME);
+        world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 2, y: 0 }]);
+        assert_eq!(world.edges.len(), before, "a draft must not reach the traffic index");
+
+        world.commit_drafts(ME);
+        world.acting_as = None;
+        assert!(world.edges.len() > before, "committing is what wires it up");
+    }
+
+    /// Discard restores nothing because it destroyed nothing.
+    #[test]
+    fn discarding_leaves_the_committed_world_untouched() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
+        let edges = world.edges.len();
+        let roads = world.all_buildings().len();
+
+        world.acting_as = Some(ME);
+        world.paint_area(&painted(0..3, 0..1), Category::Residential);
+        assert!(!world.all_buildings().is_empty(), "the stroke should have drafted something");
+        world.discard_drafts(ME);
+        world.acting_as = None;
+
+        assert_eq!(world.all_buildings().len(), roads);
+        assert_eq!(world.edges.len(), edges);
+    }
+
+    /// Widening a stroke re-lays it, which is how a house becomes an apartment.
+    #[test]
+    fn painting_again_replaces_your_own_drafts() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
+        world.acting_as = Some(ME);
+
+        world.paint_area(&painted(0..1, 0..1), Category::Residential);
+        let first: Vec<_> = world.all_buildings();
+        assert_eq!(first.len(), 1);
+
+        // The same tile again, with more beside it: the original is torn up
+        // rather than left standing in the way of a wider plot.
+        world.paint_area(&painted(0..3, 0..1), Category::Residential);
+        let ids: Vec<_> = world.all_buildings().iter().map(|(id, _)| *id).collect();
+        assert!(!ids.contains(&first[0].0), "the first draft should have been replaced");
+    }
+
+    #[test]
+    fn another_players_draft_is_not_yours_to_replace() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
+
+        world.acting_as = Some(SOMEONE_ELSE);
+        world.paint_area(&painted(0..1, 0..1), Category::Residential);
+        let theirs = world.all_buildings();
+        assert_eq!(theirs.len(), 1);
+
+        world.acting_as = Some(ME);
+        world.paint_area(&painted(0..3, 0..1), Category::Commercial);
+        let ids: Vec<_> = world.all_buildings().iter().map(|(id, _)| *id).collect();
+        assert!(ids.contains(&theirs[0].0), "their draft must survive my stroke");
+    }
+
+    /// A plot will not take a driveway onto a road that is on its way out.
+    #[test]
+    fn a_road_staged_for_removal_is_not_access() {
+        let mut world = world_with_road(&[(0, 1), (1, 1)]);
+        let road = world.road_node_at(GridCoord { x: 0, y: 1 }).unwrap();
+
+        world.acting_as = Some(ME);
+        world.draft_remove(road);
+        let other = world.road_node_at(GridCoord { x: 1, y: 1 }).unwrap();
+        world.draft_remove(other);
+
+        assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (1, 1)).is_none());
     }
 
     #[test]

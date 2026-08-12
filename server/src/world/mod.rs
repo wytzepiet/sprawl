@@ -8,8 +8,8 @@ pub mod segments;
 use std::collections::{HashMap, HashSet};
 
 use crate::protocol::{
-    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkBounds, ChunkCoord, EdgeKey, EntityId, GameObject,
-    TILE_ABSENT, TerrainChunk, TerrainType,
+    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkBounds, ChunkCoord, Draft, EdgeKey, EntityId,
+    GameObject, OwnerId, TILE_ABSENT, TerrainChunk, TerrainType,
 };
 use crate::engine::tracked::Tracked;
 use crate::world::segments::EdgeSegment;
@@ -40,10 +40,28 @@ pub struct World {
     /// Extent of `revealed`. The client clamps the camera to it, so it has to
     /// know the whole survey, not just the part it happens to be looking at.
     pub revealed_bounds: ChunkBounds,
+    /// Uncommitted entities by owner. Derived from the `draft` field, like
+    /// every other index, and rebuilt at startup — where it always comes out
+    /// empty, since drafts are never saved.
+    pub drafts: HashMap<OwnerId, HashSet<EntityId>>,
+    /// Who the current player action belongs to, for the duration of that
+    /// action. Ambient rather than a parameter on every creation path: laying a
+    /// driveway is three calls deep, and an owner threaded through all of them
+    /// would be forwarded by every one and read by none.
+    pub acting_as: Option<OwnerId>,
     /// Tile → building covering it. Buildings span several tiles but carry one
     /// position, so without this "what is on this tile" would only ever find a
     /// building at its origin corner. Derived, like every other index.
     pub occupied: HashMap<(i32, i32), EntityId>,
+}
+
+/// What a commit turned into. Removals are handed back rather than performed
+/// here because demolishing has to account for the cars on the road, which is
+/// the game loop's business.
+#[derive(Default)]
+pub struct Committed {
+    pub added: Vec<EntityId>,
+    pub removed: Vec<EntityId>,
 }
 
 /// Marks an empty box: max below min, so the first reveal replaces it outright.
@@ -94,6 +112,8 @@ impl World {
             newly_revealed: Vec::new(),
             revealed_bounds: NO_BOUNDS,
             occupied: HashMap::new(),
+            drafts: HashMap::new(),
+            acting_as: None,
         }
     }
 
@@ -109,6 +129,8 @@ impl World {
             newly_revealed: Vec::new(),
             revealed_bounds: NO_BOUNDS,
             occupied: HashMap::new(),
+            drafts: HashMap::new(),
+            acting_as: None,
             objects,
         };
         // Rebuild spatial index from loaded objects
@@ -173,11 +195,127 @@ impl World {
     /// Everything positioned must go through here: the viewport query reads
     /// `spatial`, so an entity missing from it is invisible to clients.
     pub fn insert_at(&mut self, object: GameObject, pos: Option<GridCoord>) -> EntityId {
-        let id = self.objects.insert(object, pos);
+        // Anything a player builds is a draft until they commit it, so the
+        // owner is stamped here rather than remembered at each call site.
+        let draft = self.acting_as.map(Draft::Added);
+        let id = self.objects.insert(object, pos, draft);
         if let Some(pos) = pos {
             self.spatial.entry(chunk_of(pos)).or_default().insert(id);
         }
+        if let Some(owner) = self.acting_as {
+            self.drafts.entry(owner).or_default().insert(id);
+        }
         id
+    }
+
+    pub fn draft_of(&self, id: EntityId) -> Option<Draft> {
+        self.objects.get(id).and_then(|e| e.draft)
+    }
+
+    /// Mark a committed entity for demolition. Purely a marker: it keeps
+    /// carrying traffic until commit, so staging a demolition never reroutes
+    /// anyone else's cars for a change that may not happen.
+    pub fn draft_remove(&mut self, id: EntityId) {
+        let Some(owner) = self.acting_as else { return };
+        if self.draft_of(id).is_some() {
+            return; // already drafted, one way or the other
+        }
+        if let Some(entry) = self.objects.get_mut(id) {
+            entry.draft = Some(Draft::Removed(owner));
+        }
+        self.drafts.entry(owner).or_default().insert(id);
+    }
+
+    /// Make an owner's drafts real. Additions join the simulation; removals are
+    /// handed back for the caller to demolish, since that has to account for
+    /// the cars currently on them.
+    pub fn commit_drafts(&mut self, owner: OwnerId) -> Committed {
+        let ids: Vec<EntityId> = self.drafts.remove(&owner).unwrap_or_default().into_iter().collect();
+        let mut committed = Committed::default();
+
+        for id in ids {
+            match self.draft_of(id) {
+                Some(Draft::Added(_)) => {
+                    if let Some(entry) = self.objects.get_mut(id) {
+                        entry.draft = None;
+                    }
+                    committed.added.push(id);
+                }
+                Some(Draft::Removed(_)) => committed.removed.push(id),
+                None => {}
+            }
+        }
+
+        // Edges only once every node is real: wiring one up while its neighbour
+        // still counted as a draft would leave the pair connected one way.
+        for &id in &committed.added {
+            self.connect_node(id);
+            if let Some(entry) = self.objects.get(id)
+                && matches!(entry.object, GameObject::Building(_))
+                && let Some(pos) = entry.position
+            {
+                self.reveal_around(pos);
+            }
+        }
+        committed
+    }
+
+    /// Throw away an owner's drafts. Additions never entered `edges`, so they
+    /// are simply dropped; removals only ever had a marker to clear. Nothing
+    /// committed was touched, so there is nothing to restore.
+    pub fn discard_drafts(&mut self, owner: OwnerId) {
+        for id in self.drafts.remove(&owner).unwrap_or_default() {
+            match self.draft_of(id) {
+                Some(Draft::Added(_)) => self.drop_entity(id),
+                Some(Draft::Removed(_)) => {
+                    if let Some(entry) = self.objects.get_mut(id) {
+                        entry.draft = None;
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+
+    /// Erase one of your own uncommitted additions, as though it were never
+    /// drawn. Other people's drafts, and anything committed, are not yours to
+    /// erase this way.
+    pub fn erase_draft(&mut self, id: EntityId) -> bool {
+        let Some(owner) = self.acting_as else { return false };
+        if self.draft_of(id) != Some(Draft::Added(owner)) {
+            return false;
+        }
+        self.drafts.entry(owner).or_default().remove(&id);
+        self.drop_entity(id);
+        true
+    }
+
+    /// Take an entity out of the world, whatever kind it is.
+    fn drop_entity(&mut self, id: EntityId) {
+        let Some(entry) = self.objects.get(id) else { return };
+        let pos = entry.position;
+        let is_building = matches!(entry.object, GameObject::Building(_));
+        let is_road = matches!(entry.object, GameObject::RoadNode(_));
+        if is_building {
+            self.remove_building(id);
+        } else if is_road && let Some(pos) = pos {
+            self.handle_demolish_road(pos);
+        }
+    }
+
+    /// Give a newly committed road node its edges, in both directions. Its
+    /// neighbours already list it — they always did, since the shape of the
+    /// network is what drafts are for — but the edges were withheld.
+    fn connect_node(&mut self, id: EntityId) {
+        let Some(entry) = self.objects.get(id) else { return };
+        let GameObject::RoadNode(ref node) = entry.object else { return };
+        let (outgoing, incoming) = (node.outgoing.clone(), node.incoming.clone());
+        for to in outgoing {
+            self.insert_edge(id, to);
+        }
+        for from in incoming {
+            self.insert_edge(from, id);
+        }
     }
 
     /// Update the spatial position of an entity.
@@ -212,7 +350,17 @@ impl World {
     }
 
     /// Insert an edge for a directed connection between two nodes.
+    ///
+    /// `edges` is what traffic reads, so this is the one gate that keeps drafts
+    /// out of the simulation: a road that has not been committed carries no
+    /// cars, however completely it is drawn. A road merely *marked* for removal
+    /// still carries them — that marker is visual until the moment it commits.
     pub fn insert_edge(&mut self, from: EntityId, to: EntityId) {
+        if matches!(self.draft_of(from), Some(Draft::Added(_)))
+            || matches!(self.draft_of(to), Some(Draft::Added(_)))
+        {
+            return;
+        }
         let len = self.segment_length(from, to);
         self.edges.insert((from, to), EdgeSegment::new(len));
     }

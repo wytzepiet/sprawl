@@ -143,10 +143,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         }
                         println!("reset: world cleared, terrain regenerated");
                     } else {
+                        world.acting_as = Some(client_id);
                         handle_player_action(&mut world, &mut events, &mut intersections, message, now);
+                        world.acting_as = None;
                     }
                 }
                 Command::ClientConnect { id, sender } => {
+                    let _ = sender.send(ServerMessage::Welcome(id));
                     // Send empty update with terrain_seed; objects come via SetViewport
                     let _ = sender.send(state_update(&world, vec![], clock(now, speed)));
                     clients.insert(id, ClientState {
@@ -158,6 +161,11 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 }
                 Command::ClientDisconnect { id } => {
                     clients.remove(&id);
+                    // An abandoned draft is a land claim, so it cannot outlive
+                    // the person who made it. Immediate rather than on a grace
+                    // period: a reconnect is issued a fresh id, so there is
+                    // nobody left who could reclaim this work.
+                    world.discard_drafts(id);
                 }
             }
         }
@@ -235,9 +243,11 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
         return;
     }
 
+    // Drafts are not part of the world yet, so they are not part of the save.
     let changed: Vec<_> = changed_ids
         .iter()
         .filter_map(|id| world.objects.get(*id))
+        .filter(|e| e.draft.is_none())
         .cloned()
         .collect();
 
@@ -286,7 +296,17 @@ fn handle_player_action(
             }
         }
         ClientMessage::DemolishRoad(demolish) => {
-            handle_road_demolish(world, events, intersections, demolish.pos, now);
+            // Which of the two things this does follows from what was clicked,
+            // not from a parameter: erasing something you just drew removes it,
+            // erasing something real stages it for the commit.
+            let pos = demolish.pos;
+            let target = world
+                .road_node_at(pos)
+                .or_else(|| world.occupied.get(&(pos.x, pos.y)).copied());
+            let Some(id) = target else { return };
+            if !world.erase_draft(id) && world.draft_of(id).is_none() {
+                world.draft_remove(id);
+            }
         }
         ClientMessage::DespawnAllCars => {
             let car_ids: Vec<EntityId> = world.objects.all_entries()
@@ -296,6 +316,32 @@ fn handle_player_action(
                 .collect();
             for car_id in car_ids {
                 despawn_car_fully(world, intersections, events, car_id);
+            }
+        }
+        ClientMessage::Commit => {
+            let Some(owner) = world.acting_as else { return };
+            let committed = world.commit_drafts(owner);
+            for id in committed.added {
+                if matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(_))) {
+                    schedule_car_spawn(events, id);
+                }
+            }
+            // Demolition last: it has to see the network as the commit left it,
+            // and it despawns the cars that were using what is going away.
+            for id in committed.removed {
+                let Some(pos) = world.objects.get(id).and_then(|e| e.position) else { continue };
+                match world.objects.get(id).map(|e| &e.object) {
+                    Some(GameObject::RoadNode(_)) => {
+                        handle_road_demolish(world, events, intersections, pos, now)
+                    }
+                    Some(GameObject::Building(_)) => world.remove_building(id),
+                    _ => {}
+                }
+            }
+        }
+        ClientMessage::Discard => {
+            if let Some(owner) = world.acting_as {
+                world.discard_drafts(owner);
             }
         }
         ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),

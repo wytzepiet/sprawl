@@ -204,6 +204,33 @@ pub enum GameObject {
     Car(Car),
 }
 
+/// Who a player is, for the purpose of owning drafts. Assigned on connect.
+pub type OwnerId = u64;
+
+/// An uncommitted change, and whose it is.
+///
+/// A draft is an ordinary world object that reserves its space and is visible
+/// to everyone, but is invisible to traffic and to persistence. Two questions
+/// get different answers: the planner and the renderer see the world as it will
+/// be after commit, while traffic sees it as it is now. So an `Added` road
+/// carries no cars but does block a plot, and a `Removed` road still carries
+/// cars but will not be given a new driveway.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+#[serde(tag = "state", content = "owner")]
+pub enum Draft {
+    Added(#[ts(type = "number")] OwnerId),
+    Removed(#[ts(type = "number")] OwnerId),
+}
+
+impl Draft {
+    pub fn owner(self) -> OwnerId {
+        match self {
+            Draft::Added(o) | Draft::Removed(o) => o,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct GameObjectEntry {
@@ -211,6 +238,10 @@ pub struct GameObjectEntry {
     pub id: EntityId,
     pub object: GameObject,
     pub position: Option<GridCoord>,
+    /// `None` once committed, which is what the simulation and the save file
+    /// both key off.
+    #[serde(default)]
+    pub draft: Option<Draft>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -257,6 +288,11 @@ pub enum ClientMessage {
     PaintArea(PaintArea),
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
+    /// Make everything you have drafted real.
+    Commit,
+    /// Throw away everything you have drafted. Nothing committed was ever
+    /// touched, so this destroys nothing and restores nothing.
+    Discard,
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     ResetWorld,
@@ -304,6 +340,9 @@ pub struct StateUpdate {
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
+    /// Who you are. Drafts carry an owner, and the client needs this to tell
+    /// its own pending work from everyone else's.
+    Welcome(#[ts(type = "number")] OwnerId),
     Update(StateUpdate),
     TerrainChunk(TerrainChunk),
     UnloadChunk(ChunkCoord),

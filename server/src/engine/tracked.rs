@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::protocol::{EntityId, GameObjectEntry, GameObject, GridCoord};
+use crate::protocol::{Draft, EntityId, GameObjectEntry, GameObject, GridCoord};
 
 pub struct Tracked {
     data: HashMap<EntityId, GameObjectEntry>,
@@ -40,12 +40,19 @@ impl Tracked {
         self.next_id
     }
 
-    pub fn insert(&mut self, object: GameObject, position: Option<GridCoord>) -> EntityId {
+    pub fn insert(
+        &mut self,
+        object: GameObject,
+        position: Option<GridCoord>,
+        draft: Option<Draft>,
+    ) -> EntityId {
         let id = self.next_id;
         self.next_id += 1;
-        self.data.insert(id, GameObjectEntry { id, object, position });
+        self.data.insert(id, GameObjectEntry { id, object, position, draft });
         self.dirty.insert(id);
-        self.persist_dirty.insert(id);
+        if draft.is_none() {
+            self.persist_dirty.insert(id);
+        }
         id
     }
 
