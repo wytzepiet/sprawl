@@ -10,14 +10,16 @@ import type { GridCoord } from "../generated";
 /** Above the terrain and its zone lines, below the fog. */
 const PREVIEW_Z = 0.05;
 const PREVIEW_ALPHA = 0.35;
+/** How often a growing stroke is re-laid. Below noticing, well above per-tile. */
+const RELAYOUT_MS = 120;
 
 /**
  * The build brush: paint tiles, get buildings.
  *
  * The stroke is only a wish — the server lays out whatever plots actually fit
  * and leaves the rest, so the brush promises coverage rather than a particular
- * set of houses. It is laid out as one piece on release, which is what lets a
- * lone house become half an apartment as the stroke widens.
+ * set of houses. It is laid out as one piece and re-laid as it grows, so plots
+ * merge and split under the cursor rather than settling on release.
  */
 export function ZoneDrawer() {
   const { scene, canvas } = useEngine();
@@ -26,6 +28,20 @@ export function ZoneDrawer() {
   /** Tiles painted since pointerdown, keyed to dedupe a wandering cursor. */
   const painted = new Map<string, GridCoord>();
   let last: GridCoord | null = null;
+  let lastSent = 0;
+
+  /**
+   * Send the whole stroke so far, not the tiles just added.
+   *
+   * The server replaces the drafts of yours that a stroke covers, so re-sending
+   * the accumulated set re-lays the lot — which is what lets a lone house be
+   * torn up and laid again as half an apartment as the stroke widens. Sending
+   * only the new tiles would leave the earlier plots standing in the way.
+   */
+  function sendStroke() {
+    lastSent = performance.now();
+    send({ type: "PaintArea", data: { tiles: [...painted.values()], category: paintCategory() } });
+  }
 
   const material = new StandardMaterial("zonePreview", scene);
   material.disableLighting = true;
@@ -102,6 +118,7 @@ export function ZoneDrawer() {
     last = pick(e);
     add(last);
     redraw();
+    sendStroke();
   };
 
   const onPointerMove = (e: PointerEvent) => {
@@ -112,7 +129,12 @@ export function ZoneDrawer() {
     // rather than the chord across it.
     const merged = e.getCoalescedEvents?.() ?? [];
     for (const ce of merged.length ? merged : [e]) paintTo(pick(ce));
-    if (painted.size !== before) redraw();
+    if (painted.size === before) return;
+    redraw();
+    // Re-laying the stroke means dropping and rebuilding every plot in it, so
+    // this is throttled rather than run per tile: a wide area would otherwise
+    // put hundreds of deletes and upserts on the wire several times a second.
+    if (performance.now() - lastSent >= RELAYOUT_MS) sendStroke();
   };
 
   const onPointerUp = (e: PointerEvent) => {
@@ -120,11 +142,10 @@ export function ZoneDrawer() {
     // A flick releases the button past the last pointermove, so without this
     // the tail of every fast stroke is lost.
     paintTo(pick(e));
-    const tiles = [...painted.values()];
+    sendStroke();
     painted.clear();
     last = null;
     redraw();
-    send({ type: "PaintArea", data: { tiles, category: paintCategory() } });
   };
 
   canvas.addEventListener("pointerdown", onPointerDown);
