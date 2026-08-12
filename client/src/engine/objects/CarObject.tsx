@@ -3,6 +3,7 @@ import type { Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
+import type { Look } from "./draftLook";
 import type { GameObjectEntry } from "../../generated";
 
 const CAR_COLOR = new Color3(0.9, 0.25, 0.2);
@@ -53,6 +54,7 @@ export function mountCar(
   entry: GameObjectEntry,
   pool: InstancePool,
   scene: Scene,
+  look: Look,
 ): () => void {
   const data = entry.object.data as {
     route_positions: [number, number][];
@@ -132,9 +134,12 @@ export function mountCar(
 
   const initial = computePosition();
 
-  pool.ensureBucket("car", carGeo, CAR_COLOR, true, true);
+  const bucket = `car${look.key}`;
+  pool.ensureBucket(
+    bucket, carGeo, look.tint(CAR_COLOR), look.castShadow, true, undefined, look.alpha,
+  );
   const instanceId = pool.addInstance(
-    "car",
+    bucket,
     initial?.pos ?? [0, 0, -10],
     initial?.rot ?? [0, 0, 0],
   );
@@ -142,12 +147,12 @@ export function mountCar(
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = computePosition();
     if (result) {
-      pool.updateInstance("car", instanceId, result.pos, result.rot);
+      pool.updateInstance(bucket, instanceId, result.pos, result.rot);
     }
   });
 
   return () => {
     scene.onBeforeRenderObservable.remove(observer);
-    pool.removeInstance("car", instanceId);
+    pool.removeInstance(bucket, instanceId);
   };
 }

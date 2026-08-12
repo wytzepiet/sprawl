@@ -40,13 +40,29 @@ const MINE: Look = { key: "_mine", alpha: 0.55, tint: (c) => c, castShadow: fals
 
 /**
  * Staged for demolition. Still drawn, and still carrying traffic — the marker
- * is the one thing about a draft that is purely visual, so cars are never seen
- * driving over ground that has nothing on it.
+ * is the one thing about a draft that never touches the simulation, so cars are
+ * never seen driving over ground that has nothing on it.
+ *
+ * Faded well back rather than merely tinted, because something can be drafted
+ * on top of it: rerouting an artery means building over the old alignment, and
+ * the road on its way out has to give the new work the foreground.
  */
 const DOOMED_LOOK: Look = {
   key: "_doomed",
-  alpha: 0.75,
+  alpha: 0.5,
   tint: (c) => Color3.Lerp(c, DOOMED, 0.75),
+  castShadow: false,
+};
+
+/**
+ * Traffic still using a road that is on its way out. Fades with the road it is
+ * driving on, so the pair reads as one thing being replaced rather than as
+ * cars stranded on top of a ghost.
+ */
+export const DOOMED_TRAFFIC: Look = {
+  key: "_leaving",
+  alpha: 0.35,
+  tint: (c) => c,
   castShadow: false,
 };
 

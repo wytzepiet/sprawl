@@ -277,6 +277,15 @@ impl World {
         }
     }
 
+    /// Call off a staged demolition, leaving the thing committed as it was.
+    pub fn unstage(&mut self, id: EntityId) {
+        let Some(Draft::Removed(owner)) = self.draft_of(id) else { return };
+        if let Some(entry) = self.objects.get_mut(id) {
+            entry.draft = None;
+        }
+        self.drafts.entry(owner).or_default().remove(&id);
+    }
+
     /// Erase one of your own uncommitted additions, as though it were never
     /// drawn. Other people's drafts, and anything committed, are not yours to
     /// erase this way.

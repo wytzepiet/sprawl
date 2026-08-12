@@ -22,9 +22,21 @@ impl World {
 
     /// Land a building can stand on. Water and mountain are out; roads and other
     /// buildings already hold their tiles.
+    ///
+    /// Anything staged for demolition does not hold anything: the planner sees
+    /// the world as it will be after the commit. That is what lets an artery be
+    /// rerouted and built over in one go — pull up the old road, draw the new
+    /// one, drop a factory on the old alignment, and commit the lot, so the
+    /// traffic never sees a gap.
     pub fn is_buildable(&self, coord: GridCoord) -> bool {
-        if self.has_building_at(coord) || self.road_node_at(coord).is_some() {
-            return false;
+        // Checked apart rather than together: a driveway stands on a tile of
+        // its own building, so one tile can hold both.
+        for holder in [self.occupied.get(&(coord.x, coord.y)).copied(), self.road_node_at(coord)] {
+            if let Some(id) = holder
+                && !self.is_going_away(id)
+            {
+                return false;
+            }
         }
         matches!(
             self.terrain.get(&(coord.x, coord.y)),
@@ -123,7 +135,9 @@ impl World {
         let entry = self.objects.get(building_id)?;
         let pos = entry.position?;
         let GameObject::Building(ref b) = entry.object else { return None };
-        Self::footprint(pos, b.size).find_map(|t| self.road_node_at(t))
+        Self::footprint(pos, b.size)
+            .filter_map(|t| self.road_node_at(t))
+            .find(|&id| !self.is_going_away(id))
     }
 
     /// Every building, as (id, position).
@@ -175,6 +189,19 @@ impl World {
         // A building nobody can drive to would be a purchase with no feedback.
         let (street, door) = self.road_for_plot(pos, size)?;
         let street_pos = self.objects.get(street).and_then(|e| e.position)?;
+
+        // Building over a road you staged for removal keeps one tile of it: the
+        // node on the door tile is not being demolished, it is being kept as the
+        // way in. Without this the commit would lift the old alignment and take
+        // the new building's driveway with it. Someone else's staged removal is
+        // not ours to reinterpret, so that plot simply has no access.
+        if let Some(node) = self.road_node_at(door) {
+            match self.draft_of(node) {
+                Some(Draft::Removed(o)) if Some(o) == self.acting_as => self.unstage(node),
+                Some(Draft::Removed(_)) => return None,
+                _ => {}
+            }
+        }
 
         let id = self.insert_at(
             GameObject::Building(Building { kind, size, rotation }),
@@ -286,7 +313,13 @@ impl World {
                 }
                 self.handle_demolish_road(*tile);
             }
-            self.occupied.remove(&(tile.x, tile.y));
+            // Only if this tile is still ours. A building staged for demolition
+            // can already have its replacement drafted over it, and that one
+            // has since claimed the tile — tearing down the old one must not
+            // take the new one's occupancy with it.
+            if self.occupied.get(&(tile.x, tile.y)) == Some(&id) {
+                self.occupied.remove(&(tile.x, tile.y));
+            }
             self.unindex(id, *tile);
         }
         self.objects.remove(id);
@@ -453,6 +486,59 @@ mod tests {
         world.paint_area(&painted(0..3, 0..1), Category::Commercial);
         let ids: Vec<_> = world.all_buildings().iter().map(|(id, _)| *id).collect();
         assert!(ids.contains(&theirs[0].0), "their draft must survive my stroke");
+    }
+
+    /// Rerouting an artery and building over its old alignment, in one commit,
+    /// so the traffic never sees a gap. The old road keeps carrying cars the
+    /// whole time it is staged; only the commit takes it away.
+    #[test]
+    fn an_artery_can_be_moved_and_built_over_in_one_go() {
+        // The artery runs east along y=2, with room to redraw it along y=4.
+        let mut world = world_with_road(&[(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)]);
+        let old: Vec<EntityId> = (1..4)
+            .map(|x| world.road_node_at(GridCoord { x, y: 2 }).unwrap())
+            .collect();
+        let carrying = world.edges.len();
+
+        world.acting_as = Some(ME);
+        for &id in &old {
+            world.draft_remove(id);
+        }
+        // Still carrying traffic while it is only staged.
+        assert_eq!(world.edges.len(), carrying, "a staged road must keep its traffic");
+
+        // The new alignment, and a factory on the old one.
+        world.place_road_path(&[
+            GridCoord { x: 0, y: 2 },
+            GridCoord { x: 1, y: 3 },
+            GridCoord { x: 2, y: 3 },
+            GridCoord { x: 3, y: 3 },
+            GridCoord { x: 4, y: 2 },
+        ]);
+        world.paint_area(&painted(1..4, 2..3), Category::Industrial);
+        let factory = world.all_buildings();
+        assert!(!factory.is_empty(), "the old alignment should now be buildable");
+
+        let committed = world.commit_drafts(ME);
+        for id in committed.removed {
+            let pos = world.objects.get(id).and_then(|e| e.position).unwrap();
+            world.handle_demolish_road(pos);
+        }
+        world.acting_as = None;
+
+        // The factory stands, the new alignment carries, and the old one is
+        // gone — except for the one tile the factory kept as its way in.
+        assert!(world.objects.get(factory[0].0).is_some(), "the factory survived the commit");
+        assert!(world.road_node_at(GridCoord { x: 2, y: 3 }).is_some(), "new alignment laid");
+
+        let driveway = world.road_node_for_building(factory[0].0);
+        assert!(driveway.is_some(), "the factory kept a way in");
+        for id in old {
+            assert!(
+                world.objects.get(id).is_none() || Some(id) == driveway,
+                "old alignment is lifted, bar the tile that became the driveway",
+            );
+        }
     }
 
     /// A plot will not take a driveway onto a road that is on its way out.

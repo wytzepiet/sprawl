@@ -12,7 +12,7 @@ import {
   getObjectsAt,
   useGame,
 } from "../state/gameObjects";
-import { lookOf } from "./objects/draftLook";
+import { lookOf, DOOMED_TRAFFIC } from "./objects/draftLook";
 import type { Operation, GameObjectEntry } from "../generated";
 
 import { KIND_CATEGORY, ZONE_BYTE } from "./objects/buildings";
@@ -43,6 +43,14 @@ export default function World() {
 
   const hasRoad = (x: number, y: number) =>
     getObjectsAt(x, y).some((o) => o.object.kind === "RoadNode");
+
+  const onDoomedRoad = (entry: GameObjectEntry) => {
+    const p = entry.position;
+    if (!p) return false;
+    return getObjectsAt(p.x, p.y).some(
+      (o) => o.object.kind === "RoadNode" && o.draft?.state === "Removed",
+    );
+  };
 
   /**
    * Tile → category byte, mirroring the server's occupancy index. The store
@@ -96,7 +104,10 @@ export default function World() {
       case "Building":
         return mountBuilding(entry, pool, look);
       case "Car":
-        return mountCar(entry, pool, scene);
+        // A car on a road that is going away fades with it, so the two read as
+        // one thing being replaced. Re-evaluated whenever the car is upserted,
+        // which the simulation does at every segment it enters.
+        return mountCar(entry, pool, scene, onDoomedRoad(entry) ? DOOMED_TRAFFIC : look);
       case "RoadNode":
         return mountRoad(entry, pool, th, getEntity, look);
       default:
