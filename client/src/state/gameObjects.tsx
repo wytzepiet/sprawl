@@ -104,6 +104,9 @@ function applyOps(ops: Operation[]) {
 // --- Context (thin — just what UI needs) ---
 
 interface GameContext {
+  /** Who this client is. Drafts belong to a player, so this is what tells
+   *  your own pending work from everyone else's. */
+  me(): number;
   terrainSeed(): number;
   /** Surveyed extent, in chunks. max < min means nothing is surveyed yet. */
   revealedBounds(): ChunkBounds;
@@ -114,6 +117,7 @@ interface GameContext {
 const Ctx = createContext<GameContext>();
 
 export function GameProvider(props: ParentProps & { wsUrl: string }) {
+  const [me, setMe] = createSignal(0);
   const [terrainSeed, setTerrainSeed] = createSignal(0);
   const [revealedBounds, setRevealedBounds] = createSignal<ChunkBounds>({
     min_cx: 0,
@@ -140,6 +144,9 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
       case "UnloadChunk":
         terrainListener?.unloadChunk(msg.data);
         break;
+      case "Welcome":
+        setMe(msg.data);
+        break;
       case "Pong":
         syncClock(msg.data);
         break;
@@ -149,7 +156,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ terrainSeed, revealedBounds, send, getObjectsAt }}>
+    <Ctx.Provider value={{ me, terrainSeed, revealedBounds, send, getObjectsAt }}>
       {props.children}
     </Ctx.Provider>
   );

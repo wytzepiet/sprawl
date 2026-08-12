@@ -1,17 +1,27 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use futures::{SinkExt, StreamExt};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
-use crate::protocol::{ChunkBounds, ClientMessage, Clock, DAY_MS, Operation, ServerMessage, StateUpdate};
+use crate::protocol::{
+    ChunkBounds, ClientMessage, Clock, DAY_MS, Operation, OwnerId, ServerMessage, StateUpdate,
+};
 
+/// One socket. Dies with the connection.
 pub type ClientId = u64;
 
 pub enum Command {
     PlayerAction { client_id: ClientId, message: ClientMessage },
-    ClientConnect { id: ClientId, sender: mpsc::UnboundedSender<ServerMessage> },
+    ClientConnect {
+        id: ClientId,
+        /// Who is behind the socket. Outlives it, so a reload rejoins as the
+        /// same person and finds their drafts still standing.
+        owner: OwnerId,
+        sender: mpsc::UnboundedSender<ServerMessage>,
+    },
     ClientDisconnect { id: ClientId },
 }
 
@@ -24,17 +34,24 @@ pub struct AppState {
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
+    Query(params): Query<HashMap<String, String>>,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+    // The browser keeps this, so identity survives a reload. Nothing verifies
+    // it -- anyone can claim to be anyone until players have real accounts.
+    let owner = params.get("player").and_then(|s| s.parse::<OwnerId>().ok());
+    ws.on_upgrade(move |socket| handle_socket(socket, state, owner))
 }
 
-async fn handle_socket(socket: WebSocket, state: AppState) {
+async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId>) {
     let client_id = NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed);
+    // A client that brought no identity gets one for this session only.
+    let owner = owner.unwrap_or(client_id);
     let (msg_tx, mut msg_rx) = mpsc::unbounded_channel::<ServerMessage>();
 
     let _ = state.command_tx.send(Command::ClientConnect {
         id: client_id,
+        owner,
         sender: msg_tx,
     });
 

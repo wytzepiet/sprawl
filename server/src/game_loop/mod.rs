@@ -12,13 +12,16 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingKind, Category, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, ServerMessage, StateUpdate};
+use crate::protocol::{BuildingKind, Category, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, ServerMessage, StateUpdate};
 use crate::world::chunk_of;
 use crate::world::World;
 use crate::protocol::GridCoord;
 use crate::world::pathfinding;
 
 struct ClientState {
+    /// Who is playing. Several sockets can share one, and drafts belong to it
+    /// rather than to any one connection.
+    owner: OwnerId,
     sender: mpsc::UnboundedSender<ServerMessage>,
     subscribed: Option<ChunkBounds>,
     known: HashSet<EntityId>,
@@ -29,6 +32,10 @@ fn db_path() -> PathBuf {
     std::env::var("SPRAWL_DB").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("sprawl.db"))
 }
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
+/// How long an abandoned draft holds its land. Long enough that a reload or a
+/// dropped connection does not cost you the work; short enough that walking
+/// away does not freeze the ground for everyone else.
+const DRAFT_GRACE: Duration = Duration::from_secs(120);
 /// Simulated milliseconds per step. Fixed: speed adds steps rather than making
 /// them longer, so running fast cannot change what the simulation does.
 const STEP_MS: GameTime = 10;
@@ -44,6 +51,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let mut events: EventQueue<GameEvent> = EventQueue::new();
     let mut intersections = IntersectionRegistry::new();
     let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
+    // Owners with no socket, and when their drafts run out of time.
+    let mut abandoned: HashMap<OwnerId, Instant> = HashMap::new();
 
     // Terrain is derived from the seed, so it is regenerated on every start
     // rather than persisted. A fresh world also gets its roads laid out.
@@ -143,16 +152,19 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         }
                         println!("reset: world cleared, terrain regenerated");
                     } else {
-                        world.acting_as = Some(client_id);
+                        world.acting_as = clients.get(&client_id).map(|c| c.owner);
                         handle_player_action(&mut world, &mut events, &mut intersections, message, now);
                         world.acting_as = None;
                     }
                 }
-                Command::ClientConnect { id, sender } => {
-                    let _ = sender.send(ServerMessage::Welcome(id));
+                Command::ClientConnect { id, owner, sender } => {
+                    // Back before the drafts expired: the land is still theirs.
+                    abandoned.remove(&owner);
+                    let _ = sender.send(ServerMessage::Welcome(owner));
                     // Send empty update with terrain_seed; objects come via SetViewport
                     let _ = sender.send(state_update(&world, vec![], clock(now, speed)));
                     clients.insert(id, ClientState {
+                        owner,
                         sender,
                         subscribed: None,
                         known_chunks: HashSet::new(),
@@ -160,14 +172,29 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                     });
                 }
                 Command::ClientDisconnect { id } => {
-                    clients.remove(&id);
-                    // An abandoned draft is a land claim, so it cannot outlive
-                    // the person who made it. Immediate rather than on a grace
-                    // period: a reconnect is issued a fresh id, so there is
-                    // nobody left who could reclaim this work.
-                    world.discard_drafts(id);
+                    let Some(gone) = clients.remove(&id) else { continue };
+                    // An abandoned draft is a land claim, so it cannot be held
+                    // forever -- but a reload should not cost you the work
+                    // either, and identity outlives the socket, so the claim is
+                    // given a while to be reclaimed. Another tab of the same
+                    // player still being open means it never lapsed at all.
+                    if !clients.values().any(|c| c.owner == gone.owner) {
+                        abandoned.insert(gone.owner, Instant::now() + DRAFT_GRACE);
+                    }
                 }
             }
+        }
+
+        // Claims nobody came back for.
+        if !abandoned.is_empty() {
+            let lapsed = Instant::now();
+            abandoned.retain(|&owner, &mut deadline| {
+                if deadline > lapsed {
+                    return true;
+                }
+                world.discard_drafts(owner);
+                false
+            });
         }
 
         // One step per unit of speed, each the same length as at speed 1, so a

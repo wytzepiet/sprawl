@@ -4,4 +4,4 @@ import type { ErrorMessage } from "./ErrorMessage";
 import type { StateUpdate } from "./StateUpdate";
 import type { TerrainChunk } from "./TerrainChunk";
 
-export type ServerMessage = { "type": "Update", "data": StateUpdate } | { "type": "TerrainChunk", "data": TerrainChunk } | { "type": "UnloadChunk", "data": ChunkCoord } | { "type": "Error", "data": ErrorMessage } | { "type": "Pong", "data": number };
+export type ServerMessage = { "type": "Welcome", "data": number } | { "type": "Update", "data": StateUpdate } | { "type": "TerrainChunk", "data": TerrainChunk } | { "type": "UnloadChunk", "data": ChunkCoord } | { "type": "Error", "data": ErrorMessage } | { "type": "Pong", "data": number };
