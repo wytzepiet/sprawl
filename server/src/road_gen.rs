@@ -161,11 +161,11 @@ const LAND_COST: f64 = 4.0;
 /// Reusing R tiles of road saves (LAND_COST - ROAD_COST) * R, while detouring
 /// D tiles to reach it costs LAND_COST * D — so the search will go up to
 /// `1 - ROAD_COST/LAND_COST` of a road's length out of its way to join it.
-/// That ratio approaches 1 and never reaches it however low this goes, which
-/// is why the difference between 0.1 and 0.01 is nothing: measured over a
-/// starting network, 1.0 gives 2962 road tiles, 0.5 gives 2930, 0.1 gives
-/// 2847 and 0.01 gives 2841.
-const ROAD_COST: f64 = 0.1;
+/// That ratio approaches 1 and never reaches it however low this goes, so the
+/// lever is weak and tires quickly: measured over a starting network at full
+/// goal pull, 1.0 gives 2962 road tiles, 0.5 gives 2930, 0.1 gives 2847, and
+/// 0.01 — a hundred times cheaper than where it started — gives 2841.
+const ROAD_COST: f64 = 0.5;
 
 /// How hard the search drives at the goal, as a share of LAND_COST.
 ///
