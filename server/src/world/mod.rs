@@ -72,8 +72,9 @@ pub struct Committed {
 const NO_BOUNDS: ChunkBounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
 
 /// How far a building sees, in tiles. Generous on purpose: the frontier has to
-/// stay ahead of what you have built, or you are siting blind.
-const REVEAL_RADIUS: i32 = 48;
+/// stay ahead of what you have built, or you are siting blind — a chunk and a
+/// half beyond, so there is always ground in view to build the next thing on.
+const REVEAL_RADIUS: i32 = 80;
 
 use crate::protocol::GridCoord;
 
