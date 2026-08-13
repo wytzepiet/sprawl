@@ -36,12 +36,16 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 ## Tools
 
 - **Package manager:** bun
-- **Client dev:** `cd client && bun run dev`
+- **Dev stack:** `bun run dev` — runs client and server together in a TUI. The
+  server rebuilds and restarts on save, so it cannot fall behind its source.
+  `./dev.sh --headless` runs the same processes without a TUI, `--stop` stops
+  them. Both write to `.dev/<name>.log`.
+- **Is it current?** `curl localhost:3001/health` → `built_ago_s` is the age of
+  the running binary, `sim_time` should be climbing. A fix that seems not to
+  work is a stale binary until that says otherwise; a socket that answers while
+  `sim_time` stands still is a dead game loop.
 - **Generated types:** `cd client && bun run generate`
-- **Server:** `cd server && cargo run`. Rebuild and restart it after any Rust
-  change — vite hot-reloads, the server does not, and a stale binary looks
-  exactly like a fix that did not work.
-- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 cargo run`. Seed 7 has
+- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads, forest to build into, and coastline —
   enough to exercise zoning, tree clearing and demolition. Any fixed seed gives
   the same map back, so a change in behaviour is a change in the code.

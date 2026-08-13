@@ -1,6 +1,7 @@
 mod car;
 mod engine;
 mod game_loop;
+mod health;
 mod intersection;
 mod road_gen;
 mod network;
@@ -27,6 +28,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/ws", axum::routing::get(network::ws_handler))
+        .route("/health", axum::routing::get(health::health))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));

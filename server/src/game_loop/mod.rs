@@ -217,6 +217,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             }
         }
         sim_time = now;
+        // Published for /health, which is how anything outside this loop can
+        // tell the difference between a live world and a socket that outlived
+        // it.
+        crate::health::SIM_TIME.store(sim_time, std::sync::atomic::Ordering::Relaxed);
 
         flush_dirty(&mut world, &mut clients, clock(now, speed));
 

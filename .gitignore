@@ -13,3 +13,6 @@ build
 
 # Playwright MCP artefacts
 .playwright-mcp/
+
+# Dev stack logs
+.dev/
