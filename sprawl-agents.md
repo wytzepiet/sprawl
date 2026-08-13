@@ -220,8 +220,8 @@ There is always a new thing to deal with, which is where the pull comes from.
   drafts have a batch lifecycle that resolves with their owner's commit,
   and a proposal needs an individual, immediate answer. ✓ places the real
   building; ✗ dismisses it and suppresses that kind thereabouts for a
-  while; left alone long enough, it gives up on its own. Moving one is
-  dragging its pin before answering — priced, once money exists, so organic
+  while; unanswered, it simply waits in the queue. Moving one is dragging
+  its pin before answering — priced, once money exists, so organic
   placement stays the incentivised default.
 - **Accepting and roading are separate decisions.** An accepted building
   can stand dormant, pin waiting, until the network reaches it — off-road
@@ -232,6 +232,17 @@ There is always a new thing to deal with, which is where the pull comes from.
 - **Ambient, never modal.** A pop, a soft edge-arrow that tracks while
   panning, and then the proposal waits. Response on the player's rhythm, or
   the game becomes an inbox.
+- **Pending proposals cap at a handful, and that is the whole pacing
+  model.** The spawner holds once the queue is full, so proposals never
+  expire — an ignored one just occupies a slot, which pauses growth, which
+  is a legitimate choice. In a shared world this makes presence the
+  progression currency: a city keeps *running* while its player is away —
+  commutes, deliveries, roads carrying neighbours' traffic — but only
+  *grows* while someone is there to judge. Coming back means a few waiting
+  decisions, five minutes of mayoring, growth resumed. The guardrail:
+  absence only ever costs growth not taken, never anything you had —
+  nothing expires, nothing decays, nobody touches your street. Foregone
+  growth is the whole price.
 - **Accepting must be able to be wrong.** Take the supermarket beside the
   congested corner and you bought a jam; drag it two blocks and you bought
   longer shopping trips. Every spawn type has to pass this test: siting is
@@ -283,10 +294,10 @@ There is always a new thing to deal with, which is where the pull comes from.
 
 ### Open, for this half
 
-- Pacing: spawns per hour that feels alive but not needy, and how long a
-  ghost waits before giving up. Oversupply regulates itself on the input
-  side — the city grows into what it has before more spawns; nothing needs
-  to despawn.
+- Pacing: spawn cadence while the queue has room, and the size of the cap.
+  Oversupply regulates itself on the input side — the city grows into what
+  it has before more spawns; nothing needs to despawn, and nothing needs to
+  expire.
 - Clustering: start with demand-siting plus affinity jitter and *no*
   adjacency rules; add a nuisance signal only when homes start ghosting in
   next to the factory.
