@@ -80,10 +80,14 @@ impl World {
         let mut spare: Vec<(EntityId, u32)> = rooms.into_iter().filter(|&(_, n)| n > 0).collect();
         spare.sort_unstable();
 
+        // New residents are not here yet: `at: None` is off-map, and their
+        // first wake drives them in from beyond the frontier. Nobody
+        // materialises out of thin air — they arrive the way everyone
+        // arrives, by road.
         for (home, free) in spare {
             for _ in 0..free {
                 let id = self.objects.insert(
-                    GameObject::Resident(Resident { home, work: None, at: Some(home), car: 0 }),
+                    GameObject::Resident(Resident { home, work: None, at: None, car: 0 }),
                     None,
                     None,
                 );
@@ -122,13 +126,23 @@ impl World {
         }
         carless.sort_unstable();
         for id in carless {
-            let Some(spot) = self.home_of(id).and_then(|h| where_is.get(&h).copied()) else {
-                continue;
-            };
+            // The car is parked wherever its owner is standing — and an
+            // owner still off-map has it with them, position-less until
+            // they drive in.
+            let spot = self
+                .objects
+                .get(id)
+                .and_then(|e| match e.object {
+                    GameObject::Resident(ref r) => r.at,
+                    _ => None,
+                })
+                .and_then(|b| self.objects.get(b).and_then(|e| e.position));
             // Not insert_at: that stamps the committing player's draft mark,
             // and nobody's car is a plan.
-            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None }), Some(spot), None);
-            self.spatial.entry(crate::world::chunk_of(spot)).or_default().insert(car);
+            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None }), spot, None);
+            if let Some(spot) = spot {
+                self.spatial.entry(crate::world::chunk_of(spot)).or_default().insert(car);
+            }
             if let Some(entry) = self.objects.get_mut(id)
                 && let GameObject::Resident(ref mut r) = entry.object
             {
@@ -320,7 +334,9 @@ mod tests {
             .filter(|e| matches!(e.object, GameObject::Car(_)))
             .collect();
         assert_eq!(cars.len(), residents(&world).len());
-        assert!(cars.iter().all(|e| e.position.is_some()), "parked at home, on the map");
+        // The household has not driven in yet, and the car is with them:
+        // off-map, position-less, invisible until the first trip.
+        assert!(cars.iter().all(|e| e.position.is_none()), "still off-map with its owner");
         assert!(residents(&world).iter().all(|r| r.car != 0), "the link points back");
 
         world.remove_building(home);

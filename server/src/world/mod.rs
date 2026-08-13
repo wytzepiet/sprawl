@@ -337,6 +337,21 @@ impl World {
         }
     }
 
+    /// Where the outside world reaches in: the nearest road node on ground
+    /// nobody has revealed. Road generation keeps roads running out past the
+    /// frontier, so this is how anything enters the map — close for a lone
+    /// pioneer precisely because their own buildings drew the frontier in.
+    pub fn entry_node_near(&self, pos: GridCoord) -> Option<EntityId> {
+        self.objects
+            .all_entries()
+            .iter()
+            .filter(|e| matches!(e.object, GameObject::RoadNode(_)))
+            .filter_map(|e| e.position.map(|p| (e.id, p)))
+            .filter(|&(_, p)| !self.revealed.contains(&chunk_of(p)))
+            .min_by_key(|&(id, p)| ((p.x - pos.x).abs().max((p.y - pos.y).abs()), id))
+            .map(|(id, _)| id)
+    }
+
     /// Update the spatial position of an entity.
     pub fn update_position(&mut self, id: EntityId, new_pos: GridCoord) {
         if let Some(entry) = self.objects.get(id) {

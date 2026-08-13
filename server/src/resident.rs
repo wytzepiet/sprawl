@@ -26,9 +26,20 @@ pub fn handle_resident_wake(
 ) {
     let Some((home, work, at, car)) = read(world, id) else { return };
 
-    // Off-map: someone who has not driven in yet. Immigration will give this
-    // branch a trip; until then they simply are not here.
-    let Some(mut at) = at else { return };
+    // Off-map: someone who has not driven in yet. They enter the way
+    // everyone enters — by road, from beyond the frontier, car and all.
+    let Some(mut at) = at else {
+        let entry = position_of(world, home)
+            .and_then(|(x, y)| world.entry_node_near(crate::protocol::GridCoord { x, y }));
+        let started = match entry {
+            Some(node) => start_trip(world, events, car, node, home, now),
+            None => false,
+        };
+        if !started {
+            events.wake(RETRY_MS, id);
+        }
+        return;
+    };
 
     // Riding: the trip's arrival is what wakes us next, not the clock.
     if matches!(world.objects.get(at).map(|e| &e.object), Some(GameObject::Car(_))) {
@@ -49,7 +60,7 @@ pub fn handle_resident_wake(
     let Some(work) = work else {
         // Jobless: nowhere to be. Head home if stranded elsewhere; otherwise
         // wait for settle to wake us with news.
-        if at != home && !start_trip(world, events, car, at, home, now) {
+        if at != home && !drive(world, events, car, at, home, now) {
             events.wake(RETRY_MS, id);
         }
         return;
@@ -66,8 +77,23 @@ pub fn handle_resident_wake(
         // Nothing to do until the answer changes.
         let boundary = if should_be == home { leave } else { close };
         events.wake(until(now, boundary), id);
-    } else if !start_trip(world, events, car, at, should_be, now) {
+    } else if !drive(world, events, car, at, should_be, now) {
         events.wake(RETRY_MS, id);
+    }
+}
+
+/// Pull out of one building's driveway toward another's.
+fn drive(
+    world: &mut World,
+    events: &mut EventQueue,
+    car: EntityId,
+    from_building: EntityId,
+    dest_building: EntityId,
+    now: GameTime,
+) -> bool {
+    match world.road_node_for_building(from_building) {
+        Some(node) => start_trip(world, events, car, node, dest_building, now),
+        None => false,
     }
 }
 

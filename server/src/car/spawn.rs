@@ -5,27 +5,25 @@ use crate::protocol::{EntityId, GameObject, Trip};
 use crate::world::pathfinding;
 use crate::world::World;
 
-/// Send a parked car out from one building's driveway to another's, owner
-/// aboard.
+/// Send a parked car out from a road node to a building's driveway, owner
+/// aboard. The node is usually a driveway too; for someone driving in from
+/// off-map it is a road out past the frontier.
 ///
-/// Returns false when the trip cannot start — the car is already out, either
-/// end has no driveway, no route exists, or something is sitting where this
-/// car would pull in. The caller decides when to try again; nothing is queued
-/// here.
+/// Returns false when the trip cannot start — the car is already out, the
+/// destination has no driveway, no route exists, or something is sitting
+/// where this car would pull in. The caller decides when to try again;
+/// nothing is queued here.
 pub fn start_trip(
     world: &mut World,
     events: &mut EventQueue,
     car_id: EntityId,
-    from_building: EntityId,
+    from_node: EntityId,
     dest_building: EntityId,
     now: GameTime,
 ) -> bool {
     let owner = match world.objects.get(car_id).map(|e| &e.object) {
         Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
         _ => return false,
-    };
-    let Some(from_node) = world.road_node_for_building(from_building) else {
-        return false;
     };
     let Some(to_node) = world.road_node_for_building(dest_building) else {
         return false;

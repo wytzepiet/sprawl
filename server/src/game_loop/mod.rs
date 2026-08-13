@@ -98,11 +98,11 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     }
     // Whatever is standing gets its people, whether it was just laid out or
     // loaded from a save written before anyone lived here. Then everyone
-    // thinks once — cars do not survive a save, so a loaded world is entirely
-    // people standing still until they do.
+    // thinks once — trips do not survive a save, so a loaded world is
+    // entirely people standing still until they do.
     world.settle();
     for id in world.resident_ids() {
-        events.wake(0, id);
+        wake_resident(&world, &mut events, id);
     }
 
     let mut tick_interval = interval(Duration::from_millis(STEP_MS));
@@ -598,8 +598,29 @@ fn handle_wake(
 /// to think about it.
 fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     for id in world.settle() {
-        events.wake(0, id);
+        wake_resident(world, events, id);
     }
+}
+
+/// Someone already here thinks immediately; someone still off-map gets a
+/// staggered start, so a freshly zoned block fills in over the next hours
+/// rather than arriving as a convoy. The delay is a hash of who they are,
+/// not a roll of the dice — settling again cannot reshuffle it, and the
+/// earliest pending wake always wins in the queue anyway.
+fn wake_resident(world: &World, events: &mut EventQueue, id: EntityId) {
+    const TRICKLE_MS: u64 = 3 * (DAY_MS as u64) / 24;
+    let off_map = matches!(
+        world.objects.get(id).map(|e| &e.object),
+        Some(GameObject::Resident(r)) if r.at.is_none()
+    );
+    let delay = if off_map {
+        let mut h = id.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        h ^= h >> 33;
+        h % TRICKLE_MS
+    } else {
+        0
+    };
+    events.wake(delay, id);
 }
 
 /// Reconcile a client's subscription. Chunk-granular, so panning within a
@@ -778,17 +799,21 @@ mod tests {
         }
     }
 
-    /// The whole loop watched from above: people drive to work in the morning
-    /// and are home again at night, and nobody told them to — the shift did.
+    /// The whole loop watched from above: people immigrate from past the
+    /// frontier, drive to work in the morning, and are home again at night —
+    /// and nobody told them to; the shift did.
     #[test]
     fn residents_commute_and_come_home() {
         let mut world = World::new();
+        // The street runs far past what the buildings will reveal, the way
+        // road generation always leaves a way in from outside. Immigrants
+        // need somewhere unseen to come from.
         for y in -4..4 {
-            for x in -4..40 {
+            for x in -4..170 {
                 world.terrain.insert((x, y), TerrainType::Grass);
             }
         }
-        let street: Vec<GridCoord> = (-2..40).map(|x| GridCoord { x, y: 0 }).collect();
+        let street: Vec<GridCoord> = (-2..168).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
         let home = world
             .spawn_building(GridCoord { x: 0, y: 1 }, BuildingKind::House, (1, 1), Rotation::South)
