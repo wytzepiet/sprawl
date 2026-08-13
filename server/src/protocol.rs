@@ -338,7 +338,15 @@ pub enum Operation {
 }
 
 /// Simulated time of one full day/night cycle.
-pub const DAY_MS: u32 = 120_000;
+///
+/// This is the scale of the whole game rather than a cosmetic setting. A tile
+/// is about 12 m — a car is 0.35 tiles long and a car is 4.2 m, and a one-tile
+/// road is a 12 m two-way street — so CRUISE_SPEED works out at 65 km/h and a
+/// chunk is 384 m across. Against a twenty-minute day an hour is 900 m of
+/// driving, putting a town commute at half an hour and a crossing of a
+/// sprawling city at four, which is what earns a highway. At two minutes, the
+/// length this was, that same crossing took two days.
+pub const DAY_MS: u32 = 1_200_000;
 
 /// The simulation's clock, as the client needs to see it.
 ///
