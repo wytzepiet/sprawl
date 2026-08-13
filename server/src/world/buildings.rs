@@ -145,7 +145,10 @@ impl World {
         Self::footprint(pos, b.size).find_map(|t| self.road_node_at(t))
     }
 
-    /// Every building, as (id, position).
+    /// Every building, as (id, position). Only tests still want the world
+    /// flattened like this; the simulation itself always knows which building
+    /// it means.
+    #[cfg(test)]
     pub fn all_buildings(&self) -> Vec<(EntityId, GridCoord)> {
         self.objects
             .all_entries()

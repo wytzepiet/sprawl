@@ -2,8 +2,6 @@ pub mod physics;
 pub mod simulation;
 pub mod spawn;
 
-use crate::protocol::EntityId;
-
 pub const CRUISE_SPEED: f64 = 1.5;
 pub const MIN_GAP: f64 = 0.5;
 pub const MIN_TURN_SPEED: f64 = 0.5;
@@ -26,9 +24,4 @@ pub enum Obstacle {
     MustStop {
         distance: f64,
     },
-}
-
-pub enum GameEvent {
-    CarSpawn { building_id: EntityId },
-    CarWakeUp { car_id: EntityId },
 }

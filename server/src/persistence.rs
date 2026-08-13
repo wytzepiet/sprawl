@@ -36,7 +36,6 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64, u32, u64) {
         .expect("failed to query objects")
         .filter_map(|r| r.ok())
         .filter_map(|json| serde_json::from_str::<GameObjectEntry>(&json).ok())
-        .filter(|e| !matches!(e.object, GameObject::Car(_)))
         .collect();
 
     let next_id: u64 = conn
@@ -74,7 +73,10 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: 
     let tx = conn.transaction().expect("failed to begin transaction");
 
     for entry in changed {
-        if matches!(entry.object, GameObject::Car(_)) {
+        // A trip is not worth saving — its route references live world state
+        // and a restart ends it anyway. The parked car is; a save mid-trip
+        // keeps the version last seen parked, and the driver self-heals home.
+        if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some()) {
             continue;
         }
         let json = serde_json::to_string(entry).expect("failed to serialize");

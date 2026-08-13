@@ -11,4 +11,14 @@ export type Resident = { home: number,
 /**
  * `None` while nowhere within reach has a job going.
  */
-work: number | null, };
+work: number | null, 
+/**
+ * Where they are: a building, or the car they are riding in. `None` is
+ * off-map — someone who exists but has not driven in yet.
+ */
+at: number | null, 
+/**
+ * The car they own. Settled alongside homes and jobs; defaults so saves
+ * from before cars were owned settle themselves a car on load.
+ */
+car: number, };

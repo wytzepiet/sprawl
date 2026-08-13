@@ -1,92 +1,76 @@
-use rand::Rng;
-
-use crate::car::{physics, GameEvent, ACCELERATION, CAR_NOSE, CAR_TAIL, MIN_GAP};
+use crate::car::{physics, ACCELERATION, CAR_NOSE, CAR_TAIL, CRUISE_SPEED, MIN_GAP};
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::protocol::{Car, EntityId, GameObject};
+use crate::protocol::{EntityId, GameObject, Trip};
 use crate::world::pathfinding;
 use crate::world::World;
 
-const SPAWN_INTERVAL_MIN: u64 = 4_000;
-const SPAWN_INTERVAL_MAX: u64 = 8_000;
-
-pub fn schedule_car_spawn(events: &mut EventQueue<GameEvent>, building_id: EntityId) {
-    let delay = rand::rng().random_range(SPAWN_INTERVAL_MIN..=SPAWN_INTERVAL_MAX);
-    events.schedule(delay, GameEvent::CarSpawn { building_id }, None);
-}
-
-pub fn handle_car_spawn(
+/// Send a parked car out from one building's driveway to another's, owner
+/// aboard.
+///
+/// Returns false when the trip cannot start — the car is already out, either
+/// end has no driveway, no route exists, or something is sitting where this
+/// car would pull in. The caller decides when to try again; nothing is queued
+/// here.
+pub fn start_trip(
     world: &mut World,
-    events: &mut EventQueue<GameEvent>,
-    building_id: EntityId,
+    events: &mut EventQueue,
+    car_id: EntityId,
+    from_building: EntityId,
+    dest_building: EntityId,
     now: GameTime,
-) {
-    if world.objects.get(building_id).is_none() {
-        return;
-    }
-
-    schedule_car_spawn(events, building_id);
-
-    let from_node = match world.road_node_for_building(building_id) {
-        Some(id) => id,
-        None => return,
+) -> bool {
+    let owner = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
+        _ => return false,
     };
-
-    let spawners = world.all_buildings();
-    let destinations: Vec<&(EntityId, _)> = spawners
-        .iter()
-        .filter(|(id, _)| *id != building_id)
-        .collect();
-
-    if destinations.is_empty() {
-        return;
-    }
-
-    let dest = destinations[rand::rng().random_range(0..destinations.len())];
-    let dest_building_id = dest.0;
-
-    let to_node = match world.road_node_for_building(dest_building_id) {
-        Some(id) => id,
-        None => return,
+    let Some(from_node) = world.road_node_for_building(from_building) else {
+        return false;
+    };
+    let Some(to_node) = world.road_node_for_building(dest_building) else {
+        return false;
     };
 
     let route = match pathfinding::find_path(world, from_node, to_node) {
         Some(r) if r.len() >= 2 => r,
-        _ => {
-            println!("spawn: pathfinding failed from {:?} to {:?}", from_node, to_node);
-            return;
-        }
+        _ => return false,
     };
 
     let segment_lengths = world.compute_segment_lengths(&route);
     let total_len: f64 = segment_lengths.iter().sum();
-
-    println!(
-        "spawn: car route len={}, total_len={:.2}",
-        route.len(),
-        total_len,
-    );
-
     let route_positions = world.route_positions(&route);
     let first_edge = (route[0], route[1]);
     let route_nodes = route.clone();
 
-    // Don't spawn if a car is blocking the start of the road
+    // Don't pull out under a car blocking the start of the road.
     if let Some(seg) = world.edges.get(&first_edge)
         && let Some(&last_id) = seg.cars.back()
         && let Some(entry) = world.objects.get(last_id)
         && let GameObject::Car(ref blocker) = entry.object
-        && let Some(edge_start) = blocker_edge_start(blocker, first_edge) {
-            let dt = (now - blocker.updated_at) as f64 / 1000.0;
-            let (bp, _) = physics::catch_up(blocker.progress, blocker.speed, blocker.acceleration, dt);
-            if bp - edge_start < MIN_GAP + CAR_NOSE + CAR_TAIL {
-                return;
-            }
+        && let Some(ref blocker_trip) = blocker.trip
+        && let Some(edge_start) = blocker_edge_start(blocker_trip, first_edge)
+    {
+        let dt = (now - blocker_trip.updated_at) as f64 / 1000.0;
+        let (bp, _) = physics::catch_up(
+            blocker_trip.progress,
+            blocker_trip.speed,
+            blocker_trip.acceleration,
+            dt,
+        );
+        if bp - edge_start < MIN_GAP + CAR_NOSE + CAR_TAIL {
+            return false;
         }
+    }
 
-    let start_pos = world.objects.get(route_nodes[0]).and_then(|e| e.position);
-    let car_id = world.insert_at(
-        GameObject::Car(Car {
+    if let Some(start_pos) = world.objects.get(route_nodes[0]).and_then(|e| e.position) {
+        world.update_position(car_id, start_pos);
+    }
+    if let Some(entry) = world.objects.get_mut(car_id)
+        && let GameObject::Car(ref mut c) = entry.object
+    {
+        c.trip = Some(Trip {
+            destination: dest_building,
+            eta: now + (total_len / CRUISE_SPEED * 1000.0) as u64,
             route,
             route_positions,
             progress: 0.0,
@@ -99,24 +83,31 @@ pub fn handle_car_spawn(
             seg_length: segment_lengths[1],
             seg_start_dist: 0.0,
             segment_lengths,
-        }),
-        start_pos,
-    );
+        });
+    }
+
+    // The driver's `at` points at the car for the whole ride; arrival points
+    // it at the destination.
+    if let Some(entry) = world.objects.get_mut(owner)
+        && let GameObject::Resident(ref mut r) = entry.object
+    {
+        r.at = Some(car_id);
+    }
 
     world.register_car_route(car_id, &route_nodes);
-
     if let Some(seg) = world.edges.get_mut(&first_edge) {
         seg.cars.push_back(car_id);
     }
-    events.schedule(0, GameEvent::CarWakeUp { car_id }, Some(car_id));
+    events.wake(0, car_id);
+    true
 }
 
-/// Find the cumulative distance to the start of an edge in a car's route.
-fn blocker_edge_start(car: &Car, edge: (EntityId, EntityId)) -> Option<f64> {
+/// Find the cumulative distance to the start of an edge in a trip's route.
+fn blocker_edge_start(trip: &Trip, edge: (EntityId, EntityId)) -> Option<f64> {
     let (from, to) = edge;
-    for i in 1..car.route.len() {
-        if car.route[i - 1] == from && car.route[i] == to {
-            return Some(car.segment_lengths[1..i].iter().sum());
+    for i in 1..trip.route.len() {
+        if trip.route[i - 1] == from && trip.route[i] == to {
+            return Some(trip.segment_lengths[1..i].iter().sum());
         }
     }
     None

@@ -71,6 +71,21 @@ impl BuildingKind {
         }
     }
 
+    /// When the working day here runs, in milliseconds of the day. Staggered
+    /// by kind so the city's rush hour is a wave rather than a spike: industry
+    /// starts before offices, offices before shops. `None` means nobody works
+    /// here at all.
+    pub fn hours(self) -> Option<(u32, u32)> {
+        const H: u32 = DAY_MS / 24;
+        match self {
+            BuildingKind::Factory => Some((6 * H, 15 * H)),
+            BuildingKind::Workshop => Some((7 * H, 16 * H)),
+            BuildingKind::Office => Some((8 * H, 17 * H)),
+            BuildingKind::Shop => Some((9 * H, 18 * H)),
+            BuildingKind::House | BuildingKind::Apartment => None,
+        }
+    }
+
     /// The kind a plot of this size gets, per category.
     pub fn for_plot(category: Category, tiles: u32) -> BuildingKind {
         match (category, tiles > 1) {
@@ -121,9 +136,30 @@ pub struct PaintArea {
     pub category: Category,
 }
 
+/// Someone's car. It outlives its journeys: between trips it sits parked at a
+/// building, doing nothing and costing nothing, and everything about the
+/// journey it is currently on lives in `trip`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Car {
+    /// The resident it belongs to, who is also who is driving it. Their `at`
+    /// points back at this car while they are aboard.
+    #[ts(type = "number")]
+    pub owner: EntityId,
+    pub trip: Option<Trip>,
+}
+
+/// One journey: born when the driver pulls out, gone on arrival.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Trip {
+    /// The building this trip ends at.
+    #[ts(type = "number")]
+    pub destination: EntityId,
+    /// When this trip would end on empty roads, fixed at departure. The gap
+    /// between this and the actual arrival is time lost to traffic.
+    #[ts(type = "number")]
+    pub eta: u64,
     #[serde(skip)]
     #[ts(skip)]
     pub route: Vec<EntityId>,
@@ -221,6 +257,15 @@ pub struct Resident {
     /// `None` while nowhere within reach has a job going.
     #[ts(type = "number | null")]
     pub work: Option<EntityId>,
+    /// Where they are: a building, or the car they are riding in. `None` is
+    /// off-map — someone who exists but has not driven in yet.
+    #[ts(type = "number | null")]
+    pub at: Option<EntityId>,
+    /// The car they own. Settled alongside homes and jobs; defaults so saves
+    /// from before cars were owned settle themselves a car on load.
+    #[serde(default)]
+    #[ts(type = "number")]
+    pub car: EntityId,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

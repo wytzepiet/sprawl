@@ -7,6 +7,7 @@ mod road_gen;
 mod network;
 mod persistence;
 mod protocol;
+mod resident;
 mod terrain;
 mod world;
 

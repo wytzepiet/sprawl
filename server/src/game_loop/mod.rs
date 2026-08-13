@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 use tokio::time::{Instant, interval, Duration};
 
-use crate::car::spawn::schedule_car_spawn;
-use crate::car::simulation::{handle_car_wake_up, despawn_car_fully};
-use crate::car::{ACCELERATION, GameEvent, spawn::handle_car_spawn};
+use crate::car::simulation::{handle_car_wake_up, park_at_home};
+use crate::car::ACCELERATION;
+use crate::resident::handle_resident_wake;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::engine::tracked::Tracked;
@@ -58,7 +58,7 @@ const STARTING_MIX: [Category; 3] = [Category::Residential, Category::Commercial
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
     let (mut world, mut sim_time) = load_world(&db_path);
-    let mut events: EventQueue<GameEvent> = EventQueue::new();
+    let mut events: EventQueue = EventQueue::new();
     let mut intersections = IntersectionRegistry::new();
     let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
     // Owners with no socket, and when their drafts run out of time.
@@ -94,16 +94,16 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         let terrain = world.terrain.clone();
         let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
         crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
-        for entry in world.objects.all_entries() {
-            if matches!(entry.object, GameObject::Building(_)) {
-                schedule_car_spawn(&mut events, entry.id);
-            }
-        }
         println!("loaded {} objects from db", world.objects.all_entries().len());
     }
     // Whatever is standing gets its people, whether it was just laid out or
-    // loaded from a save written before anyone lived here.
+    // loaded from a save written before anyone lived here. Then everyone
+    // thinks once — cars do not survive a save, so a loaded world is entirely
+    // people standing still until they do.
     world.settle();
+    for id in world.resident_ids() {
+        events.wake(0, id);
+    }
 
     let mut tick_interval = interval(Duration::from_millis(STEP_MS));
     let mut last_persist = Instant::now();
@@ -161,7 +161,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         for (i, pos) in anchors.into_iter().enumerate() {
                             seed_building(&mut world, pos, STARTING_MIX[i % STARTING_MIX.len()]);
                         }
-                        world.settle();
+                        settle_and_wake(&mut world, &mut events);
                         world.newly_revealed.clear();
                         // Re-send subscribed chunks for all connected clients
                         let subs: Vec<_> = clients.iter()
@@ -231,8 +231,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         for _ in 0..speed {
             now += STEP_MS;
             events.set_now(now);
-            while let Some(scheduled) = events.pop_due() {
-                handle_game_event(&mut world, &mut events, &mut intersections, scheduled.event, now);
+            while let Some(id) = events.pop_due() {
+                handle_wake(&mut world, &mut events, &mut intersections, id, now);
             }
         }
         sim_time = now;
@@ -317,7 +317,7 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
 
 fn handle_player_action(
     world: &mut World,
-    events: &mut EventQueue<GameEvent>,
+    events: &mut EventQueue,
     intersections: &mut IntersectionRegistry,
     message: ClientMessage,
     now: GameTime,
@@ -345,15 +345,13 @@ fn handle_player_action(
         ClientMessage::PlaceBuilding(place) => {
             if let Some((road, _)) = world.road_for_plot(place.pos, (1, 1)) {
                 let rotation = world.rotation_toward(place.pos, (1, 1), road);
-                if let Some(id) = world.spawn_building(place.pos, place.kind, (1, 1), rotation) {
-                    schedule_car_spawn(events, id);
+                if world.spawn_building(place.pos, place.kind, (1, 1), rotation).is_some() {
+                    settle_and_wake(world, events);
                 }
             }
         }
         ClientMessage::PaintArea(paint) => {
-            for id in world.paint_area(&paint.tiles, paint.category) {
-                schedule_car_spawn(events, id);
-            }
+            world.paint_area(&paint.tiles, paint.category);
         }
         ClientMessage::DemolishRoad(demolish) => {
             // Which of the two things this does follows from what was clicked,
@@ -371,21 +369,16 @@ fn handle_player_action(
         ClientMessage::DespawnAllCars => {
             let car_ids: Vec<EntityId> = world.objects.all_entries()
                 .iter()
-                .filter(|e| matches!(e.object, GameObject::Car(_)))
+                .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.is_some()))
                 .map(|e| e.id)
                 .collect();
             for car_id in car_ids {
-                despawn_car_fully(world, intersections, events, car_id);
+                park_at_home(world, intersections, events, car_id);
             }
         }
         ClientMessage::Commit => {
             let Some(owner) = world.acting_as else { return };
             let committed = world.commit_drafts(owner);
-            for id in committed.added {
-                if matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(_))) {
-                    schedule_car_spawn(events, id);
-                }
-            }
             // Demolition last: it has to see the network as the commit left it,
             // and it despawns the cars that were using what is going away.
             for id in committed.removed {
@@ -399,7 +392,7 @@ fn handle_player_action(
             }
             // Houses gained, jobs gained, or a home taken away — the population
             // is settled against whatever the commit left standing.
-            world.settle();
+            settle_and_wake(world, events);
         }
         ClientMessage::Discard => {
             if let Some(owner) = world.acting_as {
@@ -419,7 +412,7 @@ fn handle_player_action(
 /// tile holds a node for each world, and only one of them is going.
 fn handle_road_demolish(
     world: &mut World,
-    events: &mut EventQueue<GameEvent>,
+    events: &mut EventQueue,
     intersections: &mut IntersectionRegistry,
     node_id: EntityId,
     now: GameTime,
@@ -440,8 +433,9 @@ fn handle_road_demolish(
         .filter_map(|&car_id| {
             let entry = world.objects.get(car_id)?;
             if let GameObject::Car(ref car) = entry.object {
-                let dest = *car.route.last()?;
-                Some((car_id, car.route.clone(), car.route_index, dest))
+                let trip = car.trip.as_ref()?;
+                let dest = *trip.route.last()?;
+                Some((car_id, trip.route.clone(), trip.route_index, dest))
             } else {
                 None
             }
@@ -468,17 +462,9 @@ fn handle_road_demolish(
             continue;
         }
 
-        // Original destination unreachable — try any other car spawner
-        let alt_dest = world.all_buildings().into_iter()
-            .filter_map(|(bid, _)| world.road_node_for_building(bid))
-            .find(|&n| n != from_node && n != dest);
-
-        if let Some(alt) = alt_dest
-            && try_reroute(world, intersections, events, car_id, from_node, alt, ri, now) {
-                continue;
-            }
-
-        despawn_car_fully(world, intersections, events, car_id);
+        // Destination unreachable: the trip dies here, and the car goes home
+        // with its driver to think again.
+        park_at_home(world, intersections, events, car_id);
     }
 
     // Clean up neighbors left with 0 connections
@@ -491,10 +477,10 @@ fn handle_road_demolish(
         };
         if is_orphan {
             if let Some(pos) = world.objects.get(nid).and_then(|e| e.position) {
-                // Despawn any cars registered on this orphan
+                // Any car routed over this orphan has nowhere left to drive
                 let orphan_cars: Vec<EntityId> = world.node_cars.get(&nid).cloned().unwrap_or_default().into_iter().collect();
                 for car_id in orphan_cars {
-                    despawn_car_fully(world, intersections, events, car_id);
+                    park_at_home(world, intersections, events, car_id);
                 }
                 intersections.remove_node(nid);
                 world.objects.remove(nid);
@@ -507,7 +493,7 @@ fn handle_road_demolish(
 fn try_reroute(
     world: &mut World,
     intersections: &mut IntersectionRegistry,
-    events: &mut EventQueue<GameEvent>,
+    events: &mut EventQueue,
     car_id: EntityId,
     from_node: EntityId,
     dest: EntityId,
@@ -521,7 +507,10 @@ fn try_reroute(
 
     let old_route = match world.objects.get(car_id) {
         Some(e) => match &e.object {
-            GameObject::Car(car) => car.route.clone(),
+            GameObject::Car(car) => match car.trip {
+                Some(ref t) => t.route.clone(),
+                None => return false,
+            },
             _ => return false,
         },
         None => return false,
@@ -543,7 +532,7 @@ fn try_reroute(
     }
     let woken = intersections.remove_car_from_all(car_id);
     for (_node, woken_id) in woken {
-        events.schedule(0, GameEvent::CarWakeUp { car_id: woken_id }, Some(woken_id));
+        events.wake(0, woken_id);
     }
 
     // Set up new route
@@ -558,25 +547,26 @@ fn try_reroute(
 
     if let Some(entry) = world.objects.get_mut(car_id)
         && let GameObject::Car(ref mut car) = entry.object
+        && let Some(ref mut t) = car.trip
     {
-        car.route = new_route;
-        car.route_positions = route_positions;
-        car.segment_lengths = segment_lengths;
-        car.total_route_length = total;
-        car.route_index = 1;
-        car.progress = 0.0;
-        car.speed = 0.0;
-        car.acceleration = ACCELERATION;
-        car.updated_at = now;
-        car.seg_start_dist = 0.0;
-        car.seg_fraction = 0.0;
-        car.seg_length = car.segment_lengths[1];
+        t.route = new_route;
+        t.route_positions = route_positions;
+        t.segment_lengths = segment_lengths;
+        t.total_route_length = total;
+        t.route_index = 1;
+        t.progress = 0.0;
+        t.speed = 0.0;
+        t.acceleration = ACCELERATION;
+        t.updated_at = now;
+        t.seg_start_dist = 0.0;
+        t.seg_fraction = 0.0;
+        t.seg_length = t.segment_lengths[1];
     }
 
     // Register on first edge and wake up
     let first_edge = world.objects.get(car_id).and_then(|e| {
         if let GameObject::Car(ref car) = e.object {
-            Some((car.route[0], car.route[1]))
+            car.trip.as_ref().map(|t| (t.route[0], t.route[1]))
         } else { None }
     });
     if let Some(edge) = first_edge
@@ -584,24 +574,31 @@ fn try_reroute(
             && !seg.cars.contains(&car_id) {
                 seg.cars.push_back(car_id);
             }
-    events.schedule(0, GameEvent::CarWakeUp { car_id }, Some(car_id));
+    events.wake(0, car_id);
     true
 }
 
-fn handle_game_event(
+/// One wake-up, dispatched on what the entity is. A car's decision is
+/// physics; a resident's is where to be.
+fn handle_wake(
     world: &mut World,
-    events: &mut EventQueue<GameEvent>,
+    events: &mut EventQueue,
     intersections: &mut IntersectionRegistry,
-    event: GameEvent,
+    id: EntityId,
     now: GameTime,
 ) {
-    match event {
-        GameEvent::CarSpawn { building_id } => {
-            handle_car_spawn(world, events, building_id, now);
-        }
-        GameEvent::CarWakeUp { car_id } => {
-            handle_car_wake_up(world, events, intersections, car_id, now);
-        }
+    match world.objects.get(id).map(|e| &e.object) {
+        Some(GameObject::Car(_)) => handle_car_wake_up(world, events, intersections, id, now),
+        Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
+        _ => {}
+    }
+}
+
+/// Population follows what is standing, and whoever's situation changed gets
+/// to think about it.
+fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
+    for id in world.settle() {
+        events.wake(0, id);
     }
 }
 
@@ -750,3 +747,72 @@ fn flush_dirty(
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{BuildingKind, Rotation, TerrainType};
+
+    fn at_of(world: &World, id: EntityId) -> Option<EntityId> {
+        match &world.objects.get(id)?.object {
+            GameObject::Resident(r) => r.at,
+            _ => None,
+        }
+    }
+
+    /// Run the simulation from `from` to `to`, the same way run() does.
+    fn pump(
+        world: &mut World,
+        events: &mut EventQueue,
+        intersections: &mut IntersectionRegistry,
+        from: GameTime,
+        to: GameTime,
+    ) {
+        let mut now = from;
+        while now < to {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(id) = events.pop_due() {
+                handle_wake(world, events, intersections, id, now);
+            }
+        }
+    }
+
+    /// The whole loop watched from above: people drive to work in the morning
+    /// and are home again at night, and nobody told them to — the shift did.
+    #[test]
+    fn residents_commute_and_come_home() {
+        let mut world = World::new();
+        for y in -4..4 {
+            for x in -4..40 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        let street: Vec<GridCoord> = (-2..40).map(|x| GridCoord { x, y: 0 }).collect();
+        world.place_road_path(&street);
+        let home = world
+            .spawn_building(GridCoord { x: 0, y: 1 }, BuildingKind::House, (1, 1), Rotation::South)
+            .unwrap();
+        let shop = world
+            .spawn_building(GridCoord { x: 20, y: 1 }, BuildingKind::Shop, (1, 1), Rotation::South)
+            .unwrap();
+
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let people = world.resident_ids();
+        assert_eq!(people.len(), 2);
+
+        let (open, close) = BuildingKind::Shop.hours().unwrap();
+
+        pump(&mut world, &mut events, &mut intersections, 0, open as u64 + 60_000);
+        for &id in &people {
+            assert_eq!(at_of(&world, id), Some(shop), "at work once the shift is on");
+        }
+
+        pump(&mut world, &mut events, &mut intersections, open as u64 + 60_000, close as u64 + 120_000);
+        for &id in &people {
+            assert_eq!(at_of(&world, id), Some(home), "home once the shift is over");
+        }
+    }
+}

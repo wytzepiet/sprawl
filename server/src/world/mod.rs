@@ -170,26 +170,32 @@ impl World {
         }
     }
 
-    pub fn despawn_car(&mut self, car_id: EntityId) {
+    /// Take a car off the edge deques it is registered on — the current edge
+    /// and any pre-registration on the next.
+    pub fn remove_car_from_edges(&mut self, car_id: EntityId) {
         if let Some(entry) = self.objects.get(car_id)
             && let GameObject::Car(ref car) = entry.object
+            && let Some(ref trip) = car.trip
         {
-            let ri = car.route_index;
-            // Remove from current edge
+            let ri = trip.route_index;
+            let mut edges = Vec::new();
             if ri >= 1 {
-                let edge = (car.route[ri - 1], car.route[ri]);
+                edges.push((trip.route[ri - 1], trip.route[ri]));
+            }
+            if ri + 1 < trip.route.len() {
+                edges.push((trip.route[ri], trip.route[ri + 1]));
+            }
+            for edge in edges {
                 if let Some(seg) = self.edges.get_mut(&edge) {
                     seg.cars.retain(|&id| id != car_id);
                 }
             }
-            // Remove from next edge (pre-registration)
-            if ri + 1 < car.route.len() {
-                let next_edge = (car.route[ri], car.route[ri + 1]);
-                if let Some(seg) = self.edges.get_mut(&next_edge) {
-                    seg.cars.retain(|&id| id != car_id);
-                }
-            }
         }
+    }
+
+    /// Remove a car from the world entirely — scrap, not parking.
+    pub fn despawn_car(&mut self, car_id: EntityId) {
+        self.remove_car_from_edges(car_id);
         if let Some(entry) = self.objects.get(car_id)
             && let Some(pos) = entry.position
         {
@@ -515,7 +521,7 @@ impl World {
             .iter()
             .filter_map(|e| {
                 if let GameObject::Car(ref car) = e.object {
-                    Some((e.id, car.route.clone()))
+                    car.trip.as_ref().map(|t| (e.id, t.route.clone()))
                 } else {
                     None
                 }

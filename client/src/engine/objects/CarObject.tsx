@@ -6,10 +6,30 @@ import { simNow } from "../../network/clock";
 import type { Look } from "./draftLook";
 import type { GameObjectEntry } from "../../generated";
 
-const CAR_COLOR = new Color3(0.9, 0.25, 0.2);
+/// Everyone keeps their car for life, and its id never changes — so neither
+/// does its colour.
+const PALETTE = [
+  new Color3(0.9, 0.25, 0.2),
+  new Color3(0.85, 0.85, 0.88),
+  new Color3(0.2, 0.22, 0.28),
+  new Color3(0.25, 0.4, 0.75),
+  new Color3(0.65, 0.65, 0.68),
+  new Color3(0.55, 0.15, 0.15),
+  new Color3(0.2, 0.5, 0.4),
+  new Color3(0.8, 0.65, 0.25),
+];
 const carGeo = boxGeometry(0.18, 0.35, 0.15);
 const LANE_OFFSET = 0.11;
 const BEZIER_SAMPLES = 8;
+
+/// Small deterministic hash so a car's colour and parking spot are facts
+/// about the car, not rolls of the dice.
+function hash(id: number, salt: number): number {
+  let h = (id ^ (salt * 0x9e3779b9)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 0xffffffff;
+}
 
 function quadBezier(
   a: Vector3,
@@ -56,15 +76,41 @@ export function mountCar(
   scene: Scene,
   look: Look,
 ): () => void {
-  const data = entry.object.data as {
-    route_positions: [number, number][];
-    progress: number;
-    speed: number;
-    acceleration: number;
-    total_route_length: number;
-    updated_at: number;
+  const car = entry.object.data as {
+    owner: number;
+    trip: {
+      route_positions: [number, number][];
+      progress: number;
+      speed: number;
+      acceleration: number;
+      total_route_length: number;
+      updated_at: number;
+    } | null;
   };
+  const color = PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
+  const bucket = `car${look.key}c${PALETTE.indexOf(color)}`;
+  pool.ensureBucket(
+    bucket, carGeo, look.tint(color), look.castShadow, true, undefined, look.alpha, look.lift,
+  );
 
+  // Parked: a still car beside the building it stopped at, in a spot that is
+  // a fact about the car rather than a roll of the dice. The building's tile
+  // is all the server says; the jitter keeps a full lot from stacking into
+  // one shimmering car.
+  if (!car.trip) {
+    if (!entry.position) return () => {};
+    const dx = hash(entry.id, 2) * 0.7 - 0.35;
+    const dy = hash(entry.id, 3) * 0.7 - 0.35;
+    const facing = Math.floor(hash(entry.id, 4) * 4) * (Math.PI / 2);
+    const instanceId = pool.addInstance(
+      bucket,
+      [entry.position.x + dx, entry.position.y + dy, 0.095],
+      [0, 0, facing],
+    );
+    return () => pool.removeInstance(bucket, instanceId);
+  }
+
+  const data = car.trip;
   const centerNodes = data.route_positions.map(
     ([x, y]) => new Vector3(x, y, 0),
   );
@@ -134,10 +180,6 @@ export function mountCar(
 
   const initial = computePosition();
 
-  const bucket = `car${look.key}`;
-  pool.ensureBucket(
-    bucket, carGeo, look.tint(CAR_COLOR), look.castShadow, true, undefined, look.alpha, look.lift,
-  );
   const instanceId = pool.addInstance(
     bucket,
     initial?.pos ?? [0, 0, -10],

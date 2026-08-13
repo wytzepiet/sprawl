@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::protocol::{EntityId, GameObject, GridCoord, Resident};
+use crate::protocol::{Car, EntityId, GameObject, GridCoord, Resident};
 use crate::world::World;
 
 impl World {
@@ -14,7 +14,9 @@ impl World {
     ///
     /// Drafts house nobody. A building that is only drawn has no address.
     ///
-    /// Returns the residents that are new, which is who still needs a commute.
+    /// Returns everyone whose situation changed — moved in, hired, or laid
+    /// off. They are the ones with a new decision to make, so the caller
+    /// wakes them.
     pub fn settle(&mut self) -> Vec<EntityId> {
         let entries = self.objects.all_entries();
 
@@ -65,6 +67,7 @@ impl World {
         for id in evicted {
             self.objects.remove(id);
         }
+        let mut touched = laid_off.clone();
         for id in laid_off {
             if let Some(entry) = self.objects.get_mut(id)
                 && let GameObject::Resident(ref mut r) = entry.object
@@ -77,16 +80,59 @@ impl World {
         let mut spare: Vec<(EntityId, u32)> = rooms.into_iter().filter(|&(_, n)| n > 0).collect();
         spare.sort_unstable();
 
-        let mut moved_in = Vec::new();
         for (home, free) in spare {
             for _ in 0..free {
                 let id = self.objects.insert(
-                    GameObject::Resident(Resident { home, work: None }),
+                    GameObject::Resident(Resident { home, work: None, at: Some(home), car: 0 }),
                     None,
                     None,
                 );
-                moved_in.push(id);
+                touched.push(id);
                 jobless.push(id);
+            }
+        }
+
+        // Everyone owns a car, derived like everything else: a resident
+        // without one gets one parked at home, and a parked car whose owner
+        // is gone is scrap. A car still driving when its owner leaves finishes
+        // its trip and is collected here the next time around.
+        let mut owners: HashMap<EntityId, EntityId> = HashMap::new(); // car -> resident
+        let mut carless: Vec<EntityId> = Vec::new();
+        for e in self.objects.all_entries() {
+            let GameObject::Resident(ref r) = e.object else { continue };
+            match self.objects.get(r.car).map(|c| &c.object) {
+                Some(GameObject::Car(_)) => {
+                    owners.insert(r.car, e.id);
+                }
+                _ => carless.push(e.id),
+            }
+        }
+        let scrap: Vec<EntityId> = self
+            .objects
+            .all_entries()
+            .iter()
+            .filter(|e| match e.object {
+                GameObject::Car(ref c) => c.trip.is_none() && !owners.contains_key(&e.id),
+                _ => false,
+            })
+            .map(|e| e.id)
+            .collect();
+        for id in scrap {
+            self.despawn_car(id);
+        }
+        carless.sort_unstable();
+        for id in carless {
+            let Some(spot) = self.home_of(id).and_then(|h| where_is.get(&h).copied()) else {
+                continue;
+            };
+            // Not insert_at: that stamps the committing player's draft mark,
+            // and nobody's car is a plan.
+            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None }), Some(spot), None);
+            self.spatial.entry(crate::world::chunk_of(spot)).or_default().insert(car);
+            if let Some(entry) = self.objects.get_mut(id)
+                && let GameObject::Resident(ref mut r) = entry.object
+            {
+                r.car = car;
             }
         }
 
@@ -112,10 +158,22 @@ impl World {
                 && let GameObject::Resident(ref mut r) = entry.object
             {
                 r.work = Some(work);
+                touched.push(id);
             }
         }
 
-        moved_in
+        touched.sort_unstable();
+        touched.dedup();
+        touched
+    }
+
+    pub fn resident_ids(&self) -> Vec<EntityId> {
+        self.objects
+            .all_entries()
+            .iter()
+            .filter(|e| matches!(e.object, GameObject::Resident(_)))
+            .map(|e| e.id)
+            .collect()
     }
 
     fn home_of(&self, resident: EntityId) -> Option<EntityId> {
@@ -213,7 +271,9 @@ mod tests {
         world.settle();
 
         let shop = build(&mut world, 4, BuildingKind::Shop);
-        assert!(world.settle().is_empty(), "no new homes, so no new people");
+        let hired = world.settle();
+        assert_eq!(hired.len(), 2, "both waiting residents get the new jobs");
+        assert_eq!(residents(&world).len(), 2, "hired, not moved in");
         assert!(residents(&world).iter().all(|r| r.work == Some(shop)));
     }
 
@@ -243,6 +303,35 @@ mod tests {
         world.settle();
         assert_eq!(residents(&world).len(), 2);
         assert!(residents(&world).iter().all(|r| r.work.is_none()));
+    }
+
+    /// A car is part of the household: issued parked at home when someone
+    /// moves in, scrapped when they go.
+    #[test]
+    fn every_resident_owns_a_parked_car_until_they_leave() {
+        let mut world = town();
+        let home = build(&mut world, 0, BuildingKind::House);
+        world.settle();
+
+        let cars: Vec<_> = world
+            .objects
+            .all_entries()
+            .into_iter()
+            .filter(|e| matches!(e.object, GameObject::Car(_)))
+            .collect();
+        assert_eq!(cars.len(), residents(&world).len());
+        assert!(cars.iter().all(|e| e.position.is_some()), "parked at home, on the map");
+        assert!(residents(&world).iter().all(|r| r.car != 0), "the link points back");
+
+        world.remove_building(home);
+        world.settle();
+        let leftover = world
+            .objects
+            .all_entries()
+            .iter()
+            .filter(|e| matches!(e.object, GameObject::Car(_)))
+            .count();
+        assert_eq!(leftover, 0, "an evicted household takes its car with it");
     }
 
     /// Drafts are drawn, not built. Nobody lives in one, which is what keeps a
