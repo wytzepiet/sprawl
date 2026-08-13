@@ -40,6 +40,10 @@ pub struct World {
     /// Extent of `revealed`. The client clamps the camera to it, so it has to
     /// know the whole survey, not just the part it happens to be looking at.
     pub revealed_bounds: ChunkBounds,
+    /// Chunks whose procedural roads have been laid. Derived at startup from
+    /// where road already stands, like every other index — a chunk with road
+    /// in it has been through this once.
+    pub roads_generated: HashSet<ChunkCoord>,
     /// Uncommitted entities by owner. Derived from the `draft` field, like
     /// every other index, and rebuilt at startup — where it always comes out
     /// empty, since drafts are never saved.
@@ -114,6 +118,7 @@ impl World {
             occupied: HashMap::new(),
             drafts: HashMap::new(),
             acting_as: None,
+            roads_generated: HashSet::new(),
         }
     }
 
@@ -131,6 +136,7 @@ impl World {
             occupied: HashMap::new(),
             drafts: HashMap::new(),
             acting_as: None,
+            roads_generated: HashSet::new(),
             objects,
         };
         // Rebuild spatial index from loaded objects
@@ -429,6 +435,33 @@ impl World {
 
     /// Rebuild the revealed set from building positions on startup. Nothing is
     /// newly revealed from a client's point of view, so the queue is dropped.
+    /// Which chunks already hold road, so generation does not lay it twice.
+    pub fn rebuild_roads_generated(&mut self) {
+        let chunks: Vec<ChunkCoord> = self
+            .objects
+            .all_entries()
+            .iter()
+            .filter(|e| matches!(e.object, GameObject::RoadNode(_)))
+            .filter_map(|e| e.position.map(chunk_of))
+            .collect();
+        self.roads_generated.extend(chunks);
+    }
+
+    /// Every road link in the world, as the path search reads them.
+    pub fn road_edge_set(&self) -> HashSet<((i32, i32), (i32, i32))> {
+        let mut out = HashSet::new();
+        for entry in self.objects.all_entries() {
+            let GameObject::RoadNode(ref node) = entry.object else { continue };
+            let Some(a) = entry.position else { continue };
+            for id in node.outgoing.iter().chain(node.incoming.iter()) {
+                if let Some(b) = self.objects.get(*id).and_then(|e| e.position) {
+                    out.insert(((a.x, a.y), (b.x, b.y)));
+                }
+            }
+        }
+        out
+    }
+
     pub fn rebuild_revealed(&mut self) {
         let positions: Vec<GridCoord> = self
             .objects

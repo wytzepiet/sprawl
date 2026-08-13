@@ -21,7 +21,6 @@ impl Ord for F {
     }
 }
 
-use crate::protocol::CHUNK_SIZE;
 /// Chunks per axis in the starting network, centred on the origin. The world
 /// itself is unbounded from the player's side — this is only how much road
 /// exists before anyone builds.
@@ -29,63 +28,117 @@ const START_CHUNKS: i32 = 3;
 const START_MIN: i32 = -(START_CHUNKS / 2);
 const START_MAX: i32 = START_MIN + START_CHUNKS;
 
-/// Lays the starting road network and returns the anchor of each chunk it
-/// touched, for the caller to put starting buildings on.
+use crate::protocol::{ChunkCoord, CHUNK_SIZE};
+
+/// One tile of open ground per chunk, for roads to run between.
+///
+/// A pure function of the seed and the chunk, deliberately: chunks are laid
+/// out as the map is revealed, in whatever order the player explores, and a
+/// chunk has to come out the same however late it is reached. Drawing from a
+/// shared sequence would make the network depend on the route taken to it.
+fn anchor_for(
+    seed: u32,
+    chunk: ChunkCoord,
+    terrain: &HashMap<(i32, i32), TerrainType>,
+) -> Option<(i32, i32)> {
+    let mut h = seed as u64 ^ 0x9e37_79b9_7f4a_7c15;
+    h = h.wrapping_mul(0x100_0000_01b3) ^ (chunk.cx as i64 as u64);
+    h = h.wrapping_mul(0x100_0000_01b3) ^ (chunk.cy as i64 as u64);
+    let mut rng = SmallRng::seed_from_u64(h);
+
+    let base_x = chunk.cx * CHUNK_SIZE;
+    let base_y = chunk.cy * CHUNK_SIZE;
+    for _ in 0..CHUNK_SIZE {
+        let x = base_x + rng.random_range(0..CHUNK_SIZE);
+        let y = base_y + rng.random_range(0..CHUNK_SIZE);
+        if matches!(
+            terrain.get(&(x, y)),
+            Some(TerrainType::Grass | TerrainType::Beach | TerrainType::Forest)
+        ) {
+            return Some((x, y));
+        }
+    }
+    None
+}
+
+/// Lay the roads belonging to `chunk`: the shortest run from its anchor to the
+/// anchor of the chunk to its right, and of the chunk above.
+///
+/// Every link is owned by exactly one of the two chunks it joins, so a chunk
+/// laid once is laid for good, however its neighbours are reached later.
+fn link_chunk(
+    world: &mut World,
+    seed: u32,
+    terrain: &HashMap<(i32, i32), TerrainType>,
+    chunk: ChunkCoord,
+    road_edges: &mut HashSet<((i32, i32), (i32, i32))>,
+) {
+    let Some(a) = anchor_for(seed, chunk, terrain) else { return };
+    for neighbour in [
+        ChunkCoord { cx: chunk.cx + 1, cy: chunk.cy },
+        ChunkCoord { cx: chunk.cx, cy: chunk.cy + 1 },
+    ] {
+        let Some(b) = anchor_for(seed, neighbour, terrain) else { continue };
+        if let Some(path) = astar(a, b, terrain, road_edges) {
+            // Fed back in so the next path prefers running along this one
+            // rather than beside it, which is what makes a network of it.
+            for w in path.windows(2) {
+                road_edges.insert((w[0], w[1]));
+                road_edges.insert((w[1], w[0]));
+            }
+            let coords: Vec<GridCoord> = path.iter().map(|&(x, y)| GridCoord { x, y }).collect();
+            world.place_road_path(&coords);
+        }
+    }
+}
+
+/// Lay road through every chunk in `bounds`, and one ring beyond it.
+///
+/// The ring is the point. Roads have to run past the edge of what has been
+/// surveyed, or there is no way in from off the map — which is what the whole
+/// import idea hangs on.
+pub fn extend_to(
+    world: &mut World,
+    seed: u32,
+    terrain: &HashMap<(i32, i32), TerrainType>,
+    bounds: crate::protocol::ChunkBounds,
+) {
+    // Read once, not per link: this walks every entity, and the world only
+    // gets bigger.
+    let mut road_edges = world.road_edge_set();
+    for cy in (bounds.min_cy - 1)..=(bounds.max_cy + 1) {
+        for cx in (bounds.min_cx - 1)..=(bounds.max_cx + 1) {
+            let chunk = ChunkCoord { cx, cy };
+            if world.roads_generated.insert(chunk) {
+                link_chunk(world, seed, terrain, chunk, &mut road_edges);
+            }
+        }
+    }
+}
+
+/// Lay the starting network and return where to put the first buildings.
+///
+/// Buildings reveal the map, so only the middle chunk gets one — seeding every
+/// chunk we lay road through would unfog the lot.
 pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> Vec<GridCoord> {
-    let mut rng = SmallRng::seed_from_u64(seed as u64);
-    let mut anchors: HashMap<(i32, i32), (i32, i32)> = HashMap::new();
+    let start = crate::protocol::ChunkBounds {
+        min_cx: START_MIN,
+        min_cy: START_MIN,
+        max_cx: START_MAX - 1,
+        max_cy: START_MAX - 1,
+    };
+    extend_to(world, seed, terrain, start);
 
-    // Pick one buildable anchor per chunk
-    for cy in START_MIN..START_MAX {
-        for cx in START_MIN..START_MAX {
-            let base_x = cx * CHUNK_SIZE;
-            let base_y = cy * CHUNK_SIZE;
-            for _ in 0..CHUNK_SIZE {
-                let x = base_x + rng.random_range(0..CHUNK_SIZE);
-                let y = base_y + rng.random_range(0..CHUNK_SIZE);
-                if let Some(t) = terrain.get(&(x, y)) {
-                    if matches!(
-                        t,
-                        TerrainType::Grass | TerrainType::Beach | TerrainType::Forest
-                    ) {
-                        anchors.insert((cx, cy), (x, y));
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    let mut road_edges: HashSet<((i32, i32), (i32, i32))> = HashSet::new();
-
-    // Connect each chunk to right and top neighbors
-    let pairs: Vec<_> = anchors.keys().copied().collect();
-    for &(cx, cy) in &pairs {
-        let a = match anchors.get(&(cx, cy)) {
-            Some(&a) => a,
-            None => continue,
-        };
-        for &(ncx, ncy) in &[(cx + 1, cy), (cx, cy + 1)] {
-            let b = match anchors.get(&(ncx, ncy)) {
-                Some(&b) => b,
-                None => continue,
-            };
-            if let Some(path) = astar(a, b, terrain, &road_edges) {
-                for w in path.windows(2) {
-                    road_edges.insert((w[0], w[1]));
-                    road_edges.insert((w[1], w[0]));
-                }
-                let coords: Vec<GridCoord> =
-                    path.iter().map(|&(x, y)| GridCoord { x, y }).collect();
-                world.place_road_path(&coords);
-            }
-        }
-    }
-
-    anchors.values().map(|&(x, y)| GridCoord { x, y }).collect()
+    (START_MIN..START_MAX)
+        .flat_map(|cy| (START_MIN..START_MAX).map(move |cx| ChunkCoord { cx, cy }))
+        .filter_map(|c| anchor_for(seed, c, terrain))
+        .map(|(x, y)| GridCoord { x, y })
+        .collect()
 }
 
 const SQRT2: f64 = std::f64::consts::SQRT_2;
+/// What a step over open ground costs. Water is dearer, existing road cheaper.
+const LAND_COST: f64 = 4.0;
 
 fn tile_cost(
     from: (i32, i32),
@@ -112,7 +165,7 @@ fn tile_cost(
     match terrain.get(&to)? {
         TerrainType::Mountain => None,
         TerrainType::Water => Some(20.0),
-        _ => Some(4.0),
+        _ => Some(LAND_COST),
     }
 }
 
@@ -122,12 +175,15 @@ fn astar(
     terrain: &HashMap<(i32, i32), TerrainType>,
     road_edges: &HashSet<((i32, i32), (i32, i32))>,
 ) -> Option<Vec<(i32, i32)>> {
+    // Scaled to what a step over open ground actually costs. Left at 1.0 the
+    // heuristic underestimates every move fourfold, and A* spreads out like
+    // Dijkstra instead of heading for the goal.
     let heuristic = |p: (i32, i32)| {
         let dx = (p.0 - goal.0).abs() as f64;
         let dy = (p.1 - goal.1).abs() as f64;
         let diag = dx.min(dy);
         let straight = dx.max(dy) - diag;
-        diag * SQRT2 + straight
+        (diag * SQRT2 + straight) * LAND_COST
     };
 
     let mut g: HashMap<(i32, i32), f64> = HashMap::new();
@@ -187,4 +243,84 @@ fn astar(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An anchor must not depend on when its chunk was reached. Explore east
+    /// first or north first and the same road has to end up in the same place.
+    #[test]
+    fn anchors_do_not_depend_on_the_order_chunks_are_reached() {
+        let terrain = crate::terrain::generate(7);
+        for c in [(0, 0), (3, -2), (-5, 4)] {
+            let chunk = ChunkCoord { cx: c.0, cy: c.1 };
+            assert_eq!(anchor_for(7, chunk, &terrain), anchor_for(7, chunk, &terrain));
+        }
+        // And a different seed is a different world.
+        let other = crate::terrain::generate(8);
+        let a = anchor_for(7, ChunkCoord { cx: 0, cy: 0 }, &terrain);
+        let b = anchor_for(8, ChunkCoord { cx: 0, cy: 0 }, &other);
+        assert_ne!(a, b);
+    }
+
+    /// The point of the ring: road has to run past the edge of what has been
+    /// surveyed, or nothing can arrive from off the map.
+    #[test]
+    fn road_runs_out_past_the_surveyed_edge() {
+        let terrain = crate::terrain::generate(7);
+        let mut world = World::new();
+        world.terrain = terrain.clone();
+        generate(&mut world, 7, &terrain);
+
+        // The starting network covers chunks -1..=1. Road must exist beyond it.
+        let beyond = world
+            .objects
+            .all_entries()
+            .iter()
+            .filter(|e| matches!(e.object, crate::protocol::GameObject::RoadNode(_)))
+            .filter_map(|e| e.position)
+            .any(|p| {
+                let c = crate::world::chunk_of(p);
+                c.cx < START_MIN || c.cx >= START_MAX || c.cy < START_MIN || c.cy >= START_MAX
+            });
+        assert!(beyond, "no road leaves the surveyed area; nothing could arrive from off-map");
+    }
+
+    /// Laying the same ground twice must not double the road through it.
+    #[test]
+    fn extending_again_lays_nothing_new() {
+        let terrain = crate::terrain::generate(7);
+        let mut world = World::new();
+        world.terrain = terrain.clone();
+        generate(&mut world, 7, &terrain);
+        let before = world.objects.all_entries().len();
+
+        let bounds = crate::protocol::ChunkBounds {
+            min_cx: START_MIN, min_cy: START_MIN,
+            max_cx: START_MAX - 1, max_cy: START_MAX - 1,
+        };
+        extend_to(&mut world, 7, &terrain, bounds);
+        assert_eq!(world.objects.all_entries().len(), before);
+    }
+
+    /// What a network over the whole map costs, in time and in entities.
+    /// Roads are persisted and spatially indexed, so the count is the budget.
+    #[test]
+    #[ignore]
+    fn measure_full_map_network() {
+        let terrain = crate::terrain::generate(7);
+        let mut world = World::new();
+        world.terrain = terrain.clone();
+        let t = std::time::Instant::now();
+        let anchors = generate(&mut world, 7, &terrain);
+        println!(
+            "chunks={} anchors={} nodes={} in {:?}",
+            (512 / CHUNK_SIZE) * (512 / CHUNK_SIZE),
+            anchors.len(),
+            world.objects.all_entries().len(),
+            t.elapsed(),
+        );
+    }
 }

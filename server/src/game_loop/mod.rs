@@ -88,6 +88,12 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         world.rebuild_node_cars();
         world.rebuild_occupied();
         world.rebuild_revealed();
+        world.rebuild_roads_generated();
+        // A saved world may have been revealed further than its roads reach,
+        // if it was saved before this existed.
+        let terrain = world.terrain.clone();
+        let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
+        crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
         for entry in world.objects.all_entries() {
             if matches!(entry.object, GameObject::Building(_)) {
                 schedule_car_spawn(&mut events, entry.id);
@@ -193,6 +199,15 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                     }
                 }
             }
+        }
+
+        // Road follows the survey outward, so there is always a way in from
+        // beyond the frontier. Only new chunks cost anything: extend_to skips
+        // whatever it has already laid.
+        if !world.newly_revealed.is_empty() {
+            let terrain = world.terrain.clone();
+            let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
+            crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
         }
 
         // Claims nobody came back for.
