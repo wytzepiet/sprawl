@@ -101,6 +101,9 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         }
         println!("loaded {} objects from db", world.objects.all_entries().len());
     }
+    // Whatever is standing gets its people, whether it was just laid out or
+    // loaded from a save written before anyone lived here.
+    world.settle();
 
     let mut tick_interval = interval(Duration::from_millis(STEP_MS));
     let mut last_persist = Instant::now();
@@ -158,6 +161,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         for (i, pos) in anchors.into_iter().enumerate() {
                             seed_building(&mut world, pos, STARTING_MIX[i % STARTING_MIX.len()]);
                         }
+                        world.settle();
                         world.newly_revealed.clear();
                         // Re-send subscribed chunks for all connected clients
                         let subs: Vec<_> = clients.iter()
@@ -393,6 +397,9 @@ fn handle_player_action(
                     _ => {}
                 }
             }
+            // Houses gained, jobs gained, or a home taken away — the population
+            // is settled against whatever the commit left standing.
+            world.settle();
         }
         ClientMessage::Discard => {
             if let Some(owner) = world.acting_as {

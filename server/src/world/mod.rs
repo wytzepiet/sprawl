@@ -2,6 +2,7 @@ pub mod bezier;
 mod buildings;
 mod geometry;
 pub mod pathfinding;
+mod residents;
 mod roads;
 pub mod segments;
 

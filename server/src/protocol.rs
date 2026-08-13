@@ -50,11 +50,24 @@ pub enum BuildingKind {
 }
 
 impl BuildingKind {
-    pub fn category(self) -> Category {
+    /// How many people live here. Zero for everything you cannot live in, so
+    /// "is this housing" never needs asking separately.
+    pub fn homes(self) -> u32 {
         match self {
-            BuildingKind::House | BuildingKind::Apartment => Category::Residential,
-            BuildingKind::Shop | BuildingKind::Office => Category::Commercial,
-            BuildingKind::Workshop | BuildingKind::Factory => Category::Industrial,
+            BuildingKind::House => 2,
+            BuildingKind::Apartment => 8,
+            _ => 0,
+        }
+    }
+
+    /// How many people work here.
+    pub fn jobs(self) -> u32 {
+        match self {
+            BuildingKind::Shop => 4,
+            BuildingKind::Office => 16,
+            BuildingKind::Workshop => 6,
+            BuildingKind::Factory => 24,
+            _ => 0,
         }
     }
 
@@ -195,6 +208,21 @@ pub struct TerrainChunk {
     pub tiles: Vec<u8>,
 }
 
+/// Someone who lives in the city, and the two buildings their day runs between.
+///
+/// Deliberately position-less: a resident is not a thing on the map but the
+/// reason a car exists. `flush_dirty` only streams entities that have a
+/// position, so residents persist and stay entirely server-side for free.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Resident {
+    #[ts(type = "number")]
+    pub home: EntityId,
+    /// `None` while nowhere within reach has a job going.
+    #[ts(type = "number | null")]
+    pub work: Option<EntityId>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "kind", content = "data")]
@@ -202,6 +230,7 @@ pub enum GameObject {
     RoadNode(RoadNode),
     Building(Building),
     Car(Car),
+    Resident(Resident),
 }
 
 /// Who a player is, for the purpose of owning drafts. Assigned on connect.

@@ -1,0 +1,264 @@
+use std::collections::HashMap;
+
+use crate::protocol::{EntityId, GameObject, GridCoord, Resident};
+use crate::world::World;
+
+impl World {
+    /// House everyone who has a home, and employ everyone who can be employed.
+    ///
+    /// Derived from what is standing rather than remembered: a home with a
+    /// spare room gains residents, a resident whose home was demolished stops
+    /// existing, and anyone without a job takes the nearest one going. So this
+    /// can be run after any commit and at startup without keeping a record of
+    /// what it did last time, and it settles the same way either way.
+    ///
+    /// Drafts house nobody. A building that is only drawn has no address.
+    ///
+    /// Returns the residents that are new, which is who still needs a commute.
+    pub fn settle(&mut self) -> Vec<EntityId> {
+        let entries = self.objects.all_entries();
+
+        // Spare capacity, counted down as the people already living and working
+        // in the city are accounted for.
+        let mut rooms: HashMap<EntityId, u32> = HashMap::new();
+        let mut vacancies: HashMap<EntityId, u32> = HashMap::new();
+        let mut where_is: HashMap<EntityId, GridCoord> = HashMap::new();
+        for e in &entries {
+            let GameObject::Building(ref b) = e.object else { continue };
+            let Some(pos) = e.position else { continue };
+            if e.draft.is_some() {
+                continue;
+            }
+            where_is.insert(e.id, pos);
+            if b.kind.homes() > 0 {
+                rooms.insert(e.id, b.kind.homes());
+            }
+            if b.kind.jobs() > 0 {
+                vacancies.insert(e.id, b.kind.jobs());
+            }
+        }
+
+        let mut jobless: Vec<EntityId> = Vec::new();
+        let mut evicted: Vec<EntityId> = Vec::new();
+        let mut laid_off: Vec<EntityId> = Vec::new();
+        for e in &entries {
+            let GameObject::Resident(ref r) = e.object else { continue };
+            match rooms.get_mut(&r.home) {
+                // Home gone: so is the household. Nobody commutes from a hole
+                // in the ground, and nothing else holds a reference to them.
+                None => {
+                    evicted.push(e.id);
+                    continue;
+                }
+                Some(free) => *free = free.saturating_sub(1),
+            }
+            match r.work.and_then(|w| vacancies.get_mut(&w)) {
+                Some(free) => *free = free.saturating_sub(1),
+                None => {
+                    if r.work.is_some() {
+                        laid_off.push(e.id);
+                    }
+                    jobless.push(e.id);
+                }
+            }
+        }
+        for id in evicted {
+            self.objects.remove(id);
+        }
+        for id in laid_off {
+            if let Some(entry) = self.objects.get_mut(id)
+                && let GameObject::Resident(ref mut r) = entry.object
+            {
+                r.work = None;
+            }
+        }
+
+        // By id, so a world settles the same way however the map iterated.
+        let mut spare: Vec<(EntityId, u32)> = rooms.into_iter().filter(|&(_, n)| n > 0).collect();
+        spare.sort_unstable();
+
+        let mut moved_in = Vec::new();
+        for (home, free) in spare {
+            for _ in 0..free {
+                let id = self.objects.insert(
+                    GameObject::Resident(Resident { home, work: None }),
+                    None,
+                    None,
+                );
+                moved_in.push(id);
+                jobless.push(id);
+            }
+        }
+
+        jobless.sort_unstable();
+        for id in jobless {
+            let Some(home) = self.home_of(id).and_then(|h| where_is.get(&h).copied()) else {
+                continue;
+            };
+            // Nearest with a vacancy. This is the rule that makes where you zone
+            // matter: put the factory across town and its workers drive across
+            // town, every morning, on whatever road you gave them.
+            let Some(work) = vacancies
+                .iter()
+                .filter(|&(_, &free)| free > 0)
+                .filter_map(|(&b, _)| Some((b, walk(home, *where_is.get(&b)?))))
+                .min_by_key(|&(b, d)| (d, b))
+                .map(|(b, _)| b)
+            else {
+                break; // no vacancy anywhere; the rest are jobless too
+            };
+            *vacancies.get_mut(&work).unwrap() -= 1;
+            if let Some(entry) = self.objects.get_mut(id)
+                && let GameObject::Resident(ref mut r) = entry.object
+            {
+                r.work = Some(work);
+            }
+        }
+
+        moved_in
+    }
+
+    fn home_of(&self, resident: EntityId) -> Option<EntityId> {
+        let entry = self.objects.get(resident)?;
+        let GameObject::Resident(ref r) = entry.object else { return None };
+        Some(r.home)
+    }
+}
+
+/// Distance as the road runs, roughly. Chebyshev rather than straight-line
+/// because the network is a grid with diagonals — and it is only ever used to
+/// rank one workplace against another, never to predict a journey.
+fn walk(a: GridCoord, b: GridCoord) -> i32 {
+    (a.x - b.x).abs().max((a.y - b.y).abs())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{BuildingKind, Category, Rotation, TerrainType};
+
+    /// Grass, one long street, and whatever gets built beside it.
+    fn town() -> World {
+        let mut world = World::new();
+        for y in -4..4 {
+            for x in -4..40 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        let street: Vec<GridCoord> = (-2..40).map(|x| GridCoord { x, y: 0 }).collect();
+        world.place_road_path(&street);
+        world
+    }
+
+    fn build(world: &mut World, x: i32, kind: BuildingKind) -> EntityId {
+        world
+            .spawn_building(GridCoord { x, y: 1 }, kind, (1, 1), Rotation::South)
+            .expect("the street should give it a driveway")
+    }
+
+    fn residents(world: &World) -> Vec<Resident> {
+        world
+            .objects
+            .all_entries()
+            .iter()
+            .filter_map(|e| match e.object {
+                GameObject::Resident(ref r) => Some(r.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_house_fills_up_and_stays_full() {
+        let mut world = town();
+        let home = build(&mut world, 0, BuildingKind::House);
+
+        assert_eq!(world.settle().len(), BuildingKind::House.homes() as usize);
+        assert!(residents(&world).iter().all(|r| r.home == home));
+
+        // Run again: nothing is standing that was not standing before, so
+        // nobody new moves in. This is the property that lets it run on
+        // every commit.
+        assert!(world.settle().is_empty(), "settling twice must not double the town");
+    }
+
+    #[test]
+    fn everyone_takes_the_nearest_job_with_room() {
+        let mut world = town();
+        build(&mut world, 0, BuildingKind::Apartment); // 8 residents
+        let near = build(&mut world, 4, BuildingKind::Shop); // 4 jobs
+        let far = build(&mut world, 30, BuildingKind::Office); // 16 jobs
+
+        world.settle();
+        let jobs = residents(&world);
+        assert_eq!(jobs.iter().filter(|r| r.work == Some(near)).count(), 4);
+        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 4);
+    }
+
+    #[test]
+    fn a_town_with_no_work_is_not_a_town_with_no_people() {
+        let mut world = town();
+        build(&mut world, 0, BuildingKind::House);
+        world.settle();
+        assert_eq!(residents(&world).len(), 2);
+        assert!(residents(&world).iter().all(|r| r.work.is_none()));
+    }
+
+    /// A job that appears later gets taken, without anyone having tracked that
+    /// these two were waiting for one.
+    #[test]
+    fn a_new_workplace_employs_whoever_was_waiting() {
+        let mut world = town();
+        build(&mut world, 0, BuildingKind::House);
+        world.settle();
+
+        let shop = build(&mut world, 4, BuildingKind::Shop);
+        assert!(world.settle().is_empty(), "no new homes, so no new people");
+        assert!(residents(&world).iter().all(|r| r.work == Some(shop)));
+    }
+
+    #[test]
+    fn demolishing_a_home_takes_its_residents_with_it() {
+        let mut world = town();
+        let home = build(&mut world, 0, BuildingKind::House);
+        build(&mut world, 4, BuildingKind::Shop);
+        world.settle();
+        assert_eq!(residents(&world).len(), 2);
+
+        world.remove_building(home);
+        world.settle();
+        assert!(residents(&world).is_empty());
+    }
+
+    /// Losing your job is not losing your home: the household stays, and picks
+    /// up whatever work turns up next.
+    #[test]
+    fn demolishing_a_workplace_leaves_its_staff_looking() {
+        let mut world = town();
+        build(&mut world, 0, BuildingKind::House);
+        let shop = build(&mut world, 4, BuildingKind::Shop);
+        world.settle();
+
+        world.remove_building(shop);
+        world.settle();
+        assert_eq!(residents(&world).len(), 2);
+        assert!(residents(&world).iter().all(|r| r.work.is_none()));
+    }
+
+    /// Drafts are drawn, not built. Nobody lives in one, which is what keeps a
+    /// discarded plan from having quietly rehoused half the city.
+    #[test]
+    fn nobody_moves_into_a_draft() {
+        let mut world = town();
+        world.acting_as = Some(1);
+        world.paint_area(
+            &(0..3).map(|x| GridCoord { x, y: 1 }).collect::<Vec<_>>(),
+            Category::Residential,
+        );
+        assert!(world.settle().is_empty(), "a drafted house has no address");
+
+        world.commit_drafts(1);
+        world.acting_as = None;
+        assert!(!world.settle().is_empty(), "committing is what gives it one");
+    }
+}
