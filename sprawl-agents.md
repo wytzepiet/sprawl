@@ -182,6 +182,87 @@ interactions, not distance, so a truck on an empty highway is the cheapest car i
 the world. The thing to watch is *volume* — how many trucks one delivery is —
 and that is a goods-granularity question for later.
 
+## Who decides what gets built — the sibling question
+
+Settled in direction, unbuilt. The question above was "who decides that a car
+exists"; this one is "who decides that a building does", and the answer turned
+out to have the same shape: not the player, and not dice — demand.
+
+### Zones were a proxy for demand
+
+Painting a commercial zone is the player telling the game where commerce is
+needed, because the game could not know. Once households measurably drive too
+far for groceries and shops measurably run out of stock, the game *does* know,
+and the proxy is redundant. So: **the game proposes buildings, the player
+disposes.** Generic buildings — homes, shops, a little restaurant — appear as
+proposals driven by observed demand. The player accepts, rejects, or moves
+them, and being the mayor is the game: the city keeps happening, and you deal
+with it, rather than authoring every square inch and waiting.
+
+This also just *starts* the game. Draw a road into the wilderness and the
+first proposal pops; accepted homes attract immigrants; residents create
+shopping demand; shops create freight demand. One exogenous pressure — people
+wanting to move in — ignites the chain, and from there the loop feeds itself.
+There is always a new thing to deal with, which is where the pull comes from.
+
+### The rules that keep it honest
+
+- **No spawn without legible demand.** The litmus: if the UI cannot show the
+  player the demand that caused a proposal ("40 households shop over 1.5 km
+  away"), it does not spawn. This is the only thing standing between organic
+  growth and the random car spawner with a roof.
+- **Proposals are drafts.** The transactional build mode already is the
+  mechanism: a proposal is a draft authored by the game — visible, reserving
+  its plot, invisible to traffic. Accept = commit, reject = discard, move =
+  edit before commit. No new machinery.
+- **Ambient, never modal.** A pop, a soft edge-arrow that tracks while
+  panning, and then the proposal waits. Approval on the player's rhythm, or
+  the game becomes an inbox.
+- **Rejection is respected.** Rejecting a kind-in-an-area suppresses it for a
+  good while. The demand stays visible in the readouts; the nagging stops.
+- **Approving must be able to be wrong.** Accept the supermarket on the
+  congested corner and you bought a jam; move it two blocks — at a cost, once
+  money exists, so organic placement stays the incentivised default — and you
+  bought longer shopping trips. Every proposal type has to pass this test:
+  siting it is a traffic decision, because traffic is the game.
+
+### What the player still authors
+
+- **Roads.** With zones gone, the network is how growth is steered: buildings
+  need driveways, so the city grows along what you draw. The player's one
+  medium of expression is the thing the whole simulation runs on. Later,
+  proposals slightly off-road ("get a road to it and it builds") make the
+  network itself reactive.
+- **Pivotal buildings.** Harbor, oil field, stadium — placed deliberately,
+  because those moments should feel authored.
+- **The skill tree steers the vocabulary.** Unlocking supermarkets does not
+  place one; it teaches the proposer a new word. Progression is what your
+  city is able to grow.
+
+### Consequences we get for free
+
+- **The grid-city problem dissolves.** Grids happen because the player is the
+  placement optimizer, and humans optimizing placement converge on rectangles.
+  With the world proposing and the player judging, the city becomes a history
+  of reactions — which is what real cities look like.
+- **Clustering should be earned, not hardcoded.** Demand-siting already puts
+  shops where trips concentrate, which is near other shops. Start with no
+  adjacency rules and see how much district structure emerges; add a cheap
+  nuisance signal only when homes start proposing next to the factory.
+- **Zones may return as automation.** At scale, hand-approving becomes a
+  chore, and the fix is standing approval — "auto-accept residential here" —
+  which is zoning reinvented as an *optional policy the player draws after
+  the city taught them what it wants*. Automate last; do not build it until
+  approval fatigue is real.
+
+### Open, for this half
+
+- Pacing: proposals per hour that feels alive but not needy.
+- Shared world: a proposal belongs to whoever's demand produced it, probably
+  by proximity — a neighbour must not accept a building into your street.
+- When the zone-painting code dies: after the proposer proves itself on one
+  building kind, in one stroke — not half-supported alongside.
+
 ## Open questions
 
 - **How much of daily life is worth modelling?** Work alone gives a rush hour.
@@ -203,14 +284,24 @@ and that is a goods-granularity question for later.
 
 ## State of the code
 
-Written but uncommitted, and the second half is built on the shape these notes
-are now questioning:
+The first half of these notes is built and committed; the rush-hour milestone
+exists and can be watched on seed 7:
 
-- Residents exist as position-less entities, with per-kind capacity and a
-  nearest-job-with-a-slot rule. Settled by one idempotent function run after
-  every commit — homes fill, demolished homes take their residents with them,
-  drafts house nobody. Tested, and independent of what follows.
-- Commuting on a clock, with a departure event carrying `to_work: bool` and
-  fixed 08:00/17:00 peaks. **This part is the one to reconsider** — the boolean
-  and the global peaks are exactly what makes a second kind of trip a rewrite.
-- Day length moved to 20 minutes.
+- The event queue holds bare entity ids — the things about to think, in the
+  order they will think — dispatched on what the entity is. The `to_work`
+  boolean and the global peaks were discarded before ever being committed;
+  state lives in the world, never in events.
+- Residents commute because their workplace's hours say so, staggered by
+  building kind. On any wake they re-derive where they should be; arrival at
+  work prints lateness against the shift and time lost against the free-flow
+  eta fixed at departure.
+- Cars are permanent possessions (`Car { owner, trip: Option<Trip> }`),
+  issued by settle, parked at buildings between trips, persistent across
+  restarts, coloured and spotted by id hash on the client.
+- Immigration works as designed above: residents start off-map and drive in
+  from past the frontier, car and all, trickled over hours by a hash of who
+  they are.
+
+Next, in order: the household pantry and shopping trips (the demand data),
+freight to restock the shops (the first building that thinks), then the first
+proposer — one building kind, sited by demand, offered as a draft.
