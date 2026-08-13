@@ -25,12 +25,25 @@ impl Ord for F {
 /// itself is unbounded from the player's side — this is only how much road
 /// exists before anyone builds.
 const START_CHUNKS: i32 = 3;
+/// How far past the surveyed edge road is laid. Deep enough that a run in from
+/// off the map is a journey, not a step over the frontier.
+const RING: i32 = 3;
 const START_MIN: i32 = -(START_CHUNKS / 2);
 const START_MAX: i32 = START_MIN + START_CHUNKS;
 
 use crate::protocol::{ChunkCoord, CHUNK_SIZE};
 
-/// One tile of open ground per chunk, for roads to run between.
+/// Half the chunks carry an anchor, in a checkerboard.
+///
+/// The diagonal neighbours of a chunk share its parity, so the anchors form
+/// their own grid turned through 45 degrees and every link lands on another
+/// anchor. Half as many anchors, longer runs between them, and whole chunks
+/// with no through road in them — which is where there is room to build.
+fn has_anchor(chunk: ChunkCoord) -> bool {
+    (chunk.cx + chunk.cy).rem_euclid(2) == 0
+}
+
+/// One tile of open ground per anchor chunk, for roads to run between.
 ///
 /// A pure function of the seed and the chunk, deliberately: chunks are laid
 /// out as the map is revealed, in whatever order the player explores, and a
@@ -41,6 +54,9 @@ fn anchor_for(
     chunk: ChunkCoord,
     terrain: &HashMap<(i32, i32), TerrainType>,
 ) -> Option<(i32, i32)> {
+    if !has_anchor(chunk) {
+        return None;
+    }
     let mut h = seed as u64 ^ 0x9e37_79b9_7f4a_7c15;
     h = h.wrapping_mul(0x100_0000_01b3) ^ (chunk.cx as i64 as u64);
     h = h.wrapping_mul(0x100_0000_01b3) ^ (chunk.cy as i64 as u64);
@@ -62,10 +78,10 @@ fn anchor_for(
 }
 
 /// Lay the roads belonging to `chunk`: the shortest run from its anchor to the
-/// anchor of the chunk to its right, and of the chunk above.
+/// two anchors diagonally above it.
 ///
-/// Every link is owned by exactly one of the two chunks it joins, so a chunk
-/// laid once is laid for good, however its neighbours are reached later.
+/// A diagonal pair always differs in `cy`, so the lower of the two owns the
+/// link and no ground is laid twice, however the map is uncovered.
 fn link_chunk(
     world: &mut World,
     seed: u32,
@@ -75,8 +91,8 @@ fn link_chunk(
 ) {
     let Some(a) = anchor_for(seed, chunk, terrain) else { return };
     for neighbour in [
-        ChunkCoord { cx: chunk.cx + 1, cy: chunk.cy },
-        ChunkCoord { cx: chunk.cx, cy: chunk.cy + 1 },
+        ChunkCoord { cx: chunk.cx + 1, cy: chunk.cy + 1 },
+        ChunkCoord { cx: chunk.cx - 1, cy: chunk.cy + 1 },
     ] {
         let Some(b) = anchor_for(seed, neighbour, terrain) else { continue };
         if let Some(path) = astar(a, b, terrain, road_edges) {
@@ -92,11 +108,12 @@ fn link_chunk(
     }
 }
 
-/// Lay road through every chunk in `bounds`, and one ring beyond it.
+/// Lay road through every chunk in `bounds`, and RING chunks beyond it.
 ///
 /// The ring is the point. Roads have to run past the edge of what has been
-/// surveyed, or there is no way in from off the map — which is what the whole
-/// import idea hangs on.
+/// surveyed, or there is no way in from off the map. It reaches well past the
+/// frontier rather than just over it, so that arriving from off the map is a
+/// long haul rather than a step across the line.
 pub fn extend_to(
     world: &mut World,
     seed: u32,
@@ -106,8 +123,8 @@ pub fn extend_to(
     // Read once, not per link: this walks every entity, and the world only
     // gets bigger.
     let mut road_edges = world.road_edge_set();
-    for cy in (bounds.min_cy - 1)..=(bounds.max_cy + 1) {
-        for cx in (bounds.min_cx - 1)..=(bounds.max_cx + 1) {
+    for cy in (bounds.min_cy - RING)..=(bounds.max_cy + RING) {
+        for cx in (bounds.min_cx - RING)..=(bounds.max_cx + RING) {
             let chunk = ChunkCoord { cx, cy };
             if world.roads_generated.insert(chunk) {
                 link_chunk(world, seed, terrain, chunk, &mut road_edges);
@@ -249,12 +266,37 @@ fn astar(
 mod tests {
     use super::*;
 
+    /// Half the chunks carry an anchor, and every link lands on another one:
+    /// the diagonal neighbours of a chunk share its parity.
+    #[test]
+    fn anchors_checkerboard_and_diagonals_meet_them() {
+        assert!(has_anchor(ChunkCoord { cx: 0, cy: 0 }));
+        assert!(!has_anchor(ChunkCoord { cx: 1, cy: 0 }));
+        assert!(has_anchor(ChunkCoord { cx: 1, cy: 1 }));
+        // Negative coordinates keep the same pattern rather than mirroring it.
+        assert!(!has_anchor(ChunkCoord { cx: -1, cy: 0 }));
+        assert!(has_anchor(ChunkCoord { cx: -1, cy: -1 }));
+
+        for c in [(0, 0), (4, -2), (-3, 5)] {
+            let chunk = ChunkCoord { cx: c.0, cy: c.1 };
+            if !has_anchor(chunk) {
+                continue;
+            }
+            for d in [(1, 1), (-1, 1), (1, -1), (-1, -1)] {
+                assert!(
+                    has_anchor(ChunkCoord { cx: chunk.cx + d.0, cy: chunk.cy + d.1 }),
+                    "a diagonal link would run to a chunk with no anchor",
+                );
+            }
+        }
+    }
+
     /// An anchor must not depend on when its chunk was reached. Explore east
     /// first or north first and the same road has to end up in the same place.
     #[test]
     fn anchors_do_not_depend_on_the_order_chunks_are_reached() {
         let terrain = crate::terrain::generate(7);
-        for c in [(0, 0), (3, -2), (-5, 4)] {
+        for c in [(0, 0), (4, -2), (-4, 4)] {
             let chunk = ChunkCoord { cx: c.0, cy: c.1 };
             assert_eq!(anchor_for(7, chunk, &terrain), anchor_for(7, chunk, &terrain));
         }
