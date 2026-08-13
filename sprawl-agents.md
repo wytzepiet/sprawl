@@ -207,37 +207,61 @@ There is always a new thing to deal with, which is where the pull comes from.
 
 ### The rules that keep it honest
 
-- **No spawn without legible demand.** The litmus: if the UI cannot show the
-  player the demand that caused a proposal ("40 households shop over 1.5 km
-  away"), it does not spawn. This is the only thing standing between organic
-  growth and the random car spawner with a roof.
-- **Proposals are drafts.** The transactional build mode already is the
-  mechanism: a proposal is a draft authored by the game — visible, reserving
-  its plot, invisible to traffic. Accept = commit, reject = discard, move =
-  edit before commit. No new machinery.
+- **Existence from demand, siting from chance.** *Whether* a building spawns
+  is demand — homes because people want in, shops because households drive
+  too far — and the UI must be able to show that cause, or it does not
+  spawn. *Where* it lands is legitimately stochastic: cluster affinity,
+  jittered placement, the occasional new seed striking out somewhere fresh.
+  Randomness in placement is the texture that makes a city look grown;
+  randomness in existence is a slot machine. This is the doc's old open
+  question answered: dice belong in siting, nowhere else.
+- **Connecting the road is accepting.** A spawn appears as a ghost — a pin
+  and a footprint, dormant, housing nobody, off-road as often as not. Draw a
+  road to it and it becomes real; ignore it and it eventually gives up and
+  fades. The approval mechanic and the core verb of the game are the same
+  gesture, and no accept/reject buttons exist. Moving a spawn is dragging
+  its pin before it is connected — priced, once money exists, so organic
+  placement stays the incentivised default.
+- **Dormant is the new draft.** A ghost building reserves nothing firmly and
+  houses nobody, exactly like a draft; settle already ignores what has no
+  address. The driveway forms itself the moment a road lands adjacent — the
+  same machinery that validates plots today, run at connection time instead
+  of placement time.
 - **Ambient, never modal.** A pop, a soft edge-arrow that tracks while
-  panning, and then the proposal waits. Approval on the player's rhythm, or
-  the game becomes an inbox.
-- **Rejection is respected.** Rejecting a kind-in-an-area suppresses it for a
-  good while. The demand stays visible in the readouts; the nagging stops.
-- **Approving must be able to be wrong.** Accept the supermarket on the
-  congested corner and you bought a jam; move it two blocks — at a cost, once
-  money exists, so organic placement stays the incentivised default — and you
-  bought longer shopping trips. Every proposal type has to pass this test:
-  siting it is a traffic decision, because traffic is the game.
+  panning, and then the ghost waits. Response on the player's rhythm, or the
+  game becomes an inbox. Letting one fade *is* rejecting it, and fading
+  suppresses that kind-in-that-area for a while.
+- **Connecting must be able to be wrong.** Rush a road to the supermarket
+  ghost beside the congested corner and you bought a jam; drag it two blocks
+  and you bought longer shopping trips. Every spawn type has to pass this
+  test: siting is a traffic decision, because traffic is the game.
 
 ### What the player still authors
 
-- **Roads.** With zones gone, the network is how growth is steered: buildings
-  need driveways, so the city grows along what you draw. The player's one
-  medium of expression is the thing the whole simulation runs on. Later,
-  proposals slightly off-road ("get a road to it and it builds") make the
-  network itself reactive.
+- **Roads, reactively.** The network is the player's entire medium: growth
+  proposes, roads dispose. Speculative road-drawing is nothing to rely on —
+  the game comes to you, and you answer with infrastructure. (This is the
+  Mini Motorways loop, worth naming: the difference to protect is that our
+  spawns have people, stocks and consequences behind them, so the city stays
+  a place rather than a puzzle.)
 - **Pivotal buildings.** Harbor, oil field, stadium — placed deliberately,
   because those moments should feel authored.
-- **The skill tree steers the vocabulary.** Unlocking supermarkets does not
-  place one; it teaches the proposer a new word. Progression is what your
-  city is able to grow.
+- **The skill tree steers the vocabulary and the odds.** Unlocking
+  supermarkets teaches the spawner a new word; a point in "recreational
+  homes spawn more" tilts the mix. Each building is just a building — the
+  Residential/Commercial/Industrial trichotomy only ever existed to label
+  zones, and it dies with them. Kinds already carry their own facts
+  (`homes()`, `jobs()`, `hours()`); skill points get to touch any of them.
+
+### Presentation that carries the meaning
+
+- **Every building gets a map pin** saying what it is — the legibility layer
+  zones used to provide, in the Google-Maps grammar the game already speaks.
+  Pins collapse to dots as you zoom out, importance-weighted: the restaurant
+  outlives the houses. A ghost's pin is how a spawn announces itself.
+- **Plots contain their own parking.** A building's footprint includes its
+  lot; nobody draws parking. The parked cars already rendering at buildings
+  get real spots instead of jitter, and a full stadium lot reads from orbit.
 
 ### Consequences we get for free
 
@@ -257,11 +281,16 @@ There is always a new thing to deal with, which is where the pull comes from.
 
 ### Open, for this half
 
-- Pacing: proposals per hour that feels alive but not needy.
-- Shared world: a proposal belongs to whoever's demand produced it, probably
-  by proximity — a neighbour must not accept a building into your street.
-- When the zone-painting code dies: after the proposer proves itself on one
-  building kind, in one stroke — not half-supported alongside.
+- Pacing: spawns per hour that feels alive but not needy, and how long a
+  ghost waits before giving up.
+- Clustering: start with demand-siting plus affinity jitter and *no*
+  adjacency rules; add a nuisance signal only when homes start ghosting in
+  next to the factory.
+- Shared world: a spawn belongs to whoever's demand produced it, probably by
+  proximity — a neighbour must not connect a building into your street.
+- When the zone-painting code dies: after the spawner proves itself on one
+  building kind, in one stroke — categories and all — not half-supported
+  alongside.
 
 ## Open questions
 
@@ -302,6 +331,12 @@ exists and can be watched on seed 7:
   from past the frontier, car and all, trickled over hours by a hash of who
   they are.
 
-Next, in order: the household pantry and shopping trips (the demand data),
-freight to restock the shops (the first building that thinks), then the first
-proposer — one building kind, sited by demand, offered as a draft.
+Next, in order — reshuffled because home spawns need only immigration
+pressure, which already exists, so the mayor loop is playable before any
+economy is:
+
+1. Dormant buildings, the home spawner, and pins — ghosts appear, a road
+   connects them, settle and the commute do the rest.
+2. The household pantry and shopping trips — the demand data that lets shops
+   and restaurants start ghosting in.
+3. Freight to restock the shops — the first building that thinks.
