@@ -207,14 +207,19 @@ There is always a new thing to deal with, which is where the pull comes from.
 
 ### The rules that keep it honest
 
-- **Existence from demand, siting from chance.** *Whether* a building spawns
-  is demand — homes because people want in, shops because households drive
-  too far — and the UI must be able to show that cause, or it does not
-  spawn. *Where* it lands is legitimately stochastic: cluster affinity,
-  jittered placement, the occasional new seed striking out somewhere fresh.
-  Randomness in placement is the texture that makes a city look grown;
-  randomness in existence is a slot machine. This is the doc's old open
-  question answered: dice belong in siting, nowhere else.
+- **Consequences must follow a spawn; nothing needs to cause one.** The
+  random car spawner was bad because its cars meant nothing, not because it
+  was random — a randomly spawned restaurant that then genuinely serves
+  lunches is a different animal, because the moment it exists the decide
+  functions see it and the trips are real. So spawning is a pacing
+  instrument the designer owns: base rates, cluster affinity, jittered
+  siting, the occasional fresh seed, skill-tree tilts — with
+  demand-weighting available as one tuning input (shops lean toward
+  underserved streets), never as a gate the economy must open first.
+  Supply creates demand as often as it answers it; that is how half of real
+  cities happen. The one hard rule: every building that lands participates —
+  publishes its facts, absorbs and generates real trips — or it does not
+  belong in the vocabulary yet.
 - **Connecting the road is accepting.** A spawn appears as a ghost — a pin
   and a footprint, dormant, housing nobody, off-road as often as not. Draw a
   road to it and it becomes real; ignore it and it eventually gives up and
@@ -283,6 +288,11 @@ There is always a new thing to deal with, which is where the pull comes from.
 
 - Pacing: spawns per hour that feels alive but not needy, and how long a
   ghost waits before giving up.
+- The survival loop, later: supply-led spawning eventually wants its
+  counterpart — a shop nobody visits gives up and closes, the same way a
+  ghost nobody connects fades. Same rule as birth, applied to staying:
+  consequences, not causes. It also makes over-connecting a real mistake,
+  and keeps the map from silting up.
 - Clustering: start with demand-siting plus affinity jitter and *no*
   adjacency rules; add a nuisance signal only when homes start ghosting in
   next to the factory.
