@@ -31,6 +31,16 @@ struct ClientState {
 fn db_path() -> PathBuf {
     std::env::var("SPRAWL_DB").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("sprawl.db"))
 }
+
+/// The seed a fresh world gets. Set SPRAWL_SEED to get the same map back every
+/// time — the point of a test world is that what you saw yesterday is still
+/// there today, so a change in behaviour is a change in the code.
+fn new_seed() -> u32 {
+    std::env::var("SPRAWL_SEED")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(rand::random::<u32>)
+}
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 /// How long an abandoned draft holds its land. Long enough that a reload or a
 /// dropped connection does not cost you the work; short enough that walking
@@ -58,7 +68,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     // rather than persisted. A fresh world also gets its roads laid out.
     let fresh = world.objects.all_entries().is_empty();
     if fresh {
-        world.terrain_seed = rand::random::<u32>();
+        world.terrain_seed = new_seed();
     }
     world.terrain = crate::terrain::generate(world.terrain_seed);
     println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
@@ -134,7 +144,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         events = EventQueue::new();
                         intersections = IntersectionRegistry::new();
                         let _ = std::fs::remove_file(&db_path);
-                        let seed = rand::random::<u32>();
+                        let seed = new_seed();
                         world.terrain_seed = seed;
                         world.terrain = crate::terrain::generate(seed);
                         let terrain = world.terrain.clone();

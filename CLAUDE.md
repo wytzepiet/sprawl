@@ -38,6 +38,13 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Package manager:** bun
 - **Client dev:** `cd client && bun run dev`
 - **Generated types:** `cd client && bun run generate`
+- **Server:** `cd server && cargo run`. Rebuild and restart it after any Rust
+  change — vite hot-reloads, the server does not, and a stale binary looks
+  exactly like a fix that did not work.
+- **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 cargo run`. Seed 7 has
+  open land beside the starting roads, forest to build into, and coastline —
+  enough to exercise zoning, tree clearing and demolition. Any fixed seed gives
+  the same map back, so a change in behaviour is a change in the code.
 
 ## Solid 1.x
 
