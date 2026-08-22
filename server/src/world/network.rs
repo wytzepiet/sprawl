@@ -49,8 +49,10 @@ impl Passage {
 /// segment leaves it at one of the two ends — which is what makes it the
 /// honest unit to measure passage time over, and what lets a route search step
 /// over whole corridors instead of tile by tile.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Segment {
+    /// How far it is to drive, in tiles.
+    pub length: f64,
     /// In order, both ends included. A segment with no intersection anywhere on
     /// it — a ring road — starts and ends at the same node.
     pub nodes: Vec<EntityId>,
@@ -107,7 +109,8 @@ fn close_ring(mut nodes: Vec<EntityId>) -> Vec<EntityId> {
 /// Pure graph, no World: everything it needs is what it was told.
 #[derive(Default)]
 pub struct RoadNetwork {
-    adj: HashMap<EntityId, HashSet<EntityId>>,
+    /// Neighbours, and how far away each is.
+    adj: HashMap<EntityId, HashMap<EntityId, f64>>,
     component: HashMap<EntityId, ComponentId>,
     members: HashMap<ComponentId, HashSet<EntityId>>,
     next: ComponentId,
@@ -139,13 +142,13 @@ impl RoadNetwork {
     }
 
     /// A road now joins these two.
-    pub fn link(&mut self, a: EntityId, b: EntityId) {
+    pub fn link(&mut self, a: EntityId, b: EntityId, length: f64) {
         if a == b {
             return;
         }
         let stale = self.take_segments_around(&[a, b]);
-        self.adj.entry(a).or_default().insert(b);
-        self.adj.entry(b).or_default().insert(a);
+        self.adj.entry(a).or_default().insert(b, length);
+        self.adj.entry(b).or_default().insert(a, length);
         self.recontract(stale, Some(link_key(a, b)));
 
         let (ca, cb) = (self.claim(a), self.claim(b));
@@ -212,7 +215,7 @@ impl RoadNetwork {
                 let Some(node) = sides[i].1.pop_front() else { continue };
                 both_closed = false;
                 let Some(next) = self.adj.get(&node) else { continue };
-                for &n in next {
+                for &n in next.keys() {
                     if n == if i == 0 { b } else { a } {
                         return None; // still joined the long way round
                     }
@@ -248,6 +251,32 @@ impl RoadNetwork {
     pub fn observe_passage(&mut self, entered: EntityId, left: EntityId, ms: f64) {
         let Some((key, forward)) = self.run_between(entered, left) else { return };
         self.passage.entry(key).or_default()[usize::from(!forward)].observe(ms);
+    }
+
+    /// What driving between these two junctions is reckoned to cost, in
+    /// milliseconds.
+    ///
+    /// **Half what the road promises, half what it has been giving.** Taking
+    /// only the promise ignores the jam; taking only the record makes a fast
+    /// road unattractive the moment it gets busy, which is backwards — a
+    /// motorway crawling at half speed is still worth more than the lane
+    /// beside it. Halfway between lets congestion tilt a choice without
+    /// deciding it, which is also what stops everyone swapping roads at once
+    /// and swapping back.
+    ///
+    /// It also composes: averaging each run and adding them up gives the same
+    /// answer as averaging the whole journey, so a search can total this run
+    /// by run without the arithmetic drifting.
+    ///
+    /// A road nobody has driven costs what it promises, which is the same rule
+    /// with nothing to weigh against it.
+    pub fn travel_ms(&self, from: EntityId, to: EntityId, cruise_speed: f64) -> Option<f64> {
+        let (key, forward) = self.run_between(from, to)?;
+        let free = self.segments_at(from).find(|s| s.key() == key)?.length / cruise_speed * 1000.0;
+        match self.passage.get(&key).map(|p| p[usize::from(!forward)]) {
+            Some(seen) if seen.count > 0 => Some((free + seen.mean_ms) / 2.0),
+            _ => Some(free),
+        }
     }
 
     /// What the road between these two junctions has been taking, in the
@@ -342,7 +371,11 @@ impl RoadNetwork {
             for node in &nodes {
                 self.on_node.entry(*node).or_default().insert(id);
             }
-            self.segments.insert(id, Segment { nodes });
+            let length = nodes
+                .windows(2)
+                .map(|p| self.adj.get(&p[0]).and_then(|n| n.get(&p[1])).copied().unwrap_or(1.0))
+                .sum();
+            self.segments.insert(id, Segment { length, nodes });
         }
     }
 
@@ -388,7 +421,7 @@ impl RoadNetwork {
         if arms.len() != 2 {
             return None;
         }
-        arms.iter().find(|&&n| n != prev).copied()
+        arms.keys().find(|&&n| n != prev).copied()
     }
 
     /// A node nothing connects to is not part of any network.
@@ -431,9 +464,10 @@ impl RoadNetwork {
 mod tests {
     use super::*;
 
+    /// One tile between each, so a run's length is its number of hops.
     fn chain(net: &mut RoadNetwork, ids: &[EntityId]) {
         for pair in ids.windows(2) {
-            net.link(pair[0], pair[1]);
+            net.link(pair[0], pair[1], 1.0);
         }
     }
 
@@ -443,7 +477,7 @@ mod tests {
     fn segments_agree(net: &RoadNetwork) {
         let mut links: HashSet<Link> = HashSet::new();
         for (&a, ns) in &net.adj {
-            for &b in ns {
+            for &b in ns.keys() {
                 links.insert(link_key(a, b));
             }
         }
@@ -474,11 +508,11 @@ mod tests {
     ///
     /// Deliberately not the same algorithm as `recontract` — a reference that
     /// shares the production reasoning would share its mistakes.
-    fn reference_segments(adj: &HashMap<EntityId, HashSet<EntityId>>) -> HashSet<Vec<Link>> {
+    fn reference_segments(adj: &HashMap<EntityId, HashMap<EntityId, f64>>) -> HashSet<Vec<Link>> {
         let deg = |n: EntityId| adj.get(&n).map_or(0, |a| a.len());
         let mut all: HashSet<Link> = HashSet::new();
         for (&a, ns) in adj {
-            for &b in ns {
+            for &b in ns.keys() {
                 all.insert(link_key(a, b));
             }
         }
@@ -489,7 +523,7 @@ mod tests {
         let mut ends: Vec<EntityId> = adj.keys().copied().filter(|&n| deg(n) != 2).collect();
         ends.sort_unstable();
         for start in ends {
-            let mut arms: Vec<EntityId> = adj[&start].iter().copied().collect();
+            let mut arms: Vec<EntityId> = adj[&start].keys().copied().collect();
             arms.sort_unstable();
             for first in arms {
                 if used.contains(&link_key(start, first)) {
@@ -499,7 +533,7 @@ mod tests {
                 used.insert(link_key(start, first));
                 let (mut prev, mut at) = (start, first);
                 while deg(at) == 2 {
-                    let next = *adj[&at].iter().find(|&&n| n != prev).unwrap();
+                    let next = *adj[&at].keys().find(|&&n| n != prev).unwrap();
                     run.push(link_key(at, next));
                     used.insert(link_key(at, next));
                     prev = at;
@@ -518,7 +552,7 @@ mod tests {
             used.insert(seed);
             let (start, mut prev, mut at) = (seed.0, seed.0, seed.1);
             while at != start {
-                let next = *adj[&at].iter().find(|&&n| n != prev).unwrap();
+                let next = *adj[&at].keys().find(|&&n| n != prev).unwrap();
                 run.push(link_key(at, next));
                 used.insert(link_key(at, next));
                 prev = at;
@@ -577,7 +611,7 @@ mod tests {
                 net.unlink(a, b);
                 laid.remove(&key);
             } else {
-                net.link(a, b);
+                net.link(a, b, 1.0);
                 laid.insert(key);
             }
 
@@ -601,7 +635,7 @@ mod tests {
                 }
                 for pair in seg.nodes.windows(2) {
                     assert!(
-                        net.adj[&pair[0]].contains(&pair[1]),
+                        net.adj[&pair[0]].contains_key(&pair[1]),
                         "segment {id} walks a road that is not there (step {step})",
                     );
                 }
@@ -647,6 +681,55 @@ mod tests {
         assert_eq!(net.passage_ms(3, 5), None);
     }
 
+    /// Four tiles at one tile per second is four seconds promised.
+    #[test]
+    fn a_road_nobody_has_driven_costs_what_it_promises() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3, 4, 5]);
+        assert_eq!(net.travel_ms(1, 5, 1.0), Some(4000.0));
+    }
+
+    #[test]
+    fn a_busy_road_costs_halfway_between_promise_and_record() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3, 4, 5]);
+        net.observe_passage(1, 5, 8000.0); // twice what it promises
+        assert_eq!(net.travel_ms(1, 5, 1.0), Some(6000.0));
+        assert_eq!(net.travel_ms(5, 1, 1.0), Some(4000.0), "the other way is clear");
+    }
+
+    /// The property that lets a route be totalled run by run: averaging each
+    /// and adding is the same as averaging the whole journey.
+    #[test]
+    fn costs_add_up_the_same_either_way() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3]);
+        net.link(3, 4, 1.0);
+        net.link(3, 9, 1.0); // junction at 3, so 1..3 and 3..4 are separate runs
+        net.observe_passage(1, 3, 6000.0);
+        net.observe_passage(3, 4, 3000.0);
+
+        let leg_by_leg = net.travel_ms(1, 3, 1.0).unwrap() + net.travel_ms(3, 4, 1.0).unwrap();
+        let free = 3.0 * 1000.0; // three tiles
+        let driven = 6000.0 + 3000.0;
+        assert_eq!(leg_by_leg, (free + driven) / 2.0);
+    }
+
+    /// A jam is discounted, never charged in full — which is what keeps a
+    /// motorway crawling at half speed worth more than the lane beside it, and
+    /// what stops everyone abandoning a road at once and piling back later.
+    #[test]
+    fn a_jam_is_only_ever_half_believed() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3]);
+        let promised = net.travel_ms(1, 3, 1.0).unwrap();
+        net.observe_passage(1, 3, promised * 3.0);
+
+        let cost = net.travel_ms(1, 3, 1.0).unwrap();
+        assert!(cost > promised, "the jam has to count for something");
+        assert_eq!(cost, promised * 2.0, "but only half of it");
+    }
+
     #[test]
     fn a_road_nobody_has_driven_has_nothing_to_say() {
         let mut net = RoadNetwork::default();
@@ -688,13 +771,13 @@ mod tests {
     fn what_a_run_learned_survives_being_laid_again() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3]);
-        net.link(3, 4);
-        net.link(3, 5); // node 3 is now a junction, so 1..3 is a run
+        net.link(3, 4, 1.0);
+        net.link(3, 5, 1.0); // node 3 is now a junction, so 1..3 is a run
         net.observe_passage(1, 3, 1000.0);
 
         let before: Vec<SegmentId> =
             net.on_node[&2].iter().copied().collect();
-        net.link(3, 7); // a fourth arm: every run at 3 is rebuilt, 1..3 unchanged
+        net.link(3, 7, 1.0); // a fourth arm: every run at 3 is rebuilt, 1..3 unchanged
         let after: Vec<SegmentId> = net.on_node[&2].iter().copied().collect();
         assert_ne!(before, after, "the run should have been laid again");
 
@@ -713,7 +796,7 @@ mod tests {
     fn a_junction_cuts_a_road_into_three() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4, 5]);
-        net.link(3, 99); // a side road off the middle
+        net.link(3, 99, 1.0); // a side road off the middle
         assert_eq!(net.segment_count(), 3, "two halves and the side road");
         segments_agree(&net);
     }
@@ -722,7 +805,7 @@ mod tests {
     fn removing_the_junction_makes_it_one_road_again() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4, 5]);
-        net.link(3, 99);
+        net.link(3, 99, 1.0);
         net.unlink(3, 99);
         assert_eq!(net.segment_count(), 1, "the halves merge back");
         segments_agree(&net);
@@ -732,7 +815,7 @@ mod tests {
     fn a_ring_road_is_one_segment_however_it_was_drawn() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4]);
-        net.link(4, 1);
+        net.link(4, 1, 1.0);
         assert_eq!(net.segment_count(), 1);
         let ring = net.segments.values().next().unwrap();
         assert!(ring.is_ring());
@@ -742,7 +825,7 @@ mod tests {
         // The same ring, closed from the other side, comes out identical.
         let mut other = RoadNetwork::default();
         chain(&mut other, &[3, 4, 1, 2]);
-        other.link(2, 3);
+        other.link(2, 3, 1.0);
         assert_eq!(
             other.segments.values().next().unwrap().nodes,
             net.segments.values().next().unwrap().nodes,
@@ -753,7 +836,7 @@ mod tests {
     fn cutting_a_ring_leaves_one_open_road() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4]);
-        net.link(4, 1);
+        net.link(4, 1, 1.0);
         net.unlink(1, 2);
         assert_eq!(net.segment_count(), 1);
         let seg = net.segments.values().next().unwrap();
@@ -766,9 +849,9 @@ mod tests {
     fn a_crossroads_meets_four_segments() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3]); // west-east through 2
-        net.link(2, 10);
+        net.link(2, 10, 1.0);
         chain(&mut net, &[10, 11]);
-        net.link(2, 20);
+        net.link(2, 20, 1.0);
         assert_eq!(net.segments_at(2).count(), 4, "four arms meet here");
         segments_agree(&net);
     }
@@ -777,7 +860,7 @@ mod tests {
     fn extending_a_dead_end_lengthens_its_segment() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3]);
-        net.link(3, 4);
+        net.link(3, 4, 1.0);
         assert_eq!(net.segment_count(), 1);
         let seg = net.segments.values().next().unwrap();
         assert_eq!(seg.nodes, vec![1, 2, 3, 4]);
@@ -796,7 +879,7 @@ mod tests {
     #[test]
     fn the_last_road_leaves_nothing_behind() {
         let mut net = RoadNetwork::default();
-        net.link(1, 2);
+        net.link(1, 2, 1.0);
         net.unlink(1, 2);
         assert_eq!(net.segment_count(), 0);
         assert!(net.on_node.is_empty(), "no segment left pointing at a node");
@@ -823,7 +906,7 @@ mod tests {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3]);
         chain(&mut net, &[10, 11]);
-        net.link(3, 10);
+        net.link(3, 10, 1.0);
         assert!(net.connected(1, 11));
     }
 
@@ -841,7 +924,7 @@ mod tests {
     fn cutting_a_ring_leaves_it_whole() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4]);
-        net.link(4, 1);
+        net.link(4, 1, 1.0);
         net.unlink(1, 2);
         assert!(net.connected(1, 2));
         assert!(net.connected(2, 4));
@@ -850,7 +933,7 @@ mod tests {
     #[test]
     fn a_node_left_with_nothing_is_out_of_the_network() {
         let mut net = RoadNetwork::default();
-        net.link(1, 2);
+        net.link(1, 2, 1.0);
         net.unlink(1, 2);
         assert!(!net.connected(1, 2));
         assert_eq!(net.component_of(1), None);
@@ -861,7 +944,7 @@ mod tests {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4]);
         net.unlink(2, 3);
-        net.link(2, 3);
+        net.link(2, 3, 1.0);
         assert!(net.connected(1, 4));
     }
 

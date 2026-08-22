@@ -181,7 +181,7 @@ impl World {
             for neighbor in outgoing {
                 let len = self.segment_length(id, neighbor);
                 self.edges.insert((id, neighbor), EdgeSegment::new(len));
-                self.network.link(id, neighbor);
+                self.network.link(id, neighbor, len);
             }
         }
     }
@@ -414,7 +414,7 @@ impl World {
         }
         let len = self.segment_length(from, to);
         self.edges.insert((from, to), EdgeSegment::new(len));
-        self.network.link(from, to);
+        self.network.link(from, to, len);
     }
 
     /// Remove an edge.
