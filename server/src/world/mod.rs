@@ -28,6 +28,10 @@ pub struct World {
     /// committed road graph passes through, so nothing that lays or pulls up a
     /// road has to know this index exists.
     pub network: RoadNetwork,
+    /// Where each moving car joined the run of road it is on, and when.
+    /// Disposable: a car with no entry here simply does not report its first
+    /// stretch, and the next junction starts it off.
+    pub car_segment: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     pub terrain_seed: u32,
@@ -117,6 +121,7 @@ impl World {
             spatial: HashMap::new(),
             edges: HashMap::new(),
             network: RoadNetwork::default(),
+            car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed: 0,
             terrain: HashMap::new(),
@@ -136,6 +141,7 @@ impl World {
             spatial: HashMap::new(),
             edges: HashMap::new(),
             network: RoadNetwork::default(),
+            car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed,
             terrain: HashMap::new(),
@@ -205,6 +211,7 @@ impl World {
 
     /// Remove a car from the world entirely — scrap, not parking.
     pub fn despawn_car(&mut self, car_id: EntityId) {
+        self.car_segment.remove(&car_id);
         self.remove_car_from_edges(car_id);
         if let Some(entry) = self.objects.get(car_id)
             && let Some(pos) = entry.position

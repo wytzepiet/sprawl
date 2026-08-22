@@ -5,6 +5,44 @@ use crate::protocol::EntityId;
 pub type ComponentId = u32;
 pub type SegmentId = u32;
 
+/// A segment named by something that outlives it.
+///
+/// Segment ids churn: an edit throws away the runs it touches and lays them
+/// again, so a neighbour rebuilt unchanged still comes back with a fresh id,
+/// and anything keyed on that id would lose its history to an edit down the
+/// road. The first two nodes do not churn — and they stay distinct even for
+/// two roads running between the same pair of junctions, since those leave by
+/// different neighbours.
+pub type SegmentKey = (EntityId, EntityId);
+
+/// How long this run takes to drive, as driven.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Passage {
+    mean_ms: f64,
+    count: u32,
+}
+
+/// How much a fresh observation moves the average. One freak trip — a crash, a
+/// closure — should not decide next week's departures, but a road that really
+/// has got slower should be believed within a few journeys.
+const BLEND: f64 = 0.3;
+
+/// Where the count stops climbing. A segment that converged after a thousand
+/// cars and then ignored the bypass you built would be a monument, not a
+/// memory.
+const CONFIDENCE_CAP: u32 = 20;
+
+impl Passage {
+    fn observe(&mut self, ms: f64) {
+        self.mean_ms = if self.count == 0 {
+            ms
+        } else {
+            self.mean_ms * (1.0 - BLEND) + ms * BLEND
+        };
+        self.count = (self.count + 1).min(CONFIDENCE_CAP);
+    }
+}
+
 /// A run of road with nothing joining it along the way.
 ///
 /// Ends at an intersection or a dead end, so everything that drives onto a
@@ -19,6 +57,10 @@ pub struct Segment {
 }
 
 impl Segment {
+    pub fn key(&self) -> SegmentKey {
+        (self.nodes[0], self.nodes[1])
+    }
+
     pub fn ends(&self) -> (EntityId, EntityId) {
         (self.nodes[0], self.nodes[self.nodes.len() - 1])
     }
@@ -74,6 +116,9 @@ pub struct RoadNetwork {
     /// one per arm for an intersection.
     on_node: HashMap<EntityId, HashSet<SegmentId>>,
     next_segment: SegmentId,
+    /// Observed passage time, one per direction: [along the run, against it].
+    /// Keyed so it survives the run being laid again by a nearby edit.
+    passage: HashMap<SegmentKey, [Passage; 2]>,
 }
 
 impl RoadNetwork {
@@ -186,6 +231,52 @@ impl RoadNetwork {
                 }
             }
         }
+    }
+
+    /// Does a run of road end here — because others meet it, or because it
+    /// stops? Distinct from `is_intersection`, which is about arbitrating who
+    /// goes first and so only counts genuine forks.
+    pub fn is_junction(&self, node: EntityId) -> bool {
+        self.adj.get(&node).map_or(false, |a| a.len() != 2)
+    }
+
+    /// Time a car took to drive the run between two junctions.
+    ///
+    /// Entry to entry rather than entry to the far end, so the wait at the
+    /// junction it leaves by is counted as part of the run — which is where
+    /// most of the delay is, and it costs nothing to include.
+    pub fn observe_passage(&mut self, entered: EntityId, left: EntityId, ms: f64) {
+        let Some((key, forward)) = self.run_between(entered, left) else { return };
+        self.passage.entry(key).or_default()[usize::from(!forward)].observe(ms);
+    }
+
+    /// What the road between these two junctions has been taking, in the
+    /// direction of travel. `None` where nobody has driven it yet.
+    pub fn passage_ms(&self, entered: EntityId, left: EntityId) -> Option<f64> {
+        let (key, forward) = self.run_between(entered, left)?;
+        let seen = self.passage.get(&key)?[usize::from(!forward)];
+        (seen.count > 0).then_some(seen.mean_ms)
+    }
+
+    /// The run joining two junctions, and whether driving it that way round is
+    /// along the run's own direction.
+    ///
+    /// `None` when the two do not bound a run between them — a car that joined
+    /// the road partway along has driven part of one, and a part says nothing
+    /// about the whole. Rings answer `None` too: nothing joins a ring, so
+    /// nothing can be driving on one.
+    fn run_between(&self, from: EntityId, to: EntityId) -> Option<(SegmentKey, bool)> {
+        self.segments_at(from).find_map(|seg| {
+            if seg.is_ring() {
+                return None;
+            }
+            let (a, b) = seg.ends();
+            match (from == a && to == b, from == b && to == a) {
+                (true, _) => Some((seg.key(), true)),
+                (_, true) => Some((seg.key(), false)),
+                _ => None,
+            }
+        })
     }
 
     /// Every segment a node lies on. One for a node mid-run, one per arm at an
@@ -530,6 +621,84 @@ mod tests {
         assert!(saw_ring, "the churn never closed a ring");
         assert!(saw_crossroads, "the churn never built a crossroads");
         assert!(saw_split, "the churn never broke the network in two");
+    }
+
+    #[test]
+    fn a_run_remembers_each_direction_separately() {
+        let mut net = RoadNetwork::default();
+        // Dead ends at both ends, so 1..4 is one measurable run.
+        chain(&mut net, &[1, 2, 3, 4]);
+
+        net.observe_passage(1, 4, 1000.0);
+        net.observe_passage(4, 1, 4000.0);
+        assert_eq!(net.passage_ms(1, 4), Some(1000.0));
+        assert_eq!(net.passage_ms(4, 1), Some(4000.0), "the jam is one way only");
+    }
+
+    /// Someone arriving from off the map joins wherever the road out past the
+    /// frontier reaches, which is rarely a junction. Half a run tells you
+    /// nothing about the whole one.
+    #[test]
+    fn a_car_that_joined_partway_reports_nothing() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3, 4, 5]);
+        net.observe_passage(3, 5, 900.0); // joined at 3, mid-run
+        assert_eq!(net.passage_ms(1, 5), None, "a part-driven run is not a measurement");
+        assert_eq!(net.passage_ms(3, 5), None);
+    }
+
+    #[test]
+    fn a_road_nobody_has_driven_has_nothing_to_say() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3]);
+        assert_eq!(net.passage_ms(1, 3), None);
+    }
+
+    #[test]
+    fn one_freak_trip_does_not_become_the_truth() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3]);
+        for _ in 0..20 {
+            net.observe_passage(1, 3, 1000.0);
+        }
+        net.observe_passage(1, 3, 9000.0);
+        let after = net.passage_ms(1, 3).unwrap();
+        assert!(after < 4000.0, "one bad run swung the average to {after}");
+        assert!(after > 1000.0, "but it was not ignored either");
+    }
+
+    #[test]
+    fn a_road_that_really_got_slower_is_believed() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3]);
+        for _ in 0..20 {
+            net.observe_passage(1, 3, 1000.0);
+        }
+        for _ in 0..10 {
+            net.observe_passage(1, 3, 5000.0);
+        }
+        assert!(net.passage_ms(1, 3).unwrap() > 4500.0, "ten slow runs should convince it");
+    }
+
+    /// The reason passage is keyed by nodes and not by segment id: a road laid
+    /// at a junction throws away every run meeting there and lays them again,
+    /// so a run that came back completely unchanged still comes back with a
+    /// fresh id. Keyed on the id, its history would evaporate.
+    #[test]
+    fn what_a_run_learned_survives_being_laid_again() {
+        let mut net = RoadNetwork::default();
+        chain(&mut net, &[1, 2, 3]);
+        net.link(3, 4);
+        net.link(3, 5); // node 3 is now a junction, so 1..3 is a run
+        net.observe_passage(1, 3, 1000.0);
+
+        let before: Vec<SegmentId> =
+            net.on_node[&2].iter().copied().collect();
+        net.link(3, 7); // a fourth arm: every run at 3 is rebuilt, 1..3 unchanged
+        let after: Vec<SegmentId> = net.on_node[&2].iter().copied().collect();
+        assert_ne!(before, after, "the run should have been laid again");
+
+        assert_eq!(net.passage_ms(1, 3), Some(1000.0), "and kept what it knew");
     }
 
     #[test]

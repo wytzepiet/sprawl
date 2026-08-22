@@ -23,6 +23,7 @@ pub fn park_car(
     car_id: EntityId,
     at_building: EntityId,
 ) {
+    world.car_segment.remove(&car_id);
     let mut owner = None;
     let trip_info = world.objects.get(car_id).and_then(|entry| {
         if let GameObject::Car(ref car) = entry.object {
@@ -210,6 +211,39 @@ pub fn handle_car_wake_up(
             );
         }
 
+        // A run of road ends here, so whatever it took to drive is now known.
+        //
+        // Timed from when the car actually reached the line rather than from
+        // when it next woke. A wake lands near a boundary, not on it — the
+        // estimate that schedules it assumes a steady speed, and a car pulling
+        // away from rest gets no such wake at all — so using `now` would make
+        // a driveway look several times slower or faster than it is. Over a
+        // long run that error is noise; over a single tile it is the whole
+        // measurement.
+        //
+        // The other case is a car that joined partway along: someone arriving
+        // from off the map starts wherever the road out past the frontier
+        // reaches, which is rarely a junction. A part-driven run says nothing
+        // about the whole one, and `observe_passage` refuses it, being the one
+        // that knows what joins what. Either way the car starts afresh here.
+        if world.network.is_junction(node) {
+            let crossed_at = physics::time_to_reach(
+                trip.progress,
+                trip.speed,
+                trip.acceleration,
+                seg_start + seg_len,
+            )
+            .map_or(now, |t| trip.updated_at + (t * 1000.0) as u64);
+
+            if let Some(&(entered, at)) = world.car_segment.get(&car_id)
+                && entered != node
+                && crossed_at > at
+            {
+                world.network.observe_passage(entered, node, (crossed_at - at) as f64);
+            }
+            world.car_segment.insert(car_id, (node, crossed_at));
+        }
+
         if ri + 1 >= trip.route.len() {
             // Journey's end: the driver steps out, the car stays.
             crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, now);
@@ -374,10 +408,16 @@ pub fn handle_car_wake_up(
         .map(|o| o.wake_time(cur_speed, new_accel))
         .fold(5000u64, u64::min);
 
-    // Ensure wake before edge boundary for deque transition
-    if cur_speed > 1e-3 {
-        let time_to_edge_end = remaining / cur_speed;
-        wake_ms = wake_ms.min(((time_to_edge_end * 1000.0) as u64).max(10));
+    // Be awake when this stretch ends, because crossing is when the car has to
+    // change edge deques and clear the junction behind it — and it cannot do
+    // either while it is asleep.
+    //
+    // Solved with the acceleration it is about to drive with, not at whatever
+    // speed it happens to hold now. Dividing the distance by the current speed
+    // said "never" for a car pulling away from rest, which let it sleep through
+    // a junction and take the turn at twice the speed the turn allows.
+    if let Some(t) = physics::time_to_reach(0.0, cur_speed, new_accel, remaining) {
+        wake_ms = wake_ms.min(((t * 1000.0) as u64).max(1));
     }
 
     events.wake(wake_ms, car_id);

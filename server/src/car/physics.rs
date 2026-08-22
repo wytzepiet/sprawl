@@ -19,6 +19,31 @@ pub fn catch_up(progress: f64, speed: f64, accel: f64, dt: f64) -> (f64, f64) {
     (new_progress, new_speed)
 }
 
+/// When a car travelling like this passes `target`, in seconds from now.
+///
+/// Within one step the simulation's motion *is* this quadratic — `catch_up`
+/// holds one acceleration for the whole of it — so this is the exact moment,
+/// not an estimate. Which is why measuring a journey does not depend on a car
+/// being woken at the right instant: a wake that lands late still knows when
+/// the line was actually crossed.
+///
+/// `None` if it never gets there.
+pub fn time_to_reach(progress: f64, speed: f64, accel: f64, target: f64) -> Option<f64> {
+    let d = target - progress;
+    if d <= 0.0 {
+        return Some(0.0);
+    }
+    if accel.abs() < 1e-9 {
+        return (speed > 1e-9).then(|| d / speed);
+    }
+    let disc = speed * speed + 2.0 * accel * d;
+    if disc < 0.0 {
+        return None; // slows to a stop short of it
+    }
+    let t = (-speed + disc.sqrt()) / accel;
+    (t >= 0.0).then_some(t)
+}
+
 /// Distance needed to brake from `from_speed` to `to_speed` at DECELERATION.
 pub fn braking_distance(from_speed: f64, to_speed: f64) -> f64 {
     if from_speed <= to_speed {
@@ -122,5 +147,38 @@ impl Obstacle {
         };
 
         ((t * 1000.0) as u64).max(10)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn at_a_steady_speed_it_is_just_distance_over_speed() {
+        assert_eq!(time_to_reach(0.0, 2.0, 0.0, 10.0), Some(5.0));
+    }
+
+    #[test]
+    fn from_rest_it_accounts_for_the_pulling_away() {
+        // 0.5 * 2 * t^2 = 4  ->  t = 2
+        let t = time_to_reach(0.0, 0.0, 2.0, 4.0).unwrap();
+        assert!((t - 2.0).abs() < 1e-9, "got {t}");
+    }
+
+    #[test]
+    fn a_car_already_past_it_crossed_at_once() {
+        assert_eq!(time_to_reach(10.0, 2.0, 0.0, 4.0), Some(0.0));
+    }
+
+    #[test]
+    fn a_car_stopping_short_never_gets_there() {
+        // Braking from 1.0 covers 0.25 before stopping, so 10 is out of reach.
+        assert_eq!(time_to_reach(0.0, 1.0, -2.0, 10.0), None);
+    }
+
+    #[test]
+    fn standing_still_and_not_pulling_away_never_gets_there() {
+        assert_eq!(time_to_reach(0.0, 0.0, 0.0, 4.0), None);
     }
 }
