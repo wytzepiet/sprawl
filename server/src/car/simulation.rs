@@ -355,21 +355,28 @@ pub fn handle_car_wake_up(
     }
 
     // SpeedLimit at approaching node route[ri]
+    //
+    // The bend is rounded, so it begins half an edge back from the node — and
+    // it does not end there either. Dropping the limit once the car reaches
+    // the start of the bend let it brake correctly to the turn speed and then
+    // accelerate straight through the corner, arriving at the node at twice
+    // what the corner allows. Held to zero instead, so it carries the speed it
+    // slowed to through the turn rather than only up to it.
     let entry_ri = remaining - 0.5 * trip.segment_lengths[ri] - CAR_NOSE;
-    if entry_ri > 0.0 {
-        if ri > 0 && ri < trip.route.len() - 1 {
-            let ts = physics::turn_speed(world.turn_cos_angle(&trip.route, ri));
-            obstacles.push(Obstacle::SpeedLimit {
-                distance: entry_ri,
-                speed: ts,
-            });
-        }
-        if world.is_intersection(trip.route[ri]) && !intersections.has_passage(trip.route[ri], car_id)
-        {
-            obstacles.push(Obstacle::MustStop {
-                distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0),
-            });
-        }
+    if ri > 0 && ri < trip.route.len() - 1 {
+        let ts = physics::turn_speed(world.turn_cos_angle(&trip.route, ri));
+        obstacles.push(Obstacle::SpeedLimit {
+            distance: entry_ri.max(0.0),
+            speed: ts,
+        });
+    }
+    if entry_ri > 0.0
+        && world.is_intersection(trip.route[ri])
+        && !intersections.has_passage(trip.route[ri], car_id)
+    {
+        obstacles.push(Obstacle::MustStop {
+            distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0),
+        });
     }
 
     // Scan forward nodes

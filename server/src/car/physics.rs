@@ -154,6 +154,24 @@ impl Obstacle {
 mod tests {
     use super::*;
 
+    /// A limit the car has already reached is held, not ignored: the turn
+    /// limit stays in force from the start of the bend all the way to the
+    /// node, and at zero distance it is what stops the car winding back up to
+    /// cruise halfway round the corner.
+    #[test]
+    fn a_limit_underfoot_holds_the_car_at_it() {
+        let here = Obstacle::SpeedLimit { distance: 0.0, speed: 0.5 };
+        assert_eq!(here.required_accel(0.5), 0.0, "at the limit: hold");
+        assert!(here.required_accel(0.2) > 0.0, "under the limit: pull away");
+        assert!(here.required_accel(1.2) < 0.0, "over the limit: shed it");
+    }
+
+    #[test]
+    fn a_limit_far_enough_off_does_not_slow_anyone_yet() {
+        let far = Obstacle::SpeedLimit { distance: 50.0, speed: 0.5 };
+        assert!(far.required_accel(1.0) >= 0.0, "no need to brake from that far");
+    }
+
     #[test]
     fn at_a_steady_speed_it_is_just_distance_over_speed() {
         assert_eq!(time_to_reach(0.0, 2.0, 0.0, 10.0), Some(5.0));
