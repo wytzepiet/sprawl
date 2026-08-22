@@ -120,7 +120,14 @@ impl Obstacle {
 
         let brake_dist = braking_distance(my_speed, target_speed);
         if distance < 0.01 {
-            if my_speed > target_speed + 0.05 {
+            // Some slack around the target keeps a car from hunting above and
+            // below it. Around a *stop* there can be none: zero acceleration
+            // means holding whatever speed you have, and any speed at all
+            // eventually carries you over the line. Cars were creeping through
+            // junctions they were still queued at, at two hundredths of a tile
+            // a second, because that counted as close enough to stopped.
+            let slack = if target_speed > 0.0 { 0.05 } else { 0.0 };
+            if my_speed > target_speed + slack {
                 -(my_speed * my_speed) / 0.02
             } else if my_speed < target_speed - 0.05 {
                 ACCELERATION
@@ -217,6 +224,15 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The creep that let cars drift through junctions they were queued at.
+    #[test]
+    fn a_stop_line_underfoot_means_stopped_not_nearly_stopped() {
+        let line = Obstacle::MustStop { distance: 0.0 };
+        assert!(line.required_accel(0.02) < 0.0, "barely moving is still moving");
+        assert!(line.required_accel(1.0) < 0.0, "and so is moving properly");
+        assert_eq!(line.required_accel(0.0), 0.0, "stopped is stopped");
     }
 
     /// A limit the car has already reached is held, not ignored: the turn
