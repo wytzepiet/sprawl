@@ -63,6 +63,7 @@ impl Segment {
         (self.nodes[0], self.nodes[1])
     }
 
+    #[cfg(test)]
     pub fn ends(&self) -> (EntityId, EntityId) {
         (self.nodes[0], self.nodes[self.nodes.len() - 1])
     }
@@ -243,19 +244,53 @@ impl RoadNetwork {
         self.adj.get(&node).map_or(false, |a| a.len() != 2)
     }
 
-    /// Time a car took to drive the run between two junctions.
+    /// The run leaving this junction by this neighbour, and whether that is
+    /// along the run's own direction.
+    ///
+    /// Naming a run by its two ends is not enough: a road can fork and rejoin
+    /// with nothing else meeting it, and then two different runs share both
+    /// ends. Which one you got depended on the order a hash map happened to
+    /// iterate — so a jam recorded on one could be charged to the other. The
+    /// first step out is what tells them apart.
+    ///
+    /// `None` when the junction is not an end of a run at all, which is how a
+    /// car that joined the road partway along is turned away.
+    pub fn run_from(&self, at: EntityId, next: EntityId) -> Option<(&Segment, bool)> {
+        self.segments_at(at).find_map(|seg| {
+            if seg.is_ring() || seg.nodes.len() < 2 {
+                return None;
+            }
+            let last = seg.nodes.len() - 1;
+            if seg.nodes[0] == at && seg.nodes[1] == next {
+                Some((seg, true))
+            } else if seg.nodes[last] == at && seg.nodes[last - 1] == next {
+                Some((seg, false))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Time a car took to drive the run it set off along, entering here and
+    /// leaving by its far end.
     ///
     /// Entry to entry rather than entry to the far end, so the wait at the
     /// junction it leaves by is counted as part of the run — which is where
     /// most of the delay is, and it costs nothing to include.
-    pub fn observe_passage(&mut self, entered: EntityId, left: EntityId, ms: f64) {
-        let Some((key, forward)) = self.run_between(entered, left) else { return };
+    pub fn observe_passage(&mut self, at: EntityId, next: EntityId, ms: f64) {
+        let Some((seg, forward)) = self.run_from(at, next) else { return };
+        let key = seg.key();
         self.passage.entry(key).or_default()[usize::from(!forward)].observe(ms);
     }
 
-    /// What driving between these two junctions is reckoned to cost, in
-    /// milliseconds.
-    ///
+    /// What driving that run is reckoned to cost, in milliseconds. The search
+    /// costs a run it already holds; this is for asking about one you do not.
+    #[cfg(test)]
+    pub fn travel_via(&self, at: EntityId, next: EntityId, cruise_speed: f64) -> Option<f64> {
+        let (seg, forward) = self.run_from(at, next)?;
+        Some(self.run_cost_ms(seg, forward, cruise_speed))
+    }
+
     /// **Half what the road promises, half what it has been giving.** Taking
     /// only the promise ignores the jam; taking only the record makes a fast
     /// road unattractive the moment it gets busy, which is backwards — a
@@ -265,47 +300,26 @@ impl RoadNetwork {
     /// and swapping back.
     ///
     /// It also composes: averaging each run and adding them up gives the same
-    /// answer as averaging the whole journey, so a search can total this run
-    /// by run without the arithmetic drifting.
+    /// answer as averaging the whole journey, so a search can total this run by
+    /// run without the arithmetic drifting.
     ///
     /// A road nobody has driven costs what it promises, which is the same rule
     /// with nothing to weigh against it.
-    pub fn travel_ms(&self, from: EntityId, to: EntityId, cruise_speed: f64) -> Option<f64> {
-        let (key, forward) = self.run_between(from, to)?;
-        let free = self.segments_at(from).find(|s| s.key() == key)?.length / cruise_speed * 1000.0;
-        match self.passage.get(&key).map(|p| p[usize::from(!forward)]) {
-            Some(seen) if seen.count > 0 => Some((free + seen.mean_ms) / 2.0),
-            _ => Some(free),
+    pub fn run_cost_ms(&self, seg: &Segment, forward: bool, cruise_speed: f64) -> f64 {
+        let free = seg.length / cruise_speed * 1000.0;
+        match self.passage.get(&seg.key()).map(|p| p[usize::from(!forward)]) {
+            Some(seen) if seen.count > 0 => (free + seen.mean_ms) / 2.0,
+            _ => free,
         }
     }
 
-    /// What the road between these two junctions has been taking, in the
-    /// direction of travel. `None` where nobody has driven it yet.
-    pub fn passage_ms(&self, entered: EntityId, left: EntityId) -> Option<f64> {
-        let (key, forward) = self.run_between(entered, left)?;
-        let seen = self.passage.get(&key)?[usize::from(!forward)];
+    /// What that run has actually been taking. `None` where nobody has driven
+    /// it yet.
+    #[cfg(test)]
+    pub fn passage_via(&self, at: EntityId, next: EntityId) -> Option<f64> {
+        let (seg, forward) = self.run_from(at, next)?;
+        let seen = self.passage.get(&seg.key())?[usize::from(!forward)];
         (seen.count > 0).then_some(seen.mean_ms)
-    }
-
-    /// The run joining two junctions, and whether driving it that way round is
-    /// along the run's own direction.
-    ///
-    /// `None` when the two do not bound a run between them — a car that joined
-    /// the road partway along has driven part of one, and a part says nothing
-    /// about the whole. Rings answer `None` too: nothing joins a ring, so
-    /// nothing can be driving on one.
-    fn run_between(&self, from: EntityId, to: EntityId) -> Option<(SegmentKey, bool)> {
-        self.segments_at(from).find_map(|seg| {
-            if seg.is_ring() {
-                return None;
-            }
-            let (a, b) = seg.ends();
-            match (from == a && to == b, from == b && to == a) {
-                (true, _) => Some((seg.key(), true)),
-                (_, true) => Some((seg.key(), false)),
-                _ => None,
-            }
-        })
     }
 
     /// Every segment a node lies on. One for a node mid-run, one per arm at an
@@ -663,10 +677,10 @@ mod tests {
         // Dead ends at both ends, so 1..4 is one measurable run.
         chain(&mut net, &[1, 2, 3, 4]);
 
-        net.observe_passage(1, 4, 1000.0);
-        net.observe_passage(4, 1, 4000.0);
-        assert_eq!(net.passage_ms(1, 4), Some(1000.0));
-        assert_eq!(net.passage_ms(4, 1), Some(4000.0), "the jam is one way only");
+        net.observe_passage(1, 2, 1000.0);
+        net.observe_passage(4, 3, 4000.0);
+        assert_eq!(net.passage_via(1, 2), Some(1000.0));
+        assert_eq!(net.passage_via(4, 3), Some(4000.0), "the jam is one way only");
     }
 
     /// Someone arriving from off the map joins wherever the road out past the
@@ -676,9 +690,9 @@ mod tests {
     fn a_car_that_joined_partway_reports_nothing() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4, 5]);
-        net.observe_passage(3, 5, 900.0); // joined at 3, mid-run
-        assert_eq!(net.passage_ms(1, 5), None, "a part-driven run is not a measurement");
-        assert_eq!(net.passage_ms(3, 5), None);
+        net.observe_passage(3, 4, 900.0); // joined at 3, mid-run
+        assert_eq!(net.passage_via(1, 2), None, "a part-driven run is not a measurement");
+        assert_eq!(net.passage_via(3, 4), None);
     }
 
     /// Four tiles at one tile per second is four seconds promised.
@@ -686,16 +700,16 @@ mod tests {
     fn a_road_nobody_has_driven_costs_what_it_promises() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4, 5]);
-        assert_eq!(net.travel_ms(1, 5, 1.0), Some(4000.0));
+        assert_eq!(net.travel_via(1, 2, 1.0), Some(4000.0));
     }
 
     #[test]
     fn a_busy_road_costs_halfway_between_promise_and_record() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3, 4, 5]);
-        net.observe_passage(1, 5, 8000.0); // twice what it promises
-        assert_eq!(net.travel_ms(1, 5, 1.0), Some(6000.0));
-        assert_eq!(net.travel_ms(5, 1, 1.0), Some(4000.0), "the other way is clear");
+        net.observe_passage(1, 2, 8000.0); // twice what it promises
+        assert_eq!(net.travel_via(1, 2, 1.0), Some(6000.0));
+        assert_eq!(net.travel_via(5, 4, 1.0), Some(4000.0), "the other way is clear");
     }
 
     /// The property that lets a route be totalled run by run: averaging each
@@ -706,10 +720,10 @@ mod tests {
         chain(&mut net, &[1, 2, 3]);
         net.link(3, 4, 1.0);
         net.link(3, 9, 1.0); // junction at 3, so 1..3 and 3..4 are separate runs
-        net.observe_passage(1, 3, 6000.0);
+        net.observe_passage(1, 2, 6000.0);
         net.observe_passage(3, 4, 3000.0);
 
-        let leg_by_leg = net.travel_ms(1, 3, 1.0).unwrap() + net.travel_ms(3, 4, 1.0).unwrap();
+        let leg_by_leg = net.travel_via(1, 2, 1.0).unwrap() + net.travel_via(3, 4, 1.0).unwrap();
         let free = 3.0 * 1000.0; // three tiles
         let driven = 6000.0 + 3000.0;
         assert_eq!(leg_by_leg, (free + driven) / 2.0);
@@ -722,10 +736,10 @@ mod tests {
     fn a_jam_is_only_ever_half_believed() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3]);
-        let promised = net.travel_ms(1, 3, 1.0).unwrap();
-        net.observe_passage(1, 3, promised * 3.0);
+        let promised = net.travel_via(1, 2, 1.0).unwrap();
+        net.observe_passage(1, 2, promised * 3.0);
 
-        let cost = net.travel_ms(1, 3, 1.0).unwrap();
+        let cost = net.travel_via(1, 2, 1.0).unwrap();
         assert!(cost > promised, "the jam has to count for something");
         assert_eq!(cost, promised * 2.0, "but only half of it");
     }
@@ -734,7 +748,7 @@ mod tests {
     fn a_road_nobody_has_driven_has_nothing_to_say() {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3]);
-        assert_eq!(net.passage_ms(1, 3), None);
+        assert_eq!(net.passage_via(1, 2), None);
     }
 
     #[test]
@@ -742,10 +756,10 @@ mod tests {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3]);
         for _ in 0..20 {
-            net.observe_passage(1, 3, 1000.0);
+            net.observe_passage(1, 2, 1000.0);
         }
-        net.observe_passage(1, 3, 9000.0);
-        let after = net.passage_ms(1, 3).unwrap();
+        net.observe_passage(1, 2, 9000.0);
+        let after = net.passage_via(1, 2).unwrap();
         assert!(after < 4000.0, "one bad run swung the average to {after}");
         assert!(after > 1000.0, "but it was not ignored either");
     }
@@ -755,12 +769,12 @@ mod tests {
         let mut net = RoadNetwork::default();
         chain(&mut net, &[1, 2, 3]);
         for _ in 0..20 {
-            net.observe_passage(1, 3, 1000.0);
+            net.observe_passage(1, 2, 1000.0);
         }
         for _ in 0..10 {
-            net.observe_passage(1, 3, 5000.0);
+            net.observe_passage(1, 2, 5000.0);
         }
-        assert!(net.passage_ms(1, 3).unwrap() > 4500.0, "ten slow runs should convince it");
+        assert!(net.passage_via(1, 2).unwrap() > 4500.0, "ten slow runs should convince it");
     }
 
     /// The reason passage is keyed by nodes and not by segment id: a road laid
@@ -773,7 +787,7 @@ mod tests {
         chain(&mut net, &[1, 2, 3]);
         net.link(3, 4, 1.0);
         net.link(3, 5, 1.0); // node 3 is now a junction, so 1..3 is a run
-        net.observe_passage(1, 3, 1000.0);
+        net.observe_passage(1, 2, 1000.0);
 
         let before: Vec<SegmentId> =
             net.on_node[&2].iter().copied().collect();
@@ -781,7 +795,7 @@ mod tests {
         let after: Vec<SegmentId> = net.on_node[&2].iter().copied().collect();
         assert_ne!(before, after, "the run should have been laid again");
 
-        assert_eq!(net.passage_ms(1, 3), Some(1000.0), "and kept what it knew");
+        assert_eq!(net.passage_via(1, 2), Some(1000.0), "and kept what it knew");
     }
 
     #[test]

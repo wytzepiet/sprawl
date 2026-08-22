@@ -94,7 +94,7 @@ pub fn start_trip(
 
     // The run it is setting off along starts here, so the first junction it
     // reaches has something to measure against.
-    world.car_segment.insert(car_id, (route_nodes[0], now));
+    world.car_segment.insert(car_id, (route_nodes[0], route_nodes[1], now));
     world.register_car_route(car_id, &route_nodes);
     if let Some(seg) = world.edges.get_mut(&first_edge) {
         seg.cars.push_back(car_id);

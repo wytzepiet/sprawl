@@ -28,10 +28,12 @@ pub struct World {
     /// committed road graph passes through, so nothing that lays or pulls up a
     /// road has to know this index exists.
     pub network: RoadNetwork,
-    /// Where each moving car joined the run of road it is on, and when.
-    /// Disposable: a car with no entry here simply does not report its first
-    /// stretch, and the next junction starts it off.
-    pub car_segment: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
+    /// Where each moving car joined the run of road it is on, which way it set
+    /// off, and when. The direction is what names the run: two runs can share
+    /// both ends, so the junction alone would not say which one is being
+    /// driven. Disposable — a car with no entry here simply does not report
+    /// its first stretch, and the next junction starts it off.
+    pub car_segment: HashMap<EntityId, (EntityId, EntityId, crate::engine::GameTime)>,
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     pub terrain_seed: u32,

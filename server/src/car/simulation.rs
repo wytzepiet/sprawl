@@ -235,13 +235,15 @@ pub fn handle_car_wake_up(
             )
             .map_or(now, |t| trip.updated_at + (t * 1000.0) as u64);
 
-            if let Some(&(entered, at)) = world.car_segment.get(&car_id)
+            if let Some(&(entered, first, at)) = world.car_segment.get(&car_id)
                 && entered != node
                 && crossed_at > at
             {
-                world.network.observe_passage(entered, node, (crossed_at - at) as f64);
+                world.network.observe_passage(entered, first, (crossed_at - at) as f64);
             }
-            world.car_segment.insert(car_id, (node, crossed_at));
+            if let Some(&onward) = trip.route.get(ri + 1) {
+                world.car_segment.insert(car_id, (node, onward, crossed_at));
+            }
         }
 
         if ri + 1 >= trip.route.len() {

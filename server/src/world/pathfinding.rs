@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 
+use crate::car::CRUISE_SPEED;
 use crate::protocol::EntityId;
 use crate::world::World;
 
@@ -42,8 +43,12 @@ struct Hop {
 /// Searched over whole stretches of road rather than tile by tile: a junction
 /// is the only place a decision can be made, so everything between two of them
 /// is one move. On seed 7 that is a search over 73 stretches instead of 2719
-/// links, and the answer is the same one — a stretch costs exactly what its
-/// tiles cost.
+/// links.
+///
+/// Costed in time, not distance, which is what lets a longer fast road beat a
+/// shorter slow one and lets a jam push traffic elsewhere. Time is half what a
+/// road promises and half what it has been giving, so a busy road is dearer
+/// but never as dear as it looks — see `RoadNetwork::travel_ms`.
 pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
     if start == end {
         return None;
@@ -73,12 +78,15 @@ pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<En
         })
         .collect();
 
+    // As the crow flies at the cruising speed: nothing can beat that, since no
+    // car exceeds the ceiling and no road is charged below what it promises. So
+    // it never talks the search out of the quickest way round.
     let goal = world.objects.get(end).and_then(|e| e.position);
     let heuristic = |id: EntityId| -> f64 {
         match (world.objects.get(id).and_then(|e| e.position), goal) {
             (Some(a), Some(b)) => {
                 let (dx, dy) = ((b.x - a.x) as f64, (b.y - a.y) as f64);
-                (dx * dx + dy * dy).sqrt()
+                (dx * dx + dy * dy).sqrt() / CRUISE_SPEED * 1000.0
             }
             _ => 0.0,
         }
@@ -154,7 +162,10 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Hop> {
         .filter(|seg| !seg.is_ring())
         .filter_map(|seg| {
             let nodes = oriented(&seg.nodes, at)?;
-            Some(Hop { to: *nodes.last()?, cost: run_length(world, &nodes), nodes })
+            let to = *nodes.last()?;
+            let forward = seg.nodes.first() == Some(&at);
+            let cost = world.network.run_cost_ms(seg, forward, CRUISE_SPEED);
+            Some(Hop { to, cost, nodes })
         })
         .collect()
 }
@@ -177,10 +188,16 @@ fn junctions_from(world: &World, from: EntityId) -> Vec<Hop> {
             [back, on]
                 .into_iter()
                 .filter(|part| part.len() > 1)
-                .map(|part| Hop {
-                    to: part[part.len() - 1],
-                    cost: run_length(world, &part),
-                    nodes: part,
+                .map(|part| {
+                    // Part of a stretch has no record of its own, so it is
+                    // charged its share of the whole stretch's — otherwise
+                    // joining a road halfway along would look like a way of
+                    // dodging the traffic on it.
+                    let to = part[part.len() - 1];
+                    let share = run_length(world, &part) / seg.length.max(1e-9);
+                    let forward = part.first() == seg.nodes.first();
+                    let whole = world.network.run_cost_ms(seg, forward, CRUISE_SPEED);
+                    Hop { to, cost: whole * share, nodes: part }
                 })
                 .collect()
         })
@@ -375,6 +392,75 @@ mod tests {
         assert!(joined_up(&world, &route), "route has a gap in it");
         let tile_by_tile = find_path_tile_by_tile(&world, from, to).unwrap();
         assert!((total(&world, &route) - total(&world, &tile_by_tile)).abs() < 1e-6);
+    }
+
+    /// Two ways round, one short and one long, with a stub at each end so both
+    /// junctions are real. The short way is taken until it jams.
+    fn two_ways_round() -> (World, EntityId, EntityId) {
+        let mut world = World::new();
+        for y in -2..10 {
+            for x in -2..10 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        let at = |x, y| GridCoord { x, y };
+        // The short way: straight along the bottom.
+        world.place_road_path(&(0..=6).map(|x| at(x, 0)).collect::<Vec<_>>());
+        // The long way: up, across, and back down.
+        let mut long: Vec<GridCoord> = (0..=3).map(|y| at(0, y)).collect();
+        long.extend((1..=6).map(|x| at(x, 3)));
+        long.extend((0..3).rev().map(|y| at(6, y)));
+        world.place_road_path(&long);
+        // Stubs, so each end really is a junction rather than a bend.
+        world.place_road_path(&[at(0, 0), at(-1, 0)]);
+        world.place_road_path(&[at(6, 0), at(7, 0)]);
+
+        let from = world.road_node_at(at(-1, 0)).unwrap();
+        let to = world.road_node_at(at(7, 0)).unwrap();
+        (world, from, to)
+    }
+
+    #[test]
+    fn the_short_way_is_taken_until_it_jams() {
+        let (mut world, from, to) = two_ways_round();
+        let short_way = world.road_node_at(GridCoord { x: 3, y: 0 }).unwrap();
+        let long_way = world.road_node_at(GridCoord { x: 3, y: 3 }).unwrap();
+
+        let quiet = find_path(&world, from, to).unwrap();
+        assert!(quiet.contains(&short_way), "with nothing in the way, go the short way");
+        assert!(!quiet.contains(&long_way));
+
+        // The short way turns out to take five times what it promises. Half of
+        // that is believed, which is enough to make the long way round cheaper.
+        // Named by the first step out of the junction, since both ways round
+        // share their two ends.
+        let (a, first) = (
+            world.road_node_at(GridCoord { x: 0, y: 0 }).unwrap(),
+            world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap(),
+        );
+        let promised = world.network.travel_via(a, first, CRUISE_SPEED).unwrap();
+        world.network.observe_passage(a, first, promised * 5.0);
+
+        let jammed = find_path(&world, from, to).unwrap();
+        assert!(jammed.contains(&long_way), "a jam that bad should push traffic round");
+        assert!(!jammed.contains(&short_way));
+    }
+
+    /// The jam is only half believed, so a road has to be genuinely worse than
+    /// the alternative before anyone leaves it — not merely busy.
+    #[test]
+    fn a_little_traffic_does_not_empty_a_road() {
+        let (mut world, from, to) = two_ways_round();
+        let short_way = world.road_node_at(GridCoord { x: 3, y: 0 }).unwrap();
+        let (a, first) = (
+            world.road_node_at(GridCoord { x: 0, y: 0 }).unwrap(),
+            world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap(),
+        );
+        let promised = world.network.travel_via(a, first, CRUISE_SPEED).unwrap();
+        world.network.observe_passage(a, first, promised * 1.5);
+
+        let route = find_path(&world, from, to).unwrap();
+        assert!(route.contains(&short_way), "half again is not a reason to go the long way");
     }
 
     #[test]
