@@ -7,16 +7,31 @@ pub fn turn_speed(cos_angle: f64) -> f64 {
 }
 
 /// Advance kinematics by dt seconds with constant acceleration.
-/// Clamps dt so the car stops rather than reversing when braking.
+///
+/// Braking stops the car rather than reversing it, and accelerating stops at
+/// the cruising speed rather than sailing past it. Nothing else held that
+/// ceiling: acceleration is only recomputed when a car wakes, so between two
+/// wakes it simply kept gaining, and cars were driving stretches of road
+/// faster than the road allows.
 pub fn catch_up(progress: f64, speed: f64, accel: f64, dt: f64) -> (f64, f64) {
-    let dt = if accel < 0.0 {
-        dt.min(-speed / accel)
-    } else {
-        dt
-    };
-    let new_progress = progress + speed * dt + 0.5 * accel * dt * dt;
-    let new_speed = (speed + accel * dt).max(0.0);
-    (new_progress, new_speed)
+    if accel < 0.0 {
+        let dt = dt.min(-speed / accel);
+        return (
+            progress + speed * dt + 0.5 * accel * dt * dt,
+            (speed + accel * dt).max(0.0),
+        );
+    }
+    // Pulling away up to the ceiling, then holding it for what is left.
+    let to_ceiling = if accel > 0.0 { (CRUISE_SPEED - speed) / accel } else { f64::INFINITY };
+    if to_ceiling >= dt {
+        return (progress + speed * dt + 0.5 * accel * dt * dt, speed + accel * dt);
+    }
+    // A car already over the ceiling settles back onto it.
+    let t = to_ceiling.max(0.0);
+    (
+        progress + speed * t + 0.5 * accel * t * t + CRUISE_SPEED * (dt - t),
+        CRUISE_SPEED,
+    )
 }
 
 /// When a car travelling like this passes `target`, in seconds from now.
@@ -35,6 +50,16 @@ pub fn time_to_reach(progress: f64, speed: f64, accel: f64, target: f64) -> Opti
     }
     if accel.abs() < 1e-9 {
         return (speed > 1e-9).then(|| d / speed);
+    }
+    if accel > 0.0 {
+        // Only quadratic up to the cruising speed; flat after that, and
+        // `catch_up` drives it the same way, so this stays the exact moment
+        // rather than an estimate of it.
+        let to_ceiling = ((CRUISE_SPEED - speed) / accel).max(0.0);
+        let before = speed * to_ceiling + 0.5 * accel * to_ceiling * to_ceiling;
+        if d > before {
+            return Some(to_ceiling + (d - before) / CRUISE_SPEED);
+        }
     }
     let disc = speed * speed + 2.0 * accel * d;
     if disc < 0.0 {
@@ -154,6 +179,46 @@ impl Obstacle {
 mod tests {
     use super::*;
 
+    #[test]
+    fn pulling_away_stops_at_the_cruising_speed() {
+        // Would reach 4.5 in 10s unchecked.
+        let (_, speed) = catch_up(0.0, 0.0, ACCELERATION, 10.0);
+        assert_eq!(speed, CRUISE_SPEED);
+    }
+
+    #[test]
+    fn and_covers_only_what_that_allows() {
+        let (progress, _) = catch_up(0.0, 0.0, ACCELERATION, 10.0);
+        let unchecked = 0.5 * ACCELERATION * 100.0;
+        assert!(progress < unchecked, "capped {progress} should be under {unchecked}");
+        // Up to the ceiling, then holding it.
+        let t = CRUISE_SPEED / ACCELERATION;
+        let expected = 0.5 * ACCELERATION * t * t + CRUISE_SPEED * (10.0 - t);
+        assert!((progress - expected).abs() < 1e-9, "got {progress}, want {expected}");
+    }
+
+    #[test]
+    fn a_short_step_still_accelerates_normally() {
+        let (progress, speed) = catch_up(0.0, 0.0, ACCELERATION, 0.5);
+        assert!((speed - ACCELERATION * 0.5).abs() < 1e-9);
+        assert!((progress - 0.5 * ACCELERATION * 0.25).abs() < 1e-9);
+    }
+
+    /// The two have to agree, or a wake lands somewhere the car never was.
+    #[test]
+    fn the_solver_and_the_motion_tell_the_same_story() {
+        for target in [0.1, 1.0, 4.0, 20.0, 100.0] {
+            for (v0, a) in [(0.0, ACCELERATION), (1.0, ACCELERATION), (CRUISE_SPEED, 0.0)] {
+                let Some(t) = time_to_reach(0.0, v0, a, target) else { continue };
+                let (progress, _) = catch_up(0.0, v0, a, t);
+                assert!(
+                    (progress - target).abs() < 1e-6,
+                    "v0={v0} a={a} target={target}: solver said {t}s, motion reached {progress}",
+                );
+            }
+        }
+    }
+
     /// A limit the car has already reached is held, not ignored: the turn
     /// limit stays in force from the start of the bend all the way to the
     /// node, and at zero distance it is what stops the car winding back up to
@@ -179,9 +244,19 @@ mod tests {
 
     #[test]
     fn from_rest_it_accounts_for_the_pulling_away() {
-        // 0.5 * 2 * t^2 = 4  ->  t = 2
+        // Short enough to still be gaining speed at the end: 0.5 * 2 * t^2 = 0.5
+        let t = time_to_reach(0.0, 0.0, 2.0, 0.5).unwrap();
+        assert!((t - 0.707_106_781).abs() < 1e-6, "got {t}");
+    }
+
+    #[test]
+    fn and_over_a_longer_run_it_accounts_for_the_ceiling_too() {
+        // Pulls away to CRUISE_SPEED, then holds it the rest of the way.
+        let to_ceiling = CRUISE_SPEED / 2.0;
+        let covered = 0.5 * 2.0 * to_ceiling * to_ceiling;
         let t = time_to_reach(0.0, 0.0, 2.0, 4.0).unwrap();
-        assert!((t - 2.0).abs() < 1e-9, "got {t}");
+        let expected = to_ceiling + (4.0 - covered) / CRUISE_SPEED;
+        assert!((t - expected).abs() < 1e-9, "got {t}, want {expected}");
     }
 
     #[test]
