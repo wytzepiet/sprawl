@@ -96,7 +96,18 @@ impl Tracked {
         (changed, removed)
     }
 
+    /// Everything in the world, in a fixed order.
+    ///
+    /// By id, and that is load-bearing rather than tidy. A hash map hands its
+    /// values back in an order that is seeded afresh for every process, so
+    /// anything built by walking this — the road network, above all — came out
+    /// arranged differently each run. Different arrangement, different
+    /// tie-breaks between equally good routes, different traffic. Two runs of
+    /// the same seed disagreed about which residents drove where, which makes
+    /// any before-and-after measurement meaningless.
     pub fn all_entries(&self) -> Vec<GameObjectEntry> {
-        self.data.values().cloned().collect()
+        let mut entries: Vec<GameObjectEntry> = self.data.values().cloned().collect();
+        entries.sort_unstable_by_key(|e| e.id);
+        entries
     }
 }
