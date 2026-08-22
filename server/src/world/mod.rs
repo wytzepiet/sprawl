@@ -1,6 +1,7 @@
 pub mod bezier;
 mod buildings;
 mod geometry;
+pub mod network;
 pub mod pathfinding;
 mod residents;
 mod roads;
@@ -13,6 +14,7 @@ use crate::protocol::{
     GameObject, OwnerId, TILE_ABSENT, TerrainChunk, TerrainType,
 };
 use crate::engine::tracked::Tracked;
+use crate::world::network::RoadNetwork;
 use crate::world::segments::EdgeSegment;
 
 pub struct World {
@@ -22,6 +24,10 @@ pub struct World {
     /// now that terrain is not an entity.
     pub(super) spatial: HashMap<ChunkCoord, HashSet<EntityId>>,
     pub edges: HashMap<EdgeKey, EdgeSegment>,
+    /// Who can reach whom, kept in step with `edges` — the one gate the
+    /// committed road graph passes through, so nothing that lays or pulls up a
+    /// road has to know this index exists.
+    pub network: RoadNetwork,
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     pub terrain_seed: u32,
@@ -110,6 +116,7 @@ impl World {
             objects: Tracked::new(),
             spatial: HashMap::new(),
             edges: HashMap::new(),
+            network: RoadNetwork::default(),
             node_cars: HashMap::new(),
             terrain_seed: 0,
             terrain: HashMap::new(),
@@ -128,6 +135,7 @@ impl World {
         let mut world = Self {
             spatial: HashMap::new(),
             edges: HashMap::new(),
+            network: RoadNetwork::default(),
             node_cars: HashMap::new(),
             terrain_seed,
             terrain: HashMap::new(),
@@ -153,6 +161,7 @@ impl World {
     /// Rebuild edges from the road graph. Only needed when loading saved state.
     pub fn rebuild_edges(&mut self) {
         self.edges.clear();
+        self.network = RoadNetwork::default();
         let entries: Vec<_> = self.objects.all_entries().iter()
             .filter_map(|e| {
                 if let GameObject::RoadNode(ref node) = e.object {
@@ -166,6 +175,7 @@ impl World {
             for neighbor in outgoing {
                 let len = self.segment_length(id, neighbor);
                 self.edges.insert((id, neighbor), EdgeSegment::new(len));
+                self.network.link(id, neighbor);
             }
         }
     }
@@ -397,11 +407,18 @@ impl World {
         }
         let len = self.segment_length(from, to);
         self.edges.insert((from, to), EdgeSegment::new(len));
+        self.network.link(from, to);
     }
 
     /// Remove an edge.
+    ///
+    /// The network is undirected — a one-way pair is still one piece of city —
+    /// so it only comes apart once the last direction is gone.
     pub fn remove_edge(&mut self, from: EntityId, to: EntityId) {
         self.edges.remove(&(from, to));
+        if !self.edges.contains_key(&(to, from)) {
+            self.network.unlink(from, to);
+        }
     }
 
     /// Collect all edge keys involving a node (as from or to).

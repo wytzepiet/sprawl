@@ -355,6 +355,54 @@ mod tests {
         assert!(beyond, "no road leaves the surveyed area; nothing could arrive from off-map");
     }
 
+    /// The contraction, checked against a map nobody designed for it: the real
+    /// generated network on seed 7, with whatever curves, forks and loops the
+    /// generator happens to produce.
+    #[test]
+    fn the_generated_map_contracts_cleanly() {
+        use std::collections::HashMap as Map;
+        let terrain = crate::terrain::generate(7);
+        let mut world = World::new();
+        world.terrain = terrain.clone();
+        generate(&mut world, 7, &terrain);
+
+        let key = |a, b| if a <= b { (a, b) } else { (b, a) };
+        let mut links = HashSet::new();
+        let mut arms: Map<_, HashSet<_>> = Map::new();
+        for &(a, b) in world.edges.keys() {
+            links.insert(key(a, b));
+            arms.entry(a).or_default().insert(b);
+            arms.entry(b).or_default().insert(a);
+        }
+        assert!(links.len() > 500, "seed 7 should lay a real network, got {}", links.len());
+
+        let mut covered = HashSet::new();
+        let mut segments = HashSet::new();
+        let mut longest = 0;
+        for &node in arms.keys() {
+            for seg in world.network.segments_at(node) {
+                segments.insert(seg.nodes.clone());
+                longest = longest.max(seg.nodes.len());
+                for pair in seg.nodes.windows(2) {
+                    covered.insert(key(pair[0], pair[1]));
+                }
+                for interior in &seg.nodes[1..seg.nodes.len() - 1] {
+                    assert_eq!(arms[interior].len(), 2, "a junction sits inside a segment");
+                }
+            }
+        }
+        assert_eq!(covered, links, "the segments do not cover the roads exactly");
+        let spans: usize = segments.iter().map(|n| n.len() - 1).sum();
+        assert_eq!(spans, links.len(), "a road is covered by two segments");
+
+        println!(
+            "seed 7: {} roads -> {} segments, longest {} tiles",
+            links.len(),
+            segments.len(),
+            longest,
+        );
+    }
+
     /// Laying the same ground twice must not double the road through it.
     #[test]
     fn extending_again_lays_nothing_new() {

@@ -35,6 +35,12 @@ pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<En
     if start == end {
         return None;
     }
+    // Refused before it starts rather than after exhausting everything
+    // reachable. Without this, someone stranded on an island retries every ten
+    // seconds and each retry is a full search of their own component.
+    if !world.network.connected(start, end) {
+        return None;
+    }
 
     let heuristic = |id: EntityId| -> f64 {
         let a = world.objects.get(id).and_then(|e| e.position);

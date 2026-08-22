@@ -699,6 +699,169 @@ mod tests {
         assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (1, 1)).is_none());
     }
 
+    /// The reachability index is maintained edit by edit rather than rebuilt,
+    /// so the thing worth testing is that it never drifts from the graph it
+    /// claims to describe. Brute-forces the answer and demands agreement.
+    fn agrees_with_the_edges(world: &World) {
+        let mut adj: std::collections::HashMap<EntityId, Vec<EntityId>> =
+            std::collections::HashMap::new();
+        for &(a, b) in world.edges.keys() {
+            adj.entry(a).or_default().push(b);
+            adj.entry(b).or_default().push(a);
+        }
+        let nodes: Vec<EntityId> = adj.keys().copied().collect();
+        for &from in &nodes {
+            let mut seen = HashSet::from([from]);
+            let mut stack = vec![from];
+            while let Some(n) = stack.pop() {
+                for &next in adj.get(&n).into_iter().flatten() {
+                    if seen.insert(next) {
+                        stack.push(next);
+                    }
+                }
+            }
+            for &to in &nodes {
+                assert_eq!(
+                    world.network.connected(from, to),
+                    seen.contains(&to),
+                    "index disagrees about {from} -> {to}",
+                );
+            }
+        }
+    }
+
+    /// Demolition as the game loop does it: edges first, then the node.
+    fn lift_road(world: &mut World, at: GridCoord) {
+        let Some(id) = world.road_node_at(at) else { return };
+        for edge in world.edges_involving(id) {
+            world.remove_edge(edge.0, edge.1);
+        }
+        world.demolish_node(id);
+    }
+
+    #[test]
+    fn the_index_follows_roads_being_laid() {
+        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0)]);
+        agrees_with_the_edges(&world);
+
+        // A second road that touches nothing is a second network.
+        world.place_road_path(&[GridCoord { x: 0, y: 5 }, GridCoord { x: 1, y: 5 }]);
+        let a = world.road_node_at(GridCoord { x: 0, y: 0 }).unwrap();
+        let b = world.road_node_at(GridCoord { x: 1, y: 5 }).unwrap();
+        assert!(!world.network.connected(a, b), "roads that never meet are two networks");
+        agrees_with_the_edges(&world);
+
+        // Joining them makes one.
+        world.place_road_path(&[
+            GridCoord { x: 2, y: 0 },
+            GridCoord { x: 2, y: 5 },
+            GridCoord { x: 1, y: 5 },
+        ]);
+        assert!(world.network.connected(a, b), "a road between them joins them");
+        agrees_with_the_edges(&world);
+    }
+
+    #[test]
+    fn lifting_a_road_cuts_the_network_where_it_stood() {
+        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0), (3, 0)]);
+        let west = world.road_node_at(GridCoord { x: 0, y: 0 }).unwrap();
+        let east = world.road_node_at(GridCoord { x: 3, y: 0 }).unwrap();
+        assert!(world.network.connected(west, east));
+
+        lift_road(&mut world, GridCoord { x: 2, y: 0 });
+        assert!(!world.network.connected(west, east), "the cut severs the road");
+        agrees_with_the_edges(&world);
+    }
+
+    #[test]
+    fn lifting_one_road_of_a_loop_leaves_it_whole() {
+        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0), (2, 1), (2, 2), (1, 2), (0, 2), (0, 1), (0, 0)]);
+        let a = world.road_node_at(GridCoord { x: 0, y: 0 }).unwrap();
+        let b = world.road_node_at(GridCoord { x: 2, y: 2 }).unwrap();
+
+        lift_road(&mut world, GridCoord { x: 1, y: 0 });
+        assert!(world.network.connected(a, b), "the long way round still joins them");
+        agrees_with_the_edges(&world);
+    }
+
+    #[test]
+    fn a_driveway_joins_its_building_to_the_street() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
+        world.paint_area(&painted(0..2, 0..1), Category::Residential);
+        agrees_with_the_edges(&world);
+
+        let house = world.all_buildings()[0].0;
+        let door = world.road_node_for_building(house).unwrap();
+        let street = world.road_node_at(GridCoord { x: 2, y: 1 }).unwrap();
+        assert!(world.network.connected(door, street), "a driveway is part of the network");
+    }
+
+    #[test]
+    fn demolishing_a_building_takes_its_driveway_out_of_the_network() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
+        world.paint_area(&painted(0..2, 0..1), Category::Residential);
+        let house = world.all_buildings()[0].0;
+        let door = world.road_node_for_building(house).unwrap();
+
+        world.remove_building(house);
+        assert_eq!(world.network.component_of(door), None, "the driveway went with it");
+        agrees_with_the_edges(&world);
+    }
+
+    /// The index refuses searches it knows will fail. The risk in that is
+    /// refusing one that would have succeeded, which no amount of "nothing
+    /// crashed" would show.
+    #[test]
+    fn a_search_across_one_network_still_finds_its_way() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)]);
+        world.paint_area(&painted(0..1, 0..1), Category::Residential);
+        world.paint_area(&painted(4..5, 0..1), Category::Commercial);
+        let buildings = world.all_buildings();
+        assert_eq!(buildings.len(), 2);
+
+        let from = world.road_node_for_building(buildings[0].0).unwrap();
+        let to = world.road_node_for_building(buildings[1].0).unwrap();
+        assert!(
+            crate::world::pathfinding::find_path(&world, from, to).is_some(),
+            "a road runs between them, so a car must be able to drive it",
+        );
+    }
+
+    #[test]
+    fn a_search_onto_an_island_is_refused() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
+        world.place_road_path(&[GridCoord { x: 0, y: 6 }, GridCoord { x: 1, y: 6 }]);
+        let here = world.road_node_at(GridCoord { x: 0, y: 1 }).unwrap();
+        let island = world.road_node_at(GridCoord { x: 1, y: 6 }).unwrap();
+        assert!(crate::world::pathfinding::find_path(&world, here, island).is_none());
+    }
+
+    #[test]
+    fn a_straight_street_is_one_segment_and_a_junction_splits_it() {
+        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)]);
+        assert_eq!(world.network.segment_count(), 1, "an unbroken street is one run");
+
+        // A side road off the middle: the street becomes two, plus the branch.
+        world.place_road_path(&[GridCoord { x: 2, y: 0 }, GridCoord { x: 2, y: 1 }]);
+        assert_eq!(world.network.segment_count(), 3, "a junction cuts the run");
+
+        lift_road(&mut world, GridCoord { x: 2, y: 1 });
+        assert_eq!(world.network.segment_count(), 1, "and the halves join back up");
+    }
+
+    #[test]
+    fn a_driveway_is_a_segment_of_its_own() {
+        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
+        world.paint_area(&painted(1..2, 0..1), Category::Residential);
+        let house = world.all_buildings()[0].0;
+        let door = world.road_node_for_building(house).unwrap();
+
+        // The driveway hangs off the street, so the street is cut where it
+        // joins and the driveway is its own short run.
+        assert_eq!(world.network.segments_at(door).count(), 1, "a dead end has one run");
+        assert_eq!(world.network.segment_count(), 3, "two halves of street, plus the driveway");
+    }
+
     #[test]
     fn footprint_covers_every_tile() {
         let pos = GridCoord { x: 10, y: 10 };
