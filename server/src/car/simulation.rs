@@ -370,10 +370,10 @@ pub fn handle_car_wake_up(
             speed: ts,
         });
     }
-    if entry_ri > 0.0
-        && world.is_intersection(trip.route[ri])
-        && !intersections.has_passage(trip.route[ri], car_id)
-    {
+    // Held to the stop line the same way, and for the same reason: dropping it
+    // once the car reached the line meant a car in the last half edge before a
+    // junction it has no claim on had nothing left telling it to wait.
+    if world.is_intersection(trip.route[ri]) && !intersections.has_passage(trip.route[ri], car_id) {
         obstacles.push(Obstacle::MustStop {
             distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0),
         });
