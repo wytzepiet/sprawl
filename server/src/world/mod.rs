@@ -46,6 +46,9 @@ pub struct World {
     /// total and yesterday's, keyed by the day today is. Learned, not
     /// saved — a loaded world starts counting afresh.
     pub delivered: HashMap<(EntityId, crate::needs::Need), Delivered>,
+    /// Proposals the mayor said no to: that kind is not offered near there
+    /// again until the time given. Not saved; a reload forgets old grudges.
+    pub rejections: Vec<(BuildingKind, GridCoord, u64)>,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
@@ -118,7 +121,7 @@ const NO_BOUNDS: ChunkBounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, m
 /// half beyond, so there is always ground in view to build the next thing on.
 const REVEAL_RADIUS: i32 = 80;
 
-use crate::protocol::GridCoord;
+use crate::protocol::{BuildingKind, GridCoord};
 
 pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
     ChunkCoord {
@@ -157,6 +160,7 @@ impl World {
             terrain_seed: 0,
             delay: 1.0,
             delivered: HashMap::new(),
+            rejections: Vec::new(),
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
@@ -179,6 +183,7 @@ impl World {
             terrain_seed,
             delay: 1.0,
             delivered: HashMap::new(),
+            rejections: Vec::new(),
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
@@ -365,7 +370,7 @@ impl World {
     }
 
     /// Take an entity out of the world, whatever kind it is.
-    fn drop_entity(&mut self, id: EntityId) {
+    pub fn drop_entity(&mut self, id: EntityId) {
         let Some(entry) = self.objects.get(id) else { return };
         let pos = entry.position;
         let is_building = matches!(entry.object, GameObject::Building(_));
@@ -374,6 +379,15 @@ impl World {
             self.remove_building(id);
         } else if is_road && let Some(pos) = pos {
             self.handle_demolish_road(pos);
+        } else {
+            // Anything else — a proposal — is just an entry and its place in
+            // the index.
+            if let Some(pos) = pos
+                && let Some(ids) = self.spatial.get_mut(&chunk_of(pos))
+            {
+                ids.remove(&id);
+            }
+            self.objects.remove(id);
         }
     }
 

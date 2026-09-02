@@ -508,12 +508,8 @@ pub fn inspect_all(world: &World, now: GameTime) -> Value {
     json!({ "now": hhmm(now), "residents": rows })
 }
 
-/// Section 6: the demand signal. Who cannot be served — a bucket with no
-/// option at all, weighted by how full it is — summed by the chunk they
-/// live in; and what every building delivered, today and yesterday. Both
-/// derived on request: the first from the same verdicts a wake would
-/// compute, the second from what settle has been counting.
-pub fn demand(world: &World, now: GameTime) -> Value {
+/// Who wants what they cannot get, by home chunk: how many, and how badly.
+pub fn unmet(world: &World, now: GameTime) -> HashMap<(ChunkCoord, Need), (u32, f64)> {
     let crowd = headcount(world);
     let mut unmet: HashMap<(ChunkCoord, Need), (u32, f64)> = HashMap::new();
     for id in world.resident_ids() {
@@ -532,6 +528,25 @@ pub fn demand(world: &World, now: GameTime) -> Value {
             }
         }
     }
+    unmet
+}
+
+/// The city's unmet demand per need, summed. What the spawner reads.
+pub fn pressure(world: &World, now: GameTime) -> HashMap<Need, f64> {
+    let mut by_need = HashMap::new();
+    for ((_, need), (_, p)) in unmet(world, now) {
+        *by_need.entry(need).or_default() += p;
+    }
+    by_need
+}
+
+/// Section 6: the demand signal. Who cannot be served — a bucket with no
+/// option at all, weighted by how full it is — summed by the chunk they
+/// live in; and what every building delivered, today and yesterday. Both
+/// derived on request: the first from the same verdicts a wake would
+/// compute, the second from what settle has been counting.
+pub fn demand(world: &World, now: GameTime) -> Value {
+    let unmet = unmet(world, now);
     let mut unmet: Vec<Value> = unmet
         .into_iter()
         .map(|((c, need), (people, pressure))| {

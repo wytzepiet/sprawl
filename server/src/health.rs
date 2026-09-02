@@ -58,6 +58,11 @@ pub async fn inspect_demand(State(state): State<AppState>) -> String {
     ask(&state, Ask::Demand).await
 }
 
+/// What the city is offering, and the shape of what stands.
+pub async fn inspect_proposals(State(state): State<AppState>) -> String {
+    ask(&state, Ask::Proposals).await
+}
+
 async fn ask(state: &AppState, query: Ask) -> String {
     let (reply, answer) = oneshot::channel();
     if state.command_tx.send(Command::Inspect { query, reply }).is_err() {

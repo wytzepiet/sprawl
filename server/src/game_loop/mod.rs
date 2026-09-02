@@ -197,6 +197,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Resident(id) => crate::resident::inspect(&world, id, now),
                         Ask::Residents => crate::resident::inspect_all(&world, now),
                         Ask::Demand => crate::resident::demand(&world, now),
+                        Ask::Proposals => crate::spawner::inspect(&world, now),
                     };
                     let _ = reply.send(serde_json::to_string_pretty(&v).unwrap_or_default());
                 }
@@ -243,6 +244,11 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             while let Some(id) = events.pop_due() {
                 handle_wake(&mut world, &mut events, &mut intersections, id, now);
             }
+        }
+        // The city offers a building now and then, while the mayor has room
+        // to answer.
+        if now / crate::spawner::INTERVAL != sim_time / crate::spawner::INTERVAL {
+            crate::spawner::propose(&mut world, now);
         }
         sim_time = now;
         // Published for /health, which is how anything outside this loop can
@@ -385,6 +391,8 @@ fn handle_player_action(
                 park_at_home(world, intersections, events, car_id);
             }
         }
+        ClientMessage::Answer { id, accept } => crate::spawner::answer(world, id, accept, now),
+        ClientMessage::MoveProposal { id, pos } => crate::spawner::relocate(world, id, pos),
         ClientMessage::Commit => {
             let Some(owner) = world.acting_as else { return };
             let committed = world.commit_drafts(owner);

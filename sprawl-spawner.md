@@ -21,10 +21,14 @@ From `sprawl-agents.md`, unchanged:
 
 - **Nothing needs to cause a spawn.** Demand tilts the choice of kind; it
   never gates it. A building that appears participates automatically.
-- **A proposal is not a world object.** It is a pin, a ghost footprint and
+- **A proposal is not a building.** It is a pin, a ghost footprint and
   two buttons. ✓ places the real building; ✗ dismisses it and suppresses
   that kind thereabouts for a while; unanswered, it waits. The queue is
-  small and capped; the spawner holds when it is full.
+  small and capped; the spawner holds when it is full. (It *is* an entity
+  — `GameObject::Proposal`, positioned — so it is saved and streamed like
+  everything else for free; `occupied`, traffic and settle never see it.
+  The earlier write-up said "not a world object"; the objection there was
+  to drafts' batch lifecycle, which this does not share.)
 - **The road is the price of yes.** Proposals land where there is no road.
   An accepted building stands **dormant** until the network reaches it;
   the driveway forms itself the moment a road lands adjacent.
@@ -107,7 +111,12 @@ stays a neutral block.
 2. **Spawner and queue.** Kind, siting, cap, accept/reject/move on the
    server, `/debug/proposals`. A harness that runs the street town for
    days and asserts: clusters form, a second cluster eventually appears,
-   nothing overlaps, nothing is in water, two runs match.
+   nothing overlaps, nothing is in water, two runs match. *Done.* What it
+   taught: the draw must be seeded on the interval, not on what stands, or
+   a draw that finds no room repeats itself forever; and affinity has to
+   score the *site*, not just choose the anchor — eight candidates, keep
+   the one whose neighbours suit the kind — or a random direction from a
+   good anchor lands the factory on the residential street anyway.
 3. **Protocol and client.** Proposals streamed; pin overlay; ✓/✗; ghost.
 4. **Restaurant.** Eat and Leisure, open late, seats twelve. The first
    special kind.

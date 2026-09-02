@@ -265,6 +265,18 @@ pub struct Resident {
     pub last_update: u64,
 }
 
+/// A building the city would like to put here, waiting for the mayor's
+/// answer. An entity — persisted and streamed like any other, with its
+/// position — but not a building: it occupies nothing, traffic and settle
+/// never see it, and accepting it is what makes the building.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Proposal {
+    pub kind: BuildingKind,
+    pub size: (u8, u8),
+    pub rotation: Rotation,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "kind", content = "data")]
@@ -273,6 +285,7 @@ pub enum GameObject {
     Building(Building),
     Car(Car),
     Resident(Resident),
+    Proposal(Proposal),
 }
 
 /// Who a player is, for the purpose of owning drafts. Assigned on connect.
@@ -369,6 +382,18 @@ pub enum ClientMessage {
     ResetWorld,
     SetChunks(ChunkBounds),
     Ping,
+    /// The mayor's answer to a proposal: build it, or not.
+    Answer {
+        #[ts(type = "number")]
+        id: EntityId,
+        accept: bool,
+    },
+    /// Drag a proposal's pin somewhere else before answering.
+    MoveProposal {
+        #[ts(type = "number")]
+        id: EntityId,
+        pos: GridCoord,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

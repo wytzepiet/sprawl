@@ -5,6 +5,7 @@ mod health;
 mod intersection;
 mod needs;
 mod road_gen;
+mod spawner;
 mod network;
 mod persistence;
 mod protocol;
@@ -35,6 +36,7 @@ async fn main() {
         .route("/debug/residents", axum::routing::get(health::inspect_residents))
         .route("/debug/resident/{id}", axum::routing::get(health::inspect_resident))
         .route("/debug/demand", axum::routing::get(health::inspect_demand))
+        .route("/debug/proposals", axum::routing::get(health::inspect_proposals))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));
