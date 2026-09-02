@@ -61,11 +61,17 @@ export default function Mesh(props: MeshProps) {
   mesh.material = material;
 
   // Apply initial state synchronously
-  const vd = new VertexData();
-  vd.positions = props.geometry.positions;
-  vd.indices = props.geometry.indices;
-  vd.normals = props.geometry.normals;
-  vd.applyToMesh(mesh, true);
+  const applyGeometry = (g: MeshGeometry) => {
+    const vd = new VertexData();
+    vd.positions = g.positions;
+    vd.indices = g.indices;
+    vd.normals = g.normals;
+    vd.applyToMesh(mesh, true);
+  };
+  applyGeometry(props.geometry);
+  // A mesh can be asked to become a different shape — the placement ghost turns
+  // into whatever kind is being placed.
+  createDeferredEffect(() => props.geometry, applyGeometry);
 
   if (props.position) {
     mesh.position.x = props.position[0];

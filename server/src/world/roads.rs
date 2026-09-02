@@ -114,10 +114,14 @@ impl World {
         let dx = to.x - from.x;
         let dy = to.y - from.y;
 
-        // Buildings sit beside roads now, never on them.
-        if self.has_building_at(from) || self.has_building_at(to) {
+        // A road may end on a plot — that is all a driveway is — but never start
+        // on one, or it would run in one side and out the other. A proposal
+        // counts: it is a plot spoken for, and the road drawn to it now is the
+        // driveway of the building accepted later.
+        if self.claimed_plot_at(from).is_some() {
             return;
         }
+        let into_building = self.claimed_plot_at(to).is_some();
         if self.are_connected(from, to) {
             return;
         }
@@ -133,9 +137,17 @@ impl World {
                 return;
             }
         } else if self.would_be_too_sharp(from, dx, dy, false)
-            || self.would_be_too_sharp(to, -dx, -dy, false)
+            // Whatever driveway stands here is about to be replaced, so its arm
+            // is not something the new one has to turn away from.
+            || (!into_building && self.would_be_too_sharp(to, -dx, -dy, false))
         {
             return;
+        }
+
+        // A building takes exactly one driveway, and it is the newest: drawing
+        // a road into it is how you move the old one.
+        if into_building {
+            self.clear_driveway(to);
         }
 
         let from_id = self.place_road(from);
@@ -251,7 +263,7 @@ impl World {
 
     /// Counts only arms in this node's own world: a drafted road carries no
     /// cars, so it cannot make a junction the simulation has to arbitrate.
-    fn unique_connection_count(&self, node_id: EntityId) -> usize {
+    pub(super) fn unique_connection_count(&self, node_id: EntityId) -> usize {
         let unique: HashSet<EntityId> = self.arms_of(node_id, false).into_iter().collect();
         unique.len()
     }

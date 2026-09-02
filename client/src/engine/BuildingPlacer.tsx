@@ -4,11 +4,9 @@ import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
 import { useGame } from "../state/gameObjects";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
-import { buildingCubeGeometry } from "./objects/buildings";
+import { shapeFor } from "./objects/buildings";
 import { createSpring2D } from "./spring";
 import type { GridCoord } from "../generated";
-
-const cube = buildingCubeGeometry();
 
 const GHOST_COLOR = new Color3(0.6, 0.8, 1.0);
 
@@ -74,7 +72,7 @@ export function BuildingPlacer() {
   return (
     <Mesh
       name="building_ghost"
-      geometry={cube}
+      geometry={shapeFor(placingBuilding() ?? "House", 1, 1)}
       position={[spring.pos()[0], spring.pos()[1], 0]}
       color={GHOST_COLOR}
       enabled={!!(placingBuilding() && ghostPos())}

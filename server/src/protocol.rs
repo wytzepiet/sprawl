@@ -68,25 +68,12 @@ impl BuildingKind {
     }
 }
 
-/// Which way a building faces. Appearance only — the entrance is wherever the
-/// driveway runs in, which is a road node standing on one of the plot's tiles.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
-#[ts(export)]
-pub enum Rotation {
-    North,
-    East,
-    South,
-    West,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Building {
     pub kind: BuildingKind,
-    /// Footprint in tiles, as it lies on the grid. Rotation does not turn it:
-    /// a plot that was validated one shape cannot become another.
+    /// Footprint in tiles, as it lies on the grid.
     pub size: (u8, u8),
-    pub rotation: Rotation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -249,7 +236,6 @@ pub struct Resident {
 pub struct Proposal {
     pub kind: BuildingKind,
     pub size: (u8, u8),
-    pub rotation: Rotation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

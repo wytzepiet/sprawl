@@ -17,14 +17,46 @@ html, body {
   animation: slide-up 0.25s ease-out;
 }
 
-/* Pins: a head with a glyph and a tip pointing at the plot. Far out they
-   collapse to dots, proposals excepted — those are the ones asking. */
-.pins .head { width: 28px; height: 28px; transition: width 0.15s, height 0.15s; }
-.pins.far .pin:not(.proposal) .head { width: 8px; height: 8px; }
-.pins.far .pin:not(.proposal) .glyph,
-.pins.far .pin:not(.proposal) .tip { display: none; }
+/* Pins: one teardrop, a coloured disc and a glyph, its point on the plot. Zoom
+   out past a kind's threshold and it hands over to a dot sitting on the spot —
+   proposals excepted, since those are the ones asking.
+
+   Both shapes are always in the DOM. The pin scales into its own point as it
+   fades, and the dot grows out of the same spot, so the changeover reads as one
+   thing becoming another rather than two things swapping. The marker keeps its
+   size throughout, so nothing below it moves. */
+.pins .marker { width: 26px; height: 35px; }
+.pins .head {
+  width: 26px;
+  height: 35px;
+  transform-origin: 50% 100%;
+  transition: opacity 0.18s ease, scale 0.18s ease;
+}
+.pins .dot {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 9999px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  translate: -50% 50%;
+  transition: opacity 0.18s ease, scale 0.18s ease;
+}
+/* A proposal is a question waiting on an answer, so it sits over everything
+   else — otherwise a neighbour's dot lands on top of the very buttons you are
+   being asked to press. */
+.pins .pin.proposal { z-index: 2; }
+
+/* Hung clear of the plot, not just clear of the pin: `--drop` is half the
+   building's on-screen height, set as the camera moves. */
+.pins .answer { top: calc(100% + var(--drop, 6px)); }
+.pins .pin:not(.collapsed) .dot { opacity: 0; scale: 0.4; }
+.pins .pin.collapsed .head { opacity: 0; scale: 0.35; }
+/* Scaled about the point, so a pulsing pin still points at its plot. */
 .pins .pin.proposal .head { animation: pin-pulse 1.6s ease-in-out infinite; }
 @keyframes pin-pulse {
-  0%, 100% { box-shadow: 0 1px 6px rgba(0,0,0,0.25), 0 0 0 0 rgba(56,189,248,0.6); }
-  50% { box-shadow: 0 1px 6px rgba(0,0,0,0.25), 0 0 0 8px rgba(56,189,248,0); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.09); }
 }

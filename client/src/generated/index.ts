@@ -5,7 +5,6 @@ export type { DemolishRoad } from "./DemolishRoad";
 export type { RoadNode } from "./RoadNode";
 export type { Building } from "./Building";
 export type { BuildingKind } from "./BuildingKind";
-export type { Rotation } from "./Rotation";
 export type { Draft } from "./Draft";
 export type { Car } from "./Car";
 export type { TerrainType } from "./TerrainType";

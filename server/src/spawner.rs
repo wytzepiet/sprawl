@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::engine::GameTime;
 use crate::needs::Need;
-use crate::protocol::{BuildingKind, EntityId, GameObject, GridCoord, Proposal, Rotation, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, GridCoord, Proposal, DAY_MS};
 use crate::world::World;
 
 /// How often the city offers something, while there is room in the queue.
@@ -41,8 +41,7 @@ pub fn propose(world: &mut World, now: GameTime) -> Option<EntityId> {
     if world.rejections.iter().any(|&(k, at, until)| k == kind && until > now && dist(at, pos) < 20) {
         return None;
     }
-    let rotation = [Rotation::North, Rotation::East, Rotation::South, Rotation::West][rng.random_range(0..4)];
-    Some(world.insert_at(GameObject::Proposal(Proposal { kind, size, rotation }), Some(pos)))
+    Some(world.insert_at(GameObject::Proposal(Proposal { kind, size }), Some(pos)))
 }
 
 /// The mayor's answer. Yes puts the building down, dormant until a road
@@ -54,7 +53,7 @@ pub fn answer(world: &mut World, id: EntityId, accept: bool, now: GameTime) {
         // The city's building, nobody's draft: placed outside whoever is
         // answering, or it would land in their pending work.
         let answering = world.acting_as.take();
-        world.place_building(pos, p.kind, p.size, p.rotation);
+        world.place_building(pos, p.kind, p.size);
         world.acting_as = answering;
     } else {
         world.rejections.push((p.kind, pos, now + GRUDGE));
@@ -301,7 +300,7 @@ mod tests {
         let street: Vec<GridCoord> = (-2..40).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
         for (x, kind) in [(0, BuildingKind::House), (4, BuildingKind::Shop), (8, BuildingKind::Workshop)] {
-            world.spawn_building(GridCoord { x, y: 1 }, kind, (1, 1), Rotation::South).unwrap();
+            world.spawn_building(GridCoord { x, y: 1 }, kind, (1, 1)).unwrap();
         }
         world
     }

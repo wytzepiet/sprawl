@@ -217,7 +217,7 @@ fn walk(a: GridCoord, b: GridCoord) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{BuildingKind, Rotation, TerrainType};
+    use crate::protocol::{BuildingKind, TerrainType};
 
     /// Grass, one long street, and whatever gets built beside it.
     fn town() -> World {
@@ -234,7 +234,7 @@ mod tests {
 
     fn build(world: &mut World, x: i32, kind: BuildingKind) -> EntityId {
         world
-            .spawn_building(GridCoord { x, y: 1 }, kind, (1, 1), Rotation::South)
+            .spawn_building(GridCoord { x, y: 1 }, kind, (1, 1))
             .expect("the street should give it a driveway")
     }
 
@@ -368,7 +368,7 @@ mod tests {
         let mut world = town();
         // Three tiles off the street: nothing to drive on.
         let home = world
-            .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, (1, 1), Rotation::South)
+            .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, (1, 1))
             .expect("land is land");
         assert!(world.road_node_for_building(home).is_none(), "dormant");
         assert!(world.settle().is_empty(), "nobody moves in off the road");

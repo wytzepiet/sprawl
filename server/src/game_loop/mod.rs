@@ -276,11 +276,7 @@ fn seed_building(world: &mut World, road: GridCoord, kind: BuildingKind) {
         if !world.is_buildable(pos) {
             continue;
         }
-        let Some((node, _)) = world.road_for_plot(pos, (1, 1)) else {
-            continue;
-        };
-        let rotation = world.rotation_toward(pos, (1, 1), node);
-        if world.spawn_building(pos, kind, (1, 1), rotation).is_some() {
+        if world.spawn_building(pos, kind, (1, 1)).is_some() {
             return;
         }
     }
@@ -357,11 +353,8 @@ fn handle_player_action(
             }
         }
         ClientMessage::PlaceBuilding(place) => {
-            if let Some((road, _)) = world.road_for_plot(place.pos, (1, 1)) {
-                let rotation = world.rotation_toward(place.pos, (1, 1), road);
-                if world.spawn_building(place.pos, place.kind, (1, 1), rotation).is_some() {
-                    settle_and_wake(world, events);
-                }
+            if world.spawn_building(place.pos, place.kind, (1, 1)).is_some() {
+                settle_and_wake(world, events);
             }
         }
         ClientMessage::DemolishRoad(demolish) => {
@@ -785,7 +778,7 @@ fn flush_dirty(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{BuildingKind, Rotation, TerrainType};
+    use crate::protocol::{BuildingKind, TerrainType};
 
     fn at_of(world: &World, id: EntityId) -> Option<EntityId> {
         match &world.objects.get(id)?.object {
@@ -839,7 +832,7 @@ mod tests {
 
     fn build(world: &mut World, x: i32, kind: BuildingKind, w: u8) -> EntityId {
         world
-            .spawn_building(GridCoord { x, y: 1 }, kind, (w, 1), Rotation::South)
+            .spawn_building(GridCoord { x, y: 1 }, kind, (w, 1))
             .expect("the street should give it a driveway")
     }
 
