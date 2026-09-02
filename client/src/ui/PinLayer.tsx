@@ -2,18 +2,8 @@ import { For, createMemo, onCleanup } from "solid-js";
 import { useEngine } from "../engine/Canvas";
 import { pickWorld } from "../engine/pickWorld";
 import { useGame, pinned } from "../state/gameObjects";
+import { BuildingIcon } from "./buildingIcons";
 import type { BuildingKind, GameObjectEntry } from "../generated";
-
-/** What each kind is, at a glance. */
-const GLYPH: Record<BuildingKind, string> = {
-  House: "🏠",
-  Apartment: "🏢",
-  Shop: "🛒",
-  Office: "💼",
-  Workshop: "🔧",
-  Factory: "🏭",
-  Restaurant: "🍽️",
-};
 
 /** Zoomed out past this (half the view height, in tiles), pins are dots. */
 const FAR = 40;
@@ -101,11 +91,11 @@ export default function PinLayer() {
               style={{ display: "none" }}
             >
               <div
-                class="head grid place-items-center rounded-full bg-white/90 shadow-[0_1px_6px_rgba(0,0,0,0.25)] text-base leading-none"
+                class="head grid place-items-center rounded-full bg-white/90 shadow-[0_1px_6px_rgba(0,0,0,0.25)]"
                 classList={{ "pointer-events-auto cursor-grab ring-2 ring-sky-400": proposal() }}
                 onPointerDown={(ev) => proposal() && drag(e, ev)}
               >
-                <span class="glyph">{GLYPH[kind()]}</span>
+                <BuildingIcon kind={kind()} class="glyph w-4 h-4 text-stone-700" />
               </div>
               <div class="tip w-0 h-0 border-x-[5px] border-x-transparent border-t-[7px] border-t-white/90" />
               {proposal() && (
