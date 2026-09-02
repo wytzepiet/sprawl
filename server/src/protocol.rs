@@ -39,6 +39,9 @@ pub enum BuildingKind {
     Office,
     Workshop,
     Factory,
+    /// The first special kind: a place to eat out, and to be, into the
+    /// evening. Placed by hand or offered by the city.
+    Restaurant,
 }
 
 impl BuildingKind {
@@ -59,6 +62,7 @@ impl BuildingKind {
             BuildingKind::Office => 16,
             BuildingKind::Workshop => 6,
             BuildingKind::Factory => 24,
+            BuildingKind::Restaurant => 6,
             _ => 0,
         }
     }

@@ -191,6 +191,15 @@ static TAPS: LazyLock<Vec<(BuildingKind, Vec<Tap>)>> = LazyLock::new(|| {
                 outing(Need::Leisure, Curve::hours(9 * H, 22 * H), 4 * Shop.jobs()),
             ],
         ].concat()),
+        // A restaurant seats a dozen, from lunch until late, and is an evening
+        // out in itself.
+        (Restaurant, [
+            work(Restaurant, 11, 23),
+            vec![
+                tap(Need::Eat, Curve::hours(11 * H, 22 * H), 12),
+                outing(Need::Leisure, Curve::hours(11 * H, 22 * H), 12),
+            ],
+        ].concat()),
     ]
 });
 

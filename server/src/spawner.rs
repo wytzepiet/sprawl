@@ -17,8 +17,8 @@ pub const INTERVAL: GameTime = DAY_MS as u64 / 12;
 pub const QUEUE: usize = 5;
 /// How long a rejection keeps that kind away from the spot.
 const GRUDGE: GameTime = DAY_MS as u64;
-/// Buildings this close are one cluster.
-const CLUSTER: i32 = 4;
+/// Buildings this close are one cluster — the scale growth lands at.
+const CLUSTER: i32 = 8;
 
 /// Offer one more building, if there is room and somewhere to put it.
 pub fn propose(world: &mut World, now: GameTime) -> Option<EntityId> {
@@ -98,6 +98,7 @@ fn draw_kind(rng: &mut SmallRng, pressure: &std::collections::HashMap<Need, f64>
         (House, 4.0),
         (Apartment, 1.0),
         (Shop, 1.5 * (1.0 + custom)),
+        (Restaurant, 0.4 * (1.0 + custom)),
         (Office, 0.7 * (1.0 + jobs)),
         (Workshop, 0.7 * (1.0 + jobs)),
         (Factory, 0.3 * (1.0 + jobs)),
@@ -118,14 +119,14 @@ fn draw_site(
     let (sizes, member) = clusters(standing);
     let largest = sizes.iter().copied().max().unwrap_or(0) as f64;
     // Now and then, once there is a town to be apart from.
-    let seed_new = rng.random::<f64>() < 0.1 * (largest / 20.0).min(1.0);
-    // Anchors by how the kind likes them, and by how small their cluster
-    // is: a fresh seed of one is a whole town's worth of anchor, or it
-    // would never grow beside the town that already stands.
+    let seed_new = rng.random::<f64>() < 0.05 * (largest / 20.0).min(1.0);
+    // Anchors by how the kind likes them, and by their cluster: every
+    // cluster draws equally, so a fresh seed of one is a whole town's worth
+    // of anchor, or it would never grow beside the town that already stands.
     let liked: Vec<f64> = standing
         .iter()
         .zip(&member)
-        .map(|(&(_, _, k), &c)| (affinity(kind, k).max(0.0) + 0.05) / (sizes[c] as f64).sqrt())
+        .map(|(&(_, _, k), &c)| (affinity(kind, k).max(0.0) + 0.05) / sizes[c] as f64)
         .collect();
     let mut best: Option<(f64, GridCoord)> = None;
     for _ in 0..8 {
@@ -165,10 +166,10 @@ fn draw_site(
 fn affinity(kind: BuildingKind, near: BuildingKind) -> f64 {
     use BuildingKind::*;
     let home = matches!(near, House | Apartment);
-    let shop = matches!(near, Shop | Office);
+    let shop = matches!(near, Shop | Office | Restaurant);
     match kind {
         House | Apartment => if home { 1.0 } else if shop { 0.3 } else { -1.0 },
-        Shop | Office => if home { 1.0 } else if shop { 0.5 } else { -0.3 },
+        Shop | Office | Restaurant => if home { 1.0 } else if shop { 0.5 } else { -0.3 },
         Workshop | Factory => if home { -1.0 } else if shop { -0.2 } else { 1.0 },
     }
 }
@@ -234,7 +235,7 @@ fn clusters(standing: &[(EntityId, GridCoord, BuildingKind)]) -> (Vec<usize>, Ve
 fn footprint(kind: BuildingKind) -> (u8, u8) {
     use BuildingKind::*;
     match kind {
-        House | Shop | Workshop => (1, 1),
+        House | Shop | Workshop | Restaurant => (1, 1),
         Apartment | Office | Factory => (2, 1),
     }
 }
@@ -350,7 +351,7 @@ mod tests {
         let homes: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| matches!(k, BuildingKind::House | BuildingKind::Apartment)).map(|&(_, p, _)| p).collect();
         let near_home = |p: GridCoord| homes.iter().any(|&h| dist(h, p) <= 3);
         let industry: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| matches!(k, BuildingKind::Workshop | BuildingKind::Factory)).map(|&(_, p, _)| p).collect();
-        let shops: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| matches!(k, BuildingKind::Shop)).map(|&(_, p, _)| p).collect();
+        let shops: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| matches!(k, BuildingKind::Shop | BuildingKind::Restaurant)).map(|&(_, p, _)| p).collect();
         let frac = |v: &[GridCoord]| v.iter().filter(|&&p| near_home(p)).count() as f64 / v.len().max(1) as f64;
         assert!(frac(&industry) < frac(&shops), "industry {:.2} vs shops {:.2} beside homes", frac(&industry), frac(&shops));
     }
@@ -390,7 +391,7 @@ mod tests {
             let row: String = (x0..x1).step_by(2).map(|x| {
                 let here = |k: &dyn Fn(BuildingKind) -> bool| standing.iter().any(|&(_, p, kk)| p.x / 2 == x / 2 && p.y / 2 == y / 2 && k(kk));
                 if here(&|k| matches!(k, BuildingKind::House | BuildingKind::Apartment)) { 'h' }
-                else if here(&|k| matches!(k, BuildingKind::Shop | BuildingKind::Office)) { 's' }
+                else if here(&|k| matches!(k, BuildingKind::Shop | BuildingKind::Office | BuildingKind::Restaurant)) { 's' }
                 else if here(&|_| true) { 'F' }
                 else if world.road_node_at(GridCoord { x, y }).is_some() { '.' }
                 else { ' ' }

@@ -12,6 +12,7 @@ const GLYPH: Record<BuildingKind, string> = {
   Office: "💼",
   Workshop: "🔧",
   Factory: "🏭",
+  Restaurant: "🍽️",
 };
 
 /** Zoomed out past this (half the view height, in tiles), pins are dots. */

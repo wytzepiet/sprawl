@@ -4,4 +4,4 @@
  * What stands on a plot. The kind follows from the footprint the layout chose,
  * so a wide plot becomes an Apartment where a single tile becomes a House.
  */
-export type BuildingKind = "House" | "Apartment" | "Shop" | "Office" | "Workshop" | "Factory";
+export type BuildingKind = "House" | "Apartment" | "Shop" | "Office" | "Workshop" | "Factory" | "Restaurant";

@@ -126,7 +126,10 @@ stays a neutral block.
    What it taught: accepting has to place the building outside the
    answering player's `acting_as`, or it lands as their draft.
 4. **Restaurant.** Eat and Leisure, open late, seats twelve. The first
-   special kind.
+   special kind. *Done.* Staffed like a shop, offered by the spawner as a
+   commercial kind tilted by unmet Eat and Leisure, and the one thing left
+   in the build menu — placeable buildings are for what does something
+   special, and that is now the rule rather than the exception.
 5. **Delete zoning** in one stroke: `Category`, `paint_area`, `for_plot`,
    the brush, `KIND_CATEGORY`, `ZONE_*`. *Done*, taken before step 4 so
    the first special kind never had to be threaded through a category.

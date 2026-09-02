@@ -21,9 +21,7 @@ export interface BuildingDef {
 
 export const BUILDINGS: BuildingDef[] = (
   [
-    ["House", "House"],
-    ["Shop", "Shop"],
-    ["Workshop", "Workshop"],
+    ["Restaurant", "Restaurant"],
   ] as [BuildingKind, string][]
 ).map(([id, label]) => ({ id, label, color: BUILDING_COLOR }));
 
