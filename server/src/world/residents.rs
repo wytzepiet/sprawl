@@ -87,7 +87,15 @@ impl World {
         for (home, free) in spare {
             for _ in 0..free {
                 let id = self.objects.insert(
-                    GameObject::Resident(Resident { home, work: None, at: None, car: 0 }),
+                    GameObject::Resident(Resident {
+                        home,
+                        work: None,
+                        at: None,
+                        car: 0,
+                        buckets: crate::needs::Bucket::fresh(),
+                        selected: None,
+                        last_update: 0,
+                    }),
                     None,
                     None,
                 );

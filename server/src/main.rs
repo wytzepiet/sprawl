@@ -21,6 +21,7 @@ use network::AppState;
 
 #[tokio::main]
 async fn main() {
+    needs::check();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(game_loop::run(command_rx));

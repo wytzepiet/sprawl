@@ -266,6 +266,18 @@ pub struct Resident {
     #[serde(default)]
     #[ts(type = "number")]
     pub car: EntityId,
+    /// What they owe each need. Issued fresh to anyone saved before needs
+    /// existed.
+    #[serde(default = "crate::needs::Bucket::fresh")]
+    pub buckets: Vec<crate::needs::Bucket>,
+    /// The need being served where they stand, if any. A record of what is
+    /// happening, like `at` — not a plan.
+    #[serde(default)]
+    pub selected: Option<crate::needs::Need>,
+    /// When the buckets were last brought up to date.
+    #[serde(default)]
+    #[ts(type = "number")]
+    pub last_update: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
