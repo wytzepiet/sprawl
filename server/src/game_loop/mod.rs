@@ -191,6 +191,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         known: HashSet::new(),
                     });
                 }
+                Command::Inspect { id, reply } => {
+                    let v = match id {
+                        Some(id) => crate::resident::inspect(&world, id, now),
+                        None => crate::resident::inspect_all(&world, now),
+                    };
+                    let _ = reply.send(serde_json::to_string_pretty(&v).unwrap_or_default());
+                }
                 Command::ClientDisconnect { id } => {
                     let Some(gone) = clients.remove(&id) else { continue };
                     // An abandoned draft is a land claim, so it cannot be held

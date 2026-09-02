@@ -587,11 +587,11 @@ Home is needed or nobody goes home; waiting must be priced or early
 arrivals go home for five minutes; `next_zero` must not land where
 `next_nonzero` does; and constant buckets must be genuinely constant.
 
-**3. The inspector, before the third need.** A `/debug/resident/<id>` JSON
-endpoint beside `/health`: bucket levels, every option's
-`(tau, drained, stay, score)`, the selection, the alarm. Residents are not
-streamed to the client, so a UI is real protocol work; text is enough while
-two needs can be predicted by hand and three cannot.
+**3. The inspector, before the third need.** `/debug/resident/<id>` and
+`/debug/residents` beside `/health`: bucket levels, every option's score,
+departure, wait and leave, the selection. Residents are not streamed to the
+client, so a UI is real protocol work; text is enough while two needs can
+be predicted by hand and three cannot. *Done.*
 
 **4. Eat.** Shop publishes an Eat tap. First accruing need served away from
 home, so `candidates(b)` is built here: expanding ring over the spatial

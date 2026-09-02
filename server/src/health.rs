@@ -1,6 +1,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use axum::extract::{Path, State};
+use tokio::sync::oneshot;
+
+use crate::network::{AppState, Command};
+use crate::protocol::EntityId;
+
 /// Simulated time, as of the last tick. Published here rather than asked for
 /// over the command channel: the question this answers is "is the game loop
 /// still running", and a channel round-trip cannot answer that if it is not.
@@ -35,4 +41,22 @@ pub async fn health() -> String {
         now.saturating_sub(built),
         SIM_TIME.load(Ordering::Relaxed),
     )
+}
+
+/// One resident's arithmetic: what they owe, and what every option scores.
+pub async fn inspect_resident(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
+    ask(&state, Some(id)).await
+}
+
+/// Everyone, one line each.
+pub async fn inspect_residents(State(state): State<AppState>) -> String {
+    ask(&state, None).await
+}
+
+async fn ask(state: &AppState, id: Option<EntityId>) -> String {
+    let (reply, answer) = oneshot::channel();
+    if state.command_tx.send(Command::Inspect { id, reply }).is_err() {
+        return "{\"error\":\"game loop gone\"}\n".into();
+    }
+    answer.await.unwrap_or_else(|_| "{\"error\":\"game loop gone\"}\n".into())
 }

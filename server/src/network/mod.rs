@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
-use crate::protocol::{
+use crate::protocol::{EntityId, 
     ChunkBounds, ClientMessage, Clock, DAY_MS, Operation, OwnerId, ServerMessage, StateUpdate,
 };
 
@@ -23,6 +23,9 @@ pub enum Command {
         sender: mpsc::UnboundedSender<ServerMessage>,
     },
     ClientDisconnect { id: ClientId },
+    /// Ask the game loop what a resident is thinking (or everyone, with no
+    /// id). The world lives on that task; this is the only way to read it.
+    Inspect { id: Option<EntityId>, reply: tokio::sync::oneshot::Sender<String> },
 }
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);

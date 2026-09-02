@@ -5,6 +5,8 @@ use crate::engine::GameTime;
 use crate::needs::{taps, Bucket, Need, Tap};
 use crate::protocol::{BuildingKind, EntityId, GameObject, Resident, DAY_MS};
 use crate::world::World;
+use serde::Serialize;
+use serde_json::{json, Value};
 
 /// Real roads bend; the crow does not. Straight-line travel time is scaled up
 /// by this before promising to be anywhere. Being systematically a little
@@ -60,20 +62,7 @@ pub fn handle_resident_wake(
 
     settle(world, id, at, now);
     let Some(r) = resident(world, id).cloned() else { return };
-
-    // One verdict per bucket: the best its candidate offers.
-    let verdicts: Vec<Verdict> = r
-        .buckets
-        .iter()
-        .map(|b| {
-            let Some(building) = candidate(&r, b.need) else { return Verdict::Nothing };
-            taps_of(world, building)
-                .iter()
-                .filter(|t| t.need == b.need)
-                .map(|t| evaluate(world, at, building, t, b, now))
-                .fold(Verdict::Nothing, Verdict::better)
-        })
-        .collect();
+    let verdicts = verdicts(world, &r, at, now);
 
     // Actionable: can be set out for now, or is right here — where waiting
     // for it to open is the action. Waiting for somewhere else is not; that
@@ -135,8 +124,24 @@ pub fn handle_resident_wake(
     }
 }
 
+/// One verdict per bucket: the best its candidate offers.
+fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime) -> Vec<Verdict> {
+    r.buckets
+        .iter()
+        .map(|b| {
+            let Some(building) = candidate(r, b.need) else { return Verdict::Nothing };
+            taps_of(world, building)
+                .iter()
+                .filter(|t| t.need == b.need)
+                .map(|t| evaluate(world, at, building, t, b, now))
+                .fold(Verdict::Nothing, Verdict::better)
+        })
+        .collect()
+}
+
 /// What one place offers one bucket.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize)]
+#[serde(tag = "verdict")]
 enum Verdict {
     /// How much, per unit of time from now until the visit is over; when to
     /// set out — now, or later so as to arrive as it opens; and when the
@@ -305,6 +310,83 @@ pub fn arrival_readout(
             (diff / 1000).abs()
         );
     }
+}
+
+/// The arithmetic, made visible: what one resident owes, and what every
+/// option scores right now. The model's failure mode is quiet, and this is
+/// the only way to watch it think. Read-only — the buckets are shown as they
+/// stood at the last wake, not settled.
+pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
+    let Some(r) = resident(world, id) else { return json!({ "error": "no such resident" }) };
+    let Some(at) = r.at else { return json!({ "id": id, "at": null, "note": "off-map" }) };
+    let verdicts = verdicts(world, r, at, now);
+    json!({
+        "id": id,
+        "now": hhmm(now),
+        "at": at,
+        "at_kind": whereabouts(world, at),
+        "home": r.home,
+        "work": r.work,
+        "selected": r.selected,
+        "last_update": hhmm(r.last_update),
+        "buckets": r.buckets.iter().zip(&verdicts).map(|(b, v)| json!({
+            "need": b.need,
+            "owed_h": b.level / HOUR,
+            "full": b.level / b.need.cap(),
+            "candidate": candidate(r, b.need),
+            "option": v.describe(now),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// Everyone, one line each: where they are and what they are doing.
+pub fn inspect_all(world: &World, now: GameTime) -> Value {
+    let mut rows: Vec<Value> = world
+        .resident_ids()
+        .into_iter()
+        .filter_map(|id| resident(world, id).map(|r| (id, r)))
+        .map(|(id, r)| json!({
+            "id": id,
+            "at": r.at,
+            "at_kind": r.at.map(|a| whereabouts(world, a)),
+            "selected": r.selected,
+            "owed_h": r.buckets.iter().map(|b| (format!("{:?}", b.need), b.level / HOUR)).collect::<std::collections::BTreeMap<_, _>>(),
+        }))
+        .collect();
+    rows.sort_by_key(|v| v["id"].as_u64());
+    json!({ "now": hhmm(now), "residents": rows })
+}
+
+impl Verdict {
+    fn describe(&self, now: GameTime) -> Value {
+        match *self {
+            Verdict::Go { score, departure, leave } => json!({
+                "score": score,
+                "departure": hhmm(departure),
+                "wait_h": (departure - now) as f64 / HOUR,
+                "leave": hhmm(leave),
+            }),
+            Verdict::Nothing => json!("nothing"),
+        }
+    }
+}
+
+/// What kind of place `at` is — a building by kind, or the car.
+fn whereabouts(world: &World, at: EntityId) -> String {
+    match world.objects.get(at).map(|e| &e.object) {
+        Some(GameObject::Building(b)) => format!("{:?}", b.kind),
+        Some(GameObject::Car(_)) => "Car".into(),
+        _ => "gone".into(),
+    }
+}
+
+const HOUR: f64 = (DAY_MS / 24) as f64;
+
+/// Clock time, with the day in front when it is not today's.
+fn hhmm(t: GameTime) -> String {
+    let day = t / DAY_MS as u64;
+    let tod = time_of_day(t) as f64 / HOUR;
+    format!("d{day} {:02}:{:02}", tod as u32, ((tod % 1.0) * 60.0) as u32)
 }
 
 fn resident(world: &World, id: EntityId) -> Option<&Resident> {

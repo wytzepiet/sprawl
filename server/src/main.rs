@@ -32,6 +32,8 @@ async fn main() {
     let app = Router::new()
         .route("/ws", axum::routing::get(network::ws_handler))
         .route("/health", axum::routing::get(health::health))
+        .route("/debug/residents", axum::routing::get(health::inspect_residents))
+        .route("/debug/resident/{id}", axum::routing::get(health::inspect_resident))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));
