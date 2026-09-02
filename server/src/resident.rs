@@ -195,8 +195,10 @@ fn candidates<'a>(
                     .flat_map(move |ring| {
                         let mut found: Vec<(i32, EntityId)> = chunk_ring(here, ring)
                             .flat_map(|c| world.buildings_in(c))
-                            // A home's kitchen is its residents' alone.
+                            // A home's kitchen is its residents' alone, and
+                            // a place no road reaches is not on offer.
                             .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| k.homes() == 0))
+                            .filter(|&id| world.road_node_for_building(id).is_some())
                             .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
                             .filter_map(|id| {
                                 let p = world.objects.get(id)?.position?;

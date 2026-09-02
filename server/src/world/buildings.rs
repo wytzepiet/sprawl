@@ -178,12 +178,13 @@ impl World {
         }
     }
 
-    /// The one way a building comes into existence.
+    /// Put a building on the map, road or no road.
     ///
-    /// Everything that has to happen per building — occupancy, spatial indexing
-    /// across every chunk it touches, revealing the map — happens here, so none
-    /// of it can be forgotten at a call site.
-    pub fn spawn_building(
+    /// Everything that has to happen per building — occupancy, spatial
+    /// indexing across every chunk it touches, revealing the map — happens
+    /// here, so none of it can be forgotten at a call site. A building with
+    /// no road is dormant: it stands, and nothing serves it until one comes.
+    pub fn place_building(
         &mut self,
         pos: GridCoord,
         kind: BuildingKind,
@@ -194,15 +195,7 @@ impl World {
         if !tiles.iter().all(|&t| self.is_buildable(t)) {
             return None;
         }
-        // A building nobody can drive to would be a purchase with no feedback.
-        let (street, door) = self.road_for_plot(pos, size)?;
-        let street_pos = self.objects.get(street).and_then(|e| e.position)?;
-
-        let id = self.insert_at(
-            GameObject::Building(Building { kind, size, rotation }),
-            Some(pos),
-        );
-
+        let id = self.insert_at(GameObject::Building(Building { kind, size, rotation }), Some(pos));
         for tile in &tiles {
             self.occupied.insert((tile.x, tile.y), id);
             // A footprint can straddle a chunk border, and clients subscribe by
@@ -210,16 +203,71 @@ impl World {
             // anyone looking at the other half.
             self.spatial.entry(crate::world::chunk_of(*tile)).or_default().insert(id);
         }
-        // The driveway is an ordinary road that happens to end inside the
-        // building: the car drives in and despawns there. Laid after the
-        // footprint is claimed, since a road on the plot would fail is_buildable.
-        self.place_road_path(&[street_pos, door]);
-
         // A draft has not been built yet, so it has not seen anything either;
         // the survey widens when it commits.
         if self.acting_as.is_none() {
             self.reveal_around(pos);
         }
+        Some(id)
+    }
+
+    /// Give a building its driveway, if a street is adjacent. Already served,
+    /// or nothing adjacent: nothing happens. The driveway is an ordinary road
+    /// that happens to end inside the building: the car drives in and
+    /// despawns there.
+    pub fn attach_driveway(&mut self, id: EntityId) -> bool {
+        if self.road_node_for_building(id).is_some() {
+            return true;
+        }
+        let Some(entry) = self.objects.get(id) else { return false };
+        let (Some(pos), GameObject::Building(b)) = (entry.position, &entry.object) else {
+            return false;
+        };
+        let size = b.size;
+        let Some((street, door)) = self.road_for_plot(pos, size) else { return false };
+        let Some(street_pos) = self.objects.get(street).and_then(|e| e.position) else {
+            return false;
+        };
+        let rotation = self.rotation_toward(pos, size, street);
+        if let Some(entry) = self.objects.get_mut(id)
+            && let GameObject::Building(ref mut b) = entry.object
+        {
+            b.rotation = rotation;
+        }
+        self.place_road_path(&[street_pos, door]);
+        true
+    }
+
+    /// Every dormant building beside any of these tiles gets its driveway.
+    /// Called for every road laid for real, so a road reaching a building
+    /// is all it takes.
+    pub fn attach_driveways_along(&mut self, tiles: &[GridCoord]) {
+        let mut near: Vec<EntityId> = tiles
+            .iter()
+            .flat_map(|t| {
+                (-1..=1).flat_map(move |dx| (-1..=1).map(move |dy| (t.x + dx, t.y + dy)))
+            })
+            .filter_map(|t| self.occupied.get(&t).copied())
+            .collect();
+        near.sort_unstable();
+        near.dedup();
+        for id in near {
+            self.attach_driveway(id);
+        }
+    }
+
+    /// A building that can be driven to, or nothing. What painting and the
+    /// starting town want: a purchase with no feedback is not a purchase.
+    pub fn spawn_building(
+        &mut self,
+        pos: GridCoord,
+        kind: BuildingKind,
+        size: (u8, u8),
+        rotation: Rotation,
+    ) -> Option<EntityId> {
+        self.road_for_plot(pos, size)?;
+        let id = self.place_building(pos, kind, size, rotation)?;
+        self.attach_driveway(id);
         Some(id)
     }
 

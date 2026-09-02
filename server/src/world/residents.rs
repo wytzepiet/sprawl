@@ -28,7 +28,9 @@ impl World {
         for e in &entries {
             let GameObject::Building(ref b) = e.object else { continue };
             let Some(pos) = e.position else { continue };
-            if e.draft.is_some() {
+            // Drawn but not built, or built but not reached: nobody lives or
+            // works where no road goes.
+            if e.draft.is_some() || self.road_node_for_building(e.id).is_none() {
                 continue;
             }
             where_is.insert(e.id, pos);
@@ -356,6 +358,33 @@ mod tests {
             .filter(|e| matches!(e.object, GameObject::Car(_)))
             .count();
         assert_eq!(leftover, 0, "an evicted household takes its car with it");
+    }
+
+    /// A building the road has not reached stands dormant: it houses nobody
+    /// until a real road lands beside it, and then the driveway forms on its
+    /// own. A drafted road reaches nothing until it commits.
+    #[test]
+    fn a_house_off_the_road_waits_for_one() {
+        let mut world = town();
+        // Three tiles off the street: nothing to drive on.
+        let home = world
+            .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, (1, 1), Rotation::South)
+            .expect("land is land");
+        assert!(world.road_node_for_building(home).is_none(), "dormant");
+        assert!(world.settle().is_empty(), "nobody moves in off the road");
+
+        // A drafted side street beside it changes nothing yet.
+        world.acting_as = Some(1);
+        world.place_road_path(&[GridCoord { x: 10, y: 0 }, GridCoord { x: 10, y: 2 }]);
+        world.acting_as = None;
+        assert!(world.road_node_for_building(home).is_none(), "a draft reaches nothing");
+        assert!(world.settle().is_empty());
+
+        // Committed, it reaches the house, and the household arrives.
+        world.commit_drafts(1);
+        assert!(world.road_node_for_building(home).is_some(), "the driveway formed itself");
+        assert_eq!(world.settle().len(), 2);
+        assert!(residents(&world).iter().all(|r| r.home == home));
     }
 
     /// Drafts are drawn, not built. Nobody lives in one, which is what keeps a

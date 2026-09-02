@@ -184,6 +184,11 @@ impl World {
             expanded.push(b);
         }
         let ids: Vec<_> = expanded.iter().map(|&c| self.place_road(c)).collect();
+        // A road laid for real reaches whatever dormant building stands
+        // beside it. A drafted one reaches nothing until it commits.
+        if self.acting_as.is_none() {
+            self.attach_driveways_along(&expanded);
+        }
         for pair in ids.windows(2) {
             let (a, b) = (pair[0], pair[1]);
             // Add outgoing a→b

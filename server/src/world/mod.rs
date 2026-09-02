@@ -319,15 +319,18 @@ impl World {
 
         // Edges only once every node is real: wiring one up while its neighbour
         // still counted as a draft would leave the pair connected one way.
+        let mut road: Vec<GridCoord> = Vec::new();
         for &id in &committed.added {
             self.connect_node(id);
-            if let Some(entry) = self.objects.get(id)
-                && matches!(entry.object, GameObject::Building(_))
-                && let Some(pos) = entry.position
-            {
-                self.reveal_around(pos);
+            let Some(entry) = self.objects.get(id) else { continue };
+            match (&entry.object, entry.position) {
+                (GameObject::Building(_), Some(pos)) => self.reveal_around(pos),
+                (GameObject::RoadNode(_), Some(pos)) => road.push(pos),
+                _ => {}
             }
         }
+        // Now that it is real, the road reaches the dormant buildings beside it.
+        self.attach_driveways_along(&road);
         committed
     }
 
