@@ -802,12 +802,11 @@ mod tests {
     /// The whole loop watched from above: people immigrate from past the
     /// frontier, drive to work in the morning, and are home again at night —
     /// and nobody told them to; the shift did.
-    #[test]
-    fn residents_commute_and_come_home() {
+    /// One long street with room to build beside it. It runs far past what
+    /// the buildings will reveal, the way road generation always leaves a way
+    /// in from outside: immigrants need somewhere unseen to come from.
+    fn street() -> World {
         let mut world = World::new();
-        // The street runs far past what the buildings will reveal, the way
-        // road generation always leaves a way in from outside. Immigrants
-        // need somewhere unseen to come from.
         for y in -4..4 {
             for x in -4..170 {
                 world.terrain.insert((x, y), TerrainType::Grass);
@@ -815,12 +814,20 @@ mod tests {
         }
         let street: Vec<GridCoord> = (-2..168).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
-        let home = world
-            .spawn_building(GridCoord { x: 0, y: 1 }, BuildingKind::House, (1, 1), Rotation::South)
-            .unwrap();
-        let shop = world
-            .spawn_building(GridCoord { x: 20, y: 1 }, BuildingKind::Shop, (1, 1), Rotation::South)
-            .unwrap();
+        world
+    }
+
+    fn build(world: &mut World, x: i32, kind: BuildingKind, w: u8) -> EntityId {
+        world
+            .spawn_building(GridCoord { x, y: 1 }, kind, (w, 1), Rotation::South)
+            .expect("the street should give it a driveway")
+    }
+
+    #[test]
+    fn residents_commute_and_come_home() {
+        let mut world = street();
+        let home = build(&mut world, 0, BuildingKind::House, 1);
+        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -839,5 +846,50 @@ mod tests {
         for &id in &people {
             assert_eq!(at_of(&world, id), Some(home), "home once the shift is over");
         }
+    }
+
+    /// Every wake, every arrival: the log the model in sprawl-needs.md is
+    /// held to. Two runs of the same town must write the same one — down to
+    /// the millisecond — or something is iterating a hash map.
+    fn arrival_log(days: u64) -> Vec<(GameTime, EntityId, Option<EntityId>)> {
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::Apartment, 2);
+        build(&mut world, 6, BuildingKind::Apartment, 2);
+        build(&mut world, 30, BuildingKind::Shop, 1);
+        build(&mut world, 60, BuildingKind::Office, 2);
+
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let people = world.resident_ids();
+        assert_eq!(people.len(), 16);
+
+        let mut log = Vec::new();
+        let mut last: Vec<Option<EntityId>> = people.iter().map(|_| None).collect();
+        let mut now = 0;
+        while now < days * DAY_MS as u64 {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(id) = events.pop_due() {
+                handle_wake(&mut world, &mut events, &mut intersections, id, now);
+            }
+            for (i, &id) in people.iter().enumerate() {
+                let at = at_of(&world, id);
+                if at != last[i] {
+                    log.push((now, id, at));
+                    last[i] = at;
+                }
+            }
+        }
+        log
+    }
+
+    #[test]
+    fn the_same_town_lives_the_same_days() {
+        let a = arrival_log(1);
+        let b = arrival_log(1);
+        // Sixteen people, each at least driving in, to work, and home.
+        assert!(a.len() >= 16 * 3, "only {} moves logged", a.len());
+        assert_eq!(a, b);
     }
 }

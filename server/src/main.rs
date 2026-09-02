@@ -3,6 +3,7 @@ mod engine;
 mod game_loop;
 mod health;
 mod intersection;
+mod needs;
 mod road_gen;
 mod network;
 mod persistence;
