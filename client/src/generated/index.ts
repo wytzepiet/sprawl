@@ -1,12 +1,10 @@
 export type { GridCoord } from "./GridCoord";
 export type { PlaceRoad } from "./PlaceRoad";
 export type { PlaceBuilding } from "./PlaceBuilding";
-export type { PaintArea } from "./PaintArea";
 export type { DemolishRoad } from "./DemolishRoad";
 export type { RoadNode } from "./RoadNode";
 export type { Building } from "./Building";
 export type { BuildingKind } from "./BuildingKind";
-export type { Category } from "./Category";
 export type { Rotation } from "./Rotation";
 export type { Draft } from "./Draft";
 export type { Car } from "./Car";

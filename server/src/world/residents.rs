@@ -217,7 +217,7 @@ fn walk(a: GridCoord, b: GridCoord) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{BuildingKind, Category, Rotation, TerrainType};
+    use crate::protocol::{BuildingKind, Rotation, TerrainType};
 
     /// Grass, one long street, and whatever gets built beside it.
     fn town() -> World {
@@ -393,10 +393,7 @@ mod tests {
     fn nobody_moves_into_a_draft() {
         let mut world = town();
         world.acting_as = Some(1);
-        world.paint_area(
-            &(0..3).map(|x| GridCoord { x, y: 1 }).collect::<Vec<_>>(),
-            Category::Residential,
-        );
+        build(&mut world, 0, BuildingKind::House);
         assert!(world.settle().is_empty(), "a drafted house has no address");
 
         world.commit_drafts(1);

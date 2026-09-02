@@ -1,5 +1,5 @@
 import type { MeshGeometry } from "../Mesh";
-import type { BuildingKind, Category } from "../../generated";
+import type { BuildingKind } from "../../generated";
 
 /**
  * Zone palette.
@@ -10,29 +10,8 @@ import type { BuildingKind, Category } from "../../generated";
  * cooler; water is a light cyan (#85D7FA), so commercial goes deeper and more
  * indigo; the beaches are near-cream, so industrial leans on saturation.
  */
-export const CATEGORY_COLOR: Record<Category, string> = {
-  Residential: "#6FBF73",
-  Commercial: "#5B8DD9",
-  Industrial: "#E8933F",
-};
-
-/** Wire order for the per-tile zone byte; 0 is unzoned. */
-export const ZONE_BYTE: Record<Category, number> = {
-  Residential: 1,
-  Commercial: 2,
-  Industrial: 3,
-};
-
-export const ZONE_PALETTE: ({ r: number; g: number; b: number } | null)[] = [null];
-
-export const KIND_CATEGORY: Record<BuildingKind, Category> = {
-  House: "Residential",
-  Apartment: "Residential",
-  Shop: "Commercial",
-  Office: "Commercial",
-  Workshop: "Industrial",
-  Factory: "Industrial",
-};
+/** Buildings themselves stay neutral — the pin says what one is. */
+export const BUILDING_COLOR = "#EFEDE8";
 
 export interface BuildingDef {
   id: BuildingKind;
@@ -46,10 +25,8 @@ export const BUILDINGS: BuildingDef[] = (
     ["Shop", "Shop"],
     ["Workshop", "Workshop"],
   ] as [BuildingKind, string][]
-).map(([id, label]) => ({ id, label, color: CATEGORY_COLOR[KIND_CATEGORY[id]] }));
+).map(([id, label]) => ({ id, label, color: BUILDING_COLOR }));
 
-/** Buildings themselves stay neutral — the plot carries the category. */
-export const BUILDING_COLOR = "#EFEDE8";
 
 export const BUILDING_HEIGHT = 0.6;
 
@@ -139,12 +116,3 @@ export function boxGeometry(w: number, h: number, d: number): MeshGeometry {
   return { positions, indices, normals };
 }
 
-// Fill the zone palette from the category colours, in ZONE_BYTE order.
-for (const [category, byte] of Object.entries(ZONE_BYTE) as [Category, number][]) {
-  const hex = CATEGORY_COLOR[category];
-  ZONE_PALETTE[byte] = {
-    r: parseInt(hex.slice(1, 3), 16) / 255,
-    g: parseInt(hex.slice(3, 5), 16) / 255,
-    b: parseInt(hex.slice(5, 7), 16) / 255,
-  };
-}

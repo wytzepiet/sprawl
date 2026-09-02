@@ -5,12 +5,8 @@ import {
   setBuildMode,
   roadOneWay,
   setRoadOneWay,
-  paintCategory,
-  setPaintCategory,
   type BuildMode,
 } from "./buildMode";
-import { CATEGORY_COLOR } from "../engine/objects/buildings";
-import type { Category } from "../generated";
 import { useGame, pending } from "../state/gameObjects";
 import {
   BuildButton,
@@ -24,15 +20,7 @@ import { Dynamic } from "solid-js/web";
 const modes = [
   { id: "select" as BuildMode, label: "Select", icon: MousePointer2, key: "V" },
   { id: "road" as BuildMode, label: "Road", icon: Route, key: "R" },
-  { id: "zone" as BuildMode, label: "Zone", icon: Building2, key: "Z" },
   { id: "demolish" as BuildMode, label: "Demolish", icon: Trash2, key: "X" },
-];
-
-/** The build brush's three palettes, in the order their hotkeys run. */
-const CATEGORIES: { id: Category; label: string; key: string }[] = [
-  { id: "Residential", label: "Homes", key: "1" },
-  { id: "Commercial", label: "Shops", key: "2" },
-  { id: "Industrial", label: "Works", key: "3" },
 ];
 
 export default function BuildModeToolbar() {
@@ -62,13 +50,6 @@ export default function BuildModeToolbar() {
     if (e.key === "Enter" && pending() > 0) {
       send({ type: "Commit" });
       return;
-    }
-    if (buildMode() === "zone") {
-      const cat = CATEGORIES.find((c) => c.key === e.key);
-      if (cat) {
-        setPaintCategory(cat.id);
-        return;
-      }
     }
     const mode = modes.find((m) => m.key.toLowerCase() === e.key.toLowerCase());
     if (mode) setBuildMode(mode.id);
@@ -101,34 +82,6 @@ export default function BuildModeToolbar() {
                 Enter
               </kbd>
             </button>
-          </div>
-        </Show>
-
-        <Show when={buildMode() === "zone"}>
-          <div class="flex p-1 rounded-xl bg-white/70 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-            <For each={CATEGORIES}>
-              {(c) => (
-                <button
-                  onClick={() => setPaintCategory(c.id)}
-                  class={`group relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase transition-all duration-200 cursor-pointer
-                  ${
-                    paintCategory() === c.id
-                      ? "bg-white text-stone-800 shadow-[0_1px_3px_rgba(0,0,0,0.1)]"
-                      : "text-stone-400 hover:text-stone-600"
-                  }`}
-                  title={`${c.label} (${c.key})`}
-                >
-                  <span class="w-3 h-3 rounded-full" style={{ "background-color": CATEGORY_COLOR[c.id] }} />
-                  {c.label}
-                  <kbd
-                    class={`pointer-events-none absolute -top-1.5 -right-0.5 text-[9px] font-mono px-1 py-0.5 rounded-md bg-white border border-black/[0.06] text-stone-400 leading-none shadow-sm transition-opacity
-                    ${paintCategory() === c.id ? "opacity-0" : "opacity-0 group-hover:opacity-80"}`}
-                  >
-                    {c.key}
-                  </kbd>
-                </button>
-              )}
-            </For>
           </div>
         </Show>
 

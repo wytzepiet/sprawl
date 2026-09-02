@@ -28,14 +28,6 @@ pub struct RoadNode {
     pub incoming: Vec<EntityId>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
-#[ts(export)]
-pub enum Category {
-    Residential,
-    Commercial,
-    Industrial,
-}
-
 /// What stands on a plot. The kind follows from the footprint the layout chose,
 /// so a wide plot becomes an Apartment where a single tile becomes a House.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -70,18 +62,6 @@ impl BuildingKind {
             _ => 0,
         }
     }
-
-    /// The kind a plot of this size gets, per category.
-    pub fn for_plot(category: Category, tiles: u32) -> BuildingKind {
-        match (category, tiles > 1) {
-            (Category::Residential, false) => BuildingKind::House,
-            (Category::Residential, true) => BuildingKind::Apartment,
-            (Category::Commercial, false) => BuildingKind::Shop,
-            (Category::Commercial, true) => BuildingKind::Office,
-            (Category::Industrial, false) => BuildingKind::Workshop,
-            (Category::Industrial, true) => BuildingKind::Factory,
-        }
-    }
 }
 
 /// Which way a building faces. Appearance only — the entrance is wherever the
@@ -110,15 +90,6 @@ pub struct Building {
 pub struct PlaceBuilding {
     pub pos: GridCoord,
     pub kind: BuildingKind,
-}
-
-/// A stroke of the build brush. The tiles are a wish, not an instruction: the
-/// server lays out whatever plots actually fit and ignores the rest.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct PaintArea {
-    pub tiles: Vec<GridCoord>,
-    pub category: Category,
 }
 
 /// Someone's car. It outlives its journeys: between trips it sits parked at a
@@ -369,7 +340,6 @@ impl ChunkBounds {
 pub enum ClientMessage {
     PlaceRoad(PlaceRoad),
     PlaceBuilding(PlaceBuilding),
-    PaintArea(PaintArea),
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
     /// Make everything you have drafted real.

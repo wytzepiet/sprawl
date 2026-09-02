@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingKind, Category, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, ServerMessage, StateUpdate};
+use crate::protocol::{BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, ServerMessage, StateUpdate};
 use crate::world::chunk_of;
 use crate::world::World;
 use crate::protocol::GridCoord;
@@ -51,9 +51,9 @@ const DRAFT_GRACE: Duration = Duration::from_secs(120);
 const STEP_MS: GameTime = 10;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
-/// Until zoning exists, the starting network gets a spread of categories so
-/// there is somewhere to drive to and from.
-const STARTING_MIX: [Category; 3] = [Category::Residential, Category::Commercial, Category::Industrial];
+/// The starting network gets a spread of kinds so there is somewhere to
+/// drive to and from, and something for the spawner to grow beside.
+const STARTING_MIX: [BuildingKind; 3] = [BuildingKind::House, BuildingKind::Shop, BuildingKind::Workshop];
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
@@ -266,7 +266,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 }
 
 /// Put a starting building on a free tile beside a road node, facing it.
-fn seed_building(world: &mut World, road: GridCoord, category: Category) {
+fn seed_building(world: &mut World, road: GridCoord, kind: BuildingKind) {
     // All eight, not just the four: beside a diagonal street the only legal
     // driveway is itself diagonal, so the orthogonal offsets are dead ends.
     const AROUND: [(i32, i32); 8] =
@@ -280,7 +280,6 @@ fn seed_building(world: &mut World, road: GridCoord, category: Category) {
             continue;
         };
         let rotation = world.rotation_toward(pos, (1, 1), node);
-        let kind = BuildingKind::for_plot(category, 1);
         if world.spawn_building(pos, kind, (1, 1), rotation).is_some() {
             return;
         }
@@ -364,9 +363,6 @@ fn handle_player_action(
                     settle_and_wake(world, events);
                 }
             }
-        }
-        ClientMessage::PaintArea(paint) => {
-            world.paint_area(&paint.tiles, paint.category);
         }
         ClientMessage::DemolishRoad(demolish) => {
             // Which of the two things this does follows from what was clicked,
@@ -978,7 +974,7 @@ mod tests {
         let span = arrivals.iter().max().unwrap() - arrivals.iter().min().unwrap();
         assert!(span >= 2 * hour, "lunch was a crush: {:.1}h", span as f64 / hour as f64);
         let (mut present, mut most) = (std::collections::BTreeSet::new(), 0);
-        for &(t, id, at, sel) in two.iter().filter(|&&(t, ..)| t >= day) {
+        for &(_, id, at, sel) in two.iter().filter(|&&(t, ..)| t >= day) {
             if at == Some(lunch) && sel == Some(Need::Eat) { present.insert(id); } else { present.remove(&id); }
             most = most.max(present.len());
         }

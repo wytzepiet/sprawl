@@ -128,7 +128,13 @@ stays a neutral block.
 4. **Restaurant.** Eat and Leisure, open late, seats twelve. The first
    special kind.
 5. **Delete zoning** in one stroke: `Category`, `paint_area`, `for_plot`,
-   the brush, `KIND_CATEGORY`, `ZONE_*`.
+   the brush, `KIND_CATEGORY`, `ZONE_*`. *Done*, taken before step 4 so
+   the first special kind never had to be threaded through a category.
+   The plot tint and its boundary lines went with it — the pin says what
+   a building is now — and with them a terrain mesh, a material, and the
+   zone bytes the chunk worker carried. Buildings still clear the trees
+   beneath them. `PlaceBuilding` stays: it is how special buildings will
+   be placed by hand.
 
 Deferred: pacing beyond one constant, money, skill-tree tilts,
 supermarket and the pantry stock it needs.

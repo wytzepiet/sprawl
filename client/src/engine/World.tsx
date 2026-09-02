@@ -15,7 +15,6 @@ import {
 import { lookOf, DOOMED_TRAFFIC, GHOST } from "./objects/draftLook";
 import type { Operation, GameObjectEntry } from "../generated";
 
-import { KIND_CATEGORY, ZONE_BYTE } from "./objects/buildings";
 import type { Building } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
@@ -25,9 +24,9 @@ import { mountRoad } from "./objects/RoadNode";
 interface MountedEntry {
   kind: string;
   cleanup: () => void;
-  /** Tile keys this building tinted, kept because the store has already
+  /** Tile keys this building covers, kept because the store has already
    *  dropped the entity by the time a Delete reaches us. */
-  zoned?: string[];
+  covers?: string[];
   neighbors?: number[]; // road node neighbor IDs for dirty tracking
   pos?: { x: number; y: number }; // road node position, for tree suppression
 }
@@ -49,7 +48,7 @@ export default function World() {
    * count: clearing the ground is part of seeing what you are about to build,
    * and discarding puts the trees back.
    */
-  const isBuilt = (x: number, y: number) => hasRoad(x, y) || zoneTiles.has(`${x},${y}`);
+  const isBuilt = (x: number, y: number) => hasRoad(x, y) || builtTiles.has(`${x},${y}`);
 
   const onDoomedRoad = (entry: GameObjectEntry) => {
     const p = entry.position;
@@ -60,12 +59,11 @@ export default function World() {
   };
 
   /**
-   * Tile → category byte, mirroring the server's occupancy index. The store
-   * only knows a building at its origin tile, so without this a footprint would
-   * tint one corner of itself.
+   * Every tile under a building, mirroring the server's occupancy index. The
+   * store only knows a building at its origin tile, so without this a footprint
+   * would clear the trees from one corner of itself.
    */
-  const zoneTiles = new Map<string, number>();
-  const zoneAt = (x: number, y: number) => zoneTiles.get(`${x},${y}`) ?? 0;
+  const builtTiles = new Set<string>();
 
   function footprint(pos: { x: number; y: number }, [w, h]: [number, number]) {
     const tiles: { x: number; y: number }[] = [];
@@ -75,28 +73,27 @@ export default function World() {
     return tiles;
   }
 
-  /** Tint a building's tiles, returning the keys so they can be cleared later. */
-  function addZone(entry: GameObjectEntry): string[] {
+  /** Claim a building's tiles, returning the keys so they can be released. */
+  function cover(entry: GameObjectEntry): string[] {
     if (entry.object.kind !== "Building" || !entry.position) return [];
     const b = entry.object.data as Building;
-    const byte = ZONE_BYTE[KIND_CATEGORY[b.kind]];
     return footprint(entry.position, b.size).map((t) => {
       const key = `${t.x},${t.y}`;
-      zoneTiles.set(key, byte);
-      terrain.markZone(t.x, t.y);
+      builtTiles.add(key);
+      terrain.markBuilt(t.x, t.y);
       return key;
     });
   }
 
-  function clearZone(keys: string[] | undefined) {
+  function uncover(keys: string[] | undefined) {
     for (const key of keys ?? []) {
-      zoneTiles.delete(key);
+      builtTiles.delete(key);
       const [x, y] = key.split(",").map(Number);
-      terrain.markZone(x, y);
+      terrain.markBuilt(x, y);
     }
   }
 
-  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt, zoneAt);
+  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt);
   const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
@@ -137,7 +134,7 @@ export default function World() {
           const existing = mounted.get(key);
           if (existing) {
             if (existing.neighbors) markDirty(existing.neighbors, dirtyRoads);
-            clearZone(existing.zoned);
+            uncover(existing.covers);
             existing.cleanup();
           }
 
@@ -146,7 +143,7 @@ export default function World() {
           if (!cleanup) mounted.delete(key);
           if (cleanup) {
             const m: MountedEntry = { kind: entry.object.kind, cleanup };
-            if (entry.object.kind === "Building") m.zoned = addZone(entry);
+            if (entry.object.kind === "Building") m.covers = cover(entry);
             if (entry.object.kind === "RoadNode") {
               const rd = entry.object.data;
               m.neighbors = [...rd.outgoing, ...rd.incoming];
@@ -176,7 +173,7 @@ export default function World() {
           if (existing) {
             if (existing.neighbors) markDirty(existing.neighbors, dirtyRoads);
             if (existing.pos) terrain.markTile(existing.pos.x, existing.pos.y);
-            clearZone(existing.zoned);
+            uncover(existing.covers);
             existing.cleanup();
             mounted.delete(key);
           }

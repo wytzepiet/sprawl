@@ -1,8 +1,7 @@
 use crate::protocol::{
-    Building, BuildingKind, Category, Draft, EntityId, GameObject, GridCoord, Rotation, TerrainType,
+    Building, BuildingKind, EntityId, GameObject, GridCoord, Rotation, TerrainType,
 };
 use crate::world::World;
-use std::collections::HashSet;
 
 impl World {
     /// Tiles a footprint of this size covers when placed at `pos`.
@@ -271,77 +270,6 @@ impl World {
         Some(id)
     }
 
-    /// Fill a painted area with buildings, largest plots first.
-    ///
-    /// The stroke is a wish, not an instruction: a tile with no legal driveway
-    /// simply stays empty, and anything already standing is left alone, so
-    /// painting over a street twice does not churn the town.
-    pub fn paint_area(&mut self, tiles: &[GridCoord], category: Category) -> Vec<EntityId> {
-        // Widest first, so a run of frontage becomes a few big plots rather
-        // than a row of huts. Both orientations of each are offered.
-        const PLOTS: [(u8, u8); 6] = [(3, 2), (2, 3), (2, 2), (2, 1), (1, 2), (1, 1)];
-
-        // A stroke replaces your own drafts that it covers rather than laying
-        // around them. That is the whole growth mechanic: widen a stroke and
-        // the client re-sends the larger set, so a lone house is torn up and
-        // laid again as half an apartment. Committed buildings — and other
-        // people's drafts — are never disturbed.
-        self.clear_own_drafts_on(tiles);
-
-        let mut free: HashSet<(i32, i32)> = tiles
-            .iter()
-            .filter(|&&t| self.is_buildable(t))
-            .map(|t| (t.x, t.y))
-            .collect();
-
-        // Sorted rather than in stroke order: the same painted area must lay
-        // out the same way however the mouse happened to cross it.
-        let mut order: Vec<GridCoord> = free.iter().map(|&(x, y)| GridCoord { x, y }).collect();
-        order.sort_by_key(|t| (t.y, t.x));
-
-        let mut spawned = Vec::new();
-        for origin in order {
-            if !free.contains(&(origin.x, origin.y)) {
-                continue;
-            }
-            for size in PLOTS {
-                let plot: Vec<GridCoord> = Self::footprint(origin, size).collect();
-                if !plot.iter().all(|t| free.contains(&(t.x, t.y))) {
-                    continue;
-                }
-                let Some((road, _)) = self.road_for_plot(origin, size) else { continue };
-                let kind = BuildingKind::for_plot(category, plot.len() as u32);
-                let rotation = self.rotation_toward(origin, size, road);
-                if let Some(id) = self.spawn_building(origin, kind, size, rotation) {
-                    for t in &plot {
-                        free.remove(&(t.x, t.y));
-                    }
-                    spawned.push(id);
-                    break;
-                }
-            }
-        }
-        spawned
-    }
-
-    /// Tear up this owner's uncommitted buildings standing on any of `tiles`.
-    fn clear_own_drafts_on(&mut self, tiles: &[GridCoord]) {
-        let Some(owner) = self.acting_as else { return };
-        let mut doomed: Vec<EntityId> = tiles
-            .iter()
-            .filter_map(|t| self.occupied.get(&(t.x, t.y)).copied())
-            .filter(|&id| self.draft_of(id) == Some(Draft::Added(owner)))
-            .collect();
-        doomed.sort_unstable();
-        doomed.dedup();
-        for id in doomed {
-            // Takes the driveway with it: that road stands on one of the
-            // building's own tiles, which is what makes it the building's.
-            self.remove_building(id);
-            self.drafts.entry(owner).or_default().remove(&id);
-        }
-    }
-
     /// The one way a building leaves.
     pub fn remove_building(&mut self, id: EntityId) {
         let Some(entry) = self.objects.get(id) else { return };
@@ -392,6 +320,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     /// A world with nothing in it but grass and the given road path.
     fn world_with_road(path: &[(i32, i32)]) -> World {
@@ -463,8 +392,11 @@ mod tests {
     const ME: crate::protocol::OwnerId = 1;
     const SOMEONE_ELSE: crate::protocol::OwnerId = 2;
 
-    fn painted(xs: std::ops::Range<i32>, ys: std::ops::Range<i32>) -> Vec<GridCoord> {
-        ys.flat_map(|y| xs.clone().map(move |x| GridCoord { x, y })).collect()
+    /// One house on one tile, drafted or built according to `acting_as`.
+    fn house(world: &mut World, x: i32, y: i32) -> EntityId {
+        world
+            .spawn_building(GridCoord { x, y }, BuildingKind::House, (1, 1), Rotation::South)
+            .expect("a road should be beside it")
     }
 
     /// The rule the whole feature rests on: a draft is drawn but not driven on.
@@ -490,45 +422,13 @@ mod tests {
         let roads = world.all_buildings().len();
 
         world.acting_as = Some(ME);
-        world.paint_area(&painted(0..3, 0..1), Category::Residential);
-        assert!(!world.all_buildings().is_empty(), "the stroke should have drafted something");
+        house(&mut world, 0, 0);
+        assert!(!world.all_buildings().is_empty(), "the house should have been drafted");
         world.discard_drafts(ME);
         world.acting_as = None;
 
         assert_eq!(world.all_buildings().len(), roads);
         assert_eq!(world.edges.len(), edges);
-    }
-
-    /// Widening a stroke re-lays it, which is how a house becomes an apartment.
-    #[test]
-    fn painting_again_replaces_your_own_drafts() {
-        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
-        world.acting_as = Some(ME);
-
-        world.paint_area(&painted(0..1, 0..1), Category::Residential);
-        let first: Vec<_> = world.all_buildings();
-        assert_eq!(first.len(), 1);
-
-        // The same tile again, with more beside it: the original is torn up
-        // rather than left standing in the way of a wider plot.
-        world.paint_area(&painted(0..3, 0..1), Category::Residential);
-        let ids: Vec<_> = world.all_buildings().iter().map(|(id, _)| *id).collect();
-        assert!(!ids.contains(&first[0].0), "the first draft should have been replaced");
-    }
-
-    #[test]
-    fn another_players_draft_is_not_yours_to_replace() {
-        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
-
-        world.acting_as = Some(SOMEONE_ELSE);
-        world.paint_area(&painted(0..1, 0..1), Category::Residential);
-        let theirs = world.all_buildings();
-        assert_eq!(theirs.len(), 1);
-
-        world.acting_as = Some(ME);
-        world.paint_area(&painted(0..3, 0..1), Category::Commercial);
-        let ids: Vec<_> = world.all_buildings().iter().map(|(id, _)| *id).collect();
-        assert!(ids.contains(&theirs[0].0), "their draft must survive my stroke");
     }
 
     /// Rerouting an artery and building over its old alignment, in one commit,
@@ -558,9 +458,10 @@ mod tests {
             GridCoord { x: 3, y: 3 },
             GridCoord { x: 4, y: 2 },
         ]);
-        world.paint_area(&painted(1..4, 2..3), Category::Industrial);
-        let factory = world.all_buildings();
-        assert!(!factory.is_empty(), "the old alignment should now be buildable");
+        let factory = world
+            .spawn_building(GridCoord { x: 1, y: 2 }, BuildingKind::Factory, (3, 1), Rotation::North)
+            .map(|id| vec![(id, GridCoord { x: 1, y: 2 })])
+            .expect("the old alignment should now be buildable");
 
         let committed = world.commit_drafts(ME);
         // By id, as the game loop does: the tile may hold a node for each world.
@@ -712,27 +613,6 @@ mod tests {
 
     /// Painting a deep block, not just a frontage strip: no driveway may ever
     /// run into a building and on into the next one.
-    #[test]
-    fn no_driveway_chains_through_a_painted_block() {
-        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1)]);
-        world.acting_as = Some(ME);
-        // Several rows deep, so the back rows can only reach the street through
-        // the front row's driveways.
-        world.paint_area(&painted(0..6, -4..1), Category::Residential);
-
-        let occupied_tiles: HashSet<(i32, i32)> = world.occupied.keys().copied().collect();
-        for (id, _) in world.all_buildings() {
-            let Some(drive) = world.road_node_for_building(id) else { continue };
-            for arm in world.arms_of(drive, false) {
-                let pos = world.objects.get(arm).and_then(|e| e.position).unwrap();
-                assert!(
-                    !occupied_tiles.contains(&(pos.x, pos.y)),
-                    "a driveway reaches into another building at {pos:?}",
-                );
-            }
-        }
-    }
-
     /// A plot will not take a driveway onto a road that is on its way out.
     #[test]
     fn a_road_staged_for_removal_is_not_access() {
@@ -835,7 +715,7 @@ mod tests {
     #[test]
     fn a_driveway_joins_its_building_to_the_street() {
         let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
-        world.paint_area(&painted(0..2, 0..1), Category::Residential);
+        house(&mut world, 0, 0);
         agrees_with_the_edges(&world);
 
         let house = world.all_buildings()[0].0;
@@ -847,8 +727,7 @@ mod tests {
     #[test]
     fn demolishing_a_building_takes_its_driveway_out_of_the_network() {
         let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
-        world.paint_area(&painted(0..2, 0..1), Category::Residential);
-        let house = world.all_buildings()[0].0;
+        let house = house(&mut world, 0, 0);
         let door = world.road_node_for_building(house).unwrap();
 
         world.remove_building(house);
@@ -862,8 +741,8 @@ mod tests {
     #[test]
     fn a_search_across_one_network_still_finds_its_way() {
         let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1), (3, 1), (4, 1)]);
-        world.paint_area(&painted(0..1, 0..1), Category::Residential);
-        world.paint_area(&painted(4..5, 0..1), Category::Commercial);
+        house(&mut world, 0, 0);
+        house(&mut world, 4, 0);
         let buildings = world.all_buildings();
         assert_eq!(buildings.len(), 2);
 
@@ -900,8 +779,7 @@ mod tests {
     #[test]
     fn a_driveway_is_a_segment_of_its_own() {
         let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
-        world.paint_area(&painted(1..2, 0..1), Category::Residential);
-        let house = world.all_buildings()[0].0;
+        let house = house(&mut world, 1, 0);
         let door = world.road_node_for_building(house).unwrap();
 
         // The driveway hangs off the street, so the street is cut where it
