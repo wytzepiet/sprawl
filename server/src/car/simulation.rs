@@ -68,7 +68,7 @@ pub fn park_car(
             _ => false,
         });
         if aboard {
-            crate::resident::set_at(world, owner, at_building);
+            crate::resident::set_at(world, owner, at_building, events.now());
             events.wake(0, owner);
         }
     }
@@ -248,7 +248,7 @@ pub fn handle_car_wake_up(
 
         if ri + 1 >= trip.route.len() {
             // Journey's end: the driver steps out, the car stays.
-            crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, now);
+            crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, trip.total_route_length, now);
             park_car(world, intersections, events, car_id, trip.destination);
             return;
         }

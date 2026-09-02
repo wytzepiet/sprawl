@@ -863,14 +863,14 @@ mod tests {
     /// Every wake, every arrival: the log the model in sprawl-needs.md is
     /// held to. Two runs of the same town must write the same one — down to
     /// the millisecond — or something is iterating a hash map.
-    fn arrival_log(days: u64) -> Vec<(GameTime, EntityId, Option<EntityId>)> {
+    fn arrival_log(days: u64) -> (Vec<(GameTime, EntityId, Option<EntityId>)>, EntityId) {
         let mut world = street();
         build(&mut world, 0, BuildingKind::Apartment, 2);
         build(&mut world, 6, BuildingKind::Apartment, 2);
         build(&mut world, 30, BuildingKind::Shop, 1);
         build(&mut world, 60, BuildingKind::Office, 2);
         // Lunch: a shop beside the office, too far from home to staff.
-        build(&mut world, 64, BuildingKind::Shop, 1);
+        let lunch = build(&mut world, 64, BuildingKind::Shop, 1);
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -895,13 +895,16 @@ mod tests {
                 }
             }
         }
-        log
+        // Sixteen cars on one street: journeys run somewhat over the
+        // free-flow promise, and the estimate has learned roughly that.
+        assert!((1.0..3.0).contains(&world.delay), "learned delay {}", world.delay);
+        (log, lunch)
     }
 
     #[test]
     fn the_same_town_lives_the_same_days() {
-        let two = arrival_log(2);
-        let one = arrival_log(1);
+        let (two, lunch) = arrival_log(2);
+        let (one, _) = arrival_log(1);
         // Sixteen people, each at least driving in, to work, and home.
         assert!(one.len() >= 16 * 3, "only {} moves logged", one.len());
         assert_eq!(two[..one.len()], one[..], "the first day differs between runs");
@@ -922,5 +925,21 @@ mod tests {
         assert!(moves.values().any(|&n| n >= 8), "nobody went out for lunch: {moves:?}");
         let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at)| (id, at)).collect();
         assert!(last.values().all(|at| at.is_some()), "someone ended the day in a car");
+
+        // The lunch shop seats four. Twelve office workers want it, so the
+        // afternoon is a succession of small sittings rather than one crush:
+        // arrivals spread over hours, and the room is never far over full.
+        let hour = day / 24;
+        let arrivals: Vec<GameTime> =
+            two.iter().filter(|&&(t, _, at)| t >= day && at == Some(lunch)).map(|&(t, ..)| t).collect();
+        assert!(arrivals.len() >= 8, "only {} came for lunch", arrivals.len());
+        let span = arrivals.iter().max().unwrap() - arrivals.iter().min().unwrap();
+        assert!(span >= 2 * hour, "lunch was a crush: {:.1}h", span as f64 / hour as f64);
+        let (mut present, mut most) = (std::collections::BTreeSet::new(), 0);
+        for &(t, id, at) in two.iter().filter(|&&(t, ..)| t >= day) {
+            if at == Some(lunch) { present.insert(id); } else { present.remove(&id); }
+            most = most.max(present.len());
+        }
+        assert!(most <= 6, "{most} at a four-seat shop at once");
     }
 }

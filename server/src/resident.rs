@@ -7,6 +7,7 @@ use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, Resident, 
 use crate::world::World;
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
 /// Real roads bend; the crow does not. Straight-line travel time is scaled up
 /// by this before promising to be anywhere. Being systematically a little
@@ -16,6 +17,15 @@ const DETOUR: f64 = 1.4;
 /// How long to sit on a failed departure — a blocked driveway, a severed road —
 /// before looking again.
 const RETRY_MS: u64 = 10_000;
+
+/// How many arrivals it takes for the learned delay to mostly forget the
+/// old ones.
+const DELAY_MEMORY: f64 = 16.0;
+
+/// Who is at, or on their way to, each building for each need. Counted
+/// fresh at every wake from what residents are doing — a claim is being
+/// present or being en route, so there is nothing to release.
+type Crowd = HashMap<(EntityId, Need), u32>;
 
 /// One resident thinking, as sprawl-needs.md specifies. Reads the clock and
 /// the world, brings what they owe up to date, scores every place that could
@@ -60,9 +70,10 @@ pub fn handle_resident_wake(
         at = r.home;
     }
 
-    settle(world, id, at, now);
+    let crowd = headcount(world);
+    settle(world, id, at, now, &crowd);
     let Some(r) = resident(world, id).cloned() else { return };
-    let verdicts = verdicts(world, &r, at, now);
+    let verdicts = verdicts(world, &r, at, now, &crowd);
 
     // Actionable: can be set out for now, or is right here — where waiting
     // for it to open is the action. Waiting for somewhere else is not; that
@@ -120,17 +131,20 @@ pub fn handle_resident_wake(
 }
 
 /// One verdict per bucket: the best any of its candidates offers.
-fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime) -> Vec<Verdict> {
+fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime, crowd: &Crowd) -> Vec<Verdict> {
     let mut floor = 0.0_f64;
     r.buckets
         .iter()
         .map(|b| {
             let v = candidates(world, r, at, b, floor)
                 .flat_map(|building| {
+                    // Everyone else there or on the way, plus this resident.
+                    let mine = (at == building && r.selected == Some(b.need)) as u32;
+                    let company = crowd.get(&(building, b.need)).copied().unwrap_or(0) - mine + 1;
                     taps_of(world, building)
                         .iter()
                         .filter(|t| t.need == b.need)
-                        .map(move |t| evaluate(world, at, building, t, b, now))
+                        .map(move |t| evaluate(world, at, building, t, b, now, company))
                 })
                 .fold(Verdict::Nothing, Verdict::better);
             if let Verdict::Go { score, .. } = v {
@@ -225,6 +239,9 @@ enum Verdict {
         /// overhead. What a fuller bucket cannot shorten.
         fixed: f64,
         rate: f64,
+        /// How much of the level the visit would serve. Less than all of it
+        /// means the tap closes first, and a fuller bucket scores no better.
+        drained: f64,
     },
     Nothing,
 }
@@ -250,9 +267,11 @@ fn evaluate(
     tap: &Tap,
     bucket: &Bucket,
     now: GameTime,
+    company: u32,
 ) -> Verdict {
     let tau = if at == building { 0 } else { travel_ms(world, at, building) };
     let h = tap.overhead;
+    let rate = tap.serving(company);
     let Some(opening) = tap.curve.next_nonzero(now + tau + h) else {
         return Verdict::Nothing;
     };
@@ -263,17 +282,13 @@ fn evaluate(
     if available <= 0.0 {
         return Verdict::Nothing;
     }
-    let drained = if tap.rate.is_finite() {
-        bucket.level.min(tap.rate * available)
-    } else {
-        bucket.level
-    };
+    let drained = if rate.is_finite() { bucket.level.min(rate * available) } else { bucket.level };
     // Less than a millisecond owed is nothing: the clock cannot tell.
     if drained < 1.0 {
         return Verdict::Nothing;
     }
-    let leave = if tap.rate.is_finite() {
-        tap.curve.advance(entry, drained / tap.rate).unwrap_or(dry as f64)
+    let leave = if rate.is_finite() {
+        tap.curve.advance(entry, drained / rate).unwrap_or(dry as f64)
     } else {
         entry as f64
     };
@@ -284,7 +299,8 @@ fn evaluate(
         leave: (leave.ceil() as GameTime).min(dry),
         building,
         fixed: (entry - now) as f64,
-        rate: tap.rate,
+        rate,
+        drained,
     }
 }
 
@@ -295,15 +311,17 @@ fn evaluate(
 /// Setting that equal to the choice's score is a quadratic in `L`, so the
 /// level it overtakes at is closed-form, and the time to reach it follows.
 /// A bucket with no option at all is bounded by its ceiling instead. One
-/// that cannot grow, or would need more than its cap, never overtakes by
-/// level; one already past the crossing and still not winning is not held
-/// back by level, and whatever does hold it has its own term.
+/// that cannot grow, would need more than its cap, or whose tap closes
+/// before the level is served, never overtakes by level. One sitting on the
+/// crossing has tied and lost to an earlier bucket, and wins a millisecond
+/// on.
 fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
     if b.need.fill() == 0.0 {
         return GameTime::MAX;
     }
     let cap = b.need.cap();
     let target = match *v {
+        Verdict::Go { drained, .. } if drained < b.level => return GameTime::MAX,
         Verdict::Go { fixed, rate, .. } => {
             // L^2 / cap = score * (fixed + L / rate)
             let half_b = score * cap / rate / 2.0;
@@ -315,25 +333,26 @@ fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
             None => return GameTime::MAX,
         },
     };
-    if target >= cap || target <= b.level {
+    if target >= cap {
         return GameTime::MAX;
     }
-    now + ((target - b.level) / b.need.fill()).ceil() as GameTime
+    now + ((target - b.level) / b.need.fill()).ceil().max(1.0) as GameTime
 }
 
 /// Section 4.3: bring the buckets up to date. The one being served drains by
 /// what its tap offered since the last look and accrues only for the part it
 /// did not; every other one accrues the whole interval. A constant need is
 /// constant: it neither drains nor accrues.
-fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime) {
+fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &Crowd) {
     let Some(r) = resident(world, id) else { return };
     let (last, selected) = (r.last_update, r.selected);
     let elapsed = (now - last) as f64;
     let serving: Option<(f64, f64)> = selected.and_then(|need| {
+        let company = crowd.get(&(at, need)).copied().unwrap_or(0).max(1);
         taps_of(world, at)
             .iter()
             .find(|t| t.need == need)
-            .map(|t| (t.rate, t.curve.integral(last, now)))
+            .map(|t| (t.serving(company), t.curve.integral(last, now)))
     });
     let Some(r) = resident_mut(world, id) else { return };
     for b in &mut r.buckets {
@@ -348,6 +367,34 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime) {
         b.level = (b.level - rate * served + b.need.fill() * idle).clamp(0.0, b.need.cap());
     }
     r.last_update = now;
+}
+
+/// Who is where, for what: present and selected, or aboard a car bound
+/// there. One pass over everyone.
+fn headcount(world: &World) -> Crowd {
+    let mut crowd = Crowd::new();
+    for id in world.resident_ids() {
+        let Some(r) = resident(world, id) else { continue };
+        let (Some(at), Some(need)) = (r.at, r.selected) else { continue };
+        let place = match world.objects.get(at).map(|e| &e.object) {
+            Some(GameObject::Building(_)) => at,
+            Some(GameObject::Car(c)) => match &c.trip {
+                Some(t) => t.destination,
+                None => continue,
+            },
+            _ => continue,
+        };
+        *crowd.entry((place, need)).or_default() += 1;
+    }
+    crowd
+}
+
+impl Tap {
+    /// The rate each of `company` present is served at: full up to the
+    /// slots, then shared.
+    fn serving(&self, company: u32) -> f64 {
+        self.rate * (self.slots as f64 / company.max(1) as f64).min(1.0)
+    }
 }
 
 /// Pull out of one building's driveway toward another's.
@@ -371,12 +418,20 @@ fn drive(
 /// numbers worsening together is a direct measurement of congestion on the
 /// roads they actually drove.
 pub fn arrival_readout(
-    world: &World,
+    world: &mut World,
     id: EntityId,
     destination: EntityId,
     eta: GameTime,
+    length: f64,
     now: GameTime,
 ) {
+    // Every arrival teaches the city how much slower than empty roads it
+    // is running, and every departure estimate reads it.
+    let free = length / CRUISE_SPEED * 1000.0;
+    if free > 0.0 {
+        let ratio = (free + now.saturating_sub(eta) as f64) / free;
+        world.delay += (ratio - world.delay) / DELAY_MEMORY;
+    }
     if let Some(r) = resident(world, id)
         && r.work == Some(destination)
         && let Some(open) = taps_of(world, destination)
@@ -405,10 +460,12 @@ pub fn arrival_readout(
 pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
     let Some(r) = resident(world, id) else { return json!({ "error": "no such resident" }) };
     let Some(at) = r.at else { return json!({ "id": id, "at": null, "note": "off-map" }) };
-    let verdicts = verdicts(world, r, at, now);
+    let crowd = headcount(world);
+    let verdicts = verdicts(world, r, at, now, &crowd);
     json!({
         "id": id,
         "now": hhmm(now),
+        "delay": world.delay,
         "at": at,
         "at_kind": whereabouts(world, at),
         "home": r.home,
@@ -445,8 +502,9 @@ pub fn inspect_all(world: &World, now: GameTime) -> Value {
 impl Verdict {
     fn describe(&self, now: GameTime) -> Value {
         match *self {
-            Verdict::Go { score, departure, leave, building, .. } => json!({
+            Verdict::Go { score, departure, leave, building, rate, .. } => json!({
                 "building": building,
+                "rate": rate,
                 "score": score,
                 "departure": hhmm(departure),
                 "wait_h": (departure - now) as f64 / HOUR,
@@ -489,7 +547,14 @@ fn resident_mut(world: &mut World, id: EntityId) -> Option<&mut Resident> {
     }
 }
 
-pub fn set_at(world: &mut World, id: EntityId, place: EntityId) {
+/// Step out somewhere. The time up to now was spent wherever they were —
+/// in the car, served nothing — and is settled as such before the place
+/// changes, or the drive would count as a visit.
+pub fn set_at(world: &mut World, id: EntityId, place: EntityId, now: GameTime) {
+    if let Some(from) = resident(world, id).and_then(|r| r.at) {
+        let crowd = headcount(world);
+        settle(world, id, from, now, &crowd);
+    }
     if let Some(r) = resident_mut(world, id) {
         r.at = Some(place);
     }
@@ -519,7 +584,7 @@ fn travel_ms(world: &World, from: EntityId, to: EntityId) -> GameTime {
         (Some(a), Some(b)) => (a.0 - b.0).abs().max((a.1 - b.1).abs()) as f64,
         _ => 0.0,
     };
-    (dist / CRUISE_SPEED * DETOUR * 1000.0) as GameTime
+    (dist / CRUISE_SPEED * DETOUR * world.delay * 1000.0) as GameTime
 }
 
 fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {

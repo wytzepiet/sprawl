@@ -37,6 +37,10 @@ pub struct World {
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     pub terrain_seed: u32,
+    /// How much longer journeys are taking than empty roads would promise,
+    /// learned from every arrival. Residents leave this much earlier, so
+    /// congestion feeds back into when — and whether — trips happen.
+    pub delay: f64,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
@@ -126,6 +130,7 @@ impl World {
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed: 0,
+            delay: 1.0,
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
@@ -146,6 +151,7 @@ impl World {
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed,
+            delay: 1.0,
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),

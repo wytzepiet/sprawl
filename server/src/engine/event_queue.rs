@@ -67,7 +67,6 @@ impl EventQueue {
         self.now = now;
     }
 
-    #[allow(dead_code)]
     pub fn now(&self) -> GameTime {
         self.now
     }

@@ -538,11 +538,18 @@ analysed and deferred as unmotivated at current scale.
    requires a tolerance parameter and was rejected on that basis. The choice
    is not derived from anything.
 
-7. **Curve authoring surface.** Every building kind requires a curve, rate
+7. **Dinner near work.** An office worker with a third of a sitting owed
+   at 17:00 eats at the shop next door rather than driving home hungry —
+   the procedure cannot see "home, then the kitchen" as one plan. Accepted
+   as a consequence; it also puts cars on the road twice. Ideas held for
+   later: one tap discharging two buckets (a meal out serving Leisure as
+   well), and a money cost per visit as a second denominator.
+
+8. **Curve authoring surface.** Every building kind requires a curve, rate
    and overhead per need served. The total content burden has not been
    estimated.
 
-8. **Section 8 is unvalidated.** Pools, preconditions and building agents
+9. **Section 8 is unvalidated.** Pools, preconditions and building agents
    were reasoned about but not specified to implementation depth.
 
 ## 12. Proposed validation
@@ -615,11 +622,24 @@ hours after breakfast, where 0.1 put a snack every three. Meals take as
 long as the hunger owed, at unit rate: no infinite rates yet.
 
 **5. Capacity.** `slots` on a tap; effective rate scales by
-`min(1, slots / occupancy)`; occupancy counts en-route claimants via the
-section 8.1 lease. Meaningful only once Eat creates competition. Also here:
-congestion-aware `tau`, since `network.observe_passage` already learns real
-run costs — fold a global observed-speed factor into the estimate so the
-road network feeds back into whether a trip happens.
+`min(1, slots / occupancy)`; occupancy counts en-route claimants. *Done.*
+No lease and nothing to release: a claim is being present and selected, or
+aboard a car bound there, counted fresh from everyone at each wake. The
+crowd self-limits because wakes are sequential — the fifth to decide sees
+four en route and waits — and the test town's twelve office workers take a
+four-seat shop as a succession of sittings across the afternoon. Also
+here: every arrival teaches a global delay factor (actual over free-flow),
+which `tau` reads, so congestion feeds back into when and whether trips
+happen. What it taught: settling must happen *before* `at` changes, or the
+drive counts as a visit and a resident arrives, finds nothing owed, and
+turns around; a bucket sitting exactly on the crossing has tied and lost
+to an earlier bucket, and must wake a millisecond on rather than never;
+and a bucket whose tap closes before its level is served cannot overtake
+by level at all.
+
+Not built: nobody is woken when a crowded tap empties. Those who waited
+wake when their own level says so, with the crowd as it was; the spread
+comes out right anyway, but late by up to that lag.
 
 **6. Demand out.** Buckets at cap, spatially aggregated, into the proposal
 system; per-building labour received alongside. With Work constant this is
