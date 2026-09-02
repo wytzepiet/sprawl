@@ -6,4 +6,4 @@
  * in `fill`; a **constant** need is imposed by the world and carries it in
  * the curve of whatever serves it, holding a fixed level meanwhile.
  */
-export type Need = "Home" | "Work" | "Rest" | "Eat";
+export type Need = "Home" | "Work" | "Rest" | "Eat" | "Leisure";

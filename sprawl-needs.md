@@ -353,13 +353,20 @@ A partial window yields a proportionally reduced `drained`, and a window that
 has closed yields none. Truncated attendance and refusal to set out are the
 same expression evaluated at different times.
 
-### 5.5 Level orders needs
+### 5.5 Level orders needs; rate ranks them
 
 `score <= (L / cap) * r`. A fuller bucket outranks an emptier one at equal
 rate; a constant bucket at `k` is outranked exactly when something else is
 more than `k` full. Escalation is bounded — no score exceeds `r` — so the
 override threshold in section 7 remains computable, but within the bound
 the ordering is decided by level rather than fixed by parameters.
+
+The bound is also the design surface for what may interrupt what: a need
+whose greatest rate is below a constant need's `k` can never pull an agent
+away from it, however full. The rates therefore form a ladder — Rest 1,
+Eat 1, Work 0.5, Leisure 0.45 out and 0.35 at home, Home 0.3 — and `cap`
+cannot substitute for it: at full, a bucket scores its tap's rate whatever
+the cap is.
 
 Without the fullness term, `sup over L of score = r` and the ordering
 between two available needs would be fixed for all time by `r` alone;
@@ -399,8 +406,10 @@ Four places carry behaviour, each with an external referent:
 | `curve` | when, and how effectively, a place serves | opening hours; physiology |
 | `cap` | how much may accumulate | domain fact |
 | `k` | threshold below which a constant need is skipped | judgement, in bucket units |
+| `rate` | a need's importance at its most urgent | judgement: the ladder in section 5.5 |
 
-Weight is fullness (section 4.1) and is not authored. An override (dispatch,
+Weight is fullness (section 4.1) and is not authored. Rate is, and it is
+the one place needs are ranked against each other. An override (dispatch,
 emergency) is a weight exceeding 1; section 5.1 makes the threshold
 computable rather than empirical: any weight exceeding the greatest ordinary
 `r` guarantees dominance.
@@ -653,8 +662,20 @@ is its own design and reads this as one input among its own pacing.
 Housing demand cannot come from buckets: nobody is homeless, settle evicts
 them; that signal is immigration pressure.
 
-**7. Leisure, then section 8.** Leisure is the first need with no natural
-curve constraint and the first real test of `w = L / cap` at home. Pools,
-preconditions and building agents stay deferred until something concrete
-demands them, and section 8 is not written to implementation depth before
-step 6.
+**7. Leisure.** The first need with no natural curve constraint, and the
+real test of `w = L / cap`. *Done.* What it taught, in three tries: with
+home at rate 0.5 and a venue at 1, the office received half its labour —
+a five-hour backlog next door to a shop beats a 0.5 job from a quarter
+full; with home at 1 and a venue at 2 ("going out is better"), three
+quarters. No cap helps: at full, a bucket scores its tap's rate whatever
+the cap is. What ranks needs is **rate** — section 5.1's bound is a
+need's importance at its most urgent, and fullness only scales it down.
+So the rates are a ladder: Rest 1, Eat 1, Work 0.5, Leisure 0.45 out and
+0.35 at home, Home 0.3. Sleep and food can pull someone out of a shift;
+time off cannot, by arithmetic; and only nearly-full time off beats
+sitting at home. The office then receives 93 hours, lunch is unchanged,
+and outings happen after work from home. `fill` is rescaled to the home
+rate.
+
+**8. Section 8.** Pools, preconditions and building agents stay deferred
+until something concrete demands them.

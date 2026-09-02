@@ -790,6 +790,13 @@ mod tests {
         }
     }
 
+    fn doing(world: &World, id: EntityId) -> Option<crate::needs::Need> {
+        match &world.objects.get(id)?.object {
+            GameObject::Resident(r) => r.selected,
+            _ => None,
+        }
+    }
+
     /// Run the simulation from `from` to `to`, the same way run() does.
     fn pump(
         world: &mut World,
@@ -865,11 +872,13 @@ mod tests {
     /// Every wake, every arrival: the log the model in sprawl-needs.md is
     /// held to. Two runs of the same town must write the same one — down to
     /// the millisecond — or something is iterating a hash map.
-    fn arrival_log(days: u64) -> (Vec<(GameTime, EntityId, Option<EntityId>)>, EntityId) {
+    type Move = (GameTime, EntityId, Option<EntityId>, Option<crate::needs::Need>);
+
+    fn arrival_log(days: u64) -> (Vec<Move>, [EntityId; 2]) {
         let mut world = street();
         build(&mut world, 0, BuildingKind::Apartment, 2);
         build(&mut world, 6, BuildingKind::Apartment, 2);
-        build(&mut world, 30, BuildingKind::Shop, 1);
+        let shop = build(&mut world, 30, BuildingKind::Shop, 1);
         let office = build(&mut world, 60, BuildingKind::Office, 2);
         // Lunch: a shop beside the office, too far from home to staff.
         let lunch = build(&mut world, 64, BuildingKind::Shop, 1);
@@ -892,7 +901,7 @@ mod tests {
             for (i, &id) in people.iter().enumerate() {
                 let at = at_of(&world, id);
                 if at != last[i] {
-                    log.push((now, id, at));
+                    log.push((now, id, at, doing(&world, id)));
                     last[i] = at;
                 }
             }
@@ -919,12 +928,12 @@ mod tests {
             assert!((80.0..=108.0).contains(&office), "office received {office}h");
             assert!(sold(lunch, "Eat") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat"));
         }
-        (log, lunch)
+        (log, [shop, lunch])
     }
 
     #[test]
     fn the_same_town_lives_the_same_days() {
-        let (two, lunch) = arrival_log(2);
+        let (two, [shop, lunch]) = arrival_log(2);
         let (one, _) = arrival_log(1);
         // Sixteen people, each at least driving in, to work, and home.
         assert!(one.len() >= 16 * 3, "only {} moves logged", one.len());
@@ -938,30 +947,47 @@ mod tests {
         // shop next door, so its workers drive to it.
         let day = DAY_MS as u64;
         let mut moves = std::collections::BTreeMap::new();
-        for &(_, id, _) in two.iter().filter(|&&(t, _, _)| t >= day) {
+        for &(_, id, ..) in two.iter().filter(|&&(t, ..)| t >= day) {
             *moves.entry(id).or_insert(0) += 1;
         }
         assert_eq!(moves.len(), 16, "everyone went out on day two");
         assert!(moves.values().all(|&n| n % 2 == 0 && (4..=10).contains(&n)), "someone thrashed: {moves:?}");
         assert!(moves.values().any(|&n| n >= 8), "nobody went out for lunch: {moves:?}");
-        let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at)| (id, at)).collect();
+        let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at, _)| (id, at)).collect();
         assert!(last.values().all(|at| at.is_some()), "someone ended the day in a car");
 
         // The lunch shop seats four. Twelve office workers want it, so the
         // afternoon is a succession of small sittings rather than one crush:
         // arrivals spread over hours, and the room is never far over full.
         let hour = day / 24;
-        let arrivals: Vec<GameTime> =
-            two.iter().filter(|&&(t, _, at)| t >= day && at == Some(lunch)).map(|&(t, ..)| t).collect();
+        use crate::needs::Need;
+        let arrivals: Vec<GameTime> = two
+            .iter()
+            .filter(|&&(t, _, at, sel)| t >= day && at == Some(lunch) && sel == Some(Need::Eat))
+            .map(|&(t, ..)| t)
+            .collect();
         assert!(arrivals.len() >= 8, "only {} came for lunch", arrivals.len());
         let span = arrivals.iter().max().unwrap() - arrivals.iter().min().unwrap();
         assert!(span >= 2 * hour, "lunch was a crush: {:.1}h", span as f64 / hour as f64);
         let (mut present, mut most) = (std::collections::BTreeSet::new(), 0);
-        for &(t, id, at) in two.iter().filter(|&&(t, ..)| t >= day) {
-            if at == Some(lunch) { present.insert(id); } else { present.remove(&id); }
+        for &(t, id, at, sel) in two.iter().filter(|&&(t, ..)| t >= day) {
+            if at == Some(lunch) && sel == Some(Need::Eat) { present.insert(id); } else { present.remove(&id); }
             most = most.max(present.len());
         }
-        assert!(most <= 6, "{most} at a four-seat shop at once");
+        assert!(most <= 6, "{most} eating at a four-seat shop at once");
+
+        // Time off is never more important than work (its rate is below the
+        // job's), so an outing happens after the shift, from home, on an
+        // evening when enough of it has piled up. Not nightly.
+        let outings: Vec<f64> = two
+            .iter()
+            .filter(|&&(t, _, _, sel)| t >= day && sel == Some(Need::Leisure))
+            .filter(|&&(_, _, at, _)| at == Some(shop) || at == Some(lunch))
+            .map(|&(t, ..)| (t % day) as f64 / hour as f64)
+            .collect();
+        assert!(!outings.is_empty(), "nobody went out");
+        assert!(outings.iter().all(|&h| h >= 17.0), "an outing during the shift: {outings:.1?}");
+        assert!(outings.len() < 8, "everyone out every night: {outings:.1?}");
     }
 
     /// The demand readout names what is missing: a household with nowhere

@@ -170,7 +170,7 @@ fn candidates<'a>(
     match b.need {
         Need::Work => Box::new(r.work.into_iter()),
         Need::Rest | Need::Home => Box::new(std::iter::once(r.home)),
-        Need::Eat => {
+        Need::Eat | Need::Leisure => {
             let need = b.need;
             let (_, h) = need.bounds();
             let bound = b.level / need.cap() * b.level;
