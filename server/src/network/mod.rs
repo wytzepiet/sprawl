@@ -23,9 +23,19 @@ pub enum Command {
         sender: mpsc::UnboundedSender<ServerMessage>,
     },
     ClientDisconnect { id: ClientId },
-    /// Ask the game loop what a resident is thinking (or everyone, with no
-    /// id). The world lives on that task; this is the only way to read it.
-    Inspect { id: Option<EntityId>, reply: tokio::sync::oneshot::Sender<String> },
+    /// Ask the game loop a question about the world. It lives on that
+    /// task; this is the only way to read it.
+    Inspect { query: Ask, reply: tokio::sync::oneshot::Sender<String> },
+}
+
+/// What the debug endpoints can ask.
+pub enum Ask {
+    /// What one resident is thinking.
+    Resident(EntityId),
+    /// Everyone, one line each.
+    Residents,
+    /// Who cannot be served, where; and what each building delivered.
+    Demand,
 }
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);

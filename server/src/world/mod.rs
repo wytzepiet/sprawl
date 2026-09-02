@@ -41,6 +41,11 @@ pub struct World {
     /// learned from every arrival. Residents leave this much earlier, so
     /// congestion feeds back into when — and whether — trips happen.
     pub delay: f64,
+    /// What each building's taps have discharged, in obligation-ms: for a
+    /// workplace, labour received; for a shop, meals sold. Today's running
+    /// total and yesterday's, keyed by the day today is. Learned, not
+    /// saved — a loaded world starts counting afresh.
+    pub delivered: HashMap<(EntityId, crate::needs::Need), Delivered>,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
@@ -74,6 +79,26 @@ pub struct World {
     /// position, so without this "what is on this tile" would only ever find a
     /// building at its origin corner. Derived, like every other index.
     pub occupied: HashMap<(i32, i32), EntityId>,
+}
+
+/// One building's output for one need: the day being counted, its running
+/// total, and the last whole day's.
+#[derive(Default, Clone, Copy)]
+pub struct Delivered {
+    pub day: u64,
+    pub today: f64,
+    pub yesterday: f64,
+}
+
+impl Delivered {
+    pub fn add(&mut self, day: u64, amount: f64) {
+        if day != self.day {
+            self.yesterday = if day == self.day + 1 { self.today } else { 0.0 };
+            self.today = 0.0;
+            self.day = day;
+        }
+        self.today += amount;
+    }
 }
 
 /// What a commit turned into. Removals are handed back rather than performed
@@ -131,6 +156,7 @@ impl World {
             node_cars: HashMap::new(),
             terrain_seed: 0,
             delay: 1.0,
+            delivered: HashMap::new(),
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
@@ -152,6 +178,7 @@ impl World {
             node_cars: HashMap::new(),
             terrain_seed,
             delay: 1.0,
+            delivered: HashMap::new(),
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),

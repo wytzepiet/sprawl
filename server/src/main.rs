@@ -34,6 +34,7 @@ async fn main() {
         .route("/health", axum::routing::get(health::health))
         .route("/debug/residents", axum::routing::get(health::inspect_residents))
         .route("/debug/resident/{id}", axum::routing::get(health::inspect_resident))
+        .route("/debug/demand", axum::routing::get(health::inspect_demand))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));

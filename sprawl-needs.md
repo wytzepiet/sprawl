@@ -641,9 +641,17 @@ Not built: nobody is woken when a crowded tap empties. Those who waited
 wake when their own level says so, with the crowd as it was; the spread
 comes out right anyway, but late by up to that lag.
 
-**6. Demand out.** Buckets at cap, spatially aggregated, into the proposal
-system; per-building labour received alongside. With Work constant this is
-the only signal that commutes are failing (section 11.3).
+**6. Demand out.** `/debug/demand`: who cannot be served — a bucket with
+no option at all, weighted by fullness, or a resident with no job — summed
+by home chunk; and what every building's taps discharged today and
+yesterday, in hours. With Work constant the second is the only signal that
+commutes are failing (section 11.3). *Done.* Both are derived on request,
+the first from the same verdicts a wake computes, the second from what
+settle counts as it goes (not saved; a loaded world counts afresh). This
+is the signal only. What consumes it — the spawner that replaces zoning —
+is its own design and reads this as one input among its own pacing.
+Housing demand cannot come from buckets: nobody is homeless, settle evicts
+them; that signal is immigration pressure.
 
 **7. Leisure, then section 8.** Leisure is the first need with no natural
 curve constraint and the first real test of `w = L / cap` at home. Pools,

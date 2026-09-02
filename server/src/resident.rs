@@ -354,6 +354,13 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
             .find(|t| t.need == need)
             .map(|t| (t.serving(company), t.curve.integral(last, now)))
     });
+    // What the building put out is what it put out, whether or not the
+    // bucket had room for it: a shift worked is labour received.
+    if let (Some(need), Some((rate, served))) = (selected, serving)
+        && served > 0.0
+    {
+        world.delivered.entry((at, need)).or_default().add(now / DAY_MS as u64, rate * served);
+    }
     let Some(r) = resident_mut(world, id) else { return };
     for b in &mut r.buckets {
         if b.need.fill() == 0.0 {
@@ -497,6 +504,55 @@ pub fn inspect_all(world: &World, now: GameTime) -> Value {
         .collect();
     rows.sort_by_key(|v| v["id"].as_u64());
     json!({ "now": hhmm(now), "residents": rows })
+}
+
+/// Section 6: the demand signal. Who cannot be served — a bucket with no
+/// option at all, weighted by how full it is — summed by the chunk they
+/// live in; and what every building delivered, today and yesterday. Both
+/// derived on request: the first from the same verdicts a wake would
+/// compute, the second from what settle has been counting.
+pub fn demand(world: &World, now: GameTime) -> Value {
+    let crowd = headcount(world);
+    let mut unmet: HashMap<(ChunkCoord, Need), (u32, f64)> = HashMap::new();
+    for id in world.resident_ids() {
+        let Some(r) = resident(world, id) else { continue };
+        let Some(at) = r.at else { continue };
+        let Some(home) = world.objects.get(r.home).and_then(|e| e.position) else { continue };
+        let here = crate::world::chunk_of(home);
+        for (b, v) in r.buckets.iter().zip(verdicts(world, r, at, now, &crowd)) {
+            // Nothing on offer and something owed; an empty bucket wants
+            // nothing. A job is wanted whether or not the shift is on.
+            let wanting = matches!(v, Verdict::Nothing) && b.need.fill() > 0.0 && b.level >= 1.0;
+            if wanting || b.need == Need::Work && r.work.is_none() {
+                let e = unmet.entry((here, b.need)).or_default();
+                e.0 += 1;
+                e.1 += if b.need.fill() > 0.0 { b.level / b.need.cap() } else { 1.0 };
+            }
+        }
+    }
+    let mut unmet: Vec<Value> = unmet
+        .into_iter()
+        .map(|((c, need), (people, pressure))| {
+            json!({ "chunk": [c.cx, c.cy], "need": need, "people": people, "pressure": pressure })
+        })
+        .collect();
+    unmet.sort_by_key(|v| (v["chunk"].to_string(), v["need"].to_string()));
+
+    let mut delivered: Vec<Value> = world
+        .delivered
+        .iter()
+        .map(|(&(building, need), d)| {
+            json!({
+                "building": building,
+                "kind": whereabouts(world, building),
+                "need": need,
+                "today_h": d.today / HOUR,
+                "yesterday_h": d.yesterday / HOUR,
+            })
+        })
+        .collect();
+    delivered.sort_by_key(|v| (v["building"].as_u64(), v["need"].to_string()));
+    json!({ "now": hhmm(now), "unmet": unmet, "delivered": delivered })
 }
 
 impl Verdict {

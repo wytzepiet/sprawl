@@ -191,10 +191,12 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         known: HashSet::new(),
                     });
                 }
-                Command::Inspect { id, reply } => {
-                    let v = match id {
-                        Some(id) => crate::resident::inspect(&world, id, now),
-                        None => crate::resident::inspect_all(&world, now),
+                Command::Inspect { query, reply } => {
+                    use crate::network::Ask;
+                    let v = match query {
+                        Ask::Resident(id) => crate::resident::inspect(&world, id, now),
+                        Ask::Residents => crate::resident::inspect_all(&world, now),
+                        Ask::Demand => crate::resident::demand(&world, now),
                     };
                     let _ = reply.send(serde_json::to_string_pretty(&v).unwrap_or_default());
                 }
@@ -868,7 +870,7 @@ mod tests {
         build(&mut world, 0, BuildingKind::Apartment, 2);
         build(&mut world, 6, BuildingKind::Apartment, 2);
         build(&mut world, 30, BuildingKind::Shop, 1);
-        build(&mut world, 60, BuildingKind::Office, 2);
+        let office = build(&mut world, 60, BuildingKind::Office, 2);
         // Lunch: a shop beside the office, too far from home to staff.
         let lunch = build(&mut world, 64, BuildingKind::Shop, 1);
 
@@ -898,6 +900,25 @@ mod tests {
         // Sixteen cars on one street: journeys run somewhat over the
         // free-flow promise, and the estimate has learned roughly that.
         assert!((1.0..3.0).contains(&world.delay), "learned delay {}", world.delay);
+
+        // Section 6, the demand side. Nobody here wants for anything, and
+        // the office's books show what it received: twelve people, nine
+        // hours, less the lunches — and the lunch shop sold them.
+        if days >= 2 {
+            let d = crate::resident::demand(&world, days * DAY_MS as u64);
+            assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
+            let sold = |b: EntityId, need: &str| {
+                d["delivered"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|v| v["building"] == b && v["need"] == need)
+                    .map_or(0.0, |v| v["yesterday_h"].as_f64().unwrap())
+            };
+            let office = sold(office, "Work");
+            assert!((80.0..=108.0).contains(&office), "office received {office}h");
+            assert!(sold(lunch, "Eat") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat"));
+        }
         (log, lunch)
     }
 
@@ -941,5 +962,23 @@ mod tests {
             most = most.max(present.len());
         }
         assert!(most <= 6, "{most} at a four-seat shop at once");
+    }
+
+    /// The demand readout names what is missing: a household with nowhere
+    /// to work is two people short of a job, in the chunk they live in.
+    #[test]
+    fn a_town_without_jobs_says_so() {
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::House, 1);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        pump(&mut world, &mut events, &mut intersections, 0, 4 * (DAY_MS as u64) / 24);
+        let d = crate::resident::demand(&world, 4 * (DAY_MS as u64) / 24);
+        let unmet = d["unmet"].as_array().unwrap();
+        assert_eq!(unmet.len(), 1, "{unmet:?}");
+        assert_eq!(unmet[0]["need"], "Work");
+        assert_eq!(unmet[0]["people"], 2);
+        assert_eq!(unmet[0]["chunk"], serde_json::json!([0, 0]));
     }
 }

@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::extract::{Path, State};
 use tokio::sync::oneshot;
 
-use crate::network::{AppState, Command};
+use crate::network::{AppState, Command, Ask};
 use crate::protocol::EntityId;
 
 /// Simulated time, as of the last tick. Published here rather than asked for
@@ -45,17 +45,22 @@ pub async fn health() -> String {
 
 /// One resident's arithmetic: what they owe, and what every option scores.
 pub async fn inspect_resident(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
-    ask(&state, Some(id)).await
+    ask(&state, Ask::Resident(id)).await
 }
 
 /// Everyone, one line each.
 pub async fn inspect_residents(State(state): State<AppState>) -> String {
-    ask(&state, None).await
+    ask(&state, Ask::Residents).await
 }
 
-async fn ask(state: &AppState, id: Option<EntityId>) -> String {
+/// Who cannot be served, where; and what each building delivered.
+pub async fn inspect_demand(State(state): State<AppState>) -> String {
+    ask(&state, Ask::Demand).await
+}
+
+async fn ask(state: &AppState, query: Ask) -> String {
     let (reply, answer) = oneshot::channel();
-    if state.command_tx.send(Command::Inspect { id, reply }).is_err() {
+    if state.command_tx.send(Command::Inspect { query, reply }).is_err() {
         return "{\"error\":\"game loop gone\"}\n".into();
     }
     answer.await.unwrap_or_else(|_| "{\"error\":\"game loop gone\"}\n".into())
