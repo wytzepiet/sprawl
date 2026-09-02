@@ -835,14 +835,19 @@ mod tests {
         let people = world.resident_ids();
         assert_eq!(people.len(), 2);
 
-        let (open, close) = BuildingKind::Shop.hours().unwrap();
+        let shift = crate::needs::taps(BuildingKind::Shop)
+            .iter()
+            .find(|t| t.need == crate::needs::Need::Work)
+            .unwrap();
+        let open = shift.curve.next_nonzero(0).unwrap();
+        let close = shift.curve.next_zero(open);
 
-        pump(&mut world, &mut events, &mut intersections, 0, open as u64 + 60_000);
+        pump(&mut world, &mut events, &mut intersections, 0, open + 60_000);
         for &id in &people {
             assert_eq!(at_of(&world, id), Some(shop), "at work once the shift is on");
         }
 
-        pump(&mut world, &mut events, &mut intersections, open as u64 + 60_000, close as u64 + 120_000);
+        pump(&mut world, &mut events, &mut intersections, open + 60_000, close + 120_000);
         for &id in &people {
             assert_eq!(at_of(&world, id), Some(home), "home once the shift is over");
         }
@@ -886,10 +891,22 @@ mod tests {
 
     #[test]
     fn the_same_town_lives_the_same_days() {
-        let a = arrival_log(1);
-        let b = arrival_log(1);
+        let two = arrival_log(2);
+        let one = arrival_log(1);
         // Sixteen people, each at least driving in, to work, and home.
-        assert!(a.len() >= 16 * 3, "only {} moves logged", a.len());
-        assert_eq!(a, b);
+        assert!(one.len() >= 16 * 3, "only {} moves logged", one.len());
+        assert_eq!(two[..one.len()], one[..], "the first day differs between runs");
+        assert!(two.len() > one.len(), "nobody moved on the second day");
+
+        // The second day is a settled one: out to work, back home, and
+        // nothing in between. Four changes of `at` — into the car, out at
+        // work, into the car, out at home — per person.
+        let day = DAY_MS as u64;
+        let mut moves = std::collections::BTreeMap::new();
+        for &(t, id, _) in two.iter().filter(|&&(t, _, _)| t >= day) {
+            *moves.entry(id).or_insert(0) += 1;
+        }
+        assert_eq!(moves.len(), 16, "everyone went out on day two");
+        assert!(moves.values().all(|&n| n == 4), "someone thrashed: {moves:?}");
     }
 }

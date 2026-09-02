@@ -97,10 +97,11 @@ impl Curve {
     }
 
     /// The least `t >= x` at which `integral(x, t) == q`, or None if a whole
-    /// day from `x` does not reach it.
-    pub fn advance(&self, x: GameTime, q: f64) -> Option<GameTime> {
+    /// day from `x` does not reach it. Continuous: the caller rounds when it
+    /// schedules, and divides before then.
+    pub fn advance(&self, x: GameTime, q: f64) -> Option<f64> {
         if q <= 0.0 {
-            return Some(x);
+            return Some(x as f64);
         }
         let (mut i, tod) = self.locate(x);
         let day_start = x - (x % DAY_MS as u64);
@@ -111,7 +112,7 @@ impl Curve {
         loop {
             if remaining <= 0.0 {
                 // Ran out exactly on a keyframe.
-                return Some((day_start as f64 + wrapped + from).round() as GameTime);
+                return Some(day_start as f64 + wrapped + from);
             }
             let (a, b) = self.segment(i);
             let slope = (b.v - a.v) / (b.t - a.t);
@@ -126,8 +127,7 @@ impl Curve {
                     // in the form that does not cancel when slope is tiny.
                     2.0 * remaining / (v0 + (v0 * v0 + 2.0 * slope * remaining).sqrt())
                 };
-                let t = day_start as f64 + wrapped + from + d;
-                return Some(t.round() as GameTime);
+                return Some(day_start as f64 + wrapped + from + d);
             }
             remaining -= here;
             i += 1;
@@ -142,13 +142,14 @@ impl Curve {
         }
     }
 
-    /// The first `t >= x` at which the curve is zero, capped at a day out —
+    /// The first `t >= x` from which the curve is zero — closed for a while,
+    /// not merely touching zero at the foot of a ramp — capped at a day out:
     /// a curve that never closes closes at the horizon.
     pub fn next_zero(&self, x: GameTime) -> GameTime {
         self.scan(x, |a, b| {
-            if a.v == 0.0 {
+            if a.v == 0.0 && b.v == 0.0 {
                 Some(a.t)
-            } else if b.v == 0.0 {
+            } else if b.v == 0.0 && a.v > 0.0 {
                 Some(b.t)
             } else {
                 None
@@ -256,7 +257,7 @@ mod tests {
     fn always_open_integrates_to_elapsed_time() {
         let c = Curve::always();
         assert!(close(c.integral(5 * D + 3, 7 * D + 100), (2 * D + 97) as f64));
-        assert_eq!(c.advance(1000, 5000.0), Some(6000));
+        assert_eq!(c.advance(1000, 5000.0), Some(6000.0));
         assert_eq!(c.next_zero(1000), 1000 + D);
         assert_eq!(c.next_nonzero(1000), Some(1000));
     }
@@ -278,6 +279,9 @@ mod tests {
         assert_eq!(c.next_nonzero(3 * H as u64), Some(9 * H as u64 - 1), "opens at nine");
         assert_eq!(c.next_zero(12 * H as u64), 18 * H as u64, "closes at six");
         assert_eq!(c.next_nonzero(20 * H as u64), Some(D + 9 * H as u64 - 1), "tomorrow");
+        // Opening and closing agree: what opens is not also closed.
+        let opens = c.next_nonzero(3 * H as u64).unwrap();
+        assert_eq!(c.next_zero(opens), 18 * H as u64);
     }
 
     #[test]
@@ -314,7 +318,7 @@ mod tests {
             }
             let q = c.integral(x, y);
             let t = c.advance(x, q).expect("within a day");
-            assert!(t.abs_diff(y) <= 2, "advance({x}, {q}) = {t}, want {y}");
+            assert!((t - y as f64).abs() <= 2.0, "advance({x}, {q}) = {t}, want {y}");
         }
     }
 
@@ -324,7 +328,7 @@ mod tests {
         // Asking at 17:00 for two hours of service gets one today, one
         // tomorrow — done at 10:00.
         let t = c.advance(17 * H as u64, 2.0 * H as f64).unwrap();
-        assert!(t.abs_diff(D + 10 * H as u64) <= 2, "{t}");
+        assert!((t - (D + 10 * H as u64) as f64).abs() <= 2.0, "{t}");
         assert_eq!(c.advance(17 * H as u64, 30.0 * H as f64), None, "more than a day holds");
     }
 }

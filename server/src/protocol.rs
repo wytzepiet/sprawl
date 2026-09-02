@@ -71,21 +71,6 @@ impl BuildingKind {
         }
     }
 
-    /// When the working day here runs, in milliseconds of the day. Staggered
-    /// by kind so the city's rush hour is a wave rather than a spike: industry
-    /// starts before offices, offices before shops. `None` means nobody works
-    /// here at all.
-    pub fn hours(self) -> Option<(u32, u32)> {
-        const H: u32 = DAY_MS / 24;
-        match self {
-            BuildingKind::Factory => Some((6 * H, 15 * H)),
-            BuildingKind::Workshop => Some((7 * H, 16 * H)),
-            BuildingKind::Office => Some((8 * H, 17 * H)),
-            BuildingKind::Shop => Some((9 * H, 18 * H)),
-            BuildingKind::House | BuildingKind::Apartment => None,
-        }
-    }
-
     /// The kind a plot of this size gets, per category.
     pub fn for_plot(category: Category, tiles: u32) -> BuildingKind {
         match (category, tiles > 1) {

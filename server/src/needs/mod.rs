@@ -21,16 +21,20 @@ const HOUR: f64 = H as f64;
 pub enum Need {
     Work,
     Rest,
+    /// Being at home. The baseline every other activity has to beat, and
+    /// what pulls a resident back when the shift ends and nothing else is
+    /// open yet.
+    Home,
 }
 
 impl Need {
-    pub const ALL: [Need; 2] = [Need::Work, Need::Rest];
+    pub const ALL: [Need; 3] = [Need::Work, Need::Rest, Need::Home];
 
     /// Obligation gained per millisecond not spent on it. Zero for a
     /// constant need. For `D` hours a day at unit rate this is `D / (24 - D)`.
     pub fn fill(self) -> f64 {
         match self {
-            Need::Work => 0.0,
+            Need::Work | Need::Home => 0.0,
             Need::Rest => 8.0 / 16.0,
         }
     }
@@ -38,33 +42,63 @@ impl Need {
     /// The most obligation that can pile up, in milliseconds.
     pub fn cap(self) -> f64 {
         match self {
-            Need::Work => 24.0 * HOUR,
+            Need::Work | Need::Home => 24.0 * HOUR,
             Need::Rest => 12.0 * HOUR,
         }
     }
 
     /// Where a fresh bucket starts. A constant need sits at `k * cap` for
     /// good, and `k` is the threshold: the agent works unless something else
-    /// is more than this full.
+    /// is more than this full. Home must beat waiting overnight at work
+    /// (`0.5 * shift / 24`, about 0.19) and lose to a morning's commute.
     pub fn initial(self) -> f64 {
         match self {
             Need::Work => 0.5 * self.cap(),
+            Need::Home => 0.3 * self.cap(),
             Need::Rest => 0.0,
         }
     }
 
-    /// Hours a day this asks for, the referent `fill` was derived from.
-    /// For a constant need it is the longest any tap serves it.
+    /// Hours a day an accruing need asks for: the referent `fill` was
+    /// derived from. Zero for a constant need, which fills time rather than
+    /// demanding it.
     fn daily_ms(self) -> f64 {
         let fill = self.fill();
-        if fill > 0.0 {
-            return DAY_MS as f64 * fill / (1.0 + fill);
-        }
+        DAY_MS as f64 * fill / (1.0 + fill)
+    }
+
+    /// The best any tap anywhere serves this: greatest rate, least overhead.
+    /// What bounds a bucket's score without looking at any building.
+    pub fn bounds(self) -> (f64, GameTime) {
         TAPS.iter()
             .flat_map(|(_, taps)| taps.iter())
             .filter(|t| t.need == self)
-            .map(|t| t.curve.integral(0, DAY_MS as u64))
-            .fold(0.0, f64::max)
+            .fold((0.0, GameTime::MAX), |(r, h), t| (r.max(t.rate), h.min(t.overhead)))
+    }
+
+    /// The most any option for a bucket at `level` can score, from the
+    /// bounds alone: `w * min(R, L / H)`.
+    pub fn ceiling(self, level: f64) -> f64 {
+        let (r, h) = self.bounds();
+        let by_overhead = if h == 0 { f64::INFINITY } else { level / h as f64 };
+        level / self.cap() * r.min(by_overhead)
+    }
+
+    /// The level at which `ceiling` first exceeds `target`, or None if no
+    /// level under `cap` does.
+    pub fn level_for(self, target: f64) -> Option<f64> {
+        let (r, h) = self.bounds();
+        let cap = self.cap();
+        let h = h as f64;
+        // Below `r * h` the overhead term binds and the ceiling is quadratic
+        // in level; above, the rate binds and it is linear.
+        let u = if h == 0.0 {
+            target * cap / r
+        } else {
+            let quad = (target * cap * h).sqrt();
+            if quad <= r * h { quad } else { target * cap / r }
+        };
+        (u < cap).then_some(u)
     }
 }
 
@@ -101,10 +135,13 @@ static TAPS: LazyLock<Vec<(BuildingKind, Vec<Tap>)>> = LazyLock::new(|| {
     let work = |open: u32, close: u32| {
         vec![Tap { need: Need::Work, curve: Curve::hours(open * H, close * H), rate: 1.0, overhead: 0 }]
     };
-    // Nobody sleeps at noon. Sleep is on offer through the night, and it is
-    // the one thing a home offers so far.
+    // Nobody sleeps at noon: sleep is on offer through the night. Being
+    // home is on offer always.
     let home = || {
-        vec![Tap { need: Need::Rest, curve: Curve::hours(22 * H, 7 * H), rate: 1.0, overhead: 0 }]
+        vec![
+            Tap { need: Need::Rest, curve: Curve::hours(22 * H, 7 * H), rate: 1.0, overhead: 0 },
+            Tap { need: Need::Home, curve: Curve::always(), rate: 1.0, overhead: 0 },
+        ]
     };
     // Staggered by kind so the city's rush hour is a wave rather than a
     // spike: industry starts before offices, offices before shops.
@@ -127,7 +164,7 @@ pub fn taps(kind: BuildingKind) -> &'static [Tap] {
 /// materialised lazily later and a bad table fails before anyone acts on it.
 pub fn check() {
     let day = DAY_MS as u64;
-    // N1: the needs fit in a day.
+    // N1: what accrues fits in a day.
     let asked: f64 = Need::ALL.iter().map(|n| n.daily_ms()).sum();
     assert!(asked <= day as f64, "needs ask for {:.1}h of a 24h day", asked / HOUR);
 
@@ -139,20 +176,12 @@ pub fn check() {
                 "{kind:?} serves {:?} instantly and for free",
                 tap.need
             );
-            // C1: no visit outlasts the one-day horizon.
-            if tap.need.fill() > 0.0 {
-                assert!(
-                    tap.need.cap() / tap.rate <= day as f64,
-                    "{kind:?} takes over a day to drain {:?}",
-                    tap.need
-                );
-            } else {
-                assert!(
-                    tap.curve.next_zero(0) < day || tap.curve.at(0) == 0.0,
-                    "{kind:?} never closes, and {:?} never runs out",
-                    tap.need
-                );
-            }
+            // C1: a full bucket drains within the one-day horizon.
+            assert!(
+                tap.need.fill() == 0.0 || tap.need.cap() / tap.rate <= day as f64,
+                "{kind:?} takes over a day to drain {:?}",
+                tap.need
+            );
         }
     }
 }
@@ -169,6 +198,17 @@ mod tests {
     #[test]
     fn rest_asks_for_eight_hours() {
         assert!((Need::Rest.daily_ms() - 8.0 * HOUR).abs() < 1.0);
+    }
+
+    #[test]
+    fn the_ceiling_inverts() {
+        for need in Need::ALL {
+            let level = 0.3 * need.cap();
+            let target = need.ceiling(level);
+            let back = need.level_for(target).expect("under cap");
+            assert!((back - level).abs() < 1.0, "{need:?}: {back} vs {level}");
+        }
+        assert_eq!(Need::Rest.level_for(f64::INFINITY), None);
     }
 
     #[test]
