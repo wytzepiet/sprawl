@@ -3,7 +3,7 @@ use crate::car::CRUISE_SPEED;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::needs::{taps, Bucket, Need, Tap};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Resident, DAY_MS};
+use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, Resident, DAY_MS};
 use crate::world::World;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -72,16 +72,16 @@ pub fn handle_resident_wake(
         .iter()
         .enumerate()
         .filter_map(|(i, v)| match *v {
-            Verdict::Go { score, departure, leave }
-                if departure == now || candidate(&r, r.buckets[i].need) == Some(at) =>
+            Verdict::Go { score, departure, leave, building, .. }
+                if departure == now || building == at =>
             {
-                Some((i, score, departure, leave))
+                Some((i, score, departure, leave, building))
             }
             _ => None,
         })
         // Strictly better wins, so ties fall to the earlier bucket.
-        .fold(None, |best: Option<(usize, f64, GameTime, GameTime)>, o| match best {
-            Some((_, s, _, _)) if s >= o.1 => best,
+        .fold(None, |best: Option<(usize, f64, GameTime, GameTime, EntityId)>, o| match best {
+            Some((_, s, ..)) if s >= o.1 => best,
             _ => Some(o),
         });
 
@@ -89,23 +89,20 @@ pub fn handle_resident_wake(
     // runs out (it empties, or its tap closes); when another is due to set
     // out; or when a bucket left behind has grown enough to outrank the
     // choice.
-    let score = best.map_or(0.0, |(_, s, _, _)| s);
-    let mut alarm = best.map_or(GameTime::MAX, |(_, _, d, l)| if d > now { d } else { l });
+    let score = best.map_or(0.0, |(_, s, ..)| s);
+    let mut alarm = best.map_or(GameTime::MAX, |(_, _, d, l, _)| if d > now { d } else { l });
     for (i, v) in verdicts.iter().enumerate() {
         if Some(i) == best.map(|(b, ..)| b) {
             continue;
         }
         let b = &r.buckets[i];
         alarm = alarm.min(match *v {
-            Verdict::Go { score: own, departure, .. } if departure > now => {
-                departure.min(overtake(b, own, score, now))
-            }
-            Verdict::Go { score: own, .. } => overtake(b, own, score, now),
-            Verdict::Nothing => overtake(b, 0.0, score, now),
+            Verdict::Go { departure, .. } if departure > now => departure.min(overtake(b, v, score, now)),
+            _ => overtake(b, v, score, now),
         });
     }
 
-    let Some((i, _, departure, _)) = best else {
+    let Some((i, _, departure, _, there)) = best else {
         // Nothing to do anywhere, and nothing to wait for. Look again in a
         // while: a world with nothing on offer is the unmet-demand case, and
         // it is not this resident's to solve.
@@ -113,9 +110,7 @@ pub fn handle_resident_wake(
         events.wake(RETRY_MS, id);
         return;
     };
-    let need = r.buckets[i].need;
-    let there = candidate(&r, need).unwrap();
-    set_selected(world, id, Some(need));
+    set_selected(world, id, Some(r.buckets[i].need));
     // Not yet time to set out, or already there: stay put.
     if departure > now || at == there {
         events.wake(alarm.max(now) - now, id);
@@ -124,19 +119,93 @@ pub fn handle_resident_wake(
     }
 }
 
-/// One verdict per bucket: the best its candidate offers.
+/// One verdict per bucket: the best any of its candidates offers.
 fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime) -> Vec<Verdict> {
+    let mut floor = 0.0_f64;
     r.buckets
         .iter()
         .map(|b| {
-            let Some(building) = candidate(r, b.need) else { return Verdict::Nothing };
-            taps_of(world, building)
-                .iter()
-                .filter(|t| t.need == b.need)
-                .map(|t| evaluate(world, at, building, t, b, now))
-                .fold(Verdict::Nothing, Verdict::better)
+            let v = candidates(world, r, at, b, floor)
+                .flat_map(|building| {
+                    taps_of(world, building)
+                        .iter()
+                        .filter(|t| t.need == b.need)
+                        .map(move |t| evaluate(world, at, building, t, b, now))
+                })
+                .fold(Verdict::Nothing, Verdict::better);
+            if let Verdict::Go { score, .. } = v {
+                floor = floor.max(score);
+            }
+            v
         })
         .collect()
+}
+
+/// Where a bucket could be served, nearest first. A need with an assigned
+/// place has one candidate. One served by whatever is around is a search
+/// outward by chunk, which stops once nothing further out could beat the
+/// best score already found — `w * L / (tau + h)` bounds an option from
+/// its distance alone (section 10) — or the surveyed world runs out.
+fn candidates<'a>(
+    world: &'a World,
+    r: &'a Resident,
+    at: EntityId,
+    b: &Bucket,
+    floor: f64,
+) -> Box<dyn Iterator<Item = EntityId> + 'a> {
+    match b.need {
+        Need::Work => Box::new(r.work.into_iter()),
+        Need::Rest | Need::Home => Box::new(std::iter::once(r.home)),
+        Need::Eat => {
+            let need = b.need;
+            let (_, h) = need.bounds();
+            let bound = b.level / need.cap() * b.level;
+            let Some(origin) = world.objects.get(at).and_then(|e| e.position) else {
+                return Box::new(std::iter::empty());
+            };
+            let here = crate::world::chunk_of(origin);
+            let bounds = world.revealed_bounds;
+            let reach = (here.cx - bounds.min_cx)
+                .max(bounds.max_cx - here.cx)
+                .max(here.cy - bounds.min_cy)
+                .max(bounds.max_cy - here.cy)
+                .max(0);
+            Box::new(
+                (0..=reach)
+                    .take_while(move |&ring| {
+                        // Nothing in this ring is nearer than its inner edge.
+                        let tiles = ((ring - 1) * crate::protocol::CHUNK_SIZE).max(0) as f64;
+                        let tau = tiles / CRUISE_SPEED * DETOUR * 1000.0;
+                        bound / (tau + h as f64) > floor
+                    })
+                    .flat_map(move |ring| {
+                        let mut found: Vec<(i32, EntityId)> = chunk_ring(here, ring)
+                            .flat_map(|c| world.buildings_in(c))
+                            // A home's kitchen is its residents' alone.
+                            .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| k.homes() == 0))
+                            .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
+                            .filter_map(|id| {
+                                let p = world.objects.get(id)?.position?;
+                                Some(((p.x - origin.x).abs().max((p.y - origin.y).abs()), id))
+                            })
+                            .collect();
+                        found.sort_unstable();
+                        found.into_iter().map(|(_, id)| id)
+                    }),
+            )
+        }
+    }
+}
+
+/// The chunks exactly `ring` steps out from `center`, in a fixed order.
+fn chunk_ring(center: ChunkCoord, ring: i32) -> impl Iterator<Item = ChunkCoord> {
+    let r = ring;
+    (-r..=r).flat_map(move |dy| {
+        (-r..=r).filter_map(move |dx| {
+            (dx.abs() == r || dy.abs() == r)
+                .then_some(ChunkCoord { cx: center.cx + dx, cy: center.cy + dy })
+        })
+    })
 }
 
 /// What one place offers one bucket.
@@ -147,7 +216,16 @@ enum Verdict {
     /// set out — now, or later so as to arrive as it opens; and when the
     /// visit would be over, the earlier of the bucket emptying and the tap
     /// closing.
-    Go { score: f64, departure: GameTime, leave: GameTime },
+    Go {
+        score: f64,
+        departure: GameTime,
+        leave: GameTime,
+        building: EntityId,
+        /// Time from now until service, in ms: the wait, the journey, the
+        /// overhead. What a fuller bucket cannot shorten.
+        fixed: f64,
+        rate: f64,
+    },
     Nothing,
 }
 
@@ -200,30 +278,47 @@ fn evaluate(
         entry as f64
     };
     let score = bucket.level / bucket.need.cap() * drained / (leave - now as f64);
-    Verdict::Go { score, departure, leave: (leave.ceil() as GameTime).min(dry) }
+    Verdict::Go {
+        score,
+        departure,
+        leave: (leave.ceil() as GameTime).min(dry),
+        building,
+        fixed: (entry - now) as f64,
+        rate: tap.rate,
+    }
 }
 
 /// Section 4.2: the earliest a bucket left behind could outrank the choice.
 ///
-/// Its ceiling grows with its level, and its actual score sits below the
-/// ceiling by however much travel and waiting cost it. Taking that ratio as
-/// fixed, it overtakes when the ceiling reaches `score / ratio`. The ratio
-/// improves as the bucket fills, which makes this early; it also improves
-/// as a wait shortens, which makes it late — by at most the wait, which the
-/// departure term caps. A bucket that cannot grow, or has nothing to grow
-/// toward, never overtakes by level.
-fn overtake(b: &Bucket, own: f64, score: f64, now: GameTime) -> GameTime {
+/// Its level grows linearly while it is not served, and its score with it:
+/// `(L / cap) * L / (fixed + L / r)`, when the whole level would be served.
+/// Setting that equal to the choice's score is a quadratic in `L`, so the
+/// level it overtakes at is closed-form, and the time to reach it follows.
+/// A bucket with no option at all is bounded by its ceiling instead. One
+/// that cannot grow, or would need more than its cap, never overtakes by
+/// level; one already past the crossing and still not winning is not held
+/// back by level, and whatever does hold it has its own term.
+fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
     if b.need.fill() == 0.0 {
         return GameTime::MAX;
     }
-    let ceiling = b.need.ceiling(b.level);
-    let ratio = if own > 0.0 && ceiling > 0.0 { own / ceiling } else { 1.0 };
-    match b.need.level_for(score / ratio) {
-        Some(level) if level > b.level => now + ((level - b.level) / b.need.fill()).ceil() as GameTime,
-        // Already that full and still not winning: level is not what holds
-        // it back, and whatever does has its own term.
-        _ => GameTime::MAX,
+    let cap = b.need.cap();
+    let target = match *v {
+        Verdict::Go { fixed, rate, .. } => {
+            // L^2 / cap = score * (fixed + L / rate)
+            let half_b = score * cap / rate / 2.0;
+            let c = score * cap * fixed;
+            half_b + (half_b * half_b + c).sqrt()
+        }
+        Verdict::Nothing => match b.need.level_for(score) {
+            Some(level) => level,
+            None => return GameTime::MAX,
+        },
+    };
+    if target >= cap || target <= b.level {
+        return GameTime::MAX;
     }
+    now + ((target - b.level) / b.need.fill()).ceil() as GameTime
 }
 
 /// Section 4.3: bring the buckets up to date. The one being served drains by
@@ -253,15 +348,6 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime) {
         b.level = (b.level - rate * served + b.need.fill() * idle).clamp(0.0, b.need.cap());
     }
     r.last_update = now;
-}
-
-/// Where a need could be met. One place each for now; a need served by many
-/// buildings is a search, and comes with the first such need.
-fn candidate(r: &Resident, need: Need) -> Option<EntityId> {
-    match need {
-        Need::Work => r.work,
-        Need::Rest | Need::Home => Some(r.home),
-    }
 }
 
 /// Pull out of one building's driveway toward another's.
@@ -333,7 +419,6 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
             "need": b.need,
             "owed_h": b.level / HOUR,
             "full": b.level / b.need.cap(),
-            "candidate": candidate(r, b.need),
             "option": v.describe(now),
         })).collect::<Vec<_>>(),
     })
@@ -360,7 +445,8 @@ pub fn inspect_all(world: &World, now: GameTime) -> Value {
 impl Verdict {
     fn describe(&self, now: GameTime) -> Value {
         match *self {
-            Verdict::Go { score, departure, leave } => json!({
+            Verdict::Go { score, departure, leave, building, .. } => json!({
+                "building": building,
                 "score": score,
                 "departure": hhmm(departure),
                 "wait_h": (departure - now) as f64 / HOUR,

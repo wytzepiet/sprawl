@@ -236,14 +236,21 @@ level grows linearly at `fill` while it is not being served, so
 ceiling_b(t) = (L + fill * t) / cap * min(R, (L + fill * t) / H)
 ```
 
-is monotone in `t`, and the least `t` with `ceiling_b(t) > target` is
-closed-form. The ceiling is loose — it ignores travel and waiting — so the
-target is not `score(best)` but `score(best) / ratio`, where `ratio` is the
-bucket's own score over its own ceiling now. Taking the ratio as fixed is
-exact; it improves as the bucket fills, which makes the estimate early, and
-it improves as a wait shortens, which makes it late by at most the wait —
-which the departure term caps. A bucket already above the target level and
-still not winning is not held back by level, and gets no level term.
+is monotone in `t`. But the ceiling is loose — it ignores travel and
+waiting — and the gap between it and the real score *closes* as the bucket
+fills, so any estimate from the ceiling alone is late, and late can be
+never. The real score is solved instead: with `T` the fixed part of the
+denominator (wait, travel, overhead) and the whole level served,
+
+```
+(L / cap) * L / (T + L / r) = score(best)
+```
+
+is a quadratic in `L`, closed-form, and exact except that a shrinking wait
+makes it late by at most the wait, which the departure term caps. A bucket
+with no option at all falls back to the ceiling. One already past the
+crossing and still not winning is not held back by level, and gets no
+level term.
 
 A bucket that cannot cross by level — `fill = 0`, or already at `cap` — can
 only become actionable through a tap opening, and that is its `departure`
@@ -595,11 +602,17 @@ be predicted by hand and three cannot. *Done.*
 
 **4. Eat.** Shop publishes an Eat tap. First accruing need served away from
 home, so `candidates(b)` is built here: expanding ring over the spatial
-index, cut by the section 10 radius bound. Run on the stress harness, not on
-seed 7's four commuters. The question: does the city produce midday traffic
-that looks different from commuter traffic, and does moving a restaurant
-visibly change flows? If not, stop here — a couple of scheduled trips per
-resident was always the fallback.
+index, cut by the section 10 radius bound. The question: does the city
+produce midday traffic that looks different from commuter traffic, and does
+moving a restaurant visibly change flows? *Done, and yes.* In the test town
+a shop 30 tiles from the office (34 minutes' drive) gets no lunch trade;
+one beside it gets the whole office at midday and some of it again at
+17:00, on the way home. What it taught: `overtake` from the ceiling is late
+to the point of never, so the crossing is solved exactly; a home's kitchen
+is its residents' alone or every apartment is a restaurant; and Eat's
+`fill` has a real referent — about 1.2 hours a day — that puts lunch six
+hours after breakfast, where 0.1 put a snack every three. Meals take as
+long as the hunger owed, at unit rate: no infinite rates yet.
 
 **5. Capacity.** `slots` on a tap; effective rate scales by
 `min(1, slots / occupancy)`; occupancy counts en-route claimants via the

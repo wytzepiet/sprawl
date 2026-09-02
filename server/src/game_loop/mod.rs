@@ -869,6 +869,8 @@ mod tests {
         build(&mut world, 6, BuildingKind::Apartment, 2);
         build(&mut world, 30, BuildingKind::Shop, 1);
         build(&mut world, 60, BuildingKind::Office, 2);
+        // Lunch: a shop beside the office, too far from home to staff.
+        build(&mut world, 64, BuildingKind::Shop, 1);
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -905,15 +907,20 @@ mod tests {
         assert_eq!(two[..one.len()], one[..], "the first day differs between runs");
         assert!(two.len() > one.len(), "nobody moved on the second day");
 
-        // The second day is a settled one: out to work, back home, and
-        // nothing in between. Four changes of `at` — into the car, out at
-        // work, into the car, out at home — per person.
+        // The second day is a settled one. Every trip is two changes of
+        // `at` — into the car, out at the door — and a day is at most five
+        // trips: to work, out for lunch and back, out for dinner near work,
+        // and home. The shop workers eat where they stand; the office has a
+        // shop next door, so its workers drive to it.
         let day = DAY_MS as u64;
         let mut moves = std::collections::BTreeMap::new();
-        for &(t, id, _) in two.iter().filter(|&&(t, _, _)| t >= day) {
+        for &(_, id, _) in two.iter().filter(|&&(t, _, _)| t >= day) {
             *moves.entry(id).or_insert(0) += 1;
         }
         assert_eq!(moves.len(), 16, "everyone went out on day two");
-        assert!(moves.values().all(|&n| n == 4), "someone thrashed: {moves:?}");
+        assert!(moves.values().all(|&n| n % 2 == 0 && (4..=10).contains(&n)), "someone thrashed: {moves:?}");
+        assert!(moves.values().any(|&n| n >= 8), "nobody went out for lunch: {moves:?}");
+        let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at)| (id, at)).collect();
+        assert!(last.values().all(|at| at.is_some()), "someone ended the day in a car");
     }
 }

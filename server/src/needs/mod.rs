@@ -19,16 +19,20 @@ const HOUR: f64 = H as f64;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Need {
-    Work,
-    Rest,
     /// Being at home. The baseline every other activity has to beat, and
     /// what pulls a resident back when the shift ends and nothing else is
     /// open yet.
     Home,
+    Work,
+    Rest,
+    /// Meals take as long as the hunger owed, up to a sitting: served at
+    /// home always, and wherever sells food while it is open.
+    Eat,
 }
 
 impl Need {
-    pub const ALL: [Need; 3] = [Need::Work, Need::Rest, Need::Home];
+    /// Baseline first, so ties fall to staying put.
+    pub const ALL: [Need; 4] = [Need::Home, Need::Work, Need::Rest, Need::Eat];
 
     /// Obligation gained per millisecond not spent on it. Zero for a
     /// constant need. For `D` hours a day at unit rate this is `D / (24 - D)`.
@@ -36,6 +40,10 @@ impl Need {
         match self {
             Need::Work | Need::Home => 0.0,
             Need::Rest => 8.0 / 16.0,
+            // About 1.2 hours a day, as people actually spend: a sitting is
+            // owed ten hours after the last, and lunch out is worth the
+            // drive about six hours after breakfast.
+            Need::Eat => 0.05,
         }
     }
 
@@ -44,6 +52,7 @@ impl Need {
         match self {
             Need::Work | Need::Home => 24.0 * HOUR,
             Need::Rest => 12.0 * HOUR,
+            Need::Eat => 0.5 * HOUR,
         }
     }
 
@@ -55,7 +64,7 @@ impl Need {
         match self {
             Need::Work => 0.5 * self.cap(),
             Need::Home => 0.3 * self.cap(),
-            Need::Rest => 0.0,
+            Need::Rest | Need::Eat => 0.0,
         }
     }
 
@@ -132,15 +141,15 @@ pub struct Tap {
 
 /// What each kind of building serves. Fixed definitions, built once.
 static TAPS: LazyLock<Vec<(BuildingKind, Vec<Tap>)>> = LazyLock::new(|| {
-    let work = |open: u32, close: u32| {
-        vec![Tap { need: Need::Work, curve: Curve::hours(open * H, close * H), rate: 1.0, overhead: 0 }]
-    };
+    let tap = |need, curve| Tap { need, curve, rate: 1.0, overhead: 0 };
+    let work = |open: u32, close: u32| vec![tap(Need::Work, Curve::hours(open * H, close * H))];
     // Nobody sleeps at noon: sleep is on offer through the night. Being
-    // home is on offer always.
+    // home, and the kitchen, are on offer always.
     let home = || {
         vec![
-            Tap { need: Need::Rest, curve: Curve::hours(22 * H, 7 * H), rate: 1.0, overhead: 0 },
-            Tap { need: Need::Home, curve: Curve::always(), rate: 1.0, overhead: 0 },
+            tap(Need::Rest, Curve::hours(22 * H, 7 * H)),
+            tap(Need::Home, Curve::always()),
+            tap(Need::Eat, Curve::always()),
         ]
     };
     // Staggered by kind so the city's rush hour is a wave rather than a
@@ -151,7 +160,7 @@ static TAPS: LazyLock<Vec<(BuildingKind, Vec<Tap>)>> = LazyLock::new(|| {
         (BuildingKind::Factory, work(6, 15)),
         (BuildingKind::Workshop, work(7, 16)),
         (BuildingKind::Office, work(8, 17)),
-        (BuildingKind::Shop, work(9, 18)),
+        (BuildingKind::Shop, [work(9, 18), vec![tap(Need::Eat, Curve::hours(9 * H, 18 * H))]].concat()),
     ]
 });
 
@@ -216,5 +225,6 @@ mod tests {
         assert!(taps(BuildingKind::House).iter().any(|t| t.need == Need::Rest));
         assert!(taps(BuildingKind::Shop).iter().any(|t| t.need == Need::Work));
         assert!(taps(BuildingKind::House).iter().all(|t| t.need != Need::Work));
+        assert!(taps(BuildingKind::Shop).iter().any(|t| t.need == Need::Eat));
     }
 }

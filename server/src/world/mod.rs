@@ -360,6 +360,25 @@ impl World {
     /// nobody has revealed. Road generation keeps roads running out past the
     /// frontier, so this is how anything enters the map — close for a lone
     /// pioneer precisely because their own buildings drew the frontier in.
+    /// The standing buildings in one chunk, by id, so a search over them
+    /// comes out the same however the set iterated.
+    pub fn buildings_in(&self, chunk: ChunkCoord) -> Vec<EntityId> {
+        let mut ids: Vec<EntityId> = self
+            .spatial
+            .get(&chunk)
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|&id| {
+                self.objects
+                    .get(id)
+                    .is_some_and(|e| e.draft.is_none() && matches!(e.object, GameObject::Building(_)))
+            })
+            .collect();
+        ids.sort_unstable();
+        ids
+    }
+
     pub fn entry_node_near(&self, pos: GridCoord) -> Option<EntityId> {
         self.objects
             .all_entries()
