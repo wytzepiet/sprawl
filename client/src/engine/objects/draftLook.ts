@@ -78,6 +78,18 @@ export const DOOMED_TRAFFIC: Look = {
   lift: 0,
 };
 
+/**
+ * A proposal: the city's suggestion, drawn as the building it would be, faint
+ * and shadowless, until the mayor says yes.
+ */
+export const GHOST: Look = {
+  key: "_ghost",
+  alpha: 0.35,
+  tint: (c) => Color3.Lerp(c, new Color3(0.35, 0.55, 0.95), 0.35),
+  castShadow: false,
+  lift: 0.004,
+};
+
 export function lookOf(draft: Draft | null | undefined, me: number): Look {
   if (!draft) return COMMITTED;
   if (draft.state === "Removed") return DOOMED_LOOK;

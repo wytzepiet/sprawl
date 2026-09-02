@@ -13,6 +13,7 @@ import { GameProvider } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
 import FrameStats from "../ui/FrameStats";
+import PinLayer from "../ui/PinLayer";
 
 function SceneInner() {
   return (
@@ -30,6 +31,7 @@ function SceneInner() {
             </InstancePoolProvider>
           </Headlights>
         </DayNightLights>
+        <PinLayer />
       </Canvas>
       <BuildModeToolbar />
       <TimeControls />

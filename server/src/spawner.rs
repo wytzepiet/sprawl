@@ -51,7 +51,11 @@ pub fn answer(world: &mut World, id: EntityId, accept: bool, now: GameTime) {
     let Some((pos, p)) = proposal(world, id) else { return };
     world.drop_entity(id);
     if accept {
+        // The city's building, nobody's draft: placed outside whoever is
+        // answering, or it would land in their pending work.
+        let answering = world.acting_as.take();
         world.place_building(pos, p.kind, p.size, p.rotation);
+        world.acting_as = answering;
     } else {
         world.rejections.push((p.kind, pos, now + GRUDGE));
         world.rejections.retain(|&(_, _, until)| until > now);

@@ -16,3 +16,15 @@ html, body {
 .animate-slide-up {
   animation: slide-up 0.25s ease-out;
 }
+
+/* Pins: a head with a glyph and a tip pointing at the plot. Far out they
+   collapse to dots, proposals excepted — those are the ones asking. */
+.pins .head { width: 28px; height: 28px; transition: width 0.15s, height 0.15s; }
+.pins.far .pin:not(.proposal) .head { width: 8px; height: 8px; }
+.pins.far .pin:not(.proposal) .glyph,
+.pins.far .pin:not(.proposal) .tip { display: none; }
+.pins .pin.proposal .head { animation: pin-pulse 1.6s ease-in-out infinite; }
+@keyframes pin-pulse {
+  0%, 100% { box-shadow: 0 1px 6px rgba(0,0,0,0.25), 0 0 0 0 rgba(56,189,248,0.6); }
+  50% { box-shadow: 0 1px 6px rgba(0,0,0,0.25), 0 0 0 8px rgba(56,189,248,0); }
+}

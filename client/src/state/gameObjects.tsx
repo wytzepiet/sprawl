@@ -40,6 +40,28 @@ const myDrafts = new Set<number>();
 const [pending, setPending] = createSignal(0);
 export { pending };
 
+/**
+ * What carries a pin: every building, and every proposal. Kept as ops
+ * arrive, with a version the pin layer re-reads on; the entities map itself
+ * is deliberately not reactive, and pins are the one view that wants a list.
+ */
+const pinnedEntries = new Map<number, GameObjectEntry>();
+const [pinsVersion, setPinsVersion] = createSignal(0);
+export function pinned(): GameObjectEntry[] {
+  pinsVersion();
+  return [...pinnedEntries.values()];
+}
+function trackPin(entry: GameObjectEntry | undefined, id: number) {
+  const kind = entry?.object.kind;
+  const was = pinnedEntries.has(id);
+  if (entry && (kind === "Building" || kind === "Proposal") && entry.position) {
+    pinnedEntries.set(id, entry);
+  } else {
+    pinnedEntries.delete(id);
+  }
+  if (was || pinnedEntries.has(id)) setPinsVersion((v) => v + 1);
+}
+
 function trackDraft(entry: GameObjectEntry) {
   if (entry.draft != null && entry.draft.owner === me()) myDrafts.add(entry.id);
   else myDrafts.delete(entry.id);
@@ -111,6 +133,7 @@ function applyOps(ops: Operation[]) {
         }
         entities.set(key, op.data);
         trackDraft(op.data);
+        trackPin(op.data, op.data.id);
         break;
       }
       case "Delete": {
@@ -129,6 +152,7 @@ function applyOps(ops: Operation[]) {
           entities.delete(key);
         }
         myDrafts.delete(Number(key));
+        trackPin(undefined, Number(key));
         break;
       }
     }

@@ -118,6 +118,13 @@ stays a neutral block.
    the one whose neighbours suit the kind — or a random direction from a
    good anchor lands the factory on the residential street anyway.
 3. **Protocol and client.** Proposals streamed; pin overlay; ✓/✗; ghost.
+   *Done.* Proposals ride the existing entity stream; the client keeps a
+   reactive registry of what carries a pin and projects each one after
+   every frame through the orthographic camera — the inverse of
+   `pickWorld`, a lerp. Far out, building pins collapse to dots and
+   proposals keep asking. Dragging a proposal's pin sends `MoveProposal`.
+   What it taught: accepting has to place the building outside the
+   answering player's `acting_as`, or it lands as their draft.
 4. **Restaurant.** Eat and Leisure, open late, seats twelve. The first
    special kind.
 5. **Delete zoning** in one stroke: `Category`, `paint_area`, `for_plot`,

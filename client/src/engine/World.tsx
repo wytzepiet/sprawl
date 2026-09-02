@@ -12,7 +12,7 @@ import {
   getObjectsAt,
   useGame,
 } from "../state/gameObjects";
-import { lookOf, DOOMED_TRAFFIC } from "./objects/draftLook";
+import { lookOf, DOOMED_TRAFFIC, GHOST } from "./objects/draftLook";
 import type { Operation, GameObjectEntry } from "../generated";
 
 import { KIND_CATEGORY, ZONE_BYTE } from "./objects/buildings";
@@ -117,6 +117,9 @@ export default function World() {
         return mountCar(entry, pool, scene, onDoomedRoad(entry) ? DOOMED_TRAFFIC : look);
       case "RoadNode":
         return mountRoad(entry, pool, th, getEntity, look);
+      case "Proposal":
+        // Same shape as a building, drawn as the one it would become.
+        return mountBuilding(entry, pool, GHOST);
       default:
         return null;
     }
