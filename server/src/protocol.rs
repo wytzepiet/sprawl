@@ -389,11 +389,33 @@ pub struct Clock {
     pub day_ms: u32,
 }
 
+/// How the city is doing, as the two bars read it. Everything is in points,
+/// one being a minute of need served by the city's buildings.
+///
+/// The level is the city's whole history, the offer is what it has put by
+/// since the last one. Both are a snapshot at the clock the update carries,
+/// climbing at `rate` — so a client runs them forward between updates and
+/// the bars move as the city works, not when it clocks off.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Growth {
+    pub level: u32,
+    pub xp: f64,
+    pub xp_needed: f64,
+    pub offer_xp: f64,
+    pub offer_needed: f64,
+    /// Points per millisecond of sim time, as of the update's clock.
+    pub rate: f64,
+    /// What the offer will be, once it is affordable.
+    pub next: Option<BuildingKind>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct StateUpdate {
     pub ops: Vec<Operation>,
     pub clock: Clock,
+    pub growth: Growth,
     #[ts(type = "number")]
     pub terrain_seed: u32,
     /// Extent of the surveyed world, which the client keeps its camera inside.

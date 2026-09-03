@@ -12,6 +12,7 @@ mod protocol;
 mod resident;
 mod terrain;
 mod world;
+mod xp;
 
 use axum::Router;
 use tokio::sync::mpsc;

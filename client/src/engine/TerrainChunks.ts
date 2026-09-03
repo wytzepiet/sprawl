@@ -23,6 +23,7 @@ import {
   type TerrainPalette,
 } from "./objects/terrainGeometry";
 import type { TerrainApi } from "./terrainWorker";
+import { viewExtent } from "./view";
 
 export { CHUNK_SIZE };
 
@@ -351,9 +352,9 @@ export class TerrainChunks {
 
   /** Cliffs and trees are illegible when zoomed far out — skip them entirely. */
   private updateDetail(): void {
-    const orthoTop = this.scene.activeCamera?.orthoTop;
-    if (orthoTop == null) return;
-    const visible = orthoTop < DETAIL_MAX_ORTHO;
+    const canvas = this.scene.getEngine().getRenderingCanvas();
+    if (!this.scene.activeCamera || !canvas) return;
+    const visible = viewExtent(this.scene, canvas).halfH < DETAIL_MAX_ORTHO;
     if (visible === this.detailVisible) return;
     this.detailVisible = visible;
     for (const meshes of this.chunks.values()) this.applyDetail(meshes);

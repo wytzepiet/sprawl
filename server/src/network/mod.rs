@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
 use crate::protocol::{EntityId, 
-    ChunkBounds, ClientMessage, Clock, DAY_MS, Operation, OwnerId, ServerMessage, StateUpdate,
+    ChunkBounds, ClientMessage, Clock, Growth, DAY_MS, Operation, OwnerId, ServerMessage, StateUpdate,
 };
 
 /// One socket. Dies with the connection.
@@ -90,6 +90,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
 
             let mut ops: Vec<Operation> = Vec::new();
             let mut clock = Clock { now: 0, speed: 1, day_ms: DAY_MS };
+            let mut growth = Growth::default();
             let mut terrain_seed: u32 = 0;
             let mut revealed_bounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
             let mut has_update = false;
@@ -100,6 +101,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                         has_update = true;
                         ops.extend(su.ops);
                         clock = su.clock;
+                        growth = su.growth.clone();
                         terrain_seed = su.terrain_seed;
                         revealed_bounds = su.revealed_bounds;
                     }
@@ -116,6 +118,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                 let merged = ServerMessage::Update(StateUpdate {
                     ops,
                     clock,
+                    growth,
                     terrain_seed,
                     revealed_bounds,
                 });

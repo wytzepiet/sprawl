@@ -106,8 +106,14 @@ impl Tracked {
     /// the same seed disagreed about which residents drove where, which makes
     /// any before-and-after measurement meaningless.
     pub fn all_entries(&self) -> Vec<GameObjectEntry> {
-        let mut entries: Vec<GameObjectEntry> = self.data.values().cloned().collect();
+        let mut entries: Vec<GameObjectEntry> = self.iter().cloned().collect();
         entries.sort_unstable_by_key(|e| e.id);
         entries
+    }
+
+    /// Everything, in no order — for counting and filtering, which is most
+    /// of what asks. Order is `all_entries`' business, and it pays for it.
+    pub fn iter(&self) -> impl Iterator<Item = &GameObjectEntry> {
+        self.data.values()
     }
 }

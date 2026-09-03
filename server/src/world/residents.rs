@@ -192,12 +192,14 @@ impl World {
     }
 
     pub fn resident_ids(&self) -> Vec<EntityId> {
-        self.objects
-            .all_entries()
+        let mut ids: Vec<EntityId> = self
+            .objects
             .iter()
             .filter(|e| matches!(e.object, GameObject::Resident(_)))
             .map(|e| e.id)
-            .collect()
+            .collect();
+        ids.sort_unstable();
+        ids
     }
 
     fn home_of(&self, resident: EntityId) -> Option<EntityId> {

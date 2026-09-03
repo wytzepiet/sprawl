@@ -17,9 +17,30 @@ CREATE TABLE IF NOT EXISTS metadata (
 );
 ";
 
-pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64, u32, u64) {
+/// Everything about a world that is not one of its objects.
+///
+/// Bundled rather than passed one by one: the list only ever grows, and a
+/// function of eight scalars is one whose call sites nobody can read.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Meta {
+    pub next_id: u64,
+    pub terrain_seed: u32,
+    pub sim_time: u64,
+    /// Hours of need served, ever, and what that stood at when the city last
+    /// made an offer. Kept to the hundredth, which is far finer than a bar can
+    /// show — the metadata column holds whole numbers.
+    pub earned: f64,
+    pub offered_at: f64,
+}
+
+/// A whole number of hundredths, which is what the metadata table can hold.
+fn centi(v: f64) -> i64 {
+    (v * 100.0).round() as i64
+}
+
+pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
     if !path.exists() {
-        return (vec![], 1, 0, 0);
+        return (vec![], Meta { next_id: 1, ..Meta::default() });
     }
 
     let conn = Connection::open(path).expect("failed to open db");
@@ -64,10 +85,24 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, u64, u32, u64) {
         )
         .unwrap_or(0);
 
-    (entries, next_id, terrain_seed, sim_time)
+    let read = |key: &str| -> i64 {
+        conn.query_row("SELECT value FROM metadata WHERE key = ?1", [key], |row| row.get(0))
+            .unwrap_or(0)
+    };
+
+    (
+        entries,
+        Meta {
+            next_id,
+            terrain_seed,
+            sim_time,
+            earned: read("earned") as f64 / 100.0,
+            offered_at: read("offered_at") as f64 / 100.0,
+        },
+    )
 }
 
-pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: u64, terrain_seed: u32, sim_time: u64) {
+pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Meta) {
     let mut conn = Connection::open(path).expect("failed to open db");
     conn.execute_batch(SCHEMA).expect("failed to create schema");
     let tx = conn.transaction().expect("failed to begin transaction");
@@ -96,23 +131,19 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], next_id: 
             .expect("failed to delete object");
     }
 
-    tx.execute(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES ('next_id', ?1)",
-        [next_id as i64],
-    )
-    .expect("failed to save next_id");
-
-    tx.execute(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES ('terrain_seed', ?1)",
-        [terrain_seed as i64],
-    )
-    .expect("failed to save terrain_seed");
-
-    tx.execute(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES ('sim_time', ?1)",
-        [sim_time as i64],
-    )
-    .expect("failed to save sim_time");
+    for (key, value) in [
+        ("next_id", meta.next_id as i64),
+        ("terrain_seed", meta.terrain_seed as i64),
+        ("sim_time", meta.sim_time as i64),
+        ("earned", centi(meta.earned)),
+        ("offered_at", centi(meta.offered_at)),
+    ] {
+        tx.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?1, ?2)",
+            rusqlite::params![key, value],
+        )
+        .unwrap_or_else(|e| panic!("failed to save {key}: {e}"));
+    }
 
     tx.commit().expect("failed to commit");
 }

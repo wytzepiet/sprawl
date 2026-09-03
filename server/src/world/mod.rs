@@ -46,6 +46,15 @@ pub struct World {
     /// total and yesterday's, keyed by the day today is. Learned, not
     /// saved — a loaded world starts counting afresh.
     pub delivered: HashMap<(EntityId, crate::needs::Need), Delivered>,
+    /// What the city has earned, ever: its taps serving people, as they go.
+    pub xp: crate::xp::Ledger,
+    /// What that stood at when the last offer was made. The gap between them
+    /// is the meter.
+    pub offered_at: f64,
+    /// What the next offer will be and what it costs, settled together when
+    /// the last one was made — a promise rather than a guess that keeps
+    /// changing, and the only time the spawner has to look at the world.
+    pub goal: Option<crate::spawner::Goal>,
     /// Proposals the mayor said no to: that kind is not offered near there
     /// again until the time given. Not saved; a reload forgets old grudges.
     pub rejections: Vec<(BuildingKind, GridCoord, u64)>,
@@ -160,6 +169,9 @@ impl World {
             terrain_seed: 0,
             delay: 1.0,
             delivered: HashMap::new(),
+            xp: Default::default(),
+            offered_at: 0.0,
+            goal: None,
             rejections: Vec::new(),
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
@@ -183,6 +195,9 @@ impl World {
             terrain_seed,
             delay: 1.0,
             delivered: HashMap::new(),
+            xp: Default::default(),
+            offered_at: 0.0,
+            goal: None,
             rejections: Vec::new(),
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),

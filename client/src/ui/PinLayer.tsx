@@ -1,8 +1,9 @@
-import { For, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { useEngine } from "../engine/Canvas";
-import { pickWorld } from "../engine/pickWorld";
+import { projector, screenToWorld, viewExtent } from "../engine/view";
 import { useGame, pinned } from "../state/gameObjects";
 import { BuildingIcon } from "./buildingIcons";
+import { PIN_COLORS } from "./pinLook";
 import type { BuildingKind, GameObjectEntry } from "../generated";
 
 /**
@@ -15,6 +16,13 @@ import type { BuildingKind, GameObjectEntry } from "../generated";
  * ones that survive are the ones worth picking out. That is the whole reason
  * this is a table and not a constant: a kind earns its pin by being rare.
  */
+/**
+ * How far an off-screen marker sits in from each edge. Enough for the whole
+ * pin, which hangs above its anchor — and a good deal more along the bottom,
+ * where the toolbar is and a marker would be hidden behind it.
+ */
+const EDGE = { top: 48, left: 48, right: 48, bottom: 108 };
+
 const COMMON = 7;
 const NOTABLE = 28;
 const SPECIAL = 45;
@@ -47,21 +55,6 @@ const STEPS = [...new Set(Object.values(PIN_UNTIL))].sort((a, b) => a - b);
  */
 const OUTLINE = "M-8.315 5.556A10 10 0 1 1 8.315 5.556L0 18Z";
 
-/**
- * What kind of building this is, as colour. The buildings themselves are
- * deliberately neutral, so this is the only place a kind is coloured — chosen
- * mid-dark so a white glyph reads on it, and spread far enough apart in hue to
- * be told apart at a dot's size.
- */
-const PIN_COLORS: Record<BuildingKind, string> = {
-  House: "#3F9B5A",
-  Apartment: "#2E7D6F",
-  Shop: "#2F7FD4",
-  Office: "#5B57C8",
-  Workshop: "#C97A1E",
-  Factory: "#6B6F78",
-  Restaurant: "#D9483B",
-};
 
 /**
  * Pins over the map: one per building, saying what it is, and one per
@@ -80,14 +73,13 @@ export default function PinLayer() {
   const els = new Map<number, HTMLElement>();
   let layer!: HTMLDivElement;
 
-  // Project every pin after each render. The camera is orthographic and looks
-  // straight down, so this is the inverse of pickWorld: a lerp, not a matrix.
+  // Project every pin after each render, through the scene's own matrix — so a
+  // pin lands where its plot is drawn whatever projection the camera uses.
   const place = () => {
-    const cam = scene.activeCamera;
-    if (!cam || !cam.orthoLeft) return;
-    const rect = canvas.getBoundingClientRect();
-    const halfW = (cam.orthoRight! - cam.orthoLeft) / 2;
-    const halfH = (cam.orthoTop! - cam.orthoBottom!) / 2;
+    if (!scene.activeCamera) return;
+    const { halfH } = viewExtent(scene, canvas);
+    const project = projector(scene, canvas);
+    const rect = project.rect;
     const perTile = rect.height / (2 * halfH);
 
     const passed = STEPS.filter((s) => halfH > s).length;
@@ -97,13 +89,33 @@ export default function PinLayer() {
       const el = els.get(e.id);
       if (!el || !e.position) continue;
       const [w, h] = (e.object.data as { size: [number, number] }).size;
-      const wx = e.position.x + w / 2;
-      const wy = e.position.y + h / 2;
-      const nx = (wx - cam.position.x) / halfW;
-      const ny = (wy - cam.position.y) / halfH;
-      const sx = rect.left + ((1 - nx) / 2) * rect.width;
-      const sy = rect.top + ((1 - ny) / 2) * rect.height;
+      const { sx, sy } = project.at(e.position.x + w / 2, e.position.y + h / 2);
       const off = sx < -40 || sy < -40 || sx > rect.right + 40 || sy > rect.bottom + 40;
+
+      // A proposal is a question, and a question you cannot see is one you
+      // cannot answer — so an offer that has drifted off the map is pinned to
+      // the edge instead, pointing at where it actually is.
+      if (off && e.object.kind === "Proposal") {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const [dx, dy] = [sx - cx, sy - cy];
+        // Down the line from the middle of the view to it, as far as the inset
+        // border allows in whichever direction runs out first.
+        const limX = rect.width / 2 - (dx > 0 ? EDGE.right : EDGE.left);
+        const limY = rect.height / 2 - (dy > 0 ? EDGE.bottom : EDGE.top);
+        const t = Math.min(
+          Math.abs(dx) < 1e-3 ? Infinity : limX / Math.abs(dx),
+          Math.abs(dy) < 1e-3 ? Infinity : limY / Math.abs(dy),
+        );
+        el.style.transform = `translate(${cx + dx * t}px, ${cy + dy * t}px)`;
+        el.style.display = "";
+        el.classList.add("offscreen");
+        // The dart is drawn pointing down, so turning it to face the offer is a
+        // quarter turn back from the bearing, not forward.
+        el.style.setProperty("--aim", `${Math.atan2(dy, dx) - Math.PI / 2}rad`);
+        continue;
+      }
+      el.classList.remove("offscreen");
       el.style.transform = `translate(${sx}px, ${sy}px)`;
       el.style.display = off ? "none" : "";
 
@@ -144,7 +156,7 @@ export default function PinLayer() {
     let moved = false;
     const move = (ev: PointerEvent) => {
       moved = true;
-      const { wx, wy } = pickWorld(scene, canvas, ev);
+      const { wx, wy } = screenToWorld(scene, canvas, ev);
       el!.style.transform = `translate(${ev.clientX}px, ${ev.clientY}px)`;
       el!.dataset.wx = String(Math.floor(wx));
       el!.dataset.wy = String(Math.floor(wy));
@@ -197,6 +209,13 @@ export default function PinLayer() {
                   <BuildingIcon kind={kind()} class="glyph text-white" x="-6.5" y="-6.5" width="13" height="13" />
                 </svg>
                 <span class="dot" style={{ "background-color": PIN_COLORS[kind()] }} />
+                {/* Points back at where the offer actually is, when it has
+                    drifted off the map. */}
+                <Show when={proposal()}>
+                  <svg class="aim" viewBox="-6 -6 12 12" aria-hidden="true">
+                    <path d="M0 5L-4.5-2.5A5.2 5.2 0 0 1 4.5-2.5Z" fill="#38BDF8" />
+                  </svg>
+                </Show>
                 {/* Hung below the marker rather than sitting in the column, so
                     the pin keeps its own place over the plot and the answer
                     falls clear of the building being asked about. */}

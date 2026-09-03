@@ -15,6 +15,7 @@ import {
   ShadowGenerator,
 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
+import { viewExtent } from "./view";
 
 // ---------------------------------------------------------------------------
 // Time config
@@ -236,9 +237,8 @@ export default function DayNightLights(props: ParentProps) {
     sunLight.direction = sunDirection(t);
     sunLight.intensity = 0.4 * elev;
 
-    const orthoW = camera.orthoRight! - camera.orthoLeft!;
-    const orthoH = camera.orthoTop! - camera.orthoBottom!;
-    const radius = Math.max(orthoW, orthoH) / 2;
+    const view = viewExtent(scene, scene.getEngine().getRenderingCanvas()!);
+    const radius = Math.max(view.halfW, view.halfH);
     const dir = sunLight.direction;
     sunLight.position.x = camera.position.x - dir.x * radius;
     sunLight.position.y = camera.position.y - dir.y * radius;

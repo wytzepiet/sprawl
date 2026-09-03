@@ -117,11 +117,11 @@ pub fn handle_resident_wake(
         // Nothing to do anywhere, and nothing to wait for. Look again in a
         // while: a world with nothing on offer is the unmet-demand case, and
         // it is not this resident's to solve.
-        set_selected(world, id, None);
+        set_selected(world, id, None, now);
         events.wake(RETRY_MS, id);
         return;
     };
-    set_selected(world, id, Some(r.buckets[i].need));
+    set_selected(world, id, Some(r.buckets[i].need), now);
     // Not yet time to set out, or already there: stay put.
     if departure > now || at == there {
         events.wake(alarm.max(now) - now, id);
@@ -139,8 +139,12 @@ fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime, crowd: &Cr
             let v = candidates(world, r, at, b, floor)
                 .flat_map(|building| {
                     // Everyone else there or on the way, plus this resident.
+                    // The count is a snapshot taken before anyone moved, so it
+                    // can disagree with `mine` about whether this resident is
+                    // among them — take them out if they are there to take out.
                     let mine = (at == building && r.selected == Some(b.need)) as u32;
-                    let company = crowd.get(&(building, b.need)).copied().unwrap_or(0) - mine + 1;
+                    let seen = crowd.get(&(building, b.need)).copied().unwrap_or(0);
+                    let company = seen.saturating_sub(mine) + 1;
                     taps_of(world, building)
                         .iter()
                         .filter(|t| t.need == b.need)
@@ -628,15 +632,38 @@ pub fn set_at(world: &mut World, id: EntityId, place: EntityId, now: GameTime) {
         let crowd = headcount(world);
         settle(world, id, from, now, &crowd);
     }
+    world.xp.settle(now);
     if let Some(r) = resident_mut(world, id) {
         r.at = Some(place);
     }
+    world.xp.streams = served(world);
 }
 
-fn set_selected(world: &mut World, id: EntityId, need: Option<Need>) {
+fn set_selected(world: &mut World, id: EntityId, need: Option<Need>, now: GameTime) {
+    world.xp.settle(now);
     if let Some(r) = resident_mut(world, id) {
         r.selected = need;
     }
+    world.xp.streams = served(world);
+}
+
+/// Everyone being served right now, as the ledger counts them: standing in a
+/// building, on a need it has a tap for, at the rate the company there
+/// allows. Same arithmetic as `settle`, so the two agree on what a shift is
+/// worth; the ledger just does not wait for it to end.
+pub fn served(world: &World) -> Vec<(f64, &'static Tap)> {
+    let crowd = headcount(world);
+    world
+        .resident_ids()
+        .into_iter()
+        .filter_map(|id| {
+            let r = resident(world, id)?;
+            let (at, need) = (r.at?, r.selected?);
+            let tap = taps_of(world, at).iter().find(|t| t.need == need)?;
+            let company = crowd.get(&(at, need)).copied().unwrap_or(0);
+            Some((tap.serving(company), tap))
+        })
+        .collect()
 }
 
 fn kind(world: &World, building: EntityId) -> Option<BuildingKind> {

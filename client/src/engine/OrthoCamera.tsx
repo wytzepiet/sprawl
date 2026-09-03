@@ -4,8 +4,20 @@ import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { buildMode, placingBuilding } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
+import { viewExtent } from "./view";
 
 const BUILD_ZOOM = 8;
+
+/**
+ * How wide the lens is, in radians. Small enough that the view still reads as a
+ * map rather than a photograph — wider and buildings near the edges start
+ * hiding what is behind them; narrower and the depth stops being visible at
+ * all. This one number is the whole look.
+ */
+const FOV = (20 * Math.PI) / 180;
+
+/** Which projection the map opens in. F8 swaps it, to see the two side by side. */
+const OPENS_IN_PERSPECTIVE = false;
 /**
  * Fraction of the remaining distance covered each frame. Zooming is a direct
  * response to the wheel and wants to arrive under the cursor at once; dropping
@@ -32,12 +44,18 @@ export function OrthoCamera() {
   const { engine, scene, canvas } = useEngine();
   const { send, revealedBounds } = useGame();
 
-  const camera = new FreeCamera("ortho", new Vector3(0, 0, 10), scene);
+  const camera = new FreeCamera("map", new Vector3(0, 0, 10), scene);
   camera.setTarget(Vector3.Zero());
-  camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+  camera.minZ = 1;
+  camera.maxZ = 4000;
+  let perspective = OPENS_IN_PERSPECTIVE;
 
-  let orthoSize = 15;
-  let targetOrthoSize = orthoSize;
+  // Zoom is measured in tiles of ground, not in camera height, so it means the
+  // same thing whichever projection is in use — and everything downstream keeps
+  // asking the view how much world it covers rather than the camera how far up
+  // it is.
+  let viewHalf = 15;
+  let targetViewHalf = viewHalf;
   let lerpSpeed = ZOOM_LERP_SPEED;
   let targetCamX = camera.position.x;
   let targetCamY = camera.position.y;
@@ -50,16 +68,57 @@ export function OrthoCamera() {
   let cursorY = innerHeight / 2;
   let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN;
 
-  function updateOrtho() {
-    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-    camera.orthoLeft = -orthoSize * aspect;
-    camera.orthoRight = orthoSize * aspect;
-    camera.orthoTop = orthoSize;
-    camera.orthoBottom = -orthoSize;
+  /**
+   * Hold the camera at the height that puts `viewHalf` tiles between the middle
+   * of the screen and its top edge. A narrow lens far away looks very nearly
+   * like a flat projection — but only very nearly, and the difference is the
+   * point: a tall building leans away from the middle of the view and shows a
+   * little of its side, which is what makes its height readable.
+   */
+  /**
+   * How much ground one pixel covers.
+   *
+   * The camera looks straight down at a flat world, so every point of the
+   * ground is the same distance away and the ground maps to the screen at one
+   * even scale — it is only things standing *above* it that lean. That is what
+   * lets a drag move the map by a fixed amount per pixel under a perspective
+   * camera just as it did under a flat one.
+   */
+  function groundScale(rect: DOMRect) {
+    const { halfW, halfH } = viewExtent(scene, canvas);
+    return { worldPerPxX: (halfW * 2) / rect.width, worldPerPxY: (halfH * 2) / rect.height };
   }
 
-  updateOrtho();
-  const resizeObs = engine.onResizeObservable.add(updateOrtho);
+  /**
+   * Put `viewHalf` tiles between the middle of the screen and its top edge.
+   *
+   * Flat, that is the frustum's own half-height. In perspective it is a matter
+   * of how high the camera flies: a narrow lens far away looks very nearly like
+   * a flat projection, and the difference is the point — a tall building leans
+   * away from the middle of the view and shows a little of its side, which is
+   * what makes its height readable.
+   *
+   * Zoom means tiles of ground either way, so nothing downstream is aware there
+   * is a choice here at all.
+   */
+  function updateProjection() {
+    if (perspective) {
+      camera.mode = Camera.PERSPECTIVE_CAMERA;
+      camera.fov = FOV;
+      camera.position.z = viewHalf / Math.tan(FOV / 2);
+      return;
+    }
+    camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+    camera.position.z = 10;
+    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
+    camera.orthoLeft = -viewHalf * aspect;
+    camera.orthoRight = viewHalf * aspect;
+    camera.orthoTop = viewHalf;
+    camera.orthoBottom = -viewHalf;
+  }
+
+  updateProjection();
+  const resizeObs = engine.onResizeObservable.add(updateProjection);
 
   /**
    * Hold the view inside the surveyed world plus a chunk of margin. Panning off
@@ -77,10 +136,10 @@ export function OrthoCamera() {
     const minY = (b.min_cy - m) * CHUNK_SIZE;
     const maxY = (b.max_cy + 1 + m) * CHUNK_SIZE;
 
-    targetCamX = clampAxis(targetCamX, minX, maxX, targetOrthoSize * aspect);
-    targetCamY = clampAxis(targetCamY, minY, maxY, targetOrthoSize);
-    const x = clampAxis(camera.position.x, minX, maxX, orthoSize * aspect);
-    const y = clampAxis(camera.position.y, minY, maxY, orthoSize);
+    targetCamX = clampAxis(targetCamX, minX, maxX, targetViewHalf * aspect);
+    targetCamY = clampAxis(targetCamY, minY, maxY, targetViewHalf);
+    const x = clampAxis(camera.position.x, minX, maxX, viewHalf * aspect);
+    const y = clampAxis(camera.position.y, minY, maxY, viewHalf);
     if (x !== camera.position.x || y !== camera.position.y) {
       camera.position.x = x;
       camera.position.y = y;
@@ -98,13 +157,13 @@ export function OrthoCamera() {
     const nx = -((clientX - rect.left) / rect.width * 2 - 1);
     const ny = 1 - (clientY - rect.top) / rect.height * 2;
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-    const worldX = targetCamX + nx * targetOrthoSize * aspect;
-    const worldY = targetCamY + ny * targetOrthoSize;
+    const worldX = targetCamX + nx * targetViewHalf * aspect;
+    const worldY = targetCamY + ny * targetViewHalf;
 
     const newSize = Math.max(2, Math.min(100, size));
     targetCamX = worldX - nx * newSize * aspect;
     targetCamY = worldY - ny * newSize;
-    targetOrthoSize = newSize;
+    targetViewHalf = newSize;
   }
 
   // Subscription is chunk-granular, so panning within a chunk sends nothing.
@@ -116,10 +175,10 @@ export function OrthoCamera() {
     // exist, so without it the client cannot tell "unrevealed" from "not asked
     // for yet" and paints a frontier along the edge of the screen.
     const PAD = 2;
-    const minCx = chunk(camera.position.x - orthoSize * aspect) - PAD;
-    const maxCx = chunk(camera.position.x + orthoSize * aspect) + PAD;
-    const minCy = chunk(camera.position.y - orthoSize) - PAD;
-    const maxCy = chunk(camera.position.y + orthoSize) + PAD;
+    const minCx = chunk(camera.position.x - viewHalf * aspect) - PAD;
+    const maxCx = chunk(camera.position.x + viewHalf * aspect) + PAD;
+    const minCy = chunk(camera.position.y - viewHalf) - PAD;
+    const maxCy = chunk(camera.position.y + viewHalf) + PAD;
 
     if (minCx === lastMinCx && minCy === lastMinCy && maxCx === lastMaxCx && maxCy === lastMaxCy) return;
 
@@ -133,15 +192,15 @@ export function OrthoCamera() {
   // Smooth zoom animation
   const renderObs = scene.onBeforeRenderObservable.add(() => {
     if (debugMode) return;
-    const dSize = targetOrthoSize - orthoSize;
+    const dSize = targetViewHalf - viewHalf;
     const dX = targetCamX - camera.position.x;
     const dY = targetCamY - camera.position.y;
     if (Math.abs(dSize) > 0.01 || Math.abs(dX) > 0.001 || Math.abs(dY) > 0.001) {
-      orthoSize += dSize * lerpSpeed;
+      viewHalf += dSize * lerpSpeed;
       camera.position.x += dX * lerpSpeed;
       camera.position.y += dY * lerpSpeed;
       camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
-      updateOrtho();
+      updateProjection();
     }
     clampToSurveyed();
     sendViewportIfChanged();
@@ -214,8 +273,7 @@ export function OrthoCamera() {
       const rect = canvas.getBoundingClientRect();
 
       // Pan by pinch center movement
-      const worldPerPxX = (camera.orthoRight! - camera.orthoLeft!) / rect.width;
-      const worldPerPxY = (camera.orthoTop! - camera.orthoBottom!) / rect.height;
+      const { worldPerPxX, worldPerPxY } = groundScale(rect);
       const panX = (center.x - lastPinchCenterX) * worldPerPxX;
       const panY = (center.y - lastPinchCenterY) * worldPerPxY;
       camera.position.x += panX;
@@ -227,7 +285,7 @@ export function OrthoCamera() {
       lastPinchCenterY = center.y;
 
       // Zoom toward pinch center
-      zoomToward(targetOrthoSize * (lastPinchDist / Math.max(dist, 1)), center.x, center.y);
+      zoomToward(targetViewHalf * (lastPinchDist / Math.max(dist, 1)), center.x, center.y);
       lerpSpeed = ZOOM_LERP_SPEED;
       lastPinchDist = dist;
       return;
@@ -242,8 +300,7 @@ export function OrthoCamera() {
     if (debugMode) return;
 
     const rect = canvas.getBoundingClientRect();
-    const worldPerPixelX = (camera.orthoRight! - camera.orthoLeft!) / rect.width;
-    const worldPerPixelY = (camera.orthoTop! - camera.orthoBottom!) / rect.height;
+    const { worldPerPxX: worldPerPixelX, worldPerPxY: worldPerPixelY } = groundScale(rect);
     const moveX = dx * worldPerPixelX;
     const moveY = dy * worldPerPixelY;
     camera.position.x += moveX;
@@ -273,25 +330,30 @@ export function OrthoCamera() {
     if (locked || debugMode) return;
     e.preventDefault();
 
-    zoomToward(targetOrthoSize * (1 + e.deltaY * 0.001), e.clientX, e.clientY);
+    zoomToward(targetViewHalf * (1 + e.deltaY * 0.001), e.clientX, e.clientY);
     lerpSpeed = ZOOM_LERP_SPEED;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "F8") {
+      perspective = !perspective;
+      updateProjection();
+      return;
+    }
     if (e.key !== "F9") return;
     debugMode = !debugMode;
+    // Flying is a wide lens and the controls handed over, whichever projection
+    // the map itself is using.
     if (debugMode) {
-      camera.mode = Camera.PERSPECTIVE_CAMERA;
       camera.fov = 0.8;
       camera.position = new Vector3(targetCamX, targetCamY - 10, 8);
       camera.setTarget(new Vector3(targetCamX, targetCamY, 0));
       camera.attachControl(canvas, true);
     } else {
       camera.detachControl();
-      camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
       camera.position = new Vector3(targetCamX, targetCamY, 10);
       camera.setTarget(new Vector3(targetCamX, targetCamY, 0));
-      updateOrtho();
+      updateProjection();
     }
   };
 

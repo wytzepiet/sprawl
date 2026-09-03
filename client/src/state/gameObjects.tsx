@@ -11,6 +11,7 @@ import type {
   GameObjectEntry,
   ClientMessage,
   ChunkBounds,
+  Growth,
   ChunkCoord,
   Operation,
   TerrainChunk,
@@ -170,6 +171,9 @@ interface GameContext {
   terrainSeed(): number;
   /** Surveyed extent, in chunks. max < min means nothing is surveyed yet. */
   revealedBounds(): ChunkBounds;
+  /** The two bars: what the city has earned, and what it is saving for. */
+  /** The last growth sample, and the sim clock it was taken at. */
+  growth(): Growth & { at: number };
   send(msg: ClientMessage): boolean;
   getObjectsAt(x: number, y: number): GameObjectEntry[];
 }
@@ -178,6 +182,16 @@ const Ctx = createContext<GameContext>();
 
 export function GameProvider(props: ParentProps & { wsUrl: string }) {
   const [terrainSeed, setTerrainSeed] = createSignal(0);
+  const [growth, setGrowth] = createSignal<Growth & { at: number }>({
+    level: 0,
+    xp: 0,
+    xp_needed: 0,
+    offer_xp: 0,
+    offer_needed: 0,
+    rate: 0,
+    next: null,
+    at: 0,
+  });
   const [revealedBounds, setRevealedBounds] = createSignal<ChunkBounds>({
     min_cx: 0,
     min_cy: 0,
@@ -192,6 +206,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         syncFromClock(msg.data.clock);
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
         setRevealedBounds(msg.data.revealed_bounds);
+        setGrowth({ ...msg.data.growth, at: msg.data.clock.now });
         applyOps(msg.data.ops);
         break;
       case "Error":
@@ -215,7 +230,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ me, terrainSeed, revealedBounds, send, getObjectsAt }}>
+    <Ctx.Provider value={{ me, terrainSeed, revealedBounds, growth, send, getObjectsAt }}>
       {props.children}
     </Ctx.Provider>
   );

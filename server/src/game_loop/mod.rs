@@ -245,11 +245,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 handle_wake(&mut world, &mut events, &mut intersections, id, now);
             }
         }
-        // The city offers a building now and then, while the mayor has room
-        // to answer.
-        if now / crate::spawner::INTERVAL != sim_time / crate::spawner::INTERVAL {
-            crate::spawner::propose(&mut world, now);
-        }
+        // The city offers a building once it has earned one, while the mayor
+        // has room to answer. Cheap to ask — it is a subtraction until the
+        // meter is actually full.
+        crate::spawner::propose(&mut world, now);
         sim_time = now;
         // Published for /health, which is how anything outside this loop can
         // tell the difference between a live world and a socket that outlived
@@ -292,19 +291,24 @@ fn state_update(world: &World, ops: Vec<Operation>, clk: Clock) -> ServerMessage
     ServerMessage::Update(StateUpdate {
         ops,
         clock: clk,
+        growth: crate::spawner::growth(world, clk.now),
         terrain_seed: world.terrain_seed,
         revealed_bounds: world.revealed_bounds,
     })
 }
 
 fn load_world(db_path: &Path) -> (World, GameTime) {
-    let (entries, next_id, terrain_seed, sim_time) = persistence::load(db_path);
-    let world = if entries.is_empty() {
+    let (entries, meta) = persistence::load(db_path);
+    let mut world = if entries.is_empty() {
         World::new()
     } else {
-        World::from_loaded(Tracked::load(entries, next_id), terrain_seed)
+        World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed)
     };
-    (world, sim_time)
+    // What the city has produced outlives a restart; what it was about to offer
+    // is drawn again, since it depends on demand as it stands now.
+    world.xp = crate::xp::Ledger::load(meta.earned, meta.sim_time);
+    world.offered_at = meta.offered_at;
+    (world, meta.sim_time)
 }
 
 fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
@@ -321,7 +325,18 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
         .cloned()
         .collect();
 
-    persistence::save(db_path, &changed, &removed_ids, world.objects.next_id(), world.terrain_seed, sim_time);
+    persistence::save(
+        db_path,
+        &changed,
+        &removed_ids,
+        persistence::Meta {
+            next_id: world.objects.next_id(),
+            terrain_seed: world.terrain_seed,
+            sim_time,
+            earned: world.xp.at(sim_time),
+            offered_at: world.offered_at,
+        },
+    );
     println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());
 }
 
@@ -603,9 +618,11 @@ fn handle_wake(
 /// Population follows what is standing, and whoever's situation changed gets
 /// to think about it.
 fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
+    world.xp.settle(events.now());
     for id in world.settle() {
         wake_resident(world, events, id);
     }
+    world.xp.streams = crate::resident::served(world);
 }
 
 /// Someone already here thinks immediately; someone still off-map gets a

@@ -13,6 +13,7 @@ import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
 import FrameStats from "../ui/FrameStats";
 import PinLayer from "../ui/PinLayer";
+import GrowthMeter from "../ui/GrowthMeter";
 
 function SceneInner() {
   return (
@@ -30,6 +31,7 @@ function SceneInner() {
           </Headlights>
         </DayNightLights>
         <PinLayer />
+        <GrowthMeter />
       </Canvas>
       <BuildModeToolbar />
       <TimeControls />

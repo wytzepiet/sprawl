@@ -16,6 +16,7 @@ export type { Operation } from "./Operation";
 export type { ErrorMessage } from "./ErrorMessage";
 export type { ChunkBounds } from "./ChunkBounds";
 export type { Clock } from "./Clock";
+export type { Growth } from "./Growth";
 export type { ClientMessage } from "./ClientMessage";
 export type { StateUpdate } from "./StateUpdate";
 export type { ServerMessage } from "./ServerMessage";

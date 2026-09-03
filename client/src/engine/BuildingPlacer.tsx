@@ -5,6 +5,7 @@ import Mesh from "./Mesh";
 import { useGame } from "../state/gameObjects";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
 import { shapeFor } from "./objects/buildings";
+import { screenToWorld } from "./view";
 import { createSpring2D } from "./spring";
 import type { GridCoord } from "../generated";
 
@@ -17,12 +18,7 @@ export function BuildingPlacer() {
   const spring = createSpring2D(scene, { stiffness: 0.3, damping: 0.4 });
 
   function screenToGrid(e: PointerEvent): GridCoord {
-    const rect = canvas.getBoundingClientRect();
-    const cam = scene.activeCamera!;
-    const nx = -(((e.clientX - rect.left) / rect.width) * 2 - 1);
-    const ny = 1 - ((e.clientY - rect.top) / rect.height) * 2;
-    const wx = cam.position.x + (nx * (cam.orthoRight! - cam.orthoLeft!)) / 2;
-    const wy = cam.position.y + (ny * (cam.orthoTop! - cam.orthoBottom!)) / 2;
+    const { wx, wy } = screenToWorld(scene, canvas, e);
     return { x: Math.floor(wx), y: Math.floor(wy) };
   }
 

@@ -8,11 +8,30 @@ use serde_json::{json, Value};
 
 use crate::engine::GameTime;
 use crate::needs::Need;
-use crate::protocol::{BuildingKind, EntityId, GameObject, GridCoord, Proposal, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, GridCoord, Growth, Proposal, DAY_MS};
 use crate::world::World;
 
-/// How often the city offers something, while there is room in the queue.
-pub const INTERVAL: GameTime = DAY_MS as u64 / 12;
+/// Output that buys the city's first offer, in hours of need served.
+///
+/// The meter used to be a clock: an offer every two hours whatever the city
+/// did. Now it is earned, so a thriving city grows and a gridlocked one stops —
+/// and the bar climbs through the working day, when there is nothing else to
+/// watch, because that is when the work is being done.
+/// One hour of need served — the unit the meter counts in. Obligation is kept
+/// in milliseconds, so saying so here is what keeps these numbers legible.
+const SERVED_HOUR: f64 = DAY_MS as f64 / 24.0;
+
+/// A four-house town puts out around thirty hours of work a day, so this is
+/// roughly a dozen offers a day to begin with — about the cadence the old
+/// two-hourly timer had, but earned rather than waited for.
+const EARN_BASE: f64 = 2.7 * SERVED_HOUR;
+
+/// How much dearer each offer gets as the city fills out. Without this a bigger
+/// city earns faster *and* spends the same, and growth runs away with itself.
+const EARN_PER_BUILDING: f64 = 0.12 * SERVED_HOUR;
+
+/// Output for the first level. Each one after costs a level more than the last.
+const LEVEL_BASE: f64 = 30.0 * SERVED_HOUR;
 /// How many offers may wait for an answer. The spawner holds when full.
 pub const QUEUE: usize = 5;
 /// How long a rejection keeps that kind away from the spot.
@@ -20,27 +39,96 @@ const GRUDGE: GameTime = DAY_MS as u64;
 /// Buildings this close are one cluster — the scale growth lands at.
 const CLUSTER: i32 = 8;
 
-/// Offer one more building, if there is room and somewhere to put it.
+/// What the city is saving for, and what it costs at the size the city was
+/// when it started saving.
+#[derive(Debug, Clone, Copy)]
+pub struct Goal {
+    pub kind: BuildingKind,
+    pub cost: f64,
+}
+
+/// One point of experience: a minute of need served. Obligation is kept in
+/// milliseconds, which makes for numbers nobody can read on a bar.
+fn points(served: f64) -> f64 {
+    served * 60.0 / SERVED_HOUR
+}
+
+/// Everything the two bars need to draw themselves, so the numbers behind them
+/// stay in here with the constants that set them.
+pub fn growth(world: &World, now: GameTime) -> Growth {
+    let earned = world.xp.at(now);
+    let (level, reached) = level(earned);
+    Growth {
+        level,
+        xp: points(earned - reached),
+        xp_needed: points(LEVEL_BASE * (level as f64 + 1.0)),
+        offer_xp: points(earned - world.offered_at),
+        offer_needed: points(world.goal.map_or(0.0, |g| g.cost)),
+        rate: points(world.xp.rate(now)),
+        next: world.goal.map(|g| g.kind),
+    }
+}
+
+/// The city's level, and what it took to reach it.
+///
+/// Level `n` is reached at `LEVEL_BASE * n * (n + 1) / 2`, so each one asks for
+/// a little more than the last.
+pub fn level(earned: f64) -> (u32, f64) {
+    let n = (((1.0 + 8.0 * earned / LEVEL_BASE).sqrt() - 1.0) / 2.0).floor().max(0.0);
+    (n as u32, LEVEL_BASE * n * (n + 1.0) / 2.0)
+}
+
+fn seeded(world: &World, now: GameTime) -> SmallRng {
+    SmallRng::seed_from_u64(
+        (world.terrain_seed as u64) ^ (now / 1000).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+    )
+}
+
+/// What the city is saving up for. Settled once, when the meter resets, so the
+/// icon the player is watching does not change under them — and the only
+/// time the spawner reads the world, which it is asked about every tick.
+fn goal(world: &mut World, now: GameTime) -> Goal {
+    if let Some(goal) = world.goal {
+        return goal;
+    }
+    let mut rng = seeded(world, now);
+    let goal = Goal {
+        kind: draw_kind(&mut rng, &crate::resident::pressure(world, now)),
+        cost: EARN_BASE + EARN_PER_BUILDING * buildings(world).len() as f64,
+    };
+    world.goal = Some(goal);
+    goal
+}
+
+/// Offer one more building, once the city has earned it and there is somewhere
+/// to put it.
+///
+/// A full meter with a full queue simply holds: the city has earned an offer
+/// and is waiting for the mayor to clear one, which is the bar saying so rather
+/// than five arriving at once the moment room appears.
 pub fn propose(world: &mut World, now: GameTime) -> Option<EntityId> {
-    if proposals(world).len() >= QUEUE {
+    let Goal { kind, cost } = goal(world, now);
+    if world.xp.at(now) - world.offered_at < cost {
+        return None;
+    }
+    let waiting = world.objects.iter().filter(|e| matches!(e.object, GameObject::Proposal(_))).count();
+    if waiting >= QUEUE {
         return None;
     }
     let standing = buildings(world);
     if standing.is_empty() {
         return None;
     }
-    // Seeded by the seed and the hour: the same city offers the same next
-    // building, a reload does not reshuffle it, and a draw that found no
-    // room is followed by a different one rather than the same one again.
-    let mut rng = SmallRng::seed_from_u64(
-        (world.terrain_seed as u64) ^ (now / INTERVAL).wrapping_mul(0x9E37_79B9_7F4A_7C15),
-    );
-    let kind = draw_kind(&mut rng, &crate::resident::pressure(world, now));
+    let mut rng = seeded(world, now);
     let size = footprint(kind);
     let pos = draw_site(world, &mut rng, kind, size, &standing)?;
     if world.rejections.iter().any(|&(k, at, until)| k == kind && until > now && dist(at, pos) < 20) {
         return None;
     }
+    // Spent. The next goal is drawn on the next tick, so its icon is showing
+    // while this offer waits for an answer.
+    world.offered_at = world.xp.at(now);
+    world.goal = None;
     Some(world.insert_at(GameObject::Proposal(Proposal { kind, size }), Some(pos)))
 }
 
@@ -76,6 +164,12 @@ pub fn inspect(world: &World, now: GameTime) -> Value {
     let (mut clusters, _) = clusters(&standing);
     clusters.sort_unstable_by(|a, b| b.cmp(a));
     json!({
+        // The ledger runs ahead of the lumps `delivered` lands as shifts end;
+        // over the two days `delivered` remembers, the two should agree to
+        // within a shift.
+        "earned_h": world.xp.at(now) / SERVED_HOUR,
+        "delivered_2d_h": world.delivered.values().map(|d| d.today + d.yesterday).sum::<f64>() / SERVED_HOUR,
+        "goal": world.goal.map(|g| json!({ "kind": g.kind, "cost_h": g.cost / SERVED_HOUR })),
         "queue": proposals(world).iter().map(|&(id, pos, ref p)| json!({
             "id": id, "kind": p.kind, "pos": [pos.x, pos.y], "size": p.size,
         })).collect::<Vec<_>>(),
@@ -305,13 +399,24 @@ mod tests {
         world
     }
 
+    /// A step of the clock, big enough that a fresh site is drawn each time.
+    const STEP: GameTime = DAY_MS as u64 / 12;
+
+    /// Put enough by for one offer. Earning it is the simulation's business;
+    /// what the spawner does with it is this module's.
+    fn afford(world: &mut World, now: GameTime) {
+        let cost = goal(world, now).cost;
+        world.xp = crate::xp::Ledger::load(world.offered_at + cost, now);
+    }
+
     /// Say yes to everything for a while, and look at the town that made.
     fn grow(n: usize) -> (World, Vec<(GridCoord, BuildingKind)>) {
         let mut world = country();
         let mut placed = Vec::new();
         let mut now = 0;
         while placed.len() < n {
-            now += INTERVAL;
+            now += STEP;
+            afford(&mut world, now);
             if let Some(id) = propose(&mut world, now) {
                 let (pos, p) = proposal(&world, id).unwrap();
                 answer(&mut world, id, true, now);
@@ -358,13 +463,15 @@ mod tests {
     #[test]
     fn a_rejection_keeps_the_kind_away_for_a_day() {
         let mut world = country();
-        let id = propose(&mut world, INTERVAL).unwrap();
+        afford(&mut world, STEP);
+        let id = propose(&mut world, STEP).unwrap();
         let (pos, p) = proposal(&world, id).unwrap();
-        answer(&mut world, id, false, INTERVAL);
+        answer(&mut world, id, false, STEP);
         assert!(proposals(&world).is_empty());
         assert_eq!(world.rejections.len(), 1);
         // The same offer, a moment later, is not made.
-        let again = propose(&mut world, 2 * INTERVAL);
+        afford(&mut world, 2 * STEP);
+        let again = propose(&mut world, 2 * STEP);
         assert!(again.is_none_or(|id| { let (q, r) = proposal(&world, id).unwrap(); !(r.kind == p.kind && dist(q, pos) < 20) }));
     }
 
@@ -373,7 +480,8 @@ mod tests {
         let mut world = country();
         let mut now = 0;
         for _ in 0..40 {
-            now += INTERVAL;
+            now += STEP;
+            afford(&mut world, now);
             propose(&mut world, now);
         }
         assert_eq!(proposals(&world).len(), QUEUE);

@@ -1,6 +1,6 @@
 import { onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
-import { pickWorld } from "./pickWorld";
+import { screenToWorld } from "./view";
 import { useGame } from "../state/gameObjects";
 import { buildMode, roadOneWay } from "../ui/buildMode";
 import type { GridCoord } from "../generated";
@@ -24,7 +24,7 @@ export function RoadDrawer() {
   let accDx = 0;
   let accDy = 0;
 
-  const pick = (e: { clientX: number; clientY: number }) => pickWorld(scene, canvas, e);
+  const pick = (e: { clientX: number; clientY: number }) => screenToWorld(scene, canvas, e);
 
   function demolishAt(pos: GridCoord) {
     send({ type: "DemolishRoad", data: { pos } });
