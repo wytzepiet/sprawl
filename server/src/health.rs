@@ -58,6 +58,11 @@ pub async fn inspect_demand(State(state): State<AppState>) -> String {
     ask(&state, Ask::Demand).await
 }
 
+/// Every kind of building: what it holds, serves, and where it belongs.
+pub async fn inspect_blueprints() -> String {
+    format!("{:#}\n", crate::blueprint::inspect())
+}
+
 /// What the city is offering, and the shape of what stands.
 pub async fn inspect_proposals(State(state): State<AppState>) -> String {
     ask(&state, Ask::Proposals).await

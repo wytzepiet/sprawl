@@ -3,7 +3,8 @@ import { Color3 } from "@babylonjs/core";
 import MultiCanvasProvider from "../engine/MultiCanvasProvider";
 import MultiCanvasView from "../engine/MultiCanvasView";
 import BuildingPreview from "../engine/objects/BuildingPreview";
-import { BUILDINGS } from "../engine/objects/buildings";
+import { BUILDING_COLOR } from "../engine/objects/buildings";
+import { BLUEPRINTS, KINDS } from "../blueprints";
 import { Building2 } from "./icons";
 import { setPlacingBuilding } from "./buildMode";
 
@@ -50,14 +51,14 @@ export function BuildMenuSheet() {
           </div>
           <MultiCanvasProvider canvasSize={{ width: PREVIEW_SIZE, height: PREVIEW_SIZE }}>
             <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
-              <For each={BUILDINGS}>
-                {(building) => (
+              <For each={KINDS.filter((k) => BLUEPRINTS[k].byHand)}>
+                {(kind) => (
                   <button
                     class="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-black/[0.04] transition-colors cursor-grab active:cursor-grabbing"
                     onPointerDown={(e) => {
                       e.preventDefault();
                       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                      const buildingId = building.id;
+                      const buildingId = kind;
                       const onMove = () => {
                         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
                         (e.currentTarget as HTMLElement).removeEventListener("pointermove", onMove);
@@ -82,9 +83,9 @@ export function BuildMenuSheet() {
                       }}
                       class="bg-stone-100"
                     >
-                      <BuildingPreview color={Color3.FromHexString(building.color)} />
+                      <BuildingPreview color={Color3.FromHexString(BUILDING_COLOR)} />
                     </MultiCanvasView>
-                    <span class="text-[11px] font-medium text-stone-500">{building.label}</span>
+                    <span class="text-[11px] font-medium text-stone-500">{BLUEPRINTS[kind].label}</span>
                   </button>
                 )}
               </For>

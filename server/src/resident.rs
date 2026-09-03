@@ -2,7 +2,8 @@ use crate::car::spawn::start_trip;
 use crate::car::CRUISE_SPEED;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::needs::{taps, Bucket, Need, Tap};
+use crate::blueprint::blueprint;
+use crate::needs::{Bucket, Need, Tap};
 use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, Resident, DAY_MS};
 use crate::world::World;
 use serde::Serialize;
@@ -201,7 +202,7 @@ fn candidates<'a>(
                             .flat_map(|c| world.buildings_in(c))
                             // A home's kitchen is its residents' alone, and
                             // a place no road reaches is not on offer.
-                            .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| k.homes() == 0))
+                            .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
                             .filter(|&id| world.road_node_for_building(id).is_some())
                             .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
                             .filter_map(|id| {
@@ -674,7 +675,7 @@ fn kind(world: &World, building: EntityId) -> Option<BuildingKind> {
 }
 
 fn taps_of(world: &World, building: EntityId) -> &'static [Tap] {
-    kind(world, building).map_or(&[], taps)
+    kind(world, building).map_or(&[], |k| &blueprint(k).taps)
 }
 
 /// Straight-line travel time between two buildings in game milliseconds,

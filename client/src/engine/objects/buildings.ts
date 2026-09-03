@@ -1,30 +1,9 @@
 import type { MeshGeometry } from "../Mesh";
 import type { BuildingKind } from "../../generated";
+import { BLUEPRINTS } from "../../blueprints";
 
-/**
- * Zone palette.
- *
- * These have to survive being laid over the terrain rather than beside it, so
- * each is picked to separate from the tile it will most often sit on: the land
- * is a very light yellow-green (#D5F2A4), so residential goes mid-value and
- * cooler; water is a light cyan (#85D7FA), so commercial goes deeper and more
- * indigo; the beaches are near-cream, so industrial leans on saturation.
- */
 /** Buildings themselves stay neutral — the pin says what one is. */
 export const BUILDING_COLOR = "#EFEDE8";
-
-export interface BuildingDef {
-  id: BuildingKind;
-  label: string;
-  color: string;
-}
-
-export const BUILDINGS: BuildingDef[] = (
-  [
-    ["Restaurant", "Restaurant"],
-  ] as [BuildingKind, string][]
-).map(([id, label]) => ({ id, label, color: BUILDING_COLOR }));
-
 
 /** Margin from the plot edge, which is what leaves the category tint visible. */
 export const PLOT_MARGIN = 0.15;
@@ -256,25 +235,13 @@ function sawtooth(fw: number, fh: number): MeshGeometry {
  * flat — and it would stretch a chimney along with everything else. So a
  * building picks one of these and is built at it.
  */
-const HEIGHTS: Record<BuildingKind, number[]> = {
-  House: [0],
-  Factory: [0],
-  // Tall, and worth varying: a few towers among them is what gives a business
-  // district a skyline instead of a plateau.
-  Office: [1.0, 1.45, 2.3],
-  Apartment: [0.85, 1.15, 1.5],
-  Shop: [0.45, 0.55],
-  Workshop: [0.42, 0.5],
-  Restaurant: [0.5, 0.62],
-};
-
 function build(kind: BuildingKind, fw: number, fh: number, height: number): MeshGeometry {
-  switch (kind) {
-    case "House":
+  switch (BLUEPRINTS[kind].shape) {
+    case "gabled":
       return gabled(fw, fh);
-    case "Factory":
+    case "sawtooth":
       return sawtooth(fw, fh);
-    default:
+    case "box":
       return prism(rect(fw, fh), height);
   }
 }
@@ -289,7 +256,7 @@ function hash(id: number, salt = 0): number {
 
 /** Which of its kind's heights this building was built at. */
 export function variantOf(kind: BuildingKind, id: number): number {
-  const n = HEIGHTS[kind].length;
+  const n = BLUEPRINTS[kind].heights.length;
   return Math.min(n - 1, Math.floor(hash(id) * n));
 }
 
@@ -301,7 +268,7 @@ export function shapeFor(kind: BuildingKind, w: number, h: number, variant = 0):
   const key = `${kind}_${w}x${h}_${variant}`;
   let shape = shapes.get(key);
   if (!shape) {
-    shape = build(kind, w - 2 * PLOT_MARGIN, h - 2 * PLOT_MARGIN, HEIGHTS[kind][variant]);
+    shape = build(kind, w - 2 * PLOT_MARGIN, h - 2 * PLOT_MARGIN, BLUEPRINTS[kind].heights[variant]);
     shapes.set(key, shape);
   }
   return shape;

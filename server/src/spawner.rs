@@ -6,6 +6,7 @@ use rand::seq::IndexedRandom;
 use rand::{Rng, SeedableRng};
 use serde_json::{json, Value};
 
+use crate::blueprint::{blueprint, Class};
 use crate::engine::GameTime;
 use crate::needs::Need;
 use crate::protocol::{BuildingKind, EntityId, GameObject, GridCoord, Growth, Proposal, DAY_MS};
@@ -120,7 +121,7 @@ pub fn propose(world: &mut World, now: GameTime) -> Option<EntityId> {
         return None;
     }
     let mut rng = seeded(world, now);
-    let size = footprint(kind);
+    let size = blueprint(kind).size;
     let pos = draw_site(world, &mut rng, kind, size, &standing)?;
     if world.rejections.iter().any(|&(k, at, until)| k == kind && until > now && dist(at, pos) < 20) {
         return None;
@@ -183,20 +184,12 @@ pub fn inspect(world: &World, now: GameTime) -> Value {
 
 /// Section 4: base weight per kind, tilted by what the city cannot get.
 fn draw_kind(rng: &mut SmallRng, pressure: &std::collections::HashMap<Need, f64>) -> BuildingKind {
-    use BuildingKind::*;
-    let p = |n: Need| pressure.get(&n).copied().unwrap_or(0.0);
-    let jobs = p(Need::Work);
-    let custom = p(Need::Eat) + p(Need::Leisure);
-    let weighted = [
-        (House, 4.0),
-        (Apartment, 1.0),
-        (Shop, 1.5 * (1.0 + custom)),
-        (Restaurant, 0.4 * (1.0 + custom)),
-        (Office, 0.7 * (1.0 + jobs)),
-        (Workshop, 0.7 * (1.0 + jobs)),
-        (Factory, 0.3 * (1.0 + jobs)),
-    ];
-    weighted.choose_weighted(rng, |&(_, w)| w).map(|&(k, _)| k).unwrap()
+    let p = |n: &Need| pressure.get(n).copied().unwrap_or(0.0);
+    let weight = |k: BuildingKind| {
+        let b = blueprint(k);
+        b.weight * (1.0 + b.tilt.iter().map(p).sum::<f64>())
+    };
+    *BuildingKind::ALL.choose_weighted(rng, |&k| weight(k)).unwrap()
 }
 
 /// Section 5: grow a cluster, or seed one; then snap to land that fits.
@@ -257,13 +250,17 @@ fn draw_site(
 /// shops go where the homes are; industry keeps to itself and homes keep
 /// away from it.
 fn affinity(kind: BuildingKind, near: BuildingKind) -> f64 {
-    use BuildingKind::*;
-    let home = matches!(near, House | Apartment);
-    let shop = matches!(near, Shop | Office | Restaurant);
-    match kind {
-        House | Apartment => if home { 1.0 } else if shop { 0.3 } else { -1.0 },
-        Shop | Office | Restaurant => if home { 1.0 } else if shop { 0.5 } else { -0.3 },
-        Workshop | Factory => if home { -1.0 } else if shop { -0.2 } else { 1.0 },
+    use Class::*;
+    match (blueprint(kind).class, blueprint(near).class) {
+        (Living, Living) => 1.0,
+        (Living, Commerce) => 0.3,
+        (Living, Industry) => -1.0,
+        (Commerce, Living) => 1.0,
+        (Commerce, Commerce) => 0.5,
+        (Commerce, Industry) => -0.3,
+        (Industry, Living) => -1.0,
+        (Industry, Commerce) => -0.2,
+        (Industry, Industry) => 1.0,
     }
 }
 
@@ -323,14 +320,6 @@ fn clusters(standing: &[(EntityId, GridCoord, BuildingKind)]) -> (Vec<usize>, Ve
         sizes.push(n);
     }
     (sizes, member)
-}
-
-fn footprint(kind: BuildingKind) -> (u8, u8) {
-    use BuildingKind::*;
-    match kind {
-        House | Shop | Workshop | Restaurant => (1, 1),
-        Apartment | Office | Factory => (2, 1),
-    }
 }
 
 fn dist(a: GridCoord, b: GridCoord) -> i32 {
@@ -452,10 +441,10 @@ mod tests {
         spacings.dedup();
         assert!(spacings.len() >= 3, "gridded: {spacings:?}");
         // Industry kept its distance from homes, on the whole.
-        let homes: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| matches!(k, BuildingKind::House | BuildingKind::Apartment)).map(|&(_, p, _)| p).collect();
+        let homes: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| blueprint(k).class == Class::Living).map(|&(_, p, _)| p).collect();
         let near_home = |p: GridCoord| homes.iter().any(|&h| dist(h, p) <= 3);
-        let industry: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| matches!(k, BuildingKind::Workshop | BuildingKind::Factory)).map(|&(_, p, _)| p).collect();
-        let shops: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| matches!(k, BuildingKind::Shop | BuildingKind::Restaurant)).map(|&(_, p, _)| p).collect();
+        let industry: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| blueprint(k).class == Class::Industry).map(|&(_, p, _)| p).collect();
+        let shops: Vec<GridCoord> = standing.iter().filter(|&&(_, _, k)| blueprint(k).class == Class::Commerce).map(|&(_, p, _)| p).collect();
         let frac = |v: &[GridCoord]| v.iter().filter(|&&p| near_home(p)).count() as f64 / v.len().max(1) as f64;
         assert!(frac(&industry) < frac(&shops), "industry {:.2} vs shops {:.2} beside homes", frac(&industry), frac(&shops));
     }
@@ -497,8 +486,8 @@ mod tests {
         for y in (y0..y1).step_by(2) {
             let row: String = (x0..x1).step_by(2).map(|x| {
                 let here = |k: &dyn Fn(BuildingKind) -> bool| standing.iter().any(|&(_, p, kk)| p.x / 2 == x / 2 && p.y / 2 == y / 2 && k(kk));
-                if here(&|k| matches!(k, BuildingKind::House | BuildingKind::Apartment)) { 'h' }
-                else if here(&|k| matches!(k, BuildingKind::Shop | BuildingKind::Office | BuildingKind::Restaurant)) { 's' }
+                if here(&|k| blueprint(k).class == Class::Living) { 'h' }
+                else if here(&|k| blueprint(k).class == Class::Commerce) { 's' }
                 else if here(&|_| true) { 'F' }
                 else if world.road_node_at(GridCoord { x, y }).is_some() { '.' }
                 else { ' ' }

@@ -1,12 +1,10 @@
 pub mod curve;
 
-use std::sync::LazyLock;
-
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::engine::GameTime;
-use crate::protocol::{BuildingKind, DAY_MS};
+use crate::protocol::DAY_MS;
 use curve::Curve;
 
 const H: u32 = DAY_MS / 24;
@@ -86,8 +84,7 @@ impl Need {
     /// The best any tap anywhere serves this: greatest rate, least overhead.
     /// What bounds a bucket's score without looking at any building.
     pub fn bounds(self) -> (f64, GameTime) {
-        TAPS.iter()
-            .flat_map(|(_, taps)| taps.iter())
+        crate::blueprint::all_taps()
             .filter(|t| t.need == self)
             .fold((0.0, GameTime::MAX), |(r, h), t| (r.max(t.rate), h.min(t.overhead)))
     }
@@ -149,89 +146,13 @@ pub struct Tap {
     pub slots: u32,
 }
 
-/// What each kind of building serves. Fixed definitions, built once.
-static TAPS: LazyLock<Vec<(BuildingKind, Vec<Tap>)>> = LazyLock::new(|| {
-    let tap = |need, curve, slots| Tap { need, curve, rate: 1.0, overhead: 0, slots };
-    // Rate is what a need can matter at its most urgent (section 5.1), so
-    // the rates rank the needs: sleep and food can pull someone out of a
-    // shift, time off cannot, and only nearly-full time off beats sitting
-    // at home.
-    let potter = |need, curve, slots| Tap { need, curve, rate: 0.35, overhead: 0, slots };
-    let outing = |need, curve, slots| Tap { need, curve, rate: 0.45, overhead: 0, slots };
-    // A workplace has room for its staff.
-    let work = |kind: BuildingKind, open: u32, close: u32| {
-        vec![tap(Need::Work, Curve::hours(open * H, close * H), kind.jobs())]
-    };
-    // Nobody sleeps at noon: sleep is on offer through the night. Being
-    // home, and the kitchen, are on offer always, to everyone who lives
-    // there.
-    let home = |kind: BuildingKind| {
-        vec![
-            tap(Need::Rest, Curve::hours(22 * H, 7 * H), kind.homes()),
-            tap(Need::Home, Curve::always(), kind.homes()),
-            tap(Need::Eat, Curve::always(), kind.homes()),
-            potter(Need::Leisure, Curve::always(), kind.homes()),
-        ]
-    };
-    // Staggered by kind so the city's rush hour is a wave rather than a
-    // spike: industry starts before offices, offices before shops.
-    use BuildingKind::*;
-    vec![
-        (House, home(House)),
-        (Apartment, home(Apartment)),
-        (Factory, work(Factory, 6, 15)),
-        (Workshop, work(Workshop, 7, 16)),
-        (Office, work(Office, 8, 17)),
-        // A shop seats as many as it staffs, and the high street is somewhere
-        // to be until late.
-        (Shop, [
-            work(Shop, 9, 18),
-            vec![
-                tap(Need::Eat, Curve::hours(9 * H, 18 * H), Shop.jobs()),
-                outing(Need::Leisure, Curve::hours(9 * H, 22 * H), 4 * Shop.jobs()),
-            ],
-        ].concat()),
-        // A restaurant seats a dozen, from lunch until late, and is an evening
-        // out in itself.
-        (Restaurant, [
-            work(Restaurant, 11, 23),
-            vec![
-                tap(Need::Eat, Curve::hours(11 * H, 22 * H), 12),
-                outing(Need::Leisure, Curve::hours(11 * H, 22 * H), 12),
-            ],
-        ].concat()),
-    ]
-});
-
-pub fn taps(kind: BuildingKind) -> &'static [Tap] {
-    TAPS.iter().find(|(k, _)| *k == kind).map_or(&[], |(_, t)| t.as_slice())
-}
-
-/// Build every curve and check the definitions against the invariants the
-/// decision procedure leans on. Called once at startup, so nothing is
-/// materialised lazily later and a bad table fails before anyone acts on it.
+/// Check the needs against the invariant the decision procedure leans on.
+/// What each building serves is checked with its blueprint.
 pub fn check() {
     let day = DAY_MS as u64;
     // N1: what accrues fits in a day.
     let asked: f64 = Need::ALL.iter().map(|n| n.daily_ms()).sum();
     assert!(asked <= day as f64, "needs ask for {:.1}h of a 24h day", asked / HOUR);
-
-    for (kind, taps) in TAPS.iter() {
-        for tap in taps {
-            // T1: a fixed-length service still takes time.
-            assert!(
-                tap.rate.is_finite() || tap.overhead > 0,
-                "{kind:?} serves {:?} instantly and for free",
-                tap.need
-            );
-            // C1: a full bucket drains within the one-day horizon.
-            assert!(
-                tap.need.fill() == 0.0 || tap.need.cap() / tap.rate <= day as f64,
-                "{kind:?} takes over a day to drain {:?}",
-                tap.need
-            );
-        }
-    }
 }
 
 #[cfg(test)]
@@ -257,13 +178,5 @@ mod tests {
             assert!((back - level).abs() < 1.0, "{need:?}: {back} vs {level}");
         }
         assert_eq!(Need::Rest.level_for(f64::INFINITY), None);
-    }
-
-    #[test]
-    fn a_home_offers_sleep_and_a_shop_offers_work() {
-        assert!(taps(BuildingKind::House).iter().any(|t| t.need == Need::Rest));
-        assert!(taps(BuildingKind::Shop).iter().any(|t| t.need == Need::Work));
-        assert!(taps(BuildingKind::House).iter().all(|t| t.need != Need::Work));
-        assert!(taps(BuildingKind::Shop).iter().any(|t| t.need == Need::Eat));
     }
 }

@@ -2,8 +2,7 @@ import { For, Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { useGame, pinned } from "../state/gameObjects";
 import { simNow } from "../network/clock";
-import { BuildingIcon } from "./buildingIcons";
-import { PIN_COLORS } from "./pinLook";
+import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import type { BuildingKind } from "../generated";
 
 /** Ring geometry, in the dial's own 60-unit box. */
@@ -43,7 +42,7 @@ export default function GrowthMeter() {
       .map((e) => ({ id: e.id, kind: (e.object.data as { kind: BuildingKind }).kind }));
   const nextColor = () => {
     const kind = growth().next;
-    return kind ? PIN_COLORS[kind] : "#9CA3AF";
+    return kind ? BLUEPRINTS[kind].color : "#9CA3AF";
   };
 
   return (
@@ -66,7 +65,7 @@ export default function GrowthMeter() {
               {(p) => (
                 <span
                   class="grid h-4 w-4 place-items-center rounded-full ring-[1.5px] ring-sky-400"
-                  style={{ "background-color": PIN_COLORS[p.kind] }}
+                  style={{ "background-color": BLUEPRINTS[p.kind].color }}
                 >
                   <BuildingIcon kind={p.kind} class="h-2.5 w-2.5 text-white" />
                 </span>
@@ -83,7 +82,7 @@ export default function GrowthMeter() {
             {(kind) => (
               <span
                 class="grid h-full w-full place-items-center rounded-full"
-                style={{ "background-color": PIN_COLORS[kind() as BuildingKind] }}
+                style={{ "background-color": BLUEPRINTS[kind() as BuildingKind].color }}
               >
                 <BuildingIcon kind={kind() as BuildingKind} class="h-6 w-6 text-white" />
               </span>

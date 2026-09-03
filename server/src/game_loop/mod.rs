@@ -865,7 +865,7 @@ mod tests {
         let people = world.resident_ids();
         assert_eq!(people.len(), 2);
 
-        let shift = crate::needs::taps(BuildingKind::Shop)
+        let shift = crate::blueprint::blueprint(BuildingKind::Shop).taps
             .iter()
             .find(|t| t.need == crate::needs::Need::Work)
             .unwrap();
@@ -943,6 +943,62 @@ mod tests {
             assert!(sold(lunch, "Eat") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat"));
         }
         (log, [shop, lunch])
+    }
+
+    /// After dark the bar is the only thing open, and people go: it sells
+    /// evenings out, and every one of them begins after eight.
+    #[test]
+    fn the_bar_gets_an_evening_crowd() {
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::Apartment, 2);
+        build(&mut world, 6, BuildingKind::Apartment, 2);
+        build(&mut world, 40, BuildingKind::Office, 2);
+        let bar = build(&mut world, 12, BuildingKind::Bar, 1);
+
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let people = world.resident_ids();
+
+        let day = DAY_MS as u64;
+        let mut outings: Vec<GameTime> = Vec::new();
+        let mut last: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
+        let mut now = 0;
+        while now < 2 * day {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(id) = events.pop_due() {
+                handle_wake(&mut world, &mut events, &mut intersections, id, now);
+            }
+            for (i, &id) in people.iter().enumerate() {
+                let state = (at_of(&world, id), doing(&world, id));
+                if state != last[i] {
+                    // An evening out begins when someone at the bar turns to
+                    // it — whether they drove over for it or stayed on after
+                    // dinner.
+                    if state == (Some(bar), Some(crate::needs::Need::Leisure)) {
+                        outings.push(now % day);
+                    }
+                    last[i] = state;
+                }
+            }
+        }
+        // Some settle in after dinner and wait for the evening to start;
+        // nobody turns to it before the doors open at six.
+        assert!(outings.len() >= 4, "only {} evenings out", outings.len());
+        let h = |t: GameTime| t as f64 / (day as f64 / 24.0);
+        assert!(
+            outings.iter().all(|&t| h(t) >= 18.0 || h(t) < 2.0),
+            "an outing outside opening hours: {:?}",
+            outings.iter().map(|&t| h(t)).collect::<Vec<_>>()
+        );
+
+        // And the evenings were had: the bar's books show Leisure sold.
+        let d = crate::resident::demand(&world, 2 * day);
+        let sold = d["delivered"].as_array().unwrap().iter()
+            .find(|v| v["building"] == bar && v["need"] == "Leisure")
+            .map_or(0.0, |v| v["today_h"].as_f64().unwrap() + v["yesterday_h"].as_f64().unwrap());
+        assert!(sold > 2.0, "the bar sold {sold}h of evenings");
     }
 
     #[test]

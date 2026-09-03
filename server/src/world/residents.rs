@@ -34,11 +34,12 @@ impl World {
                 continue;
             }
             where_is.insert(e.id, pos);
-            if b.kind.homes() > 0 {
-                rooms.insert(e.id, b.kind.homes());
+            let bp = crate::blueprint::blueprint(b.kind);
+            if bp.homes > 0 {
+                rooms.insert(e.id, bp.homes);
             }
-            if b.kind.jobs() > 0 {
-                vacancies.insert(e.id, b.kind.jobs());
+            if bp.jobs > 0 {
+                vacancies.insert(e.id, bp.jobs);
             }
         }
 
@@ -257,7 +258,7 @@ mod tests {
         let mut world = town();
         let home = build(&mut world, 0, BuildingKind::House);
 
-        assert_eq!(world.settle().len(), BuildingKind::House.homes() as usize);
+        assert_eq!(world.settle().len(), crate::blueprint::blueprint(BuildingKind::House).homes as usize);
         assert!(residents(&world).iter().all(|r| r.home == home));
 
         // Run again: nothing is standing that was not standing before, so

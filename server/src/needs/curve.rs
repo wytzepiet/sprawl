@@ -82,6 +82,11 @@ impl Curve {
         Curve::new(&pts)
     }
 
+    /// Integral over one whole day: how many availability-milliseconds it offers.
+    pub fn per_day(&self) -> f64 {
+        self.per_day
+    }
+
     /// Value at time `t`.
     pub fn at(&self, t: GameTime) -> f64 {
         let (i, tod) = self.locate(t);

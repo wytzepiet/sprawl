@@ -1,3 +1,4 @@
+mod blueprint;
 mod car;
 mod engine;
 mod game_loop;
@@ -24,6 +25,7 @@ use network::AppState;
 #[tokio::main]
 async fn main() {
     needs::check();
+    blueprint::check();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(game_loop::run(command_rx));
@@ -38,6 +40,7 @@ async fn main() {
         .route("/debug/resident/{id}", axum::routing::get(health::inspect_resident))
         .route("/debug/demand", axum::routing::get(health::inspect_demand))
         .route("/debug/proposals", axum::routing::get(health::inspect_proposals))
+        .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));

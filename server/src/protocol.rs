@@ -42,30 +42,23 @@ pub enum BuildingKind {
     /// The first special kind: a place to eat out, and to be, into the
     /// evening. Placed by hand or offered by the city.
     Restaurant,
+    /// Somewhere to be after dark. The first thing open when everything
+    /// else has shut.
+    Bar,
 }
 
 impl BuildingKind {
-    /// How many people live here. Zero for everything you cannot live in, so
-    /// "is this housing" never needs asking separately.
-    pub fn homes(self) -> u32 {
-        match self {
-            BuildingKind::House => 2,
-            BuildingKind::Apartment => 8,
-            _ => 0,
-        }
-    }
-
-    /// How many people work here.
-    pub fn jobs(self) -> u32 {
-        match self {
-            BuildingKind::Shop => 4,
-            BuildingKind::Office => 16,
-            BuildingKind::Workshop => 6,
-            BuildingKind::Factory => 24,
-            BuildingKind::Restaurant => 6,
-            _ => 0,
-        }
-    }
+    /// Every kind, in declaration order — the order of the blueprint table.
+    pub const ALL: [BuildingKind; 8] = [
+        BuildingKind::House,
+        BuildingKind::Apartment,
+        BuildingKind::Shop,
+        BuildingKind::Office,
+        BuildingKind::Workshop,
+        BuildingKind::Factory,
+        BuildingKind::Restaurant,
+        BuildingKind::Bar,
+    ];
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

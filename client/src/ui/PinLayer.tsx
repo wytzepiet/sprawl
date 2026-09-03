@@ -2,8 +2,7 @@ import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-j
 import { useEngine } from "../engine/Canvas";
 import { projector, screenToWorld, viewExtent } from "../engine/view";
 import { useGame, pinned } from "../state/gameObjects";
-import { BuildingIcon } from "./buildingIcons";
-import { PIN_COLORS } from "./pinLook";
+import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import type { BuildingKind, GameObjectEntry } from "../generated";
 
 /**
@@ -23,24 +22,8 @@ import type { BuildingKind, GameObjectEntry } from "../generated";
  */
 const EDGE = { top: 48, left: 48, right: 48, bottom: 108 };
 
-const COMMON = 7;
-const NOTABLE = 28;
-const SPECIAL = 45;
-const PIN_UNTIL: Record<BuildingKind, number> = {
-  // The bulk of a city. Somewhere people live or work, and there are hundreds.
-  House: COMMON,
-  Apartment: COMMON,
-  Office: COMMON,
-  Factory: COMMON,
-  // Places people go, which is what makes them worth finding from further off.
-  Shop: NOTABLE,
-  Workshop: NOTABLE,
-  // Rare enough to be a landmark.
-  Restaurant: SPECIAL,
-};
-
-/** The distinct thresholds, ascending: the only zooms at which anything changes. */
-const STEPS = [...new Set(Object.values(PIN_UNTIL))].sort((a, b) => a - b);
+/** The distinct pin thresholds, ascending: the only zooms at which anything changes. */
+const STEPS = [...new Set(Object.values(BLUEPRINTS).map((b) => b.pinUntil))].sort((a, b) => a - b);
 
 /**
  * The pin outline: a circle of radius 10 at the origin, and a point at (0,18).
@@ -179,7 +162,7 @@ export default function PinLayer() {
           const proposal = () => e.object.kind === "Proposal";
           const kind = () => (e.object.data as { kind: BuildingKind }).kind;
           // A proposal is a question put to the player, so it never collapses.
-          const dot = createMemo(() => !proposal() && step() > STEPS.indexOf(PIN_UNTIL[kind()]));
+          const dot = createMemo(() => !proposal() && step() > STEPS.indexOf(BLUEPRINTS[kind()].pinUntil));
           return (
             <div
               ref={(el) => {
@@ -205,10 +188,10 @@ export default function PinLayer() {
                   <path d={OUTLINE} fill="#fff" stroke={proposal() ? "#38BDF8" : "none"} stroke-width="1.5" />
                   {/* The disc nearly fills the head: the white is a rim on the
                       colour, not a field it floats in. */}
-                  <circle r="7.8" fill={PIN_COLORS[kind()]} />
+                  <circle r="7.8" fill={BLUEPRINTS[kind()].color} />
                   <BuildingIcon kind={kind()} class="glyph text-white" x="-6.5" y="-6.5" width="13" height="13" />
                 </svg>
-                <span class="dot" style={{ "background-color": PIN_COLORS[kind()] }} />
+                <span class="dot" style={{ "background-color": BLUEPRINTS[kind()].color }} />
                 {/* Points back at where the offer actually is, when it has
                     drifted off the map. */}
                 <Show when={proposal()}>

@@ -1,0 +1,135 @@
+import type { JSX } from "solid-js";
+import type { BuildingKind } from "./generated";
+
+/**
+ * Every kind of building, one row each, as the client draws it: its colour,
+ * its glyph, how far out its pin holds before collapsing to a dot, and the
+ * shape it stands as on the map. The server's `blueprint.rs` holds what a kind
+ * *does*; this holds what it looks like. Adding a kind is one row in each.
+ *
+ * Colours are chosen mid-dark so a white glyph reads on them, and spread far
+ * enough apart in hue to be told apart at a dot's size. Glyphs are filled
+ * silhouettes on a 24-unit grid — one shape, windows and doors cut out — so a
+ * pin reads at a glance and still reads shrunk to a dot's neighbour.
+ */
+export interface Blueprint {
+  label: string;
+  color: string;
+  /** SVG path of the glyph, on a 24-unit grid. */
+  glyph: string;
+  /** Half-height of view, in tiles, beyond which the pin becomes a dot. */
+  pinUntil: number;
+  /** Which silhouette it stands as. */
+  shape: "gabled" | "sawtooth" | "box";
+  /** Heights a box may be built at; one is picked per building and kept. */
+  heights: number[];
+  /** In the build menu, for the mayor to place by hand. */
+  byHand: boolean;
+}
+
+/** The bulk of a city: somewhere people live or work, and there are hundreds. */
+const COMMON = 7;
+/** Places people go, which is what makes them worth finding from further off. */
+const NOTABLE = 28;
+/** Rare enough to be a landmark. */
+const SPECIAL = 45;
+
+export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
+  House: {
+    label: "House",
+    color: "#3F9B5A",
+    // A gabled roof over a body, the door cut out.
+    glyph: "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z",
+    pinUntil: COMMON,
+    shape: "gabled",
+    heights: [0],
+    byHand: false,
+  },
+  Apartment: {
+    label: "Apartment",
+    color: "#2E7D6F",
+    // A tall block, three floors of windows and a door.
+    glyph: "M5 2h14v20H5zM8 5h3v3H8zM13 5h3v3h-3zM8 10h3v3H8zM13 10h3v3h-3zM8 15h3v3H8zM13 15h3v3h-3zM10.5 19h3v3h-3z",
+    pinUntil: COMMON,
+    shape: "box",
+    heights: [0.85, 1.15, 1.5],
+    byHand: false,
+  },
+  Shop: {
+    label: "Shop",
+    color: "#2F7FD4",
+    // A storefront: scalloped awning, window and door beneath.
+    glyph:
+      "M3 3h18l2 5.5a2.5 2.5 0 0 1-4.7 1.2A2.5 2.5 0 0 1 14.2 9.7a2.5 2.5 0 0 1-4.4 0 2.5 2.5 0 0 1-4.1 0A2.5 2.5 0 0 1 1 8.5zM4 12h16v10H4zM6 14h6v4H6zM14 14h4v8h-4z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.45, 0.55],
+    byHand: false,
+  },
+  Office: {
+    label: "Office",
+    color: "#5B57C8",
+    // A briefcase, the handle cut out.
+    glyph:
+      "M9 3h6a1.5 1.5 0 0 1 1.5 1.5V7H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5V4.5A1.5 1.5 0 0 1 9 3zm.5 2v2h5V5zM2 12h20v1.5H2z",
+    pinUntil: COMMON,
+    shape: "box",
+    // Tall, and worth varying: a few towers among them is what gives a
+    // business district a skyline instead of a plateau.
+    heights: [1.0, 1.45, 2.3],
+    byHand: false,
+  },
+  Workshop: {
+    label: "Workshop",
+    color: "#C97A1E",
+    // A wrench.
+    glyph:
+      "M21.5 6.2a6.3 6.3 0 0 1-8.1 8.1l-7.3 7.3a2.3 2.3 0 0 1-3.2-3.2l7.3-7.3a6.3 6.3 0 0 1 8.1-8.1l-3.7 3.7 1.1 3.2 3.2 1.1z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.42, 0.5],
+    byHand: false,
+  },
+  Factory: {
+    label: "Factory",
+    color: "#6B6F78",
+    // Sawtooth roofs and a chimney.
+    glyph: "M17 2h4v8.5l-4 0zM2 22V10.5l6 3v-3l6 3v-3l6 3V22zM5 16h3v3H5zM10 16h3v3h-3zM15 16h3v3h-3z",
+    pinUntil: COMMON,
+    shape: "sawtooth",
+    heights: [0],
+    byHand: false,
+  },
+  Restaurant: {
+    label: "Restaurant",
+    color: "#D9483B",
+    // Fork and knife.
+    glyph:
+      "M5.5 2h1.6v6h1.2V2h1.4v6h1.2V2h1.6v7a3.5 3.5 0 0 1-2.2 3.3V22H7.7v-9.7A3.5 3.5 0 0 1 5.5 9zM15.5 2c2.2 1.6 3.3 4.6 3.3 8 0 1.8-.8 3-1.9 3.6V22h-2.3V2z",
+    pinUntil: SPECIAL,
+    shape: "box",
+    heights: [0.5, 0.62],
+    byHand: true,
+  },
+  Bar: {
+    label: "Bar",
+    color: "#9B3FA0",
+    // A pint glass, tapered, with a head of foam cut across it.
+    glyph: "M5 2h14l-1.6 20H6.6zM6.3 5.5h11.4l-.2 2H6.5z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.45, 0.55],
+    byHand: false,
+  },
+};
+
+export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];
+
+/** The glyph for a kind, as an SVG that takes the current colour. */
+export function BuildingIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { kind: BuildingKind }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" {...props}>
+      <path d={BLUEPRINTS[props.kind].glyph} />
+    </svg>
+  );
+}
