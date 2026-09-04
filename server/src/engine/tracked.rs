@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::protocol::{Draft, EntityId, GameObjectEntry, GameObject, GridCoord};
+use crate::protocol::{EntityId, GameObjectEntry, GameObject, GridCoord};
 
 pub struct Tracked {
     data: HashMap<EntityId, GameObjectEntry>,
@@ -44,15 +44,12 @@ impl Tracked {
         &mut self,
         object: GameObject,
         position: Option<GridCoord>,
-        draft: Option<Draft>,
     ) -> EntityId {
         let id = self.next_id;
         self.next_id += 1;
-        self.data.insert(id, GameObjectEntry { id, object, position, draft });
+        self.data.insert(id, GameObjectEntry { id, object, position });
         self.dirty.insert(id);
-        if draft.is_none() {
-            self.persist_dirty.insert(id);
-        }
+        self.persist_dirty.insert(id);
         id
     }
 
@@ -69,6 +66,12 @@ impl Tracked {
     }
 
     /// Mutable access without marking dirty (for internal state updates).
+    /// Say an entry changed, when it was changed without saying so.
+    pub fn touch(&mut self, id: EntityId) {
+        self.dirty.insert(id);
+        self.persist_dirty.insert(id);
+    }
+
     pub fn get_mut_silent(&mut self, id: EntityId) -> Option<&mut GameObjectEntry> {
         self.data.get_mut(&id)
     }

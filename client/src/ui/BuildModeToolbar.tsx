@@ -7,7 +7,7 @@ import {
   setRoadOneWay,
   type BuildMode,
 } from "./buildMode";
-import { useGame, pending } from "../state/gameObjects";
+import { useGame } from "../state/gameObjects";
 import {
   BuildButton,
   BuildMenuSheet,
@@ -45,12 +45,6 @@ export default function BuildModeToolbar() {
         return;
       }
     }
-    // Committing has a key; discarding does not. Throwing away a morning's
-    // layout should take aim, not a stray keystroke.
-    if (e.key === "Enter" && pending() > 0) {
-      send({ type: "Commit" });
-      return;
-    }
     const mode = modes.find((m) => m.key.toLowerCase() === e.key.toLowerCase());
     if (mode) setBuildMode(mode.id);
   };
@@ -60,31 +54,6 @@ export default function BuildModeToolbar() {
   return (
     <>
       <div class="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-        <Show when={pending() > 0}>
-          <div class="flex items-center gap-1 p-1 rounded-xl bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_16px_rgba(0,0,0,0.10)]">
-            <span class="px-3 text-xs font-semibold tracking-wide uppercase text-stone-400">
-              {pending()} pending
-            </span>
-            <button
-              onClick={() => send({ type: "Discard" })}
-              class="px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase cursor-pointer transition-colors duration-200 text-stone-400 hover:text-red-500 hover:bg-red-50"
-              title="Throw away everything you have drafted"
-            >
-              Discard
-            </button>
-            <button
-              onClick={() => send({ type: "Commit" })}
-              class="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase cursor-pointer transition-colors duration-200 bg-stone-800 text-white hover:bg-stone-900"
-              title="Make it real (Enter)"
-            >
-              Build
-              <kbd class="text-[9px] font-mono px-1 py-0.5 rounded-md bg-white/20 text-white/80 leading-none">
-                Enter
-              </kbd>
-            </button>
-          </div>
-        </Show>
-
         <Show when={buildMode() === "road"}>
           <div class="flex p-1 rounded-xl bg-white/70 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
             <button

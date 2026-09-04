@@ -3,7 +3,7 @@ import type { Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
-import type { Look } from "./draftLook";
+import type { Look } from "./look";
 import type { GameObjectEntry } from "../../generated";
 
 /// Everyone keeps their car for life, and its id never changes — so neither

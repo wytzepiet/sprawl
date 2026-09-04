@@ -33,8 +33,6 @@ const EARN_PER_BUILDING: f64 = 0.12 * SERVED_HOUR;
 
 /// Output for the first level. Each one after costs a level more than the last.
 const LEVEL_BASE: f64 = 30.0 * SERVED_HOUR;
-/// How many offers may wait for an answer. The spawner holds when full.
-pub const QUEUE: usize = 5;
 /// How long a rejection keeps that kind away from the spot.
 const GRUDGE: GameTime = DAY_MS as u64;
 /// Buildings this close are one cluster — the scale growth lands at.
@@ -104,16 +102,16 @@ fn goal(world: &mut World, now: GameTime) -> Goal {
 /// Offer one more building, once the city has earned it and there is somewhere
 /// to put it.
 ///
-/// A full meter with a full queue simply holds: the city has earned an offer
-/// and is waiting for the mayor to clear one, which is the bar saying so rather
-/// than five arriving at once the moment room appears.
+/// One offer at a time. A full meter with an offer still standing simply
+/// holds: the city has earned the next one and is waiting for the mayor to
+/// answer this one, which is the bar saying so rather than a crowd of pins
+/// arriving the moment one is answered.
 pub fn propose(world: &mut World, now: GameTime) -> Option<EntityId> {
     let Goal { kind, cost } = goal(world, now);
     if world.xp.at(now) - world.offered_at < cost {
         return None;
     }
-    let waiting = world.objects.iter().filter(|e| matches!(e.object, GameObject::Proposal(_))).count();
-    if waiting >= QUEUE {
+    if world.objects.iter().any(|e| matches!(e.object, GameObject::Proposal(_))) {
         return None;
     }
     let standing = buildings(world);
@@ -139,11 +137,7 @@ pub fn answer(world: &mut World, id: EntityId, accept: bool, now: GameTime) {
     let Some((pos, p)) = proposal(world, id) else { return };
     world.drop_entity(id);
     if accept {
-        // The city's building, nobody's draft: placed outside whoever is
-        // answering, or it would land in their pending work.
-        let answering = world.acting_as.take();
         world.place_building(pos, p.kind, p.size);
-        world.acting_as = answering;
     } else {
         world.rejections.push((p.kind, pos, now + GRUDGE));
         world.rejections.retain(|&(_, _, until)| until > now);
@@ -154,7 +148,10 @@ pub fn answer(world: &mut World, id: EntityId, accept: bool, now: GameTime) {
 pub fn relocate(world: &mut World, id: EntityId, to: GridCoord) {
     let Some((_, p)) = proposal(world, id) else { return };
     if let Some(pos) = snap(world, to, p.size, id) {
+        // Moving is silent, as a car's every step has to be; an offer that
+        // moved has to be seen to have.
         world.update_position(id, pos);
+        world.objects.touch(id);
     }
 }
 
@@ -265,20 +262,19 @@ fn affinity(kind: BuildingKind, near: BuildingKind) -> f64 {
 }
 
 /// The nearest place to `at` where a footprint fits: buildable, revealed,
-/// a tile clear of anything standing, and clear of every other proposal.
+/// and not on top of another proposal.
 fn snap(world: &World, at: GridCoord, size: (u8, u8), except: EntityId) -> Option<GridCoord> {
     let others: Vec<(GridCoord, (u8, u8))> =
         proposals(world).into_iter().filter(|&(id, ..)| id != except).map(|(_, p, q)| (p, q.size)).collect();
     let fits = |pos: GridCoord| {
         let (w, h) = (size.0 as i32, size.1 as i32);
-        (-1..=w).all(|dx| {
-            (-1..=h).all(|dy| {
+        (0..w).all(|dx| {
+            (0..h).all(|dy| {
                 let t = GridCoord { x: pos.x + dx, y: pos.y + dy };
-                let inside = (0..w).contains(&dx) && (0..h).contains(&dy);
-                let clear = !world.occupied.contains_key(&(t.x, t.y));
-                (if inside { world.is_buildable(t) && world.revealed.contains(&crate::world::chunk_of(t)) } else { clear })
+                world.is_buildable(t)
+                    && world.revealed.contains(&crate::world::chunk_of(t))
                     && !others.iter().any(|&(p, s)| {
-                        t.x >= p.x - 1 && t.x <= p.x + s.0 as i32 && t.y >= p.y - 1 && t.y <= p.y + s.1 as i32
+                        t.x >= p.x && t.x < p.x + s.0 as i32 && t.y >= p.y && t.y < p.y + s.1 as i32
                     })
             })
         })
@@ -332,7 +328,6 @@ fn buildings(world: &World) -> Vec<(EntityId, GridCoord, BuildingKind)> {
         .objects
         .all_entries()
         .iter()
-        .filter(|e| e.draft.is_none())
         .filter_map(|e| match e.object {
             GameObject::Building(ref b) => Some((e.id, e.position?, b.kind)),
             _ => None,
@@ -465,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn the_queue_holds_five() {
+    fn one_offer_at_a_time() {
         let mut world = country();
         let mut now = 0;
         for _ in 0..40 {
@@ -473,7 +468,11 @@ mod tests {
             afford(&mut world, now);
             propose(&mut world, now);
         }
-        assert_eq!(proposals(&world).len(), QUEUE);
+        assert_eq!(proposals(&world).len(), 1);
+        let (id, ..) = proposals(&world)[0];
+        answer(&mut world, id, true, now);
+        afford(&mut world, now + STEP);
+        assert!(propose(&mut world, now + STEP).is_some(), "the next offer follows the answer");
     }
 
     /// Not an assertion: a picture, for whoever runs this with --nocapture.

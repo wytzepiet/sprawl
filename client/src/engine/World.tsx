@@ -12,7 +12,7 @@ import {
   getObjectsAt,
   useGame,
 } from "../state/gameObjects";
-import { lookOf, DOOMED_TRAFFIC, GHOST } from "./objects/draftLook";
+import { SOLID, GHOST } from "./objects/look";
 import type { Operation, GameObjectEntry } from "../generated";
 
 import type { Building } from "../generated";
@@ -33,7 +33,6 @@ interface MountedEntry {
 
 export default function World() {
   const pool = useInstancePool();
-  const { me } = useGame();
   const { scene } = useEngine();
   const { ambientColor, shadowGenerator } = useDayNight();
   const theme = useTheme();
@@ -43,20 +42,8 @@ export default function World() {
   const hasRoad = (x: number, y: number) =>
     getObjectsAt(x, y).some((o) => o.object.kind === "RoadNode");
 
-  /**
-   * Trees give way to anything built — a road, or any tile of a plot. Drafts
-   * count: clearing the ground is part of seeing what you are about to build,
-   * and discarding puts the trees back.
-   */
+  /** Trees give way to anything built — a road, or any tile of a plot. */
   const isBuilt = (x: number, y: number) => hasRoad(x, y) || builtTiles.has(`${x},${y}`);
-
-  const onDoomedRoad = (entry: GameObjectEntry) => {
-    const p = entry.position;
-    if (!p) return false;
-    return getObjectsAt(p.x, p.y).some(
-      (o) => o.object.kind === "RoadNode" && o.draft?.state === "Removed",
-    );
-  };
 
   /**
    * Every tile under a building, mirroring the server's occupancy index. The
@@ -100,20 +87,13 @@ export default function World() {
   createEffect(on(theme, () => terrain.markAllDirty(), { defer: true }));
 
   function mount(entry: GameObjectEntry): (() => void) | null {
-    const th = theme();
-    // Uncommitted work is drawn, just visibly unfinished. Whose it is decides
-    // how: yours keeps its colour, everyone else's is drained of it.
-    const look = lookOf(entry.draft, me());
     switch (entry.object.kind) {
       case "Building":
-        return mountBuilding(entry, pool, look);
+        return mountBuilding(entry, pool, SOLID);
       case "Car":
-        // A car on a road that is going away fades with it, so the two read as
-        // one thing being replaced. Re-evaluated whenever the car is upserted,
-        // which the simulation does at every segment it enters.
-        return mountCar(entry, pool, scene, onDoomedRoad(entry) ? DOOMED_TRAFFIC : look);
+        return mountCar(entry, pool, scene, SOLID);
       case "RoadNode":
-        return mountRoad(entry, pool, th, getEntity, look);
+        return mountRoad(entry, pool, theme(), getEntity);
       case "Proposal":
         // Same shape as a building, drawn as the one it would become.
         return mountBuilding(entry, pool, GHOST);

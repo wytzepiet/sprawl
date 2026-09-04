@@ -12,8 +12,6 @@ impl World {
     /// can be run after any commit and at startup without keeping a record of
     /// what it did last time, and it settles the same way either way.
     ///
-    /// Drafts house nobody. A building that is only drawn has no address.
-    ///
     /// Returns everyone whose situation changed — moved in, hired, or laid
     /// off. They are the ones with a new decision to make, so the caller
     /// wakes them.
@@ -36,9 +34,8 @@ impl World {
         for e in &entries {
             let GameObject::Building(ref b) = e.object else { continue };
             let Some(pos) = e.position else { continue };
-            // Drawn but not built, or built but not reached: nobody lives or
-            // works where no road goes.
-            if e.draft.is_some() || self.road_node_for_building(e.id).is_none() {
+            // Built but not reached: nobody lives or works where no road goes.
+            if self.road_node_for_building(e.id).is_none() {
                 continue;
             }
             where_is.insert(e.id, pos);
@@ -108,7 +105,6 @@ impl World {
                         last_update: 0,
                     }),
                     None,
-                    None,
                 );
                 touched.push(id);
                 jobless.push(id);
@@ -156,9 +152,7 @@ impl World {
                     _ => None,
                 })
                 .and_then(|b| self.objects.get(b).and_then(|e| e.position));
-            // Not insert_at: that stamps the committing player's draft mark,
-            // and nobody's car is a plan.
-            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None }), spot, None);
+            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None }), spot);
             if let Some(spot) = spot {
                 self.spatial.entry(crate::world::chunk_of(spot)).or_default().insert(car);
             }
@@ -372,8 +366,7 @@ mod tests {
     }
 
     /// A building the road has not reached stands dormant: it houses nobody
-    /// until a real road lands beside it, and then the driveway forms on its
-    /// own. A drafted road reaches nothing until it commits.
+    /// until a road lands beside it, and then the driveway forms on its own.
     #[test]
     fn a_house_off_the_road_waits_for_one() {
         let mut world = town();
@@ -384,31 +377,10 @@ mod tests {
         assert!(world.road_node_for_building(home).is_none(), "dormant");
         assert!(world.settle().is_empty(), "nobody moves in off the road");
 
-        // A drafted side street beside it changes nothing yet.
-        world.acting_as = Some(1);
+        // A side street beside it reaches the house, and the household arrives.
         world.place_road_path(&[GridCoord { x: 10, y: 0 }, GridCoord { x: 10, y: 2 }]);
-        world.acting_as = None;
-        assert!(world.road_node_for_building(home).is_none(), "a draft reaches nothing");
-        assert!(world.settle().is_empty());
-
-        // Committed, it reaches the house, and the household arrives.
-        world.commit_drafts(1);
         assert!(world.road_node_for_building(home).is_some(), "the driveway formed itself");
         assert_eq!(world.settle().len(), 2);
         assert!(residents(&world).iter().all(|r| r.home == home));
-    }
-
-    /// Drafts are drawn, not built. Nobody lives in one, which is what keeps a
-    /// discarded plan from having quietly rehoused half the city.
-    #[test]
-    fn nobody_moves_into_a_draft() {
-        let mut world = town();
-        world.acting_as = Some(1);
-        build(&mut world, 0, BuildingKind::House);
-        assert!(world.settle().is_empty(), "a drafted house has no address");
-
-        world.commit_drafts(1);
-        world.acting_as = None;
-        assert!(!world.settle().is_empty(), "committing is what gives it one");
     }
 }

@@ -22,17 +22,8 @@ impl World {
     /// Land a building can stand on. Water and mountain are out; roads and other
     /// buildings already hold their tiles.
     ///
-    /// Anything staged for demolition does not hold anything: the planner sees
-    /// the world as it will be after the commit. That is what lets an artery be
-    /// rerouted and built over in one go — pull up the old road, draw the new
-    /// one, drop a factory on the old alignment, and commit the lot, so the
-    /// traffic never sees a gap.
     pub fn is_buildable(&self, coord: GridCoord) -> bool {
-        // A building staged for demolition holds nothing; road_node_at already
-        // answers for the world after the commit, so it needs no such check.
-        if let Some(id) = self.occupied.get(&(coord.x, coord.y)).copied()
-            && !self.is_going_away(id)
-        {
+        if self.occupied.contains_key(&(coord.x, coord.y)) {
             return false;
         }
         if self.road_node_at(coord).is_some() {
@@ -85,9 +76,7 @@ impl World {
         if self.unique_connection_count(node) > 1 {
             return false;
         }
-        if let Some(id) = self.occupied.get(&(coord.x, coord.y)).copied()
-            && !self.is_going_away(id)
-        {
+        if self.occupied.contains_key(&(coord.x, coord.y)) {
             return false;
         }
         matches!(
@@ -206,11 +195,7 @@ impl World {
             // anyone looking at the other half.
             self.spatial.entry(crate::world::chunk_of(*tile)).or_default().insert(id);
         }
-        // A draft has not been built yet, so it has not seen anything either;
-        // the survey widens when it commits.
-        if self.acting_as.is_none() {
-            self.reveal_around(pos);
-        }
+        self.reveal_around(pos);
         Some(id)
     }
 
@@ -218,25 +203,17 @@ impl World {
     /// on the plot it happens to stand.
     ///
     /// A building takes exactly one, so this is what makes drawing a new road
-    /// into it *move* the driveway rather than give it a second. Retired the
-    /// way anything else is — erased outright if it was only ever drafted,
-    /// staged if it was real — so discarding the plan puts the old one back.
+    /// into it *move* the driveway rather than give it a second.
     pub(super) fn clear_driveway(&mut self, tile: GridCoord) {
         let Some(claimed) = self.claimed_plot_at(tile) else { return };
         let Some((pos, size)) = self.plot_of(claimed) else { return };
         let doomed: Vec<EntityId> =
             Self::footprint(pos, size).filter_map(|t| self.road_node_at(t)).collect();
         for id in doomed {
-            if self.acting_as.is_some() {
-                if !self.erase_draft(id) && self.draft_of(id).is_none() {
-                    self.draft_remove(id);
-                }
-            } else {
-                for edge in self.edges_involving(id) {
-                    self.remove_edge(edge.0, edge.1);
-                }
-                self.demolish_node(id);
+            for edge in self.edges_involving(id) {
+                self.remove_edge(edge.0, edge.1);
             }
+            self.demolish_node(id);
         }
     }
 
@@ -349,13 +326,7 @@ impl World {
                 }
                 self.handle_demolish_road(*tile);
             }
-            // Only if this tile is still ours. A building staged for demolition
-            // can already have its replacement drafted over it, and that one
-            // has since claimed the tile — tearing down the old one must not
-            // take the new one's occupancy with it.
-            if self.occupied.get(&(tile.x, tile.y)) == Some(&id) {
-                self.occupied.remove(&(tile.x, tile.y));
-            }
+            self.occupied.remove(&(tile.x, tile.y));
             self.unindex(id, *tile);
         }
         self.objects.remove(id);
@@ -553,244 +524,6 @@ mod tests {
         assert!(world.road_for_plot(GridCoord { x: 2, y: 0 }, (1, 1)).is_some());
     }
 
-    const ME: crate::protocol::OwnerId = 1;
-    const SOMEONE_ELSE: crate::protocol::OwnerId = 2;
-
-    /// One house on one tile, drafted or built according to `acting_as`.
-    fn house(world: &mut World, x: i32, y: i32) -> EntityId {
-        world
-            .spawn_building(GridCoord { x, y }, BuildingKind::House, (1, 1))
-            .expect("a road should be beside it")
-    }
-
-    /// The rule the whole feature rests on: a draft is drawn but not driven on.
-    #[test]
-    fn a_drafted_road_carries_no_traffic_until_committed() {
-        let mut world = world_with_road(&[(0, 0), (1, 0)]);
-        let before = world.edges.len();
-
-        world.acting_as = Some(ME);
-        world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 2, y: 0 }]);
-        assert_eq!(world.edges.len(), before, "a draft must not reach the traffic index");
-
-        world.commit_drafts(ME);
-        world.acting_as = None;
-        assert!(world.edges.len() > before, "committing is what wires it up");
-    }
-
-    /// Discard restores nothing because it destroyed nothing.
-    #[test]
-    fn discarding_leaves_the_committed_world_untouched() {
-        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
-        let edges = world.edges.len();
-        let roads = world.all_buildings().len();
-
-        world.acting_as = Some(ME);
-        house(&mut world, 0, 0);
-        assert!(!world.all_buildings().is_empty(), "the house should have been drafted");
-        world.discard_drafts(ME);
-        world.acting_as = None;
-
-        assert_eq!(world.all_buildings().len(), roads);
-        assert_eq!(world.edges.len(), edges);
-    }
-
-    /// Rerouting an artery and building over its old alignment, in one commit,
-    /// so the traffic never sees a gap. The old road keeps carrying cars the
-    /// whole time it is staged; only the commit takes it away.
-    #[test]
-    fn an_artery_can_be_moved_and_built_over_in_one_go() {
-        // The artery runs east along y=2, with room to redraw it along y=4.
-        let mut world = world_with_road(&[(0, 2), (1, 2), (2, 2), (3, 2), (4, 2)]);
-        let old: Vec<EntityId> = (1..4)
-            .map(|x| world.road_node_at(GridCoord { x, y: 2 }).unwrap())
-            .collect();
-        let carrying = world.edges.len();
-
-        world.acting_as = Some(ME);
-        for &id in &old {
-            world.draft_remove(id);
-        }
-        // Still carrying traffic while it is only staged.
-        assert_eq!(world.edges.len(), carrying, "a staged road must keep its traffic");
-
-        // The new alignment, and a factory on the old one.
-        world.place_road_path(&[
-            GridCoord { x: 0, y: 2 },
-            GridCoord { x: 1, y: 3 },
-            GridCoord { x: 2, y: 3 },
-            GridCoord { x: 3, y: 3 },
-            GridCoord { x: 4, y: 2 },
-        ]);
-        let factory = world
-            .spawn_building(GridCoord { x: 1, y: 2 }, BuildingKind::Factory, (3, 1))
-            .map(|id| vec![(id, GridCoord { x: 1, y: 2 })])
-            .expect("the old alignment should now be buildable");
-
-        let committed = world.commit_drafts(ME);
-        // By id, as the game loop does: the tile may hold a node for each world.
-        for id in committed.removed {
-            world.demolish_node(id);
-        }
-        world.acting_as = None;
-
-        // The factory stands, the new alignment carries, and the old one is
-        // gone — except for the one tile the factory kept as its way in.
-        assert!(world.objects.get(factory[0].0).is_some(), "the factory survived the commit");
-        assert!(world.road_node_at(GridCoord { x: 2, y: 3 }).is_some(), "new alignment laid");
-
-        let driveway = world.road_node_for_building(factory[0].0);
-        assert!(driveway.is_some(), "the factory kept a way in");
-        for id in old {
-            assert!(
-                world.objects.get(id).is_none() || Some(id) == driveway,
-                "old alignment is lifted, bar the tile that became the driveway",
-            );
-        }
-    }
-
-    /// A road on its way out and a road arriving belong to different worlds —
-    /// one to *now*, one to *after* — so they must never form a junction.
-    #[test]
-    fn a_new_road_does_not_junction_with_one_being_demolished() {
-        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0)]);
-        let doomed = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
-
-        world.acting_as = Some(ME);
-        world.draft_remove(doomed);
-        // Straight past it, one tile north.
-        world.place_road_path(&[GridCoord { x: 0, y: 1 }, GridCoord { x: 1, y: 1 }, GridCoord { x: 2, y: 1 }]);
-        let fresh = world.road_node_at(GridCoord { x: 1, y: 1 }).unwrap();
-
-        let arms = |id| match &world.objects.get(id).unwrap().object {
-            GameObject::RoadNode(n) => {
-                n.outgoing.iter().chain(n.incoming.iter()).copied().collect::<Vec<_>>()
-            }
-            _ => unreachable!(),
-        };
-        assert!(!arms(fresh).contains(&doomed), "the new road reached for one that is leaving");
-        assert!(!arms(doomed).contains(&fresh), "the leaving road reached for a new one");
-    }
-
-    /// A tile where the two worlds disagree holds a node for each: the one
-    /// being demolished, still carrying traffic, and the one arriving. Neither
-    /// borrows the other's shape, which is what stops a crossing drawing a
-    /// junction that belongs to neither.
-    #[test]
-    fn a_crossing_gives_the_tile_a_node_for_each_world() {
-        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0)]);
-        let doomed = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
-
-        world.acting_as = Some(ME);
-        world.draft_remove(doomed);
-        // A new road crossing it at right angles, straight through the tile.
-        world.place_road_path(&[
-            GridCoord { x: 1, y: -1 },
-            GridCoord { x: 1, y: 0 },
-            GridCoord { x: 1, y: 1 },
-        ]);
-
-        let fresh = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
-        assert_ne!(fresh, doomed, "the crossing must not take over the doomed node");
-        assert_eq!(
-            world.objects.get(doomed).and_then(|e| e.position),
-            Some(GridCoord { x: 1, y: 0 }),
-            "the doomed node still stands on the same tile",
-        );
-
-        let arms = |id| match &world.objects.get(id).unwrap().object {
-            GameObject::RoadNode(n) => {
-                n.outgoing.iter().chain(n.incoming.iter()).copied().collect::<Vec<_>>()
-            }
-            _ => unreachable!(),
-        };
-        assert!(!arms(fresh).contains(&doomed), "the two worlds shared an arm");
-        assert!(!arms(doomed).contains(&fresh), "the two worlds shared an arm");
-
-        // The old artery keeps running through the tile until the commit.
-        let west = world.road_node_at(GridCoord { x: 0, y: 0 }).unwrap();
-        assert!(world.edges.contains_key(&(west, doomed)), "traffic still uses it");
-    }
-
-    /// Demolish half a straight road and the survivor is a dead end, free to
-    /// turn a corner it could never have turned while the other half stood.
-    ///
-    /// The demolished half keeps carrying traffic and keeps its own shape; it
-    /// is simply no longer something the surviving road reaches for.
-    #[test]
-    fn a_road_demolished_up_to_a_point_frees_the_survivor_to_turn() {
-        let mut world = world_with_road(&[(0, 0), (1, 0), (2, 0), (3, 0)]);
-        let survivor = world.road_node_at(GridCoord { x: 1, y: 0 }).unwrap();
-        let doomed = world.road_node_at(GridCoord { x: 2, y: 0 }).unwrap();
-
-        // While the whole road stands, turning back on itself is too sharp.
-        assert!(world.would_be_too_sharp(GridCoord { x: 1, y: 0 }, 1, 1, false));
-
-        world.acting_as = Some(ME);
-        world.draft_remove(doomed);
-        world.draft_remove(world.road_node_at(GridCoord { x: 3, y: 0 }).unwrap());
-
-        assert!(
-            !world.would_be_too_sharp(GridCoord { x: 1, y: 0 }, 1, 1, false),
-            "the arm toward the demolished half should no longer be in the way",
-        );
-        assert!(
-            !world.arms_of(survivor, false).contains(&doomed),
-            "the survivor still reaches for what is leaving",
-        );
-        assert!(
-            world.arms_of(doomed, false).contains(&survivor),
-            "the demolished road should still draw through to where it reached",
-        );
-
-        // And the turn can actually be laid.
-        world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 2, y: 1 }]);
-        assert!(world.road_node_at(GridCoord { x: 2, y: 1 }).is_some());
-    }
-
-    /// A driveway is not a street. Without this a plot behind a house takes its
-    /// access off that house's driveway, and you get a road running into one
-    /// building and straight on into the next.
-    #[test]
-    fn a_plot_cannot_front_onto_someone_elses_driveway() {
-        let mut world = world_with_road(&[(0, 1), (1, 1), (2, 1)]);
-
-        // A house on the street, which lays a driveway on its own tile.
-        let house = world
-            .spawn_building(GridCoord { x: 1, y: 0 }, BuildingKind::House, (1, 1))
-            .unwrap();
-        let driveway = world.road_node_for_building(house).unwrap();
-        assert_eq!(
-            world.objects.get(driveway).and_then(|e| e.position),
-            Some(GridCoord { x: 1, y: 0 }),
-            "the driveway stands on the house's own tile",
-        );
-
-        // The plot behind it touches that driveway and nothing else.
-        assert!(
-            world.road_for_plot(GridCoord { x: 1, y: -1 }, (1, 1)).is_none(),
-            "a driveway is spoken for; it cannot be another plot's street",
-        );
-        // And the street one row further along still serves normally.
-        assert!(world.road_for_plot(GridCoord { x: 2, y: 0 }, (1, 1)).is_some());
-    }
-
-    /// Painting a deep block, not just a frontage strip: no driveway may ever
-    /// run into a building and on into the next one.
-    /// A plot will not take a driveway onto a road that is on its way out.
-    #[test]
-    fn a_road_staged_for_removal_is_not_access() {
-        let mut world = world_with_road(&[(0, 1), (1, 1)]);
-        let road = world.road_node_at(GridCoord { x: 0, y: 1 }).unwrap();
-
-        world.acting_as = Some(ME);
-        world.draft_remove(road);
-        let other = world.road_node_at(GridCoord { x: 1, y: 1 }).unwrap();
-        world.draft_remove(other);
-
-        assert!(world.road_for_plot(GridCoord { x: 0, y: 0 }, (1, 1)).is_none());
-    }
-
     /// The reachability index is maintained edit by edit rather than rebuilt,
     /// so the thing worth testing is that it never drifts from the graph it
     /// claims to describe. Brute-forces the answer and demands agreement.
@@ -829,6 +562,13 @@ mod tests {
             world.remove_edge(edge.0, edge.1);
         }
         world.demolish_node(id);
+    }
+
+    /// One house on one tile, built.
+    fn house(world: &mut World, x: i32, y: i32) -> EntityId {
+        world
+            .spawn_building(GridCoord { x, y }, BuildingKind::House, (1, 1))
+            .expect("a road should be beside it")
     }
 
     #[test]

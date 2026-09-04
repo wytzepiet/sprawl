@@ -23,8 +23,8 @@ From `sprawl-agents.md`, unchanged:
   never gates it. A building that appears participates automatically.
 - **A proposal is not a building.** It is a pin, a ghost footprint and
   two buttons. ✓ places the real building; ✗ dismisses it and suppresses
-  that kind thereabouts for a while; unanswered, it waits. The queue is
-  small and capped; the spawner holds when it is full. (It *is* an entity
+  that kind thereabouts for a while; unanswered, it waits. One offer
+  stands at a time; the spawner holds until it is answered. (It *is* an entity
   — `GameObject::Proposal`, positioned — so it is saved and streamed like
   everything else for free; `occupied`, traffic and settle never see it.
   The earlier write-up said "not a world object"; the objection there was
@@ -82,7 +82,7 @@ buildings within a few tiles of each other, on request.
 Proposal { id, kind, pos, size, rotation }
 ```
 
-Held on the world, persisted, capped at five. Answered individually:
+Held on the world, persisted, one at a time. Answered:
 
 - **Accept** — `place_building` at the proposal's site. Dormant until
   roaded.

@@ -1,7 +1,7 @@
 import { Color3 } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { shapeFor, BUILDING_COLOR, variantOf, facingOf } from "./buildings";
-import type { Look } from "./draftLook";
+import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
 
 export function mountBuilding(

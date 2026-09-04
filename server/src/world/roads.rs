@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::protocol::{Draft, EntityId, GameObject, GridCoord, RoadNode};
+use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
 
 impl World {
@@ -12,27 +12,13 @@ impl World {
         })
     }
 
-    /// The road that will stand on this tile once pending work is committed.
-    ///
-    /// A draft splits the world in two: *now* is committed plus everything
-    /// staged for demolition, and that is what traffic drives on; *after* is
-    /// committed plus everything drafted, and that is what you build against.
-    ///
-    /// Where the two disagree the tile holds one node for each, so a new road
-    /// can cross one being demolished without either borrowing the other's
-    /// shape. This is the one everything that plans wants — placement,
-    /// geometry, access, occupancy.
+    /// The road on this tile.
     pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
-        self.road_nodes_at(coord).find(|&id| !self.is_going_away(id))
+        self.road_nodes_at(coord).next()
     }
 
-    /// Place a road node at coord. Idempotent within a world: returns the node
-    /// already standing here if one will still be here after the commit.
-    ///
-    /// A road staged for demolition is not that node, so drawing across one
-    /// lays a second node on the tile rather than taking the old one over. The
-    /// two never share an arm, which is what lets a new road cross a doomed one
-    /// without drawing a junction that belongs to neither.
+    /// Place a road node at coord. Idempotent: returns the node already
+    /// standing here.
     fn place_road(&mut self, coord: GridCoord) -> EntityId {
         if let Some(id) = self.road_node_at(coord) {
             return id;
@@ -44,31 +30,14 @@ impl World {
         )
     }
 
-    /// The neighbours a node shares a world with.
-    ///
-    /// A node only ever reaches for nodes on its own side of a draft: what is
-    /// arriving does not reach for what is leaving, and vice versa. That is
-    /// what lets a road be demolished up to a point and the survivor turn a
-    /// corner it could not have turned before — the arm toward the demolished
-    /// half is simply not there to be too sharp against, and the survivor stops
-    /// being drawn curved toward it.
-    ///
-    /// The doomed node keeps its own arms, so it still draws through to
-    /// everything it used to reach. It is its own record of what was there;
-    /// nothing has to be unlinked, which is what keeps discard free.
+    /// A node's neighbours.
     pub fn arms_of(&self, id: EntityId, outgoing_only: bool) -> Vec<EntityId> {
         let Some(entry) = self.objects.get(id) else { return Vec::new() };
         let GameObject::RoadNode(ref node) = entry.object else { return Vec::new() };
-        let leaving = self.is_going_away(id);
-        let same_world = |&&n: &&EntityId| match self.draft_of(n) {
-            Some(Draft::Removed(_)) => leaving,
-            Some(Draft::Added(_)) => !leaving,
-            None => true,
-        };
         if outgoing_only {
-            node.outgoing.iter().filter(same_world).copied().collect()
+            node.outgoing.clone()
         } else {
-            node.outgoing.iter().chain(node.incoming.iter()).filter(same_world).copied().collect()
+            node.outgoing.iter().chain(node.incoming.iter()).copied().collect()
         }
     }
 
@@ -196,11 +165,8 @@ impl World {
             expanded.push(b);
         }
         let ids: Vec<_> = expanded.iter().map(|&c| self.place_road(c)).collect();
-        // A road laid for real reaches whatever dormant building stands
-        // beside it. A drafted one reaches nothing until it commits.
-        if self.acting_as.is_none() {
-            self.attach_driveways_along(&expanded);
-        }
+        // A road reaches whatever dormant building stands beside it.
+        self.attach_driveways_along(&expanded);
         for pair in ids.windows(2) {
             let (a, b) = (pair[0], pair[1]);
             // Add outgoing a→b
@@ -220,7 +186,7 @@ impl World {
         }
     }
 
-    /// Remove the road node standing at `pos`, if the commit would leave one.
+    /// Remove the road node standing at `pos`.
     pub fn handle_demolish_road(&mut self, pos: GridCoord) {
         if let Some(id) = self.road_node_at(pos) {
             self.demolish_node(id);
@@ -228,9 +194,6 @@ impl World {
     }
 
     /// Remove a road node by id and clean up every reference to it.
-    ///
-    /// By id rather than by tile: a tile can hold two nodes while a new road
-    /// crosses one being demolished, and only one of them is going.
     pub fn demolish_node(&mut self, id: EntityId) {
         let Some(pos) = self.objects.get(id).and_then(|e| e.position) else { return };
         let (neighbor_ids, incoming_ids) = match self.objects.get(id) {
@@ -261,8 +224,6 @@ impl World {
         self.unique_connection_count(node_id) > 2
     }
 
-    /// Counts only arms in this node's own world: a drafted road carries no
-    /// cars, so it cannot make a junction the simulation has to arbitrate.
     pub(super) fn unique_connection_count(&self, node_id: EntityId) -> usize {
         let unique: HashSet<EntityId> = self.arms_of(node_id, false).into_iter().collect();
         unique.len()

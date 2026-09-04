@@ -54,6 +54,8 @@ export default function PinLayer() {
   // zoom itself, so it changes a handful of times instead of every frame.
   const [step, setStep] = createSignal(0);
   const els = new Map<number, HTMLElement>();
+  // The pin under the pointer: placed by the hand, not the projection.
+  let dragging: number | null = null;
   let layer!: HTMLDivElement;
 
   // Project every pin after each render, through the scene's own matrix — so a
@@ -70,7 +72,7 @@ export default function PinLayer() {
 
     for (const e of entries()) {
       const el = els.get(e.id);
-      if (!el || !e.position) continue;
+      if (!el || !e.position || e.id === dragging) continue;
       const [w, h] = (e.object.data as { size: [number, number] }).size;
       const { sx, sy } = project.at(e.position.x + w / 2, e.position.y + h / 2);
       const off = sx < -40 || sy < -40 || sx > rect.right + 40 || sy > rect.bottom + 40;
@@ -136,6 +138,7 @@ export default function PinLayer() {
     down.stopPropagation();
     const el = els.get(e.id);
     el?.setPointerCapture(down.pointerId);
+    dragging = e.id;
     let moved = false;
     const move = (ev: PointerEvent) => {
       moved = true;
@@ -145,6 +148,7 @@ export default function PinLayer() {
       el!.dataset.wy = String(Math.floor(wy));
     };
     const up = () => {
+      dragging = null;
       el?.removeEventListener("pointermove", move);
       el?.removeEventListener("pointerup", up);
       if (moved && el?.dataset.wx) {

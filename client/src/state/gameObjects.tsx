@@ -37,9 +37,6 @@ export { me };
  * Our own uncommitted entities. Kept as ops arrive rather than derived on
  * demand, since it decides whether the commit bar is on screen at all.
  */
-const myDrafts = new Set<number>();
-const [pending, setPending] = createSignal(0);
-export { pending };
 
 /**
  * What carries a pin: every building, and every proposal. Kept as ops
@@ -63,10 +60,6 @@ function trackPin(entry: GameObjectEntry | undefined, id: number) {
   if (was || pinnedEntries.has(id)) setPinsVersion((v) => v + 1);
 }
 
-function trackDraft(entry: GameObjectEntry) {
-  if (entry.draft != null && entry.draft.owner === me()) myDrafts.add(entry.id);
-  else myDrafts.delete(entry.id);
-}
 export function getEntity(id: number): GameObjectEntry | undefined {
   return entities.get(String(id));
 }
@@ -133,7 +126,6 @@ function applyOps(ops: Operation[]) {
           else if (!ids.includes(op.data.id)) ids.push(op.data.id);
         }
         entities.set(key, op.data);
-        trackDraft(op.data);
         trackPin(op.data, op.data.id);
         break;
       }
@@ -152,21 +144,18 @@ function applyOps(ops: Operation[]) {
           }
           entities.delete(key);
         }
-        myDrafts.delete(Number(key));
         trackPin(undefined, Number(key));
         break;
       }
     }
   }
-  setPending(myDrafts.size);
   opsListener?.(ops);
 }
 
 // --- Context (thin — just what UI needs) ---
 
 interface GameContext {
-  /** Who this client is. Drafts belong to a player, so this is what tells
-   *  your own pending work from everyone else's. */
+  /** Who this client is. */
   me(): number;
   terrainSeed(): number;
   /** Surveyed extent, in chunks. max < min means nothing is surveyed yet. */

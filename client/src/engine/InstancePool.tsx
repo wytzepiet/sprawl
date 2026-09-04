@@ -335,8 +335,7 @@ export function InstancePoolProvider(props: ParentProps) {
   // it, and Chrome does that synchronously in the GPU process: a few hundred
   // milliseconds with no frames at all. The variants are few — lit or unlit,
   // opaque or translucent — so each is drawn once now, off the map in the
-  // loading frame, rather than the first time a draft road appears under the
-  // pointer.
+  // loading frame, rather than the first time a ghost appears under the pointer.
   const warm: { key: string; id: number }[] = [];
   for (const lit of [true, false]) {
     for (const alpha of [1, 0.5]) {

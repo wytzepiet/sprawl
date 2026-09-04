@@ -19,8 +19,7 @@ use crate::protocol::GridCoord;
 use crate::world::pathfinding;
 
 struct ClientState {
-    /// Who is playing. Several sockets can share one, and drafts belong to it
-    /// rather than to any one connection.
+    /// Who is playing. Several sockets can share one.
     owner: OwnerId,
     sender: mpsc::UnboundedSender<ServerMessage>,
     subscribed: Option<ChunkBounds>,
@@ -46,10 +45,6 @@ const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 /// second is twenty-five ticks of lag, well past anything a debug build
 /// takes for one, and short enough to be seen the moment it starts.
 const BEHIND: Duration = Duration::from_millis(250);
-/// How long an abandoned draft holds its land. Long enough that a reload or a
-/// dropped connection does not cost you the work; short enough that walking
-/// away does not freeze the ground for everyone else.
-const DRAFT_GRACE: Duration = Duration::from_secs(120);
 /// Simulated milliseconds per step. Fixed: speed adds steps rather than making
 /// them longer, so running fast cannot change what the simulation does.
 const STEP_MS: GameTime = 10;
@@ -65,8 +60,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let mut events: EventQueue = EventQueue::new();
     let mut intersections = IntersectionRegistry::new();
     let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
-    // Owners with no socket, and when their drafts run out of time.
-    let mut abandoned: HashMap<OwnerId, Instant> = HashMap::new();
 
     // Terrain is derived from the seed, so it is regenerated on every start
     // rather than persisted. A fresh world also gets its roads laid out.
@@ -176,14 +169,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         }
                         println!("reset: world cleared, terrain regenerated");
                     } else {
-                        world.acting_as = clients.get(&client_id).map(|c| c.owner);
                         handle_player_action(&mut world, &mut events, &mut intersections, message, now);
-                        world.acting_as = None;
                     }
                 }
                 Command::ClientConnect { id, owner, sender } => {
-                    // Back before the drafts expired: the land is still theirs.
-                    abandoned.remove(&owner);
                     let _ = sender.send(ServerMessage::Welcome(owner));
                     // Send empty update with terrain_seed; objects come via SetViewport
                     let _ = sender.send(state_update(&world, vec![], clock(now, speed)));
@@ -206,15 +195,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                     let _ = reply.send(serde_json::to_string_pretty(&v).unwrap_or_default());
                 }
                 Command::ClientDisconnect { id } => {
-                    let Some(gone) = clients.remove(&id) else { continue };
-                    // An abandoned draft is a land claim, so it cannot be held
-                    // forever -- but a reload should not cost you the work
-                    // either, and identity outlives the socket, so the claim is
-                    // given a while to be reclaimed. Another tab of the same
-                    // player still being open means it never lapsed at all.
-                    if !clients.values().any(|c| c.owner == gone.owner) {
-                        abandoned.insert(gone.owner, Instant::now() + DRAFT_GRACE);
-                    }
+                    clients.remove(&id);
                 }
             }
         }
@@ -226,18 +207,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             let terrain = world.terrain.clone();
             let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
             crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
-        }
-
-        // Claims nobody came back for.
-        if !abandoned.is_empty() {
-            let lapsed = Instant::now();
-            abandoned.retain(|&owner, &mut deadline| {
-                if deadline > lapsed {
-                    return true;
-                }
-                world.discard_drafts(owner);
-                false
-            });
         }
 
         // One step per unit of speed, each the same length as at speed 1, so a
@@ -331,11 +300,9 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
         return;
     }
 
-    // Drafts are not part of the world yet, so they are not part of the save.
     let changed: Vec<_> = changed_ids
         .iter()
         .filter_map(|id| world.objects.get(*id))
-        .filter(|e| e.draft.is_none())
         .cloned()
         .collect();
 
@@ -387,17 +354,18 @@ fn handle_player_action(
             }
         }
         ClientMessage::DemolishRoad(demolish) => {
-            // Which of the two things this does follows from what was clicked,
-            // not from a parameter: erasing something you just drew removes it,
-            // erasing something real stages it for the commit.
+            // What goes follows from what was clicked: a road, or the building
+            // standing there. Either way the population is settled against
+            // what is left.
             let pos = demolish.pos;
-            let target = world
-                .road_node_at(pos)
-                .or_else(|| world.occupied.get(&(pos.x, pos.y)).copied());
-            let Some(id) = target else { return };
-            if !world.erase_draft(id) && world.draft_of(id).is_none() {
-                world.draft_remove(id);
+            if let Some(id) = world.road_node_at(pos) {
+                handle_road_demolish(world, events, intersections, id, now);
+            } else if let Some(id) = world.occupied.get(&(pos.x, pos.y)).copied() {
+                world.remove_building(id);
+            } else {
+                return;
             }
+            settle_and_wake(world, events);
         }
         ClientMessage::DespawnAllCars => {
             let car_ids: Vec<EntityId> = world.objects.all_entries()
@@ -411,29 +379,6 @@ fn handle_player_action(
         }
         ClientMessage::Answer { id, accept } => crate::spawner::answer(world, id, accept, now),
         ClientMessage::MoveProposal { id, pos } => crate::spawner::relocate(world, id, pos),
-        ClientMessage::Commit => {
-            let Some(owner) = world.acting_as else { return };
-            let committed = world.commit_drafts(owner);
-            // Demolition last: it has to see the network as the commit left it,
-            // and it despawns the cars that were using what is going away.
-            for id in committed.removed {
-                match world.objects.get(id).map(|e| &e.object) {
-                    Some(GameObject::RoadNode(_)) => {
-                        handle_road_demolish(world, events, intersections, id, now)
-                    }
-                    Some(GameObject::Building(_)) => world.remove_building(id),
-                    _ => {}
-                }
-            }
-            // Houses gained, jobs gained, or a home taken away — the population
-            // is settled against whatever the commit left standing.
-            settle_and_wake(world, events);
-        }
-        ClientMessage::Discard => {
-            if let Some(owner) = world.acting_as {
-                world.discard_drafts(owner);
-            }
-        }
         ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),
         ClientMessage::ResetWorld => unreachable!("handled in run()"),
         ClientMessage::SetChunks(_) => unreachable!("handled in run()"),

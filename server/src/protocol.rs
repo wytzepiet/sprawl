@@ -245,32 +245,8 @@ pub enum GameObject {
     Proposal(Proposal),
 }
 
-/// Who a player is, for the purpose of owning drafts. Assigned on connect.
+/// Who a player is. Assigned on connect.
 pub type OwnerId = u64;
-
-/// An uncommitted change, and whose it is.
-///
-/// A draft is an ordinary world object that reserves its space and is visible
-/// to everyone, but is invisible to traffic and to persistence. Two questions
-/// get different answers: the planner and the renderer see the world as it will
-/// be after commit, while traffic sees it as it is now. So an `Added` road
-/// carries no cars but does block a plot, and a `Removed` road still carries
-/// cars but will not be given a new driveway.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
-#[ts(export)]
-#[serde(tag = "state", content = "owner")]
-pub enum Draft {
-    Added(#[ts(type = "number")] OwnerId),
-    Removed(#[ts(type = "number")] OwnerId),
-}
-
-impl Draft {
-    pub fn owner(self) -> OwnerId {
-        match self {
-            Draft::Added(o) | Draft::Removed(o) => o,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -279,10 +255,6 @@ pub struct GameObjectEntry {
     pub id: EntityId,
     pub object: GameObject,
     pub position: Option<GridCoord>,
-    /// `None` once committed, which is what the simulation and the save file
-    /// both key off.
-    #[serde(default)]
-    pub draft: Option<Draft>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -328,11 +300,6 @@ pub enum ClientMessage {
     PlaceBuilding(PlaceBuilding),
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
-    /// Make everything you have drafted real.
-    Commit,
-    /// Throw away everything you have drafted. Nothing committed was ever
-    /// touched, so this destroys nothing and restores nothing.
-    Discard,
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     ResetWorld,
@@ -432,23 +399,4 @@ pub enum ServerMessage {
     Pong(#[ts(type = "number")] u64),
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    /// The client keys its rendering off this field, so it has to survive the
-    /// wire. Adjacently-tagged enums inside an Option are the kind of thing a
-    /// binary format can quietly drop.
-    #[test]
-    fn a_draft_survives_the_wire() {
-        let entry = GameObjectEntry {
-            id: 7,
-            object: GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![] }),
-            position: Some(GridCoord { x: 1, y: 2 }),
-            draft: Some(Draft::Added(99)),
-        };
-        let bytes = rmp_serde::to_vec_named(&entry).unwrap();
-        let back: GameObjectEntry = rmp_serde::from_slice(&bytes).unwrap();
-        assert_eq!(back.draft, Some(Draft::Added(99)));
-    }
-}
