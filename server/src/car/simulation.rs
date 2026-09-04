@@ -28,12 +28,15 @@ pub fn park_car(
     let trip_info = world.objects.get(car_id).and_then(|entry| {
         if let GameObject::Car(ref car) = entry.object {
             owner = Some(car.owner);
-            car.trip.as_ref().map(|t| (t.route.clone(), t.route_index))
+            car.trip.as_ref().map(|t| (t.route.clone(), t.route_index, t.total_route_length))
         } else {
             None
         }
     });
-    if let Some((route, route_index)) = trip_info {
+    if let Some((route, route_index, driven)) = trip_info {
+        if let Some(owner) = owner {
+            crate::resident::drove(world, owner, driven);
+        }
         world.unregister_car_route(car_id, &route);
         if route_index >= 1 {
             let edge = (route[route_index - 1], route[route_index]);

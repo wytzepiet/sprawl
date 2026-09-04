@@ -3,6 +3,7 @@
     "solid-js": "^2.0.0-beta.2"
   },
   "scripts": {
-    "dev": "./dev.sh"
+    "dev": "./dev.sh",
+    "profile": "samply record -p $(lsof -tiTCP:3001 -sTCP:LISTEN)"
   }
 }

@@ -135,6 +135,15 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
                 outing(Leisure, hours(20 * H, 2 * H), 12),
             ],
         }),
+        // The pumps run round the clock; the kiosk keeps shop hours. Where
+        // the tanks are filled is where the driving is — beside the homes.
+        (GasStation, Blueprint {
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), weight: 0.3, tilt: &[Fuel], by_hand: false,
+            taps: vec![
+                shift(6, 22, 2),
+                tap(Fuel, always(), 4),
+            ],
+        }),
     ]
 });
 

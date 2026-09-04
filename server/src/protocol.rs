@@ -45,11 +45,13 @@ pub enum BuildingKind {
     /// Somewhere to be after dark. The first thing open when everything
     /// else has shut.
     Bar,
+    /// Pumps that never close, and a kiosk that does.
+    GasStation,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 8] = [
+    pub const ALL: [BuildingKind; 9] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -58,6 +60,7 @@ impl BuildingKind {
         BuildingKind::Factory,
         BuildingKind::Restaurant,
         BuildingKind::Bar,
+        BuildingKind::GasStation,
     ];
 }
 

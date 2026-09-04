@@ -44,11 +44,23 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the running binary, `sim_time` should be climbing. A fix that seems not to
   work is a stale binary until that says otherwise; a socket that answers while
   `sim_time` stands still is a dead game loop.
+- **Is it fast?** Two signals, and no profiling until one of them fires.
+  The server prints `behind: N wakes took M ms` whenever a tick overruns a
+  quarter second — if that shows in `.dev/server.log`, the loop is falling
+  behind the wall clock and every command lags with it. Every now and then,
+  `cargo test --release town -- --ignored --nocapture` runs a day of town
+  life and asserts how often residents wake (a storm is ten times the
+  budget) and prints simulated days per second, to see whether it drifted.
+  When one of those says something is wrong, `bun run profile` attaches to
+  the running server (`samply setup` once, first) and opens a flame graph in
+  the browser.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads, forest to build into, and coastline —
-  enough to exercise zoning, tree clearing and demolition. Any fixed seed gives
+  enough to exercise building, tree clearing and demolition. Any fixed seed gives
   the same map back, so a change in behaviour is a change in the code.
+  `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the middle of
+  the map; `cargo test draw_the_town -- --nocapture` prints a grown town.
 
 ## Solid 1.x
 

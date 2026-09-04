@@ -109,8 +109,19 @@ pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<En
         if current.f - heuristic(current.id) > here + 1e-9 {
             continue; // superseded by a cheaper way here
         }
+        if current.id == end {
+            return Some(stitch(&came_from, start, end));
+        }
+        // The last leg is a hop like any other: the far end of the
+        // destination's stretch may be popped first and still be the dearer
+        // way in, so it competes in the queue rather than ending the search.
         if let Some(exit) = exits.get(&current.id) {
-            return Some(stitch(&came_from, start, current.id, &exit.nodes));
+            let cost = here + exit.cost;
+            if g.get(&end).is_none_or(|&best| cost < best - 1e-9) {
+                g.insert(end, cost);
+                came_from.insert(end, (current.id, exit.nodes.clone()));
+                open.push(Node { id: end, f: cost });
+            }
         }
         for hop in hops_from(world, current.id) {
             let cost = here + hop.cost;
@@ -128,11 +139,10 @@ pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<En
 fn stitch(
     came_from: &HashMap<EntityId, (EntityId, Vec<EntityId>)>,
     start: EntityId,
-    last: EntityId,
-    tail: &[EntityId],
+    end: EntityId,
 ) -> Vec<EntityId> {
     let mut legs: Vec<&Vec<EntityId>> = Vec::new();
-    let mut at = last;
+    let mut at = end;
     while at != start {
         let Some((prev, nodes)) = came_from.get(&at) else { break };
         legs.push(nodes);
@@ -144,7 +154,6 @@ fn stitch(
     for leg in legs {
         extend_route(&mut route, leg);
     }
-    extend_route(&mut route, tail);
     route
 }
 

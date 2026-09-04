@@ -42,6 +42,10 @@ fn new_seed() -> u32 {
         .unwrap_or_else(rand::random::<u32>)
 }
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
+/// How far one tick may overrun before the loop says so: a quarter of a
+/// second is twenty-five ticks of lag, well past anything a debug build
+/// takes for one, and short enough to be seen the moment it starts.
+const BEHIND: Duration = Duration::from_millis(250);
 /// How long an abandoned draft holds its land. Long enough that a reload or a
 /// dropped connection does not cost you the work; short enough that walking
 /// away does not freeze the ground for everyone else.
@@ -238,12 +242,22 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 
         // One step per unit of speed, each the same length as at speed 1, so a
         // fast-forwarded hour is the same hour — just less wall time spent on it.
+        let started = Instant::now();
+        let mut wakes = 0u32;
         for _ in 0..speed {
             now += STEP_MS;
             events.set_now(now);
             while let Some(id) = events.pop_due() {
                 handle_wake(&mut world, &mut events, &mut intersections, id, now);
+                wakes += 1;
             }
+        }
+        // A tick that overruns is the clock falling behind the wall, and every
+        // command queued behind it. Said out loud the moment it happens, so a
+        // wake storm shows in the log rather than in the fan.
+        let took = started.elapsed();
+        if took >= BEHIND {
+            eprintln!("behind: {wakes} wakes took {} ms at speed {speed}", took.as_millis());
         }
         // The city offers a building once it has earned one, while the mayor
         // has room to answer. Cheap to ask — it is a subtraction until the
@@ -794,6 +808,12 @@ fn flush_dirty(
 
 #[cfg(test)]
 mod tests {
+    /// Wakes one resident may take in a day. The full town takes about 30,
+    /// the bare one about 58; with the overtake bug of 2026-09-04 put back
+    /// they take 146 and 231 in a day, and thousands once the storm has
+    /// grown. A change that legitimately moves the count moves this number
+    /// with it, on purpose.
+    const WAKE_BUDGET: u64 = 120;
     use super::*;
     use crate::protocol::{BuildingKind, TerrainType};
 
@@ -999,6 +1019,113 @@ mod tests {
             .find(|v| v["building"] == bar && v["need"] == "Leisure")
             .map_or(0.0, |v| v["today_h"].as_f64().unwrap() + v["yesterday_h"].as_f64().unwrap());
         assert!(sold > 2.0, "the bar sold {sold}h of evenings");
+    }
+
+    #[test]
+    fn cars_stop_for_fuel_now_and_then() {
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::Apartment, 2);
+        build(&mut world, 6, BuildingKind::Apartment, 2);
+        build(&mut world, 60, BuildingKind::Office, 2);
+        let station = build(&mut world, 30, BuildingKind::GasStation, 1);
+
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let people = world.resident_ids();
+
+        let day = DAY_MS as u64;
+        let mut stops = 0;
+        let mut last: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
+        let mut now = 0;
+        while now < 6 * day {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(id) = events.pop_due() {
+                handle_wake(&mut world, &mut events, &mut intersections, id, now);
+            }
+            for (i, &id) in people.iter().enumerate() {
+                let state = (at_of(&world, id), doing(&world, id));
+                if state != last[i] {
+                    if state == (Some(station), Some(crate::needs::Need::Fuel)) {
+                        stops += 1;
+                    }
+                    last[i] = state;
+                }
+            }
+        }
+        // Sixteen commuters, 120 tiles a day, a 500-tile tank: a stop each
+        // every few days — and not one a day, which would be a nag.
+        println!("{stops} fuel stops in six days");
+        assert!((12..=48).contains(&stops), "{stops} fuel stops in six days");
+        let d = crate::resident::demand(&world, 6 * day);
+        assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
+    }
+
+    /// A town along the street, settled and thinking, run for a while: a
+    /// mix of every kind, and the street running out past the frontier for
+    /// people to arrive by. Returns it and how many times a resident thought.
+    fn live(mix: &[BuildingKind], days: u64) -> (World, u64) {
+        let mut world = street();
+        for i in 0..40 {
+            build(&mut world, i, mix[i as usize % mix.len()], 1);
+        }
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let mut wakes = 0;
+        let mut now = 0;
+        while now < days * DAY_MS as u64 {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(id) = events.pop_due() {
+                if matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(_))) {
+                    wakes += 1;
+                }
+                handle_wake(&mut world, &mut events, &mut intersections, id, now);
+            }
+        }
+        (world, wakes)
+    }
+
+    /// The budget: how much thinking a day of town life is allowed to take.
+    /// A resident wakes when something changes for them — a shift, a meal,
+    /// an arrival — which is a few dozen times a day. A storm is thousands.
+    /// Counted, not timed, so it is the same on every machine. A day of
+    /// town takes most of a minute in debug, so it is not in the everyday
+    /// run: `cargo test --release town -- --ignored --nocapture` runs it
+    /// with the benchmark below, for a look every now and then.
+    ///
+    /// Two towns: one with everything, and one with nothing but homes and
+    /// jobs, where meals and evenings out go wanting. Wanting is where the
+    /// storm of 2026-09-04 lived — a bucket with nothing on offer was asked
+    /// again every step — so the bare town is the one that stands guard.
+    #[test]
+    #[ignore]
+    fn a_town_thinks_within_budget() {
+        for (name, mix) in [("full", &BuildingKind::ALL[..]), ("bare", &[BuildingKind::House, BuildingKind::Office][..])] {
+            let (world, wakes) = live(mix, 1);
+            let residents = world.resident_ids().len() as u64;
+            let per_resident_day = wakes / residents.max(1);
+            println!("{name}: {wakes} wakes for {residents} residents: {per_resident_day} per resident-day");
+            assert!(per_resident_day <= WAKE_BUDGET, "{name}: {per_resident_day} wakes per resident-day, budget {WAKE_BUDGET}");
+        }
+    }
+
+    /// How fast the same town runs, in simulated days per wall second. Not
+    /// asserted: wall time is the laptop's, not the code's. Printed for the
+    /// same occasional look as the budget, to see whether it has drifted.
+    #[test]
+    #[ignore]
+    fn how_fast_a_town_runs() {
+        let started = Instant::now();
+        let (world, wakes) = live(&BuildingKind::ALL, 3);
+        let secs = started.elapsed().as_secs_f64();
+        println!(
+            "{} residents, {wakes} wakes: {:.1} sim days per second",
+            world.resident_ids().len(),
+            3.0 / secs
+        );
     }
 
     #[test]

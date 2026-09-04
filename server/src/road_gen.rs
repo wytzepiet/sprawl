@@ -4,7 +4,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
-use crate::protocol::{GridCoord, TerrainType};
+use crate::protocol::{GameObject, GridCoord, TerrainType};
 use crate::world::World;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -145,12 +145,40 @@ pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), Terr
         max_cy: START_MAX - 1,
     };
     extend_to(world, seed, terrain, start);
+    start_sites(world, seed, terrain)
+}
 
-    (START_MIN..START_MAX)
-        .flat_map(|cy| (START_MIN..START_MAX).map(move |cx| ChunkCoord { cx, cy }))
-        .filter_map(|c| anchor_for(seed, c, terrain))
-        .map(|(x, y)| GridCoord { x, y })
-        .collect()
+/// How far from the middle anchor the first buildings stand.
+const START_REACH: i32 = 8;
+/// How many, and how far apart along the road.
+const START_SITES: usize = 3;
+const START_GAP: i32 = 3;
+
+/// Road tiles for the first buildings: a handful within reach of the
+/// middle anchor, spaced out along whatever road runs through there. One
+/// town, not a building in every chunk — the city grows outward from here.
+fn start_sites(world: &World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> Vec<GridCoord> {
+    let Some((ax, ay)) = anchor_for(seed, ChunkCoord { cx: 0, cy: 0 }, terrain) else { return Vec::new() };
+    let anchor = GridCoord { x: ax, y: ay };
+    let far = |a: GridCoord, b: GridCoord| (a.x - b.x).abs().max((a.y - b.y).abs());
+    let mut roads: Vec<GridCoord> = world
+        .objects
+        .iter()
+        .filter(|e| matches!(e.object, GameObject::RoadNode(_)))
+        .filter_map(|e| e.position)
+        .filter(|&p| far(p, anchor) <= START_REACH)
+        .collect();
+    roads.sort_unstable_by_key(|&p| (far(p, anchor), p.x, p.y));
+    let mut sites: Vec<GridCoord> = Vec::new();
+    for p in roads {
+        if sites.iter().all(|&s| far(s, p) >= START_GAP) {
+            sites.push(p);
+            if sites.len() == START_SITES {
+                break;
+            }
+        }
+    }
+    sites
 }
 
 const SQRT2: f64 = std::f64::consts::SQRT_2;

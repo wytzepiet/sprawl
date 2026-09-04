@@ -217,10 +217,10 @@ fn draw_site(
     let mut best: Option<(f64, GridCoord)> = None;
     for _ in 0..8 {
         let (anchor, reach) = if seed_new {
-            (standing.choose(rng)?.1, 40..80)
+            (standing.choose(rng)?.1, 20..40)
         } else {
             let i = (0..standing.len()).collect::<Vec<_>>().choose_weighted(rng, |&i| liked[i]).ok().copied()?;
-            (standing[i].1, 3..15)
+            (standing[i].1, 3..10)
         };
         let angle = rng.random::<f64>() * std::f64::consts::TAU;
         let r = rng.random_range(reach) as f64;
@@ -229,7 +229,7 @@ fn draw_site(
             y: anchor.y + (angle.sin() * r).round() as i32,
         };
         // A new cluster is a new cluster only if it is clear of the old ones.
-        if seed_new && standing.iter().any(|&(_, p, _)| dist(p, at) < 30) {
+        if seed_new && standing.iter().any(|&(_, p, _)| dist(p, at) < 15) {
             continue;
         }
         let Some(pos) = snap(world, at, size, 0) else { continue };

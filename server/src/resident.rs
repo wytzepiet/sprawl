@@ -133,89 +133,91 @@ pub fn handle_resident_wake(
 
 /// One verdict per bucket: the best any of its candidates offers.
 fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime, crowd: &Crowd) -> Vec<Verdict> {
-    let mut floor = 0.0_f64;
     r.buckets
         .iter()
-        .map(|b| {
-            let v = candidates(world, r, at, b, floor)
-                .flat_map(|building| {
-                    // Everyone else there or on the way, plus this resident.
-                    // The count is a snapshot taken before anyone moved, so it
-                    // can disagree with `mine` about whether this resident is
-                    // among them — take them out if they are there to take out.
-                    let mine = (at == building && r.selected == Some(b.need)) as u32;
-                    let seen = crowd.get(&(building, b.need)).copied().unwrap_or(0);
-                    let company = seen.saturating_sub(mine) + 1;
-                    taps_of(world, building)
-                        .iter()
-                        .filter(|t| t.need == b.need)
-                        .map(move |t| evaluate(world, at, building, t, b, now, company))
-                })
-                .fold(Verdict::Nothing, Verdict::better);
-            if let Verdict::Go { score, .. } = v {
-                floor = floor.max(score);
-            }
-            v
+        .map(|b| match b.need {
+            Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, now, crowd)),
+            Need::Rest | Need::Home => verdict_at(world, r, at, b, r.home, now, crowd),
+            Need::Eat | Need::Leisure | Need::Fuel => search(world, r, at, b, now, crowd),
         })
         .collect()
 }
 
-/// Where a bucket could be served, nearest first. A need with an assigned
-/// place has one candidate. One served by whatever is around is a search
-/// outward by chunk, which stops once nothing further out could beat the
-/// best score already found — `w * L / (tau + h)` bounds an option from
-/// its distance alone (section 10) — or the surveyed world runs out.
-fn candidates<'a>(
-    world: &'a World,
-    r: &'a Resident,
+/// The best one place offers a bucket, through any of its taps for the need.
+fn verdict_at(
+    world: &World,
+    r: &Resident,
     at: EntityId,
     b: &Bucket,
-    floor: f64,
-) -> Box<dyn Iterator<Item = EntityId> + 'a> {
-    match b.need {
-        Need::Work => Box::new(r.work.into_iter()),
-        Need::Rest | Need::Home => Box::new(std::iter::once(r.home)),
-        Need::Eat | Need::Leisure => {
-            let need = b.need;
-            let (_, h) = need.bounds();
-            let bound = b.level / need.cap() * b.level;
-            let Some(origin) = world.objects.get(at).and_then(|e| e.position) else {
-                return Box::new(std::iter::empty());
-            };
-            let here = crate::world::chunk_of(origin);
-            let bounds = world.revealed_bounds;
-            let reach = (here.cx - bounds.min_cx)
-                .max(bounds.max_cx - here.cx)
-                .max(here.cy - bounds.min_cy)
-                .max(bounds.max_cy - here.cy)
-                .max(0);
-            Box::new(
-                (0..=reach)
-                    .take_while(move |&ring| {
-                        // Nothing in this ring is nearer than its inner edge.
-                        let tiles = ((ring - 1) * crate::protocol::CHUNK_SIZE).max(0) as f64;
-                        let tau = tiles / CRUISE_SPEED * DETOUR * 1000.0;
-                        bound / (tau + h as f64) > floor
-                    })
-                    .flat_map(move |ring| {
-                        let mut found: Vec<(i32, EntityId)> = chunk_ring(here, ring)
-                            .flat_map(|c| world.buildings_in(c))
-                            // A home's kitchen is its residents' alone, and
-                            // a place no road reaches is not on offer.
-                            .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
-                            .filter(|&id| world.road_node_for_building(id).is_some())
-                            .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
-                            .filter_map(|id| {
-                                let p = world.objects.get(id)?.position?;
-                                Some(((p.x - origin.x).abs().max((p.y - origin.y).abs()), id))
-                            })
-                            .collect();
-                        found.sort_unstable();
-                        found.into_iter().map(|(_, id)| id)
-                    }),
-            )
+    building: EntityId,
+    now: GameTime,
+    crowd: &Crowd,
+) -> Verdict {
+    // Everyone else there or on the way, plus this resident. The count is a
+    // snapshot taken before anyone moved, so it can disagree with `mine`
+    // about whether this resident is among them — take them out if they are
+    // there to take out.
+    let mine = (at == building && r.selected == Some(b.need)) as u32;
+    let seen = crowd.get(&(building, b.need)).copied().unwrap_or(0);
+    let company = seen.saturating_sub(mine) + 1;
+    taps_of(world, building)
+        .iter()
+        .filter(|t| t.need == b.need)
+        .map(|t| evaluate(world, at, building, t, b, now, company))
+        .fold(Verdict::Nothing, Verdict::better)
+}
+
+/// The best of whatever is around: a search outward by chunk, nearest ring
+/// first, which stops once nothing further out could beat the best score
+/// found so far — `w * L / (tau + h + L / R)` bounds an option from its
+/// distance alone (section 10) — or the surveyed world runs out. A verdict
+/// is a bucket's own best, whatever the other buckets scored: the alarms
+/// and the unmet count read it as such.
+fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd) -> Verdict {
+    let need = b.need;
+    let (r_max, h) = need.bounds();
+    // The most a visit can score is the whole level served at the best rate
+    // any tap has, and no sooner than the drive there.
+    let bound = b.level / need.cap() * b.level;
+    let service = b.level / r_max;
+    let Some(origin) = world.objects.get(at).and_then(|e| e.position) else {
+        return Verdict::Nothing;
+    };
+    let here = crate::world::chunk_of(origin);
+    let bounds = world.revealed_bounds;
+    let reach = (here.cx - bounds.min_cx)
+        .max(bounds.max_cx - here.cx)
+        .max(here.cy - bounds.min_cy)
+        .max(bounds.max_cy - here.cy)
+        .max(0);
+    let mut best = Verdict::Nothing;
+    for ring in 0..=reach {
+        // Nothing in this ring is nearer than its inner edge.
+        let tiles = ((ring - 1) * crate::protocol::CHUNK_SIZE).max(0) as f64;
+        let tau = tiles / CRUISE_SPEED * DETOUR * 1000.0;
+        if let Verdict::Go { score, .. } = best
+            && bound / (tau + h as f64 + service) <= score
+        {
+            break;
+        }
+        let mut found: Vec<(i32, EntityId)> = chunk_ring(here, ring)
+            .flat_map(|c| world.buildings_in(c))
+            // A home's kitchen is its residents' alone, and a place no road
+            // reaches is not on offer.
+            .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
+            .filter(|&id| world.road_node_for_building(id).is_some())
+            .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
+            .filter_map(|id| {
+                let p = world.objects.get(id)?.position?;
+                Some(((p.x - origin.x).abs().max((p.y - origin.y).abs()), id))
+            })
+            .collect();
+        found.sort_unstable();
+        for (_, id) in found {
+            best = best.better(verdict_at(world, r, at, b, id, now, crowd));
         }
     }
+    best
 }
 
 /// The chunks exactly `ring` steps out from `center`, in a fixed order.
@@ -319,9 +321,11 @@ fn evaluate(
 /// level it overtakes at is closed-form, and the time to reach it follows.
 /// A bucket with no option at all is bounded by its ceiling instead. One
 /// that cannot grow, would need more than its cap, or whose tap closes
-/// before the level is served, never overtakes by level. One sitting on the
-/// crossing has tied and lost to an earlier bucket, and wins a millisecond
-/// on.
+/// before the level is served, never overtakes by level. One already past
+/// the crossing is not overtaking anything by growing: it is waiting on its
+/// departure, or on the world to offer it something, and those wake it. One
+/// sitting exactly on it has tied and lost to an earlier bucket, and wins a
+/// millisecond on.
 fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
     if b.need.fill() == 0.0 {
         return GameTime::MAX;
@@ -340,7 +344,7 @@ fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
             None => return GameTime::MAX,
         },
     };
-    if target >= cap {
+    if target >= cap || target < b.level {
         return GameTime::MAX;
     }
     now + ((target - b.level) / b.need.fill()).ceil().max(1.0) as GameTime
@@ -349,7 +353,8 @@ fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
 /// Section 4.3: bring the buckets up to date. The one being served drains by
 /// what its tap offered since the last look and accrues only for the part it
 /// did not; every other one accrues the whole interval. A constant need is
-/// constant: it neither drains nor accrues.
+/// constant: it neither drains nor accrues. A driven need accrues at the end
+/// of a trip, in `drove`, and drains like any other.
 fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &Crowd) {
     let Some(r) = resident(world, id) else { return };
     let (last, selected) = (r.last_update, r.selected);
@@ -370,7 +375,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     }
     let Some(r) = resident_mut(world, id) else { return };
     for b in &mut r.buckets {
-        if b.need.fill() == 0.0 {
+        if b.need.constant() {
             continue;
         }
         let (served, rate) = match serving {
@@ -622,6 +627,15 @@ fn resident_mut(world: &mut World, id: EntityId) -> Option<&mut Resident> {
     match world.objects.get_mut(id)?.object {
         GameObject::Resident(ref mut r) => Some(r),
         _ => None,
+    }
+}
+
+/// A trip's end: what it cost in fuel goes on the tank's bucket.
+pub fn drove(world: &mut World, id: EntityId, tiles: f64) {
+    if let Some(r) = resident_mut(world, id)
+        && let Some(b) = r.buckets.iter_mut().find(|b| b.need == Need::Fuel)
+    {
+        b.level = (b.level + tiles * Need::per_tile()).min(Need::Fuel.cap());
     }
 }
 

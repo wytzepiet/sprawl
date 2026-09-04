@@ -18,6 +18,14 @@ impl World {
     /// off. They are the ones with a new decision to make, so the caller
     /// wakes them.
     pub fn settle(&mut self) -> Vec<EntityId> {
+        // A save from before a need existed owes it from now on.
+        for id in self.resident_ids() {
+            if let Some(e) = self.objects.get_mut(id)
+                && let GameObject::Resident(ref mut r) = e.object
+            {
+                crate::needs::Bucket::top_up(&mut r.buckets);
+            }
+        }
         let entries = self.objects.all_entries();
 
         // Spare capacity, counted down as the people already living and working

@@ -121,6 +121,16 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.45, 0.55],
     byHand: false,
   },
+  GasStation: {
+    label: "Gas station",
+    color: "#A3841A",
+    // A pump: the body with its display, and the hose hooked to the side.
+    glyph: "M3 2h11v20H3zM5.5 4.5h6v5h-6zM15.5 7h2.2l3.3 3.3V19a2.5 2.5 0 0 1-5 0v-1h2v1a.5.5 0 0 0 1 0v-7.9L17 9.2h-1.5z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.3],
+    byHand: false,
+  },
 };
 
 export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];

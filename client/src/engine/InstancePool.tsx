@@ -310,6 +310,12 @@ export class InstancePool {
 
 const InstancePoolCtx = createContext<InstancePool>();
 
+const WARM_TRIANGLE: MeshGeometry = {
+  positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+  normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+  indices: [0, 1, 2],
+};
+
 export function useInstancePool(): InstancePool {
   const ctx = useContext(InstancePoolCtx);
   if (!ctx)
@@ -324,6 +330,24 @@ export function InstancePoolProvider(props: ParentProps) {
   const { ambientColor, shadowGenerator } = useDayNight();
 
   const pool = new InstancePool(scene, shadowGenerator()!);
+
+  // WebGPU compiles a shader variant the first time something is drawn with
+  // it, and Chrome does that synchronously in the GPU process: a few hundred
+  // milliseconds with no frames at all. The variants are few — lit or unlit,
+  // opaque or translucent — so each is drawn once now, off the map in the
+  // loading frame, rather than the first time a draft road appears under the
+  // pointer.
+  const warm: { key: string; id: number }[] = [];
+  for (const lit of [true, false]) {
+    for (const alpha of [1, 0.5]) {
+      const key = `warm_${lit}_${alpha}`;
+      pool.ensureBucket(key, WARM_TRIANGLE, Color3.Black(), false, lit, undefined, alpha);
+      warm.push({ key, id: pool.addInstance(key, [0, 0, -100]) });
+    }
+  }
+  scene.onAfterRenderObservable.addOnce(() => {
+    for (const { key, id } of warm) pool.removeInstance(key, id);
+  });
 
   // Instances are written during the frame; this pushes them to the GPU once.
   const obs = scene.onBeforeRenderObservable.add(() => pool.flush());
