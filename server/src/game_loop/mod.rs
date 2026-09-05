@@ -862,6 +862,58 @@ mod tests {
         }
     }
 
+    /// Shelves run low, a truck comes from beyond the edge, unloads, and
+    /// goes: the whole of a call-out with no facility in the city.
+    #[test]
+    fn a_shop_that_runs_low_is_restocked_from_beyond_the_edge() {
+        use crate::calls;
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::House, 1);
+        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        // Nobody lives here yet: the visits are ours, so the shelves and
+        // the truck are the only things moving.
+        let stock = |w: &World| match w.objects.get(shop).unwrap().object {
+            GameObject::Building(ref b) => b.stock,
+            _ => unreachable!(),
+        };
+        for _ in 0..21 {
+            calls::visit(&mut world, &mut events, shop, 0);
+        }
+        assert!(stock(&world) < 0.5);
+        assert_eq!(world.calls.len(), 1, "low shelves call for stock");
+        let truck = world.calls[0].answered_by.expect("a truck from beyond the edge answers");
+        assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Truck && c.trip.is_some()));
+
+        pump(&mut world, &mut events, &mut intersections, 0, 2 * DAY_MS as u64 / 24);
+        assert!(world.calls.is_empty(), "the call was answered");
+        assert_eq!(stock(&world), 1.0, "the shelves are full again");
+        assert!(world.objects.get(truck).is_none(), "the truck from beyond the edge is gone");
+    }
+
+    /// With a warehouse in town, its own truck answers, and comes home.
+    #[test]
+    fn a_warehouse_sends_its_own_truck_and_it_comes_home() {
+        use crate::calls;
+        let mut world = street();
+        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
+        let warehouse = build(&mut world, 60, BuildingKind::Warehouse, 1);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        for _ in 0..21 {
+            calls::visit(&mut world, &mut events, shop, 0);
+        }
+        let truck = world.calls[0].answered_by.expect("the warehouse answers");
+        assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
+
+        pump(&mut world, &mut events, &mut intersections, 0, 2 * DAY_MS as u64 / 24);
+        assert!(world.calls.is_empty());
+        let e = world.objects.get(truck).expect("the warehouse keeps its truck");
+        assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
+        assert_eq!(e.position, world.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
+    }
+
     /// Every wake, every arrival: the log the model in sprawl-needs.md is
     /// held to. Two runs of the same town must write the same one — down to
     /// the millisecond — or something is iterating a hash map.

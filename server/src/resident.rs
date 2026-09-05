@@ -206,6 +206,8 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
             // reaches is not on offer.
             .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
             .filter(|&id| world.road_node_for_building(id).is_some())
+            // Empty shelves sell nothing.
+            .filter(|&id| crate::calls::stocked(world, id))
             .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
             .filter_map(|id| {
                 let p = world.objects.get(id)?.position?;

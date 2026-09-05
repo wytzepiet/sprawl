@@ -114,7 +114,8 @@ impl World {
         // Everyone owns a car, derived like everything else: a resident
         // without one gets one parked at home, and a parked car whose owner
         // is gone is scrap. A car still driving when its owner leaves finishes
-        // its trip and is collected here the next time around.
+        // its trip and is collected here the next time around. A facility's
+        // trucks are its own for as long as it stands.
         let mut owners: HashMap<EntityId, EntityId> = HashMap::new(); // car -> resident
         let mut carless: Vec<EntityId> = Vec::new();
         for e in self.objects.all_entries() {
@@ -131,7 +132,11 @@ impl World {
             .all_entries()
             .iter()
             .filter(|e| match e.object {
-                GameObject::Car(ref c) => c.trip.is_none() && !owners.contains_key(&e.id),
+                GameObject::Car(ref c) => {
+                    c.trip.is_none()
+                        && !owners.contains_key(&e.id)
+                        && !(c.role != crate::protocol::CarRole::Private && self.objects.get(c.owner).is_some())
+                }
                 _ => false,
             })
             .map(|e| e.id)
@@ -152,7 +157,7 @@ impl World {
                     _ => None,
                 })
                 .and_then(|b| self.objects.get(b).and_then(|e| e.position));
-            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None }), spot);
+            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None, role: Default::default() }), spot);
             if let Some(spot) = spot {
                 self.spatial.entry(crate::world::chunk_of(spot)).or_default().insert(car);
             }

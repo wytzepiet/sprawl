@@ -46,12 +46,12 @@ pub const MAP: &[&str] = &[
     "    .   .         .   .   .         .                     .         .    ",
     "      . r . . r .     .     . r . . @ . . S .           . S . . S .      ",
     "              .       o             .     .   .       .         .        ",
-    "              .                     .     .     . S .           .        ",
-    "              r               W . . I     R                     R        ",
-    "                                    .                                    ",
-    "                                      .                                  ",
-    "                                        .                                ",
-    "                                        I . . F                          ",
+    "              .                     .     .     . S M           .        ",
+    "              r               W . . I     R           .         R        ",
+    "                                    .                 .                  ",
+    "                                      .               .                  ",
+    "                                        .             .                  ",
+    "                                        I . . F . . . V                  ",
     "                                        .                                ",
     "                                      .                                  ",
     "                                    .                                    ",
@@ -116,6 +116,8 @@ pub static LEGEND: &[(char, Row)] = {
         ('F', Row { name: "Factory", effect: Building { building: Factory }, cost: 1, blurb: "Twenty-four jobs, six to three. The morning rush starts here." }),
         ('r', Row { name: "Roads", effect: RoadTiles { tiles: 60 }, cost: 1, blurb: "Sixty more tiles of road. Room to build." }),
         ('o', Row { name: "One-way streets", effect: OneWay, cost: 1, blurb: "One-way streets. Half the road, all the throughput." }),
+        ('M', Row { name: "Supermarket", effect: Building { building: Supermarket }, cost: 1, blurb: "Shopping for a whole district. Shelves that run low, and a truck to fill them." }),
+        ('V', Row { name: "Warehouse", effect: Building { building: Warehouse }, cost: 1, blurb: "Where stock comes from. Its trucks answer the shops' calls; without one, every delivery comes from beyond the edge." }),
         ('T', Row { name: "Through roads", effect: Road, cost: 1, blurb: "Roads nothing fronts onto: nothing arrives beside them, and nothing turns out of a driveway into the traffic." }),
     ]
 };
@@ -346,7 +348,7 @@ mod tests {
     #[test]
     fn the_tree_holds_up() {
         check();
-        assert_eq!(nodes().len(), 30);
+        assert_eq!(nodes().len(), 32);
     }
 
     #[test]

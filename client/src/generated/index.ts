@@ -1,7 +1,9 @@
 export type { Bucket } from "./Bucket";
 export type { Building } from "./Building";
 export type { BuildingKind } from "./BuildingKind";
+export type { CallKind } from "./CallKind";
 export type { Car } from "./Car";
+export type { CarRole } from "./CarRole";
 export type { Cell } from "./Cell";
 export type { ChunkBounds } from "./ChunkBounds";
 export type { ChunkCoord } from "./ChunkCoord";

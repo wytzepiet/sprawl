@@ -13,7 +13,7 @@ import {
   getObjectsAt,
   useGame,
 } from "../state/gameObjects";
-import { SOLID, DORMANT } from "./objects/look";
+import { SOLID, DORMANT, EMPTY } from "./objects/look";
 import type { Operation, GameObjectEntry } from "../generated";
 
 import type { Building } from "../generated";
@@ -101,7 +101,8 @@ export default function World() {
   function mount(entry: GameObjectEntry): (() => void) | null {
     switch (entry.object.kind) {
       case "Building":
-        return mountBuilding(entry, pool, connected(entry) ? SOLID : DORMANT);
+        // Red where no joined road reaches it; grey where the shelves are bare.
+        return mountBuilding(entry, pool, !connected(entry) ? DORMANT : (entry.object.data as Building).stock > 0 ? SOLID : EMPTY);
       case "Car":
         return mountCar(entry, pool, scene, SOLID);
       case "RoadNode":

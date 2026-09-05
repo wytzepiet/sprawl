@@ -19,6 +19,9 @@ const PALETTE = [
   new Color3(0.8, 0.65, 0.25),
 ];
 const carGeo = boxGeometry(0.18, 0.35, 0.15);
+/** A truck: longer, taller, and always the same pale grey. */
+const truckGeo = boxGeometry(0.2, 0.46, 0.22);
+const TRUCK = new Color3(0.88, 0.88, 0.86);
 const LANE_OFFSET = 0.11;
 const BEZIER_SAMPLES = 8;
 
@@ -78,6 +81,7 @@ export function mountCar(
 ): () => void {
   const car = entry.object.data as {
     owner: number;
+    role?: "Private" | "Truck";
     trip: {
       route_positions: [number, number][];
       progress: number;
@@ -87,9 +91,10 @@ export function mountCar(
       updated_at: number;
     } | null;
   };
-  const color = PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
-  const bucket = `car${look.key}c${PALETTE.indexOf(color)}`;
-  pool.ensureBucket(bucket, carGeo, look.tint(color), look.castShadow, true);
+  const truck = car.role === "Truck";
+  const color = truck ? TRUCK : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
+  const bucket = truck ? `truck${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
+  pool.ensureBucket(bucket, truck ? truckGeo : carGeo, look.tint(color), look.castShadow, true);
 
   // Parked: a still car beside the building it stopped at, in a spot that is
   // a fact about the car rather than a roll of the dice. The building's tile

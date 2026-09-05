@@ -1,10 +1,9 @@
 import { createSignal, For, Show } from "solid-js";
-import { Color3 } from "@babylonjs/core";
 import MultiCanvasProvider from "../engine/MultiCanvasProvider";
 import MultiCanvasView from "../engine/MultiCanvasView";
 import BuildingPreview from "../engine/objects/BuildingPreview";
-import { BUILDING_COLOR } from "../engine/objects/buildings";
 import { BLUEPRINTS, KINDS } from "../blueprints";
+import { PinBody } from "./Pin";
 import type { BuildingKind } from "../generated";
 import { Building2 } from "./icons";
 import { setPlacingBuilding } from "./buildMode";
@@ -82,17 +81,24 @@ export function BuildMenuSheet() {
                       (e.currentTarget as HTMLElement).addEventListener("pointerup", onUp);
                     }}
                   >
-                    <MultiCanvasView
-                      style={{
-                        width: "100%",
-                        "aspect-ratio": "1",
-                        "border-radius": "0.75rem",
-                        display: "block",
-                      }}
-                      class="bg-stone-100"
-                    >
-                      <BuildingPreview color={Color3.FromHexString(BUILDING_COLOR)} />
-                    </MultiCanvasView>
+                    {/* The building as the map draws it, with its pin on it. */}
+                    <div class="pins relative w-full">
+                      <MultiCanvasView
+                        style={{
+                          width: "100%",
+                          "aspect-ratio": "1",
+                          "border-radius": "0.75rem",
+                          display: "block",
+                        }}
+                      >
+                        <BuildingPreview kind={kind} />
+                      </MultiCanvasView>
+                      <div class="pin absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full pointer-events-none">
+                        <div class="marker relative">
+                          <PinBody kind={kind} />
+                        </div>
+                      </div>
+                    </div>
                     <span class="text-[11px] font-medium text-stone-500">{BLUEPRINTS[kind].label}</span>
                   </button>
                 )}

@@ -20,3 +20,12 @@ export const DORMANT: Look = {
   tint: (c) => Color3.Lerp(c, RED, 0.65),
   castShadow: true,
 };
+
+const GREY = new Color3(0.45, 0.45, 0.47);
+
+/** A shop with nothing on its shelves: open, and selling nothing. */
+export const EMPTY: Look = {
+  key: "_empty",
+  tint: (c) => Color3.Lerp(c, GREY, 0.6),
+  castShadow: true,
+};

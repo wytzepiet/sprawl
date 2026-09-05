@@ -67,11 +67,17 @@ pub enum BuildingKind {
     Bar,
     /// Pumps that never close, and a kiosk that does.
     GasStation,
+    /// Shopping for the whole street, with shelves that a warehouse keeps
+    /// full. Placed by the mayor.
+    Supermarket,
+    /// Where stock comes from: trucks that answer the shops' calls. Placed
+    /// by the mayor.
+    Warehouse,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 9] = [
+    pub const ALL: [BuildingKind; 11] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -81,6 +87,8 @@ impl BuildingKind {
         BuildingKind::Restaurant,
         BuildingKind::Bar,
         BuildingKind::GasStation,
+        BuildingKind::Supermarket,
+        BuildingKind::Warehouse,
     ];
 }
 
@@ -90,6 +98,26 @@ pub struct Building {
     pub kind: BuildingKind,
     /// Footprint in tiles, as it lies on the grid.
     pub size: (u8, u8),
+    /// What is on the shelves, as a fraction of a delivery. Drawn down by
+    /// visits, filled by a delivery; empty shelves sell nothing. Always
+    /// full for a kind that keeps no stock.
+    #[serde(default = "full")]
+    pub stock: f64,
+}
+
+fn full() -> f64 {
+    1.0
+}
+
+/// What a car is for, which is who drives it and what it looks like.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum CarRole {
+    /// A resident's own, driven by them.
+    #[default]
+    Private,
+    /// A facility's, or from beyond the edge, answering a call.
+    Truck,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -105,11 +133,14 @@ pub struct PlaceBuilding {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Car {
-    /// The resident it belongs to, who is also who is driving it. Their `at`
-    /// points back at this car while they are aboard.
+    /// Who it belongs to: the resident driving it, whose `at` points back
+    /// at this car while they are aboard; or the facility it works for; or,
+    /// come from beyond the edge, the building that called it.
     #[ts(type = "number")]
     pub owner: EntityId,
     pub trip: Option<Trip>,
+    #[serde(default)]
+    pub role: CarRole,
 }
 
 /// One journey: born when the driver pulls out, gone on arrival.

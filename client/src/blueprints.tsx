@@ -131,6 +131,26 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.3],
     byHand: false,
   },
+  Supermarket: {
+    label: "Supermarket",
+    color: "#1E8FA8",
+    // A basket: handle arcs over, three slats cut out.
+    glyph: "M12 2.5c3 0 5.5 2.4 6.3 5.5H21l-2 13H5L3 8h2.7C6.5 4.9 9 2.5 12 2.5zm0 2c-1.9 0-3.5 1.5-4.2 3.5h8.4C15.5 6 13.9 4.5 12 4.5zM7.5 11h1.6v6H7.5zm3.7 0h1.6v6h-1.6zm3.7 0h1.6v6h-1.6z",
+    pinUntil: SPECIAL,
+    shape: "box",
+    heights: [0.5],
+    byHand: true,
+  },
+  Warehouse: {
+    label: "Warehouse",
+    color: "#7A5C3E",
+    // A wide shed: the roof, a loading door and two bays.
+    glyph: "M2 9.5 12 3l10 6.5V22H2zM5 12h14v2.5H5zM5 16h5v6H5zM14 16h5v6h-5z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.6],
+    byHand: true,
+  },
 };
 
 export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];

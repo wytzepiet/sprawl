@@ -5,4 +5,10 @@ export type Building = { kind: BuildingKind,
 /**
  * Footprint in tiles, as it lies on the grid.
  */
-size: [number, number], };
+size: [number, number], 
+/**
+ * What is on the shelves, as a fraction of a delivery. Drawn down by
+ * visits, filled by a delivery; empty shelves sell nothing. Always
+ * full for a kind that keeps no stock.
+ */
+stock: number, };

@@ -189,7 +189,7 @@ impl World {
         if !tiles.iter().all(|&t| self.is_buildable(t) || self.is_driveway_stub(t)) {
             return None;
         }
-        let id = self.insert_at(GameObject::Building(Building { kind, size }), Some(pos));
+        let id = self.insert_at(GameObject::Building(Building { kind, size, stock: 1.0 }), Some(pos));
         for tile in &tiles {
             self.occupied.insert((tile.x, tile.y), id);
             // A footprint can straddle a chunk border, and clients subscribe by

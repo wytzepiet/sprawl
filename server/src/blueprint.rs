@@ -12,6 +12,7 @@ use std::sync::LazyLock;
 
 use serde_json::{json, Value};
 
+use crate::calls::CallKind;
 use crate::needs::curve::Curve;
 use crate::needs::{Need, Tap};
 use crate::protocol::{BuildingKind, DAY_MS};
@@ -44,6 +45,12 @@ pub struct Blueprint {
     pub by_hand: bool,
     /// What it serves, to whom, and when.
     pub taps: Vec<Tap>,
+    /// Visits one delivery is good for. Zero: shelves that never run out.
+    pub stock: u32,
+    /// The kind of call it answers, with a vehicle of its own.
+    pub answers: Option<CallKind>,
+    /// How many vehicles it runs.
+    pub vehicles: u32,
 }
 
 /// The row for a kind.
@@ -86,16 +93,19 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     vec![
         (House, Blueprint {
             class: Living, homes: 2, jobs: 0, size: (1, 1), weight: 4.0, tilt: &[], by_hand: false,
+            stock: 0, answers: None, vehicles: 0,
             taps: household(2),
         }),
         (Apartment, Blueprint {
             class: Living, homes: 8, jobs: 0, size: (2, 1), weight: 1.0, tilt: &[], by_hand: false,
+            stock: 0, answers: None, vehicles: 0,
             taps: household(8),
         }),
         // A shop seats as many as it staffs, and the high street is somewhere
         // to be until late.
         (Shop, Blueprint {
             class: Commerce, homes: 0, jobs: 4, size: (1, 1), weight: 1.5, tilt: &[Eat, Leisure], by_hand: false,
+            stock: 40, answers: None, vehicles: 0,
             taps: vec![
                 shift(9, 18, 4),
                 tap(Eat, hours(9 * H, 18 * H), 4),
@@ -106,20 +116,24 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // spike: industry starts before offices, offices before shops.
         (Office, Blueprint {
             class: Commerce, homes: 0, jobs: 16, size: (2, 1), weight: 0.7, tilt: &[Work], by_hand: false,
+            stock: 0, answers: None, vehicles: 0,
             taps: vec![shift(8, 17, 16)],
         }),
         (Workshop, Blueprint {
             class: Industry, homes: 0, jobs: 6, size: (1, 1), weight: 0.7, tilt: &[Work], by_hand: false,
+            stock: 0, answers: None, vehicles: 0,
             taps: vec![shift(7, 16, 6)],
         }),
         (Factory, Blueprint {
             class: Industry, homes: 0, jobs: 24, size: (2, 1), weight: 0.3, tilt: &[Work], by_hand: false,
+            stock: 0, answers: None, vehicles: 0,
             taps: vec![shift(6, 15, 24)],
         }),
         // A restaurant seats a dozen, from lunch until late, and is an evening
         // out in itself. The first kind the mayor can place by hand.
         (Restaurant, Blueprint {
             class: Commerce, homes: 0, jobs: 6, size: (1, 1), weight: 0.4, tilt: &[Eat, Leisure], by_hand: true,
+            stock: 30, answers: None, vehicles: 0,
             taps: vec![
                 shift(11, 23, 6),
                 tap(Eat, hours(11 * H, 22 * H), 12),
@@ -130,6 +144,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // staff, an evening's crowd, a kitchen until eleven.
         (Bar, Blueprint {
             class: Commerce, homes: 0, jobs: 3, size: (1, 1), weight: 0.4, tilt: &[Leisure], by_hand: false,
+            stock: 30, answers: None, vehicles: 0,
             taps: vec![
                 shift(18, 2, 3),
                 tap(Eat, hours(18 * H, 23 * H), 6),
@@ -140,10 +155,29 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // the tanks are filled is where the driving is — beside the homes.
         (GasStation, Blueprint {
             class: Commerce, homes: 0, jobs: 2, size: (1, 1), weight: 0.3, tilt: &[Fuel], by_hand: false,
+            stock: 0, answers: None, vehicles: 0,
             taps: vec![
                 shift(6, 22, 2),
                 tap(Fuel, always(), 4),
             ],
+        }),
+        // Shopping for a whole district, with far more on the shelves than a
+        // corner shop and a warehouse's truck to keep them full. The first
+        // placeable with something to run out of.
+        (Supermarket, Blueprint {
+            class: Commerce, homes: 0, jobs: 8, size: (1, 1), weight: 0.0, tilt: &[], by_hand: true,
+            stock: 150, answers: None, vehicles: 0,
+            taps: vec![
+                shift(8, 21, 8),
+                tap(Eat, hours(8 * H, 21 * H), 24),
+            ],
+        }),
+        // Where stock comes from. Its trucks answer the shops' calls; until
+        // there is one, every delivery comes from beyond the edge.
+        (Warehouse, Blueprint {
+            class: Industry, homes: 0, jobs: 10, size: (1, 1), weight: 0.0, tilt: &[], by_hand: true,
+            stock: 0, answers: Some(CallKind::Stock), vehicles: 2,
+            taps: vec![shift(6, 18, 10)],
         }),
     ]
 });

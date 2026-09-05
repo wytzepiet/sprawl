@@ -85,6 +85,9 @@ pub struct World {
     /// position, so without this "what is on this tile" would only ever find a
     /// building at its origin corner. Derived, like every other index.
     pub occupied: HashMap<(i32, i32), EntityId>,
+    /// Calls raised and not yet resolved. Not saved: a shop still low when
+    /// the world comes back calls again at its next visit.
+    pub calls: Vec<crate::calls::Call>,
     /// Tile → the road node on it. Asked for constantly — every driveway
     /// check, every bend, every site the spawner tries — and a chunk's
     /// entity set was being walked for each answer. Derived at load.
@@ -157,6 +160,7 @@ impl World {
             revealed_bounds: NO_BOUNDS,
             occupied: HashMap::new(),
             roads: HashMap::new(),
+            calls: Vec::new(),
             roads_generated: HashSet::new(),
         }
     }
@@ -183,6 +187,7 @@ impl World {
             revealed_bounds: NO_BOUNDS,
             occupied: HashMap::new(),
             roads: HashMap::new(),
+            calls: Vec::new(),
             roads_generated: HashSet::new(),
             objects,
         };

@@ -167,10 +167,14 @@ pub fn handle_car_wake_up(
 ) {
     let (owner, trip) = match world.objects.get(car_id) {
         Some(entry) => match &entry.object {
-            // A parked car has nothing to think about.
+            // A parked car has nothing to think about — unless it is a
+            // vehicle on a call, which has finished unloading.
             GameObject::Car(c) => match c.trip.clone() {
                 Some(t) => (c.owner, t),
-                None => return,
+                None => {
+                    crate::calls::car_idle(world, events, car_id, now);
+                    return;
+                }
             },
             _ => return,
         },
@@ -250,9 +254,16 @@ pub fn handle_car_wake_up(
         }
 
         if ri + 1 >= trip.route.len() {
-            // Journey's end: the driver steps out, the car stays.
+            // Journey's end: the driver steps out, the car stays. A vehicle
+            // on a call unloads, and thinks again when it is done.
             crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, trip.total_route_length, now);
             park_car(world, intersections, events, car_id, trip.destination);
+            let truck = matches!(world.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != crate::protocol::CarRole::Private);
+            if truck {
+                events.wake(crate::calls::SERVICE_MS, car_id);
+            } else {
+                crate::calls::visit(world, events, trip.destination, now);
+            }
             return;
         }
         seg_start += seg_len;
