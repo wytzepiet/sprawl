@@ -17,12 +17,9 @@ import type { GameObjectEntry, RoadNode } from "../../generated";
 /** Red, for road that reaches nothing: an island no car will ever come down. */
 const CUT_OFF = new Color3(0.85, 0.25, 0.2);
 const cutOff = (c: Color3) => Color3.Lerp(c, CUT_OFF, 0.55);
-/** Where a road's yellow sits against the white junction under it: its
- *  kerb above the street's kerb but under the street's surface, so the
- *  street runs onto the road; its surface above the street's, so the road
- *  runs through. Both below the chevrons. */
-const HIGHWAY_BORDER_Z = BORDER_Z + 0.002;
-const HIGHWAY_ROAD_Z = ROAD_Z + 0.006;
+/** How far a road's yellow sits above the white junction under it: above
+ *  the street's surface, below the chevrons. */
+const HIGHWAY_LIFT = 0.006;
 
 // --- Connection detection ---
 
@@ -98,16 +95,16 @@ export function mountRoad(
   const { joined, road } = entry.object.data as RoadNode;
   const paint = (c: Color3) => (joined ? c : cutOff(c));
 
-  // A surface of the given arms: kerb, then road, at these heights.
-  const lay = (name: string, of: ArmInfo[], border: Color3, surface: Color3, borderZ: number, roadZ: number) => {
+  // A surface of the given arms: kerb, then road, lifted by z.
+  const lay = (name: string, of: ArmInfo[], border: Color3, surface: Color3, z: number) => {
     const key = armsKey(of) + (joined ? "" : "_cut");
-    const borderGeo = buildRoadGeometry(of, BORDER_HALF_W, borderZ);
+    const borderGeo = buildRoadGeometry(of, BORDER_HALF_W, BORDER_Z + z);
     if (borderGeo) {
       const bk = `${name}_border_${key}`;
       pool.ensureBucket(bk, borderGeo, paint(border), false, true);
       instances.push({ key: bk, id: pool.addInstance(bk, pos) });
     }
-    const roadGeo = buildRoadGeometry(of, HALF_W, roadZ);
+    const roadGeo = buildRoadGeometry(of, HALF_W, ROAD_Z + z);
     if (roadGeo) {
       const rk = `${name}_${key}`;
       pool.ensureBucket(rk, roadGeo, paint(surface), false, true);
@@ -120,9 +117,9 @@ export function mountRoad(
   // in white underneath — the street curving onto the road — and the road's
   // own arms in yellow over it, kerb and all.
   const main = road ? arms.filter((a) => a.road) : arms;
-  if (main.length < arms.length) lay("road", arms, theme.roadBorder, theme.road, BORDER_Z, ROAD_Z);
-  if (road) lay("highway", main, theme.highwayBorder, theme.highway, HIGHWAY_BORDER_Z, HIGHWAY_ROAD_Z);
-  else lay("road", arms, theme.roadBorder, theme.road, BORDER_Z, ROAD_Z);
+  if (main.length < arms.length) lay("road", arms, theme.roadBorder, theme.road, 0);
+  if (road) lay("highway", main, theme.highwayBorder, theme.highway, HIGHWAY_LIFT);
+  else lay("road", arms, theme.roadBorder, theme.road, 0);
 
   for (const arm of arms) {
     if (arm.flow !== "out") continue;
