@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { onCleanup, onMount } from "solid-js";
 import {
   Engine,
   Scene,
@@ -14,41 +14,43 @@ import {
   DirectionalLight,
   ShadowGenerator,
 } from "@babylonjs/core";
-import { useTheme } from "../engine/theme";
-import { shapeFor, boxGeometry, BUILDING_COLOR } from "../engine/objects/buildings";
+import { createBorderTexture } from "../engine/TerrainChunks";
+import { buildChunk, CHUNK_STRIDE, type TerrainPalette } from "../engine/objects/terrainGeometry";
+import { shapeFor, BUILDING_COLOR } from "../engine/objects/buildings";
 import type { BuildingKind } from "../generated";
 
 /** Tiles from one kind's centre to the next: a plot with land around it. */
 export const SLOT = 4;
+/** Which tile row the plots stand on, and the first plot's column. */
+const ROW = 16;
+const FIRST = 2;
 
 /**
  * The build menu's shelf: a piece of map with every placeable kind standing
- * on a plot of it, in a row, seen straight from above as the map is — its
- * green, its grid, its sky and a noon sun, shadows and all. One canvas, one
- * scene — not a thumbnail each — and the pins and labels are laid over it
- * by the menu, one slot per kind.
+ * on a plot of it, in a row, seen straight from above as the map is. The
+ * ground is a chunk built by the map's own terrain builder — its grid, on
+ * white — and the buildings are the map's solids on the map's half-tile,
+ * under the map's sky and a noon sun, shadows and all. One canvas, one
+ * scene; the pins and labels are laid over it by the menu, a slot per kind.
  */
 export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
   let canvas!: HTMLCanvasElement;
-  const theme = useTheme();
-  // The grid is drawn over the canvas in CSS, a line per tile, with its
-  // lines on the tiles' edges: a plot sits squarely in a cell.
-  const [tile, setTile] = createSignal({ px: 20, dx: 0, dy: 0 });
 
   onMount(() => {
     const engine = new Engine(canvas, true, { adaptToDeviceRatio: true });
     const scene = new Scene(engine);
-    const land = theme().land;
-    scene.clearColor = new Color4(land.r, land.g, land.b, 1);
+    scene.clearColor = new Color4(1, 1, 1, 1);
 
     const n = props.kinds.length;
-    const mid = ((n - 1) * SLOT) / 2;
-    const cam = new FreeCamera("shelf_cam", new Vector3(mid, 0, 6), scene);
+    // The middle of the row, on the plots' own tile: a plot's centre is its
+    // half-tile, as it is on the map.
+    const cx = FIRST + ((n - 1) * SLOT) / 2 + 0.5;
+    const cy = ROW + 0.5 - 0.3;
+    const cam = new FreeCamera("shelf_cam", new Vector3(cx, cy, 6), scene);
     cam.upVector = new Vector3(0, 1, 0);
-    cam.setTarget(new Vector3(mid, 0, 0));
+    cam.setTarget(new Vector3(cx, cy, 0));
     cam.mode = Camera.ORTHOGRAPHIC_CAMERA;
-    // The row exactly fills the width, about the camera in the middle of
-    // it; the height follows the canvas.
+    // The row exactly fills the width; the height follows the canvas.
     const fit = () => {
       const w = n * SLOT;
       const h = (w * canvas.clientHeight) / Math.max(1, canvas.clientWidth);
@@ -56,23 +58,19 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
       cam.orthoRight = w / 2;
       cam.orthoTop = h / 2;
       cam.orthoBottom = -h / 2;
-      // One tile in pixels, and where the first tile edge falls from the
-      // canvas's corner: the view's left edge is -w/2 and its top is h/2,
-      // and buildings stand on the half-tile.
-      const px = canvas.clientWidth / w;
-      setTile({ px, dx: (((-w / 2 + 0.5) % 1) + 1) % 1 * px, dy: (((h / 2 - 0.5) % 1) + 1) % 1 * px });
     };
     fit();
 
+    // The map's own sky and a late-morning sun from the top left, so a
+    // shadow falls down and to the right of what throws it.
     const sky = new HemisphericLight("shelf_sky", new Vector3(0, 0, 1), scene);
-    // The map's own sky and noon sun, so a shadow falls here as it does there.
     sky.intensity = 0.65;
-    const sun = new DirectionalLight("shelf_sun", new Vector3(0, -0.4, -1).normalize(), scene);
+    const sun = new DirectionalLight("shelf_sun", new Vector3(0.45, -0.4, -1).normalize(), scene);
     sun.intensity = 0.4;
     // The shadow frustum, set the way the map sets its own: a box around
     // the row, looked at from up-sun, rather than one Babylon guesses.
     const radius = (n * SLOT) / 2 + 1;
-    sun.position = new Vector3(mid, 0, 0).subtract(sun.direction.scale(radius));
+    sun.position = new Vector3(cx, cy, 0).subtract(sun.direction.scale(radius));
     sun.shadowMinZ = 0;
     sun.shadowMaxZ = radius * 2;
     sun.orthoLeft = -radius;
@@ -86,18 +84,24 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
     shadows.bias = 0.001;
     shadows.normalBias = 0.02;
 
-    // A slab, built like the buildings are, so it faces the same way up.
+    // One chunk of grass, in white: the map's ground and its grid.
+    const white = { r: 1, g: 1, b: 1 };
+    const palette: TerrainPalette = { Water: white, Beach: white, Grass: white, Forest: white, Mountain: white };
+    const tiles = new Uint8Array(CHUNK_STRIDE * CHUNK_STRIDE).fill(2); // Grass
+    const chunk = buildChunk(tiles, 0, 0, palette)!;
     const ground = new Mesh("shelf_ground", scene);
-    const slab = boxGeometry(n * SLOT + 4, 12, 0.02);
     const gv = new VertexData();
-    gv.positions = slab.positions;
-    gv.indices = slab.indices;
-    gv.normals = slab.normals;
+    gv.positions = chunk.ground.positions;
+    gv.indices = chunk.ground.indices;
+    gv.normals = chunk.ground.normals;
+    if (chunk.ground.uvs) gv.uvs = chunk.ground.uvs;
+    if (chunk.ground.colors) gv.colors = chunk.ground.colors;
     gv.applyToMesh(ground);
-    ground.position = new Vector3(mid, 0, -0.01);
+    ground.hasVertexAlpha = false;
     const groundMat = new StandardMaterial("shelf_ground_mat", scene);
-    groundMat.diffuseColor = new Color3(land.r, land.g, land.b);
     groundMat.specularColor = Color3.Black();
+    // A tile is bigger here than on the map, so the line is drawn finer.
+    groundMat.diffuseTexture = createBorderTexture(scene, 1);
     ground.material = groundMat;
     ground.receiveShadows = true;
 
@@ -113,9 +117,7 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
       vd.normals = geo.normals;
       vd.applyToMesh(mesh);
       mesh.material = mat;
-      // Squarely on a tile, a little above the middle so the shadow it
-      // throws stays clear of the label under it.
-      mesh.position = new Vector3(i * SLOT, 0.5, 0);
+      mesh.position = new Vector3(FIRST + i * SLOT + 0.5, ROW + 0.5, 0);
       mesh.receiveShadows = true;
       shadows.addShadowCaster(mesh);
     });
@@ -130,18 +132,5 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
     });
   });
 
-  const grid = () => theme().grid;
-  return (
-    <div class="relative w-full h-full">
-      <canvas ref={canvas} class="block w-full h-full" />
-      <div
-        class="absolute inset-0 pointer-events-none opacity-35"
-        style={{
-          "background-image": `linear-gradient(rgb(${grid().r * 255} ${grid().g * 255} ${grid().b * 255}) 1px, transparent 1px), linear-gradient(90deg, rgb(${grid().r * 255} ${grid().g * 255} ${grid().b * 255}) 1px, transparent 1px)`,
-          "background-size": `${tile().px}px ${tile().px}px`,
-          "background-position": `${tile().dx}px ${tile().dy}px`,
-        }}
-      />
-    </div>
-  );
+  return <canvas ref={canvas} class="block w-full h-full" />;
 }

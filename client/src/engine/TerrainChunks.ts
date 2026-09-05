@@ -40,16 +40,18 @@ const TEX_SIZE = 32;
 /** Each tile draws half of every boundary it shares, hence the halving. */
 const BORDER = Math.round((GRID_LINE / 2) * TEX_SIZE);
 
-function createBorderTexture(scene: Scene): RawTexture {
+/** The tile's grid line, as a texture every tile wears: `border` texels of
+ *  it along each edge. The map's zoom sets how wide that comes out. */
+export function createBorderTexture(scene: Scene, border = BORDER): RawTexture {
   const data = new Uint8Array(TEX_SIZE * TEX_SIZE * 4);
   for (let y = 0; y < TEX_SIZE; y++) {
     for (let x = 0; x < TEX_SIZE; x++) {
       const i = (y * TEX_SIZE + x) * 4;
       const edge =
-        x < BORDER ||
-        x >= TEX_SIZE - BORDER ||
-        y < BORDER ||
-        y >= TEX_SIZE - BORDER;
+        x < border ||
+        x >= TEX_SIZE - border ||
+        y < border ||
+        y >= TEX_SIZE - border;
       const v = edge ? 230 : 255;
       data[i] = v;
       data[i + 1] = v;
