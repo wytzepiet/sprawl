@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import BuildMenuScene from "./BuildMenuScene";
+import BuildMenuScene, { SLOT } from "./BuildMenuScene";
 import { BLUEPRINTS, KINDS } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind } from "../generated";
@@ -38,6 +38,12 @@ export function BuildMenuSheet() {
   // The build says what may be placed; the rest is shown, and locked.
   const may = (kind: BuildingKind) => unlocked(tree(), growth().taken, (e) => e.kind === "Building" && e.building === kind);
   const kinds = KINDS.filter((k) => BLUEPRINTS[k].byHand);
+  // One tile of the shelf in pixels, so a pin can point at its plot's
+  // centre whatever the plot's size. Horizontally that is a fraction of
+  // the slot; vertically an offset from the canvas middle, on the row.
+  const [tilePx, setTilePx] = createSignal(0);
+  const pinLeft = (kind: BuildingKind) => `${((1 + BLUEPRINTS[kind].size[0] / 2) / SLOT) * 100}%`;
+  const pinTop = (kind: BuildingKind) => `calc(50% + ${(1 - BLUEPRINTS[kind].size[1] / 2) * tilePx()}px)`;
   const pick = (kind: BuildingKind, e: PointerEvent) => {
     e.preventDefault();
     if (!may(kind)) return;
@@ -73,7 +79,7 @@ export function BuildMenuSheet() {
           {/* One world for the whole shelf, and a slot laid over each kind
               standing in it: the pin, the label, and the drag to place it. */}
           <div class="pins relative rounded-xl overflow-hidden" style={{ height: "140px" }}>
-            <BuildMenuScene kinds={kinds} />
+            <BuildMenuScene kinds={kinds} onFit={setTilePx} />
             <div class="absolute inset-0 flex">
               <For each={kinds}>
                 {(kind) => (
@@ -82,7 +88,7 @@ export function BuildMenuSheet() {
                     title={may(kind) ? undefined : "Take it on the tree (L)"}
                     onPointerDown={(e) => pick(kind, e)}
                   >
-                    <div class="pin absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full pointer-events-none" classList={{ "opacity-40": !may(kind) }}>
+                    <div class="pin absolute -translate-x-1/2 -translate-y-full pointer-events-none" style={{ left: pinLeft(kind), top: pinTop(kind) }} classList={{ "opacity-40": !may(kind) }}>
                       <div class="marker relative">
                         <PinBody kind={kind} />
                       </div>

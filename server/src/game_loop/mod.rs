@@ -364,8 +364,20 @@ fn handle_player_action(
             }
         }
         ClientMessage::PlaceBuilding(place) => {
-            if world.build.may_place(place.kind) && world.spawn_building(place.pos, place.kind, (1, 1)).is_some() {
+            let size = crate::blueprint::blueprint(place.kind).size;
+            if world.build.may_place(place.kind) && world.spawn_building(place.pos, place.kind, size).is_some() {
                 settle_and_wake(world, events);
+            } else {
+                // Said out loud: a click that does nothing is the kind of
+                // bug that otherwise takes an afternoon to find.
+                println!(
+                    "place refused: {:?} at {:?}: allowed {}, street {}, land {}",
+                    place.kind,
+                    place.pos,
+                    world.build.may_place(place.kind),
+                    world.road_for_plot(place.pos, size).is_some(),
+                    World::footprint(place.pos, size).all(|t| world.is_buildable(t))
+                );
             }
         }
         ClientMessage::DemolishRoad(demolish) => {

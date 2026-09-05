@@ -25,6 +25,8 @@ export interface Blueprint {
   heights: number[];
   /** In the build menu, for the mayor to place by hand. */
   byHand: boolean;
+  /** Footprint in tiles, as the server's row has it. */
+  size: [number, number];
 }
 
 /** The bulk of a city: somewhere people live or work, and there are hundreds. */
@@ -44,6 +46,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "gabled",
     heights: [0],
     byHand: false,
+    size: [1, 1],
   },
   Apartment: {
     label: "Apartment",
@@ -54,6 +57,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.85, 1.15, 1.5],
     byHand: false,
+    size: [2, 1],
   },
   Shop: {
     label: "Shop",
@@ -65,6 +69,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.45, 0.55],
     byHand: false,
+    size: [1, 1],
   },
   Office: {
     label: "Office",
@@ -78,6 +83,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     // business district a skyline instead of a plateau.
     heights: [1.0, 1.45, 2.3],
     byHand: false,
+    size: [2, 1],
   },
   Workshop: {
     label: "Workshop",
@@ -89,6 +95,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.42, 0.5],
     byHand: false,
+    size: [1, 1],
   },
   Factory: {
     label: "Factory",
@@ -99,6 +106,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "sawtooth",
     heights: [0],
     byHand: false,
+    size: [2, 1],
   },
   Restaurant: {
     label: "Restaurant",
@@ -110,6 +118,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.5, 0.62],
     byHand: true,
+    size: [1, 1],
   },
   Bar: {
     label: "Bar",
@@ -120,6 +129,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.45, 0.55],
     byHand: false,
+    size: [1, 1],
   },
   GasStation: {
     label: "Gas station",
@@ -130,6 +140,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.3],
     byHand: false,
+    size: [1, 1],
   },
   Supermarket: {
     label: "Supermarket",
@@ -140,6 +151,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.5],
     byHand: true,
+    size: [2, 2],
   },
   Warehouse: {
     label: "Warehouse",
@@ -150,6 +162,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.6],
     byHand: true,
+    size: [1, 1],
   },
 };
 

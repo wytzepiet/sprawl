@@ -17,6 +17,7 @@ import {
 import { createBorderTexture } from "../engine/TerrainChunks";
 import { buildChunk, CHUNK_STRIDE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { shapeFor, BUILDING_COLOR } from "../engine/objects/buildings";
+import { BLUEPRINTS } from "../blueprints";
 import type { BuildingKind } from "../generated";
 
 /** Tiles from one kind's centre to the next: a plot with land around it. */
@@ -33,7 +34,7 @@ const FIRST = 2;
  * under the map's sky and a noon sun, shadows and all. One canvas, one
  * scene; the pins and labels are laid over it by the menu, a slot per kind.
  */
-export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
+export default function BuildMenuScene(props: { kinds: BuildingKind[]; onFit: (tilePx: number) => void }) {
   let canvas!: HTMLCanvasElement;
 
   onMount(() => {
@@ -42,11 +43,12 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
     scene.clearColor = new Color4(1, 1, 1, 1);
 
     const n = props.kinds.length;
-    // The middle of the row, on the plots' own tile: a plot's centre is its
-    // half-tile, as it is on the map, and the middle of the canvas, which
-    // is where the menu puts each pin's point.
-    const cx = FIRST + ((n - 1) * SLOT) / 2 + 0.5;
-    const cy = ROW + 0.5;
+    // The middle of the row, and the world x at the canvas's left edge.
+    // Looking down on the map, east is screen-left — the map's camera has
+    // it the same way — so the first slot holds the row's easternmost plot.
+    const cx = FIRST + ((n - 1) * SLOT) / 2 + 1;
+    const cy = ROW + 1;
+    const left = cx + (n * SLOT) / 2;
     const cam = new FreeCamera("shelf_cam", new Vector3(cx, cy, 6), scene);
     cam.upVector = new Vector3(0, 1, 0);
     cam.setTarget(new Vector3(cx, cy, 0));
@@ -59,6 +61,7 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
       cam.orthoRight = w / 2;
       cam.orthoTop = h / 2;
       cam.orthoBottom = -h / 2;
+      props.onFit(canvas.clientWidth / w);
     };
     fit();
 
@@ -111,14 +114,18 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
     mat.specularColor = Color3.Black();
     props.kinds.forEach((kind, i) => {
       const mesh = new Mesh(`shelf_${kind}`, scene);
-      const geo = shapeFor(kind, 1, 1, 0);
+      const [w, h] = BLUEPRINTS[kind].size;
+      const geo = shapeFor(kind, w, h, 0);
       const vd = new VertexData();
       vd.positions = geo.positions;
       vd.indices = geo.indices;
       vd.normals = geo.normals;
       vd.applyToMesh(mesh);
       mesh.material = mat;
-      mesh.position = new Vector3(FIRST + i * SLOT + 0.5, ROW + 0.5, 0);
+      // A tile in from the slot's edge, on the grid, so a plot's centre sits
+      // where the menu puts its pin: a tile and a half in for a plot one
+      // tile across, two for one two across.
+      mesh.position = new Vector3(left - i * SLOT - 1 - w / 2, ROW + h / 2, 0);
       mesh.receiveShadows = true;
       shadows.addShadowCaster(mesh);
     });
