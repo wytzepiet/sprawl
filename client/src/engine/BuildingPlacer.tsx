@@ -21,10 +21,9 @@ export function BuildingPlacer() {
   const size = () => BLUEPRINTS[placingBuilding() ?? "House"].size;
 
   /**
-   * Every tile of the footprint free, or holding only a driveway stub, and
-   * a street beside it to take the driveway from — a road takes no frontage,
-   * and neither does another building's driveway. The server has the last
-   * word; this is so the ghost only shows where it would say yes.
+   * Every tile of the footprint free, or holding only a driveway stub. A
+   * street beside it is not required: a plot with none stands red until
+   * the mayor draws one to it.
    */
   function canPlace(pos: GridCoord): boolean {
     const [w, h] = size();
@@ -40,16 +39,7 @@ export function BuildingPlacer() {
         }
       }
     }
-    for (let dy = -1; dy <= h; dy++) {
-      for (let dx = -1; dx <= w; dx++) {
-        if (dx >= 0 && dx < w && dy >= 0 && dy < h) continue;
-        const here = getObjectsAt(pos.x + dx, pos.y + dy);
-        const street = here.some((e) => e.object.kind === "RoadNode" && !e.object.data.road);
-        const driveway = here.some((e) => e.object.kind === "Building");
-        if (street && !driveway) return true;
-      }
-    }
-    return false;
+    return true;
   }
 
   const onPointerMove = (e: PointerEvent) => {
