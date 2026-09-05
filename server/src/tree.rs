@@ -114,14 +114,15 @@ pub static LEGEND: &[(char, Row)] = {
         ('I', Row { name: "Industry", effect: Weight { class: Industry, times: 1.4 }, cost: 1, blurb: "Jobs that keep to themselves. Industry arrives more often." }),
         ('W', Row { name: "Workshop", effect: Building { building: Workshop }, cost: 1, blurb: "Six jobs, seven to four." }),
         ('F', Row { name: "Factory", effect: Building { building: Factory }, cost: 1, blurb: "Twenty-four jobs, six to three. The morning rush starts here." }),
-        ('r', Row { name: "Roads", effect: RoadTiles { tiles: 20 }, cost: 1, blurb: "Twenty more tiles of road. Room to build." }),
+        ('r', Row { name: "Roads", effect: RoadTiles { tiles: 60 }, cost: 1, blurb: "Sixty more tiles of road. Room to build." }),
         ('o', Row { name: "One-way streets", effect: OneWay, cost: 1, blurb: "One-way streets. Half the road, all the throughput." }),
         ('T', Row { name: "Through roads", effect: Road, cost: 1, blurb: "Roads nothing fronts onto: nothing arrives beside them, and nothing turns out of a driveway into the traffic." }),
     ]
 };
 
-/// Tiles of road a city may draw before it has taken a single node.
-const ROAD_BASE: u32 = 60;
+/// Tiles of road a city may draw before it has taken a single node. Every
+/// street is the mayor's to draw now, so this has to be a town's worth.
+const ROAD_BASE: u32 = 300;
 
 fn at(x: i32, y: i32) -> char {
     if x < 0 || y < 0 {

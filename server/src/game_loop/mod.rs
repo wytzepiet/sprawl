@@ -473,16 +473,13 @@ fn handle_road_demolish(
             None => false,
         };
         if is_orphan {
-            if let Some(pos) = world.objects.get(nid).and_then(|e| e.position) {
-                // Any car routed over this orphan has nowhere left to drive
-                let orphan_cars: Vec<EntityId> = world.node_cars.get(&nid).cloned().unwrap_or_default().into_iter().collect();
-                for car_id in orphan_cars {
-                    park_at_home(world, intersections, events, car_id);
-                }
-                intersections.remove_node(nid);
-                world.objects.remove(nid);
-                world.unindex(nid, pos);
+            // Any car routed over this orphan has nowhere left to drive
+            let orphan_cars: Vec<EntityId> = world.node_cars.get(&nid).cloned().unwrap_or_default().into_iter().collect();
+            for car_id in orphan_cars {
+                park_at_home(world, intersections, events, car_id);
             }
+            intersections.remove_node(nid);
+            world.demolish_node(nid);
         }
     }
 }

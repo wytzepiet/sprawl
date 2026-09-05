@@ -102,9 +102,14 @@ fn goal(world: &mut World, now: GameTime) -> Goal {
 /// Put one more building down, once the city has earned it and there is
 /// somewhere for it: a plot fronting a street that is joined to the world.
 /// It arrives with its driveway laid, lived in at once.
+///
+/// Sites are looked for once a sim second. The draw is seeded by the
+/// second, so looking every tick would draw the same sites a hundred times
+/// over — and did, at the whole tick's cost, whenever the meter was full
+/// and no street had room.
 pub fn spawn(world: &mut World, now: GameTime) -> Option<EntityId> {
     let Goal { kind, cost } = goal(world, now);
-    if world.xp.at(now) - world.offered_at < cost {
+    if world.xp.at(now) - world.offered_at < cost || now % 1000 != 0 {
         return None;
     }
     let mut rng = seeded(world, now);
@@ -440,6 +445,28 @@ mod tests {
         }
         assert!(kinds.iter().all(|&k| world.build.may_arrive(k)), "{kinds:?}");
         assert!(kinds.iter().all(|&k| matches!(k, BuildingKind::House | BuildingKind::Shop | BuildingKind::Office)), "{kinds:?}");
+    }
+
+    /// A full meter with nowhere to build is the spawner's worst case, and
+    /// it is asked every tick: it has to cost nothing most of the time.
+    /// Once it cost the whole tick, and the fan said so before the log did.
+    #[test]
+    fn a_full_meter_with_no_room_is_cheap() {
+        let mut world = country();
+        // Drown every free tile, so no site can ever fit.
+        let drowned: Vec<(i32, i32)> = world.terrain.keys().copied()
+            .filter(|&(x, y)| world.is_buildable(GridCoord { x, y })).collect();
+        for t in drowned {
+            world.terrain.insert(t, TerrainType::Water);
+        }
+        afford(&mut world, 0);
+        let started = std::time::Instant::now();
+        for tick in 0..2000u64 {
+            assert!(spawn(&mut world, tick * 10).is_none());
+        }
+        let took = started.elapsed();
+        eprintln!("2000 ticks of a full meter with no room: {took:?}");
+        assert!(took < std::time::Duration::from_millis(200), "2000 ticks took {took:?}");
     }
 
     /// Not an assertion: a picture, for whoever runs this with --nocapture.

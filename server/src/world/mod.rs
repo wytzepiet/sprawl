@@ -85,6 +85,10 @@ pub struct World {
     /// position, so without this "what is on this tile" would only ever find a
     /// building at its origin corner. Derived, like every other index.
     pub occupied: HashMap<(i32, i32), EntityId>,
+    /// Tile → the road node on it. Asked for constantly — every driveway
+    /// check, every bend, every site the spawner tries — and a chunk's
+    /// entity set was being walked for each answer. Derived at load.
+    pub roads: HashMap<(i32, i32), EntityId>,
 }
 
 /// One building's output for one need: the day being counted, its running
@@ -125,19 +129,6 @@ pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
 }
 
 impl World {
-    /// Entity ids at an exact tile.
-    pub(super) fn ids_at(&self, coord: GridCoord) -> Vec<EntityId> {
-        let Some(ids) = self.spatial.get(&chunk_of(coord)) else {
-            return Vec::new();
-        };
-        ids.iter()
-            .copied()
-            .filter(|id| {
-                self.objects.get(*id).and_then(|e| e.position) == Some(coord)
-            })
-            .collect()
-    }
-
     pub fn unindex(&mut self, id: EntityId, coord: GridCoord) {
         if let Some(ids) = self.spatial.get_mut(&chunk_of(coord)) {
             ids.remove(&id);
@@ -165,6 +156,7 @@ impl World {
             newly_revealed: Vec::new(),
             revealed_bounds: NO_BOUNDS,
             occupied: HashMap::new(),
+            roads: HashMap::new(),
             roads_generated: HashSet::new(),
         }
     }
@@ -190,13 +182,17 @@ impl World {
             newly_revealed: Vec::new(),
             revealed_bounds: NO_BOUNDS,
             occupied: HashMap::new(),
+            roads: HashMap::new(),
             roads_generated: HashSet::new(),
             objects,
         };
-        // Rebuild spatial index from loaded objects
+        // Rebuild the spatial index and the road index from loaded objects.
         for entry in world.objects.all_entries() {
             if let Some(pos) = entry.position {
                 world.spatial.entry(chunk_of(pos)).or_default().insert(entry.id);
+                if matches!(entry.object, GameObject::RoadNode(_)) {
+                    world.roads.insert((pos.x, pos.y), entry.id);
+                }
             }
         }
         world

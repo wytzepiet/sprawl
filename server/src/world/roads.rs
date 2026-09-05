@@ -4,17 +4,9 @@ use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
 
 impl World {
-    fn road_nodes_at(&self, coord: GridCoord) -> impl Iterator<Item = EntityId> + '_ {
-        self.ids_at(coord).into_iter().filter(|&id| {
-            self.objects
-                .get(id)
-                .is_some_and(|e| matches!(e.object, GameObject::RoadNode(_)))
-        })
-    }
-
     /// The road on this tile.
     pub fn road_node_at(&self, coord: GridCoord) -> Option<EntityId> {
-        self.road_nodes_at(coord).next()
+        self.roads.get(&(coord.x, coord.y)).copied()
     }
 
     /// Place a road node at coord. Idempotent: returns the node already
@@ -33,6 +25,7 @@ impl World {
             GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid }),
             Some(coord),
         );
+        self.roads.insert((coord.x, coord.y), id);
         self.laid += laid as u32;
         let beyond = !self.revealed.contains(&crate::world::chunk_of(coord));
         self.network.set_exit(id, beyond);
@@ -233,6 +226,7 @@ impl World {
 
         self.objects.remove(id);
         self.unindex(id, pos);
+        self.roads.remove(&(pos.x, pos.y));
     }
 
     /// Check if a node is an intersection (>2 unique connections).
