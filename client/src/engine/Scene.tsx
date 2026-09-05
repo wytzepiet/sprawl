@@ -14,6 +14,7 @@ import DebugOverlay from "../ui/DebugOverlay";
 import FrameStats from "../ui/FrameStats";
 import PinLayer from "../ui/PinLayer";
 import GrowthMeter from "../ui/GrowthMeter";
+import SkillTree from "../ui/SkillTree";
 
 function SceneInner() {
   return (
@@ -32,6 +33,7 @@ function SceneInner() {
         </DayNightLights>
         <PinLayer />
         <GrowthMeter />
+        <SkillTree />
       </Canvas>
       <BuildModeToolbar />
       <TimeControls />

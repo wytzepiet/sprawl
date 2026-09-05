@@ -13,6 +13,7 @@ export default defineConfig({
     // has to forward /ws to the game server or it dials itself.
     proxy: {
       "/ws": { target: "ws://localhost:3001", ws: true },
+      "/tree": { target: "http://localhost:3001" },
     },
   },
   build: {

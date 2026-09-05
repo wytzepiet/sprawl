@@ -12,6 +12,7 @@ mod persistence;
 mod protocol;
 mod resident;
 mod terrain;
+mod tree;
 mod world;
 mod xp;
 
@@ -26,6 +27,7 @@ use network::AppState;
 async fn main() {
     needs::check();
     blueprint::check();
+    tree::check();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(game_loop::run(command_rx));
@@ -41,6 +43,7 @@ async fn main() {
         .route("/debug/demand", axum::routing::get(health::inspect_demand))
         .route("/debug/spawner", axum::routing::get(health::inspect_spawner))
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
+        .route("/tree", axum::routing::get(health::tree))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));

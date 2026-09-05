@@ -3,6 +3,7 @@ import type { JSX } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { simNow } from "../network/clock";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
+import { setTreeOpen } from "./SkillTree";
 import type { BuildingKind } from "../generated";
 
 /** Ring geometry, in the dial's own 60-unit box. */
@@ -43,7 +44,7 @@ export default function GrowthMeter() {
 
   return (
     <>
-      <span class="fixed bottom-4 left-4 select-none pointer-events-none">
+      <span class="fixed bottom-4 left-4 select-none cursor-pointer" onClick={() => setTreeOpen(true)} title="The skill tree (L)">
         <Dial color="#5B57C8" now={xp()} max={growth().xp_needed}>
           <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
             <span class="text-[7px] font-bold uppercase tracking-widest text-white/50">Lvl</span>

@@ -20,7 +20,8 @@ const H: u32 = DAY_MS / 24;
 
 /// What company a kind keeps. Homes flock, commerce goes where the homes
 /// are, industry keeps to itself — the spawner's whole sense of neighbourhood.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export)]
 pub enum Class {
     Living,
     Commerce,
