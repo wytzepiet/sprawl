@@ -1,7 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import MultiCanvasProvider from "../engine/MultiCanvasProvider";
-import MultiCanvasView from "../engine/MultiCanvasView";
-import BuildingPreview from "../engine/objects/BuildingPreview";
+import BuildMenuScene from "./BuildMenuScene";
 import { BLUEPRINTS, KINDS } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind } from "../generated";
@@ -12,8 +10,6 @@ import { tree, unlocked } from "../state/tree";
 
 const [buildMenuOpen, setBuildMenuOpen] = createSignal(false);
 export { buildMenuOpen, setBuildMenuOpen };
-
-const PREVIEW_SIZE = 120;
 
 export function BuildButton() {
   return (
@@ -41,6 +37,26 @@ export function BuildMenuSheet() {
   const { growth } = useGame();
   // The build says what may be placed; the rest is shown, and locked.
   const may = (kind: BuildingKind) => unlocked(tree(), growth().taken, (e) => e.kind === "Building" && e.building === kind);
+  const kinds = KINDS.filter((k) => BLUEPRINTS[k].byHand);
+  const pick = (kind: BuildingKind, e: PointerEvent) => {
+    e.preventDefault();
+    if (!may(kind)) return;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const onMove = () => {
+      el.releasePointerCapture(e.pointerId);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      setPlacingBuilding(kind);
+      setBuildMenuOpen(false);
+    };
+    const onUp = () => {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+    };
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+  };
   return (
     <Show when={buildMenuOpen()}>
       <div class="fixed bottom-0 left-0 right-0 z-40 flex justify-center pointer-events-none">
@@ -54,57 +70,29 @@ export function BuildMenuSheet() {
               ✕
             </button>
           </div>
-          <MultiCanvasProvider canvasSize={{ width: PREVIEW_SIZE, height: PREVIEW_SIZE }}>
-            <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
-              <For each={KINDS.filter((k) => BLUEPRINTS[k].byHand)}>
+          {/* One world for the whole shelf, and a slot laid over each kind
+              standing in it: the pin, the label, and the drag to place it. */}
+          <div class="pins relative rounded-xl overflow-hidden" style={{ height: "140px" }}>
+            <BuildMenuScene kinds={kinds} />
+            <div class="absolute inset-0 flex">
+              <For each={kinds}>
                 {(kind) => (
                   <button
-                    class={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-colors ${may(kind) ? "hover:bg-black/[0.04] cursor-grab active:cursor-grabbing" : "opacity-40 cursor-not-allowed"}`}
+                    class={`relative flex-1 flex flex-col items-center justify-end pb-2 transition-colors ${may(kind) ? "hover:bg-black/[0.03] cursor-grab active:cursor-grabbing" : "bg-white/60 cursor-not-allowed"}`}
                     title={may(kind) ? undefined : "Take it on the tree (L)"}
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      if (!may(kind)) return;
-                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                      const buildingId = kind;
-                      const onMove = () => {
-                        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-                        (e.currentTarget as HTMLElement).removeEventListener("pointermove", onMove);
-                        (e.currentTarget as HTMLElement).removeEventListener("pointerup", onUp);
-                        setPlacingBuilding(buildingId);
-                        setBuildMenuOpen(false);
-                      };
-                      const onUp = () => {
-                        (e.currentTarget as HTMLElement).removeEventListener("pointermove", onMove);
-                        (e.currentTarget as HTMLElement).removeEventListener("pointerup", onUp);
-                      };
-                      (e.currentTarget as HTMLElement).addEventListener("pointermove", onMove);
-                      (e.currentTarget as HTMLElement).addEventListener("pointerup", onUp);
-                    }}
+                    onPointerDown={(e) => pick(kind, e)}
                   >
-                    {/* The building as the map draws it, with its pin on it. */}
-                    <div class="pins relative w-full">
-                      <MultiCanvasView
-                        style={{
-                          width: "100%",
-                          "aspect-ratio": "1",
-                          "border-radius": "0.75rem",
-                          display: "block",
-                        }}
-                      >
-                        <BuildingPreview kind={kind} />
-                      </MultiCanvasView>
-                      <div class="pin absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full pointer-events-none">
-                        <div class="marker relative">
-                          <PinBody kind={kind} />
-                        </div>
+                    <div class="pin absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full pointer-events-none" classList={{ "opacity-40": !may(kind) }}>
+                      <div class="marker relative">
+                        <PinBody kind={kind} />
                       </div>
                     </div>
-                    <span class="text-[11px] font-medium text-stone-500">{BLUEPRINTS[kind].label}</span>
+                    <span class={`text-[11px] font-medium ${may(kind) ? "text-stone-600" : "text-stone-400"}`}>{BLUEPRINTS[kind].label}</span>
                   </button>
                 )}
               </For>
             </div>
-          </MultiCanvasProvider>
+          </div>
         </div>
       </div>
     </Show>
