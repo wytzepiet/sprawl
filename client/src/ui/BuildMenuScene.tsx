@@ -43,9 +43,10 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
 
     const n = props.kinds.length;
     // The middle of the row, on the plots' own tile: a plot's centre is its
-    // half-tile, as it is on the map.
+    // half-tile, as it is on the map, and the middle of the canvas, which
+    // is where the menu puts each pin's point.
     const cx = FIRST + ((n - 1) * SLOT) / 2 + 0.5;
-    const cy = ROW + 0.5 - 0.3;
+    const cy = ROW + 0.5;
     const cam = new FreeCamera("shelf_cam", new Vector3(cx, cy, 6), scene);
     cam.upVector = new Vector3(0, 1, 0);
     cam.setTarget(new Vector3(cx, cy, 0));
