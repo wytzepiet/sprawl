@@ -18,16 +18,22 @@ impl World {
     }
 
     /// Place a road node at coord. Idempotent: returns the node already
-    /// standing here.
+    /// standing here, whatever kind it is. Generated road and driveways are
+    /// streets, and free.
     fn place_road(&mut self, coord: GridCoord) -> EntityId {
+        self.place_road_of(coord, false, false)
+    }
+
+    fn place_road_of(&mut self, coord: GridCoord, road: bool, laid: bool) -> EntityId {
         if let Some(id) = self.road_node_at(coord) {
             return id;
         }
 
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false }),
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid }),
             Some(coord),
         );
+        self.laid += laid as u32;
         let beyond = !self.revealed.contains(&crate::world::chunk_of(coord));
         self.network.set_exit(id, beyond);
         id
@@ -82,7 +88,8 @@ impl World {
     }
 
     /// Place road nodes at `from` and `to`, and connect them as outgoing.
-    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool) {
+    /// The mayor's own hand: what it lays is counted against the build.
+    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
         let dx = to.x - from.x;
         let dy = to.y - from.y;
 
@@ -120,8 +127,8 @@ impl World {
             self.clear_driveway(to);
         }
 
-        let from_id = self.place_road(from);
-        let to_id = self.place_road(to);
+        let from_id = self.place_road_of(from, road, true);
+        let to_id = self.place_road_of(to, road, true);
 
         if let Some(entry) = self.objects.get_mut(from_id)
             && let GameObject::RoadNode(ref mut node) = entry.object
@@ -194,19 +201,21 @@ impl World {
         }
     }
 
-    /// Remove a road node by id and clean up every reference to it.
+    /// Remove a road node by id and clean up every reference to it. A tile
+    /// the mayor laid is refunded.
     pub fn demolish_node(&mut self, id: EntityId) {
         let Some(pos) = self.objects.get(id).and_then(|e| e.position) else { return };
-        let (neighbor_ids, incoming_ids) = match self.objects.get(id) {
+        let (neighbor_ids, incoming_ids, laid) = match self.objects.get(id) {
             Some(entry) => {
                 if let GameObject::RoadNode(ref node) = entry.object {
-                    (node.outgoing.clone(), node.incoming.clone())
+                    (node.outgoing.clone(), node.incoming.clone(), node.laid)
                 } else {
                     return;
                 }
             }
             None => return,
         };
+        self.laid -= laid as u32;
 
         for nid in neighbor_ids.iter().chain(incoming_ids.iter()) {
             if let Some(entry) = self.objects.get_mut(*nid)
@@ -223,6 +232,28 @@ impl World {
     /// Check if a node is an intersection (>2 unique connections).
     pub fn is_intersection(&self, node_id: EntityId) -> bool {
         self.unique_connection_count(node_id) > 2
+    }
+
+    /// Every street the city could grow onto: joined to the world, in the
+    /// survey, and not a driveway.
+    pub fn streets(&self) -> Vec<GridCoord> {
+        self.objects
+            .all_entries()
+            .iter()
+            .filter(|e| self.is_street(e.id) && self.network.joined(e.id))
+            .filter_map(|e| e.position)
+            .filter(|p| self.revealed.contains(&crate::world::chunk_of(*p)))
+            .collect()
+    }
+
+    /// Count what the mayor has laid, from the nodes' own flags.
+    pub fn rebuild_laid(&mut self) {
+        self.laid = self
+            .objects
+            .all_entries()
+            .iter()
+            .filter(|e| matches!(e.object, GameObject::RoadNode(ref n) if n.laid))
+            .count() as u32;
     }
 
     pub(super) fn unique_connection_count(&self, node_id: EntityId) -> usize {

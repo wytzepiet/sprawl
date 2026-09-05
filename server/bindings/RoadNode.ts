@@ -5,4 +5,14 @@ export type RoadNode = { outgoing: Array<number>, incoming: Array<number>,
  * Part of a network that reaches beyond the survey — road immigrants can
  * come in by. Otherwise an island: drawn red, driven by nobody.
  */
-joined: boolean, };
+joined: boolean, 
+/**
+ * A road rather than a street. Buildings front streets only: no driveway
+ * is ever laid onto a road, and nothing arrives beside one.
+ */
+road: boolean, 
+/**
+ * Laid by the mayor, so it counts against the build's road tiles. The
+ * survey's own roads, and driveways, are free.
+ */
+laid: boolean, };

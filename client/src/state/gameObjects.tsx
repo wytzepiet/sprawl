@@ -53,19 +53,6 @@ export function pinned(): GameObjectEntry[] {
 }
 /** Tile → the building standing on it. */
 const occupiedBy = new Map<string, number>();
-/**
- * Buildings that arrived while the player was watching, for the pin to make
- * an entrance with. Ids only ever go up, so a building newer than everything
- * seen so far — including the cars that arrived with the last immigrants —
- * was built just now; one loaded by panning to it is older than those. The
- * first seconds are the world loading, whatever the ids say.
- */
-const arrivals = new Set<number>();
-const openedAt = Date.now();
-let newest = 0;
-export function arrived(id: number): boolean {
-  return arrivals.has(id);
-}
 function trackPin(entry: GameObjectEntry | undefined, id: number) {
   const was = pinnedEntries.has(id);
   const before = pinnedEntries.get(id);
@@ -75,10 +62,8 @@ function trackPin(entry: GameObjectEntry | undefined, id: number) {
   if (entry && entry.object.kind === "Building" && entry.position) {
     pinnedEntries.set(id, entry);
     for (const t of footprint(entry.position, (entry.object.data as Building).size)) occupiedBy.set(t, id);
-    if (!was && id > newest && Date.now() - openedAt > 3000) arrivals.add(id);
   } else {
     pinnedEntries.delete(id);
-    arrivals.delete(id);
   }
   if (was || pinnedEntries.has(id)) setPinsVersion((v) => v + 1);
 }
@@ -175,7 +160,6 @@ function applyOps(ops: Operation[]) {
         }
         entities.set(key, op.data);
         trackPin(op.data, op.data.id);
-        newest = Math.max(newest, op.data.id);
         if (op.data.object.kind === "RoadNode" && op.data.position) {
           const under = occupiedBy.get(posKey(op.data.position.x, op.data.position.y));
           if (under !== undefined) setPinsVersion((v) => v + 1);
@@ -236,6 +220,8 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
     offer_needed: 0,
     rate: 0,
     next: null,
+    taken: [],
+    road_tiles_left: 0,
     at: 0,
   });
   const [revealedBounds, setRevealedBounds] = createSignal<ChunkBounds>({

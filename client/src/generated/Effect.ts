@@ -5,4 +5,4 @@ import type { Class } from "./Class";
 /**
  * What taking a node does. Odds and unlocks only; no verbs.
  */
-export type Effect = { "kind": "Nothing" } | { "kind": "Weight", "data": { class: Class, times: number, } } | { "kind": "Building", "data": BuildingKind } | { "kind": "OneWay" } | { "kind": "RoadTiles", "data": number };
+export type Effect = { "kind": "Nothing" } | { "kind": "Weight", class: Class, times: number, } | { "kind": "Building", building: BuildingKind, } | { "kind": "OneWay" } | { "kind": "Road" } | { "kind": "RoadTiles", tiles: number, };

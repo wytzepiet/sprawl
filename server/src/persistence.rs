@@ -3,6 +3,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::protocol::{GameObjectEntry, GameObject};
+use crate::tree::Cell;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS objects (
@@ -21,7 +22,7 @@ CREATE TABLE IF NOT EXISTS metadata (
 ///
 /// Bundled rather than passed one by one: the list only ever grows, and a
 /// function of eight scalars is one whose call sites nobody can read.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Meta {
     pub next_id: u64,
     pub terrain_seed: u32,
@@ -31,6 +32,8 @@ pub struct Meta {
     /// show — the metadata column holds whole numbers.
     pub earned: f64,
     pub offered_at: f64,
+    /// The nodes of the tree taken, one metadata row each.
+    pub taken: Vec<Cell>,
 }
 
 /// A whole number of hundredths, which is what the metadata table can hold.
@@ -90,6 +93,17 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
             .unwrap_or(0)
     };
 
+    let taken = conn
+        .prepare("SELECT key FROM metadata WHERE key LIKE 'taken:%'")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).filter_map(|k| {
+                    let (x, y) = k.strip_prefix("taken:")?.split_once(',')?;
+                    Some(Cell { x: x.parse().ok()?, y: y.parse().ok()? })
+                }).collect::<Vec<_>>())
+        })
+        .unwrap_or_default();
+
     (
         entries,
         Meta {
@@ -98,6 +112,7 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
             sim_time,
             earned: read("earned") as f64 / 100.0,
             offered_at: read("offered_at") as f64 / 100.0,
+            taken,
         },
     )
 }
@@ -131,13 +146,17 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
             .expect("failed to delete object");
     }
 
+    let taken: Vec<(String, i64)> = meta.taken.iter().map(|c| (format!("taken:{},{}", c.x, c.y), 1)).collect();
     for (key, value) in [
-        ("next_id", meta.next_id as i64),
-        ("terrain_seed", meta.terrain_seed as i64),
-        ("sim_time", meta.sim_time as i64),
-        ("earned", centi(meta.earned)),
-        ("offered_at", centi(meta.offered_at)),
-    ] {
+        ("next_id".to_string(), meta.next_id as i64),
+        ("terrain_seed".to_string(), meta.terrain_seed as i64),
+        ("sim_time".to_string(), meta.sim_time as i64),
+        ("earned".to_string(), centi(meta.earned)),
+        ("offered_at".to_string(), centi(meta.offered_at)),
+    ]
+    .into_iter()
+    .chain(taken)
+    {
         tx.execute(
             "INSERT OR REPLACE INTO metadata (key, value) VALUES (?1, ?2)",
             rusqlite::params![key, value],

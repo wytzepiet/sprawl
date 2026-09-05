@@ -3,11 +3,13 @@ import { MousePointer2, Route, Trash2, CarOff, RotateCcw, Building2 } from "./ic
 import {
   buildMode,
   setBuildMode,
-  roadOneWay,
-  setRoadOneWay,
+  roadKind,
+  setRoadKind,
   type BuildMode,
+  type RoadKind,
 } from "./buildMode";
 import { useGame } from "../state/gameObjects";
+import { tree, unlocked } from "../state/tree";
 import {
   BuildButton,
   BuildMenuSheet,
@@ -23,12 +25,29 @@ const modes = [
   { id: "demolish" as BuildMode, label: "Demolish", icon: Trash2, key: "X" },
 ];
 
+/** What the road tool can draw, in the order the T key cycles them. */
+const ROAD_KINDS: { id: RoadKind; label: string; needs?: string }[] = [
+  { id: "street", label: "Street" },
+  { id: "oneway", label: "1-way", needs: "OneWay" },
+  { id: "road", label: "Road", needs: "Road" },
+];
+
 export default function BuildModeToolbar() {
-  const { send } = useGame();
+  const { send, growth } = useGame();
+  // The build says which kinds may be drawn; a locked kind cannot be chosen.
+  const may = (kind: RoadKind) => {
+    const needs = ROAD_KINDS.find((r) => r.id === kind)?.needs;
+    return !needs || unlocked(tree(), growth().taken, (e) => e.kind === needs);
+  };
+  const choose = (kind: RoadKind) => { if (may(kind)) setRoadKind(kind); };
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (buildMode() === "road" && e.key.toLowerCase() === "t") {
-      setRoadOneWay((v) => !v);
+      const i = ROAD_KINDS.findIndex((r) => r.id === roadKind());
+      for (let j = 1; j <= ROAD_KINDS.length; j++) {
+        const next = ROAD_KINDS[(i + j) % ROAD_KINDS.length].id;
+        if (may(next)) { setRoadKind(next); break; }
+      }
       return;
     }
     if (e.key.toLowerCase() === "b") {
@@ -55,32 +74,33 @@ export default function BuildModeToolbar() {
     <>
       <div class="fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
         <Show when={buildMode() === "road"}>
-          <div class="flex p-1 rounded-xl bg-white/70 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-            <button
-              onClick={() => setRoadOneWay(false)}
-              class={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase transition-all duration-200 cursor-pointer
-              ${
-                !roadOneWay()
-                  ? "bg-white text-stone-800 shadow-[0_1px_3px_rgba(0,0,0,0.1)]"
-                  : "text-stone-400 hover:text-stone-600"
-              }`}
-            >
-              2-way
-            </button>
-            <button
-              onClick={() => setRoadOneWay(true)}
-              class={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase transition-all duration-200 cursor-pointer
-              ${
-                roadOneWay()
-                  ? "bg-white text-stone-800 shadow-[0_1px_3px_rgba(0,0,0,0.1)]"
-                  : "text-stone-400 hover:text-stone-600"
-              }`}
-            >
-              1-way
-            </button>
+          <div class="flex items-center p-1 rounded-xl bg-white/70 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <For each={ROAD_KINDS}>
+              {(r) => (
+                <button
+                  onClick={() => choose(r.id)}
+                  disabled={!may(r.id)}
+                  title={may(r.id) ? r.label : `${r.label}: take it on the tree (L)`}
+                  class={`px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide uppercase transition-all duration-200
+                  ${
+                    roadKind() === r.id
+                      ? "bg-white text-stone-800 shadow-[0_1px_3px_rgba(0,0,0,0.1)] cursor-pointer"
+                      : may(r.id)
+                        ? "text-stone-400 hover:text-stone-600 cursor-pointer"
+                        : "text-stone-300 line-through cursor-not-allowed"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              )}
+            </For>
             <kbd class="self-center ml-1 mr-1 text-[9px] font-mono px-1 py-0.5 rounded-md bg-white border border-black/[0.06] text-stone-400 leading-none shadow-sm">
               T
             </kbd>
+            {/* What the build still allows to be laid. */}
+            <span class={`ml-2 mr-2 text-xs tabular-nums ${growth().road_tiles_left === 0 ? "text-red-500 font-semibold" : "text-stone-500"}`}>
+              {growth().road_tiles_left} tiles
+            </span>
           </div>
         </Show>
         <div class="flex items-center gap-1.5 p-2 rounded-2xl">

@@ -15,10 +15,6 @@ impl World {
         })
     }
 
-    pub fn has_building_at(&self, coord: GridCoord) -> bool {
-        self.occupied.contains_key(&(coord.x, coord.y))
-    }
-
     /// Land a building can stand on. Water and mountain are out; roads and other
     /// buildings already hold their tiles.
     ///
@@ -49,17 +45,18 @@ impl World {
 
     /// May a plot take its access from this road?
     ///
-    /// Today that reads as: is it a street rather than a driveway. A driveway
-    /// stands on a building's own tile — that is exactly what makes it that
-    /// building's — so it is already spoken for, and a plot fronting onto one
-    /// would run its door through somebody else's hallway.
+    /// A street, rather than a road or a driveway. A road is a through route
+    /// nothing fronts onto. A driveway stands on a building's own tile — that
+    /// is exactly what makes it that building's — so it is already spoken
+    /// for, and a plot fronting onto one would run its door through somebody
+    /// else's hallway.
     ///
-    /// This is where access rules about a road belong, and the only place they
-    /// belong. More road types are coming, and a motorway that admits no
-    /// frontage answers here too, rather than at each call site in turn.
-    fn is_street(&self, id: EntityId) -> bool {
-        let Some(pos) = self.objects.get(id).and_then(|e| e.position) else { return false };
-        !self.occupied.contains_key(&(pos.x, pos.y))
+    /// This is where access rules about a road belong, and the only place
+    /// they belong.
+    pub fn is_street(&self, id: EntityId) -> bool {
+        let Some(entry) = self.objects.get(id) else { return false };
+        let (Some(pos), GameObject::RoadNode(node)) = (entry.position, &entry.object) else { return false };
+        !node.road && !self.occupied.contains_key(&(pos.x, pos.y))
     }
 
     /// Is the only thing standing here a road that dead-ends on this tile?
@@ -150,7 +147,8 @@ impl World {
     /// rather than holding a dangling reference.
     /// Is the building reached from the world: a driveway, on road that is
     /// joined to the world beyond the survey? A driveway onto an island is
-    /// no way in, and the city waits for the mayor to mend it like any other.
+    /// no way in. The client draws this for itself; only tests ask here.
+    #[cfg(test)]
     pub fn is_reached(&self, building_id: EntityId) -> bool {
         self.road_node_for_building(building_id).is_some_and(|n| self.network.joined(n))
     }
@@ -364,7 +362,7 @@ mod tests {
             .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, (1, 1))
             .unwrap();
 
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false);
+        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
         let door = world.road_node_at(GridCoord { x: 2, y: 0 });
         assert!(door.is_some(), "the road ran into the plot");
         assert_eq!(world.road_node_for_building(b), door);
@@ -381,10 +379,10 @@ mod tests {
             .unwrap();
 
         // In from below, then in from the left. Two different tiles of the plot.
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false);
+        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
         assert!(world.road_node_at(GridCoord { x: 2, y: 0 }).is_some());
 
-        world.handle_place_road(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }, false);
+        world.handle_place_road(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }, false, false);
         assert!(world.road_node_at(GridCoord { x: 1, y: 0 }).is_some(), "the new door is open");
         assert!(world.road_node_at(GridCoord { x: 2, y: 0 }).is_none(), "and the old one is gone");
         assert_eq!(world.road_node_for_building(b), world.road_node_at(GridCoord { x: 1, y: 0 }));
@@ -398,9 +396,9 @@ mod tests {
         world
             .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, (1, 1))
             .unwrap();
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false);
+        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
 
-        world.handle_place_road(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false);
+        world.handle_place_road(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false, false);
         assert!(world.road_node_at(GridCoord { x: 3, y: 0 }).is_none(), "the road stops at the door");
     }
 

@@ -86,6 +86,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         world.rebuild_node_cars();
         world.rebuild_occupied();
         world.rebuild_roads_generated();
+        world.rebuild_laid();
         // A saved world may have been revealed further than its roads reach,
         // if it was saved before this existed.
         let terrain = world.terrain.clone();
@@ -296,6 +297,7 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
     // is drawn again, since it depends on demand as it stands now.
     world.xp = crate::xp::Ledger::load(meta.earned, meta.sim_time);
     world.offered_at = meta.offered_at;
+    world.build = crate::tree::Build::load(meta.taken);
     (world, meta.sim_time)
 }
 
@@ -321,6 +323,7 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
             sim_time,
             earned: world.xp.at(sim_time),
             offered_at: world.offered_at,
+            taken: world.build.taken(),
         },
     );
     println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());
@@ -338,7 +341,13 @@ fn handle_player_action(
             let from_id = world.road_node_at(place.from);
             let to_id = world.road_node_at(place.to);
 
-            world.handle_place_road(place.from, place.to, place.one_way);
+            // The build is the gate: what kinds of road, and how much of it.
+            // Each end that is not standing yet is a tile laid.
+            let new_tiles = from_id.is_none() as u32 + to_id.is_none() as u32;
+            if !world.build.may_draw(place.one_way, place.road) || world.laid + new_tiles > world.build.road_tiles() {
+                return;
+            }
+            world.handle_place_road(place.from, place.to, place.one_way, place.road);
 
             // Insert edges for newly created connections
             let new_from = world.road_node_at(place.from);
@@ -354,7 +363,7 @@ fn handle_player_action(
             }
         }
         ClientMessage::PlaceBuilding(place) => {
-            if world.spawn_building(place.pos, place.kind, (1, 1)).is_some() {
+            if world.build.may_place(place.kind) && world.spawn_building(place.pos, place.kind, (1, 1)).is_some() {
                 settle_and_wake(world, events);
             }
         }
@@ -381,6 +390,10 @@ fn handle_player_action(
             for car_id in car_ids {
                 park_at_home(world, intersections, events, car_id);
             }
+        }
+        ClientMessage::Take(cell) => {
+            let (level, _) = crate::spawner::level(world.xp.at(now));
+            world.build.take(cell, level);
         }
         ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),
         ClientMessage::ResetWorld => unreachable!("handled in run()"),

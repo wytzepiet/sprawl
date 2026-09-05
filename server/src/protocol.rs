@@ -17,6 +17,9 @@ pub struct PlaceRoad {
     pub from: GridCoord,
     pub to: GridCoord,
     pub one_way: bool,
+    /// A road rather than a street: a through route nothing fronts onto.
+    #[serde(default)]
+    pub road: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -30,6 +33,14 @@ pub struct RoadNode {
     /// come in by. Otherwise an island: drawn red, driven by nobody.
     #[serde(default)]
     pub joined: bool,
+    /// A road rather than a street. Buildings front streets only: no driveway
+    /// is ever laid onto a road, and nothing arrives beside one.
+    #[serde(default)]
+    pub road: bool,
+    /// Laid by the mayor, so it counts against the build's road tiles. The
+    /// survey's own roads, and driveways, are free.
+    #[serde(default)]
+    pub laid: bool,
 }
 
 /// What stands on a plot. The kind follows from the footprint the layout chose,
@@ -289,6 +300,8 @@ impl ChunkBounds {
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
     PlaceRoad(PlaceRoad),
+    /// Spend a point on a node of the tree.
+    Take(crate::tree::Cell),
     PlaceBuilding(PlaceBuilding),
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
@@ -351,6 +364,10 @@ pub struct Growth {
     pub rate: f64,
     /// What is coming, once it is earned.
     pub next: Option<BuildingKind>,
+    /// The build: the nodes of the tree taken.
+    pub taken: Vec<crate::tree::Cell>,
+    /// Tiles of road the mayor may still lay.
+    pub road_tiles_left: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

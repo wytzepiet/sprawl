@@ -1,6 +1,7 @@
 # Services: what the mayor places, and why
 
-Status: specification, agreed 2026-09-05, not yet built. Follows
+Status: specification, agreed 2026-09-05. §2–4 built the same day (roads
+have no speed of their own yet); §5–7 not yet. Follows
 `sprawl-spawner.md` (what arrives on its own) and `sprawl-needs.md` (how
 residents decide). Supersedes the parts of both that say buildings arrive
 unconnected for the mayor to road.

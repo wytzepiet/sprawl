@@ -17,6 +17,8 @@ import type { GameObjectEntry, RoadNode } from "../../generated";
 /** Red, for road that reaches nothing: an island no car will ever come down. */
 const CUT_OFF = new Color3(0.85, 0.25, 0.2);
 const cutOff = (c: Color3) => Color3.Lerp(c, CUT_OFF, 0.55);
+/** Darker, for a road: a through route nothing fronts onto. */
+const asRoad = (c: Color3) => c.scale(0.72);
 
 // --- Connection detection ---
 
@@ -86,21 +88,24 @@ export function mountRoad(
   const arms = getConnectionArms(entry, getEntity);
   // An island is drawn in its own buckets: one material each, so the red is
   // a colour, not a per-instance attribute.
-  const joined = (entry.object.data as RoadNode).joined;
-  const key = armsKey(arms) + (joined ? "" : "_cut");
-  const paint = joined ? (c: Color3) => c : cutOff;
+  const { joined, road } = entry.object.data as RoadNode;
+  const key = armsKey(arms) + (joined ? "" : "_cut") + (road ? "_road" : "");
+  const tint = (c: Color3) => {
+    const t = joined ? c : cutOff(c);
+    return road ? asRoad(t) : t;
+  };
 
   const borderGeo = buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z);
   if (borderGeo) {
     const bk = `road_border_${key}`;
-    pool.ensureBucket(bk, borderGeo, paint(theme.roadBorder), false, true);
+    pool.ensureBucket(bk, borderGeo, tint(theme.roadBorder), false, true);
     instances.push({ key: bk, id: pool.addInstance(bk, pos) });
   }
 
   const roadGeo = buildRoadGeometry(arms, HALF_W, ROAD_Z);
   if (roadGeo) {
     const rk = `road_${key}`;
-    pool.ensureBucket(rk, roadGeo, paint(theme.road), false, true);
+    pool.ensureBucket(rk, roadGeo, tint(theme.road), false, true);
     instances.push({ key: rk, id: pool.addInstance(rk, pos) });
   }
 

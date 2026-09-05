@@ -9,10 +9,11 @@ built" in `sprawl-agents.md`; reads the demand signal of `sprawl-needs.md`
 ## 1. Scope
 
 Zoning is obsolete. The player will not paint residential, commercial and
-industrial areas; buildings **arrive on their own**, dormant until a road
-reaches them, and the player roads them, moves them or demolishes them
-afterwards. (They arrived as proposals to accept or reject until
-2026-09-04; see `sprawl-shelved.md`.) Placeable buildings remain only for
+industrial areas; buildings **arrive on their own**, onto the streets the
+player has drawn, with their driveway laid, and the player moves them or
+demolishes them afterwards. (They arrived as proposals to accept or reject
+until 2026-09-04, and unconnected for the mayor to road until 2026-09-05;
+see `sprawl-shelved.md` and `sprawl-services.md` §3.) Placeable buildings remain only for
 things that do something special. This document specifies how an arrival
 is chosen and sited, and what the client shows.
 It does not specify pacing beyond one constant, money, or the skill tree.
@@ -24,24 +25,21 @@ From `sprawl-agents.md`, unchanged:
 - **Nothing needs to cause a spawn.** Demand tilts the choice of kind; it
   never gates it. A building that appears participates automatically.
 - **An arrival is a building.** It is placed the moment the meter fills
-  and a site is found, and stands dormant — drawn red, its pin never
-  collapsing, pointed at from the edge of the view — until a road lands on
-  one of its tiles. (Until 2026-09-04 it was a proposal: a pin, a ghost and
-  two buttons; the notes below on that are kept for the record. The
-  earlier write-up said "not a world object"; the objection there was
-  to drafts' batch lifecycle, which this does not share.)
-- **The road is the price of yes.** Proposals land where there is no road.
-  An accepted building stands **dormant** until the network reaches it;
-  the driveway forms itself the moment a road lands adjacent.
+  and a site is found: a plot fronting a street joined to the world, with
+  a free driveway, which is laid with it. It is lived in at once. (Until
+  2026-09-04 it was a proposal: a pin, a ghost and two buttons; until
+  2026-09-05 it arrived anywhere and stood red until roaded. The notes
+  below on those are kept for the record.)
+- **The street is the price.** Nothing arrives where there is no street,
+  so the network the mayor draws is what decides where the city goes.
 - **Ambient, never modal.**
 
 ## 3. Dormancy
 
-A building may exist without a driveway. `place_building` puts it on the
-map; `attach_driveway` gives it one when a street is adjacent, using the
-same plot geometry as today, run at connection time instead of placement
-time. Every road laid for real — committed from a draft, or generated —
-attaches driveways to the dormant buildings beside it.
+A building may lose its driveway — the mayor demolishes it — and then it
+is dormant, drawn red, until a road lands beside it again. Every road laid
+attaches driveways to the dormant buildings beside it. Red on the map
+means one thing: not joined to the world.
 
 What no road serves does not participate: `settle` houses and employs
 nobody there, and the candidate search of `sprawl-needs.md` §4 does not

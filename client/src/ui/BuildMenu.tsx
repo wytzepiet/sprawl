@@ -5,8 +5,11 @@ import MultiCanvasView from "../engine/MultiCanvasView";
 import BuildingPreview from "../engine/objects/BuildingPreview";
 import { BUILDING_COLOR } from "../engine/objects/buildings";
 import { BLUEPRINTS, KINDS } from "../blueprints";
+import type { BuildingKind } from "../generated";
 import { Building2 } from "./icons";
 import { setPlacingBuilding } from "./buildMode";
+import { useGame } from "../state/gameObjects";
+import { tree, unlocked } from "../state/tree";
 
 const [buildMenuOpen, setBuildMenuOpen] = createSignal(false);
 export { buildMenuOpen, setBuildMenuOpen };
@@ -36,6 +39,9 @@ export function BuildButton() {
 }
 
 export function BuildMenuSheet() {
+  const { growth } = useGame();
+  // The build says what may be placed; the rest is shown, and locked.
+  const may = (kind: BuildingKind) => unlocked(tree(), growth().taken, (e) => e.kind === "Building" && e.building === kind);
   return (
     <Show when={buildMenuOpen()}>
       <div class="fixed bottom-0 left-0 right-0 z-40 flex justify-center pointer-events-none">
@@ -54,9 +60,11 @@ export function BuildMenuSheet() {
               <For each={KINDS.filter((k) => BLUEPRINTS[k].byHand)}>
                 {(kind) => (
                   <button
-                    class="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-black/[0.04] transition-colors cursor-grab active:cursor-grabbing"
+                    class={`flex flex-col items-center gap-1.5 p-2 rounded-xl transition-colors ${may(kind) ? "hover:bg-black/[0.04] cursor-grab active:cursor-grabbing" : "opacity-40 cursor-not-allowed"}`}
+                    title={may(kind) ? undefined : "Take it on the tree (L)"}
                     onPointerDown={(e) => {
                       e.preventDefault();
+                      if (!may(kind)) return;
                       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
                       const buildingId = kind;
                       const onMove = () => {

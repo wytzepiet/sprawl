@@ -63,6 +63,8 @@ pub fn growth(world: &World, now: GameTime) -> Growth {
         offer_needed: points(world.goal.map_or(0.0, |g| g.cost)),
         rate: points(world.xp.rate(now)),
         next: world.goal.map(|g| g.kind),
+        taken: world.build.taken(),
+        road_tiles_left: world.build.road_tiles().saturating_sub(world.laid),
     }
 }
 
@@ -90,7 +92,7 @@ fn goal(world: &mut World, now: GameTime) -> Goal {
     }
     let mut rng = seeded(world, now);
     let goal = Goal {
-        kind: draw_kind(&mut rng, &crate::resident::pressure(world, now)),
+        kind: draw_kind(world, &mut rng, &crate::resident::pressure(world, now)),
         cost: EARN_BASE + EARN_PER_BUILDING * buildings(world).len() as f64,
     };
     world.goal = Some(goal);
@@ -98,29 +100,20 @@ fn goal(world: &mut World, now: GameTime) -> Goal {
 }
 
 /// Put one more building down, once the city has earned it and there is
-/// somewhere for it. It stands dormant, drawn red, until the mayor draws a
-/// road to it — even beside a street, the driveway is the mayor's to draw;
-/// connecting what arrived is the game.
-///
-/// And only once everything already standing is connected. The meter keeps
-/// charging meanwhile, so nothing earned is lost; but a mayor who was away
-/// comes back to one red building, not a red city.
+/// somewhere for it: a plot fronting a street that is joined to the world.
+/// It arrives with its driveway laid, lived in at once.
 pub fn spawn(world: &mut World, now: GameTime) -> Option<EntityId> {
     let Goal { kind, cost } = goal(world, now);
     if world.xp.at(now) - world.offered_at < cost {
         return None;
     }
-    let standing = buildings(world);
-    if standing.is_empty() || standing.iter().any(|&(id, ..)| !world.is_reached(id)) {
-        return None;
-    }
     let mut rng = seeded(world, now);
     let size = blueprint(kind).size;
-    let pos = draw_site(world, &mut rng, kind, size, &standing)?;
+    let pos = draw_site(world, &mut rng, kind, size, &buildings(world))?;
     // Spent. The next goal is drawn on the next tick.
     world.offered_at = world.xp.at(now);
     world.goal = None;
-    world.place_building(pos, kind, size)
+    world.spawn_building(pos, kind, size)
 }
 
 /// What the world is offering: where each kind belongs, and what stands
@@ -142,12 +135,16 @@ pub fn inspect(world: &World, now: GameTime) -> Value {
     })
 }
 
-/// Section 4: base weight per kind, tilted by what the city cannot get.
-fn draw_kind(rng: &mut SmallRng, pressure: &std::collections::HashMap<Need, f64>) -> BuildingKind {
+/// Section 4: base weight per kind, tilted by what the city cannot get and
+/// by the build, among the kinds the build lets arrive.
+fn draw_kind(world: &World, rng: &mut SmallRng, pressure: &std::collections::HashMap<Need, f64>) -> BuildingKind {
     let p = |n: &Need| pressure.get(n).copied().unwrap_or(0.0);
     let weight = |k: BuildingKind| {
         let b = blueprint(k);
-        b.weight * (1.0 + b.tilt.iter().map(p).sum::<f64>())
+        if !world.build.may_arrive(k) {
+            return 0.0;
+        }
+        b.weight * world.build.weight(b.class) * (1.0 + b.tilt.iter().map(p).sum::<f64>())
     };
     *BuildingKind::ALL.choose_weighted(rng, |&k| weight(k)).unwrap()
 }
@@ -176,9 +173,11 @@ fn draw_site(
         .collect();
     // One anchor per draw, then the best of several sites around it. Drawn
     // per site, the candidate beside the big cluster won on company every
-    // time, and a fresh seed never grew.
-    let (anchor, reach) = if seed_new {
-        (standing.choose(rng)?.1, 20..40)
+    // time, and a fresh seed never grew. A new cluster seeds on a street
+    // rather than beside a building, so a street in the countryside fills
+    // on its own.
+    let (anchor, reach) = if seed_new || standing.is_empty() {
+        (world.streets().choose(rng).copied()?, 3..10)
     } else {
         let i = (0..standing.len()).collect::<Vec<_>>().choose_weighted(rng, |&i| liked[i]).ok().copied()?;
         (standing[i].1, 3..10)
@@ -227,7 +226,8 @@ fn affinity(kind: BuildingKind, near: BuildingKind) -> f64 {
     }
 }
 
-/// The nearest place to `at` where a footprint fits: buildable and revealed.
+/// The nearest place to `at` where a footprint fits: buildable, revealed,
+/// and fronting a street that is joined to the world.
 fn snap(world: &World, at: GridCoord, size: (u8, u8)) -> Option<GridCoord> {
     let fits = |pos: GridCoord| {
         let (w, h) = (size.0 as i32, size.1 as i32);
@@ -236,9 +236,9 @@ fn snap(world: &World, at: GridCoord, size: (u8, u8)) -> Option<GridCoord> {
                 let t = GridCoord { x: pos.x + dx, y: pos.y + dy };
                 world.is_buildable(t) && world.revealed.contains(&crate::world::chunk_of(t))
             })
-        })
+        }) && world.road_for_plot(pos, size).is_some_and(|(street, _)| world.network.joined(street))
     };
-    (0..=3).flat_map(|ring| ring_around(at, ring)).find(|&p| fits(p))
+    (0..=6).flat_map(|ring| ring_around(at, ring)).find(|&p| fits(p))
 }
 
 fn ring_around(c: GridCoord, r: i32) -> impl Iterator<Item = GridCoord> {
@@ -314,9 +314,16 @@ mod tests {
             }
         }
         // The street runs out past the survey, the way road generation
-        // always leaves one: that is what joins the town to the world.
-        let street: Vec<GridCoord> = (-2..140).map(|x| GridCoord { x, y: 0 }).collect();
+        // always leaves one: that is what joins the town to the world. Far
+        // past it, since every arrival surveys further and there is no road
+        // generation here to keep ahead of it.
+        let street: Vec<GridCoord> = (-2..400).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
+        // Side streets, so the town has somewhere to be two-dimensional.
+        for x in (12..120).step_by(24) {
+            let side: Vec<GridCoord> = (-30..31).map(|y| GridCoord { x, y }).collect();
+            world.place_road_path(&side);
+        }
         for (x, kind) in [(0, BuildingKind::House), (4, BuildingKind::Shop), (8, BuildingKind::Workshop)] {
             world.spawn_building(GridCoord { x, y: 1 }, kind, (1, 1)).unwrap();
         }
@@ -333,30 +340,11 @@ mod tests {
         world.xp = crate::xp::Ledger::load(world.offered_at + cost, now);
     }
 
-    /// A road straight down from the street to a plot, the way a mayor would
-    /// connect what arrived.
-    fn road_to(world: &mut World, pos: GridCoord) {
-        // Along the street's line to where the street actually runs, then
-        // straight down to the plot.
-        let street_x = pos.x.clamp(-2, 139);
-        let mut path: Vec<GridCoord> = Vec::new();
-        let mut x = street_x;
-        loop {
-            path.push(GridCoord { x, y: 0 });
-            if x == pos.x { break; }
-            x += (pos.x - x).signum();
-        }
-        let mut y = 0;
-        while y != pos.y {
-            y += (pos.y - y).signum();
-            path.push(GridCoord { x: pos.x, y });
-        }
-        world.place_road_path(&path);
-    }
-
-    /// Road everything that arrives for a while, and look at the town that made.
+    /// Let the town arrive for a while, with every kind allowed, and look at
+    /// what that made.
     fn grow(n: usize) -> (World, Vec<(GridCoord, BuildingKind)>) {
         let mut world = country();
+        world.build = crate::tree::Build::everything();
         let mut placed = Vec::new();
         let mut now = 0;
         while placed.len() < n {
@@ -367,9 +355,8 @@ mod tests {
                 let GameObject::Building(ref b) = e.object else { unreachable!() };
                 let pos = e.position.unwrap();
                 placed.push((pos, b.kind));
-                road_to(&mut world, pos);
             }
-            assert!(now < 400 * DAY_MS as u64, "the spawner ran dry after {}", placed.len());
+            assert!(now < 40 * DAY_MS as u64, "the spawner ran dry after {} with goal {:?}", placed.len(), world.goal);
         }
         (world, placed)
     }
@@ -418,21 +405,41 @@ mod tests {
         assert!(spawn(&mut world, 2 * STEP).is_none(), "the meter was spent");
     }
 
-    /// The city waits for the mayor: while anything stands unconnected, the
-    /// meter charges but nothing more arrives.
+    /// Nothing arrives unconnected: what arrives fronts a joined street and
+    /// has its driveway from the start.
     #[test]
-    fn nothing_more_arrives_while_a_building_waits_for_its_road() {
+    fn a_building_arrives_on_a_street_with_its_driveway() {
         let mut world = country();
         afford(&mut world, STEP);
         let id = spawn(&mut world, STEP).expect("the first arrival");
-        let pos = world.objects.get(id).unwrap().position.unwrap();
-        assert!(!world.is_reached(id), "it arrives unconnected");
-        afford(&mut world, 2 * STEP);
-        assert!(spawn(&mut world, 2 * STEP).is_none(), "held while it waits");
-        road_to(&mut world, pos);
         assert!(world.is_reached(id));
-        afford(&mut world, 3 * STEP);
-        assert!(spawn(&mut world, 3 * STEP).is_some(), "the next follows the road");
+    }
+
+    /// A street off on its own fills too, slowly: a new cluster seeds on a
+    /// street, not beside a building.
+    #[test]
+    fn a_street_in_the_country_fills_on_its_own() {
+        let (world, _) = grow(60);
+        let far = buildings(&world).iter().filter(|&&(_, p, _)| p.x > 60).count();
+        assert!(far > 0, "nothing ever went up the street");
+    }
+
+    /// Only what the build allows arrives: with nothing taken, the plain kinds.
+    #[test]
+    fn the_build_says_what_may_arrive() {
+        let mut world = country();
+        let mut now = 0;
+        let mut kinds = Vec::new();
+        while kinds.len() < 30 {
+            now += STEP;
+            afford(&mut world, now);
+            if let Some(id) = spawn(&mut world, now) {
+                let GameObject::Building(ref b) = world.objects.get(id).unwrap().object else { unreachable!() };
+                kinds.push(b.kind);
+            }
+        }
+        assert!(kinds.iter().all(|&k| world.build.may_arrive(k)), "{kinds:?}");
+        assert!(kinds.iter().all(|&k| matches!(k, BuildingKind::House | BuildingKind::Shop | BuildingKind::Office)), "{kinds:?}");
     }
 
     /// Not an assertion: a picture, for whoever runs this with --nocapture.

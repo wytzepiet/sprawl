@@ -65,12 +65,6 @@ impl Tracked {
         self.data.get_mut(&id)
     }
 
-    /// Mutable access without marking dirty (for internal state updates).
-    /// Say an entry changed, when it was changed without saying so.
-    pub fn touch(&mut self, id: EntityId) {
-        self.dirty.insert(id);
-        self.persist_dirty.insert(id);
-    }
 
     pub fn get_mut_silent(&mut self, id: EntityId) -> Option<&mut GameObjectEntry> {
         self.data.get_mut(&id)

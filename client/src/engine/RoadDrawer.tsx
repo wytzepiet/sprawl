@@ -2,7 +2,7 @@ import { onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { screenToWorld } from "./view";
 import { useGame } from "../state/gameObjects";
-import { buildMode, roadOneWay } from "../ui/buildMode";
+import { buildMode, roadKind } from "../ui/buildMode";
 import type { GridCoord } from "../generated";
 
 // 8-directional step offsets, indexed by sector (0 = right, going counter-clockwise)
@@ -102,7 +102,7 @@ export function RoadDrawer() {
       const newDist = Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5)));
       if (newDist >= dist) break; // would move away from pointer
 
-      send({ type: "PlaceRoad", data: { from: cur, to: next, one_way: roadOneWay() } });
+      send({ type: "PlaceRoad", data: { from: cur, to: next, one_way: roadKind() === "oneway", road: roadKind() === "road" } });
       cur = next;
     }
     current = cur;

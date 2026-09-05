@@ -55,6 +55,12 @@ pub struct World {
     /// the last one was made — a promise rather than a guess that keeps
     /// changing, and the only time the spawner has to look at the world.
     pub goal: Option<crate::spawner::Goal>,
+    /// The nodes of the tree the player has taken: the gate for everything
+    /// the city may do. See `tree.rs`.
+    pub build: crate::tree::Build,
+    /// Tiles of road the mayor has laid, against the build's allowance.
+    /// Derived at startup from the nodes' own flag, like every other index.
+    pub laid: u32,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
@@ -151,6 +157,8 @@ impl World {
             xp: Default::default(),
             offered_at: 0.0,
             goal: None,
+            build: Default::default(),
+            laid: 0,
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
@@ -174,6 +182,8 @@ impl World {
             xp: Default::default(),
             offered_at: 0.0,
             goal: None,
+            build: Default::default(),
+            laid: 0,
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
