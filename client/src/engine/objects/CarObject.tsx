@@ -89,9 +89,7 @@ export function mountCar(
   };
   const color = PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
   const bucket = `car${look.key}c${PALETTE.indexOf(color)}`;
-  pool.ensureBucket(
-    bucket, carGeo, look.tint(color), look.castShadow, true, undefined, look.alpha, look.lift,
-  );
+  pool.ensureBucket(bucket, carGeo, look.tint(color), look.castShadow, true);
 
   // Parked: a still car beside the building it stopped at, in a spot that is
   // a fact about the car rather than a roll of the dice. The building's tile

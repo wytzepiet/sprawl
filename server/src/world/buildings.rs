@@ -1,5 +1,5 @@
 use crate::protocol::{
-    Building, BuildingKind, ChunkCoord, EntityId, GameObject, GridCoord, TerrainType,
+    Building, BuildingKind, EntityId, GameObject, GridCoord, TerrainType,
 };
 use crate::world::World;
 
@@ -68,9 +68,6 @@ impl World {
     /// a road that ends inside the plot. A road carrying traffic through has
     /// two arms and is a street, and a street may not be built over.
     ///
-    /// This is what lets a road be drawn into a proposal before the building
-    /// exists — the road the player drew becomes the driveway of the building
-    /// they accept, on the tile they chose.
     fn is_driveway_stub(&self, coord: GridCoord) -> bool {
         let Some(node) = self.road_node_at(coord) else { return false };
         if self.unique_connection_count(node) > 1 {
@@ -217,46 +214,16 @@ impl World {
         }
     }
 
-    /// Where something stands and how much room it takes. A proposal answers
-    /// too: it is a plot spoken for, and for anything that has to respect a
-    /// plot, that is the only thing about it that matters.
+    /// Where something stands and how much room it takes.
     fn plot_of(&self, id: EntityId) -> Option<(GridCoord, (u8, u8))> {
-        let entry = self.objects.get(id)?;
-        let size = match entry.object {
-            GameObject::Building(ref b) => b.size,
-            GameObject::Proposal(ref p) => p.size,
-            _ => return None,
-        };
-        Some((entry.position?, size))
+        let e = self.objects.get(id)?;
+        let GameObject::Building(ref b) = e.object else { return None };
+        Some((e.position?, b.size))
     }
 
-    /// Whatever has claimed this tile: a building, or a proposal for one.
-    ///
-    /// Buildings answer from `occupied`. Proposals deliberately occupy nothing
-    /// — traffic and settle must not see them — so they are found through the
-    /// chunk index instead. A footprint can start in the chunk before the one
-    /// it reaches into, so the search looks back as well as here.
+    /// The building on this tile, if any.
     pub(super) fn claimed_plot_at(&self, tile: GridCoord) -> Option<EntityId> {
-        if let Some(&id) = self.occupied.get(&(tile.x, tile.y)) {
-            return Some(id);
-        }
-        let here = crate::world::chunk_of(tile);
-        let mut found: Option<EntityId> = None;
-        for (dx, dy) in [(0, 0), (-1, 0), (0, -1), (-1, -1)] {
-            let chunk = ChunkCoord { cx: here.cx + dx, cy: here.cy + dy };
-            let Some(ids) = self.spatial.get(&chunk) else { continue };
-            for &id in ids {
-                if !matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Proposal(_))) {
-                    continue;
-                }
-                let Some((pos, size)) = self.plot_of(id) else { continue };
-                // Lowest id wins, so the answer cannot depend on set order.
-                if Self::building_covers(pos, size, tile) && found.is_none_or(|f| id < f) {
-                    found = Some(id);
-                }
-            }
-        }
-        found
+        self.occupied.get(&(tile.x, tile.y)).copied()
     }
 
     /// Give a building its driveway, if a street is adjacent. Already served,
@@ -356,7 +323,6 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::Proposal;
     use std::collections::HashSet;
 
     /// A world with nothing in it but grass and the given road path.
@@ -372,45 +338,6 @@ mod tests {
         world
     }
 
-    /// The bug this pair exists for: a road drawn into a proposal used to leave
-    /// a road node standing on the plot, and the building could not then be
-    /// raised over it — so accepting did nothing at all, silently.
-    #[test]
-    fn a_road_drawn_to_a_proposal_becomes_the_building_s_driveway() {
-        let mut world = world_with_road(&[(0, 2), (4, 2)]);
-        let pos = GridCoord { x: 2, y: 0 };
-        let proposal = world.insert_at(
-            GameObject::Proposal(Proposal { kind: BuildingKind::House, size: (1, 1) }),
-            Some(pos),
-        );
-
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, pos, false);
-        assert!(world.road_node_at(pos).is_some(), "the road reached the plot");
-
-        world.drop_entity(proposal);
-        let b = world.place_building(pos, BuildingKind::House, (1, 1)).expect("accepting builds it");
-        assert_eq!(world.road_node_for_building(b), world.road_node_at(pos), "and it is the driveway");
-    }
-
-    /// A proposal is a plot spoken for, so a road stops at it like it stops at
-    /// a building. Otherwise a road could be run straight through the ghost,
-    /// and the building would have two doors and no way to refuse.
-    #[test]
-    fn a_road_cannot_carry_on_through_a_proposal() {
-        let mut world = world_with_road(&[(0, 2), (4, 2)]);
-        let pos = GridCoord { x: 2, y: 0 };
-        world.insert_at(
-            GameObject::Proposal(Proposal { kind: BuildingKind::House, size: (1, 1) }),
-            Some(pos),
-        );
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, pos, false);
-
-        world.handle_place_road(pos, GridCoord { x: 3, y: 0 }, false);
-        assert!(world.road_node_at(GridCoord { x: 3, y: 0 }).is_none(), "it stops at the plot");
-    }
-
-    /// Only a dead end. A street carrying traffic is not somebody's driveway,
-    /// and building over it would sever it.
     #[test]
     fn a_building_cannot_be_raised_over_a_street() {
         // Adjacent steps, so the middle tile really is a node with two arms.

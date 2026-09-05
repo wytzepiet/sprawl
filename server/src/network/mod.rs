@@ -37,7 +37,7 @@ pub enum Ask {
     /// Who cannot be served, where; and what each building delivered.
     Demand,
     /// What the city is offering, and the shape of what stands.
-    Proposals,
+    Spawner,
 }
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);

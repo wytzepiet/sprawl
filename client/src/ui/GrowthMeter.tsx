@@ -1,6 +1,6 @@
-import { For, Show, createSignal, onCleanup } from "solid-js";
+import { Show, createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
-import { useGame, pinned } from "../state/gameObjects";
+import { useGame } from "../state/gameObjects";
 import { simNow } from "../network/clock";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import type { BuildingKind } from "../generated";
@@ -36,10 +36,6 @@ export default function GrowthMeter() {
   };
   const xp = () => growth().xp + since();
   const offerXp = () => Math.min(growth().offer_xp + since(), growth().offer_needed);
-  const waiting = () =>
-    pinned()
-      .filter((e) => e.object.kind === "Proposal")
-      .map((e) => ({ id: e.id, kind: (e.object.data as { kind: BuildingKind }).kind }));
   const nextColor = () => {
     const kind = growth().next;
     return kind ? BLUEPRINTS[kind].color : "#9CA3AF";
@@ -57,23 +53,6 @@ export default function GrowthMeter() {
       </span>
 
       <span class="fixed bottom-4 right-4 flex select-none flex-col items-center gap-1.5 pointer-events-none">
-        {/* Offered and still owed an answer: stacked over the dial they came
-            from, since they are the same errand one step further on. */}
-        <Show when={waiting().length > 0}>
-          <span class="flex items-center gap-1 rounded-full border border-black/[0.06] bg-white/70 px-1.5 py-1 backdrop-blur-xl shadow-[0_2px_10px_rgba(0,0,0,0.08)]">
-            <For each={waiting()}>
-              {(p) => (
-                <span
-                  class="grid h-4 w-4 place-items-center rounded-full ring-[1.5px] ring-sky-400"
-                  style={{ "background-color": BLUEPRINTS[p.kind].color }}
-                >
-                  <BuildingIcon kind={p.kind} class="h-2.5 w-2.5 text-white" />
-                </span>
-              )}
-            </For>
-          </span>
-        </Show>
-
         <Dial color={nextColor()} now={offerXp()} max={growth().offer_needed}>
           <Show
             when={growth().next}

@@ -84,9 +84,7 @@ impl World {
         let dy = to.y - from.y;
 
         // A road may end on a plot — that is all a driveway is — but never start
-        // on one, or it would run in one side and out the other. A proposal
-        // counts: it is a plot spoken for, and the road drawn to it now is the
-        // driveway of the building accepted later.
+        // on one, or it would run in one side and out the other.
         if self.claimed_plot_at(from).is_some() {
             return;
         }

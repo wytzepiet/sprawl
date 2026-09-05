@@ -190,7 +190,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Resident(id) => crate::resident::inspect(&world, id, now),
                         Ask::Residents => crate::resident::inspect_all(&world, now),
                         Ask::Demand => crate::resident::demand(&world, now),
-                        Ask::Proposals => crate::spawner::inspect(&world, now),
+                        Ask::Spawner => crate::spawner::inspect(&world, now),
                     };
                     let _ = reply.send(serde_json::to_string_pretty(&v).unwrap_or_default());
                 }
@@ -231,7 +231,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         // The city offers a building once it has earned one, while the mayor
         // has room to answer. Cheap to ask — it is a subtraction until the
         // meter is actually full.
-        crate::spawner::propose(&mut world, now);
+        // A building that lands beside a road is lived in at once.
+        if crate::spawner::spawn(&mut world, now).is_some() {
+            settle_and_wake(&mut world, &mut events);
+        }
         sim_time = now;
         // Published for /health, which is how anything outside this loop can
         // tell the difference between a live world and a socket that outlived
@@ -377,8 +380,6 @@ fn handle_player_action(
                 park_at_home(world, intersections, events, car_id);
             }
         }
-        ClientMessage::Answer { id, accept } => crate::spawner::answer(world, id, accept, now),
-        ClientMessage::MoveProposal { id, pos } => crate::spawner::relocate(world, id, pos),
         ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),
         ClientMessage::ResetWorld => unreachable!("handled in run()"),
         ClientMessage::SetChunks(_) => unreachable!("handled in run()"),

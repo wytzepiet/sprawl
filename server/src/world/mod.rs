@@ -55,9 +55,6 @@ pub struct World {
     /// the last one was made — a promise rather than a guess that keeps
     /// changing, and the only time the spawner has to look at the world.
     pub goal: Option<crate::spawner::Goal>,
-    /// Proposals the mayor said no to: that kind is not offered near there
-    /// again until the time given. Not saved; a reload forgets old grudges.
-    pub rejections: Vec<(BuildingKind, GridCoord, u64)>,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
@@ -112,7 +109,7 @@ const NO_BOUNDS: ChunkBounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, m
 /// half beyond, so there is always ground in view to build the next thing on.
 const REVEAL_RADIUS: i32 = 80;
 
-use crate::protocol::{BuildingKind, GridCoord};
+use crate::protocol::GridCoord;
 
 pub fn chunk_of(coord: GridCoord) -> ChunkCoord {
     ChunkCoord {
@@ -154,7 +151,6 @@ impl World {
             xp: Default::default(),
             offered_at: 0.0,
             goal: None,
-            rejections: Vec::new(),
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
@@ -178,7 +174,6 @@ impl World {
             xp: Default::default(),
             offered_at: 0.0,
             goal: None,
-            rejections: Vec::new(),
             terrain: HashMap::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
@@ -264,28 +259,6 @@ impl World {
             self.spatial.entry(chunk_of(pos)).or_default().insert(id);
         }
         id
-    }
-
-    /// Take an entity out of the world, whatever kind it is.
-    pub fn drop_entity(&mut self, id: EntityId) {
-        let Some(entry) = self.objects.get(id) else { return };
-        let pos = entry.position;
-        let is_building = matches!(entry.object, GameObject::Building(_));
-        let is_road = matches!(entry.object, GameObject::RoadNode(_));
-        if is_building {
-            self.remove_building(id);
-        } else if is_road && let Some(pos) = pos {
-            self.handle_demolish_road(pos);
-        } else {
-            // Anything else — a proposal — is just an entry and its place in
-            // the index.
-            if let Some(pos) = pos
-                && let Some(ids) = self.spatial.get_mut(&chunk_of(pos))
-            {
-                ids.remove(&id);
-            }
-            self.objects.remove(id);
-        }
     }
 
     /// The standing buildings in one chunk, by id, so a search over them

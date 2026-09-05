@@ -1,4 +1,4 @@
-//! Buildings arrive on their own, as proposals, and the mayor disposes.
+//! Buildings arrive on their own, and the mayor deals with them.
 //! sprawl-spawner.md.
 
 use rand::rngs::SmallRng;
@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use crate::blueprint::{blueprint, Class};
 use crate::engine::GameTime;
 use crate::needs::Need;
-use crate::protocol::{BuildingKind, EntityId, GameObject, GridCoord, Growth, Proposal, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, GridCoord, Growth, DAY_MS};
 use crate::world::World;
 
 /// Output that buys the city's first offer, in hours of need served.
@@ -33,8 +33,6 @@ const EARN_PER_BUILDING: f64 = 0.12 * SERVED_HOUR;
 
 /// Output for the first level. Each one after costs a level more than the last.
 const LEVEL_BASE: f64 = 30.0 * SERVED_HOUR;
-/// How long a rejection keeps that kind away from the spot.
-const GRUDGE: GameTime = DAY_MS as u64;
 /// Buildings this close are one cluster — the scale growth lands at.
 const CLUSTER: i32 = 8;
 
@@ -99,60 +97,30 @@ fn goal(world: &mut World, now: GameTime) -> Goal {
     goal
 }
 
-/// Offer one more building, once the city has earned it and there is somewhere
-/// to put it.
+/// Put one more building down, once the city has earned it and there is
+/// somewhere for it. It stands dormant, drawn red, until the mayor draws a
+/// road to it — even beside a street, the driveway is the mayor's to draw;
+/// connecting what arrived is the game.
 ///
-/// One offer at a time. A full meter with an offer still standing simply
-/// holds: the city has earned the next one and is waiting for the mayor to
-/// answer this one, which is the bar saying so rather than a crowd of pins
-/// arriving the moment one is answered.
-pub fn propose(world: &mut World, now: GameTime) -> Option<EntityId> {
+/// And only once everything already standing is connected. The meter keeps
+/// charging meanwhile, so nothing earned is lost; but a mayor who was away
+/// comes back to one red building, not a red city.
+pub fn spawn(world: &mut World, now: GameTime) -> Option<EntityId> {
     let Goal { kind, cost } = goal(world, now);
     if world.xp.at(now) - world.offered_at < cost {
         return None;
     }
-    if world.objects.iter().any(|e| matches!(e.object, GameObject::Proposal(_))) {
-        return None;
-    }
     let standing = buildings(world);
-    if standing.is_empty() {
+    if standing.is_empty() || standing.iter().any(|&(id, ..)| world.road_node_for_building(id).is_none()) {
         return None;
     }
     let mut rng = seeded(world, now);
     let size = blueprint(kind).size;
     let pos = draw_site(world, &mut rng, kind, size, &standing)?;
-    if world.rejections.iter().any(|&(k, at, until)| k == kind && until > now && dist(at, pos) < 20) {
-        return None;
-    }
-    // Spent. The next goal is drawn on the next tick, so its icon is showing
-    // while this offer waits for an answer.
+    // Spent. The next goal is drawn on the next tick.
     world.offered_at = world.xp.at(now);
     world.goal = None;
-    Some(world.insert_at(GameObject::Proposal(Proposal { kind, size }), Some(pos)))
-}
-
-/// The mayor's answer. Yes puts the building down, dormant until a road
-/// reaches it; no removes the offer and keeps that kind away for a while.
-pub fn answer(world: &mut World, id: EntityId, accept: bool, now: GameTime) {
-    let Some((pos, p)) = proposal(world, id) else { return };
-    world.drop_entity(id);
-    if accept {
-        world.place_building(pos, p.kind, p.size);
-    } else {
-        world.rejections.push((p.kind, pos, now + GRUDGE));
-        world.rejections.retain(|&(_, _, until)| until > now);
-    }
-}
-
-/// Drag the pin. The proposal lands on the nearest footprint that fits.
-pub fn relocate(world: &mut World, id: EntityId, to: GridCoord) {
-    let Some((_, p)) = proposal(world, id) else { return };
-    if let Some(pos) = snap(world, to, p.size, id) {
-        // Moving is silent, as a car's every step has to be; an offer that
-        // moved has to be seen to have.
-        world.update_position(id, pos);
-        world.objects.touch(id);
-    }
+    world.place_building(pos, kind, size)
 }
 
 /// What the world is offering: where each kind belongs, and what stands
@@ -168,14 +136,9 @@ pub fn inspect(world: &World, now: GameTime) -> Value {
         "earned_h": world.xp.at(now) / SERVED_HOUR,
         "delivered_2d_h": world.delivered.values().map(|d| d.today + d.yesterday).sum::<f64>() / SERVED_HOUR,
         "goal": world.goal.map(|g| json!({ "kind": g.kind, "cost_h": g.cost / SERVED_HOUR })),
-        "queue": proposals(world).iter().map(|&(id, pos, ref p)| json!({
-            "id": id, "kind": p.kind, "pos": [pos.x, pos.y], "size": p.size,
-        })).collect::<Vec<_>>(),
         "pressure": crate::resident::pressure(world, now).into_iter()
             .map(|(n, p)| (format!("{n:?}"), p)).collect::<std::collections::BTreeMap<_, _>>(),
         "clusters": clusters,
-        "rejections": world.rejections.iter().filter(|&&(_, _, until)| until > now)
-            .map(|&(k, at, _)| json!({ "kind": k, "pos": [at.x, at.y] })).collect::<Vec<_>>(),
     })
 }
 
@@ -211,16 +174,19 @@ fn draw_site(
         .zip(&member)
         .map(|(&(_, _, k), &c)| (affinity(kind, k).max(0.0) + 0.05) / sizes[c] as f64)
         .collect();
+    // One anchor per draw, then the best of several sites around it. Drawn
+    // per site, the candidate beside the big cluster won on company every
+    // time, and a fresh seed never grew.
+    let (anchor, reach) = if seed_new {
+        (standing.choose(rng)?.1, 20..40)
+    } else {
+        let i = (0..standing.len()).collect::<Vec<_>>().choose_weighted(rng, |&i| liked[i]).ok().copied()?;
+        (standing[i].1, 3..10)
+    };
     let mut best: Option<(f64, GridCoord)> = None;
     for _ in 0..8 {
-        let (anchor, reach) = if seed_new {
-            (standing.choose(rng)?.1, 20..40)
-        } else {
-            let i = (0..standing.len()).collect::<Vec<_>>().choose_weighted(rng, |&i| liked[i]).ok().copied()?;
-            (standing[i].1, 3..10)
-        };
         let angle = rng.random::<f64>() * std::f64::consts::TAU;
-        let r = rng.random_range(reach) as f64;
+        let r = rng.random_range(reach.clone()) as f64;
         let at = GridCoord {
             x: anchor.x + (angle.cos() * r).round() as i32,
             y: anchor.y + (angle.sin() * r).round() as i32,
@@ -229,7 +195,7 @@ fn draw_site(
         if seed_new && standing.iter().any(|&(_, p, _)| dist(p, at) < 15) {
             continue;
         }
-        let Some(pos) = snap(world, at, size, 0) else { continue };
+        let Some(pos) = snap(world, at, size) else { continue };
         let company: f64 = standing
             .iter()
             .map(|&(_, p, k)| (affinity(kind, k), dist(p, pos)))
@@ -261,21 +227,14 @@ fn affinity(kind: BuildingKind, near: BuildingKind) -> f64 {
     }
 }
 
-/// The nearest place to `at` where a footprint fits: buildable, revealed,
-/// and not on top of another proposal.
-fn snap(world: &World, at: GridCoord, size: (u8, u8), except: EntityId) -> Option<GridCoord> {
-    let others: Vec<(GridCoord, (u8, u8))> =
-        proposals(world).into_iter().filter(|&(id, ..)| id != except).map(|(_, p, q)| (p, q.size)).collect();
+/// The nearest place to `at` where a footprint fits: buildable and revealed.
+fn snap(world: &World, at: GridCoord, size: (u8, u8)) -> Option<GridCoord> {
     let fits = |pos: GridCoord| {
         let (w, h) = (size.0 as i32, size.1 as i32);
         (0..w).all(|dx| {
             (0..h).all(|dy| {
                 let t = GridCoord { x: pos.x + dx, y: pos.y + dy };
-                world.is_buildable(t)
-                    && world.revealed.contains(&crate::world::chunk_of(t))
-                    && !others.iter().any(|&(p, s)| {
-                        t.x >= p.x && t.x < p.x + s.0 as i32 && t.y >= p.y && t.y < p.y + s.1 as i32
-                    })
+                world.is_buildable(t) && world.revealed.contains(&crate::world::chunk_of(t))
             })
         })
     };
@@ -335,27 +294,6 @@ fn buildings(world: &World) -> Vec<(EntityId, GridCoord, BuildingKind)> {
         .collect()
 }
 
-/// Every offer waiting, by id.
-pub fn proposals(world: &World) -> Vec<(EntityId, GridCoord, Proposal)> {
-    world
-        .objects
-        .all_entries()
-        .iter()
-        .filter_map(|e| match e.object {
-            GameObject::Proposal(ref p) => Some((e.id, e.position?, p.clone())),
-            _ => None,
-        })
-        .collect()
-}
-
-fn proposal(world: &World, id: EntityId) -> Option<(GridCoord, Proposal)> {
-    let e = world.objects.get(id)?;
-    match e.object {
-        GameObject::Proposal(ref p) => Some((e.position?, p.clone())),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,7 +331,15 @@ mod tests {
         world.xp = crate::xp::Ledger::load(world.offered_at + cost, now);
     }
 
-    /// Say yes to everything for a while, and look at the town that made.
+    /// A road straight down from the street to a plot, the way a mayor would
+    /// connect what arrived.
+    fn road_to(world: &mut World, pos: GridCoord) {
+        let ys: Vec<i32> = if pos.y >= 0 { (0..=pos.y).collect() } else { (pos.y..=0).rev().collect() };
+        let path: Vec<GridCoord> = ys.into_iter().map(|y| GridCoord { x: pos.x, y }).collect();
+        world.place_road_path(&path);
+    }
+
+    /// Road everything that arrives for a while, and look at the town that made.
     fn grow(n: usize) -> (World, Vec<(GridCoord, BuildingKind)>) {
         let mut world = country();
         let mut placed = Vec::new();
@@ -401,10 +347,12 @@ mod tests {
         while placed.len() < n {
             now += STEP;
             afford(&mut world, now);
-            if let Some(id) = propose(&mut world, now) {
-                let (pos, p) = proposal(&world, id).unwrap();
-                answer(&mut world, id, true, now);
-                placed.push((pos, p.kind));
+            if let Some(id) = spawn(&mut world, now) {
+                let e = world.objects.get(id).unwrap();
+                let GameObject::Building(ref b) = e.object else { unreachable!() };
+                let pos = e.position.unwrap();
+                placed.push((pos, b.kind));
+                road_to(&mut world, pos);
             }
             assert!(now < 400 * DAY_MS as u64, "the spawner ran dry after {}", placed.len());
         }
@@ -445,34 +393,31 @@ mod tests {
     }
 
     #[test]
-    fn a_rejection_keeps_the_kind_away_for_a_day() {
+    fn a_building_arrives_once_it_is_earned() {
         let mut world = country();
+        assert!(spawn(&mut world, STEP).is_none(), "nothing is earned yet");
         afford(&mut world, STEP);
-        let id = propose(&mut world, STEP).unwrap();
-        let (pos, p) = proposal(&world, id).unwrap();
-        answer(&mut world, id, false, STEP);
-        assert!(proposals(&world).is_empty());
-        assert_eq!(world.rejections.len(), 1);
-        // The same offer, a moment later, is not made.
-        afford(&mut world, 2 * STEP);
-        let again = propose(&mut world, 2 * STEP);
-        assert!(again.is_none_or(|id| { let (q, r) = proposal(&world, id).unwrap(); !(r.kind == p.kind && dist(q, pos) < 20) }));
+        let before = buildings(&world).len();
+        assert!(spawn(&mut world, STEP).is_some());
+        assert_eq!(buildings(&world).len(), before + 1);
+        assert!(spawn(&mut world, 2 * STEP).is_none(), "the meter was spent");
     }
 
+    /// The city waits for the mayor: while anything stands unconnected, the
+    /// meter charges but nothing more arrives.
     #[test]
-    fn one_offer_at_a_time() {
+    fn nothing_more_arrives_while_a_building_waits_for_its_road() {
         let mut world = country();
-        let mut now = 0;
-        for _ in 0..40 {
-            now += STEP;
-            afford(&mut world, now);
-            propose(&mut world, now);
-        }
-        assert_eq!(proposals(&world).len(), 1);
-        let (id, ..) = proposals(&world)[0];
-        answer(&mut world, id, true, now);
-        afford(&mut world, now + STEP);
-        assert!(propose(&mut world, now + STEP).is_some(), "the next offer follows the answer");
+        afford(&mut world, STEP);
+        let id = spawn(&mut world, STEP).expect("the first arrival");
+        let pos = world.objects.get(id).unwrap().position.unwrap();
+        assert!(world.road_node_for_building(id).is_none(), "it arrives unconnected");
+        afford(&mut world, 2 * STEP);
+        assert!(spawn(&mut world, 2 * STEP).is_none(), "held while it waits");
+        road_to(&mut world, pos);
+        assert!(world.road_node_for_building(id).is_some());
+        afford(&mut world, 3 * STEP);
+        assert!(spawn(&mut world, 3 * STEP).is_some(), "the next follows the road");
     }
 
     /// Not an assertion: a picture, for whoever runs this with --nocapture.

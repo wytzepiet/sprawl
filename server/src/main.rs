@@ -39,7 +39,7 @@ async fn main() {
         .route("/debug/residents", axum::routing::get(health::inspect_residents))
         .route("/debug/resident/{id}", axum::routing::get(health::inspect_resident))
         .route("/debug/demand", axum::routing::get(health::inspect_demand))
-        .route("/debug/proposals", axum::routing::get(health::inspect_proposals))
+        .route("/debug/spawner", axum::routing::get(health::inspect_spawner))
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })

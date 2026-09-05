@@ -6,23 +6,17 @@ import { Color3 } from "@babylonjs/core";
  */
 export interface Look {
   key: string;
-  alpha: number;
   tint(base: Color3): Color3;
   castShadow: boolean;
-  /** Height offset, in world units, to settle the draw order near the ground. */
-  lift: number;
 }
 
-export const SOLID: Look = { key: "", alpha: 1, tint: (c) => c, castShadow: true, lift: 0 };
+export const SOLID: Look = { key: "", tint: (c) => c, castShadow: true };
 
-/**
- * A proposal: the city's suggestion, drawn as the building it would be, faint
- * and shadowless, until the mayor says yes.
- */
-export const GHOST: Look = {
-  key: "_ghost",
-  alpha: 0.35,
-  tint: (c) => Color3.Lerp(c, new Color3(0.35, 0.55, 0.95), 0.35),
-  castShadow: false,
-  lift: 0.004,
+const RED = new Color3(0.85, 0.25, 0.2);
+
+/** A building no road reaches: standing, empty, and asking for one. */
+export const DORMANT: Look = {
+  key: "_dormant",
+  tint: (c) => Color3.Lerp(c, RED, 0.65),
+  castShadow: true,
 };

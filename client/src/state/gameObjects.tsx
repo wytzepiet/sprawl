@@ -7,7 +7,7 @@ import {
 } from "solid-js";
 import { createConnection } from "../network/connection";
 import { syncClock, syncFromClock } from "../network/clock";
-import type {
+import type { Building,
   GameObjectEntry,
   ClientMessage,
   ChunkBounds,
@@ -39,9 +39,11 @@ export { me };
  */
 
 /**
- * What carries a pin: every building, and every proposal. Kept as ops
- * arrive, with a version the pin layer re-reads on; the entities map itself
- * is deliberately not reactive, and pins are the one view that wants a list.
+ * What carries a pin: every building. Kept as ops arrive, with a version the
+ * pin layer re-reads on; the entities map itself is deliberately not
+ * reactive, and pins are the one view that wants a list. The version also
+ * moves when a road lands on or leaves a building's tile, since whether a
+ * building is reached is part of how its pin is drawn.
  */
 const pinnedEntries = new Map<number, GameObjectEntry>();
 const [pinsVersion, setPinsVersion] = createSignal(0);
@@ -49,15 +51,52 @@ export function pinned(): GameObjectEntry[] {
   pinsVersion();
   return [...pinnedEntries.values()];
 }
+/** Tile → the building standing on it. */
+const occupiedBy = new Map<string, number>();
+/**
+ * Buildings that arrived while the player was watching, for the pin to make
+ * an entrance with. Ids only ever go up, so a building newer than everything
+ * seen so far — including the cars that arrived with the last immigrants —
+ * was built just now; one loaded by panning to it is older than those. The
+ * first seconds are the world loading, whatever the ids say.
+ */
+const arrivals = new Set<number>();
+const openedAt = Date.now();
+let newest = 0;
+export function arrived(id: number): boolean {
+  return arrivals.has(id);
+}
 function trackPin(entry: GameObjectEntry | undefined, id: number) {
-  const kind = entry?.object.kind;
   const was = pinnedEntries.has(id);
-  if (entry && (kind === "Building" || kind === "Proposal") && entry.position) {
+  const before = pinnedEntries.get(id);
+  if (before?.position && before.object.kind === "Building") {
+    for (const t of footprint(before.position, (before.object.data as Building).size)) occupiedBy.delete(t);
+  }
+  if (entry && entry.object.kind === "Building" && entry.position) {
     pinnedEntries.set(id, entry);
+    for (const t of footprint(entry.position, (entry.object.data as Building).size)) occupiedBy.set(t, id);
+    if (!was && id > newest && Date.now() - openedAt > 3000) arrivals.add(id);
   } else {
     pinnedEntries.delete(id);
+    arrivals.delete(id);
   }
   if (was || pinnedEntries.has(id)) setPinsVersion((v) => v + 1);
+}
+function footprint(pos: { x: number; y: number }, [w, h]: [number, number]): string[] {
+  const keys: string[] = [];
+  for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) keys.push(posKey(pos.x + dx, pos.y + dy));
+  return keys;
+}
+/**
+ * Is a road standing on one of this building's own tiles? Reactive on the
+ * pins' version, which moves when a road lands on or leaves a building.
+ */
+export function reached(entry: GameObjectEntry): boolean {
+  pinsVersion();
+  if (entry.object.kind !== "Building" || !entry.position) return false;
+  return footprint(entry.position, (entry.object.data as Building).size).some((k) =>
+    (spatial.get(k) ?? []).some((id) => entities.get(String(id))?.object.kind === "RoadNode"),
+  );
 }
 
 export function getEntity(id: number): GameObjectEntry | undefined {
@@ -127,6 +166,11 @@ function applyOps(ops: Operation[]) {
         }
         entities.set(key, op.data);
         trackPin(op.data, op.data.id);
+        newest = Math.max(newest, op.data.id);
+        if (op.data.object.kind === "RoadNode" && op.data.position) {
+          const under = occupiedBy.get(posKey(op.data.position.x, op.data.position.y));
+          if (under !== undefined) setPinsVersion((v) => v + 1);
+        }
         break;
       }
       case "Delete": {
@@ -143,6 +187,10 @@ function applyOps(ops: Operation[]) {
             }
           }
           entities.delete(key);
+          if (existing.object.kind === "RoadNode" && existing.position) {
+            const under = occupiedBy.get(posKey(existing.position.x, existing.position.y));
+            if (under !== undefined) setPinsVersion((v) => v + 1);
+          }
         }
         trackPin(undefined, Number(key));
         break;

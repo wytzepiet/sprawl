@@ -31,7 +31,7 @@ export function mountBuilding(
   // normals, and a building lit by skewed normals shades as though it were a
   // different shape than it is.
   const shape = shapeFor(data.kind, w, h, variant);
-  pool.ensureBucket(poolKey, shape, color, look.castShadow, true, undefined, look.alpha, look.lift);
+  pool.ensureBucket(poolKey, shape, color, look.castShadow, true);
   const id = pool.addInstance(
     poolKey,
     pos ? [pos.x + w / 2, pos.y + h / 2, 0] : undefined,

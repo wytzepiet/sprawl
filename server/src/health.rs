@@ -64,8 +64,8 @@ pub async fn inspect_blueprints() -> String {
 }
 
 /// What the city is offering, and the shape of what stands.
-pub async fn inspect_proposals(State(state): State<AppState>) -> String {
-    ask(&state, Ask::Proposals).await
+pub async fn inspect_spawner(State(state): State<AppState>) -> String {
+    ask(&state, Ask::Spawner).await
 }
 
 async fn ask(state: &AppState, query: Ask) -> String {

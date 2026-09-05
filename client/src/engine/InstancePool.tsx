@@ -103,21 +103,12 @@ export class InstancePool {
     castShadow: boolean,
     receiveShadow: boolean,
     texture?: BaseTexture,
-    alpha = 1,
-    lift = 0,
   ): Bucket {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
 
     const mat = new StandardMaterial(`mat_${key}`, this.scene);
     mat.specularColor = Color3.Black();
-    mat.alpha = alpha;
-    if (alpha < 1) {
-      // Every thin instance in a bucket shares one material, so they cannot be
-      // depth-sorted against each other. Writing no depth lets the pile read as
-      // one translucent object instead of flickering over itself.
-      mat.disableDepthWrite = true;
-    }
 
     if (receiveShadow) {
       mat.diffuseColor = color;
@@ -147,12 +138,6 @@ export class InstancePool {
     // frame, which would walk every instance.
     mesh.alwaysSelectAsActiveMesh = true;
     mesh.setEnabled(false);
-    if (alpha < 1) {
-      // Depth is written by neither, and they lie within a hundredth of the
-      // ground, so distance cannot separate them: the sort order has to be
-      // stated. Higher draws later, and so on top.
-      mesh.alphaIndex = Math.round(lift * 1000);
-    }
 
     if (receiveShadow) {
       mesh.receiveShadows = true;
@@ -333,16 +318,14 @@ export function InstancePoolProvider(props: ParentProps) {
 
   // WebGPU compiles a shader variant the first time something is drawn with
   // it, and Chrome does that synchronously in the GPU process: a few hundred
-  // milliseconds with no frames at all. The variants are few — lit or unlit,
-  // opaque or translucent — so each is drawn once now, off the map in the
-  // loading frame, rather than the first time a ghost appears under the pointer.
+  // milliseconds with no frames at all. There are two — lit and unlit — so
+  // each is drawn once now, off the map in the loading frame, rather than
+  // the first time a one-way road puts a chevron under the pointer.
   const warm: { key: string; id: number }[] = [];
   for (const lit of [true, false]) {
-    for (const alpha of [1, 0.5]) {
-      const key = `warm_${lit}_${alpha}`;
-      pool.ensureBucket(key, WARM_TRIANGLE, Color3.Black(), false, lit, undefined, alpha);
-      warm.push({ key, id: pool.addInstance(key, [0, 0, -100]) });
-    }
+    const key = `warm_${lit}`;
+    pool.ensureBucket(key, WARM_TRIANGLE, Color3.Black(), false, lit);
+    warm.push({ key, id: pool.addInstance(key, [0, 0, -100]) });
   }
   scene.onAfterRenderObservable.addOnce(() => {
     for (const { key, id } of warm) pool.removeInstance(key, id);

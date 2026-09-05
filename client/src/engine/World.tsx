@@ -12,7 +12,7 @@ import {
   getObjectsAt,
   useGame,
 } from "../state/gameObjects";
-import { SOLID, GHOST } from "./objects/look";
+import { SOLID, DORMANT } from "./objects/look";
 import type { Operation, GameObjectEntry } from "../generated";
 
 import type { Building } from "../generated";
@@ -45,12 +45,18 @@ export default function World() {
   /** Trees give way to anything built — a road, or any tile of a plot. */
   const isBuilt = (x: number, y: number) => hasRoad(x, y) || builtTiles.has(`${x},${y}`);
 
+  /** A building is reached when a road stands on one of its own tiles. */
+  const connected = (entry: GameObjectEntry) =>
+    !!entry.position &&
+    footprint(entry.position, (entry.object.data as Building).size).some((t) => hasRoad(t.x, t.y));
+
   /**
-   * Every tile under a building, mirroring the server's occupancy index. The
-   * store only knows a building at its origin tile, so without this a footprint
-   * would clear the trees from one corner of itself.
+   * Every tile under a building and whose it is, mirroring the server's
+   * occupancy index. The store only knows a building at its origin tile, so
+   * without this a footprint would clear the trees from one corner of itself,
+   * and a road landing on its far side would not be seen to reach it.
    */
-  const builtTiles = new Set<string>();
+  const builtTiles = new Map<string, number>();
 
   function footprint(pos: { x: number; y: number }, [w, h]: [number, number]) {
     const tiles: { x: number; y: number }[] = [];
@@ -66,7 +72,7 @@ export default function World() {
     const b = entry.object.data as Building;
     return footprint(entry.position, b.size).map((t) => {
       const key = `${t.x},${t.y}`;
-      builtTiles.add(key);
+      builtTiles.set(key, entry.id);
       terrain.markBuilt(t.x, t.y);
       return key;
     });
@@ -89,14 +95,11 @@ export default function World() {
   function mount(entry: GameObjectEntry): (() => void) | null {
     switch (entry.object.kind) {
       case "Building":
-        return mountBuilding(entry, pool, SOLID);
+        return mountBuilding(entry, pool, connected(entry) ? SOLID : DORMANT);
       case "Car":
         return mountCar(entry, pool, scene, SOLID);
       case "RoadNode":
         return mountRoad(entry, pool, theme(), getEntity);
-      case "Proposal":
-        // Same shape as a building, drawn as the one it would become.
-        return mountBuilding(entry, pool, GHOST);
       default:
         return null;
     }
@@ -104,6 +107,12 @@ export default function World() {
 
   function processOps(ops: Operation[]) {
     const dirtyRoads = new Set<string>();
+    // Buildings whose tile a road landed on or left: reached, or no longer.
+    const dirtyBuildings = new Set<string>();
+    const roadTouched = (pos: { x: number; y: number } | null | undefined) => {
+      const owner = pos && builtTiles.get(`${pos.x},${pos.y}`);
+      if (owner !== undefined && owner !== null) dirtyBuildings.add(String(owner));
+    };
 
     for (const op of ops) {
       switch (op.op) {
@@ -144,6 +153,7 @@ export default function World() {
             if (op.data.position) {
               terrain.markTile(op.data.position.x, op.data.position.y);
             }
+            roadTouched(op.data.position);
           }
           break;
         }
@@ -152,7 +162,10 @@ export default function World() {
           const existing = mounted.get(key);
           if (existing) {
             if (existing.neighbors) markDirty(existing.neighbors, dirtyRoads);
-            if (existing.pos) terrain.markTile(existing.pos.x, existing.pos.y);
+            if (existing.pos) {
+              terrain.markTile(existing.pos.x, existing.pos.y);
+              roadTouched(existing.pos);
+            }
             uncover(existing.covers);
             existing.cleanup();
             mounted.delete(key);
@@ -189,6 +202,19 @@ export default function World() {
       } else {
         mounted.delete(id);
       }
+    }
+    remountBuildings(dirtyBuildings);
+  }
+
+  function remountBuildings(ids: Set<string>) {
+    for (const id of ids) {
+      const m = mounted.get(id);
+      const entry = getEntity(Number(id));
+      if (!m || !entry || entry.object.kind !== "Building") continue;
+      m.cleanup();
+      const cleanup = mount(entry);
+      if (cleanup) mounted.set(id, { kind: "Building", cleanup, covers: m.covers });
+      else mounted.delete(id);
     }
   }
 

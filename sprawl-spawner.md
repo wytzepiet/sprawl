@@ -9,10 +9,12 @@ built" in `sprawl-agents.md`; reads the demand signal of `sprawl-needs.md`
 ## 1. Scope
 
 Zoning is obsolete. The player will not paint residential, commercial and
-industrial areas; buildings arrive on their own as **proposals**, and the
-player accepts, rejects or moves them. Placeable buildings remain only for
-things that do something special. This document specifies how a proposal
-is chosen and sited, what accepting one does, and what the client shows.
+industrial areas; buildings **arrive on their own**, dormant until a road
+reaches them, and the player roads them, moves them or demolishes them
+afterwards. (They arrived as proposals to accept or reject until
+2026-09-04; see `sprawl-shelved.md`.) Placeable buildings remain only for
+things that do something special. This document specifies how an arrival
+is chosen and sited, and what the client shows.
 It does not specify pacing beyond one constant, money, or the skill tree.
 
 ## 2. Rules carried over
@@ -21,13 +23,12 @@ From `sprawl-agents.md`, unchanged:
 
 - **Nothing needs to cause a spawn.** Demand tilts the choice of kind; it
   never gates it. A building that appears participates automatically.
-- **A proposal is not a building.** It is a pin, a ghost footprint and
-  two buttons. ✓ places the real building; ✗ dismisses it and suppresses
-  that kind thereabouts for a while; unanswered, it waits. One offer
-  stands at a time; the spawner holds until it is answered. (It *is* an entity
-  — `GameObject::Proposal`, positioned — so it is saved and streamed like
-  everything else for free; `occupied`, traffic and settle never see it.
-  The earlier write-up said "not a world object"; the objection there was
+- **An arrival is a building.** It is placed the moment the meter fills
+  and a site is found, and stands dormant — drawn red, its pin never
+  collapsing, pointed at from the edge of the view — until a road lands on
+  one of its tiles. (Until 2026-09-04 it was a proposal: a pin, a ghost and
+  two buttons; the notes below on that are kept for the record. The
+  earlier write-up said "not a world object"; the objection there was
   to drafts' batch lifecycle, which this does not share.)
 - **The road is the price of yes.** Proposals land where there is no road.
   An accepted building stands **dormant** until the network reaches it;

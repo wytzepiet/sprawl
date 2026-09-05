@@ -19,18 +19,37 @@ html, body {
 
 /* Pins: one teardrop, a coloured disc and a glyph, its point on the plot. Zoom
    out past a kind's threshold and it hands over to a dot sitting on the spot —
-   proposals excepted, since those are the ones asking.
+   buildings no road reaches excepted, since those are the ones asking.
 
    Both shapes are always in the DOM. The pin scales into its own point as it
    fades, and the dot grows out of the same spot, so the changeover reads as one
    thing becoming another rather than two things swapping. The marker keeps its
    size throughout, so nothing below it moves. */
 .pins .marker { width: 26px; height: 35px; }
-.pins .head {
-  width: 26px;
-  height: 35px;
+/* The pin proper — tail and head — as one thing to fade, scale and bounce;
+   the dot is its sibling and stays. */
+.pins .body {
+  position: absolute;
+  inset: 0;
   transform-origin: 50% 100%;
   transition: opacity 0.18s ease, scale 0.18s ease;
+}
+/* Each pin is moved every frame, so each gets its own compositor layer: the
+   page then moves layers rather than repainting hundreds of pins. */
+.pins .pin { will-change: transform; }
+/* The head is the disc and its glyph, 22 units across and 30 tall with the
+   disc's centre 11 down; the tail is a 38-unit square centred on that same
+   point, so both are scaled by 26/22 and the tail is placed by its centre. */
+.pins .head { position: absolute; left: 0; top: 0; width: 26px; height: 35px; }
+.pins .tail {
+  position: absolute;
+  left: 50%;
+  top: 13px;
+  width: 44.9px;
+  height: 44.9px;
+  translate: -50% -50%;
+  rotate: var(--aim, 0rad);
+  transition: rotate 0.3s ease;
 }
 .pins .dot {
   position: absolute;
@@ -44,40 +63,31 @@ html, body {
   translate: -50% 50%;
   transition: opacity 0.18s ease, scale 0.18s ease;
 }
-/* A proposal is a question waiting on an answer, so it sits over everything
-   else — otherwise a neighbour's dot lands on top of the very buttons you are
-   being asked to press. */
-.pins .pin.proposal { z-index: 2; }
-
-/* Hung clear of the plot, not just clear of the pin: `--drop` is half the
-   building's on-screen height, set as the camera moves. */
-.pins .answer { top: calc(100% + var(--drop, 6px)); }
+/* A building asking for a road sits over everything else, so a neighbour's
+   dot never lands on top of it. */
+.pins .pin.dormant { z-index: 2; }
 .pins .pin:not(.collapsed) .dot { opacity: 0; scale: 0.4; }
-.pins .pin.collapsed .head { opacity: 0; scale: 0.35; }
+.pins .pin.collapsed .body { opacity: 0; scale: 0.35; }
 /* Scaled about the point, so a pulsing pin still points at its plot. */
-.pins .pin.proposal .head { animation: pin-pulse 1.6s ease-in-out infinite; }
+.pins .pin.dormant .body { animation: pin-pulse 1.6s ease-in-out infinite; }
 @keyframes pin-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.09); }
 }
-
-/* An offer that has drifted off the map: pinned to the edge, with a dart under
-   it turned to point back at where it really is. The pin itself keeps its own
-   shape, so it still reads as the same thing you would see on the map. */
-.pins .aim { display: none; }
-.pins .pin.offscreen .aim {
-  display: block;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 15px;
-  height: 15px;
-  translate: -50% -50%;
-  rotate: var(--aim, 0rad);
-  transform: translate(0, 22px);
-  transform-origin: 50% 50%;
+/* A building that has just arrived drops onto its plot and bounces once, so
+   the arrival is seen even at the edge of the eye. Scaled about the point,
+   like the pulse, so it lands where it belongs. */
+.pins .pin.arrived .body { animation: pin-drop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.pins .pin.arrived.dormant .body { animation: pin-drop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both, pin-pulse 1.6s ease-in-out 0.7s infinite; }
+@keyframes pin-drop {
+  0% { transform: translateY(-40px) scale(1.4); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
 }
-.pins .pin.offscreen .answer { display: none; }
+
+/* An unreached building that has drifted off the map is pinned to the edge,
+   and the pin's own tail swings round to point at it, about the disc, which
+   stays upright with its glyph. Back on the map the tail swings down again
+   and it is a pin sitting on its plot. */
 
 /* A rule along a gauge: ten divisions, so the fill is read against a scale
    rather than guessed at. Drawn over the fill, which is what makes it look

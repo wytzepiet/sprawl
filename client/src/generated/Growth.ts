@@ -16,6 +16,6 @@ export type Growth = { level: number, xp: number, xp_needed: number, offer_xp: n
  */
 rate: number, 
 /**
- * What the offer will be, once it is affordable.
+ * What is coming, once it is earned.
  */
 next: BuildingKind | null, };
