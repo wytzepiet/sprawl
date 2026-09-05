@@ -62,10 +62,10 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
     fit();
 
     // The map's own sky and a late-morning sun from the top left, so a
-    // shadow falls down and to the right of what throws it.
+    // shadow falls down and to the left of what throws it.
     const sky = new HemisphericLight("shelf_sky", new Vector3(0, 0, 1), scene);
     sky.intensity = 0.65;
-    const sun = new DirectionalLight("shelf_sun", new Vector3(0.45, -0.4, -1).normalize(), scene);
+    const sun = new DirectionalLight("shelf_sun", new Vector3(-0.45, -0.4, -1).normalize(), scene);
     sun.intensity = 0.4;
     // The shadow frustum, set the way the map sets its own: a box around
     // the row, looked at from up-sun, rather than one Babylon guesses.
