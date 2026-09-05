@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from "solid-js";
+import { createSignal, onCleanup, onMount } from "solid-js";
 import {
   Engine,
   Scene,
@@ -14,26 +14,32 @@ import {
   DirectionalLight,
   ShadowGenerator,
 } from "@babylonjs/core";
+import { useTheme } from "../engine/theme";
 import { shapeFor, boxGeometry, BUILDING_COLOR } from "../engine/objects/buildings";
 import type { BuildingKind } from "../generated";
 
-/** World units from one kind's centre to the next. */
-export const SLOT = 1.6;
+/** Tiles from one kind's centre to the next: a plot with land around it. */
+export const SLOT = 4;
 
 /**
- * The build menu's shelf: one little world with every placeable kind
- * standing in a row on white ground, seen straight from above as the map
- * is, lit by the same sky and a noon sun, shadows and all. One canvas, one
+ * The build menu's shelf: a piece of map with every placeable kind standing
+ * on a plot of it, in a row, seen straight from above as the map is — its
+ * green, its grid, its sky and a noon sun, shadows and all. One canvas, one
  * scene — not a thumbnail each — and the pins and labels are laid over it
  * by the menu, one slot per kind.
  */
 export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
   let canvas!: HTMLCanvasElement;
+  const theme = useTheme();
+  // The grid is drawn over the canvas in CSS, a line per tile, with its
+  // lines on the tiles' edges: a plot sits squarely in a cell.
+  const [tile, setTile] = createSignal({ px: 20, dx: 0, dy: 0 });
 
   onMount(() => {
     const engine = new Engine(canvas, true, { adaptToDeviceRatio: true });
     const scene = new Scene(engine);
-    scene.clearColor = new Color4(1, 1, 1, 1);
+    const land = theme().land;
+    scene.clearColor = new Color4(land.r, land.g, land.b, 1);
 
     const n = props.kinds.length;
     const mid = ((n - 1) * SLOT) / 2;
@@ -50,6 +56,11 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
       cam.orthoRight = w / 2;
       cam.orthoTop = h / 2;
       cam.orthoBottom = -h / 2;
+      // One tile in pixels, and where the first tile edge falls from the
+      // canvas's corner: the view's left edge is -w/2 and its top is h/2,
+      // and buildings stand on the half-tile.
+      const px = canvas.clientWidth / w;
+      setTile({ px, dx: (((-w / 2 + 0.5) % 1) + 1) % 1 * px, dy: (((h / 2 - 0.5) % 1) + 1) % 1 * px });
     };
     fit();
 
@@ -77,7 +88,7 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
 
     // A slab, built like the buildings are, so it faces the same way up.
     const ground = new Mesh("shelf_ground", scene);
-    const slab = boxGeometry(n * SLOT + 4, 6, 0.02);
+    const slab = boxGeometry(n * SLOT + 4, 12, 0.02);
     const gv = new VertexData();
     gv.positions = slab.positions;
     gv.indices = slab.indices;
@@ -85,7 +96,7 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
     gv.applyToMesh(ground);
     ground.position = new Vector3(mid, 0, -0.01);
     const groundMat = new StandardMaterial("shelf_ground_mat", scene);
-    groundMat.diffuseColor = Color3.White();
+    groundMat.diffuseColor = new Color3(land.r, land.g, land.b);
     groundMat.specularColor = Color3.Black();
     ground.material = groundMat;
     ground.receiveShadows = true;
@@ -102,9 +113,9 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
       vd.normals = geo.normals;
       vd.applyToMesh(mesh);
       mesh.material = mat;
-      // A little above the middle, so the shadow it throws stays clear of
-      // the label under it.
-      mesh.position = new Vector3(i * SLOT, 0.18, 0);
+      // Squarely on a tile, a little above the middle so the shadow it
+      // throws stays clear of the label under it.
+      mesh.position = new Vector3(i * SLOT, 0.5, 0);
       mesh.receiveShadows = true;
       shadows.addShadowCaster(mesh);
     });
@@ -119,5 +130,18 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[] }) {
     });
   });
 
-  return <canvas ref={canvas} class="block w-full h-full" />;
+  const grid = () => theme().grid;
+  return (
+    <div class="relative w-full h-full">
+      <canvas ref={canvas} class="block w-full h-full" />
+      <div
+        class="absolute inset-0 pointer-events-none opacity-35"
+        style={{
+          "background-image": `linear-gradient(rgb(${grid().r * 255} ${grid().g * 255} ${grid().b * 255}) 1px, transparent 1px), linear-gradient(90deg, rgb(${grid().r * 255} ${grid().g * 255} ${grid().b * 255}) 1px, transparent 1px)`,
+          "background-size": `${tile().px}px ${tile().px}px`,
+          "background-position": `${tile().dx}px ${tile().dy}px`,
+        }}
+      />
+    </div>
+  );
 }
