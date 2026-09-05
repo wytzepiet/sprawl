@@ -362,7 +362,7 @@ mod tests {
             .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, (1, 1))
             .unwrap();
 
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
+        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false, 0);
         let door = world.road_node_at(GridCoord { x: 2, y: 0 });
         assert!(door.is_some(), "the road ran into the plot");
         assert_eq!(world.road_node_for_building(b), door);
@@ -379,10 +379,10 @@ mod tests {
             .unwrap();
 
         // In from below, then in from the left. Two different tiles of the plot.
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
+        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false, 0);
         assert!(world.road_node_at(GridCoord { x: 2, y: 0 }).is_some());
 
-        world.handle_place_road(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }, false, false);
+        world.handle_place_road(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }, false, false, 0);
         assert!(world.road_node_at(GridCoord { x: 1, y: 0 }).is_some(), "the new door is open");
         assert!(world.road_node_at(GridCoord { x: 2, y: 0 }).is_none(), "and the old one is gone");
         assert_eq!(world.road_node_for_building(b), world.road_node_at(GridCoord { x: 1, y: 0 }));
@@ -396,9 +396,9 @@ mod tests {
         world
             .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, (1, 1))
             .unwrap();
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
+        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false, 0);
 
-        world.handle_place_road(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false, false);
+        world.handle_place_road(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false, false, 0);
         assert!(world.road_node_at(GridCoord { x: 3, y: 0 }).is_none(), "the road stops at the door");
     }
 

@@ -348,7 +348,7 @@ fn handle_player_action(
             if !world.build.may_draw(place.one_way, place.road) || world.laid + new_tiles > world.build.road_tiles() {
                 return;
             }
-            world.handle_place_road(place.from, place.to, place.one_way, place.road);
+            world.handle_place_road(place.from, place.to, place.one_way, place.road, now);
 
             // Insert edges for newly created connections
             let new_from = world.road_node_at(place.from);

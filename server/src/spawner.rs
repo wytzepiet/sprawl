@@ -114,7 +114,7 @@ pub fn spawn(world: &mut World, now: GameTime) -> Option<EntityId> {
     }
     let mut rng = seeded(world, now);
     let size = blueprint(kind).size;
-    let pos = draw_site(world, &mut rng, kind, size, &buildings(world))?;
+    let pos = draw_site(world, &mut rng, kind, size, &buildings(world), now)?;
     // Spent. The next goal is drawn on the next tick.
     world.offered_at = world.xp.at(now);
     world.goal = None;
@@ -163,6 +163,7 @@ fn draw_site(
     kind: BuildingKind,
     size: (u8, u8),
     standing: &[(EntityId, GridCoord, BuildingKind)],
+    now: GameTime,
 ) -> Option<GridCoord> {
     let (sizes, member) = clusters(standing);
     let largest = sizes.iter().copied().max().unwrap_or(0) as f64;
@@ -182,7 +183,7 @@ fn draw_site(
     // rather than beside a building, so a street in the countryside fills
     // on its own.
     let (anchor, reach) = if seed_new || standing.is_empty() {
-        (world.streets().choose(rng).copied()?, 3..10)
+        (world.streets(now).choose(rng).copied()?, 3..10)
     } else {
         let i = (0..standing.len()).collect::<Vec<_>>().choose_weighted(rng, |&i| liked[i]).ok().copied()?;
         (standing[i].1, 3..10)
@@ -199,7 +200,7 @@ fn draw_site(
         if seed_new && standing.iter().any(|&(_, p, _)| dist(p, at) < 15) {
             continue;
         }
-        let Some(pos) = snap(world, at, size) else { continue };
+        let Some(pos) = snap(world, at, size, now) else { continue };
         let company: f64 = standing
             .iter()
             .map(|&(_, p, k)| (affinity(kind, k), dist(p, pos)))
@@ -232,8 +233,8 @@ fn affinity(kind: BuildingKind, near: BuildingKind) -> f64 {
 }
 
 /// The nearest place to `at` where a footprint fits: buildable, revealed,
-/// and fronting a street that is joined to the world.
-fn snap(world: &World, at: GridCoord, size: (u8, u8)) -> Option<GridCoord> {
+/// and fronting a settled street that is joined to the world.
+fn snap(world: &World, at: GridCoord, size: (u8, u8), now: GameTime) -> Option<GridCoord> {
     let fits = |pos: GridCoord| {
         let (w, h) = (size.0 as i32, size.1 as i32);
         (0..w).all(|dx| {
@@ -241,7 +242,7 @@ fn snap(world: &World, at: GridCoord, size: (u8, u8)) -> Option<GridCoord> {
                 let t = GridCoord { x: pos.x + dx, y: pos.y + dy };
                 world.is_buildable(t) && world.revealed.contains(&crate::world::chunk_of(t))
             })
-        }) && world.road_for_plot(pos, size).is_some_and(|(street, _)| world.network.joined(street))
+        }) && world.road_for_plot(pos, size).is_some_and(|(street, _)| world.network.joined(street) && world.is_settled(street, now))
     };
     (0..=6).flat_map(|ring| ring_around(at, ring)).find(|&p| fits(p))
 }
@@ -418,6 +419,37 @@ mod tests {
         afford(&mut world, STEP);
         let id = spawn(&mut world, STEP).expect("the first arrival");
         assert!(world.is_reached(id));
+    }
+
+    /// A street the mayor has just drawn is left alone until it has stood
+    /// an hour; then it is a site like any other.
+    #[test]
+    fn a_fresh_street_is_left_alone_for_an_hour() {
+        use crate::world::roads::STREET_SETTLES;
+        let mut world = country();
+        // Drown the country, then draw one street back onto the road.
+        let drowned: Vec<(i32, i32)> = world.terrain.keys().copied()
+            .filter(|&(x, y)| world.is_buildable(GridCoord { x, y })).collect();
+        for t in drowned {
+            world.terrain.insert(t, TerrainType::Water);
+        }
+        // Beside the starting town, where the spawner looks.
+        let drawn = 5 * STEP;
+        // Land only from the second tile up, so a plot can front the fresh
+        // street and nothing else.
+        for y in 0..6 {
+            for dx in -1..=1 {
+                world.terrain.insert((6 + dx, -2 - y), TerrainType::Grass);
+            }
+            world.handle_place_road(GridCoord { x: 6, y: -y }, GridCoord { x: 6, y: -y - 1 }, false, false, drawn);
+            world.insert_edge(world.road_node_at(GridCoord { x: 6, y: -y }).unwrap(), world.road_node_at(GridCoord { x: 6, y: -y - 1 }).unwrap());
+        }
+        let soon = drawn + STREET_SETTLES / 2;
+        afford(&mut world, soon);
+        assert!(spawn(&mut world, soon).is_none(), "arrived while the street was fresh");
+        let later = drawn + STREET_SETTLES + STEP;
+        afford(&mut world, later);
+        assert!(spawn(&mut world, later).is_some(), "nothing arrived once it had settled");
     }
 
     /// A street off on its own fills too, slowly: a new cluster seeds on a

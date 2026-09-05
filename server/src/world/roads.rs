@@ -1,7 +1,12 @@
 use std::collections::HashSet;
 
+use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
+
+/// How long a street stands before anything arrives on it: an hour, so a
+/// street is a street before it is a site.
+pub const STREET_SETTLES: GameTime = crate::protocol::DAY_MS as GameTime / 24;
 
 impl World {
     /// The road on this tile.
@@ -13,20 +18,29 @@ impl World {
     /// standing here, whatever kind it is. Generated road and driveways are
     /// streets, and free.
     fn place_road(&mut self, coord: GridCoord) -> EntityId {
-        self.place_road_of(coord, false, false)
+        self.place_road_of(coord, false, None)
     }
 
-    fn place_road_of(&mut self, coord: GridCoord, road: bool, laid: bool) -> EntityId {
+    /// `laid` is when the mayor laid it; the survey's roads and driveways
+    /// were never laid by anyone.
+    fn place_road_of(&mut self, coord: GridCoord, road: bool, laid: Option<GameTime>) -> EntityId {
         if let Some(id) = self.road_node_at(coord) {
             return id;
         }
 
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid }),
+            GameObject::RoadNode(RoadNode {
+                outgoing: vec![],
+                incoming: vec![],
+                joined: false,
+                road,
+                laid: laid.is_some(),
+                built: laid.unwrap_or(0),
+            }),
             Some(coord),
         );
         self.roads.insert((coord.x, coord.y), id);
-        self.laid += laid as u32;
+        self.laid += laid.is_some() as u32;
         let beyond = !self.revealed.contains(&crate::world::chunk_of(coord));
         self.network.set_exit(id, beyond);
         id
@@ -82,7 +96,7 @@ impl World {
 
     /// Place road nodes at `from` and `to`, and connect them as outgoing.
     /// The mayor's own hand: what it lays is counted against the build.
-    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
+    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool, now: GameTime) {
         let dx = to.x - from.x;
         let dy = to.y - from.y;
 
@@ -120,8 +134,8 @@ impl World {
             self.clear_driveway(to);
         }
 
-        let from_id = self.place_road_of(from, road, true);
-        let to_id = self.place_road_of(to, road, true);
+        let from_id = self.place_road_of(from, road, Some(now));
+        let to_id = self.place_road_of(to, road, Some(now));
 
         if let Some(entry) = self.objects.get_mut(from_id)
             && let GameObject::RoadNode(ref mut node) = entry.object
@@ -171,7 +185,7 @@ impl World {
             }
             expanded.push(b);
         }
-        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, road, false)).collect();
+        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, road, None)).collect();
         // A street reaches whatever dormant building stands beside it.
         self.attach_driveways_along(&expanded);
         for pair in ids.windows(2) {
@@ -234,13 +248,23 @@ impl World {
         self.unique_connection_count(node_id) > 2
     }
 
+    /// Has this street been standing long enough for the city to build on
+    /// it? A street being drawn is not finished, and a house that lands on
+    /// it while the mayor is still dragging is in the way.
+    pub fn is_settled(&self, id: EntityId, now: GameTime) -> bool {
+        self.objects.get(id).is_some_and(|e| match e.object {
+            GameObject::RoadNode(ref n) => n.built + STREET_SETTLES <= now,
+            _ => false,
+        })
+    }
+
     /// Every street the city could grow onto: joined to the world, in the
-    /// survey, and not a driveway.
-    pub fn streets(&self) -> Vec<GridCoord> {
+    /// survey, settled, and not a driveway.
+    pub fn streets(&self, now: GameTime) -> Vec<GridCoord> {
         self.objects
             .all_entries()
             .iter()
-            .filter(|e| self.is_street(e.id) && self.network.joined(e.id))
+            .filter(|e| self.is_street(e.id) && self.network.joined(e.id) && self.is_settled(e.id, now))
             .filter_map(|e| e.position)
             .filter(|p| self.revealed.contains(&crate::world::chunk_of(*p)))
             .collect()

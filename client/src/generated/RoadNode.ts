@@ -15,4 +15,9 @@ road: boolean,
  * Laid by the mayor, so it counts against the build's road tiles. The
  * survey's own roads, and driveways, are free.
  */
-laid: boolean, };
+laid: boolean, 
+/**
+ * When it was laid, so nothing arrives on a street the mayor is still
+ * drawing. The survey's roads have always been there.
+ */
+built: number, };

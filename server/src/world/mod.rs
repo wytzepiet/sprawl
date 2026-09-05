@@ -4,7 +4,7 @@ mod geometry;
 pub mod network;
 pub mod pathfinding;
 mod residents;
-mod roads;
+pub mod roads;
 pub mod segments;
 
 use std::collections::{HashMap, HashSet};
