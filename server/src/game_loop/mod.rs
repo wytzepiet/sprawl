@@ -81,10 +81,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 
     // Rebuild edges/indices and schedule car spawns for loaded buildings
     if !world.objects.all_entries().is_empty() {
+        world.rebuild_revealed();
         world.rebuild_edges();
         world.rebuild_node_cars();
         world.rebuild_occupied();
-        world.rebuild_revealed();
         world.rebuild_roads_generated();
         // A saved world may have been revealed further than its roads reach,
         // if it was saved before this existed.
@@ -200,15 +200,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             }
         }
 
-        // Road follows the survey outward, so there is always a way in from
-        // beyond the frontier. Only new chunks cost anything: extend_to skips
-        // whatever it has already laid.
-        if !world.newly_revealed.is_empty() {
-            let terrain = world.terrain.clone();
-            let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-            crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
-        }
-
         // One step per unit of speed, each the same length as at speed 1, so a
         // fast-forwarded hour is the same hour — just less wall time spent on it.
         let started = Instant::now();
@@ -240,6 +231,17 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         // tell the difference between a live world and a socket that outlived
         // it.
         crate::health::SIM_TIME.store(sim_time, std::sync::atomic::Ordering::Relaxed);
+
+        // Road follows the survey outward, so there is always a way in from
+        // beyond the frontier. Laid in the same tick as the survey grew, before
+        // anything is flushed, so the network is never seen cut off from the
+        // world in between. Only new chunks cost anything: extend_to skips
+        // whatever it has already laid.
+        if !world.newly_revealed.is_empty() {
+            let terrain = world.terrain.clone();
+            let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
+            crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
+        }
 
         flush_dirty(&mut world, &mut clients, clock(now, speed));
 

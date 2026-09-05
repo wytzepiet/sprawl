@@ -24,10 +24,13 @@ impl World {
             return id;
         }
 
-        self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![] }),
+        let id = self.insert_at(
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false }),
             Some(coord),
-        )
+        );
+        let beyond = !self.revealed.contains(&crate::world::chunk_of(coord));
+        self.network.set_exit(id, beyond);
+        id
     }
 
     /// A node's neighbours.

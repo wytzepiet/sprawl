@@ -123,6 +123,13 @@ pub struct RoadNetwork {
     /// Observed passage time, one per direction: [along the run, against it].
     /// Keyed so it survives the run being laid again by a nearby edit.
     passage: HashMap<SegmentKey, [Passage; 2]>,
+    /// Nodes standing beyond the survey: where the world reaches in.
+    exits: HashSet<EntityId>,
+    /// How many exits each network has. Joined to the world while above zero;
+    /// an island otherwise. Counted rather than searched, so laying a tile
+    /// onto joined road costs nothing, and only a network that actually joins
+    /// or is cut off has every node change.
+    exit_count: HashMap<ComponentId, u32>,
 }
 
 impl RoadNetwork {
@@ -142,10 +149,35 @@ impl RoadNetwork {
         self.component.get(&node).copied()
     }
 
-    /// A road now joins these two.
-    pub fn link(&mut self, a: EntityId, b: EntityId, length: f64) {
+    /// Is this node's network joined to the world beyond the survey?
+    pub fn joined(&self, node: EntityId) -> bool {
+        self.component
+            .get(&node)
+            .is_some_and(|c| self.exit_count.get(c).copied().unwrap_or(0) > 0)
+    }
+
+    /// Say whether a node stands beyond the survey. Returns every node whose
+    /// network was joined to the world, or cut off from it, by that.
+    pub fn set_exit(&mut self, node: EntityId, exit: bool) -> Vec<EntityId> {
+        let changed = if exit { self.exits.insert(node) } else { self.exits.remove(&node) };
+        let Some(&c) = self.component.get(&node) else { return Vec::new() };
+        if !changed {
+            return Vec::new();
+        }
+        let count = self.exit_count.entry(c).or_insert(0);
+        let before = *count > 0;
+        if exit { *count += 1 } else { *count -= 1 }
+        if before == (*count > 0) {
+            return Vec::new();
+        }
+        self.members.get(&c).into_iter().flatten().copied().collect()
+    }
+
+    /// A road now joins these two. Returns every node whose network was
+    /// joined to the world by it.
+    pub fn link(&mut self, a: EntityId, b: EntityId, length: f64) -> Vec<EntityId> {
         if a == b {
-            return;
+            return Vec::new();
         }
         let stale = self.take_segments_around(&[a, b]);
         self.adj.entry(a).or_default().insert(b, length);
@@ -154,20 +186,31 @@ impl RoadNetwork {
 
         let (ca, cb) = (self.claim(a), self.claim(b));
         if ca == cb {
-            return;
+            return Vec::new();
         }
         // Relabel the smaller side. Doing it by size is what keeps a lifetime
         // of joins near-linear instead of quadratic.
         let (keep, drop) = if self.size(ca) >= self.size(cb) { (ca, cb) } else { (cb, ca) };
+        let exits_kept = self.exit_count.remove(&keep).unwrap_or(0);
+        let exits_dropped = self.exit_count.remove(&drop).unwrap_or(0);
+        // The side that had no way out now has one: all of it turns.
+        let turning: Vec<EntityId> = match (exits_kept > 0, exits_dropped > 0) {
+            (false, true) => self.members.get(&keep).into_iter().flatten().copied().collect(),
+            (true, false) => self.members.get(&drop).into_iter().flatten().copied().collect(),
+            _ => Vec::new(),
+        };
+        self.exit_count.insert(keep, exits_kept + exits_dropped);
         let moving = self.members.remove(&drop).unwrap_or_default();
         for id in &moving {
             self.component.insert(*id, keep);
         }
         self.members.entry(keep).or_default().extend(moving);
+        turning
     }
 
-    /// The road between these two is gone.
-    pub fn unlink(&mut self, a: EntityId, b: EntityId) {
+    /// The road between these two is gone. Returns every node whose network
+    /// was cut off from the world by it.
+    pub fn unlink(&mut self, a: EntityId, b: EntityId) -> Vec<EntityId> {
         let mut stale = self.take_segments_around(&[a, b]);
         if let Some(set) = self.adj.get_mut(&a) {
             set.remove(&b);
@@ -177,20 +220,20 @@ impl RoadNetwork {
         }
         stale.remove(&link_key(a, b));
         self.recontract(stale, None);
-        self.forget_if_isolated(a);
-        self.forget_if_isolated(b);
+        let mut turning = self.forget_if_isolated(a);
+        turning.extend(self.forget_if_isolated(b));
 
         let (Some(&ca), Some(&cb)) = (self.component.get(&a), self.component.get(&b)) else {
-            return; // one end left the graph entirely; nothing can still be joined
+            return turning; // one end left the graph entirely; nothing can still be joined
         };
         if ca != cb {
-            return;
+            return turning;
         }
         // Grow both sides one step at a time. If they meet, the cut changed
         // nothing. If one closes first, it is the smaller half by construction,
         // and it is the one that becomes a new component — so the work done is
         // the size of the piece that broke off, not of the network it left.
-        let Some(split) = self.smaller_half(a, b) else { return };
+        let Some(split) = self.smaller_half(a, b) else { return turning };
         let id = self.fresh();
         if let Some(old) = self.members.get_mut(&ca) {
             for node in &split {
@@ -200,7 +243,19 @@ impl RoadNetwork {
         for node in &split {
             self.component.insert(*node, id);
         }
+        // The exits go with whichever side they stand on; a side left with
+        // none is an island now, and all of it turns.
+        let had = self.exit_count.get(&ca).copied().unwrap_or(0);
+        let went = split.iter().filter(|n| self.exits.contains(n)).count() as u32;
+        self.exit_count.insert(ca, had - went);
+        self.exit_count.insert(id, went);
+        if had > 0 && went == 0 {
+            turning.extend(split.iter().copied());
+        } else if had > 0 && had == went {
+            turning.extend(self.members.get(&ca).into_iter().flatten().copied());
+        }
         self.members.insert(id, split);
+        turning
     }
 
     /// Walk outward from both ends of a cut in step. `None` if they meet —
@@ -438,20 +493,31 @@ impl RoadNetwork {
         arms.keys().find(|&&n| n != prev).copied()
     }
 
-    /// A node nothing connects to is not part of any network.
-    fn forget_if_isolated(&mut self, node: EntityId) {
+    /// A node nothing connects to is not part of any network. Returns the
+    /// nodes of a network its leaving cut off from the world.
+    fn forget_if_isolated(&mut self, node: EntityId) -> Vec<EntityId> {
         if self.adj.get(&node).is_some_and(|s| !s.is_empty()) {
-            return;
+            return Vec::new();
         }
         self.adj.remove(&node);
-        if let Some(c) = self.component.remove(&node)
-            && let Some(set) = self.members.get_mut(&c)
-        {
+        let Some(c) = self.component.remove(&node) else { return Vec::new() };
+        if let Some(set) = self.members.get_mut(&c) {
             set.remove(&node);
-            if set.is_empty() {
-                self.members.remove(&c);
+        }
+        let mut turning = Vec::new();
+        if self.exits.contains(&node)
+            && let Some(count) = self.exit_count.get_mut(&c)
+        {
+            *count -= 1;
+            if *count == 0 {
+                turning.extend(self.members.get(&c).into_iter().flatten().copied());
             }
         }
+        if self.members.get(&c).is_some_and(|s| s.is_empty()) {
+            self.members.remove(&c);
+            self.exit_count.remove(&c);
+        }
+        turning
     }
 
     fn claim(&mut self, node: EntityId) -> ComponentId {
@@ -461,6 +527,7 @@ impl RoadNetwork {
         let c = self.fresh();
         self.component.insert(node, c);
         self.members.insert(c, HashSet::from([node]));
+        self.exit_count.insert(c, self.exits.contains(&node) as u32);
         c
     }
 

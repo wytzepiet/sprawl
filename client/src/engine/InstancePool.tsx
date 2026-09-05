@@ -90,6 +90,8 @@ export class InstancePool {
   private buckets = new Map<string, Bucket>();
   private scene: any;
   private shadowGenerator: any;
+  /** The ambient light in force, so a bucket made mid-day is painted for it. */
+  private ambient = new Color3(1, 1, 1);
 
   constructor(scene: any, shadowGenerator: any) {
     this.scene = scene;
@@ -110,12 +112,8 @@ export class InstancePool {
     const mat = new StandardMaterial(`mat_${key}`, this.scene);
     mat.specularColor = Color3.Black();
 
-    if (receiveShadow) {
-      mat.diffuseColor = color;
-      mat.emissiveColor = color.scale(0.15);
-    } else {
+    if (!receiveShadow) {
       mat.disableLighting = true;
-      mat.emissiveColor = color.clone();
     }
 
     if (texture) {
@@ -160,6 +158,11 @@ export class InstancePool {
       castShadow,
       receiveShadow,
     };
+    // Painted with the ambient in force now, not the noon default: a bucket
+    // born at dusk beside buckets already tinted for dusk would otherwise be
+    // a shade off until the next colour step, which reads as a flicker under
+    // the pointer while a road is drawn.
+    this.paint(bucket);
     this.buckets.set(key, bucket);
     return bucket;
   }
@@ -265,17 +268,23 @@ export class InstancePool {
   }
 
   updateMaterials(ambientColor: Color3): void {
+    this.ambient = ambientColor;
     for (const bucket of this.buckets.values()) {
-      if (bucket.receiveShadow) {
-        bucket.material.diffuseColor = bucket.baseColor;
-        bucket.material.emissiveColor = new Color3(
-          bucket.baseColor.r * ambientColor.r * 0.15,
-          bucket.baseColor.g * ambientColor.g * 0.15,
-          bucket.baseColor.b * ambientColor.b * 0.15,
-        );
-      } else {
-        bucket.material.emissiveColor = tint(bucket.baseColor, ambientColor);
-      }
+      this.paint(bucket);
+    }
+  }
+
+  private paint(bucket: Bucket): void {
+    const a = this.ambient;
+    if (bucket.receiveShadow) {
+      bucket.material.diffuseColor = bucket.baseColor;
+      bucket.material.emissiveColor = new Color3(
+        bucket.baseColor.r * a.r * 0.15,
+        bucket.baseColor.g * a.g * 0.15,
+        bucket.baseColor.b * a.b * 0.15,
+      );
+    } else {
+      bucket.material.emissiveColor = tint(bucket.baseColor, a);
     }
   }
 

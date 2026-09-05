@@ -205,13 +205,18 @@ impl World {
                 }
             })
             .collect();
-        for (id, outgoing) in entries {
+        for (id, _) in &entries {
+            let beyond = self.objects.get(*id).and_then(|e| e.position).is_some_and(|p| !self.revealed.contains(&chunk_of(p)));
+            self.network.set_exit(*id, beyond);
+        }
+        for (id, outgoing) in &entries {
             for neighbor in outgoing {
-                let len = self.segment_length(id, neighbor);
-                self.edges.insert((id, neighbor), EdgeSegment::new(len));
-                self.network.link(id, neighbor, len);
+                let len = self.segment_length(*id, *neighbor);
+                self.edges.insert((*id, *neighbor), EdgeSegment::new(len));
+                self.network.link(*id, *neighbor, len);
             }
         }
+        self.mark_joined(entries.iter().map(|(id, _)| *id));
     }
 
     /// Take a car off the edge deques it is registered on — the current edge
@@ -331,7 +336,27 @@ impl World {
     pub fn insert_edge(&mut self, from: EntityId, to: EntityId) {
         let len = self.segment_length(from, to);
         self.edges.insert((from, to), EdgeSegment::new(len));
-        self.network.link(from, to, len);
+        let turning = self.network.link(from, to, len);
+        self.mark_joined(turning.into_iter().chain([from, to]));
+    }
+
+    /// Keep nodes' marks in step with their network: joined to the world
+    /// beyond the survey, or an island. Only the nodes named are touched, and
+    /// only those whose mark actually changed are sent.
+    fn mark_joined(&mut self, ids: impl IntoIterator<Item = EntityId>) {
+        for id in ids {
+            let joined = self.network.joined(id);
+            let stale = matches!(
+                self.objects.get(id).map(|e| &e.object),
+                Some(GameObject::RoadNode(n)) if n.joined != joined
+            );
+            if stale
+                && let Some(e) = self.objects.get_mut(id)
+                && let GameObject::RoadNode(ref mut n) = e.object
+            {
+                n.joined = joined;
+            }
+        }
     }
 
     /// Remove an edge.
@@ -341,7 +366,8 @@ impl World {
     pub fn remove_edge(&mut self, from: EntityId, to: EntityId) {
         self.edges.remove(&(from, to));
         if !self.edges.contains_key(&(to, from)) {
-            self.network.unlink(from, to);
+            let turning = self.network.unlink(from, to);
+            self.mark_joined(turning.into_iter().chain([from, to]));
         }
     }
 
@@ -380,6 +406,16 @@ impl World {
                 if self.revealed.insert(coord) {
                     self.newly_revealed.push(coord);
                     self.grow_bounds(coord);
+                    // Road here is surveyed now, not the world beyond. The
+                    // road that runs on past the new frontier is laid before
+                    // any client hears of this, so nothing flashes red.
+                    let here: Vec<EntityId> = self.spatial.get(&coord).into_iter().flatten().copied().collect();
+                    for id in here {
+                        if matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(_))) {
+                            let turning = self.network.set_exit(id, false);
+                            self.mark_joined(turning);
+                        }
+                    }
                 }
             }
         }

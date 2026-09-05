@@ -88,19 +88,28 @@ function footprint(pos: { x: number; y: number }, [w, h]: [number, number]): str
   return keys;
 }
 /**
- * Is a road standing on one of this building's own tiles? Reactive on the
- * pins' version, which moves when a road lands on or leaves a building.
+ * Is a road joined to the world standing on one of this building's own tiles?
+ * A driveway onto an island is no way in. Reactive on the pins' version,
+ * which moves when a road on a building's tile lands, leaves or changes.
  */
 export function reached(entry: GameObjectEntry): boolean {
   pinsVersion();
   if (entry.object.kind !== "Building" || !entry.position) return false;
   return footprint(entry.position, (entry.object.data as Building).size).some((k) =>
-    (spatial.get(k) ?? []).some((id) => entities.get(String(id))?.object.kind === "RoadNode"),
+    (spatial.get(k) ?? []).some((id) => {
+      const o = entities.get(String(id))?.object;
+      return o?.kind === "RoadNode" && o.data.joined;
+    }),
   );
 }
 
 export function getEntity(id: number): GameObjectEntry | undefined {
   return entities.get(String(id));
+}
+
+/** Every entity the client holds, for checks that want the whole picture. */
+export function eachEntity(f: (e: GameObjectEntry) => void) {
+  for (const e of entities.values()) f(e);
 }
 
 export function getObjectsAt(x: number, y: number): GameObjectEntry[] {

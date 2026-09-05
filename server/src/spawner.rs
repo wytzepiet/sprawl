@@ -111,7 +111,7 @@ pub fn spawn(world: &mut World, now: GameTime) -> Option<EntityId> {
         return None;
     }
     let standing = buildings(world);
-    if standing.is_empty() || standing.iter().any(|&(id, ..)| world.road_node_for_building(id).is_none()) {
+    if standing.is_empty() || standing.iter().any(|&(id, ..)| !world.is_reached(id)) {
         return None;
     }
     let mut rng = seeded(world, now);
@@ -313,7 +313,9 @@ mod tests {
                 world.revealed.insert(crate::protocol::ChunkCoord { cx, cy });
             }
         }
-        let street: Vec<GridCoord> = (-2..40).map(|x| GridCoord { x, y: 0 }).collect();
+        // The street runs out past the survey, the way road generation
+        // always leaves one: that is what joins the town to the world.
+        let street: Vec<GridCoord> = (-2..140).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
         for (x, kind) in [(0, BuildingKind::House), (4, BuildingKind::Shop), (8, BuildingKind::Workshop)] {
             world.spawn_building(GridCoord { x, y: 1 }, kind, (1, 1)).unwrap();
@@ -334,8 +336,21 @@ mod tests {
     /// A road straight down from the street to a plot, the way a mayor would
     /// connect what arrived.
     fn road_to(world: &mut World, pos: GridCoord) {
-        let ys: Vec<i32> = if pos.y >= 0 { (0..=pos.y).collect() } else { (pos.y..=0).rev().collect() };
-        let path: Vec<GridCoord> = ys.into_iter().map(|y| GridCoord { x: pos.x, y }).collect();
+        // Along the street's line to where the street actually runs, then
+        // straight down to the plot.
+        let street_x = pos.x.clamp(-2, 139);
+        let mut path: Vec<GridCoord> = Vec::new();
+        let mut x = street_x;
+        loop {
+            path.push(GridCoord { x, y: 0 });
+            if x == pos.x { break; }
+            x += (pos.x - x).signum();
+        }
+        let mut y = 0;
+        while y != pos.y {
+            y += (pos.y - y).signum();
+            path.push(GridCoord { x: pos.x, y });
+        }
         world.place_road_path(&path);
     }
 
@@ -411,11 +426,11 @@ mod tests {
         afford(&mut world, STEP);
         let id = spawn(&mut world, STEP).expect("the first arrival");
         let pos = world.objects.get(id).unwrap().position.unwrap();
-        assert!(world.road_node_for_building(id).is_none(), "it arrives unconnected");
+        assert!(!world.is_reached(id), "it arrives unconnected");
         afford(&mut world, 2 * STEP);
         assert!(spawn(&mut world, 2 * STEP).is_none(), "held while it waits");
         road_to(&mut world, pos);
-        assert!(world.road_node_for_building(id).is_some());
+        assert!(world.is_reached(id));
         afford(&mut world, 3 * STEP);
         assert!(spawn(&mut world, 3 * STEP).is_some(), "the next follows the road");
     }

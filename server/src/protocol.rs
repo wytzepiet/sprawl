@@ -26,6 +26,10 @@ pub struct RoadNode {
     pub outgoing: Vec<EntityId>,
     #[ts(type = "Array<number>")]
     pub incoming: Vec<EntityId>,
+    /// Part of a network that reaches beyond the survey — road immigrants can
+    /// come in by. Otherwise an island: drawn red, driven by nobody.
+    #[serde(default)]
+    pub joined: bool,
 }
 
 /// What stands on a plot. The kind follows from the footprint the layout chose,

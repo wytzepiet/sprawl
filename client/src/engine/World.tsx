@@ -6,6 +6,7 @@ import { useTheme } from "./theme";
 import { TerrainChunks } from "./TerrainChunks";
 import { FogOfWar } from "./FogOfWar";
 import {
+  eachEntity,
   setOpsListener,
   setTerrainListener,
   getEntity,
@@ -45,10 +46,15 @@ export default function World() {
   /** Trees give way to anything built — a road, or any tile of a plot. */
   const isBuilt = (x: number, y: number) => hasRoad(x, y) || builtTiles.has(`${x},${y}`);
 
-  /** A building is reached when a road stands on one of its own tiles. */
+  /**
+   * A building is reached when a road stands on one of its own tiles and that
+   * road is joined to the world: a driveway onto an island is no way in.
+   */
   const connected = (entry: GameObjectEntry) =>
     !!entry.position &&
-    footprint(entry.position, (entry.object.data as Building).size).some((t) => hasRoad(t.x, t.y));
+    footprint(entry.position, (entry.object.data as Building).size).some((t) =>
+      getObjectsAt(t.x, t.y).some((o) => o.object.kind === "RoadNode" && o.object.data.joined),
+    );
 
   /**
    * Every tile under a building and whose it is, mirroring the server's
@@ -127,7 +133,10 @@ export default function World() {
             existing.cleanup();
           }
 
-          const entry = getEntity(op.data.id)!;
+          // The store already holds the batch's end state, so an entity
+          // upserted and then deleted in one batch is gone from it by now.
+          // Mount what the op carried; the delete that follows cleans it up.
+          const entry = getEntity(op.data.id) ?? op.data;
           const cleanup = mount(entry);
           if (!cleanup) mounted.delete(key);
           if (cleanup) {
@@ -204,6 +213,32 @@ export default function World() {
       }
     }
     remountBuildings(dirtyBuildings);
+    audit(ops);
+  }
+
+  /**
+   * What is drawn has to be exactly what the store holds: every mounted thing
+   * a live entity of the same kind, every road node with a neighbour in the
+   * store drawn. A drift here is a ghost on the map — a stub of road with no
+   * node behind it — and the batch that caused it is far easier to read than
+   * the picture it left. Development only; it walks every entity.
+   */
+  function audit(ops: Operation[]) {
+    if (!import.meta.env.DEV) return;
+    const drift: string[] = [];
+    for (const [key, m] of mounted) {
+      const e = getEntity(Number(key));
+      if (!e) drift.push(`drawn ${m.kind} ${key} has no entity`);
+      else if (e.object.kind !== m.kind) drift.push(`drawn ${m.kind} ${key} is a ${e.object.kind}`);
+    }
+    eachEntity((e) => {
+      if (e.object.kind !== "RoadNode" || mounted.has(String(e.id))) return;
+      const rd = e.object.data;
+      if ([...rd.outgoing, ...rd.incoming].some((n) => getEntity(n)?.position)) {
+        drift.push(`road ${e.id} at ${e.position?.x},${e.position?.y} has neighbours but is not drawn`);
+      }
+    });
+    if (drift.length) console.warn(`[world] drawing drifted from the store after a batch`, drift, ops);
   }
 
   function remountBuildings(ids: Set<string>) {

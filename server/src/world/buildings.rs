@@ -148,6 +148,13 @@ impl World {
     /// of the building's own tiles, so redrawing the driveway moves it with no
     /// bookkeeping, and demolishing it leaves the building visibly cut off
     /// rather than holding a dangling reference.
+    /// Is the building reached from the world: a driveway, on road that is
+    /// joined to the world beyond the survey? A driveway onto an island is
+    /// no way in, and the city waits for the mayor to mend it like any other.
+    pub fn is_reached(&self, building_id: EntityId) -> bool {
+        self.road_node_for_building(building_id).is_some_and(|n| self.network.joined(n))
+    }
+
     pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
         let entry = self.objects.get(building_id)?;
         let pos = entry.position?;
@@ -518,6 +525,46 @@ mod tests {
         ]);
         assert!(world.network.connected(a, b), "a road between them joins them");
         agrees_with_the_edges(&world);
+    }
+
+    /// Red means one thing: not joined to the world. A road that reaches
+    /// past the survey is how people arrive; one that reaches nothing is an
+    /// island, and every node of it says so — and stops saying so the moment
+    /// a road joins it up, or starts again when the road is cut.
+    #[test]
+    fn a_road_that_reaches_nothing_is_an_island() {
+        let mut world = World::new();
+        for y in -8..8 {
+            for x in -8..140 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        // The survey covers the middle; the street runs out past it.
+        world.reveal_around(GridCoord { x: 0, y: 0 });
+        let street: Vec<GridCoord> = (0..130).map(|x| GridCoord { x, y: 0 }).collect();
+        world.place_road_path(&street);
+        let joined = |world: &World, at: GridCoord| {
+            let id = world.road_node_at(at).unwrap();
+            matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.joined)
+        };
+        assert!(joined(&world, GridCoord { x: 0, y: 0 }), "the street reaches beyond the survey");
+
+        let lane: Vec<GridCoord> = (2..6).map(|y| GridCoord { x: 3, y }).collect();
+        world.place_road_path(&lane);
+        assert!(!joined(&world, GridCoord { x: 3, y: 4 }), "a lane touching nothing is an island");
+
+        world.place_road_path(&[GridCoord { x: 3, y: 0 }, GridCoord { x: 3, y: 1 }, GridCoord { x: 3, y: 2 }]);
+        assert!(joined(&world, GridCoord { x: 3, y: 5 }), "joined to the street, it is joined to the world");
+
+        lift_road(&mut world, GridCoord { x: 3, y: 1 });
+        assert!(!joined(&world, GridCoord { x: 3, y: 5 }), "cut off again");
+        assert!(joined(&world, GridCoord { x: 3, y: 0 }), "the street is unmoved");
+
+        // Cut the street inside the survey, between the town and the world:
+        // the whole town is an island, and the far end still reaches beyond.
+        lift_road(&mut world, GridCoord { x: 60, y: 0 });
+        assert!(!joined(&world, GridCoord { x: 0, y: 0 }), "the town lost its way out");
+        assert!(joined(&world, GridCoord { x: 100, y: 0 }), "the far end still reaches beyond");
     }
 
     #[test]
