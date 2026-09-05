@@ -17,17 +17,23 @@ import type { GameObjectEntry, RoadNode } from "../../generated";
 /** Red, for road that reaches nothing: an island no car will ever come down. */
 const CUT_OFF = new Color3(0.85, 0.25, 0.2);
 const cutOff = (c: Color3) => Color3.Lerp(c, CUT_OFF, 0.55);
+/** How far a road's yellow sits above the white junction under it: above
+ *  the street's surface, below the chevrons. */
+const HIGHWAY_LIFT = 0.006;
 
 // --- Connection detection ---
+
+/** An arm, and whether the neighbour it runs to is a road rather than a street. */
+type Arm = ArmInfo & { road: boolean };
 
 function getConnectionArms(
   entry: GameObjectEntry,
   getEntity: (id: number) => GameObjectEntry | undefined,
-): ArmInfo[] {
+): Arm[] {
   if (entry.object.kind !== "RoadNode" || !entry.position) return [];
   const { x, y } = entry.position;
   const { outgoing, incoming } = entry.object.data;
-  const arms: ArmInfo[] = [];
+  const arms: Arm[] = [];
 
   for (const nId of outgoing) {
     const neighbor = getEntity(nId);
@@ -41,7 +47,7 @@ function getConnectionArms(
     const isOneWay = neighborData
       ? neighborData.incoming.includes(entry.id)
       : false;
-    arms.push({ angle: angle < 0 ? angle + 2 * Math.PI : angle, flow: isOneWay ? "out" : "twoway" });
+    arms.push({ angle: angle < 0 ? angle + 2 * Math.PI : angle, flow: isOneWay ? "out" : "twoway", road: !!neighborData?.road });
   }
 
   for (const nId of incoming) {
@@ -52,7 +58,7 @@ function getConnectionArms(
     const dy = neighbor.position.y - y;
     if (dx === 0 && dy === 0) continue;
     const angle = Math.atan2(dy, dx);
-    arms.push({ angle: angle < 0 ? angle + 2 * Math.PI : angle, flow: "in" });
+    arms.push({ angle: angle < 0 ? angle + 2 * Math.PI : angle, flow: "in", road: neighbor.object.kind === "RoadNode" && neighbor.object.data.road });
   }
 
   return arms;
@@ -87,23 +93,33 @@ export function mountRoad(
   // An island is drawn in its own buckets: one material each, so the red is
   // a colour, not a per-instance attribute.
   const { joined, road } = entry.object.data as RoadNode;
-  const key = armsKey(arms) + (joined ? "" : "_cut") + (road ? "_road" : "");
-  // A road wears the map's yellow, a street its white; an island goes red.
   const paint = (c: Color3) => (joined ? c : cutOff(c));
 
-  const borderGeo = buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z);
-  if (borderGeo) {
-    const bk = `road_border_${key}`;
-    pool.ensureBucket(bk, borderGeo, paint(road ? theme.highwayBorder : theme.roadBorder), false, true);
-    instances.push({ key: bk, id: pool.addInstance(bk, pos) });
-  }
+  // A surface of the given arms: kerb, then road, lifted by z.
+  const lay = (name: string, of: ArmInfo[], border: Color3, surface: Color3, z: number) => {
+    const key = armsKey(of) + (joined ? "" : "_cut");
+    const borderGeo = buildRoadGeometry(of, BORDER_HALF_W, BORDER_Z + z);
+    if (borderGeo) {
+      const bk = `${name}_border_${key}`;
+      pool.ensureBucket(bk, borderGeo, paint(border), false, true);
+      instances.push({ key: bk, id: pool.addInstance(bk, pos) });
+    }
+    const roadGeo = buildRoadGeometry(of, HALF_W, ROAD_Z + z);
+    if (roadGeo) {
+      const rk = `${name}_${key}`;
+      pool.ensureBucket(rk, roadGeo, paint(surface), false, true);
+      instances.push({ key: rk, id: pool.addInstance(rk, pos) });
+    }
+  };
 
-  const roadGeo = buildRoadGeometry(arms, HALF_W, ROAD_Z);
-  if (roadGeo) {
-    const rk = `road_${key}`;
-    pool.ensureBucket(rk, roadGeo, paint(road ? theme.highway : theme.road), false, true);
-    instances.push({ key: rk, id: pool.addInstance(rk, pos) });
-  }
+  // A street is white. A road is the map's yellow, and reads as one
+  // continuous piece: where a street joins it, the whole junction is laid
+  // in white underneath — the street curving onto the road — and the road's
+  // own arms in yellow over it, kerb and all.
+  const main = road ? arms.filter((a) => a.road) : arms;
+  if (main.length < arms.length) lay("road", arms, theme.roadBorder, theme.road, 0);
+  if (road) lay("highway", main, theme.highwayBorder, theme.highway, HIGHWAY_LIFT);
+  else lay("road", arms, theme.roadBorder, theme.road, 0);
 
   for (const arm of arms) {
     if (arm.flow !== "out") continue;
