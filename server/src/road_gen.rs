@@ -102,8 +102,10 @@ fn link_chunk(
                 road_edges.insert((w[0], w[1]));
                 road_edges.insert((w[1], w[0]));
             }
+            // The survey's network is roads: through routes between the
+            // anchors that nothing fronts onto. Streets are the mayor's.
             let coords: Vec<GridCoord> = path.iter().map(|&(x, y)| GridCoord { x, y }).collect();
-            world.place_road_path(&coords);
+            world.place_road_path_of(&coords, true);
         }
     }
 }

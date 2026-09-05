@@ -149,9 +149,15 @@ impl World {
             }
     }
 
-    /// Place road nodes along a path and connect consecutive nodes bidirectionally.
-    /// Used by procedural road generation — skips player-input validation.
+    /// Lay a street along a path, both ways, with no player-input checks:
+    /// driveways and test worlds.
     pub fn place_road_path(&mut self, path: &[GridCoord]) {
+        self.place_road_path_of(path, false);
+    }
+
+    /// Lay a street or a road along a path and connect consecutive nodes
+    /// both ways. Free: the survey's roads are not the mayor's tiles.
+    pub fn place_road_path_of(&mut self, path: &[GridCoord], road: bool) {
         if path.len() < 2 {
             return;
         }
@@ -172,8 +178,8 @@ impl World {
             }
             expanded.push(b);
         }
-        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road(c)).collect();
-        // A road reaches whatever dormant building stands beside it.
+        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, road, false)).collect();
+        // A street reaches whatever dormant building stands beside it.
         self.attach_driveways_along(&expanded);
         for pair in ids.windows(2) {
             let (a, b) = (pair[0], pair[1]);

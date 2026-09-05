@@ -253,18 +253,19 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     }
 }
 
-/// Put a starting building on a free tile beside a road node, facing it.
+/// Put a starting building beside the road: a short street off it, since
+/// nothing fronts a road, and the building on that street.
 fn seed_building(world: &mut World, road: GridCoord, kind: BuildingKind) {
-    // All eight, not just the four: beside a diagonal street the only legal
-    // driveway is itself diagonal, so the orthogonal offsets are dead ends.
-    const AROUND: [(i32, i32); 8] =
-        [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)];
-    for (dx, dy) in AROUND {
-        let pos = GridCoord { x: road.x + dx, y: road.y + dy };
-        if !world.is_buildable(pos) {
+    const STUB: i32 = 3;
+    for (dx, dy) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
+        let stub: Vec<GridCoord> = (0..=STUB).map(|i| GridCoord { x: road.x + dx * i, y: road.y + dy * i }).collect();
+        // The street and a plot beside its end, all on open land.
+        let plot = GridCoord { x: road.x + dx * STUB + dy, y: road.y + dy * STUB + dx };
+        if !stub[1..].iter().chain([&plot]).all(|&t| world.is_buildable(t)) {
             continue;
         }
-        if world.spawn_building(pos, kind, (1, 1)).is_some() {
+        world.place_road_path(&stub);
+        if world.spawn_building(plot, kind, (1, 1)).is_some() {
             return;
         }
     }

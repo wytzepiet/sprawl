@@ -19,6 +19,9 @@ const light = {
   grid: hex3("#8BA87A"),
   road: hex3("#FFFFFF"),
   roadBorder: hex3("#DFE1E1"),
+  // A road, as against a street: the map's yellow for a through route.
+  highway: hex3("#F9DC72"),
+  highwayBorder: hex3("#D9B44A"),
 };
 
 const dark = {
@@ -30,6 +33,8 @@ const dark = {
   grid: hex3("#3A4A34"),
   road: hex3("#2A2D35"),
   roadBorder: hex3("#151720"),
+  highway: hex3("#5A4C22"),
+  highwayBorder: hex3("#2E2610"),
 };
 
 export type Theme = typeof light;
