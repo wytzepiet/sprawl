@@ -1,3 +1,8 @@
+> Archived 2026-09-06. The original development guide. Its architecture
+> half lives on as `../architecture.md`; its game half (zoning, attractors,
+> wave-function-collapse terrain) was superseded by `../game.md`. The
+> multiplayer, deployment and visual-style sections are still the intent.
+
 # Sprawl — Development Guide
 
 A multiplayer persistent city building and traffic simulation game. Players build road networks, buildings spawn organically, and thousands of cars drive autonomously using realistic physics. The simulation runs 24/7 — your city keeps growing while you sleep.

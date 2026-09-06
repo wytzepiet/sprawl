@@ -28,7 +28,7 @@ const DELAY_MEMORY: f64 = 16.0;
 /// present or being en route, so there is nothing to release.
 type Crowd = HashMap<(EntityId, Need), u32>;
 
-/// One resident thinking, as sprawl-needs.md specifies. Reads the clock and
+/// One resident thinking, as docs/residents.md specifies. Reads the clock and
 /// the world, brings what they owe up to date, scores every place that could
 /// serve any of it, and either goes to the best one or stays — scheduling
 /// the earliest moment that answer could change. Carries no memory of why it

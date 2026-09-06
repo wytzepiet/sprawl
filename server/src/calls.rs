@@ -1,5 +1,5 @@
 //! Call-outs: something in the city calls, and a vehicle answers.
-//! sprawl-services.md §5.
+//! docs/services.md §5.
 //!
 //! A call has a kind and a place. A facility whose row answers that kind
 //! sends a vehicle it owns; if the city has no such facility, a vehicle

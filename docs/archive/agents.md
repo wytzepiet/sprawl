@@ -1,10 +1,15 @@
+> Archived 2026-09-06. Working notes from before the resident model, the
+> spawner and the services existed; every question here is answered in
+> `../residents.md`, `../spawner.md`, `../services.md` and `../game.md`.
+> Kept for the reasoning, not the conclusions.
+
 # Sprawl — Who Decides What Moves
 
 Working notes, deliberately unfinished. This is the layer that turns Sprawl from
 a traffic generator into a simulation, and everything else leans on it, so it is
 worth thinking about properly before it is built.
 
-Companion to `sprawl-guide.md`, which describes the game; this describes the
+Companion to `archive/guide.md`, which describes the game; this describes the
 question the game currently has no answer to.
 
 ---

@@ -930,7 +930,7 @@ mod tests {
         assert_eq!(e.position, world.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
     }
 
-    /// Every wake, every arrival: the log the model in sprawl-needs.md is
+    /// Every wake, every arrival: the log the model in docs/residents.md is
     /// held to. Two runs of the same town must write the same one — down to
     /// the millisecond — or something is iterating a hash map.
     type Move = (GameTime, EntityId, Option<EntityId>, Option<crate::needs::Need>);

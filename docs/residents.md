@@ -1,7 +1,8 @@
 # Resident behaviour: a utility model over time-denominated needs
 
-Status: specification, unimplemented. Supersedes the agenda/entry sections of
-`sprawl-agents.md`. Written for review; nothing here has been run.
+Status: built, 2026-09-04, through step 7 of §13; §11 records what was
+open when it was written, and `game.md` is the current shape. Supersedes
+the agenda/entry sections of `archive/agents.md`.
 
 ---
 

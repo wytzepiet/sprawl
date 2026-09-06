@@ -1,5 +1,5 @@
 //! Buildings arrive on their own, and the mayor deals with them.
-//! sprawl-spawner.md.
+//! docs/spawner.md.
 
 use rand::rngs::SmallRng;
 use rand::seq::IndexedRandom;

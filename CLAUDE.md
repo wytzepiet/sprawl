@@ -1,6 +1,7 @@
 # Sprawl
 
-City-building and traffic sim game. Design docs in `sprawl-guide.md`.
+City-building and traffic sim game. What the game is lives in `docs/`; start
+at `docs/README.md`, then `docs/game.md`. This file is how to work on the code.
 
 ## Engineering Philosophy: Distill, Don't Patch
 

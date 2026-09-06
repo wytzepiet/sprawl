@@ -5,7 +5,7 @@ have no speed of their own yet). §5 built for stock: `calls.rs`, the
 supermarket and warehouse rows, trucks from beyond the edge or a
 warehouse's own, empty shelves drawn grey. Fire, illness, the inspect
 panel not yet. Follows
-`sprawl-spawner.md` (what arrives on its own) and `sprawl-needs.md` (how
+`spawner.md` (what arrives on its own) and `residents.md` (how
 residents decide). Supersedes the parts of both that say buildings arrive
 unconnected for the mayor to road.
 
@@ -183,5 +183,5 @@ unlock at the **corners**, where two avenues meet:
 
 - The spawner's hold while anything is unconnected.
 - The arrival pin state, its bounce, and edge markers for arrivals.
-- Proposals' last traces in `sprawl-spawner.md`'s prose.
+- Proposals' last traces in `spawner.md`'s prose.
 - Any building the mayor has to road by hand.

@@ -13,11 +13,11 @@ filled them in. `2f86374 Paint an area and get buildings`.
 
 **Why shelved.** Painting is a decision the player makes blind, before
 anything exists to react to, and it made the map a colouring exercise.
-Demand-driven spawning (`sprawl-spawner.md` §1) puts buildings where they
+Demand-driven spawning (`spawner.md` §1) puts buildings where they
 want to be and lets the road network be the thing the player designs.
 
 **To bring back.** Only as an optional policy drawn *after* the fact —
-"no industry here" — as `sprawl-agents.md` already suggests. Last lived at
+"no industry here" — as `archive/agents.md` already suggests. Last lived at
 `7ded07b` (removed in `7ded07b The city proposes buildings`).
 
 ## Proposals
@@ -59,3 +59,47 @@ discard_drafts, erase_draft, draft_remove, is_going_away}`, the
 `now`/`after` split in `road_node_at`, `draftLook.ts`, `BuildModeToolbar`.
 Also the multiplayer claim it gave: an unfinished draft reserved its land
 for its owner. Last lived at `dd53fbe`.
+
+## Pedestrians, transit, walkability
+
+**What.** People on the map: walkers on sidewalks, buses and trams with
+drawn routes, walking to the shop next door, park-and-walk from lots you
+could draw anywhere. Argued through on 2026-09-06; a client-only look
+(`client/src/engine/Walkers.tsx`, press P) showed a person reads fine as
+a dot at build zoom.
+
+**Why shelved.** The game's rule is that everything that happens is a
+vehicle you can watch, and its problem is traffic. People between
+vehicles need a mode-choice model and drawing tools for routes, which is
+transit planning, a different game, and the decision fatigue proposals
+had. The one version worth keeping is invisible: people do not drive to a
+shop next door. That is a rule with no tool, and can be added any time.
+
+**To bring back.** Walkers as constant-speed trips over the road graph
+(a car with the physics removed), trips with legs, crossings as a cost to
+the walker and roads as walls. `game.md` says nobody walks.
+
+## Water, sewage, garbage, and other pipes
+
+**What.** Utility networks under the city, as in Cities Skylines.
+
+**Why shelved.** A resource earns its place if it moves on the roads.
+Water does not; it would be a second invisible grid with a bill. Power
+stays because coal arrives by truck and the plant's reach runs along the
+roads (`game.md`). Garbage is one link with nothing to refine or sell.
+
+**To bring back.** Only as a placeable with a reach, like a substation,
+for the silhouette — never as a network.
+
+## Passenger rail and transit
+
+**What.** Trains, buses, trams carrying people inside the city.
+
+**Why shelved.** Between cities things move by ship, train and plane;
+inside the city, by car. A person who arrives by train gets a car at the
+station, the way an immigrant gets one at the edge. Transit inside the
+city is the pedestrian question again.
+
+**To bring back.** Stations as doors first (arrivals with a car), which
+costs nothing new; anything more is the entry above.
+

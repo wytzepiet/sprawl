@@ -1,8 +1,9 @@
 # The spawner: buildings arrive, the mayor disposes
 
-Status: specification, being built. Elaborates "Who decides what gets
-built" in `sprawl-agents.md`; reads the demand signal of `sprawl-needs.md`
-§6. Written for review; the build plan is section 8.
+Status: built. Buildings arrive onto settled, joined streets with their
+driveway (`services.md` §3); §6 on proposals is history, kept for the
+record. Elaborates "Who decides what gets built" in `archive/agents.md`;
+reads the demand signal of `residents.md` §6.
 
 ---
 
@@ -13,14 +14,14 @@ industrial areas; buildings **arrive on their own**, onto the streets the
 player has drawn, with their driveway laid, and the player moves them or
 demolishes them afterwards. (They arrived as proposals to accept or reject
 until 2026-09-04, and unconnected for the mayor to road until 2026-09-05;
-see `sprawl-shelved.md` and `sprawl-services.md` §3.) Placeable buildings remain only for
+see `shelved.md` and `services.md` §3.) Placeable buildings remain only for
 things that do something special. This document specifies how an arrival
 is chosen and sited, and what the client shows.
 It does not specify pacing beyond one constant, money, or the skill tree.
 
 ## 2. Rules carried over
 
-From `sprawl-agents.md`, unchanged:
+From `archive/agents.md`, unchanged:
 
 - **Nothing needs to cause a spawn.** Demand tilts the choice of kind; it
   never gates it. A building that appears participates automatically.
@@ -42,7 +43,7 @@ attaches driveways to the dormant buildings beside it. Red on the map
 means one thing: not joined to the world.
 
 What no road serves does not participate: `settle` houses and employs
-nobody there, and the candidate search of `sprawl-needs.md` §4 does not
+nobody there, and the candidate search of `residents.md` §4 does not
 offer it. There is no `dormant` flag; dormancy is `road_node_for_building`
 returning none, derived like every other index.
 
