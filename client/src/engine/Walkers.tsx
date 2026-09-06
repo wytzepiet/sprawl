@@ -14,11 +14,13 @@ import type { RoadNode } from "../generated";
  * question — what does a person look like on this map — and goes once it
  * has.
  */
-const COUNT = 300;
+/** Walkers per street tile loaded, so a big city gets a crowd, not a scatter. */
+const PER_TILE = 0.5;
+const MOST = 3000;
 /** Tiles per second: a brisk walk on twelve-metre tiles. */
 const SPEED = 0.12;
-/** How far from the middle of the road a sidewalk runs. */
-const SIDEWALK = HALF_W + 0.07;
+/** Where on the sidewalk people walk: its middle. */
+const SIDEWALK = HALF_W + 0.06;
 const PALETTE = [
   new Color3(0.9, 0.25, 0.2),
   new Color3(0.2, 0.22, 0.28),
@@ -29,7 +31,9 @@ const PALETTE = [
   new Color3(0.95, 0.85, 0.75),
   new Color3(0.4, 0.28, 0.2),
 ];
-const WALKER = boxGeometry(0.09, 0.09, 0.16);
+/** Exaggerated the way cars are: a person is a metre, this is a bit more,
+ *  or they vanish at any zoom you would actually play at. */
+const WALKER = boxGeometry(0.14, 0.14, 0.2);
 
 type Walker = { from: number; to: number; t: number; side: 1 | -1; bucket: string; id: number };
 
@@ -57,7 +61,8 @@ export default function Walkers() {
   const spawn = () => {
     const nodes: number[] = [];
     eachEntity((e) => { if (e.object.kind === "RoadNode" && !e.object.data.road && e.position) nodes.push(e.id); });
-    for (let i = 0; i < COUNT && nodes.length; i++) {
+    const count = Math.min(MOST, Math.round(nodes.length * PER_TILE));
+    for (let i = 0; i < count && nodes.length; i++) {
       const from = nodes[Math.floor(Math.random() * nodes.length)];
       const to = nextFrom(from, -1);
       if (to === null) continue;
@@ -92,7 +97,7 @@ export default function Walkers() {
       }
       // Along the edge, offset to one side: the sidewalk.
       const nx = (-dy / len) * SIDEWALK * w.side, ny = (dx / len) * SIDEWALK * w.side;
-      pool.updateInstance(w.bucket, w.id, [a.x + 0.5 + dx * w.t + nx, a.y + 0.5 + dy * w.t + ny, 0.08], [0, 0, 0]);
+      pool.updateInstance(w.bucket, w.id, [a.x + 0.5 + dx * w.t + nx, a.y + 0.5 + dy * w.t + ny, 0.1], [0, 0, 0]);
     }
   };
 

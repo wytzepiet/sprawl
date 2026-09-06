@@ -20,6 +20,8 @@ const cutOff = (c: Color3) => Color3.Lerp(c, CUT_OFF, 0.55);
 /** How far a road's yellow sits above the white junction under it: above
  *  the street's surface, below the chevrons. */
 const HIGHWAY_LIFT = 0.006;
+/** A street has a sidewalk, wide enough to walk; a road has a shoulder. */
+const SIDEWALK_HALF_W = HALF_W + 0.11;
 
 // --- Connection detection ---
 
@@ -96,9 +98,9 @@ export function mountRoad(
   const paint = (c: Color3) => (joined ? c : cutOff(c));
 
   // A surface of the given arms: kerb, then road, lifted by z.
-  const lay = (name: string, of: ArmInfo[], border: Color3, surface: Color3, z: number) => {
+  const lay = (name: string, of: ArmInfo[], border: Color3, surface: Color3, z: number, edge: number) => {
     const key = armsKey(of) + (joined ? "" : "_cut");
-    const borderGeo = buildRoadGeometry(of, BORDER_HALF_W, BORDER_Z + z);
+    const borderGeo = buildRoadGeometry(of, edge, BORDER_Z + z);
     if (borderGeo) {
       const bk = `${name}_border_${key}`;
       pool.ensureBucket(bk, borderGeo, paint(border), false, true);
@@ -117,9 +119,9 @@ export function mountRoad(
   // in white underneath — the street curving onto the road — and the road's
   // own arms in yellow over it, kerb and all.
   const main = road ? arms.filter((a) => a.road) : arms;
-  if (main.length < arms.length) lay("road", arms, theme.roadBorder, theme.road, 0);
-  if (road) lay("highway", main, theme.highwayBorder, theme.highway, HIGHWAY_LIFT);
-  else lay("road", arms, theme.roadBorder, theme.road, 0);
+  if (main.length < arms.length) lay("road", arms, theme.roadBorder, theme.road, 0, SIDEWALK_HALF_W);
+  if (road) lay("highway", main, theme.highwayBorder, theme.highway, HIGHWAY_LIFT, BORDER_HALF_W);
+  else lay("road", arms, theme.roadBorder, theme.road, 0, SIDEWALK_HALF_W);
 
   for (const arm of arms) {
     if (arm.flow !== "out") continue;
