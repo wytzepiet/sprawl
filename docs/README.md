@@ -6,6 +6,7 @@ The rest is detail, in the order you would need it.
 | Document | What it holds | Status |
 |---|---|---|
 | `game.md` | How the game works: the rule, roads, buildings, the build, people, goods, money, power, services, what is out, and the order to build it in. | Current, 2026-09-06. |
+| `roadmap.md` | The order to build `game.md` in, as playable milestones with rough sizes. | Living. |
 | `architecture.md` | How the code is shaped: the discrete event simulation, the tracked state, the wire, persistence, the client. | Current. |
 | `residents.md` | How a resident decides what to do: needs as buckets of owed time, taps, the utility search, alarms. | Built; §11 and §13 record what was open at the time. |
 | `spawner.md` | How buildings arrive on their own: the meter, the draw, siting, clusters. | Built; §6 (proposals) is history, kept for the record. |
