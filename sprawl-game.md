@@ -83,6 +83,13 @@ The map warns first: red for unjoined, grey for empty shelves, dark for
 unpowered, a dimming shop for one losing money. Click anything for a panel
 of per-day rates, each line a trip or a tap that points back at the map.
 
+**The advisor** is the inspect panel in language: a model with read-only
+tools over the same rates, answering the questions that cross three
+panels ("why is the west district losing money") and pointing at the map.
+It never builds, and it never knows anything the map and panels cannot
+show by hand, so it sells time, not knowledge. A few questions a month
+are free; more is the subscription.
+
 ## Out
 
 Pedestrians, transit, water, sewage, garbage, zoning, sliders, policies,
