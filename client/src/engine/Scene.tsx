@@ -5,6 +5,7 @@ import { InstancePoolProvider } from "./InstancePool";
 import Headlights from "./Headlights";
 import { RoadDrawer } from "./RoadDrawer";
 import { BuildingPlacer } from "./BuildingPlacer";
+import Walkers from "./Walkers";
 import World from "./World";
 import BuildModeToolbar from "../ui/BuildModeToolbar";
 import TimeControls from "../ui/TimeControls";
@@ -28,6 +29,7 @@ function SceneInner() {
               <RoadDrawer />
               <BuildingPlacer />
               <World />
+              <Walkers />
             </InstancePoolProvider>
           </Headlights>
         </DayNightLights>
