@@ -10,8 +10,23 @@ pub const MIN_TURN_SPEED: f64 = 0.5;
 pub const ACCELERATION: f64 = 0.45;
 pub const DECELERATION: f64 = 0.4;
 pub const INTERSECTION_STOP_MARGIN: f64 = 0.4;
-pub const CAR_NOSE: f64 = 0.175;
-pub const CAR_TAIL: f64 = 0.175;
+/// How far a vehicle reaches ahead of and behind the point the simulation
+/// moves. A car is 0.35 tiles about its middle; a lorry is a cab-over
+/// tractor with a semi-trailer behind it, 0.8 tiles in all, and the point
+/// is the tractor. Following distance and the hold on a junction are by
+/// the vehicle's own length.
+pub fn nose(role: crate::protocol::CarRole) -> f64 {
+    match role {
+        crate::protocol::CarRole::Private => 0.175,
+        _ => 0.1,
+    }
+}
+pub fn tail(role: crate::protocol::CarRole) -> f64 {
+    match role {
+        crate::protocol::CarRole::Private => 0.175,
+        _ => 0.7,
+    }
+}
 
 pub enum Obstacle {
     SpeedLimit {

@@ -19,13 +19,25 @@ const PALETTE = [
   new Color3(0.8, 0.65, 0.25),
 ];
 const carGeo = boxGeometry(0.18, 0.35, 0.15);
-/** A truck: longer, taller, and always the same pale grey. */
-const truckGeo = boxGeometry(0.2, 0.46, 0.22);
-const TRUCK = new Color3(0.88, 0.88, 0.86);
+/** A lorry: a cab-over tractor and a semi-trailer, two boxes. The tractor
+ *  is the vehicle the server moves; the trailer hangs off a hitch near
+ *  the tractor's tail and follows it, its heading the line from its own
+ *  axle to the hitch, the axle always one trailer length behind. Forward
+ *  that is stable and swings through a corner the way a trailer does. */
+const CAB = { w: 0.2, l: 0.2, h: 0.25 };
+const TRAILER = { w: 0.2, l: 0.55, h: 0.27, axle: 0.45, overhang: 0.03 };
+const cabGeo = boxGeometry(CAB.w, CAB.l, CAB.h);
+const trailerGeo = boxGeometry(TRAILER.w, TRAILER.l, TRAILER.h);
+/** How far behind the tractor's centre the hitch sits. */
+const HITCH = 0.06;
+const CAB_COLOR = new Color3(0.28, 0.36, 0.58);
+const TRAILER_COLOR = new Color3(0.9, 0.9, 0.88);
 const LANE_OFFSET = 0.11;
 const BEZIER_SAMPLES = 8;
 
 const CAR_Z = 0.095;
+/** A box sits on the ground: its centre is half its height up. */
+const GROUND = CAR_Z - 0.15 / 2;
 
 /// Small deterministic hash so a car's colour is a fact about the car, not
 /// a roll of the dice.
@@ -91,10 +103,10 @@ export function mountCar(
   look: Look,
 ): () => void {
   const car = entry.object.data as Car;
-  const truck = car.role === "Truck";
-  const color = truck ? TRUCK : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
-  const bucket = truck ? `truck${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
-  pool.ensureBucket(bucket, truck ? truckGeo : carGeo, look.tint(color), look.castShadow, true);
+  if (car.role === "Truck") return mountLorry(car, pool, scene, look);
+  const color = PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
+  const bucket = `car${look.key}c${PALETTE.indexOf(color)}`;
+  pool.ensureBucket(bucket, carGeo, look.tint(color), look.castShadow, true);
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,
   // and the car is out of sight until it moves.
@@ -104,8 +116,77 @@ export function mountCar(
     const instanceId = pool.addInstance(bucket, [at[0], at[1], CAR_Z], [0, 0, heading - Math.PI / 2]);
     return () => pool.removeInstance(bucket, instanceId);
   }
+  const move = follow(car);
+  if (!move) return () => {};
+  const initial = move();
+  const instanceId = pool.addInstance(bucket, initial?.pos ?? [0, 0, -10], initial?.rot ?? [0, 0, 0]);
+  const observer = scene.onBeforeRenderObservable.add(() => {
+    const result = move();
+    if (result) pool.updateInstance(bucket, instanceId, result.pos, result.rot);
+  });
+  return () => {
+    scene.onBeforeRenderObservable.remove(observer);
+    pool.removeInstance(bucket, instanceId);
+  };
+}
 
-  const data = car.trip;
+/** The two boxes of a lorry, parked or on the move. */
+function mountLorry(car: Car, pool: InstancePool, scene: Scene, look: Look): () => void {
+  const cab = `lorry_cab${look.key}`;
+  const trailer = `lorry_trailer${look.key}`;
+  pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true);
+  pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true);
+  const cabZ = GROUND + CAB.h / 2;
+  const trailerZ = GROUND + TRAILER.h / 2;
+  // The trailer's axle, kept between frames: where it was is what decides
+  // where it goes.
+  let axle: [number, number] | null = null;
+  const place = (x: number, y: number, heading: number, straight: boolean) => {
+    const fx = Math.cos(heading), fy = Math.sin(heading);
+    const hitch: [number, number] = [x - fx * HITCH, y - fy * HITCH];
+    if (straight || !axle) axle = [hitch[0] - fx * TRAILER.axle, hitch[1] - fy * TRAILER.axle];
+    let ux = hitch[0] - axle[0], uy = hitch[1] - axle[1];
+    const len = Math.hypot(ux, uy) || 1;
+    ux /= len; uy /= len;
+    axle = [hitch[0] - ux * TRAILER.axle, hitch[1] - uy * TRAILER.axle];
+    const back = TRAILER.l / 2 - TRAILER.overhang;
+    return {
+      cab: { pos: [x, y, cabZ] as [number, number, number], rot: [0, 0, heading - Math.PI / 2] as [number, number, number] },
+      trailer: { pos: [hitch[0] - ux * back, hitch[1] - uy * back, trailerZ] as [number, number, number], rot: [0, 0, Math.atan2(uy, ux) - Math.PI / 2] as [number, number, number] },
+    };
+  };
+  if (!car.trip) {
+    if (!car.spot) return () => {};
+    const { at, heading } = car.spot;
+    const p = place(at[0], at[1], heading, true);
+    const a = pool.addInstance(cab, p.cab.pos, p.cab.rot);
+    const b = pool.addInstance(trailer, p.trailer.pos, p.trailer.rot);
+    return () => { pool.removeInstance(cab, a); pool.removeInstance(trailer, b); };
+  }
+  const move = follow(car);
+  if (!move) return () => {};
+  const first = move();
+  const p0 = first ? place(first.pos[0], first.pos[1], first.rot[2] + Math.PI / 2, true) : null;
+  const a = pool.addInstance(cab, p0?.cab.pos ?? [0, 0, -10], p0?.cab.rot ?? [0, 0, 0]);
+  const b = pool.addInstance(trailer, p0?.trailer.pos ?? [0, 0, -10], p0?.trailer.rot ?? [0, 0, 0]);
+  const observer = scene.onBeforeRenderObservable.add(() => {
+    const r = move();
+    if (!r) return;
+    const p = place(r.pos[0], r.pos[1], r.rot[2] + Math.PI / 2, false);
+    pool.updateInstance(cab, a, p.cab.pos, p.cab.rot);
+    pool.updateInstance(trailer, b, p.trailer.pos, p.trailer.rot);
+  });
+  return () => {
+    scene.onBeforeRenderObservable.remove(observer);
+    pool.removeInstance(cab, a);
+    pool.removeInstance(trailer, b);
+  };
+}
+
+/** Where a car on a trip is at any moment, from the trip the server sent:
+ *  its route rounded at the corners, and its own physics extrapolated. */
+function follow(car: Car): (() => { pos: [number, number, number]; rot: [number, number, number] } | null) | null {
+  const data = car.trip!;
   const centerNodes = data.route_positions.map(
     ([x, y]) => new Vector3(x, y, 0),
   );
@@ -164,23 +245,5 @@ export function mountCar(
     return { pos: [p.x, p.y, CAR_Z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2] };
   }
 
-  const initial = computePosition();
-
-  const instanceId = pool.addInstance(
-    bucket,
-    initial?.pos ?? [0, 0, -10],
-    initial?.rot ?? [0, 0, 0],
-  );
-
-  const observer = scene.onBeforeRenderObservable.add(() => {
-    const result = computePosition();
-    if (result) {
-      pool.updateInstance(bucket, instanceId, result.pos, result.rot);
-    }
-  });
-
-  return () => {
-    scene.onBeforeRenderObservable.remove(observer);
-    pool.removeInstance(bucket, instanceId);
-  };
+  return path ? computePosition : null;
 }

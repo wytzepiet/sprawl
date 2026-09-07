@@ -647,10 +647,20 @@ impl World {
         lot.spots.iter().map(|s| s.clear_from(car, from, len)).min()
     }
 
+    /// Where a claim stands: a spot's own pose, or for a door the back
+    /// lane in front of the building, facing along the flow, which is where
+    /// a lorry unloads and is seen doing it. A driveway's door is not drawn.
     fn pose_of(&self, key: RunKey, claim: Claim) -> Option<Pose> {
-        match claim {
-            Claim::Spot(i) => self.lots.get(&key).map(|l| l.spots[i].pose),
-            Claim::Door(_) => None,
+        let lot = self.lots.get(&key)?;
+        match (claim, &lot.way) {
+            (Claim::Spot(i), _) => Some(lot.spots[i].pose),
+            (Claim::Door(b), Way::Ring { loop_, .. }) => {
+                let m = lot.members.iter().find(|m| m.building == b)?;
+                let at = self.node_pos(loop_[m.door_at])?;
+                let next = self.node_pos(loop_[(m.door_at + 1) % loop_.len()])?;
+                Some(Pose { at, heading: (next[1] - at[1]).atan2(next[0] - at[0]) })
+            }
+            (Claim::Door(_), Way::Driveway { .. }) => None,
         }
     }
 

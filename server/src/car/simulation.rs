@@ -1,11 +1,11 @@
 use crate::car::physics;
 use crate::car::{
-    ACCELERATION, CAR_NOSE, CAR_TAIL, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle,
+    nose, tail, ACCELERATION, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle,
 };
 use crate::engine::GameTime;
 use crate::engine::event_queue::EventQueue;
 use crate::intersection::IntersectionRegistry;
-use crate::protocol::{EdgeKey, EntityId, GameObject, Trip};
+use crate::protocol::{CarRole, EdgeKey, EntityId, GameObject, Trip};
 use crate::world::World;
 
 /// End a car's trip and leave it parked at a building: road bookkeeping
@@ -148,6 +148,7 @@ fn arm(world: &World, junction: EntityId, toward: EntityId) -> Option<(i32, i32)
 fn lead_car_obstacle(
     world: &World,
     trip: &Trip,
+    role: CarRole,
     edge: EdgeKey,
     cur_progress: f64,
     lead_id: EntityId,
@@ -157,6 +158,7 @@ fn lead_car_obstacle(
     let GameObject::Car(ref lead) = entry.object else {
         return None;
     };
+    let lead_role = lead.role;
     let lead = lead.trip.as_ref()?;
 
     // Both cars must be on this edge — find their seg_start_dist for the edge.
@@ -176,7 +178,7 @@ fn lead_car_obstacle(
     }
 
     Some(Obstacle::LeadCar {
-        distance: (gap - MIN_GAP - CAR_NOSE - CAR_TAIL).max(0.0),
+        distance: (gap - MIN_GAP - nose(role) - tail(lead_role)).max(0.0),
         speed: lead_speed,
         accel: lead.acceleration,
     })
@@ -204,12 +206,12 @@ pub fn handle_car_wake_up(
     car_id: EntityId,
     now: GameTime,
 ) {
-    let (owner, trip) = match world.objects.get(car_id) {
+    let (owner, role, trip) = match world.objects.get(car_id) {
         Some(entry) => match &entry.object {
             // A parked car has nothing to think about — unless it is a
             // vehicle on a call, which has finished unloading.
             GameObject::Car(c) => match c.trip.clone() {
-                Some(t) => (c.owner, t),
+                Some(t) => (c.owner, c.role, t),
                 None => {
                     crate::calls::car_idle(world, events, car_id, now);
                     return;
@@ -300,8 +302,7 @@ pub fn handle_car_wake_up(
             leave_crossed(world, events, intersections, car_id, &trip, old_ri, ri);
             crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, now);
             park_car(world, intersections, events, car_id, trip.destination);
-            let truck = matches!(world.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != crate::protocol::CarRole::Private);
-            if truck {
+            if role != CarRole::Private {
                 events.wake(crate::calls::SERVICE_MS, car_id);
             } else {
                 crate::calls::visit(world, events, trip.destination, now);
@@ -330,12 +331,12 @@ pub fn handle_car_wake_up(
     let mut tail_clears: Option<f64> = None;
     let mut node_dist = seg_start;
     for k in (1..ri).rev().take(4) {
-        if cur_progress - node_dist >= CAR_TAIL {
+        if cur_progress - node_dist >= tail(role) {
             for woken_id in intersections.clear_car(trip.route[k], car_id) {
                 events.wake(0, woken_id);
             }
         } else {
-            tail_clears = Some(node_dist + CAR_TAIL);
+            tail_clears = Some(node_dist + tail(role));
         }
         node_dist -= trip.segment_lengths[k];
     }
@@ -383,7 +384,7 @@ pub fn handle_car_wake_up(
     {
         let lead_id = seg.cars[my_pos - 1];
         if let Some(obs) =
-            lead_car_obstacle(world, &trip, current_edge, cur_progress, lead_id, now)
+            lead_car_obstacle(world, &trip, role, current_edge, cur_progress, lead_id, now)
         {
             obstacles.push(obs);
         }
@@ -397,7 +398,7 @@ pub fn handle_car_wake_up(
         {
             let lead_id = next_seg.cars[my_pos - 1];
             if let Some(obs) =
-                lead_car_obstacle(world, &trip, next_edge, cur_progress, lead_id, now)
+                lead_car_obstacle(world, &trip, role, next_edge, cur_progress, lead_id, now)
             {
                 obstacles.push(obs);
             }
@@ -412,7 +413,7 @@ pub fn handle_car_wake_up(
     // accelerate straight through the corner, arriving at the node at twice
     // what the corner allows. Held to zero instead, so it carries the speed it
     // slowed to through the turn rather than only up to it.
-    let entry_ri = remaining - 0.5 * trip.segment_lengths[ri] - CAR_NOSE;
+    let entry_ri = remaining - 0.5 * trip.segment_lengths[ri] - nose(role);
     // In a lot, a crawl: on any edge that ends at a lot node, from its start.
     if world.lot_nodes.contains_key(&trip.route[ri]) {
         obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: LOT_SPEED });
@@ -439,7 +440,7 @@ pub fn handle_car_wake_up(
 
     for k in (ri + 1)..limit {
         node_dist += trip.segment_lengths[k];
-        let entry_k = node_dist - 0.5 * trip.segment_lengths[k] - CAR_NOSE;
+        let entry_k = node_dist - 0.5 * trip.segment_lengths[k] - nose(role);
 
         let node = trip.route[k];
 
@@ -454,7 +455,7 @@ pub fn handle_car_wake_up(
 
         if world.lot_nodes.contains_key(&node) {
             obstacles.push(Obstacle::SpeedLimit {
-                distance: (node_dist - trip.segment_lengths[k] - CAR_NOSE).max(0.0),
+                distance: (node_dist - trip.segment_lengths[k] - nose(role)).max(0.0),
                 speed: LOT_SPEED,
             });
         }

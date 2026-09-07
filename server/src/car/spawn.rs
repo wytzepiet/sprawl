@@ -1,4 +1,4 @@
-use crate::car::{physics, ACCELERATION, CAR_NOSE, CAR_TAIL, CRUISE_SPEED, LOT_SPEED, MIN_GAP};
+use crate::car::{nose, physics, tail, ACCELERATION, CRUISE_SPEED, LOT_SPEED, MIN_GAP};
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, Trip};
@@ -23,8 +23,8 @@ pub fn start_trip(
     now: GameTime,
     until: GameTime,
 ) -> bool {
-    let owner = match world.objects.get(car_id).map(|e| &e.object) {
-        Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
+    let (owner, role) = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() => (c.owner, c.role),
         _ => return false,
     };
     let Some(to_node) = world.approach(dest_building) else {
@@ -57,7 +57,7 @@ pub fn start_trip(
             blocker_trip.acceleration,
             dt,
         );
-        if bp - edge_start < MIN_GAP + CAR_NOSE + CAR_TAIL {
+        if bp - edge_start < MIN_GAP + nose(role) + tail(blocker.role) {
             return false;
         }
     }
