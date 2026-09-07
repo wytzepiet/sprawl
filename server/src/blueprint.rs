@@ -218,15 +218,6 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             stock: 0, answers: Some(CallKind::Stock), vehicles: 2,
             taps: vec![shift(6, 18, 6)],
         }),
-        // The test lot: three tiles of ring in front of a pavilion that
-        // sells fuel and the best time off in town at any hour, so every
-        // car in town comes by and can be watched parking. Its slots are
-        // its spots, like any lot's.
-        (Lot, Blueprint {
-            class: Commerce, homes: 0, jobs: 0, size: (3, 1), lot: (3, 1), weight: 0.0, tilt: &[], by_hand: true,
-            stock: 0, answers: None, vehicles: 0,
-            taps: vec![tap(Fuel, always(), 12), tap(Leisure, always(), 12)],
-        }),
     ]
 });
 

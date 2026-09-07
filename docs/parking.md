@@ -9,8 +9,8 @@ ring drawn, staff in spots, and a full lot refusing the trip, are
 built (2026-09-07), lots fuse along a frontage (§3.2), and a visitor
 tap's slots are its lot's spots (§3.3), a claim on a junction lasts
 until the tail has cleared it (§4.2), spots carry windows and a full lot
-says when it frees (§5), and the `Lot` row and `/debug/lot/{id}` exist
-(§7); cars park near their building's door, loosely (§5.2), and pins
+says when it frees (§5), and `/debug/lot/{id}` reads any lot (§7);
+cars park near their building's door, loosely (§5.2), and pins
 sit over buildings (2026-09-07). §3.7 and §3.8, how buildings land and
 how lots grow past their building, were decided 2026-09-07 and are the
 next build. Reverse is not needed until the warehouse gets its bays. Follows
@@ -402,23 +402,11 @@ not care where the spot table came from.
 
 ## 7. The test lot
 
-A row that is nothing but a lot, to build and tune the mechanics on
-before any real building depends on them.
-
-- `Lot`: 3×1, by hand, one ring of 12 spots. It sells fuel and the best
-  time off in town at any hour, because time off at a bar's rate never
-  beats the sofa in a five-house town and fuel is owed by every car;
-  no stock, no calls. Later, two reverse-gear bays for trucks.
-- Traffic from the stress harness: a painted town around it of a hundred
-  commuters, the way `town` is run today.
-- Read-outs on `/debug/lot/{id}`: windows per spot, occupancy by hour,
-  visits delayed and by how much, cars waiting in the aisle, and the
-  passage time of the aisle's junctions.
-- What to iterate: lot speed, the slack, the crawl, the claim length,
-  the spot order, and whether case 2 in §5.2 ever makes a queue.
-
-It stays a row in `blueprint.rs` until a real kind wants it, and then it
-is deleted or becomes the lot placeable.
+There was one: a three-wide pavilion that was all lot, selling fuel
+and the best time off in town so that cars would come, placed by hand
+to watch the ring and the booking windows on something real. Every
+visited kind has a lot now, so it was deleted (2026-09-07).
+`/debug/lot/{id}` stays: it reads any building's lot.
 
 ## 8. Build order
 
@@ -438,7 +426,7 @@ is deleted or becomes the lot placeable.
 3. **Windows.** Booking at departure, the merge in `evaluate`, release
    and reassignment. *Playable:* a busy shop whose visitors wait at home
    for a spot instead of circling, and the numbers to show it.
-4. **The test lot** and its harness run, and the trailer drawing.
+4. **The test lot** (since deleted) and the trailer drawing.
 5. **Where buildings land** (§3.7): same-depth clustering in the
    spawner's site search. *Playable:* streets with a character, and
    strips that appear on their own.

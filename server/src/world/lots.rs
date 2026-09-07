@@ -1091,8 +1091,8 @@ mod tests {
         let mut world = street();
         let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
         world.place_road_path(&path);
-        let lot = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Lot).unwrap();
-        assert_eq!(world.lot_mut(lot).unwrap().spots.len(), 22, "three tiles and the spill");
+        let lot = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
+        assert_eq!(world.lot_mut(lot).unwrap().spots.len(), 17, "two tiles and the spill");
     }
 
     /// A shop arriving beside one already parked in keeps the parked car in
