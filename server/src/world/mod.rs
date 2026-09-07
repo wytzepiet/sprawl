@@ -47,10 +47,6 @@ pub struct World {
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     pub terrain_seed: u32,
-    /// How much longer journeys are taking than empty roads would promise,
-    /// learned from every arrival. Residents leave this much earlier, so
-    /// congestion feeds back into when — and whether — trips happen.
-    pub delay: f64,
     /// What each building's taps have discharged, in obligation-ms: for a
     /// workplace, labour received; for a shop, meals sold. Today's running
     /// total and yesterday's, keyed by the day today is. Learned, not
@@ -160,7 +156,6 @@ impl World {
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed: 0,
-            delay: 1.0,
             delivered: HashMap::new(),
             xp: Default::default(),
             offered_at: 0.0,
@@ -191,7 +186,6 @@ impl World {
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed,
-            delay: 1.0,
             delivered: HashMap::new(),
             xp: Default::default(),
             offered_at: 0.0,

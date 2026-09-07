@@ -65,8 +65,8 @@ export function mountBuilding(
     };
     put(`run_kerb_${run.w}x${run.depth}${look.key}`, () => runSlabGeometry(run.w, run.depth, true), KERB, [0, 0], SLAB.kerbZ, true);
     put(`run_${run.w}x${run.depth}${look.key}`, () => runSlabGeometry(run.w, run.depth, false), ASPHALT, [0, 0], SLAB.z, true);
-    put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, [0, 0], 0, false);
-    for (const u of run.empties) put(`empty_${run.depth}${look.key}`, () => emptyPlotGeometry(run.depth), KERB, [u, 0], 0, false);
+    put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, [0, 0], 0, true);
+    for (const u of run.empties) put(`empty_${run.depth}${look.key}`, () => emptyPlotGeometry(run.depth), KERB, [u, 0], 0, true);
   }
 
   return () => {

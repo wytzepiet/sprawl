@@ -672,8 +672,8 @@ impl World {
     }
 
     /// Hold a place at a building for a car over a window: the one it
-    /// already holds, the door if the car's owner works there or it is a
-    /// facility's vehicle, else a spot clear for the whole window, near the
+    /// already holds, the door if it is a facility's vehicle, else a spot
+    /// clear for the whole window, near the
     /// building's door with some looseness, as people park. `None` when
     /// there is none, and the trip does not start: the car waits where it
     /// is, honestly, and tries again.
@@ -720,20 +720,15 @@ impl World {
         Some(claim)
     }
 
-    /// Does the car's owner work at the building? Staff park unseen for
-    /// now, and so do a facility's own vehicles and vehicles on a call.
-    /// Staff will take spots once a car turning off the ring ahead no
-    /// longer stops everyone behind it (`docs/parking.md` §3.3).
-    fn works_at(&self, car: EntityId, building: EntityId) -> bool {
+    /// Is the car a facility's own vehicle, or one on a call? Those stop at
+    /// the door, unseen, until lorries unload in the strip. Everyone else,
+    /// staff included, parks in a spot: nobody drives into a building.
+    fn works_at(&self, car: EntityId, _building: EntityId) -> bool {
         let owner = match self.objects.get(car).map(|e| &e.object) {
             Some(GameObject::Car(c)) => c.owner,
             _ => return false,
         };
-        match self.objects.get(owner).map(|e| &e.object) {
-            Some(GameObject::Resident(r)) => r.work == Some(building),
-            Some(GameObject::Building(_)) => true,
-            _ => false,
-        }
+        matches!(self.objects.get(owner).map(|e| &e.object), Some(GameObject::Building(_)))
     }
 
     /// Let go of whatever the car holds.

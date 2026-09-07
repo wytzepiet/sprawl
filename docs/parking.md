@@ -5,7 +5,7 @@ in its generic form: every building has a two-spot lot on its driveway
 (`world/lots.rs`), trips end in a spot and start from one, a parked car
 carries its pose on the wire, and the client draws nothing it is not told.
 The ring lot (§3.1), the plot laid out by its facing, the slab and the
-ring drawn, and a full lot refusing the trip, are
+ring drawn, staff in spots, and a full lot refusing the trip, are
 built (2026-09-07), lots fuse along a frontage (§3.2), and a visitor
 tap's slots are its lot's spots (§3.3), a claim on a junction lasts
 until the tail has cleared it (§4.2), spots carry windows and a full lot
@@ -131,19 +131,16 @@ busier shop is a shop with a wider lot or a neighbour. A lot is bigger
 than its building while the land beside it is free (§3.8), and shrinks
 to the building's width as neighbours fill in.
 
-Staff will park like anyone else, in a spot, and a workplace whose lot
-is full will turn its own workers away for the morning: nobody drives
-into a building. Two things stand in the way, found 2026-09-07 by
-trying it. Every spot's entry is a junction, and a car turning off the
-ring makes the car behind it stop for passage, so twelve staff entering
-one ring at eight queue for the best part of a minute: diverging paths
-must never wait for each other. And the city learns one delay from
-every arrival, so that queue made a trip across town look an hour
-long and emptied the bar at night: estimates have to read the passage
-the run network already remembers. Until both are done, staff and a
-facility's own vehicles stop at a door node under the building's
-front, unseen, and lorries unload there too until they unload in the
-strip between the back lane and
+Staff park like anyone else, in a spot, and a workplace whose lot is
+full turns its own workers away for the morning: nobody drives into a
+building. Twelve staff entering one ring at eight queue for twenty
+seconds, honestly, at lot speed one behind the other; what that queue
+must not do is teach the whole town that its streets are slow, so a
+trip is costed by its route, from the passage the run network
+remembers, and the city-wide delay is gone (2026-09-07). A facility's
+own vehicles still stop at a door node under the building's front,
+unseen, and lorries unload there too until they unload in the strip
+between the back lane and
 the building, a bay entered from the lane and left onto it, when the run
 is as long as the lorry; at a lone shop they stop on the back lane and
 the island waits, or on the street outside, which blocks a lane the

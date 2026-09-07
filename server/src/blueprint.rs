@@ -103,10 +103,12 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     use Need::*;
     // Rate is what a need can matter at its most urgent (needs §5.1), so the
     // rates rank the needs: sleep and food can pull someone out of a shift,
-    // time off cannot, and only nearly-full time off beats sitting at home.
+    // time off cannot while it is under six tenths full, which is how it
+    // sits the day after a night out; over that, an evening out beats
+    // waiting at home for bed, which is what a night out is.
     let tap = |need, curve, slots| Tap { need, curve, rate: 1.0, overhead: 0, slots };
     let potter = |need, curve, slots| Tap { need, curve, rate: 0.35, overhead: 0, slots };
-    let outing = |need, curve, slots| Tap { need, curve, rate: 0.45, overhead: 0, slots };
+    let outing = |need, curve, slots| Tap { need, curve, rate: 0.8, overhead: 0, slots };
     // Staff are sized to the lot, since everyone parks in it: a one-wide lot
     // parks seven hemmed in and twelve in the open, a two-wide one seven to
     // seventeen, and staff take a third at most. A visitor tap's slots are

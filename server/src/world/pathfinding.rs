@@ -50,6 +50,17 @@ struct Hop {
 /// road promises and half what it has been giving, so a busy road is dearer
 /// but never as dear as it looks — see `RoadNetwork::travel_ms`.
 pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
+    search(world, start, end).map(|(_, route)| route)
+}
+
+/// What the quickest route from one road node to another costs, in game
+/// milliseconds, as the roads have been giving it: what a trip is worth
+/// planning around. `None` where no road joins them.
+pub fn route_ms(world: &World, start: EntityId, end: EntityId) -> Option<f64> {
+    search(world, start, end).map(|(cost, _)| cost)
+}
+
+fn search(world: &World, start: EntityId, end: EntityId) -> Option<(f64, Vec<EntityId>)> {
     if start == end {
         return None;
     }
@@ -62,7 +73,8 @@ pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<En
 
     // Both ends of one stretch: no junction is involved at all.
     if let Some(direct) = straight_through(world, start, end) {
-        return Some(direct);
+        let cost = junctions_from(world, start).into_iter().find(|h| h.nodes.last() == direct.last() || h.nodes.contains(&end)).map_or(run_length(world, &direct) / CRUISE_SPEED * 1000.0, |h| h.cost * run_length(world, &direct) / run_length(world, &h.nodes).max(1e-9));
+        return Some((cost, direct));
     }
 
     // A car does not have to be standing at a junction — anyone arriving from
@@ -110,7 +122,7 @@ pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<En
             continue; // superseded by a cheaper way here
         }
         if current.id == end {
-            return Some(stitch(&came_from, start, end));
+            return Some((here, stitch(&came_from, start, end)));
         }
         // The last leg is a hop like any other: the far end of the
         // destination's stretch may be popped first and still be the dearer

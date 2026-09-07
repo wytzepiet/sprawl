@@ -298,7 +298,7 @@ pub fn handle_car_wake_up(
             // stretches crossed on the way here are left like any others,
             // or the car would stay on their queues as a ghost.
             leave_crossed(world, events, intersections, car_id, &trip, old_ri, ri);
-            crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, trip.street_promised, trip.departed, trip.entered_lot, now);
+            crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, now);
             park_car(world, intersections, events, car_id, trip.destination);
             let truck = matches!(world.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != crate::protocol::CarRole::Private);
             if truck {
@@ -536,9 +536,6 @@ pub fn handle_car_wake_up(
         t.speed = cur_speed;
         t.updated_at = now;
         t.route_index = ri;
-        if t.entered_lot == 0 && ri + trip.to_lot >= trip.route.len() {
-            t.entered_lot = now;
-        }
         let seg_len = trip.segment_lengths[ri];
         t.seg_fraction = if seg_len > 1e-9 {
             (cur_progress - seg_start) / seg_len

@@ -196,19 +196,6 @@ pub struct Trip {
     pub acceleration: f64,
     /// Total arc length of the entire route.
     pub total_route_length: f64,
-    /// What the delay learned on arrival is measured against: how long the
-    /// street part was promised to take at cruise, when the car set out,
-    /// and when it turned into the lot (zero until it has). A queue at a
-    /// lot's entrance is the lot's, not the street's.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub street_promised: u64,
-    #[serde(skip)]
-    #[ts(skip)]
-    pub departed: u64,
-    #[serde(skip)]
-    #[ts(skip)]
-    pub entered_lot: u64,
     #[ts(type = "number")]
     pub updated_at: u64,
     /// Current segment (1-based). The car is between route[ri-1] and route[ri].

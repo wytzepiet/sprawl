@@ -11,6 +11,7 @@ import {
   setTerrainListener,
   getEntity,
   getObjectsAt,
+  reached,
   useGame,
 } from "../state/gameObjects";
 import { SOLID, DORMANT, EMPTY } from "./objects/look";
@@ -46,16 +47,6 @@ export default function World() {
 
   /** Trees give way to anything built — a road, or any tile of a plot. */
   const isBuilt = (x: number, y: number) => hasRoad(x, y) || builtTiles.has(`${x},${y}`);
-
-  /**
-   * A building is reached when a road stands on one of its own tiles and that
-   * road is joined to the world: a driveway onto an island is no way in.
-   */
-  const connected = (entry: GameObjectEntry) =>
-    !!entry.position &&
-    footprint(entry.position, (entry.object.data as Building).size).some((t) =>
-      getObjectsAt(t.x, t.y).some((o) => o.object.kind === "RoadNode" && o.object.data.joined),
-    );
 
   /**
    * Every tile under a building and whose it is, mirroring the server's
@@ -104,7 +95,7 @@ export default function World() {
     switch (entry.object.kind) {
       case "Building":
         // Red where no joined road reaches it; grey where the shelves are bare.
-        return mountBuilding(entry, pool, !connected(entry) ? DORMANT : (entry.object.data as Building).stock > 0 ? SOLID : EMPTY);
+        return mountBuilding(entry, pool, !reached(entry) ? DORMANT : (entry.object.data as Building).stock > 0 ? SOLID : EMPTY);
       case "Car":
         return mountCar(entry, pool, scene, SOLID);
       case "RoadNode":

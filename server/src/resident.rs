@@ -21,7 +21,7 @@ const RETRY_MS: u64 = 10_000;
 
 /// How many arrivals it takes for the learned delay to mostly forget the
 /// old ones.
-const DELAY_MEMORY: f64 = 16.0;
+
 
 /// Who is at, or on their way to, each building for each need. Counted
 /// fresh at every wake from what residents are doing — a claim is being
@@ -164,10 +164,11 @@ fn verdict_at(
     let mine = (at == building && r.selected == Some(b.need)) as u32;
     let seen = crowd.get(&(building, b.need)).copied().unwrap_or(0);
     let company = seen.saturating_sub(mine) + 1;
+    let tau = if at == building { 0 } else { travel_ms(world, at, building) };
     taps_of(world, building)
         .iter()
         .filter(|t| t.need == b.need)
-        .map(|t| evaluate(world, r.car, at, building, t, b, now, company))
+        .map(|t| evaluate(world, r.car, at, building, t, b, now, company, tau))
         .fold(Verdict::Nothing, Verdict::better)
 }
 
@@ -198,7 +199,7 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
     for ring in 0..=reach {
         // Nothing in this ring is nearer than its inner edge.
         let tiles = ((ring - 1) * crate::protocol::CHUNK_SIZE).max(0) as f64;
-        let tau = tiles / CRUISE_SPEED * DETOUR * 1000.0;
+        let tau = tiles / CRUISE_SPEED * 1000.0;
         if let Verdict::Go { score, .. } = best
             && bound / (tau + h as f64 + service) <= score
         {
@@ -284,8 +285,8 @@ fn evaluate(
     bucket: &Bucket,
     now: GameTime,
     company: u32,
+    tau: GameTime,
 ) -> Verdict {
-    let tau = if at == building { 0 } else { travel_ms(world, at, building) };
     let h = tap.overhead;
     let rate = tap.serving(slots_at(world, building, tap), company);
     // The visit as the tap allows it; then, going there for it, as the lot
@@ -478,26 +479,8 @@ fn drive(
 /// arrival compares to the shift, and to the free-flow promise made at
 /// departure. People leave on time under free-flow assumptions, so both
 /// numbers worsening together is a direct measurement of congestion on the
-/// roads they actually drove. The delay is learned from the street part
-/// alone, from setting out to turning into the lot: a queue at a lot's
-/// entrance is that lot's problem, not a slow street across town.
-pub fn arrival_readout(
-    world: &mut World,
-    id: EntityId,
-    destination: EntityId,
-    eta: GameTime,
-    street_promised: GameTime,
-    departed: GameTime,
-    entered_lot: GameTime,
-    now: GameTime,
-) {
-    // Every arrival teaches the city how much slower than empty roads it
-    // is running, and every departure estimate reads it.
-    if street_promised > 0 {
-        let street_took = if entered_lot > 0 { entered_lot } else { now }.saturating_sub(departed);
-        let ratio = street_took as f64 / street_promised as f64;
-        world.delay += (ratio - world.delay) / DELAY_MEMORY;
-    }
+/// roads they actually drove.
+pub fn arrival_readout(world: &mut World, id: EntityId, destination: EntityId, eta: GameTime, now: GameTime) {
     if let Some(r) = resident(world, id)
         && r.work == Some(destination)
         && let Some(open) = taps_of(world, destination)
@@ -531,7 +514,6 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
     json!({
         "id": id,
         "now": hhmm(now),
-        "delay": world.delay,
         "at": at,
         "at_kind": whereabouts(world, at),
         "home": r.home,
@@ -739,15 +721,25 @@ fn taps_of(world: &World, building: EntityId) -> &'static [Tap] {
     kind(world, building).map_or(&[], |k| &blueprint(k).taps)
 }
 
-/// Straight-line travel time between two buildings in game milliseconds,
-/// with the detour factor.
+/// Travel time between two buildings in game milliseconds: the quickest
+/// route as the roads have been giving it, plus the crawl through the lots
+/// at either end. Where no road joins them, as the crow flies with the
+/// detour factor.
 fn travel_ms(world: &World, from: EntityId, to: EntityId) -> GameTime {
+    if let (Some(a), Some(b)) = (world.road_node_for_building(from), world.road_node_for_building(to))
+        && let Some(ms) = crate::world::pathfinding::route_ms(world, a, b)
+    {
+        return (ms + LOT_MS) as GameTime;
+    }
     let dist = match (position_of(world, from), position_of(world, to)) {
         (Some(a), Some(b)) => (a.0 - b.0).abs().max((a.1 - b.1).abs()) as f64,
         _ => 0.0,
     };
-    (dist / CRUISE_SPEED * DETOUR * world.delay * 1000.0) as GameTime
+    (dist / CRUISE_SPEED * DETOUR * 1000.0) as GameTime
 }
+
+/// The lot at either end of a trip: about a tile of ring each, at a crawl.
+const LOT_MS: f64 = 2.0 / crate::car::LOT_SPEED * 1000.0;
 
 fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {
     world.objects.get(id)?.position.map(|p| (p.x, p.y))
