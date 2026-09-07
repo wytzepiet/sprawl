@@ -44,8 +44,11 @@ export function runOf(entry: GameObjectEntry): Run | null {
   const pos = entry.position;
   const lot = plot(data.kind, data.facing).lot;
   if (!pos || !lot) return null;
-  const [[lx, ly], [lw]] = lot;
+  // The lot's extent along the frontage is its grid width or its grid
+  // height, by which way it faces.
   const alongX = FACINGS[data.facing % 4][0] === 0;
+  const [[lx, ly], [gw, gh]] = lot;
+  const lw = alongX ? gw : gh;
   const [line, a0, a1] = alongX ? [pos.y + ly, pos.x + lx, pos.x + lx + lw] : [pos.x + lx, pos.y + ly, pos.y + ly + lw];
   // A neighbour's lot tile at along-coordinate a on this row, same facing.
   const lotTile = (a: number): [number, number] | null => {
@@ -54,9 +57,9 @@ export function runOf(entry: GameObjectEntry): Run | null {
     if (!b?.position) return null;
     const bd = b.object.data as Building;
     if (bd.facing !== data.facing || !inLot(bd.kind, bd.facing, b.position, x, y)) return null;
-    const [[ox, oy], [w]] = plot(bd.kind, bd.facing).lot!;
+    const [[ox, oy], [w, h]] = plot(bd.kind, bd.facing).lot!;
     const s = alongX ? b.position.x + ox : b.position.y + oy;
-    return [s, s + w];
+    return [s, s + (alongX ? w : h)];
   };
   let start = a0, end = a1;
   for (let n = lotTile(start - 1); n; n = lotTile(start - 1)) start = n[0];

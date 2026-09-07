@@ -210,11 +210,14 @@ impl World {
         };
         let (pos, kind, facing) = self.building_of(building)?;
         let gates = gates_of(building)?;
-        let Some(((lx, ly), (lw, _))) = plot(kind, facing).lot else {
+        let Some(((lx, ly), (gw, gh))) = plot(kind, facing).lot else {
             return Some((RunKey::Solo(building), vec![Seat { building, gates, u0: 0.0, u1: 0.0 }]));
         };
         let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
+        // The lot's extent along the frontage is its grid width or its grid
+        // height, by which way it faces.
         let along_x = FACINGS[facing as usize % 4].0 == 0;
+        let lw = if along_x { gw } else { gh };
         let (line, a0, a1) = if along_x { (lot.y, lot.x, lot.x + lw as i32) } else { (lot.x, lot.y, lot.y + lw as i32) };
         // A neighbour's lot tile at along-coordinate `a` on this row, same
         // facing: the building and its tile range.
@@ -225,9 +228,9 @@ impl World {
             if f != facing {
                 return None;
             }
-            let ((ox, oy), (w, _)) = plot(k, f).lot?;
+            let ((ox, oy), (w, h)) = plot(k, f).lot?;
             let l = GridCoord { x: p.x + ox as i32, y: p.y + oy as i32 };
-            let (row, s, e) = if along_x { (l.y, l.x, l.x + w as i32) } else { (l.x, l.y, l.y + w as i32) };
+            let (row, s, e) = if along_x { (l.y, l.x, l.x + w as i32) } else { (l.x, l.y, l.y + h as i32) };
             (row == line && a >= s && a < e).then_some((b, s, e))
         };
         let mut chain = vec![(building, a0, a1)];
@@ -941,6 +944,17 @@ mod tests {
         assert_eq!(world.spot_window(shop, 12_000, 13_000), Some(12_000), "b's spot is still clear at twelve");
         world.release_spot(b);
         assert_eq!(world.spot_window(shop, 12_000, 13_000), Some(12_000));
+    }
+
+    /// A lot facing east or west runs along y, and its run is read that
+    /// way: the walk along it ends, and it parks as many as a lot along x.
+    #[test]
+    fn a_lot_along_y_is_read_along_y() {
+        let mut world = street();
+        let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
+        world.place_road_path(&path);
+        let lot = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Lot).unwrap();
+        assert_eq!(world.lot_mut(lot).unwrap().spots.len(), 12);
     }
 
     /// A shop arriving beside one already parked in keeps the parked car in
