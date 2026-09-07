@@ -97,7 +97,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
                 // From beyond the edge: a truck appears on the road out past
                 // the frontier and drives in. It belongs to nobody here; it
                 // goes when it is done.
-                let car = world.insert_at(GameObject::Car(Car { owner: at, trip: None, role: CarRole::Truck }), None);
+                let car = world.insert_at(GameObject::Car(Car { owner: at, trip: None, role: CarRole::Truck, spot: None }), None);
                 let started = world
                     .entry_node_near(here)
                     .is_some_and(|entry| crate::car::spawn::start_trip(world, events, car, entry, at, now));
@@ -143,8 +143,9 @@ fn nearest_free_vehicle(world: &mut World, kind: CallKind, at: EntityId) -> Opti
             _ => continue,
         };
         if fleet.len() < blueprint(kind).vehicles as usize {
-            let spot = world.objects.get(facility).and_then(|e| e.position);
-            let car = world.insert_at(GameObject::Car(Car { owner: facility, trip: None, role: CarRole::Truck }), spot);
+            let tile = world.objects.get(facility).and_then(|e| e.position);
+            let car = world.insert_at(GameObject::Car(Car { owner: facility, trip: None, role: CarRole::Truck, spot: None }), tile);
+            world.park_in_lot(facility, car);
             return Some((car, door));
         }
     }

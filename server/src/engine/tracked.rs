@@ -40,6 +40,13 @@ impl Tracked {
         self.next_id
     }
 
+    /// An id with no entity behind it, for things that share the id space
+    /// with entities without being one: a lot's nodes.
+    pub fn reserve_id(&mut self) -> EntityId {
+        self.next_id += 1;
+        self.next_id - 1
+    }
+
     pub fn insert(
         &mut self,
         object: GameObject,

@@ -4,7 +4,7 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
-use crate::protocol::{GameObject, GridCoord, TerrainType};
+use crate::protocol::{BuildingKind, ChunkCoord, GridCoord, TerrainType, CHUNK_SIZE};
 use crate::world::World;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -31,7 +31,6 @@ const RING: i32 = 3;
 const START_MIN: i32 = -(START_CHUNKS / 2);
 const START_MAX: i32 = START_MIN + START_CHUNKS;
 
-use crate::protocol::{ChunkCoord, CHUNK_SIZE};
 
 /// Half the chunks carry an anchor, in a checkerboard.
 ///
@@ -135,11 +134,10 @@ pub fn extend_to(
     }
 }
 
-/// Lay the starting network and return where to put the first buildings.
-///
-/// Buildings reveal the map, so only the middle chunk gets one — seeding every
-/// chunk we lay road through would unfog the lot.
-pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> Vec<GridCoord> {
+/// Lay the starting network and return where the first town goes: the
+/// anchor nearest the middle of the map. The middle chunk itself may be a
+/// lake (seed 7 is), so its neighbours are tried after it, nearest first.
+pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> Option<GridCoord> {
     let start = crate::protocol::ChunkBounds {
         min_cx: START_MIN,
         min_cy: START_MIN,
@@ -147,40 +145,60 @@ pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), Terr
         max_cy: START_MAX - 1,
     };
     extend_to(world, seed, terrain, start);
-    start_sites(world, seed, terrain)
+    const NEAR_MIDDLE: [(i32, i32); 9] = [(0, 0), (1, 1), (-1, -1), (1, -1), (-1, 1), (2, 0), (0, 2), (-2, 0), (0, -2)];
+    NEAR_MIDDLE
+        .iter()
+        .find_map(|&(cx, cy)| anchor_for(seed, ChunkCoord { cx, cy }, terrain))
+        .map(|(x, y)| GridCoord { x, y })
 }
 
-/// How far from the middle anchor the first buildings stand.
+/// How far from the anchor the first buildings stand, and how far apart.
 const START_REACH: i32 = 8;
-/// How many, and how far apart along the road.
-const START_SITES: usize = 3;
 const START_GAP: i32 = 3;
 
-/// Road tiles for the first buildings: a handful within reach of the
-/// middle anchor, spaced out along whatever road runs through there. One
-/// town, not a building in every chunk — the city grows outward from here.
-fn start_sites(world: &World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> Vec<GridCoord> {
-    let Some((ax, ay)) = anchor_for(seed, ChunkCoord { cx: 0, cy: 0 }, terrain) else { return Vec::new() };
-    let anchor = GridCoord { x: ax, y: ay };
+/// The starting town: one building of each kind on open land near the
+/// anchor, each joined to it by a street laid the way the survey lays its
+/// roads — the same search, preferring road that is already there, so the
+/// second street runs along the first and every junction is one the mayor
+/// could have drawn. The street runs to the plot's front; the driveway is
+/// the building's own, as for anything that arrives. A plot that will not
+/// take its building takes its street away with it.
+pub fn start_town(world: &mut World, terrain: &HashMap<(i32, i32), TerrainType>, anchor: GridCoord, kinds: &[BuildingKind]) {
     let far = |a: GridCoord, b: GridCoord| (a.x - b.x).abs().max((a.y - b.y).abs());
-    let mut roads: Vec<GridCoord> = world
-        .objects
-        .iter()
-        .filter(|e| matches!(e.object, GameObject::RoadNode(_)))
-        .filter_map(|e| e.position)
-        .filter(|&p| far(p, anchor) <= START_REACH)
+    let mut plots: Vec<GridCoord> = (-START_REACH..=START_REACH)
+        .flat_map(|dx| (-START_REACH..=START_REACH).map(move |dy| GridCoord { x: anchor.x + dx, y: anchor.y + dy }))
+        .filter(|&p| far(p, anchor) >= 2 && world.is_buildable(p))
         .collect();
-    roads.sort_unstable_by_key(|&p| (far(p, anchor), p.x, p.y));
-    let mut sites: Vec<GridCoord> = Vec::new();
-    for p in roads {
-        if sites.iter().all(|&s| far(s, p) >= START_GAP) {
-            sites.push(p);
-            if sites.len() == START_SITES {
-                break;
+    plots.sort_unstable_by_key(|&p| (far(p, anchor), p.x, p.y));
+    let mut road_edges = world.road_edge_set();
+    let mut built: Vec<GridCoord> = Vec::new();
+    let mut kinds = kinds.iter().copied();
+    let Some(mut kind) = kinds.next() else { return };
+    for plot in plots {
+        if built.iter().any(|&b| far(b, plot) < START_GAP) || !world.is_buildable(plot) {
+            continue;
+        }
+        let Some(path) = astar((plot.x, plot.y), (anchor.x, anchor.y), terrain, &road_edges) else { continue };
+        let street: Vec<GridCoord> = path[1..].iter().map(|&(x, y)| GridCoord { x, y }).collect();
+        let fresh: Vec<GridCoord> = street.iter().copied().filter(|&t| world.road_node_at(t).is_none()).collect();
+        world.place_road_path(&street);
+        if world.spawn_building(plot, kind, (1, 1)).is_none() {
+            for t in fresh {
+                let Some(node) = world.road_node_at(t) else { continue };
+                for (a, b) in world.edges_involving(node) {
+                    world.remove_edge(a, b);
+                }
+                world.demolish_node(node);
             }
+            continue;
+        }
+        road_edges = world.road_edge_set();
+        built.push(plot);
+        match kinds.next() {
+            Some(k) => kind = k,
+            None => return,
         }
     }
-    sites
 }
 
 const SQRT2: f64 = std::f64::consts::SQRT_2;
@@ -221,6 +239,17 @@ fn tile_cost(
     if road_edges.contains(&(from, to)) {
         return Some(ROAD_COST);
     }
+    // A new arm may not meet what already stands at either end at an acute
+    // angle: the rule the mayor draws under, so the survey's junctions are
+    // ones the mayor could have drawn.
+    let acute = |at: (i32, i32), arm: (i32, i32)| {
+        (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy))).any(|(dx, dy)| {
+            (dx, dy) != (0, 0) && road_edges.contains(&(at, (at.0 + dx, at.1 + dy))) && dx * arm.0 + dy * arm.1 > 0
+        })
+    };
+    if acute(from, (to.0 - from.0, to.1 - from.1)) || acute(to, (from.0 - to.0, from.1 - to.1)) {
+        return None;
+    }
     // Forbid cells that sit between two diagonally-connected road cells.
     // The 4 pairs of cardinal neighbors that are diagonal to each other:
     let (tx, ty) = to;
@@ -233,6 +262,13 @@ fn tile_cost(
         if road_edges.contains(&(a, b)) {
             return None;
         }
+    }
+    // A diagonal step past a road tile on either side would be laid as two
+    // straight ones round it, and those may not be what was checked here.
+    // Go round it in the search instead, where the rule holds.
+    let touched = |t: (i32, i32)| (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy))).any(|d| d != (0, 0) && road_edges.contains(&(t, (t.0 + d.0, t.1 + d.1))));
+    if from.0 != to.0 && from.1 != to.1 && (touched((to.0, from.1)) || touched((from.0, to.1))) {
+        return None;
     }
     match terrain.get(&to)? {
         TerrainType::Mountain => None,
@@ -459,11 +495,11 @@ mod tests {
         let mut world = World::new();
         world.terrain = terrain.clone();
         let t = std::time::Instant::now();
-        let anchors = generate(&mut world, 7, &terrain);
+        let anchor = generate(&mut world, 7, &terrain);
         println!(
-            "chunks={} anchors={} nodes={} in {:?}",
+            "chunks={} anchor={:?} nodes={} in {:?}",
             (512 / CHUNK_SIZE) * (512 / CHUNK_SIZE),
-            anchors.len(),
+            anchor,
             world.objects.all_entries().len(),
             t.elapsed(),
         );

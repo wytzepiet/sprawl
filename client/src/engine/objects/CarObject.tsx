@@ -4,7 +4,7 @@ import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
-import type { GameObjectEntry } from "../../generated";
+import type { Car, GameObjectEntry } from "../../generated";
 
 /// Everyone keeps their car for life, and its id never changes — so neither
 /// does its colour.
@@ -25,8 +25,10 @@ const TRUCK = new Color3(0.88, 0.88, 0.86);
 const LANE_OFFSET = 0.11;
 const BEZIER_SAMPLES = 8;
 
-/// Small deterministic hash so a car's colour and parking spot are facts
-/// about the car, not rolls of the dice.
+const CAR_Z = 0.095;
+
+/// Small deterministic hash so a car's colour is a fact about the car, not
+/// a roll of the dice.
 function hash(id: number, salt: number): number {
   let h = (id ^ (salt * 0x9e3779b9)) >>> 0;
   h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
@@ -48,9 +50,18 @@ function quadBezier(
   );
 }
 
-function offsetNodes(nodes: Vector3[], offset: number): Vector3[] {
+/**
+ * Each node moved onto the right-hand lane. The lot nodes at either end of
+ * a route — the spot pulled out of, the spot driven into — are where they
+ * are, and the car slides onto the lane between them and the street.
+ */
+function offsetNodes(nodes: Vector3[], offset: number, fromLot: number, toLot: number): Vector3[] {
   const result: Vector3[] = [];
   for (let i = 0; i < nodes.length; i++) {
+    if (i < fromLot || i >= nodes.length - toLot) {
+      result.push(nodes[i].clone());
+      continue;
+    }
     let dx = 0,
       dy = 0;
     if (i > 0) {
@@ -79,37 +90,18 @@ export function mountCar(
   scene: Scene,
   look: Look,
 ): () => void {
-  const car = entry.object.data as {
-    owner: number;
-    role?: "Private" | "Truck";
-    trip: {
-      route_positions: [number, number][];
-      progress: number;
-      speed: number;
-      acceleration: number;
-      total_route_length: number;
-      updated_at: number;
-    } | null;
-  };
+  const car = entry.object.data as Car;
   const truck = car.role === "Truck";
   const color = truck ? TRUCK : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
   const bucket = truck ? `truck${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
   pool.ensureBucket(bucket, truck ? truckGeo : carGeo, look.tint(color), look.castShadow, true);
 
-  // Parked: a still car beside the building it stopped at, in a spot that is
-  // a fact about the car rather than a roll of the dice. The building's tile
-  // is all the server says; the jitter keeps a full lot from stacking into
-  // one shimmering car.
+  // Parked: in its spot, as the server placed it. No spot is a full lot,
+  // and the car is out of sight until it moves.
   if (!car.trip) {
-    if (!entry.position) return () => {};
-    const dx = hash(entry.id, 2) * 0.7 - 0.35;
-    const dy = hash(entry.id, 3) * 0.7 - 0.35;
-    const facing = Math.floor(hash(entry.id, 4) * 4) * (Math.PI / 2);
-    const instanceId = pool.addInstance(
-      bucket,
-      [entry.position.x + dx, entry.position.y + dy, 0.095],
-      [0, 0, facing],
-    );
+    if (!car.spot) return () => {};
+    const { at, heading } = car.spot;
+    const instanceId = pool.addInstance(bucket, [at[0], at[1], CAR_Z], [0, 0, heading - Math.PI / 2]);
     return () => pool.removeInstance(bucket, instanceId);
   }
 
@@ -117,7 +109,7 @@ export function mountCar(
   const centerNodes = data.route_positions.map(
     ([x, y]) => new Vector3(x, y, 0),
   );
-  const nodes = offsetNodes(centerNodes, LANE_OFFSET);
+  const nodes = offsetNodes(centerNodes, LANE_OFFSET, data.from_lot, data.to_lot);
   const pathPoints: Vector3[] = [];
 
   for (let i = 0; i < nodes.length - 1; i++) {
@@ -154,11 +146,7 @@ export function mountCar(
 
   const path = pathPoints.length >= 2 ? new Path3D(pathPoints) : null;
 
-  function computePosition(): {
-    pos: [number, number, number];
-    rot: [number, number, number];
-    tangent: Vector3;
-  } | null {
+  function computePosition(): { pos: [number, number, number]; rot: [number, number, number] } | null {
     if (!path) return null;
 
     let dt = Math.max(0, (simNow() - data.updated_at) / 1000);
@@ -166,19 +154,14 @@ export function mountCar(
       const tStop = -data.speed / data.acceleration;
       if (dt > tStop) dt = tStop;
     }
-    const dist =
-      data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt;
+    const dist = data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt;
     const distances = path!.getDistances();
     const pathLength = distances[distances.length - 1];
     const normalized = Math.min(Math.max(0, dist / pathLength), 1);
 
     const p = path!.getPointAt(normalized);
     const tangent = path!.getTangentAt(normalized);
-    return {
-      pos: [p.x, p.y, 0.095],
-      rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2],
-      tangent,
-    };
+    return { pos: [p.x, p.y, CAR_Z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2] };
   }
 
   const initial = computePosition();

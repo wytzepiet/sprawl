@@ -141,6 +141,19 @@ pub struct Car {
     pub trip: Option<Trip>,
     #[serde(default)]
     pub role: CarRole,
+    /// Where it stands while parked, if the lot had room: the spot's centre
+    /// and the way its nose points, in radians. `None` is parked out of
+    /// sight.
+    #[serde(default)]
+    pub spot: Option<Pose>,
+}
+
+/// A place to stand, and which way.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Pose {
+    pub at: [f64; 2],
+    pub heading: f64,
 }
 
 /// One journey: born when the driver pulls out, gone on arrival.
@@ -158,6 +171,11 @@ pub struct Trip {
     #[ts(skip)]
     pub route: Vec<EntityId>,
     pub route_positions: Vec<[f64; 2]>,
+    /// How many nodes at either end of the route are in a lot rather than on
+    /// the street: the spot pulled out of, the spot driven into. Lot nodes
+    /// are drawn where they are, not offset onto a lane.
+    pub from_lot: usize,
+    pub to_lot: usize,
     /// Cumulative distance along the route.
     pub progress: f64,
     pub speed: f64,

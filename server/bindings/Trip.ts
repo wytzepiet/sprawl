@@ -14,6 +14,12 @@ destination: number,
  */
 eta: number, route_positions: Array<[number, number]>, 
 /**
+ * How many nodes at either end of the route are in a lot rather than on
+ * the street: the spot pulled out of, the spot driven into. Lot nodes
+ * are drawn where they are, not offset onto a lane.
+ */
+from_lot: number, to_lot: number, 
+/**
  * Cumulative distance along the route.
  */
 progress: number, speed: number, acceleration: number, 

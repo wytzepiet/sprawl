@@ -5,9 +5,10 @@ use crate::protocol::{EntityId, GameObject, Trip};
 use crate::world::pathfinding;
 use crate::world::World;
 
-/// Send a parked car out from a road node to a building's driveway, owner
-/// aboard. The node is usually a driveway too; for someone driving in from
-/// off-map it is a road out past the frontier.
+/// Send a parked car out to a spot at a building, owner aboard. It leaves
+/// from the spot it holds, if it holds one, else from the node given: the
+/// driveway it stands on, or for someone driving in from off-map a road out
+/// past the frontier.
 ///
 /// Returns false when the trip cannot start — the car is already out, the
 /// destination has no driveway, no route exists, or something is sitting
@@ -28,13 +29,26 @@ pub fn start_trip(
     let Some(to_node) = world.road_node_for_building(dest_building) else {
         return false;
     };
+    let out = world.way_out(car_id);
+    let from_node = out.map_or(from_node, |[_, street]| street);
 
-    let route = match pathfinding::find_path(world, from_node, to_node) {
+    let path = match pathfinding::find_path(world, from_node, to_node) {
         Some(r) if r.len() >= 2 => r,
         _ => return false,
     };
+    // A route found: the spot at the far end is claimed, and this one let
+    // go. A route not found leaves the car holding what it held.
+    let Some(way_in) = world.way_in(dest_building, car_id) else { return false };
+    let from_lot = out.is_some() as usize;
+    let to_lot = way_in.len() - 1;
+    let route: Vec<EntityId> = out
+        .map(|[spot, _]| spot)
+        .into_iter()
+        .chain(path)
+        .chain(way_in[1..].iter().copied())
+        .collect();
 
-    let segment_lengths = world.compute_segment_lengths(&route);
+    let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot);
     let total_len: f64 = segment_lengths.iter().sum();
     let route_positions = world.route_positions(&route);
     let first_edge = (route[0], route[1]);
@@ -71,6 +85,8 @@ pub fn start_trip(
             eta: now + (total_len / CRUISE_SPEED * 1000.0) as u64,
             route,
             route_positions,
+            from_lot,
+            to_lot,
             progress: 0.0,
             speed: 0.0,
             acceleration: ACCELERATION,

@@ -20,11 +20,10 @@ deployment.
 
 The city becomes legible at the scale of one car.
 
-- Spot tables per blueprint row; parked cars drawn in their spots, half
-  out of the driveway for a house, a lot for the big ones. Client only.
-- Cars drive in to their spot and out of it, along the driveway.
+- Parking as `parking.md` lays it out. Step 1 is built: lot nodes, trips
+  that end in a spot, cars drawn from them, two spots on every driveway.
+  Next, spot tables per row, then giving way by length and reverse gear.
 - Warehouse at 3x2 with truck bays.
-- Delete the walker toggle.
 
 *Playable:* watch a household leave for work and come home; count the
 cars at the supermarket.

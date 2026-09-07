@@ -11,6 +11,7 @@ The rest is detail, in the order you would need it.
 | `residents.md` | How a resident decides what to do: needs as buckets of owed time, taps, the utility search, alarms. | Built; §11 and §13 record what was open at the time. |
 | `spawner.md` | How buildings arrive on their own: the meter, the draw, siting, clusters. | Built; §6 (proposals) is history, kept for the record. |
 | `services.md` | Placeables as services: streets vs roads, spawning onto streets, the build as the gate, call-outs, conditions. | §2–5 built for stock; fire, illness and the inspect panel not yet. |
+| `parking.md` | Lots as road: spot tables, trips to spots, giving way by length, reverse gear, reservation windows, the test lot. | Specification, 2026-09-06; only the house stopgap built. |
 | `shelved.md` | Ideas built or argued and set aside, with why and what bringing them back would take. | Living. |
 | `archive/` | Documents superseded in full. Kept so nothing has to be reinvented from memory. | Read only for archaeology. |
 

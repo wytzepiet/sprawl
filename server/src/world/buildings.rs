@@ -286,6 +286,7 @@ impl World {
 
     /// The one way a building leaves.
     pub fn remove_building(&mut self, id: EntityId) {
+        self.drop_lot(id);
         let Some(entry) = self.objects.get(id) else { return };
         let Some(pos) = entry.position else { return };
         let GameObject::Building(ref b) = entry.object else { return };

@@ -9,16 +9,16 @@ impl World {
         if node_index == 0 || node_index >= route.len() - 1 {
             return 1.0;
         }
-        let prev_pos = self.objects.get(route[node_index - 1]).and_then(|e| e.position);
-        let curr_pos = self.objects.get(route[node_index]).and_then(|e| e.position);
-        let next_pos = self.objects.get(route[node_index + 1]).and_then(|e| e.position);
+        let prev_pos = self.node_pos(route[node_index - 1]);
+        let curr_pos = self.node_pos(route[node_index]);
+        let next_pos = self.node_pos(route[node_index + 1]);
 
         match (prev_pos, curr_pos, next_pos) {
             (Some(p), Some(c), Some(n)) => {
-                let dx1 = (c.x - p.x) as f64;
-                let dy1 = (c.y - p.y) as f64;
-                let dx2 = (n.x - c.x) as f64;
-                let dy2 = (n.y - c.y) as f64;
+                let dx1 = c[0] - p[0];
+                let dy1 = c[1] - p[1];
+                let dx2 = n[0] - c[0];
+                let dy2 = n[1] - c[1];
                 let len1 = (dx1 * dx1 + dy1 * dy1).sqrt();
                 let len2 = (dx2 * dx2 + dy2 * dy2).sqrt();
                 if len1 < 1e-9 || len2 < 1e-9 {
@@ -46,22 +46,20 @@ impl World {
 
     /// Collect world positions (tile center) for each node in a route.
     pub fn route_positions(&self, route: &[EntityId]) -> Vec<[f64; 2]> {
-        route
-            .iter()
-            .filter_map(|&id| {
-                self.objects.get(id).and_then(|e| {
-                    e.position.map(|p| [p.x as f64 + 0.5, p.y as f64 + 0.5])
-                })
-            })
-            .collect()
+        route.iter().filter_map(|&id| self.node_pos(id)).collect()
     }
 
     /// Precompute all segment lengths for a route. Returns a Vec where
     /// result[i] = arc length of segment from route[i-1] to route[i].
-    /// result[0] = 0.0 (no segment before first node).
-    pub fn compute_segment_lengths(&self, route: &[EntityId]) -> Vec<f64> {
+    /// result[0] = 0.0 (no segment before first node). The street part of
+    /// the route is driven on its lane; the lot nodes at either end are
+    /// where they are.
+    pub fn compute_segment_lengths(&self, route: &[EntityId], from_lot: usize, to_lot: usize) -> Vec<f64> {
         let centers = self.route_positions(route);
-        let positions = bezier::offset_positions(&centers, bezier::LANE_OFFSET);
+        let mut positions = bezier::offset_positions(&centers, bezier::LANE_OFFSET);
+        for i in (0..from_lot).chain(centers.len().saturating_sub(to_lot)..centers.len()) {
+            positions[i] = centers[i];
+        }
         let mut lengths = vec![0.0]; // index 0 unused
         for i in 1..route.len() {
             if i < positions.len() {

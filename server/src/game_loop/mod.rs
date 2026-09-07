@@ -73,9 +73,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     if fresh {
         let seed = world.terrain_seed;
         let terrain = world.terrain.clone();
-        let anchors = crate::road_gen::generate(&mut world, seed, &terrain);
-        for (i, pos) in anchors.into_iter().enumerate() {
-            seed_building(&mut world, pos, STARTING_MIX[i % STARTING_MIX.len()]);
+        if let Some(anchor) = crate::road_gen::generate(&mut world, seed, &terrain) {
+            crate::road_gen::start_town(&mut world, &terrain, anchor, &STARTING_MIX);
         }
     }
 
@@ -85,6 +84,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         world.rebuild_edges();
         world.rebuild_node_cars();
         world.rebuild_occupied();
+        world.restore_spots();
         world.rebuild_roads_generated();
         world.rebuild_laid();
         // A saved world may have been revealed further than its roads reach,
@@ -155,9 +155,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         world.terrain_seed = seed;
                         world.terrain = crate::terrain::generate(seed);
                         let terrain = world.terrain.clone();
-                        let anchors = crate::road_gen::generate(&mut world, seed, &terrain);
-                        for (i, pos) in anchors.into_iter().enumerate() {
-                            seed_building(&mut world, pos, STARTING_MIX[i % STARTING_MIX.len()]);
+                        if let Some(anchor) = crate::road_gen::generate(&mut world, seed, &terrain) {
+                            crate::road_gen::start_town(&mut world, &terrain, anchor, &STARTING_MIX);
                         }
                         settle_and_wake(&mut world, &mut events);
                         world.newly_revealed.clear();
@@ -249,24 +248,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         if last_persist.elapsed() >= PERSIST_INTERVAL {
             persist(&mut world, &db_path, sim_time);
             last_persist = Instant::now();
-        }
-    }
-}
-
-/// Put a starting building beside the road: a short street off it, since
-/// nothing fronts a road, and the building on that street.
-fn seed_building(world: &mut World, road: GridCoord, kind: BuildingKind) {
-    const STUB: i32 = 3;
-    for (dx, dy) in [(0, 1), (1, 0), (0, -1), (-1, 0)] {
-        let stub: Vec<GridCoord> = (0..=STUB).map(|i| GridCoord { x: road.x + dx * i, y: road.y + dy * i }).collect();
-        // The street and a plot beside its end, all on open land.
-        let plot = GridCoord { x: road.x + dx * STUB + dy, y: road.y + dy * STUB + dx };
-        if !stub[1..].iter().chain([&plot]).all(|&t| world.is_buildable(t)) {
-            continue;
-        }
-        world.place_road_path(&stub);
-        if world.spawn_building(plot, kind, (1, 1)).is_some() {
-            return;
         }
     }
 }
@@ -447,8 +428,7 @@ fn handle_road_demolish(
             let entry = world.objects.get(car_id)?;
             if let GameObject::Car(ref car) = entry.object {
                 let trip = car.trip.as_ref()?;
-                let dest = *trip.route.last()?;
-                Some((car_id, trip.route.clone(), trip.route_index, dest))
+                Some((car_id, trip.route.clone(), trip.route_index, trip.destination))
             } else {
                 None
             }
@@ -510,10 +490,15 @@ fn try_reroute(
     ri: usize,
     now: GameTime,
 ) -> bool {
-    let new_route = match pathfinding::find_path(world, from_node, dest) {
+    let Some(to_node) = world.road_node_for_building(dest) else { return false };
+    let path = match pathfinding::find_path(world, from_node, to_node) {
         Some(r) if r.len() >= 2 => r,
         _ => return false,
     };
+    // The spot it was heading for is still its own.
+    let Some(way_in) = world.way_in(dest, car_id) else { return false };
+    let to_lot = way_in.len() - 1;
+    let new_route: Vec<EntityId> = path.into_iter().chain(way_in[1..].iter().copied()).collect();
 
     let old_route = match world.objects.get(car_id) {
         Some(e) => match &e.object {
@@ -547,7 +532,7 @@ fn try_reroute(
 
     // Set up new route
     world.register_car_route(car_id, &new_route);
-    let segment_lengths = world.compute_segment_lengths(&new_route);
+    let segment_lengths = world.compute_segment_lengths(&new_route, 0, to_lot);
     let total: f64 = segment_lengths.iter().sum();
     let route_positions = world.route_positions(&new_route);
 
@@ -561,6 +546,8 @@ fn try_reroute(
     {
         t.route = new_route;
         t.route_positions = route_positions;
+        t.from_lot = 0;
+        t.to_lot = to_lot;
         t.segment_lengths = segment_lengths;
         t.total_route_length = total;
         t.route_index = 1;
@@ -846,6 +833,55 @@ mod tests {
         world
             .spawn_building(GridCoord { x, y: 1 }, kind, (w, 1))
             .expect("the street should give it a driveway")
+    }
+
+    /// A fresh world is not empty land: the survey's anchors each get a
+    /// starting building beside the road, and a house among them has
+    /// people in it.
+    #[test]
+    fn a_fresh_world_has_a_starting_town() {
+        let mut world = World::new();
+        world.terrain_seed = 7;
+        world.terrain = crate::terrain::generate(7);
+        let terrain = world.terrain.clone();
+        let anchor = crate::road_gen::generate(&mut world, 7, &terrain).expect("no anchor near the middle");
+        crate::road_gen::start_town(&mut world, &terrain, anchor, &STARTING_MIX);
+        assert_eq!(world.all_buildings().len(), STARTING_MIX.len(), "not every starting building was placed");
+        eprintln!("anchor {:?}", anchor);
+        // The town, drawn: streets as dots, roads as bars, plots as letters.
+        for y in (anchor.y - 12)..=(anchor.y + 12) {
+            let row: String = ((anchor.x - 16)..=(anchor.x + 16))
+                .map(|x| {
+                    let t = GridCoord { x, y };
+                    if let Some(&b) = world.occupied.get(&(x, y)) {
+                        return match world.objects.get(b).map(|e| &e.object) {
+                            Some(GameObject::Building(b)) => format!("{:?}", b.kind).chars().next().unwrap(),
+                            _ => '?',
+                        };
+                    }
+                    match world.road_node_at(t).map(|id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road)) {
+                        Some(true) => '=',
+                        Some(false) => '.',
+                        None if t == anchor => '+',
+                        None => ' ',
+                    }
+                })
+                .collect();
+            eprintln!("{row}");
+        }
+        // Every junction is one the mayor could have drawn: no two arms at
+        // an acute angle.
+        for e in world.objects.all_entries() {
+            let (GameObject::RoadNode(n), Some(p)) = (&e.object, e.position) else { continue };
+            let arms: Vec<(i32, i32)> = n.outgoing.iter().chain(&n.incoming).filter_map(|&a| world.objects.get(a)?.position).map(|q| (q.x - p.x, q.y - p.y)).collect();
+            for (i, a) in arms.iter().enumerate() {
+                for b in &arms[i + 1..] {
+                    assert!(a == b || a.0 * b.0 + a.1 * b.1 <= 0, "acute junction at {:?}: arms {:?} and {:?}", p, a, b);
+                }
+            }
+        }
+        world.settle();
+        assert!(!world.resident_ids().is_empty(), "nobody moved into the starting town");
     }
 
     #[test]

@@ -20,8 +20,6 @@ const cutOff = (c: Color3) => Color3.Lerp(c, CUT_OFF, 0.55);
 /** How far a road's yellow sits above the white junction under it: above
  *  the street's surface, below the chevrons. */
 const HIGHWAY_LIFT = 0.006;
-/** A street has a sidewalk, wide enough to walk; a road has a shoulder. */
-const SIDEWALK_HALF_W = HALF_W + 0.11;
 
 // --- Connection detection ---
 
@@ -119,9 +117,9 @@ export function mountRoad(
   // in white underneath — the street curving onto the road — and the road's
   // own arms in yellow over it, kerb and all.
   const main = road ? arms.filter((a) => a.road) : arms;
-  if (main.length < arms.length) lay("road", arms, theme.roadBorder, theme.road, 0, SIDEWALK_HALF_W);
+  if (main.length < arms.length) lay("road", arms, theme.roadBorder, theme.road, 0, BORDER_HALF_W);
   if (road) lay("highway", main, theme.highwayBorder, theme.highway, HIGHWAY_LIFT, BORDER_HALF_W);
-  else lay("road", arms, theme.roadBorder, theme.road, 0, SIDEWALK_HALF_W);
+  else lay("road", arms, theme.roadBorder, theme.road, 0, BORDER_HALF_W);
 
   for (const arm of arms) {
     if (arm.flow !== "out") continue;

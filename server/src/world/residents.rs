@@ -149,17 +149,17 @@ impl World {
             // The car is parked wherever its owner is standing — and an
             // owner still off-map has it with them, position-less until
             // they drive in.
-            let spot = self
-                .objects
-                .get(id)
-                .and_then(|e| match e.object {
-                    GameObject::Resident(ref r) => r.at,
-                    _ => None,
-                })
-                .and_then(|b| self.objects.get(b).and_then(|e| e.position));
-            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None, role: Default::default() }), spot);
-            if let Some(spot) = spot {
-                self.spatial.entry(crate::world::chunk_of(spot)).or_default().insert(car);
+            let at = self.objects.get(id).and_then(|e| match e.object {
+                GameObject::Resident(ref r) => r.at,
+                _ => None,
+            });
+            let tile = at.and_then(|b| self.objects.get(b).and_then(|e| e.position));
+            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None, role: Default::default(), spot: None }), tile);
+            if let Some(tile) = tile {
+                self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(car);
+            }
+            if let Some(at) = at {
+                self.park_in_lot(at, car);
             }
             if let Some(entry) = self.objects.get_mut(id)
                 && let GameObject::Resident(ref mut r) = entry.object

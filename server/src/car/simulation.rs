@@ -53,13 +53,14 @@ pub fn park_car(
     world.remove_car_from_edges(car_id);
 
     match world.objects.get(at_building).and_then(|e| e.position) {
-        Some(spot) => {
-            world.update_position(car_id, spot);
+        Some(tile) => {
+            world.update_position(car_id, tile);
             if let Some(entry) = world.objects.get_mut(car_id)
                 && let GameObject::Car(ref mut c) = entry.object
             {
                 c.trip = None;
             }
+            world.park_in_lot(at_building, car_id);
         }
         None => world.despawn_car(car_id),
     }
@@ -103,6 +104,16 @@ pub fn park_at_home(
             world.despawn_car(car_id);
         }
     }
+}
+
+/// The arm from a junction toward a neighbour on the route, as a grid step:
+/// exact for a road node, the nearest for a lot node beside the junction.
+fn arm(world: &World, junction: EntityId, toward: EntityId) -> Option<(i32, i32)> {
+    let j = world.node_pos(junction)?;
+    let t = world.node_pos(toward)?;
+    let (dx, dy) = (t[0] - j[0], t[1] - j[1]);
+    let m = dx.abs().max(dy.abs());
+    (m > 1e-9).then(|| ((dx / m).round() as i32, (dy / m).round() as i32))
 }
 
 /// Compute gap to a lead car on a shared edge.
@@ -313,12 +324,9 @@ pub fn handle_car_wake_up(
     let lookahead = (ri + 3).min(trip.route.len());
     for k in ri..lookahead {
         if world.is_intersection(trip.route[k]) && k > 0 && k + 1 < trip.route.len() {
-            if let Some(int_pos) = world.objects.get(trip.route[k]).and_then(|e| e.position)
-                && let Some(from_pos) = world.objects.get(trip.route[k - 1]).and_then(|e| e.position)
-                && let Some(to_pos) = world.objects.get(trip.route[k + 1]).and_then(|e| e.position)
+            if let Some(from_dir) = arm(world, trip.route[k], trip.route[k - 1])
+                && let Some(to_dir) = arm(world, trip.route[k], trip.route[k + 1])
             {
-                let from_dir = (from_pos.x - int_pos.x, from_pos.y - int_pos.y);
-                let to_dir = (to_pos.x - int_pos.x, to_pos.y - int_pos.y);
                 intersections
                     .get_or_create(trip.route[k])
                     .register(car_id, from_dir, to_dir);

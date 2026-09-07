@@ -1,6 +1,7 @@
 pub mod bezier;
 mod buildings;
 mod geometry;
+pub mod lots;
 pub mod network;
 pub mod pathfinding;
 mod residents;
@@ -24,6 +25,12 @@ pub struct World {
     /// now that terrain is not an entity.
     pub(super) spatial: HashMap<ChunkCoord, HashSet<EntityId>>,
     pub edges: HashMap<EdgeKey, EdgeSegment>,
+    /// Every building's lot, built when first asked for; see `lots.rs`.
+    pub lots: lots::Lots,
+    /// Where each lot node is: off the grid, and not an entity.
+    pub lot_nodes: HashMap<EntityId, [f64; 2]>,
+    /// Which building's lot each car holds a spot in.
+    pub claims: HashMap<EntityId, EntityId>,
     /// Who can reach whom, kept in step with `edges` — the one gate the
     /// committed road graph passes through, so nothing that lays or pulls up a
     /// road has to know this index exists.
@@ -142,6 +149,9 @@ impl World {
             objects: Tracked::new(),
             spatial: HashMap::new(),
             edges: HashMap::new(),
+            lots: HashMap::new(),
+            lot_nodes: HashMap::new(),
+            claims: HashMap::new(),
             network: RoadNetwork::default(),
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
@@ -169,6 +179,9 @@ impl World {
         let mut world = Self {
             spatial: HashMap::new(),
             edges: HashMap::new(),
+            lots: HashMap::new(),
+            lot_nodes: HashMap::new(),
+            claims: HashMap::new(),
             network: RoadNetwork::default(),
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
@@ -255,6 +268,7 @@ impl World {
 
     /// Remove a car from the world entirely — scrap, not parking.
     pub fn despawn_car(&mut self, car_id: EntityId) {
+        self.release_spot(car_id);
         self.car_segment.remove(&car_id);
         self.remove_car_from_edges(car_id);
         if let Some(entry) = self.objects.get(car_id)
