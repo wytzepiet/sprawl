@@ -1,4 +1,4 @@
-use crate::car::{physics, ACCELERATION, CAR_NOSE, CAR_TAIL, CRUISE_SPEED, MIN_GAP};
+use crate::car::{physics, ACCELERATION, CAR_NOSE, CAR_TAIL, CRUISE_SPEED, LOT_SPEED, MIN_GAP};
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, Trip};
@@ -26,35 +26,21 @@ pub fn start_trip(
         Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
         _ => return false,
     };
-    let Some(to_node) = world.road_node_for_building(dest_building) else {
+    let Some(to_node) = world.approach(dest_building) else {
         return false;
     };
-    let out = world.way_out(car_id);
-    let from_node = out.map_or(from_node, |[_, street]| street);
+    let out = world.way_out(car_id).unwrap_or_default();
+    let from_node = out.last().copied().unwrap_or(from_node);
 
     let path = match pathfinding::find_path(world, from_node, to_node) {
         Some(r) if r.len() >= 2 => r,
         _ => return false,
     };
-    // A route found: the spot at the far end is claimed, and this one let
-    // go. A route not found leaves the car holding what it held.
-    let Some(way_in) = world.way_in(dest_building, car_id) else { return false };
-    let from_lot = out.is_some() as usize;
-    let to_lot = way_in.len() - 1;
-    let route: Vec<EntityId> = out
-        .map(|[spot, _]| spot)
-        .into_iter()
-        .chain(path)
-        .chain(way_in[1..].iter().copied())
-        .collect();
-
-    let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot);
-    let total_len: f64 = segment_lengths.iter().sum();
-    let route_positions = world.route_positions(&route);
-    let first_edge = (route[0], route[1]);
-    let route_nodes = route.clone();
+    let from_lot = out.len().saturating_sub(1);
+    let head: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
 
     // Don't pull out under a car blocking the start of the road.
+    let first_edge = (head[0], head[1]);
     if let Some(seg) = world.edges.get(&first_edge)
         && let Some(&last_id) = seg.cars.back()
         && let Some(entry) = world.objects.get(last_id)
@@ -74,6 +60,22 @@ pub fn start_trip(
         }
     }
 
+    // Nothing else can refuse the trip now, so the place at the far end is
+    // claimed, and the one here let go of.
+    let Some(way_in) = world.way_in(dest_building, car_id) else { return false };
+    let to_lot = way_in.len() - 1;
+    let route: Vec<EntityId> = head.into_iter().chain(way_in[1..].iter().copied()).collect();
+
+    let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot);
+    let total_len: f64 = segment_lengths.iter().sum();
+    // The lot's edges are the ones into and out of it: as many at each end
+    // as there are lot nodes there, since the street node closes each run.
+    let lot_len: f64 = segment_lengths[1..=from_lot].iter().sum::<f64>()
+        + segment_lengths[segment_lengths.len() - to_lot..].iter().sum::<f64>();
+    let street_len = total_len - lot_len;
+    let route_positions = world.route_positions(&route);
+    let route_nodes = route.clone();
+
     if let Some(start_pos) = world.objects.get(route_nodes[0]).and_then(|e| e.position) {
         world.update_position(car_id, start_pos);
     }
@@ -82,7 +84,7 @@ pub fn start_trip(
     {
         c.trip = Some(Trip {
             destination: dest_building,
-            eta: now + (total_len / CRUISE_SPEED * 1000.0) as u64,
+            eta: now + ((street_len / CRUISE_SPEED + lot_len / LOT_SPEED) * 1000.0) as u64,
             route,
             route_positions,
             from_lot,
@@ -91,6 +93,7 @@ pub fn start_trip(
             speed: 0.0,
             acceleration: ACCELERATION,
             total_route_length: total_len,
+            street_length: street_len,
             updated_at: now,
             route_index: 1,
             seg_fraction: 0.0,

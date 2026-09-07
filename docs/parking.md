@@ -4,9 +4,11 @@ Status: specification, drafted 2026-09-06. §8 step 1 built the same day
 in its generic form: every building has a two-spot lot on its driveway
 (`world/lots.rs`), trips end in a spot and start from one, a parked car
 carries its pose on the wire, and the client draws nothing it is not told.
-The ring lot, fusing and the lot-decides-the-slots rule (§3) were decided
-2026-09-07 and are not built; nor are lot speed, giving way by length,
-reverse, windows and the test lot. Follows
+The ring lot (§3.1), the plot laid out by its facing, the slab and the
+ring drawn, staff at the door, and a full lot refusing the trip, are
+built (2026-09-07); every lot is still its own, fusing (§3.2) is next.
+Slots from spots, giving way by length, reverse, windows and the test lot
+are not built. Follows
 `services.md` (streets, driveways, call-outs) and `residents.md` (how a
 trip is chosen). `game.md` §People says parked cars sit in the building's
 spots; this is how.
@@ -106,23 +108,31 @@ hand is a later purchase, not a requirement.
 
 ### 3.3 The lot decides the slots
 
-Every person at a tap came by car, so a building serves at once exactly
-as many as can park. Slots are a fact about the asphalt, not a number in
-a row: a tap's slots are the lot's spots (shared taps share them; the
+Every visitor came by car, so a building serves at once exactly as many
+as can park. Slots are a fact about the asphalt, not a number in a row: a
+visitor tap's slots are the lot's spots (shared taps share them; the
 Fuel tap's are its pump spots, which are pull-throughs with a pump). A
-busier shop is a shop with a wider lot or a neighbour. Staff park too.
-The rows read, with everyone parking:
+busier shop is a shop with a wider lot or a neighbour. A lot is never
+bigger than its building.
 
-| Kind | Building | Lot | Spots |
+Staff park unseen: their car drives the ring like anyone's, along the
+back lane, and in at a door node under the building's front, where it
+stops with no pose and is not drawn; it leaves the same way. Jobs stay
+as the rows say. Lorries unload in the strip between the back lane and
+the building, a bay entered from the lane and left onto it, when the run
+is as long as the lorry; at a lone shop they stop on the back lane and
+the island waits, or on the street outside, which blocks a lane the
+honest way.
+
+| Kind | Building | Lot | Visitors at once |
 |---|---|---|---|
-| House | 1×1 | driveway | 2 |
+| House | 1×1 | driveway | its own 2 |
 | Shop, bar, gas station | 1×1 | 1×1, fuses | 2 alone, 7 as a pair, 12 as three |
-| Restaurant, workshop | 1×1 | 2×1 | 7 |
-| Apartment | 2×1 | 2×1 | 7 |
-| Office | 2×2 | 2×2 | 14 |
-| Factory | 3×2 | 3×2 | 24 |
-| Supermarket | 2×2 | 3×2 | 24 |
-| Warehouse | 2×1 | 2×1 plus two bays | 7, and the trucks |
+| Restaurant | 1×1 | 1×1, fuses | 2 alone |
+| Apartment | 2×1 | 2×1 | 7 homes |
+| Workshop, office, factory | as now | none | staff only |
+| Supermarket | 2×2 | 2×2 lattice | 21 |
+| Warehouse | 2×1 | 2×1, bays later | lorries |
 
 ### 3.4 Drawn as one unit
 

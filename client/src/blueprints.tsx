@@ -25,8 +25,39 @@ export interface Blueprint {
   heights: number[];
   /** In the build menu, for the mayor to place by hand. */
   byHand: boolean;
-  /** Footprint in tiles, as the server's row has it. */
+  /** The building's own footprint in tiles, wide along its frontage. */
   size: [number, number];
+  /** Its lot in tiles along the frontage and deep, on the street side; [0, 0] is none. */
+  lot: [number, number];
+}
+
+/** The four ways a plot can lie: which side the lot and street are on. */
+export const FACINGS: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+
+/** Is this tile one of the plot's lot tiles? */
+export function inLot(kind: BuildingKind, facing: number, pos: { x: number; y: number }, x: number, y: number): boolean {
+  const lot = plot(kind, facing).lot;
+  if (!lot) return false;
+  const [[ox, oy], [w, h]] = lot;
+  return x >= pos.x + ox && x < pos.x + ox + w && y >= pos.y + oy && y < pos.y + oy + h;
+}
+
+export interface Plot {
+  size: [number, number];
+  building: [[number, number], [number, number]];
+  lot: [[number, number], [number, number]] | null;
+}
+
+/** A plot on the grid for a facing: its size, and where building and lot lie in it. Mirrors `blueprint::plot`. */
+export function plot(kind: BuildingKind, facing: number): Plot {
+  const { size: [bw, bh], lot: [lw, ld] } = BLUEPRINTS[kind];
+  const has = lw > 0 && ld > 0;
+  switch (facing % 4) {
+    case 2: return { size: [bw, bh + ld], building: [[0, 0], [bw, bh]], lot: has ? [[0, bh], [lw, ld]] : null };
+    case 0: return { size: [bw, bh + ld], building: [[0, ld], [bw, bh]], lot: has ? [[0, 0], [lw, ld]] : null };
+    case 1: return { size: [bh + ld, bw], building: [[0, 0], [bh, bw]], lot: has ? [[bh, 0], [ld, lw]] : null };
+    default: return { size: [bh + ld, bw], building: [[ld, 0], [bh, bw]], lot: has ? [[0, 0], [ld, lw]] : null };
+  }
 }
 
 /** The bulk of a city: somewhere people live or work, and there are hundreds. */
@@ -47,6 +78,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0],
     byHand: false,
     size: [1, 1],
+    lot: [0, 0],
   },
   Apartment: {
     label: "Apartment",
@@ -58,6 +90,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.85, 1.15, 1.5],
     byHand: false,
     size: [2, 1],
+    lot: [2, 1],
   },
   Shop: {
     label: "Shop",
@@ -70,6 +103,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.45, 0.55],
     byHand: false,
     size: [1, 1],
+    lot: [1, 1],
   },
   Office: {
     label: "Office",
@@ -84,6 +118,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [1.0, 1.45, 2.3],
     byHand: false,
     size: [2, 1],
+    lot: [0, 0],
   },
   Workshop: {
     label: "Workshop",
@@ -96,6 +131,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.42, 0.5],
     byHand: false,
     size: [1, 1],
+    lot: [0, 0],
   },
   Factory: {
     label: "Factory",
@@ -107,6 +143,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0],
     byHand: false,
     size: [2, 1],
+    lot: [0, 0],
   },
   Restaurant: {
     label: "Restaurant",
@@ -119,6 +156,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.5, 0.62],
     byHand: true,
     size: [1, 1],
+    lot: [1, 1],
   },
   Bar: {
     label: "Bar",
@@ -130,6 +168,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.45, 0.55],
     byHand: false,
     size: [1, 1],
+    lot: [1, 1],
   },
   GasStation: {
     label: "Gas station",
@@ -141,6 +180,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.3],
     byHand: false,
     size: [1, 1],
+    lot: [1, 1],
   },
   Supermarket: {
     label: "Supermarket",
@@ -152,6 +192,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.5],
     byHand: true,
     size: [2, 2],
+    lot: [2, 2],
   },
   Warehouse: {
     label: "Warehouse",
@@ -162,7 +203,8 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.6],
     byHand: true,
-    size: [1, 1],
+    size: [2, 1],
+    lot: [2, 1],
   },
 };
 

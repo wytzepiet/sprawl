@@ -17,7 +17,7 @@ import {
 import { createBorderTexture } from "../engine/TerrainChunks";
 import { buildChunk, CHUNK_STRIDE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { shapeFor, BUILDING_COLOR } from "../engine/objects/buildings";
-import { BLUEPRINTS } from "../blueprints";
+import { plot } from "../blueprints";
 import type { BuildingKind } from "../generated";
 
 /** Tiles from one kind's centre to the next: a plot with land around it. */
@@ -114,8 +114,10 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[]; onFit: (t
     mat.specularColor = Color3.Black();
     props.kinds.forEach((kind, i) => {
       const mesh = new Mesh(`shelf_${kind}`, scene);
-      const [w, h] = BLUEPRINTS[kind].size;
-      const geo = shapeFor(kind, w, h, 0);
+      const lie = plot(kind, 2);
+      const [w, h] = lie.size;
+      const [[, by], [bw, bh]] = lie.building;
+      const geo = shapeFor(kind, bw, bh, 0);
       const vd = new VertexData();
       vd.positions = geo.positions;
       vd.indices = geo.indices;
@@ -125,7 +127,7 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[]; onFit: (t
       // A tile in from the slot's edge, on the grid, so a plot's centre sits
       // where the menu puts its pin: a tile and a half in for a plot one
       // tile across, two for one two across.
-      mesh.position = new Vector3(left - i * SLOT - 1 - w / 2, ROW + h / 2, 0);
+      mesh.position = new Vector3(left - i * SLOT - 1 - w / 2, ROW + by + bh / 2, 0);
       mesh.receiveShadows = true;
       shadows.addShadowCaster(mesh);
     });

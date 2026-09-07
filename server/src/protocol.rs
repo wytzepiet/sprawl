@@ -96,8 +96,14 @@ impl BuildingKind {
 #[ts(export)]
 pub struct Building {
     pub kind: BuildingKind,
-    /// Footprint in tiles, as it lies on the grid.
+    /// The plot's footprint in tiles, as it lies on the grid: the building
+    /// and its lot together.
     pub size: (u8, u8),
+    /// Which side of the building the lot and the street are on; see
+    /// `blueprint::FACINGS`. The client lays the building and the lot out
+    /// within the footprint from this.
+    #[serde(default = "south")]
+    pub facing: u8,
     /// What is on the shelves, as a fraction of a delivery. Drawn down by
     /// visits, filled by a delivery; empty shelves sell nothing. Always
     /// full for a kind that keeps no stock.
@@ -107,6 +113,10 @@ pub struct Building {
 
 fn full() -> f64 {
     1.0
+}
+
+fn south() -> u8 {
+    2
 }
 
 /// What a car is for, which is who drives it and what it looks like.
@@ -182,6 +192,12 @@ pub struct Trip {
     pub acceleration: f64,
     /// Total arc length of the entire route.
     pub total_route_length: f64,
+    /// The part of it on the street, at cruise: what the free-flow promise
+    /// and the delay learned from it are about. The rest is the lot, at a
+    /// crawl, and no measure of traffic.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub street_length: f64,
     #[ts(type = "number")]
     pub updated_at: u64,
     /// Current segment (1-based). The car is between route[ri-1] and route[ri].

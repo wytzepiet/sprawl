@@ -90,6 +90,46 @@ impl World {
         !self.would_be_too_sharp(from, to.x - from.x, to.y - from.y, false)
     }
 
+    /// How a kind's plot could lie at `pos`: the first facing whose whole
+    /// plot is open land and whose lot fronts a street, with that street and
+    /// the tile the driveway lands on. A kind with no lot fronts a street
+    /// on any side, facing it.
+    pub fn site_for(&self, pos: GridCoord, kind: BuildingKind) -> Option<(u8, EntityId, GridCoord)> {
+        // Every way round starts on this tile, and the spawner asks about
+        // thousands of tiles a second when the meter is full and nothing fits.
+        if !(self.is_buildable(pos) || self.is_driveway_stub(pos)) {
+            return None;
+        }
+        (0..4u8).find_map(|facing| {
+            let p = crate::blueprint::plot(kind, facing);
+            let open = Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t));
+            if !open {
+                return None;
+            }
+            let (street, door) = match p.lot {
+                Some(((lx, ly), (lw, ld))) => {
+                    let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
+                    self.road_for_lot(lot, (lw, ld), facing)?
+                }
+                None => self.road_for_plot(pos, p.size)?,
+            };
+            Some((facing, street, door))
+        })
+    }
+
+    /// The street a lot fronts: beyond its outer edge, in the direction it
+    /// faces, off any of its front tiles.
+    fn road_for_lot(&self, lot: GridCoord, size: (u8, u8), facing: u8) -> Option<(EntityId, GridCoord)> {
+        let (dx, dy) = crate::blueprint::FACINGS[facing as usize % 4];
+        Self::footprint(lot, size)
+            .filter(|t| !Self::building_covers(lot, size, GridCoord { x: t.x + dx, y: t.y + dy }))
+            .find_map(|t| {
+                let n = GridCoord { x: t.x + dx, y: t.y + dy };
+                let id = self.road_node_at(n)?;
+                (self.is_street(id) && self.driveway_reaches(n, t)).then_some((id, t))
+            })
+    }
+
     /// The road a plot's traffic would use, if any.
     ///
     /// Straight-on neighbours are tried before corners, so a building touching
@@ -183,13 +223,14 @@ impl World {
         &mut self,
         pos: GridCoord,
         kind: BuildingKind,
-        size: (u8, u8),
+        facing: u8,
     ) -> Option<EntityId> {
+        let size = crate::blueprint::plot(kind, facing).size;
         let tiles: Vec<GridCoord> = Self::footprint(pos, size).collect();
         if !tiles.iter().all(|&t| self.is_buildable(t) || self.is_driveway_stub(t)) {
             return None;
         }
-        let id = self.insert_at(GameObject::Building(Building { kind, size, stock: 1.0 }), Some(pos));
+        let id = self.insert_at(GameObject::Building(Building { kind, size, facing, stock: 1.0 }), Some(pos));
         for tile in &tiles {
             self.occupied.insert((tile.x, tile.y), id);
             // A footprint can straddle a chunk border, and clients subscribe by
@@ -243,8 +284,14 @@ impl World {
         let (Some(pos), GameObject::Building(b)) = (entry.position, &entry.object) else {
             return false;
         };
-        let size = b.size;
-        let Some((street, door)) = self.road_for_plot(pos, size) else { return false };
+        let p = crate::blueprint::plot(b.kind, b.facing);
+        let found = match p.lot {
+            Some(((lx, ly), (lw, ld))) => {
+                self.road_for_lot(GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld), b.facing)
+            }
+            None => self.road_for_plot(pos, p.size),
+        };
+        let Some((street, door)) = found else { return false };
         let Some(street_pos) = self.objects.get(street).and_then(|e| e.position) else {
             return false;
         };
@@ -272,14 +319,9 @@ impl World {
 
     /// A building that can be driven to, or nothing. What painting and the
     /// starting town want: a purchase with no feedback is not a purchase.
-    pub fn spawn_building(
-        &mut self,
-        pos: GridCoord,
-        kind: BuildingKind,
-        size: (u8, u8),
-    ) -> Option<EntityId> {
-        self.road_for_plot(pos, size)?;
-        let id = self.place_building(pos, kind, size)?;
+    pub fn spawn_building(&mut self, pos: GridCoord, kind: BuildingKind) -> Option<EntityId> {
+        let (facing, _, _) = self.site_for(pos, kind)?;
+        let id = self.place_building(pos, kind, facing)?;
         self.attach_driveway(id);
         Some(id)
     }
@@ -349,7 +391,7 @@ mod tests {
         // Adjacent steps, so the middle tile really is a node with two arms.
         let mut world = world_with_road(&[(1, 0), (2, 0), (3, 0)]);
         assert!(
-            world.place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, (1, 1)).is_none(),
+            world.place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2).is_none(),
             "the road runs through, so nothing may stand on it"
         );
     }
@@ -360,7 +402,7 @@ mod tests {
     fn a_road_drawn_into_a_plot_becomes_its_driveway() {
         let mut world = world_with_road(&[(0, 2), (4, 2)]);
         let b = world
-            .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, (1, 1))
+            .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2)
             .unwrap();
 
         world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false, 0);
@@ -376,7 +418,7 @@ mod tests {
         let mut world = world_with_road(&[(0, 2), (4, 2)]);
         world.place_road_path(&[GridCoord { x: 0, y: 2 }, GridCoord { x: 0, y: 0 }]);
         let b = world
-            .place_building(GridCoord { x: 1, y: 0 }, BuildingKind::House, (2, 1))
+            .place_building(GridCoord { x: 1, y: 0 }, BuildingKind::Office, 2)
             .unwrap();
 
         // In from below, then in from the left. Two different tiles of the plot.
@@ -395,7 +437,7 @@ mod tests {
     fn a_road_cannot_carry_on_out_of_a_building() {
         let mut world = world_with_road(&[(0, 2), (4, 2)]);
         world
-            .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, (1, 1))
+            .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2)
             .unwrap();
         world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false, 0);
 
@@ -500,7 +542,7 @@ mod tests {
     /// One house on one tile, built.
     fn house(world: &mut World, x: i32, y: i32) -> EntityId {
         world
-            .spawn_building(GridCoord { x, y }, BuildingKind::House, (1, 1))
+            .spawn_building(GridCoord { x, y }, BuildingKind::House)
             .expect("a road should be beside it")
     }
 

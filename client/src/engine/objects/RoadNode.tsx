@@ -12,7 +12,9 @@ import {
   type Flow,
 } from "./roadGeometry";
 import type { Theme } from "../theme";
-import type { GameObjectEntry, RoadNode } from "../../generated";
+import type { Building, GameObjectEntry, RoadNode } from "../../generated";
+import { buildingAt } from "../../state/gameObjects";
+import { inLot } from "../../blueprints";
 
 /** Red, for road that reaches nothing: an island no car will ever come down. */
 const CUT_OFF = new Color3(0.85, 0.25, 0.2);
@@ -82,6 +84,14 @@ export function mountRoad(
   const instances: { key: string; id: number }[] = [];
   const pos: [number, number, number] | undefined =
     entry.position ? [entry.position.x + 0.5, entry.position.y + 0.5, 0] : undefined;
+  // A driveway on a lot tile is the lot's to draw: its stub joins the ring,
+  // and a road drawn to the tile's centre would run through the island.
+  if (entry.position) {
+    const b = buildingAt(entry.position.x, entry.position.y);
+    if (b?.position && inLot((b.object.data as Building).kind, (b.object.data as Building).facing, b.position, entry.position.x, entry.position.y)) {
+      return () => {};
+    }
+  }
 
   const arrowColor = new Color3(
     Math.min(1, theme.road.r + 0.25),

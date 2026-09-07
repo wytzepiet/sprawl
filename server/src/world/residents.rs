@@ -244,7 +244,7 @@ mod tests {
 
     fn build(world: &mut World, x: i32, kind: BuildingKind) -> EntityId {
         world
-            .spawn_building(GridCoord { x, y: 1 }, kind, (1, 1))
+            .spawn_building(GridCoord { x, y: 1 }, kind)
             .expect("the street should give it a driveway")
     }
 
@@ -277,14 +277,14 @@ mod tests {
     #[test]
     fn everyone_takes_the_nearest_job_with_room() {
         let mut world = town();
-        build(&mut world, 0, BuildingKind::Apartment); // 8 residents
+        build(&mut world, 0, BuildingKind::Apartment); // 7 residents
         let near = build(&mut world, 4, BuildingKind::Shop); // 4 jobs
         let far = build(&mut world, 30, BuildingKind::Office); // 16 jobs
 
         world.settle();
         let jobs = residents(&world);
         assert_eq!(jobs.iter().filter(|r| r.work == Some(near)).count(), 4);
-        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 4);
+        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 3);
     }
 
     #[test]
@@ -377,7 +377,7 @@ mod tests {
         let mut world = town();
         // Three tiles off the street: nothing to drive on.
         let home = world
-            .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, (1, 1))
+            .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, 2)
             .expect("land is land");
         assert!(world.road_node_for_building(home).is_none(), "dormant");
         assert!(world.settle().is_empty(), "nobody moves in off the road");

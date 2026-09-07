@@ -1,6 +1,6 @@
 use crate::car::physics;
 use crate::car::{
-    ACCELERATION, CAR_NOSE, CAR_TAIL, INTERSECTION_STOP_MARGIN, MIN_GAP, Obstacle,
+    ACCELERATION, CAR_NOSE, CAR_TAIL, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle,
 };
 use crate::engine::GameTime;
 use crate::engine::event_queue::EventQueue;
@@ -102,6 +102,36 @@ pub fn park_at_home(
             events.clear_dedup(car_id);
             let _ = intersections.remove_car_from_all(car_id);
             world.despawn_car(car_id);
+        }
+    }
+}
+
+/// Leave the stretches crossed since the last wake, segments `old_ri` up to
+/// `ri`: off their queues, waking whoever was behind; out of the node index
+/// for the nodes passed; and out of the junctions passed.
+fn leave_crossed(
+    world: &mut World,
+    events: &mut EventQueue,
+    intersections: &mut IntersectionRegistry,
+    car_id: EntityId,
+    trip: &Trip,
+    old_ri: usize,
+    ri: usize,
+) {
+    for k in old_ri..ri {
+        let old_edge: EdgeKey = (trip.route[k - 1], trip.route[k]);
+        let car_behind = world.car_behind_on_edge(old_edge, car_id);
+        if let Some(seg) = world.edges.get_mut(&old_edge) {
+            seg.cars.retain(|&id| id != car_id);
+        }
+        if let Some(behind) = car_behind {
+            events.wake(0, behind);
+        }
+        if let Some(set) = world.node_cars.get_mut(&trip.route[k - 1]) {
+            set.remove(&car_id);
+        }
+        for woken_id in intersections.clear_car(trip.route[k], car_id) {
+            events.wake(0, woken_id);
         }
     }
 }
@@ -266,8 +296,11 @@ pub fn handle_car_wake_up(
 
         if ri + 1 >= trip.route.len() {
             // Journey's end: the driver steps out, the car stays. A vehicle
-            // on a call unloads, and thinks again when it is done.
-            crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, trip.total_route_length, now);
+            // on a call unloads, and thinks again when it is done. The
+            // stretches crossed on the way here are left like any others,
+            // or the car would stay on their queues as a ghost.
+            leave_crossed(world, events, intersections, car_id, &trip, old_ri, ri);
+            crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, trip.street_length, now);
             park_car(world, intersections, events, car_id, trip.destination);
             let truck = matches!(world.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != crate::protocol::CarRole::Private);
             if truck {
@@ -281,21 +314,7 @@ pub fn handle_car_wake_up(
         ri += 1;
     }
 
-    // Handle edge transitions: remove from old edges, wake cars behind, add to new edge
-    for k in old_ri..ri {
-        let old_edge: EdgeKey = (trip.route[k - 1], trip.route[k]);
-        let car_behind = world.car_behind_on_edge(old_edge, car_id);
-        if let Some(seg) = world.edges.get_mut(&old_edge) {
-            seg.cars.retain(|&id| id != car_id);
-        }
-        if let Some(behind) = car_behind {
-            events.wake(0, behind);
-        }
-        // Car has fully left route[k-1] — remove from node_cars index
-        if let Some(set) = world.node_cars.get_mut(&trip.route[k - 1]) {
-            set.remove(&car_id);
-        }
-    }
+    leave_crossed(world, events, intersections, car_id, &trip, old_ri, ri);
     // Add to current edge if we transitioned
     if ri != old_ri {
         let current_edge: EdgeKey = (trip.route[ri - 1], trip.route[ri]);
@@ -303,14 +322,6 @@ pub fn handle_car_wake_up(
             && !seg.cars.contains(&car_id)
         {
             seg.cars.push_back(car_id);
-        }
-    }
-
-    // Clear intersections the car drove through
-    for k in old_ri..ri {
-        let node = trip.route[k];
-        for woken_id in intersections.clear_car(node, car_id) {
-            events.wake(0, woken_id);
         }
     }
 
@@ -387,6 +398,10 @@ pub fn handle_car_wake_up(
     // what the corner allows. Held to zero instead, so it carries the speed it
     // slowed to through the turn rather than only up to it.
     let entry_ri = remaining - 0.5 * trip.segment_lengths[ri] - CAR_NOSE;
+    // In a lot, a crawl: on any edge that ends at a lot node, from its start.
+    if world.lot_nodes.contains_key(&trip.route[ri]) {
+        obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: LOT_SPEED });
+    }
     if ri > 0 && ri < trip.route.len() - 1 {
         let ts = physics::turn_speed(world.turn_cos_angle(&trip.route, ri));
         obstacles.push(Obstacle::SpeedLimit {
@@ -413,13 +428,21 @@ pub fn handle_car_wake_up(
 
         let node = trip.route[k];
 
-        if world.is_intersection(node) && !intersections.has_passage(node, car_id) {
+        // A trip that ends on a junction stops there; it never registered
+        // for passage, so waiting for it would be waiting for ever.
+        if k + 1 < trip.route.len() && world.is_intersection(node) && !intersections.has_passage(node, car_id) {
             obstacles.push(Obstacle::MustStop {
                 distance: (entry_k - INTERSECTION_STOP_MARGIN).max(0.0),
             });
             break;
         }
 
+        if world.lot_nodes.contains_key(&node) {
+            obstacles.push(Obstacle::SpeedLimit {
+                distance: (node_dist - trip.segment_lengths[k] - CAR_NOSE).max(0.0),
+                speed: LOT_SPEED,
+            });
+        }
         if k < trip.route.len() - 1 {
             obstacles.push(Obstacle::SpeedLimit {
                 distance: entry_k,

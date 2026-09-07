@@ -113,12 +113,11 @@ pub fn spawn(world: &mut World, now: GameTime) -> Option<EntityId> {
         return None;
     }
     let mut rng = seeded(world, now);
-    let size = blueprint(kind).size;
-    let pos = draw_site(world, &mut rng, kind, size, &buildings(world), now)?;
+    let pos = draw_site(world, &mut rng, kind, &buildings(world), now)?;
     // Spent. The next goal is drawn on the next tick.
     world.offered_at = world.xp.at(now);
     world.goal = None;
-    world.spawn_building(pos, kind, size)
+    world.spawn_building(pos, kind)
 }
 
 /// What the world is offering: where each kind belongs, and what stands
@@ -161,7 +160,6 @@ fn draw_site(
     world: &World,
     rng: &mut SmallRng,
     kind: BuildingKind,
-    size: (u8, u8),
     standing: &[(EntityId, GridCoord, BuildingKind)],
     now: GameTime,
 ) -> Option<GridCoord> {
@@ -200,7 +198,7 @@ fn draw_site(
         if seed_new && standing.iter().any(|&(_, p, _)| dist(p, at) < 15) {
             continue;
         }
-        let Some(pos) = snap(world, at, size, now) else { continue };
+        let Some(pos) = snap(world, at, kind, now) else { continue };
         let company: f64 = standing
             .iter()
             .map(|&(_, p, k)| (affinity(kind, k), dist(p, pos)))
@@ -232,17 +230,17 @@ fn affinity(kind: BuildingKind, near: BuildingKind) -> f64 {
     }
 }
 
-/// The nearest place to `at` where a footprint fits: buildable, revealed,
-/// and fronting a settled street that is joined to the world.
-fn snap(world: &World, at: GridCoord, size: (u8, u8), now: GameTime) -> Option<GridCoord> {
+/// The nearest place to `at` where the kind's plot fits some way round:
+/// open, revealed, and its lot fronting a settled street that is joined
+/// to the world.
+fn snap(world: &World, at: GridCoord, kind: BuildingKind, now: GameTime) -> Option<GridCoord> {
     let fits = |pos: GridCoord| {
-        let (w, h) = (size.0 as i32, size.1 as i32);
-        (0..w).all(|dx| {
-            (0..h).all(|dy| {
-                let t = GridCoord { x: pos.x + dx, y: pos.y + dy };
-                world.is_buildable(t) && world.revealed.contains(&crate::world::chunk_of(t))
-            })
-        }) && world.road_for_plot(pos, size).is_some_and(|(street, _)| world.network.joined(street) && world.is_settled(street, now))
+        world.site_for(pos, kind).is_some_and(|(facing, street, _)| {
+            let size = crate::blueprint::plot(kind, facing).size;
+            World::footprint(pos, size).all(|t| world.revealed.contains(&crate::world::chunk_of(t)))
+                && world.network.joined(street)
+                && world.is_settled(street, now)
+        })
     };
     (0..=6).flat_map(|ring| ring_around(at, ring)).find(|&p| fits(p))
 }
@@ -331,7 +329,7 @@ mod tests {
             world.place_road_path(&side);
         }
         for (x, kind) in [(0, BuildingKind::House), (4, BuildingKind::Shop), (8, BuildingKind::Workshop)] {
-            world.spawn_building(GridCoord { x, y: 1 }, kind, (1, 1)).unwrap();
+            world.spawn_building(GridCoord { x, y: 1 }, kind).unwrap();
         }
         world
     }

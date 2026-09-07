@@ -3,9 +3,16 @@ import type { BuildingKind } from "./BuildingKind";
 
 export type Building = { kind: BuildingKind, 
 /**
- * Footprint in tiles, as it lies on the grid.
+ * The plot's footprint in tiles, as it lies on the grid: the building
+ * and its lot together.
  */
 size: [number, number], 
+/**
+ * Which side of the building the lot and the street are on; see
+ * `blueprint::FACINGS`. The client lays the building and the lot out
+ * within the footprint from this.
+ */
+facing: number, 
 /**
  * What is on the shelves, as a fraction of a delivery. Drawn down by
  * visits, filled by a delivery; empty shelves sell nothing. Always

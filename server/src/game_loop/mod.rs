@@ -15,7 +15,6 @@ use crate::persistence;
 use crate::protocol::{BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, ServerMessage, StateUpdate};
 use crate::world::chunk_of;
 use crate::world::World;
-use crate::protocol::GridCoord;
 use crate::world::pathfinding;
 
 struct ClientState {
@@ -347,8 +346,9 @@ fn handle_player_action(
         ClientMessage::PlaceBuilding(place) => {
             // Anywhere the land allows: a plot with no street yet stands red
             // until the mayor draws one to it, which is the mayor's to do.
-            let size = crate::blueprint::blueprint(place.kind).size;
-            let placed = world.build.may_place(place.kind).then(|| world.place_building(place.pos, place.kind, size)).flatten();
+            // Laid the way its street asks, or facing south until one comes.
+            let facing = world.site_for(place.pos, place.kind).map_or(2, |(f, _, _)| f);
+            let placed = world.build.may_place(place.kind).then(|| world.place_building(place.pos, place.kind, facing)).flatten();
             match placed {
                 Some(id) => {
                     world.attach_driveway(id);
@@ -361,7 +361,7 @@ fn handle_player_action(
                     place.kind,
                     place.pos,
                     world.build.may_place(place.kind),
-                    World::footprint(place.pos, size).all(|t| world.is_buildable(t))
+                    World::footprint(place.pos, crate::blueprint::plot(place.kind, facing).size).all(|t| world.is_buildable(t))
                 ),
             }
         }
@@ -490,7 +490,7 @@ fn try_reroute(
     ri: usize,
     now: GameTime,
 ) -> bool {
-    let Some(to_node) = world.road_node_for_building(dest) else { return false };
+    let Some(to_node) = world.approach(dest) else { return false };
     let path = match pathfinding::find_path(world, from_node, to_node) {
         Some(r) if r.len() >= 2 => r,
         _ => return false,
@@ -534,6 +534,7 @@ fn try_reroute(
     world.register_car_route(car_id, &new_route);
     let segment_lengths = world.compute_segment_lengths(&new_route, 0, to_lot);
     let total: f64 = segment_lengths.iter().sum();
+    let street: f64 = total - segment_lengths[segment_lengths.len() - to_lot..].iter().sum::<f64>();
     let route_positions = world.route_positions(&new_route);
 
     if let Some(pos) = world.objects.get(new_route[0]).and_then(|e| e.position) {
@@ -550,6 +551,7 @@ fn try_reroute(
         t.to_lot = to_lot;
         t.segment_lengths = segment_lengths;
         t.total_route_length = total;
+        t.street_length = street;
         t.route_index = 1;
         t.progress = 0.0;
         t.speed = 0.0;
@@ -777,7 +779,7 @@ mod tests {
     /// with it, on purpose.
     const WAKE_BUDGET: u64 = 120;
     use super::*;
-    use crate::protocol::{BuildingKind, TerrainType};
+    use crate::protocol::{BuildingKind, GridCoord, TerrainType};
 
     fn at_of(world: &World, id: EntityId) -> Option<EntityId> {
         match &world.objects.get(id)?.object {
@@ -829,9 +831,9 @@ mod tests {
         world
     }
 
-    fn build(world: &mut World, x: i32, kind: BuildingKind, w: u8) -> EntityId {
+    fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
         world
-            .spawn_building(GridCoord { x, y: 1 }, kind, (w, 1))
+            .spawn_building(GridCoord { x, y: 1 }, kind)
             .expect("the street should give it a driveway")
     }
 
@@ -984,7 +986,7 @@ mod tests {
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
         let people = world.resident_ids();
-        assert_eq!(people.len(), 16);
+        assert_eq!(people.len(), 14);
 
         let mut log = Vec::new();
         let mut last: Vec<Option<EntityId>> = people.iter().map(|_| None).collect();
@@ -1022,7 +1024,8 @@ mod tests {
                     .map_or(0.0, |v| v["yesterday_h"].as_f64().unwrap())
             };
             let office = sold(office, "Work");
-            assert!((80.0..=108.0).contains(&office), "office received {office}h");
+            // Fourteen people, two apartments of seven, less the shop's staff.
+            assert!((70.0..=95.0).contains(&office), "office received {office}h");
             assert!(sold(lunch, "Eat") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat"));
         }
         (log, [shop, lunch])
@@ -1066,9 +1069,9 @@ mod tests {
                 }
             }
         }
-        // Some settle in after dinner and wait for the evening to start;
-        // nobody turns to it before the doors open at six.
-        assert!(outings.len() >= 4, "only {} evenings out", outings.len());
+        // The bar's lot decides its crowd: two spots, so two out at a time,
+        // and nobody turns to it before the doors open at six.
+        assert!(outings.len() >= 2, "only {} evenings out", outings.len());
         let h = |t: GameTime| t as f64 / (day as f64 / 24.0);
         assert!(
             outings.iter().all(|&t| h(t) >= 18.0 || h(t) < 2.0),
@@ -1081,7 +1084,8 @@ mod tests {
         let sold = d["delivered"].as_array().unwrap().iter()
             .find(|v| v["building"] == bar && v["need"] == "Leisure")
             .map_or(0.0, |v| v["today_h"].as_f64().unwrap() + v["yesterday_h"].as_f64().unwrap());
-        assert!(sold > 2.0, "the bar sold {sold}h of evenings");
+        // Two spots' worth of evenings, not twelve slots' worth.
+        assert!(sold > 1.0, "the bar sold {sold}h of evenings");
     }
 
     #[test]
@@ -1196,7 +1200,7 @@ mod tests {
         let (two, [shop, lunch]) = arrival_log(2);
         let (one, _) = arrival_log(1);
         // Sixteen people, each at least driving in, to work, and home.
-        assert!(one.len() >= 16 * 3, "only {} moves logged", one.len());
+        assert!(one.len() >= 14 * 3, "only {} moves logged", one.len());
         assert_eq!(two[..one.len()], one[..], "the first day differs between runs");
         assert!(two.len() > one.len(), "nobody moved on the second day");
 
@@ -1210,7 +1214,7 @@ mod tests {
         for &(_, id, ..) in two.iter().filter(|&&(t, ..)| t >= day) {
             *moves.entry(id).or_insert(0) += 1;
         }
-        assert_eq!(moves.len(), 16, "everyone went out on day two");
+        assert_eq!(moves.len(), 14, "everyone went out on day two");
         assert!(moves.values().all(|&n| n % 2 == 0 && (4..=10).contains(&n)), "someone thrashed: {moves:?}");
         assert!(moves.values().any(|&n| n >= 8), "nobody went out for lunch: {moves:?}");
         let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at, _)| (id, at)).collect();

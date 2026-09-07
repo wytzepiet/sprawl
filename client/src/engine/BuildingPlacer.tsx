@@ -5,7 +5,7 @@ import Mesh from "./Mesh";
 import { useGame } from "../state/gameObjects";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
 import { shapeFor } from "./objects/buildings";
-import { BLUEPRINTS } from "../blueprints";
+import { plot } from "../blueprints";
 import { screenToWorld } from "./view";
 import { createSpring2D } from "./spring";
 import type { GridCoord } from "../generated";
@@ -18,7 +18,7 @@ export function BuildingPlacer() {
   const [ghostPos, setGhostPos] = createSignal<GridCoord | null>(null);
   const spring = createSpring2D(scene, { stiffness: 0.3, damping: 0.4 });
 
-  const size = () => BLUEPRINTS[placingBuilding() ?? "House"].size;
+  const size = () => plot(placingBuilding() ?? "House", 2).size;
 
   /**
    * Every tile of the footprint free, or holding only a driveway stub. A
@@ -79,8 +79,8 @@ export function BuildingPlacer() {
   return (
     <Mesh
       name="building_ghost"
-      geometry={shapeFor(placingBuilding() ?? "House", size()[0], size()[1])}
-      position={[spring.pos()[0], spring.pos()[1], 0]}
+      geometry={shapeFor(placingBuilding() ?? "House", ...plot(placingBuilding() ?? "House", 2).building[1])}
+      position={[spring.pos()[0], spring.pos()[1] - (size()[1] - plot(placingBuilding() ?? "House", 2).building[1][1]) / 2, 0]}
       color={GHOST_COLOR}
       enabled={!!(placingBuilding() && ghostPos())}
     />

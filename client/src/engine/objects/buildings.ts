@@ -10,6 +10,14 @@ export const PLOT_MARGIN = 0.15;
 export const BUILDING_SIZE = 1.0 - 2 * PLOT_MARGIN;
 
 /**
+ * The slab a building with a lot stands on: one sheet of asphalt over the
+ * whole plot, set in from its edge so the land shows round it, with the
+ * street's kerb round that and corners rounded so a diagonal road passing
+ * the corner only grazes the kerb. Heights keep it under the road.
+ */
+export const SLAB = { inset: 0.1, kerb: 0.04, radius: 0.13, z: 0.01, kerbZ: 0.008 };
+
+/**
  * Shapes are built face by face, each with the outward normal it should have.
  *
  * Babylon culls back faces, and which side is "front" depends on the winding of
@@ -146,6 +154,28 @@ function axes(fw: number, fh: number, ridge: "long" | "short") {
     /** Local normal to world. */
     n: (a: number, c: number, z: number): Vec3 => (flip ? [c, a, z] : [a, c, z]),
   };
+}
+
+/** A rectangle with its corners rounded, corner to corner. */
+function roundedRect(fw: number, fh: number, r: number, segments = 5): Outline {
+  const [x, y] = [fw / 2 - r, fh / 2 - r];
+  const out: Outline = [];
+  const corners: [number, number, number][] = [[x, y, 0], [-x, y, Math.PI / 2], [-x, -y, Math.PI], [x, -y, (3 * Math.PI) / 2]];
+  for (const [cx, cy, a0] of corners) {
+    for (let i = 0; i <= segments; i++) {
+      const a = a0 + (i / segments) * (Math.PI / 2);
+      out.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+  }
+  return out;
+}
+
+/** The slab under a plot w by h tiles, or its kerb: a flat rounded sheet. */
+export function slabGeometry(w: number, h: number, kerb: boolean): MeshGeometry {
+  const grow = kerb ? SLAB.kerb : 0;
+  const b = builder();
+  b.cap(roundedRect(w - 2 * SLAB.inset + 2 * grow, h - 2 * SLAB.inset + 2 * grow, SLAB.radius + grow), 0);
+  return b.done();
 }
 
 /** Walls straight up from an outline, capped flat. Boxes and towers. */

@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import BuildMenuScene, { SLOT } from "./BuildMenuScene";
-import { BLUEPRINTS, KINDS } from "../blueprints";
+import { BLUEPRINTS, KINDS, plot } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind } from "../generated";
 import { Building2 } from "./icons";
@@ -42,8 +42,8 @@ export function BuildMenuSheet() {
   // centre whatever the plot's size. Horizontally that is a fraction of
   // the slot; vertically an offset from the canvas middle, on the row.
   const [tilePx, setTilePx] = createSignal(0);
-  const pinLeft = (kind: BuildingKind) => `${((1 + BLUEPRINTS[kind].size[0] / 2) / SLOT) * 100}%`;
-  const pinTop = (kind: BuildingKind) => `calc(50% + ${(1 - BLUEPRINTS[kind].size[1] / 2) * tilePx()}px)`;
+  const pinLeft = (kind: BuildingKind) => `${((1 + plot(kind, 2).size[0] / 2) / SLOT) * 100}%`;
+  const pinTop = (kind: BuildingKind) => `calc(50% + ${(1 - plot(kind, 2).size[1] / 2) * tilePx()}px)`;
   const pick = (kind: BuildingKind, e: PointerEvent) => {
     e.preventDefault();
     if (!may(kind)) return;

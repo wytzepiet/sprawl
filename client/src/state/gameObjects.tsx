@@ -88,6 +88,12 @@ export function reached(entry: GameObjectEntry): boolean {
   );
 }
 
+/** The building standing on this tile, any tile of its plot. */
+export function buildingAt(x: number, y: number): GameObjectEntry | undefined {
+  const id = occupiedBy.get(posKey(x, y));
+  return id === undefined ? undefined : entities.get(String(id));
+}
+
 export function getEntity(id: number): GameObjectEntry | undefined {
   return entities.get(String(id));
 }

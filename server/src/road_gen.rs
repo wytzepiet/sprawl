@@ -182,7 +182,7 @@ pub fn start_town(world: &mut World, terrain: &HashMap<(i32, i32), TerrainType>,
         let street: Vec<GridCoord> = path[1..].iter().map(|&(x, y)| GridCoord { x, y }).collect();
         let fresh: Vec<GridCoord> = street.iter().copied().filter(|&t| world.road_node_at(t).is_none()).collect();
         world.place_road_path(&street);
-        if world.spawn_building(plot, kind, (1, 1)).is_none() {
+        if world.spawn_building(plot, kind).is_none() {
             for t in fresh {
                 let Some(node) = world.road_node_at(t) else { continue };
                 for (a, b) in world.edges_involving(node) {

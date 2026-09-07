@@ -437,7 +437,8 @@ fn drive(
 /// arrival compares to the shift, and to the free-flow promise made at
 /// departure. People leave on time under free-flow assumptions, so both
 /// numbers worsening together is a direct measurement of congestion on the
-/// roads they actually drove.
+/// roads they actually drove. `length` is the street part of the trip: the
+/// crawl through a lot was promised at its own pace and is not traffic.
 pub fn arrival_readout(
     world: &mut World,
     id: EntityId,

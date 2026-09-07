@@ -243,23 +243,17 @@ impl World {
         self.mark_joined(entries.iter().map(|(id, _)| *id));
     }
 
-    /// Take a car off the edge deques it is registered on — the current edge
-    /// and any pre-registration on the next.
+    /// Take a car off every edge deque along its route. Not just the edge it
+    /// was last seen on: a lot's edges are short, a car can cross several in
+    /// one wake, and a car that parks without being taken off the ones it
+    /// crossed is a ghost the traffic behind it waits on for ever.
     pub fn remove_car_from_edges(&mut self, car_id: EntityId) {
         if let Some(entry) = self.objects.get(car_id)
             && let GameObject::Car(ref car) = entry.object
             && let Some(ref trip) = car.trip
         {
-            let ri = trip.route_index;
-            let mut edges = Vec::new();
-            if ri >= 1 {
-                edges.push((trip.route[ri - 1], trip.route[ri]));
-            }
-            if ri + 1 < trip.route.len() {
-                edges.push((trip.route[ri], trip.route[ri + 1]));
-            }
-            for edge in edges {
-                if let Some(seg) = self.edges.get_mut(&edge) {
+            for w in trip.route.windows(2) {
+                if let Some(seg) = self.edges.get_mut(&(w[0], w[1])) {
                     seg.cars.retain(|&id| id != car_id);
                 }
             }
