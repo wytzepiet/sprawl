@@ -1096,6 +1096,7 @@ mod tests {
         build(&mut world, 0, BuildingKind::Apartment, 2);
         build(&mut world, 6, BuildingKind::Apartment, 2);
         build(&mut world, 60, BuildingKind::Office, 2);
+        build(&mut world, 40, BuildingKind::Shop, 1);
         let station = build(&mut world, 30, BuildingKind::GasStation, 1);
 
         let mut events = EventQueue::new();
@@ -1115,11 +1116,6 @@ mod tests {
             }
             for (i, &id) in people.iter().enumerate() {
                 let state = (at_of(&world, id), doing(&world, id));
-                if state != last[i] && i == 5 && now > day + 16 * day / 24 && now < day + 20 * day / 24 {
-                    let d = crate::resident::inspect(&world, id, now);
-                    let eat = d["buckets"].as_array().unwrap().iter().find(|b| b["need"] == "Eat").map(|b| b["option"].clone()).unwrap();
-                    eprintln!("trace {} at {} sel {} delay {:.2} eat {}", d["now"], d["at_kind"], d["selected"], world.delay, eat);
-                }
                 if state != last[i] {
                     if state == (Some(station), Some(crate::needs::Need::Fuel)) {
                         stops += 1;
@@ -1128,7 +1124,7 @@ mod tests {
                 }
             }
         }
-        // Sixteen commuters, 120 tiles a day, a 500-tile tank: a stop each
+        // Fourteen commuters, 120 tiles a day, a 500-tile tank: a stop each
         // every few days — and not one a day, which would be a nag.
         println!("{stops} fuel stops in six days");
         assert!((12..=48).contains(&stops), "{stops} fuel stops in six days");

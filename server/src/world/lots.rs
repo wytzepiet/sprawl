@@ -720,8 +720,10 @@ impl World {
         Some(claim)
     }
 
-    /// Does the car's owner work at the building? Staff park unseen, and so
-    /// do a facility's own vehicles and vehicles on a call.
+    /// Does the car's owner work at the building? Staff park unseen for
+    /// now, and so do a facility's own vehicles and vehicles on a call.
+    /// Staff will take spots once a car turning off the ring ahead no
+    /// longer stops everyone behind it (`docs/parking.md` §3.3).
     fn works_at(&self, car: EntityId, building: EntityId) -> bool {
         let owner = match self.objects.get(car).map(|e| &e.object) {
             Some(GameObject::Car(c)) => c.owner,

@@ -118,7 +118,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [1.0, 1.45, 2.3],
     byHand: false,
     size: [2, 1],
-    lot: [0, 0],
+    lot: [2, 1],
   },
   Workshop: {
     label: "Workshop",
@@ -131,7 +131,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.42, 0.5],
     byHand: false,
     size: [1, 1],
-    lot: [0, 0],
+    lot: [1, 1],
   },
   Factory: {
     label: "Factory",
@@ -143,7 +143,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0],
     byHand: false,
     size: [2, 1],
-    lot: [0, 0],
+    lot: [2, 1],
   },
   Restaurant: {
     label: "Restaurant",

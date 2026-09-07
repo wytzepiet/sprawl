@@ -133,9 +133,17 @@ to the building's width as neighbours fill in.
 
 Staff will park like anyone else, in a spot, and a workplace whose lot
 is full will turn its own workers away for the morning: nobody drives
-into a building. Until then staff and a facility's own vehicles stop at
-a door node under the building's front, unseen, and lorries unload
-there too until they unload in the strip between the back lane and
+into a building. Two things stand in the way, found 2026-09-07 by
+trying it. Every spot's entry is a junction, and a car turning off the
+ring makes the car behind it stop for passage, so twelve staff entering
+one ring at eight queue for the best part of a minute: diverging paths
+must never wait for each other. And the city learns one delay from
+every arrival, so that queue made a trip across town look an hour
+long and emptied the bar at night: estimates have to read the passage
+the run network already remembers. Until both are done, staff and a
+facility's own vehicles stop at a door node under the building's
+front, unseen, and lorries unload there too until they unload in the
+strip between the back lane and
 the building, a bay entered from the lane and left onto it, when the run
 is as long as the lorry; at a lone shop they stop on the back lane and
 the island waits, or on the street outside, which blocks a lane the
@@ -146,18 +154,20 @@ honest way.
 | House | 1×1 | driveway | its own 2 |
 | Shop, bar, restaurant, gas station | 1×1 | 1×1, spills to 3, fuses | 12 alone in the open, 7 hemmed in, shared in a row |
 | Apartment | 2×1 | 2×1, spills, fuses | 7 homes, more with room |
-| Workshop | 1×1 | 1×1, spills, fuses (not yet) | 6 staff |
-| Office, factory | 2×1 | 2×1, spills, fuses (not yet) | 16 and 24 staff |
+| Workshop | 1×1 | 1×1, spills, fuses | 4 staff |
+| Office, factory | 2×1 | 2×1, spills, fuses | 12 staff |
 | Supermarket | 2×2 | 2×2 beside it, shared (§3.8) | about 14, shared |
 | Warehouse | 2×1 | 2×1, bays later | lorries |
 
 A driveway is for a place where cars live, a ring is for everywhere
-else. Workplaces get lots too (decided 2026-09-07, not yet built): staff
-parking unseen hid exactly the pressure a workplace causes, and a full
-office lot at nine in the morning is something the mayor should see.
-Building it showed the morning rush into one entrance queueing onto the
-street, and the city-wide delay learned from that queue emptied the bar
-at night; the delay has to be a route's before staff park in spots.
+else, workplaces included: staff parking unseen hid exactly the
+pressure a workplace causes, and a full office lot at nine in the
+morning is something the mayor should see. Staff numbers are sized to
+the lot (2026-09-07): a one-wide lot parks seven hemmed in and twelve
+in the open, a two-wide one seven to seventeen, and staff take a third
+at most, so the rows say two at a shop, three at a restaurant, four at
+a workshop, twelve at an office or factory, six at a supermarket or
+warehouse.
 
 ### 3.4 Drawn as one unit
 

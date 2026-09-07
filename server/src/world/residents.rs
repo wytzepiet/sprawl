@@ -278,13 +278,13 @@ mod tests {
     fn everyone_takes_the_nearest_job_with_room() {
         let mut world = town();
         build(&mut world, 0, BuildingKind::Apartment); // 7 residents
-        let near = build(&mut world, 4, BuildingKind::Shop); // 4 jobs
-        let far = build(&mut world, 30, BuildingKind::Office); // 16 jobs
+        let near = build(&mut world, 4, BuildingKind::Shop); // 2 jobs
+        let far = build(&mut world, 30, BuildingKind::Office); // 12 jobs
 
         world.settle();
         let jobs = residents(&world);
-        assert_eq!(jobs.iter().filter(|r| r.work == Some(near)).count(), 4);
-        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 3);
+        assert_eq!(jobs.iter().filter(|r| r.work == Some(near)).count(), 2);
+        assert_eq!(jobs.iter().filter(|r| r.work == Some(far)).count(), 5);
     }
 
     #[test]
