@@ -186,7 +186,12 @@ fn draw_site(
         let i = (0..standing.len()).collect::<Vec<_>>().choose_weighted(rng, |&i| liked[i]).ok().copied()?;
         (standing[i].1, 3..10)
     };
-    let mut best: Option<(f64, GridCoord)> = None;
+    // Sites drawn around the anchor, and the sites right beside a standing
+    // plot of the same depth on its street, which come with a bonus worth
+    // more than any neighbourhood: streets keep one depth, and a shop
+    // lands beside the last shop, sharing its lot, before it opens a
+    // frontage of its own.
+    let mut sites: Vec<(GridCoord, f64)> = Vec::new();
     for _ in 0..8 {
         let angle = rng.random::<f64>() * std::f64::consts::TAU;
         let r = rng.random_range(reach.clone()) as f64;
@@ -198,18 +203,81 @@ fn draw_site(
         if seed_new && standing.iter().any(|&(_, p, _)| dist(p, at) < 15) {
             continue;
         }
-        let Some(pos) = snap(world, at, kind, now) else { continue };
-        let company: f64 = standing
-            .iter()
-            .map(|&(_, p, k)| (affinity(kind, k), dist(p, pos)))
-            .filter(|&(_, d)| d <= 10)
-            .map(|(a, d)| a / (1.0 + d as f64))
-            .sum();
-        if best.is_none_or(|(s, _)| company > s) {
-            best = Some((company, pos));
+        if let Some(pos) = snap(world, at, kind, now) {
+            sites.push((pos, 0.0));
         }
     }
-    best.map(|(_, pos)| pos)
+    if !seed_new {
+        sites.extend(beside(world, kind, standing, now).into_iter().map(|p| (p, 0.5)));
+    }
+    sites
+        .into_iter()
+        .map(|(pos, bonus)| {
+            let company: f64 = standing
+                .iter()
+                .map(|&(_, p, k)| (affinity(kind, k), dist(p, pos)))
+                .filter(|&(_, d)| d <= 10)
+                .map(|(a, d)| a / (1.0 + d as f64))
+                .sum();
+            (company + bonus, pos)
+        })
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, pos)| pos)
+}
+
+/// The sites at either end of every standing plot along its street, where
+/// the kind's plot, facing the same way, is as deep as its neighbour's.
+fn beside(world: &World, kind: BuildingKind, standing: &[(EntityId, GridCoord, BuildingKind)], now: GameTime) -> Vec<GridCoord> {
+    let mut out = Vec::new();
+    for &(id, pos, _) in standing {
+        let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { continue };
+        let facing = b.facing;
+        let mine = crate::blueprint::plot(kind, facing).size;
+        let along_x = facing % 2 == 0;
+        let (depth, theirs, extent) = if along_x { (mine.1, b.size.1, (b.size.0, mine.0)) } else { (mine.0, b.size.0, (b.size.1, mine.1)) };
+        if depth != theirs {
+            continue;
+        }
+        for cand in [-(extent.1 as i32), extent.0 as i32] {
+            let at = if along_x { GridCoord { x: pos.x + cand, y: pos.y } } else { GridCoord { x: pos.x, y: pos.y + cand } };
+            if world.site_facing(at, kind, facing).is_some_and(|(street, _)| fits(world, at, kind, facing, street, now)) {
+                out.push(at);
+            }
+        }
+    }
+    out
+}
+
+/// A plot that fits is one on revealed land, fronting a settled street
+/// joined to the world, and as deep as the plots it lands between: a
+/// street side keeps one depth, so no house is wedged between two lots
+/// with dead land behind it.
+fn fits(world: &World, pos: GridCoord, kind: BuildingKind, facing: u8, street: EntityId, now: GameTime) -> bool {
+    let size = crate::blueprint::plot(kind, facing).size;
+    let along_x = facing % 2 == 0;
+    let depth = if along_x { size.1 } else { size.0 };
+    let ends = if along_x {
+        [GridCoord { x: pos.x - 1, y: pos.y }, GridCoord { x: pos.x + size.0 as i32, y: pos.y }]
+    } else {
+        [GridCoord { x: pos.x, y: pos.y - 1 }, GridCoord { x: pos.x, y: pos.y + size.1 as i32 }]
+    };
+    let same_depth = ends.iter().all(|&t| match depth_at(world, t) {
+        Some((f, d)) if f == facing => d == depth,
+        _ => true,
+    });
+    same_depth
+        && World::footprint(pos, size).all(|t| world.revealed.contains(&crate::world::chunk_of(t)))
+        && world.network.joined(street)
+        && world.is_settled(street, now)
+}
+
+/// The facing and depth of the plot standing on a tile.
+fn depth_at(world: &World, tile: GridCoord) -> Option<(u8, u8)> {
+    let id = *world.occupied.get(&(tile.x, tile.y))?;
+    match world.objects.get(id).map(|e| &e.object) {
+        Some(GameObject::Building(b)) => Some((b.facing, if b.facing % 2 == 0 { b.size.1 } else { b.size.0 })),
+        _ => None,
+    }
 }
 
 /// How a kind feels about standing near another, from -1 to 1. Homes flock;
@@ -234,15 +302,9 @@ fn affinity(kind: BuildingKind, near: BuildingKind) -> f64 {
 /// open, revealed, and its lot fronting a settled street that is joined
 /// to the world.
 fn snap(world: &World, at: GridCoord, kind: BuildingKind, now: GameTime) -> Option<GridCoord> {
-    let fits = |pos: GridCoord| {
-        world.site_for(pos, kind).is_some_and(|(facing, street, _)| {
-            let size = crate::blueprint::plot(kind, facing).size;
-            World::footprint(pos, size).all(|t| world.revealed.contains(&crate::world::chunk_of(t)))
-                && world.network.joined(street)
-                && world.is_settled(street, now)
-        })
-    };
-    (0..=6).flat_map(|ring| ring_around(at, ring)).find(|&p| fits(p))
+    (0..=6)
+        .flat_map(|ring| ring_around(at, ring))
+        .find(|&p| world.site_for(p, kind).is_some_and(|(facing, street, _)| fits(world, p, kind, facing, street, now)))
 }
 
 fn ring_around(c: GridCoord, r: i32) -> impl Iterator<Item = GridCoord> {
@@ -497,6 +559,33 @@ mod tests {
         let took = started.elapsed();
         eprintln!("2000 ticks of a full meter with no room: {took:?}");
         assert!(took < std::time::Duration::from_millis(200), "2000 ticks took {took:?}");
+    }
+
+    /// A street side keeps one depth: no plot stands beside a plot facing
+    /// the same way that is deeper or shallower than itself.
+    #[test]
+    fn a_street_side_keeps_one_depth() {
+        let (world, _) = grow(60);
+        let mut pairs = 0;
+        for &(id, pos, _) in &buildings(&world) {
+            let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { continue };
+            let (facing, depth) = depth_at(&world, pos).unwrap();
+            let along_x = facing % 2 == 0;
+            let ends = if along_x {
+                [GridCoord { x: pos.x - 1, y: pos.y }, GridCoord { x: pos.x + b.size.0 as i32, y: pos.y }]
+            } else {
+                [GridCoord { x: pos.x, y: pos.y - 1 }, GridCoord { x: pos.x, y: pos.y + b.size.1 as i32 }]
+            };
+            for t in ends {
+                if let Some((f, d)) = depth_at(&world, t)
+                    && f == facing
+                {
+                    pairs += 1;
+                    assert_eq!(d, depth, "building {id} at {pos:?} stands beside a plot of another depth at {t:?}");
+                }
+            }
+        }
+        assert!(pairs > 4, "a town of sixty has neighbours along its streets: {pairs}");
     }
 
     /// Not an assertion: a picture, for whoever runs this with --nocapture.

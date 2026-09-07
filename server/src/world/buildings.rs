@@ -100,21 +100,24 @@ impl World {
         if !(self.is_buildable(pos) || self.is_driveway_stub(pos)) {
             return None;
         }
-        (0..4u8).find_map(|facing| {
-            let p = crate::blueprint::plot(kind, facing);
-            let open = Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t));
-            if !open {
-                return None;
+        (0..4u8).find_map(|facing| self.site_facing(pos, kind, facing).map(|(street, door)| (facing, street, door)))
+    }
+
+    /// The street and door a kind's plot would have at `pos` facing this
+    /// way, if it fits there.
+    pub fn site_facing(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<(EntityId, GridCoord)> {
+        let p = crate::blueprint::plot(kind, facing);
+        let open = Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t));
+        if !open {
+            return None;
+        }
+        match p.lot {
+            Some(((lx, ly), (lw, ld))) => {
+                let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
+                self.road_for_lot(lot, (lw, ld), facing)
             }
-            let (street, door) = match p.lot {
-                Some(((lx, ly), (lw, ld))) => {
-                    let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
-                    self.road_for_lot(lot, (lw, ld), facing)?
-                }
-                None => self.road_for_plot(pos, p.size)?,
-            };
-            Some((facing, street, door))
-        })
+            None => self.road_for_plot(pos, p.size),
+        }
     }
 
     /// The street a lot fronts: beyond its outer edge, in the direction it
