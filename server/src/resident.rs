@@ -319,6 +319,12 @@ fn evaluate(
         if let Some(t) = world.spot_window(building, entry - h, leave.saturating_add(crate::world::lots::SLACK))
             && t > entry - h
         {
+            // A lot held by cars that have not said when they leave frees
+            // never, as far as anyone can plan: no visit, not a visit at
+            // the end of time.
+            if t == GameTime::MAX {
+                return Verdict::Nothing;
+            }
             planned = match plan(t) {
                 Some(p) => p,
                 None => return Verdict::Nothing,
