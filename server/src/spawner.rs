@@ -133,6 +133,9 @@ pub fn inspect(world: &World, now: GameTime) -> Value {
         "earned_h": world.xp.at(now) / SERVED_HOUR,
         "delivered_2d_h": world.delivered.values().map(|d| d.today + d.yesterday).sum::<f64>() / SERVED_HOUR,
         "goal": world.goal.map(|g| json!({ "kind": g.kind, "cost_h": g.cost / SERVED_HOUR })),
+        "meter_h": (world.xp.at(now) - world.offered_at) / SERVED_HOUR,
+        // Where the goal would land if it arrived this second.
+        "site": world.goal.and_then(|g| draw_site(world, &mut seeded(world, now), g.kind, &standing, now)),
         "pressure": crate::resident::pressure(world, now).into_iter()
             .map(|(n, p)| (format!("{n:?}"), p)).collect::<std::collections::BTreeMap<_, _>>(),
         "clusters": clusters,
