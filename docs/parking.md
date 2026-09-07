@@ -10,7 +10,10 @@ built (2026-09-07), lots fuse along a frontage (§3.2), and a visitor
 tap's slots are its lot's spots (§3.3), a claim on a junction lasts
 until the tail has cleared it (§4.2), spots carry windows and a full lot
 says when it frees (§5), and the `Lot` row and `/debug/lot/{id}` exist
-(§7). Reverse is not needed until the warehouse gets its bays. Follows
+(§7); cars park near their building's door, loosely (§5.2), and pins
+sit over buildings (2026-09-07). §3.7 and §3.8, how buildings land and
+how lots grow past their building, were decided 2026-09-07 and are the
+next build. Reverse is not needed until the warehouse gets its bays. Follows
 `services.md` (streets, driveways, call-outs) and `residents.md` (how a
 trip is chosen). `game.md` §People says parked cars sit in the building's
 spots; this is how.
@@ -90,28 +93,33 @@ finds no spot drives round and out. The driveway joins the ring wherever
 the street is, on any side, and a ring takes any number of entrances: a
 road drawn into a lot tile is one more, not the old one moved. The loop
 turns the way that puts the most front lane ahead of its entrances, a
-car is handed the first free spot ahead of the entrance it comes in by,
-so it is not sent round for one just behind it, and it leaves by
+car takes a free spot near its building's door (§5.2), and it leaves by
 whichever entrance is nearest ahead.
 
 The island of a one-tile ring is 0.4 wide: two cars across it. Wider is
 better: a ring w tiles wide holds `floor((w - 0.6) / 0.2)` cars, so 2, 7,
-12, 17, 22 for one to five tiles. Deeper is more rings: a lot d tiles
-deep is d rings stacked, one per tile row, their side lanes in line so a
-car carries on from one ring into the next; at a seam two lanes run side
-by side, opposite ways. One generator, one shape.
+12, 17, 22 for one to five tiles. Rings stay one deep: a bigger building
+gets a wider ring, never a deeper one, so there is one drawing and one
+flow for every lot. A building two tiles deep gets its lot beside it
+instead of in front (§3.8), and that lot is a ring with a lane through
+the middle. Two shapes, both rings.
 
 ### 3.2 Lots fuse
 
 A lot is a run of lot tiles along one frontage, not a building's own.
 Every kind that has a lot arrives with its lot tile on the street side,
 and when two lot tiles touch they are one lot: one slab, one ring, an
-entrance per building, spots shared. Two shops alone park two each;
-together they park seven, four in a row seventeen. Nobody places the
-strip mall; it grows out of shops arriving side by side, and a long
-straight street grows better ones than a tangle. That is the mayor's
-lever, and it is the thing the mayor already does. Extending a lot by
-hand is a later purchase, not a requirement.
+entrance per building, spots shared. Two shops together park seven,
+four in a row seventeen. Nobody places the strip mall; it grows out of
+shops arriving side by side (§3.7), and a long straight street grows
+better ones than a tangle. That is the mayor's lever, and it is the
+thing the mayor already does. Extending a lot by hand is a later
+purchase, not a requirement.
+
+A ring is never one tile wide. A one-tile ring holds two cars, which is
+a driveway drawn expensively, and it is not allowed to exist: a small
+building lands only where its lot reaches two tiles, by joining a
+neighbour's lot or by spilling (§3.8).
 
 ### 3.3 The lot decides the slots
 
@@ -119,8 +127,9 @@ Every visitor came by car, so a building serves at once exactly as many
 as can park. Slots are a fact about the asphalt, not a number in a row: a
 visitor tap's slots are the lot's spots (shared taps share them; the
 Fuel tap's are its pump spots, which are pull-throughs with a pump). A
-busier shop is a shop with a wider lot or a neighbour. A lot is never
-bigger than its building.
+busier shop is a shop with a wider lot or a neighbour. A lot is bigger
+than its building while the land beside it is free (§3.8), and shrinks
+to the building's width as neighbours fill in.
 
 Staff park unseen: their car drives the ring like anyone's, along the
 back lane, and in at a door node under the building's front, where it
@@ -134,12 +143,16 @@ honest way.
 | Kind | Building | Lot | Visitors at once |
 |---|---|---|---|
 | House | 1×1 | driveway | its own 2 |
-| Shop, bar, gas station | 1×1 | 1×1, fuses | 2 alone, 7 as a pair, 12 as three |
-| Restaurant | 1×1 | 1×1, fuses | 2 alone |
-| Apartment | 2×1 | 2×1 | 7 homes |
+| Shop, bar, restaurant, gas station | 1×1 | 1×1, spills to 3, fuses | 12 alone in the open, 7 hemmed in, shared in a row |
+| Apartment | 2×1 | 2×1, spills, fuses | 7 homes, more with room |
 | Workshop, office, factory | as now | none | staff only |
-| Supermarket | 2×2 | 2×2 lattice | 21 |
+| Supermarket | 2×2 | 2×2 beside it, shared (§3.8) | about 14, shared |
 | Warehouse | 2×1 | 2×1, bays later | lorries |
+
+A driveway is for a place where cars live, a ring is for a place cars
+visit, and staff never park where you can see them. Workplaces get no
+lot on purpose: staff parking is dull to watch and would double every
+lot in town, and work already makes its traffic as commuting.
 
 ### 3.4 Drawn as one unit
 
@@ -175,6 +188,54 @@ include the ring, so a spot at the far end is honestly a little later.
 A car with no spot drives the ring and leaves by the driveway.
 
 Choosing *which* spot is §5. Routing takes a spot as given.
+
+### 3.7 Where buildings land
+
+The spawner prefers a site beside a building of the same depth on the
+same street: houses beside houses, lots beside lots. That is what makes
+strips. The first shop on a street claims its frontage, the next shop
+lands next to it and the rings fuse, and a bar and a block of flats
+after that, all on one long lot, without anyone laying out plots or
+fixing how long a strip is. It also ends the dead land behind a house
+wedged between two-deep plots, because a street side keeps one depth,
+which is how streets look. A fresh frontage is opened only when no
+existing one has room. A gap of one tile between two lots is spill for
+both, and they fuse across it.
+
+The same rule applies to a building placed by hand: a shop dropped
+beside a lot with room joins it.
+
+### 3.8 Lots grow past their building
+
+A ring spills one free tile past each end. A building brings a lot as
+wide as itself, and if the frontage tile beyond either end is empty
+roaded land, the ring extends over it. A shop by itself on the edge of
+town has a three-tile lot and twelve spots; the same shop between two
+neighbours has its own tile and a share of theirs. When a neighbour
+lands on a spill tile the spill is gone and the two rings fuse; when a
+neighbour goes, the lot grows back. Nothing is reserved and nothing
+waits, and every footprint uses the same rule.
+
+Spill tiles are open only to buildings that would share the ring. A
+house or a workplace cannot land there, because it would cut the lot to
+one tile, and a ring is never one tile wide (§3.2). That is the one rule
+that keeps small commerce from being boxed down to two spots, and it is
+the strip idea without a template: the first shop claims a frontage,
+the frontage stays open to the next shop, and houses go elsewhere.
+
+Buildings two tiles deep, the supermarket first, get their lot beside
+them rather than in front, so the block stays two deep. A two-by-two lot
+is a ring with a lane through the middle and spots on both sides, about
+fourteen, entrance from the street. The next two-deep building can land
+on the far side of that lot and share it. The row says where a kind's
+lot goes, in front or beside, and lot tiles are open to any building
+whose row would put its lot on the same tiles.
+
+Once a lot's tiles depend on neighbours and free land rather than on the
+row, the lot is its own thing: a run with its own frontage, the
+building just the building. Until then the plot is building plus lot
+and the client draws the building on the back of it; the pin sits over
+the building either way.
 
 ## 4. Driving in the lot
 
@@ -259,8 +320,12 @@ window is released when the car leaves the spot, and trimmed to now.
 
 Given a lot and a visit `[eta, leave]`, in order:
 
-1. A spot with no window overlapping the visit. Nearest the exit first,
-   which is a stable order from the table.
+1. A spot with no window overlapping the visit, near the building's
+   door but not strictly: each free spot's distance to the door is
+   stretched by up to a few spots' worth, drawn per visit. The cars of
+   one building bunch in front of it, so a shared lot still says who is
+   visiting whom, without filling like a queue. Spot choice is the
+   server's; the client draws what it is told.
 2. Otherwise, the earliest `t > eta` at which some spot is clear for
    `[t, t + (leave - eta)]`, over all spots. That is a merge over sorted
    windows, tens of entries, done once per option scored.
@@ -328,9 +393,10 @@ not care where the spot table came from.
 A row that is nothing but a lot, to build and tune the mechanics on
 before any real building depends on them.
 
-- `Lot`: 3×2, by hand, a Leisure tap open all day so it draws visits,
-  no stock, no calls. Two rings stacked, 24 spots, entrances on two
-  sides; later, two reverse-gear bays for trucks.
+- `Lot`: 3×1, by hand, one ring of 12 spots. It sells fuel and the best
+  time off in town at any hour, because time off at a bar's rate never
+  beats the sofa in a five-house town and fuel is owed by every car;
+  no stock, no calls. Later, two reverse-gear bays for trucks.
 - Traffic from the stress harness: a painted town around it of a hundred
   commuters, the way `town` is run today.
 - Read-outs on `/debug/lot/{id}`: windows per spot, occupancy by hour,
@@ -361,5 +427,14 @@ is deleted or becomes the lot placeable.
    and reassignment. *Playable:* a busy shop whose visitors wait at home
    for a spot instead of circling, and the numbers to show it.
 4. **The test lot** and its harness run, and the trailer drawing.
+5. **Where buildings land** (§3.7): same-depth clustering in the
+   spawner's site search. *Playable:* streets with a character, and
+   strips that appear on their own.
+6. **Lots grow past their building** (§3.8): the run owns its frontage,
+   spill one tile past each end, spill tiles open only to sharers, the
+   minimum of two. The building becomes just the building. *Playable:*
+   a lone shop with twelve spots, boxed in to seven, never two.
+7. **Side lots** for two-deep buildings, and the ring with a lane
+   through the middle.
 
-Roughly: 3, 2, 2 and 2 days.
+Roughly: 3, 2, 2, 2, 1, 2 and 2 days. Steps 1, 3 and 4 are built.
