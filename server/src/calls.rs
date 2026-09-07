@@ -92,7 +92,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
         }
         let Some(here) = world.objects.get(at).and_then(|e| e.position) else { continue };
         let answered = match nearest_free_vehicle(world, kind, at) {
-            Some((car, from)) => crate::car::spawn::start_trip(world, events, car, from, at, now).then_some(car),
+            Some((car, from)) => crate::car::spawn::start_trip(world, events, car, from, at, now, GameTime::MAX).then_some(car),
             None => {
                 // From beyond the edge: a truck appears on the road out past
                 // the frontier and drives in. It belongs to nobody here; it
@@ -100,7 +100,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
                 let car = world.insert_at(GameObject::Car(Car { owner: at, trip: None, role: CarRole::Truck, spot: None }), None);
                 let started = world
                     .entry_node_near(here)
-                    .is_some_and(|entry| crate::car::spawn::start_trip(world, events, car, entry, at, now));
+                    .is_some_and(|entry| crate::car::spawn::start_trip(world, events, car, entry, at, now, GameTime::MAX));
                 if !started {
                     world.despawn_car(car);
                 }
@@ -145,7 +145,7 @@ fn nearest_free_vehicle(world: &mut World, kind: CallKind, at: EntityId) -> Opti
         if fleet.len() < blueprint(kind).vehicles as usize {
             let tile = world.objects.get(facility).and_then(|e| e.position);
             let car = world.insert_at(GameObject::Car(Car { owner: facility, trip: None, role: CarRole::Truck, spot: None }), tile);
-            world.park_in_lot(facility, car);
+            world.park_in_lot(facility, car, 0);
             return Some((car, door));
         }
     }
@@ -188,7 +188,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
     if facility {
         let back = world
             .road_node_for_building(call.at)
-            .is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now));
+            .is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX));
         if !back {
             events.wake(SERVICE_MS, car);
         }

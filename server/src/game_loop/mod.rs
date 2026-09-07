@@ -190,6 +190,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Residents => crate::resident::inspect_all(&world, now),
                         Ask::Demand => crate::resident::demand(&world, now),
                         Ask::Spawner => crate::spawner::inspect(&world, now),
+                        Ask::Lot(id) => world.inspect_lot(id, now),
                     };
                     let _ = reply.send(serde_json::to_string_pretty(&v).unwrap_or_default());
                 }
@@ -496,7 +497,7 @@ fn try_reroute(
         _ => return false,
     };
     // The spot it was heading for is still its own.
-    let Some(way_in) = world.way_in(dest, car_id) else { return false };
+    let Some(way_in) = world.way_in(dest, car_id, now, GameTime::MAX) else { return false };
     let to_lot = way_in.len() - 1;
     let new_route: Vec<EntityId> = path.into_iter().chain(way_in[1..].iter().copied()).collect();
 

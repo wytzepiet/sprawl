@@ -7,9 +7,10 @@ carries its pose on the wire, and the client draws nothing it is not told.
 The ring lot (§3.1), the plot laid out by its facing, the slab and the
 ring drawn, staff at the door, and a full lot refusing the trip, are
 built (2026-09-07), lots fuse along a frontage (§3.2), and a visitor
-tap's slots are its lot's spots (§3.3), and a claim on a junction lasts
-until the tail has cleared it (§4.2). Reverse is not needed until the
-warehouse gets its bays; windows and the test lot are not built. Follows
+tap's slots are its lot's spots (§3.3), a claim on a junction lasts
+until the tail has cleared it (§4.2), spots carry windows and a full lot
+says when it frees (§5), and the `Lot` row and `/debug/lot/{id}` exist
+(§7). Reverse is not needed until the warehouse gets its bays. Follows
 `services.md` (streets, driveways, call-outs) and `residents.md` (how a
 trip is chosen). `game.md` §People says parked cars sit in the building's
 spots; this is how.
@@ -287,11 +288,9 @@ keep it honest are few:
   and each decision that keeps them there restates `to`.
 - **A taken spot on arrival is reassigned.** A car whose booked spot is
   occupied when it pulls in takes any spot free at that moment. If there
-  is none, it waits on the aisle behind the last car, which is the
-  edge's queue doing what it does, and is served when a spot frees. That
-  is the lot's failure mode, local to the lot; only when the aisle fills
-  does it reach the street. It should be rare, since it needs a plan to
-  slip by more than the slack, and it should be visible when it is not.
+  is none, it is squeezed to the door, unseen, and the lot counts it:
+  `squeezed` on `/debug/lot/{id}`. It should be rare, since it needs a
+  plan to slip by more than the slack, and the count says when it is not.
 
 No window survives a save. Occupancy is derived from where cars stand,
 and every resident re-plans on load.

@@ -73,11 +73,14 @@ pub enum BuildingKind {
     /// Where stock comes from: trucks that answer the shops' calls. Placed
     /// by the mayor.
     Warehouse,
+    /// A test row: a pavilion that is all lot, open all day, to watch
+    /// parking on. Placed by the mayor; not a kind the city offers.
+    Lot,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 11] = [
+    pub const ALL: [BuildingKind; 12] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -89,6 +92,7 @@ impl BuildingKind {
         BuildingKind::GasStation,
         BuildingKind::Supermarket,
         BuildingKind::Warehouse,
+        BuildingKind::Lot,
     ];
 }
 

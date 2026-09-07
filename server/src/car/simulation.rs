@@ -60,7 +60,7 @@ pub fn park_car(
             {
                 c.trip = None;
             }
-            world.park_in_lot(at_building, car_id);
+            world.park_in_lot(at_building, car_id, events.now());
         }
         None => world.despawn_car(car_id),
     }

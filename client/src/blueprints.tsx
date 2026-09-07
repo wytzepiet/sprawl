@@ -206,6 +206,18 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     size: [2, 1],
     lot: [2, 1],
   },
+  Lot: {
+    label: "Lot",
+    color: "#4A5568",
+    // A P, for parking.
+    glyph: "M6 2h8a6 6 0 0 1 0 12H10v8H6zm4 4v4h4a2 2 0 0 0 0-4z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.25],
+    byHand: true,
+    size: [3, 1],
+    lot: [3, 1],
+  },
 };
 
 export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];

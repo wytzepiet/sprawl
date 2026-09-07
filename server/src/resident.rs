@@ -47,7 +47,7 @@ pub fn handle_resident_wake(
         let entry = position_of(world, r.home)
             .and_then(|(x, y)| world.entry_node_near(crate::protocol::GridCoord { x, y }));
         let started = match entry {
-            Some(node) => start_trip(world, events, r.car, node, r.home, now),
+            Some(node) => start_trip(world, events, r.car, node, r.home, now, GameTime::MAX),
             None => false,
         };
         if !started {
@@ -114,7 +114,7 @@ pub fn handle_resident_wake(
         });
     }
 
-    let Some((i, _, departure, _, there)) = best else {
+    let Some((i, _, departure, leave, there)) = best else {
         // Nothing to do anywhere, and nothing to wait for. Look again in a
         // while: a world with nothing on offer is the unmet-demand case, and
         // it is not this resident's to solve.
@@ -123,10 +123,14 @@ pub fn handle_resident_wake(
         return;
     };
     set_selected(world, id, Some(r.buckets[i].need), now);
-    // Not yet time to set out, or already there: stay put.
+    // Not yet time to set out, or already there: stay put. Staying restates
+    // how long the car's spot is held.
+    if at == there {
+        world.restate(r.car, leave.saturating_add(crate::world::lots::SLACK));
+    }
     if departure > now || at == there {
         events.wake(alarm.max(now) - now, id);
-    } else if !drive(world, events, r.car, at, there, now) {
+    } else if !drive(world, events, r.car, at, there, now, leave) {
         events.wake(RETRY_MS, id);
     }
 }
@@ -283,31 +287,50 @@ fn evaluate(
     let tau = if at == building { 0 } else { travel_ms(world, at, building) };
     let h = tap.overhead;
     let rate = tap.serving(slots_at(world, building, tap), company);
-    let Some(opening) = tap.curve.next_nonzero(now + tau + h) else {
-        return Verdict::Nothing;
+    // The visit as the tap allows it; then, going there for it, as the lot
+    // allows it: if no spot is clear for the whole visit from when the car
+    // would arrive, the earliest gap is when to arrive instead, and the
+    // visit is planned again from there. Waiting for a spot is waiting,
+    // the same as waiting for the tap to open.
+    let plan = |arrive: GameTime| -> Option<(GameTime, GameTime, f64, GameTime)> {
+        let opening = tap.curve.next_nonzero(arrive + h)?;
+        let departure = (opening - h - tau).max(now);
+        let entry = departure + tau + h;
+        let dry = tap.curve.next_zero(entry);
+        let available = tap.curve.integral(entry, dry);
+        if available <= 0.0 {
+            return None;
+        }
+        let drained = if rate.is_finite() { bucket.level.min(rate * available) } else { bucket.level };
+        // Less than a millisecond owed is nothing: the clock cannot tell.
+        if drained < 1.0 {
+            return None;
+        }
+        let leave = if rate.is_finite() {
+            tap.curve.advance(entry, drained / rate).unwrap_or(dry as f64)
+        } else {
+            entry as f64
+        };
+        Some((departure, (leave.ceil() as GameTime).min(dry), drained, entry))
     };
-    let departure = (opening - h - tau).max(now);
-    let entry = departure + tau + h;
-    let dry = tap.curve.next_zero(entry);
-    let available = tap.curve.integral(entry, dry);
-    if available <= 0.0 {
-        return Verdict::Nothing;
+    let Some(mut planned) = plan(now + tau) else { return Verdict::Nothing };
+    if at != building && tap.need != Need::Work {
+        let (_, leave, _, entry) = planned;
+        if let Some(t) = world.spot_window(building, entry - h, leave.saturating_add(crate::world::lots::SLACK))
+            && t > entry - h
+        {
+            planned = match plan(t) {
+                Some(p) => p,
+                None => return Verdict::Nothing,
+            };
+        }
     }
-    let drained = if rate.is_finite() { bucket.level.min(rate * available) } else { bucket.level };
-    // Less than a millisecond owed is nothing: the clock cannot tell.
-    if drained < 1.0 {
-        return Verdict::Nothing;
-    }
-    let leave = if rate.is_finite() {
-        tap.curve.advance(entry, drained / rate).unwrap_or(dry as f64)
-    } else {
-        entry as f64
-    };
-    let score = bucket.level / bucket.need.cap() * drained / (leave - now as f64);
+    let (departure, leave, drained, entry) = planned;
+    let score = bucket.level / bucket.need.cap() * drained / (leave - now) as f64;
     Verdict::Go {
         score,
         departure,
-        leave: (leave.ceil() as GameTime).min(dry),
+        leave,
         building,
         fixed: (entry - now) as f64,
         rate,
@@ -436,9 +459,10 @@ fn drive(
     from_building: EntityId,
     dest_building: EntityId,
     now: GameTime,
+    until: GameTime,
 ) -> bool {
     match world.road_node_for_building(from_building) {
-        Some(node) => start_trip(world, events, car, node, dest_building, now),
+        Some(node) => start_trip(world, events, car, node, dest_building, now, until),
         None => false,
     }
 }

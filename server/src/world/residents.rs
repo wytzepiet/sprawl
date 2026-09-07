@@ -159,7 +159,7 @@ impl World {
                 self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(car);
             }
             if let Some(at) = at {
-                self.park_in_lot(at, car);
+                self.park_in_lot(at, car, 0);
             }
             if let Some(entry) = self.objects.get_mut(id)
                 && let GameObject::Resident(ref mut r) = entry.object

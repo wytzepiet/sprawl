@@ -73,6 +73,11 @@ pub async fn inspect_spawner(State(state): State<AppState>) -> String {
     ask(&state, Ask::Spawner).await
 }
 
+/// A building's lot: spots, windows, and what it has seen.
+pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
+    ask(&state, Ask::Lot(id)).await
+}
+
 async fn ask(state: &AppState, query: Ask) -> String {
     let (reply, answer) = oneshot::channel();
     if state.command_tx.send(Command::Inspect { query, reply }).is_err() {

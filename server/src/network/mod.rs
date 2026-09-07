@@ -38,6 +38,8 @@ pub enum Ask {
     Demand,
     /// What the city is offering, and the shape of what stands.
     Spawner,
+    /// A building's lot: its spots, their windows, and what it has seen.
+    Lot(EntityId),
 }
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);

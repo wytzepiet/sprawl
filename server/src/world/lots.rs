@@ -18,7 +18,9 @@
 use std::collections::HashMap;
 
 use crate::blueprint::{plot, FACINGS};
+use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, GridCoord, Pose};
+use serde_json::{json, Value};
 use crate::world::World;
 use crate::world::segments::EdgeSegment;
 
@@ -50,9 +52,48 @@ pub enum RunKey {
 pub struct Spot {
     pub node: EntityId,
     pub pose: Pose,
-    /// Who holds it: standing in it, or on the way.
-    pub car: Option<EntityId>,
+    /// Who holds it and when: a car on its way books from the earliest it
+    /// could arrive to when it plans to leave, and a car standing in it
+    /// holds it until it goes. Sorted by `from`.
+    pub windows: Vec<Window>,
 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct Window {
+    pub car: EntityId,
+    pub from: GameTime,
+    pub to: GameTime,
+}
+
+impl Spot {
+    /// The earliest time at or after `from` this spot is clear for `len`.
+    fn clear_from(&self, from: GameTime, len: GameTime) -> GameTime {
+        let mut t = from;
+        for w in &self.windows {
+            if w.from < t.saturating_add(len) && w.to > t {
+                t = w.to;
+            }
+        }
+        t
+    }
+
+    fn holder(&self, car: EntityId) -> Option<&Window> {
+        self.windows.iter().find(|w| w.car == car)
+    }
+}
+
+/// What a lot has seen, for the inspect panel and the debug endpoint.
+#[derive(Default, Clone, Copy, Debug)]
+pub struct Stats {
+    /// Trips that could not start: no spot clear for the visit.
+    pub refused: u32,
+    /// Arrivals that found their spot still taken and were squeezed to the
+    /// door, unseen.
+    pub squeezed: u32,
+}
+
+/// How much longer a spot is held than the visit is planned to take.
+pub const SLACK: GameTime = 10 * 60 * 1000;
 
 /// What a car holds at a lot: a spot, or a building's door.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -92,6 +133,7 @@ pub struct Lot {
     edges: Vec<(EntityId, EntityId)>,
     /// Who is parked at whose door.
     doorway: Vec<(EntityId, EntityId)>,
+    pub stats: Stats,
 }
 
 /// A building's place on a run, as read off the map.
@@ -119,13 +161,18 @@ impl World {
             // Whatever lots the members had, and this key's, go; everyone
             // who held something in them holds it again in the new one.
             let mut held = Vec::new();
+            let mut stats = Stats::default();
             let mut keys: Vec<RunKey> = seats.iter().filter_map(|s| self.lot_of.get(&s.building).copied()).collect();
             keys.push(key);
             keys.dedup();
             for k in keys {
+                if let Some(l) = self.lots.get(&k) {
+                    stats = l.stats;
+                }
                 held.extend(self.drop_run(k));
             }
-            let lot = self.build_lot(key, &seats)?;
+            let mut lot = self.build_lot(key, &seats)?;
+            lot.stats = stats;
             self.lots.insert(key, lot);
             for s in &seats {
                 self.lot_of.insert(s.building, key);
@@ -237,10 +284,10 @@ impl World {
                 let id = node(self, at);
                 edge(self, driveway, id);
                 edge(self, id, street);
-                spots.push(Spot { node: id, pose: Pose { at, heading }, car: None });
+                spots.push(Spot { node: id, pose: Pose { at, heading }, windows: Vec::new() });
             }
             let members = vec![Member { building: seat.building, gates: vec![(driveway, street, 0)], door: driveway, door_at: 0 }];
-            return Some(Lot { members, spots, way: Way::Driveway { driveway, street }, nodes, edges, doorway: Vec::new() });
+            return Some(Lot { members, spots, way: Way::Driveway { driveway, street }, nodes, edges, doorway: Vec::new(), stats: Stats::default() });
         };
 
         // The ring, in the run's own frame: u along the frontage from the
@@ -332,7 +379,7 @@ impl World {
             let id = node(self, at);
             edge(self, loop_[gates[i].0], id);
             edge(self, id, loop_[gates[i].1]);
-            spots.push(Spot { node: id, pose: Pose { at, heading }, car: None });
+            spots.push(Spot { node: id, pose: Pose { at, heading }, windows: Vec::new() });
         }
         let mut members = Vec::new();
         for (m, seat) in seats.iter().enumerate() {
@@ -349,7 +396,7 @@ impl World {
             edge(self, door, loop_[door_at]);
             members.push(Member { building: seat.building, gates: mgates, door, door_at });
         }
-        Some(Lot { members, spots, way: Way::Ring { loop_, gates }, nodes, edges, doorway: Vec::new() })
+        Some(Lot { members, spots, way: Way::Ring { loop_, gates }, nodes, edges, doorway: Vec::new(), stats: Stats::default() })
     }
 
     /// Take a building's lot out of the world, edges and all. Its
@@ -365,7 +412,7 @@ impl World {
                 keys.push(self.lot_of[&b]);
             }
         }
-        for (car, claim) in held {
+        for (car, claim, from, to) in held {
             let (was, parked) = match self.objects.get(car).map(|e| &e.object) {
                 Some(GameObject::Car(c)) => (c.spot, c.trip.is_none()),
                 _ => continue,
@@ -374,7 +421,7 @@ impl World {
                 Claim::Door(b) => keys.iter().find(|k| self.lots[k].members.iter().any(|m| m.building == b)).map(|&k| (k, Claim::Door(b))),
                 Claim::Spot(_) => keys
                     .iter()
-                    .filter_map(|&k| self.nearest_free(k, was).map(|c| (k, c)))
+                    .filter_map(|&k| self.nearest_free(k, was, from, to).map(|c| (k, c)))
                     .min_by(|(ka, ca), (kb, cb)| {
                         let d = |k: &RunKey, c: &Claim| self.pose_of(*k, *c).map_or(f64::MAX, |p| dist(p, was));
                         d(ka, ca).total_cmp(&d(kb, cb))
@@ -382,7 +429,7 @@ impl World {
             };
             match place {
                 Some((k, claim)) => {
-                    self.hold(k, car, claim);
+                    self.hold(k, car, claim, from, to);
                     if parked {
                         let pose = self.pose_of(k, claim);
                         self.set_spot(car, pose);
@@ -393,8 +440,8 @@ impl World {
         }
     }
 
-    /// Take a run down, and say who held what in it.
-    fn drop_run(&mut self, key: RunKey) -> Vec<(EntityId, Claim)> {
+    /// Take a run down, and say who held what in it, and when.
+    fn drop_run(&mut self, key: RunKey) -> Vec<(EntityId, Claim, GameTime, GameTime)> {
         let Some(lot) = self.lots.remove(&key) else { return Vec::new() };
         for m in &lot.members {
             self.lot_of.remove(&m.building);
@@ -407,14 +454,14 @@ impl World {
         }
         let mut held = Vec::new();
         for (i, spot) in lot.spots.iter().enumerate() {
-            if let Some(car) = spot.car {
-                self.claims.remove(&car);
-                held.push((car, Claim::Spot(i)));
+            for w in &spot.windows {
+                self.claims.remove(&w.car);
+                held.push((w.car, Claim::Spot(i), w.from, w.to));
             }
         }
         for &(car, building) in &lot.doorway {
             self.claims.remove(&car);
-            held.push((car, Claim::Door(building)));
+            held.push((car, Claim::Door(building), 0, GameTime::MAX));
         }
         held
     }
@@ -422,8 +469,8 @@ impl World {
     /// After a lot is rebuilt: everyone who held something holds it again,
     /// the nearest spot free to where they stood, and parked cars are drawn
     /// where they now stand.
-    fn reseat(&mut self, key: RunKey, held: Vec<(EntityId, Claim)>) {
-        for (car, claim) in held {
+    fn reseat(&mut self, key: RunKey, held: Vec<(EntityId, Claim, GameTime, GameTime)>) {
+        for (car, claim, from, to) in held {
             let (was, parked) = match self.objects.get(car).map(|e| &e.object) {
                 Some(GameObject::Car(c)) => (c.spot, c.trip.is_none()),
                 _ => continue,
@@ -431,13 +478,13 @@ impl World {
             let claim = match claim {
                 Claim::Door(b) if self.lots[&key].members.iter().any(|m| m.building == b) => Some(Claim::Door(b)),
                 Claim::Door(_) => None,
-                Claim::Spot(_) => self.nearest_free(key, was),
+                Claim::Spot(_) => self.nearest_free(key, was, from, to),
             };
             let Some(claim) = claim else {
                 self.set_spot(car, None);
                 continue;
             };
-            self.hold(key, car, claim);
+            self.hold(key, car, claim, from, to);
             if parked {
                 let pose = self.pose_of(key, claim);
                 self.set_spot(car, pose);
@@ -445,23 +492,56 @@ impl World {
         }
     }
 
-    fn nearest_free(&self, key: RunKey, to: Option<Pose>) -> Option<Claim> {
+    /// The spot nearest a pose that is clear over a window.
+    fn nearest_free(&self, key: RunKey, near: Option<Pose>, from: GameTime, to: GameTime) -> Option<Claim> {
         self.lots[&key]
             .spots
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.car.is_none())
-            .min_by(|(_, a), (_, b)| dist(a.pose, to).total_cmp(&dist(b.pose, to)))
+            .filter(|(_, s)| s.clear_from(from, to.saturating_sub(from)) == from)
+            .min_by(|(_, a), (_, b)| dist(a.pose, near).total_cmp(&dist(b.pose, near)))
             .map(|(i, _)| Claim::Spot(i))
     }
 
-    fn hold(&mut self, key: RunKey, car: EntityId, claim: Claim) {
+    fn hold(&mut self, key: RunKey, car: EntityId, claim: Claim, from: GameTime, to: GameTime) {
         let lot = self.lots.get_mut(&key).unwrap();
         match claim {
-            Claim::Spot(i) => lot.spots[i].car = Some(car),
+            Claim::Spot(i) => {
+                let ws = &mut lot.spots[i].windows;
+                let at = ws.partition_point(|w| w.from <= from);
+                ws.insert(at, Window { car, from, to });
+            }
             Claim::Door(b) => lot.doorway.push((car, b)),
         }
         self.claims.insert(car, key);
+    }
+
+    /// A visit running long, or cut short: the car's window ends when its
+    /// owner now plans to leave.
+    pub fn restate(&mut self, car: EntityId, to: GameTime) {
+        if let Some(&key) = self.claims.get(&car)
+            && let Some(lot) = self.lots.get_mut(&key)
+        {
+            for s in &mut lot.spots {
+                for w in &mut s.windows {
+                    if w.car == car {
+                        w.to = to;
+                    }
+                }
+            }
+        }
+    }
+
+    /// The earliest a visit to this building from `from` to `to` could
+    /// have a spot, at or after `from`. `None` where the building has no
+    /// lot, or one not built yet: nothing to wait for.
+    pub fn spot_window(&self, building: EntityId, from: GameTime, to: GameTime) -> Option<GameTime> {
+        let lot = self.lots.get(self.lot_of.get(&building)?)?;
+        if lot.spots.is_empty() {
+            return None;
+        }
+        let len = to.saturating_sub(from);
+        lot.spots.iter().map(|s| s.clear_from(from, len)).min()
     }
 
     fn pose_of(&self, key: RunKey, claim: Claim) -> Option<Pose> {
@@ -476,7 +556,7 @@ impl World {
         if let Some(&(_, b)) = lot.doorway.iter().find(|&&(c, _)| c == car) {
             return Some(Claim::Door(b));
         }
-        lot.spots.iter().position(|s| s.car == Some(car)).map(Claim::Spot)
+        lot.spots.iter().position(|s| s.holder(car).is_some()).map(Claim::Spot)
     }
 
     /// Where a route node is: a road node's tile centre, or a lot node's own
@@ -488,15 +568,18 @@ impl World {
         self.objects.get(id)?.position.map(|p| [p.x as f64 + 0.5, p.y as f64 + 0.5])
     }
 
-    /// Hold a place at a building for a car: the one it already holds, the
-    /// door if the car's owner works there or it is a facility's vehicle,
-    /// else a free spot. `None` when the lot is full, and the trip does not
-    /// start: the car waits where it is, honestly, and tries again.
-    pub fn claim_spot(&mut self, building: EntityId, car: EntityId) -> Option<Claim> {
+    /// Hold a place at a building for a car over a window: the one it
+    /// already holds, the door if the car's owner works there or it is a
+    /// facility's vehicle, else a spot clear for the whole window, the
+    /// first such ahead of the building's entrance. `None` when there is
+    /// none, and the trip does not start: the car waits where it is,
+    /// honestly, and tries again.
+    pub fn claim_spot(&mut self, building: EntityId, car: EntityId, from: GameTime, to: GameTime) -> Option<Claim> {
         let staff = self.works_at(car, building);
         self.lot_mut(building)?;
         let key = self.lot_of[&building];
         let lot = &self.lots[&key];
+        let len = to.saturating_sub(from);
         // A free spot is the first one ahead of the building's entrance
         // along the flow, so a car is not sent round the loop for one that
         // sits just behind where it came in.
@@ -512,15 +595,24 @@ impl World {
         let claim = lot
             .spots
             .iter()
-            .position(|s| s.car == Some(car))
+            .position(|s| s.holder(car).is_some())
             .map(Claim::Spot)
             .or_else(|| lot.doorway.iter().find(|&&(c, b)| c == car && b == building).map(|&(_, b)| Claim::Door(b)))
             .or_else(|| staff.then_some(Claim::Door(building)))
-            .or_else(|| (0..lot.spots.len()).filter(|&i| lot.spots[i].car.is_none()).min_by_key(|&i| ahead(i)).map(Claim::Spot))?;
+            .or_else(|| {
+                (0..lot.spots.len())
+                    .filter(|&i| lot.spots[i].clear_from(from, len) == from)
+                    .min_by_key(|&i| ahead(i))
+                    .map(Claim::Spot)
+            });
+        let Some(claim) = claim else {
+            self.lots.get_mut(&key).unwrap().stats.refused += 1;
+            return None;
+        };
         // Only now, with the new place found, is the old one let go of.
         if self.claim_of(key, car) != Some(claim) {
             self.release_spot(car);
-            self.hold(key, car, claim);
+            self.hold(key, car, claim, from, to);
         }
         Some(claim)
     }
@@ -545,23 +637,81 @@ impl World {
             && let Some(lot) = self.lots.get_mut(&key)
         {
             for s in &mut lot.spots {
-                if s.car == Some(car) {
-                    s.car = None;
-                }
+                s.windows.retain(|w| w.car != car);
             }
             lot.doorway.retain(|&(c, _)| c != car);
         }
         self.set_spot(car, None);
     }
 
-    /// Stand the car in its place at the building, if it has one.
-    pub fn park_in_lot(&mut self, building: EntityId, car: EntityId) {
-        let pose = match (self.claim_spot(building, car), self.claims.get(&car).copied()) {
-            (Some(claim), Some(key)) => self.pose_of(key, claim),
-            _ => None,
+    /// Stand the car in its place at the building. It usually holds one
+    /// from setting out; if not it takes one now, open-ended. A spot still
+    /// taken on arrival, by a car that stayed longer than it planned, is
+    /// swapped for any free one, or the car is squeezed to the door.
+    pub fn park_in_lot(&mut self, building: EntityId, car: EntityId, now: GameTime) {
+        let Some(claim) = self.claim_spot(building, car, now, GameTime::MAX) else {
+            self.set_spot(car, None);
+            return;
         };
+        let key = self.lot_of[&building];
+        if let Claim::Spot(i) = claim {
+            let taken = self.lots[&key].spots[i].windows.iter().any(|w| w.car != car && self.parked_here(w.car));
+            if taken {
+                let to = self.lots[&key].spots[i].holder(car).map_or(GameTime::MAX, |w| w.to);
+                self.release_spot(car);
+                let lot = self.lots.get_mut(&key).unwrap();
+                let free = (0..lot.spots.len()).find(|&j| lot.spots[j].clear_from(now, to.saturating_sub(now)) == now);
+                match free {
+                    Some(j) => self.hold(key, car, Claim::Spot(j), now, to),
+                    None => {
+                        lot.stats.squeezed += 1;
+                        self.hold(key, car, Claim::Door(building), now, to);
+                    }
+                }
+            }
+        }
+        let claim = self.claim_of(key, car).unwrap();
+        let pose = self.pose_of(key, claim);
         self.set_spot(car, pose);
     }
+
+    fn parked_here(&self, car: EntityId) -> bool {
+        matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none())
+    }
+
+    /// The lot a building is on, as the debug endpoint shows it.
+    pub fn inspect_lot(&mut self, building: EntityId, now: GameTime) -> Value {
+        let Some(lot) = self.lot_mut(building) else { return json!({ "lot": null }) };
+        let hhmm = |t: GameTime| {
+            if t == GameTime::MAX {
+                "open".to_string()
+            } else {
+                let day = crate::protocol::DAY_MS as u64;
+                format!("d{} {:02}:{:02}", t / day, (t % day) / (day / 24), (t % (day / 24)) / (day / 24 / 60))
+            }
+        };
+        let spots: Vec<Value> = lot
+            .spots
+            .iter()
+            .map(|s| json!({
+                "at": s.pose.at,
+                "windows": s.windows.iter().map(|w| json!({ "car": w.car, "from": hhmm(w.from), "to": hhmm(w.to) })).collect::<Vec<_>>(),
+            }))
+            .collect();
+        let members: Vec<Value> = lot.members.iter().map(|m| json!({ "building": m.building, "entrances": m.gates.len() })).collect();
+        let parked = lot.spots.iter().filter(|s| s.windows.iter().any(|w| w.from <= now && now < w.to)).count();
+        json!({
+            "now": hhmm(now),
+            "members": members,
+            "spots": spots.len(),
+            "held_now": parked,
+            "at_doors": lot.doorway.len(),
+            "refused": lot.stats.refused,
+            "squeezed": lot.stats.squeezed,
+            "spot_windows": spots,
+        })
+    }
+
 
     /// The way from where the car stands to the street: its lot nodes in
     /// order, and the street node last. Off a ring, out by the nearest
@@ -594,8 +744,8 @@ impl World {
     /// The way into a place at the building for this car, claiming one: the
     /// node the street route ends at, then the lot nodes to the place. `None`
     /// when there is no place, and the trip does not start.
-    pub fn way_in(&mut self, building: EntityId, car: EntityId) -> Option<Vec<EntityId>> {
-        let claim = self.claim_spot(building, car)?;
+    pub fn way_in(&mut self, building: EntityId, car: EntityId, from: GameTime, to: GameTime) -> Option<Vec<EntityId>> {
+        let claim = self.claim_spot(building, car, from, to)?;
         let key = *self.claims.get(&car)?;
         let lot = self.lots.get(&key)?;
         let m = lot.members.iter().find(|m| m.building == building)?;
@@ -657,12 +807,12 @@ impl World {
             }
             let key = self.lot_of[&building];
             let claim = match pose {
-                Some(_) => self.nearest_free(key, pose),
+                Some(_) => self.nearest_free(key, pose, 0, GameTime::MAX),
                 None => matches!(self.lots[&key].way, Way::Ring { .. }).then_some(Claim::Door(building)),
             };
             match claim {
                 Some(claim) => {
-                    self.hold(key, car, claim);
+                    self.hold(key, car, claim, 0, GameTime::MAX);
                     let pose = self.pose_of(key, claim);
                     self.set_spot(car, pose);
                 }
@@ -747,7 +897,7 @@ mod tests {
         world.place_road_path(&path);
         let a = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
         let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None }), None);
-        let way = world.way_in(a, car).unwrap();
+        let way = world.way_in(a, car, 0, GameTime::MAX).unwrap();
         let lot = &world.lots[&world.lot_of[&a]];
         let d = world.node_pos(lot.members[0].gates[0].0).unwrap();
         let spot = world.node_pos(*way.last().unwrap()).unwrap();
@@ -769,6 +919,30 @@ mod tests {
         assert_eq!(lot.members[0].gates.len(), 2);
     }
 
+    /// A spot booked for a visit is clear again after it, so the next
+    /// visit is told to come then, not refused.
+    #[test]
+    fn a_full_lot_says_when_it_frees() {
+        let mut world = street();
+        let shop = world.spawn_building(GridCoord { x: 2, y: 1 }, BuildingKind::Shop).unwrap();
+        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None }), None);
+        let (a, b, c) = (car(&mut world), car(&mut world), car(&mut world));
+        // Two spots: two visits from 10 to 12 fill it.
+        assert!(world.claim_spot(shop, a, 10_000, 12_000).is_some());
+        assert!(world.claim_spot(shop, b, 10_000, 12_000).is_some());
+        assert_eq!(world.spot_window(shop, 10_000, 11_000), Some(12_000), "a third visit is told to come at twelve");
+        assert_eq!(world.spot_window(shop, 13_000, 14_000), Some(13_000), "and a later one is fine as planned");
+        assert!(world.claim_spot(shop, c, 10_000, 11_000).is_none(), "nothing is clear for it now");
+        assert_eq!(world.lots[&world.lot_of[&shop]].stats.refused, 1);
+        assert!(world.claim_spot(shop, c, 12_000, 13_000).is_some(), "at twelve it has a spot");
+        // A visit running long moves everyone after it.
+        world.restate(a, 15_000);
+        world.release_spot(c);
+        assert_eq!(world.spot_window(shop, 12_000, 13_000), Some(12_000), "b's spot is still clear at twelve");
+        world.release_spot(b);
+        assert_eq!(world.spot_window(shop, 12_000, 13_000), Some(12_000));
+    }
+
     /// A shop arriving beside one already parked in keeps the parked car in
     /// a spot of the new, bigger lot; a shop leaving shrinks it back.
     #[test]
@@ -778,7 +952,7 @@ mod tests {
         let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: a, trip: None, role: Default::default(), spot: None }), Some(GridCoord { x: 2, y: 1 }));
         // Not staff: a visitor's car, so it takes a spot.
         world.objects.get_mut(car).map(|e| if let GameObject::Car(ref mut c) = e.object { c.owner = 0 });
-        world.park_in_lot(a, car);
+        world.park_in_lot(a, car, 0);
         assert!(matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.spot.is_some()));
         let b = world.spawn_building(GridCoord { x: 3, y: 1 }, BuildingKind::Shop).unwrap();
         assert_eq!(world.lot_mut(b).unwrap().spots.len(), 7);

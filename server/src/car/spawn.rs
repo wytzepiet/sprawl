@@ -21,6 +21,7 @@ pub fn start_trip(
     from_node: EntityId,
     dest_building: EntityId,
     now: GameTime,
+    until: GameTime,
 ) -> bool {
     let owner = match world.objects.get(car_id).map(|e| &e.object) {
         Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
@@ -37,6 +38,7 @@ pub fn start_trip(
         _ => return false,
     };
     let from_lot = out.len().saturating_sub(1);
+    let path_len = path.len();
     let head: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
 
     // Don't pull out under a car blocking the start of the road.
@@ -61,8 +63,10 @@ pub fn start_trip(
     }
 
     // Nothing else can refuse the trip now, so the place at the far end is
-    // claimed, and the one here let go of.
-    let Some(way_in) = world.way_in(dest_building, car_id) else { return false };
+    // claimed, and the one here let go of: booked from the earliest the car
+    // could be there, on empty roads, to when the driver plans to leave.
+    let free_ms = ((path_len - 1) as f64 / CRUISE_SPEED * 1000.0) as GameTime;
+    let Some(way_in) = world.way_in(dest_building, car_id, now + free_ms, until.saturating_add(crate::world::lots::SLACK)) else { return false };
     let to_lot = way_in.len() - 1;
     let route: Vec<EntityId> = head.into_iter().chain(way_in[1..].iter().copied()).collect();
 
