@@ -15,6 +15,8 @@
 //! entrance per building, the spots shared. Staff drive the ring to a door
 //! under their building and park there unseen. See `docs/parking.md`.
 
+use rand::{Rng, SeedableRng};
+use rand::rngs::SmallRng;
 use std::collections::HashMap;
 
 use crate::blueprint::{plot, FACINGS};
@@ -573,27 +575,26 @@ impl World {
 
     /// Hold a place at a building for a car over a window: the one it
     /// already holds, the door if the car's owner works there or it is a
-    /// facility's vehicle, else a spot clear for the whole window, the
-    /// first such ahead of the building's entrance. `None` when there is
-    /// none, and the trip does not start: the car waits where it is,
-    /// honestly, and tries again.
+    /// facility's vehicle, else a spot clear for the whole window, near the
+    /// building's door with some looseness, as people park. `None` when
+    /// there is none, and the trip does not start: the car waits where it
+    /// is, honestly, and tries again.
     pub fn claim_spot(&mut self, building: EntityId, car: EntityId, from: GameTime, to: GameTime) -> Option<Claim> {
         let staff = self.works_at(car, building);
         self.lot_mut(building)?;
         let key = self.lot_of[&building];
         let lot = &self.lots[&key];
         let len = to.saturating_sub(from);
-        // A free spot is the first one ahead of the building's entrance
-        // along the flow, so a car is not sent round the loop for one that
-        // sits just behind where it came in.
-        let ahead = |i: usize| -> usize {
-            match &lot.way {
-                Way::Ring { loop_, gates } => {
-                    let gate = lot.members.iter().find(|m| m.building == building).map_or(0, |m| m.gates[0].2);
-                    (gates[i].0 + loop_.len() - gate) % loop_.len()
-                }
-                Way::Driveway { .. } => i,
-            }
+        // The spot in front of the door is the one wanted, but not by
+        // everyone: each free spot's distance to the door is stretched by
+        // up to two or three spots' worth, drawn per visit, so the cars of
+        // one building bunch in front of it without filling it in order.
+        let door = lot.members.iter().find(|m| m.building == building).and_then(|m| self.lot_nodes.get(&m.door)).copied();
+        let mut rng = SmallRng::seed_from_u64(self.terrain_seed as u64 ^ car.rotate_left(32) ^ from);
+        let mut appeal = |i: usize| -> f64 {
+            let at = lot.spots[i].pose.at;
+            let d = door.map_or(0.0, |[x, y]| ((at[0] - x).powi(2) + (at[1] - y).powi(2)).sqrt());
+            d + rng.random::<f64>() * 2.5 * PITCH
         };
         let claim = lot
             .spots
@@ -605,8 +606,9 @@ impl World {
             .or_else(|| {
                 (0..lot.spots.len())
                     .filter(|&i| lot.spots[i].clear_from(from, len) == from)
-                    .min_by_key(|&i| ahead(i))
-                    .map(Claim::Spot)
+                    .map(|i| (i, appeal(i)))
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(i, _)| Claim::Spot(i))
             });
         let Some(claim) = claim else {
             self.lots.get_mut(&key).unwrap().stats.refused += 1;
@@ -890,7 +892,7 @@ mod tests {
     }
 
     /// The loop turns to suit the entrance: in at the right end of a lot,
-    /// the nearest spot is a few nodes on, not a lap away.
+    /// a spot by the door is a few nodes on, not a lap away.
     #[test]
     fn the_loop_turns_toward_the_entrance() {
         let mut world = street();
@@ -902,10 +904,10 @@ mod tests {
         let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None }), None);
         let way = world.way_in(a, car, 0, GameTime::MAX).unwrap();
         let lot = &world.lots[&world.lot_of[&a]];
-        let d = world.node_pos(lot.members[0].gates[0].0).unwrap();
+        let d = world.node_pos(lot.members[0].door).unwrap();
         let spot = world.node_pos(*way.last().unwrap()).unwrap();
-        assert!((d[0] - spot[0]).abs() + (d[1] - spot[1]).abs() < 1.0, "the first spot taken is by the entrance: {d:?} vs {spot:?}");
-        assert!(way.len() <= 5, "a few nodes in, not a lap: {}", way.len());
+        assert!((d[0] - spot[0]).abs() + (d[1] - spot[1]).abs() < 1.0, "the spot taken is by the door: {d:?} vs {spot:?}");
+        assert!(way.len() <= 6, "a few nodes in, not a lap: {}", way.len());
     }
 
     /// A road drawn into a lot tile is one more entrance, not the old one
