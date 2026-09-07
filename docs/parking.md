@@ -85,7 +85,12 @@ island inside it, each spot a pull-through: in from the lane on the
 street side, straight across the island, out onto the lane on the far
 side. Nothing reverses, nothing waits for a car parking, and a car that
 finds no spot drives round and out. The driveway joins the ring wherever
-the street is, on any side, and a ring takes any number of entrances.
+the street is, on any side, and a ring takes any number of entrances: a
+road drawn into a lot tile is one more, not the old one moved. The loop
+turns the way that puts the most front lane ahead of its entrances, a
+car is handed the first free spot ahead of the entrance it comes in by,
+so it is not sent round for one just behind it, and it leaves by
+whichever entrance is nearest ahead.
 
 The island of a one-tile ring is 0.4 wide: two cars across it. Wider is
 better: a ring w tiles wide holds `floor((w - 0.6) / 0.2)` cars, so 2, 7,
