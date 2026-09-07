@@ -135,6 +135,16 @@ impl World {
         self.lots.get_mut(&key)
     }
 
+    /// How many can park at a building's lot, shared with whoever it fuses
+    /// with: what a visitor's tap there serves at once. `None` without a
+    /// lot.
+    pub fn spots_at(&self, building: EntityId) -> Option<u32> {
+        match self.run_of(building)? {
+            (RunKey::Run(..), seats) => Some(spots_across(seats.last().map_or(0.0, |s| s.u1)) as u32),
+            (RunKey::Solo(_), _) => None,
+        }
+    }
+
     /// The run this building's lot belongs to, and every building on it in
     /// order along the frontage. A kind with no lot is a run of one.
     fn run_of(&self, building: EntityId) -> Option<(RunKey, Vec<Seat>)> {
@@ -266,7 +276,7 @@ impl World {
         let back = world_at(0.0, 1.0);
         let front = world_at(0.0, 0.0);
         let heading = (back[1] - front[1]).atan2(back[0] - front[0]);
-        let n = ((w - 2.0 * ISLAND_END) / PITCH + 1e-9).floor().max(0.0) as usize;
+        let n = spots_across(w);
         let first = ISLAND_END + ((w - 2.0 * ISLAND_END) - n as f64 * PITCH) / 2.0 + PITCH / 2.0;
         let us: Vec<f64> = (0..n).map(|i| first + i as f64 * PITCH).collect();
 
@@ -660,6 +670,11 @@ impl World {
             }
         }
     }
+}
+
+/// How many spots fit across the island of a ring w tiles wide.
+fn spots_across(w: f64) -> usize {
+    ((w - 2.0 * ISLAND_END) / PITCH + 1e-9).floor().max(0.0) as usize
 }
 
 /// The nodes of a loop from index `from` to index `to` inclusive, going

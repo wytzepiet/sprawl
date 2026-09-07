@@ -282,7 +282,7 @@ fn evaluate(
 ) -> Verdict {
     let tau = if at == building { 0 } else { travel_ms(world, at, building) };
     let h = tap.overhead;
-    let rate = tap.serving(company);
+    let rate = tap.serving(slots_at(world, building, tap), company);
     let Some(opening) = tap.curve.next_nonzero(now + tau + h) else {
         return Verdict::Nothing;
     };
@@ -366,7 +366,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         taps_of(world, at)
             .iter()
             .find(|t| t.need == need)
-            .map(|t| (t.serving(company), t.curve.integral(last, now)))
+            .map(|t| (t.serving(slots_at(world, at, t), company), t.curve.integral(last, now)))
     });
     // What the building put out is what it put out, whether or not the
     // bucket had room for it: a shift worked is labour received.
@@ -413,8 +413,18 @@ fn headcount(world: &World) -> Crowd {
 impl Tap {
     /// The rate each of `company` present is served at: full up to the
     /// slots, then shared.
-    fn serving(&self, company: u32) -> f64 {
-        self.rate * (self.slots as f64 / company.max(1) as f64).min(1.0)
+    fn serving(&self, slots: u32, company: u32) -> f64 {
+        self.rate * (slots as f64 / company.max(1) as f64).min(1.0)
+    }
+}
+
+/// What a tap serves at once. At a building with a lot, a visitor's tap
+/// serves as many as can park: the lot decides. Anywhere else, and for
+/// the staff, the row's number.
+fn slots_at(world: &World, building: EntityId, tap: &Tap) -> u32 {
+    match world.spots_at(building) {
+        Some(n) if tap.need != Need::Work => n,
+        _ => tap.slots,
     }
 }
 
@@ -679,7 +689,7 @@ pub fn served(world: &World) -> Vec<(f64, &'static Tap)> {
             let (at, need) = (r.at?, r.selected?);
             let tap = taps_of(world, at).iter().find(|t| t.need == need)?;
             let company = crowd.get(&(at, need)).copied().unwrap_or(0);
-            Some((tap.serving(company), tap))
+            Some((tap.serving(slots_at(world, at, tap), company), tap))
         })
         .collect()
 }
