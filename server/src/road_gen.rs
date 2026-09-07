@@ -178,10 +178,35 @@ pub fn start_town(world: &mut World, terrain: &HashMap<(i32, i32), TerrainType>,
         if built.iter().any(|&b| far(b, plot) < START_GAP) || !world.is_buildable(plot) {
             continue;
         }
+        // Not up against the through road: a driveway would hang off it at
+        // an angle, and nothing fronts a road.
+        let by_road = (-1..=1).flat_map(|ddx| (-1..=1).map(move |ddy| GridCoord { x: plot.x + ddx, y: plot.y + ddy }))
+            .any(|t| world.road_node_at(t).is_some_and(|id| !world.is_street(id)));
+        if by_road {
+            continue;
+        }
         let Some(path) = astar((plot.x, plot.y), (anchor.x, anchor.y), terrain, &road_edges) else { continue };
         let street: Vec<GridCoord> = path[1..].iter().map(|&(x, y)| GridCoord { x, y }).collect();
-        let fresh: Vec<GridCoord> = street.iter().copied().filter(|&t| world.road_node_at(t).is_none()).collect();
+        // The street reaches the plot squarely and runs a tile past it
+        // each way: a frontage, not a spoke, so a lot can spread along it.
+        let Some(&front) = street.first() else { continue };
+        let (dx, dy) = (front.x - plot.x, front.y - plot.y);
+        if dx != 0 && dy != 0 {
+            continue;
+        }
+        let sides = [GridCoord { x: front.x + dy, y: front.y + dx }, GridCoord { x: front.x - dy, y: front.y - dx }];
+        let mut fresh: Vec<GridCoord> = street.iter().copied().filter(|&t| world.road_node_at(t).is_none()).collect();
         world.place_road_path(&street);
+        // A side tile touches the front tile and nothing else, or it would
+        // fork acutely off whatever else is there.
+        for side in sides {
+            let alone = (-1..=1).flat_map(|ddx| (-1..=1).map(move |ddy| GridCoord { x: side.x + ddx, y: side.y + ddy }))
+                .all(|t| t == front || world.road_node_at(t).is_none());
+            if alone && world.is_buildable(side) {
+                fresh.push(side);
+                world.place_road_path(&[side, front]);
+            }
+        }
         if world.spawn_building(plot, kind).is_none() {
             for t in fresh {
                 let Some(node) = world.road_node_at(t) else { continue };

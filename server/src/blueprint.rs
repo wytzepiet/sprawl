@@ -197,7 +197,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // corner shop and a warehouse's truck to keep them full. The first
         // placeable with something to run out of.
         (Supermarket, Blueprint {
-            class: Commerce, homes: 0, jobs: 8, size: (2, 2), lot: (2, 2), weight: 0.0, tilt: &[], by_hand: true,
+            class: Commerce, homes: 0, jobs: 8, size: (2, 2), lot: (2, 1), weight: 0.0, tilt: &[], by_hand: true,
             stock: 150, answers: None, vehicles: 0,
             taps: vec![
                 shift(8, 21, 8),

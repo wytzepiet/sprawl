@@ -963,7 +963,9 @@ mod tests {
         let truck = world.calls[0].answered_by.expect("the warehouse answers");
         assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
 
-        pump(&mut world, &mut events, &mut intersections, 0, 2 * DAY_MS as u64 / 24);
+        // Out through one ring and home through another, at lot speed, on
+        // top of the drive: under three hours.
+        pump(&mut world, &mut events, &mut intersections, 0, 3 * DAY_MS as u64 / 24);
         assert!(world.calls.is_empty());
         let e = world.objects.get(truck).expect("the warehouse keeps its truck");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
@@ -1248,8 +1250,7 @@ mod tests {
 
         // Time off is never more important than work (its rate is below the
         // job's), so an outing happens after the shift, on an evening when
-        // enough of it has piled up. Not nightly, and with the lot deciding
-        // how many a shop entertains at once, a two-spot shop may see none.
+        // enough of it has piled up: never for everyone at once.
         let outings: Vec<f64> = two
             .iter()
             .filter(|&&(t, _, _, sel)| t >= day && sel == Some(Need::Leisure))
@@ -1257,7 +1258,7 @@ mod tests {
             .map(|&(t, ..)| (t % day) as f64 / hour as f64)
             .collect();
         assert!(outings.iter().all(|&h| h >= 17.0), "an outing during the shift: {outings:.1?}");
-        assert!(outings.len() < 8, "everyone out every night: {outings:.1?}");
+        assert!(outings.len() < 14, "everyone out every night: {outings:.1?}");
     }
 
     /// The demand readout names what is missing: a household with nowhere

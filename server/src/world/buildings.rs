@@ -111,9 +111,25 @@ impl World {
         if !open {
             return None;
         }
-        match p.lot {
-            Some(((lx, ly), (lw, ld))) => {
-                let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
+        let lot = p.lot.map(|((lx, ly), (lw, ld))| (GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld)));
+        // A lot's spill is open only to a lot that would share its ring:
+        // a house or a workplace there would cut the ring to one tile.
+        let shares = |t: GridCoord, f: u8| {
+            facing == f && lot.is_some_and(|(l, size)| Self::footprint(l, size).any(|lt| lt == t))
+        };
+        if Self::footprint(pos, p.size).any(|t| self.spill_facing(t).is_some_and(|f| !shares(t, f))) {
+            return None;
+        }
+        match lot {
+            Some((lot, (lw, ld))) => {
+                // A ring is never one tile wide: the lot lands where it
+                // reaches two, by a neighbour's lot or by free land.
+                let along_x = crate::blueprint::FACINGS[facing as usize % 4].0 == 0;
+                let (line, a0, a1) = if along_x { (lot.y, lot.x, lot.x + lw as i32) } else { (lot.x, lot.y, lot.y + ld as i32) };
+                let (s, e, _) = self.frontage(facing, line, a0, a1);
+                if e - s < 2 {
+                    return None;
+                }
                 self.road_for_lot(lot, (lw, ld), facing)
             }
             None => self.road_for_plot(pos, p.size),

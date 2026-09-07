@@ -125,9 +125,11 @@ enum Way {
 }
 
 pub struct Lot {
-    /// Which buildings this is the lot of, with their driveways: the run
-    /// is rebuilt when this no longer matches the map.
+    /// Which buildings this is the lot of, with their driveways, and how
+    /// wide the run is: the run is rebuilt when this no longer matches
+    /// the map.
     members: Vec<Member>,
+    w: f64,
     pub spots: Vec<Spot>,
     way: Way,
     /// Every node and edge this lot owns, for taking it down.
@@ -136,6 +138,15 @@ pub struct Lot {
     /// Who is parked at whose door.
     doorway: Vec<(EntityId, EntityId)>,
     pub stats: Stats,
+}
+
+/// A run of lot tiles along one frontage, as read off the map: the
+/// members' tiles, the gaps of one tile between them, and one free tile
+/// past each end where the land allows, all one ring.
+struct Run {
+    key: RunKey,
+    w: f64,
+    seats: Vec<Seat>,
 }
 
 /// A building's place on a run, as read off the map.
@@ -152,10 +163,12 @@ impl World {
     /// The building's lot, built or rebuilt to match the map. `None` where
     /// no road reaches it.
     pub fn lot_mut(&mut self, building: EntityId) -> Option<&mut Lot> {
-        let (key, seats) = self.run_of(building)?;
+        let run = self.run_of(building)?;
+        let (key, seats) = (run.key, &run.seats);
         let current = self.lots.get(&key).is_some_and(|l| {
-            l.members.len() == seats.len()
-                && l.members.iter().zip(&seats).all(|(m, s)| {
+            l.w == run.w
+                && l.members.len() == seats.len()
+                && l.members.iter().zip(seats).all(|(m, s)| {
                     m.building == s.building && m.gates.len() == s.gates.len() && m.gates.iter().zip(&s.gates).all(|(a, b)| (a.0, a.1) == *b)
                 })
         });
@@ -173,10 +186,10 @@ impl World {
                 }
                 held.extend(self.drop_run(k));
             }
-            let mut lot = self.build_lot(key, &seats)?;
+            let mut lot = self.build_lot(&run)?;
             lot.stats = stats;
             self.lots.insert(key, lot);
-            for s in &seats {
+            for s in seats {
                 self.lot_of.insert(s.building, key);
             }
             self.reseat(key, held);
@@ -189,14 +202,14 @@ impl World {
     /// lot.
     pub fn spots_at(&self, building: EntityId) -> Option<u32> {
         match self.run_of(building)? {
-            (RunKey::Run(..), seats) => Some(spots_across(seats.last().map_or(0.0, |s| s.u1)) as u32),
-            (RunKey::Solo(_), _) => None,
+            Run { key: RunKey::Run(..), w, .. } => Some(spots_across(w) as u32),
+            _ => None,
         }
     }
 
     /// The run this building's lot belongs to, and every building on it in
     /// order along the frontage. A kind with no lot is a run of one.
-    fn run_of(&self, building: EntityId) -> Option<(RunKey, Vec<Seat>)> {
+    fn run_of(&self, building: EntityId) -> Option<Run> {
         // Every driveway with the street it joins; a building with none
         // has no seat on the run.
         let gates_of = |b: EntityId| -> Option<Vec<(EntityId, EntityId)>> {
@@ -213,7 +226,7 @@ impl World {
         let (pos, kind, facing) = self.building_of(building)?;
         let gates = gates_of(building)?;
         let Some(((lx, ly), (gw, gh))) = plot(kind, facing).lot else {
-            return Some((RunKey::Solo(building), vec![Seat { building, gates, u0: 0.0, u1: 0.0 }]));
+            return Some(Run { key: RunKey::Solo(building), w: 0.0, seats: vec![Seat { building, gates, u0: 0.0, u1: 0.0 }] });
         };
         let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
         // The lot's extent along the frontage is its grid width or its grid
@@ -221,10 +234,30 @@ impl World {
         let along_x = FACINGS[facing as usize % 4].0 == 0;
         let lw = if along_x { gw } else { gh };
         let (line, a0, a1) = if along_x { (lot.y, lot.x, lot.x + lw as i32) } else { (lot.x, lot.y, lot.y + lw as i32) };
+        let (start, end, mut chain) = self.frontage(facing, line, a0, a1);
+        let here = chain.iter().position(|n| n.1 > a0).unwrap_or(chain.len());
+        chain.insert(here, (building, a0, a1));
+        let seats = chain
+            .into_iter()
+            .filter_map(|(b, s, e)| Some(Seat { building: b, gates: gates_of(b)?, u0: (s - start) as f64, u1: (e - start) as f64 }))
+            .collect();
+        Some(Run { key: RunKey::Run(facing, line, start), w: (end - start) as f64, seats })
+    }
+
+    /// The run a lot on this row, over `[a0, a1)` along the frontage,
+    /// would be part of: its extent, and the other buildings on it in
+    /// order.
+    /// Neighbours' lot tiles join it, so does a neighbour across a gap of
+    /// one free tile, and one free tile past each end is the run's too:
+    /// a lot is bigger than its building while the land beside it is
+    /// free.
+    pub(super) fn frontage(&self, facing: u8, line: i32, a0: i32, a1: i32) -> (i32, i32, Vec<(EntityId, i32, i32)>) {
+        let along_x = FACINGS[facing as usize % 4].0 == 0;
+        let tile = |a: i32| if along_x { GridCoord { x: a, y: line } } else { GridCoord { x: line, y: a } };
         // A neighbour's lot tile at along-coordinate `a` on this row, same
         // facing: the building and its tile range.
         let lot_tile = |a: i32| -> Option<(EntityId, i32, i32)> {
-            let t = if along_x { GridCoord { x: a, y: line } } else { GridCoord { x: line, y: a } };
+            let t = tile(a);
             let &b = self.occupied.get(&(t.x, t.y))?;
             let (p, k, f) = self.building_of(b)?;
             if f != facing {
@@ -235,19 +268,70 @@ impl World {
             let (row, s, e) = if along_x { (l.y, l.x, l.x + w as i32) } else { (l.x, l.y, l.y + h as i32) };
             (row == line && a >= s && a < e).then_some((b, s, e))
         };
-        let mut chain = vec![(building, a0, a1)];
-        while let Some(n) = lot_tile(chain[0].1 - 1) {
-            chain.insert(0, n);
+        let free = |a: i32| self.is_open_frontage(tile(a), facing);
+        let mut chain: Vec<(EntityId, i32, i32)> = Vec::new();
+        let (mut s, mut e) = (a0, a1);
+        loop {
+            match lot_tile(s - 1).or_else(|| (free(s - 1)).then(|| lot_tile(s - 2)).flatten()) {
+                Some(n) => {
+                    s = n.1;
+                    chain.insert(0, n);
+                }
+                None => break,
+            }
         }
-        while let Some(n) = lot_tile(chain[chain.len() - 1].2) {
-            chain.push(n);
+        loop {
+            match lot_tile(e).or_else(|| (free(e)).then(|| lot_tile(e + 1)).flatten()) {
+                Some(n) => {
+                    e = n.2;
+                    chain.push(n);
+                }
+                None => break,
+            }
         }
-        let start = chain[0].1;
-        let seats = chain
-            .into_iter()
-            .filter_map(|(b, s, e)| Some(Seat { building: b, gates: gates_of(b)?, u0: (s - start) as f64, u1: (e - start) as f64 }))
-            .collect();
-        Some((RunKey::Run(facing, line, start), seats))
+        if free(s - 1) {
+            s -= 1;
+        }
+        if free(e) {
+            e += 1;
+        }
+        (s, e, chain)
+    }
+
+    /// Free land on a frontage: buildable, with the street it would front
+    /// right in front of it and room for a building behind it. What a lot
+    /// spills over, and where the next building on the run can land.
+    pub(super) fn is_open_frontage(&self, t: GridCoord, facing: u8) -> bool {
+        let (dx, dy) = FACINGS[facing as usize % 4];
+        self.is_buildable(t)
+            && self.is_buildable(GridCoord { x: t.x - dx, y: t.y - dy })
+            && self.road_node_at(GridCoord { x: t.x + dx, y: t.y + dy }).is_some_and(|id| self.is_street(id))
+    }
+
+    /// Is this free tile spill of a lot, and which way does that lot face?
+    /// The tile beside a lot tile along its frontage, on the same row, is:
+    /// it is that lot's ring while it stays free, and only a lot that
+    /// would share the ring may build on it.
+    pub fn spill_facing(&self, t: GridCoord) -> Option<u8> {
+        (0..4u8).find(|&facing| {
+            if !self.is_open_frontage(t, facing) {
+                return false;
+            }
+            let along_x = FACINGS[facing as usize % 4].0 == 0;
+            [-1, 1].into_iter().any(|d| {
+                let n = if along_x { GridCoord { x: t.x + d, y: t.y } } else { GridCoord { x: t.x, y: t.y + d } };
+                self.lot_facing_at(n) == Some(facing)
+            })
+        })
+    }
+
+    /// The facing of the lot whose tile this is.
+    fn lot_facing_at(&self, t: GridCoord) -> Option<u8> {
+        let &b = self.occupied.get(&(t.x, t.y))?;
+        let (p, k, f) = self.building_of(b)?;
+        let ((ox, oy), (w, h)) = plot(k, f).lot?;
+        let (x, y) = (t.x - p.x - ox as i32, t.y - p.y - oy as i32);
+        (x >= 0 && y >= 0 && x < w as i32 && y < h as i32).then_some(f)
     }
 
     fn building_of(&self, id: EntityId) -> Option<(GridCoord, crate::protocol::BuildingKind, u8)> {
@@ -258,7 +342,8 @@ impl World {
         }
     }
 
-    fn build_lot(&mut self, key: RunKey, seats: &[Seat]) -> Option<Lot> {
+    fn build_lot(&mut self, run: &Run) -> Option<Lot> {
+        let (key, seats) = (run.key, run.seats.as_slice());
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
         let mut spots = Vec::new();
@@ -292,12 +377,12 @@ impl World {
                 spots.push(Spot { node: id, pose: Pose { at, heading }, windows: Vec::new() });
             }
             let members = vec![Member { building: seat.building, gates: vec![(driveway, street, 0)], door: driveway, door_at: 0 }];
-            return Some(Lot { members, spots, way: Way::Driveway { driveway, street }, nodes, edges, doorway: Vec::new(), stats: Stats::default() });
+            return Some(Lot { members, w: 0.0, spots, way: Way::Driveway { driveway, street }, nodes, edges, doorway: Vec::new(), stats: Stats::default() });
         };
 
         // The ring, in the run's own frame: u along the frontage from the
         // run's start, v in from the street. One tile deep.
-        let w = seats.last().map_or(0.0, |s| s.u1);
+        let w = run.w;
         let grid_at = move |u: f64, v: f64| -> [f64; 2] {
             match facing % 4 {
                 2 => [start as f64 + u, (line + 1) as f64 - v],
@@ -401,7 +486,7 @@ impl World {
             edge(self, door, loop_[door_at]);
             members.push(Member { building: seat.building, gates: mgates, door, door_at });
         }
-        Some(Lot { members, spots, way: Way::Ring { loop_, gates }, nodes, edges, doorway: Vec::new(), stats: Stats::default() })
+        Some(Lot { members, w, spots, way: Way::Ring { loop_, gates }, nodes, edges, doorway: Vec::new(), stats: Stats::default() })
     }
 
     /// Take a building's lot out of the world, edges and all. Its
@@ -875,17 +960,18 @@ mod tests {
         world
     }
 
-    /// Two shops side by side share one lot with seven spots and an
-    /// entrance each; apart, each has two.
+    /// Two shops side by side share one lot, four tiles with the spill,
+    /// seventeen spots and an entrance each; apart, a shop has three
+    /// tiles and twelve.
     #[test]
     fn touching_lots_fuse_into_one_run() {
         let mut world = street();
         let a = world.spawn_building(GridCoord { x: 2, y: 1 }, BuildingKind::Shop).unwrap();
         let b = world.spawn_building(GridCoord { x: 3, y: 1 }, BuildingKind::Shop).unwrap();
         let apart = world.spawn_building(GridCoord { x: 10, y: 1 }, BuildingKind::Shop).unwrap();
-        assert_eq!(world.lot_mut(a).unwrap().spots.len(), 7, "a pair parks seven");
+        assert_eq!(world.lot_mut(a).unwrap().spots.len(), 17, "a pair parks seventeen");
         assert_eq!(world.lot_of[&a], world.lot_of[&b], "one lot between them");
-        assert_eq!(world.lot_mut(apart).unwrap().spots.len(), 2, "alone parks two");
+        assert_eq!(world.lot_mut(apart).unwrap().spots.len(), 12, "alone parks twelve");
         let lot = &world.lots[&world.lot_of[&a]];
         assert_eq!(lot.members.len(), 2);
         assert!(lot.members.iter().all(|m| m.gates.len() == 1 && m.gates[0].2 > 0), "every member has its own entrance");
@@ -907,7 +993,29 @@ mod tests {
         let d = world.node_pos(lot.members[0].door).unwrap();
         let spot = world.node_pos(*way.last().unwrap()).unwrap();
         assert!((d[0] - spot[0]).abs() + (d[1] - spot[1]).abs() < 1.0, "the spot taken is by the door: {d:?} vs {spot:?}");
-        assert!(way.len() <= 6, "a few nodes in, not a lap: {}", way.len());
+        assert!(way.len() <= 8, "a few nodes in, not a lap: {}", way.len());
+    }
+
+    /// A lot spills one free tile past each end, and that spill is a
+    /// lot's alone: a house may not land on it, a shop may and shares the
+    /// ring, and a shop hemmed in to one tile may not land at all.
+    #[test]
+    fn a_lot_spills_over_free_frontage_and_keeps_it() {
+        let mut world = street();
+        let a = world.spawn_building(GridCoord { x: 4, y: 1 }, BuildingKind::Shop).unwrap();
+        assert_eq!(world.lot_mut(a).unwrap().w, 3.0, "one tile of its own and one each side");
+        assert!(world.site_for(GridCoord { x: 3, y: 1 }, BuildingKind::House).is_none(), "the spill is not a house's");
+        assert!(world.site_for(GridCoord { x: 2, y: 1 }, BuildingKind::House).is_some(), "past the spill it is");
+        assert!(world.site_for(GridCoord { x: 3, y: 1 }, BuildingKind::Shop).is_some(), "a shop shares the ring");
+        // Across a gap of one free tile, two lots are one ring.
+        let b = world.spawn_building(GridCoord { x: 6, y: 1 }, BuildingKind::Shop).unwrap();
+        world.lot_mut(b).unwrap();
+        assert_eq!(world.lot_of[&a], world.lot_of[&b], "one lot across the gap");
+        assert_eq!(world.lots[&world.lot_of[&a]].w, 5.0);
+        // Roads either side of a would-be shop leave it one tile: no.
+        world.place_road_path(&[GridCoord { x: 20, y: 0 }, GridCoord { x: 20, y: 1 }]);
+        world.place_road_path(&[GridCoord { x: 22, y: 0 }, GridCoord { x: 22, y: 1 }]);
+        assert!(world.site_for(GridCoord { x: 21, y: 1 }, BuildingKind::Shop).is_none(), "a ring is never one tile wide");
     }
 
     /// A road drawn into a lot tile is one more entrance, not the old one
@@ -930,6 +1038,10 @@ mod tests {
     fn a_full_lot_says_when_it_frees() {
         let mut world = street();
         let shop = world.spawn_building(GridCoord { x: 2, y: 1 }, BuildingKind::Shop).unwrap();
+        // Roads on either side take the spill away: a ring of one tile, two spots.
+        world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 1, y: 1 }]);
+        world.place_road_path(&[GridCoord { x: 3, y: 0 }, GridCoord { x: 3, y: 1 }]);
+        assert_eq!(world.lot_mut(shop).unwrap().spots.len(), 2);
         let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None }), None);
         let (a, b, c) = (car(&mut world), car(&mut world), car(&mut world));
         // Two spots: two visits from 10 to 12 fill it.
@@ -956,7 +1068,7 @@ mod tests {
         let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
         world.place_road_path(&path);
         let lot = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Lot).unwrap();
-        assert_eq!(world.lot_mut(lot).unwrap().spots.len(), 12);
+        assert_eq!(world.lot_mut(lot).unwrap().spots.len(), 22, "three tiles and the spill");
     }
 
     /// A shop arriving beside one already parked in keeps the parked car in
@@ -971,11 +1083,11 @@ mod tests {
         world.park_in_lot(a, car, 0);
         assert!(matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.spot.is_some()));
         let b = world.spawn_building(GridCoord { x: 3, y: 1 }, BuildingKind::Shop).unwrap();
-        assert_eq!(world.lot_mut(b).unwrap().spots.len(), 7);
+        assert_eq!(world.lot_mut(b).unwrap().spots.len(), 17);
         assert_eq!(world.claims.get(&car), Some(&world.lot_of[&a]), "the car holds a spot in the run");
         assert!(matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.spot.is_some()));
         world.remove_building(b);
-        assert_eq!(world.lot_mut(a).unwrap().spots.len(), 2);
+        assert_eq!(world.lot_mut(a).unwrap().spots.len(), 12);
         assert_eq!(world.claims.get(&car), Some(&world.lot_of[&a]));
     }
 }

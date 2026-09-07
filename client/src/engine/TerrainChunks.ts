@@ -173,6 +173,17 @@ export class TerrainChunks {
     this.invalidate(key);
   }
 
+  /** Is this tile land a building could stand on: beach, grass or forest?
+   *  False where the chunk is not loaded. */
+  landAt(x: number, y: number): boolean {
+    const cx = floorDiv(x, CHUNK_SIZE);
+    const cy = floorDiv(y, CHUNK_SIZE);
+    const tiles = this.tiles.get(`${cx},${cy}`);
+    if (!tiles) return false;
+    const byte = tiles[(y - cy * CHUNK_SIZE + CHUNK_SKIRT) * CHUNK_STRIDE + (x - cx * CHUNK_SIZE + CHUNK_SKIRT)];
+    return byte >= 1 && byte <= 3;
+  }
+
   unloadChunk(cx: number, cy: number): void {
     const key = `${cx},${cy}`;
     this.tiles.delete(key);

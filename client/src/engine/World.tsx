@@ -19,6 +19,7 @@ import type { Operation, GameObjectEntry } from "../generated";
 import type { Building } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
+import { runOf, setLandLookup } from "./objects/lots";
 import { mountCar } from "./objects/CarObject";
 import { mountRoad } from "./objects/RoadNode";
 
@@ -93,6 +94,7 @@ export default function World() {
   }
 
   const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt);
+  setLandLookup((x, y) => terrain.landAt(x, y));
   const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
@@ -116,22 +118,31 @@ export default function World() {
     const dirtyRoads = new Set<string>();
     // Buildings whose tile a road landed on or left: reached, or no longer.
     const dirtyBuildings = new Set<string>();
-    const roadTouched = (pos: { x: number; y: number } | null | undefined) => {
-      const owner = pos && builtTiles.get(`${pos.x},${pos.y}`);
-      if (owner !== undefined && owner !== null) dirtyBuildings.add(String(owner));
+    // Anything landing or leaving on these tiles changes the lots around
+    // them: a run of lot tiles reaches two tiles past what stands on it,
+    // and is drawn by its first building, so every building on every run
+    // within reach redraws.
+    const touched = (x0: number, y0: number, x1: number, y1: number, except?: number) => {
+      const near = new Set<number>();
+      for (let y = y0 - 2; y <= y1 + 2; y++) {
+        for (let x = x0 - 2; x <= x1 + 2; x++) {
+          const owner = builtTiles.get(`${x},${y}`);
+          if (owner !== undefined && owner !== except) near.add(owner);
+        }
+      }
+      for (const id of near) {
+        dirtyBuildings.add(String(id));
+        const e = getEntity(id);
+        if (e) for (const m of runOf(e)?.members ?? []) dirtyBuildings.add(String(m));
+      }
     };
-
-    // A building landing or leaving changes its neighbours' lot: the run of
-    // lot tiles they share is drawn by whoever is on it, so they redraw.
+    const roadTouched = (pos: { x: number; y: number } | null | undefined) => {
+      if (pos) touched(pos.x, pos.y, pos.x, pos.y);
+    };
     const plotTouched = (entry: GameObjectEntry | undefined) => {
       if (!entry?.position || entry.object.kind !== "Building") return;
       const [w, h] = (entry.object.data as Building).size;
-      for (let dy = -1; dy <= h; dy++) {
-        for (let dx = -1; dx <= w; dx++) {
-          const owner = builtTiles.get(`${entry.position.x + dx},${entry.position.y + dy}`);
-          if (owner !== undefined && owner !== entry.id) dirtyBuildings.add(String(owner));
-        }
-      }
+      touched(entry.position.x, entry.position.y, entry.position.x + w - 1, entry.position.y + h - 1, entry.id);
     };
 
     for (const op of ops) {

@@ -1,8 +1,8 @@
 import { Color3 } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
-import { shapeFor, slabGeometry, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
+import { shapeFor, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
 import { plot } from "../../blueprints";
-import { bridgeGeometry, frameOf, markingGeometry, runOf } from "./lots";
+import { emptyPlotGeometry, frameOf, markingGeometry, runOf, runSlabGeometry } from "./lots";
 import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
 
@@ -50,33 +50,23 @@ export function mountBuilding(
     ),
   });
 
-  // A plot with a lot stands on one slab, kerb and all, under building and
-  // lot alike, so the two read as one thing.
-  if (lie.lot && pos) {
-    const [pw, ph] = lie.size;
-    const at: [number, number, number] = [pos.x + pw / 2, pos.y + ph / 2, 0];
-    for (const [name, kerb, tint, z] of [["kerb", true, KERB, SLAB.kerbZ], ["slab", false, ASPHALT, SLAB.z]] as const) {
-      const key = `${name}_${pw}x${ph}${look.key}`;
-      pool.ensureBucket(key, slabGeometry(pw, ph, kerb), look.tint(tint), false, true);
-      placed.push({ key, id: pool.addInstance(key, [at[0], at[1], z]) });
-    }
-    // The lot is the run of lot tiles this one touches along the street:
-    // the dividers are the run's, drawn once by its first building, and the
-    // seam to the next building's slab is bridged so the run is one slab.
-    const run = runOf(entry);
-    if (run) {
-      const { rot, origin } = frameOf(data.facing, run.rect);
-      const put = (key: string, geo: () => Parameters<typeof pool.ensureBucket>[1], tint: Color3, z: number, lit: boolean) => {
-        pool.ensureBucket(key, geo(), look.tint(tint), false, lit);
-        placed.push({ key, id: pool.addInstance(key, [origin[0], origin[1], z], [0, 0, rot]) });
-      };
-      if (run.first) put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, 0, false);
-      if (!run.last) {
-        const d = Math.min(ph, pw) === 1 ? 1 : (data.facing % 2 === 0 ? ph : pw);
-        put(`bridge_kerb_${run.u1}_${d}${look.key}`, () => bridgeGeometry(run.u1, d, true), KERB, SLAB.kerbZ, true);
-        put(`bridge_${run.u1}_${d}${look.key}`, () => bridgeGeometry(run.u1, d, false), ASPHALT, SLAB.z, true);
-      }
-    }
+  // A lot is the run of lot tiles this one touches along the street, with
+  // the free tiles it spills over: one slab under every plot on it, the
+  // dividers between its spots, and a dashed footprint on each empty plot
+  // where the next building can land. Drawn once, by the run's first
+  // building; the others redraw whenever the run changes.
+  const run = lie.lot && pos ? runOf(entry) : null;
+  if (run?.first) {
+    const { rot, origin } = frameOf(data.facing, run.rect);
+    const put = (key: string, geo: () => Parameters<typeof pool.ensureBucket>[1], tint: Color3, at: [number, number], z: number, lit: boolean) => {
+      pool.ensureBucket(key, geo(), look.tint(tint), false, lit);
+      const c = Math.cos(rot), s = Math.sin(rot);
+      placed.push({ key, id: pool.addInstance(key, [origin[0] + at[0] * c - at[1] * s, origin[1] + at[0] * s + at[1] * c, z], [0, 0, rot]) });
+    };
+    put(`run_kerb_${run.w}x${run.depth}${look.key}`, () => runSlabGeometry(run.w, run.depth, true), KERB, [0, 0], SLAB.kerbZ, true);
+    put(`run_${run.w}x${run.depth}${look.key}`, () => runSlabGeometry(run.w, run.depth, false), ASPHALT, [0, 0], SLAB.z, true);
+    put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, [0, 0], 0, false);
+    for (const u of run.empties) put(`empty_${run.depth}${look.key}`, () => emptyPlotGeometry(run.depth), KERB, [u, 0], 0, false);
   }
 
   return () => {

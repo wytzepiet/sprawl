@@ -192,7 +192,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.5],
     byHand: true,
     size: [2, 2],
-    lot: [2, 2],
+    lot: [2, 1],
   },
   Warehouse: {
     label: "Warehouse",
