@@ -2,7 +2,7 @@ import { For, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { useEngine } from "../engine/Canvas";
 import { projector, viewExtent } from "../engine/view";
 import { pinned, reached } from "../state/gameObjects";
-import { BLUEPRINTS } from "../blueprints";
+import { BLUEPRINTS, plot } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind, GameObjectEntry } from "../generated";
 
@@ -52,8 +52,10 @@ export default function PinLayer() {
     for (const e of entries()) {
       const el = els.get(e.id);
       if (!el || !e.position) continue;
-      const [w, h] = (e.object.data as { size: [number, number] }).size;
-      const { sx, sy } = project.at(e.position.x + w / 2, e.position.y + h / 2);
+      // Over the building, not its lot.
+      const b = e.object.data as { kind: BuildingKind; facing: number };
+      const [[bx, by], [bw, bh]] = plot(b.kind, b.facing).building;
+      const { sx, sy } = project.at(e.position.x + bx + bw / 2, e.position.y + by + bh / 2);
       const off = sx < -40 || sy < -40 || sx > rect.right + 40 || sy > rect.bottom + 40;
       el.style.transform = `translate(${sx}px, ${sy}px)`;
       el.style.display = off ? "none" : "";
