@@ -16,6 +16,10 @@ export const BUILDING_SIZE = 1.0 - 2 * PLOT_MARGIN;
  * the corner only grazes the kerb. Heights keep it under the road.
  */
 export const SLAB = { inset: 0.1, kerb: 0.04, radius: 0.13, z: 0.01, kerbZ: 0.008 };
+/** Every building's walls have this much of a corner: enough to keep a
+ *  corner out from under a diagonal road's kerb, and the slab's corners are
+ *  the same arcs 0.05 further out. */
+export const CORNER = 0.08;
 
 /**
  * Shapes are built face by face, each with the outward normal it should have.
@@ -34,17 +38,6 @@ export const SLAB = { inset: 0.1, kerb: 0.04, radius: 0.13, z: 0.01, kerbZ: 0.00
 type Vec3 = [number, number, number];
 type Point = [number, number];
 type Outline = Point[];
-
-/** A rectangle, corner to corner. */
-function rect(fw: number, fh: number): Outline {
-  const [x, y] = [fw / 2, fh / 2];
-  return [
-    [-x, -y],
-    [x, -y],
-    [x, y],
-    [-x, y],
-  ];
-}
 
 /** A regular ring. Eight sides reads as round from above; three is a wedge. */
 function ring(sides: number, r: number, cx = 0, cy = 0): Outline {
@@ -198,12 +191,39 @@ function gabled(fw: number, fh: number, wall = WALL.house, roof = ROOF.house): M
   const peak = wall + roof;
   const slope = Math.hypot(roof, w);
   const up: Point = [roof / slope, w / slope];
-
-  b.sides(rect(fw, fh), 0, wall);
-  b.quad(f.at(-l, w, wall), f.at(l, w, wall), f.at(l, 0, peak), f.at(-l, 0, peak), f.n(0, up[0], up[1]));
-  b.quad(f.at(-l, -w, wall), f.at(l, -w, wall), f.at(l, 0, peak), f.at(-l, 0, peak), f.n(0, -up[0], up[1]));
-  b.tri(f.at(l, -w, wall), f.at(l, w, wall), f.at(l, 0, peak), f.n(1, 0, 0));
-  b.tri(f.at(-l, -w, wall), f.at(-l, w, wall), f.at(-l, 0, peak), f.n(-1, 0, 0));
+  // Each slope is a plane, so a rounded plan only clips it: the roof's
+  // height over any point of the plan, in (along, across).
+  const r = CORNER;
+  const over = ([, c]: Point) => wall + roof * (1 - Math.abs(c) / w);
+  // The plan, counter-clockwise from the middle of one end wall, corners
+  // rounded, and a corner under each gable's peak so the wall can rise to it.
+  const arc = (cx: number, cy: number, a0: number, n = 5): Point[] =>
+    Array.from({ length: n + 1 }, (_, i) => {
+      const a = a0 + (i / n) * (Math.PI / 2);
+      return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
+    });
+  const plan: Point[] = [
+    [l, 0], ...arc(l - r, w - r, 0), ...arc(-l + r, w - r, Math.PI / 2),
+    [-l, 0], ...arc(-l + r, -w + r, Math.PI), ...arc(l - r, -w + r, (3 * Math.PI) / 2),
+  ];
+  const at = (p: Point, z: number) => f.at(p[0], p[1], z);
+  // Walls from the ground up to the roof over them.
+  for (let i = 0; i < plan.length; i++) {
+    const p = plan[i], q = plan[(i + 1) % plan.length];
+    const [px, py] = at(p, 0), [qx, qy] = at(q, 0);
+    const len = Math.hypot(qx - px, qy - py) || 1;
+    b.quad(at(p, 0), at(q, 0), at(q, over(q)), at(p, over(p)), [(qy - py) / len, -(qx - px) / len, 0]);
+  }
+  // Each slope as a fan from the middle of the ridge over its half of the plan.
+  const ridge = at([0, 0], peak);
+  const mid = plan.findIndex(([a, c]) => a === -l && c === 0);
+  const halves: [Point[], Vec3][] = [
+    [plan.slice(0, mid + 1), f.n(0, up[0], up[1])],
+    [[...plan.slice(mid), plan[0]], f.n(0, -up[0], up[1])],
+  ];
+  for (const [half, n] of halves) {
+    for (let i = 0; i + 1 < half.length; i++) b.tri(ridge, at(half[i], over(half[i])), at(half[i + 1], over(half[i + 1])), n);
+  }
   return b.done();
 }
 
@@ -226,7 +246,7 @@ function sawtooth(fw: number, fh: number): MeshGeometry {
   const step = f.across / bays;
   const slope = Math.hypot(roof, step);
 
-  b.sides(rect(fw, fh), 0, wall);
+  b.sides(roundedRect(fw, fh, CORNER), 0, wall);
 
   for (let i = 0; i < bays; i++) {
     const c0 = -w + i * step;
@@ -272,7 +292,7 @@ function build(kind: BuildingKind, fw: number, fh: number, height: number): Mesh
     case "sawtooth":
       return sawtooth(fw, fh);
     case "box":
-      return prism(rect(fw, fh), height);
+      return prism(roundedRect(fw, fh, CORNER), height);
   }
 }
 

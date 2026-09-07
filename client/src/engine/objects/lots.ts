@@ -18,7 +18,7 @@ const ISLAND_END = 0.3;
 const CAR: [number, number] = [0.35, 0.18];
 export const LOT_Z = SLAB.z + 0.004;
 const MARK_Z = LOT_Z + 0.002;
-const MARK = 0.015;
+const MARK = 0.035;
 
 /** Where the spots' centres lie along a lot w wide. */
 export function spotsAcross(w: number): number[] {
