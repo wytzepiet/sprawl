@@ -7,6 +7,7 @@ import {
 } from "solid-js";
 import { createConnection } from "../network/connection";
 import { syncClock, syncFromClock } from "../network/clock";
+import { runOf } from "../engine/objects/lots";
 import type { Building,
   GameObjectEntry,
   ClientMessage,
@@ -80,12 +81,19 @@ function footprint(pos: { x: number; y: number }, [w, h]: [number, number]): str
 export function reached(entry: GameObjectEntry): boolean {
   pinsVersion();
   if (entry.object.kind !== "Building" || !entry.position) return false;
-  return footprint(entry.position, (entry.object.data as Building).size).some((k) =>
-    (spatial.get(k) ?? []).some((id) => {
-      const o = entities.get(String(id))?.object;
-      return o?.kind === "RoadNode" && o.data.joined;
-    }),
-  );
+  const own = (e: GameObjectEntry) =>
+    !!e.position &&
+    footprint(e.position, (e.object.data as Building).size).some((k) =>
+      (spatial.get(k) ?? []).some((id) => {
+        const o = entities.get(String(id))?.object;
+        return o?.kind === "RoadNode" && o.data.joined;
+      }),
+    );
+  // A lot's entrance is the run's: a neighbour's driveway reaches this one.
+  return own(entry) || (runOf(entry)?.members ?? []).some((id) => {
+    const e = entities.get(String(id));
+    return !!e && own(e);
+  });
 }
 
 /** The building standing on this tile, any tile of its plot. */

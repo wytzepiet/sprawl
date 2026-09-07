@@ -164,7 +164,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // A restaurant seats a dozen, from lunch until late, and is an evening
         // out in itself. The first kind the mayor can place by hand.
         (Restaurant, Blueprint {
-            class: Commerce, homes: 0, jobs: 6, size: (1, 1), lot: (1, 1), weight: 0.4, tilt: &[Eat, Leisure], by_hand: true,
+            class: Commerce, homes: 0, jobs: 6, size: (1, 1), lot: (0, 0), weight: 0.4, tilt: &[Eat, Leisure], by_hand: true,
             stock: 30, answers: None, vehicles: 0,
             taps: vec![
                 shift(11, 23, 6),

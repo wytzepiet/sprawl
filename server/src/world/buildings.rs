@@ -213,7 +213,7 @@ impl World {
     }
 
     pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
-        self.driveways_of(building_id).into_iter().next()
+        self.driveways_of(building_id).into_iter().next().or_else(|| self.run_gate(building_id))
     }
 
     /// Every driveway of a building: the road nodes standing on its tiles,
@@ -380,6 +380,8 @@ impl World {
             self.unindex(id, *tile);
         }
         self.objects.remove(id);
+        // Its driveway may have been the run's one entrance.
+        self.attach_driveways_along(&tiles);
     }
 
     /// Rebuild the tile→building index from the stored buildings.
@@ -446,23 +448,23 @@ mod tests {
         assert_eq!(world.road_node_for_building(b), door);
     }
 
-    /// The one thing that makes a driveway special: there is only ever one, and
-    /// it is the one you drew last. Drawing a second moves it.
+    /// The one thing that makes a house's driveway special: there is only
+    /// ever one, and it is the one you drew last. Drawing a second moves it.
     #[test]
     fn a_second_driveway_replaces_the_first() {
         let mut world = world_with_road(&[(0, 2), (4, 2)]);
         world.place_road_path(&[GridCoord { x: 0, y: 2 }, GridCoord { x: 0, y: 0 }]);
         let b = world
-            .place_building(GridCoord { x: 1, y: 0 }, BuildingKind::Office, 2)
+            .place_building(GridCoord { x: 1, y: 0 }, BuildingKind::House, 2)
             .unwrap();
 
-        // In from below, then in from the left. Two different tiles of the plot.
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false, 0);
-        assert!(world.road_node_at(GridCoord { x: 2, y: 0 }).is_some());
+        // In from below, then in from the left.
+        world.handle_place_road(GridCoord { x: 1, y: 1 }, GridCoord { x: 1, y: 0 }, false, false, 0);
+        assert!(world.are_connected(GridCoord { x: 1, y: 1 }, GridCoord { x: 1, y: 0 }));
 
         world.handle_place_road(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }, false, false, 0);
-        assert!(world.road_node_at(GridCoord { x: 1, y: 0 }).is_some(), "the new door is open");
-        assert!(world.road_node_at(GridCoord { x: 2, y: 0 }).is_none(), "and the old one is gone");
+        assert!(world.are_connected(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }), "the new door is open");
+        assert!(!world.are_connected(GridCoord { x: 1, y: 1 }, GridCoord { x: 1, y: 0 }), "and the old one is gone");
         assert_eq!(world.road_node_for_building(b), world.road_node_at(GridCoord { x: 1, y: 0 }));
     }
 

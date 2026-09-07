@@ -86,9 +86,10 @@ pub fn start_trip(
     if let Some(entry) = world.objects.get_mut(car_id)
         && let GameObject::Car(ref mut c) = entry.object
     {
+        let promised = ((street_len / CRUISE_SPEED + lot_len / LOT_SPEED) * 1000.0) as u64;
         c.trip = Some(Trip {
             destination: dest_building,
-            eta: now + ((street_len / CRUISE_SPEED + lot_len / LOT_SPEED) * 1000.0) as u64,
+            eta: now + promised,
             route,
             route_positions,
             from_lot,
@@ -97,7 +98,9 @@ pub fn start_trip(
             speed: 0.0,
             acceleration: ACCELERATION,
             total_route_length: total_len,
-            street_length: street_len,
+            street_promised: (street_len / CRUISE_SPEED * 1000.0) as u64,
+            departed: now,
+            entered_lot: 0,
             updated_at: now,
             route_index: 1,
             seg_fraction: 0.0,

@@ -68,11 +68,12 @@ pub struct Window {
 }
 
 impl Spot {
-    /// The earliest time at or after `from` this spot is clear for `len`.
-    fn clear_from(&self, from: GameTime, len: GameTime) -> GameTime {
+    /// The earliest time at or after `from` this spot is clear for `len`,
+    /// for `car`: its own booking is no obstacle to itself.
+    fn clear_from(&self, car: EntityId, from: GameTime, len: GameTime) -> GameTime {
         let mut t = from;
         for w in &self.windows {
-            if w.from < t.saturating_add(len) && w.to > t {
+            if w.car != car && w.from < t.saturating_add(len) && w.to > t {
                 t = w.to;
             }
         }
@@ -224,8 +225,8 @@ impl World {
             (!gates.is_empty()).then_some(gates)
         };
         let (pos, kind, facing) = self.building_of(building)?;
-        let gates = gates_of(building)?;
         let Some(((lx, ly), (gw, gh))) = plot(kind, facing).lot else {
+            let gates = gates_of(building)?;
             return Some(Run { key: RunKey::Solo(building), w: 0.0, seats: vec![Seat { building, gates, u0: 0.0, u1: 0.0 }] });
         };
         let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
@@ -237,11 +238,23 @@ impl World {
         let (start, end, mut chain) = self.frontage(facing, line, a0, a1);
         let here = chain.iter().position(|n| n.1 > a0).unwrap_or(chain.len());
         chain.insert(here, (building, a0, a1));
-        let seats = chain
+        // The entrances are the run's, not a building's: one driveway serves
+        // everyone on it, and a run no road reaches has no lot yet.
+        let seats: Vec<Seat> = chain
             .into_iter()
-            .filter_map(|(b, s, e)| Some(Seat { building: b, gates: gates_of(b)?, u0: (s - start) as f64, u1: (e - start) as f64 }))
+            .map(|(b, s, e)| Seat { building: b, gates: gates_of(b).unwrap_or_default(), u0: (s - start) as f64, u1: (e - start) as f64 })
             .collect();
+        if seats.iter().all(|s| s.gates.is_empty()) {
+            return None;
+        }
         Some(Run { key: RunKey::Run(facing, line, start), w: (end - start) as f64, seats })
+    }
+
+    /// The street node a run's entrance joins, for a building whose lot is
+    /// served by a neighbour's driveway rather than its own.
+    pub(super) fn run_gate(&self, building: EntityId) -> Option<EntityId> {
+        let run = self.run_of(building)?;
+        run.seats.iter().flat_map(|s| &s.gates).next().map(|&(driveway, _)| driveway)
     }
 
     /// The run a lot on this row, over `[a0, a1)` along the frontage,
@@ -511,7 +524,7 @@ impl World {
                 Claim::Door(b) => keys.iter().find(|k| self.lots[k].members.iter().any(|m| m.building == b)).map(|&k| (k, Claim::Door(b))),
                 Claim::Spot(_) => keys
                     .iter()
-                    .filter_map(|&k| self.nearest_free(k, was, from, to).map(|c| (k, c)))
+                    .filter_map(|&k| self.nearest_free(k, car, was, from, to).map(|c| (k, c)))
                     .min_by(|(ka, ca), (kb, cb)| {
                         let d = |k: &RunKey, c: &Claim| self.pose_of(*k, *c).map_or(f64::MAX, |p| dist(p, was));
                         d(ka, ca).total_cmp(&d(kb, cb))
@@ -568,7 +581,7 @@ impl World {
             let claim = match claim {
                 Claim::Door(b) if self.lots[&key].members.iter().any(|m| m.building == b) => Some(Claim::Door(b)),
                 Claim::Door(_) => None,
-                Claim::Spot(_) => self.nearest_free(key, was, from, to),
+                Claim::Spot(_) => self.nearest_free(key, car, was, from, to),
             };
             let Some(claim) = claim else {
                 self.set_spot(car, None);
@@ -583,12 +596,12 @@ impl World {
     }
 
     /// The spot nearest a pose that is clear over a window.
-    fn nearest_free(&self, key: RunKey, near: Option<Pose>, from: GameTime, to: GameTime) -> Option<Claim> {
+    fn nearest_free(&self, key: RunKey, car: EntityId, near: Option<Pose>, from: GameTime, to: GameTime) -> Option<Claim> {
         self.lots[&key]
             .spots
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.clear_from(from, to.saturating_sub(from)) == from)
+            .filter(|(_, s)| s.clear_from(car, from, to.saturating_sub(from)) == from)
             .min_by(|(_, a), (_, b)| dist(a.pose, near).total_cmp(&dist(b.pose, near)))
             .map(|(i, _)| Claim::Spot(i))
     }
@@ -622,16 +635,16 @@ impl World {
         }
     }
 
-    /// The earliest a visit to this building from `from` to `to` could
-    /// have a spot, at or after `from`. `None` where the building has no
-    /// lot, or one not built yet: nothing to wait for.
-    pub fn spot_window(&self, building: EntityId, from: GameTime, to: GameTime) -> Option<GameTime> {
+    /// The earliest a visit by `car` to this building from `from` to `to`
+    /// could have a spot, at or after `from`. `None` where the building
+    /// has no lot, or one not built yet: nothing to wait for.
+    pub fn spot_window(&self, building: EntityId, car: EntityId, from: GameTime, to: GameTime) -> Option<GameTime> {
         let lot = self.lots.get(self.lot_of.get(&building)?)?;
         if lot.spots.is_empty() {
             return None;
         }
         let len = to.saturating_sub(from);
-        lot.spots.iter().map(|s| s.clear_from(from, len)).min()
+        lot.spots.iter().map(|s| s.clear_from(car, from, len)).min()
     }
 
     fn pose_of(&self, key: RunKey, claim: Claim) -> Option<Pose> {
@@ -690,7 +703,7 @@ impl World {
             .or_else(|| staff.then_some(Claim::Door(building)))
             .or_else(|| {
                 (0..lot.spots.len())
-                    .filter(|&i| lot.spots[i].clear_from(from, len) == from)
+                    .filter(|&i| lot.spots[i].clear_from(car, from, len) == from)
                     .map(|i| (i, appeal(i)))
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(i, _)| Claim::Spot(i))
@@ -750,7 +763,7 @@ impl World {
                 let to = self.lots[&key].spots[i].holder(car).map_or(GameTime::MAX, |w| w.to);
                 self.release_spot(car);
                 let lot = self.lots.get_mut(&key).unwrap();
-                let free = (0..lot.spots.len()).find(|&j| lot.spots[j].clear_from(now, to.saturating_sub(now)) == now);
+                let free = (0..lot.spots.len()).find(|&j| lot.spots[j].clear_from(car, now, to.saturating_sub(now)) == now);
                 match free {
                     Some(j) => self.hold(key, car, Claim::Spot(j), now, to),
                     None => {
@@ -847,7 +860,7 @@ impl World {
                     Claim::Spot(i) => (gates[i].0, lot.spots[i].node),
                     Claim::Door(_) => (m.door_at, m.door),
                 };
-                let (_, street, gate) = m.gates[0];
+                let (_, street, gate) = entrance(lot, m);
                 let mut v = vec![street];
                 v.extend(cyclic(loop_, gate, to));
                 v.push(last);
@@ -862,7 +875,7 @@ impl World {
         let lot = self.lot_mut(building)?;
         Some(match lot.way {
             Way::Driveway { driveway, .. } => driveway,
-            Way::Ring { .. } => lot.members.iter().find(|m| m.building == building)?.gates[0].1,
+            Way::Ring { .. } => entrance(lot, lot.members.iter().find(|m| m.building == building)?).1,
         })
     }
 
@@ -897,7 +910,7 @@ impl World {
             }
             let key = self.lot_of[&building];
             let claim = match pose {
-                Some(_) => self.nearest_free(key, pose, 0, GameTime::MAX),
+                Some(_) => self.nearest_free(key, car, pose, 0, GameTime::MAX),
                 None => matches!(self.lots[&key].way, Way::Ring { .. }).then_some(Claim::Door(building)),
             };
             match claim {
@@ -931,6 +944,16 @@ fn cyclic(loop_: &[EntityId], from: usize, to: usize) -> Vec<EntityId> {
         i = (i + 1) % n;
     }
     out
+}
+
+/// The entrance a building's visitors come in by: of the run's gates, the
+/// one with the shortest drive round to its door.
+fn entrance(lot: &Lot, m: &Member) -> (EntityId, EntityId, usize) {
+    let n = match &lot.way {
+        Way::Ring { loop_, .. } => loop_.len(),
+        Way::Driveway { .. } => 1,
+    };
+    *lot.members.iter().flat_map(|o| &o.gates).min_by_key(|g| (m.door_at + n - g.2) % n).unwrap()
 }
 
 fn dist(a: Pose, b: Option<Pose>) -> f64 {
@@ -974,7 +997,10 @@ mod tests {
         assert_eq!(world.lot_mut(apart).unwrap().spots.len(), 12, "alone parks twelve");
         let lot = &world.lots[&world.lot_of[&a]];
         assert_eq!(lot.members.len(), 2);
-        assert!(lot.members.iter().all(|m| m.gates.len() == 1 && m.gates[0].2 > 0), "every member has its own entrance");
+        assert_eq!(lot.members.iter().map(|m| m.gates.len()).sum::<usize>(), 1, "one entrance serves the run");
+        assert_eq!(world.road_node_for_building(b), world.road_node_for_building(a), "b is reached by a's driveway");
+        world.remove_building(a);
+        assert!(world.road_node_for_building(b).is_some(), "b gets an entrance of its own when a goes");
     }
 
     /// The loop turns to suit the entrance: in at the right end of a lot,
@@ -1047,17 +1073,18 @@ mod tests {
         // Two spots: two visits from 10 to 12 fill it.
         assert!(world.claim_spot(shop, a, 10_000, 12_000).is_some());
         assert!(world.claim_spot(shop, b, 10_000, 12_000).is_some());
-        assert_eq!(world.spot_window(shop, 10_000, 11_000), Some(12_000), "a third visit is told to come at twelve");
-        assert_eq!(world.spot_window(shop, 13_000, 14_000), Some(13_000), "and a later one is fine as planned");
+        assert_eq!(world.spot_window(shop, c, 10_000, 11_000), Some(12_000), "a third visit is told to come at twelve");
+        assert_eq!(world.spot_window(shop, c, 13_000, 14_000), Some(13_000), "and a later one is fine as planned");
+        assert_eq!(world.spot_window(shop, a, 10_000, 11_000), Some(10_000), "a's own booking is no obstacle to a");
         assert!(world.claim_spot(shop, c, 10_000, 11_000).is_none(), "nothing is clear for it now");
         assert_eq!(world.lots[&world.lot_of[&shop]].stats.refused, 1);
         assert!(world.claim_spot(shop, c, 12_000, 13_000).is_some(), "at twelve it has a spot");
         // A visit running long moves everyone after it.
         world.restate(a, 15_000);
         world.release_spot(c);
-        assert_eq!(world.spot_window(shop, 12_000, 13_000), Some(12_000), "b's spot is still clear at twelve");
+        assert_eq!(world.spot_window(shop, c, 12_000, 13_000), Some(12_000), "b's spot is still clear at twelve");
         world.release_spot(b);
-        assert_eq!(world.spot_window(shop, 12_000, 13_000), Some(12_000));
+        assert_eq!(world.spot_window(shop, c, 12_000, 13_000), Some(12_000));
     }
 
     /// A lot facing east or west runs along y, and its run is read that

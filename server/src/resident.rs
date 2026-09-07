@@ -167,7 +167,7 @@ fn verdict_at(
     taps_of(world, building)
         .iter()
         .filter(|t| t.need == b.need)
-        .map(|t| evaluate(world, at, building, t, b, now, company))
+        .map(|t| evaluate(world, r.car, at, building, t, b, now, company))
         .fold(Verdict::Nothing, Verdict::better)
 }
 
@@ -277,6 +277,7 @@ impl Verdict {
 /// is scored on waiting honestly, and does not go home for five minutes.
 fn evaluate(
     world: &World,
+    car: EntityId,
     at: EntityId,
     building: EntityId,
     tap: &Tap,
@@ -316,7 +317,7 @@ fn evaluate(
     let Some(mut planned) = plan(now + tau) else { return Verdict::Nothing };
     if at != building && tap.need != Need::Work {
         let (_, leave, _, entry) = planned;
-        if let Some(t) = world.spot_window(building, entry - h, leave.saturating_add(crate::world::lots::SLACK))
+        if let Some(t) = world.spot_window(building, car, entry - h, leave.saturating_add(crate::world::lots::SLACK))
             && t > entry - h
         {
             // A lot held by cars that have not said when they leave frees
@@ -477,21 +478,24 @@ fn drive(
 /// arrival compares to the shift, and to the free-flow promise made at
 /// departure. People leave on time under free-flow assumptions, so both
 /// numbers worsening together is a direct measurement of congestion on the
-/// roads they actually drove. `length` is the street part of the trip: the
-/// crawl through a lot was promised at its own pace and is not traffic.
+/// roads they actually drove. The delay is learned from the street part
+/// alone, from setting out to turning into the lot: a queue at a lot's
+/// entrance is that lot's problem, not a slow street across town.
 pub fn arrival_readout(
     world: &mut World,
     id: EntityId,
     destination: EntityId,
     eta: GameTime,
-    length: f64,
+    street_promised: GameTime,
+    departed: GameTime,
+    entered_lot: GameTime,
     now: GameTime,
 ) {
     // Every arrival teaches the city how much slower than empty roads it
     // is running, and every departure estimate reads it.
-    let free = length / CRUISE_SPEED * 1000.0;
-    if free > 0.0 {
-        let ratio = (free + now.saturating_sub(eta) as f64) / free;
+    if street_promised > 0 {
+        let street_took = if entered_lot > 0 { entered_lot } else { now }.saturating_sub(departed);
+        let ratio = street_took as f64 / street_promised as f64;
         world.delay += (ratio - world.delay) / DELAY_MEMORY;
     }
     if let Some(r) = resident(world, id)

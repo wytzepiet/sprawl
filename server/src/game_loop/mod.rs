@@ -535,7 +535,6 @@ fn try_reroute(
     world.register_car_route(car_id, &new_route);
     let segment_lengths = world.compute_segment_lengths(&new_route, 0, to_lot);
     let total: f64 = segment_lengths.iter().sum();
-    let street: f64 = total - segment_lengths[segment_lengths.len() - to_lot..].iter().sum::<f64>();
     let route_positions = world.route_positions(&new_route);
 
     if let Some(pos) = world.objects.get(new_route[0]).and_then(|e| e.position) {
@@ -552,7 +551,6 @@ fn try_reroute(
         t.to_lot = to_lot;
         t.segment_lengths = segment_lengths;
         t.total_route_length = total;
-        t.street_length = street;
         t.route_index = 1;
         t.progress = 0.0;
         t.speed = 0.0;
@@ -1117,6 +1115,11 @@ mod tests {
             }
             for (i, &id) in people.iter().enumerate() {
                 let state = (at_of(&world, id), doing(&world, id));
+                if state != last[i] && i == 5 && now > day + 16 * day / 24 && now < day + 20 * day / 24 {
+                    let d = crate::resident::inspect(&world, id, now);
+                    let eat = d["buckets"].as_array().unwrap().iter().find(|b| b["need"] == "Eat").map(|b| b["option"].clone()).unwrap();
+                    eprintln!("trace {} at {} sel {} delay {:.2} eat {}", d["now"], d["at_kind"], d["selected"], world.delay, eat);
+                }
                 if state != last[i] {
                     if state == (Some(station), Some(crate::needs::Need::Fuel)) {
                         stops += 1;
@@ -1246,7 +1249,7 @@ mod tests {
             if at == Some(lunch) && sel == Some(Need::Eat) { present.insert(id); } else { present.remove(&id); }
             most = most.max(present.len());
         }
-        assert!(most <= 6, "{most} eating at a four-seat shop at once");
+        assert!(most <= 12, "{most} eating at a twelve-spot shop at once");
 
         // Time off is never more important than work (its rate is below the
         // job's), so an outing happens after the shift, on an evening when

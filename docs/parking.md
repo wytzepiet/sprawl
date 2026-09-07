@@ -5,7 +5,7 @@ in its generic form: every building has a two-spot lot on its driveway
 (`world/lots.rs`), trips end in a spot and start from one, a parked car
 carries its pose on the wire, and the client draws nothing it is not told.
 The ring lot (§3.1), the plot laid out by its facing, the slab and the
-ring drawn, staff at the door, and a full lot refusing the trip, are
+ring drawn, and a full lot refusing the trip, are
 built (2026-09-07), lots fuse along a frontage (§3.2), and a visitor
 tap's slots are its lot's spots (§3.3), a claim on a junction lasts
 until the tail has cleared it (§4.2), spots carry windows and a full lot
@@ -131,10 +131,11 @@ busier shop is a shop with a wider lot or a neighbour. A lot is bigger
 than its building while the land beside it is free (§3.8), and shrinks
 to the building's width as neighbours fill in.
 
-Staff park unseen: their car drives the ring like anyone's, along the
-back lane, and in at a door node under the building's front, where it
-stops with no pose and is not drawn; it leaves the same way. Jobs stay
-as the rows say. Lorries unload in the strip between the back lane and
+Staff will park like anyone else, in a spot, and a workplace whose lot
+is full will turn its own workers away for the morning: nobody drives
+into a building. Until then staff and a facility's own vehicles stop at
+a door node under the building's front, unseen, and lorries unload
+there too until they unload in the strip between the back lane and
 the building, a bay entered from the lane and left onto it, when the run
 is as long as the lorry; at a lone shop they stop on the back lane and
 the island waits, or on the street outside, which blocks a lane the
@@ -145,14 +146,18 @@ honest way.
 | House | 1×1 | driveway | its own 2 |
 | Shop, bar, restaurant, gas station | 1×1 | 1×1, spills to 3, fuses | 12 alone in the open, 7 hemmed in, shared in a row |
 | Apartment | 2×1 | 2×1, spills, fuses | 7 homes, more with room |
-| Workshop, office, factory | as now | none | staff only |
+| Workshop | 1×1 | 1×1, spills, fuses (not yet) | 6 staff |
+| Office, factory | 2×1 | 2×1, spills, fuses (not yet) | 16 and 24 staff |
 | Supermarket | 2×2 | 2×2 beside it, shared (§3.8) | about 14, shared |
 | Warehouse | 2×1 | 2×1, bays later | lorries |
 
-A driveway is for a place where cars live, a ring is for a place cars
-visit, and staff never park where you can see them. Workplaces get no
-lot on purpose: staff parking is dull to watch and would double every
-lot in town, and work already makes its traffic as commuting.
+A driveway is for a place where cars live, a ring is for everywhere
+else. Workplaces get lots too (decided 2026-09-07, not yet built): staff
+parking unseen hid exactly the pressure a workplace causes, and a full
+office lot at nine in the morning is something the mayor should see.
+Building it showed the morning rush into one entrance queueing onto the
+street, and the city-wide delay learned from that queue emptied the bar
+at night; the delay has to be a route's before staff park in spots.
 
 ### 3.4 Drawn as one unit
 

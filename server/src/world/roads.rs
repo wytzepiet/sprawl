@@ -78,7 +78,7 @@ impl World {
     }
 
     /// Check if two nodes at the given coords are connected as outgoing.
-    fn are_connected(&self, a: GridCoord, b: GridCoord) -> bool {
+    pub(super) fn are_connected(&self, a: GridCoord, b: GridCoord) -> bool {
         let a_id = match self.road_node_at(a) {
             Some(id) => id,
             None => return false,
