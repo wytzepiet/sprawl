@@ -61,13 +61,12 @@ pub enum Claim {
     Door(EntityId),
 }
 
-/// A building on a run: where its entrance joins the loop and the street
-/// node beyond it, and where its door leaves the loop.
+/// A building on a run: where each of its entrances joins the loop and the
+/// street node beyond it, and where its door leaves the loop.
 struct Member {
     building: EntityId,
-    driveway: EntityId,
-    street: EntityId,
-    gate: usize,
+    /// (driveway, street, index on the loop), in tile order.
+    gates: Vec<(EntityId, EntityId, usize)>,
     door: EntityId,
     door_at: usize,
 }
@@ -98,8 +97,8 @@ pub struct Lot {
 /// A building's place on a run, as read off the map.
 struct Seat {
     building: EntityId,
-    driveway: EntityId,
-    street: EntityId,
+    /// Its driveways and the street each joins, in tile order.
+    gates: Vec<(EntityId, EntityId)>,
     /// Its lot tiles along the frontage, from the run's start.
     u0: f64,
     u1: f64,
@@ -112,7 +111,9 @@ impl World {
         let (key, seats) = self.run_of(building)?;
         let current = self.lots.get(&key).is_some_and(|l| {
             l.members.len() == seats.len()
-                && l.members.iter().zip(&seats).all(|(m, s)| m.building == s.building && m.driveway == s.driveway && m.street == s.street)
+                && l.members.iter().zip(&seats).all(|(m, s)| {
+                    m.building == s.building && m.gates.len() == s.gates.len() && m.gates.iter().zip(&s.gates).all(|(a, b)| (a.0, a.1) == *b)
+                })
         });
         if !current {
             // Whatever lots the members had, and this key's, go; everyone
@@ -137,18 +138,23 @@ impl World {
     /// The run this building's lot belongs to, and every building on it in
     /// order along the frontage. A kind with no lot is a run of one.
     fn run_of(&self, building: EntityId) -> Option<(RunKey, Vec<Seat>)> {
-        let seat_of = |b: EntityId| -> Option<(EntityId, EntityId)> {
-            let driveway = self.road_node_for_building(b)?;
-            let street = match self.objects.get(driveway).map(|e| &e.object) {
-                Some(GameObject::RoadNode(n)) => n.outgoing.iter().chain(&n.incoming).copied().find(|&s| s != driveway)?,
-                _ => return None,
-            };
-            Some((driveway, street))
+        // Every driveway with the street it joins; a building with none
+        // has no seat on the run.
+        let gates_of = |b: EntityId| -> Option<Vec<(EntityId, EntityId)>> {
+            let gates: Vec<(EntityId, EntityId)> = self
+                .driveways_of(b)
+                .into_iter()
+                .filter_map(|d| match self.objects.get(d).map(|e| &e.object) {
+                    Some(GameObject::RoadNode(n)) => n.outgoing.iter().chain(&n.incoming).copied().find(|&s| s != d).map(|s| (d, s)),
+                    _ => None,
+                })
+                .collect();
+            (!gates.is_empty()).then_some(gates)
         };
         let (pos, kind, facing) = self.building_of(building)?;
-        let (driveway, street) = seat_of(building)?;
+        let gates = gates_of(building)?;
         let Some(((lx, ly), (lw, _))) = plot(kind, facing).lot else {
-            return Some((RunKey::Solo(building), vec![Seat { building, driveway, street, u0: 0.0, u1: 0.0 }]));
+            return Some((RunKey::Solo(building), vec![Seat { building, gates, u0: 0.0, u1: 0.0 }]));
         };
         let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
         let along_x = FACINGS[facing as usize % 4].0 == 0;
@@ -177,10 +183,7 @@ impl World {
         let start = chain[0].1;
         let seats = chain
             .into_iter()
-            .filter_map(|(b, s, e)| {
-                let (driveway, street) = seat_of(b)?;
-                Some(Seat { building: b, driveway, street, u0: (s - start) as f64, u1: (e - start) as f64 })
-            })
+            .filter_map(|(b, s, e)| Some(Seat { building: b, gates: gates_of(b)?, u0: (s - start) as f64, u1: (e - start) as f64 }))
             .collect();
         Some((RunKey::Run(facing, line, start), seats))
     }
@@ -213,26 +216,27 @@ impl World {
         let RunKey::Run(facing, line, start) = key else {
             // A driveway pair. Spot 0 is on the lane a car leaves by.
             let seat = &seats[0];
-            let d = self.node_pos(seat.driveway)?;
-            let s = self.node_pos(seat.street)?;
+            let (driveway, street) = seat.gates[0];
+            let d = self.node_pos(driveway)?;
+            let s = self.node_pos(street)?;
             let len = ((s[0] - d[0]).powi(2) + (s[1] - d[1]).powi(2)).sqrt();
             let out = [(s[0] - d[0]) / len, (s[1] - d[1]) / len];
             let heading = out[1].atan2(out[0]);
             for side in [1.0, -1.0] {
                 let at = [d[0] + out[0] * SPOT_OUT - out[1] * LANE * side, d[1] + out[1] * SPOT_OUT + out[0] * LANE * side];
                 let id = node(self, at);
-                edge(self, seat.driveway, id);
-                edge(self, id, seat.street);
+                edge(self, driveway, id);
+                edge(self, id, street);
                 spots.push(Spot { node: id, pose: Pose { at, heading }, car: None });
             }
-            let members = vec![Member { building: seat.building, driveway: seat.driveway, street: seat.street, gate: 0, door: seat.driveway, door_at: 0 }];
-            return Some(Lot { members, spots, way: Way::Driveway { driveway: seat.driveway, street: seat.street }, nodes, edges, doorway: Vec::new() });
+            let members = vec![Member { building: seat.building, gates: vec![(driveway, street, 0)], door: driveway, door_at: 0 }];
+            return Some(Lot { members, spots, way: Way::Driveway { driveway, street }, nodes, edges, doorway: Vec::new() });
         };
 
         // The ring, in the run's own frame: u along the frontage from the
         // run's start, v in from the street. One tile deep.
         let w = seats.last().map_or(0.0, |s| s.u1);
-        let world_at = move |u: f64, v: f64| -> [f64; 2] {
+        let grid_at = move |u: f64, v: f64| -> [f64; 2] {
             match facing % 4 {
                 2 => [start as f64 + u, (line + 1) as f64 - v],
                 0 => [start as f64 + u, line as f64 + v],
@@ -240,46 +244,61 @@ impl World {
                 _ => [line as f64 + v, start as f64 + u],
             }
         };
+        let grid_u = |p: [f64; 2]| -> f64 {
+            let g = grid_at(0.0, 0.0);
+            let along = grid_at(1.0, 0.0);
+            (p[0] - g[0]) * (along[0] - g[0]) + (p[1] - g[1]) * (along[1] - g[1])
+        };
+        // The loop turns the way that puts the most front lane ahead of the
+        // entrances: a car in at the left end sees every spot before it has
+        // gone round once. So the frame's u runs away from the entrances,
+        // which is a mirror of the grid's when they sit in the right half.
+        let mut gate_us: Vec<(usize, usize, f64)> = Vec::new();
+        for (m, seat) in seats.iter().enumerate() {
+            for (g, &(driveway, _)) in seat.gates.iter().enumerate() {
+                gate_us.push((m, g, grid_u(self.node_pos(driveway)?)));
+            }
+        }
+        let mean = gate_us.iter().map(|g| g.2).sum::<f64>() / gate_us.len().max(1) as f64;
+        let mirrored = mean > w / 2.0;
+        let flip = move |u: f64| if mirrored { w - u } else { u };
+        let world_at = move |u: f64, v: f64| grid_at(flip(u), v);
         let back = world_at(0.0, 1.0);
         let front = world_at(0.0, 0.0);
         let heading = (back[1] - front[1]).atan2(back[0] - front[0]);
-        // Each entrance crosses the front lane at its driveway's tile; each
-        // door leaves the back lane under its building's middle.
-        let u_of = |p: [f64; 2]| -> f64 {
-            let g = world_at(0.0, 0.0);
-            let along = world_at(1.0, 0.0);
-            (p[0] - g[0]) * (along[0] - g[0]) + (p[1] - g[1]) * (along[1] - g[1])
-        };
         let n = ((w - 2.0 * ISLAND_END) / PITCH + 1e-9).floor().max(0.0) as usize;
         let first = ISLAND_END + ((w - 2.0 * ISLAND_END) - n as f64 * PITCH) / 2.0 + PITCH / 2.0;
         let us: Vec<f64> = (0..n).map(|i| first + i as f64 * PITCH).collect();
 
-        // Stations along each lane: a spot's entry or exit, or a member's
-        // gate or door, in the order the flow passes them.
+        // Stations along each lane: a spot's entry or exit, a member's gate
+        // or door, in the order the flow passes them.
         enum Station {
             Spot(usize),
-            Member(usize),
+            Gate(usize, usize),
+            Door(usize),
         }
         let mut front_stations: Vec<(f64, Station)> = us.iter().enumerate().map(|(i, &u)| (u, Station::Spot(i))).collect();
         let mut back_stations: Vec<(f64, Station)> = us.iter().enumerate().map(|(i, &u)| (u, Station::Spot(i))).collect();
+        for &(m, g, u) in &gate_us {
+            front_stations.push((flip(u), Station::Gate(m, g)));
+        }
         for (m, seat) in seats.iter().enumerate() {
-            let d = self.node_pos(seat.driveway)?;
-            front_stations.push((u_of(d), Station::Member(m)));
-            back_stations.push(((seat.u0 + seat.u1) / 2.0, Station::Member(m)));
+            back_stations.push((flip((seat.u0 + seat.u1) / 2.0), Station::Door(m)));
         }
         front_stations.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         back_stations.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
 
         let mut loop_ = Vec::new();
         let mut gates = vec![(0usize, 0usize); n];
-        let mut member_gate = vec![0usize; seats.len()];
+        let mut member_gates: Vec<Vec<usize>> = seats.iter().map(|s| vec![0; s.gates.len()]).collect();
         let mut member_door_at = vec![0usize; seats.len()];
         loop_.push(node(self, world_at(RING, RING)));
         for (u, station) in &front_stations {
             let id = node(self, world_at(*u, RING));
             match station {
                 Station::Spot(i) => gates[*i].0 = loop_.len(),
-                Station::Member(m) => member_gate[*m] = loop_.len(),
+                Station::Gate(m, g) => member_gates[*m][*g] = loop_.len(),
+                Station::Door(_) => unreachable!(),
             }
             loop_.push(id);
         }
@@ -289,7 +308,8 @@ impl World {
             let id = node(self, world_at(*u, 1.0 - RING));
             match station {
                 Station::Spot(i) => gates[*i].1 = loop_.len(),
-                Station::Member(m) => member_door_at[*m] = loop_.len(),
+                Station::Door(m) => member_door_at[*m] = loop_.len(),
+                Station::Gate(..) => unreachable!(),
             }
             loop_.push(id);
         }
@@ -306,14 +326,18 @@ impl World {
         }
         let mut members = Vec::new();
         for (m, seat) in seats.iter().enumerate() {
-            let gate = member_gate[m];
-            edge(self, seat.street, loop_[gate]);
-            edge(self, loop_[gate], seat.street);
+            let mut mgates = Vec::new();
+            for (g, &(driveway, street)) in seat.gates.iter().enumerate() {
+                let gate = member_gates[m][g];
+                edge(self, street, loop_[gate]);
+                edge(self, loop_[gate], street);
+                mgates.push((driveway, street, gate));
+            }
             let door_at = member_door_at[m];
             let door = node(self, world_at((seat.u0 + seat.u1) / 2.0, DOOR_V));
             edge(self, loop_[door_at], door);
             edge(self, door, loop_[door_at]);
-            members.push(Member { building: seat.building, driveway: seat.driveway, street: seat.street, gate, door, door_at });
+            members.push(Member { building: seat.building, gates: mgates, door, door_at });
         }
         Some(Lot { members, spots, way: Way::Ring { loop_, gates }, nodes, edges, doorway: Vec::new() })
     }
@@ -463,6 +487,18 @@ impl World {
         self.lot_mut(building)?;
         let key = self.lot_of[&building];
         let lot = &self.lots[&key];
+        // A free spot is the first one ahead of the building's entrance
+        // along the flow, so a car is not sent round the loop for one that
+        // sits just behind where it came in.
+        let ahead = |i: usize| -> usize {
+            match &lot.way {
+                Way::Ring { loop_, gates } => {
+                    let gate = lot.members.iter().find(|m| m.building == building).map_or(0, |m| m.gates[0].2);
+                    (gates[i].0 + loop_.len() - gate) % loop_.len()
+                }
+                Way::Driveway { .. } => i,
+            }
+        };
         let claim = lot
             .spots
             .iter()
@@ -470,7 +506,7 @@ impl World {
             .map(Claim::Spot)
             .or_else(|| lot.doorway.iter().find(|&&(c, b)| c == car && b == building).map(|&(_, b)| Claim::Door(b)))
             .or_else(|| staff.then_some(Claim::Door(building)))
-            .or_else(|| lot.spots.iter().position(|s| s.car.is_none()).map(Claim::Spot))?;
+            .or_else(|| (0..lot.spots.len()).filter(|&i| lot.spots[i].car.is_none()).min_by_key(|&i| ahead(i)).map(Claim::Spot))?;
         // Only now, with the new place found, is the old one let go of.
         if self.claim_of(key, car) != Some(claim) {
             self.release_spot(car);
@@ -536,10 +572,10 @@ impl World {
                     }
                 };
                 let n = loop_.len();
-                let m = lot.members.iter().min_by_key(|m| (m.gate + n - from) % n)?;
+                let &(_, street, gate) = lot.members.iter().flat_map(|m| &m.gates).min_by_key(|g| (g.2 + n - from) % n)?;
                 let mut v = vec![first];
-                v.extend(cyclic(loop_, from, m.gate));
-                v.push(m.street);
+                v.extend(cyclic(loop_, from, gate));
+                v.push(street);
                 v
             }
         })
@@ -561,8 +597,9 @@ impl World {
                     Claim::Spot(i) => (gates[i].0, lot.spots[i].node),
                     Claim::Door(_) => (m.door_at, m.door),
                 };
-                let mut v = vec![m.street];
-                v.extend(cyclic(loop_, m.gate, to));
+                let (_, street, gate) = m.gates[0];
+                let mut v = vec![street];
+                v.extend(cyclic(loop_, gate, to));
                 v.push(last);
                 v
             }
@@ -575,7 +612,7 @@ impl World {
         let lot = self.lot_mut(building)?;
         Some(match lot.way {
             Way::Driveway { driveway, .. } => driveway,
-            Way::Ring { .. } => lot.members.iter().find(|m| m.building == building)?.street,
+            Way::Ring { .. } => lot.members.iter().find(|m| m.building == building)?.gates[0].1,
         })
     }
 
@@ -681,7 +718,40 @@ mod tests {
         assert_eq!(world.lot_mut(apart).unwrap().spots.len(), 2, "alone parks two");
         let lot = &world.lots[&world.lot_of[&a]];
         assert_eq!(lot.members.len(), 2);
-        assert!(lot.members.iter().all(|m| m.gate > 0), "every member has its own entrance");
+        assert!(lot.members.iter().all(|m| m.gates.len() == 1 && m.gates[0].2 > 0), "every member has its own entrance");
+    }
+
+    /// The loop turns to suit the entrance: in at the right end of a lot,
+    /// the nearest spot is a few nodes on, not a lap away.
+    #[test]
+    fn the_loop_turns_toward_the_entrance() {
+        let mut world = street();
+        // A two-wide lot whose street lies to its right (x = 10), so the
+        // driveway lands on its right-hand tile.
+        let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
+        world.place_road_path(&path);
+        let a = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None }), None);
+        let way = world.way_in(a, car).unwrap();
+        let lot = &world.lots[&world.lot_of[&a]];
+        let d = world.node_pos(lot.members[0].gates[0].0).unwrap();
+        let spot = world.node_pos(*way.last().unwrap()).unwrap();
+        assert!((d[0] - spot[0]).abs() + (d[1] - spot[1]).abs() < 1.0, "the first spot taken is by the entrance: {d:?} vs {spot:?}");
+        assert!(way.len() <= 5, "a few nodes in, not a lap: {}", way.len());
+    }
+
+    /// A road drawn into a lot tile is one more entrance, not the old one
+    /// moved, and a car leaves by whichever is nearer.
+    #[test]
+    fn a_lot_takes_more_than_one_driveway() {
+        let mut world = street();
+        let a = world.spawn_building(GridCoord { x: 2, y: 1 }, BuildingKind::Apartment).unwrap();
+        assert_eq!(world.driveways_of(a).len(), 1);
+        // The driveway landed on (2, 1); a second road drawn into (3, 1).
+        world.handle_place_road(GridCoord { x: 3, y: 0 }, GridCoord { x: 3, y: 1 }, false, false, 0);
+        assert_eq!(world.driveways_of(a).len(), 2, "both driveways stand");
+        let lot = world.lot_mut(a).unwrap();
+        assert_eq!(lot.members[0].gates.len(), 2);
     }
 
     /// A shop arriving beside one already parked in keeps the parked car in

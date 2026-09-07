@@ -129,8 +129,9 @@ impl World {
         }
 
         // A building takes exactly one driveway, and it is the newest: drawing
-        // a road into it is how you move the old one.
-        if into_building {
+        // a road into it is how you move the old one. A lot takes any number
+        // of entrances, and keeps the ones it has.
+        if into_building && !self.is_lot_tile(to) {
             self.clear_driveway(to);
         }
 

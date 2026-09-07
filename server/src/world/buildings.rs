@@ -194,10 +194,26 @@ impl World {
     }
 
     pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
-        let entry = self.objects.get(building_id)?;
-        let pos = entry.position?;
-        let GameObject::Building(ref b) = entry.object else { return None };
-        Self::footprint(pos, b.size).find_map(|t| self.road_node_at(t))
+        self.driveways_of(building_id).into_iter().next()
+    }
+
+    /// Every driveway of a building: the road nodes standing on its tiles,
+    /// in tile order. A lot may have several; anything else has one.
+    pub fn driveways_of(&self, building_id: EntityId) -> Vec<EntityId> {
+        let Some(entry) = self.objects.get(building_id) else { return Vec::new() };
+        let (Some(pos), GameObject::Building(b)) = (entry.position, &entry.object) else { return Vec::new() };
+        Self::footprint(pos, b.size).filter_map(|t| self.road_node_at(t)).collect()
+    }
+
+    /// Is this tile one of a lot's tiles, where a road drawn in is one
+    /// more entrance rather than a driveway moved?
+    pub(super) fn is_lot_tile(&self, tile: GridCoord) -> bool {
+        let Some(&b) = self.occupied.get(&(tile.x, tile.y)) else { return false };
+        let Some(entry) = self.objects.get(b) else { return false };
+        let (Some(pos), GameObject::Building(bd)) = (entry.position, &entry.object) else { return false };
+        let Some(((lx, ly), (lw, ld))) = crate::blueprint::plot(bd.kind, bd.facing).lot else { return false };
+        let (x, y) = (tile.x - pos.x - lx as i32, tile.y - pos.y - ly as i32);
+        x >= 0 && y >= 0 && x < lw as i32 && y < ld as i32
     }
 
     /// Every building, as (id, position). Only tests still want the world
