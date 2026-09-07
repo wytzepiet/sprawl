@@ -181,6 +181,10 @@ pub struct Trip {
     /// are drawn where they are, not offset onto a lane.
     pub from_lot: usize,
     pub to_lot: usize,
+    /// How many edges at the end are driven backwards: a lorry backing
+    /// into its dock. Drawn facing the other way, trailer first.
+    #[serde(default)]
+    pub reverse: usize,
     /// Cumulative distance along the route.
     pub progress: f64,
     pub speed: f64,

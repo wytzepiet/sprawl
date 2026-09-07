@@ -154,7 +154,7 @@ honest way.
 | Workshop | 1×1 | 1×1, spills, fuses | 4 staff |
 | Office, factory | 2×1 | 2×1, spills, fuses | 12 staff |
 | Supermarket | 2×2 | 2×2 beside it, shared (§3.8) | about 14, shared |
-| Warehouse | 2×1 | 2×1, bays later | lorries |
+| Warehouse | 2×1 | 2×2 yard, four docks | 2 lorries |
 
 A driveway is for a place where cars live, a ring is for everywhere
 else, workplaces included: staff parking unseen hid exactly the
@@ -276,6 +276,27 @@ becomes `progress > node_dist + tail`, where a car's tail is 0.175 and a
 truck's includes its trailer. That applies to street junctions too, and
 is the correct rule there as well; it makes a slow car through a junction
 block the crossing traffic for exactly as long as it is in the way.
+
+### 4.2b The yard
+
+A depot's lot is a yard, not a ring (built 2026-09-07, drawn first at
+https://claude.ai/code/artifact/d34c0f65-2d77-45f4-80da-1f53afac82e6).
+The warehouse's lot is two tiles wide and two deep. A two-way lane runs
+along the street side from the one driveway; against the building's
+wall stand the docks, 0.3 wide with a margin of 0.4 at either end, four
+across two tiles, each a lorry long, numbered on the slab where the
+lorry stands so a docked lorry covers its own number. A lorry drives in
+along the lane past its bay to a stop point half a lorry beyond it,
+then backs in: the last two edges of its way in, back to the mouth and
+into the dock, are driven in reverse at half lot speed, and it leaves
+forward. Every bay is entered from the driveway's side, so the frame is
+mirrored when the driveway is at the right end. A yard fuses with
+nobody and spills nowhere. A lorry takes a dock, its own depot's
+included; anything else at a yard stops at the door, since a yard has
+no car spots. The client draws the backing swing from a table: the
+pull-out from the dock driven forward with the trailer following on
+the hitch, played backwards, blended over its first fifth from how the
+trailer arrived.
 
 ### 4.3 Reverse gear
 

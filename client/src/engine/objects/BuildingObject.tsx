@@ -2,7 +2,7 @@ import { Color3 } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { shapeFor, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
 import { plot } from "../../blueprints";
-import { emptyPlotGeometry, frameOf, markingGeometry, runOf, runSlabGeometry } from "./lots";
+import { emptyPlotGeometry, frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
 import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
 
@@ -65,8 +65,12 @@ export function mountBuilding(
     };
     put(`run_kerb_${run.w}x${run.depth}${look.key}`, () => runSlabGeometry(run.w, run.depth, true), KERB, [0, 0], SLAB.kerbZ, true);
     put(`run_${run.w}x${run.depth}${look.key}`, () => runSlabGeometry(run.w, run.depth, false), ASPHALT, [0, 0], SLAB.z, true);
-    put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, [0, 0], 0, true);
-    for (const u of run.empties) put(`empty_${run.depth}${look.key}`, () => emptyPlotGeometry(run.depth), KERB, [u, 0], 0, true);
+    if (run.yard) {
+      put(`yard_${run.w}x${run.depth}${look.key}`, () => yardGeometry(run.w, run.depth), KERB, [0, 0], 0, true);
+    } else {
+      put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, [0, 0], 0, true);
+      for (const u of run.empties) put(`empty_${run.depth}${look.key}`, () => emptyPlotGeometry(run.depth), KERB, [u, 0], 0, true);
+    }
   }
 
   return () => {

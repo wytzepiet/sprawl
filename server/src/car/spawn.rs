@@ -68,6 +68,7 @@ pub fn start_trip(
     let free_ms = ((path_len - 1) as f64 / CRUISE_SPEED * 1000.0) as GameTime;
     let Some(way_in) = world.way_in(dest_building, car_id, now + free_ms, until.saturating_add(crate::world::lots::SLACK)) else { return false };
     let to_lot = way_in.len() - 1;
+    let reverse = world.reverse_tail(car_id);
     let route: Vec<EntityId> = head.into_iter().chain(way_in[1..].iter().copied()).collect();
 
     let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot);
@@ -94,6 +95,7 @@ pub fn start_trip(
             route_positions,
             from_lot,
             to_lot,
+            reverse,
             progress: 0.0,
             speed: 0.0,
             acceleration: ACCELERATION,

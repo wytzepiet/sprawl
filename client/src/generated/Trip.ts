@@ -20,6 +20,11 @@ eta: number, route_positions: Array<[number, number]>,
  */
 from_lot: number, to_lot: number, 
 /**
+ * How many edges at the end are driven backwards: a lorry backing
+ * into its dock. Drawn facing the other way, trailer first.
+ */
+reverse: number, 
+/**
  * Cumulative distance along the route.
  */
 progress: number, speed: number, acceleration: number, 

@@ -415,8 +415,10 @@ pub fn handle_car_wake_up(
     // slowed to through the turn rather than only up to it.
     let entry_ri = remaining - 0.5 * trip.segment_lengths[ri] - nose(role);
     // In a lot, a crawl: on any edge that ends at a lot node, from its start.
+    // Backing in, half that.
     if world.lot_nodes.contains_key(&trip.route[ri]) {
-        obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: LOT_SPEED });
+        let reversing = ri + trip.reverse >= trip.route.len();
+        obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: if reversing { LOT_SPEED / 2.0 } else { LOT_SPEED } });
     }
     if ri > 0 && ri < trip.route.len() - 1 {
         let ts = physics::turn_speed(world.turn_cos_angle(&trip.route, ri));

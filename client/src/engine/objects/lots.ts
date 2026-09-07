@@ -1,6 +1,6 @@
 import type { MeshGeometry } from "../Mesh";
 import { slabGeometry } from "./buildings";
-import { FACINGS, inLot, plot } from "../../blueprints";
+import { BLUEPRINTS, FACINGS, inLot, plot } from "../../blueprints";
 import { buildingAt, getObjectsAt } from "../../state/gameObjects";
 import type { Building, GameObjectEntry } from "../../generated";
 
@@ -64,6 +64,8 @@ export interface Run {
   u0: number;
   u1: number;
   first: boolean;
+  /** A depot's yard: docks against the wall instead of spots across an island. */
+  yard: boolean;
 }
 
 export function runOf(entry: GameObjectEntry): Run | null {
@@ -77,6 +79,10 @@ export function runOf(entry: GameObjectEntry): Run | null {
   const [[lx, ly], [gw, gh]] = own.lot;
   const lw = alongX ? gw : gh;
   const [line, a0, a1] = alongX ? [pos.y + ly, pos.x + lx, pos.x + lx + lw] : [pos.x + lx, pos.y + ly, pos.y + ly + lw];
+  if (BLUEPRINTS[data.kind].yard) {
+    const rect = { x: pos.x + lx, y: pos.y + ly, w: gw, h: gh };
+    return { rect, w: lw, depth: alongX ? own.size[1] : own.size[0], members: [entry.id], empties: [], u0: 0, u1: lw, first: true, yard: true };
+  }
   const tile = (a: number): [number, number] => (alongX ? [a, line] : [line, a]);
   // A neighbour's lot tile at along-coordinate a on this row, same facing:
   // the building, its tile range and its plot's depth.
@@ -85,7 +91,7 @@ export function runOf(entry: GameObjectEntry): Run | null {
     const b = buildingAt(x, y);
     if (!b?.position) return null;
     const bd = b.object.data as Building;
-    if (bd.facing !== data.facing || !inLot(bd.kind, bd.facing, b.position, x, y)) return null;
+    if (bd.facing !== data.facing || BLUEPRINTS[bd.kind].yard || !inLot(bd.kind, bd.facing, b.position, x, y)) return null;
     const p = plot(bd.kind, bd.facing);
     const [[ox, oy], [w, h]] = p.lot!;
     const s = alongX ? b.position.x + ox : b.position.y + oy;
@@ -120,7 +126,53 @@ export function runOf(entry: GameObjectEntry): Run | null {
     u0: a0 - start,
     u1: a1 - start,
     first: chain[0].id === entry.id,
+    yard: false,
   };
+}
+
+/** Docks against the wall of a depot w wide and d deep: 0.3 wide with a
+ *  margin of 0.4 at either end, a lorry long, a divider between each, and
+ *  the bay's number painted where the lorry stands, seven-segment style.
+ *  Mirrors `build_yard` in `lots.rs`. */
+export function yardGeometry(w: number, d: number): MeshGeometry {
+  const g = flat();
+  const BAY_W = 0.3, MARGIN = 0.4, WALL = 0.14, LORRY = 0.8;
+  const n = Math.floor((w - 2 * MARGIN) / BAY_W + 1e-9);
+  const wall = d + WALL;
+  const line = 0.035;
+  for (let i = 0; i <= n; i++) {
+    const u = MARGIN + i * BAY_W;
+    g.rect(u - line / 2, wall - LORRY - 0.05, u + line / 2, wall, MARK_Z);
+  }
+  for (let i = 0; i < n; i++) {
+    digit(g, i + 1, MARGIN + BAY_W / 2 + i * BAY_W, wall - LORRY + 0.22);
+  }
+  return g.done();
+}
+
+/** A seven-segment digit, 0.1 wide and 0.16 tall, centred at (u, v),
+ *  upright for someone standing on the street looking at the building. */
+function digit(g: ReturnType<typeof flat>, n: number, u: number, v: number) {
+  const W = 0.1, H = 0.16, t = 0.022;
+  //      a
+  //    f   b
+  //      g
+  //    e   c
+  //      d
+  const on: Record<number, string> = { 1: "bc", 2: "abged", 3: "abgcd", 4: "fgbc", 5: "afgcd", 6: "afgedc", 7: "abc", 8: "abcdefg", 9: "abcdfg", 0: "abcdef" };
+  const seg = on[n % 10] ?? "";
+  const x0 = u - W / 2, x1 = u + W / 2, y0 = v - H / 2, y1 = v + H / 2, ym = v;
+  // v runs into the plot, away from the street: the top of the digit is the
+  // side nearer the street, so segment a sits at the low v.
+  const h = (y: number, xa: number, xb: number) => g.rect(xa, y - t / 2, xb, y + t / 2, MARK_Z);
+  const vert = (x: number, ya: number, yb: number) => g.rect(x - t / 2, ya, x + t / 2, yb, MARK_Z);
+  if (seg.includes("a")) h(y0, x0, x1);
+  if (seg.includes("g")) h(ym, x0, x1);
+  if (seg.includes("d")) h(y1, x0, x1);
+  if (seg.includes("f")) vert(x0, y0, ym);
+  if (seg.includes("b")) vert(x1, y0, ym);
+  if (seg.includes("e")) vert(x0, ym, y1);
+  if (seg.includes("c")) vert(x1, ym, y1);
 }
 
 /** The run's one slab, kerb and all, in the run's frame: from the street

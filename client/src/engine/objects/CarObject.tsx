@@ -116,13 +116,13 @@ export function mountCar(
     const instanceId = pool.addInstance(bucket, [at[0], at[1], CAR_Z], [0, 0, heading - Math.PI / 2]);
     return () => pool.removeInstance(bucket, instanceId);
   }
-  const move = follow(car);
-  if (!move) return () => {};
-  const initial = move();
-  const instanceId = pool.addInstance(bucket, initial?.pos ?? [0, 0, -10], initial?.rot ?? [0, 0, 0]);
+  const f = follow(car);
+  if (!f) return () => {};
+  const initial = f.now();
+  const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
   const observer = scene.onBeforeRenderObservable.add(() => {
-    const result = move();
-    if (result) pool.updateInstance(bucket, instanceId, result.pos, result.rot);
+    const result = f.now();
+    pool.updateInstance(bucket, instanceId, result.pos, result.rot);
   });
   return () => {
     scene.onBeforeRenderObservable.remove(observer);
@@ -163,16 +163,59 @@ function mountLorry(car: Car, pool: InstancePool, scene: Scene, look: Look): () 
     const b = pool.addInstance(trailer, p.trailer.pos, p.trailer.rot);
     return () => { pool.removeInstance(cab, a); pool.removeInstance(trailer, b); };
   }
-  const move = follow(car);
-  if (!move) return () => {};
-  const first = move();
-  const p0 = first ? place(first.pos[0], first.pos[1], first.rot[2] + Math.PI / 2, true) : null;
-  const a = pool.addInstance(cab, p0?.cab.pos ?? [0, 0, -10], p0?.cab.rot ?? [0, 0, 0]);
-  const b = pool.addInstance(trailer, p0?.trailer.pos ?? [0, 0, -10], p0?.trailer.rot ?? [0, 0, 0]);
+  const f = follow(car);
+  if (!f) return () => {};
+  const from = reverseFrom(car, f);
+  // Backing in is the pull-out played backwards: the tractor driven forward
+  // from the dock out to the stop point, the trailer following on the
+  // hitch, every pose kept by distance along the path. The first part of
+  // the reverse blends from the trailer as it arrived, straight behind,
+  // into the table: the driver swinging the nose out to line up.
+  const table: { dist: number; ux: number; uy: number }[] = [];
+  if (from !== null) {
+    let ax = Number.NaN, ay = Number.NaN;
+    for (let d = f.length; d >= from; d -= 0.02) {
+      const fix = f.at(d);
+      const heading = fix.rot[2] + Math.PI / 2 + Math.PI;
+      const fx = Math.cos(heading), fy = Math.sin(heading);
+      const hx = fix.pos[0] - fx * HITCH, hy = fix.pos[1] - fy * HITCH;
+      if (Number.isNaN(ax)) { ax = hx - fx * TRAILER.axle; ay = hy - fy * TRAILER.axle; }
+      let ux: number = hx - ax, uy: number = hy - ay;
+      const len = Math.hypot(ux, uy) || 1;
+      ux /= len; uy /= len;
+      ax = hx - ux * TRAILER.axle; ay = hy - uy * TRAILER.axle;
+      table.push({ dist: d, ux, uy });
+    }
+    table.reverse();
+  }
+  const first = f.now();
+  const p0 = place(first.pos[0], first.pos[1], first.rot[2] + Math.PI / 2, true);
+  const a = pool.addInstance(cab, p0.cab.pos, p0.cab.rot);
+  const b = pool.addInstance(trailer, p0.trailer.pos, p0.trailer.rot);
+  let arrived: [number, number] | null = null;
   const observer = scene.onBeforeRenderObservable.add(() => {
-    const r = move();
-    if (!r) return;
+    const r = f.now();
+    if (from !== null && r.dist >= from && table.length) {
+      const heading = r.rot[2] + Math.PI / 2 + Math.PI;
+      const fx = Math.cos(heading), fy = Math.sin(heading);
+      const hx = r.pos[0] - fx * HITCH, hy = r.pos[1] - fy * HITCH;
+      let lo = 0, hi = table.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (table[mid].dist < r.dist) lo = mid + 1; else hi = mid; }
+      let ux: number = table[lo].ux, uy: number = table[lo].uy;
+      const t = Math.min(1, (r.dist - from) / (0.2 * Math.max(1e-6, f.length - from)));
+      if (arrived) {
+        ux = arrived[0] * (1 - t) + ux * t;
+        uy = arrived[1] * (1 - t) + uy * t;
+        const n = Math.hypot(ux, uy) || 1;
+        ux /= n; uy /= n;
+      }
+      const back = TRAILER.l / 2 - TRAILER.overhang;
+      pool.updateInstance(cab, a, [r.pos[0], r.pos[1], cabZ], [0, 0, heading - Math.PI / 2]);
+      pool.updateInstance(trailer, b, [hx - ux * back, hy - uy * back, trailerZ], [0, 0, Math.atan2(uy, ux) - Math.PI / 2]);
+      return;
+    }
     const p = place(r.pos[0], r.pos[1], r.rot[2] + Math.PI / 2, false);
+    arrived = [Math.cos(p.trailer.rot[2] + Math.PI / 2), Math.sin(p.trailer.rot[2] + Math.PI / 2)];
     pool.updateInstance(cab, a, p.cab.pos, p.cab.rot);
     pool.updateInstance(trailer, b, p.trailer.pos, p.trailer.rot);
   });
@@ -185,7 +228,17 @@ function mountLorry(car: Car, pool: InstancePool, scene: Scene, look: Look): () 
 
 /** Where a car on a trip is at any moment, from the trip the server sent:
  *  its route rounded at the corners, and its own physics extrapolated. */
-function follow(car: Car): (() => { pos: [number, number, number]; rot: [number, number, number] } | null) | null {
+type Fix = { pos: [number, number, number]; rot: [number, number, number]; dist: number };
+
+/** A car's drawn path for its trip: the route rounded at the corners, and
+ *  where the car is on it now from its own physics, or at any distance. */
+interface Follower {
+  now(): Fix;
+  at(dist: number): Fix;
+  length: number;
+}
+
+function follow(car: Car): Follower | null {
   const data = car.trip!;
   const centerNodes = data.route_positions.map(
     ([x, y]) => new Vector3(x, y, 0),
@@ -225,25 +278,35 @@ function follow(car: Car): (() => { pos: [number, number, number]; rot: [number,
     }
   }
 
-  const path = pathPoints.length >= 2 ? new Path3D(pathPoints) : null;
+  if (pathPoints.length < 2) return null;
+  const path = new Path3D(pathPoints);
+  const distances = path.getDistances();
+  const length = distances[distances.length - 1];
 
-  function computePosition(): { pos: [number, number, number]; rot: [number, number, number] } | null {
-    if (!path) return null;
-
+  const at = (dist: number): Fix => {
+    const normalized = Math.min(Math.max(0, dist / length), 1);
+    const p = path.getPointAt(normalized);
+    const tangent = path.getTangentAt(normalized);
+    return { pos: [p.x, p.y, CAR_Z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2], dist: normalized * length };
+  };
+  const now = (): Fix => {
     let dt = Math.max(0, (simNow() - data.updated_at) / 1000);
     if (data.acceleration < 0) {
       const tStop = -data.speed / data.acceleration;
       if (dt > tStop) dt = tStop;
     }
-    const dist = data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt;
-    const distances = path!.getDistances();
-    const pathLength = distances[distances.length - 1];
-    const normalized = Math.min(Math.max(0, dist / pathLength), 1);
+    return at(data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt);
+  };
+  return { now, at, length };
+}
 
-    const p = path!.getPointAt(normalized);
-    const tangent = path!.getTangentAt(normalized);
-    return { pos: [p.x, p.y, CAR_Z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2] };
-  }
-
-  return path ? computePosition : null;
+/** Where a trip's reverse tail begins, as a distance along its drawn path:
+ *  the last `reverse` edges, measured straight, taken off the end. */
+function reverseFrom(car: Car, f: Follower): number | null {
+  const data = car.trip!;
+  if (!data.reverse) return null;
+  const pts = data.route_positions;
+  let tail = 0;
+  for (let i = pts.length - data.reverse; i < pts.length; i++) tail += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  return Math.max(0, f.length - tail);
 }

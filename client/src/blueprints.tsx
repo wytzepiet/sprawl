@@ -29,6 +29,8 @@ export interface Blueprint {
   size: [number, number];
   /** Its lot in tiles along the frontage and deep, on the street side; [0, 0] is none. */
   lot: [number, number];
+  /** A depot: its lot is a yard of docks, not a ring, and fuses with nobody. */
+  yard?: boolean;
 }
 
 /** The four ways a plot can lie: which side the lot and street are on. */
@@ -204,7 +206,8 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.6],
     byHand: true,
     size: [2, 1],
-    lot: [2, 1],
+    lot: [2, 2],
+    yard: true,
   },
 };
 
