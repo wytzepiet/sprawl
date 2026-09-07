@@ -107,8 +107,9 @@ pub fn park_at_home(
 }
 
 /// Leave the stretches crossed since the last wake, segments `old_ri` up to
-/// `ri`: off their queues, waking whoever was behind; out of the node index
-/// for the nodes passed; and out of the junctions passed.
+/// `ri`: off their queues, waking whoever was behind, and out of the node
+/// index for the nodes passed. Junctions are not left here: a claim on one
+/// lasts until the tail has cleared it, which is a length on, not a node.
 fn leave_crossed(
     world: &mut World,
     events: &mut EventQueue,
@@ -129,9 +130,6 @@ fn leave_crossed(
         }
         if let Some(set) = world.node_cars.get_mut(&trip.route[k - 1]) {
             set.remove(&car_id);
-        }
-        for woken_id in intersections.clear_car(trip.route[k], car_id) {
-            events.wake(0, woken_id);
         }
     }
 }
@@ -325,6 +323,23 @@ pub fn handle_car_wake_up(
         }
     }
 
+    // A car holds a junction until its tail is through it, not until its
+    // nose is: the car behind is let into the node only once this one has
+    // actually left it. The last few nodes passed are the ones that can
+    // still be under the tail; the next to clear sets a wake.
+    let mut tail_clears: Option<f64> = None;
+    let mut node_dist = seg_start;
+    for k in (1..ri).rev().take(4) {
+        if cur_progress - node_dist >= CAR_TAIL {
+            for woken_id in intersections.clear_car(trip.route[k], car_id) {
+                events.wake(0, woken_id);
+            }
+        } else {
+            tail_clears = Some(node_dist + CAR_TAIL);
+        }
+        node_dist -= trip.segment_lengths[k];
+    }
+
     // === SCAN ===
     let current_edge: EdgeKey = (trip.route[ri - 1], trip.route[ri]);
     let seg_progress = cur_progress - seg_start;
@@ -471,6 +486,11 @@ pub fn handle_car_wake_up(
     // said "never" for a car pulling away from rest, which let it sleep through
     // a junction and take the turn at twice the speed the turn allows.
     if let Some(t) = physics::time_to_reach(0.0, cur_speed, new_accel, remaining) {
+        wake_ms = wake_ms.min(((t * 1000.0) as u64).max(1));
+    }
+    if let Some(at) = tail_clears
+        && let Some(t) = physics::time_to_reach(cur_progress, cur_speed, new_accel, at)
+    {
         wake_ms = wake_ms.min(((t * 1000.0) as u64).max(1));
     }
 

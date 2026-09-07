@@ -821,7 +821,8 @@ mod tests {
     /// in from outside: immigrants need somewhere unseen to come from.
     fn street() -> World {
         let mut world = World::new();
-        for y in -4..4 {
+        // Deep enough for a supermarket and its lot behind the street.
+        for y in -6..6 {
             for x in -4..170 {
                 world.terrain.insert((x, y), TerrainType::Grass);
             }
@@ -1134,8 +1135,12 @@ mod tests {
     /// people to arrive by. Returns it and how many times a resident thought.
     fn live(mix: &[BuildingKind], days: u64) -> (World, u64) {
         let mut world = street();
+        // Each plot as wide as its row says, so forty of them stand in a row.
+        let mut x = 0;
         for i in 0..40 {
-            build(&mut world, i, mix[i as usize % mix.len()], 1);
+            let kind = mix[i % mix.len()];
+            build(&mut world, x, kind, 1);
+            x += crate::blueprint::plot(kind, 0).size.0 as i32;
         }
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();

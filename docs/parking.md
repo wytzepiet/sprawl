@@ -7,8 +7,9 @@ carries its pose on the wire, and the client draws nothing it is not told.
 The ring lot (§3.1), the plot laid out by its facing, the slab and the
 ring drawn, staff at the door, and a full lot refusing the trip, are
 built (2026-09-07), lots fuse along a frontage (§3.2), and a visitor
-tap's slots are its lot's spots (§3.3). Giving way by length, reverse,
-windows and the test lot are not built. Follows
+tap's slots are its lot's spots (§3.3), and a claim on a junction lasts
+until the tail has cleared it (§4.2). Reverse is not needed until the
+warehouse gets its bays; windows and the test lot are not built. Follows
 `services.md` (streets, driveways, call-outs) and `residents.md` (how a
 trip is chosen). `game.md` §People says parked cars sit in the building's
 spots; this is how.
