@@ -996,7 +996,7 @@ mod tests {
         assert_eq!(lot.members.len(), 2);
         assert_eq!(lot.members.iter().map(|m| m.gates.len()).sum::<usize>(), 1, "one entrance serves the run");
         assert_eq!(world.road_node_for_building(b), world.road_node_for_building(a), "b is reached by a's driveway");
-        world.remove_building(a);
+        world.remove_building(a, 0);
         assert!(world.road_node_for_building(b).is_some(), "b gets an entrance of its own when a goes");
     }
 
@@ -1110,7 +1110,7 @@ mod tests {
         assert_eq!(world.lot_mut(b).unwrap().spots.len(), 17);
         assert_eq!(world.claims.get(&car), Some(&world.lot_of[&a]), "the car holds a spot in the run");
         assert!(matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.spot.is_some()));
-        world.remove_building(b);
+        world.remove_building(b, 0);
         assert_eq!(world.lot_mut(a).unwrap().spots.len(), 12);
         assert_eq!(world.claims.get(&car), Some(&world.lot_of[&a]));
     }

@@ -41,11 +41,6 @@ pub struct RoadNode {
     /// survey's own roads, and driveways, are free.
     #[serde(default)]
     pub laid: bool,
-    /// When it was laid, so nothing arrives on a street the mayor is still
-    /// drawing. The survey's roads have always been there.
-    #[serde(default)]
-    #[ts(type = "number")]
-    pub built: u64,
 }
 
 /// What stands on a plot. The kind follows from the footprint the layout chose,

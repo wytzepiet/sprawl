@@ -373,8 +373,9 @@ fn handle_player_action(
             let pos = demolish.pos;
             if let Some(id) = world.road_node_at(pos) {
                 handle_road_demolish(world, events, intersections, id, now);
+                world.touch(pos, now);
             } else if let Some(id) = world.occupied.get(&(pos.x, pos.y)).copied() {
-                world.remove_building(id);
+                world.remove_building(id, now);
             } else {
                 return;
             }

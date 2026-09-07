@@ -251,10 +251,10 @@ fn beside(world: &World, kind: BuildingKind, standing: &[(EntityId, GridCoord, B
     out
 }
 
-/// A plot that fits is one on revealed land, fronting a settled street
-/// joined to the world, and as deep as the plots it lands between: a
-/// street side keeps one depth, so no house is wedged between two lots
-/// with dead land behind it.
+/// A plot that fits is one on revealed land that nobody has touched for a
+/// while, fronting a settled street joined to the world, and as deep as
+/// the plots it lands between: a street side keeps one depth, so no house
+/// is wedged between two lots with dead land behind it.
 fn fits(world: &World, pos: GridCoord, kind: BuildingKind, facing: u8, street: EntityId, now: GameTime) -> bool {
     let size = crate::blueprint::plot(kind, facing).size;
     let along_x = facing % 2 == 0;
@@ -269,9 +269,9 @@ fn fits(world: &World, pos: GridCoord, kind: BuildingKind, facing: u8, street: E
         _ => true,
     });
     same_depth
-        && World::footprint(pos, size).all(|t| world.revealed.contains(&crate::world::chunk_of(t)))
+        && World::footprint(pos, size).all(|t| world.revealed.contains(&crate::world::chunk_of(t)) && world.is_settled(t, now))
         && world.network.joined(street)
-        && world.is_settled(street, now)
+        && world.objects.get(street).and_then(|e| e.position).is_some_and(|p| world.is_settled(p, now))
 }
 
 /// The facing and depth of the plot standing on a tile.
@@ -487,8 +487,8 @@ mod tests {
     /// A street the mayor has just drawn is left alone until it has stood
     /// an hour; then it is a site like any other.
     #[test]
-    fn a_fresh_street_is_left_alone_for_an_hour() {
-        use crate::world::roads::STREET_SETTLES;
+    fn a_fresh_street_is_left_alone_for_a_while() {
+        use crate::world::roads::SETTLES;
         let mut world = country();
         // Drown the country, then draw one street back onto the road.
         let drowned: Vec<(i32, i32)> = world.terrain.keys().copied()
@@ -507,12 +507,20 @@ mod tests {
             world.handle_place_road(GridCoord { x: 6, y: -y }, GridCoord { x: 6, y: -y - 1 }, false, false, drawn);
             world.insert_edge(world.road_node_at(GridCoord { x: 6, y: -y }).unwrap(), world.road_node_at(GridCoord { x: 6, y: -y - 1 }).unwrap());
         }
-        let soon = drawn + STREET_SETTLES / 2;
+        let soon = drawn + SETTLES / 2;
         afford(&mut world, soon);
         assert!(spawn(&mut world, soon).is_none(), "arrived while the street was fresh");
-        let later = drawn + STREET_SETTLES + STEP;
+        let later = drawn + SETTLES + STEP;
         afford(&mut world, later);
-        assert!(spawn(&mut world, later).is_some(), "nothing arrived once it had settled");
+        let arrived = spawn(&mut world, later).expect("nothing arrived once it had settled");
+        // Pulled down again: the plot itself is fresh now, and nothing
+        // lands on it until it too has settled.
+        let torn = later + STEP;
+        let was = world.objects.get(arrived).unwrap().position;
+        world.remove_building(arrived, torn);
+        afford(&mut world, torn + STEP);
+        let again = spawn(&mut world, torn + STEP).and_then(|id| world.objects.get(id)?.position);
+        assert_ne!(again, was, "built straight back over a demolition");
     }
 
     /// A street off on its own fills too, slowly: a new cluster seeds on a

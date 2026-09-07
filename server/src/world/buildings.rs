@@ -1,6 +1,7 @@
 use crate::protocol::{
     Building, BuildingKind, EntityId, GameObject, GridCoord, TerrainType,
 };
+use crate::engine::GameTime;
 use crate::world::World;
 
 impl World {
@@ -362,7 +363,7 @@ impl World {
     }
 
     /// The one way a building leaves.
-    pub fn remove_building(&mut self, id: EntityId) {
+    pub fn remove_building(&mut self, id: EntityId, now: GameTime) {
         self.drop_lot(id);
         let Some(entry) = self.objects.get(id) else { return };
         let Some(pos) = entry.position else { return };
@@ -374,8 +375,9 @@ impl World {
                 for edge in self.edges_involving(node) {
                     self.remove_edge(edge.0, edge.1);
                 }
-                self.handle_demolish_road(*tile);
+                self.handle_demolish_road(*tile, now);
             }
+            self.touch(*tile, now);
             self.occupied.remove(&(tile.x, tile.y));
             self.unindex(id, *tile);
         }
@@ -686,7 +688,7 @@ mod tests {
         let house = house(&mut world, 0, 0);
         let door = world.road_node_for_building(house).unwrap();
 
-        world.remove_building(house);
+        world.remove_building(house, 0);
         assert_eq!(world.network.component_of(door), None, "the driveway went with it");
         agrees_with_the_edges(&world);
     }

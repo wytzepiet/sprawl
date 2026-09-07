@@ -6,7 +6,8 @@ use crate::world::World;
 
 /// How long a street stands before anything arrives on it: an hour, so a
 /// street is a street before it is a site.
-pub const STREET_SETTLES: GameTime = crate::protocol::DAY_MS as GameTime / 24;
+/// How long a touched tile is left alone: half a minute of the clock.
+pub const SETTLES: GameTime = 30_000;
 
 impl World {
     /// The road on this tile.
@@ -35,10 +36,12 @@ impl World {
                 joined: false,
                 road,
                 laid: laid.is_some(),
-                built: laid.unwrap_or(0),
             }),
             Some(coord),
         );
+        if let Some(now) = laid {
+            self.touch(coord, now);
+        }
         self.roads.insert((coord.x, coord.y), id);
         self.laid += laid.is_some() as u32;
         let beyond = !self.revealed.contains(&crate::world::chunk_of(coord));
@@ -209,10 +212,21 @@ impl World {
     }
 
     /// Remove the road node standing at `pos`.
-    pub fn handle_demolish_road(&mut self, pos: GridCoord) {
+    pub fn handle_demolish_road(&mut self, pos: GridCoord, now: GameTime) {
         if let Some(id) = self.road_node_at(pos) {
             self.demolish_node(id);
+            self.touch(pos, now);
         }
+    }
+
+    /// The mayor touched this tile now.
+    pub fn touch(&mut self, t: GridCoord, now: GameTime) {
+        self.edited.insert((t.x, t.y), now);
+    }
+
+    /// Has this tile been left alone long enough to build on?
+    pub fn is_settled(&self, t: GridCoord, now: GameTime) -> bool {
+        self.edited.get(&(t.x, t.y)).is_none_or(|&at| at + SETTLES <= now)
     }
 
     /// Remove a road node by id and clean up every reference to it. A tile
@@ -252,12 +266,7 @@ impl World {
     /// Has this street been standing long enough for the city to build on
     /// it? A street being drawn is not finished, and a house that lands on
     /// it while the mayor is still dragging is in the way.
-    pub fn is_settled(&self, id: EntityId, now: GameTime) -> bool {
-        self.objects.get(id).is_some_and(|e| match e.object {
-            GameObject::RoadNode(ref n) => n.built + STREET_SETTLES <= now,
-            _ => false,
-        })
-    }
+
 
     /// Every street the city could grow onto: joined to the world, in the
     /// survey, settled, and not a driveway.
@@ -265,8 +274,9 @@ impl World {
         self.objects
             .all_entries()
             .iter()
-            .filter(|e| self.is_street(e.id) && self.network.joined(e.id) && self.is_settled(e.id, now))
+            .filter(|e| self.is_street(e.id) && self.network.joined(e.id))
             .filter_map(|e| e.position)
+            .filter(|&p| self.is_settled(p, now))
             .filter(|p| self.revealed.contains(&crate::world::chunk_of(*p)))
             .collect()
     }
