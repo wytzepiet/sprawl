@@ -561,7 +561,9 @@ mod tests {
         }
         let took = started.elapsed();
         eprintln!("2000 ticks of a full meter with no room: {took:?}");
-        assert!(took < std::time::Duration::from_millis(200), "2000 ticks took {took:?}");
+        // Generous, so a slow runner passes: the failure this catches took
+        // seconds, not a few hundred milliseconds.
+        assert!(took < std::time::Duration::from_millis(1000), "2000 ticks took {took:?}");
     }
 
     /// A street side keeps one depth: no plot stands beside a plot facing

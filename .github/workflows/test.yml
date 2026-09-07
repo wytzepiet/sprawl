@@ -1,0 +1,27 @@
+# The suite, off the laptop: every push runs the server's tests and the
+# client's type check on a Blacksmith runner. Six minutes there instead
+# of here.
+name: test
+on:
+  push:
+  pull_request:
+jobs:
+  server:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: useblacksmith/rust-cache@v3
+        with:
+          workspaces: server
+      - run: cargo test
+        working-directory: server
+  client:
+    runs-on: blacksmith-2vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: client
+      - run: bunx tsc --noEmit -p .
+        working-directory: client
