@@ -214,7 +214,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Where stock comes from. Its trucks answer the shops' calls; until
         // there is one, every delivery comes from beyond the edge.
         (Warehouse, Blueprint {
-            class: Industry, homes: 0, jobs: 6, size: (2, 1), lot: (2, 2), weight: 0.0, tilt: &[], by_hand: true,
+            class: Industry, homes: 0, jobs: 6, size: (2, 2), lot: (2, 2), weight: 0.0, tilt: &[], by_hand: true,
             stock: 0, answers: Some(CallKind::Stock), vehicles: 2,
             taps: vec![shift(6, 18, 6)],
         }),

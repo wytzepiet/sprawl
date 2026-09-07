@@ -111,9 +111,22 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
     }
 }
 
+/// A facility's vehicles, standing in its yard from the day it is reached:
+/// as many as its row says, each in a dock.
+pub fn stable(world: &mut World, facility: EntityId) {
+    let kind = match world.objects.get(facility).map(|e| &e.object) {
+        Some(GameObject::Building(b)) => b.kind,
+        _ => return,
+    };
+    let tile = world.objects.get(facility).and_then(|e| e.position);
+    while fleet_of(world, facility).len() < blueprint(kind).vehicles as usize {
+        let car = world.insert_at(GameObject::Car(Car { owner: facility, trip: None, role: CarRole::Truck, spot: None }), tile);
+        world.park_in_lot(facility, car, 0);
+    }
+}
+
 /// The nearest facility that answers this kind with a vehicle free, and
-/// the driveway it leaves from. A facility gets its vehicles the first
-/// time it is asked for one.
+/// the driveway it leaves from.
 fn nearest_free_vehicle(world: &mut World, kind: CallKind, at: EntityId) -> Option<(EntityId, EntityId)> {
     let here = world.objects.get(at)?.position?;
     let mut facilities: Vec<(i32, EntityId)> = world
@@ -131,21 +144,11 @@ fn nearest_free_vehicle(world: &mut World, kind: CallKind, at: EntityId) -> Opti
     facilities.sort_unstable();
     for (_, facility) in facilities {
         let Some(door) = world.road_node_for_building(facility) else { continue };
-        let fleet = fleet_of(world, facility);
-        let free = fleet.iter().copied().find(|&car| {
+        stable(world, facility);
+        let free = fleet_of(world, facility).into_iter().find(|&car| {
             matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.trip.is_none())
         });
         if let Some(car) = free {
-            return Some((car, door));
-        }
-        let kind = match world.objects.get(facility).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.kind,
-            _ => continue,
-        };
-        if fleet.len() < blueprint(kind).vehicles as usize {
-            let tile = world.objects.get(facility).and_then(|e| e.position);
-            let car = world.insert_at(GameObject::Car(Car { owner: facility, trip: None, role: CarRole::Truck, spot: None }), tile);
-            world.park_in_lot(facility, car, 0);
             return Some((car, door));
         }
     }

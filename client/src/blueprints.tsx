@@ -205,7 +205,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.6],
     byHand: true,
-    size: [2, 1],
+    size: [2, 2],
     lot: [2, 2],
     yard: true,
   },

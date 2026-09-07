@@ -64,8 +64,9 @@ export interface Run {
   u0: number;
   u1: number;
   first: boolean;
-  /** A depot's yard: docks against the wall instead of spots across an island. */
-  yard: boolean;
+  /** A depot's yard: docks against the wall instead of spots across an
+   *  island, the wall this many tiles in from the street. */
+  yard: number | null;
 }
 
 export function runOf(entry: GameObjectEntry): Run | null {
@@ -81,7 +82,7 @@ export function runOf(entry: GameObjectEntry): Run | null {
   const [line, a0, a1] = alongX ? [pos.y + ly, pos.x + lx, pos.x + lx + lw] : [pos.x + lx, pos.y + ly, pos.y + ly + lw];
   if (BLUEPRINTS[data.kind].yard) {
     const rect = { x: pos.x + lx, y: pos.y + ly, w: gw, h: gh };
-    return { rect, w: lw, depth: alongX ? own.size[1] : own.size[0], members: [entry.id], empties: [], u0: 0, u1: lw, first: true, yard: true };
+    return { rect, w: lw, depth: alongX ? own.size[1] : own.size[0], members: [entry.id], empties: [], u0: 0, u1: lw, first: true, yard: alongX ? gh : gw };
   }
   const tile = (a: number): [number, number] => (alongX ? [a, line] : [line, a]);
   // A neighbour's lot tile at along-coordinate a on this row, same facing:
@@ -126,14 +127,14 @@ export function runOf(entry: GameObjectEntry): Run | null {
     u0: a0 - start,
     u1: a1 - start,
     first: chain[0].id === entry.id,
-    yard: false,
+    yard: null,
   };
 }
 
-/** Docks against the wall of a depot w wide and d deep: 0.3 wide with a
- *  margin of 0.4 at either end, a lorry long, a divider between each, and
- *  the bay's number painted where the lorry stands, seven-segment style.
- *  Mirrors `build_yard` in `lots.rs`. */
+/** Docks against the wall of a depot w wide, the wall d tiles in from the
+ *  street: 0.3 wide with a margin of 0.4 at either end, a lorry long, a
+ *  divider between each, and the bay's number painted where the lorry
+ *  stands, seven-segment style. Mirrors `build_yard` in `lots.rs`. */
 export function yardGeometry(w: number, d: number): MeshGeometry {
   const g = flat();
   const BAY_W = 0.3, MARGIN = 0.4, WALL = 0.14, LORRY = 0.8;
