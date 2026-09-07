@@ -268,6 +268,27 @@ impl World {
     }
 
     /// Remove a car from the world entirely — scrap, not parking.
+    /// A lorry drives off the map: off the roads and out of sight, its dock
+    /// let go of, until `until`, when it comes back in.
+    pub fn leave_map(&mut self, car_id: EntityId, until: GameTime) {
+        self.release_spot(car_id);
+        self.car_segment.remove(&car_id);
+        self.remove_car_from_edges(car_id);
+        if let Some(entry) = self.objects.get(car_id)
+            && let Some(pos) = entry.position
+        {
+            self.unindex(car_id, pos);
+        }
+        if let Some(entry) = self.objects.get_mut(car_id) {
+            entry.position = None;
+            if let GameObject::Car(ref mut c) = entry.object {
+                c.trip = None;
+                c.spot = None;
+                c.away = until;
+            }
+        }
+    }
+
     pub fn despawn_car(&mut self, car_id: EntityId) {
         self.release_spot(car_id);
         self.car_segment.remove(&car_id);

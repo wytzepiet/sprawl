@@ -44,6 +44,7 @@ async fn main() {
         .route("/debug/demand", axum::routing::get(health::inspect_demand))
         .route("/debug/spawner", axum::routing::get(health::inspect_spawner))
         .route("/debug/lot/{id}", axum::routing::get(health::inspect_lot))
+        .route("/debug/call/{id}", axum::routing::get(health::call))
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
         .route("/tree", axum::routing::get(health::tree))
         .layer(CorsLayer::permissive())

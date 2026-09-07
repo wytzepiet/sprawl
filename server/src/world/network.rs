@@ -158,6 +158,11 @@ impl RoadNetwork {
 
     /// Say whether a node stands beyond the survey. Returns every node whose
     /// network was joined to the world, or cut off from it, by that.
+    /// A road node beyond the frontier: where the map ends.
+    pub fn is_exit(&self, node: EntityId) -> bool {
+        self.exits.contains(&node)
+    }
+
     pub fn set_exit(&mut self, node: EntityId, exit: bool) -> Vec<EntityId> {
         let changed = if exit { self.exits.insert(node) } else { self.exits.remove(&node) };
         let Some(&c) = self.component.get(&node) else { return Vec::new() };

@@ -300,6 +300,18 @@ pub fn handle_car_wake_up(
             // stretches crossed on the way here are left like any others,
             // or the car would stay on their queues as a ghost.
             leave_crossed(world, events, intersections, car_id, &trip, old_ri, ri);
+            // The road ran out: a lorry off past the edge, away for a while.
+            if world.network.is_exit(*trip.route.last().unwrap()) {
+                world.unregister_car_route(car_id, &trip.route);
+                let woken = intersections.remove_car_from_all(car_id);
+                for (_, id) in woken {
+                    events.wake(0, id);
+                }
+                events.clear_dedup(car_id);
+                world.leave_map(car_id, now + crate::calls::AWAY_MS);
+                events.wake(crate::calls::AWAY_MS, car_id);
+                return;
+            }
             crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, now);
             park_car(world, intersections, events, car_id, trip.destination);
             if role != CarRole::Private {

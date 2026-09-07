@@ -154,7 +154,7 @@ impl World {
                 _ => None,
             });
             let tile = at.and_then(|b| self.objects.get(b).and_then(|e| e.position));
-            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None, role: Default::default(), spot: None }), tile);
+            let car = self.objects.insert(GameObject::Car(Car { owner: id, trip: None, role: Default::default(), spot: None, away: 0 }), tile);
             if let Some(tile) = tile {
                 self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(car);
             }

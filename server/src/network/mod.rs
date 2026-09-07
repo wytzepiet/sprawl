@@ -40,6 +40,9 @@ pub enum Ask {
     Spawner,
     /// A building's lot: its spots, their windows, and what it has seen.
     Lot(EntityId),
+    /// Raise a call at a building now, to watch it answered: a shop calls
+    /// for stock, a depot for a fetch from beyond the edge.
+    Call(EntityId),
 }
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);

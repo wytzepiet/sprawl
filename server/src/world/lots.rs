@@ -851,8 +851,9 @@ impl World {
         matches!(self.objects.get(owner).map(|e| &e.object), Some(GameObject::Building(_)))
     }
 
+    /// A depot's own vehicle, lorry or van: what takes a dock.
     fn is_lorry(&self, car: EntityId) -> bool {
-        matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == crate::protocol::CarRole::Truck)
+        matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role != crate::protocol::CarRole::Private)
     }
 
     /// Let go of whatever the car holds.
@@ -1109,7 +1110,7 @@ fn entrance(lot: &Lot, m: &Member) -> (EntityId, EntityId, usize) {
 
 /// A kind with vehicles of its own keeps a yard, not a ring.
 fn is_yard(kind: crate::protocol::BuildingKind) -> bool {
-    crate::blueprint::blueprint(kind).vehicles > 0
+    !crate::blueprint::blueprint(kind).vehicles.is_empty()
 }
 
 fn dist(a: Pose, b: Option<Pose>) -> f64 {
@@ -1169,7 +1170,7 @@ mod tests {
         let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
         world.place_road_path(&path);
         let a = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None }), None);
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0 }), None);
         let way = world.way_in(a, car, 0, GameTime::MAX).unwrap();
         let lot = &world.lots[&world.lot_of[&a]];
         let d = world.node_pos(lot.members[0].door).unwrap();
@@ -1224,7 +1225,7 @@ mod tests {
         world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 1, y: 1 }]);
         world.place_road_path(&[GridCoord { x: 3, y: 0 }, GridCoord { x: 3, y: 1 }]);
         assert_eq!(world.lot_mut(shop).unwrap().spots.len(), 2);
-        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None }), None);
+        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0 }), None);
         let (a, b, c) = (car(&mut world), car(&mut world), car(&mut world));
         // Two spots: two visits from 10 to 12 fill it.
         assert!(world.claim_spot(shop, a, 10_000, 12_000).is_some());
@@ -1265,7 +1266,9 @@ mod tests {
         assert_eq!(world.lot_mut(depot).unwrap().spots.len(), 4, "four docks across two tiles");
         world.lot_mut(shop).unwrap();
         assert_ne!(world.lot_of[&depot], world.lot_of[&shop], "a yard fuses with nobody");
-        let lorry = world.insert_at(GameObject::Car(crate::protocol::Car { owner: depot, trip: None, role: crate::protocol::CarRole::Truck, spot: None }), None);
+        // One of the depot's own lorries, in its dock since the depot was reached.
+        let lorry = world.objects.all_entries().iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).unwrap();
+        world.release_spot(lorry);
         let way = world.way_in(depot, lorry, 0, GameTime::MAX).unwrap();
         assert_eq!(world.reverse_tail(lorry), 2, "the last two edges are driven backwards");
         let n = way.len();
@@ -1278,7 +1281,7 @@ mod tests {
         assert_eq!(out[1], way[n - 2], "forward to the mouth");
         assert_eq!(world.reverse_tail(lorry), 2);
         // Staff at a depot stop at the door: a yard has no car spots.
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None }), None);
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0 }), None);
         assert!(matches!(world.claim_spot(depot, car, 0, GameTime::MAX), Some(Claim::Door(_))));
     }
 
@@ -1288,7 +1291,7 @@ mod tests {
     fn a_run_grows_and_shrinks_around_its_cars() {
         let mut world = street();
         let a = world.spawn_building(GridCoord { x: 2, y: 1 }, BuildingKind::Shop).unwrap();
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: a, trip: None, role: Default::default(), spot: None }), Some(GridCoord { x: 2, y: 1 }));
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: a, trip: None, role: Default::default(), spot: None, away: 0 }), Some(GridCoord { x: 2, y: 1 }));
         // Not staff: a visitor's car, so it takes a spot.
         world.objects.get_mut(car).map(|e| if let GameObject::Car(ref mut c) = e.object { c.owner = 0 });
         world.park_in_lot(a, car, 0);

@@ -19,6 +19,9 @@ const PALETTE = [
   new Color3(0.8, 0.65, 0.25),
 ];
 const carGeo = boxGeometry(0.18, 0.35, 0.15);
+/** A van: a box a car and a bit long, tall, and always the same white. */
+const vanGeo = boxGeometry(0.2, 0.45, 0.22);
+const VAN = new Color3(0.92, 0.92, 0.9);
 /** A lorry: a cab-over tractor and a semi-trailer, two boxes. The tractor
  *  is the vehicle the server moves; the trailer hangs off a hitch near
  *  the tractor's tail and follows it, its heading the line from its own
@@ -104,16 +107,17 @@ export function mountCar(
 ): () => void {
   const car = entry.object.data as Car;
   if (car.role === "Truck") return mountLorry(car, pool, scene, look);
-  const color = PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
-  const bucket = `car${look.key}c${PALETTE.indexOf(color)}`;
-  pool.ensureBucket(bucket, carGeo, look.tint(color), look.castShadow, true);
+  const van = car.role === "Van";
+  const color = van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
+  const bucket = van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
+  pool.ensureBucket(bucket, van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,
   // and the car is out of sight until it moves.
   if (!car.trip) {
     if (!car.spot) return () => {};
     const { at, heading } = car.spot;
-    const instanceId = pool.addInstance(bucket, [at[0], at[1], CAR_Z], [0, 0, heading - Math.PI / 2]);
+    const instanceId = pool.addInstance(bucket, [at[0], at[1], van ? GROUND + 0.11 : CAR_Z], [0, 0, heading - Math.PI / 2]);
     return () => pool.removeInstance(bucket, instanceId);
   }
   const f = follow(car);

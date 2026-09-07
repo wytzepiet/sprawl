@@ -70,7 +70,44 @@ pub fn start_trip(
     let to_lot = way_in.len() - 1;
     let reverse = world.reverse_tail(car_id);
     let route: Vec<EntityId> = head.into_iter().chain(way_in[1..].iter().copied()).collect();
+    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, reverse, now);
+    true
+}
 
+/// A depot's lorry sets out for the edge of the map: out of its dock and
+/// along the roads to a node beyond the frontier, where it leaves the
+/// map for a while. No place is claimed at the far end; there is none.
+pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: EntityId, from_node: EntityId, exit: EntityId, now: GameTime) -> bool {
+    let owner = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
+        _ => return false,
+    };
+    let out = world.way_out(car_id).unwrap_or_default();
+    let from_node = out.last().copied().unwrap_or(from_node);
+    let path = match pathfinding::find_path(world, from_node, exit) {
+        Some(r) if r.len() >= 2 => r,
+        _ => return false,
+    };
+    let from_lot = out.len().saturating_sub(1);
+    let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
+    world.release_spot(car_id);
+    launch(world, events, car_id, owner, owner, route, from_lot, 0, 0, now);
+    true
+}
+
+fn launch(
+    world: &mut World,
+    events: &mut EventQueue,
+    car_id: EntityId,
+    owner: EntityId,
+    dest_building: EntityId,
+    route: Vec<EntityId>,
+    from_lot: usize,
+    to_lot: usize,
+    reverse: usize,
+    now: GameTime,
+) {
+    let first_edge = (route[0], route[1]);
     let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot);
     let total_len: f64 = segment_lengths.iter().sum();
     // The lot's edges are the ones into and out of it: as many at each end
@@ -125,7 +162,6 @@ pub fn start_trip(
         seg.cars.push_back(car_id);
     }
     events.wake(0, car_id);
-    true
 }
 
 /// Find the cumulative distance to the start of an edge in a trip's route.

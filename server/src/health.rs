@@ -78,6 +78,11 @@ pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>
     ask(&state, Ask::Lot(id)).await
 }
 
+/// Raise a stock call at a building now: a delivery to watch.
+pub async fn call(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
+    ask(&state, Ask::Call(id)).await
+}
+
 async fn ask(state: &AppState, query: Ask) -> String {
     let (reply, answer) = oneshot::channel();
     if state.command_tx.send(Command::Inspect { query, reply }).is_err() {

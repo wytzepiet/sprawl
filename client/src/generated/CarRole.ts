@@ -3,4 +3,4 @@
 /**
  * What a car is for, which is who drives it and what it looks like.
  */
-export type CarRole = "Private" | "Truck";
+export type CarRole = "Private" | "Truck" | "Van";

@@ -191,6 +191,14 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Demand => crate::resident::demand(&world, now),
                         Ask::Spawner => crate::spawner::inspect(&world, now),
                         Ask::Lot(id) => world.inspect_lot(id, now),
+                        Ask::Call(id) => {
+                            // A depot fetches; anything else calls for stock.
+                            let depot = matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if crate::blueprint::blueprint(b.kind).answers.is_some());
+                            let kind = if depot { crate::calls::CallKind::Fetch } else { crate::calls::CallKind::Stock };
+                            world.calls.push(crate::calls::Call { kind, at: id, raised: now, answered_by: None });
+                            crate::calls::dispatch(&mut world, &mut events, now);
+                            serde_json::json!({ "calls": world.calls.iter().map(|c| serde_json::json!({ "kind": format!("{:?}", c.kind), "at": c.at, "answered_by": c.answered_by })).collect::<Vec<_>>() })
+                        }
                     };
                     let _ = reply.send(serde_json::to_string_pretty(&v).unwrap_or_default());
                 }
@@ -971,6 +979,56 @@ mod tests {
         let e = world.objects.get(truck).expect("the warehouse keeps its truck");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
         assert_eq!(e.position, world.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
+    }
+
+    /// A depot draws on its own stock with every van it sends; when that
+    /// runs low a lorry of its own drives out past the edge, is away a
+    /// while, and comes home full.
+    #[test]
+    fn a_depot_fetches_from_beyond_the_edge() {
+        use crate::calls;
+        let mut world = street();
+        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
+        let depot = build(&mut world, 60, BuildingKind::Warehouse, 1);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let stock = |w: &World, b: EntityId| match w.objects.get(b).unwrap().object {
+            GameObject::Building(ref bb) => bb.stock,
+            _ => unreachable!(),
+        };
+        let lorries = |w: &World| w.objects.all_entries().iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).collect::<Vec<_>>();
+        assert_eq!(lorries(&world).len(), 2, "two lorries from the day it is reached");
+        // Six van loads on the depot's shelves: four deliveries take it below half.
+        let mut t = 0;
+        for _ in 0..4 {
+            for _ in 0..21 {
+                calls::visit(&mut world, &mut events, shop, t);
+            }
+            let van = world.calls.iter().find(|c| c.kind == calls::CallKind::Stock).and_then(|c| c.answered_by).expect("a van answers");
+            assert!(matches!(world.objects.get(van).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Van));
+            pump(&mut world, &mut events, &mut intersections, t, t + 3 * DAY_MS as u64 / 24);
+            t += 3 * DAY_MS as u64 / 24;
+        }
+        assert!(stock(&world, depot) < 0.5, "the depot ran low: {}", stock(&world, depot));
+        let fetch = world.calls.iter().find(|c| c.kind == calls::CallKind::Fetch).expect("the depot called for a fetch");
+        let lorry = fetch.answered_by.expect("one of its lorries answers");
+        assert!(lorries(&world).contains(&lorry));
+        // Out past the edge and gone for a while, then home.
+        let mut away = false;
+        for _ in 0..40 {
+            pump(&mut world, &mut events, &mut intersections, t, t + calls::AWAY_MS / 4);
+            t += calls::AWAY_MS / 4;
+            away |= world.objects.get(lorry).unwrap().position.is_none();
+            if world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
+                break;
+            }
+        }
+        assert!(away, "the lorry was never beyond the edge");
+        assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch), "the fetch is done");
+        assert_eq!(stock(&world, depot), 1.0, "the depot is full again");
+        let e = world.objects.get(lorry).unwrap();
+        assert_eq!(e.position, world.objects.get(depot).unwrap().position, "the lorry is back in its dock");
+        assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none() && c.spot.is_some()));
     }
 
     /// Every wake, every arrival: the log the model in docs/residents.md is

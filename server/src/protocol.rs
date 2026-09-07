@@ -121,8 +121,11 @@ pub enum CarRole {
     /// A resident's own, driven by them.
     #[default]
     Private,
-    /// A facility's, or from beyond the edge, answering a call.
+    /// An articulated lorry: a depot's, fetching from beyond the edge, or
+    /// from beyond the edge itself where the city has no depot.
     Truck,
+    /// A depot's van, on the last mile to a shop.
+    Van,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -146,6 +149,10 @@ pub struct Car {
     pub trip: Option<Trip>,
     #[serde(default)]
     pub role: CarRole,
+    /// Beyond the edge of the map until this time; zero when on it.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub away: u64,
     /// Where it stands while parked, if the lot had room: the spot's centre
     /// and the way its nose points, in radians. `None` is parked out of
     /// sight.
