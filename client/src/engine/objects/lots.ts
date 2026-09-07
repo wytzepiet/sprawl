@@ -1,23 +1,23 @@
 import type { MeshGeometry } from "../Mesh";
 import { SLAB } from "./buildings";
+import { FACINGS, inLot, plot } from "../../blueprints";
+import { buildingAt } from "../../state/gameObjects";
+import type { Building, GameObjectEntry } from "../../generated";
 
 /**
  * A ring lot, drawn: the slab is the lot, white like a street, and what is
- * painted on it is the dividers between the spots in the island and the
- * driveway's stub to the front edge. Mirrors the server's `lots.rs` so a
+ * painted on it is the dividers between the spots in the island. Mirrors the server's `lots.rs` so a
  * car sits between its dividers: the numbers here are the numbers there.
  *
  * Built in the lot's own frame, u along the frontage and v in from the
  * street, and turned into place per facing. That frame is chosen so the
  * turn is a rotation, never a mirror: a mirrored instance is inside out.
  */
-const RING = 0.2;
-const LANE = 0.2;
 const PITCH = 0.2;
 const ISLAND_END = 0.3;
 const CAR: [number, number] = [0.35, 0.18];
-export const LOT_Z = SLAB.z + 0.004;
-const MARK_Z = LOT_Z + 0.002;
+/** Painted above the road surface, so a driveway's arm cannot cover it. */
+const MARK_Z = 0.022;
 const MARK = 0.035;
 
 /** Where the spots' centres lie along a lot w wide. */
@@ -25,6 +25,56 @@ export function spotsAcross(w: number): number[] {
   const n = Math.max(0, Math.floor((w - 2 * ISLAND_END) / PITCH + 1e-9));
   const start = ISLAND_END + ((w - 2 * ISLAND_END) - n * PITCH) / 2 + PITCH / 2;
   return Array.from({ length: n }, (_, i) => start + i * PITCH);
+}
+
+/** A lot as a run of touching lot tiles along one frontage: the rectangle
+ *  of lot tiles on the grid, the run's width along the frontage, and where
+ *  this building's own tiles lie in it. Mirrors `run_of` in `lots.rs`. */
+export interface Run {
+  rect: { x: number; y: number; w: number; h: number };
+  w: number;
+  u0: number;
+  u1: number;
+  first: boolean;
+  last: boolean;
+}
+
+export function runOf(entry: GameObjectEntry): Run | null {
+  const data = entry.object.data as Building;
+  const pos = entry.position;
+  const lot = plot(data.kind, data.facing).lot;
+  if (!pos || !lot) return null;
+  const [[lx, ly], [lw]] = lot;
+  const alongX = FACINGS[data.facing % 4][0] === 0;
+  const [line, a0, a1] = alongX ? [pos.y + ly, pos.x + lx, pos.x + lx + lw] : [pos.x + lx, pos.y + ly, pos.y + ly + lw];
+  // A neighbour's lot tile at along-coordinate a on this row, same facing.
+  const lotTile = (a: number): [number, number] | null => {
+    const [x, y] = alongX ? [a, line] : [line, a];
+    const b = buildingAt(x, y);
+    if (!b?.position) return null;
+    const bd = b.object.data as Building;
+    if (bd.facing !== data.facing || !inLot(bd.kind, bd.facing, b.position, x, y)) return null;
+    const [[ox, oy], [w]] = plot(bd.kind, bd.facing).lot!;
+    const s = alongX ? b.position.x + ox : b.position.y + oy;
+    return [s, s + w];
+  };
+  let start = a0, end = a1;
+  for (let n = lotTile(start - 1); n; n = lotTile(start - 1)) start = n[0];
+  for (let n = lotTile(end); n; n = lotTile(end)) end = n[1];
+  const w = end - start;
+  const rect = alongX ? { x: start, y: line, w, h: 1 } : { x: line, y: start, w: 1, h: w };
+  return { rect, w, u0: a0 - start, u1: a1 - start, first: start === a0, last: end === a1 };
+}
+
+/** The strip that joins two neighbours' slabs across the land between
+ *  them, at u = seam, over a depth of d tiles from the front: as wide as
+ *  the two inset corners it covers, so the run reads as one slab. */
+export function bridgeGeometry(seam: number, d: number, kerb: boolean): MeshGeometry {
+  const g = flat();
+  const grow = kerb ? SLAB.kerb : 0;
+  const reach = SLAB.inset + SLAB.radius;
+  g.rect(seam - reach, SLAB.inset - grow, seam + reach, d - SLAB.inset + grow, 0);
+  return g.done();
 }
 
 /** The rotation that lays the frame onto the map for a facing, and where
@@ -35,19 +85,6 @@ export function frameOf(facing: number, lot: { x: number; y: number; w: number; 
     case 1: return { rot: Math.PI / 2, origin: [lot.x + lot.w, lot.y] as const };
     case 2: return { rot: Math.PI, origin: [lot.x + lot.w, lot.y + lot.h] as const };
     default: return { rot: -Math.PI / 2, origin: [lot.x, lot.y + lot.h] as const };
-  }
-}
-
-/** A tile's position in the frame: (u, v) of its centre. */
-export function inFrame(facing: number, lot: { x: number; y: number; w: number; h: number }, x: number, y: number): [number, number] {
-  const cx = x + 0.5, cy = y + 0.5;
-  const { origin } = frameOf(facing, lot);
-  const [dx, dy] = [cx - origin[0], cy - origin[1]];
-  switch (facing % 4) {
-    case 0: return [dx, dy];
-    case 1: return [dy, -dx];
-    case 2: return [-dx, -dy];
-    default: return [-dy, dx];
   }
 }
 
@@ -74,14 +111,6 @@ function flat() {
     },
     done: (): MeshGeometry => ({ positions, indices, normals }),
   };
-}
-
-/** The driveway's stub, from the lot's front edge in to the front lane, so
- *  the street's arm and the slab meet across the strip of land between. */
-export function stubGeometry(du: number): MeshGeometry {
-  const g = flat();
-  g.rect(du - LANE, -0.02, du + LANE, RING, LOT_Z);
-  return g.done();
 }
 
 /** The dividers between neighbouring spots in a lot w wide. */

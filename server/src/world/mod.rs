@@ -25,12 +25,15 @@ pub struct World {
     /// now that terrain is not an entity.
     pub(super) spatial: HashMap<ChunkCoord, HashSet<EntityId>>,
     pub edges: HashMap<EdgeKey, EdgeSegment>,
-    /// Every building's lot, built when first asked for; see `lots.rs`.
+    /// Every lot, by the run of lot tiles it is, built when first asked
+    /// for; see `lots.rs`.
     pub lots: lots::Lots,
+    /// Which lot each building is on.
+    pub lot_of: HashMap<EntityId, lots::RunKey>,
     /// Where each lot node is: off the grid, and not an entity.
     pub lot_nodes: HashMap<EntityId, [f64; 2]>,
-    /// Which building's lot each car holds a spot in.
-    pub claims: HashMap<EntityId, EntityId>,
+    /// Which lot each car holds a place in.
+    pub claims: HashMap<EntityId, lots::RunKey>,
     /// Who can reach whom, kept in step with `edges` — the one gate the
     /// committed road graph passes through, so nothing that lays or pulls up a
     /// road has to know this index exists.
@@ -150,6 +153,7 @@ impl World {
             spatial: HashMap::new(),
             edges: HashMap::new(),
             lots: HashMap::new(),
+            lot_of: HashMap::new(),
             lot_nodes: HashMap::new(),
             claims: HashMap::new(),
             network: RoadNetwork::default(),
@@ -180,6 +184,7 @@ impl World {
             spatial: HashMap::new(),
             edges: HashMap::new(),
             lots: HashMap::new(),
+            lot_of: HashMap::new(),
             lot_nodes: HashMap::new(),
             claims: HashMap::new(),
             network: RoadNetwork::default(),

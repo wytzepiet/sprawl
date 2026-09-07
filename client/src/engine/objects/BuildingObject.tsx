@@ -2,8 +2,7 @@ import { Color3 } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { shapeFor, slabGeometry, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
 import { plot } from "../../blueprints";
-import { getObjectsAt } from "../../state/gameObjects";
-import { frameOf, inFrame, markingGeometry, stubGeometry } from "./lots";
+import { bridgeGeometry, frameOf, markingGeometry, runOf } from "./lots";
 import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
 
@@ -61,25 +60,22 @@ export function mountBuilding(
       pool.ensureBucket(key, slabGeometry(pw, ph, kerb), look.tint(tint), false, true);
       placed.push({ key, id: pool.addInstance(key, [at[0], at[1], z]) });
     }
-    // The ring and its markings, once the driveway is there to join it.
-    const [[lx, ly], [lw, lh]] = lie.lot;
-    const lot = { x: pos.x + lx, y: pos.y + ly, w: lw, h: lh };
-    let door: [number, number] | null = null;
-    for (let y = lot.y; y < lot.y + lot.h && !door; y++) {
-      for (let x = lot.x; x < lot.x + lot.w && !door; x++) {
-        if (getObjectsAt(x, y).some((o) => o.object.kind === "RoadNode")) door = inFrame(data.facing, lot, x, y);
+    // The lot is the run of lot tiles this one touches along the street:
+    // the dividers are the run's, drawn once by its first building, and the
+    // seam to the next building's slab is bridged so the run is one slab.
+    const run = runOf(entry);
+    if (run) {
+      const { rot, origin } = frameOf(data.facing, run.rect);
+      const put = (key: string, geo: () => Parameters<typeof pool.ensureBucket>[1], tint: Color3, z: number, lit: boolean) => {
+        pool.ensureBucket(key, geo(), look.tint(tint), false, lit);
+        placed.push({ key, id: pool.addInstance(key, [origin[0], origin[1], z], [0, 0, rot]) });
+      };
+      if (run.first) put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, 0, false);
+      if (!run.last) {
+        const d = Math.min(ph, pw) === 1 ? 1 : (data.facing % 2 === 0 ? ph : pw);
+        put(`bridge_kerb_${run.u1}_${d}${look.key}`, () => bridgeGeometry(run.u1, d, true), KERB, SLAB.kerbZ, true);
+        put(`bridge_${run.u1}_${d}${look.key}`, () => bridgeGeometry(run.u1, d, false), ASPHALT, SLAB.z, true);
       }
-    }
-    if (door) {
-      const { rot, origin } = frameOf(data.facing, lot);
-      const w = lot.w * (data.facing % 2 === 0 ? 1 : 0) + lot.h * (data.facing % 2 === 0 ? 0 : 1);
-      const du = Math.round(door[0] * 2) / 2;
-      const stub = `stub_${du}${look.key}`;
-      pool.ensureBucket(stub, stubGeometry(du), look.tint(ASPHALT), false, true);
-      placed.push({ key: stub, id: pool.addInstance(stub, [origin[0], origin[1], 0], [0, 0, rot]) });
-      const marks = `marks_${w}${look.key}`;
-      pool.ensureBucket(marks, markingGeometry(w), look.tint(KERB), false, false);
-      placed.push({ key: marks, id: pool.addInstance(marks, [origin[0], origin[1], 0], [0, 0, rot]) });
     }
   }
 

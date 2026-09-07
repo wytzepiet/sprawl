@@ -121,10 +121,24 @@ export default function World() {
       if (owner !== undefined && owner !== null) dirtyBuildings.add(String(owner));
     };
 
+    // A building landing or leaving changes its neighbours' lot: the run of
+    // lot tiles they share is drawn by whoever is on it, so they redraw.
+    const plotTouched = (entry: GameObjectEntry | undefined) => {
+      if (!entry?.position || entry.object.kind !== "Building") return;
+      const [w, h] = (entry.object.data as Building).size;
+      for (let dy = -1; dy <= h; dy++) {
+        for (let dx = -1; dx <= w; dx++) {
+          const owner = builtTiles.get(`${entry.position.x + dx},${entry.position.y + dy}`);
+          if (owner !== undefined && owner !== entry.id) dirtyBuildings.add(String(owner));
+        }
+      }
+    };
+
     for (const op of ops) {
       switch (op.op) {
         case "Upsert": {
           const key = String(op.data.id);
+          plotTouched(op.data);
 
 
           const existing = mounted.get(key);
@@ -170,6 +184,15 @@ export default function World() {
         case "Delete": {
           const key = String(op.data);
           const existing = mounted.get(key);
+          if (existing?.covers) {
+            for (const t of existing.covers) {
+              const [x, y] = t.split(",").map(Number);
+              for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+                const owner = builtTiles.get(`${x + dx},${y + dy}`);
+                if (owner !== undefined && String(owner) !== key) dirtyBuildings.add(String(owner));
+              }
+            }
+          }
           if (existing) {
             if (existing.neighbors) markDirty(existing.neighbors, dirtyRoads);
             if (existing.pos) {

@@ -13,9 +13,11 @@ export const BUILDING_SIZE = 1.0 - 2 * PLOT_MARGIN;
  * The slab a building with a lot stands on: one sheet of asphalt over the
  * whole plot, set in from its edge so the land shows round it, with the
  * street's kerb round that and corners rounded so a diagonal road passing
- * the corner only grazes the kerb. Heights keep it under the road.
+ * the corner only grazes the kerb. It lies above a road's kerb and below
+ * its surface, so the driveway runs into it with no seam and its kerb
+ * never shows across the lot.
  */
-export const SLAB = { inset: 0.1, kerb: 0.04, radius: 0.13, z: 0.01, kerbZ: 0.008 };
+export const SLAB = { inset: 0.1, kerb: 0.04, radius: 0.13, z: 0.017, kerbZ: 0.016 };
 /** Every building's walls have this much of a corner: enough to keep a
  *  corner out from under a diagonal road's kerb, and the slab's corners are
  *  the same arcs 0.05 further out. */
