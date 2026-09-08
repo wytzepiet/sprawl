@@ -5,6 +5,7 @@ import { plot } from "../../blueprints";
 import { emptyPlotGeometry, frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
 import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
+import { parts } from "../../state/selection";
 
 /** The slab is white like a street, with the street's kerb round it, and
  *  the dividers between spots are painted in the kerb's colour. */
@@ -49,6 +50,7 @@ export function mountBuilding(
       [0, 0, facingOf(entry.id, w, h)],
     ),
   });
+  parts.set(entry.id, [placed[0]]);
 
   // A lot is the run of lot tiles this one touches along the street, with
   // the free tiles it spills over: one slab under every plot on it, the
@@ -76,5 +78,6 @@ export function mountBuilding(
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);
+    parts.delete(entry.id);
   };
 }

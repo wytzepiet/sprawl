@@ -23,6 +23,18 @@ export function select(id: number | null) {
  *  click on the map can find the one under it without asking the scene. */
 export const carPoses = new Map<number, [number, number]>();
 
+/** One thin instance in the pool: the bucket it is in and its id there. */
+export interface Part {
+  key: string;
+  id: number;
+}
+/**
+ * What each thing is drawn as: the instances that are its body, a car's
+ * box or a building's solid, not its lot. Registered as they are mounted,
+ * so the highlight can trace the very mesh on screen.
+ */
+export const parts = new Map<number, Part[]>();
+
 /**
  * Where a thing on the map is this frame, if the client can see it: a car
  * where it is drawn, a building over its roof rather than its lot. A

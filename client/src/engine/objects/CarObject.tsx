@@ -5,7 +5,7 @@ import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
 import type { Car, GameObjectEntry } from "../../generated";
-import { carPoses } from "../../state/selection";
+import { carPoses, parts } from "../../state/selection";
 
 /// Everyone keeps their car for life, and its id never changes — so neither
 /// does its colour.
@@ -120,15 +120,18 @@ export function mountCar(
     const { at, heading } = car.spot;
     const instanceId = pool.addInstance(bucket, [at[0], at[1], van ? GROUND + 0.11 : CAR_Z], [0, 0, heading - Math.PI / 2]);
     carPoses.set(entry.id, [at[0], at[1]]);
+    parts.set(entry.id, [{ key: bucket, id: instanceId }]);
     return () => {
       pool.removeInstance(bucket, instanceId);
       carPoses.delete(entry.id);
+      parts.delete(entry.id);
     };
   }
   const f = follow(car);
   if (!f) return () => {};
   const initial = f.now();
   const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
+  parts.set(entry.id, [{ key: bucket, id: instanceId }]);
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
@@ -138,6 +141,7 @@ export function mountCar(
     scene.onBeforeRenderObservable.remove(observer);
     pool.removeInstance(bucket, instanceId);
     carPoses.delete(entry.id);
+    parts.delete(entry.id);
   };
 }
 
@@ -173,7 +177,8 @@ function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look
     const a = pool.addInstance(cab, p.cab.pos, p.cab.rot);
     const b = pool.addInstance(trailer, p.trailer.pos, p.trailer.rot);
     carPoses.set(id, [at[0], at[1]]);
-    return () => { pool.removeInstance(cab, a); pool.removeInstance(trailer, b); carPoses.delete(id); };
+    parts.set(id, [{ key: cab, id: a }, { key: trailer, id: b }]);
+    return () => { pool.removeInstance(cab, a); pool.removeInstance(trailer, b); carPoses.delete(id); parts.delete(id); };
   }
   const f = follow(car);
   if (!f) return () => {};
@@ -204,6 +209,7 @@ function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look
   const p0 = place(first.pos[0], first.pos[1], first.rot[2] + Math.PI / 2, true);
   const a = pool.addInstance(cab, p0.cab.pos, p0.cab.rot);
   const b = pool.addInstance(trailer, p0.trailer.pos, p0.trailer.rot);
+  parts.set(id, [{ key: cab, id: a }, { key: trailer, id: b }]);
   let arrived: [number, number] | null = null;
   const observer = scene.onBeforeRenderObservable.add(() => {
     const r = f.now();
@@ -237,6 +243,7 @@ function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look
     pool.removeInstance(cab, a);
     pool.removeInstance(trailer, b);
     carPoses.delete(id);
+    parts.delete(id);
   };
 }
 

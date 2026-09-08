@@ -51,6 +51,7 @@ interface Bucket {
   baseColor: Color3;
   castShadow: boolean;
   receiveShadow: boolean;
+  geometry: MeshGeometry;
 }
 
 const STRIDE = 9;
@@ -145,6 +146,7 @@ export class InstancePool {
     }
 
     bucket = {
+      geometry,
       mesh,
       material: mat,
       matrices: new Float32Array(0),
@@ -165,6 +167,19 @@ export class InstancePool {
     this.paint(bucket);
     this.buckets.set(key, bucket);
     return bucket;
+  }
+
+  /** One instance's world matrix, as last composed; null once it is gone. */
+  matrixOf(key: string, id: number, out: Matrix): Matrix | null {
+    const bucket = this.buckets.get(key);
+    const index = bucket?.idToIndex.get(id);
+    if (!bucket || index === undefined) return null;
+    Matrix.FromArrayToRef(bucket.matrices, index * 16, out);
+    return out;
+  }
+
+  geometryOf(key: string): MeshGeometry | null {
+    return this.buckets.get(key)?.geometry ?? null;
   }
 
   addInstance(
