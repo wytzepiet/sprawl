@@ -17,7 +17,7 @@ import { useInstancePool } from "./InstancePool";
 import { hovered, parts, subject } from "../state/selection";
 
 /** The line, in pixels, at any zoom. */
-const WIDTH = 3;
+const WIDTH = 2;
 const PICKED = new Color3(0.13, 0.62, 1.0);
 const UNDER = new Color3(0.13, 0.62, 1.0);
 /** Ghosts live on a layer the main camera never draws. */
@@ -50,9 +50,12 @@ void main() {
     r = max(r, max(m.r, n.r));
     g = max(g, max(m.g, n.g));
   }
-  float outside = 1.0 - step(0.001, here.a);
-  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), step(0.001, g) * outside);
-  c = mix(c, picked, step(0.001, r) * outside);
+  // The mask is half the screen's size, so its edge reads as partly covered
+  // a pixel out from the mesh. A pixel is inside only when mostly covered,
+  // or the line would start a pixel away from the shape it traces.
+  float outside = 1.0 - step(0.5, here.a);
+  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), step(0.25, g) * outside);
+  c = mix(c, picked, step(0.25, r) * outside);
   gl_FragColor = vec4(c, scene.a);
 }`;
 
