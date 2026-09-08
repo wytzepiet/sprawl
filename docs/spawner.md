@@ -50,11 +50,21 @@ returning none, derived like every other index.
 ## 4. Choosing a kind
 
 Each kind has a base weight. The weight is multiplied by
-`1 + pressure`, where `pressure` is the unmet demand (needs §6) for the
-need the kind serves, summed over the city: homes read immigration
-pressure, workplaces read the jobless, shops read Eat and Leisure. A
-recent ✗ on a kind near the site multiplies by zero. The draw is
-weighted; demand tilts, never blocks.
+`1 + pressure`, where `pressure` is how badly the city wants the needs the
+kind serves, as a share of everyone in it, so it runs from 0 to 1 and at
+most doubles a kind: homes read immigration pressure,
+workplaces read the jobless, shops read Eat and Leisure. A recent ✗ on a
+kind near the site multiplies by zero. The draw is weighted; demand tilts,
+never blocks.
+
+Pressure is read, never computed. Every wake leaves a note on each bucket,
+its `shortfall`: how far short of being served on the spot the best option
+fell, from 0 to 1, with 1 for nothing found anywhere. A want weighs the
+bucket's fullness times that shortfall; someone without a job wants one
+outright. The spawner sums the notes when it draws a goal. Nobody is asked
+to think again, so a goal costs one pass over the residents however big
+the city — and a note is a state, not an event: a resident who wakes a
+hundred times leaves one note, the same as one who wakes once.
 
 ## 5. Siting
 

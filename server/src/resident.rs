@@ -4,11 +4,12 @@ use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::blueprint::blueprint;
 use crate::needs::{Bucket, Need, Tap};
-use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, Resident, DAY_MS};
+use crate::world::pathfinding::Routes;
+use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, GridCoord, Resident, DAY_MS};
 use crate::world::World;
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{BinaryHeap, HashMap};
 
 /// Real roads bend; the crow does not. Straight-line travel time is scaled up
 /// by this before promising to be anywhere. Being systematically a little
@@ -74,7 +75,24 @@ pub fn handle_resident_wake(
     let crowd = headcount(world);
     settle(world, id, at, now, &crowd);
     let Some(r) = resident(world, id).cloned() else { return };
-    let verdicts = verdicts(world, &r, at, now, &crowd);
+    let mut routes = routes_from(world, at);
+    let verdicts = verdicts(world, &r, at, now, &crowd, &mut routes);
+    drop(routes);
+
+    // The note the spawner reads: how far short of being served on the spot
+    // each need fell — one where nothing was found at all.
+    let notes: Vec<f64> = r.buckets.iter().zip(&verdicts).map(|(b, v)| match *v {
+        Verdict::Nothing => 1.0,
+        Verdict::Go { score, .. } => {
+            let ideal = b.need.ceiling(b.level);
+            if ideal > 0.0 { (1.0 - score / ideal).clamp(0.0, 1.0) } else { 0.0 }
+        }
+    }).collect();
+    if let Some(r) = resident_mut(world, id) {
+        for (b, note) in r.buckets.iter_mut().zip(notes) {
+            b.shortfall = note;
+        }
+    }
 
     // Actionable: can be set out for now, or is right here — where waiting
     // for it to open is the action. Waiting for somewhere else is not; that
@@ -136,15 +154,21 @@ pub fn handle_resident_wake(
 }
 
 /// One verdict per bucket: the best any of its candidates offers.
-fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime, crowd: &Crowd) -> Vec<Verdict> {
+fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Vec<Verdict> {
     r.buckets
         .iter()
         .map(|b| match b.need {
-            Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, now, crowd)),
-            Need::Rest | Need::Home => verdict_at(world, r, at, b, r.home, now, crowd),
-            Need::Eat | Need::Leisure | Need::Fuel => search(world, r, at, b, now, crowd),
+            Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, now, crowd, routes, true)),
+            Need::Rest | Need::Home => verdict_at(world, r, at, b, r.home, now, crowd, routes, true),
+            Need::Eat | Need::Leisure | Need::Fuel => search(world, r, at, b, now, crowd, routes),
         })
         .collect()
+}
+
+/// The ways out from where a resident stands, searched once for the whole
+/// decision. `None` where no road reaches the building.
+fn routes_from(world: &World, at: EntityId) -> Option<Routes<'_>> {
+    world.road_node_for_building(at).map(|node| Routes::from(world, node))
 }
 
 /// The best one place offers a bucket, through any of its taps for the need.
@@ -156,6 +180,8 @@ fn verdict_at(
     building: EntityId,
     now: GameTime,
     crowd: &Crowd,
+    routes: &mut Option<Routes>,
+    exact: bool,
 ) -> Verdict {
     // Everyone else there or on the way, plus this resident. The count is a
     // snapshot taken before anyone moved, so it can disagree with `mine`
@@ -164,79 +190,91 @@ fn verdict_at(
     let mine = (at == building && r.selected == Some(b.need)) as u32;
     let seen = crowd.get(&(building, b.need)).copied().unwrap_or(0);
     let company = seen.saturating_sub(mine) + 1;
-    let tau = if at == building { 0 } else { travel_ms(world, at, building) };
+    let tau = if at == building {
+        0
+    } else if exact {
+        travel_ms(world, routes, at, building)
+    } else {
+        crow_flies_ms(world, at, building)
+    };
     taps_of(world, building)
         .iter()
         .filter(|t| t.need == b.need)
-        .map(|t| evaluate(world, r.car, at, building, t, b, now, company, tau))
+        .map(|t| evaluate(world, r.car, at, building, t, b, now, company, tau, exact))
         .fold(Verdict::Nothing, Verdict::better)
 }
 
-/// The best of whatever is around: a search outward by chunk, nearest ring
-/// first, which stops once nothing further out could beat the best score
-/// found so far — `w * L / (tau + h + L / R)` bounds an option from its
-/// distance alone (section 10) — or the surveyed world runs out. A verdict
-/// is a bucket's own best, whatever the other buckets scored: the alarms
-/// and the unmet count read it as such.
-fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd) -> Verdict {
+/// The best of whatever is around, found the way a search finds anything
+/// dear to look at closely: every candidate is scored on what is cheap to
+/// know — where it stands, as the crow flies, with room for everyone — and
+/// only the leader is asked what it really costs: the route as the roads
+/// have been giving it, whether a road reaches it at all, how many can park
+/// and when. Every real answer can only lower a score, so once the leader
+/// is exact, nothing under it can catch up. A resident weighing a town
+/// pays for one or two real answers, not one per shop. A verdict is a
+/// bucket's own best, whatever the other buckets scored: the alarms and
+/// the notes read it as such.
+fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Verdict {
     let need = b.need;
-    let (r_max, h) = need.bounds();
-    // The most a visit can score is the whole level served at the best rate
-    // any tap has, and no sooner than the drive there.
-    let bound = b.level / need.cap() * b.level;
-    let service = b.level / r_max;
-    let Some(origin) = world.objects.get(at).and_then(|e| e.position) else {
-        return Verdict::Nothing;
-    };
-    let here = crate::world::chunk_of(origin);
-    let bounds = world.revealed_bounds;
-    let reach = (here.cx - bounds.min_cx)
-        .max(bounds.max_cx - here.cx)
-        .max(here.cy - bounds.min_cy)
-        .max(bounds.max_cy - here.cy)
-        .max(0);
-    let mut best = Verdict::Nothing;
-    for ring in 0..=reach {
-        // Nothing in this ring is nearer than its inner edge.
-        let tiles = ((ring - 1) * crate::protocol::CHUNK_SIZE).max(0) as f64;
-        let tau = tiles / CRUISE_SPEED * 1000.0;
-        if let Verdict::Go { score, .. } = best
-            && bound / (tau + h as f64 + service) <= score
-        {
-            break;
+    let mut heap: BinaryHeap<Candidate> = world
+        .revealed
+        .iter()
+        .flat_map(|&c| world.buildings_in(c))
+        // A home's kitchen is its residents' alone.
+        .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
+        // Empty shelves sell nothing.
+        .filter(|&id| crate::calls::stocked(world, id))
+        .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
+        .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, at, b, id, now, crowd, routes, false)))
+        .collect();
+    while let Some(top) = heap.pop() {
+        if top.exact {
+            return top.verdict;
         }
-        let mut found: Vec<(i32, EntityId)> = chunk_ring(here, ring)
-            .flat_map(|c| world.buildings_in(c))
-            // A home's kitchen is its residents' alone, and a place no road
-            // reaches is not on offer.
-            .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
-            .filter(|&id| world.road_node_for_building(id).is_some())
-            // Empty shelves sell nothing.
-            .filter(|&id| crate::calls::stocked(world, id))
-            .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
-            .filter_map(|id| {
-                let p = world.objects.get(id)?.position?;
-                Some(((p.x - origin.x).abs().max((p.y - origin.y).abs()), id))
-            })
-            .collect();
-        found.sort_unstable();
-        for (_, id) in found {
-            best = best.better(verdict_at(world, r, at, b, id, now, crowd));
-        }
+        heap.extend(Candidate::new(top.id, true, verdict_at(world, r, at, b, top.id, now, crowd, routes, true)));
     }
-    best
+    Verdict::Nothing
 }
 
-/// The chunks exactly `ring` steps out from `center`, in a fixed order.
-fn chunk_ring(center: ChunkCoord, ring: i32) -> impl Iterator<Item = ChunkCoord> {
-    let r = ring;
-    (-r..=r).flat_map(move |dy| {
-        (-r..=r).filter_map(move |dx| {
-            (dx.abs() == r || dy.abs() == r)
-                .then_some(ChunkCoord { cx: center.cx + dx, cy: center.cy + dy })
-        })
-    })
+/// A building in the running, by the score it has so far. The best score
+/// first; at a tie the exact one, since the estimate cannot beat it; then
+/// by id, so a town decides the same way however its chunks iterate.
+struct Candidate {
+    score: f64,
+    exact: bool,
+    id: EntityId,
+    verdict: Verdict,
 }
+
+impl Candidate {
+    fn new(id: EntityId, exact: bool, verdict: Verdict) -> Option<Candidate> {
+        match verdict {
+            Verdict::Go { score, .. } => Some(Candidate { score, exact, id, verdict }),
+            Verdict::Nothing => None,
+        }
+    }
+}
+
+impl PartialEq for Candidate {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == std::cmp::Ordering::Equal
+    }
+}
+impl Eq for Candidate {}
+impl PartialOrd for Candidate {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Candidate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.score
+            .total_cmp(&other.score)
+            .then(self.exact.cmp(&other.exact))
+            .then(other.id.cmp(&self.id))
+    }
+}
+
 
 /// What one place offers one bucket.
 #[derive(Clone, Copy, Serialize)]
@@ -286,9 +324,11 @@ fn evaluate(
     now: GameTime,
     company: u32,
     tau: GameTime,
+    exact: bool,
 ) -> Verdict {
     let h = tap.overhead;
-    let rate = tap.serving(slots_at(world, building, tap), company);
+    // An estimate has room for everyone; the real lot decides otherwise.
+    let rate = tap.serving(if exact { slots_at(world, building, tap) } else { u32::MAX }, company);
     // The visit as the tap allows it; then, going there for it, as the lot
     // allows it: if no spot is clear for the whole visit from when the car
     // would arrive, the earliest gap is when to arrive instead, and the
@@ -316,7 +356,7 @@ fn evaluate(
         Some((departure, (leave.ceil() as GameTime).min(dry), drained, entry))
     };
     let Some(mut planned) = plan(now + tau) else { return Verdict::Nothing };
-    if at != building && tap.need != Need::Work {
+    if exact && at != building && tap.need != Need::Work {
         let (_, leave, _, entry) = planned;
         if let Some(t) = world.spot_window(building, car, entry - h, leave.saturating_add(crate::world::lots::SLACK))
             && t > entry - h
@@ -510,7 +550,7 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
     let Some(r) = resident(world, id) else { return json!({ "error": "no such resident" }) };
     let Some(at) = r.at else { return json!({ "id": id, "at": null, "note": "off-map" }) };
     let crowd = headcount(world);
-    let verdicts = verdicts(world, r, at, now, &crowd);
+    let verdicts = verdicts(world, r, at, now, &crowd, &mut routes_from(world, at));
     json!({
         "id": id,
         "now": hhmm(now),
@@ -547,45 +587,64 @@ pub fn inspect_all(world: &World, now: GameTime) -> Value {
     json!({ "now": hhmm(now), "residents": rows })
 }
 
-/// Who wants what they cannot get, by home chunk: how many, and how badly.
-pub fn unmet(world: &World, now: GameTime) -> HashMap<(ChunkCoord, Need), (u32, f64)> {
-    let crowd = headcount(world);
+/// One resident's note on one need, as left by their last wake: where they
+/// live, how far short of being served it fell, and how much that weighs —
+/// the need's fullness times the shortfall. Someone without a job wants one
+/// outright. Read from the notes; nobody is asked to think again.
+struct Want {
+    home: GridCoord,
+    need: Need,
+    shortfall: f64,
+    weight: f64,
+}
+
+fn wants(world: &World) -> impl Iterator<Item = Want> + '_ {
+    world.resident_ids().into_iter().filter_map(|id| resident(world, id)).flat_map(|r| {
+        let home = world.objects.get(r.home).and_then(|e| e.position);
+        let jobless = r.work.is_none();
+        r.at.and(home).into_iter().flat_map(move |home| {
+            r.buckets.iter().filter_map(move |b| {
+                let (shortfall, weight) = if b.need.fill() > 0.0 {
+                    (b.shortfall, b.level / b.need.cap() * b.shortfall)
+                } else if b.need == Need::Work && jobless {
+                    (1.0, 1.0)
+                } else {
+                    (0.0, 0.0)
+                };
+                (weight > 0.0).then_some(Want { home, need: b.need, shortfall, weight })
+            })
+        })
+    })
+}
+
+/// Who found nothing at all, by home chunk: how many, and how badly. What
+/// the demand readout names as missing; a shop that is merely far or full
+/// weighs on `pressure` without showing up here.
+pub fn unmet(world: &World) -> HashMap<(ChunkCoord, Need), (u32, f64)> {
     let mut unmet: HashMap<(ChunkCoord, Need), (u32, f64)> = HashMap::new();
-    for id in world.resident_ids() {
-        let Some(r) = resident(world, id) else { continue };
-        let Some(at) = r.at else { continue };
-        let Some(home) = world.objects.get(r.home).and_then(|e| e.position) else { continue };
-        let here = crate::world::chunk_of(home);
-        for (b, v) in r.buckets.iter().zip(verdicts(world, r, at, now, &crowd)) {
-            // Nothing on offer and something owed; an empty bucket wants
-            // nothing. A job is wanted whether or not the shift is on.
-            let wanting = matches!(v, Verdict::Nothing) && b.need.fill() > 0.0 && b.level >= 1.0;
-            if wanting || b.need == Need::Work && r.work.is_none() {
-                let e = unmet.entry((here, b.need)).or_default();
-                e.0 += 1;
-                e.1 += if b.need.fill() > 0.0 { b.level / b.need.cap() } else { 1.0 };
-            }
-        }
+    for w in wants(world).filter(|w| w.shortfall >= 1.0) {
+        let e = unmet.entry((crate::world::chunk_of(w.home), w.need)).or_default();
+        e.0 += 1;
+        e.1 += w.weight;
     }
     unmet
 }
 
-/// The city's unmet demand per need, summed. What the spawner reads.
-pub fn pressure(world: &World, now: GameTime) -> HashMap<Need, f64> {
+/// How badly the city wants each need, as a share of everyone in it: from
+/// 0 to 1, so a kind's draw is at most doubled and a bigger city is not a
+/// louder one. Summed instead, a town of two hundred once multiplied the
+/// shop's weight by thirty-six, and grew nothing but shops.
+pub fn pressure(world: &World) -> HashMap<Need, f64> {
+    let heads = world.resident_ids().len().max(1) as f64;
     let mut by_need = HashMap::new();
-    for ((_, need), (_, p)) in unmet(world, now) {
-        *by_need.entry(need).or_default() += p;
+    for w in wants(world) {
+        *by_need.entry(w.need).or_default() += w.weight / heads;
     }
     by_need
 }
 
-/// Section 6: the demand signal. Who cannot be served — a bucket with no
-/// option at all, weighted by how full it is — summed by the chunk they
-/// live in; and what every building delivered, today and yesterday. Both
-/// derived on request: the first from the same verdicts a wake would
-/// compute, the second from what settle has been counting.
 pub fn demand(world: &World, now: GameTime) -> Value {
-    let unmet = unmet(world, now);
+    let unmet = unmet(world);
     let mut unmet: Vec<Value> = unmet
         .into_iter()
         .map(|((c, need), (people, pressure))| {
@@ -725,9 +784,9 @@ fn taps_of(world: &World, building: EntityId) -> &'static [Tap] {
 /// route as the roads have been giving it, plus the crawl through the lots
 /// at either end. Where no road joins them, as the crow flies with the
 /// detour factor.
-fn travel_ms(world: &World, from: EntityId, to: EntityId) -> GameTime {
-    if let (Some(a), Some(b)) = (world.road_node_for_building(from), world.road_node_for_building(to))
-        && let Some(ms) = crate::world::pathfinding::route_ms(world, a, b)
+fn travel_ms(world: &World, routes: &mut Option<Routes>, from: EntityId, to: EntityId) -> GameTime {
+    if let (Some(routes), Some(b)) = (routes.as_mut(), world.road_node_for_building(to))
+        && let Some(ms) = routes.cost_to(b)
     {
         return (ms + LOT_MS) as GameTime;
     }
@@ -736,6 +795,19 @@ fn travel_ms(world: &World, from: EntityId, to: EntityId) -> GameTime {
         _ => 0.0,
     };
     (dist / CRUISE_SPEED * DETOUR * 1000.0) as GameTime
+}
+
+/// The least a trip between two buildings could take: as the crow flies at
+/// the cruising speed, with nothing in the way. No route is shorter, so a
+/// score built on it is one the real route can only lower.
+fn crow_flies_ms(world: &World, from: EntityId, to: EntityId) -> GameTime {
+    match (position_of(world, from), position_of(world, to)) {
+        (Some(a), Some(b)) => {
+            let (dx, dy) = ((a.0 - b.0) as f64, (a.1 - b.1) as f64);
+            ((dx * dx + dy * dy).sqrt() / CRUISE_SPEED * 1000.0) as GameTime
+        }
+        _ => 0,
+    }
 }
 
 /// The lot at either end of a trip: about a tile of ring each, at a crawl.
@@ -747,4 +819,44 @@ fn position_of(world: &World, id: EntityId) -> Option<(i32, i32)> {
 
 fn time_of_day(now: GameTime) -> u32 {
     (now % DAY_MS as u64) as u32
+}
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+    use crate::protocol::{GridCoord, TerrainType};
+
+    /// Not an assertion: what one cheap evaluation costs, for whoever is
+    /// sizing the spawner's survey. `cargo test --release how_dear_an_estimate_is -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn how_dear_an_estimate_is() {
+        let mut world = World::new();
+        for y in -6..6 {
+            for x in -4..40 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        world.place_road_path(&(-2..38).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        let home = world.spawn_building(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
+        let shop = world.spawn_building(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
+        world.settle();
+        let id = world.resident_ids()[0];
+        let r = resident(&world, id).unwrap().clone();
+        let b = r.buckets.iter().find(|b| b.need == Need::Eat).unwrap().clone();
+        let tap = taps_of(&world, shop).iter().find(|t| t.need == Need::Eat).unwrap();
+        let n = 200_000u32;
+        let started = std::time::Instant::now();
+        let mut hits = 0u32;
+        for i in 0..n {
+            let now = (i as u64 * 977) % DAY_MS as u64;
+            let level = b.level + (i % 100) as f64 * 1000.0;
+            let bucket = Bucket { level, ..b.clone() };
+            if let Verdict::Go { .. } = evaluate(&world, r.car, home, shop, tap, &bucket, now, 1, 60_000, false) {
+                hits += 1;
+            }
+        }
+        let per = started.elapsed().as_nanos() as f64 / n as f64;
+        eprintln!("{n} estimates, {hits} of them a visit: {per:.0} ns each");
+    }
 }

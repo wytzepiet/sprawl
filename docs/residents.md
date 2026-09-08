@@ -391,9 +391,10 @@ one is.
 - **Routing.** On deciding to travel, a route is computed by existing
   pathfinding. The estimate used for the decision and the route used for the
   journey are distinct.
-- **Demand.** A bucket whose need has no reachable tap is unmet demand. The
-  spatial aggregation of such buckets is the intended input to the
-  building-proposal system.
+- **Demand.** Each wake leaves a note on each bucket, `shortfall`: how far
+  short of being served on the spot the best option fell, 1 where nothing
+  was found. The spawner (`spawner.md` §4–5) reads the notes; the decision
+  is never run a second time on its behalf.
 - **Output.** The total discharged by a building's taps over a period is the
   service it delivered — for a workplace, labour received.
 

@@ -1,8 +1,9 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use crate::car::CRUISE_SPEED;
 use crate::protocol::EntityId;
+use crate::world::network::Segment;
 use crate::world::World;
 
 struct Node {
@@ -29,16 +30,18 @@ impl PartialOrd for Node {
     }
 }
 
-/// A leg of a journey: a stretch of road with nothing joining it along the way,
-/// and what it costs to drive.
-struct Hop {
+/// A leg of a journey: a stretch of road with nothing joining it along the
+/// way, named by where it comes out and the first step onto it — which is
+/// what tells apart two stretches that share both ends. The tiles between
+/// are the network's; nothing copies them until a route is laid out.
+#[derive(Clone, Copy)]
+struct Leg {
     to: EntityId,
     cost: f64,
-    /// Every tile of it, in the order they are driven, both ends included.
-    nodes: Vec<EntityId>,
+    step: EntityId,
 }
 
-/// A route from one road node to another, tile by tile.
+/// Every way out from one place, searched as far as anyone has asked.
 ///
 /// Searched over whole stretches of road rather than tile by tile: a junction
 /// is the only place a decision can be made, so everything between two of them
@@ -47,126 +50,132 @@ struct Hop {
 ///
 /// Costed in time, not distance, which is what lets a longer fast road beat a
 /// shorter slow one and lets a jam push traffic elsewhere. Time is half what a
-/// road promises and half what it has been giving, so a busy road is dearer
-/// but never as dear as it looks — see `RoadNetwork::travel_ms`.
-pub fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
-    search(world, start, end).map(|(_, route)| route)
-}
-
-/// What the quickest route from one road node to another costs, in game
-/// milliseconds, as the roads have been giving it: what a trip is worth
-/// planning around. `None` where no road joins them.
-pub fn route_ms(world: &World, start: EntityId, end: EntityId) -> Option<f64> {
-    search(world, start, end).map(|(cost, _)| cost)
-}
-
-fn search(world: &World, start: EntityId, end: EntityId) -> Option<(f64, Vec<EntityId>)> {
-    if start == end {
-        return None;
-    }
-    // Refused before it starts rather than after exhausting everything
-    // reachable. Without this, someone stranded on an island retries every ten
-    // seconds and each retry is a full search of their own component.
-    if !world.network.connected(start, end) {
-        return None;
-    }
-
-    // Both ends of one stretch: no junction is involved at all.
-    if let Some(direct) = straight_through(world, start, end) {
-        let cost = junctions_from(world, start).into_iter().find(|h| h.nodes.last() == direct.last() || h.nodes.contains(&end)).map_or(run_length(world, &direct) / CRUISE_SPEED * 1000.0, |h| h.cost * run_length(world, &direct) / run_length(world, &h.nodes).max(1e-9));
-        return Some((cost, direct));
-    }
-
-    // A car does not have to be standing at a junction — anyone arriving from
-    // off the map joins wherever the road past the frontier reaches. So the
-    // search starts at whichever junctions this stretch leads to, already
-    // carrying the cost of reaching them, and ends the same way.
-    let entrances = junctions_from(world, start);
-    let exits: HashMap<EntityId, Hop> = junctions_from(world, end)
-        .into_iter()
-        .map(|mut hop| {
-            hop.nodes.reverse();
-            (hop.to, hop)
-        })
-        .collect();
-
-    // As the crow flies at the cruising speed: nothing can beat that, since no
-    // car exceeds the ceiling and no road is charged below what it promises. So
-    // it never talks the search out of the quickest way round.
-    let goal = world.objects.get(end).and_then(|e| e.position);
-    let heuristic = |id: EntityId| -> f64 {
-        match (world.objects.get(id).and_then(|e| e.position), goal) {
-            (Some(a), Some(b)) => {
-                let (dx, dy) = ((b.x - a.x) as f64, (b.y - a.y) as f64);
-                (dx * dx + dy * dy).sqrt() / CRUISE_SPEED * 1000.0
-            }
-            _ => 0.0,
-        }
-    };
-
-    let mut open = BinaryHeap::new();
-    let mut g: HashMap<EntityId, f64> = HashMap::new();
-    let mut came_from: HashMap<EntityId, (EntityId, Vec<EntityId>)> = HashMap::new();
-
-    for hop in entrances {
-        if g.get(&hop.to).is_none_or(|&best| hop.cost < best) {
-            g.insert(hop.to, hop.cost);
-            came_from.insert(hop.to, (start, hop.nodes));
-            open.push(Node { id: hop.to, f: hop.cost + heuristic(hop.to) });
-        }
-    }
-
-    while let Some(current) = open.pop() {
-        let here = *g.get(&current.id).unwrap_or(&f64::INFINITY);
-        if current.f - heuristic(current.id) > here + 1e-9 {
-            continue; // superseded by a cheaper way here
-        }
-        if current.id == end {
-            return Some((here, stitch(&came_from, start, end)));
-        }
-        // The last leg is a hop like any other: the far end of the
-        // destination's stretch may be popped first and still be the dearer
-        // way in, so it competes in the queue rather than ending the search.
-        if let Some(exit) = exits.get(&current.id) {
-            let cost = here + exit.cost;
-            if g.get(&end).is_none_or(|&best| cost < best - 1e-9) {
-                g.insert(end, cost);
-                came_from.insert(end, (current.id, exit.nodes.clone()));
-                open.push(Node { id: end, f: cost });
-            }
-        }
-        for hop in hops_from(world, current.id) {
-            let cost = here + hop.cost;
-            if g.get(&hop.to).is_none_or(|&best| cost < best - 1e-9) {
-                g.insert(hop.to, cost);
-                came_from.insert(hop.to, (current.id, hop.nodes));
-                open.push(Node { id: hop.to, f: cost + heuristic(hop.to) });
-            }
-        }
-    }
-    None
-}
-
-/// Walk the trail of legs back to the start, then lay it out forwards.
-fn stitch(
-    came_from: &HashMap<EntityId, (EntityId, Vec<EntityId>)>,
+/// road promises and half what it has been giving — see
+/// `RoadNetwork::run_cost_ms`.
+///
+/// The search keeps what it has settled, so asking about a second
+/// destination from the same place picks up where the first stopped. A
+/// resident weighing every shop in town pays for one search, not one per
+/// shop. It lives for one decision and reads live costs, so there is nothing
+/// to invalidate.
+pub struct Routes<'w> {
+    world: &'w World,
     start: EntityId,
-    end: EntityId,
-) -> Vec<EntityId> {
-    let mut legs: Vec<&Vec<EntityId>> = Vec::new();
-    let mut at = end;
-    while at != start {
-        let Some((prev, nodes)) = came_from.get(&at) else { break };
-        legs.push(nodes);
-        at = *prev;
-    }
-    legs.reverse();
+    /// Best cost known to each junction, and the leg that reached it: the
+    /// junction before, and the first step out of it.
+    cost: HashMap<EntityId, f64>,
+    via: HashMap<EntityId, (EntityId, EntityId)>,
+    settled: HashSet<EntityId>,
+    open: BinaryHeap<Node>,
+}
 
-    let mut route: Vec<EntityId> = Vec::new();
-    for leg in legs {
-        extend_route(&mut route, leg);
+impl<'w> Routes<'w> {
+    pub fn from(world: &'w World, start: EntityId) -> Self {
+        let mut routes = Routes {
+            world,
+            start,
+            cost: HashMap::new(),
+            via: HashMap::new(),
+            settled: HashSet::new(),
+            open: BinaryHeap::new(),
+        };
+        // A car does not have to be standing at a junction — anyone arriving
+        // from off the map joins wherever the road past the frontier reaches.
+        // So the search starts at whichever junctions this stretch leads to,
+        // already carrying the cost of reaching them.
+        for leg in junctions_from(world, start) {
+            routes.relax(start, leg);
+        }
+        routes
     }
-    route
+
+    /// What the quickest way costs, in game milliseconds, as the roads have
+    /// been giving it: what a trip is worth planning around. `None` where no
+    /// road joins them.
+    pub fn cost_to(&mut self, end: EntityId) -> Option<f64> {
+        self.reach(end).map(|(cost, _, _)| cost)
+    }
+
+    /// The quickest way, tile by tile, both ends included.
+    pub fn route_to(&mut self, end: EntityId) -> Option<Vec<EntityId>> {
+        let (_, junction, exit) = self.reach(end)?;
+        let mut legs: Vec<(EntityId, EntityId, EntityId)> = Vec::new();
+        let mut at = junction;
+        while at != self.start {
+            let &(from, step) = self.via.get(&at)?;
+            legs.push((from, step, at));
+            at = from;
+        }
+        legs.reverse();
+        let mut route = vec![self.start];
+        for (from, step, to) in legs {
+            extend_route(&mut route, &between(stretch(self.world, from, step)?, from, to));
+        }
+        if exit.to != end {
+            extend_route(&mut route, &between(stretch(self.world, end, exit.step)?, exit.to, end));
+        }
+        Some(route)
+    }
+
+    /// The cost to `end`, the junction the last leg leaves from, and that
+    /// leg — named from the far end, so the route can be laid out.
+    fn reach(&mut self, end: EntityId) -> Option<(f64, EntityId, Leg)> {
+        let world = self.world;
+        if self.start == end {
+            return None;
+        }
+        // Refused before it starts rather than after exhausting everything
+        // reachable. Without this, someone stranded on an island retries every
+        // ten seconds and each retry is a full search of their own component.
+        if !world.network.connected(self.start, end) {
+            return None;
+        }
+        // Both ends of one stretch: no junction is involved at all. Part of a
+        // stretch has no record of its own, so it is charged its share of
+        // the whole stretch's.
+        if let Some((seg, a, b)) = same_stretch(world, self.start, end) {
+            let share = run_length(world, &seg.nodes[a.min(b)..=a.max(b)]) / seg.length.max(1e-9);
+            let cost = world.network.run_cost_ms(seg, a < b, CRUISE_SPEED) * share;
+            let step = seg.nodes[if a < b { b - 1 } else { b + 1 }];
+            return Some((cost, self.start, Leg { to: self.start, cost, step }));
+        }
+
+        // The last leg is a hop like any other: the far end of the
+        // destination's stretch may be settled first and still be the dearer
+        // way in, so the search runs on until nothing left in the queue could
+        // beat the best way in found so far.
+        let exits = junctions_from(world, end);
+        let way_in = |settled: &HashSet<EntityId>, cost: &HashMap<EntityId, f64>| -> Option<(f64, Leg)> {
+            exits
+                .iter()
+                .filter(|exit| settled.contains(&exit.to))
+                .map(|exit| (cost[&exit.to] + exit.cost, *exit))
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+        };
+        while let Some(top) = self.open.peek() {
+            if way_in(&self.settled, &self.cost).is_some_and(|(best, _)| top.f >= best) {
+                break;
+            }
+            let current = self.open.pop().unwrap();
+            if current.f > self.cost[&current.id] + 1e-9 {
+                continue; // superseded by a cheaper way here
+            }
+            self.settled.insert(current.id);
+            for leg in hops_from(world, current.id) {
+                self.relax(current.id, leg);
+            }
+        }
+        way_in(&self.settled, &self.cost).map(|(cost, exit)| (cost, exit.to, exit))
+    }
+
+    fn relax(&mut self, from: EntityId, leg: Leg) {
+        let cost = self.cost.get(&from).copied().unwrap_or(0.0) + leg.cost;
+        if self.cost.get(&leg.to).is_none_or(|&best| cost < best - 1e-9) {
+            self.cost.insert(leg.to, cost);
+            self.via.insert(leg.to, (from, leg.step));
+            self.open.push(Node { id: leg.to, f: cost });
+        }
+    }
 }
 
 /// Legs meet at a junction, which therefore belongs to both. It is driven once.
@@ -176,26 +185,30 @@ fn extend_route(route: &mut Vec<EntityId>, leg: &[EntityId]) {
 }
 
 /// Every stretch leading away from this junction, and where it comes out.
-fn hops_from(world: &World, at: EntityId) -> Vec<Hop> {
+fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
     world
         .network
         .segments_at(at)
-        .filter(|seg| !seg.is_ring())
+        .filter(|seg| !seg.is_ring() && seg.nodes.len() > 1)
         .filter_map(|seg| {
-            let nodes = oriented(&seg.nodes, at)?;
-            let to = *nodes.last()?;
-            let forward = seg.nodes.first() == Some(&at);
-            let cost = world.network.run_cost_ms(seg, forward, CRUISE_SPEED);
-            Some(Hop { to, cost, nodes })
+            let last = seg.nodes.len() - 1;
+            let (to, step, forward) = if seg.nodes[0] == at {
+                (seg.nodes[last], seg.nodes[1], true)
+            } else if seg.nodes[last] == at {
+                (seg.nodes[0], seg.nodes[last - 1], false)
+            } else {
+                return None;
+            };
+            Some(Leg { to, step, cost: world.network.run_cost_ms(seg, forward, CRUISE_SPEED) })
         })
         .collect()
 }
 
 /// The junctions this node's own stretch leads to, with what it costs to get
 /// there from where it stands. A junction leads to itself, for nothing.
-fn junctions_from(world: &World, from: EntityId) -> Vec<Hop> {
+fn junctions_from(world: &World, from: EntityId) -> Vec<Leg> {
     if world.network.is_junction(from) {
-        return vec![Hop { to: from, cost: 0.0, nodes: vec![from] }];
+        return vec![Leg { to: from, cost: 0.0, step: from }];
     }
     world
         .network
@@ -203,50 +216,52 @@ fn junctions_from(world: &World, from: EntityId) -> Vec<Hop> {
         .filter(|seg| !seg.is_ring())
         .flat_map(|seg| {
             let Some(i) = seg.nodes.iter().position(|&n| n == from) else { return Vec::new() };
-            let mut back: Vec<EntityId> = seg.nodes[..=i].to_vec();
-            back.reverse();
-            let on: Vec<EntityId> = seg.nodes[i..].to_vec();
-            [back, on]
-                .into_iter()
-                .filter(|part| part.len() > 1)
-                .map(|part| {
-                    // Part of a stretch has no record of its own, so it is
-                    // charged its share of the whole stretch's — otherwise
-                    // joining a road halfway along would look like a way of
-                    // dodging the traffic on it.
-                    let to = part[part.len() - 1];
-                    let share = run_length(world, &part) / seg.length.max(1e-9);
-                    let forward = part.first() == seg.nodes.first();
-                    let whole = world.network.run_cost_ms(seg, forward, CRUISE_SPEED);
-                    Hop { to, cost: whole * share, nodes: part }
-                })
-                .collect()
+            let last = seg.nodes.len() - 1;
+            // Part of a stretch has no record of its own, so it is charged
+            // its share of the whole stretch's — otherwise joining a road
+            // halfway along would look like a way of dodging the traffic on
+            // it.
+            let part = |lo: usize, hi: usize, forward: bool| {
+                let share = run_length(world, &seg.nodes[lo..=hi]) / seg.length.max(1e-9);
+                world.network.run_cost_ms(seg, forward, CRUISE_SPEED) * share
+            };
+            let mut legs = Vec::new();
+            if i > 0 {
+                legs.push(Leg { to: seg.nodes[0], cost: part(0, i, false), step: seg.nodes[i - 1] });
+            }
+            if i < last {
+                legs.push(Leg { to: seg.nodes[last], cost: part(i, last, true), step: seg.nodes[i + 1] });
+            }
+            legs
         })
         .collect()
 }
 
-/// Both on the same stretch, so the road between them is the whole route and
-/// no junction comes into it.
-fn straight_through(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
-    world.network.segments_at(start).filter(|s| !s.is_ring()).find_map(|seg| {
-        let a = seg.nodes.iter().position(|&n| n == start)?;
-        let b = seg.nodes.iter().position(|&n| n == end)?;
-        let mut nodes: Vec<EntityId> = if a <= b {
-            seg.nodes[a..=b].to_vec()
-        } else {
-            seg.nodes[b..=a].iter().rev().copied().collect()
-        };
-        nodes.dedup();
-        Some(nodes)
+/// The stretch that leaves `at` by `step`.
+fn stretch(world: &World, at: EntityId, step: EntityId) -> Option<&Segment> {
+    world.network.segments_at(at).filter(|seg| !seg.is_ring()).find(|seg| {
+        let i = seg.nodes.iter().position(|&n| n == at);
+        i.is_some_and(|i| (i > 0 && seg.nodes[i - 1] == step) || seg.nodes.get(i + 1) == Some(&step))
     })
 }
 
-/// A run of nodes turned so it sets off from `at`.
-fn oriented(nodes: &[EntityId], at: EntityId) -> Option<Vec<EntityId>> {
-    match (nodes.first(), nodes.last()) {
-        (Some(&a), _) if a == at => Some(nodes.to_vec()),
-        (_, Some(&b)) if b == at => Some(nodes.iter().rev().copied().collect()),
-        _ => None,
+/// Both on the same stretch, and where along it.
+fn same_stretch(world: &World, a: EntityId, b: EntityId) -> Option<(&Segment, usize, usize)> {
+    world.network.segments_at(a).filter(|s| !s.is_ring()).find_map(|seg| {
+        let i = seg.nodes.iter().position(|&n| n == a)?;
+        let j = seg.nodes.iter().position(|&n| n == b)?;
+        Some((seg, i, j))
+    })
+}
+
+/// The tiles of a stretch from one of its nodes to another, in that order.
+fn between(seg: &Segment, from: EntityId, to: EntityId) -> Vec<EntityId> {
+    let a = seg.nodes.iter().position(|&n| n == from).unwrap_or(0);
+    let b = seg.nodes.iter().position(|&n| n == to).unwrap_or(0);
+    if a <= b {
+        seg.nodes[a..=b].to_vec()
+    } else {
+        seg.nodes[b..=a].iter().rev().copied().collect()
     }
 }
 
@@ -258,6 +273,10 @@ fn run_length(world: &World, nodes: &[EntityId]) -> f64 {
 mod tests {
     use super::*;
     use crate::protocol::{GameObject, GridCoord, TerrainType};
+
+    fn find_path(world: &World, start: EntityId, end: EntityId) -> Option<Vec<EntityId>> {
+        Routes::from(world, start).route_to(end)
+    }
 
     /// The search this replaced: tile by tile, over the raw graph. Kept as the
     /// thing to be measured against — searching over stretches is only allowed

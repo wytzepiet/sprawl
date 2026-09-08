@@ -143,19 +143,25 @@ pub struct Bucket {
     pub need: Need,
     /// Milliseconds of obligation owed.
     pub level: f64,
+    /// How far short of being served on the spot the last wake fell, from 0
+    /// (as well as it could be) to 1 (nothing found anywhere). A record of
+    /// the last decision, not a plan: the spawner reads it to learn what the
+    /// city wants and where, without asking anyone to think again.
+    #[serde(default)]
+    pub shortfall: f64,
 }
 
 impl Bucket {
     /// A full set, the way a new resident is issued them.
     pub fn fresh() -> Vec<Bucket> {
-        Need::ALL.iter().map(|&need| Bucket { need, level: need.initial() }).collect()
+        Need::ALL.iter().map(|&need| Bucket { need, level: need.initial(), shortfall: 0.0 }).collect()
     }
 
     /// Any need a saved resident predates, issued fresh.
     pub fn top_up(buckets: &mut Vec<Bucket>) {
         for &need in &Need::ALL {
             if !buckets.iter().any(|b| b.need == need) {
-                buckets.push(Bucket { need, level: need.initial() });
+                buckets.push(Bucket { need, level: need.initial(), shortfall: 0.0 });
             }
         }
     }

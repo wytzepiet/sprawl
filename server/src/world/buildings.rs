@@ -709,7 +709,7 @@ mod tests {
         let from = world.road_node_for_building(buildings[0].0).unwrap();
         let to = world.road_node_for_building(buildings[1].0).unwrap();
         assert!(
-            crate::world::pathfinding::find_path(&world, from, to).is_some(),
+            crate::world::pathfinding::Routes::from(&world, from).route_to(to).is_some(),
             "a road runs between them, so a car must be able to drive it",
         );
     }
@@ -720,7 +720,7 @@ mod tests {
         world.place_road_path(&[GridCoord { x: 0, y: 6 }, GridCoord { x: 1, y: 6 }]);
         let here = world.road_node_at(GridCoord { x: 0, y: 1 }).unwrap();
         let island = world.road_node_at(GridCoord { x: 1, y: 6 }).unwrap();
-        assert!(crate::world::pathfinding::find_path(&world, here, island).is_none());
+        assert!(crate::world::pathfinding::Routes::from(&world, here).route_to(island).is_none());
     }
 
     #[test]

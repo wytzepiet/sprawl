@@ -220,19 +220,19 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 wakes += 1;
             }
         }
-        // A tick that overruns is the clock falling behind the wall, and every
-        // command queued behind it. Said out loud the moment it happens, so a
-        // wake storm shows in the log rather than in the fan.
-        let took = started.elapsed();
-        if took >= BEHIND {
-            eprintln!("behind: {wakes} wakes took {} ms at speed {speed}", took.as_millis());
-        }
         // The city offers a building once it has earned one, while the mayor
         // has room to answer. Cheap to ask — it is a subtraction until the
         // meter is actually full.
         // A building that lands beside a road is lived in at once.
         if crate::spawner::spawn(&mut world, now).is_some() {
             settle_and_wake(&mut world, &mut events);
+        }
+        // A tick that overruns is the clock falling behind the wall, and every
+        // command queued behind it. Said out loud the moment it happens, so a
+        // wake storm or a dear arrival shows in the log rather than in the fan.
+        let took = started.elapsed();
+        if took >= BEHIND {
+            eprintln!("behind: {wakes} wakes took {} ms at speed {speed}", took.as_millis());
         }
         sim_time = now;
         // Published for /health, which is how anything outside this loop can
@@ -501,7 +501,7 @@ fn try_reroute(
     now: GameTime,
 ) -> bool {
     let Some(to_node) = world.approach(dest) else { return false };
-    let path = match pathfinding::find_path(world, from_node, to_node) {
+    let path = match pathfinding::Routes::from(world, from_node).route_to(to_node) {
         Some(r) if r.len() >= 2 => r,
         _ => return false,
     };
@@ -845,7 +845,7 @@ mod tests {
     fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
         world
             .spawn_building(GridCoord { x, y: 1 }, kind)
-            .expect("the street should give it a driveway")
+            .unwrap_or_else(|| panic!("the street should give a {kind:?} at x={x} its driveway"))
     }
 
     /// A fresh world is not empty land: the survey's anchors each get a
@@ -1195,12 +1195,13 @@ mod tests {
     /// people to arrive by. Returns it and how many times a resident thought.
     fn live(mix: &[BuildingKind], days: u64) -> (World, u64) {
         let mut world = street();
-        // Each plot as wide as its row says, so forty of them stand in a row.
+        // Forty plots in a row, a tile apart: a lot claims the tile beside
+        // it for its ring, and a house may not stand on it.
         let mut x = 0;
         for i in 0..40 {
             let kind = mix[i % mix.len()];
             build(&mut world, x, kind, 1);
-            x += crate::blueprint::plot(kind, 0).size.0 as i32;
+            x += crate::blueprint::plot(kind, 0).size.0 as i32 + 1;
         }
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();

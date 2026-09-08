@@ -92,7 +92,7 @@ fn goal(world: &mut World, now: GameTime) -> Goal {
     }
     let mut rng = seeded(world, now);
     let goal = Goal {
-        kind: draw_kind(world, &mut rng, &crate::resident::pressure(world, now)),
+        kind: draw_kind(world, &mut rng, &crate::resident::pressure(world)),
         cost: EARN_BASE + EARN_PER_BUILDING * buildings(world).len() as f64,
     };
     world.goal = Some(goal);
@@ -136,7 +136,7 @@ pub fn inspect(world: &World, now: GameTime) -> Value {
         "meter_h": (world.xp.at(now) - world.offered_at) / SERVED_HOUR,
         // Where the goal would land if it arrived this second.
         "site": world.goal.and_then(|g| draw_site(world, &mut seeded(world, now), g.kind, &standing, now)),
-        "pressure": crate::resident::pressure(world, now).into_iter()
+        "pressure": crate::resident::pressure(world).into_iter()
             .map(|(n, p)| (format!("{n:?}"), p)).collect::<std::collections::BTreeMap<_, _>>(),
         "clusters": clusters,
     })

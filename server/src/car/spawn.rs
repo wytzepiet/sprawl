@@ -33,7 +33,7 @@ pub fn start_trip(
     let out = world.way_out(car_id).unwrap_or_default();
     let from_node = out.last().copied().unwrap_or(from_node);
 
-    let path = match pathfinding::find_path(world, from_node, to_node) {
+    let path = match pathfinding::Routes::from(world, from_node).route_to(to_node) {
         Some(r) if r.len() >= 2 => r,
         _ => return false,
     };
@@ -84,7 +84,7 @@ pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: Entity
     };
     let out = world.way_out(car_id).unwrap_or_default();
     let from_node = out.last().copied().unwrap_or(from_node);
-    let path = match pathfinding::find_path(world, from_node, exit) {
+    let path = match pathfinding::Routes::from(world, from_node).route_to(exit) {
         Some(r) if r.len() >= 2 => r,
         _ => return false,
     };
