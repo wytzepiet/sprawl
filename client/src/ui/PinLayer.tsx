@@ -82,9 +82,10 @@ export default function PinLayer() {
       <For each={entries()}>
         {(e) => {
           const kind = () => (e.object.data as { kind: BuildingKind }).kind;
-          // A building no road reaches is asking for one, so it never collapses.
+          // A building no road reaches is asking for one, so it never
+          // collapses; nor does the one whose card is open.
           const dormant = createMemo(() => !reached(e));
-          const dot = createMemo(() => !dormant() && step() > STEPS.indexOf(BLUEPRINTS[kind()].pinUntil));
+          const dot = createMemo(() => !dormant() && selected() !== e.id && step() > STEPS.indexOf(BLUEPRINTS[kind()].pinUntil));
           return (
             <div
               ref={(el) => {
@@ -94,7 +95,7 @@ export default function PinLayer() {
                 });
               }}
               class="pin absolute left-0 top-0 flex flex-col items-center -translate-x-1/2 -translate-y-full"
-              classList={{ dormant: dormant(), collapsed: dot(), selected: selected() === e.id }}
+              classList={{ dormant: dormant(), collapsed: dot() }}
               style={{ display: "none" }}
             >
               {/* Both shapes are always here, one of them faded out, so going
