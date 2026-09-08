@@ -1,38 +1,109 @@
 import { onCleanup } from "solid-js";
-import { Color3, Matrix, Mesh, StandardMaterial, VertexData } from "@babylonjs/core";
+import {
+  Color3,
+  Color4,
+  Constants,
+  Effect,
+  Matrix,
+  Mesh,
+  PostProcess,
+  RenderTargetTexture,
+  StandardMaterial,
+  Texture,
+  VertexData,
+} from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
 import { hovered, parts, selected } from "../state/selection";
 
-const TINT = new Color3(0.36, 0.34, 0.78);
+/** The line, in pixels, at any zoom. */
+const WIDTH = 3;
+const PICKED = new Color3(0.36, 0.34, 0.78);
+const UNDER = new Color3(0.36, 0.34, 0.78);
+/** Ghosts live on a layer the main camera never draws. */
+const GHOST_LAYER = 0x10000000;
+const EVERY_LAYER = 0x0fffffff;
+
+Effect.ShadersStore.outlineFragmentShader = `
+precision highp float;
+varying vec2 vUV;
+uniform sampler2D textureSampler;
+uniform sampler2D maskSampler;
+uniform vec2 texel;
+uniform float width;
+uniform vec3 picked;
+uniform vec3 under;
+uniform float underAlpha;
+// Every sample is taken before anything branches: WebGPU wants texture
+// reads in uniform control flow, so the choice is made with arithmetic.
+void main() {
+  vec4 scene = texture2D(textureSampler, vUV);
+  vec4 here = texture2D(maskSampler, vUV);
+  // The mask, pushed out by the line width: a ring of taps, and the nearer
+  // ring so a thin shape is not missed between them.
+  float r = 0.0, g = 0.0;
+  for (int i = 0; i < 16; i++) {
+    float a = float(i) * 0.39269908;
+    vec2 d = vec2(cos(a), sin(a)) * texel * width;
+    vec4 m = texture2D(maskSampler, vUV + d);
+    vec4 n = texture2D(maskSampler, vUV + d * 0.5);
+    r = max(r, max(m.r, n.r));
+    g = max(g, max(m.g, n.g));
+  }
+  float outside = 1.0 - step(0.001, here.a);
+  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), step(0.001, g) * outside);
+  c = mix(c, picked, step(0.001, r) * outside);
+  gl_FragColor = vec4(c, scene.a);
+}`;
 
 /**
- * The thing under the pointer, and the thing picked, traced exactly: a ghost
- * of the very mesh, at the very matrix the pool drew it with, wearing an
- * outline. Cars and buildings are thin instances of shared meshes, which
- * cannot be outlined one at a time; a ghost per bucket, moved onto whichever
- * instance is wanted, can.
+ * The thing under the pointer, and the thing picked, given a cartoon
+ * outline: the silhouette of the very mesh, at the very matrix the pool
+ * drew it with, a fixed few pixels wide whatever the zoom.
+ *
+ * Cars and buildings are thin instances of shared meshes, which cannot be
+ * outlined one at a time. So a ghost of the mesh is moved onto the wanted
+ * instance and drawn into a mask that only this pass reads — red for the
+ * picked thing, green for the one under the pointer — and a screen-space
+ * pass paints wherever the mask, pushed out by the line width, reaches
+ * ground the mask itself does not cover.
  */
 export function Highlight() {
-  const { scene } = useEngine();
+  const { scene, engine } = useEngine();
   const pool = useInstancePool();
+  const camera = scene.activeCamera;
+  if (!camera) return null;
 
-  const ghosts = new Map<string, Mesh>();
-  const material = (alpha: number) => {
-    const m = new StandardMaterial(`highlight_${alpha}`, scene);
-    m.emissiveColor = TINT;
+  const mask = new RenderTargetTexture("highlight_mask", { ratio: 1 }, scene, false, true, Constants.TEXTURETYPE_UNSIGNED_BYTE, false, Texture.NEAREST_SAMPLINGMODE);
+  mask.clearColor = new Color4(0, 0, 0, 0);
+  mask.renderList = [];
+  scene.customRenderTargets.push(mask);
+  // The ghosts are drawn by the mask and by nothing else.
+  mask.onBeforeRenderObservable.add(() => mask.renderList!.forEach((m) => (m.layerMask = EVERY_LAYER)));
+  mask.onAfterRenderObservable.add(() => mask.renderList!.forEach((m) => (m.layerMask = GHOST_LAYER)));
+
+  const paint = (color: Color3) => {
+    const m = new StandardMaterial(`highlight_paint_${color.toHexString()}`, scene);
+    m.emissiveColor = color;
     m.diffuseColor = Color3.Black();
     m.specularColor = Color3.Black();
     m.disableLighting = true;
-    m.alpha = alpha;
-    // Drawn on top of the instance it traces, not fighting it for depth.
-    m.zOffset = -2;
     return m;
   };
-  const soft = material(0.25);
-  const firm = material(0.45);
+  const red = paint(new Color3(1, 0, 0));
+  const green = paint(new Color3(0, 1, 0));
 
-  /** The ghost for a bucket, built from its geometry the first time. */
+  const pass = new PostProcess("outline", "outline", ["texel", "width", "picked", "under", "underAlpha"], ["maskSampler"], 1.0, camera);
+  pass.onApply = (effect) => {
+    effect.setTexture("maskSampler", mask);
+    effect.setFloat2("texel", 1 / engine.getRenderWidth(), 1 / engine.getRenderHeight());
+    effect.setFloat("width", WIDTH * engine.getHardwareScalingLevel() ** -1);
+    effect.setColor3("picked", PICKED);
+    effect.setColor3("under", UNDER);
+    effect.setFloat("underAlpha", 0.5);
+  };
+
+  const ghosts = new Map<string, Mesh>();
   const ghostFor = (key: string, slot: number): Mesh | null => {
     const name = `${key}#${slot}`;
     let g = ghosts.get(name);
@@ -45,41 +116,41 @@ export function Highlight() {
     vd.indices = geometry.indices;
     vd.normals = geometry.normals;
     vd.applyToMesh(g);
+    g.material = slot === 0 ? red : green;
     g.isPickable = false;
-    g.renderOutline = true;
-    g.outlineColor = TINT;
-    g.outlineWidth = 0.03;
+    g.layerMask = GHOST_LAYER;
     g.setEnabled(false);
     ghosts.set(name, g);
     return g;
   };
 
   const _m = new Matrix();
-  const shown = new Set<Mesh>();
-  const trace = (id: number | null, mat: StandardMaterial, slot: number) => {
+  const trace = (id: number | null, slot: number) => {
     if (id === null) return;
     for (const part of parts.get(id) ?? []) {
       const g = ghostFor(part.key, slot);
       if (!g || !pool.matrixOf(part.key, part.id, _m)) continue;
-      g.material = mat;
       g.freezeWorldMatrix(_m.clone());
       g.setEnabled(true);
-      shown.add(g);
+      mask.renderList!.push(g);
     }
   };
   const obs = scene.onBeforeRenderObservable.add(() => {
-    for (const g of shown) g.setEnabled(false);
-    shown.clear();
+    for (const g of mask.renderList!) g.setEnabled(false);
+    mask.renderList!.length = 0;
     const s = selected();
     const h = hovered();
-    trace(s, firm, 0);
-    if (h !== null && h !== s) trace(h, soft, 1);
+    trace(s, 0);
+    if (h !== null && h !== s) trace(h, 1);
   });
   onCleanup(() => {
     scene.onBeforeRenderObservable.remove(obs);
+    pass.dispose();
+    scene.customRenderTargets.splice(scene.customRenderTargets.indexOf(mask), 1);
+    mask.dispose();
     for (const g of ghosts.values()) g.dispose();
-    soft.dispose();
-    firm.dispose();
+    red.dispose();
+    green.dispose();
   });
   return null;
 }
