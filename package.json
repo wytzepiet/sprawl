@@ -4,6 +4,6 @@
   },
   "scripts": {
     "dev": "./dev.sh",
-    "profile": "samply record -p $(lsof -tiTCP:3001 -sTCP:LISTEN)"
+    "profile": "samply record -p $(lsof -tiTCP:4801 -sTCP:LISTEN)"
   }
 }

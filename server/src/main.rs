@@ -51,9 +51,9 @@ async fn main() {
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:4801")
         .await
         .unwrap();
-    println!("server listening on :3001");
+    println!("server listening on :4801");
     axum::serve(listener, app).await.unwrap();
 }

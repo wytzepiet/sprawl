@@ -41,7 +41,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   server rebuilds and restarts on save, so it cannot fall behind its source.
   `./dev.sh --headless` runs the same processes without a TUI, `--stop` stops
   them. Both write to `.dev/<name>.log`.
-- **Is it current?** `curl localhost:3001/health` → `built_ago_s` is the age of
+- **Is it current?** `curl localhost:4801/health` → `built_ago_s` is the age of
   the running binary, `sim_time` should be climbing. A fix that seems not to
   work is a stale binary until that says otherwise; a socket that answers while
   `sim_time` stands still is a dead game loop.

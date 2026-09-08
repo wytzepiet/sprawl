@@ -24,7 +24,7 @@ stop() {
     while read -r pid; do kill -- "-$pid" 2>/dev/null || true; done < .dev/pids
     rm -f .dev/pids
   fi
-  for port in 3000 3001; do
+  for port in 4800 4801; do
     pids=$(lsof -ti:$port || true)
     [ -n "$pids" ] && kill $pids 2>/dev/null || true
   done
