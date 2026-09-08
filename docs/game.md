@@ -54,10 +54,11 @@ never where.
 
 ## People
 
-A resident has needs (home, work, rest, eat, leisure, fuel) and chooses
-where to serve them by time and value. Every trip is a car. Everyone owns
-one; parked cars sit in the building's spots, so who is home and how busy
-a shop is can be seen from the lot. Arrivals from outside come by road,
+A resident has needs (home, work, rest, eat, leisure) and chooses where
+to serve them by time and value. Every trip is a car. Everyone owns one,
+and the car has the one need a machine has, fuel, which its driver weighs
+alongside their own; parked cars sit in the building's spots, so who is
+home and how busy a shop is can be seen from the lot. Arrivals from outside come by road,
 later by train or plane, and get a car at the door. Nobody walks.
 
 **Everything the city lacks exists beyond the edge.** Every road exit is

@@ -38,6 +38,9 @@ pub enum Need {
 impl Need {
     /// Baseline first, so ties fall to staying put.
     pub const ALL: [Need; 6] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure, Need::Fuel];
+    /// The needs a person carries. The tank is the car's, though its
+    /// driver is the one who decides to fill it.
+    pub const OWN: [Need; 5] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure];
 
     /// A tank's worth, in tiles. What sets how often anyone stops for fuel.
     pub const TANK_TILES: f64 = 500.0;
@@ -154,12 +157,20 @@ pub struct Bucket {
 impl Bucket {
     /// A full set, the way a new resident is issued them.
     pub fn fresh() -> Vec<Bucket> {
-        Need::ALL.iter().map(|&need| Bucket { need, level: need.initial(), shortfall: 0.0 }).collect()
+        Need::OWN.iter().map(|&need| Bucket { need, level: need.initial(), shortfall: 0.0 }).collect()
     }
 
-    /// Any need a saved resident predates, issued fresh.
+    /// A car's tank, half full: nobody arrives on empty, and nobody arrives
+    /// having just filled up.
+    pub fn tank() -> Bucket {
+        Bucket { need: Need::Fuel, level: Need::Fuel.initial(), shortfall: 0.0 }
+    }
+
+    /// Any need a saved resident predates, issued fresh; any they no longer
+    /// carry — the tank, once it moved to the car — dropped.
     pub fn top_up(buckets: &mut Vec<Bucket>) {
-        for &need in &Need::ALL {
+        buckets.retain(|b| Need::OWN.contains(&b.need));
+        for &need in &Need::OWN {
             if !buckets.iter().any(|b| b.need == need) {
                 buckets.push(Bucket { need, level: need.initial(), shortfall: 0.0 });
             }

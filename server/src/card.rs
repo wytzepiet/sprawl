@@ -7,7 +7,6 @@ use serde_json::{json, Value};
 
 use crate::blueprint::blueprint;
 use crate::engine::GameTime;
-use crate::needs::Need;
 use crate::protocol::{Building, Car, CarRole, EntityId, GameObject, Resident, DAY_MS};
 use crate::world::World;
 
@@ -78,7 +77,8 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Value {
         "car": link(world, r.car),
         "selected": r.selected,
         "since": hhmm(r.last_update),
-        "buckets": thinking["buckets"].clone(),
+        // The tank is the car's; its card shows it.
+        "buckets": thinking["buckets"].as_array().map(|bs| bs.iter().filter(|b| b["need"] != "Fuel").cloned().collect::<Vec<_>>()),
     })
 }
 
@@ -88,12 +88,8 @@ fn car(world: &World, id: EntityId, c: &Car, now: GameTime) -> Value {
         Some(GameObject::Resident(r)) if r.at == Some(id) => Some(link(world, c.owner)),
         _ => None,
     };
-    // The tank is the owner's Fuel bucket: what is owed at the pump is what
-    // has been burned.
-    let fuel = match owner {
-        Some(GameObject::Resident(r)) => r.buckets.iter().find(|b| b.need == Need::Fuel).map(|b| 1.0 - b.level / b.need.cap()),
-        _ => None,
-    };
+    // What is owed at the pump is what has been burned.
+    let fuel = 1.0 - c.fuel.level / c.fuel.need.cap();
     let trip = c.trip.as_ref().map(|t| json!({
         "to": link(world, t.destination),
         "due": hhmm(t.eta),

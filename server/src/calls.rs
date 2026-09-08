@@ -121,7 +121,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
                 // From beyond the edge: a lorry appears on the road out past
                 // the frontier and drives in. It belongs to nobody here; it
                 // goes when it is done.
-                let car = world.insert_at(GameObject::Car(Car { owner: at, trip: None, role: CarRole::Truck, spot: None, away: 0 }), None);
+                let car = world.insert_at(GameObject::Car(Car { owner: at, trip: None, role: CarRole::Truck, spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
                 let started = world
                     .entry_node_near(here)
                     .is_some_and(|entry| crate::car::spawn::start_trip(world, events, car, entry, at, now, GameTime::MAX));
@@ -145,7 +145,7 @@ pub fn stable(world: &mut World, facility: EntityId) {
     let tile = world.objects.get(facility).and_then(|e| e.position);
     let have = fleet_of(world, facility).len();
     for &role in blueprint(kind).vehicles.iter().skip(have) {
-        let car = world.insert_at(GameObject::Car(Car { owner: facility, trip: None, role, spot: None, away: 0 }), tile);
+        let car = world.insert_at(GameObject::Car(Car { owner: facility, trip: None, role, spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), tile);
         world.park_in_lot(facility, car, 0);
     }
 }

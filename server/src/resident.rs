@@ -75,24 +75,23 @@ pub fn handle_resident_wake(
     let crowd = headcount(world);
     settle(world, id, at, now, &crowd);
     let Some(r) = resident(world, id).cloned() else { return };
+    let mut buckets = buckets(world, &r);
     let mut routes = routes_from(world, at);
-    let verdicts = verdicts(world, &r, at, now, &crowd, &mut routes);
+    let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes);
     drop(routes);
 
     // The note the spawner reads: how far short of being served on the spot
     // each need fell — one where nothing was found at all.
-    let notes: Vec<f64> = r.buckets.iter().zip(&verdicts).map(|(b, v)| match *v {
-        Verdict::Nothing => 1.0,
-        Verdict::Go { score, .. } => {
-            let ideal = b.need.ceiling(b.level);
-            if ideal > 0.0 { (1.0 - score / ideal).clamp(0.0, 1.0) } else { 0.0 }
-        }
-    }).collect();
-    if let Some(r) = resident_mut(world, id) {
-        for (b, note) in r.buckets.iter_mut().zip(notes) {
-            b.shortfall = note;
-        }
+    for (b, v) in buckets.iter_mut().zip(&verdicts) {
+        b.shortfall = match *v {
+            Verdict::Nothing => 1.0,
+            Verdict::Go { score, .. } => {
+                let ideal = b.need.ceiling(b.level);
+                if ideal > 0.0 { (1.0 - score / ideal).clamp(0.0, 1.0) } else { 0.0 }
+            }
+        };
     }
+    store(world, id, r.car, &buckets);
 
     // Actionable: can be set out for now, or is right here — where waiting
     // for it to open is the action. Waiting for somewhere else is not; that
@@ -125,7 +124,7 @@ pub fn handle_resident_wake(
         if Some(i) == best.map(|(b, ..)| b) {
             continue;
         }
-        let b = &r.buckets[i];
+        let b = &buckets[i];
         alarm = alarm.min(match *v {
             Verdict::Go { departure, .. } if departure > now => departure.min(overtake(b, v, score, now)),
             _ => overtake(b, v, score, now),
@@ -140,7 +139,7 @@ pub fn handle_resident_wake(
         events.wake(RETRY_MS, id);
         return;
     };
-    set_selected(world, id, Some(r.buckets[i].need), now);
+    set_selected(world, id, Some(buckets[i].need), now);
     // Not yet time to set out, or already there: stay put. Staying restates
     // how long the car's spot is held.
     if at == there {
@@ -153,9 +152,33 @@ pub fn handle_resident_wake(
     }
 }
 
+/// Everything a resident weighs: their own buckets, and their car's tank,
+/// which they drive and so decide for. In one list, in one order, so an
+/// index into the verdicts is an index into this.
+fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
+    let mut all = r.buckets.clone();
+    if let Some(GameObject::Car(c)) = world.objects.get(r.car).map(|e| &e.object) {
+        all.push(c.fuel.clone());
+    }
+    all
+}
+
+/// Put the buckets back where each lives: the person's on the person, the
+/// tank on the car.
+fn store(world: &mut World, id: EntityId, car: EntityId, buckets: &[Bucket]) {
+    if let Some(GameObject::Resident(me)) = world.objects.get_mut(id).map(|e| &mut e.object) {
+        me.buckets = buckets.iter().filter(|b| b.need != Need::Fuel).cloned().collect();
+    }
+    if let Some(tank) = buckets.iter().find(|b| b.need == Need::Fuel)
+        && let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object)
+    {
+        c.fuel = tank.clone();
+    }
+}
+
 /// One verdict per bucket: the best any of its candidates offers.
-fn verdicts(world: &World, r: &Resident, at: EntityId, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Vec<Verdict> {
-    r.buckets
+fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Vec<Verdict> {
+    buckets
         .iter()
         .map(|b| match b.need {
             Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, now, crowd, routes, true)),
@@ -446,8 +469,9 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     {
         world.delivered.entry((at, need)).or_default().add(now / DAY_MS as u64, rate * served);
     }
-    let Some(r) = resident_mut(world, id) else { return };
-    for b in &mut r.buckets {
+    let Some(r) = resident(world, id).cloned() else { return };
+    let mut buckets = buckets(world, &r);
+    for b in &mut buckets {
         if b.need.constant() {
             continue;
         }
@@ -458,7 +482,10 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         let idle = elapsed - served;
         b.level = (b.level - rate * served + b.need.fill() * idle).clamp(0.0, b.need.cap());
     }
-    r.last_update = now;
+    store(world, id, r.car, &buckets);
+    if let Some(r) = resident_mut(world, id) {
+        r.last_update = now;
+    }
 }
 
 /// Who is where, for what: present and selected, or aboard a car bound
@@ -550,7 +577,8 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
     let Some(r) = resident(world, id) else { return json!({ "error": "no such resident" }) };
     let Some(at) = r.at else { return json!({ "id": id, "at": null, "note": "off-map" }) };
     let crowd = headcount(world);
-    let verdicts = verdicts(world, r, at, now, &crowd, &mut routes_from(world, at));
+    let buckets = buckets(world, r);
+    let verdicts = verdicts(world, r, &buckets, at, now, &crowd, &mut routes_from(world, at));
     json!({
         "id": id,
         "now": hhmm(now),
@@ -560,7 +588,7 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
         "work": r.work,
         "selected": r.selected,
         "last_update": hhmm(r.last_update),
-        "buckets": r.buckets.iter().zip(&verdicts).map(|(b, v)| json!({
+        "buckets": buckets.iter().zip(&verdicts).map(|(b, v)| json!({
             "need": b.need,
             "owed_h": b.level / HOUR,
             "full": b.level / b.need.cap(),
@@ -580,7 +608,7 @@ pub fn inspect_all(world: &World, now: GameTime) -> Value {
             "at": r.at,
             "at_kind": r.at.map(|a| whereabouts(world, a)),
             "selected": r.selected,
-            "owed_h": r.buckets.iter().map(|b| (format!("{:?}", b.need), b.level / HOUR)).collect::<std::collections::BTreeMap<_, _>>(),
+            "owed_h": buckets(world, r).iter().map(|b| (format!("{:?}", b.need), b.level / HOUR)).collect::<std::collections::BTreeMap<_, _>>(),
         }))
         .collect();
     rows.sort_by_key(|v| v["id"].as_u64());
@@ -719,11 +747,9 @@ fn resident_mut(world: &mut World, id: EntityId) -> Option<&mut Resident> {
 }
 
 /// A trip's end: what it cost in fuel goes on the tank's bucket.
-pub fn drove(world: &mut World, id: EntityId, tiles: f64) {
-    if let Some(r) = resident_mut(world, id)
-        && let Some(b) = r.buckets.iter_mut().find(|b| b.need == Need::Fuel)
-    {
-        b.level = (b.level + tiles * Need::per_tile()).min(Need::Fuel.cap());
+pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
+    if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+        c.fuel.level = (c.fuel.level + tiles * Need::per_tile()).min(Need::Fuel.cap());
     }
 }
 

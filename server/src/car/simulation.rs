@@ -34,9 +34,7 @@ pub fn park_car(
         }
     });
     if let Some((route, route_index, driven)) = trip_info {
-        if let Some(owner) = owner {
-            crate::resident::drove(world, owner, driven);
-        }
+        crate::resident::drove(world, car_id, driven);
         world.unregister_car_route(car_id, &route);
         if route_index >= 1 {
             let edge = (route[route_index - 1], route[route_index]);

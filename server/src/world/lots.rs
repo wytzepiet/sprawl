@@ -1170,7 +1170,7 @@ mod tests {
         let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
         world.place_road_path(&path);
         let a = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0 }), None);
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
         let way = world.way_in(a, car, 0, GameTime::MAX).unwrap();
         let lot = &world.lots[&world.lot_of[&a]];
         let d = world.node_pos(lot.members[0].door).unwrap();
@@ -1225,7 +1225,7 @@ mod tests {
         world.place_road_path(&[GridCoord { x: 1, y: 0 }, GridCoord { x: 1, y: 1 }]);
         world.place_road_path(&[GridCoord { x: 3, y: 0 }, GridCoord { x: 3, y: 1 }]);
         assert_eq!(world.lot_mut(shop).unwrap().spots.len(), 2);
-        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0 }), None);
+        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
         let (a, b, c) = (car(&mut world), car(&mut world), car(&mut world));
         // Two spots: two visits from 10 to 12 fill it.
         assert!(world.claim_spot(shop, a, 10_000, 12_000).is_some());
@@ -1281,7 +1281,7 @@ mod tests {
         assert_eq!(out[1], way[n - 2], "forward to the mouth");
         assert_eq!(world.reverse_tail(lorry), 2);
         // Staff at a depot stop at the door: a yard has no car spots.
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0 }), None);
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
         assert!(matches!(world.claim_spot(depot, car, 0, GameTime::MAX), Some(Claim::Door(_))));
     }
 
@@ -1291,7 +1291,7 @@ mod tests {
     fn a_run_grows_and_shrinks_around_its_cars() {
         let mut world = street();
         let a = world.spawn_building(GridCoord { x: 2, y: 1 }, BuildingKind::Shop).unwrap();
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: a, trip: None, role: Default::default(), spot: None, away: 0 }), Some(GridCoord { x: 2, y: 1 }));
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: a, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), Some(GridCoord { x: 2, y: 1 }));
         // Not staff: a visitor's car, so it takes a spot.
         world.objects.get_mut(car).map(|e| if let GameObject::Car(ref mut c) = e.object { c.owner = 0 });
         world.park_in_lot(a, car, 0);

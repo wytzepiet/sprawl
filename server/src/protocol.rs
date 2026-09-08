@@ -158,6 +158,11 @@ pub struct Car {
     /// sight.
     #[serde(default)]
     pub spot: Option<Pose>,
+    /// The tank: fuel owed at a pump, filled by the mile. The car's, though
+    /// its driver decides when to stop. A save from before cars had one
+    /// gets it half full.
+    #[serde(default = "crate::needs::Bucket::tank")]
+    pub fuel: crate::needs::Bucket,
 }
 
 /// A place to stand, and which way.
