@@ -18,8 +18,8 @@ import { hovered, parts, selected } from "../state/selection";
 
 /** The line, in pixels, at any zoom. */
 const WIDTH = 3;
-const PICKED = new Color3(0.36, 0.34, 0.78);
-const UNDER = new Color3(0.36, 0.34, 0.78);
+const PICKED = new Color3(0.13, 0.62, 1.0);
+const UNDER = new Color3(0.13, 0.62, 1.0);
 /** Ghosts live on a layer the main camera never draws. */
 const GHOST_LAYER = 0x10000000;
 const EVERY_LAYER = 0x0fffffff;
