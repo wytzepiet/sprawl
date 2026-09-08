@@ -18,6 +18,8 @@ import { hovered, parts, subject } from "../state/selection";
 
 /** The line, in pixels, at any zoom. */
 const WIDTH = 2;
+/** How far the shape itself leans toward the colour, 0 to 1. */
+const TINT = 0.18;
 const PICKED = new Color3(0.72, 0.88, 1.0);
 const UNDER = new Color3(0.72, 0.88, 1.0);
 /** Ghosts live on a layer the main camera never draws. */
@@ -34,6 +36,7 @@ uniform float width;
 uniform vec3 picked;
 uniform vec3 under;
 uniform float underAlpha;
+uniform float tint;
 // Every sample is taken before anything branches: WebGPU wants texture
 // reads in uniform control flow, so the choice is made with arithmetic.
 void main() {
@@ -57,6 +60,9 @@ void main() {
   float outside = 1.0 - smoothstep(0.35, 0.65, here.a);
   vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), smoothstep(0.15, 0.5, g) * outside);
   c = mix(c, picked, smoothstep(0.15, 0.5, r) * outside);
+  // And the shape itself leans a little toward the colour.
+  c = mix(c, under, tint * underAlpha * here.g * (1.0 - outside));
+  c = mix(c, picked, tint * here.r * (1.0 - outside));
   gl_FragColor = vec4(c, scene.a);
 }`;
 
@@ -99,7 +105,7 @@ export function Highlight() {
   const red = paint(new Color3(1, 0, 0));
   const green = paint(new Color3(0, 1, 0));
 
-  const pass = new PostProcess("outline", "outline", ["texel", "width", "picked", "under", "underAlpha"], ["maskSampler"], 1.0, null, undefined, engine);
+  const pass = new PostProcess("outline", "outline", ["texel", "width", "picked", "under", "underAlpha", "tint"], ["maskSampler"], 1.0, null, undefined, engine);
   // The scene renders into this pass's texture while it is attached, so the
   // texture has to carry the multisampling the screen would have had.
   pass.samples = 4;
@@ -110,6 +116,7 @@ export function Highlight() {
     effect.setColor3("picked", PICKED);
     effect.setColor3("under", UNDER);
     effect.setFloat("underAlpha", 0.5);
+    effect.setFloat("tint", TINT);
   };
 
   let active = false;
