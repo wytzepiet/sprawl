@@ -50,12 +50,13 @@ void main() {
     r = max(r, max(m.r, n.r));
     g = max(g, max(m.g, n.g));
   }
-  // The mask is half the screen's size, so its edge reads as partly covered
-  // a pixel out from the mesh. A pixel is inside only when mostly covered,
-  // or the line would start a pixel away from the shape it traces.
-  float outside = 1.0 - step(0.5, here.a);
-  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), step(0.25, g) * outside);
-  c = mix(c, picked, step(0.25, r) * outside);
+  // The mask is half the screen's size and read bilinearly, so at an edge
+  // its coverage runs from 0 to 1 over about a pixel. Blending on that,
+  // rather than stepping, is the anti-aliasing: the inner edge fades in as
+  // the pixel leaves the mesh, the outer as the ring stops finding it.
+  float outside = 1.0 - smoothstep(0.35, 0.65, here.a);
+  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), smoothstep(0.15, 0.5, g) * outside);
+  c = mix(c, picked, smoothstep(0.15, 0.5, r) * outside);
   gl_FragColor = vec4(c, scene.a);
 }`;
 
@@ -100,6 +101,9 @@ export function Highlight() {
   const green = paint(new Color3(0, 1, 0));
 
   const pass = new PostProcess("outline", "outline", ["texel", "width", "picked", "under", "underAlpha"], ["maskSampler"], 1.0, null, undefined, engine);
+  // The scene renders into this pass's texture while it is attached, so the
+  // texture has to carry the multisampling the screen would have had.
+  pass.samples = 4;
   pass.onApply = (effect) => {
     effect.setTexture("maskSampler", mask);
     // Texels of the mask, which is half the size of the screen.
