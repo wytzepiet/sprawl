@@ -19,8 +19,8 @@ import { hovered, parts, subject } from "../state/selection";
 /** How far the outline reaches, in pixels, at any zoom. It is solid at the
  *  shape and fades to nothing at this distance. */
 const WIDTH = 4;
-const PICKED = new Color3(0.13, 0.62, 1.0);
-const UNDER = new Color3(0.13, 0.62, 1.0);
+const PICKED = new Color3(0.72, 0.88, 1.0);
+const UNDER = new Color3(0.72, 0.88, 1.0);
 /** Ghosts live on a layer the main camera never draws. */
 const GHOST_LAYER = 0x10000000;
 const EVERY_LAYER = 0x0fffffff;
@@ -47,7 +47,8 @@ void main() {
   float r = 0.0, g = 0.0;
   for (int k = 1; k <= 4; k++) {
     float reach = width * float(k) * 0.25;
-    float near = 1.0 - float(k - 1) * 0.25;
+    // Steep: most of the opacity is gone by the second ring.
+    float near = pow(1.0 - float(k - 1) * 0.25, 3.0);
     for (int i = 0; i < 8; i++) {
       float a = float(i) * 0.7853982 + float(k) * 0.3;
       vec4 m = texture2D(maskSampler, vUV + vec2(cos(a), sin(a)) * texel * reach);
