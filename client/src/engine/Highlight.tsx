@@ -16,9 +16,8 @@ import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
 import { hovered, parts, subject } from "../state/selection";
 
-/** How far the outline reaches, in pixels, at any zoom. It is solid at the
- *  shape and fades to nothing at this distance. */
-const WIDTH = 4;
+/** The line, in pixels, at any zoom. */
+const WIDTH = 2;
 const PICKED = new Color3(0.72, 0.88, 1.0);
 const UNDER = new Color3(0.72, 0.88, 1.0);
 /** Ghosts live on a layer the main camera never draws. */
@@ -40,25 +39,24 @@ uniform float underAlpha;
 void main() {
   vec4 scene = texture2D(textureSampler, vUV);
   vec4 here = texture2D(maskSampler, vUV);
-  // How near the shape is: rings of taps at four distances out to the
-  // width, and the nearest ring that finds mask says how far it is. The
-  // outline is solid at the shape and fades with that distance. The mask is
-  // read bilinearly, so between rings the coverage itself blends the steps.
+  // The mask, pushed out by the line width: a ring of taps, and the nearer
+  // ring so a thin shape is not missed between them.
   float r = 0.0, g = 0.0;
-  for (int k = 1; k <= 4; k++) {
-    float reach = width * float(k) * 0.25;
-    // Steep: most of the opacity is gone by the second ring.
-    float near = pow(1.0 - float(k - 1) * 0.25, 3.0);
-    for (int i = 0; i < 8; i++) {
-      float a = float(i) * 0.7853982 + float(k) * 0.3;
-      vec4 m = texture2D(maskSampler, vUV + vec2(cos(a), sin(a)) * texel * reach);
-      r = max(r, min(m.r, 1.0) * near);
-      g = max(g, min(m.g, 1.0) * near);
-    }
+  for (int i = 0; i < 12; i++) {
+    float a = float(i) * 0.5235988;
+    vec2 d = vec2(cos(a), sin(a)) * texel * width;
+    vec4 m = texture2D(maskSampler, vUV + d);
+    vec4 n = texture2D(maskSampler, vUV + d * 0.5);
+    r = max(r, max(m.r, n.r));
+    g = max(g, max(m.g, n.g));
   }
+  // Read bilinearly, the mask's coverage runs from 0 to 1 over a pixel at
+  // an edge. Blending on that, rather than stepping, is the anti-aliasing:
+  // the inner edge fades in as the pixel leaves the mesh, the outer as the
+  // ring stops finding it.
   float outside = 1.0 - smoothstep(0.35, 0.65, here.a);
-  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), g * outside);
-  c = mix(c, picked, r * outside);
+  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), smoothstep(0.15, 0.5, g) * outside);
+  c = mix(c, picked, smoothstep(0.15, 0.5, r) * outside);
   gl_FragColor = vec4(c, scene.a);
 }`;
 
@@ -80,11 +78,10 @@ export function Highlight() {
   const camera = scene.activeCamera;
   if (!camera) return null;
 
-  // Half the screen's pixels: a silhouette does not need every one, and the
-  // pass reads it two dozen times per pixel. Cleared and drawn only while
-  // something is picked or under the pointer; the rest of the time the
-  // whole effect costs nothing, not even the copy a post-process forces.
-  const mask = new RenderTargetTexture("highlight_mask", { ratio: 0.5 }, scene, false, true, Constants.TEXTURETYPE_UNSIGNED_BYTE, false, Texture.BILINEAR_SAMPLINGMODE);
+  // Cleared and drawn only while something is picked or under the pointer;
+  // the rest of the time the whole effect costs nothing, not even the copy a
+  // post-process forces.
+  const mask = new RenderTargetTexture("highlight_mask", { ratio: 1 }, scene, false, true, Constants.TEXTURETYPE_UNSIGNED_BYTE, false, Texture.BILINEAR_SAMPLINGMODE);
   mask.clearColor = new Color4(0, 0, 0, 0);
   mask.renderList = [];
   // The ghosts are drawn by the mask and by nothing else.
@@ -108,8 +105,7 @@ export function Highlight() {
   pass.samples = 4;
   pass.onApply = (effect) => {
     effect.setTexture("maskSampler", mask);
-    // Texels of the mask, which is half the size of the screen.
-    effect.setFloat2("texel", 2 / engine.getRenderWidth(), 2 / engine.getRenderHeight());
+    effect.setFloat2("texel", 1 / engine.getRenderWidth(), 1 / engine.getRenderHeight());
     effect.setFloat("width", WIDTH * engine.getHardwareScalingLevel() ** -1);
     effect.setColor3("picked", PICKED);
     effect.setColor3("under", UNDER);
