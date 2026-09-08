@@ -42,8 +42,8 @@ void main() {
   // The mask, pushed out by the line width: a ring of taps, and the nearer
   // ring so a thin shape is not missed between them.
   float r = 0.0, g = 0.0;
-  for (int i = 0; i < 16; i++) {
-    float a = float(i) * 0.39269908;
+  for (int i = 0; i < 12; i++) {
+    float a = float(i) * 0.5235988;
     vec2 d = vec2(cos(a), sin(a)) * texel * width;
     vec4 m = texture2D(maskSampler, vUV + d);
     vec4 n = texture2D(maskSampler, vUV + d * 0.5);
@@ -74,10 +74,13 @@ export function Highlight() {
   const camera = scene.activeCamera;
   if (!camera) return null;
 
-  const mask = new RenderTargetTexture("highlight_mask", { ratio: 1 }, scene, false, true, Constants.TEXTURETYPE_UNSIGNED_BYTE, false, Texture.NEAREST_SAMPLINGMODE);
+  // Half the screen's pixels: a silhouette does not need every one, and the
+  // pass reads it two dozen times per pixel. Cleared and drawn only while
+  // something is picked or under the pointer; the rest of the time the
+  // whole effect costs nothing, not even the copy a post-process forces.
+  const mask = new RenderTargetTexture("highlight_mask", { ratio: 0.5 }, scene, false, true, Constants.TEXTURETYPE_UNSIGNED_BYTE, false, Texture.BILINEAR_SAMPLINGMODE);
   mask.clearColor = new Color4(0, 0, 0, 0);
   mask.renderList = [];
-  scene.customRenderTargets.push(mask);
   // The ghosts are drawn by the mask and by nothing else.
   mask.onBeforeRenderObservable.add(() => mask.renderList!.forEach((m) => (m.layerMask = EVERY_LAYER)));
   mask.onAfterRenderObservable.add(() => mask.renderList!.forEach((m) => (m.layerMask = GHOST_LAYER)));
@@ -93,14 +96,28 @@ export function Highlight() {
   const red = paint(new Color3(1, 0, 0));
   const green = paint(new Color3(0, 1, 0));
 
-  const pass = new PostProcess("outline", "outline", ["texel", "width", "picked", "under", "underAlpha"], ["maskSampler"], 1.0, camera);
+  const pass = new PostProcess("outline", "outline", ["texel", "width", "picked", "under", "underAlpha"], ["maskSampler"], 1.0, null, undefined, engine);
   pass.onApply = (effect) => {
     effect.setTexture("maskSampler", mask);
-    effect.setFloat2("texel", 1 / engine.getRenderWidth(), 1 / engine.getRenderHeight());
+    // Texels of the mask, which is half the size of the screen.
+    effect.setFloat2("texel", 2 / engine.getRenderWidth(), 2 / engine.getRenderHeight());
     effect.setFloat("width", WIDTH * engine.getHardwareScalingLevel() ** -1);
     effect.setColor3("picked", PICKED);
     effect.setColor3("under", UNDER);
     effect.setFloat("underAlpha", 0.5);
+  };
+
+  let active = false;
+  const activate = (on: boolean) => {
+    if (on === active) return;
+    active = on;
+    if (on) {
+      scene.customRenderTargets.push(mask);
+      camera.attachPostProcess(pass);
+    } else {
+      scene.customRenderTargets.splice(scene.customRenderTargets.indexOf(mask), 1);
+      camera.detachPostProcess(pass);
+    }
   };
 
   const ghosts = new Map<string, Mesh>();
@@ -142,11 +159,12 @@ export function Highlight() {
     const h = hovered();
     trace(s, 0);
     if (h !== null && h !== s) trace(h, 1);
+    activate(mask.renderList!.length > 0);
   });
   onCleanup(() => {
     scene.onBeforeRenderObservable.remove(obs);
+    activate(false);
     pass.dispose();
-    scene.customRenderTargets.splice(scene.customRenderTargets.indexOf(mask), 1);
     mask.dispose();
     for (const g of ghosts.values()) g.dispose();
     red.dispose();
