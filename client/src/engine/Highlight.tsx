@@ -14,7 +14,7 @@ import {
 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
-import { hovered, parts, selected } from "../state/selection";
+import { hovered, parts, subject } from "../state/selection";
 
 /** The line, in pixels, at any zoom. */
 const WIDTH = 3;
@@ -155,7 +155,7 @@ export function Highlight() {
   const obs = scene.onBeforeRenderObservable.add(() => {
     for (const g of mask.renderList!) g.setEnabled(false);
     mask.renderList!.length = 0;
-    const s = selected();
+    const s = subject();
     const h = hovered();
     trace(s, 0);
     if (h !== null && h !== s) trace(h, 1);

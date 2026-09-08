@@ -2,7 +2,7 @@ import { For, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { useEngine } from "../engine/Canvas";
 import { projector, viewExtent } from "../engine/view";
 import { pinned, reached } from "../state/gameObjects";
-import { selected } from "../state/selection";
+import { subject } from "../state/selection";
 import { BLUEPRINTS, plot } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind, GameObjectEntry } from "../generated";
@@ -85,7 +85,7 @@ export default function PinLayer() {
           // A building no road reaches is asking for one, so it never
           // collapses; nor does the one whose card is open.
           const dormant = createMemo(() => !reached(e));
-          const dot = createMemo(() => !dormant() && selected() !== e.id && step() > STEPS.indexOf(BLUEPRINTS[kind()].pinUntil));
+          const dot = createMemo(() => !dormant() && subject() !== e.id && step() > STEPS.indexOf(BLUEPRINTS[kind()].pinUntil));
           return (
             <div
               ref={(el) => {

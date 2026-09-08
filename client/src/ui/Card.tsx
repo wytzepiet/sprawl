@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
-import { selected, select, setFollowing } from "../state/selection";
+import { selected, select, setFollowing, setSubject } from "../state/selection";
 import type { BuildingKind, Need } from "../generated";
 
 /** A line that points at something else on the map. */
@@ -80,7 +80,11 @@ export default function Card() {
       const c = (await r.json()) as Card;
       setCard(c);
       // A resident is not on the map; where they are is.
-      if (c.kind === "resident" && c.at) setFollowing((f) => (f === id || f === c.at!.id ? c.at!.id : f));
+      if (c.kind === "resident") {
+        const at = c.at?.id ?? null;
+        setSubject(at);
+        setFollowing((f) => (f === id || (at !== null && f !== null) ? at : f));
+      }
     };
     fetchCard();
     const timer = setInterval(fetchCard, REFRESH_MS);

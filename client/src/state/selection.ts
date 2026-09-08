@@ -12,10 +12,17 @@ const [selected, setSelected] = createSignal<number | null>(null);
 const [following, setFollowing] = createSignal<number | null>(null);
 /** What the pointer is over, when it is over something. */
 const [hovered, setHovered] = createSignal<number | null>(null);
-export { selected, following, setFollowing, hovered, setHovered };
+/**
+ * What on the map stands for the selection: the thing itself, or, for a
+ * resident, who has no body of their own, the car or building they are in.
+ * The card sets it once it knows.
+ */
+const [subject, setSubject] = createSignal<number | null>(null);
+export { selected, following, setFollowing, hovered, setHovered, subject, setSubject };
 
 export function select(id: number | null) {
   setSelected(id);
+  setSubject(id);
   setFollowing(id);
 }
 
