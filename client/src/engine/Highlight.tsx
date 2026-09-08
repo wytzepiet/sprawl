@@ -16,8 +16,9 @@ import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
 import { hovered, parts, subject } from "../state/selection";
 
-/** The line, in pixels, at any zoom. */
-const WIDTH = 2;
+/** How far the outline reaches, in pixels, at any zoom. It is solid at the
+ *  shape and fades to nothing at this distance. */
+const WIDTH = 4;
 const PICKED = new Color3(0.13, 0.62, 1.0);
 const UNDER = new Color3(0.13, 0.62, 1.0);
 /** Ghosts live on a layer the main camera never draws. */
@@ -39,24 +40,24 @@ uniform float underAlpha;
 void main() {
   vec4 scene = texture2D(textureSampler, vUV);
   vec4 here = texture2D(maskSampler, vUV);
-  // The mask, pushed out by the line width: a ring of taps, and the nearer
-  // ring so a thin shape is not missed between them.
+  // How near the shape is: rings of taps at four distances out to the
+  // width, and the nearest ring that finds mask says how far it is. The
+  // outline is solid at the shape and fades with that distance. The mask is
+  // read bilinearly, so between rings the coverage itself blends the steps.
   float r = 0.0, g = 0.0;
-  for (int i = 0; i < 12; i++) {
-    float a = float(i) * 0.5235988;
-    vec2 d = vec2(cos(a), sin(a)) * texel * width;
-    vec4 m = texture2D(maskSampler, vUV + d);
-    vec4 n = texture2D(maskSampler, vUV + d * 0.5);
-    r = max(r, max(m.r, n.r));
-    g = max(g, max(m.g, n.g));
+  for (int k = 1; k <= 4; k++) {
+    float reach = width * float(k) * 0.25;
+    float near = 1.0 - float(k - 1) * 0.25;
+    for (int i = 0; i < 8; i++) {
+      float a = float(i) * 0.7853982 + float(k) * 0.3;
+      vec4 m = texture2D(maskSampler, vUV + vec2(cos(a), sin(a)) * texel * reach);
+      r = max(r, min(m.r, 1.0) * near);
+      g = max(g, min(m.g, 1.0) * near);
+    }
   }
-  // The mask is half the screen's size and read bilinearly, so at an edge
-  // its coverage runs from 0 to 1 over about a pixel. Blending on that,
-  // rather than stepping, is the anti-aliasing: the inner edge fades in as
-  // the pixel leaves the mesh, the outer as the ring stops finding it.
   float outside = 1.0 - smoothstep(0.35, 0.65, here.a);
-  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), smoothstep(0.15, 0.5, g) * outside);
-  c = mix(c, picked, smoothstep(0.15, 0.5, r) * outside);
+  vec3 c = mix(scene.rgb, mix(scene.rgb, under, underAlpha), g * outside);
+  c = mix(c, picked, r * outside);
   gl_FragColor = vec4(c, scene.a);
 }`;
 
