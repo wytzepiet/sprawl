@@ -2,6 +2,7 @@ import { For, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { useEngine } from "../engine/Canvas";
 import { projector, viewExtent } from "../engine/view";
 import { pinned, reached } from "../state/gameObjects";
+import { selected } from "../state/selection";
 import { BLUEPRINTS, plot } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind, GameObjectEntry } from "../generated";
@@ -93,7 +94,7 @@ export default function PinLayer() {
                 });
               }}
               class="pin absolute left-0 top-0 flex flex-col items-center -translate-x-1/2 -translate-y-full"
-              classList={{ dormant: dormant(), collapsed: dot() }}
+              classList={{ dormant: dormant(), collapsed: dot(), selected: selected() === e.id }}
               style={{ display: "none" }}
             >
               {/* Both shapes are always here, one of them faded out, so going

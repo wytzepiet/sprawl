@@ -5,6 +5,8 @@ import { InstancePoolProvider } from "./InstancePool";
 import Headlights from "./Headlights";
 import { RoadDrawer } from "./RoadDrawer";
 import { BuildingPlacer } from "./BuildingPlacer";
+import { Picker } from "./Picker";
+import { Highlight } from "./Highlight";
 import World from "./World";
 import BuildModeToolbar from "../ui/BuildModeToolbar";
 import TimeControls from "../ui/TimeControls";
@@ -15,6 +17,7 @@ import FrameStats from "../ui/FrameStats";
 import PinLayer from "../ui/PinLayer";
 import GrowthMeter from "../ui/GrowthMeter";
 import SkillTree from "../ui/SkillTree";
+import Card from "../ui/Card";
 
 function SceneInner() {
   return (
@@ -27,12 +30,15 @@ function SceneInner() {
             <InstancePoolProvider>
               <RoadDrawer />
               <BuildingPlacer />
+              <Picker />
+              <Highlight />
               <World />
             </InstancePoolProvider>
           </Headlights>
         </DayNightLights>
         <PinLayer />
         <GrowthMeter />
+        <Card />
         <SkillTree />
       </Canvas>
       <BuildModeToolbar />

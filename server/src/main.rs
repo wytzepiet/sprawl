@@ -1,5 +1,6 @@
 mod blueprint;
 mod calls;
+mod card;
 mod car;
 mod engine;
 mod game_loop;
@@ -47,6 +48,7 @@ async fn main() {
         .route("/debug/call/{id}", axum::routing::get(health::call))
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
         .route("/tree", axum::routing::get(health::tree))
+        .route("/inspect/{id}", axum::routing::get(health::card))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));

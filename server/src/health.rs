@@ -78,6 +78,12 @@ pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>
     ask(&state, Ask::Lot(id)).await
 }
 
+/// The card for one thing on the map: what it is, who is in it, where
+/// every line points.
+pub async fn card(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
+    ask(&state, Ask::Card(id)).await
+}
+
 /// Raise a stock call at a building now: a delivery to watch.
 pub async fn call(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
     ask(&state, Ask::Call(id)).await

@@ -14,6 +14,7 @@ export default defineConfig({
     proxy: {
       "/ws": { target: "ws://localhost:4801", ws: true },
       "/tree": { target: "http://localhost:4801" },
+      "/inspect": { target: "http://localhost:4801" },
     },
   },
   build: {

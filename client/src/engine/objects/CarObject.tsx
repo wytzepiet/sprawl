@@ -5,6 +5,7 @@ import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
 import type { Car, GameObjectEntry } from "../../generated";
+import { carPoses } from "../../state/selection";
 
 /// Everyone keeps their car for life, and its id never changes — so neither
 /// does its colour.
@@ -106,7 +107,7 @@ export function mountCar(
   look: Look,
 ): () => void {
   const car = entry.object.data as Car;
-  if (car.role === "Truck") return mountLorry(car, pool, scene, look);
+  if (car.role === "Truck") return mountLorry(entry.id, car, pool, scene, look);
   const van = car.role === "Van";
   const color = van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
   const bucket = van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
@@ -118,7 +119,11 @@ export function mountCar(
     if (!car.spot) return () => {};
     const { at, heading } = car.spot;
     const instanceId = pool.addInstance(bucket, [at[0], at[1], van ? GROUND + 0.11 : CAR_Z], [0, 0, heading - Math.PI / 2]);
-    return () => pool.removeInstance(bucket, instanceId);
+    carPoses.set(entry.id, [at[0], at[1]]);
+    return () => {
+      pool.removeInstance(bucket, instanceId);
+      carPoses.delete(entry.id);
+    };
   }
   const f = follow(car);
   if (!f) return () => {};
@@ -127,15 +132,17 @@ export function mountCar(
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
+    carPoses.set(entry.id, [result.pos[0], result.pos[1]]);
   });
   return () => {
     scene.onBeforeRenderObservable.remove(observer);
     pool.removeInstance(bucket, instanceId);
+    carPoses.delete(entry.id);
   };
 }
 
 /** The two boxes of a lorry, parked or on the move. */
-function mountLorry(car: Car, pool: InstancePool, scene: Scene, look: Look): () => void {
+function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look: Look): () => void {
   const cab = `lorry_cab${look.key}`;
   const trailer = `lorry_trailer${look.key}`;
   pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true);
@@ -165,7 +172,8 @@ function mountLorry(car: Car, pool: InstancePool, scene: Scene, look: Look): () 
     const p = place(at[0], at[1], heading, true);
     const a = pool.addInstance(cab, p.cab.pos, p.cab.rot);
     const b = pool.addInstance(trailer, p.trailer.pos, p.trailer.rot);
-    return () => { pool.removeInstance(cab, a); pool.removeInstance(trailer, b); };
+    carPoses.set(id, [at[0], at[1]]);
+    return () => { pool.removeInstance(cab, a); pool.removeInstance(trailer, b); carPoses.delete(id); };
   }
   const f = follow(car);
   if (!f) return () => {};
@@ -199,6 +207,7 @@ function mountLorry(car: Car, pool: InstancePool, scene: Scene, look: Look): () 
   let arrived: [number, number] | null = null;
   const observer = scene.onBeforeRenderObservable.add(() => {
     const r = f.now();
+    carPoses.set(id, [r.pos[0], r.pos[1]]);
     if (from !== null && r.dist >= from && table.length) {
       const heading = r.rot[2] + Math.PI / 2 + Math.PI;
       const fx = Math.cos(heading), fy = Math.sin(heading);
@@ -227,6 +236,7 @@ function mountLorry(car: Car, pool: InstancePool, scene: Scene, look: Look): () 
     scene.onBeforeRenderObservable.remove(observer);
     pool.removeInstance(cab, a);
     pool.removeInstance(trailer, b);
+    carPoses.delete(id);
   };
 }
 

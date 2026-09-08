@@ -5,6 +5,7 @@ import { useGame } from "../state/gameObjects";
 import { buildMode, placingBuilding } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 import { viewExtent } from "./view";
+import { following, setFollowing, positionOf } from "../state/selection";
 
 const BUILD_ZOOM = 8;
 
@@ -192,6 +193,14 @@ export function OrthoCamera() {
   // Smooth zoom animation
   const renderObs = scene.onBeforeRenderObservable.add(() => {
     if (debugMode) return;
+    const f = following();
+    if (f !== null) {
+      const at = positionOf(f);
+      if (at) {
+        targetCamX = at[0];
+        targetCamY = at[1];
+      }
+    }
     const dSize = targetViewHalf - viewHalf;
     const dX = targetCamX - camera.position.x;
     const dY = targetCamY - camera.position.y;
@@ -276,6 +285,7 @@ export function OrthoCamera() {
       const { worldPerPxX, worldPerPxY } = groundScale(rect);
       const panX = (center.x - lastPinchCenterX) * worldPerPxX;
       const panY = (center.y - lastPinchCenterY) * worldPerPxY;
+      setFollowing(null);
       camera.position.x += panX;
       camera.position.y += panY;
       targetCamX += panX;
@@ -303,6 +313,7 @@ export function OrthoCamera() {
     const { worldPerPxX: worldPerPixelX, worldPerPxY: worldPerPixelY } = groundScale(rect);
     const moveX = dx * worldPerPixelX;
     const moveY = dy * worldPerPixelY;
+    if (dx !== 0 || dy !== 0) setFollowing(null);
     camera.position.x += moveX;
     camera.position.y += moveY;
     targetCamX += moveX;

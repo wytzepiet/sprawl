@@ -64,6 +64,9 @@ html, body {
 /* A building asking for a road sits over everything else, so a neighbour's
    dot never lands on top of it. */
 .pins .pin.dormant { z-index: 2; }
+.pins .pin.selected { z-index: 3; }
+.pins .pin.selected .body { scale: 1.25; transform-origin: 50% 100%; }
+.pins .pin.selected .dot { scale: 1.6; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #5B57C8; }
 .pins .pin:not(.collapsed) .dot { opacity: 0; scale: 0.4; }
 .pins .pin.collapsed .body { opacity: 0; scale: 0.35; }
 /* Scaled about the point, so a pulsing pin still points at its plot. */
