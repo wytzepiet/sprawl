@@ -101,7 +101,8 @@ a price for what it fills, nudging it up when the stock empties and down
 when it fills, never below cost. A resident prices money in hours of
 their wage, so the one score that already picks their day picks by price
 too; a building prices money in hours of its takings and picks by
-delivered price. Beyond the edge is a world that runs the same rows at
+delivered price, its workers included: whoever has the deficit picks,
+and only the delivery varies by good. Beyond the edge is a world that runs the same rows at
 capacity and charges a crossing, so nothing can run away and no price is
 authored. Two numbers: GDP, hours of need served in town, which is how
 rich the town is and what opens the tree; and the treasury, what the

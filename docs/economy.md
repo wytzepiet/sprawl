@@ -212,20 +212,37 @@ want a referent before they are written down (§14).
 
 A building holds a **labour stock**: the hours its line needs, drained as
 it produces, refilled by workers on shift. Its deficit is its vacancies,
-and a wage is the price posted on that deficit, nudged like any other:
-slots unfilled → raise; more applicants than slots → lower, and lower
-slowly. Wages are sticky downward in every labour market ever measured;
-`α_down` for wages is a fraction of `α_up`. That one asymmetry is the
-most robust fact in the field, and it is the only special case in this
-section.
+and it fills them on its turn (§6.2) like any other input: every seller
+of labour it can reach, at the delivered price, cheapest first. The
+sellers are households — the town's, and the world's beyond the edge —
+and each posts an **ask** on its hours and nudges it by its own stock
+like any other price: hours sold out, a job held, and the ask drifts up;
+hours piling up, no job, and it drifts down, and slowly. Wages are
+sticky downward in every labour market ever measured; `α_down` for the
+ask is a fraction of `α_up`, and that asymmetry is the one number in this
+section with its own referent.
 
-A vacancy is an order for labour: buyer, good, quantity, price. The
-seller is the home (§4), and labour is the one good the seller delivers
-in person, so the commute is the delivery and the resident drives. A building far from homes cannot fill
-its slots at the going wage, its vacancies stay open, and the nudge
-raises the wage until it can. The building pays for the commute through
-the wage — compensating differentials, Rosen (1986) — and there is no
-second line for travel.
+Labour is delivered in person, so the delivered price of a household's
+hours is its ask plus the commute spread over the shift, and the resident
+drives. A building far from homes finds its near sellers few and its far
+ones dear, and pays for the commute through what it pays — compensating
+differentials, Rosen (1986) — with no second line for travel and no rule
+about distance. The world's households beyond the edge sell at the edge
+wage plus the crossing plus the drive from the exit (§8.1), and the
+town's sell for no less than the edge would pay them net of the crossing
+and their drive out, since below that they sell there instead. Between
+those is the band for wages, the same shape as the band for crates.
+
+Employment is a standing relation, derived in the settlement pass. A
+building with a full line still reads the market on its turn, and swaps
+a worker only for one cheaper delivered by a **hiring threshold**: firms
+replace people for a saving of a tenth to a fifth, not for a penny, and
+about one in forty jobs turns over in a month. Tenure is then emergent,
+and a household whose ask has drifted above its neighbours' is the one
+that gets swapped, which is what keeps an ask honest. Nobody quits when
+rich — labour supply is close to inelastic — so the Work need stays the
+constant habit `residents.md` §3.1 makes it: it is when a resident
+leaves the house, and whoever hired them is where.
 
 ### 5.3 Freight
 
@@ -259,18 +276,32 @@ food first, the rich on leisure — from one division and no new
 parameter. Nothing is refused for want of money: the town pays, and what
 it paid is in the books. What the price does is rank.
 
-That is the whole protocol. Nobody posts a listing and waits for replies:
-a listing is a stored intention, and `residents.md` §2 deleted those so
-that any wake reads the world and converges on the same answer. The
-party in need scans the sellers it can reach and picks. What remains as
-state is the seller's posted price, which is a fact about its own stock,
-and the trip in flight, which is a record of what is happening.
+That is the whole protocol, and there are no special cases in it. The
+party with the deficit scans the sellers it can reach and takes the
+cheapest delivered — a resident for a meal, a shop for crates, a factory
+for hours, a house for services. Nobody posts a listing and waits for
+replies: a listing is a stored intention, and `residents.md` §2 deleted
+those so that any wake reads the world and converges on the same
+answer. What remains as state is the seller's posted price, which is a
+fact about its own stock, and the trip in flight, which is a record of
+what is happening.
 
-Two things differ between a resident and a building calling it, and
-they are inputs, not branches. **Presence:** a resident must be there, so
-their in-person options block each other; a building's option dispatches
-a vehicle, and many are in flight at once. **Travel:** a resident's is
-their own drive; a building's is its truck's leg, or the edge's.
+What varies by good is only the **delivery**: who moves, and in what.
+
+| good | who moves | in what |
+|---|---|---|
+| a meal, an evening, a tank | the buyer, to the seller | their own car: the visit |
+| a crate, a litre | the seller, to the buyer | a van or a lorry: the delivery |
+| hours of labour | the seller, to the buyer | their own car: the commute |
+| services | the seller, to the buyer | the office's car: the call-out |
+
+The delivery is what the trip on the map is, and the trip on the map is
+the game; the rest of the protocol never looks at which row it is. Two
+inputs follow from who moves, and they are inputs, not branches.
+**Presence:** a mover that goes in person can be in one place, so their
+in-person options block each other; a building that dispatches has many
+in flight at once. **Travel:** the mover's own drive, or the vehicle's
+leg.
 
 A resident could in principle order food to the house through the same
 primitive; it is left unbuilt, because the shopping trip is traffic and
@@ -291,32 +322,12 @@ The call list keeps what it holds today, the truck already on its way.
 
 ### 6.3 Which job
 
-For a shift the resident is the seller. Their options are buildings with
-vacancies and the edge. The value of a shift is its pay in the numéraire
-every resident shares, the edge wage, so
-
-```
-score = w_work × hours × (wage / edge_wage) / (commute + hours)
-```
-
-A nearby job at four fifths of the edge wage beats the long drive; one at
-a third does not. The reservation wage is the commute. This is the one
-place the score reads a price as a gain rather than a cost, and it is
-written down here as the special case it is.
-
-Employment is a standing relation, derived in the settlement pass as it
-is today; only the ranking changes, from distance to this score. A
-resident with a job still ranks vacancies, and switches when the new
-score beats the current by a **switching threshold**: people move for a
-raise of a tenth to a fifth, and about one in forty moves in a month.
-Tenure is then emergent, and a building that raises its wage can hire
-away from its neighbour, which is the pressure that makes wages mean
-something.
-
-Nobody quits when rich — labour supply is close to inelastic, and a game
-where the wealthy stop showing up has a mystery in it — so the Work need
-stays the constant habit `residents.md` §3.1 makes it; only *where* is
-economic.
+Deleted: labour is bought on the building's turn like any other input
+(§5.2, §6.2). What was here — the resident ranking vacancies by wage
+over commute, with a switching threshold — was the same market seen from
+the seller's side, and it was the one place the score read a price as a
+gain. Its numbers moved to §5.2: the commute in the delivered price, the
+threshold to the buyer as a hiring cost.
 
 ## 7. Moving goods
 
@@ -501,11 +512,13 @@ season is thirty game-days until something says otherwise.
 10. ~~**No sinks.**~~ There is nothing outside the treasury to be one.
 11. **Tenure.** Over a season the fraction of residents who change jobs in
     a month sits near the referent.
-12. **The bedroom town.** A street of houses beside the exit and nothing
-    else, its residents commuting to the edge and consuming there,
-    against the full town. Treasury per resident-day is printed for both
-    and the bedroom town's must not exceed the full town's: a house is
-    a row with running costs, not a mint.
+12. **The bedroom town, and the job centre.** A street of houses beside
+    the exit and nothing else, its residents commuting to the edge; and
+    a street of workplaces and nothing else, staffed from beyond it.
+    Each against the full town. Treasury per resident-day is printed for
+    all three and neither bare town's may exceed the full town's: a house
+    is a row with running costs, not a mint, and imported labour pays
+    the crossing.
 
 ## 12. Order to build
 
@@ -522,10 +535,14 @@ Each step is playable and nothing before step 2 can hurt anyone.
 3. **The building's turn.** `(s, S)` with delivered price across every
    reachable seller (§6.2); the call dispatcher's nearest-depot search
    goes.
-4. **One purse.** Wallets, balances, floats, the sweep and rent go; the
-   treasury moves at the door; the books carry what a purse carried;
-   the level is named GDP on the dial. The bedroom town beside the full
-   one (§11.12). §12.4 has what it needs decided.
+4. **One purse, one protocol.** Wallets, balances, floats, the sweep
+   and rent go; the treasury moves at the door; the books carry what a
+   purse carried. GDP is value served in town at the world's prices,
+   housing included, and the level is its running sum. Labour is bought
+   on the building's turn: households post an ask, the edge's at the
+   edge wage plus the crossing, and the wage rules of §12.2 go. The
+   bedroom town and the job-centre town beside the full one (§11.12).
+   §12.4 has what it needs decided.
 5. **Services and wear.** The office's stock and its car; the workshop;
    the household's services stock.
 6. **Rows.** Every workplace's inputs, output and rate on its row, with
@@ -572,8 +589,8 @@ line; the rest is the implementer's.
 `server/src/economy.rs` holds every number below with its referent. The
 mechanism is the one above; these are the places where running it made a
 decision the text left open, or moved one it had made. The float, the
-sweep and pass-throughs' purses below are what step 4 removed; they are
-kept here as the record of what was built and why.
+sweep, pass-throughs' purses and the wage rules below are what step 4
+removed; they are kept here as the record of what was built and why.
 
 - **The stock.** `Stock { level, cap }` is the one struct: a resident's
   needs, a car's tank and a building's shelf. The bucket's algebra reads
@@ -722,13 +739,24 @@ The building's turn is `calls::cheapest_seller`; the numbers are in
 - **The treasury can go to zero and no lower.** An import the treasury
   cannot pay for does not happen; a resident at the edge is served
   regardless (§8.1).
-- **Wage floor and cut** (§12.2) stay: they are about what a building's
-  labour is worth, not what it can pay.
+- **The wage rules of §12.2 go** — the cut to what an hour brings in,
+  the rise for a desk the edge filled, the floor. Each was a proxy for
+  something the market now does: the crossing and the commute price
+  imported labour, the ask prices the town's, and a building whose hours
+  cost more than they bring in is in the red on its card (§9).
+- **GDP at the world's prices.** A need served in town banks its units
+  times `edge_price` for that unit, the edge's excluded; a night is the
+  household row's upkeep, about a third of a day's wage a head until the
+  row says otherwise (§13.10). The level thresholds are retuned to the
+  new scale.
+- **A household's ask** opens at the edge wage and lives on the
+  resident; the crossing is a tenth (§13.8) until a season says
+  otherwise.
 
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
-2. ~~The switching threshold's value.~~ §12.2.
+2. ~~The switching threshold's value.~~ §12.2; now the hiring threshold, §5.2.
 3. ~~A new building's `earning` before it has a day of revenue.~~ §12.3.
 4. Household delivery (§6.1) — permitted, unbuilt. Until then a meal at
    home is groceries from the edge (§12.2).
