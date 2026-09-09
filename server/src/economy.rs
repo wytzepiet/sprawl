@@ -99,13 +99,35 @@ pub fn shift_hours(kind: BuildingKind) -> f64 {
     blueprint(kind).taps.iter().find(|t| t.need == Need::Work).map_or(0.0, |t| t.curve.per_day() / HOUR)
 }
 
-/// The taps a kind sells through: what it charges a price for. A home
-/// sells nothing: its kitchen is its household's, and what they eat there
-/// is groceries, bought from beyond the edge until something in town
-/// delivers them (`price_of`).
-pub fn sells(kind: BuildingKind) -> impl Iterator<Item = &'static Tap> {
+/// What a kind charges a price for: every need its taps serve over the
+/// counter, and, for a depot, the crate off its shelf that its vans
+/// deliver. A home sells nothing: its kitchen is its household's, and
+/// what they eat there is groceries, bought from beyond the edge until
+/// something in town delivers them (`price_of`).
+pub fn sells(kind: BuildingKind) -> impl Iterator<Item = Need> {
     let bp = blueprint(kind);
-    bp.taps.iter().filter(move |t| bp.homes == 0 && t.need != Need::Work && edge_price(t.need) > 0.0)
+    bp.taps
+        .iter()
+        .filter(move |t| bp.homes == 0 && t.need != Need::Work && edge_price(t.need) > 0.0)
+        .map(|t| t.need)
+        .chain(depot(kind).then(|| shelf_need(kind)))
+}
+
+/// Units of a need a kind could sell in a day with every slot busy: what
+/// selling out and piling up are measured against. A depot's shelf has
+/// no tap; what it could sell in a day is the shelf, turned once.
+pub fn rated(kind: BuildingKind, need: Need) -> f64 {
+    let bp = blueprint(kind);
+    let over_the_counter: f64 = bp.taps.iter().filter(|t| t.need == need).map(Tap::rated).sum();
+    over_the_counter + if depot(kind) && need == shelf_need(kind) { bp.stock as f64 } else { 0.0 }
+}
+
+/// What the edge charges for the unit a kind sells of a need: the crate,
+/// wholesale, that a depot's van delivers; the meal, the evening or the
+/// tank over anyone else's counter. What a kind opens charging, since a
+/// price it has sold nothing at cannot be known yet. §12.2.
+pub fn edge_price_of(kind: BuildingKind, need: Need) -> f64 {
+    if depot(kind) && need == shelf_need(kind) { wholesale(need) } else { edge_price(need) }
 }
 
 /// The need a kind's shelf backs: what its deliveries are. Fuel where it
@@ -117,6 +139,12 @@ pub fn shelf_need(kind: BuildingKind) -> Need {
 /// Answers calls, so its wages are the treasury's. §8.2, the one special case.
 pub fn service(kind: BuildingKind) -> bool {
     blueprint(kind).answers.is_some()
+}
+
+/// Sells its shelf by delivery: answers the calls of shelves running low
+/// with a van of its own, and fetches its own stock from beyond the edge.
+pub fn depot(kind: BuildingKind) -> bool {
+    blueprint(kind).answers == Some(crate::calls::CallKind::Stock)
 }
 
 /// What one unit costs a kind to sell: the delivery behind it, and
@@ -188,6 +216,32 @@ pub fn solvent(world: &World, id: EntityId) -> bool {
         Some(GameObject::Building(b)) => float(b.kind, b.wage) == 0.0 || b.balance > 0.0,
         _ => false,
     }
+}
+
+/// The reorder point: the `s` of the `(s, S)` policy of every inventory
+/// textbook, with the shelf as `S`. Expected use over the lead time —
+/// what the taps could sell in the time the last delivery took — plus a
+/// margin, which is a full house: everyone the taps seat at once, so a
+/// rush during the lead does not empty the shelf. Until a building has
+/// had a delivery, one is assumed to take as long as a lorry is away
+/// beyond the edge. §6.2.
+pub fn reorder(world: &World, building: EntityId) -> f64 {
+    let Some(kind) = kind_of(world, building) else { return 0.0 };
+    let need = shelf_need(kind);
+    let lead = world.books.get(&building).and_then(|k| k.lead).unwrap_or(crate::calls::AWAY_MS);
+    let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| t.slots).sum();
+    rated(kind, need) * lead as f64 / DAY_MS as f64 + seats as f64
+}
+
+/// What a building makes an hour, which is what an hour of money is
+/// worth to it: yesterday's takings over the day, or, before it has a
+/// day of them, what the edge would pay for everything it could sell
+/// (§13.3). What it weighs a delivery's lead time against. §6.1.
+pub fn earns(world: &World, building: EntityId, now: GameTime) -> f64 {
+    let Some(kind) = kind_of(world, building) else { return EDGE_WAGE };
+    let yesterday = world.books.get(&building).map_or(0.0, |k| k.before(now).revenue);
+    let could: f64 = sells(kind).map(|need| edge_price_of(kind, need) * rated(kind, need)).sum();
+    (if yesterday > 0.0 { yesterday } else { could }) / 24.0
 }
 
 /// What a building charges per unit of a need. The edge charges its own;
@@ -316,20 +370,32 @@ fn sweep(world: &mut World, building: EntityId, now: GameTime) {
     world.income.today(now).revenue += over;
 }
 
-/// A delivery landed: `units` onto `buyer`'s shelf, from `seller`'s or
-/// from beyond the edge. The buyer pays the edge's wholesale price — what
-/// every seller charges today, since a warehouse's margin waits for
-/// freight to be a price (§5.3) — and the seller's shelf goes down by what
-/// the buyer's went up. §7.
-pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, now: GameTime) {
+/// A van loads at a depot: as much of the order as the shelf has. The
+/// shelf goes down as the load leaves, and a shelf that empties is sold
+/// out; the money moves when the load lands (`delivered`). §7.
+pub fn loaded(world: &mut World, depot: EntityId, order: f64, now: GameTime) -> f64 {
+    let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) else { return 0.0 };
+    let load = order.min(b.stock.level);
+    b.stock.take(load);
+    if b.stock.level == 0.0 {
+        world.books.entry(depot).or_default().today(now).sold_out = true;
+    }
+    load
+}
+
+/// A delivery landed: `load` onto `buyer`'s shelf, from `seller`'s or
+/// from beyond the edge. The buyer pays the seller's posted price per
+/// unit — beyond the edge, the edge's wholesale. §7.
+pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, load: f64, now: GameTime) {
     let Some(kind) = kind_of(world, buyer) else { return };
     let need = shelf_need(kind);
+    let unit = seller.map_or(wholesale(need), |s| price_of(world, s, need));
     let Some(GameObject::Building(b)) = world.objects.get_mut(buyer).map(|e| &mut e.object) else { return };
-    let units = b.stock.short();
+    let units = load.min(b.stock.short());
     if units <= 0.0 {
         return;
     }
-    let due = units * wholesale(need);
+    let due = units * unit;
     let paid = due.min(b.balance).max(0.0);
     b.stock.add(units);
     b.balance -= paid;
@@ -337,9 +403,6 @@ pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, n
     world.sales.push(Sale { building: buyer, amount: -paid, at: now });
     if let Some(seller) = seller {
         pay(world, seller, paid);
-        if let Some(GameObject::Building(s)) = world.objects.get_mut(seller).map(|e| &mut e.object) {
-            s.stock.take(units);
-        }
         let book = world.books.entry(seller).or_default().today(now);
         book.revenue += paid;
         *book.sold.entry(need).or_default() += units;
@@ -395,16 +458,16 @@ pub fn day(world: &mut World, now: GameTime) {
         let commuters = world.staff_from_the_edge(id);
         let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { continue };
         let kind = b.kind;
-        for tap in sells(kind) {
-            let Some(price) = b.prices.get_mut(&tap.need) else { continue };
-            let sold = book.sold.get(&tap.need).copied().unwrap_or(0.0);
-            let rated = tap.rated();
-            if (tap.need == shelf_need(kind) && book.sold_out) || sold > SELLING_OUT * rated {
+        for need in sells(kind) {
+            let Some(price) = b.prices.get_mut(&need) else { continue };
+            let sold = book.sold.get(&need).copied().unwrap_or(0.0);
+            let could = rated(kind, need);
+            if (need == shelf_need(kind) && book.sold_out) || sold > SELLING_OUT * could {
                 *price *= 1.0 + PRICE_UP;
-            } else if sold < PILING_UP * rated {
+            } else if sold < PILING_UP * could {
                 *price *= 1.0 - PRICE_DOWN;
             }
-            *price = price.max(unit_cost(kind, tap.need));
+            *price = price.max(unit_cost(kind, need));
         }
         if blueprint(kind).jobs > 0 && !service(kind) {
             // What an hour of labour brought in: the day's takings less
@@ -467,6 +530,8 @@ pub struct Day {
     pub sold_out: bool,
 }
 
+static EMPTY: std::sync::LazyLock<Day> = std::sync::LazyLock::new(Day::default);
+
 /// A purse's books: today's page and yesterday's, keyed by the day today
 /// is. Learned, not saved — a loaded world starts counting afresh.
 #[derive(Debug, Default, Clone)]
@@ -474,6 +539,10 @@ pub struct Books {
     pub day: u64,
     pub today: Day,
     pub yesterday: Day,
+    /// How long the last delivery took, from the call to the load
+    /// landing: the lead time the reorder point covers. None until there
+    /// has been one.
+    pub lead: Option<GameTime>,
 }
 
 impl Books {
@@ -493,15 +562,15 @@ impl Books {
         self.page(now / DAY_MS as u64)
     }
 
-    /// The last whole day's page: yesterday's, as of `now`.
+    /// The last whole day's page: yesterday's, as of `now`. The first day
+    /// has none.
     pub fn before(&self, now: GameTime) -> &Day {
-        self.page(now / DAY_MS as u64 - 1)
+        (now / DAY_MS as u64).checked_sub(1).map_or(&EMPTY, |day| self.page(day))
     }
 
     /// The page for a day, by the calendar: a day nothing was written on
     /// is empty, however long ago the last entry was.
     fn page(&self, day: u64) -> &Day {
-        static EMPTY: std::sync::LazyLock<Day> = std::sync::LazyLock::new(Day::default);
         if day == self.day {
             &self.today
         } else if day + 1 == self.day {
@@ -557,10 +626,14 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
         "balance": b.balance,
         "float": float(b.kind, b.wage),
         "solvent": solvent(world, id),
+        "earns": earns(world, id, now),
         "jobs": blueprint(b.kind).jobs,
         "wage": b.wage,
+        "stock": b.stock,
+        "reorder": reorder(world, id),
+        "lead": books.and_then(|k| k.lead),
         "prices": b.prices.iter().map(|(need, p)| json!({
-            "need": need, "price": p, "unit_cost": unit_cost(b.kind, *need), "edge": edge_price(*need),
+            "need": need, "price": p, "unit_cost": unit_cost(b.kind, *need), "edge": edge_price_of(b.kind, *need),
         })).collect::<Vec<_>>(),
         "today": books.map(|k| page(k.on(now))),
         "yesterday": books.map(|k| page(k.before(now))),
@@ -578,11 +651,13 @@ mod tests {
     fn every_opening_price_covers_its_delivery() {
         for kind in BuildingKind::ALL {
             let b = crate::protocol::Building::new(kind, (1, 1), 2);
-            for tap in sells(kind) {
-                let floor = unit_cost(kind, tap.need);
-                let price = b.prices[&tap.need];
-                assert!(price >= floor, "{kind:?} opens {:?} at {price}, under its cost {floor}", tap.need);
-                assert!(floor < edge_price(tap.need), "{kind:?} cannot make a margin on {:?}", tap.need);
+            for need in sells(kind) {
+                let floor = unit_cost(kind, need);
+                let price = b.prices[&need];
+                assert!(price >= floor, "{kind:?} opens {need:?} at {price}, under its cost {floor}");
+                // Room for a margin over the counter; a depot's margin is
+                // the drive it saves (§6.2), so it opens at its floor.
+                assert!(floor < edge_price_of(kind, need) || depot(kind), "{kind:?} cannot make a margin on {need:?}");
             }
         }
     }
@@ -611,6 +686,8 @@ mod tests {
         // A day skipped is a day with nothing in it.
         b.today(3 * day);
         assert_eq!(b.yesterday.revenue, 0.0);
+        // And the first day has no yesterday at all.
+        assert_eq!(Books::default().before(100).revenue, 0.0);
     }
 
     /// Grass, a street, and whatever is built beside it.
@@ -645,7 +722,8 @@ mod tests {
         if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
             b.stock.take(30.0);
         }
-        delivered(&mut world, shop, Some(depot), 0);
+        let load = loaded(&mut world, depot, 30.0, 0);
+        delivered(&mut world, shop, Some(depot), load, 0);
         let (after_shop, after_depot) = (building(&world, shop), building(&world, depot));
         let paid = before_shop.balance - after_shop.balance;
         assert!((paid - 30.0 * wholesale(Need::Eat)).abs() < 1e-9, "the shop paid {paid}");
@@ -663,7 +741,8 @@ mod tests {
             if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
                 b.stock.take(30.0);
             }
-            delivered(&mut world, shop, Some(depot), 0);
+            let load = loaded(&mut world, depot, 30.0, 0);
+            delivered(&mut world, shop, Some(depot), load, 0);
             fetched(&mut world, depot, 0);
         }
         assert!((building(&world, depot).balance - settled).abs() < 1e-9, "the warehouse made a margin");
@@ -690,6 +769,68 @@ mod tests {
         assert_eq!(wallet, RESIDENT_FLOAT, "the wallet is the float again");
         assert!((world.treasury - (9.0 - 1.0)).abs() < 1e-9, "the rest is rent: {}", world.treasury);
         assert!(world.sales.iter().any(|s| s.building == home && (s.amount - 8.0).abs() < 1e-9), "the rent landed on the home");
+    }
+
+    /// §6.2, `(s, S)`: a shelf reorders when what is on it would not last
+    /// the lead time at the taps' full rate with a full house to spare,
+    /// and the lead time is the last delivery's.
+    #[test]
+    fn the_reorder_point_covers_the_lead_and_a_full_house() {
+        let mut world = town();
+        let shop = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, Shop).unwrap();
+        let seats = 7.0;
+        let a_day = rated(Shop, Need::Eat);
+        // No delivery yet: as long as a lorry is away beyond the edge.
+        let s = reorder(&world, shop);
+        assert!((s - (a_day * crate::calls::AWAY_MS as f64 / DAY_MS as f64 + seats)).abs() < 1e-9, "{s}");
+        world.books.entry(shop).or_default().lead = Some(0);
+        assert_eq!(reorder(&world, shop), seats, "a depot next door leaves the full house");
+        world.books.entry(shop).or_default().lead = Some(DAY_MS as GameTime);
+        assert!(reorder(&world, shop) > blueprint(Shop).stock as f64, "a day's lead asks for more than the shelf holds");
+    }
+
+    /// §6.1 and §13.3: a building prices money in what it makes an hour —
+    /// yesterday's takings, or, before it has any, what the edge would pay
+    /// for its rated output.
+    #[test]
+    fn a_building_prices_money_in_what_it_makes() {
+        let mut world = town();
+        let shop = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, Shop).unwrap();
+        let could: f64 = sells(Shop).map(|need| edge_price_of(Shop, need) * rated(Shop, need)).sum();
+        assert!((earns(&world, shop, 0) - could / 24.0).abs() < 1e-9);
+        let day = DAY_MS as u64;
+        world.books.entry(shop).or_default().today(0).revenue += 6.0;
+        assert!((earns(&world, shop, day) - 0.25).abs() < 1e-9, "six hours of takings over a day");
+    }
+
+    /// A depot's crate is priced like anything else: it opens at the
+    /// edge's wholesale, which is its floor, steps up the day its shelf
+    /// ran empty, and never goes under what it paid. A van loads what
+    /// the shelf has, and no more.
+    #[test]
+    fn a_depot_posts_a_price_on_its_shelf() {
+        let mut world = town();
+        let shop = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, Shop).unwrap();
+        let depot = world.place_on_street(crate::protocol::GridCoord { x: 20, y: 1 }, Warehouse).unwrap();
+        let floor = wholesale(Need::Eat);
+        let price = |world: &World| building(world, depot).prices[&Need::Eat];
+        assert_eq!(price(&world), floor);
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            b.stock.level = 10.0;
+        }
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
+            b.stock.take(30.0);
+        }
+        let load = loaded(&mut world, depot, 30.0, 1);
+        assert_eq!((load, building(&world, depot).stock.level), (10.0, 0.0), "the van loaded more than the shelf had");
+        delivered(&mut world, shop, Some(depot), load, 1);
+        assert_eq!(building(&world, shop).stock.level, 20.0);
+        let midnight = DAY_MS as u64;
+        day(&mut world, midnight);
+        assert!((price(&world) - floor * 1.05).abs() < 1e-9, "an emptied shelf did not step up: {}", price(&world));
+        day(&mut world, 2 * midnight);
+        day(&mut world, 3 * midnight);
+        assert_eq!(price(&world), floor, "quiet days took it under the floor, or not back to it");
     }
 
     #[test]

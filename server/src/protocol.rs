@@ -134,7 +134,7 @@ impl Building {
     /// shop that has sold nothing yet can know — and its purse opened
     /// with its float.
     pub fn new(kind: BuildingKind, size: (u8, u8), facing: u8) -> Building {
-        use crate::economy::{edge_price, float, sells, EDGE_WAGE};
+        use crate::economy::{edge_price_of, float, sells, EDGE_WAGE};
         Building {
             kind,
             size,
@@ -142,7 +142,7 @@ impl Building {
             stock: crate::needs::Stock::full(crate::blueprint::blueprint(kind).stock as f64),
             balance: float(kind, EDGE_WAGE),
             wage: EDGE_WAGE,
-            prices: sells(kind).map(|t| (t.need, edge_price(t.need))).collect(),
+            prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
         }
     }
 }

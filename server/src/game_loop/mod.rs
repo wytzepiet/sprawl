@@ -198,9 +198,9 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Site { kind, x, y } => serde_json::to_value(world.site_under(x, y, kind)).unwrap_or_default(),
                         Ask::Call(id) => {
                             // A depot fetches; anything else calls for stock.
-                            let depot = matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if crate::blueprint::blueprint(b.kind).answers.is_some());
+                            let depot = matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if crate::economy::depot(b.kind));
                             let kind = if depot { crate::calls::CallKind::Fetch } else { crate::calls::CallKind::Stock };
-                            world.calls.push(crate::calls::Call { kind, at: id, raised: now, answered_by: None });
+                            world.calls.push(crate::calls::Call { kind, at: id, raised: now, answered_by: None, load: 0.0 });
                             crate::calls::dispatch(&mut world, &mut events, now);
                             serde_json::json!({ "calls": world.calls.iter().map(|c| serde_json::json!({ "kind": format!("{:?}", c.kind), "at": c.at, "answered_by": c.answered_by })).collect::<Vec<_>>() })
                         }
@@ -1011,10 +1011,13 @@ mod tests {
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         // Nobody lives here yet: the sales are ours, so the shelves and
-        // the truck are the only things moving.
-        sell(&mut world, &mut events, shop, 21.0, 0);
-        assert!(stock(&world, shop) < 0.5);
-        assert_eq!(world.calls.len(), 1, "low shelves call for stock");
+        // the truck are the only things moving. A few short of the reorder
+        // point, nothing stirs; past it, the shelf calls.
+        let s = crate::economy::reorder(&world, shop);
+        sell(&mut world, &mut events, shop, 40.0 - s - 1.0, 0);
+        assert!(world.calls.is_empty(), "a shelf over its reorder point called");
+        sell(&mut world, &mut events, shop, 2.0, 0);
+        assert_eq!(world.calls.len(), 1, "a shelf at its reorder point calls for stock");
         let truck = world.calls[0].answered_by.expect("a truck from beyond the edge answers");
         assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Truck && c.trip.is_some()));
 
@@ -1024,7 +1027,8 @@ mod tests {
         assert!(world.objects.get(truck).is_none(), "the truck from beyond the edge is gone");
     }
 
-    /// With a warehouse in town, its own truck answers, and comes home.
+    /// With a warehouse in town nearer than the edge, at the same price,
+    /// its own van answers, and comes home.
     #[test]
     fn a_warehouse_sends_its_own_truck_and_it_comes_home() {
         let mut world = street();
@@ -1032,9 +1036,12 @@ mod tests {
         let warehouse = build(&mut world, 60, BuildingKind::Warehouse, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
-        sell(&mut world, &mut events, shop, 21.0, 0);
+        sell(&mut world, &mut events, shop, 35.0, 0);
         let truck = world.calls[0].answered_by.expect("the warehouse answers");
         assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
+        // The shop learned how long a delivery from next door takes, and
+        // reorders later for it.
+        let before = crate::economy::reorder(&world, shop);
 
         // Out through one ring and home through another, at lot speed, on
         // top of the drive: under three hours.
@@ -1043,6 +1050,38 @@ mod tests {
         let e = world.objects.get(truck).expect("the warehouse keeps its truck");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()));
         assert_eq!(e.position, world.objects.get(warehouse).unwrap().position, "parked back at the warehouse");
+        assert_eq!(stock(&world, shop), 1.0, "the shelves are full again");
+        assert!(crate::economy::reorder(&world, shop) < before, "the shop did not learn the lead time");
+    }
+
+    /// The building's turn (docs/economy.md §6.2): a depot that posts a
+    /// price the drive it saves cannot pay for loses the order to the edge,
+    /// and wins it back when it comes down.
+    #[test]
+    fn a_dear_depot_loses_the_order_to_the_edge() {
+        let mut world = street();
+        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
+        let warehouse = build(&mut world, 60, BuildingKind::Warehouse, 1);
+        let mut events = EventQueue::new();
+        let post = |world: &mut World, price: f64| {
+            if let Some(GameObject::Building(b)) = world.objects.get_mut(warehouse).map(|e| &mut e.object) {
+                b.prices.insert(crate::needs::Need::Eat, price);
+            }
+        };
+        let answered_by_the_warehouse = |world: &World| {
+            let truck = world.calls[0].answered_by.expect("somebody answers");
+            matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse)
+        };
+        post(&mut world, 2.0 * crate::economy::wholesale(crate::needs::Need::Eat));
+        sell(&mut world, &mut events, shop, 35.0, 0);
+        assert!(!answered_by_the_warehouse(&world), "the shop paid double to save a short drive");
+        // The order stands until it lands; a second shop asks fresh.
+        let other = build(&mut world, 30, BuildingKind::Shop, 1);
+        post(&mut world, crate::economy::wholesale(crate::needs::Need::Eat));
+        sell(&mut world, &mut events, other, 35.0, 0);
+        assert_eq!(world.calls.len(), 2);
+        let truck = world.calls[1].answered_by.expect("somebody answers");
+        assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse), "at the edge's price the nearer seller wins");
     }
 
     /// A depot draws on its own stock with every van it sends; when that
@@ -1069,21 +1108,22 @@ mod tests {
             }
             *away |= answered.is_some_and(|car| world.objects.get(car).is_some_and(|e| e.position.is_none()));
         };
-        // Six shops' worth on the depot's shelves: four deliveries of most
-        // of a shop take it below half.
+        // Six shops' worth on the depot's shelves: deliveries of most of a
+        // shop take it down to its reorder point within a week of them.
         let mut t = 0;
-        let mut lowest: f64 = 1.0;
-        for _ in 0..4 {
+        let mut rounds = 0;
+        while world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
+            rounds += 1;
+            assert!(rounds <= 8, "the depot never ran low: {}", stock(&world, depot));
             sell(&mut world, &mut events, shop, 35.0, t);
             let van = world.calls.iter().find(|c| c.kind == calls::CallKind::Stock).and_then(|c| c.answered_by).expect("a van answers");
             assert!(matches!(world.objects.get(van).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Van));
             let until = t + 3 * DAY_MS as u64 / 24;
             while step(&mut world, &mut events, &mut intersections, &mut t, until) {
-                lowest = lowest.min(stock(&world, depot));
                 watch(&world, &mut answered, &mut away);
             }
         }
-        assert!(lowest < 0.5, "the depot never ran low: {lowest}");
+        assert!(rounds >= 4, "the depot ran low after {rounds} deliveries");
         // Out past the edge and gone for a while, then home.
         for _ in 0..40 {
             let until = t + calls::AWAY_MS / 4;
@@ -1526,8 +1566,10 @@ mod tests {
         for (id, kind, balance, float) in &buildings {
             let page = world.books.get(id).map(|k| k.before(SEASON * DAY_MS as u64).clone()).unwrap_or_default();
             println!("{id} {kind:?}: {balance:.1} / {float:.1}, yesterday in {:.1} out {:.1} wages {:.1}", page.revenue, page.purchases, page.wages);
-            let sells = crate::economy::sells(*kind).next().is_some();
-            assert!(!sells || page.revenue > 0.0, "{id} {kind:?} sold nothing on the last day");
+            // A depot the town does not need sells nothing: that is the
+            // conga (§11.7), not harm.
+            let trades = crate::economy::sells(*kind).next().is_some() && !crate::economy::depot(*kind);
+            assert!(!trades || page.revenue > 0.0, "{id} {kind:?} sold nothing on the last day");
         }
     }
 

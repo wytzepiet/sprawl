@@ -2,9 +2,9 @@
 
 Status: specification, drafted 2026-09-09 and reworked the same day after
 a second argument, about where money goes when nobody spends it. Built
-through step 2 of §12 on 2026-09-09; §12.2 records what building it
-decided, and where it departs from the text above. Supersedes `game.md`
-§Money, which points here. Builds on `residents.md` (buckets, taps, the
+through step 3 of §12 on 2026-09-09; §12.2 and §12.3 record what
+building it decided, and where it departs from the text above.
+Supersedes `game.md` §Money, which points here. Builds on `residents.md` (buckets, taps, the
 score), `services.md` (calls) and `parking.md` (lots as the place
 vehicles stand). The single ledger of hours served that was both level
 and money (`xp.rs`) is gone; `shelved.md` has it.
@@ -595,12 +595,53 @@ district, not a street. The wage cut keeps such a shop alive at a wage
 its trade is worth, staffed from beyond the edge; whether that is the
 game, or shops should be smaller, is open (§13.7).
 
+### 12.3 Step 3, as built
+
+The building's turn is `calls::cheapest_seller`; the numbers are in
+`economy.rs` with the rest.
+
+- **The delivered price is the score.** Every seller fills the order
+  alike, so §6.1's score ranks them by its denominator alone: the time
+  until the load lands, plus the order at the posted price in hours of
+  the buyer's own earning. A depot's van is an option while the depot
+  has the good on its shelf and a van standing free; the outside always
+  is, by a lorry that drives in from the nearest exit at the edge's
+  wholesale. A van loads as it leaves — what the shelf has, up to the
+  order — and the load rides on the call; the money moves when it
+  lands, and the buyer looks at its shelf again then, since a load
+  short of the order or a long lead leaves it under the reorder point.
+  Reading the depot's shelf at landing instead let two vans promise the
+  same crates, and the second landed empty-handed at a shelf that,
+  selling nothing, never called again. The nearest-depot search, and
+  its waiting for a van to come home, are gone: a buyer whose depot is
+  busy buys from beyond the edge, at the drive's cost.
+- **A building's earning** is yesterday's takings over the day; before
+  it has a day of them, what the edge would pay for everything it could
+  sell (§13.3, resolved as it suggested).
+- **A depot posts a price on its shelf**, nudged like any other. It
+  opens at the edge's wholesale, which is its floor, so a depot that
+  saves nobody a drive sells nothing and sweeps nothing (§11.7). What it
+  could sell in a day, for selling out and piling up, is its shelf
+  turned once. Its wages stay the treasury's: the row answers calls,
+  and §8.2's special case is about who answers, not who sells.
+- **`(s, S)`.** The shelf is `S`. The reorder point is what the taps
+  could sell during the lead time — the last delivery's, from the call
+  to the load landing; before the first, as long as a lorry is away
+  beyond the edge — plus a full house, everyone the taps seat at once,
+  so a rush during the lead does not empty the shelf. Half the shelf,
+  which it replaces, sent a supermarket for stock with seventy meals on
+  the shelf and a shop next door to a depot with twenty.
+- **Freight is the drive** (§5.3), in the buyer's time, and nothing is
+  charged for it in money: the van's fuel and its driver's hours are
+  the depot's, as they were. The band a depot can price in is what its
+  customers' hours are worth over the drive it saves, which is the
+  argument for a road.
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
 2. ~~The switching threshold's value.~~ §12.2.
-3. A new building's `earning` before it has a day of revenue — the edge
-   price of its output times its rated output is the obvious seed.
+3. ~~A new building's `earning` before it has a day of revenue.~~ §12.3.
 4. Household delivery (§6.1) — permitted, unbuilt. Until then a meal at
    home is groceries from the edge (§12.2).
 5. `edge_price` drift for seasons (§8.1).

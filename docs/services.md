@@ -82,10 +82,12 @@ The one mechanic under every service.
   a time: a resident who needs shopping, a shop low on stock, a resident
   fallen ill, a building on fire.
 - A **facility** kind answers calls of a kind with a **vehicle it owns**.
-  The nearest facility with a vehicle free answers; if none, the call is
-  answered from **beyond the edge**: a vehicle appears at the nearest
-  entry node and drives in. Later, "beyond the edge" is another player's
-  city.
+  For stock the caller chooses: every facility with the good and a
+  vehicle free is a seller, and the cheapest delivered wins
+  (`economy.md` §6.2). For an emergency the nearest with a vehicle free
+  answers. If none, the call is answered from **beyond the edge**: a
+  vehicle appears at the nearest entry node and drives in. Later,
+  "beyond the edge" is another player's city.
 - The vehicle drives to the caller, spends the row's service time there,
   and returns. The call resolves with a **consequence scaled by how long
   it took**: a late delivery is an empty shelf, a late ambulance a longer
