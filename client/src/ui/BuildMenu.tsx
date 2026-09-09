@@ -43,16 +43,16 @@ export function BuildMenuSheet() {
   const afford = (kind: BuildingKind) => hours() >= BLUEPRINTS[kind].price;
   const [tab, setTab] = createSignal<Tab>("homes");
   const kinds = () => KINDS.filter((k) => BLUEPRINTS[k].tab === tab());
-  // The shelf is built once for its kinds; a new tab is a new shelf.
-  const shelf = createMemo(() => {
-    const k = kinds();
-    return <BuildMenuScene kinds={k} hovered={over()} onFit={setTilePx} />;
-  });
   // One tile of the shelf in pixels, so a pin can point at its plot's
   // centre whatever the plot's size. Horizontally that is a fraction of
   // the slot; vertically an offset from the canvas middle, on the row.
   const [tilePx, setTilePx] = createSignal(0);
   const [over, setOver] = createSignal<BuildingKind | null>(null);
+  // The shelf is built once for its kinds; a new tab is a new shelf.
+  const shelf = createMemo(() => {
+    const k = kinds();
+    return <BuildMenuScene kinds={k} hovered={over()} onFit={setTilePx} />;
+  });
   // The row stands centred in the shelf; each slot is laid over its plot,
   // and its pin over the building, up being up as the shelf's camera has
   // it.
