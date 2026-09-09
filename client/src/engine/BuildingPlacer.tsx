@@ -2,7 +2,7 @@ import { createMemo, createSignal, onCleanup } from "solid-js";
 import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
-import { useGame } from "../state/gameObjects";
+import { buildingAt, useGame } from "../state/gameObjects";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
 import { shapeFor, SLAB } from "./objects/buildings";
 import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "./objects/lots";
@@ -45,21 +45,18 @@ export function BuildingPlacer() {
   };
 
   /**
-   * Every tile of the footprint free, or holding only a driveway stub. A
-   * street beside it is not required: a plot with none stands red until
-   * the mayor draws one to it.
+   * Every tile of the footprint free of any plot, building or lot, and
+   * holding at most a driveway stub. A street beside it is not required: a
+   * plot with none stands red until the mayor draws one to it.
    */
   function fits(cell: GridCoord, facing: number): boolean {
     const [w, h] = plot(kind(), facing).size;
     for (let dy = 0; dy < h; dy++) {
       for (let dx = 0; dx < w; dx++) {
-        for (const entry of getObjectsAt(cell.x + dx, cell.y + dy)) {
-          if (entry.object.kind === "Building") return false;
-          if (entry.object.kind === "RoadNode") {
-            const { outgoing, incoming } = entry.object.data;
-            if (new Set([...outgoing, ...incoming]).size !== 1) return false;
-          }
-        }
+        const x = cell.x + dx, y = cell.y + dy;
+        if (buildingAt(x, y)) return false;
+        const r = road(x, y);
+        if (r && new Set([...r.outgoing, ...r.incoming]).size !== 1) return false;
       }
     }
     return true;
@@ -141,7 +138,7 @@ export function BuildingPlacer() {
     return [bx + bw / 2, by + bh / 2] as const;
   };
   const buildingGeo = createMemo(() => shapeFor(kind(), ...lie().building[1]));
-  const buildingAt = () => [spring.pos()[0], spring.pos()[1], 0] as [number, number, number];
+  const buildingPos = () => [spring.pos()[0], spring.pos()[1], 0] as [number, number, number];
   // The lot in its own frame, turned into place: along the frontage it is
   // the lot's width, in from the street the whole plot's depth.
   const lot = createMemo(() => {
@@ -164,7 +161,7 @@ export function BuildingPlacer() {
 
   return (
     <>
-      <Mesh name="building_ghost" geometry={buildingGeo()} position={buildingAt()} color={ok() ? GHOST_COLOR : REFUSED} enabled={shown()} />
+      <Mesh name="building_ghost" geometry={buildingGeo()} position={buildingPos()} color={ok() ? GHOST_COLOR : REFUSED} enabled={shown()} />
       <Mesh
         name="lot_ghost"
         geometry={lot() ? runSlabGeometry(lot()!.w, lot()!.depth, false) : runSlabGeometry(1, 1, false)}
