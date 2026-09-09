@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import BuildMenuScene, { slots } from "./BuildMenuScene";
 import { BLUEPRINTS, KINDS, TABS, plot, type Tab } from "../blueprints";
 import { PinBody } from "./Pin";
@@ -43,6 +43,11 @@ export function BuildMenuSheet() {
   const afford = (kind: BuildingKind) => hours() >= BLUEPRINTS[kind].price;
   const [tab, setTab] = createSignal<Tab>("homes");
   const kinds = () => KINDS.filter((k) => BLUEPRINTS[k].tab === tab());
+  // The shelf is built once for its kinds; a new tab is a new shelf.
+  const shelf = createMemo(() => {
+    const k = kinds();
+    return <BuildMenuScene kinds={k} hovered={over()} onFit={setTilePx} />;
+  });
   // One tile of the shelf in pixels, so a pin can point at its plot's
   // centre whatever the plot's size. Horizontally that is a fraction of
   // the slot; vertically an offset from the canvas middle, on the row.
@@ -105,7 +110,7 @@ export function BuildMenuSheet() {
           {/* One world for the whole shelf, and a slot laid over each kind
               standing in it: the pin, the label, and the drag to place it. */}
           <div class="pins relative rounded-xl overflow-hidden" style={{ height: "210px" }}>
-            <BuildMenuScene kinds={kinds()} hovered={over()} onFit={setTilePx} />
+            {shelf()}
             <div class="absolute inset-0">
               <For each={kinds()}>
                 {(kind, i) => (
