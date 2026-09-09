@@ -241,11 +241,6 @@ impl World {
     /// of the building's own tiles, so redrawing the driveway moves it with no
     /// bookkeeping, and demolishing it leaves the building visibly cut off
     /// rather than holding a dangling reference.
-    /// Is the building reached from the world: a driveway, on road that is
-    /// joined to the world beyond the survey? A driveway onto an island is
-    /// no way in. The client draws this for itself; only tests ask here.
-    #[cfg(test)]
-
     pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
         self.driveways_of(building_id).into_iter().next()
     }
@@ -269,15 +264,16 @@ impl World {
         x >= 0 && y >= 0 && x < lw as i32 && y < ld as i32
     }
 
-    /// Every building, as (id, position). Only tests still want the world
-    /// flattened like this; the simulation itself always knows which building
-    /// it means.
+    /// Every building standing on the land, as (id, position) — the edge is
+    /// not one of them; it stands where the map stops. Only tests still want
+    /// the world flattened like this; the simulation itself always knows
+    /// which building it means.
     #[cfg(test)]
     pub fn all_buildings(&self) -> Vec<(EntityId, GridCoord)> {
         self.objects
             .all_entries()
             .iter()
-            .filter(|e| matches!(e.object, GameObject::Building(_)))
+            .filter(|e| matches!(e.object, GameObject::Building(_)) && !self.edge.contains(&e.id))
             .filter_map(|e| e.position.map(|p| (e.id, p)))
             .collect()
     }

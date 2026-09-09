@@ -130,6 +130,13 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some()) {
             continue;
         }
+        // Nor is the edge: it is derived from where the roads run off the
+        // map, and it is stood again from the road graph on the way back in.
+        // Saved, it would be a building beyond the frontier revealing the
+        // ground around itself on every load.
+        if matches!(entry.object, GameObject::Building(ref b) if b.kind == crate::protocol::BuildingKind::Edge) {
+            continue;
+        }
         let json = serde_json::to_string(entry).expect("failed to serialize");
         let (px, py) = entry
             .position

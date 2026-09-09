@@ -987,32 +987,57 @@ mod tests {
             _ => unreachable!(),
         };
         let lorries = |w: &World| w.objects.all_entries().iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).collect::<Vec<_>>();
-        assert_eq!(lorries(&world).len(), 2, "two lorries from the day it is reached");
+        let fleet = lorries(&world);
+        assert_eq!(fleet.len(), 2, "two lorries from the day it is reached");
+        // The fetch can be raised, answered and finished inside one stretch
+        // of pumping, so the run is watched all the way through rather than
+        // sampled: who answered, and whether they were ever off the map.
+        let mut answered: Option<EntityId> = None;
+        let mut away = false;
+        let watch = |world: &World, answered: &mut Option<EntityId>, away: &mut bool| {
+            if let Some(car) = world.calls.iter().find(|c| c.kind == calls::CallKind::Fetch).and_then(|c| c.answered_by) {
+                *answered = Some(car);
+            }
+            *away |= answered.is_some_and(|car| world.objects.get(car).is_some_and(|e| e.position.is_none()));
+        };
         // Six van loads on the depot's shelves: four deliveries take it below half.
         let mut t = 0;
+        let mut lowest: f64 = 1.0;
         for _ in 0..4 {
             for _ in 0..21 {
                 calls::visit(&mut world, &mut events, shop, t);
             }
             let van = world.calls.iter().find(|c| c.kind == calls::CallKind::Stock).and_then(|c| c.answered_by).expect("a van answers");
             assert!(matches!(world.objects.get(van).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Van));
-            pump(&mut world, &mut events, &mut intersections, t, t + 3 * DAY_MS as u64 / 24);
-            t += 3 * DAY_MS as u64 / 24;
+            let until = t + 3 * DAY_MS as u64 / 24;
+            while t < until {
+                t += STEP_MS;
+                events.set_now(t);
+                while let Some(id) = events.pop_due() {
+                    handle_wake(&mut world, &mut events, &mut intersections, id, t);
+                }
+                lowest = lowest.min(stock(&world, depot));
+                watch(&world, &mut answered, &mut away);
+            }
         }
-        assert!(stock(&world, depot) < 0.5, "the depot ran low: {}", stock(&world, depot));
-        let fetch = world.calls.iter().find(|c| c.kind == calls::CallKind::Fetch).expect("the depot called for a fetch");
-        let lorry = fetch.answered_by.expect("one of its lorries answers");
-        assert!(lorries(&world).contains(&lorry));
+        assert!(lowest < 0.5, "the depot never ran low: {lowest}");
         // Out past the edge and gone for a while, then home.
-        let mut away = false;
         for _ in 0..40 {
-            pump(&mut world, &mut events, &mut intersections, t, t + calls::AWAY_MS / 4);
-            t += calls::AWAY_MS / 4;
-            away |= world.objects.get(lorry).unwrap().position.is_none();
-            if world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
+            let until = t + calls::AWAY_MS / 4;
+            while t < until {
+                t += STEP_MS;
+                events.set_now(t);
+                while let Some(id) = events.pop_due() {
+                    handle_wake(&mut world, &mut events, &mut intersections, id, t);
+                }
+                watch(&world, &mut answered, &mut away);
+            }
+            if answered.is_some() && world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
                 break;
             }
         }
+        let lorry = answered.expect("one of its lorries answers the fetch");
+        assert!(fleet.contains(&lorry), "the fetch went to one of the depot's own lorries");
         assert!(away, "the lorry was never beyond the edge");
         assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch), "the fetch is done");
         assert_eq!(stock(&world, depot), 1.0, "the depot is full again");
@@ -1038,8 +1063,11 @@ mod tests {
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
+        // Fourteen households in the two blocks, and two desks over: the
+        // office's last two are filled from beyond the edge, by people who
+        // drive in and are gone again by night.
         let people = world.resident_ids();
-        assert_eq!(people.len(), 14);
+        assert_eq!(people.len(), 16);
 
         let mut log = Vec::new();
         let mut last: Vec<Option<EntityId>> = people.iter().map(|_| None).collect();
@@ -1181,9 +1209,20 @@ mod tests {
         assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
     }
 
+    /// Every kind the mayor could put down: everything with a price. The
+    /// edge has none, and is not placed by anyone.
+    fn placeable() -> Vec<BuildingKind> {
+        BuildingKind::ALL.into_iter().filter(|&k| crate::blueprint::blueprint(k).price.is_finite()).collect()
+    }
+
     /// A town along the street, settled and thinking, run for a while: a
     /// mix of every kind, and the street running out past the frontier for
     /// people to arrive by. Returns it and how many times a resident thought.
+    ///
+    /// The street has to leave the survey, or there is no road exit — and
+    /// with no road exit nobody can drive in at all. The town then stands
+    /// empty while every resident spends the day retrying an arrival that
+    /// can never happen, which is a measurement of nothing.
     fn live(mix: &[BuildingKind], days: u64) -> (World, u64) {
         let mut world = street();
         // Forty plots in a row, a tile apart: a lot claims the tile beside
@@ -1194,9 +1233,19 @@ mod tests {
             build(&mut world, x, kind, 1);
             x += crate::blueprint::plot(kind, 0).size.0 as i32 + 1;
         }
+        // The street runs on well past anything built on it, so it leaves
+        // the survey: a town with a way off the map is the one being
+        // measured, since the edge is an option for every bucket.
+        for y in -6..6 {
+            for x in 170..400 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        world.place_road_path(&(167..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
+        assert!(!world.edge.is_empty(), "the street has to run off the map, or nobody can arrive at all");
         let mut wakes = 0;
         let mut now = 0;
         while now < days * DAY_MS as u64 {
@@ -1227,7 +1276,10 @@ mod tests {
     #[test]
     #[ignore]
     fn a_town_thinks_within_budget() {
-        for (name, mix) in [("full", &BuildingKind::ALL[..]), ("bare", &[BuildingKind::House, BuildingKind::Office][..])] {
+        // Everything with a price is everything the mayor could build. The
+        // edge has none — it is not a town's to have — so it is not in the mix.
+        let every_kind = placeable();
+        for (name, mix) in [("full", &every_kind[..]), ("bare", &[BuildingKind::House, BuildingKind::Office][..])] {
             let (world, wakes) = live(mix, 1);
             let residents = world.resident_ids().len() as u64;
             let per_resident_day = wakes / residents.max(1);
@@ -1243,10 +1295,10 @@ mod tests {
     #[ignore]
     fn how_fast_a_town_runs() {
         let started = Instant::now();
-        let (world, wakes) = live(&BuildingKind::ALL, 3);
+        let (world, wakes) = live(&placeable(), 3);
         let secs = started.elapsed().as_secs_f64();
         println!(
-            "{} residents, {wakes} wakes: {:.1} sim days per second",
+            "{} residents, {wakes} wakes: {:.2} sim days per second",
             world.resident_ids().len(),
             3.0 / secs
         );
@@ -1257,7 +1309,7 @@ mod tests {
         let (two, [shop, lunch]) = arrival_log(2);
         let (one, _) = arrival_log(1);
         // Sixteen people, each at least driving in, to work, and home.
-        assert!(one.len() >= 14 * 3, "only {} moves logged", one.len());
+        assert!(one.len() >= 16 * 3, "only {} moves logged", one.len());
         assert_eq!(two[..one.len()], one[..], "the first day differs between runs");
         assert!(two.len() > one.len(), "nobody moved on the second day");
 
@@ -1271,7 +1323,7 @@ mod tests {
         for &(_, id, ..) in two.iter().filter(|&&(t, ..)| t >= day) {
             *moves.entry(id).or_insert(0) += 1;
         }
-        assert_eq!(moves.len(), 14, "everyone went out on day two");
+        assert_eq!(moves.len(), 16, "everyone went out on day two");
         assert!(moves.values().all(|&n| n % 2 == 0 && (4..=10).contains(&n)), "someone thrashed: {moves:?}");
         assert!(moves.values().any(|&n| n >= 8), "nobody went out for lunch: {moves:?}");
         let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at, _)| (id, at)).collect();
@@ -1307,24 +1359,146 @@ mod tests {
             .map(|&(t, ..)| (t % day) as f64 / hour as f64)
             .collect();
         assert!(outings.iter().all(|&h| h >= 17.0), "an outing during the shift: {outings:.1?}");
-        assert!(outings.len() < 14, "everyone out every night: {outings:.1?}");
+        assert!(outings.len() < 16, "everyone out every night: {outings:.1?}");
     }
 
-    /// The demand readout names what is missing: a household with nowhere
-    /// to work is two people short of a job, in the chunk they live in.
+    /// A household with nowhere in town to work still works: the job is
+    /// beyond the edge, and the commute out to it is the whole price of not
+    /// having built one. Nothing is missing, so nothing shows as missing —
+    /// that is what the edge is for.
     #[test]
-    fn a_town_without_jobs_says_so() {
+    fn a_town_without_jobs_sends_its_people_beyond_the_edge() {
         let mut world = street();
-        build(&mut world, 0, BuildingKind::House, 1);
+        let home = build(&mut world, 0, BuildingKind::House, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
-        pump(&mut world, &mut events, &mut intersections, 0, 4 * (DAY_MS as u64) / 24);
-        let d = crate::resident::demand(&world, 4 * (DAY_MS as u64) / 24);
-        let unmet = d["unmet"].as_array().unwrap();
-        assert_eq!(unmet.len(), 1, "{unmet:?}");
-        assert_eq!(unmet[0]["need"], "Work");
-        assert_eq!(unmet[0]["people"], 2);
-        assert_eq!(unmet[0]["chunk"], serde_json::json!([0, 0]));
+        let people = world.resident_ids();
+        assert_eq!(people.len(), 2);
+        let work: Vec<EntityId> = people
+            .iter()
+            .filter_map(|&id| match world.objects.get(id).unwrap().object {
+                GameObject::Resident(ref r) => r.work,
+                _ => None,
+            })
+            .collect();
+        assert_eq!(work.len(), 2, "both took a job");
+        assert!(work.iter().all(|w| world.edge.contains(w)), "both work beyond the edge");
+
+        // And they drive there: a day of it puts them at the edge, on the
+        // clock, and back home again.
+        let day = DAY_MS as u64;
+        let mut seen_at_work = false;
+        let mut now = 0;
+        while now < day {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(id) = events.pop_due() {
+                handle_wake(&mut world, &mut events, &mut intersections, id, now);
+            }
+            seen_at_work |= people.iter().any(|&id| {
+                at_of(&world, id) == Some(work[0]) && doing(&world, id) == Some(crate::needs::Need::Work)
+            });
+        }
+        assert!(seen_at_work, "nobody ever got to the job beyond the edge");
+        assert!(people.iter().any(|&id| at_of(&world, id) == Some(home)), "and somebody came home");
+
+        // Nothing at all was on offer nowhere: the edge answers everything.
+        let d = crate::resident::demand(&world, day);
+        assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
+    }
+
+    /// A vacancy the city cannot fill from among its own is filled from off
+    /// the map: someone whose home is the road exit, who drives in to work
+    /// and is gone again by night.
+    #[test]
+    fn a_job_nobody_in_town_fills_is_filled_from_the_edge() {
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::House, 1); // two people
+        let office = build(&mut world, 30, BuildingKind::Office, 2); // twelve jobs
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+
+        let jobs = crate::blueprint::blueprint(BuildingKind::Office).jobs as usize;
+        let staff: Vec<EntityId> = world
+            .resident_ids()
+            .into_iter()
+            .filter(|&id| matches!(world.objects.get(id).unwrap().object, GameObject::Resident(ref r) if r.work == Some(office)))
+            .collect();
+        assert_eq!(staff.len(), jobs, "every desk is taken");
+        let commuters: Vec<EntityId> = staff
+            .iter()
+            .copied()
+            .filter(|&id| matches!(world.objects.get(id).unwrap().object, GameObject::Resident(ref r) if world.edge.contains(&r.home)))
+            .collect();
+        assert_eq!(commuters.len(), jobs - 2, "the ten the town cannot house live off the map");
+
+        // They drive in like anyone else, and the office fills up.
+        let day = DAY_MS as u64;
+        let mut at_desk = 0;
+        let mut now = 0;
+        while now < day {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(id) = events.pop_due() {
+                handle_wake(&mut world, &mut events, &mut intersections, id, now);
+            }
+            at_desk = at_desk.max(commuters.iter().filter(|&&id| at_of(&world, id) == Some(office)).count());
+        }
+        assert!(at_desk >= 2, "only {at_desk} of the commuters ever reached the office");
+
+        // Pull the office down and the commuters go with it: nobody lives at
+        // the edge for its own sake.
+        world.remove_building(office, day);
+        world.settle();
+        assert!(
+            commuters.iter().all(|&id| world.objects.get(id).is_none()),
+            "someone stayed on at the edge with no job to come in for",
+        );
+    }
+
+    /// With no shop in town, a hungry resident drives out to the edge for a
+    /// meal — the edge is a building with a kitchen like any other, found by
+    /// the same search.
+    #[test]
+    fn with_nothing_in_town_a_meal_is_had_beyond_the_edge() {
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::Apartment, 2);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let people = world.resident_ids();
+
+        let day = DAY_MS as u64;
+        let mut ate_out = 0;
+        let mut now = 0;
+        while now < 2 * day {
+            now += STEP_MS;
+            events.set_now(now);
+            while let Some(id) = events.pop_due() {
+                handle_wake(&mut world, &mut events, &mut intersections, id, now);
+            }
+            ate_out = ate_out.max(
+                people
+                    .iter()
+                    .filter(|&&id| {
+                        at_of(&world, id).is_some_and(|a| world.edge.contains(&a))
+                            && doing(&world, id) == Some(crate::needs::Need::Eat)
+                    })
+                    .count(),
+            );
+        }
+        assert!(ate_out > 0, "nobody drove to the edge to eat");
+        // And the city earned nothing by it: that meal was sold off the map.
+        let d = crate::resident::demand(&world, 2 * day);
+        let sold_at_the_edge = d["delivered"].as_array().unwrap().iter().any(|v| {
+            world.edge.contains(&(v["building"].as_u64().unwrap() as EntityId)) && v["need"] == "Eat"
+        });
+        assert!(sold_at_the_edge, "the edge's books show no meals");
+        assert!(
+            crate::resident::served(&world).iter().all(|(_, t)| t.slots != u32::MAX),
+            "the city is earning from the edge's taps",
+        );
     }
 }

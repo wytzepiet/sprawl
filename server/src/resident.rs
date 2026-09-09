@@ -43,7 +43,7 @@ pub fn handle_resident_wake(
     let Some(r) = resident(world, id).cloned() else { return };
 
     // Off-map: someone who has not driven in yet. They enter the way
-    // everyone enters — by road, from beyond the frontier, car and all.
+    // everyone enters — by road, in at the nearest road exit, car and all.
     let Some(mut at) = r.at else {
         let entry = position_of(world, r.home)
             .and_then(|(x, y)| world.entry_node_near(crate::protocol::GridCoord { x, y }));
@@ -243,6 +243,9 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
         .revealed
         .iter()
         .flat_map(|&c| world.buildings_in(c))
+        // The edge stands beyond the survey, so it is in no revealed chunk,
+        // and it is what makes a need with nothing in town answerable at all.
+        .chain(world.edge.iter().copied())
         // A home's kitchen is its residents' alone.
         .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
         // Empty shelves sell nothing.
@@ -775,6 +778,12 @@ pub fn served(world: &World) -> Vec<(f64, &'static Tap)> {
         .filter_map(|id| {
             let r = resident(world, id)?;
             let (at, need) = (r.at?, r.selected?);
+            // The seam: what the edge serves is some other city's earnings.
+            // The whole argument for building your own is that an hour spent
+            // out there is an hour this one does not get.
+            if world.edge.contains(&at) {
+                return None;
+            }
             let tap = taps_of(world, at).iter().find(|t| t.need == need)?;
             let company = crowd.get(&(at, need)).copied().unwrap_or(0);
             Some((tap.serving(slots_at(world, at, tap), company), tap))

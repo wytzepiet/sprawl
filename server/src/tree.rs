@@ -226,9 +226,7 @@ impl Build {
         b
     }
 
-    /// The whole tree taken, for tests that want every kind on the table.
-    #[cfg(test)]
-
+    /// The nodes taken, in reading order: what a save writes down.
     pub fn taken(&self) -> Vec<Cell> {
         let mut v: Vec<Cell> = self.taken.iter().copied().collect();
         v.sort_by_key(|c| (c.y, c.x));

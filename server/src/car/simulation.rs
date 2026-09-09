@@ -299,7 +299,9 @@ pub fn handle_car_wake_up(
             // or the car would stay on their queues as a ghost.
             leave_crossed(world, events, intersections, car_id, &trip, old_ri, ri);
             // The road ran out: a lorry off past the edge, away for a while.
-            if world.network.is_exit(*trip.route.last().unwrap()) {
+            // A private car stopping at the edge is visiting it, not leaving:
+            // the road exit is a building, and its door is a road node.
+            if role != CarRole::Private && world.network.is_exit(*trip.route.last().unwrap()) {
                 world.unregister_car_route(car_id, &trip.route);
                 let woken = intersections.remove_car_from_all(car_id);
                 for (_, id) in woken {
