@@ -548,9 +548,12 @@ decision the text left open, or moved one it had made.
   they do not). A shop with no trade pays what its trade is worth, and
   its staff take the next best score. Without this every shop in a small
   town pays eighteen hours a day for a handful of meals and is dry on the
-  second day. The signal for a rise is a desk the edge had to fill: a job
-  the town cannot fill at the going wage is still filled from beyond the
-  edge, as `game.md` says, and the wage rises until the town fills it.
+  second day. A day nobody worked says nothing, and the wage stands; and
+  no wage goes under a tenth of the edge's, since someone paid nothing
+  prices money at infinitely many hours and the score cannot say so.
+  The signal for a rise is a desk the edge had to fill: a job the town
+  cannot fill at the going wage is still filled from beyond the edge, as
+  `game.md` says, and the wage rises until the town fills it.
 - **The float and the sweep.** A building's float is a day of wages, for
   a kind whose takings come in through the day and whose wages go out at
   the end of it, plus a full shelf at wholesale; nothing for a house or a
