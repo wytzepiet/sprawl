@@ -111,7 +111,7 @@ impl World {
         let into_building = self.claimed_plot_at(to).is_some();
         // A plot with a lot is entered through the lot, never through the
         // building: a road drawn at the building is refused, whatever its angle.
-        if into_building && !self.is_entrance_tile(to) {
+        if into_building && !self.may_enter_plot(from, to) {
             return;
         }
         if self.are_connected(from, to) {
