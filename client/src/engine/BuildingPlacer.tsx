@@ -79,7 +79,12 @@ export function BuildingPlacer() {
     const placing = placingBuilding();
     if (!placing) return;
     const s = site();
-    if (s?.fits) send({ type: "PlaceBuilding", data: { pos: s.pos, kind: placing } });
+    const placed = !!s?.fits;
+    if (s && placed) send({ type: "PlaceBuilding", data: { pos: s.pos, kind: placing } });
+    // Placed: the street keeps its new arm until the server's own version
+    // of it arrives. Dropped: everything goes back.
+    clearDrive(placed);
+    undo = [];
     setPlacingBuilding(null);
     setSite(null);
     asked = null;
@@ -123,15 +128,18 @@ export function BuildingPlacer() {
   // on the door tile and the street's node with one more arm, put through
   // the store the way the server's ops are, so the street bends, its
   // neighbours redraw and the dead end loses its cap exactly as if the
-  // road were laid. Undone the same way when the site moves or the drag
-  // ends; placing lays the real one.
+  // road were laid. A two-way link is each node naming the other as
+  // outgoing — incoming is for one-way streets, and a link named both ways
+  // is drawn as one, chevrons and all. Taken back when the site moves or
+  // the drag is dropped; when it is placed, the real nodes from the server
+  // replace the street, and only the stand-in door has to go.
   let undo: Operation[] = [];
-  const clearDrive = () => {
-    if (undo.length) preview(undo);
+  const clearDrive = (placed: boolean) => {
+    if (undo.length) preview(placed ? undo.filter((o) => o.op === "Delete") : undo);
     undo = [];
   };
   createEffect(on(site, (s) => {
-    clearDrive();
+    clearDrive(false);
     if (!s?.door || !s.street) return;
     const street = getObjectsAt(s.street.x, s.street.y).find((e) => e.object.kind === "RoadNode");
     if (!street || street.object.kind !== "RoadNode") return;
@@ -139,16 +147,16 @@ export function BuildingPlacer() {
     const door: GameObjectEntry = {
       id: DOOR,
       position: { x: s.door.x, y: s.door.y },
-      object: { kind: "RoadNode", data: { outgoing: [street.id], incoming: [street.id], joined: arms.joined, road: false, laid: false } },
+      object: { kind: "RoadNode", data: { outgoing: [street.id], incoming: [], joined: arms.joined, road: false, laid: false } },
     };
     const joined: GameObjectEntry = {
       ...street,
-      object: { kind: "RoadNode", data: { ...arms, outgoing: [...arms.outgoing, DOOR], incoming: [...arms.incoming, DOOR] } },
+      object: { kind: "RoadNode", data: { ...arms, outgoing: [...arms.outgoing, DOOR] } },
     };
     undo = [{ op: "Delete", data: DOOR }, { op: "Upsert", data: street }];
     preview([{ op: "Upsert", data: door }, { op: "Upsert", data: joined }]);
   }));
-  onCleanup(clearDrive);
+  onCleanup(() => clearDrive(false));
 
   const shown = () => !!(placingBuilding() && site());
   const ok = () => site()?.fits ?? true;
