@@ -163,6 +163,11 @@ impl RoadNetwork {
         self.exits.contains(&node)
     }
 
+    /// Every node standing beyond the survey.
+    pub fn exits(&self) -> impl Iterator<Item = EntityId> + '_ {
+        self.exits.iter().copied()
+    }
+
     pub fn set_exit(&mut self, node: EntityId, exit: bool) -> Vec<EntityId> {
         let changed = if exit { self.exits.insert(node) } else { self.exits.remove(&node) };
         let Some(&c) = self.component.get(&node) else { return Vec::new() };

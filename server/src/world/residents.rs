@@ -16,6 +16,10 @@ impl World {
     /// off. They are the ones with a new decision to make, so the caller
     /// wakes them.
     pub fn settle(&mut self) -> Vec<EntityId> {
+        // The doors onto the rest of the world stand where the roads run off
+        // the map, and they move with the frontier. They are buildings like
+        // any other from here on: they house people and they employ them.
+        self.stand_edges();
         // A save from before a need existed owes it from now on.
         for id in self.resident_ids() {
             if let Some(e) = self.objects.get_mut(id)
@@ -53,23 +57,35 @@ impl World {
         let mut laid_off: Vec<EntityId> = Vec::new();
         for e in &entries {
             let GameObject::Resident(ref r) = e.object else { continue };
-            match rooms.get_mut(&r.home) {
-                // Home gone: so is the household. Nobody commutes from a hole
-                // in the ground, and nothing else holds a reference to them.
-                None => {
-                    evicted.push(e.id);
-                    continue;
-                }
-                Some(free) => *free = free.saturating_sub(1),
+            // Home gone: so is the household. Nobody commutes from a hole
+            // in the ground, and nothing else holds a reference to them.
+            if !where_is.contains_key(&r.home) {
+                evicted.push(e.id);
+                continue;
             }
-            match r.work.and_then(|w| vacancies.get_mut(&w)) {
-                Some(free) => *free = free.saturating_sub(1),
-                None => {
-                    if r.work.is_some() {
-                        laid_off.push(e.id);
+            if let Some(free) = rooms.get_mut(&r.home) {
+                *free = free.saturating_sub(1);
+            }
+            match r.work {
+                // Work beyond the edge is what there is until the city
+                // offers something. Whoever is doing it is still looking,
+                // and takes a job in town the day one exists — otherwise
+                // the first thing anyone does is drive off the map, and
+                // where you put the factory stops mattering.
+                Some(w) if self.edge.contains(&w) => jobless.push(e.id),
+                _ => match r.work.and_then(|w| vacancies.get_mut(&w)) {
+                    Some(free) => *free = free.saturating_sub(1),
+                    // Someone who lives off the map is here for the job and
+                    // nothing else: when it goes, so do they. Everyone else
+                    // stays and looks for another.
+                    None if self.edge.contains(&r.home) => evicted.push(e.id),
+                    None => {
+                        if r.work.is_some() {
+                            laid_off.push(e.id);
+                        }
+                        jobless.push(e.id);
                     }
-                    jobless.push(e.id);
-                }
+                },
             }
         }
         for id in evicted {
@@ -108,6 +124,63 @@ impl World {
                 );
                 touched.push(id);
                 jobless.push(id);
+            }
+        }
+
+        jobless.sort_unstable();
+        for id in jobless {
+            let Some(home) = self.home_of(id).and_then(|h| where_is.get(&h).copied()) else {
+                continue;
+            };
+            // Nearest with a vacancy. This is the rule that makes where you zone
+            // matter: put the factory across town and its workers drive across
+            // town, every morning, on whatever road you gave them.
+            let Some(work) = vacancies
+                .iter()
+                .filter(|&(_, &free)| free > 0)
+                .filter_map(|(&b, _)| Some((b, walk(home, *where_is.get(&b)?))))
+                .min_by_key(|&(b, d)| (d, b))
+                .map(|(b, _)| b)
+            else {
+                break; // no vacancy anywhere; the rest are jobless too
+            };
+            *vacancies.get_mut(&work).unwrap() -= 1;
+            if let Some(entry) = self.objects.get_mut(id)
+                && let GameObject::Resident(ref mut r) = entry.object
+                && r.work != Some(work)
+            {
+                r.work = Some(work);
+                touched.push(id);
+            }
+        }
+
+        // A job the city cannot fill from among its own is filled from
+        // beyond the map: someone whose home is the nearest road exit, who
+        // commutes in and lives where nobody can watch them. As derived as
+        // everyone else — the job is the whole reason they exist, and when
+        // it goes, so do they.
+        //
+        // The edge's own vacancies are not among them: it is where the
+        // people come from, never a place that is short of any.
+        let mut unfilled: Vec<(EntityId, u32)> =
+            vacancies.into_iter().filter(|&(b, free)| free > 0 && !self.edge.contains(&b)).collect();
+        unfilled.sort_unstable();
+        for (work, free) in unfilled {
+            let Some(home) = where_is.get(&work).and_then(|&p| self.nearest_edge(p)) else { continue };
+            for _ in 0..free {
+                let id = self.objects.insert(
+                    GameObject::Resident(Resident {
+                        home,
+                        work: Some(work),
+                        at: Some(home),
+                        car: 0,
+                        buckets: crate::needs::Bucket::fresh(),
+                        selected: None,
+                        last_update: 0,
+                    }),
+                    None,
+                );
+                touched.push(id);
             }
         }
 
@@ -165,32 +238,6 @@ impl World {
                 && let GameObject::Resident(ref mut r) = entry.object
             {
                 r.car = car;
-            }
-        }
-
-        jobless.sort_unstable();
-        for id in jobless {
-            let Some(home) = self.home_of(id).and_then(|h| where_is.get(&h).copied()) else {
-                continue;
-            };
-            // Nearest with a vacancy. This is the rule that makes where you zone
-            // matter: put the factory across town and its workers drive across
-            // town, every morning, on whatever road you gave them.
-            let Some(work) = vacancies
-                .iter()
-                .filter(|&(_, &free)| free > 0)
-                .filter_map(|(&b, _)| Some((b, walk(home, *where_is.get(&b)?))))
-                .min_by_key(|&(b, d)| (d, b))
-                .map(|(b, _)| b)
-            else {
-                break; // no vacancy anywhere; the rest are jobless too
-            };
-            *vacancies.get_mut(&work).unwrap() -= 1;
-            if let Some(entry) = self.objects.get_mut(id)
-                && let GameObject::Resident(ref mut r) = entry.object
-            {
-                r.work = Some(work);
-                touched.push(id);
             }
         }
 
@@ -368,6 +415,110 @@ mod tests {
             .filter(|e| matches!(e.object, GameObject::Car(_)))
             .count();
         assert_eq!(leftover, 0, "an evicted household takes its car with it");
+    }
+
+    /// The same street, with its far end left beyond the survey: a road
+    /// exit, and so a door onto everything the town has not built.
+    fn town_with_a_way_out() -> World {
+        let mut world = World::new();
+        for y in -4..4 {
+            for x in -4..400 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        world.place_road_path(&(-2..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        world
+    }
+
+    /// Nobody moves to the edge for its own sake: it has unlimited room and
+    /// draws not one person into it. Its households are made by the jobs the
+    /// town cannot fill, and unmade when those go.
+    #[test]
+    fn the_edge_houses_the_staff_the_town_cannot() {
+        let mut world = town_with_a_way_out();
+        build(&mut world, 0, BuildingKind::House); // two people
+        world.settle();
+        assert!(!world.edge.is_empty(), "the road runs off the map");
+        assert_eq!(residents(&world).len(), 2, "an empty town is two people, not a queue at the door");
+
+        let office = build(&mut world, 40, BuildingKind::Office);
+        world.settle();
+        let jobs = crate::blueprint::blueprint(BuildingKind::Office).jobs as usize;
+        assert_eq!(residents(&world).len(), jobs, "every desk has someone at it");
+        let commuters: Vec<Resident> =
+            residents(&world).into_iter().filter(|r| world.edge.contains(&r.home)).collect();
+        assert_eq!(commuters.len(), jobs - 2, "the ten the town cannot house live off the map");
+        assert!(commuters.iter().all(|r| r.work == Some(office)), "they are here for the job");
+        assert!(commuters.iter().all(|r| r.at == Some(r.home)), "and they are already out there");
+
+        // Settling again adds nobody: the vacancies are all spoken for.
+        world.settle();
+        assert_eq!(residents(&world).len(), jobs);
+
+        // The office goes, and so do they — but the town's own two stay,
+        // and take what work there is: the job beyond the edge.
+        world.remove_building(office, 0);
+        world.settle();
+        assert_eq!(residents(&world).len(), 2);
+        assert!(residents(&world).iter().all(|r| !world.edge.contains(&r.home)));
+        assert!(residents(&world).iter().all(|r| r.work.is_some_and(|w| world.edge.contains(&w))));
+
+        // And a shop in town wins them straight back off it: nobody keeps
+        // driving off the map once there is something here to do.
+        let shop = build(&mut world, 6, BuildingKind::Shop);
+        world.settle();
+        assert!(
+            residents(&world).iter().all(|r| r.work == Some(shop)),
+            "someone kept the job beyond the edge with one next door",
+        );
+    }
+
+    /// A building no road reaches is not somewhere anyone can go, so it is
+    /// not a candidate. It used to be: with no route to lengthen it, the
+    /// crow-flies estimate came out cheaper than anywhere real, so a shop
+    /// stranded off the street beat the edge, the drive was refused, and
+    /// the search chose it again at every retry.
+    #[test]
+    fn a_shop_no_road_reaches_loses_to_the_edge() {
+        let mut world = town_with_a_way_out();
+        for y in -8..8 {
+            for x in -4..400 {
+                world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
+            }
+        }
+        let home = build(&mut world, 0, BuildingKind::House);
+        // Three tiles off the street, so no driveway forms.
+        let orphan = world
+            .place_building(GridCoord { x: 4, y: 3 }, BuildingKind::Shop, 2)
+            .expect("land is land");
+        assert!(world.road_node_for_building(orphan).is_none(), "the point of the test");
+        world.settle();
+
+        let who = world.resident_ids()[0];
+        let edge = *world.edge.iter().next().unwrap();
+        // Stood at home with an evening owed, rather than off-map with nothing.
+        if let Some(e) = world.objects.get_mut(who)
+            && let GameObject::Resident(ref mut r) = e.object
+        {
+            r.at = Some(home);
+            for b in &mut r.buckets {
+                b.level = 0.6 * b.need.cap();
+            }
+        }
+        let noon = 12 * (crate::protocol::DAY_MS as u64) / 24;
+        let v = crate::resident::inspect(&world, who, noon);
+        let leisure = v["buckets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["need"] == "Leisure")
+            .expect("a Leisure bucket");
+        assert_eq!(
+            leisure["option"]["building"].as_u64(),
+            Some(edge as u64),
+            "an evening out should be at the edge, not at {orphan}: {}",
+            leisure["option"],
+        );
     }
 
     /// A building the road has not reached stands dormant: it houses nobody
