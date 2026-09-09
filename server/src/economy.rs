@@ -604,6 +604,74 @@ mod tests {
         assert_eq!(b.yesterday.revenue, 0.0);
     }
 
+    /// Grass, a street, and whatever is built beside it.
+    fn town() -> World {
+        let mut world = World::new();
+        // Deep enough for a warehouse and its yard behind the street.
+        for y in -6..6 {
+            for x in -4..40 {
+                world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
+            }
+        }
+        world.place_road_path(&(-2..40).map(|x| crate::protocol::GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        world
+    }
+
+    fn building(world: &World, id: EntityId) -> crate::protocol::Building {
+        match world.objects.get(id).unwrap().object {
+            GameObject::Building(ref b) => b.clone(),
+            _ => unreachable!(),
+        }
+    }
+
+    /// §11.7, the conga: a delivery moves exactly what it costs from the
+    /// buyer to the seller, so a warehouse that shortens nothing makes no
+    /// margin, and has nothing over its float to sweep.
+    #[test]
+    fn a_delivery_moves_exactly_what_it_costs() {
+        let mut world = town();
+        let shop = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, Shop).unwrap();
+        let depot = world.place_on_street(crate::protocol::GridCoord { x: 20, y: 1 }, Warehouse).unwrap();
+        let (before_shop, before_depot) = (building(&world, shop), building(&world, depot));
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
+            b.stock.take(30.0);
+        }
+        delivered(&mut world, shop, Some(depot), 0);
+        let (after_shop, after_depot) = (building(&world, shop), building(&world, depot));
+        let paid = before_shop.balance - after_shop.balance;
+        assert!((paid - 30.0 * wholesale(Need::Eat)).abs() < 1e-9, "the shop paid {paid}");
+        assert!((after_depot.balance - before_depot.balance - paid).abs() < 1e-9, "the depot got something else");
+        assert_eq!(after_shop.stock.level, after_shop.stock.cap, "the shelf is full");
+        assert_eq!(before_depot.stock.level - after_depot.stock.level, 30.0, "the depot's shelf went down by the same");
+        // The depot's own restock costs it exactly that again, so over a
+        // fetch and a delivery its purse is back where it was.
+        fetched(&mut world, depot, 0);
+        assert!((building(&world, depot).balance - before_depot.balance).abs() < 1e-9, "the warehouse made a margin");
+        assert!((world.treasury).abs() < 1e-9, "something swept");
+    }
+
+    /// §11.9, the door breaks even: a payday leaves a resident their float
+    /// and no more, whatever they earned, and the rest is rent on the home.
+    #[test]
+    fn a_payday_leaves_the_float() {
+        let mut world = town();
+        let home = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, House).unwrap();
+        let office = world.place_on_street(crate::protocol::GridCoord { x: 12, y: 1 }, Office).unwrap();
+        world.settle();
+        let who = world.resident_ids()[0];
+        if let Some(GameObject::Resident(r)) = world.objects.get_mut(who).map(|e| &mut e.object) {
+            r.wallet = RESIDENT_FLOAT - 1.0;
+        }
+        sale(&mut world, who, office, Need::Work, 9.0, 0);
+        let wallet = match world.objects.get(who).unwrap().object {
+            GameObject::Resident(ref r) => r.wallet,
+            _ => unreachable!(),
+        };
+        assert_eq!(wallet, RESIDENT_FLOAT, "the wallet is the float again");
+        assert!((world.treasury - (9.0 - 1.0)).abs() < 1e-9, "the rest is rent: {}", world.treasury);
+        assert!(world.sales.iter().any(|s| s.building == home && (s.amount - 8.0).abs() < 1e-9), "the rent landed on the home");
+    }
+
     #[test]
     fn levels_come_a_little_further_apart_each_time() {
         assert_eq!(level(0.0), (0, 0.0));

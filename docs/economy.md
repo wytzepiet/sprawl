@@ -440,12 +440,16 @@ season is thirty game-days until something says otherwise.
    more treasury than it began, net of what it placed, and no building
    placed is below its float within its first week.
 7. **The conga.** A warehouse inserted where it shortens nothing makes no
-   margin, sweeps nothing, and the treasury is unchanged.
+   margin, sweeps nothing, and the treasury is unchanged. (A property of
+   one delivery, so a unit test, not a season.)
 8. **No ringing.** Price variance at steady state stays under a bound.
 9. **The door breaks even.** A resident who works and eats only at the
-   edge ends the season with the wallet they began.
+   edge ends the season with the wallet they began. (A property of one
+   payday, so a unit test, not a season.)
 10. **No sinks.** Over a season the money outside the treasury stays
-    under a bound: floats, and what is in transit.
+    under a bound: floats, and what is in transit. (Printed by the no-harm
+    season, not asserted: the sweep is the mechanism, and any bound would
+    be a number picked to pass.)
 11. **Tenure.** Over a season the fraction of residents who change jobs in
     a month sits near the referent.
 

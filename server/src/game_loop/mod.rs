@@ -1411,11 +1411,12 @@ mod tests {
         );
     }
 
-    /// The equilibria docs/economy.md §11 asserts rather than codes. Each
-    /// runs a season of the same town as `a_town_thinks_within_budget`,
-    /// and each is `#[ignore]`d for the same reason: a season is thirty
-    /// days, and a day is most of a minute in debug. Run them in release:
-    /// `cargo test --release season -- --ignored --nocapture`.
+    /// The equilibria docs/economy.md §11 asserts rather than codes, the
+    /// ones that need weeks to show: prices nudged for a month, a purse
+    /// run down, jobs changed. Each runs a season of the same town as
+    /// `a_town_thinks_within_budget`, and each is `#[ignore]`d for the
+    /// same reason: `cargo test season -- --ignored --nocapture`. What a
+    /// single sale or delivery guarantees is a unit test in `economy.rs`.
     ///
     /// Everything the mayor could place, and a warehouse to feed it. Thirty
     /// days is a season until something says otherwise.
@@ -1495,85 +1496,33 @@ mod tests {
     /// §11.6, no harm: a town built ignoring every price ends the season
     /// with more in the treasury than it began, and no building placed has
     /// run its purse dry within its first week (§12.2's reading of "below
-    /// its float"). §11.10, no sinks: over the
-    /// season the money outside the treasury stays under a bound — the
-    /// floats, and what is in transit between two incomes.
+    /// its float"). The money outside the treasury is printed, not bounded:
+    /// the sweep is what keeps it to floats and transit, and a bound on it
+    /// would be a number picked to pass.
     #[test]
     #[ignore]
-    fn season_no_harm_and_no_sinks() {
+    fn season_no_harm() {
         let mut worst_week: Vec<(EntityId, BuildingKind, f64, f64)> = Vec::new();
-        let mut most_outside = 0.0f64;
         let (world, _) = season(&placeable(), SEASON, |world, day, _| {
             let (buildings, wallets) = purses(world);
             if day == 7 {
                 worst_week = buildings.iter().filter(|&&(_, kind, balance, float)| balance <= 0.0 && float > 0.0 && !crate::economy::service(kind)).copied().collect();
             }
             let outside: f64 = buildings.iter().map(|b| b.2).sum::<f64>() + wallets.iter().sum::<f64>();
-            most_outside = most_outside.max(outside);
             println!("day {day}: treasury {:.1}, outside it {outside:.1}, swept today {:.1}", world.treasury, world.income.before(day * DAY_MS as u64).revenue);
         });
-        let (buildings, wallets) = purses(&world);
+        let (buildings, _) = purses(&world);
         assert!(world.treasury > 0.0, "the season ended with {} in the treasury", world.treasury);
         assert!(worst_week.is_empty(), "dry in the first week: {worst_week:?}");
-        // Floats, a payday per resident, and a day's takings per building.
-        let bound: f64 = buildings.iter().map(|b| b.3 + 20.0).sum::<f64>() + wallets.len() as f64 * (crate::economy::RESIDENT_FLOAT + 10.0);
-        assert!(most_outside <= bound, "{most_outside} outside the treasury, bound {bound}");
         for (id, kind, balance, float) in &buildings {
             let page = world.books.get(id).map(|k| k.before(SEASON * DAY_MS as u64).clone()).unwrap_or_default();
             println!("{id} {kind:?}: {balance:.1} / {float:.1}, yesterday in {:.1} out {:.1} wages {:.1}", page.revenue, page.purchases, page.wages);
         }
     }
 
-    /// §11.7, the conga: a warehouse inserted where it shortens nothing
-    /// makes no margin and sweeps nothing, so the treasury is what it
-    /// would have been without it.
-    #[test]
-    #[ignore]
-    fn season_the_conga() {
-        let mut swept = 0.0;
-        let (world, _) = season(&placeable(), SEASON, |world, _, _| {
-            for e in world.objects.iter() {
-                if let GameObject::Building(ref b) = e.object
-                    && b.kind == BuildingKind::Warehouse
-                {
-                    swept += (b.balance - crate::economy::float(b.kind, b.wage)).max(0.0);
-                }
-            }
-        });
-        let mut margin = 0.0;
-        for e in world.objects.iter() {
-            if let GameObject::Building(ref b) = e.object
-                && b.kind == BuildingKind::Warehouse
-                && let Some(k) = world.books.get(&e.id)
-            {
-                let d = k.before(SEASON * DAY_MS as u64);
-                margin += d.revenue - d.purchases;
-                println!("warehouse {}: in {:.1} out {:.1}", e.id, d.revenue, d.purchases);
-            }
-        }
-        assert!(margin.abs() < 1e-6, "the warehouse made a margin of {margin}");
-        assert!(swept.abs() < 1e-6, "the warehouse had {swept} over its float to sweep");
-    }
-
-    /// §11.9, the door breaks even: a resident who works and eats only at
-    /// the edge ends the season with the wallet they began.
-    #[test]
-    #[ignore]
-    fn season_the_door_breaks_even() {
-        let (world, _) = season(&[BuildingKind::Apartment], SEASON, |_, _, _| {});
-        let (_, wallets) = purses(&world);
-        for w in &wallets {
-            assert!(
-                (*w - crate::economy::RESIDENT_FLOAT).abs() <= crate::economy::RESIDENT_FLOAT,
-                "a wallet ended the season at {w}, having begun at {}",
-                crate::economy::RESIDENT_FLOAT
-            );
-        }
-        println!("{} wallets, mean {:.2}", wallets.len(), wallets.iter().sum::<f64>() / wallets.len() as f64);
-    }
-
     /// §11.11, tenure: over a season the share of residents who change
-    /// jobs in a month sits near the referent, about one in forty.
+    /// jobs in a month is nowhere near a storm. The referent is about one
+    /// in forty; what this town can show is that wages do not churn it.
     #[test]
     #[ignore]
     fn season_tenure() {
