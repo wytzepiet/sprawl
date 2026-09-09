@@ -192,6 +192,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Spawner => crate::spawner::inspect(&world, now),
                         Ask::Lot(id) => world.inspect_lot(id, now),
                         Ask::Card(id) => crate::card::card(&world, id, now),
+                        Ask::Site { kind, x, y } => world.site_under(x, y, kind),
                         Ask::Call(id) => {
                             // A depot fetches; anything else calls for stock.
                             let depot = matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if crate::blueprint::blueprint(b.kind).answers.is_some());

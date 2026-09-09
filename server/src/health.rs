@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
+use std::collections::HashMap;
 use tokio::sync::oneshot;
 
 use crate::network::{AppState, Command, Ask};
@@ -82,6 +83,16 @@ pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>
 /// every line points.
 pub async fn card(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
     ask(&state, Ask::Card(id)).await
+}
+
+/// Where a kind would land with its building under a point: what the
+/// dragged ghost draws. `/site/House?x=12.5&y=3.2`.
+pub async fn site(Path(kind): Path<String>, Query(q): Query<HashMap<String, String>>, State(state): State<AppState>) -> String {
+    let Ok(kind) = serde_json::from_value::<crate::protocol::BuildingKind>(serde_json::Value::String(kind)) else {
+        return "{\"error\":\"no such kind\"}\n".into();
+    };
+    let at = |k: &str| q.get(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+    ask(&state, Ask::Site { kind, x: at("x"), y: at("y") }).await
 }
 
 /// Raise a stock call at a building now: a delivery to watch.

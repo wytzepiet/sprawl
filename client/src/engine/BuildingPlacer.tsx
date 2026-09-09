@@ -2,9 +2,10 @@ import { createMemo, createSignal, onCleanup } from "solid-js";
 import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
-import { buildingAt, useGame } from "../state/gameObjects";
+import { useGame } from "../state/gameObjects";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
 import { shapeFor, SLAB } from "./objects/buildings";
+import { buildRoadGeometry, BORDER_HALF_W, BORDER_Z, HALF_W, ROAD_Z } from "./objects/roadGeometry";
 import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "./objects/lots";
 import { BLUEPRINTS, FACINGS, plot } from "../blueprints";
 import { screenToWorld } from "./view";
@@ -17,109 +18,69 @@ const GHOST_MARK = new Color3(0.55, 0.7, 0.9);
 const REFUSED = new Color3(0.95, 0.45, 0.4);
 const REFUSED_LOT = new Color3(1.0, 0.8, 0.78);
 const REFUSED_MARK = new Color3(0.9, 0.55, 0.5);
+/** How far the pointer moves, in tiles, before the server is asked again. */
+const ASK_STEP = 0.5;
 
-/** Where a plot would land: its origin tile, which way it faces, and
- *  whether it can land there at all. */
+/**
+ * Where a plot would land, as the server says: its origin tile, which way
+ * it faces, whether it can land at all, and the driveway it would get.
+ */
 interface Site {
-  cell: GridCoord;
+  pos: GridCoord;
   facing: number;
   fits: boolean;
+  door: GridCoord | null;
+  street: GridCoord | null;
 }
 
 /**
  * The ghost of the building being dragged in: the plot as it would land,
- * building and lot, turned to face the street beside the pointer. The
- * server decides the same way — first facing that fits and fronts a street,
- * south if none does — so what is shown is what is placed.
+ * building, lot and driveway, turned to face the street beside the pointer.
+ * The server is asked, with the rules it will place by — straight-on
+ * streets, diagonals at a corner, nothing too sharp to drive — so what is
+ * shown is what is placed. Red where nothing fits, and it follows anyway.
  */
 export function BuildingPlacer() {
   const { scene, canvas } = useEngine();
-  const { send, getObjectsAt } = useGame();
+  const { send } = useGame();
   const [site, setSite] = createSignal<Site | null>(null);
   const spring = createSpring2D(scene, { stiffness: 0.3, damping: 0.4 });
   const kind = (): BuildingKind => placingBuilding() ?? "House";
 
-  const road = (x: number, y: number) => {
-    const e = getObjectsAt(x, y).find((o) => o.object.kind === "RoadNode");
-    return e ? (e.object.data as { road: boolean; outgoing: number[]; incoming: number[] }) : undefined;
+  let asked: [number, number] | null = null;
+  let latest = 0;
+  const ask = async (wx: number, wy: number) => {
+    const placing = placingBuilding();
+    if (!placing) return;
+    const key: [number, number] = [Math.round(wx / ASK_STEP), Math.round(wy / ASK_STEP)];
+    if (asked && asked[0] === key[0] && asked[1] === key[1]) return;
+    asked = key;
+    const n = ++latest;
+    const r = await fetch(`/site/${placing}?x=${wx}&y=${wy}`);
+    const found = (await r.json()) as Site;
+    // A slower answer to an older question is not the answer.
+    if (n !== latest || placingBuilding() !== placing) return;
+    const [[bx, by], [bw, bh]] = plot(placing, found.facing).building;
+    const centre: [number, number] = [found.pos.x + bx + bw / 2, found.pos.y + by + bh / 2];
+    if (!site()) spring.snap(...centre);
+    else spring.setTarget(...centre);
+    setSite(found);
   };
-
-  /**
-   * Every tile of the footprint free of any plot, building or lot, and
-   * holding at most a driveway stub. A street beside it is not required: a
-   * plot with none stands red until the mayor draws one to it.
-   */
-  function fits(cell: GridCoord, facing: number): boolean {
-    const [w, h] = plot(kind(), facing).size;
-    for (let dy = 0; dy < h; dy++) {
-      for (let dx = 0; dx < w; dx++) {
-        const x = cell.x + dx, y = cell.y + dy;
-        if (buildingAt(x, y)) return false;
-        const r = road(x, y);
-        if (r && new Set([...r.outgoing, ...r.incoming]).size !== 1) return false;
-      }
-    }
-    return true;
-  }
-
-  /** A street right in front of the plot's front row: the lot's, or the
-   *  building's where there is no lot. */
-  function fronts(cell: GridCoord, facing: number): boolean {
-    const lie = plot(kind(), facing);
-    const [dx, dy] = FACINGS[facing % 4];
-    const [[fx, fy], [fw, fh]] = lie.lot ?? lie.building;
-    for (let y = 0; y < fh; y++) {
-      for (let x = 0; x < fw; x++) {
-        const tx = cell.x + fx + x + dx, ty = cell.y + fy + y + dy;
-        const inside = tx >= cell.x && tx < cell.x + lie.size[0] && ty >= cell.y && ty < cell.y + lie.size[1];
-        const r = road(tx, ty);
-        if (!inside && r && !r.road) return true;
-      }
-    }
-    return false;
-  }
-
-  /** The plot whose building is under the pointer — the building is the
-   *  thing held; its lot swings round it. Turned the first way that fits
-   *  and fronts a street; failing that, the first way that fits at all;
-   *  failing that, facing south, and refused. */
-  function siteAt(wx: number, wy: number): Site {
-    const at = (facing: number): GridCoord => {
-      const [[bx, by], [bw, bh]] = plot(kind(), facing).building;
-      return { x: Math.floor(wx - bx - bw / 2 + 0.5), y: Math.floor(wy - by - bh / 2 + 0.5) };
-    };
-    for (const facing of [0, 1, 2, 3]) {
-      const cell = at(facing);
-      if (fits(cell, facing) && fronts(cell, facing)) return { cell, facing, fits: true };
-    }
-    for (const facing of [0, 1, 2, 3]) {
-      const cell = at(facing);
-      if (fits(cell, facing)) return { cell, facing, fits: true };
-    }
-    return { cell: at(2), facing: 2, fits: false };
-  }
 
   const onPointerMove = (e: PointerEvent) => {
     if (!placingBuilding()) return;
     const { wx, wy } = screenToWorld(scene, canvas, e);
-    const found = siteAt(wx, wy);
-    const [[bx, by], [bw, bh]] = plot(kind(), found.facing).building;
-    const centre: [number, number] = [found.cell.x + bx + bw / 2, found.cell.y + by + bh / 2];
-    if (!site()) {
-      spring.snap(...centre);
-    } else {
-      spring.setTarget(...centre);
-    }
-    setSite(found);
+    void ask(wx, wy);
   };
 
   const onPointerUp = () => {
     const placing = placingBuilding();
     if (!placing) return;
     const s = site();
-    if (s?.fits) send({ type: "PlaceBuilding", data: { pos: s.cell, kind: placing } });
+    if (s?.fits) send({ type: "PlaceBuilding", data: { pos: s.pos, kind: placing } });
     setPlacingBuilding(null);
     setSite(null);
+    asked = null;
   };
 
   window.addEventListener("pointermove", onPointerMove);
@@ -156,6 +117,40 @@ export function BuildingPlacer() {
     const [mx, my] = middle();
     return [spring.pos()[0] + l.origin[0] - mx, spring.pos()[1] + l.origin[1] - my, z] as [number, number, number];
   };
+  // The driveway as the road builder would draw it: a stub at the door
+  // reaching for the street, and the street's new arm reaching back —
+  // straight or on the diagonal, wherever the server found one. Built in
+  // the plot's frame, so it rides the spring with the rest.
+  const drive = createMemo(() => {
+    const s = site();
+    if (!s?.door || !s.street) return null;
+    const [mx, my] = middle();
+    const a = { x: s.door.x + 0.5 - s.pos.x - mx, y: s.door.y + 0.5 - s.pos.y - my };
+    const b = { x: s.street.x + 0.5 - s.pos.x - mx, y: s.street.y + 0.5 - s.pos.y - my };
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    const norm = (t: number) => (t < 0 ? t + 2 * Math.PI : t);
+    const stub = (from: { x: number; y: number }, at: number, hw: number, z: number) => {
+      const g = buildRoadGeometry([{ angle: norm(at), flow: "twoway" }], hw, z);
+      if (!g) return null;
+      const positions = g.positions.slice();
+      for (let i = 0; i < positions.length; i += 3) {
+        positions[i] += from.x;
+        positions[i + 1] += from.y;
+      }
+      return { ...g, positions };
+    };
+    const parts = [stub(a, angle, BORDER_HALF_W, BORDER_Z), stub(a, angle, HALF_W, ROAD_Z), stub(b, angle + Math.PI, BORDER_HALF_W, BORDER_Z), stub(b, angle + Math.PI, HALF_W, ROAD_Z)];
+    const positions: number[] = [], indices: number[] = [], normals: number[] = [];
+    for (const p of parts) {
+      if (!p) continue;
+      const base = positions.length / 3;
+      positions.push(...p.positions);
+      normals.push(...p.normals);
+      indices.push(...p.indices.map((i) => i + base));
+    }
+    return { positions, indices, normals };
+  });
+  const driveAt = () => [spring.pos()[0], spring.pos()[1], 0.01] as [number, number, number];
   const shown = () => !!(placingBuilding() && site());
   const ok = () => site()?.fits ?? true;
 
@@ -178,6 +173,7 @@ export function BuildingPlacer() {
         color={ok() ? GHOST_MARK : REFUSED_MARK}
         enabled={shown() && !!lot()}
       />
+      <Mesh name="drive_ghost" geometry={drive() ?? { positions: [], indices: [], normals: [] }} position={drive() ? driveAt() : [0, 0, -10]} color={GHOST_LOT} enabled={shown() && !!drive()} />
     </>
   );
 }

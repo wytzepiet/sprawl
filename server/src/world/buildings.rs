@@ -104,6 +104,39 @@ impl World {
         (0..4u8).find_map(|facing| self.site_facing(pos, kind, facing).map(|(street, door)| (facing, street, door)))
     }
 
+    /// Where a kind would land with its building held under a point on the
+    /// ground — the thing the mayor is dragging — as the client draws it
+    /// before it is placed: the first way round that fits and fronts a
+    /// street, with the driveway it would get; failing that, the first way
+    /// round that fits at all; failing that, facing south and refused. The
+    /// rules are `site_facing`'s, so what is shown is what is placed.
+    pub fn site_under(&self, x: f64, y: f64, kind: BuildingKind) -> serde_json::Value {
+        use serde_json::json;
+        let at = |facing: u8| {
+            let p = crate::blueprint::plot(kind, facing);
+            let ((bx, by), (bw, bh)) = p.building;
+            GridCoord {
+                x: (x - bx as f64 - bw as f64 / 2.0 + 0.5).floor() as i32,
+                y: (y - by as f64 - bh as f64 / 2.0 + 0.5).floor() as i32,
+            }
+        };
+        for facing in 0..4u8 {
+            let pos = at(facing);
+            if let Some((street, door)) = self.site_facing(pos, kind, facing) {
+                let street_at = self.objects.get(street).and_then(|e| e.position);
+                return json!({ "pos": pos, "facing": facing, "fits": true, "door": door, "street": street_at });
+            }
+        }
+        for facing in 0..4u8 {
+            let pos = at(facing);
+            let size = crate::blueprint::plot(kind, facing).size;
+            if Self::footprint(pos, size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t)) {
+                return json!({ "pos": pos, "facing": facing, "fits": true, "door": null, "street": null });
+            }
+        }
+        json!({ "pos": at(2), "facing": 2, "fits": false, "door": null, "street": null })
+    }
+
     /// The street and door a kind's plot would have at `pos` facing this
     /// way, if it fits there.
     pub fn site_facing(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<(EntityId, GridCoord)> {
@@ -139,14 +172,28 @@ impl World {
 
     /// The street a lot fronts: beyond its outer edge, in the direction it
     /// faces, off any of its front tiles.
+    /// Straight ahead first; then, as a plot without a lot does at its
+    /// corners, on the diagonal — a street that passes the lot's corner is
+    /// a street the lot can open onto, if the turn is not too sharp.
     fn road_for_lot(&self, lot: GridCoord, size: (u8, u8), facing: u8) -> Option<(EntityId, GridCoord)> {
         let (dx, dy) = crate::blueprint::FACINGS[facing as usize % 4];
-        Self::footprint(lot, size)
+        let front: Vec<GridCoord> = Self::footprint(lot, size)
             .filter(|t| !Self::building_covers(lot, size, GridCoord { x: t.x + dx, y: t.y + dy }))
-            .find_map(|t| {
-                let n = GridCoord { x: t.x + dx, y: t.y + dy };
-                let id = self.road_node_at(n)?;
-                (self.is_street(id) && self.driveway_reaches(n, t)).then_some((id, t))
+            .collect();
+        let reaches = |t: GridCoord, n: GridCoord| {
+            let id = self.road_node_at(n)?;
+            (self.is_street(id) && self.driveway_reaches(n, t)).then_some((id, t))
+        };
+        front
+            .iter()
+            .find_map(|&t| reaches(t, GridCoord { x: t.x + dx, y: t.y + dy }))
+            .or_else(|| {
+                front.iter().find_map(|&t| {
+                    [(-dy, dx), (dy, -dx)].into_iter().find_map(|(px, py)| {
+                        let n = GridCoord { x: t.x + dx + px, y: t.y + dy + py };
+                        (!Self::building_covers(lot, size, n)).then(|| reaches(t, n)).flatten()
+                    })
+                })
             })
     }
 

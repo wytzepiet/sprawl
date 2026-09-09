@@ -45,6 +45,8 @@ pub enum Ask {
     Call(EntityId),
     /// The card for one thing on the map, whatever it is.
     Card(EntityId),
+    /// Where a kind would land with its building under this point.
+    Site { kind: crate::protocol::BuildingKind, x: f64, y: f64 },
 }
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);
