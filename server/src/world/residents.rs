@@ -244,7 +244,7 @@ mod tests {
 
     fn build(world: &mut World, x: i32, kind: BuildingKind) -> EntityId {
         world
-            .spawn_building(GridCoord { x, y: 1 }, kind)
+            .place_on_street(GridCoord { x, y: 1 }, kind)
             .expect("the street should give it a driveway")
     }
 
@@ -319,7 +319,7 @@ mod tests {
         world.settle();
         assert_eq!(residents(&world).len(), 2);
 
-        world.remove_building(home, 0);
+        world.remove_building(home);
         world.settle();
         assert!(residents(&world).is_empty());
     }
@@ -333,7 +333,7 @@ mod tests {
         let shop = build(&mut world, 4, BuildingKind::Shop);
         world.settle();
 
-        world.remove_building(shop, 0);
+        world.remove_building(shop);
         world.settle();
         assert_eq!(residents(&world).len(), 2);
         assert!(residents(&world).iter().all(|r| r.work.is_none()));
@@ -359,7 +359,7 @@ mod tests {
         assert!(cars.iter().all(|e| e.position.is_none()), "still off-map with its owner");
         assert!(residents(&world).iter().all(|r| r.car != 0), "the link points back");
 
-        world.remove_building(home, 0);
+        world.remove_building(home);
         world.settle();
         let leftover = world
             .objects

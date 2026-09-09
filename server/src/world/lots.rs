@@ -1044,7 +1044,7 @@ mod tests {
         // driveway lands on its right-hand tile.
         let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
         world.place_road_path(&path);
-        let a = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
+        let a = world.place_on_street(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
         let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
         let way = world.way_in(a, car, 0, GameTime::MAX).unwrap();
         let lot = &world.lots[&world.lot_of[&a]];
@@ -1060,10 +1060,10 @@ mod tests {
     #[test]
     fn a_lot_takes_more_than_one_driveway() {
         let mut world = street();
-        let a = world.spawn_building(GridCoord { x: 2, y: 1 }, BuildingKind::Apartment).unwrap();
+        let a = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::Apartment).unwrap();
         assert_eq!(world.driveways_of(a).len(), 1);
         // The driveway landed on (2, 1); a second road drawn into (3, 1).
-        world.handle_place_road(GridCoord { x: 3, y: 0 }, GridCoord { x: 3, y: 1 }, false, false, 0);
+        world.handle_place_road(GridCoord { x: 3, y: 0 }, GridCoord { x: 3, y: 1 }, false, false);
         assert_eq!(world.driveways_of(a).len(), 2, "both driveways stand");
         let lot = world.lot_mut(a).unwrap();
         assert_eq!(lot.members[0].gates.len(), 2);
@@ -1075,7 +1075,7 @@ mod tests {
     fn a_full_lot_says_when_it_frees() {
         let mut world = street();
         // A house parks two on its driveway: the smallest lot there is.
-        let shop = world.spawn_building(GridCoord { x: 2, y: 1 }, BuildingKind::House).unwrap();
+        let shop = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::House).unwrap();
         assert_eq!(world.lot_mut(shop).unwrap().spots.len(), 2);
         let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
         let (a, b, c) = (car(&mut world), car(&mut world), car(&mut world));
@@ -1103,7 +1103,7 @@ mod tests {
         let mut world = street();
         let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
         world.place_road_path(&path);
-        let lot = world.spawn_building(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
+        let lot = world.place_on_street(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
         assert_eq!(world.lot_mut(lot).unwrap().spots.len(), spots_across(2.0), "two tiles");
     }
 
@@ -1113,8 +1113,8 @@ mod tests {
     #[test]
     fn a_depot_has_docks_a_lorry_backs_into() {
         let mut world = street();
-        let depot = world.spawn_building(GridCoord { x: 4, y: 1 }, BuildingKind::Warehouse).unwrap();
-        let shop = world.spawn_building(GridCoord { x: 6, y: 1 }, BuildingKind::Shop).unwrap();
+        let depot = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Warehouse).unwrap();
+        let shop = world.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::Shop).unwrap();
         assert_eq!(world.lot_mut(depot).unwrap().spots.len(), 4, "four docks across two tiles");
         world.lot_mut(shop).unwrap();
         assert_ne!(world.lot_of[&depot], world.lot_of[&shop], "a yard fuses with nobody");

@@ -50,7 +50,7 @@ const STEP_MS: GameTime = 10;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
 /// The starting network gets a spread of kinds so there is somewhere to
-/// drive to and from, and something for the spawner to grow beside.
+/// drive to and from before the mayor has placed anything.
 const STARTING_MIX: [BuildingKind; 3] = [BuildingKind::House, BuildingKind::Shop, BuildingKind::Workshop];
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
@@ -331,7 +331,7 @@ fn handle_player_action(
             if !world.build.may_draw(place.one_way, place.road) || world.laid + new_tiles > world.build.road_tiles() {
                 return;
             }
-            world.handle_place_road(place.from, place.to, place.one_way, place.road, now);
+            world.handle_place_road(place.from, place.to, place.one_way, place.road);
 
             // Insert edges for newly created connections
             let new_from = world.road_node_at(place.from);
@@ -371,9 +371,8 @@ fn handle_player_action(
             let pos = demolish.pos;
             if let Some(id) = world.road_node_at(pos) {
                 handle_road_demolish(world, events, intersections, id, now);
-                world.touch(pos, now);
             } else if let Some(id) = world.occupied.get(&(pos.x, pos.y)).copied() {
-                world.remove_building(id, now);
+                world.remove_building(id);
             } else {
                 return;
             }
@@ -834,7 +833,7 @@ mod tests {
 
     fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
         world
-            .spawn_building(GridCoord { x, y: 1 }, kind)
+            .place_on_street(GridCoord { x, y: 1 }, kind)
             .unwrap_or_else(|| panic!("the street should give a {kind:?} at x={x} its driveway"))
     }
 

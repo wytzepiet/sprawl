@@ -1,7 +1,6 @@
 use crate::protocol::{Site, 
     Building, BuildingKind, EntityId, GameObject, GridCoord, TerrainType,
 };
-use crate::engine::GameTime;
 use crate::world::World;
 
 impl World {
@@ -85,8 +84,8 @@ impl World {
     /// the tile the driveway lands on. A kind with no lot fronts a street
     /// on any side, facing it.
     pub fn site_for(&self, pos: GridCoord, kind: BuildingKind) -> Option<(u8, EntityId, GridCoord)> {
-        // Every way round starts on this tile, and the spawner asks about
-        // thousands of tiles a second when the meter is full and nothing fits.
+        // Every way round starts on this tile, and the ghost asks about it
+        // again on every frame the mayor drags a building over the map.
         if !(self.is_buildable(pos) || self.is_driveway_stub(pos)) {
             return None;
         }
@@ -376,9 +375,9 @@ impl World {
         }
     }
 
-    /// A building that can be driven to, or nothing. What painting and the
-    /// starting town want: a purchase with no feedback is not a purchase.
-    pub fn spawn_building(&mut self, pos: GridCoord, kind: BuildingKind) -> Option<EntityId> {
+    /// A building that can be driven to, or nothing: the placer works out
+    /// the facing itself, and the driveway goes in with it.
+    pub fn place_on_street(&mut self, pos: GridCoord, kind: BuildingKind) -> Option<EntityId> {
         let (facing, _, _) = self.site_for(pos, kind)?;
         let id = self.place_building(pos, kind, facing)?;
         self.attach_driveway(id);
@@ -386,7 +385,7 @@ impl World {
     }
 
     /// The one way a building leaves.
-    pub fn remove_building(&mut self, id: EntityId, now: GameTime) {
+    pub fn remove_building(&mut self, id: EntityId) {
         self.drop_lot(id);
         let Some(entry) = self.objects.get(id) else { return };
         let Some(pos) = entry.position else { return };
@@ -398,9 +397,8 @@ impl World {
                 for edge in self.edges_involving(node) {
                     self.remove_edge(edge.0, edge.1);
                 }
-                self.handle_demolish_road(*tile, now);
+                self.handle_demolish_road(*tile);
             }
-            self.touch(*tile, now);
             self.occupied.remove(&(tile.x, tile.y));
             self.unindex(id, *tile);
         }
@@ -467,7 +465,7 @@ mod tests {
             .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2)
             .unwrap();
 
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false, 0);
+        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
         let door = world.road_node_at(GridCoord { x: 2, y: 0 });
         assert!(door.is_some(), "the road ran into the plot");
         assert_eq!(world.road_node_for_building(b), door);
@@ -484,10 +482,10 @@ mod tests {
             .unwrap();
 
         // In from below, then in from the left.
-        world.handle_place_road(GridCoord { x: 1, y: 1 }, GridCoord { x: 1, y: 0 }, false, false, 0);
+        world.handle_place_road(GridCoord { x: 1, y: 1 }, GridCoord { x: 1, y: 0 }, false, false);
         assert!(world.are_connected(GridCoord { x: 1, y: 1 }, GridCoord { x: 1, y: 0 }));
 
-        world.handle_place_road(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }, false, false, 0);
+        world.handle_place_road(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }, false, false);
         assert!(world.are_connected(GridCoord { x: 0, y: 0 }, GridCoord { x: 1, y: 0 }), "the new door is open");
         assert!(!world.are_connected(GridCoord { x: 1, y: 1 }, GridCoord { x: 1, y: 0 }), "and the old one is gone");
         assert_eq!(world.road_node_for_building(b), world.road_node_at(GridCoord { x: 1, y: 0 }));
@@ -501,9 +499,9 @@ mod tests {
         world
             .place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2)
             .unwrap();
-        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false, 0);
+        world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
 
-        world.handle_place_road(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false, false, 0);
+        world.handle_place_road(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false, false);
         assert!(world.road_node_at(GridCoord { x: 3, y: 0 }).is_none(), "the road stops at the door");
     }
 
@@ -604,7 +602,7 @@ mod tests {
     /// One house on one tile, built.
     fn house(world: &mut World, x: i32, y: i32) -> EntityId {
         world
-            .spawn_building(GridCoord { x, y }, BuildingKind::House)
+            .place_on_street(GridCoord { x, y }, BuildingKind::House)
             .expect("a road should be beside it")
     }
 
@@ -711,7 +709,7 @@ mod tests {
         let house = house(&mut world, 0, 0);
         let door = world.road_node_for_building(house).unwrap();
 
-        world.remove_building(house, 0);
+        world.remove_building(house);
         assert_eq!(world.network.component_of(door), None, "the driveway went with it");
         agrees_with_the_edges(&world);
     }

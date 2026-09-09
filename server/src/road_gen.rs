@@ -207,7 +207,7 @@ pub fn start_town(world: &mut World, terrain: &HashMap<(i32, i32), TerrainType>,
                 world.place_road_path(&[side, front]);
             }
         }
-        if world.spawn_building(plot, kind).is_none() {
+        if world.place_on_street(plot, kind).is_none() {
             for t in fresh {
                 let Some(node) = world.road_node_at(t) else { continue };
                 for (a, b) in world.edges_involving(node) {

@@ -1,7 +1,7 @@
 //! Every kind of building, one row each: who it holds, what it serves and
-//! when, where it belongs in a town. A kind is a name in the protocol and a
-//! row here, and nothing else in the game names one — the spawner reads the
-//! row for its class and weight, residents read it for its taps, the
+//! when, what it costs. A kind is a name in the protocol and a row here,
+//! and nothing else in the game names one — the build menu reads the row
+//! for its price and its shelf, residents read it for its taps, the
 //! settlement reads it for rooms and jobs. A new kind is a new row.
 //!
 //! What is a number or a schedule lives here. What is a verb — how a shift
@@ -19,8 +19,8 @@ use crate::protocol::{CarRole, BuildingKind, DAY_MS};
 
 const H: u32 = DAY_MS / 24;
 
-/// What company a kind keeps. Homes flock, commerce goes where the homes
-/// are, industry keeps to itself — the spawner's whole sense of neighbourhood.
+/// Which of the tree's three avenues a kind belongs to. Taking one makes
+/// its class cheaper to place; nothing else reads this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, ts_rs::TS)]
 #[ts(export)]
 pub enum Class {
