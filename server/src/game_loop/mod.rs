@@ -845,7 +845,47 @@ mod tests {
         }
     }
 
-    /// Run the simulation from `from` to `to`, the same way run() does.
+    /// A tick of run(): `now` moves to the next tick with something due —
+    /// or the one that reaches `to` — and everything due thinks at it. The
+    /// ticks in between, where nothing is due, are skipped rather than
+    /// stepped: nothing but handle_wake changes the world, so a test that
+    /// looks at the world after every tick sees the same thing either way,
+    /// in a hundredth of the time. False once `to` is reached.
+    fn step(
+        world: &mut World,
+        events: &mut EventQueue,
+        intersections: &mut IntersectionRegistry,
+        now: &mut GameTime,
+        to: GameTime,
+    ) -> bool {
+        step_counting(world, events, intersections, now, to, &mut 0)
+    }
+
+    /// `step`, counting how many times a resident thought: the budget.
+    fn step_counting(
+        world: &mut World,
+        events: &mut EventQueue,
+        intersections: &mut IntersectionRegistry,
+        now: &mut GameTime,
+        to: GameTime,
+        wakes: &mut u64,
+    ) -> bool {
+        if *now >= to {
+            return false;
+        }
+        let due = events.next_due().map_or(to, |t| t.min(to));
+        *now += due.saturating_sub(*now).div_ceil(STEP_MS).max(1) * STEP_MS;
+        events.set_now(*now);
+        while let Some(id) = events.pop_due() {
+            if matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(_))) {
+                *wakes += 1;
+            }
+            handle_wake(world, events, intersections, id, *now);
+        }
+        true
+    }
+
+    /// Run the simulation from `from` to `to`.
     fn pump(
         world: &mut World,
         events: &mut EventQueue,
@@ -854,13 +894,7 @@ mod tests {
         to: GameTime,
     ) {
         let mut now = from;
-        while now < to {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                handle_wake(world, events, intersections, id, now);
-            }
-        }
+        while step(world, events, intersections, &mut now, to) {}
     }
 
     /// The whole loop watched from above: people immigrate from past the
@@ -1044,12 +1078,7 @@ mod tests {
             let van = world.calls.iter().find(|c| c.kind == calls::CallKind::Stock).and_then(|c| c.answered_by).expect("a van answers");
             assert!(matches!(world.objects.get(van).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Van));
             let until = t + 3 * DAY_MS as u64 / 24;
-            while t < until {
-                t += STEP_MS;
-                events.set_now(t);
-                while let Some(id) = events.pop_due() {
-                    handle_wake(&mut world, &mut events, &mut intersections, id, t);
-                }
+            while step(&mut world, &mut events, &mut intersections, &mut t, until) {
                 lowest = lowest.min(stock(&world, depot));
                 watch(&world, &mut answered, &mut away);
             }
@@ -1058,12 +1087,7 @@ mod tests {
         // Out past the edge and gone for a while, then home.
         for _ in 0..40 {
             let until = t + calls::AWAY_MS / 4;
-            while t < until {
-                t += STEP_MS;
-                events.set_now(t);
-                while let Some(id) = events.pop_due() {
-                    handle_wake(&mut world, &mut events, &mut intersections, id, t);
-                }
+            while step(&mut world, &mut events, &mut intersections, &mut t, until) {
                 watch(&world, &mut answered, &mut away);
             }
             if answered.is_some() && world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
@@ -1110,12 +1134,7 @@ mod tests {
         let mut last: Vec<Option<EntityId>> = people.iter().map(|_| None).collect();
         let mut last_doing: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
         let mut now = 0;
-        while now < days * DAY_MS as u64 {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                handle_wake(&mut world, &mut events, &mut intersections, id, now);
-            }
+        while step(&mut world, &mut events, &mut intersections, &mut now, days * DAY_MS as u64) {
             for (i, &id) in people.iter().enumerate() {
                 let at = at_of(&world, id);
                 // `TRACE=1 cargo test the_same_town -- --nocapture` prints
@@ -1183,12 +1202,7 @@ mod tests {
         let mut outings: Vec<GameTime> = Vec::new();
         let mut last: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
         let mut now = 0;
-        while now < 4 * day {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                handle_wake(&mut world, &mut events, &mut intersections, id, now);
-            }
+        while step(&mut world, &mut events, &mut intersections, &mut now, 4 * day) {
             for (i, &id) in people.iter().enumerate() {
                 let state = (at_of(&world, id), doing(&world, id));
                 if state != last[i] {
@@ -1240,12 +1254,7 @@ mod tests {
         let mut stops = 0;
         let mut last: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
         let mut now = 0;
-        while now < 6 * day {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                handle_wake(&mut world, &mut events, &mut intersections, id, now);
-            }
+        while step(&mut world, &mut events, &mut intersections, &mut now, 6 * day) {
             for (i, &id) in people.iter().enumerate() {
                 let state = (at_of(&world, id), doing(&world, id));
                 if state != last[i] {
@@ -1348,18 +1357,13 @@ mod tests {
         assert!(!world.edge.is_empty(), "the street has to run off the map, or nobody can arrive at all");
         let mut wakes = 0;
         let mut now = 0;
-        while now < days * DAY_MS as u64 {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                if matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(_))) {
-                    wakes += 1;
-                }
-                handle_wake(&mut world, &mut events, &mut intersections, id, now);
-            }
-            if now % DAY_MS as u64 == 0 {
-                each_day(&world, now / DAY_MS as u64, wakes);
-            }
+        let end = days * DAY_MS as u64;
+        // A day at a time, so the look at the end of each is on the tick
+        // that turns it, with the midnight wake taken.
+        for day in 1..=days {
+            let midnight = day * DAY_MS as u64;
+            while step_counting(&mut world, &mut events, &mut intersections, &mut now, midnight.min(end), &mut wakes) {}
+            each_day(&world, day, wakes);
         }
         (world, wakes)
     }
@@ -1367,9 +1371,9 @@ mod tests {
     /// The budget: how much thinking a day of town life is allowed to take.
     /// A resident wakes when something changes for them — a shift, a meal,
     /// an arrival — which is a few dozen times a day. A storm is thousands.
-    /// Counted, not timed, so it is the same on every machine. A day of
-    /// town takes most of a minute in debug, so it is not in the everyday
-    /// run: `cargo test --release town -- --ignored --nocapture` runs it
+    /// Counted, not timed, so it is the same on every machine. The two
+    /// towns take half a minute even optimised, so they are not in the
+    /// everyday run: `cargo test town -- --ignored --nocapture` runs them
     /// with the benchmark below, for a look every now and then.
     ///
     /// Two towns: one with everything, and one with nothing but homes and
@@ -1699,12 +1703,7 @@ mod tests {
         let day = DAY_MS as u64;
         let mut seen_at_work = false;
         let mut now = 0;
-        while now < day {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                handle_wake(&mut world, &mut events, &mut intersections, id, now);
-            }
+        while step(&mut world, &mut events, &mut intersections, &mut now, day) {
             seen_at_work |= people.iter().any(|&id| {
                 at_of(&world, id) == Some(work[0]) && doing(&world, id) == Some(crate::needs::Need::Work)
             });
@@ -1747,12 +1746,7 @@ mod tests {
         let day = DAY_MS as u64;
         let mut at_desk = 0;
         let mut now = 0;
-        while now < day {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                handle_wake(&mut world, &mut events, &mut intersections, id, now);
-            }
+        while step(&mut world, &mut events, &mut intersections, &mut now, day) {
             at_desk = at_desk.max(commuters.iter().filter(|&&id| at_of(&world, id) == Some(office)).count());
         }
         assert!(at_desk >= 2, "only {at_desk} of the commuters ever reached the office");
@@ -1782,12 +1776,7 @@ mod tests {
         let day = DAY_MS as u64;
         let mut ate_out = 0;
         let mut now = 0;
-        while now < 2 * day {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                handle_wake(&mut world, &mut events, &mut intersections, id, now);
-            }
+        while step(&mut world, &mut events, &mut intersections, &mut now, 2 * day) {
             ate_out = ate_out.max(
                 people
                     .iter()

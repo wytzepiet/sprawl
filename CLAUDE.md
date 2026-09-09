@@ -49,7 +49,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   The server prints `behind: N wakes took M ms` whenever a tick overruns a
   quarter second — if that shows in `.dev/server.log`, the loop is falling
   behind the wall clock and every command lags with it. Every now and then,
-  `cargo test --release town -- --ignored --nocapture` runs a day of town
+  `cargo test town -- --ignored --nocapture` runs a day of town
   life and asserts how often residents wake (a storm is ten times the
   budget) and prints simulated days per second, to see whether it drifted.
 - **Does the economy still balance?** `cargo test --release season --
@@ -63,7 +63,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the browser.
 - **Does it still hold?** `cd server && cargo test && cargo check`, then
   `cd client && bunx tsc --noEmit -p .`. Nothing runs these but you, so run
-  them before you push. `cargo check` is not redundant: `cargo test` compiles
+  them before you push. The suite takes about ten seconds: the test profile
+  is optimised (`[profile.test]` in `Cargo.toml`, assertions and overflow
+  checks still on) and the town tests skip the ticks nothing is due at. A
+  rebuild after an edit costs a few seconds more than a debug one; a day of
+  town at opt-level 0 cost a minute. `cargo check` is not redundant: `cargo test` compiles
   the crate with `cfg(test)` on, so a stray `#[cfg(test)]` above something the
   game needs passes the suite and leaves a server that will not build.
 - **Generated types:** `cd client && bun run generate`

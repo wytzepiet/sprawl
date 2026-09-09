@@ -88,6 +88,11 @@ impl EventQueue {
         self.heap.push(Scheduled { time: fire_at, id, generation });
     }
 
+    /// When the next wake is scheduled, stale or not.
+    pub fn next_due(&self) -> Option<GameTime> {
+        self.heap.peek().map(|s| s.time)
+    }
+
     /// The next entity due to think, if its time has come.
     /// Skips stale entries that were superseded by an earlier wake.
     pub fn pop_due(&mut self) -> Option<EntityId> {
