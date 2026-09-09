@@ -88,15 +88,11 @@ pub struct World {
     /// position, so without this "what is on this tile" would only ever find a
     /// building at its origin corner. Derived, like every other index.
     pub occupied: HashMap<(i32, i32), EntityId>,
-    /// When the mayor last touched a tile: a road laid or taken up, a
-    /// building pulled down. No entry, never. What the spawner leaves
-    /// alone for a while, so a plan in progress is not built over.
-    pub edited: HashMap<(i32, i32), GameTime>,
     /// Calls raised and not yet resolved. Not saved: a shop still low when
     /// the world comes back calls again at its next visit.
     pub calls: Vec<crate::calls::Call>,
     /// Tile → the road node on it. Asked for constantly — every driveway
-    /// check, every bend, every site the spawner tries — and a chunk's
+    /// check, every bend, every site the placer tries — and a chunk's
     /// entity set was being walked for each answer. Derived at load.
     pub roads: HashMap<(i32, i32), EntityId>,
     /// The buildings standing at the road exits: the world beyond the map,
@@ -172,7 +168,6 @@ impl World {
             newly_revealed: Vec::new(),
             revealed_bounds: NO_BOUNDS,
             occupied: HashMap::new(),
-            edited: HashMap::new(),
             roads: HashMap::new(),
             calls: Vec::new(),
             roads_generated: HashSet::new(),
@@ -203,7 +198,6 @@ impl World {
             newly_revealed: Vec::new(),
             revealed_bounds: NO_BOUNDS,
             occupied: HashMap::new(),
-            edited: HashMap::new(),
             roads: HashMap::new(),
             calls: Vec::new(),
             roads_generated: HashSet::new(),
@@ -657,7 +651,7 @@ mod tests {
             }
         }
         world.place_road_path(&(-2..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
-        let house = world.spawn_building(GridCoord { x: 0, y: 1 }, BuildingKind::House).expect("a driveway");
+        let house = world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).expect("a driveway");
         (world, house)
     }
 
@@ -685,7 +679,7 @@ mod tests {
     fn the_door_moves_with_the_frontier() {
         let (mut world, _) = frontier();
         let was = world.objects.get(*world.edge.iter().next().unwrap()).unwrap().position.unwrap();
-        world.spawn_building(GridCoord { x: 120, y: 1 }, BuildingKind::House).expect("a driveway");
+        world.place_on_street(GridCoord { x: 120, y: 1 }, BuildingKind::House).expect("a driveway");
         assert_eq!(world.edge.len(), 1, "one road out is still one door");
         let now = world.objects.get(*world.edge.iter().next().unwrap()).unwrap().position.unwrap();
         assert!(now.x > was.x, "the door stayed at {was:?} while the survey grew");

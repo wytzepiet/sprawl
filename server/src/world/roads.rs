@@ -1,13 +1,7 @@
 use std::collections::HashSet;
 
-use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;
-
-/// How long a street stands before anything arrives on it: an hour, so a
-/// street is a street before it is a site.
-/// How long a touched tile is left alone: half a minute of the clock.
-pub const SETTLES: GameTime = 30_000;
 
 impl World {
     /// The road on this tile.
@@ -16,15 +10,10 @@ impl World {
     }
 
     /// Place a road node at coord. Idempotent: returns the node already
-    /// standing here, whatever kind it is. Generated road and driveways are
-    /// streets, and free.
-    fn place_road(&mut self, coord: GridCoord) -> EntityId {
-        self.place_road_of(coord, false, None)
-    }
-
-    /// `laid` is when the mayor laid it; the survey's roads and driveways
-    /// were never laid by anyone.
-    fn place_road_of(&mut self, coord: GridCoord, road: bool, laid: Option<GameTime>) -> EntityId {
+    /// standing here, whatever kind it is. `laid` is the mayor's own hand,
+    /// counted against the build; the survey's roads and driveways are
+    /// streets, laid by nobody, and free.
+    fn place_road_of(&mut self, coord: GridCoord, road: bool, laid: bool) -> EntityId {
         if let Some(id) = self.road_node_at(coord) {
             return id;
         }
@@ -35,15 +24,12 @@ impl World {
                 incoming: vec![],
                 joined: false,
                 road,
-                laid: laid.is_some(),
+                laid,
             }),
             Some(coord),
         );
-        if let Some(now) = laid {
-            self.touch(coord, now);
-        }
         self.roads.insert((coord.x, coord.y), id);
-        self.laid += laid.is_some() as u32;
+        self.laid += laid as u32;
         let beyond = !self.revealed.contains(&crate::world::chunk_of(coord));
         self.network.set_exit(id, beyond);
         id
@@ -99,7 +85,7 @@ impl World {
 
     /// Place road nodes at `from` and `to`, and connect them as outgoing.
     /// The mayor's own hand: what it lays is counted against the build.
-    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool, now: GameTime) {
+    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
         let dx = to.x - from.x;
         let dy = to.y - from.y;
 
@@ -143,8 +129,8 @@ impl World {
             self.clear_driveway(to);
         }
 
-        let from_id = self.place_road_of(from, road, Some(now));
-        let to_id = self.place_road_of(to, road, Some(now));
+        let from_id = self.place_road_of(from, road, true);
+        let to_id = self.place_road_of(to, road, true);
 
         if let Some(entry) = self.objects.get_mut(from_id)
             && let GameObject::RoadNode(ref mut node) = entry.object
@@ -194,7 +180,7 @@ impl World {
             }
             expanded.push(b);
         }
-        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, road, None)).collect();
+        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, road, false)).collect();
         // A street reaches whatever dormant building stands beside it.
         self.attach_driveways_along(&expanded);
         for pair in ids.windows(2) {
@@ -217,21 +203,10 @@ impl World {
     }
 
     /// Remove the road node standing at `pos`.
-    pub fn handle_demolish_road(&mut self, pos: GridCoord, now: GameTime) {
+    pub fn handle_demolish_road(&mut self, pos: GridCoord) {
         if let Some(id) = self.road_node_at(pos) {
             self.demolish_node(id);
-            self.touch(pos, now);
         }
-    }
-
-    /// The mayor touched this tile now.
-    pub fn touch(&mut self, t: GridCoord, now: GameTime) {
-        self.edited.insert((t.x, t.y), now);
-    }
-
-    /// Has this tile been left alone long enough to build on?
-    pub fn is_settled(&self, t: GridCoord, now: GameTime) -> bool {
-        self.edited.get(&(t.x, t.y)).is_none_or(|&at| at + SETTLES <= now)
     }
 
     /// Remove a road node by id and clean up every reference to it. A tile
@@ -266,24 +241,6 @@ impl World {
     /// Check if a node is an intersection (>2 unique connections).
     pub fn is_intersection(&self, node_id: EntityId) -> bool {
         self.unique_connection_count(node_id) > 2
-    }
-
-    /// Has this street been standing long enough for the city to build on
-    /// it? A street being drawn is not finished, and a house that lands on
-    /// it while the mayor is still dragging is in the way.
-
-
-    /// Every street the city could grow onto: joined to the world, in the
-    /// survey, settled, and not a driveway.
-    pub fn streets(&self, now: GameTime) -> Vec<GridCoord> {
-        self.objects
-            .all_entries()
-            .iter()
-            .filter(|e| self.is_street(e.id) && self.network.joined(e.id))
-            .filter_map(|e| e.position)
-            .filter(|&p| self.is_settled(p, now))
-            .filter(|p| self.revealed.contains(&crate::world::chunk_of(*p)))
-            .collect()
     }
 
     /// Count what the mayor has laid, from the nodes' own flags.

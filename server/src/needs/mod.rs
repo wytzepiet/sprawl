@@ -148,8 +148,8 @@ pub struct Bucket {
     pub level: f64,
     /// How far short of being served on the spot the last wake fell, from 0
     /// (as well as it could be) to 1 (nothing found anywhere). A record of
-    /// the last decision, not a plan: the spawner reads it to learn what the
-    /// city wants and where, without asking anyone to think again.
+    /// the last decision, not a plan: the demand readout sums it to say what
+    /// the city wants and where, without asking anyone to think again.
     #[serde(default)]
     pub shortfall: f64,
 }
