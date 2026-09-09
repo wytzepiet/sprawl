@@ -127,11 +127,19 @@ impl World {
                 return json!({ "pos": pos, "facing": facing, "fits": true, "door": door, "street": street_at });
             }
         }
+        // No street ahead: the first way round that fits, with whatever
+        // driveway a standing plot would find for itself — out of a flank,
+        // or none.
         for facing in 0..4u8 {
             let pos = at(facing);
-            let size = crate::blueprint::plot(kind, facing).size;
-            if Self::footprint(pos, size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t)) {
-                return json!({ "pos": pos, "facing": facing, "fits": true, "door": null, "street": null });
+            let p = crate::blueprint::plot(kind, facing);
+            if Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t)) {
+                let found = match p.lot {
+                    Some(((lx, ly), (lw, ld))) => self.road_for_lot(GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld), facing, true),
+                    None => self.road_for_plot(pos, p.size),
+                };
+                let street = found.and_then(|(id, _)| self.objects.get(id).and_then(|e| e.position));
+                return json!({ "pos": pos, "facing": facing, "fits": true, "door": found.map(|(_, door)| door), "street": street });
             }
         }
         json!({ "pos": at(2), "facing": 2, "fits": false, "door": null, "street": null })
