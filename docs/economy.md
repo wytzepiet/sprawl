@@ -580,6 +580,15 @@ decision the text left open, or moved one it had made.
   one. They step at midnight, all at once; counting the till when each
   tap closes instead would stagger them and is the natural next cut.
 
+- **The cost.** Money is on the score's hot path: a price and an earning
+  looked up per option, a sale and a restock check at each visit's end,
+  a pass over the staff at midnight. Measured on `how_fast_a_town_runs`
+  before and after, the test town runs at the same 0.05 simulated days a
+  second, with a few percent more wakes for the jobs the new rows add.
+  Step 3's delivered-price search and step 4's services land on the same
+  path; run that gauge before and after each, and `bun run profile` if
+  it moves.
+
 What running the season found, and did not fix: a shop needs about
 forty meals a day to carry two staff at the edge's wage, which is a
 district, not a street. The wage cut keeps such a shop alive at a wage
