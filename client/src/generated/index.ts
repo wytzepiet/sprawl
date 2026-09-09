@@ -29,3 +29,4 @@ export type { StateUpdate } from "./StateUpdate";
 export type { TerrainChunk } from "./TerrainChunk";
 export type { TerrainType } from "./TerrainType";
 export type { Trip } from "./Trip";
+export type { Site } from "./Site";

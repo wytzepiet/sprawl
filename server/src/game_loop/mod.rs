@@ -192,7 +192,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Spawner => crate::spawner::inspect(&world, now),
                         Ask::Lot(id) => world.inspect_lot(id, now),
                         Ask::Card(id) => crate::card::card(&world, id, now),
-                        Ask::Site { kind, x, y } => world.site_under(x, y, kind),
+                        Ask::Site { kind, x, y } => serde_json::to_value(world.site_under(x, y, kind)).unwrap_or_default(),
                         Ask::Call(id) => {
                             // A depot fetches; anything else calls for stock.
                             let depot = matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if crate::blueprint::blueprint(b.kind).answers.is_some());
@@ -355,25 +355,15 @@ fn handle_player_action(
             }
         }
         ClientMessage::PlaceBuilding(place) => {
-            // Anywhere the land allows: a plot with no street yet stands red
-            // until the mayor draws one to it, which is the mayor's to do.
-            // Laid the way its street asks, or facing south until one comes.
-            let facing = world.site_for(place.pos, place.kind).map_or(2, |(f, _, _)| f);
-            let placed = world.build.may_place(place.kind).then(|| world.place_building(place.pos, place.kind, facing)).flatten();
+            // Exactly what the ghost showed: the site is decided once, by the
+            // same call, from the point the building was held over.
+            let site = world.site_under(place.at[0], place.at[1], place.kind);
+            let placed = world.build.may_place(place.kind).then(|| world.place_site(site, place.kind)).flatten();
             match placed {
-                Some(id) => {
-                    world.attach_driveway(id);
-                    settle_and_wake(world, events);
-                }
+                Some(_) => settle_and_wake(world, events),
                 // Said out loud: a click that does nothing is the kind of
                 // bug that otherwise takes an afternoon to find.
-                None => println!(
-                    "place refused: {:?} at {:?}: allowed {}, land {}",
-                    place.kind,
-                    place.pos,
-                    world.build.may_place(place.kind),
-                    World::footprint(place.pos, crate::blueprint::plot(place.kind, facing).size).all(|t| world.is_buildable(t))
-                ),
+                None => println!("place refused: {:?} at {:?}: allowed {}, site {:?}", place.kind, place.at, world.build.may_place(place.kind), site),
             }
         }
         ClientMessage::DemolishRoad(demolish) => {

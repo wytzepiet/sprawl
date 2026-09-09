@@ -131,8 +131,24 @@ pub enum CarRole {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PlaceBuilding {
-    pub pos: GridCoord,
+    /// The point on the ground the building is held over: the server
+    /// decides where the plot lands from it, the same way it showed the
+    /// mayor while dragging.
+    pub at: [f64; 2],
     pub kind: BuildingKind,
+}
+
+/// Where a kind would land with its building held over a point: the plot's
+/// origin and facing, whether it can land at all, and the driveway it would
+/// get. What the dragged ghost draws, and what placing lays — one answer.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Site {
+    pub pos: GridCoord,
+    pub facing: u8,
+    pub fits: bool,
+    pub door: Option<GridCoord>,
+    pub street: Option<GridCoord>,
 }
 
 /// Someone's car. It outlives its journeys: between trips it sits parked at a

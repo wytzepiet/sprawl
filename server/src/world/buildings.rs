@@ -1,4 +1,4 @@
-use crate::protocol::{
+use crate::protocol::{Site, 
     Building, BuildingKind, EntityId, GameObject, GridCoord, TerrainType,
 };
 use crate::engine::GameTime;
@@ -105,13 +105,12 @@ impl World {
     }
 
     /// Where a kind would land with its building held under a point on the
-    /// ground — the thing the mayor is dragging — as the client draws it
-    /// before it is placed: the first way round that fits and fronts a
-    /// street, with the driveway it would get; failing that, the first way
-    /// round that fits at all; failing that, facing south and refused. The
-    /// rules are `site_facing`'s, so what is shown is what is placed.
-    pub fn site_under(&self, x: f64, y: f64, kind: BuildingKind) -> serde_json::Value {
-        use serde_json::json;
+    /// ground — the thing the mayor is dragging. The first way round that
+    /// fits and fronts a street; failing that, the first way round that fits
+    /// at all, with whatever driveway a standing plot finds for itself;
+    /// failing that, facing south and refused. The ghost draws this and
+    /// placing lays it, so the two cannot differ.
+    pub fn site_under(&self, x: f64, y: f64, kind: BuildingKind) -> Site {
         let at = |facing: u8| {
             let p = crate::blueprint::plot(kind, facing);
             let ((bx, by), (bw, bh)) = p.building;
@@ -120,29 +119,43 @@ impl World {
                 y: (y - by as f64 - bh as f64 / 2.0 + 0.5).floor() as i32,
             }
         };
+        let street_at = |id: EntityId| self.objects.get(id).and_then(|e| e.position);
         for facing in 0..4u8 {
             let pos = at(facing);
             if let Some((street, door)) = self.site_facing(pos, kind, facing) {
-                let street_at = self.objects.get(street).and_then(|e| e.position);
-                return json!({ "pos": pos, "facing": facing, "fits": true, "door": door, "street": street_at });
+                return Site { pos, facing, fits: true, door: Some(door), street: street_at(street) };
             }
         }
-        // No street ahead: the first way round that fits, with whatever
-        // driveway a standing plot would find for itself — out of a flank,
-        // or none.
         for facing in 0..4u8 {
             let pos = at(facing);
-            let p = crate::blueprint::plot(kind, facing);
-            if Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t)) {
-                let found = match p.lot {
-                    Some(((lx, ly), (lw, ld))) => self.road_for_lot(GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld), facing, true),
-                    None => self.road_for_plot(pos, p.size),
-                };
-                let street = found.and_then(|(id, _)| self.objects.get(id).and_then(|e| e.position));
-                return json!({ "pos": pos, "facing": facing, "fits": true, "door": found.map(|(_, door)| door), "street": street });
+            if Self::footprint(pos, crate::blueprint::plot(kind, facing).size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t)) {
+                let found = self.driveway_for(pos, kind, facing);
+                return Site { pos, facing, fits: true, door: found.map(|(_, d)| d), street: found.and_then(|(s, _)| street_at(s)) };
             }
         }
-        json!({ "pos": at(2), "facing": 2, "fits": false, "door": null, "street": null })
+        Site { pos: at(2), facing: 2, fits: false, door: None, street: None }
+    }
+
+    /// The driveway a standing plot finds for itself: its lot's street,
+    /// ahead, at a corner or along a flank; or, with no lot, any street the
+    /// building's perimeter touches.
+    pub fn driveway_for(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<(EntityId, GridCoord)> {
+        let p = crate::blueprint::plot(kind, facing);
+        match p.lot {
+            Some(((lx, ly), (lw, ld))) => self.road_for_lot(GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld), facing, true),
+            None => self.road_for_plot(pos, p.size),
+        }
+    }
+
+    /// Put a kind down where its site says, driveway and all. `None` if the
+    /// site was refused.
+    pub fn place_site(&mut self, site: Site, kind: BuildingKind) -> Option<EntityId> {
+        if !site.fits {
+            return None;
+        }
+        let id = self.place_building(site.pos, kind, site.facing)?;
+        self.attach_driveway(id);
+        Some(id)
     }
 
     /// The street and door a kind's plot would have at `pos` facing this
@@ -383,14 +396,7 @@ impl World {
         let (Some(pos), GameObject::Building(b)) = (entry.position, &entry.object) else {
             return false;
         };
-        let p = crate::blueprint::plot(b.kind, b.facing);
-        let found = match p.lot {
-            Some(((lx, ly), (lw, ld))) => {
-                self.road_for_lot(GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld), b.facing, true)
-            }
-            None => self.road_for_plot(pos, p.size),
-        };
-        let Some((street, door)) = found else { return false };
+        let Some((street, door)) = self.driveway_for(pos, b.kind, b.facing) else { return false };
         let Some(street_pos) = self.objects.get(street).and_then(|e| e.position) else {
             return false;
         };

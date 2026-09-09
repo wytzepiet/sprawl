@@ -9,7 +9,7 @@ import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "./objec
 import { BLUEPRINTS, FACINGS, plot } from "../blueprints";
 import { screenToWorld } from "./view";
 import { createSpring2D } from "./spring";
-import type { BuildingKind, GameObjectEntry, GridCoord, Operation } from "../generated";
+import type { BuildingKind, GameObjectEntry, Operation, Site } from "../generated";
 
 /** The ghost door node's id: no real thing has it. */
 const DOOR = -1;
@@ -27,18 +27,6 @@ const GHOST_Z = 0.05;
 const ASK_STEP = 0.5;
 
 /**
- * Where a plot would land, as the server says: its origin tile, which way
- * it faces, whether it can land at all, and the driveway it would get.
- */
-interface Site {
-  pos: GridCoord;
-  facing: number;
-  fits: boolean;
-  door: GridCoord | null;
-  street: GridCoord | null;
-}
-
-/**
  * The ghost of the building being dragged in: the plot as it would land,
  * building, lot and driveway, turned to face the street beside the pointer.
  * The server is asked, with the rules it will place by — straight-on
@@ -53,6 +41,9 @@ export function BuildingPlacer() {
   const kind = (): BuildingKind => placingBuilding() ?? "House";
 
   let asked: [number, number] | null = null;
+  /** The point the building is held over: what placing sends, so the
+   *  server decides the site the same way it did for the ghost. */
+  let held: [number, number] = [0, 0];
   let latest = 0;
   const ask = async (wx: number, wy: number) => {
     const placing = placingBuilding();
@@ -60,6 +51,7 @@ export function BuildingPlacer() {
     const key: [number, number] = [Math.round(wx / ASK_STEP), Math.round(wy / ASK_STEP)];
     if (asked && asked[0] === key[0] && asked[1] === key[1]) return;
     asked = key;
+    held = [wx, wy];
     const n = ++latest;
     const r = await fetch(`/site/${placing}?x=${wx}&y=${wy}`);
     const found = (await r.json()) as Site;
@@ -83,7 +75,7 @@ export function BuildingPlacer() {
     if (!placing) return;
     const s = site();
     const placed = !!s?.fits;
-    if (s && placed) send({ type: "PlaceBuilding", data: { pos: s.pos, kind: placing } });
+    if (s && placed) send({ type: "PlaceBuilding", data: { at: held, kind: placing } });
     // Placed: the street keeps its new arm until the server's own version
     // of it arrives. Dropped: everything goes back.
     clearDrive(placed);
