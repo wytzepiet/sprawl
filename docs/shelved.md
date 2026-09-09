@@ -22,6 +22,34 @@ happened on the map, where a dial that glides is a rate.
 `rate`, `settle`, and `resident::served` feeding its streams at every
 change of `at` or `selected`. Last lived at `0954125`.
 
+## Purses, floats, the sweep and rent
+
+**What.** `economy.md` §8.2 as first built: every resident had a wallet
+and every building a balance, in hours of the edge's wage. A visit's
+price left the wallet and landed on the building as a lump; a shift left
+the building and landed in the wallet. Every purse kept a float — a
+payday of meals for a resident, a day of wages and a full shelf for a
+shop — and what was over it swept to the treasury at each income, a
+resident's sweep being rent on the home (Schwabe's law). A building
+whose purse ran dry stopped buying and hiring (§9); the mayor could fund
+it back to its float. `economy::float`, `sweep`, `rent`, `solvent`,
+`fund`, `Resident.wallet`, `Building.balance`, `RESIDENT_FLOAT`.
+
+**Why shelved.** The mayor owned every purse, so every internal payment
+was a transfer between two purses of one owner, and the treasury could
+only ever collect the net flow at the door — which one purse collects
+directly. What the forty purses added was floats to size, a sweep to
+time, rent to derive, and a solvency rule whose one visible product in a
+season was a bar with a full shelf, no money, and nothing to say. The
+information a purse seemed to hold was elsewhere: a resident's standing
+is their wage, a building's is its books.
+
+**To bring back.** Only if someone in town owns something the mayor does
+not — a firm that moved in by itself, a landlord — so that a transfer
+between purses changes who has what. Then `wallet` and `balance` on the
+structs, `sale` moving money instead of writing lines, and §8.2 as it
+was. Last lived at the commit before `economy.md` step 4.
+
 ## Zoning
 
 **What.** The player painted residential, commercial and industrial areas

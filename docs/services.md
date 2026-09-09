@@ -136,8 +136,9 @@ delivery. A call is raised when it is low. There is no `Condition` enum.
   patrol deters; the jail is a tap with a stay, the resident away like a
   lorry beyond the edge.
 
-Services earn nothing and are paid from the treasury (`economy.md` §8.2).
-What they save is residents and buildings.
+Services earn nothing; their wages are lines in the books like anyone's,
+and the town pays (`economy.md` §8.2). What they save is residents and
+buildings.
 
 ## 7. Legibility
 

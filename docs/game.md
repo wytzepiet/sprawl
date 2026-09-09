@@ -91,20 +91,23 @@ gives a reason to choose. Roads stay instant under the brush.
 
 ## Money
 
-Everyone has a purse: residents, buildings, the mayor. Money moves
-between them and is made only at the edge. Everything is a stock that
-runs down — a shelf, a tank, an appetite, a factory's hours of labour —
-and the deficit is the need. Every building buys its inputs, pays its
-workers, and posts a price for what it sells, nudging it up when the
-shelf empties and down when it fills, never below cost. A resident earns
-a wage and prices money in hours of it, so the one score that already
-picks their day picks by price too; a building prices money in hours of
-its revenue and picks by delivered price. The edge buys and sells every
-good at a fixed price and hires at a fixed wage, and the drive is the
-freight, so nothing can run away. The mayor owns the town: every purse
-keeps a float and the rest sweeps to the treasury as a lump on the
-building, so there are no taxes. Ignoring all of this must never hurt;
-reading it is how you win. `economy.md` is the mechanism.
+The town has one purse. Money enters when the town sells labour or goods
+to the outside and leaves when it buys from it or builds; inside, a sale
+is a line in two sets of books and nothing moves. Everything is a stock
+that runs down — a shelf, a tank, an appetite, a house's hours of labour
+— and every building is a row that draws some stocks and fills one:
+labour is a good, and a house is where it is made. Every building posts
+a price for what it fills, nudging it up when the stock empties and down
+when it fills, never below cost. A resident prices money in hours of
+their wage, so the one score that already picks their day picks by price
+too; a building prices money in hours of its takings and picks by
+delivered price. Beyond the edge is a world that runs the same rows at
+capacity and charges a crossing, so nothing can run away and no price is
+authored. Two numbers: GDP, hours of need served in town, which is how
+rich the town is and what opens the tree; and the treasury, what the
+town has earned from the outside net of what the mayor built, which is
+what the mayor can spend. Ignoring all of this must never hurt; reading
+it is how you win. `economy.md` is the mechanism.
 
 ## Power
 
