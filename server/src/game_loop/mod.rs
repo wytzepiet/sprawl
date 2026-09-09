@@ -1318,12 +1318,12 @@ mod tests {
     /// empty while every resident spends the day retrying an arrival that
     /// can never happen, which is a measurement of nothing.
     fn live(mix: &[BuildingKind], days: u64) -> (World, u64) {
-        season(mix, days, |_, _| {})
+        season(mix, days, |_, _, _| {})
     }
 
     /// `live`, with a look at the town at the end of every day: after the
     /// midnight wake, so the tills are counted and the prices stepped.
-    fn season(mix: &[BuildingKind], days: u64, mut each_day: impl FnMut(&World, u64)) -> (World, u64) {
+    fn season(mix: &[BuildingKind], days: u64, mut each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
         let mut world = street();
         // Forty plots in a row, a tile apart: a lot claims the tile beside
         // it for its ring, and a house may not stand on it.
@@ -1358,7 +1358,7 @@ mod tests {
                 handle_wake(&mut world, &mut events, &mut intersections, id, now);
             }
             if now % DAY_MS as u64 == 0 {
-                each_day(&world, now / DAY_MS as u64);
+                each_day(&world, now / DAY_MS as u64, wakes);
             }
         }
         (world, wakes)
@@ -1445,7 +1445,7 @@ mod tests {
         use crate::economy::{edge_price, EDGE_WAGE};
         let mut prices: std::collections::BTreeMap<(EntityId, crate::needs::Need), Vec<f64>> = Default::default();
         let mut wages: std::collections::BTreeMap<EntityId, Vec<f64>> = Default::default();
-        let (world, _) = season(&placeable(), SEASON, |world, _| {
+        let (world, _) = season(&placeable(), SEASON, |world, _, _| {
             for e in world.objects.iter() {
                 let GameObject::Building(ref b) = e.object else { continue };
                 if world.edge.contains(&e.id) {
@@ -1499,7 +1499,7 @@ mod tests {
     fn season_no_harm_and_no_sinks() {
         let mut worst_week: Vec<(EntityId, BuildingKind, f64, f64)> = Vec::new();
         let mut most_outside = 0.0f64;
-        let (world, _) = season(&placeable(), SEASON, |world, day| {
+        let (world, _) = season(&placeable(), SEASON, |world, day, _| {
             let (buildings, wallets) = purses(world);
             if day == 7 {
                 worst_week = buildings.iter().filter(|&&(_, kind, balance, float)| balance <= 0.0 && float > 0.0 && !crate::economy::service(kind)).copied().collect();
@@ -1527,7 +1527,7 @@ mod tests {
     #[ignore]
     fn season_the_conga() {
         let mut swept = 0.0;
-        let (world, _) = season(&placeable(), SEASON, |world, _| {
+        let (world, _) = season(&placeable(), SEASON, |world, _, _| {
             for e in world.objects.iter() {
                 if let GameObject::Building(ref b) = e.object
                     && b.kind == BuildingKind::Warehouse
@@ -1556,7 +1556,7 @@ mod tests {
     #[test]
     #[ignore]
     fn season_the_door_breaks_even() {
-        let (world, _) = season(&[BuildingKind::Apartment], SEASON, |_, _| {});
+        let (world, _) = season(&[BuildingKind::Apartment], SEASON, |_, _, _| {});
         let (_, wallets) = purses(&world);
         for w in &wallets {
             assert!(
@@ -1575,7 +1575,11 @@ mod tests {
     fn season_tenure() {
         let mut jobs: std::collections::BTreeMap<EntityId, Option<EntityId>> = Default::default();
         let mut changes = 0u32;
-        let (world, _) = season(&placeable(), SEASON, |world, day| {
+        let mut wakes_so_far = 0u64;
+        let (world, _) = season(&placeable(), std::env::var("DAYS").ok().and_then(|d| d.parse().ok()).unwrap_or(SEASON), |world, day, wakes| {
+            // Wakes per resident-day, day by day: a storm shows here first.
+            println!("day {day}: {} wakes per resident", (wakes - wakes_so_far) / world.resident_ids().len().max(1) as u64);
+            wakes_so_far = wakes;
             let kind_of = |b: Option<EntityId>| match b.and_then(|b| world.objects.get(b)).map(|e| &e.object) {
                 Some(GameObject::Building(b)) => format!("{:?}", b.kind),
                 _ => "none".into(),
