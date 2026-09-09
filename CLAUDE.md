@@ -55,6 +55,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.
+- **Does it still hold?** `cd server && cargo test`, then `cd client && bunx tsc
+  --noEmit -p .`. Nothing runs these but you, so run them before you push.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads, forest to build into, and coastline —
