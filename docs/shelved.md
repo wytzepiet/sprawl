@@ -5,6 +5,23 @@ why it went, what bringing it back would take, and the last commit where
 the code lived — so nothing has to be reinvented from memory, and nothing
 has to stay in the tree to be remembered.
 
+## The continuous ledger
+
+**What.** `xp.rs`: one number that was both the city's level and the
+mayor's money, integrating hours of need served from every resident
+standing in a building on a need it had a tap for, continuously, with a
+rate for the client to run the dials forward between updates. Placing
+cost hours of need served, discounted by the build.
+
+**Why shelved.** Money became its own quantity, in purses, moved by sales
+(`economy.md`). Level is still hours served, but banked in lumps as each
+visit ends, like everything else; and a dial that steps is an event that
+happened on the map, where a dial that glides is a rate.
+
+**To bring back.** `Ledger { settled, since, streams }` with `at`,
+`rate`, `settle`, and `resident::served` feeding its streams at every
+change of `at` or `selected`. Last lived at `0954125`.
+
 ## Zoning
 
 **What.** The player painted residential, commercial and industrial areas

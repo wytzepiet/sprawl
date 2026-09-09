@@ -49,15 +49,20 @@ pub struct World {
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     pub terrain_seed: u32,
-    /// What each building's taps have discharged, in obligation-ms: for a
-    /// workplace, labour received; for a shop, meals sold. Today's running
-    /// total and yesterday's, keyed by the day today is. Learned, not
-    /// saved — a loaded world starts counting afresh.
-    pub delivered: HashMap<(EntityId, crate::needs::Need), Delivered>,
-    /// What the city has earned, ever: its taps serving people, as they go.
-    pub xp: crate::xp::Ledger,
-    /// What the mayor has spent of it. The gap is what they have to spend.
-    pub spent: f64,
+    /// Every building's books: what came in, what went out, what its taps
+    /// served, today and yesterday. Learned, not saved — a loaded world
+    /// starts counting afresh.
+    pub books: HashMap<EntityId, crate::economy::Books>,
+    /// The treasury's own books: what swept in, today and yesterday.
+    pub income: crate::economy::Books,
+    /// Hours of need the city's buildings have served, ever, banked as each
+    /// visit ends. The level.
+    pub served: f64,
+    /// The mayor's money, in hours of the edge's wage. docs/economy.md §8.2.
+    pub treasury: f64,
+    /// Money that landed on buildings since the last flush, for the clients
+    /// looking at them.
+    pub sales: Vec<crate::protocol::Sale>,
     /// The nodes of the tree the player has taken: the gate for everything
     /// the city may do. See `tree.rs`.
     pub build: crate::tree::Build,
@@ -101,26 +106,6 @@ pub struct World {
     pub edge: BTreeSet<EntityId>,
 }
 
-/// One building's output for one need: the day being counted, its running
-/// total, and the last whole day's.
-#[derive(Default, Clone, Copy)]
-pub struct Delivered {
-    pub day: u64,
-    pub today: f64,
-    pub yesterday: f64,
-}
-
-impl Delivered {
-    pub fn add(&mut self, day: u64, amount: f64) {
-        if day != self.day {
-            self.yesterday = if day == self.day + 1 { self.today } else { 0.0 };
-            self.today = 0.0;
-            self.day = day;
-        }
-        self.today += amount;
-    }
-}
-
 /// Marks an empty box: max below min, so the first reveal replaces it outright.
 const NO_BOUNDS: ChunkBounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
 
@@ -157,9 +142,11 @@ impl World {
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed: 0,
-            delivered: HashMap::new(),
-            xp: Default::default(),
-            spent: 0.0,
+            books: HashMap::new(),
+            income: Default::default(),
+            served: 0.0,
+            treasury: 0.0,
+            sales: Vec::new(),
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
@@ -187,9 +174,11 @@ impl World {
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             terrain_seed,
-            delivered: HashMap::new(),
-            xp: Default::default(),
-            spent: 0.0,
+            books: HashMap::new(),
+            income: Default::default(),
+            served: 0.0,
+            treasury: 0.0,
+            sales: Vec::new(),
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
@@ -378,12 +367,7 @@ impl World {
             // the tile is the road's, and the building is only what stands
             // for what lies past it.
             let id = self.insert_at(
-                GameObject::Building(crate::protocol::Building {
-                    kind: crate::protocol::BuildingKind::Edge,
-                    size: (1, 1),
-                    facing: 2,
-                    stock: 1.0,
-                }),
+                GameObject::Building(crate::protocol::Building::new(crate::protocol::BuildingKind::Edge, (1, 1), 2)),
                 Some(pos),
             );
             self.edge.insert(id);

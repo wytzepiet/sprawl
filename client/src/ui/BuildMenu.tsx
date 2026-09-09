@@ -60,8 +60,7 @@ export function BuildMenuSheet() {
   // the mayor cannot yet afford is shown too, and greyed: the thing you are
   // saving for is the tile you keep looking at.
   const may = (kind: BuildingKind) => unlocked(tree(), growth().taken, (e) => e.kind === "Building" && e.building === kind);
-  const hours = () => growth().balance / 60;
-  const afford = (kind: BuildingKind) => hours() >= BLUEPRINTS[kind].price;
+  const afford = (kind: BuildingKind) => growth().treasury >= BLUEPRINTS[kind].price;
   const [tab, setTab] = createSignal<Tab>("homes");
   const kinds = () => KINDS.filter((k) => BLUEPRINTS[k].tab === tab());
   // One tile of the shelf in pixels, so a pin can point at its plot's

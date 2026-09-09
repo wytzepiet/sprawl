@@ -75,6 +75,8 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Value {
         "work": r.work.map(|w| link(world, w)),
         "at": r.at.map(|a| link(world, a)),
         "car": link(world, r.car),
+        "wallet": r.wallet,
+        "earning": crate::economy::earning(world, id),
         "selected": r.selected,
         "since": hhmm(r.last_update),
         // The tank is the car's; its card shows it.
@@ -88,8 +90,7 @@ fn car(world: &World, id: EntityId, c: &Car, now: GameTime) -> Value {
         Some(GameObject::Resident(r)) if r.at == Some(id) => Some(link(world, c.owner)),
         _ => None,
     };
-    // What is owed at the pump is what has been burned.
-    let fuel = 1.0 - c.fuel.level / c.fuel.need.cap();
+    let fuel = c.fuel.level / c.fuel.cap;
     let trip = c.trip.as_ref().map(|t| json!({
         "to": link(world, t.destination),
         "due": hhmm(t.eta),
@@ -152,14 +153,12 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         .filter(|call| call.at == id)
         .map(|call| json!({ "what": format!("{:?}", call.kind), "since": hhmm(call.raised), "answered_by": call.answered_by.map(|c| link(world, c)) }))
         .collect();
-    let day = now / DAY_MS as u64;
     let served: Vec<Value> = bp
         .taps
         .iter()
         .map(|t| {
-            let d = world.delivered.get(&(id, t.need));
-            let today = d.filter(|d| d.day == day).map_or(0.0, |d| d.today);
-            json!({ "need": t.need, "hours_today": today / (DAY_MS as f64 / 24.0) })
+            let today = world.books.get(&id).and_then(|k| k.on(now).served.get(&t.need).copied()).unwrap_or(0.0);
+            json!({ "need": t.need, "hours_today": today })
         })
         .collect();
     json!({
@@ -168,7 +167,8 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "label": format!("{:?}", b.kind),
         "building_kind": b.kind,
         "reached": world.road_node_for_building(id).is_some(),
-        "stock": (bp.stock > 0).then_some(b.stock),
+        "stock": (bp.stock > 0).then_some(b.stock.level / b.stock.cap),
+        "money": (!world.edge.contains(&id)).then(|| crate::economy::inspect(world, id, now)),
         "spots": world.spots_at(id),
         "here": here,
         "household": household,

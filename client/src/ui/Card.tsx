@@ -2,6 +2,7 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
+import { useGame } from "../state/gameObjects";
 import type { BuildingKind, Need } from "../generated";
 
 /** A line that points at something else on the map. */
@@ -27,6 +28,8 @@ type Card =
       work: Link | null;
       at: Link | null;
       car: Link;
+      wallet: number;
+      earning: number;
       selected: Need | null;
       since: string;
       buckets: Bucket[];
@@ -56,8 +59,27 @@ type Card =
       fleet: Link[];
       calls: { what: string; since: string; answered_by: Link | null }[];
       served: { need: Need; hours_today: number }[];
+      money: Money | null;
     }
   | { kind: "gone"; id: number };
+
+/** A building's purse and books, in hours of the edge's wage. */
+interface Money {
+  balance: number;
+  float: number;
+  solvent: boolean;
+  jobs: number;
+  wage: number;
+  prices: { need: Need; price: number; unit_cost: number; edge: number }[];
+  today: Page | null;
+  yesterday: Page | null;
+}
+interface Page {
+  revenue: number;
+  purchases: number;
+  wages: number;
+  margin: number;
+}
 
 /** How often an open card asks again. The world moves; the card should too. */
 const REFRESH_MS = 1000;
@@ -195,6 +217,10 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
         <Row label="Work"><To link={c.work} fallback="no job" /></Row>
         <Row label="Car"><To link={c.car} /></Row>
       </Section>
+      <Section title="Purse">
+        <Row label="Wallet">{h(c.wallet)}</Row>
+        <Row label="Earns">{h(c.earning)} / h</Row>
+      </Section>
       <Section title={`Needs, since ${c.since}`}>
         <For each={c.buckets}>
           {(b) => (
@@ -246,8 +272,14 @@ function CarCard(c: Extract<Card, { kind: "car" }>) {
   );
 }
 
+/** Hours of the edge's wage, to a tenth. */
+function h(v: number): string {
+  return `${v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)} h`;
+}
+
 function BuildingCard(c: Extract<Card, { kind: "building" }>) {
   const bp = BLUEPRINTS[c.building_kind];
+  const { send } = useGame();
   return (
     <>
       <Header
@@ -263,6 +295,41 @@ function BuildingCard(c: Extract<Card, { kind: "building" }>) {
         <Section title="Shelves">
           <Row label="Stock"><Bar value={c.stock!} color={c.stock! <= 0 ? "#D9483B" : "#57A773"} /></Row>
         </Section>
+      </Show>
+      <Show when={c.money}>
+        {(m) => (
+          <Section title="Money">
+            <Row label="Purse">
+              <span classList={{ "text-red-600 font-semibold": !m().solvent }}>{h(m().balance)}</span>
+              <Show when={m().float > 0}><span class="text-stone-400"> / {h(m().float)}</span></Show>
+            </Row>
+            <Show when={!m().solvent}>
+              <button class="my-1 w-full rounded-lg bg-stone-800 px-2 py-1 text-xs font-semibold text-white hover:bg-stone-700 cursor-pointer" onClick={() => send({ type: "Fund", data: c.id })}>
+                Put in {h(m().float - m().balance)}
+              </button>
+            </Show>
+            <Show when={m().jobs > 0}>
+              <Row label="Wage">{h(m().wage)} / h</Row>
+            </Show>
+            <For each={m().prices}>
+              {(p) => (
+                <Row label={p.need}>
+                  {h(p.price)} <span class="text-stone-400">· edge {h(p.edge)}</span>
+                </Row>
+              )}
+            </For>
+            <Show when={m().today}>
+              {(t) => (
+                <>
+                  <Row label="Today in">{h(t().revenue)}</Row>
+                  <Show when={t().purchases > 0}><Row label="Bought">{h(t().purchases)}</Row></Show>
+                  <Show when={t().wages > 0}><Row label="Wages">{h(t().wages)}</Row></Show>
+                  <Row label="Margin"><span classList={{ "text-red-600": t().margin < 0 }}>{h(t().margin)}</span></Row>
+                </>
+              )}
+            </Show>
+          </Section>
+        )}
       </Show>
       <Show when={c.here.length > 0}>
         <Section title={`Here now · ${c.here.length}`}>

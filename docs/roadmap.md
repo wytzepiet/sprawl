@@ -8,15 +8,17 @@ assistant; they are guesses, and the order matters more than the numbers.
 ## Where we are (2026-09-09)
 
 Built: roads and streets, one-way, the tree as the build, every kind on
-the build menu as a piece of map, placed by hand and paid for out of what
-the city has earned, residents with needs and commutes, call-outs for
-stock with a warehouse and trucks from the edge, the supermarket, day and
-night, a fresh world per seed. Nothing arrives on its own: the spawner
-went on 2026-09-09 (`shelved.md`).
+the build menu as a piece of map, placed by hand and paid for out of the
+treasury, residents with needs and commutes, call-outs for stock with a
+warehouse and trucks from the edge, the supermarket, day and night, a
+fresh world per seed. Nothing arrives on its own: the spawner went on
+2026-09-09 (`shelved.md`). Money: purses, wages, posted prices, the
+sweep, every sale a lump on the map (`economy.md` §12 steps 1 and 2).
 
-Not built: parking, goods, money, food, the port, power, fire, hospital,
-the inspect panel, road speed and priority, levels, trains, multiplayer,
-deployment.
+Not built: parking, goods, food, the port, power, fire, hospital, the
+inspect panel, road speed and priority, levels, trains, multiplayer,
+deployment. Of milestone 3, road past the allowance, moving and
+demolishing do not cost money yet.
 
 ## Milestone 1: You can see the cars (≈ 4 days)
 

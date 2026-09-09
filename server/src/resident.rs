@@ -3,6 +3,7 @@ use crate::car::CRUISE_SPEED;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::blueprint::blueprint;
+use crate::economy;
 use crate::needs::{Bucket, Need, Tap};
 use crate::world::pathfinding::Routes;
 use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, GridCoord, Resident, DAY_MS};
@@ -77,7 +78,7 @@ pub fn handle_resident_wake(
     let Some(r) = resident(world, id).cloned() else { return };
     let mut buckets = buckets(world, &r);
     let mut routes = routes_from(world, at);
-    let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes);
+    let verdicts = verdicts(world, &r, id, &buckets, at, now, &crowd, &mut routes);
     drop(routes);
 
     // The note the demand readout reads: how far short of being served on
@@ -86,7 +87,7 @@ pub fn handle_resident_wake(
         b.shortfall = match *v {
             Verdict::Nothing => 1.0,
             Verdict::Go { score, .. } => {
-                let ideal = b.need.ceiling(b.level);
+                let ideal = b.need.ceiling(b.stock.short());
                 if ideal > 0.0 { (1.0 - score / ideal).clamp(0.0, 1.0) } else { 0.0 }
             }
         };
@@ -135,11 +136,11 @@ pub fn handle_resident_wake(
         // Nothing to do anywhere, and nothing to wait for. Look again in a
         // while: a world with nothing on offer is the unmet-demand case, and
         // it is not this resident's to solve.
-        set_selected(world, id, None, now);
+        set_selected(world, events, id, None, now);
         events.wake(RETRY_MS, id);
         return;
     };
-    set_selected(world, id, Some(buckets[i].need), now);
+    set_selected(world, events, id, Some(buckets[i].need), now);
     // Not yet time to set out, or already there: stay put. Staying restates
     // how long the car's spot is held.
     if at == there {
@@ -147,7 +148,11 @@ pub fn handle_resident_wake(
     }
     if departure > now || at == there {
         events.wake(alarm.max(now) - now, id);
-    } else if !drive(world, events, r.car, at, there, now, leave) {
+        return;
+    }
+    // Leaving ends the visit here, whatever the next one is for.
+    pay_the_tab(world, events, id, at, now);
+    if !drive(world, events, r.car, at, there, now, leave) {
         events.wake(RETRY_MS, id);
     }
 }
@@ -158,7 +163,7 @@ pub fn handle_resident_wake(
 fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
     let mut all = r.buckets.clone();
     if let Some(GameObject::Car(c)) = world.objects.get(r.car).map(|e| &e.object) {
-        all.push(c.fuel.clone());
+        all.push(Bucket { need: Need::Fuel, stock: c.fuel, shortfall: 0.0 });
     }
     all
 }
@@ -172,20 +177,30 @@ fn store(world: &mut World, id: EntityId, car: EntityId, buckets: &[Bucket]) {
     if let Some(tank) = buckets.iter().find(|b| b.need == Need::Fuel)
         && let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object)
     {
-        c.fuel = tank.clone();
+        c.fuel = tank.stock;
     }
 }
 
 /// One verdict per bucket: the best any of its candidates offers.
-fn verdicts(world: &World, r: &Resident, buckets: &[Bucket], at: EntityId, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Vec<Verdict> {
+fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: EntityId, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Vec<Verdict> {
+    // Money enters as time: what they make an hour is what an hour of it
+    // costs them, and what is in the wallet is what they can buy at all.
+    let purse = Purse { wallet: r.wallet, earning: economy::earning(world, id) };
     buckets
         .iter()
         .map(|b| match b.need {
-            Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, at, b, w, now, crowd, routes, true)),
-            Need::Rest | Need::Home => verdict_at(world, r, at, b, r.home, now, crowd, routes, true),
-            Need::Eat | Need::Leisure | Need::Fuel => search(world, r, at, b, now, crowd, routes),
+            Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, &purse, at, b, w, now, crowd, routes, true)),
+            Need::Rest | Need::Home => verdict_at(world, r, &purse, at, b, r.home, now, crowd, routes, true),
+            Need::Eat | Need::Leisure | Need::Fuel => search(world, r, &purse, at, b, now, crowd, routes),
         })
         .collect()
+}
+
+/// What a resident has to spend, and what an hour of it is worth to them.
+#[derive(Clone, Copy)]
+struct Purse {
+    wallet: f64,
+    earning: f64,
 }
 
 /// The ways out from where a resident stands, searched once for the whole
@@ -198,6 +213,7 @@ fn routes_from(world: &World, at: EntityId) -> Option<Routes<'_>> {
 fn verdict_at(
     world: &World,
     r: &Resident,
+    purse: &Purse,
     at: EntityId,
     b: &Bucket,
     building: EntityId,
@@ -220,11 +236,25 @@ fn verdict_at(
     } else {
         crow_flies_ms(world, at, building)
     };
+    // A shift is sold, not bought: its wage ranks jobs (docs/economy.md
+    // §6.3), and once taken it is the constant habit. Beyond the edge
+    // nobody is refused: the floor has to be a floor.
+    let price = if b.need == Need::Work { 0.0 } else { economy::price_of(world, building, b.need) };
+    let cost = Cost { price, purse: *purse, floor: world.edge.contains(&building) };
     taps_of(world, building)
         .iter()
         .filter(|t| t.need == b.need)
-        .map(|t| evaluate(world, r.car, at, building, t, b, now, company, tau, exact))
+        .map(|t| evaluate(world, r.car, at, building, t, b, now, company, tau, exact, cost))
         .fold(Verdict::Nothing, Verdict::better)
+}
+
+/// What a visit costs: the posted price per unit of the need, whose purse
+/// it comes out of, and whether they are served even when it is empty.
+#[derive(Clone, Copy)]
+struct Cost {
+    price: f64,
+    purse: Purse,
+    floor: bool,
 }
 
 /// The best of whatever is around, found the way a search finds anything
@@ -237,7 +267,7 @@ fn verdict_at(
 /// pays for one or two real answers, not one per shop. A verdict is a
 /// bucket's own best, whatever the other buckets scored: the alarms and
 /// the notes read it as such.
-fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Verdict {
+fn search(world: &World, r: &Resident, purse: &Purse, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Verdict {
     let need = b.need;
     let mut heap: BinaryHeap<Candidate> = world
         .revealed
@@ -256,13 +286,13 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
         // the drive is refused, and the search picks it again every retry.
         .filter(|&id| world.road_node_for_building(id).is_some())
         .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
-        .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, at, b, id, now, crowd, routes, false)))
+        .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, purse, at, b, id, now, crowd, routes, false)))
         .collect();
     while let Some(top) = heap.pop() {
         if top.exact {
             return top.verdict;
         }
-        heap.extend(Candidate::new(top.id, true, verdict_at(world, r, at, b, top.id, now, crowd, routes, true)));
+        heap.extend(Candidate::new(top.id, true, verdict_at(world, r, purse, at, b, top.id, now, crowd, routes, true)));
     }
     Verdict::Nothing
 }
@@ -345,6 +375,9 @@ impl Verdict {
 /// counted from now — so a wait for the tap to open costs what it costs.
 /// Nobody sets out early to wait somewhere else, but someone already there
 /// is scored on waiting honestly, and does not go home for five minutes.
+/// Money enters as time: the visit's price in hours of the resident's own
+/// wage is added to the visit (docs/economy.md §6.1, Becker 1965), and a
+/// visit the wallet cannot pay for is no option at all.
 fn evaluate(
     world: &World,
     car: EntityId,
@@ -356,6 +389,7 @@ fn evaluate(
     company: u32,
     tau: GameTime,
     exact: bool,
+    cost: Cost,
 ) -> Verdict {
     let h = tap.overhead;
     // An estimate has room for everyone; the real lot decides otherwise.
@@ -374,7 +408,7 @@ fn evaluate(
         if available <= 0.0 {
             return None;
         }
-        let drained = if rate.is_finite() { bucket.level.min(rate * available) } else { bucket.level };
+        let drained = if rate.is_finite() { bucket.stock.short().min(rate * available) } else { bucket.stock.short() };
         // Less than a millisecond owed is nothing: the clock cannot tell.
         if drained < 1.0 {
             return None;
@@ -405,13 +439,20 @@ fn evaluate(
         }
     }
     let (departure, leave, drained, entry) = planned;
-    let score = bucket.level / bucket.need.cap() * drained / (leave - now) as f64;
+    // The visit's price: what the wallet cannot pay for is no option, and
+    // the rest is priced in the resident's own hours, in milliseconds.
+    let money = cost.price * drained / bucket.need.unit();
+    if money > cost.purse.wallet && !cost.floor {
+        return Verdict::Nothing;
+    }
+    let priced = money / cost.purse.earning * HOUR;
+    let score = bucket.stock.weight() * drained / ((leave - now) as f64 + priced);
     Verdict::Go {
         score,
         departure,
         leave,
         building,
-        fixed: (entry - now) as f64,
+        fixed: (entry - now) as f64 + priced,
         rate,
         drained,
     }
@@ -431,34 +472,39 @@ fn evaluate(
 /// sitting exactly on it has tied and lost to an earlier bucket, and wins a
 /// millisecond on.
 fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
-    if b.need.fill() == 0.0 {
+    if b.need.drain() == 0.0 {
         return GameTime::MAX;
     }
     let cap = b.need.cap();
+    let short = b.stock.short();
     let target = match *v {
-        Verdict::Go { drained, .. } if drained < b.level => return GameTime::MAX,
+        Verdict::Go { drained, .. } if drained < short => return GameTime::MAX,
         Verdict::Go { fixed, rate, .. } => {
             // L^2 / cap = score * (fixed + L / rate)
             let half_b = score * cap / rate / 2.0;
             let c = score * cap * fixed;
             half_b + (half_b * half_b + c).sqrt()
         }
-        Verdict::Nothing => match b.need.level_for(score) {
-            Some(level) => level,
+        Verdict::Nothing => match b.need.short_for(score) {
+            Some(short) => short,
             None => return GameTime::MAX,
         },
     };
-    if target >= cap || target < b.level {
+    if target >= cap || target < short {
         return GameTime::MAX;
     }
-    now + ((target - b.level) / b.need.fill()).ceil().max(1.0) as GameTime
+    now + ((target - short) / b.need.drain()).ceil().max(1.0) as GameTime
 }
 
-/// Section 4.3: bring the buckets up to date. The one being served drains by
-/// what its tap offered since the last look and accrues only for the part it
-/// did not; every other one accrues the whole interval. A constant need is
-/// constant: it neither drains nor accrues. A driven need accrues at the end
-/// of a trip, in `drove`, and drains like any other.
+/// Section 4.3: bring the stocks up to date. The one being served refills
+/// by what its tap offered since the last look and drains only for the
+/// part it did not; every other one drains the whole interval. A constant
+/// need is constant: it neither refills nor drains. A driven need drains at
+/// the end of a trip, in `drove`, and refills like any other.
+///
+/// What was served goes on the tab, to be paid as one lump when the visit
+/// ends, and on the level: an hour of need the city served is an hour of
+/// life that happened here. The edge's hours are some other city's.
 fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &Crowd) {
     let Some(r) = resident(world, id) else { return };
     let (last, selected) = (r.last_update, r.selected);
@@ -471,11 +517,18 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
             .map(|t| (t.serving(slots_at(world, at, t), company), t.curve.integral(last, now)))
     });
     // What the building put out is what it put out, whether or not the
-    // bucket had room for it: a shift worked is labour received.
+    // stock had room for it: a shift worked is labour received.
     if let (Some(need), Some((rate, served))) = (selected, serving)
         && served > 0.0
     {
-        world.delivered.entry((at, need)).or_default().add(now / DAY_MS as u64, rate * served);
+        let out = rate * served;
+        *world.books.entry(at).or_default().today(now).served.entry(need).or_default() += out / HOUR;
+        if !world.edge.contains(&at) {
+            world.served += out / HOUR;
+        }
+        if let Some(r) = resident_mut(world, id) {
+            r.tab += out / need.unit();
+        }
     }
     let Some(r) = resident(world, id).cloned() else { return };
     let mut buckets = buckets(world, &r);
@@ -488,7 +541,8 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
             _ => (0.0, 0.0),
         };
         let idle = elapsed - served;
-        b.level = (b.level - rate * served + b.need.fill() * idle).clamp(0.0, b.need.cap());
+        b.stock.add(rate * served);
+        b.stock.take(b.need.drain() * idle);
     }
     store(world, id, r.car, &buckets);
     if let Some(r) = resident_mut(world, id) {
@@ -586,7 +640,7 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
     let Some(at) = r.at else { return json!({ "id": id, "at": null, "note": "off-map" }) };
     let crowd = headcount(world);
     let buckets = buckets(world, r);
-    let verdicts = verdicts(world, r, &buckets, at, now, &crowd, &mut routes_from(world, at));
+    let verdicts = verdicts(world, r, id, &buckets, at, now, &crowd, &mut routes_from(world, at));
     json!({
         "id": id,
         "now": hhmm(now),
@@ -596,10 +650,12 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
         "work": r.work,
         "selected": r.selected,
         "last_update": hhmm(r.last_update),
+        "wallet": r.wallet,
+        "earning": economy::earning(world, id),
         "buckets": buckets.iter().zip(&verdicts).map(|(b, v)| json!({
             "need": b.need,
-            "owed_h": b.level / HOUR,
-            "full": b.level / b.need.cap(),
+            "short_h": b.stock.short() / HOUR,
+            "full": b.stock.weight(),
             "option": v.describe(now),
         })).collect::<Vec<_>>(),
     })
@@ -616,7 +672,7 @@ pub fn inspect_all(world: &World, now: GameTime) -> Value {
             "at": r.at,
             "at_kind": r.at.map(|a| whereabouts(world, a)),
             "selected": r.selected,
-            "owed_h": buckets(world, r).iter().map(|b| (format!("{:?}", b.need), b.level / HOUR)).collect::<std::collections::BTreeMap<_, _>>(),
+            "short_h": buckets(world, r).iter().map(|b| (format!("{:?}", b.need), b.stock.short() / HOUR)).collect::<std::collections::BTreeMap<_, _>>(),
         }))
         .collect();
     rows.sort_by_key(|v| v["id"].as_u64());
@@ -640,8 +696,8 @@ fn wants(world: &World) -> impl Iterator<Item = Want> + '_ {
         let jobless = r.work.is_none();
         r.at.and(home).into_iter().flat_map(move |home| {
             r.buckets.iter().filter_map(move |b| {
-                let (shortfall, weight) = if b.need.fill() > 0.0 {
-                    (b.shortfall, b.level / b.need.cap() * b.shortfall)
+                let (shortfall, weight) = if b.need.drain() > 0.0 {
+                    (b.shortfall, b.stock.weight() * b.shortfall)
                 } else if b.need == Need::Work && jobless {
                     (1.0, 1.0)
                 } else {
@@ -677,16 +733,20 @@ pub fn demand(world: &World, now: GameTime) -> Value {
     unmet.sort_by_key(|v| (v["chunk"].to_string(), v["need"].to_string()));
 
     let mut delivered: Vec<Value> = world
-        .delivered
+        .books
         .iter()
-        .map(|(&(building, need), d)| {
-            json!({
-                "building": building,
-                "kind": whereabouts(world, building),
-                "need": need,
-                "today_h": d.today / HOUR,
-                "yesterday_h": d.yesterday / HOUR,
-            })
+        .flat_map(|(&building, k)| {
+            let (today, yesterday) = (k.on(now), k.before(now));
+            let needs: std::collections::BTreeSet<Need> = today.served.keys().chain(yesterday.served.keys()).copied().collect();
+            needs.into_iter().map(move |need| {
+                json!({
+                    "building": building,
+                    "kind": whereabouts(world, building),
+                    "need": need,
+                    "today_h": today.served.get(&need).copied().unwrap_or(0.0),
+                    "yesterday_h": yesterday.served.get(&need).copied().unwrap_or(0.0),
+                })
+            }).collect::<Vec<_>>()
         })
         .collect();
     delivered.sort_by_key(|v| (v["building"].as_u64(), v["need"].to_string()));
@@ -741,59 +801,50 @@ fn resident_mut(world: &mut World, id: EntityId) -> Option<&mut Resident> {
     }
 }
 
-/// A trip's end: what it cost in fuel goes on the tank's bucket.
+/// A trip's end: what it burned comes off the tank.
 pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
     if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
-        c.fuel.level = (c.fuel.level + tiles * Need::per_tile()).min(Need::Fuel.cap());
+        c.fuel.take(tiles * Need::per_tile());
     }
 }
 
 /// Step out somewhere. The time up to now was spent wherever they were —
 /// in the car, served nothing — and is settled as such before the place
-/// changes, or the drive would count as a visit.
-pub fn set_at(world: &mut World, id: EntityId, place: EntityId, now: GameTime) {
+/// changes, or the drive would count as a visit. Leaving ends the visit,
+/// and the visit is paid for as it ends.
+pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: EntityId, now: GameTime) {
     if let Some(from) = resident(world, id).and_then(|r| r.at) {
         let crowd = headcount(world);
         settle(world, id, from, now, &crowd);
+        pay_the_tab(world, events, id, from, now);
     }
-    world.xp.settle(now);
     if let Some(r) = resident_mut(world, id) {
         r.at = Some(place);
     }
-    world.xp.streams = served(world);
 }
 
-fn set_selected(world: &mut World, id: EntityId, need: Option<Need>, now: GameTime) {
-    world.xp.settle(now);
+/// Turn to something else where they stand: the visit so far is over, and
+/// paid for.
+fn set_selected(world: &mut World, events: &mut EventQueue, id: EntityId, need: Option<Need>, now: GameTime) {
+    if let Some(r) = resident(world, id)
+        && r.selected != need
+        && let Some(at) = r.at
+    {
+        pay_the_tab(world, events, id, at, now);
+    }
     if let Some(r) = resident_mut(world, id) {
         r.selected = need;
     }
-    world.xp.streams = served(world);
 }
 
-/// Everyone being served right now, as the ledger counts them: standing in a
-/// building, on a need it has a tap for, at the rate the company there
-/// allows. Same arithmetic as `settle`, so the two agree on what a shift is
-/// worth; the ledger just does not wait for it to end.
-pub fn served(world: &World) -> Vec<(f64, &'static Tap)> {
-    let crowd = headcount(world);
-    world
-        .resident_ids()
-        .into_iter()
-        .filter_map(|id| {
-            let r = resident(world, id)?;
-            let (at, need) = (r.at?, r.selected?);
-            // The seam: what the edge serves is some other city's earnings.
-            // The whole argument for building your own is that an hour spent
-            // out there is an hour this one does not get.
-            if world.edge.contains(&at) {
-                return None;
-            }
-            let tap = taps_of(world, at).iter().find(|t| t.need == need)?;
-            let company = crowd.get(&(at, need)).copied().unwrap_or(0);
-            Some((tap.serving(slots_at(world, at, tap), company), tap))
-        })
-        .collect()
+/// The lump: one visit, one sale. docs/economy.md §12.1.
+fn pay_the_tab(world: &mut World, events: &mut EventQueue, id: EntityId, at: EntityId, now: GameTime) {
+    let Some(r) = resident_mut(world, id) else { return };
+    let (Some(need), tab) = (r.selected, std::mem::take(&mut r.tab)) else { return };
+    if tab > 0.0 && matches!(world.objects.get(at).map(|e| &e.object), Some(GameObject::Building(_))) {
+        economy::sale(world, id, at, need, tab, now);
+        crate::calls::restock(world, events, at, now);
+    }
 }
 
 fn kind(world: &World, building: EntityId) -> Option<BuildingKind> {
@@ -877,9 +928,10 @@ mod bench {
         let mut hits = 0u32;
         for i in 0..n {
             let now = (i as u64 * 977) % DAY_MS as u64;
-            let level = b.level + (i % 100) as f64 * 1000.0;
-            let bucket = Bucket { level, ..b.clone() };
-            if let Verdict::Go { .. } = evaluate(&world, r.car, home, shop, tap, &bucket, now, 1, 60_000, false) {
+            let mut bucket = b.clone();
+            bucket.stock.take((i % 100) as f64 * 1000.0);
+            let cost = Cost { price: 0.5, purse: Purse { wallet: 4.0, earning: 1.0 }, floor: false };
+            if let Verdict::Go { .. } = evaluate(&world, r.car, home, shop, tap, &bucket, now, 1, 60_000, false, cost) {
                 hits += 1;
             }
         }

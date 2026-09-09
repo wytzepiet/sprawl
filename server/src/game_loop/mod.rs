@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, ServerMessage, StateUpdate};
+use crate::protocol::{BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Sale, ServerMessage, StateUpdate};
 use crate::world::chunk_of;
 use crate::world::World;
 use crate::world::pathfinding;
@@ -131,7 +131,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         // a stopped world. Push the new clock instead of waiting.
                         let clk = clock(now, speed);
                         for cs in clients.values() {
-                            let _ = cs.sender.send(state_update(&world, vec![], clk));
+                            let _ = cs.sender.send(state_update(&world, vec![], vec![], clk));
                         }
                         continue;
                     }
@@ -144,7 +144,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         for cs in clients.values_mut() {
                             let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
                             if !ops.is_empty() {
-                                let _ = cs.sender.send(state_update(&world, ops, clock(now, speed)));
+                                let _ = cs.sender.send(state_update(&world, ops, vec![], clock(now, speed)));
                             }
                             for coord in cs.known_chunks.drain() {
                                 let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
@@ -178,7 +178,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 Command::ClientConnect { id, owner, sender } => {
                     let _ = sender.send(ServerMessage::Welcome(owner));
                     // Send empty update with terrain_seed; objects come via SetViewport
-                    let _ = sender.send(state_update(&world, vec![], clock(now, speed)));
+                    let _ = sender.send(state_update(&world, vec![], vec![], clock(now, speed)));
                     clients.insert(id, ClientState {
                         owner,
                         sender,
@@ -275,11 +275,12 @@ fn clock(now: GameTime, speed: u32) -> Clock {
 
 /// Every update carries the ambient world state alongside its ops, so a client
 /// never has to ask for the seed or the surveyed extent separately.
-fn state_update(world: &World, ops: Vec<Operation>, clk: Clock) -> ServerMessage {
+fn state_update(world: &World, ops: Vec<Operation>, sales: Vec<Sale>, clk: Clock) -> ServerMessage {
     ServerMessage::Update(StateUpdate {
         ops,
+        sales,
         clock: clk,
-        growth: crate::xp::growth(world, clk.now),
+        growth: crate::economy::growth(world, clk.now),
         terrain_seed: world.terrain_seed,
         revealed_bounds: world.revealed_bounds,
     })
@@ -292,10 +293,9 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
     } else {
         World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed)
     };
-    // What the city has produced, and what the mayor spent of it, outlive a
-    // restart.
-    world.xp = crate::xp::Ledger::load(meta.earned, meta.sim_time);
-    world.spent = meta.spent;
+    // What the city has served, and what the mayor has, outlive a restart.
+    world.served = meta.served;
+    world.treasury = meta.treasury;
     world.build = crate::tree::Build::load(meta.taken);
     (world, meta.sim_time)
 }
@@ -320,8 +320,8 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
             next_id: world.objects.next_id(),
             terrain_seed: world.terrain_seed,
             sim_time,
-            earned: world.xp.at(sim_time),
-            spent: world.spent,
+            served: world.served,
+            treasury: world.treasury,
             taken: world.build.taken(),
         },
     );
@@ -366,12 +366,12 @@ fn handle_player_action(
             // same call, from the point the building was held over. The
             // mayor pays for it from what the city has earned.
             let site = world.site_under(place.at[0], place.at[1], place.kind);
-            let price = crate::xp::price(world, place.kind);
-            let allowed = world.build.may_place(place.kind) && crate::xp::balance(world, now) >= price;
+            let price = crate::economy::price(world, place.kind);
+            let allowed = world.build.may_place(place.kind) && world.treasury >= price;
             let placed = allowed.then(|| world.place_site(site, place.kind)).flatten();
             match placed {
                 Some(_) => {
-                    world.spent += price;
+                    world.treasury -= price;
                     settle_and_wake(world, events);
                 }
                 // Said out loud: a click that does nothing is the kind of
@@ -404,8 +404,12 @@ fn handle_player_action(
             }
         }
         ClientMessage::Take(cell) => {
-            let (level, _) = crate::xp::level(world.xp.at(now));
+            let (level, _) = crate::economy::level(world.served);
             world.build.take(cell, level);
+        }
+        ClientMessage::Fund(id) => {
+            crate::economy::fund(world, id, now);
+            settle_and_wake(world, events);
         }
         ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),
         ClientMessage::ResetWorld => unreachable!("handled in run()"),
@@ -603,18 +607,27 @@ fn handle_wake(
     match world.objects.get(id).map(|e| &e.object) {
         Some(GameObject::Car(_)) => handle_car_wake_up(world, events, intersections, id, now),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
+        // Midnight: every till is counted, every price steps, and everyone
+        // looks at the openings again.
+        None if id == MIDNIGHT => {
+            crate::economy::day(world, now);
+            settle_and_wake(world, events);
+        }
         _ => {}
     }
 }
 
+/// The wake that is nobody's: the day turning. No entity has this id.
+const MIDNIGHT: EntityId = EntityId::MAX;
+
 /// Population follows what is standing, and whoever's situation changed gets
-/// to think about it.
+/// to think about it. And the day is always due to turn.
 fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
-    world.xp.settle(events.now());
     for id in world.settle() {
         wake_resident(world, events, id);
     }
-    world.xp.streams = crate::resident::served(world);
+    let day = DAY_MS as u64;
+    events.wake(day - events.now() % day, MIDNIGHT);
 }
 
 /// Someone already here thinks immediately; someone still off-map gets a
@@ -695,7 +708,7 @@ fn handle_set_chunks(
     cs.known = in_view;
 
     if !ops.is_empty() {
-        let _ = cs.sender.send(state_update(world, ops, clk));
+        let _ = cs.sender.send(state_update(world, ops, vec![], clk));
     }
 }
 
@@ -711,8 +724,13 @@ fn flush_dirty(
             .filter(|(id, ..)| !removed.contains(id))
             .collect();
     let newly_revealed = std::mem::take(&mut world.newly_revealed);
+    // Money that landed, for whoever is looking at where it landed.
+    let sales: Vec<(ChunkCoord, Sale)> = std::mem::take(&mut world.sales)
+        .into_iter()
+        .filter_map(|s| Some((chunk_of(world.objects.get(s.building)?.position?), s)))
+        .collect();
 
-    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && newly_revealed.is_empty()
+    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && newly_revealed.is_empty() && sales.is_empty()
     {
         return;
     }
@@ -776,9 +794,10 @@ fn flush_dirty(
                 ops.push(Operation::Delete(*id));
             }
         }
+        let sales: Vec<Sale> = sales.iter().filter(|(c, _)| cs.known_chunks.contains(c)).map(|(_, s)| *s).collect();
 
-        if !ops.is_empty() {
-            let _ = cs.sender.send(state_update(world, ops, clk));
+        if !ops.is_empty() || !sales.is_empty() {
+            let _ = cs.sender.send(state_update(world, ops, sales, clk));
         }
     }
 }
@@ -793,6 +812,7 @@ mod tests {
     /// with it, on purpose.
     const WAKE_BUDGET: u64 = 120;
     use super::*;
+    use crate::calls;
     use crate::protocol::{BuildingKind, GridCoord, TerrainType};
 
     fn at_of(world: &World, id: EntityId) -> Option<EntityId> {
@@ -806,6 +826,22 @@ mod tests {
         match &world.objects.get(id)?.object {
             GameObject::Resident(r) => r.selected,
             _ => None,
+        }
+    }
+
+    /// Sell `units` off a shop's shelf, as visits would, and let it call.
+    fn sell(world: &mut World, events: &mut EventQueue, shop: EntityId, units: f64, now: GameTime) {
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
+            b.stock.take(units);
+        }
+        calls::restock(world, events, shop, now);
+    }
+
+    /// A shelf, as a fraction of full.
+    fn stock(world: &World, building: EntityId) -> f64 {
+        match world.objects.get(building).unwrap().object {
+            GameObject::Building(ref b) => b.stock.level / b.stock.cap,
+            _ => unreachable!(),
         }
     }
 
@@ -935,44 +971,34 @@ mod tests {
     /// goes: the whole of a call-out with no facility in the city.
     #[test]
     fn a_shop_that_runs_low_is_restocked_from_beyond_the_edge() {
-        use crate::calls;
         let mut world = street();
         build(&mut world, 0, BuildingKind::House, 1);
         let shop = build(&mut world, 20, BuildingKind::Shop, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
-        // Nobody lives here yet: the visits are ours, so the shelves and
+        // Nobody lives here yet: the sales are ours, so the shelves and
         // the truck are the only things moving.
-        let stock = |w: &World| match w.objects.get(shop).unwrap().object {
-            GameObject::Building(ref b) => b.stock,
-            _ => unreachable!(),
-        };
-        for _ in 0..21 {
-            calls::visit(&mut world, &mut events, shop, 0);
-        }
-        assert!(stock(&world) < 0.5);
+        sell(&mut world, &mut events, shop, 21.0, 0);
+        assert!(stock(&world, shop) < 0.5);
         assert_eq!(world.calls.len(), 1, "low shelves call for stock");
         let truck = world.calls[0].answered_by.expect("a truck from beyond the edge answers");
         assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Truck && c.trip.is_some()));
 
         pump(&mut world, &mut events, &mut intersections, 0, 2 * DAY_MS as u64 / 24);
         assert!(world.calls.is_empty(), "the call was answered");
-        assert_eq!(stock(&world), 1.0, "the shelves are full again");
+        assert_eq!(stock(&world, shop), 1.0, "the shelves are full again");
         assert!(world.objects.get(truck).is_none(), "the truck from beyond the edge is gone");
     }
 
     /// With a warehouse in town, its own truck answers, and comes home.
     #[test]
     fn a_warehouse_sends_its_own_truck_and_it_comes_home() {
-        use crate::calls;
         let mut world = street();
         let shop = build(&mut world, 20, BuildingKind::Shop, 1);
         let warehouse = build(&mut world, 60, BuildingKind::Warehouse, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
-        for _ in 0..21 {
-            calls::visit(&mut world, &mut events, shop, 0);
-        }
+        sell(&mut world, &mut events, shop, 21.0, 0);
         let truck = world.calls[0].answered_by.expect("the warehouse answers");
         assert!(matches!(world.objects.get(truck).unwrap().object, GameObject::Car(ref c) if c.owner == warehouse));
 
@@ -990,16 +1016,11 @@ mod tests {
     /// while, and comes home full.
     #[test]
     fn a_depot_fetches_from_beyond_the_edge() {
-        use crate::calls;
         let mut world = street();
         let shop = build(&mut world, 20, BuildingKind::Shop, 1);
         let depot = build(&mut world, 60, BuildingKind::Warehouse, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
-        let stock = |w: &World, b: EntityId| match w.objects.get(b).unwrap().object {
-            GameObject::Building(ref bb) => bb.stock,
-            _ => unreachable!(),
-        };
         let lorries = |w: &World| w.objects.all_entries().iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).collect::<Vec<_>>();
         let fleet = lorries(&world);
         assert_eq!(fleet.len(), 2, "two lorries from the day it is reached");
@@ -1014,13 +1035,12 @@ mod tests {
             }
             *away |= answered.is_some_and(|car| world.objects.get(car).is_some_and(|e| e.position.is_none()));
         };
-        // Six van loads on the depot's shelves: four deliveries take it below half.
+        // Six shops' worth on the depot's shelves: four deliveries of most
+        // of a shop take it below half.
         let mut t = 0;
         let mut lowest: f64 = 1.0;
         for _ in 0..4 {
-            for _ in 0..21 {
-                calls::visit(&mut world, &mut events, shop, t);
-            }
+            sell(&mut world, &mut events, shop, 35.0, t);
             let van = world.calls.iter().find(|c| c.kind == calls::CallKind::Stock).and_then(|c| c.answered_by).expect("a van answers");
             assert!(matches!(world.objects.get(van).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Van));
             let until = t + 3 * DAY_MS as u64 / 24;
@@ -1073,18 +1093,22 @@ mod tests {
         let office = build(&mut world, 60, BuildingKind::Office, 2);
         // Lunch: a shop beside the office, too far from home to staff.
         let lunch = build(&mut world, 64, BuildingKind::Shop, 1);
+        // Fuel, or every few days the whole town drives to the edge for it
+        // and makes an evening of it, which is a test of something else.
+        build(&mut world, 18, BuildingKind::GasStation, 1);
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
-        // Fourteen households in the two blocks, and two desks over: the
-        // office's last two are filled from beyond the edge, by people who
-        // drive in and are gone again by night.
+        // Fourteen households in the two blocks, and three desks over: the
+        // office's last two and the pump are filled from beyond the edge,
+        // by people who drive in and are gone again by night.
         let people = world.resident_ids();
-        assert_eq!(people.len(), 16);
+        assert_eq!(people.len(), 17);
 
         let mut log = Vec::new();
         let mut last: Vec<Option<EntityId>> = people.iter().map(|_| None).collect();
+        let mut last_doing: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
         let mut now = 0;
         while now < days * DAY_MS as u64 {
             now += STEP_MS;
@@ -1094,6 +1118,13 @@ mod tests {
             }
             for (i, &id) in people.iter().enumerate() {
                 let at = at_of(&world, id);
+                // `TRACE=1 cargo test the_same_town -- --nocapture` prints
+                // the last day's log, one line a move or a change of mind,
+                // to read by hand.
+                if std::env::var("TRACE").is_ok() && now >= (days - 1) * DAY_MS as u64 && (at, doing(&world, id)) != last_doing[i] {
+                    eprintln!("{i} {} {:?} {:?}", crate::card::card(&world, id, now)["since"], at.map(|a| crate::card::card(&world, a, now)["label"].to_string()), doing(&world, id));
+                    last_doing[i] = (at, doing(&world, id));
+                }
                 if at != last[i] {
                     log.push((now, id, at, doing(&world, id)));
                     last[i] = at;
@@ -1101,9 +1132,13 @@ mod tests {
             }
         }
         // Section 6, the demand side. Nobody here wants for anything, and
-        // the office's books show what it received: twelve people, nine
-        // hours, less the lunches — and the lunch shop sold them.
-        if days >= 2 {
+        // the office's books show what it received on the last whole day:
+        // twelve people, nine hours, less the lunches — and the lunch shop
+        // sold them. The last day, not the second: everyone arrives with
+        // no time off owed, and the first evening nobody goes out, so the
+        // second afternoon a few settle it in work time. Priced, an evening
+        // out is had every other night rather than every night.
+        if days >= 3 {
             let d = crate::resident::demand(&world, days * DAY_MS as u64);
             assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
             let sold = |b: EntityId, need: &str, day: &str| {
@@ -1118,14 +1153,16 @@ mod tests {
             // Fourteen people, two apartments of seven, less the shop's two,
             // nine hours each, less the odd late morning.
             assert!((90.0..=108.0).contains(&office), "office received {office}h");
-            // Lunches over a whole day: the first day starts late for everyone.
-            assert!(sold(lunch, "Eat", "today_h") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat", "today_h"));
+            // Lunches over a whole day.
+            assert!(sold(lunch, "Eat", "yesterday_h") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
         }
         (log, [shop, lunch])
     }
 
     /// After dark the bar is the only thing open, and people go: it sells
-    /// evenings out, and every one of them begins after eight.
+    /// evenings out, and every one of them begins after eight. An evening
+    /// costs about an hour's wage, so it is had every few days, not every
+    /// night: four days, for a crowd.
     #[test]
     fn the_bar_gets_an_evening_crowd() {
         let mut world = street();
@@ -1133,6 +1170,8 @@ mod tests {
         build(&mut world, 6, BuildingKind::Apartment, 2);
         build(&mut world, 40, BuildingKind::Office, 2);
         let bar = build(&mut world, 12, BuildingKind::Bar, 1);
+        // Fuel in town, or the trip to the edge for it is the evening out.
+        build(&mut world, 20, BuildingKind::GasStation, 1);
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
@@ -1143,7 +1182,7 @@ mod tests {
         let mut outings: Vec<GameTime> = Vec::new();
         let mut last: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
         let mut now = 0;
-        while now < 2 * day {
+        while now < 4 * day {
             now += STEP_MS;
             events.set_now(now);
             while let Some(id) = events.pop_due() {
@@ -1164,6 +1203,7 @@ mod tests {
         }
         // The bar's lot decides its crowd: two spots, so two out at a time,
         // and nobody turns to it before the doors open at six.
+        let d = crate::resident::demand(&world, 4 * day);
         assert!(outings.len() >= 2, "only {} evenings out", outings.len());
         let h = |t: GameTime| t as f64 / (day as f64 / 24.0);
         assert!(
@@ -1173,7 +1213,7 @@ mod tests {
         );
 
         // And the evenings were had: the bar's books show Leisure sold.
-        let d = crate::resident::demand(&world, 2 * day);
+        let d = crate::resident::demand(&world, 4 * day);
         let sold = d["delivered"].as_array().unwrap().iter()
             .find(|v| v["building"] == bar && v["need"] == "Leisure")
             .map_or(0.0, |v| v["today_h"].as_f64().unwrap() + v["yesterday_h"].as_f64().unwrap());
@@ -1277,6 +1317,12 @@ mod tests {
     /// empty while every resident spends the day retrying an arrival that
     /// can never happen, which is a measurement of nothing.
     fn live(mix: &[BuildingKind], days: u64) -> (World, u64) {
+        season(mix, days, |_, _| {})
+    }
+
+    /// `live`, with a look at the town at the end of every day: after the
+    /// midnight wake, so the tills are counted and the prices stepped.
+    fn season(mix: &[BuildingKind], days: u64, mut each_day: impl FnMut(&World, u64)) -> (World, u64) {
         let mut world = street();
         // Forty plots in a row, a tile apart: a lot claims the tile beside
         // it for its ring, and a house may not stand on it.
@@ -1309,6 +1355,9 @@ mod tests {
                     wakes += 1;
                 }
                 handle_wake(&mut world, &mut events, &mut intersections, id, now);
+            }
+            if now % DAY_MS as u64 == 0 {
+                each_day(&world, now / DAY_MS as u64);
             }
         }
         (world, wakes)
@@ -1357,27 +1406,213 @@ mod tests {
         );
     }
 
+    /// The equilibria docs/economy.md §11 asserts rather than codes. Each
+    /// runs a season of the same town as `a_town_thinks_within_budget`,
+    /// and each is `#[ignore]`d for the same reason: a season is thirty
+    /// days, and a day is most of a minute in debug. Run them in release:
+    /// `cargo test --release season -- --ignored --nocapture`.
+    ///
+    /// Everything the mayor could place, and a warehouse to feed it. Thirty
+    /// days is a season until something says otherwise.
+    const SEASON: u64 = 30;
+
+    /// What every building holds and every resident carries: the town's
+    /// money outside the treasury.
+    fn purses(world: &World) -> (Vec<(EntityId, BuildingKind, f64, f64)>, Vec<f64>) {
+        let mut buildings = Vec::new();
+        let mut wallets = Vec::new();
+        for e in world.objects.iter() {
+            match e.object {
+                GameObject::Building(ref b) if !world.edge.contains(&e.id) => {
+                    buildings.push((e.id, b.kind, b.balance, crate::economy::float(b.kind, b.wage)));
+                }
+                GameObject::Resident(ref r) => wallets.push(r.wallet),
+                _ => {}
+            }
+        }
+        (buildings, wallets)
+    }
+
+    /// §11.5, the band: over a season no posted price leaves the band
+    /// between the edge's price less the delivery and the edge's price
+    /// plus the drive to the edge in the resident's hours, and no wage
+    /// falls below the edge's less the commute. §11.8, no ringing: at
+    /// steady state a price's day-to-day variance stays under a bound.
+    #[test]
+    #[ignore]
+    fn season_the_band_holds_and_nothing_rings() {
+        use crate::economy::{edge_price, wholesale, EDGE_WAGE};
+        let mut prices: std::collections::BTreeMap<(EntityId, crate::needs::Need), Vec<f64>> = Default::default();
+        let mut wages: std::collections::BTreeMap<EntityId, Vec<f64>> = Default::default();
+        let (world, _) = season(&placeable(), SEASON, |world, _| {
+            for e in world.objects.iter() {
+                let GameObject::Building(ref b) = e.object else { continue };
+                if world.edge.contains(&e.id) {
+                    continue;
+                }
+                for (&need, &p) in &b.prices {
+                    prices.entry((e.id, need)).or_default().push(p);
+                }
+                if crate::blueprint::blueprint(b.kind).jobs > 0 {
+                    wages.entry(e.id).or_default().push(b.wage);
+                }
+            }
+        });
+        // The drive to the edge, in hours: what the edge's price is plus.
+        let hour = DAY_MS as f64 / 24.0;
+        let drive_h = |id: EntityId| {
+            let p = world.objects.get(id).unwrap().position.unwrap();
+            let e = world.objects.get(world.nearest_edge(p).unwrap()).unwrap().position.unwrap();
+            ((p.x - e.x).abs().max((p.y - e.y).abs()) as f64 / crate::car::CRUISE_SPEED * 1000.0) / hour
+        };
+        for (&(id, need), series) in &prices {
+            let (lo, hi) = (wholesale(need), edge_price(need) + drive_h(id) * EDGE_WAGE);
+            for &p in series {
+                assert!(p >= lo - 1e-9 && p <= hi + 1e-9, "building {id} sold {need:?} at {p}, outside [{lo}, {hi}]: {series:.2?}");
+            }
+            let tail = &series[series.len().saturating_sub(10)..];
+            let (min, max) = tail.iter().fold((f64::MAX, 0.0f64), |(a, b), &p| (a.min(p), b.max(p)));
+            assert!(max <= min * 1.3, "building {id}'s {need:?} price rings: {tail:.2?}");
+            println!("{id} {need:?}: {:.2} → {:.2}", series[0], series[series.len() - 1]);
+        }
+        for (&id, series) in &wages {
+            let floor = EDGE_WAGE - drive_h(id) * EDGE_WAGE / 8.0;
+            let last = series[series.len() - 1];
+            assert!(last >= floor.min(0.5), "building {id} pays {last}, under the edge less the commute {floor}");
+            println!("{id} wage: {:.3} → {:.3}", series[0], last);
+        }
+    }
+
+    /// §11.6, no harm: a town built ignoring every price ends the season
+    /// with more in the treasury than it began, and no building placed is
+    /// below its float within its first week. §11.10, no sinks: over the
+    /// season the money outside the treasury stays under a bound — the
+    /// floats, and what is in transit between two incomes.
+    #[test]
+    #[ignore]
+    fn season_no_harm_and_no_sinks() {
+        let mut worst_week: Vec<(EntityId, BuildingKind, f64, f64)> = Vec::new();
+        let mut most_outside = 0.0f64;
+        let (world, _) = season(&placeable(), SEASON, |world, day| {
+            let (buildings, wallets) = purses(world);
+            if day == 7 {
+                worst_week = buildings.iter().filter(|&&(_, _, balance, float)| balance < float).copied().collect();
+            }
+            let outside: f64 = buildings.iter().map(|b| b.2).sum::<f64>() + wallets.iter().sum::<f64>();
+            most_outside = most_outside.max(outside);
+            println!("day {day}: treasury {:.1}, outside it {outside:.1}, swept today {:.1}", world.treasury, world.income.before(day * DAY_MS as u64).revenue);
+        });
+        let (buildings, wallets) = purses(&world);
+        assert!(world.treasury > 0.0, "the season ended with {} in the treasury", world.treasury);
+        assert!(worst_week.is_empty(), "under their float in the first week: {worst_week:?}");
+        // Floats, a payday per resident, and a day's takings per building.
+        let bound: f64 = buildings.iter().map(|b| b.3 + 20.0).sum::<f64>() + wallets.len() as f64 * (crate::economy::RESIDENT_FLOAT + 10.0);
+        assert!(most_outside <= bound, "{most_outside} outside the treasury, bound {bound}");
+        for (id, kind, balance, float) in &buildings {
+            let page = world.books.get(id).map(|k| k.before(SEASON * DAY_MS as u64).clone()).unwrap_or_default();
+            println!("{id} {kind:?}: {balance:.1} / {float:.1}, yesterday in {:.1} out {:.1} wages {:.1}", page.revenue, page.purchases, page.wages);
+        }
+    }
+
+    /// §11.7, the conga: a warehouse inserted where it shortens nothing
+    /// makes no margin and sweeps nothing, so the treasury is what it
+    /// would have been without it.
+    #[test]
+    #[ignore]
+    fn season_the_conga() {
+        let mut swept = 0.0;
+        let (world, _) = season(&placeable(), SEASON, |world, _| {
+            for e in world.objects.iter() {
+                if let GameObject::Building(ref b) = e.object
+                    && b.kind == BuildingKind::Warehouse
+                {
+                    swept += (b.balance - crate::economy::float(b.kind, b.wage)).max(0.0);
+                }
+            }
+        });
+        let mut margin = 0.0;
+        for e in world.objects.iter() {
+            if let GameObject::Building(ref b) = e.object
+                && b.kind == BuildingKind::Warehouse
+                && let Some(k) = world.books.get(&e.id)
+            {
+                let d = k.before(SEASON * DAY_MS as u64);
+                margin += d.revenue - d.purchases;
+                println!("warehouse {}: in {:.1} out {:.1}", e.id, d.revenue, d.purchases);
+            }
+        }
+        assert!(margin.abs() < 1e-6, "the warehouse made a margin of {margin}");
+        assert!(swept.abs() < 1e-6, "the warehouse had {swept} over its float to sweep");
+    }
+
+    /// §11.9, the door breaks even: a resident who works and eats only at
+    /// the edge ends the season with the wallet they began.
+    #[test]
+    #[ignore]
+    fn season_the_door_breaks_even() {
+        let (world, _) = season(&[BuildingKind::Apartment], SEASON, |_, _| {});
+        let (_, wallets) = purses(&world);
+        for w in &wallets {
+            assert!(
+                (*w - crate::economy::RESIDENT_FLOAT).abs() <= crate::economy::RESIDENT_FLOAT,
+                "a wallet ended the season at {w}, having begun at {}",
+                crate::economy::RESIDENT_FLOAT
+            );
+        }
+        println!("{} wallets, mean {:.2}", wallets.len(), wallets.iter().sum::<f64>() / wallets.len() as f64);
+    }
+
+    /// §11.11, tenure: over a season the share of residents who change
+    /// jobs in a month sits near the referent, about one in forty.
+    #[test]
+    #[ignore]
+    fn season_tenure() {
+        let mut jobs: std::collections::BTreeMap<EntityId, Option<EntityId>> = Default::default();
+        let mut changes = 0u32;
+        let (world, _) = season(&placeable(), SEASON, |world, day| {
+            for id in world.resident_ids() {
+                let work = match world.objects.get(id).map(|e| &e.object) {
+                    Some(GameObject::Resident(r)) => r.work,
+                    _ => None,
+                };
+                if let Some(&had) = jobs.get(&id)
+                    && had != work
+                    && day > 1
+                {
+                    changes += 1;
+                }
+                jobs.insert(id, work);
+            }
+        });
+        let share = changes as f64 / world.resident_ids().len() as f64;
+        println!("{changes} job changes among {} residents in a season: {:.3} a month", world.resident_ids().len(), share);
+        assert!(share <= 0.25, "{share} of residents changed jobs in a month");
+    }
+
     #[test]
     fn the_same_town_lives_the_same_days() {
-        let (two, [shop, lunch]) = arrival_log(2);
+        let (three, [shop, lunch]) = arrival_log(3);
         let (one, _) = arrival_log(1);
-        // Sixteen people, each at least driving in, to work, and home.
-        assert!(one.len() >= 16 * 3, "only {} moves logged", one.len());
-        assert_eq!(two[..one.len()], one[..], "the first day differs between runs");
-        assert!(two.len() > one.len(), "nobody moved on the second day");
+        // Seventeen people, each at least driving in, to work, and home.
+        assert!(one.len() >= 17 * 3, "only {} moves logged", one.len());
+        assert_eq!(three[..one.len()], one[..], "the first day differs between runs");
+        assert!(three.len() > one.len(), "nobody moved on the second day");
 
-        // The second day is a settled one. Every trip is two changes of
-        // `at` — into the car, out at the door — and a day is at most five
-        // trips: to work, out for lunch and back, out for dinner near work,
-        // and home. The shop workers eat where they stand; the office has a
+        // The third day is a settled one. Every trip is two changes of
+        // `at` — into the car, out at the door — and a day is at most seven
+        // trips: to the pump and back, if the tank ran dry overnight; to
+        // work; out for lunch and back; out for the evening near work; and
+        // home. The shop workers eat where they stand; the office has a
         // shop next door, so its workers drive to it.
         let day = DAY_MS as u64;
+        let two = &three[..];
+        let settled = 2 * day;
         let mut moves = std::collections::BTreeMap::new();
-        for &(_, id, ..) in two.iter().filter(|&&(t, ..)| t >= day) {
+        for &(_, id, ..) in two.iter().filter(|&&(t, ..)| t >= settled) {
             *moves.entry(id).or_insert(0) += 1;
         }
-        assert_eq!(moves.len(), 16, "everyone went out on day two");
-        assert!(moves.values().all(|&n| n % 2 == 0 && (4..=10).contains(&n)), "someone thrashed: {moves:?}");
+        assert_eq!(moves.len(), 17, "everyone went out on day three");
+        assert!(moves.values().all(|&n| n % 2 == 0 && (4..=14).contains(&n)), "someone thrashed: {moves:?}");
         assert!(moves.values().any(|&n| n >= 8), "nobody went out for lunch: {moves:?}");
         let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at, _)| (id, at)).collect();
         assert!(last.values().all(|at| at.is_some()), "someone ended the day in a car");
@@ -1389,14 +1624,16 @@ mod tests {
         use crate::needs::Need;
         let arrivals: Vec<GameTime> = two
             .iter()
-            .filter(|&&(t, _, at, sel)| t >= day && at == Some(lunch) && sel == Some(Need::Eat))
+            .filter(|&&(t, _, at, sel)| t >= settled && at == Some(lunch) && sel == Some(Need::Eat))
             .map(|&(t, ..)| t)
             .collect();
-        assert!(arrivals.len() >= 8, "only {} came for lunch", arrivals.len());
+        // A meal out costs a fifth of an hour's wage, so some wait for
+        // dinner and some eat at home: half the office, not all of it.
+        assert!(arrivals.len() >= 6, "only {} came for lunch", arrivals.len());
         let span = arrivals.iter().max().unwrap() - arrivals.iter().min().unwrap();
         assert!(span >= 2 * hour, "lunch was a crush: {:.1}h", span as f64 / hour as f64);
         let (mut present, mut most) = (std::collections::BTreeSet::new(), 0);
-        for &(_, id, at, sel) in two.iter().filter(|&&(t, ..)| t >= day) {
+        for &(_, id, at, sel) in two.iter().filter(|&&(t, ..)| t >= settled) {
             if at == Some(lunch) && sel == Some(Need::Eat) { present.insert(id); } else { present.remove(&id); }
             most = most.max(present.len());
         }
@@ -1407,12 +1644,12 @@ mod tests {
         // enough of it has piled up: never for everyone at once.
         let outings: Vec<f64> = two
             .iter()
-            .filter(|&&(t, _, _, sel)| t >= day && sel == Some(Need::Leisure))
+            .filter(|&&(t, _, _, sel)| t >= settled && sel == Some(Need::Leisure))
             .filter(|&&(_, _, at, _)| at == Some(shop) || at == Some(lunch))
             .map(|&(t, ..)| (t % day) as f64 / hour as f64)
             .collect();
         assert!(outings.iter().all(|&h| h >= 17.0), "an outing during the shift: {outings:.1?}");
-        assert!(outings.len() < 16, "everyone out every night: {outings:.1?}");
+        assert!(outings.len() < 17, "everyone out every night: {outings:.1?}");
     }
 
     /// A household with nowhere in town to work still works: the job is
@@ -1549,9 +1786,16 @@ mod tests {
             world.edge.contains(&(v["building"].as_u64().unwrap() as EntityId)) && v["need"] == "Eat"
         });
         assert!(sold_at_the_edge, "the edge's books show no meals");
-        assert!(
-            crate::resident::served(&world).iter().all(|(_, t)| t.slots != u32::MAX),
-            "the city is earning from the edge's taps",
-        );
+        // And the level is the town's hours only: the books of everything
+        // in town, over the two pages they keep, less nothing.
+        let hours = |page: &crate::economy::Day| page.served.values().sum::<f64>();
+        let in_town: f64 = world
+            .books
+            .iter()
+            .filter(|(id, _)| !world.edge.contains(id))
+            .map(|(_, k)| hours(k.before(2 * day)) + hours(k.on(2 * day)))
+            .sum();
+        let with_edge: f64 = world.books.values().map(|k| hours(k.before(2 * day)) + hours(k.on(2 * day))).sum();
+        assert!(world.served >= in_town - 1e-6 && world.served < with_edge, "the level counts the edge's hours: {} against {in_town} in town, {with_edge} with the edge", world.served);
     }
 }

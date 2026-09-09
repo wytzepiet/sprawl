@@ -2,23 +2,26 @@
 import type { Cell } from "./Cell";
 
 /**
- * How the city is doing, as the two bars read it. Everything is in points,
- * one being a minute of need served by the city's buildings.
+ * How the city is doing, as the two dials read it.
  *
- * The level is the city's whole history, the offer is what it has put by
- * since the last one. Both are a snapshot at the clock the update carries,
- * climbing at `rate` — so a client runs them forward between updates and
- * the bars move as the city works, not when it clocks off.
+ * The level is hours of need the city's buildings have served, ever,
+ * banked as each visit ends. The treasury is the mayor's money, in hours
+ * of the edge's wage, stepped by each sweep. Both move in lumps, so
+ * neither is extrapolated: a dial that steps is the event landing.
  */
-export type Growth = { level: number, xp: number, xp_needed: number, 
+export type Growth = { level: number, 
 /**
- * What the mayor has to spend, in points.
+ * Hours served since the level was reached, and the hours it takes.
  */
-balance: number, 
+xp: number, xp_needed: number, 
 /**
- * Points per millisecond of sim time, as of the update's clock.
+ * What the mayor has to spend.
  */
-rate: number, 
+treasury: number, 
+/**
+ * What swept in over the last whole day.
+ */
+income: number, 
 /**
  * The build: the nodes of the tree taken.
  */

@@ -1,12 +1,13 @@
 # Economy: stocks, prices, floats, and one door
 
 Status: specification, drafted 2026-09-09 and reworked the same day after
-a second argument, about where money goes when nobody spends it. Nothing
-here is built. Supersedes `game.md` §Money, which points here. Builds on
-`residents.md` (buckets, taps, the score), `services.md` (calls) and
-`parking.md` (lots as the place vehicles stand). What exists today is a
-single ledger of hours served that is both level and money
-(`server/src/xp.rs`); §2 says what of it stays.
+a second argument, about where money goes when nobody spends it. Built
+through step 2 of §12 on 2026-09-09; §12.2 records what building it
+decided, and where it departs from the text above. Supersedes `game.md`
+§Money, which points here. Builds on `residents.md` (buckets, taps, the
+score), `services.md` (calls) and `parking.md` (lots as the place
+vehicles stand). The single ledger of hours served that was both level
+and money (`xp.rs`) is gone; `shelved.md` has it.
 
 ---
 
@@ -498,13 +499,89 @@ line; the rest is the implementer's.
   at every wake would scatter a shift into small change, and the point
   of the lump is that a day's pay lands on the map as one number.
 
+### 12.2 Steps 1 and 2, as built
+
+`server/src/economy.rs` holds every number below with its referent. The
+mechanism is the one above; these are the places where running it made a
+decision the text left open, or moved one it had made.
+
+- **The stock.** `Stock { level, cap }` is the one struct: a resident's
+  needs, a car's tank and a building's shelf. The bucket's algebra reads
+  `short = cap − level` and is otherwise `residents.md`'s.
+- **Prices.** The edge's: a sitting a fifth of an hour, an evening out
+  half an hour, a tank three; the crate behind a meal and the delivery
+  behind a tank are half of that, wholesale. The budget shares would make
+  the sitting half an hour and the evening an hour, and at those prices
+  nobody lunches out and nobody goes out: the price is added to the visit
+  in the resident's own hours, and the ladder in `residents.md` §5.5 is
+  tuned to tenths — a full sitting at half an hour ties the shift it
+  would interrupt. Raising what a meal is worth instead (a sitting worth
+  an hour, served at twice the rate) was tried and undone: dinner then
+  beats the evening out, time off piles up, and the afternoon after lunch
+  becomes the outing, in work time. A tank is worth two hours — what
+  running dry costs — and fills in twenty minutes; before it had a price
+  it was worth twenty minutes.
+- **A meal at home costs the groceries.** The kitchen is the household's
+  and a home sells nothing, but what they eat there is bought at
+  wholesale from beyond the edge, until something in town delivers it
+  (§6.1's household delivery, still unbuilt). Otherwise a free kitchen
+  beats every shop at every price.
+- **The floor is marginal cost.** A price never goes under the delivery
+  behind it, and an evening has none. The hours behind the counter are
+  not in the floor: spread over a bar's evenings they come to an hour's
+  wage each, and at that price nobody goes out; spread over the day's
+  actual sales they rise as trade falls and price a quiet shop out. This
+  is the shutdown rule: a firm sells while the price covers the sale, and
+  pays its staff from the margin or runs through its float. A new
+  building opens at the edge's price rather than at cost, since a price
+  it has sold nothing at cannot be known yet.
+- **The nudge.** Prices step up five percent a day and down three; wages
+  up five and down one (§13.1, resolved: Blinder et al. 1998 on the pace,
+  and wage stickiness for the asymmetry). "Selling out" is the shelf
+  running empty, or selling more than eight tenths of what the tap could
+  in a day; "piling up" is under four tenths. The switching threshold is
+  fifteen percent (§13.2, resolved: the median job-to-job wage gain).
+- **Wages track what an hour brings in.** A building's wage never rises
+  past what an hour of its labour earned yesterday — the edge's wage, for
+  a workplace with nothing to sell — and a wage above it is cut to it at
+  once (Bewley 1999: firms hold wages while they make money and cut when
+  they do not). A shop with no trade pays what its trade is worth, and
+  its staff take the next best score. Without this every shop in a small
+  town pays eighteen hours a day for a handful of meals and is dry on the
+  second day. The signal for a rise is a desk the edge had to fill: a job
+  the town cannot fill at the going wage is still filled from beyond the
+  edge, as `game.md` says, and the wage rises until the town fills it.
+- **The float and the sweep.** A building's float is a day of wages, for
+  a kind whose takings come in through the day and whose wages go out at
+  the end of it, plus a full shelf at wholesale; nothing for a house or a
+  pass-through; the shelf alone for a service. A resident's is a day's
+  wage at the edge. Residents sweep at each payday; buildings at
+  midnight, when the till is counted. §9's "below its float" is read as
+  "its purse is empty": a purse with money in it buys and hires, an
+  empty one stops, and the float is what the sweep leaves it to run on.
+- **Pass-throughs.** A workplace with nothing to sell sells its hours to
+  the edge before it pays for them, so it needs no purse (§12.1).
+- **On the wire.** A `Sale` per lump: the building, the amount, when.
+  The client floats it over the building; the treasury steps. Level is
+  hours served, banked at each settle, the edge's excluded.
+
+What running the season found, and did not fix: a shop needs about
+forty meals a day to carry two staff at the edge's wage, which is a
+district, not a street. The wage cut keeps such a shop alive at a wage
+its trade is worth, staffed from beyond the edge; whether that is the
+game, or shops should be smaller, is open (§13.7).
+
 ## 13. Open
 
-1. `α_up`, `α_down`, and the wage asymmetry, with a referent each.
-2. The switching threshold's value: a tenth to a fifth of the wage is the
-   range; pick one and cite it.
+1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
+2. ~~The switching threshold's value.~~ §12.2.
 3. A new building's `earning` before it has a day of revenue — the edge
    price of its output times its rated output is the obvious seed.
-4. Household delivery (§6.1) — permitted, unbuilt.
+4. Household delivery (§6.1) — permitted, unbuilt. Until then a meal at
+   home is groceries from the edge (§12.2).
 5. `edge_price` drift for seasons (§8.1).
 6. How scarce coast should be, when the port comes.
+7. Shop labour against shop trade (§12.2): fewer staff per shop, shorter
+   shifts, or a town whose shops are meant to fail until it has a
+   district — and the price of a meal against the ladder, which §12.2
+   settled by making a sitting worth an hour.

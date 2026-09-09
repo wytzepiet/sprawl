@@ -3,8 +3,13 @@ import type { ChunkBounds } from "./ChunkBounds";
 import type { Clock } from "./Clock";
 import type { Growth } from "./Growth";
 import type { Operation } from "./Operation";
+import type { Sale } from "./Sale";
 
-export type StateUpdate = { ops: Array<Operation>, clock: Clock, growth: Growth, terrain_seed: number, 
+export type StateUpdate = { ops: Array<Operation>, 
+/**
+ * Lumps that landed on buildings in view since the last update.
+ */
+sales: Array<Sale>, clock: Clock, growth: Growth, terrain_seed: number, 
 /**
  * Extent of the surveyed world, which the client keeps its camera inside.
  */
