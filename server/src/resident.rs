@@ -80,8 +80,8 @@ pub fn handle_resident_wake(
     let verdicts = verdicts(world, &r, &buckets, at, now, &crowd, &mut routes);
     drop(routes);
 
-    // The note the spawner reads: how far short of being served on the spot
-    // each need fell — one where nothing was found at all.
+    // The note the demand readout reads: how far short of being served on
+    // the spot each need fell — one where nothing was found at all.
     for (b, v) in buckets.iter_mut().zip(&verdicts) {
         b.shortfall = match *v {
             Verdict::Nothing => 1.0,
@@ -854,7 +854,7 @@ mod bench {
     use crate::protocol::{GridCoord, TerrainType};
 
     /// Not an assertion: what one cheap evaluation costs, for whoever is
-    /// sizing the spawner's survey. `cargo test --release how_dear_an_estimate_is -- --ignored --nocapture`.
+    /// sizing a survey over many tiles. `cargo test --release how_dear_an_estimate_is -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn how_dear_an_estimate_is() {
@@ -865,8 +865,8 @@ mod bench {
             }
         }
         world.place_road_path(&(-2..38).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
-        let home = world.spawn_building(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
-        let shop = world.spawn_building(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
+        let home = world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
+        let shop = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
         world.settle();
         let id = world.resident_ids()[0];
         let r = resident(&world, id).unwrap().clone();

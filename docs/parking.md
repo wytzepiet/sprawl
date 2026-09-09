@@ -6,14 +6,15 @@ in its generic form: every building has a two-spot lot on its driveway
 carries its pose on the wire, and the client draws nothing it is not told.
 The ring lot (§3.1), the plot laid out by its facing, the slab and the
 ring drawn, staff in spots, and a full lot refusing the trip, are
-built (2026-09-07), lots fuse along a frontage (§3.2), and a visitor
-tap's slots are its lot's spots (§3.3), a claim on a junction lasts
-until the tail has cleared it (§4.2), spots carry windows and a full lot
-says when it frees (§5), and `/debug/lot/{id}` reads any lot (§7);
-cars park near their building's door, loosely (§5.2), and pins
-sit over buildings (2026-09-07). §3.7 and §3.8, how buildings land and
-how lots grow past their building, were decided 2026-09-07 and are the
-next build. Reverse is not needed until the warehouse gets its bays. Follows
+built (2026-09-07), a visitor tap's slots are its lot's spots (§3.3), a
+claim on a junction lasts until the tail has cleared it (§4.2), spots
+carry windows and a full lot says when it frees (§5), and
+`/debug/lot/{id}` reads any lot (§7); cars park near their building's
+door, loosely (§5.2), and pins sit over buildings (2026-09-07). Lots
+fused along a frontage until 2026-09-09, when a lot became its
+building's own (§3.2), and §3.7 and §3.8 went with the fusing and the
+spawner: what is left of them is history, marked as such. Reverse is not
+needed until the warehouse gets its bays. Follows
 `services.md` (streets, driveways, call-outs) and `residents.md` (how a
 trip is chosen). `game.md` §People says parked cars sit in the building's
 spots; this is how.
@@ -207,9 +208,14 @@ A car with no spot drives the ring and leaves by the driveway.
 
 Choosing *which* spot is §5. Routing takes a spot as given.
 
-### 3.7 Where buildings land
+### 3.7 Where buildings land (history, 2026-09-09)
 
-The spawner prefers a site beside a building of the same depth on the
+Both halves of this section are gone: the site preference belonged to the
+spawner (`shelved.md`), and the fusing it counted on went with §3.2. The
+mayor picks the site now, and a lot is its building's own. What follows is
+the record.
+
+The spawner preferred a site beside a building of the same depth on the
 same street: houses beside houses, lots beside lots. That is what makes
 strips. The first shop on a street claims its frontage, the next shop
 lands next to it and the rings fuse, and a bar and a block of flats
@@ -223,7 +229,12 @@ both, and they fuse across it.
 The same rule applies to a building placed by hand: a shop dropped
 beside a lot with room joins it.
 
-### 3.8 Lots grow past their building
+### 3.8 Lots grow past their building (history, 2026-09-09)
+
+Never built, and reversed by §3.2 on 2026-09-09: the spill and the fusing
+it grows by are gone, and every kind with a lot carries one at least two
+tiles wide instead, so a ring always fits alone. What follows is the
+record.
 
 A ring spills one free tile past each end. A building brings a lot as
 wide as itself, and if the frontage tile beyond either end is empty
@@ -443,9 +454,9 @@ visited kind has a lot now, so it was deleted (2026-09-07).
    generic lot for every row: two spots on the driveway lanes, a car
    driving in past the driveway node and turning to come out nose first.
    A lot that is full swallows the car: parked, with no pose, unseen.
-   Next in this step: lot tiles on the rows, runs that fuse, the ring
-   generator on both sides, the slab drawn, slots from spots. *Playable:*
-   cars in spots everywhere, and the first strip mall.
+   Then lot tiles on the rows, the ring generator on both sides, the slab
+   drawn and slots from spots, all built by 2026-09-07; the runs that fuse
+   went with §3.2. *Playable:* cars in spots everywhere.
 2. **Giving way by length, and reverse.** The claim held until the tail
    clears; lot speed; reverse gear with priority; the client flips the
    heading. Warehouse bays. *Playable:* a truck backs into a bay while a
@@ -454,13 +465,8 @@ visited kind has a lot now, so it was deleted (2026-09-07).
    and reassignment. *Playable:* a busy shop whose visitors wait at home
    for a spot instead of circling, and the numbers to show it.
 4. **The test lot** (since deleted) and the trailer drawing.
-5. **Where buildings land** (§3.7): same-depth clustering in the
-   spawner's site search. *Playable:* streets with a character, and
-   strips that appear on their own.
-6. **Lots grow past their building** (§3.8): the run owns its frontage,
-   spill one tile past each end, spill tiles open only to sharers, the
-   minimum of two. The building becomes just the building. *Playable:*
-   a lone shop with twelve spots, boxed in to seven, never two.
+
+Steps 5 and 6 were §3.7 and §3.8; both are history (see the sections).
 7. **Side lots** for two-deep buildings, and the ring with a lane
    through the middle.
 

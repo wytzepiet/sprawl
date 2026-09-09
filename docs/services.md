@@ -4,24 +4,24 @@ Status: specification, agreed 2026-09-05. §2–4 built the same day (roads
 have no speed of their own yet). §5 built for stock: `calls.rs`, the
 supermarket and warehouse rows, trucks from beyond the edge or a
 warehouse's own, empty shelves drawn grey. Fire, illness, the inspect
-panel not yet. Follows
-`spawner.md` (what arrives on its own) and `residents.md` (how
-residents decide). Supersedes the parts of both that say buildings arrive
-unconnected for the mayor to road.
+panel not yet. §3 was rewritten 2026-09-09 when the spawner went
+(`shelved.md`): nothing arrives on its own any more, so all that is left
+of that section is where a placed building may land. Follows
+`residents.md` (how residents decide), and supersedes the parts of it
+that say buildings arrive unconnected for the mayor to road.
 
 ---
 
 ## 1. The idea
 
-The mayor designs the street network and places the buildings that
-*do* something. Everything else arrives on its own and fills the streets.
+The mayor designs the street network and places every building on it.
 
-The rule that makes a placeable worth placing: **a placeable is a
-service.** Something in the city calls for it, a vehicle goes, and if the
-facility has not been built the call is answered from beyond the edge of
-the map — slowly, along the mayor's entry roads. A young city works with
-none of them. Building one is a visible relief, and a strategic choice
-about where.
+The rule that makes one of them worth its price: **a service is a
+building whose vehicle answers calls.** Something in the city calls for
+it, a vehicle goes, and if the facility has not been built the call is
+answered from beyond the edge of the map — slowly, along the mayor's
+entry roads. A young city works with none of them. Building one is a
+visible relief, and a strategic choice about where.
 
 Six systems carry the whole list. Everything on the list is a row against
 them.
@@ -29,7 +29,7 @@ them.
 ## 2. Streets and roads
 
 A road node is a **street** or a **road**. Buildings front streets only:
-a driveway is never laid onto a road, and nothing arrives beside one. A
+a driveway is never laid onto a road, and nothing is placed beside one. A
 road is faster (its cruise speed is a multiple of a street's; the number
 lives on the kind) and drawn wider and darker.
 
@@ -45,28 +45,12 @@ at a junction), levels (an overpass is a road one level up), and traffic
 lights. Combined they give merge lanes, roundabouts and interchanges.
 None of it is in scope now; the flag is the seed.
 
-## 3. Spawning onto streets
+## 3. Placing onto streets
 
 A site is a plot that fronts a **joined street** with a free driveway.
-The driveway is laid at placement. Nothing ever arrives unconnected, so
-the hold, the red arrival state and the edge markers for arrivals go. Red
-keeps its one meaning: not joined to the world.
-
-Blueprint rows gain two facts:
-
-```
-placed: bool          // arrives on its own (false) or is placed by the mayor (true)
-attracts: &[Class]    // what gathers around it, and with what pull
-```
-
-The generic kinds arrive on their own: House, Apartment, Office, Workshop,
-Factory, Shop, Restaurant, Bar. The spawner's site draw keeps its anchors
-and affinity, with placed buildings as strong anchors: a supermarket pulls
-homes and shops to its streets; a factory pulls industry. Any joined
-street fills slowly on its own, so a street in the countryside is never
-inexplicably empty; attractors decide *what* fills it and how fast.
-
-Hand placement refuses a plot with no street rather than leaving it red.
+The driveway is laid at placement, and placement refuses a plot with no
+street rather than leaving it red — so nothing ever stands unconnected,
+and red keeps its one meaning: not joined to the world.
 
 ## 4. The build
 
@@ -78,9 +62,8 @@ neighbour is taken; the root always is.
 The build is the one door every question goes through:
 
 ```
-may_arrive(kind)   -> bool     // spawner
-may_place(kind)    -> bool     // hand placement
-weight(class)      -> f64      // spawner's draw
+may_place(kind)    -> bool     // placement
+weight(class)      -> f64      // the discount an avenue puts on its class's price
 road_tiles()       -> u32      // drawing; player-laid tiles count, generated do not, demolition refunds
 may_draw(road)     -> bool     // road kind, one-way
 ```
@@ -89,7 +72,7 @@ may_draw(road)     -> bool     // road kind, one-way
 Nothing else reads the tree. This is where the checks live, centrally,
 before any mutation.
 
-Effects stay odds and unlocks. Keystones are a later variant.
+Effects stay discounts and unlocks. Keystones are a later variant.
 
 ## 5. Call-outs
 
@@ -124,7 +107,7 @@ Rows, first pass:
 | Hospital | illness: a rare condition on a resident | ambulance | the resident stays ill longer, off work |
 | Fire station | fire: a rare condition on a building | fire truck | the fire spreads to a neighbour per interval |
 | Police | crime | patrol car | needs a crime model first; last |
-| Park | nothing: an attractor and a leisure tap with no trip | none | none |
+| Park | nothing: a leisure tap with no trip | none | none |
 
 Refinery, port and airport are the same rows at the next scale up: they
 answer stock calls from gas stations and warehouses.
@@ -162,14 +145,14 @@ A service whose effect cannot be seen is not a decision.
 The four avenues stay pure: homes, commerce, industry, roads. Placeables
 unlock at the **corners**, where two avenues meet:
 
-- homes × commerce: leisure — restaurant, bar, park arrive there
+- homes × commerce: leisure — restaurant, bar, park unlock there
 - commerce × industry: logistics — warehouse, later port
 - industry × roads: fuel and energy — gas station, later refinery
 - roads × homes: services — hospital, fire station, later police
 
 ## 9. Build order
 
-1. Streets and roads, spawning onto streets, the build. One piece of
+1. Streets and roads, placing onto streets, the build. One piece of
    work: it removes more than it adds (hold, arrival states, edge markers
    for arrivals) and puts the central check in place.
 2. Call-outs, once, generic, with the **supermarket** and **warehouse**
@@ -181,7 +164,6 @@ unlock at the **corners**, where two avenues meet:
 
 ## 10. What this removes
 
-- The spawner's hold while anything is unconnected.
+- The hold while anything is unconnected.
 - The arrival pin state, its bounce, and edge markers for arrivals.
-- Proposals' last traces in `spawner.md`'s prose.
 - Any building the mayor has to road by hand.

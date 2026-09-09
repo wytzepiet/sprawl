@@ -5,12 +5,14 @@ something you can sit down and play for an evening and notice is better
 than the last. Estimates are working days for one person with an
 assistant; they are guesses, and the order matters more than the numbers.
 
-## Where we are (2026-09-06)
+## Where we are (2026-09-09)
 
-Built: roads and streets, one-way, the tree as the build, buildings that
-arrive onto streets, residents with needs and commutes, call-outs for
-stock with a warehouse and trucks from the edge, the supermarket, the
-build menu as a piece of map, day and night, a fresh world per seed.
+Built: roads and streets, one-way, the tree as the build, every kind on
+the build menu as a piece of map, placed by hand and paid for out of what
+the city has earned, residents with needs and commutes, call-outs for
+stock with a warehouse and trucks from the edge, the supermarket, day and
+night, a fresh world per seed. Nothing arrives on its own: the spawner
+went on 2026-09-09 (`shelved.md`).
 
 Not built: parking, goods, money, food, the port, power, fire, hospital,
 the inspect panel, road speed and priority, levels, trains, multiplayer,
