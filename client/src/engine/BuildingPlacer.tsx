@@ -1,16 +1,21 @@
-import { createMemo, createSignal, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
-import { useGame } from "../state/gameObjects";
+import { getEntity, useGame } from "../state/gameObjects";
+import { useInstancePool } from "./InstancePool";
+import { useTheme } from "./theme";
+import { mountRoad } from "./objects/RoadNode";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
 import { shapeFor, SLAB } from "./objects/buildings";
-import { buildRoadGeometry, BORDER_HALF_W, BORDER_Z, HALF_W, ROAD_Z } from "./objects/roadGeometry";
 import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "./objects/lots";
 import { BLUEPRINTS, FACINGS, plot } from "../blueprints";
 import { screenToWorld } from "./view";
 import { createSpring2D } from "./spring";
-import type { BuildingKind, GridCoord } from "../generated";
+import type { BuildingKind, GameObjectEntry, GridCoord } from "../generated";
+
+/** The ghost door node's id: no real thing has it. */
+const DOOR = -1;
 
 const GHOST_COLOR = new Color3(0.6, 0.8, 1.0);
 const GHOST_LOT = new Color3(0.82, 0.9, 1.0);
@@ -42,7 +47,9 @@ interface Site {
  */
 export function BuildingPlacer() {
   const { scene, canvas } = useEngine();
-  const { send } = useGame();
+  const { send, getObjectsAt } = useGame();
+  const pool = useInstancePool();
+  const theme = useTheme();
   const [site, setSite] = createSignal<Site | null>(null);
   const spring = createSpring2D(scene, { stiffness: 0.3, damping: 0.4 });
   const kind = (): BuildingKind => placingBuilding() ?? "House";
@@ -117,40 +124,37 @@ export function BuildingPlacer() {
     const [mx, my] = middle();
     return [spring.pos()[0] + l.origin[0] - mx, spring.pos()[1] + l.origin[1] - my, z] as [number, number, number];
   };
-  // The driveway as the road builder would draw it: a stub at the door
-  // reaching for the street, and the street's new arm reaching back —
-  // straight or on the diagonal, wherever the server found one. Built in
-  // the plot's frame, so it rides the spring with the rest.
-  const drive = createMemo(() => {
-    const s = site();
-    if (!s?.door || !s.street) return null;
-    const [mx, my] = middle();
-    const a = { x: s.door.x + 0.5 - s.pos.x - mx, y: s.door.y + 0.5 - s.pos.y - my };
-    const b = { x: s.street.x + 0.5 - s.pos.x - mx, y: s.street.y + 0.5 - s.pos.y - my };
-    const angle = Math.atan2(b.y - a.y, b.x - a.x);
-    const norm = (t: number) => (t < 0 ? t + 2 * Math.PI : t);
-    const stub = (from: { x: number; y: number }, at: number, hw: number, z: number) => {
-      const g = buildRoadGeometry([{ angle: norm(at), flow: "twoway" }], hw, z);
-      if (!g) return null;
-      const positions = g.positions.slice();
-      for (let i = 0; i < positions.length; i += 3) {
-        positions[i] += from.x;
-        positions[i + 1] += from.y;
-      }
-      return { ...g, positions };
-    };
-    const parts = [stub(a, angle, BORDER_HALF_W, BORDER_Z), stub(a, angle, HALF_W, ROAD_Z), stub(b, angle + Math.PI, BORDER_HALF_W, BORDER_Z), stub(b, angle + Math.PI, HALF_W, ROAD_Z)];
-    const positions: number[] = [], indices: number[] = [], normals: number[] = [];
-    for (const p of parts) {
-      if (!p) continue;
-      const base = positions.length / 3;
-      positions.push(...p.positions);
-      normals.push(...p.normals);
-      indices.push(...p.indices.map((i) => i + base));
+  // The driveway is a real road, drawn by the road renderer for the
+  // moment it would exist: a door node on the door tile, and the street's
+  // node with one more arm reaching it. Redrawn whenever the site moves,
+  // and gone when the drag ends — placing it lays the real one.
+  let unmountDrive: (() => void)[] = [];
+  const clearDrive = () => {
+    for (const f of unmountDrive) f();
+    unmountDrive = [];
+  };
+  createEffect(on(site, (s) => {
+    clearDrive();
+    if (!s?.door || !s.street) return;
+    const street = getObjectsAt(s.street.x, s.street.y).find((e) => e.object.kind === "RoadNode");
+    if (!street) return;
+    const door: GameObjectEntry = {
+      id: DOOR,
+      position: { x: s.door.x, y: s.door.y },
+      object: { kind: "RoadNode", data: { outgoing: [street.id], incoming: [street.id], joined: true, road: false, laid: false } },
+    } as GameObjectEntry;
+    const joined: GameObjectEntry = {
+      ...street,
+      object: { kind: "RoadNode", data: { ...(street.object.data as { outgoing: number[]; incoming: number[] }), outgoing: [...(street.object.data as { outgoing: number[] }).outgoing, DOOR], incoming: [...(street.object.data as { incoming: number[] }).incoming, DOOR] } },
+    } as GameObjectEntry;
+    const lookup = (id: number) => (id === DOOR ? door : id === street.id ? joined : getEntity(id));
+    for (const e of [door, joined]) {
+      const off = mountRoad(e, pool, theme(), lookup);
+      if (off) unmountDrive.push(off);
     }
-    return { positions, indices, normals };
-  });
-  const driveAt = () => [spring.pos()[0], spring.pos()[1], 0.01] as [number, number, number];
+  }));
+  onCleanup(clearDrive);
+
   const shown = () => !!(placingBuilding() && site());
   const ok = () => site()?.fits ?? true;
 
@@ -173,7 +177,6 @@ export function BuildingPlacer() {
         color={ok() ? GHOST_MARK : REFUSED_MARK}
         enabled={shown() && !!lot()}
       />
-      <Mesh name="drive_ghost" geometry={drive() ?? { positions: [], indices: [], normals: [] }} position={drive() ? driveAt() : [0, 0, -10]} color={GHOST_LOT} enabled={shown() && !!drive()} />
     </>
   );
 }
