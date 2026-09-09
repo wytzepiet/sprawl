@@ -244,8 +244,6 @@ impl World {
     /// Is the building reached from the world: a driveway, on road that is
     /// joined to the world beyond the survey? A driveway onto an island is
     /// no way in. The client draws this for itself; only tests ask here.
-    #[cfg(test)]
-
     pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
         self.driveways_of(building_id).into_iter().next()
     }
