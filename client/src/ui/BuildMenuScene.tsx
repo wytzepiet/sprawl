@@ -16,15 +16,30 @@ import {
 } from "@babylonjs/core";
 import { createBorderTexture } from "../engine/TerrainChunks";
 import { buildChunk, CHUNK_STRIDE, type TerrainPalette } from "../engine/objects/terrainGeometry";
-import { shapeFor, BUILDING_COLOR } from "../engine/objects/buildings";
-import { plot } from "../blueprints";
+import { shapeFor, BUILDING_COLOR, SLAB } from "../engine/objects/buildings";
+import { ASPHALT, KERB } from "../engine/objects/BuildingObject";
+import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "../engine/objects/lots";
+import { createOutline } from "../engine/outline";
+import { BLUEPRINTS, plot } from "../blueprints";
 import type { BuildingKind } from "../generated";
 
-/** Tiles from one kind's centre to the next: a plot with land around it. */
-export const SLOT = 4;
 /** Which tile row the plots stand on, and the first plot's column. */
 const ROW = 16;
 const FIRST = 2;
+
+/** Each kind's slot on the shelf: as wide as its plot and a tile beside
+ *  it, so the row is as long as what stands on it. In tiles from the
+ *  row's start, and the row's whole width. */
+export function slots(kinds: BuildingKind[]): { start: number[]; width: number[]; total: number } {
+  const width = kinds.map((k) => plot(k, 2).size[0] + 1);
+  const start: number[] = [];
+  let at = 0;
+  for (const w of width) {
+    start.push(at);
+    at += w;
+  }
+  return { start, width, total: at + 1 };
+}
 
 /**
  * The build menu's shelf: a piece of map with every placeable kind standing
@@ -34,7 +49,7 @@ const FIRST = 2;
  * under the map's sky and a noon sun, shadows and all. One canvas, one
  * scene; the pins and labels are laid over it by the menu, a slot per kind.
  */
-export default function BuildMenuScene(props: { kinds: BuildingKind[]; onFit: (tilePx: number) => void }) {
+export default function BuildMenuScene(props: { kinds: BuildingKind[]; hovered: BuildingKind | null; onFit: (tilePx: number) => void }) {
   let canvas!: HTMLCanvasElement;
 
   onMount(() => {
@@ -42,26 +57,31 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[]; onFit: (t
     const scene = new Scene(engine);
     scene.clearColor = new Color4(1, 1, 1, 1);
 
-    const n = props.kinds.length;
+    const row = slots(props.kinds);
     // The middle of the row, and the world x at the canvas's left edge.
     // Looking down on the map, east is screen-left — the map's camera has
     // it the same way — so the first slot holds the row's easternmost plot.
-    const cx = FIRST + ((n - 1) * SLOT) / 2 + 1;
-    const cy = ROW + 1;
-    const left = cx + (n * SLOT) / 2;
+    const cx = FIRST + row.total / 2;
+    // Centred on the deepest plot, lot and all, so nothing hangs off the
+    // bottom of the shelf.
+    const deepest = Math.max(...props.kinds.map((k) => plot(k, 2).size[1]));
+    const cy = ROW + deepest / 2;
+    const left = cx + row.total / 2;
     const cam = new FreeCamera("shelf_cam", new Vector3(cx, cy, 6), scene);
     cam.upVector = new Vector3(0, 1, 0);
     cam.setTarget(new Vector3(cx, cy, 0));
     cam.mode = Camera.ORTHOGRAPHIC_CAMERA;
-    // The row exactly fills the width; the height follows the canvas.
+    // As large as the shelf allows with the whole row and the deepest plot
+    // in view, a tile of ground around them.
     const fit = () => {
-      const w = n * SLOT;
-      const h = (w * canvas.clientHeight) / Math.max(1, canvas.clientWidth);
+      const px = Math.min(canvas.clientWidth / row.total, canvas.clientHeight / (deepest + 1));
+      const w = canvas.clientWidth / px;
+      const h = canvas.clientHeight / px;
       cam.orthoLeft = -w / 2;
       cam.orthoRight = w / 2;
       cam.orthoTop = h / 2;
       cam.orthoBottom = -h / 2;
-      props.onFit(canvas.clientWidth / w);
+      props.onFit(px);
     };
     fit();
 
@@ -73,7 +93,7 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[]; onFit: (t
     sun.intensity = 0.4;
     // The shadow frustum, set the way the map sets its own: a box around
     // the row, looked at from up-sun, rather than one Babylon guesses.
-    const radius = (n * SLOT) / 2 + 1;
+    const radius = row.total / 2 + 1;
     sun.position = new Vector3(cx, cy, 0).subtract(sun.direction.scale(radius));
     sun.shadowMinZ = 0;
     sun.shadowMaxZ = radius * 2;
@@ -112,31 +132,66 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[]; onFit: (t
     const mat = new StandardMaterial("shelf_building", scene);
     mat.diffuseColor = Color3.FromHexString(BUILDING_COLOR);
     mat.specularColor = Color3.Black();
-    props.kinds.forEach((kind, i) => {
-      const mesh = new Mesh(`shelf_${kind}`, scene);
-      const lie = plot(kind, 2);
-      const [w, h] = lie.size;
-      const [[, by], [bw, bh]] = lie.building;
-      const geo = shapeFor(kind, bw, bh, 0);
+    const flat = (name: string, color: Color3) => {
+      const m = new StandardMaterial(name, scene);
+      m.diffuseColor = color;
+      m.specularColor = Color3.Black();
+      return m;
+    };
+    const asphalt = flat("shelf_asphalt", ASPHALT);
+    const kerb = flat("shelf_kerb", KERB);
+    const solid = (name: string, geo: { positions: number[]; indices: number[]; normals: number[] }, material: StandardMaterial) => {
+      const mesh = new Mesh(name, scene);
       const vd = new VertexData();
       vd.positions = geo.positions;
       vd.indices = geo.indices;
       vd.normals = geo.normals;
       vd.applyToMesh(mesh);
-      mesh.material = mat;
-      // A tile in from the slot's edge, on the grid, so a plot's centre sits
-      // where the menu puts its pin: a tile and a half in for a plot one
-      // tile across, two for one two across.
-      mesh.position = new Vector3(left - i * SLOT - 1 - w / 2, ROW + by + bh / 2, 0);
+      mesh.material = material;
       mesh.receiveShadows = true;
-      shadows.addShadowCaster(mesh);
+      return mesh;
+    };
+    const solids = new Map<BuildingKind, Mesh>();
+    props.kinds.forEach((kind, i) => {
+      const lie = plot(kind, 2);
+      const [w, h] = lie.size;
+      const [[, by], [bw, bh]] = lie.building;
+      // A tile in from the slot's edge, on the grid, where the menu puts
+      // its pin.
+      const x0 = left - row.start[i] - 1 - w;
+      const building = solid(`shelf_${kind}`, shapeFor(kind, bw, bh, 0), mat);
+      building.position = new Vector3(x0 + w / 2, ROW + by + bh / 2, 0);
+      shadows.addShadowCaster(building);
+      solids.set(kind, building);
+      // The plot as it lands on the map: the lot in front of the building,
+      // facing south the way the shelf does, slab and kerb and what is
+      // painted on it — so what you drag is what you get.
+      if (lie.lot) {
+        const [[lx, ly], [lw, ld]] = lie.lot;
+        const { rot, origin } = frameOf(2, { x: x0 + lx, y: ROW + ly, w: lw, h: ld });
+        const put = (name: string, geo: { positions: number[]; indices: number[]; normals: number[] }, material: StandardMaterial, z: number) => {
+          const m = solid(name, geo, material);
+          m.position = new Vector3(origin[0], origin[1], z);
+          m.rotation.z = rot;
+        };
+        put(`shelf_${kind}_kerb`, runSlabGeometry(lw, h, true), kerb, SLAB.kerbZ);
+        put(`shelf_${kind}_slab`, runSlabGeometry(lw, h, false), asphalt, SLAB.z);
+        put(`shelf_${kind}_marks`, BLUEPRINTS[kind].yard ? yardGeometry(lw, ld) : markingGeometry(lw), kerb, 0);
+      }
     });
 
+    // The same outline the map gives what the pointer is over.
+    const outline = createOutline(scene, engine, cam);
+    scene.onBeforeRenderObservable.add(() => {
+      const h = props.hovered && solids.get(props.hovered);
+      outline.show([], h ? [h] : []);
+    });
     engine.runRenderLoop(() => scene.render());
     const onResize = () => { engine.resize(); fit(); };
     window.addEventListener("resize", onResize);
     onCleanup(() => {
       window.removeEventListener("resize", onResize);
+      outline.dispose();
       scene.dispose();
       engine.dispose();
     });

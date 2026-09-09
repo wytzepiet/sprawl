@@ -9,8 +9,8 @@ import { parts } from "../../state/selection";
 
 /** The slab is white like a street, with the street's kerb round it, and
  *  the dividers between spots are painted in the kerb's colour. */
-const ASPHALT = Color3.FromHexString("#FFFFFF");
-const KERB = Color3.FromHexString("#DFE1E1");
+export const ASPHALT = Color3.FromHexString("#FFFFFF");
+export const KERB = Color3.FromHexString("#DFE1E1");
 
 export function mountBuilding(
   entry: GameObjectEntry,

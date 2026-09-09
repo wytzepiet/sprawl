@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import BuildMenuScene, { SLOT } from "./BuildMenuScene";
+import BuildMenuScene, { slots } from "./BuildMenuScene";
 import { BLUEPRINTS, KINDS, plot } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind } from "../generated";
@@ -42,8 +42,17 @@ export function BuildMenuSheet() {
   // centre whatever the plot's size. Horizontally that is a fraction of
   // the slot; vertically an offset from the canvas middle, on the row.
   const [tilePx, setTilePx] = createSignal(0);
-  const pinLeft = (kind: BuildingKind) => `${((1 + plot(kind, 2).size[0] / 2) / SLOT) * 100}%`;
-  const pinTop = (kind: BuildingKind) => `calc(50% + ${(1 - plot(kind, 2).size[1] / 2) * tilePx()}px)`;
+  const [over, setOver] = createSignal<BuildingKind | null>(null);
+  // The row stands centred in the shelf; each slot is laid over its plot,
+  // and its pin over the building, up being up as the shelf's camera has
+  // it.
+  const row = () => slots(kinds);
+  // A slot is centred on its plot: half a tile of the gap on either side.
+  const slotLeft = (i: number) => `calc(50% + ${(row().start[i] + 0.5 - row().total / 2) * tilePx()}px)`;
+  const slotWidth = (i: number) => `${row().width[i] * tilePx()}px`;
+  const pinLeft = (kind: BuildingKind, i: number) => `${((0.5 + plot(kind, 2).building[0][0] + plot(kind, 2).building[1][0] / 2) / row().width[i]) * 100}%`;
+  const deepest = () => Math.max(...kinds.map((k) => plot(k, 2).size[1]));
+  const pinTop = (kind: BuildingKind) => `calc(50% - ${(plot(kind, 2).building[0][1] + plot(kind, 2).building[1][1] / 2 - deepest() / 2) * tilePx()}px)`;
   const pick = (kind: BuildingKind, e: PointerEvent) => {
     e.preventDefault();
     if (!may(kind)) return;
@@ -78,17 +87,20 @@ export function BuildMenuSheet() {
           </div>
           {/* One world for the whole shelf, and a slot laid over each kind
               standing in it: the pin, the label, and the drag to place it. */}
-          <div class="pins relative rounded-xl overflow-hidden" style={{ height: "140px" }}>
-            <BuildMenuScene kinds={kinds} onFit={setTilePx} />
-            <div class="absolute inset-0 flex">
+          <div class="pins relative rounded-xl overflow-hidden" style={{ height: "210px" }}>
+            <BuildMenuScene kinds={kinds} hovered={over()} onFit={setTilePx} />
+            <div class="absolute inset-0">
               <For each={kinds}>
-                {(kind) => (
+                {(kind, i) => (
                   <button
-                    class={`relative flex-1 flex flex-col items-center justify-end pb-2 transition-colors ${may(kind) ? "hover:bg-black/[0.03] cursor-grab active:cursor-grabbing" : "bg-white/60 cursor-not-allowed"}`}
+                    class={`absolute top-0 bottom-0 flex flex-col items-center justify-end pb-2 ${may(kind) ? "cursor-grab active:cursor-grabbing" : "bg-white/60 cursor-not-allowed"}`}
+                    style={{ left: slotLeft(i()), width: slotWidth(i()) }}
                     title={may(kind) ? undefined : "Take it on the tree (L)"}
                     onPointerDown={(e) => pick(kind, e)}
+                    onPointerEnter={() => setOver(kind)}
+                    onPointerLeave={() => setOver((o) => (o === kind ? null : o))}
                   >
-                    <div class="pin absolute -translate-x-1/2 -translate-y-full pointer-events-none" style={{ left: pinLeft(kind), top: pinTop(kind) }} classList={{ "opacity-40": !may(kind) }}>
+                    <div class="pin absolute -translate-x-1/2 -translate-y-full pointer-events-none" style={{ left: pinLeft(kind, i()), top: pinTop(kind) }} classList={{ "opacity-40": !may(kind) }}>
                       <div class="marker relative">
                         <PinBody kind={kind} />
                       </div>
