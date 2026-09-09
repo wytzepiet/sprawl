@@ -8,7 +8,7 @@ mod residents;
 pub mod roads;
 pub mod segments;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::engine::GameTime;
 
@@ -95,6 +95,10 @@ pub struct World {
     /// check, every bend, every site the placer tries — and a chunk's
     /// entity set was being walked for each answer. Derived at load.
     pub roads: HashMap<(i32, i32), EntityId>,
+    /// The buildings standing at the road exits: the world beyond the map,
+    /// one for each road that runs off it. Derived from the road graph by
+    /// `stand_edges`, never placed and never saved.
+    pub edge: BTreeSet<EntityId>,
 }
 
 /// One building's output for one need: the day being counted, its running
@@ -167,6 +171,7 @@ impl World {
             roads: HashMap::new(),
             calls: Vec::new(),
             roads_generated: HashSet::new(),
+            edge: BTreeSet::new(),
         }
     }
 
@@ -196,6 +201,7 @@ impl World {
             roads: HashMap::new(),
             calls: Vec::new(),
             roads_generated: HashSet::new(),
+            edge: BTreeSet::new(),
             objects,
         };
         // Rebuild the spatial index and the road index from loaded objects.
@@ -319,15 +325,79 @@ impl World {
         ids
     }
 
-    pub fn entry_node_near(&self, pos: GridCoord) -> Option<EntityId> {
-        self.objects
-            .all_entries()
+    /// The nearest road exit to a tile, as a building: the door everything
+    /// from beyond the map comes in by, and the last stop of everything
+    /// leaving. By id at a tie, so a world answers the same way however its
+    /// sets iterate.
+    pub fn nearest_edge(&self, pos: GridCoord) -> Option<EntityId> {
+        self.edge
             .iter()
-            .filter(|e| matches!(e.object, GameObject::RoadNode(_)))
-            .filter_map(|e| e.position.map(|p| (e.id, p)))
-            .filter(|&(_, p)| !self.revealed.contains(&chunk_of(p)))
-            .min_by_key(|&(id, p)| ((p.x - pos.x).abs().max((p.y - pos.y).abs()), id))
-            .map(|(id, _)| id)
+            .filter_map(|&b| Some((b, self.objects.get(b)?.position?)))
+            .min_by_key(|&(b, p)| ((p.x - pos.x).abs().max((p.y - pos.y).abs()), b))
+            .map(|(b, _)| b)
+    }
+
+    /// The road that door stands on: where a car appears from off the map,
+    /// and where one drives off it.
+    pub fn entry_node_near(&self, pos: GridCoord) -> Option<EntityId> {
+        self.road_node_for_building(self.nearest_edge(pos)?)
+    }
+
+    /// Stand a building at every road exit — every stretch of the survey's
+    /// road that runs off the map, at the tile where it crosses out of what
+    /// has been surveyed. Everything the city lacks is served there, so the
+    /// search finds one like any other shop; see `blueprint.rs`.
+    ///
+    /// Derived from the road graph rather than remembered, like every other
+    /// index: the frontier moves as the map is revealed and the doors move
+    /// with it, and running this twice changes nothing.
+    pub fn stand_edges(&mut self) {
+        let doors: HashSet<EntityId> = self
+            .network
+            .exits()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter(|&n| self.arms_of(n, false).iter().any(|&a| !self.network.is_exit(a)))
+            .collect();
+        let standing: HashMap<EntityId, EntityId> = self
+            .edge
+            .iter()
+            .filter_map(|&b| Some((self.road_node_for_building(b)?, b)))
+            .collect();
+        for (node, building) in &standing {
+            if !doors.contains(node) {
+                self.drop_edge(*building);
+            }
+        }
+        for node in doors {
+            if standing.contains_key(&node) {
+                continue;
+            }
+            let Some(pos) = self.objects.get(node).and_then(|e| e.position) else { continue };
+            // Straight in at the road, with no plot and no land under it:
+            // the tile is the road's, and the building is only what stands
+            // for what lies past it.
+            let id = self.insert_at(
+                GameObject::Building(crate::protocol::Building {
+                    kind: crate::protocol::BuildingKind::Edge,
+                    size: (1, 1),
+                    facing: 2,
+                    stock: 1.0,
+                }),
+                Some(pos),
+            );
+            self.edge.insert(id);
+        }
+    }
+
+    /// Take one down: the road it stood on is inside the survey now, or gone.
+    fn drop_edge(&mut self, building: EntityId) {
+        self.drop_lot(building);
+        if let Some(pos) = self.objects.get(building).and_then(|e| e.position) {
+            self.unindex(building, pos);
+        }
+        self.objects.remove(building);
+        self.edge.remove(&building);
     }
 
     /// Update the spatial position of an entity.
@@ -434,10 +504,12 @@ impl World {
     pub fn reveal_around(&mut self, pos: GridCoord) {
         let min = chunk_of(GridCoord { x: pos.x - REVEAL_RADIUS, y: pos.y - REVEAL_RADIUS });
         let max = chunk_of(GridCoord { x: pos.x + REVEAL_RADIUS, y: pos.y + REVEAL_RADIUS });
+        let mut moved = false;
         for cy in min.cy..=max.cy {
             for cx in min.cx..=max.cx {
                 let coord = ChunkCoord { cx, cy };
                 if self.revealed.insert(coord) {
+                    moved = true;
                     self.newly_revealed.push(coord);
                     self.grow_bounds(coord);
                     // Road here is surveyed now, not the world beyond. The
@@ -452,6 +524,10 @@ impl World {
                     }
                 }
             }
+        }
+        // The frontier moved, so the doors onto the world beyond it have.
+        if moved {
+            self.stand_edges();
         }
     }
 
@@ -556,5 +632,81 @@ impl World {
         for (car_id, route) in routes {
             self.register_car_route(car_id, &route);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::BuildingKind;
+
+    /// A long road across open ground, and one house on it. Revealing the
+    /// ground around the house leaves the far end of the road beyond the
+    /// survey, which is what a road exit is.
+    fn frontier() -> (World, EntityId) {
+        let mut world = World::new();
+        for y in -4..4 {
+            for x in -4..400 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        world.place_road_path(&(-2..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        let house = world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).expect("a driveway");
+        (world, house)
+    }
+
+    /// One building stands where the road crosses out of the survey, and
+    /// only there: the road runs on for chunks past it, and none of that is
+    /// a door.
+    #[test]
+    fn the_edge_stands_where_the_road_leaves_the_map() {
+        let (world, _) = frontier();
+        assert_eq!(world.edge.len(), 1, "one road out, one door");
+        let door = *world.edge.iter().next().unwrap();
+        let node = world.road_node_for_building(door).expect("the door stands on the road");
+        assert!(world.network.is_exit(node), "the door is beyond the survey");
+        let pos = world.objects.get(door).unwrap().position.unwrap();
+        assert!(!world.revealed.contains(&chunk_of(pos)), "the door is past the frontier");
+        assert!(
+            world.revealed.contains(&chunk_of(GridCoord { x: pos.x - 1, y: pos.y })),
+            "and the tile behind it is inside",
+        );
+    }
+
+    /// Build out toward it and the frontier moves; the door moves with it,
+    /// rather than piling up behind.
+    #[test]
+    fn the_door_moves_with_the_frontier() {
+        let (mut world, _) = frontier();
+        let was = world.objects.get(*world.edge.iter().next().unwrap()).unwrap().position.unwrap();
+        world.place_on_street(GridCoord { x: 120, y: 1 }, BuildingKind::House).expect("a driveway");
+        assert_eq!(world.edge.len(), 1, "one road out is still one door");
+        let now = world.objects.get(*world.edge.iter().next().unwrap()).unwrap().position.unwrap();
+        assert!(now.x > was.x, "the door stayed at {was:?} while the survey grew");
+    }
+
+    /// Standing them again changes nothing: it is derived from the roads,
+    /// so it can run after any commit.
+    #[test]
+    fn standing_the_edge_twice_stands_one_edge() {
+        let (mut world, _) = frontier();
+        let before: Vec<EntityId> = world.edge.iter().copied().collect();
+        world.stand_edges();
+        world.stand_edges();
+        assert_eq!(world.edge.iter().copied().collect::<Vec<_>>(), before);
+    }
+
+    /// A world nobody has surveyed has no doors: every road is beyond the
+    /// edge, so no road crosses out of it.
+    #[test]
+    fn an_unsurveyed_world_has_no_doors() {
+        let mut world = World::new();
+        for x in -4..40 {
+            world.terrain.insert((x, 0), TerrainType::Grass);
+        }
+        world.place_road_path(&(0..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        world.stand_edges();
+        assert!(world.edge.is_empty());
+        assert!(world.nearest_edge(GridCoord { x: 0, y: 0 }).is_none());
     }
 }

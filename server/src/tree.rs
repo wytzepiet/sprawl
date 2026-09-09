@@ -226,7 +226,7 @@ impl Build {
         b
     }
 
-    /// Every node taken, in reading order: what the wire and the save carry.
+    /// The nodes taken, in reading order: what a save writes down.
     pub fn taken(&self) -> Vec<Cell> {
         let mut v: Vec<Cell> = self.taken.iter().copied().collect();
         v.sort_by_key(|c| (c.y, c.x));

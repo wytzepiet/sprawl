@@ -237,6 +237,12 @@ impl World {
             return None;
         }
         let (pos, kind, facing) = self.building_of(building)?;
+        // The edge is a road running off the map, not a plot. Nobody parks
+        // there — a car that gets there is gone — so it has no lot, nothing
+        // to queue for, and no ceiling on how many can be at it at once.
+        if kind == crate::protocol::BuildingKind::Edge {
+            return None;
+        }
         let lot = plot(kind, facing).lot;
         if lot.is_none() || is_yard(kind) {
             return Some(Run { key: RunKey::Solo(building), w: 0.0, seats: vec![Seat { building, gates, u0: 0.0, u1: 0.0 }] });
@@ -769,7 +775,12 @@ impl World {
     /// swapped for any free one, or the car is squeezed to the door.
     pub fn park_in_lot(&mut self, building: EntityId, car: EntityId, now: GameTime) {
         let Some(claim) = self.claim_spot(building, car, now, GameTime::MAX) else {
-            self.set_spot(car, None);
+            // Nothing here to hold: the edge, which has no lot at all, or a
+            // lot with no room left. Either way the car is here now, so
+            // whatever it was still holding somewhere else is let go of —
+            // or it would leave by that lot's way out, from a building it
+            // is not at.
+            self.release_spot(car);
             return;
         };
         let key = self.lot_of[&building];
@@ -872,6 +883,12 @@ impl World {
     /// node the street route ends at, then the lot nodes to the place. `None`
     /// when there is no place, and the trip does not start.
     pub fn way_in(&mut self, building: EntityId, car: EntityId, from: GameTime, to: GameTime) -> Option<Vec<EntityId>> {
+        // Nothing to pull into: the road is the whole of it. That is the
+        // edge; for anything the road never reached it is no way in at all,
+        // and the trip is refused as before.
+        if self.lot_mut(building).is_none() {
+            return Some(vec![self.road_node_for_building(building)?]);
+        }
         let claim = self.claim_spot(building, car, from, to)?;
         let key = *self.claims.get(&car)?;
         let lot = self.lots.get(&key)?;
@@ -905,8 +922,12 @@ impl World {
     }
 
     /// The node a street route to this building ends at: its driveway, or
-    /// for a ring or a yard the street node its entrance joins.
+    /// for a ring or a yard the street node its entrance joins — and for
+    /// something with no lot at all, the road it stands on.
     pub fn approach(&mut self, building: EntityId) -> Option<EntityId> {
+        if self.lot_mut(building).is_none() {
+            return self.road_node_for_building(building);
+        }
         let lot = self.lot_mut(building)?;
         Some(match lot.way {
             Way::Driveway { driveway, .. } => driveway,

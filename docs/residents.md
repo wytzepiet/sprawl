@@ -207,6 +207,14 @@ now, or the agent is already at its building, where waiting for it is the
 action. An option that is neither is a wait to be spent elsewhere; it
 contributes its `departure` as an alarm and nothing else.
 
+`candidates(b)` is every building standing that has a tap for the need —
+the buildings of the surveyed chunks, and the **edge**: a building at each
+road exit, serving every need in the game, never closed and never full. So
+a bucket with nothing in town is never a bucket with nothing at all; it is
+a bucket whose only option is a long drive, and it scores like one. `Go`
+with a poor score, rather than `Nothing`, is the normal answer to a town
+that has not built the thing yet.
+
 ```
 best = none                                     score(none) = 0
 

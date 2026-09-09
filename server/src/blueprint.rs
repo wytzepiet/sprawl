@@ -31,7 +31,9 @@ pub enum Class {
 
 pub struct Blueprint {
     pub class: Class,
-    /// How many live here. Zero for anything you cannot live in.
+    /// How many the settlement moves in of its own accord. Zero for
+    /// anything nobody moves into — a shop, and the edge, whose households
+    /// are made by the jobs the city could not fill.
     pub homes: u32,
     /// How many work here.
     pub jobs: u32,
@@ -115,6 +117,10 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     // one-wide lot holds hemmed in.
     let hours = Curve::hours;
     let always = Curve::always;
+    // A tap of the edge: open always, and with room for everyone who ever
+    // turns up, because beyond the map there is as much of everything as
+    // you like.
+    let everywhere = |need, rate| Tap { need, curve: always(), rate, overhead: 0, slots: u32::MAX };
     // A shift: work on offer between these hours, with a place for each of the staff.
     let shift = |open: u32, close: u32, jobs: u32| tap(Work, hours(open * H, close * H), jobs);
     // A household: sleep on offer through the night; being home, the kitchen
@@ -217,6 +223,28 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             stock: 6, answers: Some(CallKind::Stock), vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van],
             taps: vec![shift(6, 18, 6)],
         }),
+        // The world beyond the survey, standing where a road runs off the
+        // map. Every tap in the game, never closed and never crowded: a
+        // town with no restaurant still eats, a job nobody in town wants is
+        // still worked. What it costs is the drive, and that is the whole
+        // argument for building your own. Priceless in the literal sense —
+        // the outside is not for sale, so the mayor can never afford one —
+        // and what it serves is another city's earnings, not this one's
+        // (see `resident::served`).
+        (Edge, Blueprint {
+            class: Commerce, homes: 0, jobs: u32::MAX, size: (1, 1), lot: (0, 0), price: f64::INFINITY,
+            stock: 0, answers: None, vehicles: &[],
+            taps: vec![
+                everywhere(Home, 1.0),
+                everywhere(Work, 1.0),
+                everywhere(Rest, 1.0),
+                everywhere(Eat, 1.0),
+                // No better than an evening out in town, or the edge would
+                // raise what every bucket thinks is possible; see `Need::bounds`.
+                everywhere(Leisure, 0.8),
+                everywhere(Fuel, 1.0),
+            ],
+        }),
     ]
 });
 
@@ -266,6 +294,36 @@ mod tests {
     #[test]
     fn the_table_holds_up() {
         check();
+    }
+
+    /// The edge answers every need there is, always, and with room for
+    /// everyone: that is what "everything the city lacks exists beyond the
+    /// edge" means in the table. And it is not for sale at any price.
+    #[test]
+    fn the_edge_serves_everything_and_is_not_for_sale() {
+        let b = blueprint(Edge);
+        for need in Need::ALL {
+            let tap = b.taps.iter().find(|t| t.need == need).unwrap_or_else(|| panic!("the edge does not serve {need:?}"));
+            assert_eq!(tap.slots, u32::MAX, "{need:?} at the edge is rationed");
+            assert_eq!(tap.curve.per_day(), DAY_MS as f64, "{need:?} at the edge closes");
+            // No better than the best in town, or the edge would raise what
+            // every bucket anywhere thinks is possible.
+            assert!(tap.rate <= need.bounds().0, "{need:?} is served better at the edge than anywhere");
+        }
+        assert!(!b.price.is_finite(), "the outside is for sale");
+        assert!(b.taps.iter().any(|t| t.need == Need::Work), "no work beyond the edge");
+        assert_eq!(b.jobs, u32::MAX, "the edge runs out of jobs");
+        // Its kitchen is nobody's in particular, so the search offers it to
+        // everyone — see `resident::search`.
+        assert_eq!(b.homes, 0, "the edge draws people in for its own sake");
+    }
+
+    /// The whole table serialises, infinite price and all: the readout is
+    /// the only way to see what a kind actually says.
+    #[test]
+    fn the_table_can_be_read() {
+        let v = inspect();
+        assert_eq!(v.as_array().unwrap().len(), BLUEPRINTS.len());
     }
 
     #[test]

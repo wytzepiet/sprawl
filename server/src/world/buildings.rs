@@ -263,15 +263,16 @@ impl World {
         x >= 0 && y >= 0 && x < lw as i32 && y < ld as i32
     }
 
-    /// Every building, as (id, position). Only tests still want the world
-    /// flattened like this; the simulation itself always knows which building
-    /// it means.
+    /// Every building standing on the land, as (id, position) — the edge is
+    /// not one of them; it stands where the map stops. Only tests still want
+    /// the world flattened like this; the simulation itself always knows
+    /// which building it means.
     #[cfg(test)]
     pub fn all_buildings(&self) -> Vec<(EntityId, GridCoord)> {
         self.objects
             .all_entries()
             .iter()
-            .filter(|e| matches!(e.object, GameObject::Building(_)))
+            .filter(|e| matches!(e.object, GameObject::Building(_)) && !self.edge.contains(&e.id))
             .filter_map(|e| e.position.map(|p| (e.id, p)))
             .collect()
     }
