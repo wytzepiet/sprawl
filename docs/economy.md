@@ -435,7 +435,9 @@ season is thirty game-days until something says otherwise.
    minus freight. Waits for the port.
 5. **The band.** Over a season no price leaves
    `[edge − freight_out, edge + freight_in]` and no wage falls below
-   `edge_wage − commute`.
+   `edge_wage − commute`. (As built: no wage a resident of the town works
+   for; a building staffed from beyond the edge pays what its trade is
+   worth, which can be the floor — §12.2.)
 6. **No harm.** A town built ignoring every price ends the season with
    more treasury than it began, net of what it placed, and no building
    placed is below its float within its first week.

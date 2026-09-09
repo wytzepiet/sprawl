@@ -1487,11 +1487,16 @@ mod tests {
             assert!(turns <= 2, "building {id}'s {need:?} price rings: {tail:.2?}");
             println!("{id} {need:?}: {:.2} → {:.2}", series[0], series[series.len() - 1]);
         }
+        // No resident works for less than the edge's wage less the commute:
+        // a building paying under that is staffed from beyond the edge, by
+        // people the town cannot see, and its wage says what its trade is
+        // worth (§12.2).
         for (&id, series) in &wages {
             let floor = EDGE_WAGE - drive_h(id) * EDGE_WAGE / 8.0;
             let last = series[series.len() - 1];
-            assert!(last >= floor.min(0.5), "building {id} pays {last}, under the edge less the commute {floor}");
-            println!("{id} wage: {:.3} → {:.3}", series[0], last);
+            let residents_here = world.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(ref r) if r.work == Some(id) && !world.edge.contains(&r.home))).count();
+            assert!(last >= floor.min(0.5) || residents_here == 0, "building {id} pays {last}, under the edge less the commute {floor}, to {residents_here} of the town's own");
+            println!("{id} wage: {:.3} → {:.3}, {residents_here} from town", series[0], last);
         }
     }
 
