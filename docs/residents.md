@@ -555,6 +555,8 @@ analysed and deferred as unmotivated at current scale.
    as a consequence; it also puts cars on the road twice. Ideas held for
    later: one tap discharging two buckets (a meal out serving Leisure as
    well), and a money cost per visit as a second denominator.
+   `economy.md` §6.1 takes the second: price in hours of the resident's
+   wage, added to the denominator.
 
 8. **Curve authoring surface.** Every building kind requires a curve, rate
    and overhead per need served. The total content burden has not been
