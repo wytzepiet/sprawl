@@ -13,8 +13,8 @@ filled them in. `2f86374 Paint an area and get buildings`.
 
 **Why shelved.** Painting is a decision the player makes blind, before
 anything exists to react to, and it made the map a colouring exercise.
-Demand-driven spawning (`spawner.md` §1) puts buildings where they
-want to be and lets the road network be the thing the player designs.
+Demand-driven spawning replaced it and is shelved in its turn below; what
+survives both is that the road network is the thing the player designs.
 
 **To bring back.** Only as an optional policy drawn *after* the fact —
 "no industry here" — as `archive/agents.md` already suggests. Last lived at
@@ -37,6 +37,33 @@ with something to look at.
 **To bring back.** `GameObject::Proposal`, `spawner::{propose, answer,
 relocate, snap}`, the pin's answer buttons in `PinLayer.tsx`. Last lived
 at `dd53fbe`.
+
+## Automatic growth: the spawner
+
+**What.** Buildings arrived on their own. A meter filled with the hours of
+need the city served; when it topped up, `spawner.rs` drew a kind by its
+class weight and the demand pressure around each cluster, found a plot
+fronting a joined street, and put the building there with its driveway
+laid. Zoning and proposals above were its two earlier faces. `8dfe903 The
+spawner is gone: every building is the mayor's to place and pay for`;
+`spawner.md` is in `archive/`.
+
+**Why shelved.** A town that grew while you looked away was never yours.
+The meter was the game's whole pacing and the player could not touch it,
+and what arrived was the draw's opinion rather than a decision — so the
+only verbs left were road it, move it, demolish it, three ways of tidying
+up after the city. Every kind stands on the build menu now, priced in
+hours of need served against a balance the city earns, and saving for the
+next thing and putting it down is the loop (`game.md` §Buildings). The
+demand readout that fed the draw feeds the player instead.
+
+**To bring back.** `server/src/spawner.rs` with its goal, draw, clusters
+and pressure, and its call in the game loop. The class weight the tree's
+avenues spend on price today (`xp::price`) would go back to being the
+draw's odds. One thing the price table lost with it: an offer got dearer
+as the city filled out (`EARN_PER_BUILDING`), which is what kept growth
+from running away with itself — fixed prices need money to do that job.
+Last lived at `8f86867`.
 
 ## Build mode: drafts, commit, discard
 

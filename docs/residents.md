@@ -393,8 +393,8 @@ one is.
   journey are distinct.
 - **Demand.** Each wake leaves a note on each bucket, `shortfall`: how far
   short of being served on the spot the best option fell, 1 where nothing
-  was found. The spawner (`spawner.md` §4–5) reads the notes; the decision
-  is never run a second time on its behalf.
+  was found. The demand readout reads the notes; the decision is never run
+  a second time on its behalf.
 - **Output.** The total discharged by a building's taps over a period is the
   service it delivered — for a workplace, labour received.
 
@@ -659,10 +659,10 @@ yesterday, in hours. With Work constant the second is the only signal that
 commutes are failing (section 11.3). *Done.* Both are derived on request,
 the first from the same verdicts a wake computes, the second from what
 settle counts as it goes (not saved; a loaded world counts afresh). This
-is the signal only. What consumes it — the spawner that replaces zoning —
-is its own design and reads this as one input among its own pacing.
-Housing demand cannot come from buckets: nobody is homeless, settle evicts
-them; that signal is immigration pressure.
+is the signal only. It fed the spawner's draw until that went
+(`shelved.md`); what reads it now is the mayor, deciding what to place
+next. Housing demand cannot come from buckets: nobody is homeless, settle
+evicts them; that signal is immigration pressure.
 
 **7. Leisure.** The first need with no natural curve constraint, and the
 real test of `w = L / cap`. *Done.* What it taught, in three tries: with
