@@ -42,18 +42,20 @@ The industrial half of the game exists.
 *Playable:* a factory district feeding a shopping street through a
 warehouse, and the road between them as the thing you fix.
 
-## Milestone 3: Money (≈ 4 days)
+## Milestone 3: Money (≈ 5 days)
 
-Every trip has a price and the dollars tick.
+Every sale is a lump and every purse is real. `economy.md` §13 is the
+order inside this milestone.
 
-- A price per hour on every tap, wages on work, rent on home; a price
-  per tile per container; a fixed city cut.
-- Business balances; a shop losing money dims, then closes, then leaves.
+- Companies founded with buildings; wallets and wages; rent; the mayor's
+  cut of sales and of wages. Level stays hours served, banked in lumps.
+- Posted prices with the nudge; `price / earning` in the resident's
+  score; jobs chosen by wage. Prices held to the sea's band.
 - Placeables, road tiles beyond the allowance, moving and demolishing
-  cost money. The dial shows income as a rate.
+  cost money. The dial shows income as a rate over the lumps.
 
-*Playable:* the first time a shop closes because the warehouse was too
-far, and you fix it with a road.
+*Playable:* the first time a shop's price climbs because the warehouse
+was too far, and you fix it with a road.
 
 ## Milestone 4: Food and farms (≈ 3 days)
 

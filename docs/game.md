@@ -1,6 +1,6 @@
 # Sprawl: how the game works
 
-The short version of every design decision, 2026-09-08. Older documents
+The short version of every design decision, 2026-09-09. Older documents
 hold the detail; this one is the shape.
 
 ## The rule
@@ -90,17 +90,18 @@ gives a reason to choose. Roads stay instant under the brush.
 
 ## Money
 
-Every tap has a fixed price: an hour of hunger served costs the resident
-and earns the shop; an hour worked earns the resident and costs the
-employer; an hour at home is rent, to the city. Every container moved
-costs per tile, cheaper by ship or train. The city takes a fixed cut of
-every sale. Businesses hold a balance and close when it runs dry. Residents
-pass money through at first; if they get wallets, the floor is emigration:
-the car drives off the map. Prices never float. Money lands in lumps: a
-visit ends and the amount shows above the building, the city's cut taken
-from the same lump, the meter stepping up with an address on every step.
-It is spent on buildings, road beyond the allowance, and fuel for the
-plant.
+Everyone has a purse: residents, companies, the mayor. Money moves
+between them and is made only at the sea and the edge. Every building
+belongs to a company that buys its inputs, pays its workers, and posts a
+price for what it sells, nudging it up when the shelf empties and down
+when it fills, never below cost. A resident earns a wage and prices money
+in hours of it, so the one score that already picks their day picks by
+price too; a company prices money in hours of its revenue and picks by
+delivered price. The sea buys and sells every good at a fixed price and
+the edge hires at a fixed wage, so nothing can run away. The mayor taxes
+sales and wages on their land, in lumps that land on the building and
+step the meter with an address. Ignoring all of this must never hurt;
+reading it is how you win. `economy.md` is the mechanism.
 
 ## Power
 
@@ -130,12 +131,12 @@ are free; more is the subscription.
 ## Out
 
 Pedestrians, transit, water, sewage, garbage, zoning, sliders, policies,
-floating prices, drawn wires, panels that control, buildings that arrive
-on their own, proposals to accept, pending spawns to adjust.
+drawn wires, panels that control, buildings that arrive on their own,
+proposals to accept, pending spawns to adjust.
 
 Filed, not promised: roads built by trucks and the gravel and oil behind
-them; big infrastructure built by cranes; several materials; prices that
-rise with scarcity across neighbours.
+them; big infrastructure built by cranes; several materials; sea prices
+that drift with the world's trade.
 
 ## Order
 
@@ -144,7 +145,8 @@ rise with scarcity across neighbours.
    saving and placing is the loop.
 2. The edge: exits as buildings with every tap, homes and jobs.
 3. Construction: the site as a call, the truck, the refund.
-4. Money: lumps at the building, the cut, balances, closures.
+4. Money: purses, companies, the two taxes, then posted prices
+   (`economy.md` §13).
 5. Food and farms.
 6. The port.
 7. Power: plant, pylons, substations, night.
