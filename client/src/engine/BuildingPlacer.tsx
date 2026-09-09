@@ -14,11 +14,16 @@ import type { BuildingKind, GridCoord } from "../generated";
 const GHOST_COLOR = new Color3(0.6, 0.8, 1.0);
 const GHOST_LOT = new Color3(0.82, 0.9, 1.0);
 const GHOST_MARK = new Color3(0.55, 0.7, 0.9);
+const REFUSED = new Color3(0.95, 0.45, 0.4);
+const REFUSED_LOT = new Color3(1.0, 0.8, 0.78);
+const REFUSED_MARK = new Color3(0.9, 0.55, 0.5);
 
-/** Where a plot would land: its origin tile and which way it faces. */
+/** Where a plot would land: its origin tile, which way it faces, and
+ *  whether it can land there at all. */
 interface Site {
   cell: GridCoord;
   facing: number;
+  fits: boolean;
 }
 
 /**
@@ -78,26 +83,29 @@ export function BuildingPlacer() {
   }
 
   /** The plot whose building is under the pointer — the building is the
-   *  thing held; its lot swings round it — turned the first way that fits
-   *  and fronts a street, else facing south wherever it fits. */
-  function siteAt(wx: number, wy: number): Site | null {
+   *  thing held; its lot swings round it. Turned the first way that fits
+   *  and fronts a street; failing that, the first way that fits at all;
+   *  failing that, facing south, and refused. */
+  function siteAt(wx: number, wy: number): Site {
     const at = (facing: number): GridCoord => {
       const [[bx, by], [bw, bh]] = plot(kind(), facing).building;
       return { x: Math.floor(wx - bx - bw / 2 + 0.5), y: Math.floor(wy - by - bh / 2 + 0.5) };
     };
     for (const facing of [0, 1, 2, 3]) {
       const cell = at(facing);
-      if (fits(cell, facing) && fronts(cell, facing)) return { cell, facing };
+      if (fits(cell, facing) && fronts(cell, facing)) return { cell, facing, fits: true };
     }
-    const cell = at(2);
-    return fits(cell, 2) ? { cell, facing: 2 } : null;
+    for (const facing of [0, 1, 2, 3]) {
+      const cell = at(facing);
+      if (fits(cell, facing)) return { cell, facing, fits: true };
+    }
+    return { cell: at(2), facing: 2, fits: false };
   }
 
   const onPointerMove = (e: PointerEvent) => {
     if (!placingBuilding()) return;
     const { wx, wy } = screenToWorld(scene, canvas, e);
     const found = siteAt(wx, wy);
-    if (!found) return;
     const [[bx, by], [bw, bh]] = plot(kind(), found.facing).building;
     const centre: [number, number] = [found.cell.x + bx + bw / 2, found.cell.y + by + bh / 2];
     if (!site()) {
@@ -112,7 +120,7 @@ export function BuildingPlacer() {
     const placing = placingBuilding();
     if (!placing) return;
     const s = site();
-    if (s) send({ type: "PlaceBuilding", data: { pos: s.cell, kind: placing } });
+    if (s?.fits) send({ type: "PlaceBuilding", data: { pos: s.cell, kind: placing } });
     setPlacingBuilding(null);
     setSite(null);
   };
@@ -152,16 +160,17 @@ export function BuildingPlacer() {
     return [spring.pos()[0] + l.origin[0] - mx, spring.pos()[1] + l.origin[1] - my, z] as [number, number, number];
   };
   const shown = () => !!(placingBuilding() && site());
+  const ok = () => site()?.fits ?? true;
 
   return (
     <>
-      <Mesh name="building_ghost" geometry={buildingGeo()} position={buildingAt()} color={GHOST_COLOR} enabled={shown()} />
+      <Mesh name="building_ghost" geometry={buildingGeo()} position={buildingAt()} color={ok() ? GHOST_COLOR : REFUSED} enabled={shown()} />
       <Mesh
         name="lot_ghost"
         geometry={lot() ? runSlabGeometry(lot()!.w, lot()!.depth, false) : runSlabGeometry(1, 1, false)}
         position={lot() ? lotAt(SLAB.z) : [0, 0, -10]}
         rotation={[0, 0, lot()?.rot ?? 0]}
-        color={GHOST_LOT}
+        color={ok() ? GHOST_LOT : REFUSED_LOT}
         enabled={shown() && !!lot()}
       />
       <Mesh
@@ -169,7 +178,7 @@ export function BuildingPlacer() {
         geometry={lot() ? (BLUEPRINTS[kind()].yard ? yardGeometry(lot()!.w, lot()!.ld) : markingGeometry(lot()!.w)) : markingGeometry(1)}
         position={lot() ? lotAt(0) : [0, 0, -10]}
         rotation={[0, 0, lot()?.rot ?? 0]}
-        color={GHOST_MARK}
+        color={ok() ? GHOST_MARK : REFUSED_MARK}
         enabled={shown() && !!lot()}
       />
     </>
