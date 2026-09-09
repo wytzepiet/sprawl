@@ -265,6 +265,7 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
                 let book = world.books.entry(at).or_default().today(now);
                 book.wages += paid;
                 book.hours += units;
+                sweep(world, at, now);
             }
             rent(world, who, now);
         }
@@ -295,8 +296,24 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
                     world.books.entry(at).or_default().today(now).sold_out = true;
                 }
             }
+            sweep(world, at, now);
         }
     }
+}
+
+/// A building's sweep, at each income: what is over the float goes to
+/// the treasury, and the float is what it runs on until the next one —
+/// the day's wages, and a restock. The lump on the map is the sale
+/// itself; the treasury steps with it. §8.2.
+fn sweep(world: &mut World, building: EntityId, now: GameTime) {
+    let Some(GameObject::Building(b)) = world.objects.get_mut(building).map(|e| &mut e.object) else { return };
+    let over = b.balance - float(b.kind, b.wage);
+    if over <= 0.0 {
+        return;
+    }
+    b.balance -= over;
+    world.treasury += over;
+    world.income.today(now).revenue += over;
 }
 
 /// A delivery landed: `units` onto `buyer`'s shelf, from `seller`'s or
@@ -327,6 +344,7 @@ pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, n
         book.revenue += paid;
         *book.sold.entry(need).or_default() += units;
         world.sales.push(Sale { building: seller, amount: paid, at: now });
+        sweep(world, seller, now);
     }
 }
 
@@ -360,9 +378,9 @@ fn rent(world: &mut World, who: EntityId, now: GameTime) {
     world.sales.push(Sale { building: home, amount: rent, at: now });
 }
 
-/// Midnight: every building counts its till. What is over the float
-/// sweeps to the treasury; each price steps by its own stock; the wage
-/// steps by who filled the desks; and the books turn a page. §5, §8.2.
+/// Midnight: every building counts its day. Each price steps by its own
+/// stock; the wage steps by who filled the desks; and the books turn a
+/// page. §5.
 pub fn day(world: &mut World, now: GameTime) {
     let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
     ids.sort_unstable();
@@ -377,15 +395,6 @@ pub fn day(world: &mut World, now: GameTime) {
         let commuters = world.staff_from_the_edge(id);
         let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { continue };
         let kind = b.kind;
-        let float = float(kind, b.wage);
-        if b.balance > float {
-            let sweep = b.balance - float;
-            b.balance = float;
-            world.treasury += sweep;
-            world.income.today(now).revenue += sweep;
-            world.sales.push(Sale { building: id, amount: sweep, at: now });
-        }
-        let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { continue };
         for tap in sells(kind) {
             let Some(price) = b.prices.get_mut(&tap.need) else { continue };
             let sold = book.sold.get(&tap.need).copied().unwrap_or(0.0);
@@ -640,14 +649,25 @@ mod tests {
         let (after_shop, after_depot) = (building(&world, shop), building(&world, depot));
         let paid = before_shop.balance - after_shop.balance;
         assert!((paid - 30.0 * wholesale(Need::Eat)).abs() < 1e-9, "the shop paid {paid}");
-        assert!((after_depot.balance - before_depot.balance - paid).abs() < 1e-9, "the depot got something else");
+        // The depot was at its float, so what it got swept at once.
+        assert!((after_depot.balance - before_depot.balance).abs() < 1e-9 && (world.treasury - paid).abs() < 1e-9, "the depot got something else");
         assert_eq!(after_shop.stock.level, after_shop.stock.cap, "the shelf is full");
         assert_eq!(before_depot.stock.level - after_depot.stock.level, 30.0, "the depot's shelf went down by the same");
-        // The depot's own restock costs it exactly that again, so over a
-        // fetch and a delivery its purse is back where it was.
+        // The sale over the float sweeps at once; the depot's own restock
+        // then costs it exactly what it sold for, so from the second round
+        // on its purse comes back to where it was and nothing more sweeps.
         fetched(&mut world, depot, 0);
-        assert!((building(&world, depot).balance - before_depot.balance).abs() < 1e-9, "the warehouse made a margin");
-        assert!((world.treasury).abs() < 1e-9, "something swept");
+        let settled = building(&world, depot).balance;
+        let swept = world.treasury;
+        for _ in 0..3 {
+            if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
+                b.stock.take(30.0);
+            }
+            delivered(&mut world, shop, Some(depot), 0);
+            fetched(&mut world, depot, 0);
+        }
+        assert!((building(&world, depot).balance - settled).abs() < 1e-9, "the warehouse made a margin");
+        assert!((world.treasury - swept).abs() < 1e-9, "the warehouse swept {}", world.treasury - swept);
     }
 
     /// §11.9, the door breaks even: a payday leaves a resident their float

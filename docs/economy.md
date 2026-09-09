@@ -562,15 +562,21 @@ decision the text left open, or moved one it had made.
   a kind whose takings come in through the day and whose wages go out at
   the end of it, plus a full shelf at wholesale; nothing for a house or a
   pass-through; the shelf alone for a service. A resident's is a day's
-  wage at the edge. Residents sweep at each payday; buildings at
-  midnight, when the till is counted. §9's "below its float" is read as
-  "its purse is empty": a purse with money in it buys and hires, an
-  empty one stops, and the float is what the sweep leaves it to run on.
+  wage at the edge. Both sweep at each income, as §8.2 says: a resident
+  at each payday, a building at each sale, so the treasury climbs as the
+  town trades rather than stepping at midnight. §9's "below its float"
+  is read as "its purse is empty": a purse with money in it buys and
+  hires, an empty one stops, and the float is what the sweep leaves it
+  to run on, and dips into for wages and restocks between sales.
 - **Pass-throughs.** A workplace with nothing to sell sells its hours to
   the edge before it pays for them, so it needs no purse (§12.1).
 - **On the wire.** A `Sale` per lump: the building, the amount, when.
   The client floats it over the building; the treasury steps. Level is
   hours served, banked at each settle, the edge's excluded.
+- **Prices step once a day**, as §5.1 says, because selling out and
+  piling up are measured over a window and a day is the smallest honest
+  one. They step at midnight, all at once; counting the till when each
+  tap closes instead would stagger them and is the natural next cut.
 
 What running the season found, and did not fix: a shop needs about
 forty meals a day to carry two staff at the edge's wage, which is a
