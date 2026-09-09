@@ -1151,8 +1151,9 @@ mod tests {
             };
             let office = sold(office, "Work", "yesterday_h");
             // Fourteen people, two apartments of seven, less the shop's two,
-            // nine hours each, less the odd late morning.
-            assert!((90.0..=108.0).contains(&office), "office received {office}h");
+            // nine hours each, less the odd late morning, a lunch out and
+            // a dinner near work.
+            assert!((85.0..=108.0).contains(&office), "office received {office}h");
             // Lunches over a whole day.
             assert!(sold(lunch, "Eat", "yesterday_h") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
         }

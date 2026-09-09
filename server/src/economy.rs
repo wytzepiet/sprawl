@@ -80,6 +80,10 @@ const PRICE_DOWN: f64 = 0.03;
 /// is a fifth of a rise. §5.2.
 const WAGE_UP: f64 = 0.05;
 const WAGE_DOWN: f64 = 0.01;
+/// The least any hour is paid: a tenth of the edge's wage. A wage of
+/// nothing makes money worth infinitely many hours to whoever earns it,
+/// and the score cannot price that.
+const WAGE_FLOOR: f64 = 0.1 * EDGE_WAGE;
 /// Selling more than this share of what the tap could sell in a day is
 /// selling out; less than this is piling up. The stock behind a tap with
 /// no shelf is its capacity.
@@ -366,7 +370,10 @@ pub fn day(world: &mut World, now: GameTime) {
         if world.edge.contains(&id) {
             continue;
         }
-        let book = world.books.entry(id).or_default().today(now).clone();
+        // Turn the page, and read the day that just ended.
+        let books = world.books.entry(id).or_default();
+        books.today(now);
+        let book = books.before(now).clone();
         let commuters = world.staff_from_the_edge(id);
         let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { continue };
         let kind = b.kind;
@@ -398,16 +405,18 @@ pub fn day(world: &mut World, now: GameTime) {
             // downward in a firm that is making money, and cut in one
             // that is not (Bewley, 1999) — a shop with no trade pays what
             // its trade is worth, and its staff take the next best score.
-            let brings = if book.hours > 0.0 { (book.revenue - book.purchases) / book.hours } else { EDGE_WAGE };
+            // A day nobody worked says nothing, and the wage stands.
+            let brings = if book.hours > 0.0 { (book.revenue - book.purchases) / book.hours } else { b.wage };
             // A desk the edge had to fill is a vacancy the town's wage did
             // not: the building pays for the commute through the wage.
             b.wage = if b.wage > brings {
-                brings.max(0.0)
+                brings
             } else if commuters > 0 {
                 (b.wage * (1.0 + WAGE_UP)).min(brings)
             } else {
                 b.wage * (1.0 - WAGE_DOWN)
-            };
+            }
+            .max(WAGE_FLOOR);
         }
     }
 }
