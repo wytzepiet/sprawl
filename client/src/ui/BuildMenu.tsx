@@ -4,7 +4,7 @@ import { BLUEPRINTS, KINDS, TABS, plot, type Tab } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind } from "../generated";
 import { Building2 } from "./icons";
-import { setPlacingBuilding } from "./buildMode";
+import { placingBuilding, setOverCancel, setPlacingBuilding } from "./buildMode";
 import { useGame } from "../state/gameObjects";
 import { tree, unlocked } from "../state/tree";
 
@@ -30,6 +30,27 @@ export function BuildButton() {
         B
       </kbd>
     </button>
+  );
+}
+
+/**
+ * Where the shelf was, while a building is being dragged: drag it back here
+ * and let go, and it is put back. The building is not placed, and nothing
+ * is spent.
+ */
+export function CancelZone() {
+  return (
+    <Show when={placingBuilding()}>
+      <div class="fixed bottom-0 left-0 right-0 z-40 flex justify-center pointer-events-none">
+        <div
+          class="pointer-events-auto w-full max-w-2xl mx-4 mb-4 h-20 rounded-2xl border-2 border-dashed border-stone-400/60 bg-white/50 backdrop-blur-xl grid place-items-center text-xs font-semibold uppercase tracking-wide text-stone-500 animate-slide-up"
+          onPointerEnter={() => setOverCancel(true)}
+          onPointerLeave={() => setOverCancel(false)}
+        >
+          Drop here to put it back
+        </div>
+      </div>
+    </Show>
   );
 }
 

@@ -3,7 +3,7 @@ import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
 import { preview, useGame } from "../state/gameObjects";
-import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
+import { overCancel, placingBuilding, setOverCancel, setPlacingBuilding } from "../ui/buildMode";
 import { shapeFor } from "./objects/buildings";
 import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "./objects/lots";
 import { BLUEPRINTS, FACINGS, plot } from "../blueprints";
@@ -66,6 +66,15 @@ export function BuildingPlacer() {
 
   const onPointerMove = (e: PointerEvent) => {
     if (!placingBuilding()) return;
+    // Over the cancel zone the ghost is gone: what you are holding is
+    // about to be put back.
+    if (overCancel()) {
+      clearDrive(false);
+      undo = [];
+      setSite(null);
+      asked = null;
+      return;
+    }
     const { wx, wy } = screenToWorld(scene, canvas, e);
     void ask(wx, wy);
   };
@@ -74,13 +83,14 @@ export function BuildingPlacer() {
     const placing = placingBuilding();
     if (!placing) return;
     const s = site();
-    const placed = !!s?.fits;
+    const placed = !!s?.fits && !overCancel();
     if (s && placed) send({ type: "PlaceBuilding", data: { at: held, kind: placing } });
     // Placed: the street keeps its new arm until the server's own version
     // of it arrives. Dropped: everything goes back.
     clearDrive(placed);
     undo = [];
     setPlacingBuilding(null);
+    setOverCancel(false);
     setSite(null);
     asked = null;
   };

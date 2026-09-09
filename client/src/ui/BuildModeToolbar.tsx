@@ -13,6 +13,7 @@ import { tree, unlocked } from "../state/tree";
 import {
   BuildButton,
   BuildMenuSheet,
+  CancelZone,
   buildMenuOpen,
   setBuildMenuOpen,
 } from "./BuildMenu";
@@ -159,6 +160,7 @@ export default function BuildModeToolbar() {
         </div>
       </div>
       <BuildMenuSheet />
+      <CancelZone />
     </>
   );
 }
