@@ -473,6 +473,54 @@ mod tests {
         );
     }
 
+    /// A building no road reaches is not somewhere anyone can go, so it is
+    /// not a candidate. It used to be: with no route to lengthen it, the
+    /// crow-flies estimate came out cheaper than anywhere real, so a shop
+    /// stranded off the street beat the edge, the drive was refused, and
+    /// the search chose it again at every retry.
+    #[test]
+    fn a_shop_no_road_reaches_loses_to_the_edge() {
+        let mut world = town_with_a_way_out();
+        for y in -8..8 {
+            for x in -4..400 {
+                world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
+            }
+        }
+        let home = build(&mut world, 0, BuildingKind::House);
+        // Three tiles off the street, so no driveway forms.
+        let orphan = world
+            .place_building(GridCoord { x: 4, y: 3 }, BuildingKind::Shop, 2)
+            .expect("land is land");
+        assert!(world.road_node_for_building(orphan).is_none(), "the point of the test");
+        world.settle();
+
+        let who = world.resident_ids()[0];
+        let edge = *world.edge.iter().next().unwrap();
+        // Stood at home with an evening owed, rather than off-map with nothing.
+        if let Some(e) = world.objects.get_mut(who)
+            && let GameObject::Resident(ref mut r) = e.object
+        {
+            r.at = Some(home);
+            for b in &mut r.buckets {
+                b.level = 0.6 * b.need.cap();
+            }
+        }
+        let noon = 12 * (crate::protocol::DAY_MS as u64) / 24;
+        let v = crate::resident::inspect(&world, who, noon);
+        let leisure = v["buckets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|b| b["need"] == "Leisure")
+            .expect("a Leisure bucket");
+        assert_eq!(
+            leisure["option"]["building"].as_u64(),
+            Some(edge as u64),
+            "an evening out should be at the edge, not at {orphan}: {}",
+            leisure["option"],
+        );
+    }
+
     /// A building the road has not reached stands dormant: it houses nobody
     /// until a road lands beside it, and then the driveway forms on its own.
     #[test]

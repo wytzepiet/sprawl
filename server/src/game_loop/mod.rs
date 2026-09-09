@@ -110,9 +110,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         tick_interval.tick().await;
         let mut now: GameTime = sim_time;
 
+        // The road brush sends a command per tile, so what a road changed is
+        // settled once for the whole batch rather than once per tile.
+        let mut roads_laid = false;
         while let Ok(cmd) = commands.try_recv() {
             match cmd {
                 Command::PlayerAction { client_id, message } => {
+                    roads_laid |= matches!(message, ClientMessage::PlaceRoad(_));
                     if let ClientMessage::Ping = &message {
                         if let Some(cs) = clients.get(&client_id) {
                             let _ = cs.sender.send(ServerMessage::Pong(now));
@@ -208,6 +212,13 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 }
             }
         }
+        // A road laid is a road that may have reached a building standing
+        // dormant, or run off the map and made a new way in. Placing and
+        // demolishing settle for themselves; drawing road did not, so a
+        // street to a finished house left nobody living in it.
+        if roads_laid {
+            settle_and_wake(&mut world, &mut events);
+        }
 
         // One step per unit of speed, each the same length as at speed 1, so a
         // fast-forwarded hour is the same hour — just less wall time spent on it.
@@ -243,6 +254,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
             let terrain = world.terrain.clone();
             let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
             crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
+            // That road can cross the new frontier, and a road crossing the
+            // frontier is a way out; `reveal_around` stood the doors before
+            // it was laid.
+            world.stand_edges();
         }
 
         flush_dirty(&mut world, &mut clients, clock(now, speed));
@@ -1213,6 +1228,45 @@ mod tests {
     /// edge has none, and is not placed by anyone.
     fn placeable() -> Vec<BuildingKind> {
         BuildingKind::ALL.into_iter().filter(|&k| crate::blueprint::blueprint(k).price.is_finite()).collect()
+    }
+
+    /// A street drawn to a house that was standing dormant moves people in.
+    ///
+    /// Placing and demolishing settle for themselves; drawing road did not,
+    /// so the house stayed empty until the mayor happened to place something
+    /// else. Everything here but the one line in the tick loop that decides
+    /// to settle after a batch of road.
+    #[test]
+    fn a_street_drawn_to_a_dormant_house_fills_it() {
+        let mut world = street();
+        // Three tiles off the street, so no driveway forms with it.
+        let home = world
+            .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, 2)
+            .expect("land is land");
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        assert!(world.resident_ids().is_empty(), "nobody lives where no road goes");
+
+        // The mayor draws a street to it, tile by tile, as the brush does.
+        for (from, to) in [
+            (GridCoord { x: 10, y: 0 }, GridCoord { x: 10, y: 1 }),
+            (GridCoord { x: 10, y: 1 }, GridCoord { x: 10, y: 2 }),
+            // Onto the plot: a road that ends on one is a driveway.
+            (GridCoord { x: 10, y: 2 }, GridCoord { x: 10, y: 3 }),
+        ] {
+            let place = crate::protocol::PlaceRoad { from, to, one_way: false, road: false };
+            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::PlaceRoad(place), 0);
+        }
+        assert!(world.road_node_for_building(home).is_some(), "the driveway formed itself");
+
+        // Which is what the tick settles for, once, after the batch.
+        settle_and_wake(&mut world, &mut events);
+        assert_eq!(
+            world.resident_ids().len(),
+            crate::blueprint::blueprint(BuildingKind::House).homes as usize,
+            "the street reached it and nobody moved in",
+        );
     }
 
     /// A town along the street, settled and thinking, run for a while: a

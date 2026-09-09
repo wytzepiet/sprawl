@@ -250,6 +250,11 @@ fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, 
         .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
         // Empty shelves sell nothing.
         .filter(|&id| crate::calls::stocked(world, id))
+        // No road, no visit. Without this a building the road never reached
+        // is scored on the crow-flies estimate — which, having no route to
+        // lengthen it, comes out *cheaper* than anywhere real — so it wins,
+        // the drive is refused, and the search picks it again every retry.
+        .filter(|&id| world.road_node_for_building(id).is_some())
         .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
         .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, at, b, id, now, crowd, routes, false)))
         .collect();
