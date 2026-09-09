@@ -1459,8 +1459,11 @@ mod tests {
     /// single sale or delivery guarantees is a unit test in `economy.rs`.
     ///
     /// Everything the mayor could place, and a warehouse to feed it. Thirty
-    /// days is a season until something says otherwise.
-    const SEASON: u64 = 30;
+    /// days is a season until something says otherwise; `DAYS=8` runs a
+    /// shorter one, to see a town drift in a few minutes rather than ten.
+    fn season_days() -> u64 {
+        std::env::var("DAYS").ok().and_then(|d| d.parse().ok()).unwrap_or(30)
+    }
 
     /// What every building holds and every resident carries: the town's
     /// money outside the treasury.
@@ -1490,7 +1493,7 @@ mod tests {
         use crate::economy::{edge_price, EDGE_WAGE};
         let mut prices: std::collections::BTreeMap<(EntityId, crate::needs::Need), Vec<f64>> = Default::default();
         let mut wages: std::collections::BTreeMap<EntityId, Vec<f64>> = Default::default();
-        let (world, _) = season(&placeable(), SEASON, |world, _, _| {
+        let (world, _) = season(&placeable(), season_days(), |world, _, _| {
             for e in world.objects.iter() {
                 let GameObject::Building(ref b) = e.object else { continue };
                 if world.edge.contains(&e.id) {
@@ -1552,19 +1555,30 @@ mod tests {
     #[ignore]
     fn season_no_harm() {
         let mut worst_week: Vec<(EntityId, BuildingKind, f64, f64)> = Vec::new();
-        let (world, _) = season(&placeable(), SEASON, |world, day, _| {
+        let days = season_days();
+        let (world, _) = season(&placeable(), days, |world, day, _| {
             let (buildings, wallets) = purses(world);
             if day == 7 {
                 worst_week = buildings.iter().filter(|&&(_, kind, balance, float)| balance <= 0.0 && float > 0.0 && !crate::economy::service(kind)).copied().collect();
             }
             let outside: f64 = buildings.iter().map(|b| b.2).sum::<f64>() + wallets.iter().sum::<f64>();
             println!("day {day}: treasury {:.1}, outside it {outside:.1}, swept today {:.1}", world.treasury, world.income.before(day * DAY_MS as u64).revenue);
+            // Empty shelves at midnight, and whether anything is on its way
+            // to them: an empty shelf sells nothing, so one that stays empty
+            // is a building that has stopped.
+            for e in world.objects.iter() {
+                let GameObject::Building(ref b) = e.object else { continue };
+                if b.stock.cap > 0.0 && b.stock.level == 0.0 {
+                    let call = world.calls.iter().find(|c| c.at == e.id).map(|c| format!("{:?} answered by {:?}", c.kind, c.answered_by));
+                    println!("  {} {:?} empty: balance {:.2}, reorder at {:.1}, {}", e.id, b.kind, b.balance, crate::economy::reorder(world, e.id), call.unwrap_or("no call".into()));
+                }
+            }
         });
         let (buildings, _) = purses(&world);
         assert!(world.treasury > 0.0, "the season ended with {} in the treasury", world.treasury);
         println!("dry in the first week: {worst_week:?}");
         for (id, kind, balance, float) in &buildings {
-            let page = world.books.get(id).map(|k| k.before(SEASON * DAY_MS as u64).clone()).unwrap_or_default();
+            let page = world.books.get(id).map(|k| k.before(days * DAY_MS as u64).clone()).unwrap_or_default();
             println!("{id} {kind:?}: {balance:.1} / {float:.1}, yesterday in {:.1} out {:.1} wages {:.1}", page.revenue, page.purchases, page.wages);
             // A depot the town does not need sells nothing: that is the
             // conga (§11.7), not harm.
@@ -1582,7 +1596,7 @@ mod tests {
         let mut jobs: std::collections::BTreeMap<EntityId, Option<EntityId>> = Default::default();
         let mut changes = 0u32;
         let mut wakes_so_far = 0u64;
-        let (world, _) = season(&placeable(), std::env::var("DAYS").ok().and_then(|d| d.parse().ok()).unwrap_or(SEASON), |world, day, wakes| {
+        let (world, _) = season(&placeable(), season_days(), |world, day, wakes| {
             // Wakes per resident-day, day by day: a storm shows here first.
             println!("day {day}: {} wakes per resident", (wakes - wakes_so_far) / world.resident_ids().len().max(1) as u64);
             wakes_so_far = wakes;
