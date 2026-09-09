@@ -228,9 +228,6 @@ impl Build {
 
     /// The whole tree taken, for tests that want every kind on the table.
     #[cfg(test)]
-    pub fn everything() -> Self {
-        Build { taken: nodes().into_iter().collect() }
-    }
 
     pub fn taken(&self) -> Vec<Cell> {
         let mut v: Vec<Cell> = self.taken.iter().copied().collect();

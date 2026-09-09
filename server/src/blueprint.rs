@@ -80,11 +80,14 @@ pub fn plot(kind: BuildingKind, facing: u8) -> Plot {
     let lot = lw > 0 && ld > 0;
     // In the building's own frame the lot lies beyond its frontage, along
     // +y; the frame turns with the facing.
+    // As wide as the wider of building and lot: a small building with a
+    // two-car lot beside its front stands in the corner of its plot.
+    let w = bw.max(lw);
     match facing % 4 {
-        2 => Plot { size: (bw, bh + ld), building: ((0, 0), (bw, bh)), lot: lot.then_some(((0, bh), (lw, ld))) },
-        0 => Plot { size: (bw, bh + ld), building: ((0, ld), (bw, bh)), lot: lot.then_some(((0, 0), (lw, ld))) },
-        1 => Plot { size: (bh + ld, bw), building: ((0, 0), (bh, bw)), lot: lot.then_some(((bh, 0), (ld, lw))) },
-        _ => Plot { size: (bh + ld, bw), building: ((ld, 0), (bh, bw)), lot: lot.then_some(((0, 0), (ld, lw))) },
+        2 => Plot { size: (w, bh + ld), building: ((0, 0), (bw, bh)), lot: lot.then_some(((0, bh), (lw, ld))) },
+        0 => Plot { size: (w, bh + ld), building: ((0, ld), (bw, bh)), lot: lot.then_some(((0, 0), (lw, ld))) },
+        1 => Plot { size: (bh + ld, w), building: ((0, 0), (bh, bw)), lot: lot.then_some(((bh, 0), (ld, lw))) },
+        _ => Plot { size: (bh + ld, w), building: ((ld, 0), (bh, bw)), lot: lot.then_some(((0, 0), (ld, lw))) },
     }
 }
 
@@ -139,7 +142,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // A shop seats as many as it staffs, and the high street is somewhere
         // to be until late.
         (Shop, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (1, 1), price: 4.0,
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 4.0,
             stock: 40, answers: None, vehicles: &[],
             taps: vec![
                 shift(9, 18, 2),
@@ -155,7 +158,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             taps: vec![shift(8, 17, 12)],
         }),
         (Workshop, Blueprint {
-            class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (1, 1), price: 5.0,
+            class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (2, 1), price: 5.0,
             stock: 0, answers: None, vehicles: &[],
             taps: vec![shift(7, 16, 4)],
         }),
@@ -167,7 +170,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // A restaurant seats a dozen, from lunch until late, and is an evening
         // out in itself. The first kind the mayor can place by hand.
         (Restaurant, Blueprint {
-            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (1, 1), price: 5.0,
+            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (2, 1), price: 5.0,
             stock: 30, answers: None, vehicles: &[],
             taps: vec![
                 shift(11, 23, 3),
@@ -178,7 +181,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // A bar opens as the shops shut and is the last place open. Small
         // staff, an evening's crowd, a kitchen until eleven.
         (Bar, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (1, 1), price: 4.0,
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 4.0,
             stock: 30, answers: None, vehicles: &[],
             taps: vec![
                 shift(18, 2, 2),
@@ -189,7 +192,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
         (GasStation, Blueprint {
-            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (1, 1), price: 6.0,
+            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (2, 1), price: 6.0,
             stock: 0, answers: None, vehicles: &[],
             taps: vec![
                 shift(6, 22, 1),

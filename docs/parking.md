@@ -104,9 +104,15 @@ flow for every lot. A building two tiles deep gets its lot beside it
 instead of in front (§3.8), and that lot is a ring with a lane through
 the middle. Two shapes, both rings.
 
-### 3.2 Lots fuse
+### 3.2 Lots do not fuse (2026-09-09)
 
-A lot is a run of lot tiles along one frontage, not a building's own.
+A lot is its building's own, as wide as its kind says — two tiles at
+least, so a ring always fits alone — with as many entrances as roads reach
+it. Lots along a frontage used to fuse into one run and spill onto free
+land beside them; that machinery is gone, on both sides. The rest of this
+section is history.
+
+A lot was a run of lot tiles along one frontage, not a building's own.
 Every kind that has a lot arrives with its lot tile on the street side,
 and when two lot tiles touch they are one lot: one slab, one ring, an
 entrance per building, spots shared. Two shops together park seven,

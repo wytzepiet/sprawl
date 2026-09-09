@@ -228,29 +228,7 @@ impl World {
         if !open {
             return None;
         }
-        let lot = p.lot.map(|((lx, ly), (lw, ld))| (GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld)));
-        // A lot's spill is open only to a lot that would share its ring:
-        // a house or a workplace there would cut the ring to one tile.
-        let shares = |t: GridCoord, f: u8| {
-            facing == f && lot.is_some_and(|(l, size)| Self::footprint(l, size).any(|lt| lt == t))
-        };
-        if Self::footprint(pos, p.size).any(|t| self.spill_facing(t).is_some_and(|f| !shares(t, f))) {
-            return None;
-        }
-        match lot {
-            Some((lot, (lw, ld))) => {
-                // A ring is never one tile wide: the lot lands where it
-                // reaches two, by a neighbour's lot or by free land.
-                let along_x = crate::blueprint::FACINGS[facing as usize % 4].0 == 0;
-                let (line, a0, a1) = if along_x { (lot.y, lot.x, lot.x + lw as i32) } else { (lot.x, lot.y, lot.y + ld as i32) };
-                let (s, e, _) = self.frontage(facing, line, a0, a1);
-                if e - s < 2 {
-                    return None;
-                }
-                self.driveway_for(pos, kind, facing, false)
-            }
-            None => self.driveway_for(pos, kind, facing, false),
-        }
+        self.driveway_for(pos, kind, facing, false)
     }
 
     fn building_covers(pos: GridCoord, size: (u8, u8), t: GridCoord) -> bool {
@@ -267,12 +245,9 @@ impl World {
     /// joined to the world beyond the survey? A driveway onto an island is
     /// no way in. The client draws this for itself; only tests ask here.
     #[cfg(test)]
-    pub fn is_reached(&self, building_id: EntityId) -> bool {
-        self.road_node_for_building(building_id).is_some_and(|n| self.network.joined(n))
-    }
 
     pub fn road_node_for_building(&self, building_id: EntityId) -> Option<EntityId> {
-        self.driveways_of(building_id).into_iter().next().or_else(|| self.run_gate(building_id))
+        self.driveways_of(building_id).into_iter().next()
     }
 
     /// Every driveway of a building: the road nodes standing on its tiles,

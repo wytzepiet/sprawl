@@ -20,7 +20,6 @@ import type { Operation, GameObjectEntry } from "../generated";
 import type { Building } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
-import { runOf, setLandLookup } from "./objects/lots";
 import { mountCar } from "./objects/CarObject";
 import { mountRoad } from "./objects/RoadNode";
 
@@ -85,7 +84,6 @@ export default function World() {
   }
 
   const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt);
-  setLandLookup((x, y) => terrain.landAt(x, y));
   const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
@@ -109,22 +107,14 @@ export default function World() {
     const dirtyRoads = new Set<string>();
     // Buildings whose tile a road landed on or left: reached, or no longer.
     const dirtyBuildings = new Set<string>();
-    // Anything landing or leaving on these tiles changes the lots around
-    // them: a run of lot tiles reaches two tiles past what stands on it,
-    // and is drawn by its first building, so every building on every run
-    // within reach redraws.
+    // Anything landing or leaving on these tiles is beside the plots
+    // around them, which redraw: a road on a plot's tile is its driveway.
     const touched = (x0: number, y0: number, x1: number, y1: number, except?: number) => {
-      const near = new Set<number>();
-      for (let y = y0 - 2; y <= y1 + 2; y++) {
-        for (let x = x0 - 2; x <= x1 + 2; x++) {
+      for (let y = y0 - 1; y <= y1 + 1; y++) {
+        for (let x = x0 - 1; x <= x1 + 1; x++) {
           const owner = builtTiles.get(`${x},${y}`);
-          if (owner !== undefined && owner !== except) near.add(owner);
+          if (owner !== undefined && owner !== except) dirtyBuildings.add(String(owner));
         }
-      }
-      for (const id of near) {
-        dirtyBuildings.add(String(id));
-        const e = getEntity(id);
-        if (e) for (const m of runOf(e)?.members ?? []) dirtyBuildings.add(String(m));
       }
     };
     const roadTouched = (pos: { x: number; y: number } | null | undefined) => {

@@ -2,7 +2,7 @@ import { Color3 } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { shapeFor, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
 import { plot } from "../../blueprints";
-import { emptyPlotGeometry, frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
+import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
 import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
 import { parts } from "../../state/selection";
@@ -52,13 +52,10 @@ export function mountBuilding(
   });
   parts.set(entry.id, [placed[0]]);
 
-  // A lot is the run of lot tiles this one touches along the street, with
-  // the free tiles it spills over: one slab under every plot on it, the
-  // dividers between its spots, and a dashed footprint on each empty plot
-  // where the next building can land. Drawn once, by the run's first
-  // building; the others redraw whenever the run changes.
+  // Its lot: a slab with a kerb, and the dividers between its spots, or a
+  // depot's docks.
   const run = lie.lot && pos ? runOf(entry) : null;
-  if (run?.first) {
+  if (run) {
     const { rot, origin } = frameOf(data.facing, run.rect);
     const put = (key: string, geo: () => Parameters<typeof pool.ensureBucket>[1], tint: Color3, at: [number, number], z: number, lit: boolean) => {
       pool.ensureBucket(key, geo(), look.tint(tint), false, lit);
@@ -72,7 +69,6 @@ export function mountBuilding(
       put(`yard_${run.w}x${wall}${look.key}`, () => yardGeometry(run.w, wall), KERB, [0, 0], 0, true);
     } else {
       put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, [0, 0], 0, true);
-      for (const u of run.empties) put(`empty_${run.depth}${look.key}`, () => emptyPlotGeometry(run.depth), KERB, [u, 0], 0, true);
     }
   }
 

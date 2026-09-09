@@ -1064,19 +1064,20 @@ mod tests {
         if days >= 2 {
             let d = crate::resident::demand(&world, days * DAY_MS as u64);
             assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
-            let sold = |b: EntityId, need: &str| {
+            let sold = |b: EntityId, need: &str, day: &str| {
                 d["delivered"]
                     .as_array()
                     .unwrap()
                     .iter()
                     .find(|v| v["building"] == b && v["need"] == need)
-                    .map_or(0.0, |v| v["yesterday_h"].as_f64().unwrap())
+                    .map_or(0.0, |v| v[day].as_f64().unwrap())
             };
-            let office = sold(office, "Work");
+            let office = sold(office, "Work", "yesterday_h");
             // Fourteen people, two apartments of seven, less the shop's two,
             // nine hours each, less the odd late morning.
             assert!((90.0..=108.0).contains(&office), "office received {office}h");
-            assert!(sold(lunch, "Eat") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat"));
+            // Lunches over a whole day: the first day starts late for everyone.
+            assert!(sold(lunch, "Eat", "today_h") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat", "today_h"));
         }
         (log, [shop, lunch])
     }

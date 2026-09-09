@@ -1,7 +1,6 @@
 import type { MeshGeometry } from "../Mesh";
 import { slabGeometry } from "./buildings";
-import { BLUEPRINTS, FACINGS, inLot, plot } from "../../blueprints";
-import { buildingAt, getObjectsAt } from "../../state/gameObjects";
+import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
 import type { Building, GameObjectEntry } from "../../generated";
 
 /**
@@ -27,43 +26,13 @@ export function spotsAcross(w: number): number[] {
   return Array.from({ length: n }, (_, i) => start + i * PITCH);
 }
 
-/** Whether a tile is land, from the terrain the client holds. */
-let landAt: (x: number, y: number) => boolean = () => false;
-export function setLandLookup(f: (x: number, y: number) => boolean) {
-  landAt = f;
-}
-
-function roadAt(x: number, y: number): { road: boolean } | undefined {
-  const e = getObjectsAt(x, y).find((o) => o.object.kind === "RoadNode");
-  return e ? (e.object.data as { road: boolean }) : undefined;
-}
-
-/** Free land on a frontage: buildable, with the street it would front
- *  right in front of it and room for a building behind it. Mirrors
- *  `is_open_frontage` in `lots.rs`. */
-function openFrontage(x: number, y: number, facing: number): boolean {
-  const [dx, dy] = FACINGS[facing % 4];
-  const buildable = (tx: number, ty: number) => !buildingAt(tx, ty) && !roadAt(tx, ty) && landAt(tx, ty);
-  const front = roadAt(x + dx, y + dy);
-  return buildable(x, y) && buildable(x - dx, y - dy) && !!front && !front.road && !buildingAt(x + dx, y + dy);
-}
-
-/** A lot as a run of lot tiles along one frontage: the members' tiles,
- *  the gaps of one free tile between them, and one free tile past each
- *  end where the land allows. The rectangle of lot tiles on the grid, the
- *  run's width, how deep its plots are, who is on it, where the free
- *  tiles are, and where this building's own tiles lie. Mirrors `run_of`
- *  and `frontage` in `lots.rs`. */
+/** A building's lot, as drawn: the rectangle of lot tiles on the grid, its
+ *  width along the frontage, how deep the plot is, and whether it is a
+ *  depot's yard of docks rather than a ring. Mirrors `run_of` in `lots.rs`. */
 export interface Run {
   rect: { x: number; y: number; w: number; h: number };
   w: number;
   depth: number;
-  members: number[];
-  /** u of every free tile on the run: spill at the ends, gaps between. */
-  empties: number[];
-  u0: number;
-  u1: number;
-  first: boolean;
   /** A depot's yard: docks against the wall instead of spots across an
    *  island, the wall this many tiles in from the street. */
   yard: number | null;
@@ -78,57 +47,10 @@ export function runOf(entry: GameObjectEntry): Run | null {
   // height, by which way it faces.
   const alongX = FACINGS[data.facing % 4][0] === 0;
   const [[lx, ly], [gw, gh]] = own.lot;
-  const lw = alongX ? gw : gh;
-  const [line, a0, a1] = alongX ? [pos.y + ly, pos.x + lx, pos.x + lx + lw] : [pos.x + lx, pos.y + ly, pos.y + ly + lw];
-  if (BLUEPRINTS[data.kind].yard) {
-    const rect = { x: pos.x + lx, y: pos.y + ly, w: gw, h: gh };
-    return { rect, w: lw, depth: alongX ? own.size[1] : own.size[0], members: [entry.id], empties: [], u0: 0, u1: lw, first: true, yard: alongX ? gh : gw };
-  }
-  const tile = (a: number): [number, number] => (alongX ? [a, line] : [line, a]);
-  // A neighbour's lot tile at along-coordinate a on this row, same facing:
-  // the building, its tile range and its plot's depth.
-  const lotTile = (a: number): { id: number; s: number; e: number; depth: number } | null => {
-    const [x, y] = tile(a);
-    const b = buildingAt(x, y);
-    if (!b?.position) return null;
-    const bd = b.object.data as Building;
-    if (bd.facing !== data.facing || BLUEPRINTS[bd.kind].yard || !inLot(bd.kind, bd.facing, b.position, x, y)) return null;
-    const p = plot(bd.kind, bd.facing);
-    const [[ox, oy], [w, h]] = p.lot!;
-    const s = alongX ? b.position.x + ox : b.position.y + oy;
-    return { id: b.id, s, e: s + (alongX ? w : h), depth: alongX ? p.size[1] : p.size[0] };
-  };
-  const free = (a: number) => openFrontage(...tile(a), data.facing);
-  const chain = [{ id: entry.id, s: a0, e: a1, depth: alongX ? own.size[1] : own.size[0] }];
-  for (;;) {
-    const n = lotTile(chain[0].s - 1) ?? (free(chain[0].s - 1) ? lotTile(chain[0].s - 2) : null);
-    if (!n) break;
-    chain.unshift(n);
-  }
-  for (;;) {
-    const last = chain[chain.length - 1];
-    const n = lotTile(last.e) ?? (free(last.e) ? lotTile(last.e + 1) : null);
-    if (!n) break;
-    chain.push(n);
-  }
-  let start = chain[0].s, end = chain[chain.length - 1].e;
-  if (free(start - 1)) start -= 1;
-  if (free(end)) end += 1;
-  const w = end - start;
-  const empties: number[] = [];
-  for (let a = start; a < end; a++) if (!chain.some((c) => a >= c.s && a < c.e)) empties.push(a - start);
-  const rect = alongX ? { x: start, y: line, w, h: 1 } : { x: line, y: start, w: 1, h: w };
-  return {
-    rect,
-    w,
-    depth: Math.max(...chain.map((c) => c.depth)),
-    members: chain.map((c) => c.id),
-    empties,
-    u0: a0 - start,
-    u1: a1 - start,
-    first: chain[0].id === entry.id,
-    yard: null,
-  };
+  const rect = { x: pos.x + lx, y: pos.y + ly, w: gw, h: gh };
+  const w = alongX ? gw : gh;
+  const depth = alongX ? own.size[1] : own.size[0];
+  return { rect, w, depth, yard: BLUEPRINTS[data.kind].yard ? (alongX ? gh : gw) : null };
 }
 
 /** Docks against the wall of a depot w wide, the wall d tiles in from the
@@ -185,28 +107,6 @@ export function runSlabGeometry(w: number, depth: number, kerb: boolean): MeshGe
     g.positions[i + 1] += depth / 2;
   }
   return g;
-}
-
-/** A dashed footprint on an empty plot of the run: where the next
- *  building can land, drawn at u = 0 of the tile, behind the lot row. */
-export function emptyPlotGeometry(depth: number): MeshGeometry {
-  const g = flat();
-  const m = 0.16, dash = 0.1, gap = 0.07, line = 0.03;
-  const [u0, v0, u1, v1] = [m, 1 + m, 1 - m, depth - m];
-  const along = (x0: number, y0: number, x1: number, y1: number) => {
-    const len = Math.hypot(x1 - x0, y1 - y0);
-    const [dx, dy] = [(x1 - x0) / len, (y1 - y0) / len];
-    for (let t = 0; t < len; t += dash + gap) {
-      const l = Math.min(dash, len - t);
-      const [ax, ay, bx, by] = [x0 + dx * t, y0 + dy * t, x0 + dx * (t + l), y0 + dy * (t + l)];
-      g.rect(Math.min(ax, bx) - (dx ? 0 : line / 2), Math.min(ay, by) - (dy ? 0 : line / 2), Math.max(ax, bx) + (dx ? 0 : line / 2), Math.max(ay, by) + (dy ? 0 : line / 2), MARK_Z);
-    }
-  };
-  along(u0, v0, u1, v0);
-  along(u1, v0, u1, v1);
-  along(u0, v1, u1, v1);
-  along(u0, v0, u0, v1);
-  return g.done();
 }
 
 /** The rotation that lays the frame onto the map for a facing, and where
