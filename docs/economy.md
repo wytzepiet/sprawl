@@ -397,9 +397,9 @@ needed for the floor and is filed.
 
 Everything a price does is an event on the map first.
 
-- **The lump.** A `Sale` on the wire: building, amount. The number floats
-  above the building; the sweep steps the meter. A red lump on a truck
-  leaving for the edge is an import.
+- **The lump.** A `Sale` on the wire: building, amount, when the sale
+  ends. The number floats above the building; the sweep steps the meter.
+  A red lump on a truck leaving for the edge is an import.
 - **The building.** Shelves grey at empty stock (built); a yard stacked at
   full output; the inspect panel shows each stock's level, price, and its
   trend over the week.
@@ -454,8 +454,9 @@ Each step is playable and nothing before step 2 can hurt anyone.
 
 1. **Stocks, purses and the sweep.** The shelf, the tank and the bucket
    become one stock. Wallets and balances; wages paid; the float and the
-   sweep; the continuous ledger replaced by lumps at settle. Every price
-   is its unit cost. Money exists and nothing floats.
+   sweep; the continuous ledger replaced by lumps. Every price is its
+   unit cost. Money exists and nothing floats. §12.1 has what step 1
+   needs decided that the rest of this document leaves open.
 2. **Posted prices.** The nudge (§5.1); the labour stock and wages on it
    (§5.2); `price / earning` in the score (§6.1); jobs ranked by wage
    with the switching threshold (§6.3). The band holds by construction.
@@ -466,6 +467,36 @@ Each step is playable and nothing before step 2 can hurt anyone.
 5. **Panels, the board, the advisor's tools.**
 
 Then, with the port: freight, haulers, classes, the second door.
+
+### 12.1 Step 1, to the number
+
+Five decisions the mechanism does not make on its own. Each is one
+line; the rest is the implementer's.
+
+- **The unit is the hour, and the edge wage is one.** Everything else is
+  relative to it: local wages float above, local prices around the
+  edge's, and building prices are already in hours. The edge's price per
+  good is the only table anyone authors.
+- **The edge's prices come from budget shares**, as fill rates came from
+  time-use data. A day at the edge earns eight; households spend about
+  a third on housing, a sixth on food, a sixth on transport, a tenth on
+  leisure. So a meal is about half an hour, a day's fuel about an hour,
+  an evening out about one, and the sweep takes the housing share. The
+  numbers are low stakes: the band turns a wrong table into a town that
+  is a little dear or a little cheap, not one that runs away. Pick, run
+  the season, look, adjust.
+- **Every good has a unit, and a price is per unit.** A meal, a crate, a
+  litre, an hour of labour. A tap turns one unit into hours of need at
+  its rate; a shelf counts units, not visits. No fluid goods.
+- **A workplace with nothing to sell sells its hours to the edge**, at
+  the edge wage, so an office or a factory in step 1 is a pass-through
+  with no margin and the mayor's income comes from shops and the
+  resident sweep. Temporary: goods give the factory an output and step 4
+  gives the office one, and the rule stops applying by itself.
+- **Money moves when a sale ends, in one lump.** A sale is one tap
+  serving one stock for one visit: a shift, a meal, a delivery. Paying
+  at every wake would scatter a shift into small change, and the point
+  of the lump is that a day's pay lands on the map as one number.
 
 ## 13. Open
 
