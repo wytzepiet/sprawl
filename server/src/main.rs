@@ -2,6 +2,7 @@ mod blueprint;
 mod calls;
 mod card;
 mod car;
+mod economy;
 mod engine;
 mod game_loop;
 mod health;
@@ -15,7 +16,6 @@ mod resident;
 mod terrain;
 mod tree;
 mod world;
-mod xp;
 
 use axum::Router;
 use tokio::sync::mpsc;

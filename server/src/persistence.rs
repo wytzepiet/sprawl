@@ -27,12 +27,12 @@ pub struct Meta {
     pub next_id: u64,
     pub terrain_seed: u32,
     pub sim_time: u64,
-    /// Hours of need served, ever, and what that stood at when the city last
-    /// made an offer. Kept to the hundredth, which is far finer than a bar can
-    /// show — the metadata column holds whole numbers.
-    pub earned: f64,
-    /// Stored under the key it was born with, so a save keeps its balance.
-    pub spent: f64,
+    /// Hours of need served, ever: the level. Kept to the hundredth, which
+    /// is far finer than a bar can show — the metadata column holds whole
+    /// numbers.
+    pub served: f64,
+    /// The mayor's money, in hours of the edge's wage.
+    pub treasury: f64,
     /// The nodes of the tree taken, one metadata row each.
     pub taken: Vec<Cell>,
 }
@@ -111,8 +111,8 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
             next_id,
             terrain_seed,
             sim_time,
-            earned: read("earned") as f64 / 100.0,
-            spent: read("offered_at") as f64 / 100.0,
+            served: read("served") as f64 / 100.0,
+            treasury: read("treasury") as f64 / 100.0,
             taken,
         },
     )
@@ -159,8 +159,8 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         ("next_id".to_string(), meta.next_id as i64),
         ("terrain_seed".to_string(), meta.terrain_seed as i64),
         ("sim_time".to_string(), meta.sim_time as i64),
-        ("earned".to_string(), centi(meta.earned)),
-        ("offered_at".to_string(), centi(meta.spent)),
+        ("served".to_string(), centi(meta.served)),
+        ("treasury".to_string(), centi(meta.treasury)),
     ]
     .into_iter()
     .chain(taken)

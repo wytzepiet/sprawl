@@ -104,15 +104,47 @@ pub struct Building {
     /// within the footprint from this.
     #[serde(default = "south")]
     pub facing: u8,
-    /// What is on the shelves, as a fraction of a delivery. Drawn down by
-    /// visits, filled by a delivery; empty shelves sell nothing. Always
-    /// full for a kind that keeps no stock.
-    #[serde(default = "full")]
-    pub stock: f64,
+    /// What is on the shelves, in units of what it sells: meals, tanks.
+    /// Drawn down by sales, filled by a delivery; empty shelves sell
+    /// nothing. Cap zero for a kind that keeps no stock. A save from
+    /// before shelves were a stock gets one issued at load.
+    #[serde(default)]
+    pub stock: crate::needs::Stock,
+    /// Its purse, in hours of the edge's wage. Opened with its float when
+    /// the mayor places it; sales land here, wages and deliveries are paid
+    /// from it, and what is over the float sweeps to the treasury.
+    /// docs/economy.md §3, §8.2.
+    #[serde(default)]
+    pub balance: f64,
+    /// What it pays an hour of labour. Posted on its vacancies and nudged
+    /// like any price: up while the edge has to fill its desks, down slowly
+    /// while its own town does.
+    #[serde(default = "crate::economy::edge_wage")]
+    pub wage: f64,
+    /// The price posted on each thing it sells, per unit of the need.
+    /// Nudged daily by its own stock, never below unit cost. Issued at the
+    /// edge's price to a save from before prices.
+    #[serde(default)]
+    pub prices: std::collections::BTreeMap<crate::needs::Need, f64>,
 }
 
-fn full() -> f64 {
-    1.0
+impl Building {
+    /// One of a kind, founded: its shelf full, its wage the edge's, its
+    /// prices the edge's — what the outside charges is the one price a
+    /// shop that has sold nothing yet can know — and its purse opened
+    /// with its float.
+    pub fn new(kind: BuildingKind, size: (u8, u8), facing: u8) -> Building {
+        use crate::economy::{edge_price, float, sells, EDGE_WAGE};
+        Building {
+            kind,
+            size,
+            facing,
+            stock: crate::needs::Stock::full(crate::blueprint::blueprint(kind).stock as f64),
+            balance: float(kind, EDGE_WAGE),
+            wage: EDGE_WAGE,
+            prices: sells(kind).map(|t| (t.need, edge_price(t.need))).collect(),
+        }
+    }
 }
 
 fn south() -> u8 {
@@ -179,11 +211,11 @@ pub struct Car {
     /// sight.
     #[serde(default)]
     pub spot: Option<Pose>,
-    /// The tank: fuel owed at a pump, filled by the mile. The car's, though
-    /// its driver decides when to stop. A save from before cars had one
-    /// gets it half full.
+    /// The tank: used by the mile, filled at a pump. The car's, though its
+    /// driver decides when to stop. A save from before cars had one gets
+    /// it full.
     #[serde(default = "crate::needs::Bucket::tank")]
-    pub fuel: crate::needs::Bucket,
+    pub fuel: crate::needs::Stock,
 }
 
 /// A place to stand, and which way.
@@ -332,6 +364,16 @@ pub struct Resident {
     #[serde(default)]
     #[ts(type = "number")]
     pub last_update: u64,
+    /// Their purse, in hours of the edge's wage. A shift pays into it, a
+    /// meal or a tank is paid from it, and what is over the float sweeps
+    /// to the treasury as rent. docs/economy.md §3, §8.2.
+    #[serde(default = "crate::economy::resident_float")]
+    pub wallet: f64,
+    /// Units of the selected need served since this visit began, not yet
+    /// paid for: the sale lands as one lump when the visit ends. A record
+    /// of what is happening, like `at`.
+    #[serde(default)]
+    pub tab: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -401,6 +443,9 @@ pub enum ClientMessage {
     PlaceBuilding(PlaceBuilding),
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
+    /// Put money into a building whose purse has run dry: the treasury
+    /// refills it to its float, as a placement would have. docs/economy.md §9.
+    Fund(#[ts(type = "number")] EntityId),
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     ResetWorld,
@@ -441,33 +486,50 @@ pub struct Clock {
     pub day_ms: u32,
 }
 
-/// How the city is doing, as the two bars read it. Everything is in points,
-/// one being a minute of need served by the city's buildings.
+/// How the city is doing, as the two dials read it.
 ///
-/// The level is the city's whole history, the offer is what it has put by
-/// since the last one. Both are a snapshot at the clock the update carries,
-/// climbing at `rate` — so a client runs them forward between updates and
-/// the bars move as the city works, not when it clocks off.
+/// The level is hours of need the city's buildings have served, ever,
+/// banked as each visit ends. The treasury is the mayor's money, in hours
+/// of the edge's wage, stepped by each sweep. Both move in lumps, so
+/// neither is extrapolated: a dial that steps is the event landing.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Growth {
     pub level: u32,
+    /// Hours served since the level was reached, and the hours it takes.
     pub xp: f64,
     pub xp_needed: f64,
-    /// What the mayor has to spend, in points.
-    pub balance: f64,
-    /// Points per millisecond of sim time, as of the update's clock.
-    pub rate: f64,
+    /// What the mayor has to spend.
+    pub treasury: f64,
+    /// What swept in over the last whole day.
+    pub income: f64,
     /// The build: the nodes of the tree taken.
     pub taken: Vec<crate::tree::Cell>,
     /// Tiles of road the mayor may still lay.
     pub road_tiles_left: u32,
 }
 
+/// Money landing somewhere on the map: a visit paid for, a shift paid, a
+/// delivery bought, a household's rent swept. The one event every price
+/// is read from. Negative is money leaving: an import, a wage bill.
+/// docs/economy.md §10.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Sale {
+    #[ts(type = "number")]
+    pub building: EntityId,
+    pub amount: f64,
+    #[ts(type = "number")]
+    pub at: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct StateUpdate {
     pub ops: Vec<Operation>,
+    /// Lumps that landed on buildings in view since the last update.
+    #[serde(default)]
+    pub sales: Vec<Sale>,
     pub clock: Clock,
     pub growth: Growth,
     #[ts(type = "number")]

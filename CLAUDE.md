@@ -52,6 +52,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `cargo test town -- --ignored --nocapture` runs a day of town
   life and asserts how often residents wake (a storm is ten times the
   budget) and prints simulated days per second, to see whether it drifted.
+- **Does the economy still balance?** `cargo test season -- --ignored
+  --nocapture` runs the same town for thirty days and asserts the
+  equilibria `docs/economy.md` §11 names that take weeks to show — the
+  band and no ringing, no harm, tenure — and prints every building's
+  purse and books. A price that runs away or a shop that bleeds shows
+  here before it shows in play.
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.

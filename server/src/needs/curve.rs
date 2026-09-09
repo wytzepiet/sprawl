@@ -87,7 +87,9 @@ impl Curve {
         self.per_day
     }
 
-    /// Value at time `t`.
+    /// Value at time `t`. Only the tests read a curve pointwise; the
+    /// simulation integrates.
+    #[cfg(test)]
     pub fn at(&self, t: GameTime) -> f64 {
         let (i, tod) = self.locate(t);
         let (a, b) = self.segment(i);

@@ -42,11 +42,16 @@ pub struct Blueprint {
     /// Its lot, in tiles along the frontage and deep, on the street side.
     /// (0, 0) is none: a driveway, or nothing.
     pub lot: (u8, u8),
-    /// What the mayor pays for one, in hours of need served.
+    /// What the mayor pays for one, in hours of the edge's wage: the float
+    /// it opens with (`economy::float`) and the building over it. Pays
+    /// itself back through the sweep, so the numbers are days of a town's
+    /// income: a house is a few hours of its own household's rent, a
+    /// district's supermarket a day of the district's.
     pub price: f64,
     /// What it serves, to whom, and when.
     pub taps: Vec<Tap>,
-    /// Visits one delivery is good for. Zero: shelves that never run out.
+    /// Units its shelf holds — meals, or tanks where it pumps — which is
+    /// what one delivery fills. Zero: shelves that never run out.
     pub stock: u32,
     /// The kind of call it answers, with a vehicle of its own.
     pub answers: Option<CallKind>,
@@ -108,7 +113,15 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     // sits the day after a night out; over that, an evening out beats
     // waiting at home for bed, which is what a night out is.
     let tap = |need, curve, slots| Tap { need, curve, rate: 1.0, overhead: 0, slots };
+    let meal = |curve, slots| tap(Eat, curve, slots);
+    // A pump fills a tank in twenty minutes, whatever the tank is worth.
+    let pump = |curve, slots| Tap { need: Fuel, curve, rate: Fuel.cap() / Need::FILL_MS, overhead: 0, slots };
     let potter = |need, curve, slots| Tap { need, curve, rate: 0.35, overhead: 0, slots };
+    // An evening out is paid for, and the price is added to the evening in
+    // the resident's own hours (economy.md §6.1): a tenth of it at the
+    // edge's price. Eight tenths keeps the ladder where residents.md §5.5
+    // puts it: an outing pulls nobody from a shift under seven tenths, and
+    // someone out to lunch goes back to work rather than staying on.
     let outing = |need, curve, slots| Tap { need, curve, rate: 0.8, overhead: 0, slots };
     // Staff are sized to the lot, since everyone parks in it: a one-wide lot
     // parks seven hemmed in and twelve in the open, a two-wide one seven to
@@ -129,98 +142,100 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         vec![
             tap(Rest, hours(22 * H, 7 * H), homes),
             tap(Home, always(), homes),
-            tap(Eat, always(), homes),
+            meal(always(), homes),
             potter(Leisure, always(), homes),
         ]
     };
 
     vec![
         (House, Blueprint {
-            class: Living, homes: 2, jobs: 0, size: (1, 1), lot: (0, 0), price: 3.0,
+            class: Living, homes: 2, jobs: 0, size: (1, 1), lot: (0, 0), price: 5.0,
             stock: 0, answers: None, vehicles: &[],
             taps: household(2),
         }),
         (Apartment, Blueprint {
-            class: Living, homes: 7, jobs: 0, size: (2, 1), lot: (2, 1), price: 8.0,
+            class: Living, homes: 7, jobs: 0, size: (2, 1), lot: (2, 1), price: 15.0,
             stock: 0, answers: None, vehicles: &[],
             taps: household(7),
         }),
         // A shop seats as many as it staffs, and the high street is somewhere
         // to be until late.
         (Shop, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 4.0,
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 40.0,
             stock: 40, answers: None, vehicles: &[],
             taps: vec![
                 shift(9, 18, 2),
-                tap(Eat, hours(9 * H, 18 * H), 7),
+                meal(hours(9 * H, 18 * H), 7),
                 outing(Leisure, hours(9 * H, 22 * H), 7),
             ],
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
         // spike: industry starts before offices, offices before shops.
         (Office, Blueprint {
-            class: Commerce, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 10.0,
+            class: Commerce, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 15.0,
             stock: 0, answers: None, vehicles: &[],
             taps: vec![shift(8, 17, 12)],
         }),
         (Workshop, Blueprint {
-            class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (2, 1), price: 5.0,
+            class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (2, 1), price: 8.0,
             stock: 0, answers: None, vehicles: &[],
             taps: vec![shift(7, 16, 4)],
         }),
         (Factory, Blueprint {
-            class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 12.0,
+            class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 25.0,
             stock: 0, answers: None, vehicles: &[],
             taps: vec![shift(6, 15, 12)],
         }),
         // A restaurant seats a dozen, from lunch until late, and is an evening
         // out in itself. The first kind the mayor can place by hand.
         (Restaurant, Blueprint {
-            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (2, 1), price: 5.0,
+            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (2, 1), price: 55.0,
             stock: 30, answers: None, vehicles: &[],
             taps: vec![
                 shift(11, 23, 3),
-                tap(Eat, hours(11 * H, 22 * H), 7),
+                meal(hours(11 * H, 22 * H), 7),
                 outing(Leisure, hours(11 * H, 22 * H), 7),
             ],
         }),
         // A bar opens as the shops shut and is the last place open. Small
         // staff, an evening's crowd, a kitchen until eleven.
         (Bar, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 4.0,
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 35.0,
             stock: 30, answers: None, vehicles: &[],
             taps: vec![
                 shift(18, 2, 2),
-                tap(Eat, hours(18 * H, 23 * H), 7),
+                meal(hours(18 * H, 23 * H), 7),
                 outing(Leisure, hours(20 * H, 2 * H), 7),
             ],
         }),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
+        // Its shelf is tanks: a delivery is a tanker's worth.
         (GasStation, Blueprint {
-            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (2, 1), price: 6.0,
-            stock: 0, answers: None, vehicles: &[],
+            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (2, 1), price: 75.0,
+            stock: 30, answers: None, vehicles: &[],
             taps: vec![
                 shift(6, 22, 1),
-                tap(Fuel, always(), 4),
+                pump(always(), 4),
             ],
         }),
         // Shopping for a whole district, with far more on the shelves than a
         // corner shop and a warehouse's truck to keep them full. The first
         // placeable with something to run out of.
         (Supermarket, Blueprint {
-            class: Commerce, homes: 0, jobs: 6, size: (2, 2), lot: (2, 1), price: 12.0,
+            class: Commerce, homes: 0, jobs: 6, size: (2, 2), lot: (2, 1), price: 140.0,
             stock: 150, answers: None, vehicles: &[],
             taps: vec![
                 shift(8, 21, 6),
-                tap(Eat, hours(8 * H, 21 * H), 12),
+                meal(hours(8 * H, 21 * H), 12),
             ],
         }),
         // Where stock comes from. Its trucks answer the shops' calls; until
-        // there is one, every delivery comes from beyond the edge.
+        // there is one, every delivery comes from beyond the edge. Its
+        // shelf is six shops' worth.
         (Warehouse, Blueprint {
-            class: Industry, homes: 0, jobs: 6, size: (2, 2), lot: (2, 2), price: 15.0,
-            stock: 6, answers: Some(CallKind::Stock), vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van],
+            class: Industry, homes: 0, jobs: 6, size: (2, 2), lot: (2, 2), price: 80.0,
+            stock: 240, answers: Some(CallKind::Stock), vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van],
             taps: vec![shift(6, 18, 6)],
         }),
         // The world beyond the survey, standing where a road runs off the
@@ -242,7 +257,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
                 // No better than an evening out in town, or the edge would
                 // raise what every bucket thinks is possible; see `Need::bounds`.
                 everywhere(Leisure, 0.8),
-                everywhere(Fuel, 1.0),
+                everywhere(Fuel, Fuel.cap() / Need::FILL_MS),
             ],
         }),
     ]
@@ -259,15 +274,20 @@ pub fn check() {
         for tap in &b.taps {
             // T1: a fixed-length service still takes time.
             assert!(tap.rate.is_finite() || tap.overhead > 0, "{kind:?} serves {:?} instantly and for free", tap.need);
-            // C1: a full bucket drains within the one-day horizon.
+            // C1: an empty stock refills within the one-day horizon.
             assert!(
-                tap.need.fill() == 0.0 || tap.need.cap() / tap.rate <= day,
+                tap.need.drain() == 0.0 || tap.need.cap() / tap.rate <= day,
                 "{kind:?} takes over a day to drain {:?}",
                 tap.need
             );
         }
     }
     assert_eq!(BLUEPRINTS.len(), BuildingKind::ALL.len(), "a kind has no blueprint");
+    for (kind, b) in BLUEPRINTS.iter() {
+        // The price the mayor pays includes the float the building opens with.
+        let float = crate::economy::float(*kind, crate::economy::EDGE_WAGE);
+        assert!(b.price >= float, "{kind:?} costs {} and opens with a float of {float}", b.price);
+    }
 }
 
 /// The whole table, readable: what each kind is and does.
@@ -279,7 +299,8 @@ pub fn inspect() -> Value {
         "homes": b.homes,
         "jobs": b.jobs,
         "size": b.size,
-        "price_h": b.price,
+        "price": b.price,
+        "float": crate::economy::float(*kind, crate::economy::EDGE_WAGE),
         "taps": b.taps.iter().map(|t| json!({
             "need": t.need, "open_h": hours(&t.curve), "rate": t.rate, "slots": t.slots,
         })).collect::<Vec<_>>(),

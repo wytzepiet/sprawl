@@ -14,6 +14,7 @@ import type { Building,
   Growth,
   ChunkCoord,
   Operation,
+  Sale,
   TerrainChunk,
 } from "../generated";
 
@@ -51,6 +52,25 @@ export function pinned(): GameObjectEntry[] {
   pinsVersion();
   return [...pinnedEntries.values()];
 }
+/**
+ * Money that landed on buildings in view, for a moment: each lump floats up
+ * over its building and is gone. Kept for a couple of seconds of wall time
+ * and read by the lump layer; nothing else wants it.
+ */
+const LUMP_MS = 2400;
+const [lumps, setLumps] = createSignal<(Sale & { key: number; since: number })[]>([]);
+let lumpKey = 0;
+export function recentLumps() {
+  return lumps();
+}
+function land(sales: Sale[]) {
+  if (sales.length === 0) return;
+  const since = performance.now();
+  setLumps((l) => [...l.filter((s) => since - s.since < LUMP_MS), ...sales.map((s) => ({ ...s, key: lumpKey++, since }))]);
+  setTimeout(() => setLumps((l) => l.filter((s) => performance.now() - s.since < LUMP_MS)), LUMP_MS + 50);
+}
+export { LUMP_MS };
+
 /** Tile → the building standing on it. */
 const occupiedBy = new Map<string, number>();
 function trackPin(entry: GameObjectEntry | undefined, id: number) {
@@ -217,9 +237,8 @@ interface GameContext {
   terrainSeed(): number;
   /** Surveyed extent, in chunks. max < min means nothing is surveyed yet. */
   revealedBounds(): ChunkBounds;
-  /** The two bars: what the city has earned, and what it is saving for. */
-  /** The last growth sample, and the sim clock it was taken at. */
-  growth(): Growth & { at: number };
+  /** The two dials: the city's level, and what the mayor has to spend. */
+  growth(): Growth;
   send(msg: ClientMessage): boolean;
   getObjectsAt(x: number, y: number): GameObjectEntry[];
 }
@@ -228,15 +247,14 @@ const Ctx = createContext<GameContext>();
 
 export function GameProvider(props: ParentProps & { wsUrl: string }) {
   const [terrainSeed, setTerrainSeed] = createSignal(0);
-  const [growth, setGrowth] = createSignal<Growth & { at: number }>({
+  const [growth, setGrowth] = createSignal<Growth>({
     level: 0,
     xp: 0,
     xp_needed: 0,
-    balance: 0,
-    rate: 0,
+    treasury: 0,
+    income: 0,
     taken: [],
     road_tiles_left: 0,
-    at: 0,
   });
   const [revealedBounds, setRevealedBounds] = createSignal<ChunkBounds>({
     min_cx: 0,
@@ -252,8 +270,9 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         syncFromClock(msg.data.clock);
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
         setRevealedBounds(msg.data.revealed_bounds);
-        setGrowth({ ...msg.data.growth, at: msg.data.clock.now });
+        setGrowth(msg.data.growth);
         applyOps(msg.data.ops);
+        land(msg.data.sales);
         break;
       case "Error":
         console.error("[ws] server error:", msg.data.message);

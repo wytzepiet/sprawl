@@ -37,4 +37,16 @@ selected: Need | null,
 /**
  * When the buckets were last brought up to date.
  */
-last_update: number, };
+last_update: number, 
+/**
+ * Their purse, in hours of the edge's wage. A shift pays into it, a
+ * meal or a tank is paid from it, and what is over the float sweeps
+ * to the treasury as rent. docs/economy.md §3, §8.2.
+ */
+wallet: number, 
+/**
+ * Units of the selected need served since this visit began, not yet
+ * paid for: the sale lands as one lump when the visit ends. A record
+ * of what is happening, like `at`.
+ */
+tab: number, };

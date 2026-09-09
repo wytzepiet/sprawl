@@ -1,7 +1,5 @@
-import { createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { useGame } from "../state/gameObjects";
-import { simNow } from "../network/clock";
 import { setTreeOpen } from "./SkillTree";
 
 /** Ring geometry, in the dial's own 60-unit box. */
@@ -11,11 +9,12 @@ const CIRCUMFERENCE = 2 * Math.PI * R;
 /**
  * The city's two dials, one in each bottom corner.
  *
- * Both are fed by the same thing — the city's buildings serving people — so
- * they fill while the city works. Each update is a snapshot and a rate, and
- * the dials run forward from it at that rate, so they climb as the work is
- * done rather than stepping when a shift ends. A city that has seized up
- * stops earning, and the dials say so before anything else does.
+ * The level on the left is hours of need the city's buildings have served,
+ * banked as each visit ends. The treasury on the right is the mayor's money,
+ * stepped by each sweep: a household's rent on payday, a shop's takings at
+ * midnight. Both move in lumps, and the lumps are on the map first — a
+ * number floating over the building — so a dial that steps is an event you
+ * could have watched, never a rate.
  *
  * Each is a ring around the thing it is earning: the city's level on the left,
  * the building it is saving toward on the right. Nothing is labelled — a ring
@@ -24,17 +23,8 @@ const CIRCUMFERENCE = 2 * Math.PI * R;
  */
 export default function GrowthMeter() {
   const { growth } = useGame();
-  // Points earned since the sample was taken. Re-read a few times a second;
-  // the ring's own transition smooths the rest.
-  const [tick, setTick] = createSignal(0);
-  const timer = setInterval(() => setTick((t) => t + 1), 250);
-  onCleanup(() => clearInterval(timer));
-  const since = () => {
-    tick();
-    return growth().rate * Math.max(0, simNow() - growth().at);
-  };
-  const xp = () => growth().xp + since();
-  const balance = () => growth().balance + since();
+  const xp = () => growth().xp;
+  const treasury = () => growth().treasury;
 
   return (
     <>
@@ -47,13 +37,13 @@ export default function GrowthMeter() {
         </Dial>
       </span>
 
-      {/* What the mayor has to spend, in hours of need the city has served
-          and not yet spent on a building. No ring: there is no goal but the
-          one the mayor is saving for. */}
+      {/* What the mayor has to spend, in hours of the edge's wage, and what
+          has swept in today. No ring: there is no goal but the one the mayor
+          is saving for. */}
       <span class="fixed bottom-4 right-4 flex select-none flex-col items-center gap-1.5 pointer-events-none">
-        <Dial color="#57A773" now={balance()} max={0}>
+        <Dial color="#57A773" now={treasury()} max={0} caption={`+${Math.floor(growth().income)} today`}>
           <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
-            <span class="text-[13px] font-bold tabular-nums">{Math.floor(balance() / 60)}</span>
+            <span class="text-[13px] font-bold tabular-nums">{Math.floor(treasury())}</span>
             <span class="text-[7px] font-bold uppercase tracking-widest text-white/50">hours</span>
           </span>
         </Dial>
@@ -69,7 +59,7 @@ export default function GrowthMeter() {
  * everything that measures a wait runs in. Its track is drawn in full behind
  * it, so an empty dial still reads as a dial rather than as a missing one.
  */
-function Dial(props: { color: string; now: number; max: number; children: JSX.Element }) {
+function Dial(props: { color: string; now: number; max: number; caption?: string; children: JSX.Element }) {
   const fill = () => (props.max > 0 ? Math.min(1, Math.max(0, props.now / props.max)) : 0);
   return (
     <span class="flex flex-col items-center gap-1">
@@ -92,7 +82,7 @@ function Dial(props: { color: string; now: number; max: number; children: JSX.El
         <span class="relative h-9 w-9">{props.children}</span>
       </span>
       <span class="rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-bold leading-none tabular-nums text-stone-600 backdrop-blur-xl">
-        {props.max > 0 ? `${Math.floor(props.now).toLocaleString()} / ${Math.round(props.max).toLocaleString()}` : `${Math.floor(props.now / 60).toLocaleString()} h`}
+        {props.max > 0 ? `${Math.floor(props.now).toLocaleString()} / ${Math.round(props.max).toLocaleString()}` : props.caption}
       </span>
     </span>
   );

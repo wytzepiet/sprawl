@@ -70,7 +70,7 @@ pub fn park_car(
             _ => false,
         });
         if aboard {
-            crate::resident::set_at(world, owner, at_building, events.now());
+            crate::resident::set_at(world, events, owner, at_building, events.now());
             events.wake(0, owner);
         }
     }
@@ -316,8 +316,6 @@ pub fn handle_car_wake_up(
             park_car(world, intersections, events, car_id, trip.destination);
             if role != CarRole::Private {
                 events.wake(crate::calls::SERVICE_MS, car_id);
-            } else {
-                crate::calls::visit(world, events, trip.destination, now);
             }
             return;
         }

@@ -2,7 +2,10 @@
 
 Status: built, 2026-09-04, through step 7 of §13; §11 records what was
 open when it was written, and `game.md` is the current shape. Supersedes
-the agenda/entry sections of `archive/agents.md`.
+the agenda/entry sections of `archive/agents.md`. Since 2026-09-09 the
+bucket is a stock (§3.1, `economy.md` §4), and a visit's price enters
+the score as time (§11.7, `economy.md` §6.1); `economy.md` §12.2 says
+what that did to the ladder in §5.5.
 
 ---
 
