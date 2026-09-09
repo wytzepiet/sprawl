@@ -151,6 +151,16 @@ export function setTerrainListener(fn: TerrainListener | null) {
  * upsert and a delete touching one tile cannot tread on each other whichever
  * way round they land.
  */
+/**
+ * Ops of the client's own making, applied exactly as the server's are: a
+ * preview — the driveway a dragged building would get — is a road in every
+ * respect but the server's memory, and is drawn, joined and undone through
+ * the same path as a road that was laid.
+ */
+export function preview(ops: Operation[]) {
+  applyOps(ops);
+}
+
 function applyOps(ops: Operation[]) {
   for (const op of ops) {
     switch (op.op) {

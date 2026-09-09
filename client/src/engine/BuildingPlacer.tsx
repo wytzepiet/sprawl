@@ -2,17 +2,14 @@ import { createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
-import { getEntity, useGame } from "../state/gameObjects";
-import { useInstancePool } from "./InstancePool";
-import { useTheme } from "./theme";
-import { mountRoad } from "./objects/RoadNode";
+import { preview, useGame } from "../state/gameObjects";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
 import { shapeFor, SLAB } from "./objects/buildings";
 import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "./objects/lots";
 import { BLUEPRINTS, FACINGS, plot } from "../blueprints";
 import { screenToWorld } from "./view";
 import { createSpring2D } from "./spring";
-import type { BuildingKind, GameObjectEntry, GridCoord } from "../generated";
+import type { BuildingKind, GameObjectEntry, GridCoord, Operation } from "../generated";
 
 /** The ghost door node's id: no real thing has it. */
 const DOOR = -1;
@@ -48,8 +45,6 @@ interface Site {
 export function BuildingPlacer() {
   const { scene, canvas } = useEngine();
   const { send, getObjectsAt } = useGame();
-  const pool = useInstancePool();
-  const theme = useTheme();
   const [site, setSite] = createSignal<Site | null>(null);
   const spring = createSpring2D(scene, { stiffness: 0.3, damping: 0.4 });
   const kind = (): BuildingKind => placingBuilding() ?? "House";
@@ -124,34 +119,34 @@ export function BuildingPlacer() {
     const [mx, my] = middle();
     return [spring.pos()[0] + l.origin[0] - mx, spring.pos()[1] + l.origin[1] - my, z] as [number, number, number];
   };
-  // The driveway is a real road, drawn by the road renderer for the
-  // moment it would exist: a door node on the door tile, and the street's
-  // node with one more arm reaching it. Redrawn whenever the site moves,
-  // and gone when the drag ends — placing it lays the real one.
-  let unmountDrive: (() => void)[] = [];
+  // The driveway is a real road for the moment it would exist: a door node
+  // on the door tile and the street's node with one more arm, put through
+  // the store the way the server's ops are, so the street bends, its
+  // neighbours redraw and the dead end loses its cap exactly as if the
+  // road were laid. Undone the same way when the site moves or the drag
+  // ends; placing lays the real one.
+  let undo: Operation[] = [];
   const clearDrive = () => {
-    for (const f of unmountDrive) f();
-    unmountDrive = [];
+    if (undo.length) preview(undo);
+    undo = [];
   };
   createEffect(on(site, (s) => {
     clearDrive();
     if (!s?.door || !s.street) return;
     const street = getObjectsAt(s.street.x, s.street.y).find((e) => e.object.kind === "RoadNode");
-    if (!street) return;
+    if (!street || street.object.kind !== "RoadNode") return;
+    const arms = street.object.data;
     const door: GameObjectEntry = {
       id: DOOR,
       position: { x: s.door.x, y: s.door.y },
-      object: { kind: "RoadNode", data: { outgoing: [street.id], incoming: [street.id], joined: true, road: false, laid: false } },
-    } as GameObjectEntry;
+      object: { kind: "RoadNode", data: { outgoing: [street.id], incoming: [street.id], joined: arms.joined, road: false, laid: false } },
+    };
     const joined: GameObjectEntry = {
       ...street,
-      object: { kind: "RoadNode", data: { ...(street.object.data as { outgoing: number[]; incoming: number[] }), outgoing: [...(street.object.data as { outgoing: number[] }).outgoing, DOOR], incoming: [...(street.object.data as { incoming: number[] }).incoming, DOOR] } },
-    } as GameObjectEntry;
-    const lookup = (id: number) => (id === DOOR ? door : id === street.id ? joined : getEntity(id));
-    for (const e of [door, joined]) {
-      const off = mountRoad(e, pool, theme(), lookup);
-      if (off) unmountDrive.push(off);
-    }
+      object: { kind: "RoadNode", data: { ...arms, outgoing: [...arms.outgoing, DOOR], incoming: [...arms.incoming, DOOR] } },
+    };
+    undo = [{ op: "Delete", data: DOOR }, { op: "Upsert", data: street }];
+    preview([{ op: "Upsert", data: door }, { op: "Upsert", data: joined }]);
   }));
   onCleanup(clearDrive);
 
