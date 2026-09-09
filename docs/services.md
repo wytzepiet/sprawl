@@ -121,29 +121,38 @@ Rows, first pass:
 | Gas station | fuel (exists as a need) | none: the car comes to it | the car drives to the edge to fill |
 | Supermarket | shopping: a need, residents come to it; stock: calls the warehouse | delivery van, to homes that call | shelves empty, residents' shopping unmet |
 | Warehouse | stock, from shops and supermarkets | truck | shops run dry, call the edge instead |
-| Hospital | illness: a rare condition on a resident | ambulance | the resident stays ill longer, off work |
-| Fire station | fire: a rare condition on a building | fire truck | the fire spreads to a neighbour per interval |
-| Police | crime | patrol car | needs a crime model first; last |
-| Park | nothing: an attractor and a leisure tap with no trip | none | none |
+| Hospital | health: a resident's stock, drained by a draw | ambulance | the stock drains longer; at zero the resident dies |
+| Fire station | fire: a building's stock, drained by a draw | fire truck | the fire spreads to a neighbour; at zero the building is rubble |
+| Police | obedience: a resident's stock; the jail refills it | patrol car | needs the crime to be an event on the map first; last |
+| Park | leisure, and a little obedience, with no trip | none | none |
 
 Refinery, port and airport are the same rows at the next scale up: they
 answer stock calls from gas stations and warehouses.
 
-## 6. Conditions
+## 6. Stocks
 
-The state a call changes.
+The state a call changes is a stock, the one type `economy.md` §4 gives
+everything: a level and a cap, drained by use, refilled by a tap or a
+delivery. A call is raised when it is low. There is no `Condition` enum.
 
-- **Stock** on a building: a number, consumed by visits, refilled by a
-  delivery. Below a threshold the building raises a stock call.
-- **Fire** on a building: a timer; while it burns it raises a fire call;
-  at each interval unanswered it spreads to a neighbour; answered, it goes
-  out after the service time. A burned building stands dormant until the
-  mayor demolishes it.
-- **Illness** on a resident: a need that only a hospital tap serves; the
-  resident cannot work; an ambulance call brings them in.
+- **Stock** on a building: drained per visit, refilled by a delivery.
+- **Fire** on a building: full until a hazard draw ignites it, draining
+  while it burns; the truck stops the drain and refills it; a burning
+  neighbour drains it too. At zero the building is rubble, standing
+  until the mayor demolishes it. Never a decay on a schedule: a building
+  that burns on a countdown is the thing `game.md` rules out.
+- **Health** on a resident: full until a draw, then draining; a hospital
+  tap refills it, and an ambulance call brings in someone too low to
+  drive. Off work while low; at zero, dead. A park tap refills it a
+  little, slowly: lifestyle versus illness.
+- **Obedience** on a resident, later: drains by a draw; low, the resident
+  commits a crime, which is an event on the map with a victim — a shelf
+  emptied, a wallet — and a getaway car. A park refills a little; a
+  patrol deters; the jail is a tap with a stay, the resident away like a
+  lorry beyond the edge.
 
-Residents' conditions are needs and taps, as everything about residents
-is. Buildings get one small `Condition` enum.
+Services earn nothing and are paid from the treasury (`economy.md` §8.2).
+What they save is residents and buildings.
 
 ## 7. Legibility
 
@@ -174,7 +183,7 @@ unlock at the **corners**, where two avenues meet:
    for arrivals) and puts the central check in place.
 2. Call-outs, once, generic, with the **supermarket** and **warehouse**
    as the first two rows — the daily traffic — and a delivery van look.
-3. Conditions with **fire**, since it is the emergency people feel; then
+3. Stocks with **fire**, since it is the emergency people feel; then
    the hospital.
 4. The inspect panel, once there is behaviour worth reading.
 5. Police, when there is a crime model to answer.

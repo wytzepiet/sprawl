@@ -74,11 +74,12 @@ nothing is pressure on them, not a wall for you.
 
 One token, the container; a second, the crate, for food. **Factories
 produce goods**, **farms produce food**, both call for pickup. **Shops,
-supermarkets and restaurants consume them** and call for delivery. Every
-call goes through a **warehouse**. The **port** is the door: warehouses
-import by ship when empty and export when full; with no warehouse, shops
-and factories trade with the edge directly. **Trains** are a bigger,
-cheaper truck from a station on a mainline the map was born with.
+supermarkets and restaurants consume them** and call for delivery. A
+buyer takes the cheapest delivered option, and a **warehouse** is what
+wins when it is nearer than the producer. What nobody in town buys, the
+edge buys, by road, slowly. The **port**, later, is a second door with
+cheaper freight. **Trains** are a bigger, cheaper truck from a station
+on a mainline the map was born with.
 
 **Construction is a delivery.** A placed site is a call; a construction
 firm's truck answers it with materials, from the edge until you have one,
@@ -90,17 +91,19 @@ gives a reason to choose. Roads stay instant under the brush.
 
 ## Money
 
-Everyone has a purse: residents, companies, the mayor. Money moves
-between them and is made only at the sea and the edge. Every building
-belongs to a company that buys its inputs, pays its workers, and posts a
-price for what it sells, nudging it up when the shelf empties and down
-when it fills, never below cost. A resident earns a wage and prices money
-in hours of it, so the one score that already picks their day picks by
-price too; a company prices money in hours of its revenue and picks by
-delivered price. The sea buys and sells every good at a fixed price and
-the edge hires at a fixed wage, so nothing can run away. The mayor taxes
-sales and wages on their land, in lumps that land on the building and
-step the meter with an address. Ignoring all of this must never hurt;
+Everyone has a purse: residents, buildings, the mayor. Money moves
+between them and is made only at the edge. Everything is a stock that
+runs down — a shelf, a tank, an appetite, a factory's hours of labour —
+and the deficit is the need. Every building buys its inputs, pays its
+workers, and posts a price for what it sells, nudging it up when the
+shelf empties and down when it fills, never below cost. A resident earns
+a wage and prices money in hours of it, so the one score that already
+picks their day picks by price too; a building prices money in hours of
+its revenue and picks by delivered price. The edge buys and sells every
+good at a fixed price and hires at a fixed wage, and the drive is the
+freight, so nothing can run away. The mayor owns the town: every purse
+keeps a float and the rest sweeps to the treasury as a lump on the
+building, so there are no taxes. Ignoring all of this must never hurt;
 reading it is how you win. `economy.md` is the mechanism.
 
 ## Power
@@ -111,9 +114,11 @@ the roads. Night is the gauge: powered buildings glow. Nuclear later.
 
 ## Conditions and services
 
-Stock, fire, illness: a state a call changes, with a consequence that
-scales with how late the answer was. Fire station and hospital are the
-first; police when there is crime to answer.
+Stock, fire, health, obedience: a stock a call refills, with a
+consequence that scales with how late the answer was, and something lost
+at zero — a resident, a building. Fire station and hospital are the
+first; police when there is crime to answer. Services are paid from the
+treasury and earn nothing; there is only what they save.
 
 ## Legibility
 
@@ -135,20 +140,12 @@ drawn wires, panels that control, buildings that arrive on their own,
 proposals to accept, pending spawns to adjust.
 
 Filed, not promised: roads built by trucks and the gravel and oil behind
-them; big infrastructure built by cranes; several materials; sea prices
-that drift with the world's trade.
+them; big infrastructure built by cranes; several materials; edge prices
+that drift with the world's trade; a sea that is one connected body, and
+ports on it.
 
 ## Order
 
-1. Placing: every kind on the build menu, drag to place, the meter pays.
-   The spawner is gone. One evening on a fresh seed 7 to feel whether
-   saving and placing is the loop.
-2. The edge: exits as buildings with every tap, homes and jobs.
-3. Construction: the site as a call, the truck, the refund.
-4. Money: purses, companies, the two taxes, then posted prices
-   (`economy.md` §13).
-5. Food and farms.
-6. The port.
-7. Power: plant, pylons, substations, night.
-8. Fire, then hospital, then the inspect panel.
-9. Trains, if a build needs more bulk than the port.
+`roadmap.md` holds it, as playable milestones. The shape: placing, then
+the edge, then construction, then goods, then money, then food, the port,
+power, services, the advisor, other people.
