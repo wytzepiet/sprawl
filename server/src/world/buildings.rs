@@ -164,7 +164,7 @@ impl World {
                 if e - s < 2 {
                     return None;
                 }
-                self.road_for_lot(lot, (lw, ld), facing)
+                self.road_for_lot(lot, (lw, ld), facing, false)
             }
             None => self.road_for_plot(pos, p.size),
         }
@@ -173,28 +173,27 @@ impl World {
     /// The street a lot fronts: beyond its outer edge, in the direction it
     /// faces, off any of its front tiles.
     /// Straight ahead first; then, as a plot without a lot does at its
-    /// corners, on the diagonal — a street that passes the lot's corner is
-    /// a street the lot can open onto, if the turn is not too sharp.
-    fn road_for_lot(&self, lot: GridCoord, size: (u8, u8), facing: u8) -> Option<(EntityId, GridCoord)> {
+    /// corners, on the diagonal; then, if asked, out of either side — a
+    /// street that runs along the lot's flank is a street the lot can open
+    /// onto, but never one a plot chooses its facing by: a lot fronts the
+    /// street it faces, and the flank is for a plot that already stands.
+    fn road_for_lot(&self, lot: GridCoord, size: (u8, u8), facing: u8, sides_too: bool) -> Option<(EntityId, GridCoord)> {
         let (dx, dy) = crate::blueprint::FACINGS[facing as usize % 4];
-        let front: Vec<GridCoord> = Self::footprint(lot, size)
-            .filter(|t| !Self::building_covers(lot, size, GridCoord { x: t.x + dx, y: t.y + dy }))
-            .collect();
+        let tiles: Vec<GridCoord> = Self::footprint(lot, size).collect();
+        let front: Vec<GridCoord> = tiles.iter().copied().filter(|t| !Self::building_covers(lot, size, GridCoord { x: t.x + dx, y: t.y + dy })).collect();
         let reaches = |t: GridCoord, n: GridCoord| {
+            if Self::building_covers(lot, size, n) {
+                return None;
+            }
             let id = self.road_node_at(n)?;
             (self.is_street(id) && self.driveway_reaches(n, t)).then_some((id, t))
         };
+        let sides = [(-dy, dx), (dy, -dx)];
         front
             .iter()
             .find_map(|&t| reaches(t, GridCoord { x: t.x + dx, y: t.y + dy }))
-            .or_else(|| {
-                front.iter().find_map(|&t| {
-                    [(-dy, dx), (dy, -dx)].into_iter().find_map(|(px, py)| {
-                        let n = GridCoord { x: t.x + dx + px, y: t.y + dy + py };
-                        (!Self::building_covers(lot, size, n)).then(|| reaches(t, n)).flatten()
-                    })
-                })
-            })
+            .or_else(|| front.iter().find_map(|&t| sides.into_iter().find_map(|(px, py)| reaches(t, GridCoord { x: t.x + dx + px, y: t.y + dy + py }))))
+            .or_else(|| sides_too.then(|| tiles.iter().find_map(|&t| sides.into_iter().find_map(|(px, py)| reaches(t, GridCoord { x: t.x + px, y: t.y + py })))).flatten())
     }
 
     /// The road a plot's traffic would use, if any.
@@ -270,6 +269,15 @@ impl World {
         let Some(entry) = self.objects.get(building_id) else { return Vec::new() };
         let (Some(pos), GameObject::Building(b)) = (entry.position, &entry.object) else { return Vec::new() };
         Self::footprint(pos, b.size).filter_map(|t| self.road_node_at(t)).collect()
+    }
+
+    /// May a driveway end on this tile? A plot with a lot takes entrances on
+    /// its lot only; a plot without one is entered at the building itself.
+    pub(super) fn is_entrance_tile(&self, tile: GridCoord) -> bool {
+        let Some(&b) = self.occupied.get(&(tile.x, tile.y)) else { return false };
+        let Some(entry) = self.objects.get(b) else { return false };
+        let GameObject::Building(bd) = &entry.object else { return false };
+        crate::blueprint::plot(bd.kind, bd.facing).lot.is_none() || self.is_lot_tile(tile)
     }
 
     /// Is this tile one of a lot's tiles, where a road drawn in is one
@@ -370,7 +378,7 @@ impl World {
         let p = crate::blueprint::plot(b.kind, b.facing);
         let found = match p.lot {
             Some(((lx, ly), (lw, ld))) => {
-                self.road_for_lot(GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld), b.facing)
+                self.road_for_lot(GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, (lw, ld), b.facing, true)
             }
             None => self.road_for_plot(pos, p.size),
         };

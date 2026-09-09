@@ -4,7 +4,7 @@ import { useEngine } from "./Canvas";
 import Mesh from "./Mesh";
 import { preview, useGame } from "../state/gameObjects";
 import { placingBuilding, setPlacingBuilding } from "../ui/buildMode";
-import { shapeFor, SLAB } from "./objects/buildings";
+import { shapeFor } from "./objects/buildings";
 import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "./objects/lots";
 import { BLUEPRINTS, FACINGS, plot } from "../blueprints";
 import { screenToWorld } from "./view";
@@ -20,6 +20,9 @@ const GHOST_MARK = new Color3(0.55, 0.7, 0.9);
 const REFUSED = new Color3(0.95, 0.45, 0.4);
 const REFUSED_LOT = new Color3(1.0, 0.8, 0.78);
 const REFUSED_MARK = new Color3(0.9, 0.55, 0.5);
+/** The ghost's lot floats above any road it is dragged across, so it is
+ *  never seen underneath one. */
+const GHOST_Z = 0.05;
 /** How far the pointer moves, in tiles, before the server is asked again. */
 const ASK_STEP = 0.5;
 
@@ -167,7 +170,7 @@ export function BuildingPlacer() {
       <Mesh
         name="lot_ghost"
         geometry={lot() ? runSlabGeometry(lot()!.w, lot()!.depth, false) : runSlabGeometry(1, 1, false)}
-        position={lot() ? lotAt(SLAB.z) : [0, 0, -10]}
+        position={lot() ? lotAt(GHOST_Z) : [0, 0, -10]}
         rotation={[0, 0, lot()?.rot ?? 0]}
         color={ok() ? GHOST_LOT : REFUSED_LOT}
         enabled={shown() && !!lot()}
@@ -175,7 +178,7 @@ export function BuildingPlacer() {
       <Mesh
         name="lot_ghost_marks"
         geometry={lot() ? (BLUEPRINTS[kind()].yard ? yardGeometry(lot()!.w, lot()!.ld) : markingGeometry(lot()!.w)) : markingGeometry(1)}
-        position={lot() ? lotAt(0) : [0, 0, -10]}
+        position={lot() ? lotAt(GHOST_Z + 0.005) : [0, 0, -10]}
         rotation={[0, 0, lot()?.rot ?? 0]}
         color={ok() ? GHOST_MARK : REFUSED_MARK}
         enabled={shown() && !!lot()}
