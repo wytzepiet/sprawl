@@ -36,23 +36,25 @@ The industrial half of the game exists.
 
 - Stock becomes goods; factories fill a yard with work; calls get a
   direction (delivery, pickup); the container drawn on a loaded truck.
-- The warehouse holds a level and is the hub for every call.
-- The port: a facility on the coast whose vehicle is a ship, importing
-  when warehouses are empty and exporting when full. The edge trade goes
-  through it once it exists.
+- The warehouse holds a level, and wins a call when it is nearer than
+  the producer.
+- The edge trades by road: a truck out past the frontier and back, for
+  whatever the town lacks and whatever it makes that nobody here buys.
 
 *Playable:* a factory district feeding a shopping street through a
 warehouse, and the road between them as the thing you fix.
 
 ## Milestone 3: Money (≈ 5 days)
 
-Every sale is a lump and every purse is real. `economy.md` §13 is the
+Every sale is a lump and every purse is real. `economy.md` §12 is the
 order inside this milestone.
 
-- Companies founded with buildings; wallets and wages; rent; the mayor's
-  cut of sales and of wages. Level stays hours served, banked in lumps.
-- Posted prices with the nudge; `price / earning` in the resident's
-  score; jobs chosen by wage. Prices held to the sea's band.
+- The shelf, the tank and the bucket become one stock. Wallets and
+  balances; wages paid; every purse keeps a float and sweeps the rest to
+  the treasury. Level stays hours served, banked in lumps.
+- Posted prices with the nudge; the labour stock and wages on it;
+  `price / earning` in the resident's score; jobs ranked by wage, with a
+  switching threshold. Prices held to the edge's band.
 - Placeables, road tiles beyond the allowance, moving and demolishing
   cost money. The dial shows income as a rate over the lumps.
 
@@ -65,7 +67,10 @@ A second chain, and space on the map.
 
 - Food as a second token (the crate); farms as big placeables that fill
   with work; supermarkets and restaurants call for food.
-- The warehouse holds both; the port carries both.
+- The warehouse holds both.
+- The port: a facility on the coast whose vehicle is a ship, a second
+  door with the edge's prices and cheaper freight. Haulers, handling
+  classes and the rest of what `economy.md` filed come with it.
 
 *Playable:* a farm belt outside town, trucks at harvest, and the choice
 of where the warehouse goes between farms and shops.
@@ -96,9 +101,9 @@ water to the town.
 
 ## Milestone 7: Services and the panel (≈ 5 days)
 
-- Fire as a condition: a building burns, calls, spreads if unanswered;
-  the fire station's truck.
-- Illness as a need only a hospital serves; the ambulance.
+- Fire as a stock: full until it ignites, draining while it burns,
+  spreading to a neighbour's, rubble at zero; the fire station's truck.
+- Health as a stock only a hospital refills; the ambulance.
 - The inspect panel: per-day rates on any building, each line pointing at
   the map.
 
@@ -125,8 +130,9 @@ junctions lit up.
 ## Later, if a build asks for it
 
 Trains from a mainline the map is born with. Nuclear. Mining as bulk on
-rails. Tourists and the airport as a door. Resident wallets with
-emigration as the floor. Tram as a mid-game reward, if ever.
+rails. Tourists and the airport as a door. Obedience as a stock, the
+park that refills it, the police and the jail. Tram as a mid-game reward,
+if ever.
 
 ## How each step is done
 
