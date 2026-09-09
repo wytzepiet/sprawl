@@ -1568,6 +1568,13 @@ mod tests {
             // is a building that has stopped.
             for e in world.objects.iter() {
                 let GameObject::Building(ref b) = e.object else { continue };
+                if crate::economy::sells(b.kind).next().is_some() && !crate::economy::depot(b.kind) && !world.edge.contains(&e.id) {
+                    let page = world.books.get(&e.id).map(|k| k.before(day * DAY_MS as u64).clone()).unwrap_or_default();
+                    if page.revenue == 0.0 {
+                        let call = world.calls.iter().find(|c| c.at == e.id).map(|c| format!("{:?} by {:?} load {:.0}", c.kind, c.answered_by, c.load));
+                        println!("  {} {:?} took nothing: balance {:.2}, stock {:.0}/{:.0}, reorder {:.1}, prices {:?}, wages {:.2}, sold_out {}, {}", e.id, b.kind, b.balance, b.stock.level, b.stock.cap, crate::economy::reorder(world, e.id), b.prices, page.wages, page.sold_out, call.unwrap_or("no call".into()));
+                    }
+                }
                 if b.stock.cap > 0.0 && b.stock.level == 0.0 {
                     let call = world.calls.iter().find(|c| c.at == e.id).map(|c| format!("{:?} answered by {:?}", c.kind, c.answered_by));
                     println!("  {} {:?} empty: balance {:.2}, reorder at {:.1}, {}", e.id, b.kind, b.balance, crate::economy::reorder(world, e.id), call.unwrap_or("no call".into()));
