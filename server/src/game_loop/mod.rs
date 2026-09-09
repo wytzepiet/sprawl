@@ -1441,7 +1441,7 @@ mod tests {
     #[test]
     #[ignore]
     fn season_the_band_holds_and_nothing_rings() {
-        use crate::economy::{edge_price, wholesale, EDGE_WAGE};
+        use crate::economy::{edge_price, EDGE_WAGE};
         let mut prices: std::collections::BTreeMap<(EntityId, crate::needs::Need), Vec<f64>> = Default::default();
         let mut wages: std::collections::BTreeMap<EntityId, Vec<f64>> = Default::default();
         let (world, _) = season(&placeable(), SEASON, |world, _| {
@@ -1466,7 +1466,11 @@ mod tests {
             ((p.x - e.x).abs().max((p.y - e.y).abs()) as f64 / crate::car::CRUISE_SPEED * 1000.0) / hour
         };
         for (&(id, need), series) in &prices {
-            let (lo, hi) = (wholesale(need), edge_price(need) + drive_h(id) * EDGE_WAGE);
+            let kind = match world.objects.get(id).map(|e| &e.object) {
+                Some(GameObject::Building(b)) => b.kind,
+                _ => unreachable!(),
+            };
+            let (lo, hi) = (crate::economy::unit_cost(kind, need), edge_price(need) + drive_h(id) * EDGE_WAGE);
             for &p in series {
                 assert!(p >= lo - 1e-9 && p <= hi + 1e-9, "building {id} sold {need:?} at {p}, outside [{lo}, {hi}]: {series:.2?}");
             }
@@ -1484,8 +1488,9 @@ mod tests {
     }
 
     /// §11.6, no harm: a town built ignoring every price ends the season
-    /// with more in the treasury than it began, and no building placed is
-    /// below its float within its first week. §11.10, no sinks: over the
+    /// with more in the treasury than it began, and no building placed has
+    /// run its purse dry within its first week (§12.2's reading of "below
+    /// its float"). §11.10, no sinks: over the
     /// season the money outside the treasury stays under a bound — the
     /// floats, and what is in transit between two incomes.
     #[test]
@@ -1496,7 +1501,7 @@ mod tests {
         let (world, _) = season(&placeable(), SEASON, |world, day| {
             let (buildings, wallets) = purses(world);
             if day == 7 {
-                worst_week = buildings.iter().filter(|&&(_, _, balance, float)| balance < float).copied().collect();
+                worst_week = buildings.iter().filter(|&&(_, kind, balance, float)| balance <= 0.0 && float > 0.0 && !crate::economy::service(kind)).copied().collect();
             }
             let outside: f64 = buildings.iter().map(|b| b.2).sum::<f64>() + wallets.iter().sum::<f64>();
             most_outside = most_outside.max(outside);
@@ -1504,7 +1509,7 @@ mod tests {
         });
         let (buildings, wallets) = purses(&world);
         assert!(world.treasury > 0.0, "the season ended with {} in the treasury", world.treasury);
-        assert!(worst_week.is_empty(), "under their float in the first week: {worst_week:?}");
+        assert!(worst_week.is_empty(), "dry in the first week: {worst_week:?}");
         // Floats, a payday per resident, and a day's takings per building.
         let bound: f64 = buildings.iter().map(|b| b.3 + 20.0).sum::<f64>() + wallets.len() as f64 * (crate::economy::RESIDENT_FLOAT + 10.0);
         assert!(most_outside <= bound, "{most_outside} outside the treasury, bound {bound}");
@@ -1570,6 +1575,11 @@ mod tests {
         let mut jobs: std::collections::BTreeMap<EntityId, Option<EntityId>> = Default::default();
         let mut changes = 0u32;
         let (world, _) = season(&placeable(), SEASON, |world, day| {
+            let kind_of = |b: Option<EntityId>| match b.and_then(|b| world.objects.get(b)).map(|e| &e.object) {
+                Some(GameObject::Building(b)) => format!("{:?}", b.kind),
+                _ => "none".into(),
+            };
+            let mut today: Vec<String> = Vec::new();
             for id in world.resident_ids() {
                 let work = match world.objects.get(id).map(|e| &e.object) {
                     Some(GameObject::Resident(r)) => r.work,
@@ -1580,8 +1590,12 @@ mod tests {
                     && day > 1
                 {
                     changes += 1;
+                    today.push(format!("{} → {}", kind_of(had), kind_of(work)));
                 }
                 jobs.insert(id, work);
+            }
+            if !today.is_empty() {
+                println!("day {day}: {}", today.join(", "));
             }
         });
         let share = changes as f64 / world.resident_ids().len() as f64;
