@@ -12,6 +12,9 @@ import type { BuildingKind } from "./generated";
  * silhouettes on a 24-unit grid — one shape, windows and doors cut out — so a
  * pin reads at a glance and still reads shrunk to a dot's neighbour.
  */
+export const TABS = ["homes", "shops", "work", "services"] as const;
+export type Tab = (typeof TABS)[number];
+
 export interface Blueprint {
   label: string;
   color: string;
@@ -23,8 +26,10 @@ export interface Blueprint {
   shape: "gabled" | "sawtooth" | "box";
   /** Heights a box may be built at; one is picked per building and kept. */
   heights: number[];
-  /** In the build menu, for the mayor to place by hand. */
-  byHand: boolean;
+  /** What the mayor pays for one, in hours of need served. */
+  price: number;
+  /** Which shelf of the build menu it stands on. */
+  tab: Tab;
   /** The building's own footprint in tiles, wide along its frontage. */
   size: [number, number];
   /** Its lot in tiles along the frontage and deep, on the street side; [0, 0] is none. */
@@ -78,7 +83,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "gabled",
     heights: [0],
-    byHand: false,
+    price: 3, tab: "homes",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -90,7 +95,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "box",
     heights: [0.85, 1.15, 1.5],
-    byHand: false,
+    price: 8, tab: "homes",
     size: [2, 1],
     lot: [2, 1],
   },
@@ -103,7 +108,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.45, 0.55],
-    byHand: false,
+    price: 4, tab: "shops",
     size: [1, 1],
     lot: [1, 1],
   },
@@ -118,7 +123,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     // Tall, and worth varying: a few towers among them is what gives a
     // business district a skyline instead of a plateau.
     heights: [1.0, 1.45, 2.3],
-    byHand: false,
+    price: 10, tab: "work",
     size: [2, 1],
     lot: [2, 1],
   },
@@ -131,7 +136,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.42, 0.5],
-    byHand: false,
+    price: 5, tab: "work",
     size: [1, 1],
     lot: [1, 1],
   },
@@ -143,7 +148,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "sawtooth",
     heights: [0],
-    byHand: false,
+    price: 12, tab: "work",
     size: [2, 1],
     lot: [2, 1],
   },
@@ -156,7 +161,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: SPECIAL,
     shape: "box",
     heights: [0.5, 0.62],
-    byHand: true,
+    price: 5, tab: "shops",
     size: [1, 1],
     lot: [1, 1],
   },
@@ -168,7 +173,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.45, 0.55],
-    byHand: false,
+    price: 4, tab: "shops",
     size: [1, 1],
     lot: [1, 1],
   },
@@ -180,7 +185,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.3],
-    byHand: false,
+    price: 6, tab: "services",
     size: [1, 1],
     lot: [1, 1],
   },
@@ -192,7 +197,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: SPECIAL,
     shape: "box",
     heights: [0.5],
-    byHand: true,
+    price: 12, tab: "services",
     size: [2, 2],
     lot: [2, 1],
   },
@@ -204,7 +209,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.6],
-    byHand: true,
+    price: 15, tab: "services",
     size: [2, 2],
     lot: [2, 2],
     yard: true,

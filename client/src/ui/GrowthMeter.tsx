@@ -1,10 +1,8 @@
-import { Show, createSignal, onCleanup } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { simNow } from "../network/clock";
-import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { setTreeOpen } from "./SkillTree";
-import type { BuildingKind } from "../generated";
 
 /** Ring geometry, in the dial's own 60-unit box. */
 const R = 25;
@@ -36,11 +34,7 @@ export default function GrowthMeter() {
     return growth().rate * Math.max(0, simNow() - growth().at);
   };
   const xp = () => growth().xp + since();
-  const offerXp = () => Math.min(growth().offer_xp + since(), growth().offer_needed);
-  const nextColor = () => {
-    const kind = growth().next;
-    return kind ? BLUEPRINTS[kind].color : "#9CA3AF";
-  };
+  const balance = () => growth().balance + since();
 
   return (
     <>
@@ -53,21 +47,15 @@ export default function GrowthMeter() {
         </Dial>
       </span>
 
+      {/* What the mayor has to spend, in hours of need the city has served
+          and not yet spent on a building. No ring: there is no goal but the
+          one the mayor is saving for. */}
       <span class="fixed bottom-4 right-4 flex select-none flex-col items-center gap-1.5 pointer-events-none">
-        <Dial color={nextColor()} now={offerXp()} max={growth().offer_needed}>
-          <Show
-            when={growth().next}
-            fallback={<span class="block h-full w-full rounded-full bg-stone-300" />}
-          >
-            {(kind) => (
-              <span
-                class="grid h-full w-full place-items-center rounded-full"
-                style={{ "background-color": BLUEPRINTS[kind() as BuildingKind].color }}
-              >
-                <BuildingIcon kind={kind() as BuildingKind} class="h-6 w-6 text-white" />
-              </span>
-            )}
-          </Show>
+        <Dial color="#57A773" now={balance()} max={0}>
+          <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
+            <span class="text-[13px] font-bold tabular-nums">{Math.floor(balance() / 60)}</span>
+            <span class="text-[7px] font-bold uppercase tracking-widest text-white/50">hours</span>
+          </span>
         </Dial>
       </span>
     </>
@@ -104,7 +92,7 @@ function Dial(props: { color: string; now: number; max: number; children: JSX.El
         <span class="relative h-9 w-9">{props.children}</span>
       </span>
       <span class="rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-bold leading-none tabular-nums text-stone-600 backdrop-blur-xl">
-        {Math.floor(props.now).toLocaleString()} / {Math.round(props.max).toLocaleString()}
+        {props.max > 0 ? `${Math.floor(props.now).toLocaleString()} / ${Math.round(props.max).toLocaleString()}` : `${Math.floor(props.now / 60).toLocaleString()} h`}
       </span>
     </span>
   );

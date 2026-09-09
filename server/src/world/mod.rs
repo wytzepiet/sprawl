@@ -56,13 +56,8 @@ pub struct World {
     pub delivered: HashMap<(EntityId, crate::needs::Need), Delivered>,
     /// What the city has earned, ever: its taps serving people, as they go.
     pub xp: crate::xp::Ledger,
-    /// What that stood at when the last offer was made. The gap between them
-    /// is the meter.
-    pub offered_at: f64,
-    /// What the next offer will be and what it costs, settled together when
-    /// the last one was made — a promise rather than a guess that keeps
-    /// changing, and the only time the spawner has to look at the world.
-    pub goal: Option<crate::spawner::Goal>,
+    /// What the mayor has spent of it. The gap is what they have to spend.
+    pub spent: f64,
     /// The nodes of the tree the player has taken: the gate for everything
     /// the city may do. See `tree.rs`.
     pub build: crate::tree::Build,
@@ -164,8 +159,7 @@ impl World {
             terrain_seed: 0,
             delivered: HashMap::new(),
             xp: Default::default(),
-            offered_at: 0.0,
-            goal: None,
+            spent: 0.0,
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
@@ -195,8 +189,7 @@ impl World {
             terrain_seed,
             delivered: HashMap::new(),
             xp: Default::default(),
-            offered_at: 0.0,
-            goal: None,
+            spent: 0.0,
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),

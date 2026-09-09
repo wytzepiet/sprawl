@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import BuildMenuScene, { slots } from "./BuildMenuScene";
-import { BLUEPRINTS, KINDS, plot } from "../blueprints";
+import { BLUEPRINTS, KINDS, TABS, plot, type Tab } from "../blueprints";
 import { PinBody } from "./Pin";
 import type { BuildingKind } from "../generated";
 import { Building2 } from "./icons";
@@ -35,9 +35,14 @@ export function BuildButton() {
 
 export function BuildMenuSheet() {
   const { growth } = useGame();
-  // The build says what may be placed; the rest is shown, and locked.
+  // The build says what may be placed; the rest is shown, and locked. What
+  // the mayor cannot yet afford is shown too, and greyed: the thing you are
+  // saving for is the tile you keep looking at.
   const may = (kind: BuildingKind) => unlocked(tree(), growth().taken, (e) => e.kind === "Building" && e.building === kind);
-  const kinds = KINDS.filter((k) => BLUEPRINTS[k].byHand);
+  const hours = () => growth().balance / 60;
+  const afford = (kind: BuildingKind) => hours() >= BLUEPRINTS[kind].price;
+  const [tab, setTab] = createSignal<Tab>("homes");
+  const kinds = () => KINDS.filter((k) => BLUEPRINTS[k].tab === tab());
   // One tile of the shelf in pixels, so a pin can point at its plot's
   // centre whatever the plot's size. Horizontally that is a fraction of
   // the slot; vertically an offset from the canvas middle, on the row.
@@ -46,16 +51,16 @@ export function BuildMenuSheet() {
   // The row stands centred in the shelf; each slot is laid over its plot,
   // and its pin over the building, up being up as the shelf's camera has
   // it.
-  const row = () => slots(kinds);
+  const row = () => slots(kinds());
   // A slot is centred on its plot: half a tile of the gap on either side.
   const slotLeft = (i: number) => `calc(50% + ${(row().start[i] + 0.5 - row().total / 2) * tilePx()}px)`;
   const slotWidth = (i: number) => `${row().width[i] * tilePx()}px`;
   const pinLeft = (kind: BuildingKind, i: number) => `${((0.5 + plot(kind, 2).building[0][0] + plot(kind, 2).building[1][0] / 2) / row().width[i]) * 100}%`;
-  const deepest = () => Math.max(...kinds.map((k) => plot(k, 2).size[1]));
+  const deepest = () => Math.max(...kinds().map((k) => plot(k, 2).size[1]));
   const pinTop = (kind: BuildingKind) => `calc(50% - ${(plot(kind, 2).building[0][1] + plot(kind, 2).building[1][1] / 2 - deepest() / 2) * tilePx()}px)`;
   const pick = (kind: BuildingKind, e: PointerEvent) => {
     e.preventDefault();
-    if (!may(kind)) return;
+    if (!may(kind) || !afford(kind)) return;
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const onMove = () => {
@@ -77,7 +82,19 @@ export function BuildMenuSheet() {
       <div class="fixed bottom-0 left-0 right-0 z-40 flex justify-center pointer-events-none">
         <div class="pointer-events-auto w-full max-w-2xl mx-4 mb-4 p-4 rounded-2xl bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_-4px_30px_rgba(0,0,0,0.1),0_0_0_1px_rgba(255,255,255,0.7)_inset] animate-slide-up">
           <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-semibold text-stone-600 uppercase tracking-wide">Buildings</h2>
+            <div class="flex items-center gap-1">
+              <For each={TABS}>
+                {(t) => (
+                  <button
+                    class="text-xs font-semibold tracking-wide uppercase px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                    classList={{ "bg-stone-800 text-white": tab() === t, "text-stone-500 hover:text-stone-800 hover:bg-black/[0.04]": tab() !== t }}
+                    onClick={() => setTab(t)}
+                  >
+                    {t}
+                  </button>
+                )}
+              </For>
+            </div>
             <button
               onClick={() => setBuildMenuOpen(false)}
               class="text-stone-400 hover:text-stone-600 text-xs cursor-pointer"
@@ -88,14 +105,14 @@ export function BuildMenuSheet() {
           {/* One world for the whole shelf, and a slot laid over each kind
               standing in it: the pin, the label, and the drag to place it. */}
           <div class="pins relative rounded-xl overflow-hidden" style={{ height: "210px" }}>
-            <BuildMenuScene kinds={kinds} hovered={over()} onFit={setTilePx} />
+            <BuildMenuScene kinds={kinds()} hovered={over()} onFit={setTilePx} />
             <div class="absolute inset-0">
-              <For each={kinds}>
+              <For each={kinds()}>
                 {(kind, i) => (
                   <button
-                    class={`absolute top-0 bottom-0 flex flex-col items-center justify-end pb-2 ${may(kind) ? "cursor-grab active:cursor-grabbing" : "bg-white/60 cursor-not-allowed"}`}
+                    class={`absolute top-0 bottom-0 flex flex-col items-center justify-end pb-2 ${may(kind) && afford(kind) ? "cursor-grab active:cursor-grabbing" : "bg-white/60 cursor-not-allowed"}`}
                     style={{ left: slotLeft(i()), width: slotWidth(i()) }}
-                    title={may(kind) ? undefined : "Take it on the tree (L)"}
+                    title={!may(kind) ? "Take it on the tree (L)" : !afford(kind) ? `Save up: ${BLUEPRINTS[kind].price}h` : undefined}
                     onPointerDown={(e) => pick(kind, e)}
                     onPointerEnter={() => setOver(kind)}
                     onPointerLeave={() => setOver((o) => (o === kind ? null : o))}
@@ -106,6 +123,7 @@ export function BuildMenuSheet() {
                       </div>
                     </div>
                     <span class={`text-[11px] font-medium ${may(kind) ? "text-stone-600" : "text-stone-400"}`}>{BLUEPRINTS[kind].label}</span>
+                    <span class={`text-[10px] font-semibold tabular-nums ${afford(kind) && may(kind) ? "text-stone-500" : "text-stone-300"}`}>{BLUEPRINTS[kind].price} h</span>
                   </button>
                 )}
               </For>

@@ -8,7 +8,6 @@ mod health;
 mod intersection;
 mod needs;
 mod road_gen;
-mod spawner;
 mod network;
 mod persistence;
 mod protocol;
@@ -43,7 +42,6 @@ async fn main() {
         .route("/debug/residents", axum::routing::get(health::inspect_residents))
         .route("/debug/resident/{id}", axum::routing::get(health::inspect_resident))
         .route("/debug/demand", axum::routing::get(health::inspect_demand))
-        .route("/debug/spawner", axum::routing::get(health::inspect_spawner))
         .route("/debug/lot/{id}", axum::routing::get(health::inspect_lot))
         .route("/debug/call/{id}", axum::routing::get(health::call))
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))

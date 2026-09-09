@@ -36,8 +36,6 @@ pub enum Ask {
     Residents,
     /// Who cannot be served, where; and what each building delivered.
     Demand,
-    /// What the city is offering, and the shape of what stands.
-    Spawner,
     /// A building's lot: its spots, their windows, and what it has seen.
     Lot(EntityId),
     /// Raise a call at a building now, to watch it answered: a shop calls

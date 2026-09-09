@@ -658,19 +658,6 @@ pub fn unmet(world: &World) -> HashMap<(ChunkCoord, Need), (u32, f64)> {
     unmet
 }
 
-/// How badly the city wants each need, as a share of everyone in it: from
-/// 0 to 1, so a kind's draw is at most doubled and a bigger city is not a
-/// louder one. Summed instead, a town of two hundred once multiplied the
-/// shop's weight by thirty-six, and grew nothing but shops.
-pub fn pressure(world: &World) -> HashMap<Need, f64> {
-    let heads = world.resident_ids().len().max(1) as f64;
-    let mut by_need = HashMap::new();
-    for w in wants(world) {
-        *by_need.entry(w.need).or_default() += w.weight / heads;
-    }
-    by_need
-}
-
 pub fn demand(world: &World, now: GameTime) -> Value {
     let unmet = unmet(world);
     let mut unmet: Vec<Value> = unmet

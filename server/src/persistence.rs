@@ -31,7 +31,8 @@ pub struct Meta {
     /// made an offer. Kept to the hundredth, which is far finer than a bar can
     /// show — the metadata column holds whole numbers.
     pub earned: f64,
-    pub offered_at: f64,
+    /// Stored under the key it was born with, so a save keeps its balance.
+    pub spent: f64,
     /// The nodes of the tree taken, one metadata row each.
     pub taken: Vec<Cell>,
 }
@@ -111,7 +112,7 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
             terrain_seed,
             sim_time,
             earned: read("earned") as f64 / 100.0,
-            offered_at: read("offered_at") as f64 / 100.0,
+            spent: read("offered_at") as f64 / 100.0,
             taken,
         },
     )
@@ -152,7 +153,7 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         ("terrain_seed".to_string(), meta.terrain_seed as i64),
         ("sim_time".to_string(), meta.sim_time as i64),
         ("earned".to_string(), centi(meta.earned)),
-        ("offered_at".to_string(), centi(meta.offered_at)),
+        ("offered_at".to_string(), centi(meta.spent)),
     ]
     .into_iter()
     .chain(taken)

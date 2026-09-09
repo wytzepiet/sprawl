@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use ts_rs::TS;
 
-use crate::blueprint::{blueprint, Class};
+use crate::blueprint::Class;
 use crate::protocol::BuildingKind;
 
 /// North: homes. East: commerce. South: industry. West: roads. Each avenue
@@ -105,13 +105,13 @@ pub static LEGEND: &[(char, Row)] = {
     use Effect::*;
     &[
         ('@', Row { name: "The city", effect: Nothing, cost: 0, blurb: "Where every city starts." }),
-        ('H', Row { name: "Homes", effect: Weight { class: Living, times: 1.4 }, cost: 1, blurb: "People want to live here. Homes arrive more often." }),
+        ('H', Row { name: "Homes", effect: Weight { class: Living, times: 1.4 }, cost: 1, blurb: "People want to live here. Homes cost less." }),
         ('A', Row { name: "Apartments", effect: Building { building: Apartment }, cost: 1, blurb: "Eight households on a plot of two. They fill fast, and empty onto the road slower." }),
-        ('S', Row { name: "Commerce", effect: Weight { class: Commerce, times: 1.4 }, cost: 1, blurb: "Somewhere to eat and something to do, from nine till late. Commerce arrives more often." }),
+        ('S', Row { name: "Commerce", effect: Weight { class: Commerce, times: 1.4 }, cost: 1, blurb: "Somewhere to eat and something to do, from nine till late. Commerce costs less." }),
         ('R', Row { name: "Restaurant", effect: Building { building: Restaurant }, cost: 1, blurb: "Lunch, and an evening out. A dozen at a time, with the traffic that brings." }),
         ('B', Row { name: "Bar", effect: Building { building: Bar }, cost: 1, blurb: "The last place open. The evening's traffic goes here, and comes home at two." }),
         ('G', Row { name: "Gas station", effect: Building { building: GasStation }, cost: 1, blurb: "Cars run dry. Pumps round the clock, wherever the driving is." }),
-        ('I', Row { name: "Industry", effect: Weight { class: Industry, times: 1.4 }, cost: 1, blurb: "Jobs that keep to themselves. Industry arrives more often." }),
+        ('I', Row { name: "Industry", effect: Weight { class: Industry, times: 1.4 }, cost: 1, blurb: "Jobs that keep to themselves. Industry costs less." }),
         ('W', Row { name: "Workshop", effect: Building { building: Workshop }, cost: 1, blurb: "Six jobs, seven to four." }),
         ('F', Row { name: "Factory", effect: Building { building: Factory }, cost: 1, blurb: "Twenty-four jobs, six to three. The morning rush starts here." }),
         ('r', Row { name: "Roads", effect: RoadTiles { tiles: 60 }, cost: 1, blurb: "Sixty more tiles of road. Room to build." }),
@@ -266,17 +266,12 @@ impl Build {
         !named || self.effects().any(|e| e == Effect::Building { building: kind })
     }
 
-    /// May the city put one of these down on its own?
-    pub fn may_arrive(&self, kind: BuildingKind) -> bool {
-        !blueprint(kind).by_hand && self.unlocked(kind)
-    }
-
     /// May the mayor place one of these?
     pub fn may_place(&self, kind: BuildingKind) -> bool {
-        blueprint(kind).by_hand && self.unlocked(kind)
+        self.unlocked(kind)
     }
 
-    /// How much more often this class arrives than the table says.
+    /// How much cheaper this class is than the table says.
     pub fn weight(&self, class: Class) -> f64 {
         self.effects()
             .map(|e| match e {
@@ -366,8 +361,8 @@ mod tests {
     #[test]
     fn the_build_is_the_gate() {
         let mut b = Build::default();
-        assert!(b.may_arrive(BuildingKind::House));
-        assert!(!b.may_arrive(BuildingKind::Factory));
+        assert!(b.may_place(BuildingKind::House));
+        assert!(!b.may_place(BuildingKind::Factory));
         assert!(!b.may_place(BuildingKind::Restaurant));
         assert!(!b.may_draw(true, false));
         assert_eq!(b.weight(Class::Living), 1.0);
@@ -376,7 +371,7 @@ mod tests {
         for c in [Cell { x: 18, y: 11 }, Cell { x: 16, y: 7 }, Cell { x: 13, y: 7 }] {
             assert!(b.take(c, level), "{c:?}");
         }
-        assert!(b.may_arrive(BuildingKind::Apartment));
+        assert!(b.may_place(BuildingKind::Apartment));
         assert!((b.weight(Class::Living) - 1.4 * 1.4).abs() < 1e-9);
         assert_eq!(b.road_tiles(), ROAD_BASE);
     }

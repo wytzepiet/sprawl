@@ -61,7 +61,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   enough to exercise building, tree clearing and demolition. Any fixed seed gives
   the same map back, so a change in behaviour is a change in the code.
   `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the middle of
-  the map; `cargo test draw_the_town -- --nocapture` prints a grown town.
+  the map.
 
 ## Solid 1.x
 

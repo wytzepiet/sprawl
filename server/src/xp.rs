@@ -15,6 +15,58 @@
 
 use crate::engine::GameTime;
 use crate::needs::Tap;
+use crate::protocol::{BuildingKind, Growth, DAY_MS};
+use crate::world::World;
+
+/// One hour of need served — the unit prices and levels are written in.
+/// Obligation is kept in milliseconds, so saying so here is what keeps
+/// those numbers legible.
+pub const SERVED_HOUR: f64 = DAY_MS as f64 / 24.0;
+/// Output for the first level. Each one after costs a level more than the last.
+const LEVEL_BASE: f64 = 30.0 * SERVED_HOUR;
+
+/// One point: a minute of need served. Obligation is kept in milliseconds,
+/// which makes for numbers nobody can read on a bar.
+fn points(served: f64) -> f64 {
+    served * 60.0 / SERVED_HOUR
+}
+
+/// What one of a kind costs the mayor, in the ledger's own units, with the
+/// build's discount on its class.
+pub fn price(world: &World, kind: BuildingKind) -> f64 {
+    let b = crate::blueprint::blueprint(kind);
+    b.price * SERVED_HOUR / world.build.weight(b.class)
+}
+
+/// What the mayor has to spend: earned, less spent.
+pub fn balance(world: &World, now: GameTime) -> f64 {
+    world.xp.at(now) - world.spent
+}
+
+/// Everything the dials need to draw themselves, so the numbers behind
+/// them stay in here with the constants that set them.
+pub fn growth(world: &World, now: GameTime) -> Growth {
+    let earned = world.xp.at(now);
+    let (level, reached) = level(earned);
+    Growth {
+        level,
+        xp: points(earned - reached),
+        xp_needed: points(LEVEL_BASE * (level as f64 + 1.0)),
+        balance: points(balance(world, now)),
+        rate: points(world.xp.rate(now)),
+        taken: world.build.taken(),
+        road_tiles_left: world.build.road_tiles().saturating_sub(world.laid),
+    }
+}
+
+/// The city's level, and what it took to reach it.
+///
+/// Level `n` is reached at `LEVEL_BASE * n * (n + 1) / 2`, so each one asks for
+/// a little more than the last.
+pub fn level(earned: f64) -> (u32, f64) {
+    let n = (((1.0 + 8.0 * earned / LEVEL_BASE).sqrt() - 1.0) / 2.0).floor().max(0.0);
+    (n as u32, LEVEL_BASE * n * (n + 1.0) / 2.0)
+}
 
 #[derive(Default)]
 pub struct Ledger {

@@ -449,12 +449,10 @@ pub struct Growth {
     pub level: u32,
     pub xp: f64,
     pub xp_needed: f64,
-    pub offer_xp: f64,
-    pub offer_needed: f64,
+    /// What the mayor has to spend, in points.
+    pub balance: f64,
     /// Points per millisecond of sim time, as of the update's clock.
     pub rate: f64,
-    /// What is coming, once it is earned.
-    pub next: Option<BuildingKind>,
     /// The build: the nodes of the tree taken.
     pub taken: Vec<crate::tree::Cell>,
     /// Tiles of road the mayor may still lay.

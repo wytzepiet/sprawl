@@ -189,7 +189,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Resident(id) => crate::resident::inspect(&world, id, now),
                         Ask::Residents => crate::resident::inspect_all(&world, now),
                         Ask::Demand => crate::resident::demand(&world, now),
-                        Ask::Spawner => crate::spawner::inspect(&world, now),
                         Ask::Lot(id) => world.inspect_lot(id, now),
                         Ask::Card(id) => crate::card::card(&world, id, now),
                         Ask::Site { kind, x, y } => serde_json::to_value(world.site_under(x, y, kind)).unwrap_or_default(),
@@ -221,13 +220,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 handle_wake(&mut world, &mut events, &mut intersections, id, now);
                 wakes += 1;
             }
-        }
-        // The city offers a building once it has earned one, while the mayor
-        // has room to answer. Cheap to ask — it is a subtraction until the
-        // meter is actually full.
-        // A building that lands beside a road is lived in at once.
-        if crate::spawner::spawn(&mut world, now).is_some() {
-            settle_and_wake(&mut world, &mut events);
         }
         // A tick that overruns is the clock falling behind the wall, and every
         // command queued behind it. Said out loud the moment it happens, so a
@@ -272,7 +264,7 @@ fn state_update(world: &World, ops: Vec<Operation>, clk: Clock) -> ServerMessage
     ServerMessage::Update(StateUpdate {
         ops,
         clock: clk,
-        growth: crate::spawner::growth(world, clk.now),
+        growth: crate::xp::growth(world, clk.now),
         terrain_seed: world.terrain_seed,
         revealed_bounds: world.revealed_bounds,
     })
@@ -285,10 +277,10 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
     } else {
         World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed)
     };
-    // What the city has produced outlives a restart; what it was about to offer
-    // is drawn again, since it depends on demand as it stands now.
+    // What the city has produced, and what the mayor spent of it, outlive a
+    // restart.
     world.xp = crate::xp::Ledger::load(meta.earned, meta.sim_time);
-    world.offered_at = meta.offered_at;
+    world.spent = meta.spent;
     world.build = crate::tree::Build::load(meta.taken);
     (world, meta.sim_time)
 }
@@ -314,7 +306,7 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
             terrain_seed: world.terrain_seed,
             sim_time,
             earned: world.xp.at(sim_time),
-            offered_at: world.offered_at,
+            spent: world.spent,
             taken: world.build.taken(),
         },
     );
@@ -356,14 +348,20 @@ fn handle_player_action(
         }
         ClientMessage::PlaceBuilding(place) => {
             // Exactly what the ghost showed: the site is decided once, by the
-            // same call, from the point the building was held over.
+            // same call, from the point the building was held over. The
+            // mayor pays for it from what the city has earned.
             let site = world.site_under(place.at[0], place.at[1], place.kind);
-            let placed = world.build.may_place(place.kind).then(|| world.place_site(site, place.kind)).flatten();
+            let price = crate::xp::price(world, place.kind);
+            let allowed = world.build.may_place(place.kind) && crate::xp::balance(world, now) >= price;
+            let placed = allowed.then(|| world.place_site(site, place.kind)).flatten();
             match placed {
-                Some(_) => settle_and_wake(world, events),
+                Some(_) => {
+                    world.spent += price;
+                    settle_and_wake(world, events);
+                }
                 // Said out loud: a click that does nothing is the kind of
                 // bug that otherwise takes an afternoon to find.
-                None => println!("place refused: {:?} at {:?}: allowed {}, site {:?}", place.kind, place.at, world.build.may_place(place.kind), site),
+                None => println!("place refused: {:?} at {:?}: allowed {}, site {:?}", place.kind, place.at, allowed, site),
             }
         }
         ClientMessage::DemolishRoad(demolish) => {
@@ -392,7 +390,7 @@ fn handle_player_action(
             }
         }
         ClientMessage::Take(cell) => {
-            let (level, _) = crate::spawner::level(world.xp.at(now));
+            let (level, _) = crate::xp::level(world.xp.at(now));
             world.build.take(cell, level);
         }
         ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),

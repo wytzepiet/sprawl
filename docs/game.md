@@ -139,9 +139,9 @@ rise with scarcity across neighbours.
 
 ## Order
 
-1. Placing: a hotkey menu, tap to place, the meter pays. The spawner off.
-   One evening on a fresh seed 7 to feel whether saving and placing is
-   the loop. If it is, the spawner goes.
+1. Placing: every kind on the build menu, drag to place, the meter pays.
+   The spawner is gone. One evening on a fresh seed 7 to feel whether
+   saving and placing is the loop.
 2. The edge: exits as buildings with every tap, homes and jobs.
 3. Construction: the site as a call, the truck, the refund.
 4. Money: lumps at the building, the cut, balances, closures.

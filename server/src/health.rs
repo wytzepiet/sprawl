@@ -69,11 +69,6 @@ pub async fn tree() -> axum::Json<serde_json::Value> {
     axum::Json(crate::tree::inspect())
 }
 
-/// What the city is offering, and the shape of what stands.
-pub async fn inspect_spawner(State(state): State<AppState>) -> String {
-    ask(&state, Ask::Spawner).await
-}
-
 /// A building's lot: spots, windows, and what it has seen.
 pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
     ask(&state, Ask::Lot(id)).await
