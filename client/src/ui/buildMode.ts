@@ -12,4 +12,6 @@ export { buildMode, setBuildMode, roadKind, setRoadKind };
 
 // Building placement
 const [placingBuilding, setPlacingBuilding] = createSignal<BuildingKind | null>(null);
-export { placingBuilding, setPlacingBuilding };
+/** The pointer is back over the shelf's place: dropping here places nothing. */
+const [overCancel, setOverCancel] = createSignal(false);
+export { placingBuilding, setPlacingBuilding, overCancel, setOverCancel };
