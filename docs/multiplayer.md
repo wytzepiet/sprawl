@@ -99,8 +99,9 @@ long approach.
   leave the band.
 - **Good coast is wide coast.** A bay that takes two ships abreast is a
   harbour; a fjord takes one at a time and every arrival queues at its
-  mouth. Terrain is not dredged, so the coast a town spawns on is the
-  port it gets, and where the terminal stands is a choice of
+  mouth. A port behind a one-tile strait has the strait's capacity, not
+  the berth's. Terrain is not dredged, so the coast a town spawns on is
+  the port it gets, and where the terminal stands is a choice of
   bottleneck read off the map. This is `economy.md` §13.6's mechanism.
 
 Shipping is one pathfinder on a water grid and one physics profile,
