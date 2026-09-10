@@ -10,12 +10,14 @@ use curve::Curve;
 const H: u32 = DAY_MS / 24;
 const HOUR: f64 = H as f64;
 
-/// Something a resident has to do. Three kinds, by where the timing lives:
-/// a **timed** need is used up by the passage of time and carries it in
-/// `drain`; a **constant** need is imposed by the world and carries it in
-/// the curve of whatever serves it, holding a fixed level meanwhile; a
-/// **driven** need is used up by the road, a little per tile, and is the
-/// car's rather than the day's.
+/// Something a resident has to do, and so a good: what a tap serves, what
+/// a shelf holds, what a price is per unit of. Three kinds, by where the
+/// timing lives: a **timed** need is used up by the passage of time and
+/// carries it in `drain`; a **constant** need is imposed by the world and
+/// carries it in the curve of whatever serves it, holding a fixed level
+/// meanwhile; a **driven** need is used up by the road, a little per tile,
+/// and is the car's rather than the day's. And one is a building's alone:
+/// **services**, drawn by the day of operation and delivered by a call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Need {
@@ -33,11 +35,16 @@ pub enum Need {
     Leisure,
     /// The tank. Used by the mile rather than the hour, and refilled at a pump.
     Fuel,
+    /// Upkeep, repairs and everything else on no shelf: what an office
+    /// makes from its labour, a unit an hour, and every building and home
+    /// draws by the day. No tap serves it; a car delivers it
+    /// (docs/economy.md §4).
+    Services,
 }
 
 impl Need {
     /// Baseline first, so ties fall to staying put.
-    pub const ALL: [Need; 6] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure, Need::Fuel];
+    pub const ALL: [Need; 7] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure, Need::Fuel, Need::Services];
     /// The needs a person carries. The tank is the car's, though its
     /// driver is the one who decides to fill it.
     pub const OWN: [Need; 5] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure];
@@ -63,7 +70,7 @@ impl Need {
     /// constant need. For `D` hours a day at unit rate this is `D / (24 - D)`.
     pub fn drain(self) -> f64 {
         match self {
-            Need::Work | Need::Home | Need::Fuel => 0.0,
+            Need::Work | Need::Home | Need::Fuel | Need::Services => 0.0,
             Need::Rest => 8.0 / 16.0,
             // About 1.2 hours a day, as people actually spend: a sitting is
             // owed ten hours after the last, and lunch out is worth the
@@ -87,6 +94,9 @@ impl Need {
             // scored against its price. A near-empty tank then beats an
             // evening in and loses to a shift, as it should.
             Need::Fuel => 2.0 * HOUR,
+            // An hour of an office's make: the unit. A building's stock of
+            // it has a cap of its own (`economy::stocks`).
+            Need::Services => HOUR,
         }
     }
 
@@ -95,7 +105,7 @@ impl Need {
     /// and a shelf counts them. docs/economy.md §12.1.
     pub fn unit(self) -> f64 {
         match self {
-            Need::Work | Need::Home | Need::Rest => HOUR,
+            Need::Work | Need::Home | Need::Rest | Need::Services => HOUR,
             Need::Eat | Need::Leisure | Need::Fuel => self.cap(),
         }
     }
@@ -112,7 +122,7 @@ impl Need {
             Need::Home => 0.7 * cap,
             // Everyone drives in from beyond the edge, where fuel is
             // unlimited: the tank is full, less the drive in.
-            Need::Rest | Need::Eat | Need::Leisure | Need::Fuel => cap,
+            Need::Rest | Need::Eat | Need::Leisure | Need::Fuel | Need::Services => cap,
         };
         Stock { level, cap }
     }
@@ -288,7 +298,8 @@ mod tests {
 
     #[test]
     fn the_ceiling_inverts() {
-        for need in Need::ALL {
+        // Services no tap serves, so nothing bounds it.
+        for need in Need::ALL.into_iter().filter(|n| n.bounds().0 > 0.0) {
             let short = 0.3 * need.cap();
             let target = need.ceiling(short);
             let back = need.short_for(target).expect("under cap");

@@ -16,12 +16,13 @@ size: [number, number],
  */
 facing: number, 
 /**
- * What is on the shelves, in units of what it sells: meals, tanks.
- * Drawn down by sales, filled by a delivery; empty shelves sell
- * nothing. Cap zero for a kind that keeps no stock. A save from
- * before shelves were a stock gets one issued at load.
+ * Its stocks, by good: the shelf of what it sells or keeps — meals,
+ * tanks, an office's services — drawn down by sales and loads and
+ * filled by a delivery or its own labour; and the services it draws
+ * by the day. Empty shelves sell nothing. A save from before a stock
+ * existed gets it issued at load (`economy::open`).
  */
-stock: Stock, 
+stocks: { [key in Need]?: Stock }, 
 /**
  * The price posted on each thing it sells, per unit of the need.
  * Nudged daily by its own stock, never below unit cost. Issued at the

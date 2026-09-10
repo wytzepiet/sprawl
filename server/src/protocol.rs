@@ -104,12 +104,13 @@ pub struct Building {
     /// within the footprint from this.
     #[serde(default = "south")]
     pub facing: u8,
-    /// What is on the shelves, in units of what it sells: meals, tanks.
-    /// Drawn down by sales, filled by a delivery; empty shelves sell
-    /// nothing. Cap zero for a kind that keeps no stock. A save from
-    /// before shelves were a stock gets one issued at load.
+    /// Its stocks, by good: the shelf of what it sells or keeps — meals,
+    /// tanks, an office's services — drawn down by sales and loads and
+    /// filled by a delivery or its own labour; and the services it draws
+    /// by the day. Empty shelves sell nothing. A save from before a stock
+    /// existed gets it issued at load (`economy::open`).
     #[serde(default)]
-    pub stock: crate::needs::Stock,
+    pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
     /// The price posted on each thing it sells, per unit of the need.
     /// Nudged daily by its own stock, never below unit cost. Issued at the
     /// edge's price to a save from before prices.
@@ -122,12 +123,12 @@ impl Building {
     /// what the outside charges is the one price a shop that has sold
     /// nothing yet can know.
     pub fn new(kind: BuildingKind, size: (u8, u8), facing: u8) -> Building {
-        use crate::economy::{edge_price_of, sells};
+        use crate::economy::{edge_price_of, sells, stocks};
         Building {
             kind,
             size,
             facing,
-            stock: crate::needs::Stock::full(crate::blueprint::blueprint(kind).stock as f64),
+            stocks: stocks(kind).into_iter().map(|(need, cap)| (need, crate::needs::Stock::full(cap))).collect(),
             prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
         }
     }
@@ -149,6 +150,11 @@ pub enum CarRole {
     Truck,
     /// A depot's van, on the last mile to a shop.
     Van,
+    /// An ordinary car that is a building's: an office's, its staff
+    /// driving out to whoever called for services, or a consultant's in
+    /// from beyond the edge where the town has no office. Looks like any
+    /// car; only who dispatches it differs.
+    Company,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

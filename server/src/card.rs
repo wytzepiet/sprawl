@@ -41,6 +41,7 @@ fn link(world: &World, id: EntityId) -> Value {
             CarRole::Private => name(c.owner) + "'s car",
             CarRole::Van => "Van".into(),
             CarRole::Truck => "Lorry".into(),
+            CarRole::Company => "Car".into(),
         }),
         _ => ("gone", "gone".into()),
     };
@@ -166,7 +167,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "label": format!("{:?}", b.kind),
         "building_kind": b.kind,
         "reached": world.road_node_for_building(id).is_some(),
-        "stock": (bp.stock > 0).then_some(b.stock.level / b.stock.cap),
+        "stocks": b.stocks.iter().map(|(need, s)| json!({ "need": need, "full": s.level / s.cap })).collect::<Vec<_>>(),
         "money": (!world.edge.contains(&id)).then(|| crate::economy::inspect(world, id, now)),
         "spots": world.spots_at(id),
         "here": here,

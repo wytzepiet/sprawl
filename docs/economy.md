@@ -4,9 +4,10 @@ Status: specification, drafted 2026-09-09 and reworked twice the same
 day: once after an argument about where money goes when nobody spends
 it, and again after one about where it comes from. The second rework is
 the first rule below — the town has one purse — and everything that
-followed from purses went with them (`shelved.md`). Built through step 3
-of §12 as it stood before that; §12.2 and §12.3 record what building it
-decided. Step 4 is the one purse. Supersedes `game.md` §Money, which
+followed from purses went with them (`shelved.md`). Built through the
+services of step 5 of §12; §12.2 to §12.5 record what building each step
+decided, and wear (step 5's other half) is open (§13.14). Supersedes
+`game.md` §Money, which
 points here. Builds on `residents.md` (buckets, taps, the
 score), `services.md` (calls) and `parking.md` (lots as the place
 vehicles stand). The single ledger of hours served that was both level
@@ -78,8 +79,10 @@ out of these rules rather than be added.
 
 ## 2. What exists, and what stays
 
-- **Steps 1 to 3, as built** (§12.2, §12.3): stocks, posted prices,
-  wages on the labour deficit, the building's turn. All stand.
+- **Steps 1 to 5, as built** (§12.2 to §12.5): stocks, posted prices,
+  the building's turn, the one purse and the door, labour bought on the
+  building's turn, services made at the office and drawn by every
+  building. All stand.
 - **Purses.** Every resident had a wallet and every building a balance;
   each kept a float and swept the rest to the treasury, a resident's
   sweep was rent, and a building whose purse ran dry stopped. Built, run
@@ -90,7 +93,7 @@ out of these rules rather than be added.
   whose one visible product was a bar with a full shelf and no money.
   One purse says it once.
 - **Calls.** A building whose stock runs low calls; a warehouse's van
-  answers, or the edge's (`services.md` §5).
+  answers, or an office's car, or the edge's (`services.md` §5).
 
 What stays: **level is hours served**, and it is now named for what it
 measures (§10). What changes: money stops being anyone's but the town's.
@@ -602,7 +605,8 @@ Each step is playable and nothing before step 2 can hurt anyone.
    bedroom town and the job-centre town beside the full one (§11.12).
    §12.4 has what it needs decided.
 5. **Services and wear.** The office's stock and its car; the workshop;
-   the household's services stock.
+   the household's services stock. §12.5 has what services needed
+   decided; wear waits (§13.14).
 6. **Rows.** Every workplace's inputs, output and rate on its row;
    `edge_price` derived link by link from the rows at capacity, each
    keeping its share, plus the crossing (§8.1); freight as fuel and
@@ -890,6 +894,129 @@ the town's money is what its rows keep. As built:
   one and a quarter a head a day to the crossing and the drive.
 
 
+### 12.5 Step 5, services, to the number and as built
+
+Built 2026-09-10; wear and the workshop wait (§13.14). The decisions
+the mechanism did not make on its own, and what running it found.
+
+- **Services is a good like the others, keyed with them.** `Services`
+  stands beside the meal, the evening, the tank and the hour in `Need`;
+  no tap serves it and no resident carries it, so the search never sees
+  it: a building's alone, delivered by a call. A building's stocks are
+  a map by good — its shelf, and its services — so the building's turn
+  (§6.2) runs over every stock alike and a call carries the good.
+- **The unit is an hour of the office's make**, and its price at the
+  edge is what an hour of labour makes: the hour and the services a firm
+  buys in for it, over two thirds (§8.1). Every firm's row now has that
+  one input, a fifth of an hour's worth for each hour of labour
+  (purchased services against the wage bill, about a fifth in
+  input-output tables), so a pass-through's hour is worth 1.8 where it
+  was 1.5, and the town keeps its third on the services too. The office
+  makes a unit an hour, prices its shelf like a depot, opens at the
+  edge's price, and its floor is what the edge pays for a unit, since it
+  can always ship one there.
+- **The draw.** A home draws a head's share a day for each head under
+  its roof: the household row's balance after the table, the evening
+  and the car — the night's upkeep, repairs and the rest, about 4.9
+  hours a head at the world's prices, which is the night's third and
+  §12.4's balance in one stock; the two imports at midnight are gone.
+  A firm draws a fifth of an hour's worth for each hour its desks could
+  work, a fact about the row, staffed or not. The stock drains as time
+  passes, like a tank: at every look at the building — a tab paid there,
+  a delivery landed, midnight — what the row used since the last look
+  comes off. A stock holds two days of it, so a building calls about
+  every other day, as a shop's shelf does, and the reorder point is the
+  draw over the lead. Two cuts came before this one. A week's cover,
+  drawn at midnight in one lump: forty buildings founded together order
+  the same day, the offices have shipped their shelves to the edge by
+  then, and the town buys the week from consultants, losing the
+  crossing twice on what it makes itself. Two days' cover, still at
+  midnight: every building calls at the same instant, the office's one
+  car takes one order and the edge the other thirty-six, the failed
+  ones are picked up by the hourly retry as the car frees, so who
+  bought from the office was a matter of timing and its price rang;
+  and forty consultants at once at one entry is a jam.
+- **A night served is the household's services**, banked as GDP as
+  they are drawn, for what the stock had, whoever made it. A firm's
+  draw is a line and no GDP: intermediate. Services land on a home's
+  stock and bank when drawn, not when they land, as a meal at home
+  banks when eaten and not when the groceries come. An empty stock
+  serves nothing: the hours are not banked, and the building is grey.
+  Nothing stops for it — §4's list stands — since an office short of
+  services would otherwise stop making them, and a broke town with one
+  office would never start.
+- **The office answers with its car**, a facility vehicle like a depot's
+  van; from beyond the edge a consultant drives in in one, at the
+  edge's price plus the crossing, while the treasury can pay. A depot's
+  fetch and a maker's shipment are one kind of call, a trip past the
+  edge by the building's own vehicle: a shelf run full ships the lot,
+  since the edge buys without limit, the car is paid when it is home,
+  and a shipment is no sale for the nudge — nobody in town bought it,
+  which is piling up, so an office nobody buys from drifts to the floor
+  and its town's buyers find it before the consultant. A shelf that
+  stood full at the last look ships, before the office's own draw is
+  taken off it. A row never calls for what its own labour makes.
+  `answers` left the row: a kind with a shelf and vehicles is a depot,
+  and `makes` says whose labour fills the shelf.
+- **Everyone prices money in their row.** A home's earning came out as
+  nothing — its wages are booked where its people work — so every
+  delivered price was infinite and the consultant from the edge won
+  every order. A home prices money in its household's shifts, eight
+  hours a head at the edge's wage; a pass-through in its hours over two
+  thirds; a shop in its counter, as before: the row's output at capacity
+  at the world's prices, until it has a day of takings.
+- **Founded full**, like a shelf: a placed home has two days of
+  services in hand it did not pay for, as a placed shop has a full
+  shelf.
+- **A call nothing could answer is tried again in an hour.** Before, an
+  open call was tried again only when another call was raised or a
+  vehicle came home. A home calls at midnight with the household's car
+  in the driveway and nothing can pull in; a street of homes raises no
+  other call and owns no vehicle, so the bedroom town sat ten days with
+  forty calls open and every home dry. The retry is a wake that is
+  nobody's, like midnight.
+
+What running it found, ten days of the three towns of §11.12 (`DAYS=10
+cargo test season -- --ignored --nocapture`), against §12.4's ten:
+
+- **The full town** nets about two a head a day where it netted one,
+  and its GDP is 11.3 a head a day where it was 9.9: the night is worth
+  its services now, a firm's hour is worth 1.8, and what the offices sell
+  in town no longer crosses the door twice. The door alternates days —
+  about 130 out one day and 1,080 the next — because forty buildings
+  founded in one minute run their two days of services down together;
+  the offices' cars make about sixty-five call-outs a day between them
+  and ship to the edge twice or so, and consultants take the rest. Every
+  office, factory and workshop is in the black on most days and in the
+  red on the day its services land, since a firm buys two days of them
+  at once against a day's takings; the shops, bars, supermarket and
+  warehouse are in the red as before, a little deeper for their draw.
+  Desks are worked six to eight hours of nine, as before; the wake
+  budget holds at 28 the first day and 17 to 21 after; tenure stays at
+  zero changes.
+- **The offices' price runs to the ceiling.** Three offices make about
+  two hundred units a day and the town draws about four hundred, so
+  each shelf empties most days, each price steps up from 1.75 to 2.03
+  or 2.14 in ten days, and over the edge's delivered 1.98 the marginal
+  buyer takes a consultant: the price sits a notch over the edge's and
+  a notch under, which is where a scarce good sits, and the fourth
+  office is the mayor's to place. The ring test reads the last third of
+  a season as its steady state and allows a price pinned to the band's
+  edge its one notch up and back.
+- **The bedroom town** nets 1.7 a head a day where it netted 1.19 — its
+  homes are founded with two days of services in hand — and its GDP is
+  4.8 a head a day where it was 2.8. It is served entirely by
+  consultants, about 1,900 out on the days they come; it stays under
+  the full town's rate plus the saving, and the poorer town by GDP.
+- **The job centre** loses 1.5 a head a day where it lost 1.3: its firms
+  now draw services too, from consultants at the crossing, and its
+  fourteen offices ship everything they make to the edge, since nobody
+  in a town of desks is home to buy it.
+- **Two things the season found and this step fixed** are recorded above
+  with their bullets: a home priced money in nothing and always bought
+  from the edge; and an unanswered call was never tried again.
+
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
@@ -924,3 +1051,9 @@ the town's money is what its rows keep. As built:
     check (§11.9) becomes a season print. Until then a household nets a
     little over its tenth when it drives less than the sixth, which is
     the bedroom town's 1.19 against 0.72 (§12.4).
+14. Wear (§4): a car's second per-tile stock, the workshop as its tap.
+    Step 5's other half; services went first because the office was
+    already a row with nothing to sell.
+15. A firm's services are a fifth of its labour and its output the sum
+    over two thirds (§12.5); with the rows (step 6) the input and the
+    output are the row's own, link by link, and the fifth goes.
