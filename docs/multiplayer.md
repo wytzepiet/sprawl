@@ -80,22 +80,32 @@ is first seen. Nothing is spawned off-coast in secret, because the fog
 is where the world begins. A port town that surveys a wide bay has a
 long approach.
 
-- **Navigation is A\* on water**, on a grid coarser than the roads',
-  since a ship turns in tiles. The lanes it finds are the sea's roads.
-- **Open water has no interaction.** Two ships crossing a bay pass; a
-  collision nobody could see is not a mechanic.
-- **A channel is a segment.** Where water narrows to a lane's width the
-  lane is road-shaped: ships follow one another with a gap by length,
-  and where two lanes meet, the giving-way rule is `parking.md`'s, by
-  length. The same code as a lorry meeting a car at a junction.
-- **The berth is a lot.** Ships queue for it with the reservation
-  window `parking.md` has for spots. One berth and three ships in the
+- **A ship fills its tile**, and is as many tiles long as its class: a
+  ferry one, a container ship three, held along its path the way a
+  lorry's nose and tail are held on a road. Two ships cannot share a
+  tile, and nothing else about the sea's traffic has to be designed.
+- **Navigation is A\* on the water's tiles.** The paths it finds are
+  the sea's roads, and the water's own width is the rules.
+- **A channel's width is its lanes.** One tile wide is a one-lane
+  bridge: the first ship in holds the passage, the next waits at the
+  mouth, and the hold is `parking.md`'s reservation window over a
+  passage instead of a spot. Two tiles wide is two-way. Open water is as
+  many lanes as it is wide, which is why nothing interacts there. Where
+  two ships would meet, the giving-way rule is `parking.md`'s, by
+  length: the long one cannot stop, so the short one waits.
+- **The berth is a lot**, as many tiles as the ship. Ships queue for it
+  with the same reservation window. One berth and three ships in the
   roads is the harbour's rush hour, and the capacity that lets prices
   leave the band.
+- **Good coast is wide coast.** A bay that takes two ships abreast is a
+  harbour; a fjord takes one at a time and every arrival queues at its
+  mouth. Terrain is not dredged, so the coast a town spawns on is the
+  port it gets, and where the terminal stands is a choice of
+  bottleneck read off the map. This is `economy.md` §13.6's mechanism.
 
 Shipping is one pathfinder on a water grid and one physics profile,
-slow with a long stop; everything else it needs is a road, a lot or a
-segment already written.
+slow with a long stop; everything else it needs is a lot, a reservation
+or a segment already written.
 
 ## 3. The fog
 
