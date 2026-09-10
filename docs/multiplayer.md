@@ -117,10 +117,13 @@ long approach.
   flips. A block is the whole two-way run, however many pieces or
   branches, so a ship in one waits for nothing but its own exit, and
   there is no deadlock.
-- **A lane is a segment.** Ships on a lane going its way follow each
-  other with a gap by length, as cars on a stretch do; a convoy is
-  ships that want the same thing at the same time. Open water off the
-  lanes has no interaction, and nothing slows a ship there but a
+- **Following is by tile, not by segment.** Ships on the same lane
+  tiles going the same way keep a gap by length, as cars on a stretch
+  do; a convoy is ships that want the same thing at the same time. A
+  lane has no ends as far as routing is concerned — the search leaves
+  it on whichever tile the discounted way stops being the cheapest —
+  so nothing ever has to decide where a segment stops. Open water off
+  the lanes has no interaction, and nothing slows a ship there but a
   slower one ahead, which is another class, passing on the outside.
 - **Routing is on demand, over the tiles, cached.** Every route is the
   full search over the water's tiles with the four costs, lanes as a
