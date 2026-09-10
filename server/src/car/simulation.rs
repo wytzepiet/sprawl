@@ -1,12 +1,12 @@
 use crate::car::physics;
 use crate::car::{
-    nose, tail, ACCELERATION, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle,
+    nose, tail, ACCELERATION, CRUISE_SPEED, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle,
 };
 use crate::engine::GameTime;
 use crate::engine::event_queue::EventQueue;
 use crate::intersection::IntersectionRegistry;
 use crate::protocol::{CarRole, EdgeKey, EntityId, GameObject, Trip};
-use crate::world::World;
+use crate::world::{World, chunk_of};
 
 /// End a car's trip and leave it parked at a building: road bookkeeping
 /// cleaned up, trip gone, position at the building it now sits by.
@@ -111,7 +111,6 @@ pub fn park_at_home(
 fn leave_crossed(
     world: &mut World,
     events: &mut EventQueue,
-    intersections: &mut IntersectionRegistry,
     car_id: EntityId,
     trip: &Trip,
     old_ri: usize,
@@ -130,6 +129,73 @@ fn leave_crossed(
             set.remove(&car_id);
         }
     }
+}
+
+/// Stand in the queue of every edge from route[from - 1] to the end of the
+/// run. A run has no way on or off, so whoever joins it later is behind, and
+/// standing in all of its queues at once is what lets the car behind see this
+/// one wherever on the run it has got to. Queued for the one tile it was on,
+/// it was out of sight for the rest of the run.
+fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize) {
+    for k in from..trip.route.len() {
+        if let Some(seg) = world.edges.get_mut(&(trip.route[k - 1], trip.route[k]))
+            && !seg.cars.contains(&car_id)
+        {
+            seg.cars.push_back(car_id);
+        }
+        if world.network.is_junction(trip.route[k]) {
+            break;
+        }
+    }
+}
+
+/// The speed the bend at route[k] allows, if that is less than cruising. A
+/// straight node limits nothing, and so is nothing to slow for or wake at.
+fn bend(world: &World, route: &[EntityId], k: usize) -> Option<f64> {
+    let limit = physics::turn_speed(world.turn_cos_angle(route, k));
+    (limit < CRUISE_SPEED - 1e-9).then_some(limit)
+}
+
+/// How many nodes short of an intersection a car queues for passage through
+/// it. Close enough that the queue is the cars actually at the junction, in
+/// the order they arrived; a car that queued from the far end of the street
+/// would hold up the cross traffic while it was still a minute away.
+const QUEUE_AHEAD: usize = 3;
+
+/// How many nodes ahead a car looks for what it has to slow for — and so how
+/// far it may drive before it looks again.
+const LOOKAHEAD: usize = 30;
+
+/// Does crossing route[k] bring an intersection within queueing range? Not
+/// one the route ends on: the car never queues there.
+fn brings_in_range(world: &World, route: &[EntityId], k: usize) -> bool {
+    let j = k + QUEUE_AHEAD;
+    j + 1 < route.len() && world.is_intersection(route[j])
+}
+
+/// How far along the route a car on segment `ri` can drive without thinking:
+/// to the first node ahead where the road asks something of it. A junction,
+/// where queues change and claims are settled; a bend, whose limit lifts only
+/// once the car is past it; the point where an intersection comes within
+/// queueing range, since a car asleep there queues behind the one following
+/// it; a chunk line, so whoever is watching the next chunk sees it arrive.
+/// A straight run between those it sleeps through, as far as it looked.
+fn stretch_end(world: &World, car_id: EntityId, trip: &Trip, ri: usize, seg_start: f64) -> f64 {
+    let here = world.objects.get(car_id).and_then(|e| e.position).map(chunk_of);
+    let mut end = seg_start;
+    for k in ri..trip.route.len().min(ri + LOOKAHEAD) {
+        end += trip.segment_lengths[k];
+        let node = trip.route[k];
+        let chunk = world.objects.get(node).and_then(|e| e.position).map(chunk_of);
+        if world.network.is_junction(node)
+            || bend(world, &trip.route, k).is_some()
+            || brings_in_range(world, &trip.route, k)
+            || chunk != here
+        {
+            break;
+        }
+    }
+    end
 }
 
 /// The arm from a junction toward a neighbour on the route, as a grid step:
@@ -297,7 +363,7 @@ pub fn handle_car_wake_up(
             // on a call unloads, and thinks again when it is done. The
             // stretches crossed on the way here are left like any others,
             // or the car would stay on their queues as a ghost.
-            leave_crossed(world, events, intersections, car_id, &trip, old_ri, ri);
+            leave_crossed(world, events, car_id, &trip, old_ri, ri);
             // The road ran out: a lorry off past the edge, away for a while.
             // A private car stopping at the edge is visiting it, not leaving:
             // the road exit is a building, and its door is a road node.
@@ -323,16 +389,8 @@ pub fn handle_car_wake_up(
         ri += 1;
     }
 
-    leave_crossed(world, events, intersections, car_id, &trip, old_ri, ri);
-    // Add to current edge if we transitioned
-    if ri != old_ri {
-        let current_edge: EdgeKey = (trip.route[ri - 1], trip.route[ri]);
-        if let Some(seg) = world.edges.get_mut(&current_edge)
-            && !seg.cars.contains(&car_id)
-        {
-            seg.cars.push_back(car_id);
-        }
-    }
+    leave_crossed(world, events, car_id, &trip, old_ri, ri);
+    join_run(world, car_id, &trip, ri);
 
     // A car holds a junction until its tail is through it, not until its
     // nose is: the car behind is let into the node only once this one has
@@ -358,8 +416,7 @@ pub fn handle_car_wake_up(
     let mut obstacles = Vec::<Obstacle>::new();
 
     // Register at upcoming intersections
-    let lookahead = (ri + 3).min(trip.route.len());
-    for k in ri..lookahead {
+    for k in ri..(ri + QUEUE_AHEAD).min(trip.route.len()) {
         if world.is_intersection(trip.route[k]) && k > 0 && k + 1 < trip.route.len() {
             if let Some(from_dir) = arm(world, trip.route[k], trip.route[k - 1])
                 && let Some(to_dir) = arm(world, trip.route[k], trip.route[k + 1])
@@ -374,16 +431,11 @@ pub fn handle_car_wake_up(
         }
     }
 
-    // Pre-register on next edge when passage is granted at the junction
+    // Queue for the run beyond the junction once passage through it is granted
     if ri + 1 < trip.route.len() {
         let end_node = trip.route[ri];
         if !world.is_intersection(end_node) || intersections.has_passage(end_node, car_id) {
-            let next_edge: EdgeKey = (trip.route[ri], trip.route[ri + 1]);
-            if let Some(next_seg) = world.edges.get_mut(&next_edge)
-                && !next_seg.cars.contains(&car_id)
-            {
-                next_seg.cars.push_back(car_id);
-            }
+            join_run(world, car_id, &trip, ri + 1);
         }
     }
 
@@ -430,12 +482,8 @@ pub fn handle_car_wake_up(
         let reversing = ri + trip.reverse >= trip.route.len();
         obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: if reversing { LOT_SPEED / 2.0 } else { LOT_SPEED } });
     }
-    if ri > 0 && ri < trip.route.len() - 1 {
-        let ts = physics::turn_speed(world.turn_cos_angle(&trip.route, ri));
-        obstacles.push(Obstacle::SpeedLimit {
-            distance: entry_ri.max(0.0),
-            speed: ts,
-        });
+    if let Some(limit) = bend(world, &trip.route, ri) {
+        obstacles.push(Obstacle::SpeedLimit { distance: entry_ri.max(0.0), speed: limit });
     }
     // Held to the stop line the same way, and for the same reason: dropping it
     // once the car reached the line meant a car in the last half edge before a
@@ -448,9 +496,7 @@ pub fn handle_car_wake_up(
 
     // Scan forward nodes
     let mut node_dist = remaining;
-    let limit = trip.route.len().min(ri + 30);
-
-    for k in (ri + 1)..limit {
+    for k in (ri + 1)..trip.route.len().min(ri + LOOKAHEAD) {
         node_dist += trip.segment_lengths[k];
         let entry_k = node_dist - 0.5 * trip.segment_lengths[k] - nose(role);
 
@@ -471,11 +517,8 @@ pub fn handle_car_wake_up(
                 speed: LOT_SPEED,
             });
         }
-        if k < trip.route.len() - 1 {
-            obstacles.push(Obstacle::SpeedLimit {
-                distance: entry_k,
-                speed: physics::turn_speed(world.turn_cos_angle(&trip.route, k)),
-            });
+        if let Some(limit) = bend(world, &trip.route, k) {
+            obstacles.push(Obstacle::SpeedLimit { distance: entry_k, speed: limit });
         }
     }
 
@@ -491,14 +534,15 @@ pub fn handle_car_wake_up(
         .fold(5000u64, u64::min);
 
     // Be awake when this stretch ends, because crossing is when the car has to
-    // change edge deques and clear the junction behind it — and it cannot do
-    // either while it is asleep.
+    // change queues, clear the junction behind it and shed the limit of the
+    // bend it is through — and it cannot do any of that while it is asleep.
     //
     // Solved with the acceleration it is about to drive with, not at whatever
     // speed it happens to hold now. Dividing the distance by the current speed
     // said "never" for a car pulling away from rest, which let it sleep through
     // a junction and take the turn at twice the speed the turn allows.
-    if let Some(t) = physics::time_to_reach(0.0, cur_speed, new_accel, remaining) {
+    let end = stretch_end(world, car_id, &trip, ri, seg_start);
+    if let Some(t) = physics::time_to_reach(cur_progress, cur_speed, new_accel, end) {
         wake_ms = wake_ms.min(((t * 1000.0) as u64).max(1));
     }
     if let Some(at) = tail_clears
@@ -511,9 +555,14 @@ pub fn handle_car_wake_up(
 
     let accel_changed = ((new_accel - trip.acceleration) / ACCELERATION).abs() > 0.02;
 
-    // Wake car behind on acceleration change
+    // Wake car behind on acceleration change: a driver's reaction time,
+    // quicker for brake lights than for a gap opening. Not much slower than
+    // this for the gap, though: a queue that noticed its head pulling away
+    // only after four hundred milliseconds drained slowly enough to back up
+    // through the junction behind it, and two driveways then held each
+    // other for good.
     if accel_changed {
-        let delay = if new_accel < 0.0 { 50 } else { 400 };
+        let delay = if new_accel < 0.0 { 50 } else { 150 };
         if let Some(behind) = world.car_behind_on_edge(current_edge, car_id) {
             events.wake(delay, behind);
         }
