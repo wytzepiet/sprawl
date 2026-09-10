@@ -84,17 +84,25 @@ long approach.
   ferry one, a container ship three, held along its path the way a
   lorry's nose and tail are held on a road. Two ships cannot share a
   tile, and nothing else about the sea's traffic has to be designed.
-- **A sea network is derived from the water tiles**, as the road
-  network is from road tiles, and nobody places a lane. A pass from the
-  shore gives every water tile its clearance. Water narrower than the
-  **passing width** — three tiles, room for two ships to pass with
-  nothing deciding it — contracts into **blocks**, maximal runs of
-  narrow water with a mouth at each end; everything wider is open, and
-  ships steer straight between waypoints there with no rule. A\*
-  routes over open regions and block mouths the way cars route over
-  stretches and junctions. Perpendicular narrows meeting are a wider
-  narrow, one block; nothing overlaps because nothing is drawn. The
+- **A sea network is derived from the coast**, as the road network is
+  from road tiles, and nobody places a lane. A pass from the shore
+  gives every water tile its clearance. Water narrower than the
+  **passing width** — three tiles, room for two ships to pass — is
+  restricted, and contracts into **blocks**, maximal runs of narrow
+  water with a mouth at each end; everything wider is open. The
+  network's nodes are the mouths and the berths; its edges are the
+  straight legs between them across open water, and the runs through
+  the blocks. A\* routes each voyage over it the way cars route over
+  stretches and junctions, and two ships between the same ports take
+  the same legs because the legs are the same. Perpendicular narrows
+  meeting are one block; nothing overlaps because nothing is drawn. The
   passing width is the sea's one number.
+- **A leg is a segment.** Ships on the same leg going the same way
+  follow each other with a gap by length, as cars on a stretch do; a
+  convoy is ships that want the same thing at the same time. A leg has
+  no capacity, so nothing slows a ship on open water but a slower one
+  ahead, and with one speed per class that is another class, which
+  passes on the outside.
 - **A block is signalled**, as a single-track railway is. A ship
   reserves it before entering, `parking.md`'s reservation window over
   a passage instead of a spot: free, or held by ships going the same
@@ -106,17 +114,15 @@ long approach.
   enough to wait in, and a ship in a block waits for nothing but its
   own exit.
 - **In open water, off to starboard.** Ships pass port to port, the
-  rule of the sea: a fixed sideways offset on the straight leg between
-  two waypoints, so two ships heading opposite ways clear each other by
-  construction, with no negotiation and no lane. In blocks and at
-  berths they never share a tile.
-- **Nothing is remembered.** Every voyage is routed fresh over the
-  regions and blocks the coast makes, and no lane persists: a new port
-  is a new destination, a removed one leaves no trace, and ships between
-  the same two ports line up on the same route because the route is the
-  same, not because anyone kept it. The road generator remembers roads
-  because a road is built and costs tiles; at sea neither is true, so
-  there is nothing to keep.
+  rule of the sea: a leg's two directions run a fixed offset to their
+  right of its line, so opposite ways clear each other by construction,
+  with no negotiation. In blocks and at berths ships never share a
+  tile.
+- **Nothing is remembered from voyages.** The network is the coast's:
+  a new port is a new node, a removed one is gone, and no lane goes
+  stale, because the mouths do not move. The road generator remembers
+  roads because a road is built and costs tiles; at sea the coast has
+  already done the building.
 - **The berth is a lot**, as many tiles as the ship. Ships queue for it
   with the same reservation window. One berth and three ships in the
   roads is the harbour's rush hour, and the capacity that lets prices
