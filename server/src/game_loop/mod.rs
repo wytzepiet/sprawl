@@ -1396,6 +1396,72 @@ mod tests {
         assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
     }
 
+    /// A car wears by the tile as it burns fuel, slower, and when it is
+    /// nearly worn out its driver takes it to the workshop, where a bay
+    /// puts it right in an hour off a shelf of parts. Six cars are worn to
+    /// their last day of driving overnight, three to a bay; by the second
+    /// evening each has been in, none went to the edge for it, and the
+    /// bays have sold that many services. (Fourteen at once is a queue
+    /// at two bays, and the last to wake find the edge quicker: the crowd
+    /// of docs/residents.md §4, which is the second workshop's argument.)
+    #[test]
+    fn worn_cars_go_to_the_workshop() {
+        use crate::needs::Need;
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::Apartment, 2);
+        build(&mut world, 6, BuildingKind::Apartment, 2);
+        build(&mut world, 60, BuildingKind::Office, 2);
+        build(&mut world, 40, BuildingKind::Shop, 1);
+        build(&mut world, 24, BuildingKind::GasStation, 1);
+        let workshop = build(&mut world, 30, BuildingKind::Workshop, 1);
+
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let people = world.resident_ids();
+        let cars: Vec<EntityId> = people
+            .iter()
+            .filter_map(|&id| match world.objects.get(id).map(|e| &e.object) {
+                Some(GameObject::Resident(r)) if !world.edge.contains(&r.home) => Some(r.car),
+                _ => None,
+            })
+            .take(6)
+            .collect();
+        for (i, &car) in cars.iter().enumerate() {
+            if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+                c.stocks.get_mut(&Need::Wear).unwrap().level = (10 + 10 * i) as f64 * Need::Wear.per_tile();
+            }
+        }
+
+        let day = DAY_MS as u64;
+        let mut visits = 0;
+        let mut elsewhere = 0;
+        let mut last: Vec<(Option<EntityId>, Option<Need>)> = people.iter().map(|_| (None, None)).collect();
+        let mut now = 0;
+        // Up to the second midnight, not onto it: the books keep two pages,
+        // and the second midnight would turn the first day's out.
+        while step(&mut world, &mut events, &mut intersections, &mut now, 2 * day - STEP_MS) {
+            for (i, &id) in people.iter().enumerate() {
+                let state = (at_of(&world, id), doing(&world, id));
+                if state != last[i] {
+                    match state {
+                        (Some(at), Some(Need::Wear)) if at == workshop => visits += 1,
+                        (Some(at), Some(Need::Wear)) if world.edge.contains(&at) => elsewhere += 1,
+                        _ => {}
+                    }
+                    last[i] = state;
+                }
+            }
+        }
+        println!("{visits} services in two days for {} worn cars, {elsewhere} beyond the edge", cars.len());
+        assert_eq!((visits, elsewhere), (cars.len(), 0), "{visits} services for {} worn cars, {elsewhere} beyond the edge", cars.len());
+        let books = &world.books[&workshop];
+        let sold = books.on(now).sold.get(&Need::Wear).copied().unwrap_or(0.0) + books.before(now).sold.get(&Need::Wear).copied().unwrap_or(0.0);
+        assert!((sold - visits as f64).abs() < 1e-9, "the bays sold {sold} services for {visits} visits");
+        let d = crate::resident::demand(&world, now);
+        assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
+    }
+
     /// Every kind the mayor could put down: everything with a price. The
     /// edge has none, and is not placed by anyone.
     fn placeable() -> Vec<BuildingKind> {

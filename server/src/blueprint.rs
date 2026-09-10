@@ -117,8 +117,10 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     // waiting at home for bed, which is what a night out is.
     let tap = |need, curve, slots| Tap { need, curve, rate: 1.0, overhead: 0, slots };
     let meal = |curve, slots| tap(Eat, curve, slots);
-    // A pump fills a tank in twenty minutes, whatever the tank is worth.
+    // A pump fills a tank in twenty minutes, whatever the tank is worth; a
+    // bay puts a car right in an hour.
     let pump = |curve, slots| Tap { need: Fuel, curve, rate: Fuel.cap() / Need::FILL_MS, overhead: 0, slots };
+    let bay = |curve, slots| Tap { need: Wear, curve, rate: Wear.cap() / Need::SERVICE_MS, overhead: 0, slots };
     let potter = |need, curve, slots| Tap { need, curve, rate: 0.35, overhead: 0, slots };
     // An evening out is paid for, and the price is added to the evening in
     // the resident's own hours (economy.md §6.1): a tenth of it at the
@@ -183,10 +185,20 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             stock: 108, makes: Some(Services), vehicles: &[CarRole::Company],
             taps: vec![shift(8, 17, 12)],
         }),
+        // The garage: cars come in worn and leave put right, two bays at a
+        // time. The bays are open round the clock like the pumps, and for
+        // the same reason: a car nearly worn out at two in the morning
+        // would otherwise be driven to the edge, since the wait for the
+        // doors to open is scored as time lost. Its shelf is parts, a
+        // service's worth each, brought in from beyond the edge like a
+        // pump's tanks.
         (Workshop, Blueprint {
             class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (2, 1), price: 8.0,
-            stock: 0, makes: None, vehicles: &[],
-            taps: vec![shift(7, 16, 4)],
+            stock: 30, makes: None, vehicles: &[],
+            taps: vec![
+                shift(7, 16, 4),
+                bay(always(), 2),
+            ],
         }),
         (Factory, Blueprint {
             class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 25.0,
@@ -265,6 +277,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
                 // raise what every bucket thinks is possible; see `Need::bounds`.
                 everywhere(Leisure, 0.8),
                 everywhere(Fuel, Fuel.cap() / Need::FILL_MS),
+                everywhere(Wear, Wear.cap() / Need::SERVICE_MS),
             ],
         }),
     ]
@@ -332,7 +345,7 @@ mod tests {
     #[test]
     fn the_edge_serves_everything_and_is_not_for_sale() {
         let b = blueprint(Edge);
-        for need in Need::OWN.into_iter().chain([Need::Fuel]) {
+        for need in Need::OWN.into_iter().chain(Need::DRIVEN) {
             let tap = b.taps.iter().find(|t| t.need == need).unwrap_or_else(|| panic!("the edge does not serve {need:?}"));
             assert_eq!(tap.slots, u32::MAX, "{need:?} at the edge is rationed");
             assert_eq!(tap.curve.per_day(), DAY_MS as f64, "{need:?} at the edge closes");

@@ -203,11 +203,18 @@ pub struct Car {
     /// sight.
     #[serde(default)]
     pub spot: Option<Pose>,
-    /// The tank: used by the mile, filled at a pump. The car's, though its
-    /// driver decides when to stop. A save from before cars had one gets
-    /// it full.
-    #[serde(default = "crate::needs::Bucket::tank")]
-    pub fuel: crate::needs::Stock,
+    /// The tank and the wear: used by the tile, filled at a pump and put
+    /// right at a workshop. The car's, though its driver decides when to
+    /// stop. A save from before cars had them gets them full.
+    #[serde(default = "crate::needs::Bucket::driven")]
+    pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
+}
+
+impl Car {
+    /// A car as it arrives: parked out of sight, going nowhere, full.
+    pub fn new(owner: EntityId, role: CarRole) -> Car {
+        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven() }
+    }
 }
 
 /// A place to stand, and which way.

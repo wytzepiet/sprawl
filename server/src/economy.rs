@@ -51,6 +51,11 @@ pub fn edge_price(need: Need) -> f64 {
         Need::Eat => 0.2,
         Need::Leisure => 0.5,
         Need::Fuel => 3.0,
+        // A service, every two and a half tanks: with the tank's price,
+        // the two come to the transport sixth at a commuter's hundred and
+        // twenty tiles a day. Half the drive's cost is fuel and half is
+        // upkeep, near enough what running a car costs.
+        Need::Wear => 6.0,
         Need::Work => EDGE_WAGE,
         // An hour of an office's make: its labour, with the services the
         // office itself buys in for it, over two thirds (§8.1).
@@ -60,9 +65,10 @@ pub fn edge_price(need: Need) -> f64 {
 }
 
 /// What the edge sells the unit on the shelf for — the crate behind a
-/// meal, the delivery behind a tank: half the price it sells the meal
-/// for. Retail margins on food sit between a third and a half. No
-/// counter sells services: what is delivered is the whole of it.
+/// meal, the delivery behind a tank, the parts behind a service: half
+/// the price it sells the meal for. Retail margins on food sit between a
+/// third and a half. No counter sells services: what is delivered is the
+/// whole of it.
 pub const WHOLESALE: f64 = 0.5;
 pub fn wholesale(need: Need) -> f64 {
     if need == Need::Services { edge_price(need) } else { WHOLESALE * edge_price(need) }
@@ -236,11 +242,11 @@ pub fn edge_price_of(kind: BuildingKind, need: Need) -> f64 {
 }
 
 /// The good a kind's shelf holds: what its labour makes, or what its
-/// deliveries are — fuel where it pumps, food everywhere else that keeps
-/// a shelf.
+/// deliveries are — fuel where it pumps, parts where it services cars,
+/// food everywhere else that keeps a shelf.
 pub fn shelf_need(kind: BuildingKind) -> Need {
     let bp = blueprint(kind);
-    bp.makes.unwrap_or(if bp.taps.iter().any(|t| t.need == Need::Fuel) { Need::Fuel } else { Need::Eat })
+    bp.makes.or_else(|| bp.taps.iter().map(|t| t.need).find(|n| Need::DRIVEN.contains(n))).unwrap_or(Need::Eat)
 }
 
 /// Its labour fills its shelf with this, a unit an hour: it never calls
@@ -422,8 +428,8 @@ fn outside(world: &World, resident: EntityId) -> bool {
 
 /// One visit paid for, as it ends: `units` of `need` served at `at` to
 /// `who`. A shift is sold by the resident and bought by the building; a
-/// meal, an evening or a tank is bought by the resident and sold by the
-/// building. Two lines in the books, and a lump on the map; the treasury
+/// meal, an evening, a tank or a service is bought by the resident and
+/// sold by the building. Two lines in the books, and a lump on the map; the treasury
 /// moves only when one party is the outside — the edge, or a household
 /// beyond it. Anything that runs a shelf draws it down. §6, §8.
 pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f64, now: GameTime) {
@@ -472,7 +478,7 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             }
         }
         Need::Home | Need::Rest | Need::Services => {}
-        Need::Eat | Need::Leisure | Need::Fuel => {
+        Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => {
             let due = units * price_of(world, at, need);
             if edge {
                 // A meal beyond the edge is the town buying one, unless

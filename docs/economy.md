@@ -4,9 +4,9 @@ Status: specification, drafted 2026-09-09 and reworked twice the same
 day: once after an argument about where money goes when nobody spends
 it, and again after one about where it comes from. The second rework is
 the first rule below — the town has one purse — and everything that
-followed from purses went with them (`shelved.md`). Built through the
-services of step 5 of §12; §12.2 to §12.5 record what building each step
-decided, and wear (step 5's other half) is open (§13.14). Supersedes
+followed from purses went with them (`shelved.md`). Built through step
+5 of §12, services and wear; §12.2 to §12.6 record what building each
+step decided. Supersedes
 `game.md` §Money, which
 points here. Builds on `residents.md` (buckets, taps, the
 score), `services.md` (calls) and `parking.md` (lots as the place
@@ -79,10 +79,10 @@ out of these rules rather than be added.
 
 ## 2. What exists, and what stays
 
-- **Steps 1 to 5, as built** (§12.2 to §12.5): stocks, posted prices,
+- **Steps 1 to 5, as built** (§12.2 to §12.6): stocks, posted prices,
   the building's turn, the one purse and the door, labour bought on the
   building's turn, services made at the office and drawn by every
-  building. All stand.
+  building, wear on the car and the workshop's bays. All stand.
 - **Purses.** Every resident had a wallet and every building a balance;
   each kept a float and swept the rest to the treasury, a resident's
   sweep was rent, and a building whose purse ran dry stopped. Built, run
@@ -606,7 +606,7 @@ Each step is playable and nothing before step 2 can hurt anyone.
    §12.4 has what it needs decided.
 5. **Services and wear.** The office's stock and its car; the workshop;
    the household's services stock. §12.5 has what services needed
-   decided; wear waits (§13.14).
+   decided, §12.6 wear.
 6. **Rows.** Every workplace's inputs, output and rate on its row;
    `edge_price` derived link by link from the rows at capacity, each
    keeping its share, plus the crossing (§8.1); freight as fuel and
@@ -896,7 +896,7 @@ the town's money is what its rows keep. As built:
 
 ### 12.5 Step 5, services, to the number and as built
 
-Built 2026-09-10; wear and the workshop wait (§13.14). The decisions
+Built 2026-09-10; wear followed the same day (§12.6). The decisions
 the mechanism did not make on its own, and what running it found.
 
 - **Services is a good like the others, keyed with them.** `Services`
@@ -1016,6 +1016,57 @@ cargo test season -- --ignored --nocapture`), against §12.4's ten:
   with their bullets: a home priced money in nothing and always bought
   from the edge; and an unanswered call was never tried again.
 
+### 12.6 Step 5, wear, to the number and as built
+
+Built 2026-09-10. Wear is the tank's twin, and nearly every decision is
+the tank's, read again.
+
+- **Wear is a driven need beside fuel.** A car carries its stocks as a
+  building does, by good: the tank and the wear, each used by the tile
+  at its own rate, and the driver weighs both with their own needs, one
+  bucket more in the search. Nothing else in the search knows which is
+  which; a car at zero closes the Work tap as a dry tank does (§4).
+- **The numbers.** A service lasts 1,200 tiles, two and a half tanks:
+  every ten days or so for a commuter, so the workshop sees each car a
+  few times a season and the tank still sets the rhythm. What a
+  breakdown costs is four hours, twice a dry tank — a morning towed and
+  a repair waited on — and a bay puts a car right in an hour. A service
+  is worth six hours at the edge: with the tank's three, the two come
+  to the transport sixth at a commuter's hundred and twenty tiles a day,
+  which is §13.13's first half closed — the household now spends on its
+  car about what the row estimates for it. The parts behind a service
+  are half, wholesale, as the crate behind a meal.
+- **The workshop is the garage.** Two bays, a shelf of thirty services'
+  worth of parts fetched from beyond the edge as a pump's tanks are, a
+  price over the counter like a shop's, opened at the edge's and floored
+  at the parts. Its four staff are no longer a pass-through: it sells
+  something. The bays are open round the clock like the pumps, and for
+  the same reason: a car nearly worn out at two in the morning would
+  otherwise be driven to the edge, since the wait for the doors to open
+  is scored as time lost (§6.1) and the edge is open now. The edge
+  serves wear at the bay's rate, as it serves everything.
+- **On the card**, a car's stocks are its bars, fuel and wear alike.
+
+What running it found. Six cars worn to their last day of driving go to
+the workshop, three to a bay, none to the edge; fourteen at once are a
+queue at two bays, and the last to wake find the edge quicker — the
+crowd of `residents.md` §4, and the second workshop's argument.
+
+**The seasons could not be run.** The season town of §12.4 gridlocks on
+its third day as the code stands merged — two driveways two tiles apart
+holding each other for good once the offices' cars are on the street
+(`parking.md` §9) — and it had been doing so since the day's two merges
+met; the tests passed because nothing in them asked whether anyone
+moved. `season` now asserts that nobody is a day late for anything, and
+stops there. Under an experimental box-junction rule that was tried and
+not kept, the full town ran ten days: mean wear sat at six to seven
+tenths, the two workshops sold seven to twenty services a day, nobody
+was worn out, and the full town's treasury fell about half an hour a
+head a day where §12.5 had it rising two — the workshops' seventy-two
+hours a day no longer sell to the edge, and their parts cross the door
+in. That is the no-harm season's question now (§13.16), and it waits on
+the street.
+
 
 ## 13. Open
 
@@ -1051,9 +1102,20 @@ cargo test season -- --ignored --nocapture`), against §12.4's ten:
     check (§11.9) becomes a season print. Until then a household nets a
     little over its tenth when it drives less than the sixth, which is
     the bedroom town's 1.19 against 0.72 (§12.4).
-14. Wear (§4): a car's second per-tile stock, the workshop as its tap.
-    Step 5's other half; services went first because the office was
-    already a row with nothing to sell.
+14. ~~Wear (§4): a car's second per-tile stock, the workshop as its
+    tap.~~ §12.6.
 15. A firm's services are a fifth of its labour and its output the sum
     over two thirds (§12.5); with the rows (step 6) the input and the
     output are the row's own, link by link, and the fifth goes.
+16. The workshop's idle hours. A garage with two bays and four staff
+    sold its hours to the edge while it had nothing to sell; now it
+    sells services in town and exports nothing, and two of them turn
+    the full town's net from about two a head a day to about half an
+    hour under (§12.6). One workshop and a factory in the season mix,
+    or a bay's idle hours sold beyond the edge as a pass-through's are,
+    is the choice; the rows (step 6) make it moot, since a row's labour
+    is then an input to what it makes.
+17. The season town gridlocks on its third day (`parking.md` §9), so
+    every season since the merges of 2026-09-10 measures a dead town.
+    `season` asserts nobody is a day late and stops; the seasons of
+    §12.5 and §12.6 stand as the last that ran.

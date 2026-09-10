@@ -1066,7 +1066,7 @@ mod tests {
         let path: Vec<GridCoord> = (1..8).map(|y| GridCoord { x: 10, y }).collect();
         world.place_road_path(&path);
         let a = world.place_on_street(GridCoord { x: 8, y: 2 }, BuildingKind::Apartment).unwrap();
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
         let way = world.way_in(a, car, 0, GameTime::MAX).unwrap();
         let lot = &world.lots[&world.lot_of[&a]];
         let d = world.node_pos(lot.members[0].door).unwrap();
@@ -1098,7 +1098,7 @@ mod tests {
         // A house parks two on its driveway: the smallest lot there is.
         let shop = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::House).unwrap();
         assert_eq!(world.lot_mut(shop).unwrap().spots.len(), 2);
-        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
+        let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
         let (a, b, c) = (car(&mut world), car(&mut world), car(&mut world));
         // Two spots: two visits from 10 to 12 fill it.
         assert!(world.claim_spot(shop, a, 10_000, 12_000).is_some());
@@ -1154,7 +1154,7 @@ mod tests {
         assert_eq!(out[1], way[n - 2], "forward to the mouth");
         assert_eq!(world.reverse_tail(lorry), 2);
         // Staff at a depot stop at the door: a yard has no car spots.
-        let car = world.insert_at(GameObject::Car(crate::protocol::Car { owner: 0, trip: None, role: Default::default(), spot: None, away: 0, fuel: crate::needs::Bucket::tank() }), None);
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
         assert!(matches!(world.claim_spot(depot, car, 0, GameTime::MAX), Some(Claim::Door(_))));
     }
 

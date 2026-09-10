@@ -7,7 +7,8 @@
  * carries it in `drain`; a **constant** need is imposed by the world and
  * carries it in the curve of whatever serves it, holding a fixed level
  * meanwhile; a **driven** need is used up by the road, a little per tile,
- * and is the car's rather than the day's. And one is a building's alone:
- * **services**, drawn by the day of operation and delivered by a call.
+ * and is the car's rather than the day's — the tank, and wear. And one is
+ * a building's alone: **services**, drawn by the day of operation and
+ * delivered by a call.
  */
-export type Need = "Home" | "Work" | "Rest" | "Eat" | "Leisure" | "Fuel" | "Services";
+export type Need = "Home" | "Work" | "Rest" | "Eat" | "Leisure" | "Fuel" | "Wear" | "Services";
