@@ -1572,16 +1572,19 @@ mod tests {
 
     /// §11.12, the bare towns: a street of homes and nothing else, whose
     /// people commute to the edge; a street of workplaces and nothing
-    /// else, staffed from beyond it; and the full town. Treasury per
-    /// resident-day for each, and neither bare town may out-earn the full
-    /// one: a house is a row with running costs, not a mint, and imported
-    /// labour pays the crossing.
+    /// else, staffed from beyond it; and the full town. Treasury and GDP
+    /// per resident-day for each. A house nets its household's saving and
+    /// no more, so the bedroom town may not beat the full town by more
+    /// than that, and it is the poorer town by GDP; imported labour pays
+    /// the crossing and the drive, so the job centre earns less than the
+    /// full town.
     #[test]
     #[ignore]
     fn season_bare_towns() {
         use BuildingKind::*;
         let days = season_days();
         let mut rates = Vec::new();
+        let mut gdps = Vec::new();
         for (name, mix) in [("full", town_mix()), ("bedroom", vec![House, Apartment]), ("job centre", vec![Office, Factory, Workshop])] {
             let mut began = 0.0;
             let (world, _) = season(&mix, days, |world, day, _| {
@@ -1592,10 +1595,14 @@ mod tests {
             });
             let residents = world.resident_ids().len().max(1);
             let rate = (world.treasury - began) / residents as f64 / days as f64;
-            println!("{name}: treasury {:.1} and GDP {:.1} over {days} days, {residents} residents: {rate:.3} a resident-day", world.treasury, world.gdp);
+            let gdp = world.gdp / residents as f64 / days as f64;
+            println!("{name}: treasury {:.1} and GDP {:.1} over {days} days, {residents} residents: {rate:.3} and {gdp:.2} GDP a resident-day", world.treasury, world.gdp);
             rates.push(rate);
+            gdps.push(gdp);
         }
-        assert!(rates[1] <= rates[0], "the bedroom town out-earns the full one: {rates:.3?}");
+        let saving = 8.0 * crate::economy::EDGE_WAGE * crate::economy::SAVING;
+        assert!(rates[1] <= rates[0] + saving, "the bedroom town is a mint: {rates:.3?}");
+        assert!(gdps[1] < gdps[0], "the bedroom town is the richer one: {gdps:.2?}");
         assert!(rates[2] <= rates[0], "the job centre out-earns the full one: {rates:.3?}");
     }
 

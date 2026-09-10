@@ -548,10 +548,12 @@ season is thirty game-days until something says otherwise.
 12. **The bedroom town, and the job centre.** A street of houses beside
     the exit and nothing else, its residents commuting to the edge; and
     a street of workplaces and nothing else, staffed from beyond it.
-    Each against the full town. Treasury per resident-day is printed for
-    all three and neither bare town's may exceed the full town's: a house
-    is a row with running costs, not a mint, and imported labour pays
-    the crossing.
+    Each against the full town. Treasury and GDP per resident-day are
+    printed for all three. A house nets its household's saving and no
+    more, so the bedroom town may not beat the full town by more than
+    that, and it is the poorer town by GDP; imported labour pays the
+    crossing and the drive, so the job centre earns less than the full
+    town.
 
 ## 12. Order to build
 
@@ -828,8 +830,31 @@ the town's money is what its rows keep. As built:
   night's upkeep until an office in town makes them. Fuel is what the
   car burns; the sixth is the row's estimate of it, and the check holds
   in the broad lines, which is what it is for.
-- **An empty stock closes the Work tap** (§4), and the wake budget and
-  the tenure season are the tests of what the ladder does with it.
+- **An empty stock closes the Work tap** (§4). The wake budget held at
+  36 a resident-day on the first day and 20 after, and tenure stayed at
+  zero changes.
+- **The stake is five hundred**, a few weeks of a starting town's
+  imports. The first cut started at a hundred, gone at the first
+  midnight; a treasury at zero cannot import fuel, a dry tank closes the
+  Work tap, and the whole town spent its days driving to the edge for
+  fuel instead of working. A season places forty buildings at once, so
+  it is given a week of its households' row as working capital and
+  measured from there.
+- **The season town is shaped like a town** — mostly homes, an export
+  base with about as many desks as the homes have people, one of each
+  shop — where before it cycled every kind equally, seventeen shops,
+  bars, supermarkets and warehouses for 177 people. Ten days of it:
+  the treasury climbs about fifteen a day on a door of seven hundred
+  each way; every office, factory and workshop is in the black by
+  twenty-five to thirty a day, every shop, bar, supermarket and
+  warehouse in the red, as §9 says they should be; and desks are worked
+  about six hours of nine, the rest lost to commutes across a
+  170-tile street, which is traffic's to fix. The bedroom town nets
+  about one a head a day, its households' saving, where the first cut
+  netted six; the full town nets about one too, its exporters' shares
+  less what its twenty shop workers cost, and three times the GDP a
+  head; the job centre, staffed from an exit four hours away, loses
+  one and a quarter a head a day to the crossing and the drive.
 
 
 ## 13. Open
