@@ -83,11 +83,13 @@ HTML over the canvas for what HTML is good at: pins, the toolbar, the
 tree, the build menu. Pins are positioned per frame through the scene's
 projection.
 
-## Deployment (plan)
+## Deployment
 
-Docker Compose on a small VPS: the Rust server, the client, Nginx for TLS
-and the WebSocket upgrade, SQLite on a volume. The server flushes on
-SIGTERM; clients reconnect. Not yet done.
+One Hetzner VPS. `setup-server.sh` installs the toolchain, Caddy and a
+systemd unit once; `deploy.sh` pulls a branch, builds on the server and
+restarts it. Caddy does TLS and the WebSocket upgrade in front of the
+server on 4801, which serves `client/dist` itself. Every deploy starts a
+fresh world: a save written by another build refuses to load.
 
 ## Build philosophy
 

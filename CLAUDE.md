@@ -71,6 +71,10 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the crate with `cfg(test)` on, so a stray `#[cfg(test)]` above something the
   game needs passes the suite and leaves a server that will not build.
 - **Generated types:** `cd client && bun run generate`
+- **Deploy:** `./deploy.sh root@<host>` pulls `main`, builds on the server
+  and restarts it with a fresh world; `./deploy.sh root@<host> <branch>` for
+  another branch. `./setup-server.sh root@<host> <domain>` prepares a new
+  VPS first.
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads, forest to build into, and coastline —
   enough to exercise building, tree clearing and demolition. Any fixed seed gives
