@@ -58,9 +58,9 @@ Eight rules carry it. The first five are economics; the last three are ours.
 8. **Ignoring prices never hurts; reading them only helps. A town must
    sell something.** A player who places buildings and watches cars must
    be fine, as long as the town has a door: nothing crosses it for a
-   town with nothing to pay, and a town that cannot feed itself dies
-   (§9). Prices are the layer for the player who wants to win; the door
-   is the one stake.
+   town with nothing to pay, and a town that buys more than it sells
+   slumps until it does not (§9). Prices are the layer for the player
+   who wants to win; the door is the one stake.
 
 Two numbers say how the town is doing, and they are different things.
 **GDP** is hours of need served in town, per day: the town's real
@@ -481,17 +481,20 @@ a day; a purse running dry was a bar with a full shelf and nothing to
 say. Nothing propagates through households: consumption is set by needs
 and needs do not spiral.
 
-The one failure is the town's, and it is final. A treasury at zero
-cannot import: shelves and pumps run down and go grey, commuters stop
-coming, and the town lives on what it holds and makes. A sound town
-bounces in a day, since its exporters keep selling; a town that eats
-more than it sells runs its shelves down, then its people's stomachs,
-and a row with an empty input stops (§4): nobody fit to work, nothing
-sold, nothing crossing. That town is dead, on the map, over days, and
-the dial says so. A farm is what makes a town unkillable: food grown in
-town is served without the door, so a broke town still eats, still
-works, and exports its way back. That is rule 8 made mechanical, once,
-with the one stake the game has.
+The one failure is the town's, and it is a slump, not an end. A
+treasury at zero cannot import: shelves and pumps run down and go grey,
+commuters stop coming, and the town lives on what it holds and makes.
+A sound town bounces in a day, since its exporters keep selling. A town
+that eats more than it sells runs its shelves down and its people's
+stomachs with them, and a row with an empty input stops (§4) — but the
+edge always buys hours, a partial shift on an empty stomach is still
+sold when it ends, and every row keeps a share, so the first payday
+reopens the door and someone eats. What a deficit town gets is a long,
+visible bad time: grey shops, people driving out to work, and a dial
+that says how many days of imports are left, in red. That is rule 8
+made mechanical, once, with the one stake the game has. A farm makes
+the slump shallower still: food grown in town is served without the
+door.
 
 Emigration (`game.md` §Money, "the floor is emigration") is no longer
 needed for the floor and is filed.
@@ -851,11 +854,12 @@ the town's money is what its rows keep. As built:
   beyond the edge, the groceries behind one at home and a commuter's
   shift are options only while the treasury can pay for them; the first
   cut served a broke town's people for free, which was the one mercy in
-  the model and inconsistent with its crates. A town is dead when
-  nothing is at the door and nobody is fit to work, and the dial says
-  so. In practice a town with anyone fit to work bootstraps: a partial
-  shift on an empty stomach is still sold, and labour is the export of
-  last resort; death needs a town whose people cannot work at all.
+  the model and inconsistent with its crates. A dead state — nothing at
+  the door and nobody fit to work — was built and taken out again: a
+  town with anyone fit to work bootstraps, since a partial shift on an
+  empty stomach is still sold and labour is the export of last resort,
+  so it was a corner reachable only by construction. Zero is a slump.
+  The dial shows days of imports left, red under three.
 - **The stake is five hundred**, a few weeks of a starting town's
   imports. The first cut started at a hundred, gone at the first
   midnight; a treasury at zero cannot import fuel, a dry tank closes the

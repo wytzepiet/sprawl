@@ -255,7 +255,6 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
     treasury: 0,
     income: 0,
     imports: 0,
-    dead: false,
     taken: [],
     road_tiles_left: 0,
   });

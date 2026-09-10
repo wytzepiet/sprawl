@@ -491,9 +491,6 @@ pub struct Growth {
     /// over it is days of imports left.
     pub income: f64,
     pub imports: f64,
-    /// Nothing at the door and nobody fit to work: the town is dead.
-    /// docs/economy.md §9.
-    pub dead: bool,
     /// The build: the nodes of the tree taken.
     pub taken: Vec<crate::tree::Cell>,
     /// Tiles of road the mayor may still lay.

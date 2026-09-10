@@ -205,11 +205,6 @@ fn fit(buckets: &[Bucket]) -> bool {
     buckets.iter().all(|b| b.need.constant() || b.stock.level > 0.0)
 }
 
-/// Whether anyone in town could work: a town where nobody can, with
-/// nothing at the door, is dead (docs/economy.md §9).
-pub fn anyone_fit(world: &World) -> bool {
-    world.resident_ids().into_iter().filter_map(|id| resident(world, id).map(|r| buckets(world, r))).any(|b| fit(&b))
-}
 
 /// The ways out from where a resident stands, searched once for the whole
 /// decision. `None` where no road reaches the building.

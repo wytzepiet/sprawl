@@ -28,11 +28,6 @@ treasury: number,
  */
 income: number, imports: number, 
 /**
- * Nothing at the door and nobody fit to work: the town is dead.
- * docs/economy.md §9.
- */
-dead: boolean, 
-/**
  * The build: the nodes of the tree taken.
  */
 taken: Array<Cell>, 

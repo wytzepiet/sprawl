@@ -108,8 +108,8 @@ authored. Two numbers: GDP, hours of need served in town, which is how
 rich the town is and what opens the tree; and the treasury, what the
 town has earned from the outside net of what the mayor built, which is
 what the mayor can spend. Nothing crosses the edge for a town with
-nothing to pay, and a town that cannot feed itself dies; so a town must
-sell something, or grow its own. Ignoring prices never hurts; reading
+nothing to pay, so a town that buys more than it sells slumps until it
+sells something, or grows its own. Ignoring prices never hurts; reading
 them is how you win. `economy.md` is the mechanism.
 
 ## Power

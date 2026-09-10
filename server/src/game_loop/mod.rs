@@ -1755,8 +1755,7 @@ mod tests {
     /// broke town's desks are not filled from beyond the edge, and nobody
     /// eats there until the first shift is sold; then the door has
     /// something in it and they do, which is labour as the export of last
-    /// resort. A town whose people cannot work, with nothing at the door,
-    /// is dead and stays dead.
+    /// resort, and why zero is a slump and not an end.
     #[test]
     fn a_broke_town_buys_nothing_beyond_the_edge_until_it_sells() {
         let mut world = street();
@@ -1788,28 +1787,6 @@ mod tests {
         assert!(!ate_out_broke, "somebody ate beyond the edge on the town's empty purse");
         assert!(first_sale.is_some(), "the office never sold a shift");
         assert!(ate_out_paid, "with money in the door nobody ate beyond the edge");
-        assert!(!crate::economy::growth(&world, now).dead);
-
-        // Nobody fit to work and nothing at the door: dead, and nothing
-        // moves to change it.
-        let mut world = street();
-        build(&mut world, 0, BuildingKind::Apartment, 2);
-        world.treasury = 0.0;
-        let mut events = EventQueue::new();
-        settle_and_wake(&mut world, &mut events);
-        for id in world.resident_ids() {
-            if let Some(GameObject::Resident(r)) = world.objects.get_mut(id).map(|e| &mut e.object) {
-                for b in &mut r.buckets {
-                    if b.need == crate::needs::Need::Eat {
-                        b.stock.level = 0.0;
-                    }
-                }
-            }
-        }
-        assert!(crate::economy::growth(&world, 0).dead, "a town nobody can work in is alive");
-        let mut now = 0;
-        while step(&mut world, &mut events, &mut intersections, &mut now, day) {}
-        assert!(crate::economy::growth(&world, now).dead && world.treasury == 0.0, "the dead town came back: {}", world.treasury);
     }
 
     /// A vacancy the city cannot fill from among its own is filled from off

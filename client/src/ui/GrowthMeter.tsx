@@ -1,4 +1,3 @@
-import { Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { setTreeOpen } from "./SkillTree";
@@ -32,13 +31,6 @@ export default function GrowthMeter() {
 
   return (
     <>
-      <Show when={growth().dead}>
-        <div class="fixed inset-x-0 bottom-24 z-20 flex justify-center pointer-events-none">
-          <span class="rounded-full bg-stone-900/90 px-4 py-2 text-sm font-bold text-white shadow-lg">
-            The town is dead: nothing at the door, and nobody fit to work.
-          </span>
-        </div>
-      </Show>
       <span class="fixed bottom-4 left-4 select-none cursor-pointer" onClick={() => setTreeOpen(true)} title="The skill tree (L)">
         <Dial color="#5B57C8" now={growth().toward} max={growth().needed} caption={`GDP ${Math.floor(growth().gdp)} today`}>
           <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
