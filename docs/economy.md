@@ -1,10 +1,13 @@
-# Economy: stocks, prices, floats, and one door
+# Economy: stocks, rows, prices, one purse and one door
 
-Status: specification, drafted 2026-09-09 and reworked the same day after
-a second argument, about where money goes when nobody spends it. Built
-through step 2 of §12 on 2026-09-09; §12.2 records what building it
-decided, and where it departs from the text above. Supersedes `game.md`
-§Money, which points here. Builds on `residents.md` (buckets, taps, the
+Status: specification, drafted 2026-09-09 and reworked twice the same
+day: once after an argument about where money goes when nobody spends
+it, and again after one about where it comes from. The second rework is
+the first rule below — the town has one purse — and everything that
+followed from purses went with them (`shelved.md`). Built through step 3
+of §12 as it stood before that; §12.2 and §12.3 record what building it
+decided. Step 4 is the one purse. Supersedes `game.md` §Money, which
+points here. Builds on `residents.md` (buckets, taps, the
 score), `services.md` (calls) and `parking.md` (lots as the place
 vehicles stand). The single ledger of hours served that was both level
 and money (`xp.rs`) is gone; `shelved.md` has it.
@@ -15,12 +18,19 @@ and money (`xp.rs`) is gone; `shelved.md` has it.
 
 Eight rules carry it. The first five are economics; the last three are ours.
 
-1. **Everyone has a purse.** Residents, buildings, the mayor. Money moves
-   between purses; it is made and destroyed only at the edge.
-2. **Everything is a stock.** A shelf of crates, a tank of fuel, a day of
-   sleep, a factory's hours of labour, a building's distance from burning
-   down: each is a stock with a cap, drained by use, refilled by a tap or a
-   delivery. The deficit is the need. One type; nothing new decides
+1. **The town has one purse.** Money enters when the town sells to the
+   outside and leaves when it buys from it. Inside, a sale is a line in
+   two sets of books and no money moves, because there is nobody else's
+   money: residents and buildings post prices and keep books, and the
+   town pays.
+2. **Everything is a row: stocks in, a stock out.** A building draws
+   down its inputs — crates, litres, hours of labour, services — and
+   fills its output at a rate. A shop turns crates into meals; a well
+   turns labour and services into oil; a house turns meals, fuel,
+   evenings and services into hours of labour. Labour is a good like any
+   other, made where people live, with one difference the whole game
+   rests on: it delivers itself (§5.2). A stock has a cap and drains by
+   use, and its deficit is the need. One type; nothing new decides
    anything.
 3. **Everyone posts a price and nudges it by their own stock.** Selling out
    → a notch up. Piling up → a notch down. Never below cost. Nobody
@@ -28,13 +38,15 @@ Eight rules carry it. The first five are economics; the last three are ours.
 4. **Everyone prices time at what they earn.** A resident's hour is their
    wage; a building's hour is its revenue. So money enters the one score
    `residents.md` already has as hours, and there is still one score.
-5. **The edge is the band.** The edge buys and sells every good at a fixed
-   price and hires everyone at a fixed wage, and the drive is the freight.
-   Every local price and wage lives between the edge's and the cost of the
-   trip. Nothing can run away.
-6. **The mayor owns the town.** The mayor placed every building and paid
-   for it. Every purse keeps a float and the rest sweeps to the treasury.
-   There are no taxes because there is nothing left to tax.
+5. **The edge is the band.** Beyond the edge is a world that runs the
+   same rows at capacity and charges a crossing. It sells and buys every
+   good at what its rows say, in unlimited quantity, hires everyone at
+   one wage, and the drive is the freight. Every local price lives
+   between the edge's and the cost of the trip. Nothing can run away,
+   and no price is authored: the rows are.
+6. **The mayor owns the town.** The mayor placed every building, paid the
+   outside for it, and holds the one purse. There are no taxes because
+   there is nothing to tax.
 7. **Rules come from economics; equilibria are tests; the closure is
    designed.** A rule enters this document if it is a named mechanism with
    a referent in the real economy. What economics predicts (prices fall as
@@ -43,50 +55,67 @@ Eight rules carry it. The first five are economics; the last three are ours.
    (§8) is a choice, made on purpose. And every mechanism is the arcade
    version of its referent: one number where the world has a curve, a day
    where the world has a quarter, one door where the world has a globe.
-8. **Ignoring the economy never hurts; reading it only helps.** A player
-   who places buildings and watches cars must be fine. Prices are the
-   layer for the player who wants to win.
+8. **Ignoring prices never hurts; reading them only helps. A town must
+   sell something.** A player who places buildings and watches cars must
+   be fine, as long as the town has a door: nothing crosses it for a
+   town with nothing to pay, and a town that buys more than it sells
+   slumps until it does not (§9). Prices are the layer for the player
+   who wants to win; the door is the one stake.
 
-The point of all of it: a town can specialise, and specialising in what
-the outside is short of pays. That is the game's fantasy the roads alone
-do not give, and it should fall out of these rules rather than be added.
+Two numbers say how the town is doing, and they are different things.
+**GDP** is hours of need served in town, per day: the town's real
+income, what economics means by rich, and its running sum is the level
+that opens the tree. **The treasury** is what the town has earned from
+the outside, net of what the mayor has built with it. A town can be rich
+by the first and broke by the second, which is Hume's point (§8.1):
+money is not wealth. Only the door moves the treasury, so the game of
+the treasury is the game of the door: sell labour and goods out, make in
+town what would otherwise be bought in, and spend what that earns on the
+rows that do more of both. The point of all of it: a town can
+specialise, and specialising in what the outside is short of pays. That
+is the game's fantasy the roads alone do not give, and it should fall
+out of these rules rather than be added.
 
 ## 2. What exists, and what stays
 
-- **The ledger.** `xp::Ledger` integrates hours of need served, continuously,
-  from every resident standing in a building on a need it has a tap for.
-  `balance = earned − spent`; placing costs `blueprint.price` hours,
-  discounted by the build. Level is derived from the same cumulative sum.
-- **Calls.** A building whose stock runs low calls; a warehouse's truck
-  answers, or the edge's, slowly (`services.md` §5).
-- **Three stocks in three shapes.** A shop's shelf is a fraction on the
-  building; a car's tank is a need whose level *rises* as it drives; a
-  resident's hunger is a bucket that fills. The same idea, three structs.
+- **Steps 1 to 3, as built** (§12.2, §12.3): stocks, posted prices,
+  wages on the labour deficit, the building's turn. All stand.
+- **Purses.** Every resident had a wallet and every building a balance;
+  each kept a float and swept the rest to the treasury, a resident's
+  sweep was rent, and a building whose purse ran dry stopped. Built, run
+  for a season, and set aside (`shelved.md`): every internal payment was
+  a transfer between two purses of one owner, so the treasury could only
+  ever collect the net flow at the door, and forty purses said that
+  forty times over — through floats, sweeps, rent and a solvency rule
+  whose one visible product was a bar with a full shelf and no money.
+  One purse says it once.
+- **Calls.** A building whose stock runs low calls; a warehouse's van
+  answers, or the edge's (`services.md` §5).
 
-What stays: **level is hours served.** "How much life happened here" is
-the right measure of a town's size, and it is what the build's points
-should come from. What changes: money stops being that number. It becomes
-its own quantity, in purses, moved by sales. The continuous ledger goes;
-the level banks at the resident's settle in lumps like everything else.
-And the three shapes become one (§4).
+What stays: **level is hours served**, and it is now named for what it
+measures (§10). What changes: money stops being anyone's but the town's.
 
 ## 3. Actors
 
-**A resident** has a wallet, a wage, and an employer. They earn by selling
-a shift (§6.3) and spend at taps that charge (§5). Their stocks are their
-needs, their car's tank and wear, and their household's food.
+**A resident** has a wage and an employer. They sell a shift (§6.3) and
+spend at taps that charge (§5), and both are lines in the books: what
+they earn is what an hour of their time is worth in the score, and what
+they pay is what a building took. Their stocks are their needs, their
+car's tank and wear, and their household's food and services.
 
-**A building** has a balance, the stocks in it, a posted price for what it
-sells, and possibly vehicles. It is founded when the mayor places it; its
-price includes the float it opens with. It buys inputs, pays wages, sells
-outputs. A building whose balance runs dry does not vanish (§9). "Company"
-in this document means a building; a company with two buildings waits for
-a reason to exist.
+**A building** has the stocks in it, a posted price for what it fills,
+books, and possibly vehicles. It is founded when the mayor places it and
+pays the outside for it. It draws its inputs, pays wages, sells its
+output; all of it is recorded (§10) and none of it moves money unless it
+crosses the door. A building whose books are red does not vanish (§9).
+"Company" in this document means a building; a company with two
+buildings waits for a reason to exist.
 
-**The mayor** has the treasury (§8.2). The mayor never trades.
+**The mayor** has the treasury (§8.2), the town's one purse. The mayor
+never trades; the mayor builds.
 
-**The edge** has a purse of infinite depth and prices that do not move
-(§8.1).
+**The edge** is the world beyond, with rows of its own that never run
+short and prices that do not move (§8.1).
 
 Filed, until the port exists: haulers as companies whose stock is idle
 capacity. Today a building's own truck moves its goods, or the edge's.
@@ -122,12 +151,40 @@ curve alone decides when it is served, exactly as now. It is the habit
 that gets a resident out of the house, and it stays: money is not the
 reason to work here (§6.3).
 
+**Labour is a good, and a home is its row.** A house turns what its
+household consumes into hours of labour, the way a factory turns crates
+into goods, and the recipe is already written: `Need::drain` is the
+inputs a head a day, from time-use data, and the shift is the output.
+
+| in, a head a day | out |
+|---|---|
+| a night; about two and a half sittings; an evening; fuel by the tile; services — the upkeep, repairs and everything else a household pays for that is on no shelf | a shift of labour |
+
+The labour stock does not keep: an hour not sold is gone by morning,
+which is the one way labour is not coal. The house is where every chain
+starts, and it has running costs like a well. Its inputs are fetched by
+the household driving to them, which is the delivery for goods served
+in person (§6.1), and the score decides when; the row only says how
+much. Which is what keeps a street of houses by the exit from being a
+mint (§11.12): a household consumes nine tenths of what its labour is
+worth (§8.1), and nets the town the rest only when nothing crosses.
+
+**A row with an empty input stops.** A factory with an empty yard does
+not run; a household with an empty stock does not work: the Work tap is
+closed to a resident whose food, sleep, time off or tank stands at zero,
+until it does not. That is the one consequence at zero for a stock that
+drains by time, and it is what a holiday is: time off run to nothing,
+work off the table, and the score sending them to refill it. A week of
+night shifts and long drives ends the same way in a lie-in; illness,
+when it comes (step 5), is a sick day by the same rule. Nothing enforces
+a recipe; the row stops when it is short, as every row does.
+
 A **good** is a stock that moves. Today: the container and the crate.
 Two more come with this document:
 
 - **Services.** An office turns its labour stock into a services stock.
-  Every business holds a services stock that drains per day of operation
-  and calls when low; an office answers with a car, its staff driving out,
+  Every business, and every home, holds a services stock that drains per
+  day of operation and calls when low; an office answers with a car, its staff driving out,
   the way a warehouse answers with a van. No office in town, and a
   consultant drives in from the edge, slowly. An office with no clients in
   town sells to the edge: its cars drive off the map and back. Offices and
@@ -175,20 +232,37 @@ want a referent before they are written down (§14).
 
 A building holds a **labour stock**: the hours its line needs, drained as
 it produces, refilled by workers on shift. Its deficit is its vacancies,
-and a wage is the price posted on that deficit, nudged like any other:
-slots unfilled → raise; more applicants than slots → lower, and lower
-slowly. Wages are sticky downward in every labour market ever measured;
-`α_down` for wages is a fraction of `α_up`. That one asymmetry is the
-most robust fact in the field, and it is the only special case in this
-section.
+and it fills them on its turn (§6.2) like any other input: every seller
+of labour it can reach, at the delivered price, cheapest first. The
+sellers are households — the town's, and the world's beyond the edge —
+and each posts an **ask** on its hours and nudges it by its own stock
+like any other price: hours sold out, a job held, and the ask drifts up;
+hours piling up, no job, and it drifts down, and slowly. Wages are
+sticky downward in every labour market ever measured; `α_down` for the
+ask is a fraction of `α_up`, and that asymmetry is the one number in this
+section with its own referent.
 
-A vacancy is an order for labour: buyer, good, quantity, price. Labour is
-the one good the seller delivers in person, so the commute is the
-delivery and the resident drives. A building far from homes cannot fill
-its slots at the going wage, its vacancies stay open, and the nudge
-raises the wage until it can. The building pays for the commute through
-the wage — compensating differentials, Rosen (1986) — and there is no
-second line for travel.
+Labour is delivered in person, so the delivered price of a household's
+hours is its ask plus the commute spread over the shift, and the resident
+drives. A building far from homes finds its near sellers few and its far
+ones dear, and pays for the commute through what it pays — compensating
+differentials, Rosen (1986) — with no second line for travel and no rule
+about distance. The world's households beyond the edge sell at the edge
+wage plus the crossing plus the drive from the exit (§8.1), and the
+town's sell for no less than the edge would pay them net of the crossing
+and their drive out, since below that they sell there instead. Between
+those is the band for wages, the same shape as the band for crates.
+
+Employment is a standing relation, derived in the settlement pass. A
+building with a full line still reads the market on its turn, and swaps
+a worker only for one cheaper delivered by a **hiring threshold**: firms
+replace people for a saving of a tenth to a fifth, not for a penny, and
+about one in forty jobs turns over in a month. Tenure is then emergent,
+and a household whose ask has drifted above its neighbours' is the one
+that gets swapped, which is what keeps an ask honest. Nobody quits when
+rich — labour supply is close to inelastic — so the Work need stays the
+constant habit `residents.md` §3.1 makes it: it is when a resident
+leaves the house, and whoever hired them is where.
 
 ### 5.3 Freight
 
@@ -219,20 +293,35 @@ labour. A meal that costs an hour's wage is scored as an hour longer. A
 low-wage resident sees the same meal as three hours and cooks; a
 high-wage one barely notices. That is Engel's law — the poor spend on
 food first, the rich on leisure — from one division and no new
-parameter. An option the purse cannot pay for is not an option.
+parameter. Nothing is refused for want of money: the town pays, and what
+it paid is in the books. What the price does is rank.
 
-That is the whole protocol. Nobody posts a listing and waits for replies:
-a listing is a stored intention, and `residents.md` §2 deleted those so
-that any wake reads the world and converges on the same answer. The
-party in need scans the sellers it can reach and picks. What remains as
-state is the seller's posted price, which is a fact about its own stock,
-and the trip in flight, which is a record of what is happening.
+That is the whole protocol, and there are no special cases in it. The
+party with the deficit scans the sellers it can reach and takes the
+cheapest delivered — a resident for a meal, a shop for crates, a factory
+for hours, a house for services. Nobody posts a listing and waits for
+replies: a listing is a stored intention, and `residents.md` §2 deleted
+those so that any wake reads the world and converges on the same
+answer. What remains as state is the seller's posted price, which is a
+fact about its own stock, and the trip in flight, which is a record of
+what is happening.
 
-Two things differ between a resident and a building calling it, and
-they are inputs, not branches. **Presence:** a resident must be there, so
-their in-person options block each other; a building's option dispatches
-a vehicle, and many are in flight at once. **Travel:** a resident's is
-their own drive; a building's is its truck's leg, or the edge's.
+What varies by good is only the **delivery**: who moves, and in what.
+
+| good | who moves | in what |
+|---|---|---|
+| a meal, an evening, a tank | the buyer, to the seller | their own car: the visit |
+| a crate, a litre | the seller, to the buyer | a van or a lorry: the delivery |
+| hours of labour | the seller, to the buyer | their own car: the commute |
+| services | the seller, to the buyer | the office's car: the call-out |
+
+The delivery is what the trip on the map is, and the trip on the map is
+the game; the rest of the protocol never looks at which row it is. Two
+inputs follow from who moves, and they are inputs, not branches.
+**Presence:** a mover that goes in person can be in one place, so their
+in-person options block each other; a building that dispatches has many
+in flight at once. **Travel:** the mover's own drive, or the vehicle's
+leg.
 
 A resident could in principle order food to the house through the same
 primitive; it is left unbuilt, because the shopping trip is traffic and
@@ -253,36 +342,22 @@ The call list keeps what it holds today, the truck already on its way.
 
 ### 6.3 Which job
 
-For a shift the resident is the seller. Their options are buildings with
-vacancies and the edge. The value of a shift is its pay in the numéraire
-every resident shares, the edge wage, so
-
-```
-score = w_work × hours × (wage / edge_wage) / (commute + hours)
-```
-
-A nearby job at four fifths of the edge wage beats the long drive; one at
-a third does not. The reservation wage is the commute. This is the one
-place the score reads a price as a gain rather than a cost, and it is
-written down here as the special case it is.
-
-Employment is a standing relation, derived in the settlement pass as it
-is today; only the ranking changes, from distance to this score. A
-resident with a job still ranks vacancies, and switches when the new
-score beats the current by a **switching threshold**: people move for a
-raise of a tenth to a fifth, and about one in forty moves in a month.
-Tenure is then emergent, and a building that raises its wage can hire
-away from its neighbour, which is the pressure that makes wages mean
-something.
-
-Nobody quits when rich — labour supply is close to inelastic, and a game
-where the wealthy stop showing up has a mystery in it — so the Work need
-stays the constant habit `residents.md` §3.1 makes it; only *where* is
-economic.
+Deleted: labour is bought on the building's turn like any other input
+(§5.2, §6.2). What was here — the resident ranking vacancies by wage
+over commute, with a switching threshold — was the same market seen from
+the seller's side, and it was the one place the score read a price as a
+gain. Its numbers moved to §5.2: the commute in the delivered price, the
+threshold to the buyer as a hiring cost.
 
 ## 7. Moving goods
 
 A truck carries one load, from the seller to the buyer, and goes home.
+**A farm's tractor is its delivery.** A field is a lot the tractor
+drives, to seed and to harvest; the farm's row is tractor-hours per
+field, and a field the tractor cannot reach in a day yields nothing
+that day. Fields too far from the yard, or too many, show as unworked
+fields on the map before they show as a number, and the second farm is
+the fix. Roads to the fields matter, because the drive is the delivery.
 **The warehouse** is a building with stocks of many goods that buys from
 producers and the edge and sells locally. **Construction** is unchanged:
 materials are a good, the construction firm a building, the site a call
@@ -311,85 +386,121 @@ That is Hume's price-specie flow (1752), and the band is it.
   exceeds the edge's plus the trip in, and none falls below the edge's
   minus the trip out. Every price lives in that band, and the band is a
   distance.
-- **The edge hires everyone at `edge_wage`**, at every exit, forever. So
-  no wage falls below it minus the commute, and nobody starves: the drive
-  is the price, and it is always payable. Needs served at the edge are
-  served at the edge's prices; a resident who cannot pay is served anyway
-  and owes nothing, because the floor has to be a floor.
+- **`edge_price` is not authored.** It is what a row's output is worth
+  beyond the edge, where the same rows run at capacity at the edge wage
+  of one, link by link along the chain, and every row's output is worth
+  more than what went in: **the inputs bought in, plus the labour, plus
+  what the row keeps.** For a firm what it keeps is capital's share of
+  what labour added, a third — the split of value added between labour
+  and capital is among the steadiest numbers in economics — so a firm's
+  output is its inputs plus its labour over two thirds. For a household
+  what it keeps is its saving, a tenth of income, so a head's labour is
+  worth its inputs over nine tenths. A crate is the farm's labour over
+  two thirds; a meal is the crate plus the counter's labour over two
+  thirds; a shift is a head's night, sittings, evening, fuel and services
+  over nine tenths, which is the edge wage of one. Two numbers, each with
+  a referent, and every price follows. Plus the **crossing**: a share of
+  the value lost each way for carrying it across, the iceberg cost of
+  trade theory (Samuelson 1954). The world sells to the town at its price
+  plus the crossing and buys at its price less the crossing, labour
+  included. Until the chain behind a good has a row in town, its price at
+  the edge is a number with the row's name on it (§13.3).
+- **The town's money is what its rows keep.** A factory in town pays its
+  people the labour share and keeps capital's third on everything it
+  makes, less the crossing on what it ships; that is why exporting fills
+  the treasury, and why capital is worth placing. A house keeps its
+  household's tenth when nothing crosses; a commuter's tenth is eaten by
+  the crossing, so a bedroom town nets about nothing. A shop keeps its
+  third on the meal it adds to the crate, and what it saves the treasury
+  is the crossing on a meal that would otherwise have crossed. The deeper
+  the chain in town, the more shares the town keeps: that is
+  specialisation paying, from two numbers.
+- **The edge hires everyone at `edge_wage`**, at every exit, forever,
+  like any good the edge buys without limit. So no wage falls below it
+  minus the commute, and a town's people can always sell their hours,
+  which is the export of last resort. What the edge sells, a meal, a
+  tank, the groceries behind a meal at home, a commuter's shift, it
+  sells to a town that can pay: **nothing crosses the door at zero.**
+  There is no floor but the town's own shelves, and no mercy; a broke
+  town lives on what it holds and what it makes, and its people at the
+  edge earning its way back.
 - **What nobody in town buys, the edge buys.** A workplace whose output
   has no local buyer sells it at the edge, its truck or its staff driving
   off the map and back. This is what makes offices and factories the
   town's export base before there is a port.
-- **The door breaks even.** `edge_wage` and `edge_price` are set so that
-  a resident who works and eats entirely at the edge nets zero. Then every
-  net flow through the door is because the town does something different
-  from the outside: cheaper meals keep money in, higher wages bring it in.
-  One calibration, no mechanism, and a test (§11.9).
+- **The door breaks even, by construction.** A household that buys its
+  whole row at the edge and sells its labour there nets the town its
+  saving less the crossing, which at a tenth each is nothing. That is not
+  a calibration but the household row's own arithmetic: its inputs at
+  the world's prices are nine tenths of what its labour sells for. Then
+  every net flow through the door is because the town does something
+  different from the outside: a row of its own keeps a share, a meal
+  served in town keeps the crossing. One check, no mechanism, and a test
+  (§11.9).
 
-Money is made when a resident is paid at the edge or a good is sold to
-it; destroyed when a good is bought from it or a need is served there.
-The money supply drifts, and every drift ends at a bound with a name:
-drain it out and prices fall to floors, wages to the edge, exports become
-attractive and it comes back; flood it in and prices rise to the ceiling
-and imports become attractive.
+Money enters when labour or goods are sold at the edge — a resident's
+shift there, a lorry leaving loaded; it leaves when they are bought
+there — a crate, a litre, a meal — when a commuter from beyond the edge
+takes a wage home, and when the mayor builds, since a placement is
+materials from beyond the edge. The money supply drifts, and every drift
+ends at a bound with a name: drain it out and prices fall to floors,
+wages to the edge, exports become attractive and it comes back; flood it
+in and prices rise to the ceiling and imports become attractive.
 
 Later, **the port** is a second door with the same prices and cheaper
 freight, on a sea that is one connected body so that one price is the
-world's. Filed: `edge_price` drifting slowly with the world's net trade,
+world's. Filed: the world's costs drifting slowly with its net trade,
 one global rule, so that a season's meta moves. Not before a season
 exists.
 
-### 8.2 Floats and the sweep
+### 8.2 One purse
 
-Money that lands in a purse that never spends is destroyed as far as
-circulation goes. Residents spend at taps, buildings on inputs and wages,
-the mayor on buildings. A profit nobody pays out, a landlord's rent, and a
-resident's savings have no outlet, and every one of them is a sink.
+Every sale in town is two lines: revenue on the seller's page, and a
+purchase or wages on the buyer's. No money moves, because there is only
+the town's, and the town paying itself is a record. The treasury moves
+at the door and nowhere else, so it is the town's balance of payments,
+cumulative, less what the mayor built with it. This is Hume's specie
+stock kept honestly. A shop that sells to its neighbours makes the town
+no richer in money, and a meal cooked at home makes it no poorer; what
+either does is serve a need, which is GDP (§10). What the shop does for
+the treasury is keep in town the meal that would otherwise have been
+bought at the edge, and what it costs the treasury is its crates and the
+wages that leave with any staff who commute in from beyond it.
 
-Real economies return profit to households as dividends and turn savings
-into houses and factories. This game has one investor, who founded every
-building and seeded its float: the mayor. So the mayor is the residual
-claimant of the whole town.
-
-- **Every purse keeps a float.** The float is what the purse spends
-  between two incomes. For a shop: one full restock plus wages until the
-  next delivery, which the reorder rule already knows. For a resident: a
-  payday of meals and fuel. For a house: nothing, because a house spends
-  nothing. No table of caps; one rule, and the referent is working
-  capital.
-- **The rest sweeps to the treasury** at each income, as a lump on the
-  building where the sale landed, or the home where the wage landed. A
-  resident's sweep is their rent, and rent is what they can afford —
-  Schwabe's law, the one household expense that rises with income. Rent
-  never enters the score, so a broke resident always goes home.
-- **A facility that answers calls pays its wages from the treasury.** A
-  hospital has wages and no sales; under the float alone its ambulance
-  would stop rolling when it was broke. Services are paid from tax
-  everywhere, and the blueprint row already marks which kinds answer.
-  This is the one special case.
-
-The treasury is spent on buildings (whose price seeds the float), road
-past the allowance, and nothing else; the plant buys its own coal.
-
-What this buys: no taxes, no landlord, no question of what a resident does
-with savings. A warehouse that shortens no route makes no margin and
-sweeps nothing, so the mayor cannot farm hops; market discipline does
-what a rule would. And the treasury is the one place money accumulates,
-which is what a score is.
-
-Level is unchanged: hours served, banked at the resident's settle.
+What this buys: no taxes, no landlord, no floats, no sweep, no question
+of what a resident does with savings, no bankruptcy (§9), and nothing in
+the town that can be a sink. A warehouse that shortens no route sells
+nothing (§6.2); market discipline does what a rule would. And the
+treasury is the one place money accumulates, which is what a budget is.
+The mayor spends it on buildings, road past the allowance, and nothing
+else.
 
 ## 9. Failure, and why it stays legible
 
-A building whose balance falls below its float stops buying. Its shelves
-empty and go grey; its wages stop and its vacancies close, so its workers
-take the next best score, which is at worst the edge. It does not vanish
-and it does not take the building with it. The mayor can put money in
-(spend, as for any placement) or demolish. A resident whose wallet is
-empty works where the score sends them — the edge always hires — and eats
-at the edge until it refills. Nothing propagates through households:
-consumption is set by needs and needs do not spiral. That is rule 8 made
-mechanical.
+A building whose books are red — purchases and wages over revenue, day
+after day — does not stop, because the town pays, and the town is what
+it costs. Its card says so in one line (§10), and the fix is the
+mayor's: demolish it, or build what it is missing. That is what owning
+it means. A bar among four on one street costs its crates and the wages
+that leave with its commuters, and that is a number beside its two meals
+a day; a purse running dry was a bar with a full shelf and nothing to
+say. Nothing propagates through households: consumption is set by needs
+and needs do not spiral.
+
+The one failure is the town's, and it is a slump, not an end. A
+treasury at zero cannot import: shelves and pumps run down and go grey,
+commuters stop coming, and the town lives on what it holds and makes.
+A sound town bounces in a day, since its exporters keep selling. A town
+that eats more than it sells runs its shelves down and its people's
+stomachs with them, and a row with an empty input stops (§4) — but the
+edge always buys hours, a partial shift on an empty stomach is still
+sold when it ends, and every row keeps a share, so the first payday
+reopens the door and someone eats. What a deficit town gets is a long,
+visible bad time: grey shops, people driving out to work, and a dial
+that says how many days of imports are left, in red. That is rule 8
+made mechanical, once, with the one stake the game has. A farm makes
+the slump shallower still: food grown in town is served without the
+door.
 
 Emigration (`game.md` §Money, "the floor is emigration") is no longer
 needed for the floor and is filed.
@@ -398,15 +509,20 @@ needed for the floor and is filed.
 
 Everything a price does is an event on the map first.
 
+- **The dial.** GDP: hours of need served in town, per day, and the
+  level that is its running sum. The treasury, which steps at the door
+  and only there: a lorry leaving loaded, a shift worked beyond the
+  edge, a placement.
 - **The lump.** A `Sale` on the wire: building, amount, when the sale
-  ends. The number floats above the building; the sweep steps the meter.
-  A red lump on a truck leaving for the edge is an import.
+  ends. The number floats above the building; it is a line in the books
+  made visible, and it moves the meter only when the other party is the
+  outside. A red lump on a truck in from the edge is an import.
 - **The building.** Shelves grey at empty stock (built); a yard stacked at
   full output; the inspect panel shows each stock's level, price, and its
   trend over the week.
-- **The company.** Revenue, purchases, wages, margin, balance against
-  float. A refinery whose margin has gone negative is a line, not a
-  mystery.
+- **The company.** Revenue, purchases, wages, margin, and what of each
+  crossed the door. A refinery whose margin has gone negative is a
+  line, not a mystery.
 - **The town.** Per need, visits served per day; per good, in and out per
   day. The cinema's decline is a number beside the pump's.
 - **The region.** Per good, per town: price, stock, trade. Each row a link
@@ -439,21 +555,28 @@ season is thirty game-days until something says otherwise.
    for; a building staffed from beyond the edge pays what its trade is
    worth, which can be the floor — §12.2.)
 6. **No harm.** A town built ignoring every price ends the season with
-   more treasury than it began, net of what it placed, and no building
-   placed is below its float within its first week.
-7. **The conga.** A warehouse inserted where it shortens nothing makes no
-   margin, sweeps nothing, and the treasury is unchanged. (A property of
-   one delivery, so a unit test, not a season.)
+   more treasury than it began, net of what it placed. Every building
+   in the red on the last day is printed with what it costs, since that
+   is the town's to read, not a failure.
+7. **The conga.** A delivery from a depot moves the treasury by nothing,
+   and a warehouse inserted where it shortens nothing sells nothing. (A
+   property of one delivery, so a unit test, not a season.)
 8. **No ringing.** Price variance at steady state stays under a bound.
-9. **The door breaks even.** A resident who works and eats only at the
-   edge ends the season with the wallet they began. (A property of one
-   payday, so a unit test, not a season.)
-10. **No sinks.** Over a season the money outside the treasury stays
-    under a bound: floats, and what is in transit. (Printed by the no-harm
-    season, not asserted: the sweep is the mechanism, and any bound would
-    be a number picked to pass.)
+9. **The door breaks even.** A household that works and consumes only at
+   the edge moves the treasury by nothing over a day. (A property of the
+   household row, so a unit test, not a season.)
+10. ~~**No sinks.**~~ There is nothing outside the treasury to be one.
 11. **Tenure.** Over a season the fraction of residents who change jobs in
     a month sits near the referent.
+12. **The bedroom town, and the job centre.** A street of houses beside
+    the exit and nothing else, its residents commuting to the edge; and
+    a street of workplaces and nothing else, staffed from beyond it.
+    Each against the full town. Treasury and GDP per resident-day are
+    printed for all three. A house nets its household's saving and no
+    more, so the bedroom town may not beat the full town by more than
+    that, and it is the poorer town by GDP; imported labour pays the
+    crossing and the drive, so the job centre earns less than the full
+    town.
 
 ## 12. Order to build
 
@@ -470,8 +593,24 @@ Each step is playable and nothing before step 2 can hurt anyone.
 3. **The building's turn.** `(s, S)` with delivered price across every
    reachable seller (§6.2); the call dispatcher's nearest-depot search
    goes.
-4. **Services and wear.** The office's stock and its car; the workshop.
-5. **Panels, the board, the advisor's tools.**
+4. **One purse, one protocol.** Wallets, balances, floats, the sweep
+   and rent go; the treasury moves at the door; the books carry what a
+   purse carried. GDP is value served in town at the world's prices,
+   housing included, and the level is its running sum. Labour is bought
+   on the building's turn: households post an ask, the edge's at the
+   edge wage plus the crossing, and the wage rules of §12.2 go. The
+   bedroom town and the job-centre town beside the full one (§11.12).
+   §12.4 has what it needs decided.
+5. **Services and wear.** The office's stock and its car; the workshop;
+   the household's services stock.
+6. **Rows.** Every workplace's inputs, output and rate on its row;
+   `edge_price` derived link by link from the rows at capacity, each
+   keeping its share, plus the crossing (§8.1); freight as fuel and
+   hours per leg. Lands with the farm, the first row with two links
+   behind it. Step 4 already prices what exists: a pass-through's hours
+   at one over two thirds, and the household at nine tenths of the edge
+   wage.
+7. **Panels, the board, the advisor's tools.**
 
 Then, with the port: freight, haulers, classes, the second door.
 
@@ -509,7 +648,9 @@ line; the rest is the implementer's.
 
 `server/src/economy.rs` holds every number below with its referent. The
 mechanism is the one above; these are the places where running it made a
-decision the text left open, or moved one it had made.
+decision the text left open, or moved one it had made. The float, the
+sweep, pass-throughs' purses and the wage rules below are what step 4
+removed; they are kept here as the record of what was built and why.
 
 - **The stock.** `Stock { level, cap }` is the one struct: a resident's
   needs, a car's tank and a building's shelf. The bucket's algebra reads
@@ -595,12 +736,165 @@ district, not a street. The wage cut keeps such a shop alive at a wage
 its trade is worth, staffed from beyond the edge; whether that is the
 game, or shops should be smaller, is open (§13.7).
 
+### 12.3 Step 3, as built
+
+The building's turn is `calls::cheapest_seller`; the numbers are in
+`economy.rs` with the rest.
+
+- **The delivered price is the score.** Every seller fills the order
+  alike, so §6.1's score ranks them by its denominator alone: the time
+  until the load lands, plus the order at the posted price in hours of
+  the buyer's own earning. A depot's van is an option while the depot
+  has the good on its shelf and a van standing free; the outside always
+  is, by a lorry that drives in from the nearest exit at the edge's
+  wholesale. A van loads as it leaves — what the shelf has, up to the
+  order — and the load rides on the call; the money moves when it
+  lands, and the buyer looks at its shelf again then, since a load
+  short of the order or a long lead leaves it under the reorder point.
+  Reading the depot's shelf at landing instead let two vans promise the
+  same crates, and the second landed empty-handed at a shelf that,
+  selling nothing, never called again. The nearest-depot search, and
+  its waiting for a van to come home, are gone: a buyer whose depot is
+  busy buys from beyond the edge, at the drive's cost.
+- **A building's earning** is yesterday's takings over the day; before
+  it has a day of them, what the edge would pay for everything it could
+  sell (§13.3, resolved as it suggested).
+- **A depot posts a price on its shelf**, nudged like any other. It
+  opens at the edge's wholesale, which is its floor, so a depot that
+  saves nobody a drive sells nothing and sweeps nothing (§11.7). What it
+  could sell in a day, for selling out and piling up, is its shelf
+  turned once. Its wages stay the treasury's: the row answers calls,
+  and §8.2's special case is about who answers, not who sells.
+- **`(s, S)`.** The shelf is `S`. The reorder point is what the taps
+  could sell during the lead time — the last delivery's, from the call
+  to the load landing; before the first, as long as a lorry is away
+  beyond the edge — plus a full house, everyone the taps seat at once,
+  so a rush during the lead does not empty the shelf. Half the shelf,
+  which it replaces, sent a supermarket for stock with seventy meals on
+  the shelf and a shop next door to a depot with twenty.
+- **Freight is the drive** (§5.3), in the buyer's time, and nothing is
+  charged for it in money: the van's fuel and its driver's hours are
+  the depot's, as they were. The band a depot can price in is what its
+  customers' hours are worth over the drive it saves, which is the
+  argument for a road.
+
+### 12.4 Step 4, to the number, and as built
+
+Built 2026-09-10. The decisions the mechanism did not make on its own,
+and what running it found.
+
+- **A placement is an import.** The building's price goes to the edge,
+  and no longer includes a float, since there is none to open with.
+  The rows' prices come down by the float they carried.
+- **Earnings stay what they were.** A resident prices money in their
+  wage and a building in yesterday's takings (§6.1, §12.3); both are
+  lines in the books, not purses.
+- **Wages at the door.** A resident's shift beyond the edge brings the
+  edge wage in; a commuter's shift in town takes the town's wage out. A
+  resident's shift in town moves nothing.
+- **Goods at the door.** A delivery from beyond the edge costs the
+  treasury the load at the edge's wholesale; a fetch, the same; a load
+  sold to the edge earns it. A delivery from a depot moves nothing and
+  is two lines.
+- **A meal at the edge** costs the treasury the edge's price; a meal at
+  home costs its groceries, which are the edge's until something in
+  town delivers them (§12.2). Nothing else a resident buys moves money.
+- **The treasury can go to zero and no lower.** An import the treasury
+  cannot pay for does not happen; a resident at the edge is served
+  regardless (§8.1).
+- **The wage rules of §12.2 go** — the cut to what an hour brings in,
+  the rise for a desk the edge filled, the floor. Each was a proxy for
+  something the market now does: the crossing and the commute price
+  imported labour, the ask prices the town's, and a building whose hours
+  cost more than they bring in is in the red on its card (§9).
+- **The ask does not nudge yet.** A household's hours are all sold the
+  day it holds a job, so "selling out" is every day it is employed and
+  the ratchet never stops: an ask rising five percent a day is swapped
+  out within the week, falls back at one percent a day, and the tenure
+  season becomes a churn. What selling out means for a person — more
+  buyers than shifts — needs the market to show it, and that is open
+  (§13.11). Until then the ask is the reservation: the edge wage net of
+  the crossing for the town's households, plus it for the world's, and
+  the delivered price differs by the commute alone.
+- **The stake.** A fresh town starts with a hundred hours in the
+  treasury, the floats its buildings used to open with in one place, so
+  that it can import until its first shift is sold.
+- **A commuter unpaid.** An import the treasury cannot cover is paid as
+  far as it goes, a commuter's wage included: the shortfall is a line in
+  the building's books and the commuter comes back tomorrow. What a
+  town that cannot pay its imported labour should do about it is open.
+
+- **GDP at the world's prices.** A need served in town banks its units
+  times `edge_price` for that unit, the edge's excluded; a night is the
+  household row's upkeep, about a third of a day's wage a head until the
+  row says otherwise (§13.10). The level thresholds are retuned to the
+  new scale.
+- **The crossing is a tenth** (§13.8) until a season says otherwise.
+
+What running the first cut found. Ten days of the full town, the
+bedroom town and the job centre (§11.12), with the world pricing
+everything at the cost of its inputs and the household drawing housing
+alone: the full town and the job centre sat at zero from the first day,
+and the bedroom town netted six hours a head a day. The mint was the
+household row four hours short of its own labour's worth; and a world
+priced at cost leaves a town nothing but the crossing, twice, against
+it — the old design hid the same fact by seeding every purse and
+pricing a meal for the ladder. What closed it is §8.1's two shares:
+every row's output is worth its inputs plus what the row keeps, and
+the town's money is what its rows keep. As built:
+
+- **A pass-through's hours** sell to the edge at one over two thirds
+  an hour, less the crossing: capital's third on labour that made
+  nothing else. GDP banks the hours at the world's price.
+- **The household draws nine tenths of the edge wage a day** at the
+  world's prices: a night at a third of a day's wage, sittings and an
+  evening at the table's prices, transport at its budget sixth, and
+  services as the rest, about 2.4 hours a head a day, imported with the
+  night's upkeep until an office in town makes them. Fuel is what the
+  car burns; the sixth is the row's estimate of it, and the check holds
+  in the broad lines, which is what it is for.
+- **An empty stock closes the Work tap** (§4). The wake budget held at
+  36 a resident-day on the first day and 20 after, and tenure stayed at
+  zero changes.
+- **Nothing crosses the door at zero**, and there is no floor. A meal
+  beyond the edge, the groceries behind one at home and a commuter's
+  shift are options only while the treasury can pay for them; the first
+  cut served a broke town's people for free, which was the one mercy in
+  the model and inconsistent with its crates. A dead state — nothing at
+  the door and nobody fit to work — was built and taken out again: a
+  town with anyone fit to work bootstraps, since a partial shift on an
+  empty stomach is still sold and labour is the export of last resort,
+  so it was a corner reachable only by construction. Zero is a slump.
+  The dial shows days of imports left, red under three.
+- **The stake is five hundred**, a few weeks of a starting town's
+  imports. The first cut started at a hundred, gone at the first
+  midnight; a treasury at zero cannot import fuel, a dry tank closes the
+  Work tap, and the whole town spent its days driving to the edge for
+  fuel instead of working. A season places forty buildings at once, so
+  it is given a week of its households' row as working capital and
+  measured from there.
+- **The season town is shaped like a town** — mostly homes, an export
+  base with about as many desks as the homes have people, one of each
+  shop — where before it cycled every kind equally, seventeen shops,
+  bars, supermarkets and warehouses for 177 people. Ten days of it:
+  the treasury climbs about fifteen a day on a door of seven hundred
+  each way; every office, factory and workshop is in the black by
+  twenty-five to thirty a day, every shop, bar, supermarket and
+  warehouse in the red, as §9 says they should be; and desks are worked
+  about six hours of nine, the rest lost to commutes across a
+  170-tile street, which is traffic's to fix. The bedroom town nets
+  about one a head a day, its households' saving, where the first cut
+  netted six; the full town nets about one too, its exporters' shares
+  less what its twenty shop workers cost, and three times the GDP a
+  head; the job centre, staffed from an exit four hours away, loses
+  one and a quarter a head a day to the crossing and the drive.
+
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
-2. ~~The switching threshold's value.~~ §12.2.
-3. A new building's `earning` before it has a day of revenue — the edge
-   price of its output times its rated output is the obvious seed.
+2. ~~The switching threshold's value.~~ §12.2; now the hiring threshold, §5.2.
+3. ~~A new building's `earning` before it has a day of revenue.~~ §12.3.
 4. Household delivery (§6.1) — permitted, unbuilt. Until then a meal at
    home is groceries from the edge (§12.2).
 5. `edge_price` drift for seasons (§8.1).
@@ -608,4 +902,25 @@ game, or shops should be smaller, is open (§13.7).
 7. Shop labour against shop trade (§12.2): fewer staff per shop, shorter
    shifts, or a town whose shops are meant to fail until it has a
    district — and the price of a meal against the ladder, which §12.2
-   settled by making a sitting worth an hour.
+   settled by making a sitting worth an hour. Under one purse this is a
+   cost the town carries, not a failure (§9); whether the cost is right
+   is the open part.
+8. The crossing's value (§8.1), with a referent: iceberg estimates for
+   trade costs run from a tenth to a half of value; a border between a
+   town and its region is the low end.
+9. ~~Productivity per workplace row.~~ Capital's share of what labour
+   adds, a third, on every firm's row (§8.1); rows the town runs better
+   than the world wait for the tree.
+10. ~~The household's services rate.~~ The balance of the row at nine
+    tenths of the edge wage (§8.1, §12.4).
+11. What selling out means for a household's hours, so that the ask can
+    nudge (§12.4).
+12. ~~Where the town's money comes from in a world priced at cost.~~
+    What its rows keep: capital's third, the household's tenth (§8.1).
+13. The household row's transport is a budget sixth, and its services
+    the balance; the car burns what it burns. With freight (§12 step 6)
+    the row's transport becomes the fuel the commute costs, per tile at
+    the world's price, services get their own share, and the door's
+    check (§11.9) becomes a season print. Until then a household nets a
+    little over its tenth when it drives less than the sixth, which is
+    the bedroom town's 1.19 against 0.72 (§12.4).

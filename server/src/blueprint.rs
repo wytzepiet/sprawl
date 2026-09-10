@@ -42,11 +42,10 @@ pub struct Blueprint {
     /// Its lot, in tiles along the frontage and deep, on the street side.
     /// (0, 0) is none: a driveway, or nothing.
     pub lot: (u8, u8),
-    /// What the mayor pays for one, in hours of the edge's wage: the float
-    /// it opens with (`economy::float`) and the building over it. Pays
-    /// itself back through the sweep, so the numbers are days of a town's
-    /// income: a house is a few hours of its own household's rent, a
-    /// district's supermarket a day of the district's.
+    /// What the mayor pays the outside for one, in hours of the edge's
+    /// wage: materials from beyond the edge, so a placement is an import
+    /// (docs/economy.md §8.2). Days of a town's income: a house is a few
+    /// hours, a district's supermarket a day of the district's.
     pub price: f64,
     /// What it serves, to whom, and when.
     pub taps: Vec<Tap>,
@@ -161,7 +160,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // A shop seats as many as it staffs, and the high street is somewhere
         // to be until late.
         (Shop, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 40.0,
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 18.0,
             stock: 40, answers: None, vehicles: &[],
             taps: vec![
                 shift(9, 18, 2),
@@ -189,7 +188,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // A restaurant seats a dozen, from lunch until late, and is an evening
         // out in itself. The first kind the mayor can place by hand.
         (Restaurant, Blueprint {
-            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (2, 1), price: 55.0,
+            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (2, 1), price: 16.0,
             stock: 30, answers: None, vehicles: &[],
             taps: vec![
                 shift(11, 23, 3),
@@ -200,7 +199,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // A bar opens as the shops shut and is the last place open. Small
         // staff, an evening's crowd, a kitchen until eleven.
         (Bar, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 35.0,
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 16.0,
             stock: 30, answers: None, vehicles: &[],
             taps: vec![
                 shift(18, 2, 2),
@@ -212,7 +211,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // the tanks are filled is where the driving is — beside the homes.
         // Its shelf is tanks: a delivery is a tanker's worth.
         (GasStation, Blueprint {
-            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (2, 1), price: 75.0,
+            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (2, 1), price: 14.0,
             stock: 30, answers: None, vehicles: &[],
             taps: vec![
                 shift(6, 22, 1),
@@ -223,7 +222,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // corner shop and a warehouse's truck to keep them full. The first
         // placeable with something to run out of.
         (Supermarket, Blueprint {
-            class: Commerce, homes: 0, jobs: 6, size: (2, 2), lot: (2, 1), price: 140.0,
+            class: Commerce, homes: 0, jobs: 6, size: (2, 2), lot: (2, 1), price: 47.0,
             stock: 150, answers: None, vehicles: &[],
             taps: vec![
                 shift(8, 21, 6),
@@ -234,7 +233,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // there is one, every delivery comes from beyond the edge. Its
         // shelf is six shops' worth.
         (Warehouse, Blueprint {
-            class: Industry, homes: 0, jobs: 6, size: (2, 2), lot: (2, 2), price: 80.0,
+            class: Industry, homes: 0, jobs: 6, size: (2, 2), lot: (2, 2), price: 56.0,
             stock: 240, answers: Some(CallKind::Stock), vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van],
             taps: vec![shift(6, 18, 6)],
         }),
@@ -283,11 +282,6 @@ pub fn check() {
         }
     }
     assert_eq!(BLUEPRINTS.len(), BuildingKind::ALL.len(), "a kind has no blueprint");
-    for (kind, b) in BLUEPRINTS.iter() {
-        // The price the mayor pays includes the float the building opens with.
-        let float = crate::economy::float(*kind, crate::economy::EDGE_WAGE);
-        assert!(b.price >= float, "{kind:?} costs {} and opens with a float of {float}", b.price);
-    }
 }
 
 /// The whole table, readable: what each kind is and does.
@@ -300,7 +294,6 @@ pub fn inspect() -> Value {
         "jobs": b.jobs,
         "size": b.size,
         "price": b.price,
-        "float": crate::economy::float(*kind, crate::economy::EDGE_WAGE),
         "taps": b.taps.iter().map(|t| json!({
             "need": t.need, "open_h": hours(&t.curve), "rate": t.rate, "slots": t.slots,
         })).collect::<Vec<_>>(),

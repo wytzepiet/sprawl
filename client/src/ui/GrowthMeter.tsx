@@ -9,12 +9,13 @@ const CIRCUMFERENCE = 2 * Math.PI * R;
 /**
  * The city's two dials, one in each bottom corner.
  *
- * The level on the left is hours of need the city's buildings have served,
- * banked as each visit ends. The treasury on the right is the mayor's money,
- * stepped by each sweep: a household's rent on payday, a shop's takings at
- * midnight. Both move in lumps, and the lumps are on the map first — a
- * number floating over the building — so a dial that steps is an event you
- * could have watched, never a rate.
+ * The level on the left is the town's GDP to date: value served in town at
+ * the world's prices, banked as each visit ends, with today's beneath it.
+ * The treasury on the right is the town's one purse, stepped at the door:
+ * a shift worked beyond the edge, a lorry in from it, a placement. Both
+ * move in lumps, and the lumps are on the map first — a number floating
+ * over the building — so a dial that steps is an event you could have
+ * watched, never a rate.
  *
  * Each is a ring around the thing it is earning: the city's level on the left,
  * the building it is saving toward on the right. Nothing is labelled — a ring
@@ -23,13 +24,15 @@ const CIRCUMFERENCE = 2 * Math.PI * R;
  */
 export default function GrowthMeter() {
   const { growth } = useGame();
-  const xp = () => growth().xp;
   const treasury = () => growth().treasury;
+  /** Days the treasury covers at today's imports; nothing crosses the door at zero. */
+  const cover = () => (growth().imports > 0 ? treasury() / growth().imports : Infinity);
+  const low = () => cover() < 3;
 
   return (
     <>
       <span class="fixed bottom-4 left-4 select-none cursor-pointer" onClick={() => setTreeOpen(true)} title="The skill tree (L)">
-        <Dial color="#5B57C8" now={xp()} max={growth().xp_needed}>
+        <Dial color="#5B57C8" now={growth().toward} max={growth().needed} caption={`GDP ${Math.floor(growth().gdp)} today`}>
           <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
             <span class="text-[7px] font-bold uppercase tracking-widest text-white/50">Lvl</span>
             <span class="text-[15px] font-bold tabular-nums">{growth().level}</span>
@@ -37,11 +40,11 @@ export default function GrowthMeter() {
         </Dial>
       </span>
 
-      {/* What the mayor has to spend, in hours of the edge's wage, and what
-          has swept in today. No ring: there is no goal but the one the mayor
-          is saving for. */}
+      {/* What the town has to spend, in hours of the edge's wage, and what
+          the door netted today. No ring: there is no goal but the one the
+          mayor is saving for. */}
       <span class="fixed bottom-4 right-4 flex select-none flex-col items-center gap-1.5 pointer-events-none">
-        <Dial color="#57A773" now={treasury()} max={0} caption={`+${Math.floor(growth().income)} today`}>
+        <Dial color={low() ? "#D9483B" : "#57A773"} now={treasury()} max={0} caption={low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : ""}${Math.floor(growth().income)} today`}>
           <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
             <span class="text-[13px] font-bold tabular-nums">{Math.floor(treasury())}</span>
             <span class="text-[7px] font-bold uppercase tracking-widest text-white/50">hours</span>
@@ -82,7 +85,7 @@ function Dial(props: { color: string; now: number; max: number; caption?: string
         <span class="relative h-9 w-9">{props.children}</span>
       </span>
       <span class="rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-bold leading-none tabular-nums text-stone-600 backdrop-blur-xl">
-        {props.max > 0 ? `${Math.floor(props.now).toLocaleString()} / ${Math.round(props.max).toLocaleString()}` : props.caption}
+        {props.caption ?? `${Math.floor(props.now).toLocaleString()} / ${Math.round(props.max).toLocaleString()}`}
       </span>
     </span>
   );

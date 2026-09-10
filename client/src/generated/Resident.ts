@@ -39,11 +39,12 @@ selected: Need | null,
  */
 last_update: number, 
 /**
- * Their purse, in hours of the edge's wage. A shift pays into it, a
- * meal or a tank is paid from it, and what is over the float sweeps
- * to the treasury as rent. docs/economy.md §3, §8.2.
+ * What their job pays an hour: their ask, plus the commute spread
+ * over the shift, which is the delivered price of their labour. What
+ * an hour of money is worth to them in the score. docs/economy.md
+ * §5.2, §6.1.
  */
-wallet: number, 
+wage: number, 
 /**
  * Units of the selected need served since this visit began, not yet
  * paid for: the sale lands as one lump when the visit ends. A record

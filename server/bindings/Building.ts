@@ -23,19 +23,6 @@ facing: number,
  */
 stock: Stock, 
 /**
- * Its purse, in hours of the edge's wage. Opened with its float when
- * the mayor places it; sales land here, wages and deliveries are paid
- * from it, and what is over the float sweeps to the treasury.
- * docs/economy.md §3, §8.2.
- */
-balance: number, 
-/**
- * What it pays an hour of labour. Posted on its vacancies and nudged
- * like any price: up while the edge has to fill its desks, down slowly
- * while its own town does.
- */
-wage: number, 
-/**
  * The price posted on each thing it sells, per unit of the need.
  * Nudged daily by its own stock, never below unit cost. Issued at the
  * edge's price to a save from before prices.

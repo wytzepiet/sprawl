@@ -1,36 +1,37 @@
 //! Call-outs: something in the city calls, and a vehicle answers.
 //! docs/services.md §5.
 //!
-//! A call has a kind and a place. A facility whose row answers that kind
-//! sends a vehicle it owns; if the city has no such facility, a vehicle
-//! comes from beyond the edge of the map, along the roads, slowly. The
-//! vehicle drives to the caller, spends the service time at its door,
-//! and goes home — or, from beyond the edge, simply goes. The call's
-//! consequence scales with how long that took.
-//!
-//! Stock: a shop's shelf goes down with every sale, and it calls when the
-//! shelf runs low; a depot's van answers. Empty shelves sell nothing. A
-//! depot's shelf goes down with every delivery it makes, and when that
-//! runs low it calls for a fetch: one of its lorries drives out past the
-//! edge of the map, is away a while, and comes back full. Every delivery
-//! is paid for as it lands (`economy::delivered`).
+//! A call has a kind and a place. A shelf at its reorder point calls for
+//! stock, and the building takes its turn (docs/economy.md §6.2): among
+//! every seller it can reach — a depot with the good on its shelf and a
+//! van free, or the outside beyond the edge — it takes the cheapest
+//! delivered, which is the posted price in hours of its own earning plus
+//! the drive. A depot's own shelf running low calls for a fetch: one of
+//! its lorries drives out past the edge, is away a while, and comes back
+//! full. The vehicle drives to the caller, spends the service time at its
+//! door, and goes home — or, from beyond the edge, simply goes. Empty
+//! shelves sell nothing, and every delivery is paid for as it lands
+//! (`economy::delivered`).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::blueprint::blueprint;
+use crate::economy;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::protocol::{Car, CarRole, EntityId, GameObject, DAY_MS};
 use crate::needs::Bucket;
+use crate::protocol::{Car, CarRole, EntityId, GameObject, DAY_MS};
+use crate::world::pathfinding::Routes;
 use crate::world::World;
 
 /// What a call is for, and so who answers it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum CallKind {
-    /// Shelves running low. Answered by a depot's van, or a lorry from
-    /// beyond the edge where the city has no depot.
+    /// Shelves at their reorder point. Answered by whichever seller the
+    /// building finds cheapest delivered: a depot's van, or a lorry from
+    /// beyond the edge.
     Stock,
     /// A depot's stock running low. Answered by one of its own lorries,
     /// out past the edge and back.
@@ -49,27 +50,28 @@ pub struct Call {
     pub raised: GameTime,
     /// The vehicle on its way, once one is.
     pub answered_by: Option<EntityId>,
+    /// What it carries, in units of the caller's shelf: loaded at the
+    /// seller's as it leaves. A fetch carries nothing back it has to
+    /// account for; the depot fills.
+    pub load: f64,
 }
 
-/// Shelves below this fraction call for stock: the reorder point.
-const LOW: f64 = 0.5;
 /// Unloading at the door: ten minutes.
 pub const SERVICE_MS: GameTime = DAY_MS as GameTime / 144;
 
-/// A shelf changed: low shelves call for stock, if the purse can pay for
-/// it (docs/economy.md §9). A depot calls for a fetch from beyond the
-/// edge; anything else calls for a delivery. Buildings whose row keeps no
-/// stock never run out.
+/// A shelf changed: one at its reorder point calls for stock. A depot
+/// calls for a fetch from beyond the edge; anything else calls for a
+/// delivery. Buildings whose row keeps no stock never run out.
 pub fn restock(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
-    if b.stock.cap == 0.0 || b.stock.level >= LOW * b.stock.cap {
+    if b.stock.cap == 0.0 || b.stock.level >= economy::reorder(world, building) {
         return;
     }
-    let kind = if blueprint(b.kind).answers == Some(CallKind::Stock) { CallKind::Fetch } else { CallKind::Stock };
-    if !crate::economy::solvent(world, building) || world.calls.iter().any(|c| c.at == building && c.kind == kind) {
+    let kind = if economy::depot(b.kind) { CallKind::Fetch } else { CallKind::Stock };
+    if world.calls.iter().any(|c| c.at == building && c.kind == kind) {
         return;
     }
-    world.calls.push(Call { kind, at: building, raised: now, answered_by: None });
+    world.calls.push(Call { kind, at: building, raised: now, answered_by: None, load: 0.0 });
     dispatch(world, events, now);
 }
 
@@ -82,8 +84,8 @@ pub fn stocked(world: &World, building: EntityId) -> bool {
     }
 }
 
-/// Send a vehicle to every open call that one can be sent to. A call with
-/// nothing free to answer it waits for the next vehicle to come home.
+/// Send a vehicle to every open call that one can be sent to. A call
+/// nothing can answer yet waits for the next vehicle to come home.
 pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
     // A caller that has gone, or a vehicle that has, ends or reopens the call.
     world.calls.retain(|c| world.objects.get(c.at).is_some());
@@ -101,35 +103,103 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
         if world.road_node_for_building(at).is_none() {
             continue;
         }
-        let Some(here) = world.objects.get(at).and_then(|e| e.position) else { continue };
-        let answered = match (kind, nearest_free_vehicle(world, kind, at)) {
-            // A depot's lorry sets out for the edge.
-            (CallKind::Fetch, Answer::Send(car, from)) => {
-                let exit = world.entry_node_near(here);
-                exit.is_some_and(|exit| crate::car::spawn::leave_for_edge(world, events, car, from, exit, now)).then_some(car)
-            }
-            (CallKind::Fetch, _) => None,
-            (CallKind::Stock, Answer::Send(car, from)) => {
-                crate::car::spawn::start_trip(world, events, car, from, at, now, GameTime::MAX).then_some(car)
-            }
-            // A depot exists but has nothing free, or nothing to send: wait.
-            (CallKind::Stock, Answer::Busy) => None,
-            (CallKind::Stock, Answer::Nobody) => {
-                // From beyond the edge: a lorry appears on the road out past
-                // the frontier and drives in. It belongs to nobody here; it
-                // goes when it is done.
-                let car = world.insert_at(GameObject::Car(Car { owner: at, trip: None, role: CarRole::Truck, spot: None, away: 0, fuel: Bucket::tank() }), None);
-                let started = world
-                    .entry_node_near(here)
-                    .is_some_and(|entry| crate::car::spawn::start_trip(world, events, car, entry, at, now, GameTime::MAX));
-                if !started {
-                    world.despawn_car(car);
+        let Some((here, order)) = world.objects.get(at).and_then(|e| match e.object {
+            GameObject::Building(ref b) => Some((e.position?, b.stock.short())),
+            _ => None,
+        }) else {
+            continue
+        };
+        let answered = match kind {
+            // A depot's lorry sets out for the edge, if the town can pay
+            // for what it brings back (docs/economy.md §9).
+            CallKind::Fetch if world.treasury <= 0.0 => None,
+            CallKind::Fetch => free_vehicle(world, at, CarRole::Truck).and_then(|(car, door)| {
+                let exit = world.entry_node_near(here)?;
+                crate::car::spawn::leave_for_edge(world, events, car, door, exit, now).then_some(car)
+            }),
+            CallKind::Stock => match cheapest_seller(world, at, now) {
+                Some(Seller::Depot(depot, van, door)) => crate::car::spawn::start_trip(world, events, van, door, at, now, GameTime::MAX).then(|| {
+                    world.calls[i].load = economy::loaded(world, depot, order, now);
+                    van
+                }),
+                Some(Seller::Edge(entry)) => {
+                    // From beyond the edge: a lorry appears on the road out
+                    // past the frontier and drives in. It belongs to nobody
+                    // here; it goes when it is done.
+                    let car = world.insert_at(GameObject::Car(Car { owner: at, trip: None, role: CarRole::Truck, spot: None, away: 0, fuel: Bucket::tank() }), None);
+                    let started = crate::car::spawn::start_trip(world, events, car, entry, at, now, GameTime::MAX);
+                    if !started {
+                        world.despawn_car(car);
+                    }
+                    world.calls[i].load = order;
+                    started.then_some(car)
                 }
-                started.then_some(car)
-            }
+                None => None,
+            },
         };
         world.calls[i].answered_by = answered;
     }
+}
+
+/// Who delivers an order.
+enum Seller {
+    /// A depot, its van, and the driveway it leaves from.
+    Depot(EntityId, EntityId, EntityId),
+    /// A lorry from beyond the edge, and the road it drives in on.
+    Edge(EntityId),
+}
+
+/// The building's turn, docs/economy.md §6.2: every seller of its shelf's
+/// good it can reach, at the delivered price — the order at the posted
+/// price, in hours of the building's own earning, plus the time until the
+/// load lands — and the cheapest wins. That is the score of §6.1 for an
+/// order every seller fills alike. A depot sells what its shelf holds, by
+/// a van standing free; the outside sells without limit, by a lorry that
+/// drives in from the nearest exit, while the town can pay for it
+/// (docs/economy.md §9). `None` where no seller can be reached.
+fn cheapest_seller(world: &mut World, at: EntityId, now: GameTime) -> Option<Seller> {
+    let (kind, order, here) = match world.objects.get(at) {
+        Some(e) => match e.object {
+            GameObject::Building(ref b) => (b.kind, b.stock.short(), e.position?),
+            _ => return None,
+        },
+        None => return None,
+    };
+    let need = economy::shelf_need(kind);
+    // Every depot with the good on its shelf, in id order, so two runs of
+    // the same town make the same choice.
+    let mut depots: Vec<EntityId> = world
+        .objects
+        .iter()
+        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::depot(b.kind) && economy::shelf_need(b.kind) == need && b.stock.level > 0.0))
+        .map(|e| e.id)
+        .collect();
+    depots.sort_unstable();
+    let vans: Vec<(EntityId, EntityId, EntityId)> = depots.into_iter().filter_map(|d| free_vehicle(world, d, CarRole::Van).map(|(van, door)| (d, van, door))).collect();
+    let door = world.road_node_for_building(at)?;
+    let mut routes = Routes::from(world, door);
+    // Milliseconds of the building's own time per hour of money.
+    let dear = economy::HOUR / economy::earns(world, at, now);
+    let mut delivered = |from: EntityId, price: f64| -> Option<f64> {
+        let drive = if from == door { 0.0 } else { routes.cost_to(from)? };
+        Some(drive + order * price * dear)
+    };
+    let mut best: Option<(f64, Seller)> = None;
+    if world.treasury > 0.0
+        && let Some(edge) = world.nearest_edge(here)
+        && let Some(entry) = world.road_node_for_building(edge)
+        && let Some(cost) = delivered(entry, economy::import(economy::wholesale(need)))
+    {
+        best = Some((cost, Seller::Edge(entry)));
+    }
+    for (depot, van, from) in vans {
+        if let Some(cost) = delivered(from, economy::price_of(world, depot, need))
+            && best.as_ref().is_none_or(|(b, _)| cost < *b)
+        {
+            best = Some((cost, Seller::Depot(depot, van, from)));
+        }
+    }
+    best.map(|(_, seller)| seller)
 }
 
 /// A facility's vehicles, standing in its yard from the day it is reached:
@@ -147,72 +217,27 @@ pub fn stable(world: &mut World, facility: EntityId) {
     }
 }
 
-enum Answer {
-    Send(EntityId, EntityId),
-    /// A facility exists but has nothing to send right now.
-    Busy,
-    /// No facility in the city answers this.
-    Nobody,
+/// A facility's vehicle of a role standing free in its yard, and the
+/// driveway it leaves from. None where no road reaches the yard.
+fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole) -> Option<(EntityId, EntityId)> {
+    let door = world.road_node_for_building(facility)?;
+    stable(world, facility);
+    let car = fleet_of(world, facility).into_iter().find(|&car| {
+        matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.away == 0)
+    })?;
+    Some((car, door))
 }
 
-/// Who answers a call: for a fetch, one of the caller's own lorries; for
-/// stock, a van from the nearest depot with something on its shelves. The
-/// vehicle, and the driveway it leaves from.
-fn nearest_free_vehicle(world: &mut World, kind: CallKind, at: EntityId) -> Answer {
-    let Some(here) = world.objects.get(at).and_then(|e| e.position) else { return Answer::Nobody };
-    // A depot's shelves hold food. A pump's tanks are filled from beyond
-    // the edge until something in town refines fuel.
-    if kind == CallKind::Stock
-        && let Some(GameObject::Building(b)) = world.objects.get(at).map(|e| &e.object)
-        && crate::economy::shelf_need(b.kind) != crate::needs::Need::Eat
-    {
-        return Answer::Nobody;
-    }
-    let (wanted, answers) = match kind {
-        CallKind::Fetch => (CarRole::Truck, None),
-        CallKind::Stock => (CarRole::Van, Some(CallKind::Stock)),
-    };
-    let mut facilities: Vec<(i32, EntityId)> = world
-        .objects
-        .all_entries()
-        .iter()
-        .filter_map(|e| match e.object {
-            GameObject::Building(ref b) if answers.is_some_and(|k| blueprint(b.kind).answers == Some(k)) || (answers.is_none() && e.id == at) => {
-                let p = e.position?;
-                Some(((p.x - here.x).abs().max((p.y - here.y).abs()), e.id))
-            }
-            _ => None,
-        })
-        .collect();
-    if facilities.is_empty() {
-        return Answer::Nobody;
-    }
-    facilities.sort_unstable();
-    for (_, facility) in facilities {
-        let Some(door) = world.road_node_for_building(facility) else { continue };
-        if kind == CallKind::Stock && !stocked(world, facility) {
-            continue;
-        }
-        stable(world, facility);
-        let free = fleet_of(world, facility).into_iter().find(|&car| {
-            matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == wanted && c.trip.is_none() && c.away == 0)
-        });
-        if let Some(car) = free {
-            return Answer::Send(car, door);
-        }
-    }
-    Answer::Busy
-}
-
-/// The vehicles a facility owns.
+/// The vehicles a facility owns, in id order.
 fn fleet_of(world: &World, facility: EntityId) -> Vec<EntityId> {
-    world
+    let mut fleet: Vec<EntityId> = world
         .objects
-        .all_entries()
         .iter()
         .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == facility))
         .map(|e| e.id)
-        .collect()
+        .collect();
+    fleet.sort_unstable();
+    fleet
 }
 
 /// A vehicle woke while parked. Private cars have nothing to think about;
@@ -243,6 +268,9 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         return;
     }
     let call = world.calls.remove(i);
+    // How long it took, from the call to the load landing: the lead time
+    // the next reorder point covers.
+    world.books.entry(call.at).or_default().lead = Some(now - call.raised);
     // Home, if there is one to go to; a truck from beyond the edge is gone.
     // A lorry home from a fetch is home already.
     let facility = matches!(world.objects.get(owner).map(|e| &e.object), Some(GameObject::Building(b)) if blueprint(b.kind).answers.is_some());
@@ -250,9 +278,12 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
     // this is, or to the edge; by the depot to the edge for what the lorry
     // brought back.
     match call.kind {
-        CallKind::Fetch => crate::economy::fetched(world, call.at, now),
+        CallKind::Fetch => economy::fetched(world, call.at, now),
         CallKind::Stock => {
-            crate::economy::delivered(world, call.at, facility.then_some(owner), now);
+            economy::delivered(world, call.at, facility.then_some(owner), call.load, now);
+            // Up to the shelf: a load short of the order, or a long lead,
+            // leaves it under the reorder point still.
+            restock(world, events, call.at, now);
             if facility {
                 restock(world, events, owner, now);
             }
