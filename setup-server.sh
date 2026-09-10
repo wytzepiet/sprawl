@@ -32,7 +32,7 @@ apt update && apt install -y caddy
 
 cat > /etc/caddy/Caddyfile << EOF
 $DOMAIN {
-    reverse_proxy localhost:3001
+    reverse_proxy localhost:4801
 }
 EOF
 systemctl restart caddy
