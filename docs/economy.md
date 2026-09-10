@@ -352,6 +352,12 @@ threshold to the buyer as a hiring cost.
 ## 7. Moving goods
 
 A truck carries one load, from the seller to the buyer, and goes home.
+**A farm's tractor is its delivery.** A field is a lot the tractor
+drives, to seed and to harvest; the farm's row is tractor-hours per
+field, and a field the tractor cannot reach in a day yields nothing
+that day. Fields too far from the yard, or too many, show as unworked
+fields on the map before they show as a number, and the second farm is
+the fix. Roads to the fields matter, because the drive is the delivery.
 **The warehouse** is a building with stocks of many goods that buys from
 producers and the edge and sells locally. **Construction** is unchanged:
 materials are a good, the construction firm a building, the site a call

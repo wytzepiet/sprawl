@@ -71,6 +71,32 @@ at the edge wage. What changes is the delivery.
 The port row is three numbers: cars a sailing, sailings a day, the
 crossing time. Set per season.
 
+### 2.1 The sea
+
+The sea is one body, big enough that its middle is fog. Surveyed water
+is navigable water; ships do not enter fog, and the fog line at sea is
+the horizon: where the outside's ferry appears, and where every arrival
+is first seen. Nothing is spawned off-coast in secret, because the fog
+is where the world begins. A port town that surveys a wide bay has a
+long approach.
+
+- **Navigation is A\* on water**, on a grid coarser than the roads',
+  since a ship turns in tiles. The lanes it finds are the sea's roads.
+- **Open water has no interaction.** Two ships crossing a bay pass; a
+  collision nobody could see is not a mechanic.
+- **A channel is a segment.** Where water narrows to a lane's width the
+  lane is road-shaped: ships follow one another with a gap by length,
+  and where two lanes meet, the giving-way rule is `parking.md`'s, by
+  length. The same code as a lorry meeting a car at a junction.
+- **The berth is a lot.** Ships queue for it with the reservation
+  window `parking.md` has for spots. One berth and three ships in the
+  roads is the harbour's rush hour, and the capacity that lets prices
+  leave the band.
+
+Shipping is one pathfinder on a water grid and one physics profile,
+slow with a long stop; everything else it needs is a road, a lot or a
+segment already written.
+
 ## 3. The fog
 
 The survey is what stands: a building surveys the land around it
@@ -171,9 +197,10 @@ this document adds are the same rule:
 
 Nothing before the port milestone. Then:
 
-1. **The coast.** Map generation with a sea that is one body, and
-   spawns on it. The road exits go; the terminal stands where a road
-   meets the coast.
+1. **The coast.** Map generation with a sea that is one body and fog in
+   its middle, and spawns on it. The pre-existing road network and the
+   road exits go; the terminal stands where a road meets the coast, and
+   every town starts with one.
 2. **The ferry.** `AWAY_MS` with a timetable and a batch. The edge's
    lorries and commuters ride it. The port row's three numbers.
 3. **The shared survey and the road strip.** Roads survey; any town's
