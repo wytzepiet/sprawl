@@ -122,14 +122,16 @@ long approach.
   ships that want the same thing at the same time. Open water off the
   lanes has no interaction, and nothing slows a ship there but a
   slower one ahead, which is another class, passing on the outside.
-- **Routing is on demand, over the lanes.** A voyage is a search over
-  the lane graph — ports, junctions, mouths — as cars route over
-  junctions and stretches, not tiles. Tiles are searched only to join
-  it: from a port no lane reaches, or across a gap between two lanes,
-  and the search lays a lane behind it so the gap is closed for the
-  next ship. The first voyage between two far ports is the dear one and
-  happens once; the cost of the sea is how much new water gets opened,
-  not how many ships sail. Nothing is generated when a port is placed.
+- **Routing is on demand, over the tiles, cached.** Every route is the
+  full search over the water's tiles with the four costs, lanes as a
+  discount inside it and never a graph it is confined to: a search
+  confined to lanes would take the first bad route between two ports
+  forever and never find the straight line nobody has sailed. The
+  heuristic keeps the search to a corridor between the ports, which is
+  milliseconds; a cache keyed by from, to and class makes the common
+  voyage free, expires with the use stock so a new cheaper lane and a
+  faded one are both picked up, and is memoisation rebuilt from nothing
+  on load, not state. Nothing is generated when a port is placed.
 - **The berth is a lot**, as many tiles as the ship. Ships queue for it
   with the same reservation window. One berth and three ships in the
   roads is the harbour's rush hour, and the capacity that lets prices
