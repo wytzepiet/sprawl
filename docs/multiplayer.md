@@ -103,9 +103,14 @@ long approach.
   no capacity, so nothing slows a ship on open water but a slower one
   ahead, and with one speed per class that is another class, which
   passes on the outside. A route favours open water — a block costs
-  its length plus the wait to expect at its mouth — and favours no
-  lane: a lane preference changes a choice only when a ship detours
-  to join one, which is the one thing it must not do.
+  its length plus the wait to expect at its mouth — and favours a used
+  leg a little: each leg holds a **use** stock, filled by the ships
+  that take it and drained by time (`economy.md` §4, one type), and a
+  route pays a small discount on it, a few percent of length. Traffic
+  converges on a few trunk legs and crossings fall, the way a bay
+  reads under a separation scheme; a removed port's legs fade in a day
+  because nothing fills them; and the discount is small enough that
+  no ship detours far to join a lane.
 - **A block is signalled**, as a single-track railway is. A ship
   reserves it before entering, `parking.md`'s reservation window over
   a passage instead of a spot: free, or held by ships going the same
@@ -120,17 +125,20 @@ long approach.
   blocks there is always water wide enough to wait in, and a ship in a
   block waits for nothing but its own exit.
 - **In open water, off to starboard.** Ships pass port to port, the
-  rule of the sea: a leg's two directions run to their right of its
-  line, by the lesser of a fixed offset and the ship's clearance from
-  shore. On the outside of a bend there is room and the offset holds;
-  on the inside the shore pushes it to nothing, which at a block's
-  mouth is the centreline the block wants. No corner geometry, no
-  negotiation. In blocks and at berths ships never share a tile.
-- **Nothing is remembered from voyages.** The network is the coast's:
-  a new port is a new node, a removed one is gone, and no lane goes
-  stale, because the mouths do not move. The road generator remembers
-  roads because a road is built and costs tiles; at sea the coast has
-  already done the building.
+  rule of the sea: a leg's two directions run a tile to their right of
+  its line. The offset is of the legs, never of the points — offsetting
+  points folds the inside of a right turn into a loop — and the corners
+  are joined the way `bezier.rs` joins a road's lanes round a bend: at
+  a right turn the offset legs meet before the corner and the ship
+  turns there; at a left turn a chord crosses the outside. A join that
+  would land on the shore is capped at the clearance, and at a block's
+  mouth the offset is nothing, which is the centreline the block wants.
+  No negotiation. In blocks and at berths ships never share a tile.
+- **The only memory is the use stock, and it forgets.** The network
+  is the coast's: a new port is a new node, a removed one is gone, and
+  what its ships wore into the legs drains away behind them. The road
+  generator remembers roads because a road is built and costs tiles;
+  at sea the coast has already done the building.
 - **The berth is a lot**, as many tiles as the ship. Ships queue for it
   with the same reservation window. One berth and three ships in the
   roads is the harbour's rush hour, and the capacity that lets prices
@@ -264,8 +272,8 @@ Nothing before the port milestone. Then:
 ## 9. Open
 
 1. The width of a road's claim, and the survey radius in a shared world.
-   Keep-right in wide water, as a routing preference for the right of
-   the centreline, if the picture wants it; left out until it does.
+   The use stock's drain and the discount on it, the sea's two small
+   numbers.
 2. Whether influence needs buildings as a source at all, or a placed
    building's driveway is the only seed.
 3. The ferry's three numbers per season, and the first sailing's hour.
