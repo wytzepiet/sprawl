@@ -102,22 +102,30 @@ long approach.
   convoy is ships that want the same thing at the same time. A leg has
   no capacity, so nothing slows a ship on open water but a slower one
   ahead, and with one speed per class that is another class, which
-  passes on the outside.
+  passes on the outside. A route favours open water — a block costs
+  its length plus the wait to expect at its mouth — and favours no
+  lane: a lane preference changes a choice only when a ship detours
+  to join one, which is the one thing it must not do.
 - **A block is signalled**, as a single-track railway is. A ship
   reserves it before entering, `parking.md`'s reservation window over
   a passage instead of a spot: free, or held by ships going the same
   way, it enters and follows; held against it, it waits at the mouth,
   first come, ties by length. Same-direction ships go through as a
   convoy and the other side waits for the block to clear, which is how
-  Suez runs. No deadlock by construction: blocks are contracted to
-  maximal narrow runs, so between two blocks there is always water wide
-  enough to wait in, and a ship in a block waits for nothing but its
-  own exit.
+  Suez runs, and with Suez's fairness: once a ship waits at the far
+  mouth the signal closes to new entries, the block drains, and it
+  flips, so a steady stream one way cannot starve the other. No
+  deadlock by construction: blocks are contracted to maximal narrow
+  runs, however many pieces or branches they have, so between two
+  blocks there is always water wide enough to wait in, and a ship in a
+  block waits for nothing but its own exit.
 - **In open water, off to starboard.** Ships pass port to port, the
-  rule of the sea: a leg's two directions run a fixed offset to their
-  right of its line, so opposite ways clear each other by construction,
-  with no negotiation. In blocks and at berths ships never share a
-  tile.
+  rule of the sea: a leg's two directions run to their right of its
+  line, by the lesser of a fixed offset and the ship's clearance from
+  shore. On the outside of a bend there is room and the offset holds;
+  on the inside the shore pushes it to nothing, which at a block's
+  mouth is the centreline the block wants. No corner geometry, no
+  negotiation. In blocks and at berths ships never share a tile.
 - **Nothing is remembered from voyages.** The network is the coast's:
   a new port is a new node, a removed one is gone, and no lane goes
   stale, because the mouths do not move. The road generator remembers
