@@ -718,7 +718,10 @@ The building's turn is `calls::cheapest_seller`; the numbers are in
   customers' hours are worth over the drive it saves, which is the
   argument for a road.
 
-### 12.4 Step 4, to the number
+### 12.4 Step 4, to the number, and as built
+
+Built 2026-09-10. The decisions the mechanism did not make on its own,
+and what running it found.
 
 - **A placement is an import.** The building's price goes to the edge,
   and no longer includes a float, since there is none to open with.
@@ -744,14 +747,50 @@ The building's turn is `calls::cheapest_seller`; the numbers are in
   something the market now does: the crossing and the commute price
   imported labour, the ask prices the town's, and a building whose hours
   cost more than they bring in is in the red on its card (§9).
+- **The ask does not nudge yet.** A household's hours are all sold the
+  day it holds a job, so "selling out" is every day it is employed and
+  the ratchet never stops: an ask rising five percent a day is swapped
+  out within the week, falls back at one percent a day, and the tenure
+  season becomes a churn. What selling out means for a person — more
+  buyers than shifts — needs the market to show it, and that is open
+  (§13.11). Until then the ask is the reservation: the edge wage net of
+  the crossing for the town's households, plus it for the world's, and
+  the delivered price differs by the commute alone.
+- **The stake.** A fresh town starts with a hundred hours in the
+  treasury, the floats its buildings used to open with in one place, so
+  that it can import until its first shift is sold.
+- **A commuter unpaid.** An import the treasury cannot cover is paid as
+  far as it goes, a commuter's wage included: the shortfall is a line in
+  the building's books and the commuter comes back tomorrow. What a
+  town that cannot pay its imported labour should do about it is open.
+
 - **GDP at the world's prices.** A need served in town banks its units
   times `edge_price` for that unit, the edge's excluded; a night is the
   household row's upkeep, about a third of a day's wage a head until the
   row says otherwise (§13.10). The level thresholds are retuned to the
   new scale.
-- **A household's ask** opens at the edge wage and lives on the
-  resident; the crossing is a tenth (§13.8) until a season says
-  otherwise.
+- **The crossing is a tenth** (§13.8) until a season says otherwise.
+
+What running the season found, and did not fix. Ten days of the full
+town, the bedroom town and the job centre (§11.12): the full town and
+the job centre sit at zero from the first day, the door taking in about
+480 hours a day and asked for more; the bedroom town nets six hours a
+head a day. The bedroom town is the door's check failing (§8.1): a
+household's row draws housing and about an hour of food, fuel and
+evenings at the world's prices, some four hours short of the eight a
+head earns there, and the gap is the mint. Price the household honestly
+and the mint closes — and every town is in deficit, because a world
+that prices everything at cost leaves a town that sells labour and buys
+consumption nothing but the crossing, twice, against it. The old design
+hid the same fact by seeding every purse and pricing a meal for the
+ladder. So step 6 is not a refinement: money in town has to come from
+value added that the world's prices carry and the town's owner
+captures — §5.1's markup, cost plus a margin, which Blinder's firms
+post and the world's would too, and a factory in town keeps less the
+crossing — or from rows the town runs better than the world does. Which,
+and the number, are the decision §13.12 holds, and the no-harm and
+bare-town seasons stay red until it is made.
+
 
 ## 13. Open
 
@@ -774,4 +813,10 @@ The building's turn is `calls::cheapest_seller`; the numbers are in
 9. Productivity per workplace row (§12 step 6): what an hour makes, in
    units of its output, and its referent.
 10. The household's services rate (§4): what upkeep a head costs a day,
-    so that the door breaks even (§8.1) as a property of the row.
+    so that the door breaks even (§8.1) as a property of the row. The
+    season says the row is four hours a head a day short (§12.4).
+11. What selling out means for a household's hours, so that the ask can
+    nudge (§12.4).
+12. Where the town's money comes from in a world priced at cost (§12.4):
+    a markup in the world's prices that the town's rows keep, or rows
+    the town runs better than the world. The value, with its referent.
