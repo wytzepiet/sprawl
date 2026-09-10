@@ -59,7 +59,14 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
         })
         .expect("failed to query objects")
         .filter_map(|r| r.ok())
-        .filter_map(|json| serde_json::from_str::<GameObjectEntry>(&json).ok())
+        .map(|json| {
+            // A row this build cannot read is a save from another build. Dropping
+            // it quietly leaves a world with roads and no buildings, which reveals
+            // nothing and shows as fog to the horizon.
+            serde_json::from_str::<GameObjectEntry>(&json).unwrap_or_else(|e| {
+                panic!("{} was written by another build ({e}); delete it to start over", path.display())
+            })
+        })
         .collect();
 
     let next_id: u64 = conn
