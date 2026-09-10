@@ -2,8 +2,8 @@
 
 /**
  * Money landing somewhere on the map: a visit paid for, a shift paid, a
- * delivery bought, a household's rent swept. The one event every price
- * is read from. Negative is money leaving: an import, a wage bill.
- * docs/economy.md §10.
+ * delivery bought. A line in the books made visible; it moves the
+ * treasury only when the other party is the outside. Negative is money
+ * leaving: an import, a wage bill. docs/economy.md §10.
  */
 export type Sale = { building: number, amount: number, at: number, };

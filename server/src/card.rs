@@ -75,8 +75,7 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Value {
         "work": r.work.map(|w| link(world, w)),
         "at": r.at.map(|a| link(world, a)),
         "car": link(world, r.car),
-        "wallet": r.wallet,
-        "earning": crate::economy::earning(world, id),
+        "wage": r.wage,
         "selected": r.selected,
         "since": hhmm(r.last_update),
         // The tank is the car's; its card shows it.

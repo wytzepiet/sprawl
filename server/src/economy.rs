@@ -1,14 +1,16 @@
-//! Money, as docs/economy.md lays it out: everyone has a purse, everything
-//! is a stock, everyone posts a price and nudges it by their own stock,
-//! everyone prices time at what they earn, the edge is the band, and the
+//! Money, as docs/economy.md lays it out: the town has one purse,
+//! everything is a stock and every building a row, everyone posts a price
+//! and nudges it by their own stock, everyone prices time at what they
+//! earn, the edge is a world with the same rows and a crossing, and the
 //! mayor owns the town.
 //!
-//! The unit is the hour, and the edge's wage is one. Money moves between
-//! purses in lumps — a shift, a meal, a delivery — and is made and
-//! destroyed only at the edge. Every purse keeps a float; the rest sweeps
-//! to the treasury, which is the one place money accumulates, and so the
-//! score. Level is something else: hours of need served, banked as each
-//! visit ends.
+//! The unit is the hour, and the edge's wage is one. A sale in town is a
+//! line in two sets of books; money moves only at the door — a shift
+//! worked beyond the edge, a crate brought in from it, a commuter's wage
+//! going home — and the treasury is the town's balance of payments, less
+//! what the mayor built. GDP is something else: value served in town at
+//! the world's prices, banked as each visit ends, and the level is its
+//! running sum.
 //!
 //! What is a number lives here, with the referent that set it. What is a
 //! verb — settling a visit, ranking a job — lives with the code that does
@@ -62,12 +64,54 @@ pub fn wholesale(need: Need) -> f64 {
     WHOLESALE * edge_price(need)
 }
 
-/// A resident's float: a payday of meals, evenings and fuel, which is a
-/// day's wage at the edge. What is over it at each payday is rent. §8.2.
-pub const RESIDENT_FLOAT: f64 = 8.0;
-pub fn resident_float() -> f64 {
-    RESIDENT_FLOAT
+/// The crossing: the share of a good's value lost each way for carrying
+/// it over the edge, the iceberg cost of trade theory (Samuelson 1954).
+/// The world sells to the town at cost plus it and buys at cost less it,
+/// labour included. Estimates of trade costs run from a tenth to a half;
+/// a border between a town and its region is the low end. §8.1.
+pub const CROSSING: f64 = 0.1;
+/// What the town pays to bring a unit in, and what it gets for sending
+/// one out.
+pub fn import(cost: f64) -> f64 {
+    cost * (1.0 + CROSSING)
 }
+pub fn export(cost: f64) -> f64 {
+    cost * (1.0 - CROSSING)
+}
+
+/// What the mayor founds the town with: enough to import for a few days
+/// before the first shift is sold beyond the edge. The floats every
+/// building used to open with, in one place. §12.4.
+pub const STAKE: f64 = 100.0;
+
+/// A night of housing, per head: what the household row draws in upkeep
+/// a day, imported from beyond the edge until an office in town makes
+/// services, and what a night served in town is worth in GDP. Households
+/// spend a third of their income on housing; a day at the edge earns
+/// eight. §4, §13.10.
+pub const HOUSING: f64 = 8.0 / 3.0;
+
+/// What a household asks for an hour of its labour. The town's: what the
+/// edge would pay them, net of the crossing, since below that they sell
+/// there instead. The world's, beyond the edge: the edge wage plus the
+/// crossing. The commute is added on delivery (`delivered_wage`). Not
+/// yet nudged by the household's own stock (§12.4). §5.2.
+pub fn ask(world: &World, home: EntityId) -> f64 {
+    if world.edge.contains(&home) { import(EDGE_WAGE) } else { export(EDGE_WAGE) }
+}
+
+/// What a household's hour costs a building, delivered: the ask, with the
+/// drive there and back spread over the shift, since labour is the good
+/// the seller delivers in person. Rosen's compensating differential with
+/// no rule about distance. §5.2.
+pub fn delivered_wage(ask: f64, commute_h: f64, shift_h: f64) -> f64 {
+    ask * (shift_h + 2.0 * commute_h) / shift_h
+}
+
+/// A building swaps a worker only for one cheaper delivered by this
+/// much: firms replace people for a saving of a tenth to a fifth, not for
+/// a penny (Topel & Ward 1992 on the wage gains that move people). §5.2.
+pub const HIRING: f64 = 0.15;
 
 /// A price steps a few percent a day. Firms reprice about once a year
 /// (Blinder et al., 1998), and the arcade day stands in for a quarter, so
@@ -76,24 +120,11 @@ pub fn resident_float() -> f64 {
 /// that sticks.
 const PRICE_UP: f64 = 0.05;
 const PRICE_DOWN: f64 = 0.03;
-/// Wages are sticky downward in every labour market ever measured: a cut
-/// is a fifth of a rise. §5.2.
-const WAGE_UP: f64 = 0.05;
-const WAGE_DOWN: f64 = 0.01;
-/// The least any hour is paid: a tenth of the edge's wage. A wage of
-/// nothing makes money worth infinitely many hours to whoever earns it,
-/// and the score cannot price that.
-const WAGE_FLOOR: f64 = 0.1 * EDGE_WAGE;
 /// Selling more than this share of what the tap could sell in a day is
 /// selling out; less than this is piling up. The stock behind a tap with
 /// no shelf is its capacity.
 const SELLING_OUT: f64 = 0.8;
 const PILING_UP: f64 = 0.4;
-/// A resident leaves one job for another when the new one scores this
-/// much better: people move for a raise of a tenth to a fifth (the median
-/// job-to-job wage gain, Topel & Ward 1992). §6.3.
-pub const SWITCH: f64 = 0.15;
-
 /// Hours of the shift a kind's row posts.
 pub fn shift_hours(kind: BuildingKind) -> f64 {
     blueprint(kind).taps.iter().find(|t| t.need == Need::Work).map_or(0.0, |t| t.curve.per_day() / HOUR)
@@ -160,25 +191,15 @@ pub fn unit_cost(kind: BuildingKind, need: Need) -> f64 {
     if need == shelf_need(kind) && blueprint(kind).stock > 0 { wholesale(need) } else { 0.0 }
 }
 
-/// What a kind's purse keeps: what it spends between two incomes. A day
-/// of wages, for a kind whose takings come in through the day and whose
-/// wages go out at the end of it; a full shelf at the edge's price. A
-/// house spends nothing. A service's wages are the treasury's. §8.2.
-pub fn float(kind: BuildingKind, wage: f64) -> f64 {
-    let bp = blueprint(kind);
-    let wages = if service(kind) || sells(kind).next().is_none() { 0.0 } else { bp.jobs as f64 * shift_hours(kind) * wage };
-    wages + bp.stock as f64 * wholesale(shelf_need(kind))
-}
-
 /// What one of a kind costs the mayor: the row's price, with the build's
-/// discount on its class. Includes the float it opens with.
+/// discount on its class. Paid to the outside: a placement is an import.
 pub fn price(world: &World, kind: BuildingKind) -> f64 {
     let b = blueprint(kind);
     b.price / world.build.weight(b.class)
 }
 
-/// A building saved before it had a shelf, prices or a purse gets them the
-/// way a placed one does; one whose row changed its shelf gets the new one.
+/// A building saved before it had a shelf or prices gets them the way a
+/// placed one does; one whose row changed its shelf gets the new one.
 pub fn open(world: &mut World, id: EntityId) {
     let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { return };
     let fresh = crate::protocol::Building::new(b.kind, b.size, b.facing);
@@ -187,34 +208,6 @@ pub fn open(world: &mut World, id: EntityId) {
     }
     if b.prices.is_empty() {
         b.prices = fresh.prices;
-        b.balance = fresh.balance;
-    }
-}
-
-/// The treasury pays a purse that has run dry back up to its float, as a
-/// placement would have. §9.
-pub fn fund(world: &mut World, id: EntityId, now: GameTime) {
-    let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return };
-    let want = float(b.kind, b.wage) - b.balance;
-    if want <= 0.0 || world.treasury < want {
-        return;
-    }
-    world.treasury -= want;
-    if let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) {
-        b.balance += want;
-    }
-    world.sales.push(Sale { building: id, amount: want, at: now });
-}
-
-/// Whether a building can buy and hire: there is money in its purse. The
-/// float is the reserve the sweep leaves it; a building that has run
-/// through it stops, and stands. A service always can. §9.
-pub fn solvent(world: &World, id: EntityId) -> bool {
-    match world.objects.get(id).map(|e| &e.object) {
-        // A pass-through sells its hours as it pays for them and needs no
-        // purse; nor does a service, whose wages are the treasury's.
-        Some(GameObject::Building(b)) => float(b.kind, b.wage) == 0.0 || b.balance > 0.0,
-        _ => false,
     }
 }
 
@@ -257,89 +250,117 @@ pub fn price_of(world: &World, building: EntityId, need: Need) -> f64 {
     }
 }
 
-/// What a building pays an hour. The edge pays its own.
-pub fn wage_of(world: &World, building: EntityId) -> f64 {
-    if world.edge.contains(&building) {
-        return EDGE_WAGE;
-    }
-    match world.objects.get(building).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => b.wage,
+/// What a resident makes an hour: what their job pays them. What they
+/// price money in. §6.1.
+pub fn earning(world: &World, resident: EntityId) -> f64 {
+    match world.objects.get(resident).map(|e| &e.object) {
+        Some(GameObject::Resident(r)) => r.wage,
         _ => EDGE_WAGE,
     }
 }
 
-/// What a resident makes an hour: their employer's wage, or the edge's
-/// for anyone without one. What they price money in. §6.1.
-pub fn earning(world: &World, resident: EntityId) -> f64 {
+/// What a unit of a need served in town is worth in GDP: the world's
+/// price for it. Labour is inside whatever it makes and counts there;
+/// a night is housing, banked once a head a day (`day`). §10.
+pub fn value(kind: BuildingKind, need: Need) -> f64 {
+    match need {
+        Need::Work | Need::Rest | Need::Home => 0.0,
+        _ => edge_price_of(kind, need),
+    }
+}
+
+/// Money crossing the door: in when the town sold, out when it bought.
+/// Money out stops at nothing: an import the treasury cannot pay for is
+/// paid as far as it goes. Returns what moved. §8.2.
+fn door(world: &mut World, amount: f64, now: GameTime) -> f64 {
+    let book = world.income.today(now);
+    if amount >= 0.0 {
+        book.revenue += amount;
+        world.treasury += amount;
+        amount
+    } else {
+        let paid = (-amount).min(world.treasury);
+        book.purchases += paid;
+        world.treasury -= paid;
+        -paid
+    }
+}
+
+fn outside(world: &World, resident: EntityId) -> bool {
     match world.objects.get(resident).map(|e| &e.object) {
-        Some(GameObject::Resident(r)) => r.work.map_or(EDGE_WAGE, |w| wage_of(world, w)),
-        _ => EDGE_WAGE,
+        Some(GameObject::Resident(r)) => world.edge.contains(&r.home),
+        _ => false,
     }
 }
 
 /// One visit paid for, as it ends: `units` of `need` served at `at` to
-/// `who`. A shift is sold by the resident and paid by the building; a
-/// meal, an evening or a tank is bought by the resident and lands on the
-/// building. Anything that runs a shelf draws it down. The edge pays and
-/// charges its own prices, and serves anyone who cannot pay: the floor has
-/// to be a floor. Then the sweeps. §6, §8, §12.1.
+/// `who`. A shift is sold by the resident and bought by the building; a
+/// meal, an evening or a tank is bought by the resident and sold by the
+/// building. Two lines in the books, and a lump on the map; the treasury
+/// moves only when one party is the outside — the edge, or a household
+/// beyond it. Anything that runs a shelf draws it down. §6, §8.
 pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f64, now: GameTime) {
     if units <= 0.0 {
         return;
     }
     let edge = world.edge.contains(&at);
     let Some(kind) = kind_of(world, at) else { return };
+    let commuter = outside(world, who);
     match need {
         Need::Work => {
-            // A workplace with nothing to sell sells its hours to the edge,
-            // at the edge's wage, before it pays for them: a pass-through,
-            // until goods give it an output. §12.1.
-            if !edge && !service(kind) && sells(kind).next().is_none() {
-                let sold = units * EDGE_WAGE;
-                pay(world, at, sold);
-                world.books.entry(at).or_default().today(now).revenue += sold;
-                world.sales.push(Sale { building: at, amount: sold, at: now });
+            let wage = earning(world, who);
+            let due = units * wage;
+            if edge {
+                // A shift beyond the edge: the town sold its labour.
+                if !commuter {
+                    door(world, due, now);
+                }
+                return;
             }
-            let due = units * wage_of(world, at);
-            let paid = if edge {
-                due
-            } else if service(kind) {
-                let paid = due.min(world.treasury);
-                world.treasury -= paid;
-                paid
-            } else {
-                let paid = balance(world, at).min(due);
-                pay(world, at, -paid);
-                paid
-            };
-            if let Some(GameObject::Resident(r)) = world.objects.get_mut(who).map(|e| &mut e.object) {
-                r.wallet += paid;
+            // A workplace with nothing to sell sells its hours to the
+            // edge, at the world's price less the crossing: a
+            // pass-through, until goods give it an output. §12.1.
+            if !service(kind) && sells(kind).next().is_none() {
+                let made = units * EDGE_WAGE;
+                world.gdp += made;
+                world.books.entry(at).or_default().today(now).revenue += export(made);
+                world.sales.push(Sale { building: at, amount: export(made), at: now });
+                door(world, export(made), now);
             }
-            if !edge {
-                let book = world.books.entry(at).or_default().today(now);
-                book.wages += paid;
-                book.hours += units;
-                sweep(world, at, now);
+            let book = world.books.entry(at).or_default().today(now);
+            book.wages += due;
+            book.hours += units;
+            // A commuter takes the wage home, beyond the edge.
+            if commuter {
+                door(world, -due, now);
             }
-            rent(world, who, now);
         }
         Need::Home | Need::Rest => {}
         Need::Eat | Need::Leisure | Need::Fuel => {
             let due = units * price_of(world, at, need);
-            let Some(GameObject::Resident(r)) = world.objects.get_mut(who).map(|e| &mut e.object) else { return };
-            let paid = due.min(r.wallet);
-            r.wallet -= paid;
-            // The edge's takings are the edge's; so are the groceries
-            // behind a meal at home, until something in town sells them.
-            if edge || blueprint(kind).homes > 0 {
+            if edge {
+                // A meal beyond the edge is the town buying one, unless
+                // the eater lives there too.
+                if !commuter {
+                    door(world, -due, now);
+                }
                 return;
             }
-            pay(world, at, paid);
+            // The groceries behind a meal at home are the edge's, until
+            // something in town sells them.
+            if blueprint(kind).homes > 0 {
+                door(world, -import(due), now);
+                return;
+            }
             let book = world.books.entry(at).or_default().today(now);
-            book.revenue += paid;
+            book.revenue += due;
             *book.sold.entry(need).or_default() += units;
-            if paid > 0.0 {
-                world.sales.push(Sale { building: at, amount: paid, at: now });
+            if due > 0.0 {
+                world.sales.push(Sale { building: at, amount: due, at: now });
+            }
+            // A commuter's lunch is a meal sold to the outside.
+            if commuter {
+                door(world, due, now);
             }
             if need == shelf_need(kind)
                 && let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object)
@@ -350,24 +371,8 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
                     world.books.entry(at).or_default().today(now).sold_out = true;
                 }
             }
-            sweep(world, at, now);
         }
     }
-}
-
-/// A building's sweep, at each income: what is over the float goes to
-/// the treasury, and the float is what it runs on until the next one —
-/// the day's wages, and a restock. The lump on the map is the sale
-/// itself; the treasury steps with it. §8.2.
-fn sweep(world: &mut World, building: EntityId, now: GameTime) {
-    let Some(GameObject::Building(b)) = world.objects.get_mut(building).map(|e| &mut e.object) else { return };
-    let over = b.balance - float(b.kind, b.wage);
-    if over <= 0.0 {
-        return;
-    }
-    b.balance -= over;
-    world.treasury += over;
-    world.income.today(now).revenue += over;
 }
 
 /// A van loads at a depot: as much of the order as the shelf has. The
@@ -384,67 +389,57 @@ pub fn loaded(world: &mut World, depot: EntityId, order: f64, now: GameTime) -> 
 }
 
 /// A delivery landed: `load` onto `buyer`'s shelf, from `seller`'s or
-/// from beyond the edge. The buyer pays the seller's posted price per
-/// unit — beyond the edge, the edge's wholesale. §7.
+/// from beyond the edge. From a depot it is two lines at the depot's
+/// posted price and moves nothing; from beyond the edge the town buys
+/// the load at the edge's wholesale plus the crossing. §7, §8.2.
 pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, load: f64, now: GameTime) {
     let Some(kind) = kind_of(world, buyer) else { return };
     let need = shelf_need(kind);
-    let unit = seller.map_or(wholesale(need), |s| price_of(world, s, need));
+    let unit = seller.map_or(import(wholesale(need)), |s| price_of(world, s, need));
     let Some(GameObject::Building(b)) = world.objects.get_mut(buyer).map(|e| &mut e.object) else { return };
     let units = load.min(b.stock.short());
     if units <= 0.0 {
         return;
     }
     let due = units * unit;
-    let paid = due.min(b.balance).max(0.0);
     b.stock.add(units);
-    b.balance -= paid;
-    world.books.entry(buyer).or_default().today(now).purchases += paid;
-    world.sales.push(Sale { building: buyer, amount: -paid, at: now });
-    if let Some(seller) = seller {
-        pay(world, seller, paid);
-        let book = world.books.entry(seller).or_default().today(now);
-        book.revenue += paid;
-        *book.sold.entry(need).or_default() += units;
-        world.sales.push(Sale { building: seller, amount: paid, at: now });
-        sweep(world, seller, now);
+    world.books.entry(buyer).or_default().today(now).purchases += due;
+    world.sales.push(Sale { building: buyer, amount: -due, at: now });
+    match seller {
+        Some(seller) => {
+            let book = world.books.entry(seller).or_default().today(now);
+            book.revenue += due;
+            *book.sold.entry(need).or_default() += units;
+            world.sales.push(Sale { building: seller, amount: due, at: now });
+        }
+        None => {
+            door(world, -due, now);
+        }
     }
 }
 
-/// A depot's lorry came home full from beyond the edge: the depot pays
-/// the edge for what it brought.
+/// A depot's lorry came home full from beyond the edge: the town bought
+/// what it brought, at the edge's wholesale plus the crossing.
 pub fn fetched(world: &mut World, depot: EntityId, now: GameTime) {
     let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) else { return };
     let units = b.stock.short();
-    let paid = (units * wholesale(Need::Eat)).min(b.balance).max(0.0);
+    let due = units * import(wholesale(Need::Eat));
     b.stock.add(units);
-    b.balance -= paid;
-    world.books.entry(depot).or_default().today(now).purchases += paid;
-    world.sales.push(Sale { building: depot, amount: -paid, at: now });
-}
-
-/// A resident's sweep, at each payday: what is over the float is rent,
-/// and rent lands on the home. A home beyond the edge is the edge's. §8.2.
-fn rent(world: &mut World, who: EntityId, now: GameTime) {
-    let Some(GameObject::Resident(r)) = world.objects.get_mut(who).map(|e| &mut e.object) else { return };
-    let rent = r.wallet - RESIDENT_FLOAT;
-    if rent <= 0.0 {
-        return;
-    }
-    r.wallet = RESIDENT_FLOAT;
-    let home = r.home;
-    if world.edge.contains(&home) {
-        return;
-    }
-    world.treasury += rent;
-    world.income.today(now).revenue += rent;
-    world.sales.push(Sale { building: home, amount: rent, at: now });
+    world.books.entry(depot).or_default().today(now).purchases += due;
+    world.sales.push(Sale { building: depot, amount: -due, at: now });
+    door(world, -due, now);
 }
 
 /// Midnight: every building counts its day. Each price steps by its own
-/// stock; the wage steps by who filled the desks; and the books turn a
-/// page. §5.
+/// stock, the books turn a page, and every household in town draws its
+/// night of housing: a night served, and its upkeep bought from beyond
+/// the edge. §4, §5.
 pub fn day(world: &mut World, now: GameTime) {
+    let heads = world.resident_ids().into_iter().filter(|&id| !outside(world, id)).count() as f64;
+    world.gdp += heads * HOUSING;
+    door(world, -heads * HOUSING, now);
+    world.gdp_at_midnight = world.gdp;
+    world.income.today(now);
     let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
     ids.sort_unstable();
     for id in ids {
@@ -455,7 +450,6 @@ pub fn day(world: &mut World, now: GameTime) {
         let books = world.books.entry(id).or_default();
         books.today(now);
         let book = books.before(now).clone();
-        let commuters = world.staff_from_the_edge(id);
         let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { continue };
         let kind = b.kind;
         for need in sells(kind) {
@@ -469,27 +463,6 @@ pub fn day(world: &mut World, now: GameTime) {
             }
             *price = price.max(unit_cost(kind, need));
         }
-        if blueprint(kind).jobs > 0 && !service(kind) {
-            // What an hour of labour brought in: the day's takings less
-            // what it bought, over the hours it paid for. A pass-through's
-            // is the edge's wage exactly. A wage never rises past it, and
-            // a wage above it is cut to it at once: wages are sticky
-            // downward in a firm that is making money, and cut in one
-            // that is not (Bewley, 1999) — a shop with no trade pays what
-            // its trade is worth, and its staff take the next best score.
-            // A day nobody worked says nothing, and the wage stands.
-            let brings = if book.hours > 0.0 { (book.revenue - book.purchases) / book.hours } else { b.wage };
-            // A desk the edge had to fill is a vacancy the town's wage did
-            // not: the building pays for the commute through the wage.
-            b.wage = if b.wage > brings {
-                brings
-            } else if commuters > 0 {
-                (b.wage * (1.0 + WAGE_UP)).min(brings)
-            } else {
-                b.wage * (1.0 - WAGE_DOWN)
-            }
-            .max(WAGE_FLOOR);
-        }
     }
 }
 
@@ -500,21 +473,9 @@ fn kind_of(world: &World, building: EntityId) -> Option<BuildingKind> {
     }
 }
 
-fn balance(world: &World, building: EntityId) -> f64 {
-    match world.objects.get(building).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => b.balance,
-        _ => 0.0,
-    }
-}
-
-fn pay(world: &mut World, building: EntityId, amount: f64) {
-    if let Some(GameObject::Building(b)) = world.objects.get_mut(building).map(|e| &mut e.object) {
-        b.balance += amount;
-    }
-}
-
-/// One day of a purse's books: what came in, what went out, what was
-/// sold, and how much labour was bought.
+/// One day of a building's books: what came in, what went out, what was
+/// sold, and how much labour was bought. The town's own books are the
+/// door: in and out.
 #[derive(Debug, Default, Clone)]
 pub struct Day {
     pub revenue: f64,
@@ -532,8 +493,8 @@ pub struct Day {
 
 static EMPTY: std::sync::LazyLock<Day> = std::sync::LazyLock::new(Day::default);
 
-/// A purse's books: today's page and yesterday's, keyed by the day today
-/// is. Learned, not saved — a loaded world starts counting afresh.
+/// A building's books: today's page and yesterday's, keyed by the day
+/// today is. Learned, not saved — a loaded world starts counting afresh.
 #[derive(Debug, Default, Clone)]
 pub struct Books {
     pub day: u64,
@@ -581,11 +542,13 @@ impl Books {
     }
 }
 
-/// Hours served for the first level. Each one after costs a level more
-/// than the last.
-const LEVEL_BASE: f64 = 30.0;
+/// GDP for the first level, in hours of the world's labour. Each one
+/// after costs a level more than the last. A third of what it was when
+/// the level counted hours served, since a meal is a fifth of an hour at
+/// the world's price and a night a third of a day.
+const LEVEL_BASE: f64 = 10.0;
 
-/// The city's level from hours served, and what it took to reach it.
+/// The city's level from its GDP to date, and what it took to reach it.
 ///
 /// Level `n` is reached at `LEVEL_BASE * n * (n + 1) / 2`, so each one asks for
 /// a little more than the last.
@@ -596,20 +559,21 @@ pub fn level(served: f64) -> (u32, f64) {
 
 /// Everything the dials need to draw themselves.
 pub fn growth(world: &World, now: GameTime) -> Growth {
-    let (level, reached) = level(world.served);
+    let (level, reached) = level(world.gdp);
+    let door = world.income.on(now);
     Growth {
         level,
-        xp: world.served - reached,
-        xp_needed: LEVEL_BASE * (level as f64 + 1.0),
+        toward: world.gdp - reached,
+        needed: LEVEL_BASE * (level as f64 + 1.0),
+        gdp: world.gdp - world.gdp_at_midnight,
         treasury: world.treasury,
-        income: world.income.on(now).revenue,
+        income: door.revenue - door.purchases,
         taken: world.build.taken(),
         road_tiles_left: world.build.road_tiles().saturating_sub(world.laid),
     }
 }
 
-/// A building's money, readable: what it holds against its float, what it
-/// charges, and its books. §10.
+/// A building's money, readable: what it charges, and its books. §10.
 pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
     let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return Value::Null };
     let books = world.books.get(&id);
@@ -623,12 +587,8 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
         })
     };
     json!({
-        "balance": b.balance,
-        "float": float(b.kind, b.wage),
-        "solvent": solvent(world, id),
         "earns": earns(world, id, now),
         "jobs": blueprint(b.kind).jobs,
-        "wage": b.wage,
         "stock": b.stock,
         "reorder": reorder(world, id),
         "lead": books.and_then(|k| k.lead),
@@ -663,19 +623,6 @@ mod tests {
     }
 
     #[test]
-    fn a_house_keeps_no_float_and_a_shop_keeps_a_day() {
-        assert_eq!(float(House, EDGE_WAGE), 0.0);
-        let shop = float(Shop, EDGE_WAGE);
-        let wages = 2.0 * shift_hours(Shop);
-        let shelf = blueprint(Shop).stock as f64 * wholesale(Need::Eat);
-        assert!((shop - wages - shelf).abs() < 1e-9, "{shop} vs {wages} + {shelf}");
-        // A pass-through sells its hours the moment it pays for them.
-        assert_eq!(float(Office, EDGE_WAGE), 0.0);
-        // A service's wages are the treasury's; its float is its shelf.
-        assert_eq!(float(Warehouse, EDGE_WAGE), blueprint(Warehouse).stock as f64 * wholesale(Need::Eat));
-    }
-
-    #[test]
     fn the_books_turn_a_page_at_midnight() {
         let day = DAY_MS as u64;
         let mut b = Books::default();
@@ -690,17 +637,29 @@ mod tests {
         assert_eq!(Books::default().before(100).revenue, 0.0);
     }
 
-    /// Grass, a street, and whatever is built beside it.
+    /// Grass, a street that runs off the survey so the edge stands at its
+    /// end, and whatever is built beside it.
     fn town() -> World {
         let mut world = World::new();
         // Deep enough for a warehouse and its yard behind the street.
         for y in -6..6 {
-            for x in -4..40 {
+            for x in -4..300 {
                 world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
             }
         }
-        world.place_road_path(&(-2..40).map(|x| crate::protocol::GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        world.place_road_path(&(-2..300).map(|x| crate::protocol::GridCoord { x, y: 0 }).collect::<Vec<_>>());
         world
+    }
+
+    fn at(x: i32) -> crate::protocol::GridCoord {
+        crate::protocol::GridCoord { x, y: 1 }
+    }
+
+    fn resident(world: &World, id: EntityId) -> crate::protocol::Resident {
+        match world.objects.get(id).unwrap().object {
+            GameObject::Resident(ref r) => r.clone(),
+            _ => unreachable!(),
+        }
     }
 
     fn building(world: &World, id: EntityId) -> crate::protocol::Building {
@@ -710,65 +669,104 @@ mod tests {
         }
     }
 
-    /// §11.7, the conga: a delivery moves exactly what it costs from the
-    /// buyer to the seller, so a warehouse that shortens nothing makes no
-    /// margin, and has nothing over its float to sweep.
+    /// §11.7, the conga: a delivery from a depot is two lines and moves
+    /// the treasury by nothing; what the town pays is the depot's fetch
+    /// from beyond the edge, at the edge's wholesale plus the crossing,
+    /// which is what a delivery straight from beyond the edge costs too.
     #[test]
-    fn a_delivery_moves_exactly_what_it_costs() {
+    fn a_delivery_from_a_depot_moves_no_money() {
         let mut world = town();
-        let shop = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, Shop).unwrap();
-        let depot = world.place_on_street(crate::protocol::GridCoord { x: 20, y: 1 }, Warehouse).unwrap();
-        let (before_shop, before_depot) = (building(&world, shop), building(&world, depot));
+        let shop = world.place_on_street(at(4), Shop).unwrap();
+        let depot = world.place_on_street(at(20), Warehouse).unwrap();
+        world.treasury = 100.0;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
             b.stock.take(30.0);
         }
         let load = loaded(&mut world, depot, 30.0, 0);
         delivered(&mut world, shop, Some(depot), load, 0);
-        let (after_shop, after_depot) = (building(&world, shop), building(&world, depot));
-        let paid = before_shop.balance - after_shop.balance;
-        assert!((paid - 30.0 * wholesale(Need::Eat)).abs() < 1e-9, "the shop paid {paid}");
-        // The depot was at its float, so what it got swept at once.
-        assert!((after_depot.balance - before_depot.balance).abs() < 1e-9 && (world.treasury - paid).abs() < 1e-9, "the depot got something else");
-        assert_eq!(after_shop.stock.level, after_shop.stock.cap, "the shelf is full");
-        assert_eq!(before_depot.stock.level - after_depot.stock.level, 30.0, "the depot's shelf went down by the same");
-        // The sale over the float sweeps at once; the depot's own restock
-        // then costs it exactly what it sold for, so from the second round
-        // on its purse comes back to where it was and nothing more sweeps.
+        assert_eq!(world.treasury, 100.0, "a delivery inside the town moved money");
+        assert_eq!(building(&world, shop).stock.level, building(&world, shop).stock.cap, "the shelf is full");
+        assert_eq!(building(&world, depot).stock.short(), 30.0, "the depot's shelf went down by the same");
+        let crates = 30.0 * wholesale(Need::Eat);
+        assert!((world.books[&shop].on(0).purchases - crates).abs() < 1e-9 && (world.books[&depot].on(0).revenue - crates).abs() < 1e-9, "the books disagree");
         fetched(&mut world, depot, 0);
-        let settled = building(&world, depot).balance;
-        let swept = world.treasury;
-        for _ in 0..3 {
-            if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
-                b.stock.take(30.0);
-            }
-            let load = loaded(&mut world, depot, 30.0, 0);
-            delivered(&mut world, shop, Some(depot), load, 0);
-            fetched(&mut world, depot, 0);
+        assert!((100.0 - world.treasury - import(crates)).abs() < 1e-9, "the fetch cost {}", 100.0 - world.treasury);
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(shop).map(|e| &mut e.object) {
+            b.stock.take(30.0);
         }
-        assert!((building(&world, depot).balance - settled).abs() < 1e-9, "the warehouse made a margin");
-        assert!((world.treasury - swept).abs() < 1e-9, "the warehouse swept {}", world.treasury - swept);
+        let before = world.treasury;
+        delivered(&mut world, shop, None, 30.0, 0);
+        assert!((before - world.treasury - import(crates)).abs() < 1e-9, "from beyond the edge cost {}", before - world.treasury);
     }
 
-    /// §11.9, the door breaks even: a payday leaves a resident their float
-    /// and no more, whatever they earned, and the rest is rent on the home.
+    /// §8.2, the door: money moves only when one party is the outside. A
+    /// resident's shift at a shop is two lines; at a pass-through it is
+    /// hours sold to the edge; at the edge it is the edge wage less the
+    /// crossing coming in. A commuter's shift takes their wage home, and
+    /// their lunch in town is a meal sold to the outside.
     #[test]
-    fn a_payday_leaves_the_float() {
+    fn money_moves_only_at_the_door() {
         let mut world = town();
-        let home = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, House).unwrap();
-        let office = world.place_on_street(crate::protocol::GridCoord { x: 12, y: 1 }, Office).unwrap();
+        world.place_on_street(at(4), House).unwrap();
+        let shop = world.place_on_street(at(8), Shop).unwrap();
+        let office = world.place_on_street(at(30), Office).unwrap();
         world.settle();
-        let who = world.resident_ids()[0];
-        if let Some(GameObject::Resident(r)) = world.objects.get_mut(who).map(|e| &mut e.object) {
-            r.wallet = RESIDENT_FLOAT - 1.0;
+        let edge = *world.edge.iter().next().expect("the street runs off the map");
+        let people = world.resident_ids();
+        let local = *people.iter().find(|&&id| resident(&world, id).work == Some(shop)).expect("the shop hired next door");
+        let commuter = *people.iter().find(|&&id| world.edge.contains(&resident(&world, id).home)).expect("the office hired from beyond the edge");
+        assert_eq!(resident(&world, commuter).work, Some(office));
+
+        sale(&mut world, local, shop, Need::Work, 9.0, 0);
+        assert_eq!(world.treasury, STAKE, "a shift in town moved money");
+        assert!((world.books[&shop].on(0).wages - 9.0 * resident(&world, local).wage).abs() < 1e-9);
+
+        let pay = 9.0 * resident(&world, commuter).wage;
+        assert!(pay > 9.0 * import(EDGE_WAGE), "a commuter is paid the crossing and the drive: {pay}");
+        sale(&mut world, commuter, office, Need::Work, 9.0, 0);
+        let door = world.income.on(0).clone();
+        assert!((door.revenue - export(9.0 * EDGE_WAGE)).abs() < 1e-9, "the office sold its hours for {}", door.revenue);
+        assert!((door.purchases - pay).abs() < 1e-9, "the commuter took home {}", door.purchases);
+        assert!((world.gdp - 9.0).abs() < 1e-9, "hours made in town are GDP at the world's price: {}", world.gdp);
+
+        let home_ask = ask(&world, resident(&world, local).home);
+        if let Some(GameObject::Resident(r)) = world.objects.get_mut(local).map(|e| &mut e.object) {
+            r.wage = home_ask;
         }
-        sale(&mut world, who, office, Need::Work, 9.0, 0);
-        let wallet = match world.objects.get(who).unwrap().object {
-            GameObject::Resident(ref r) => r.wallet,
-            _ => unreachable!(),
-        };
-        assert_eq!(wallet, RESIDENT_FLOAT, "the wallet is the float again");
-        assert!((world.treasury - (9.0 - 1.0)).abs() < 1e-9, "the rest is rent: {}", world.treasury);
-        assert!(world.sales.iter().any(|s| s.building == home && (s.amount - 8.0).abs() < 1e-9), "the rent landed on the home");
+        let before = world.treasury;
+        sale(&mut world, local, edge, Need::Work, 8.0, 0);
+        assert!((world.treasury - before - export(8.0 * EDGE_WAGE)).abs() < 1e-9, "a shift beyond the edge brought {}", world.treasury - before);
+
+        let before = world.treasury;
+        sale(&mut world, local, shop, Need::Eat, 1.0, 0);
+        assert_eq!(world.treasury, before, "a meal in town moved money");
+        sale(&mut world, commuter, shop, Need::Eat, 1.0, 0);
+        assert!((world.treasury - before - price_of(&world, shop, Need::Eat)).abs() < 1e-9, "a commuter's lunch is an export");
+        let before = world.treasury;
+        sale(&mut world, local, edge, Need::Eat, 1.0, 0);
+        assert!((before - world.treasury - edge_price(Need::Eat)).abs() < 1e-9, "a meal at the edge is an import");
+    }
+
+    /// §10: GDP is value served in town at the world's prices, whatever
+    /// the town charged; labour counts inside what it makes; a night is
+    /// housing, banked once a head at midnight and bought at the door.
+    #[test]
+    fn gdp_is_value_at_the_worlds_prices() {
+        assert_eq!(value(Shop, Need::Eat), edge_price(Need::Eat));
+        assert_eq!(value(Warehouse, Need::Eat), wholesale(Need::Eat));
+        assert_eq!((value(Shop, Need::Work), value(House, Need::Rest), value(House, Need::Home)), (0.0, 0.0, 0.0));
+        let mut world = town();
+        world.place_on_street(at(4), House).unwrap();
+        world.settle();
+        world.treasury = 10.0;
+        let heads = world.resident_ids().len() as f64;
+        day(&mut world, DAY_MS as u64);
+        assert!((world.gdp - heads * HOUSING).abs() < 1e-9, "{heads} nights served: {}", world.gdp);
+        assert!((10.0 - world.treasury - heads * HOUSING).abs() < 1e-9, "and bought from beyond the edge: {}", world.treasury);
+        // An import the treasury cannot pay for is paid as far as it goes.
+        day(&mut world, 2 * DAY_MS as u64);
+        assert_eq!(world.treasury, 0.0);
+        assert!((world.gdp - 2.0 * heads * HOUSING).abs() < 1e-9, "a night unpaid for is still a night");
     }
 
     /// §6.2, `(s, S)`: a shelf reorders when what is on it would not last
@@ -777,7 +775,7 @@ mod tests {
     #[test]
     fn the_reorder_point_covers_the_lead_and_a_full_house() {
         let mut world = town();
-        let shop = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, Shop).unwrap();
+        let shop = world.place_on_street(at(4), Shop).unwrap();
         let seats = 7.0;
         let a_day = rated(Shop, Need::Eat);
         // No delivery yet: as long as a lorry is away beyond the edge.
@@ -795,7 +793,7 @@ mod tests {
     #[test]
     fn a_building_prices_money_in_what_it_makes() {
         let mut world = town();
-        let shop = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, Shop).unwrap();
+        let shop = world.place_on_street(at(4), Shop).unwrap();
         let could: f64 = sells(Shop).map(|need| edge_price_of(Shop, need) * rated(Shop, need)).sum();
         assert!((earns(&world, shop, 0) - could / 24.0).abs() < 1e-9);
         let day = DAY_MS as u64;
@@ -810,8 +808,8 @@ mod tests {
     #[test]
     fn a_depot_posts_a_price_on_its_shelf() {
         let mut world = town();
-        let shop = world.place_on_street(crate::protocol::GridCoord { x: 4, y: 1 }, Shop).unwrap();
-        let depot = world.place_on_street(crate::protocol::GridCoord { x: 20, y: 1 }, Warehouse).unwrap();
+        let shop = world.place_on_street(at(4), Shop).unwrap();
+        let depot = world.place_on_street(at(20), Warehouse).unwrap();
         let floor = wholesale(Need::Eat);
         let price = |world: &World| building(world, depot).prices[&Need::Eat];
         assert_eq!(price(&world), floor);

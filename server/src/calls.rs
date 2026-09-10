@@ -59,17 +59,16 @@ pub struct Call {
 /// Unloading at the door: ten minutes.
 pub const SERVICE_MS: GameTime = DAY_MS as GameTime / 144;
 
-/// A shelf changed: one at its reorder point calls for stock, if the
-/// purse can pay for it (docs/economy.md §9). A depot calls for a fetch
-/// from beyond the edge; anything else calls for a delivery. Buildings
-/// whose row keeps no stock never run out.
+/// A shelf changed: one at its reorder point calls for stock. A depot
+/// calls for a fetch from beyond the edge; anything else calls for a
+/// delivery. Buildings whose row keeps no stock never run out.
 pub fn restock(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
     if b.stock.cap == 0.0 || b.stock.level >= economy::reorder(world, building) {
         return;
     }
     let kind = if economy::depot(b.kind) { CallKind::Fetch } else { CallKind::Stock };
-    if !economy::solvent(world, building) || world.calls.iter().any(|c| c.at == building && c.kind == kind) {
+    if world.calls.iter().any(|c| c.at == building && c.kind == kind) {
         return;
     }
     world.calls.push(Call { kind, at: building, raised: now, answered_by: None, load: 0.0 });
@@ -111,7 +110,9 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             continue
         };
         let answered = match kind {
-            // A depot's lorry sets out for the edge.
+            // A depot's lorry sets out for the edge, if the town can pay
+            // for what it brings back (docs/economy.md §9).
+            CallKind::Fetch if world.treasury <= 0.0 => None,
             CallKind::Fetch => free_vehicle(world, at, CarRole::Truck).and_then(|(car, door)| {
                 let exit = world.entry_node_near(here)?;
                 crate::car::spawn::leave_for_edge(world, events, car, door, exit, now).then_some(car)
@@ -154,7 +155,8 @@ enum Seller {
 /// load lands — and the cheapest wins. That is the score of §6.1 for an
 /// order every seller fills alike. A depot sells what its shelf holds, by
 /// a van standing free; the outside sells without limit, by a lorry that
-/// drives in from the nearest exit. `None` where no seller can be reached.
+/// drives in from the nearest exit, while the town can pay for it
+/// (docs/economy.md §9). `None` where no seller can be reached.
 fn cheapest_seller(world: &mut World, at: EntityId, now: GameTime) -> Option<Seller> {
     let (kind, order, here) = match world.objects.get(at) {
         Some(e) => match e.object {
@@ -183,9 +185,10 @@ fn cheapest_seller(world: &mut World, at: EntityId, now: GameTime) -> Option<Sel
         Some(drive + order * price * dear)
     };
     let mut best: Option<(f64, Seller)> = None;
-    if let Some(edge) = world.nearest_edge(here)
+    if world.treasury > 0.0
+        && let Some(edge) = world.nearest_edge(here)
         && let Some(entry) = world.road_node_for_building(edge)
-        && let Some(cost) = delivered(entry, economy::wholesale(need))
+        && let Some(cost) = delivered(entry, economy::import(economy::wholesale(need)))
     {
         best = Some((cost, Seller::Edge(entry)));
     }

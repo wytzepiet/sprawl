@@ -11,15 +11,19 @@ import type { Cell } from "./Cell";
  */
 export type Growth = { level: number, 
 /**
- * Hours served since the level was reached, and the hours it takes.
+ * GDP banked since the level was reached, and what the next takes.
  */
-xp: number, xp_needed: number, 
+toward: number, needed: number, 
 /**
- * What the mayor has to spend.
+ * Today's GDP so far: value served in town at the world's prices.
+ */
+gdp: number, 
+/**
+ * What the town has to spend: earned at the door, net of what it built.
  */
 treasury: number, 
 /**
- * What swept in over the last whole day.
+ * Today's net at the door so far.
  */
 income: number, 
 /**

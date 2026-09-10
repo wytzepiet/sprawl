@@ -184,23 +184,16 @@ fn store(world: &mut World, id: EntityId, car: EntityId, buckets: &[Bucket]) {
 /// One verdict per bucket: the best any of its candidates offers.
 fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: EntityId, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Vec<Verdict> {
     // Money enters as time: what they make an hour is what an hour of it
-    // costs them, and what is in the wallet is what they can buy at all.
-    let purse = Purse { wallet: r.wallet, earning: economy::earning(world, id) };
+    // costs them.
+    let earning = economy::earning(world, id);
     buckets
         .iter()
         .map(|b| match b.need {
-            Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, &purse, at, b, w, now, crowd, routes, true)),
-            Need::Rest | Need::Home => verdict_at(world, r, &purse, at, b, r.home, now, crowd, routes, true),
-            Need::Eat | Need::Leisure | Need::Fuel => search(world, r, &purse, at, b, now, crowd, routes),
+            Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, earning, at, b, w, now, crowd, routes, true)),
+            Need::Rest | Need::Home => verdict_at(world, r, earning, at, b, r.home, now, crowd, routes, true),
+            Need::Eat | Need::Leisure | Need::Fuel => search(world, r, earning, at, b, now, crowd, routes),
         })
         .collect()
-}
-
-/// What a resident has to spend, and what an hour of it is worth to them.
-#[derive(Clone, Copy)]
-struct Purse {
-    wallet: f64,
-    earning: f64,
 }
 
 /// The ways out from where a resident stands, searched once for the whole
@@ -213,7 +206,7 @@ fn routes_from(world: &World, at: EntityId) -> Option<Routes<'_>> {
 fn verdict_at(
     world: &World,
     r: &Resident,
-    purse: &Purse,
+    earning: f64,
     at: EntityId,
     b: &Bucket,
     building: EntityId,
@@ -236,11 +229,10 @@ fn verdict_at(
     } else {
         crow_flies_ms(world, at, building)
     };
-    // A shift is sold, not bought: its wage ranks jobs (docs/economy.md
-    // §6.3), and once taken it is the constant habit. Beyond the edge
-    // nobody is refused: the floor has to be a floor.
+    // A shift is sold, not bought, and once taken it is the constant
+    // habit: whoever hired them is where.
     let price = if b.need == Need::Work { 0.0 } else { economy::price_of(world, building, b.need) };
-    let cost = Cost { price, purse: *purse, floor: world.edge.contains(&building) };
+    let cost = Cost { price, earning };
     taps_of(world, building)
         .iter()
         .filter(|t| t.need == b.need)
@@ -248,13 +240,12 @@ fn verdict_at(
         .fold(Verdict::Nothing, Verdict::better)
 }
 
-/// What a visit costs: the posted price per unit of the need, whose purse
-/// it comes out of, and whether they are served even when it is empty.
+/// What a visit costs: the posted price per unit of the need, and what an
+/// hour of money is worth to whoever pays it.
 #[derive(Clone, Copy)]
 struct Cost {
     price: f64,
-    purse: Purse,
-    floor: bool,
+    earning: f64,
 }
 
 /// The best of whatever is around, found the way a search finds anything
@@ -267,7 +258,7 @@ struct Cost {
 /// pays for one or two real answers, not one per shop. A verdict is a
 /// bucket's own best, whatever the other buckets scored: the alarms and
 /// the notes read it as such.
-fn search(world: &World, r: &Resident, purse: &Purse, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Verdict {
+fn search(world: &World, r: &Resident, earning: f64, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Verdict {
     let need = b.need;
     let mut heap: BinaryHeap<Candidate> = world
         .revealed
@@ -286,13 +277,13 @@ fn search(world: &World, r: &Resident, purse: &Purse, at: EntityId, b: &Bucket, 
         // the drive is refused, and the search picks it again every retry.
         .filter(|&id| world.road_node_for_building(id).is_some())
         .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
-        .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, purse, at, b, id, now, crowd, routes, false)))
+        .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, earning, at, b, id, now, crowd, routes, false)))
         .collect();
     while let Some(top) = heap.pop() {
         if top.exact {
             return top.verdict;
         }
-        heap.extend(Candidate::new(top.id, true, verdict_at(world, r, purse, at, b, top.id, now, crowd, routes, true)));
+        heap.extend(Candidate::new(top.id, true, verdict_at(world, r, earning, at, b, top.id, now, crowd, routes, true)));
     }
     Verdict::Nothing
 }
@@ -376,8 +367,7 @@ impl Verdict {
 /// Nobody sets out early to wait somewhere else, but someone already there
 /// is scored on waiting honestly, and does not go home for five minutes.
 /// Money enters as time: the visit's price in hours of the resident's own
-/// wage is added to the visit (docs/economy.md §6.1, Becker 1965), and a
-/// visit the wallet cannot pay for is no option at all.
+/// wage is added to the visit (docs/economy.md §6.1, Becker 1965).
 fn evaluate(
     world: &World,
     car: EntityId,
@@ -439,13 +429,9 @@ fn evaluate(
         }
     }
     let (departure, leave, drained, entry) = planned;
-    // The visit's price: what the wallet cannot pay for is no option, and
-    // the rest is priced in the resident's own hours, in milliseconds.
+    // The visit's price, in the resident's own hours, in milliseconds.
     let money = cost.price * drained / bucket.need.unit();
-    if money > cost.purse.wallet && !cost.floor {
-        return Verdict::Nothing;
-    }
-    let priced = money / cost.purse.earning * HOUR;
+    let priced = money / cost.earning * HOUR;
     let score = bucket.stock.weight() * drained / ((leave - now) as f64 + priced);
     Verdict::Go {
         score,
@@ -503,8 +489,8 @@ fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
 /// the end of a trip, in `drove`, and refills like any other.
 ///
 /// What was served goes on the tab, to be paid as one lump when the visit
-/// ends, and on the level: an hour of need the city served is an hour of
-/// life that happened here. The edge's hours are some other city's.
+/// ends, and on GDP at the world's price for it: value the town made.
+/// The edge's is some other town's.
 fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &Crowd) {
     let Some(r) = resident(world, id) else { return };
     let (last, selected) = (r.last_update, r.selected);
@@ -523,8 +509,10 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     {
         let out = rate * served;
         *world.books.entry(at).or_default().today(now).served.entry(need).or_default() += out / HOUR;
-        if !world.edge.contains(&at) {
-            world.served += out / HOUR;
+        if !world.edge.contains(&at)
+            && let Some(k) = kind(world, at)
+        {
+            world.gdp += out / need.unit() * economy::value(k, need);
         }
         if let Some(r) = resident_mut(world, id) {
             r.tab += out / need.unit();
@@ -650,7 +638,7 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
         "work": r.work,
         "selected": r.selected,
         "last_update": hhmm(r.last_update),
-        "wallet": r.wallet,
+        "wage": r.wage,
         "earning": economy::earning(world, id),
         "buckets": buckets.iter().zip(&verdicts).map(|(b, v)| json!({
             "need": b.need,
@@ -930,7 +918,7 @@ mod bench {
             let now = (i as u64 * 977) % DAY_MS as u64;
             let mut bucket = b.clone();
             bucket.stock.take((i % 100) as f64 * 1000.0);
-            let cost = Cost { price: 0.5, purse: Purse { wallet: 4.0, earning: 1.0 }, floor: false };
+            let cost = Cost { price: 0.5, earning: 1.0 };
             if let Verdict::Go { .. } = evaluate(&world, r.car, home, shop, tap, &bucket, now, 1, 60_000, false, cost) {
                 hits += 1;
             }

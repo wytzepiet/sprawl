@@ -249,8 +249,9 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
   const [terrainSeed, setTerrainSeed] = createSignal(0);
   const [growth, setGrowth] = createSignal<Growth>({
     level: 0,
-    xp: 0,
-    xp_needed: 0,
+    toward: 0,
+    needed: 0,
+    gdp: 0,
     treasury: 0,
     income: 0,
     taken: [],

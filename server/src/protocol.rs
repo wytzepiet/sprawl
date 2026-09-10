@@ -110,17 +110,6 @@ pub struct Building {
     /// before shelves were a stock gets one issued at load.
     #[serde(default)]
     pub stock: crate::needs::Stock,
-    /// Its purse, in hours of the edge's wage. Opened with its float when
-    /// the mayor places it; sales land here, wages and deliveries are paid
-    /// from it, and what is over the float sweeps to the treasury.
-    /// docs/economy.md §3, §8.2.
-    #[serde(default)]
-    pub balance: f64,
-    /// What it pays an hour of labour. Posted on its vacancies and nudged
-    /// like any price: up while the edge has to fill its desks, down slowly
-    /// while its own town does.
-    #[serde(default = "crate::economy::edge_wage")]
-    pub wage: f64,
     /// The price posted on each thing it sells, per unit of the need.
     /// Nudged daily by its own stock, never below unit cost. Issued at the
     /// edge's price to a save from before prices.
@@ -129,19 +118,16 @@ pub struct Building {
 }
 
 impl Building {
-    /// One of a kind, founded: its shelf full, its wage the edge's, its
-    /// prices the edge's — what the outside charges is the one price a
-    /// shop that has sold nothing yet can know — and its purse opened
-    /// with its float.
+    /// One of a kind, founded: its shelf full and its prices the edge's —
+    /// what the outside charges is the one price a shop that has sold
+    /// nothing yet can know.
     pub fn new(kind: BuildingKind, size: (u8, u8), facing: u8) -> Building {
-        use crate::economy::{edge_price_of, float, sells, EDGE_WAGE};
+        use crate::economy::{edge_price_of, sells};
         Building {
             kind,
             size,
             facing,
             stock: crate::needs::Stock::full(crate::blueprint::blueprint(kind).stock as f64),
-            balance: float(kind, EDGE_WAGE),
-            wage: EDGE_WAGE,
             prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
         }
     }
@@ -364,11 +350,12 @@ pub struct Resident {
     #[serde(default)]
     #[ts(type = "number")]
     pub last_update: u64,
-    /// Their purse, in hours of the edge's wage. A shift pays into it, a
-    /// meal or a tank is paid from it, and what is over the float sweeps
-    /// to the treasury as rent. docs/economy.md §3, §8.2.
-    #[serde(default = "crate::economy::resident_float")]
-    pub wallet: f64,
+    /// What their job pays an hour: their ask, plus the commute spread
+    /// over the shift, which is the delivered price of their labour. What
+    /// an hour of money is worth to them in the score. docs/economy.md
+    /// §5.2, §6.1.
+    #[serde(default = "crate::economy::edge_wage")]
+    pub wage: f64,
     /// Units of the selected need served since this visit began, not yet
     /// paid for: the sale lands as one lump when the visit ends. A record
     /// of what is happening, like `at`.
@@ -443,9 +430,6 @@ pub enum ClientMessage {
     PlaceBuilding(PlaceBuilding),
     DemolishRoad(DemolishRoad),
     DespawnAllCars,
-    /// Put money into a building whose purse has run dry: the treasury
-    /// refills it to its float, as a placement would have. docs/economy.md §9.
-    Fund(#[ts(type = "number")] EntityId),
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     ResetWorld,
@@ -496,12 +480,14 @@ pub struct Clock {
 #[ts(export)]
 pub struct Growth {
     pub level: u32,
-    /// Hours served since the level was reached, and the hours it takes.
-    pub xp: f64,
-    pub xp_needed: f64,
-    /// What the mayor has to spend.
+    /// GDP banked since the level was reached, and what the next takes.
+    pub toward: f64,
+    pub needed: f64,
+    /// Today's GDP so far: value served in town at the world's prices.
+    pub gdp: f64,
+    /// What the town has to spend: earned at the door, net of what it built.
     pub treasury: f64,
-    /// What swept in over the last whole day.
+    /// Today's net at the door so far.
     pub income: f64,
     /// The build: the nodes of the tree taken.
     pub taken: Vec<crate::tree::Cell>,
@@ -510,9 +496,9 @@ pub struct Growth {
 }
 
 /// Money landing somewhere on the map: a visit paid for, a shift paid, a
-/// delivery bought, a household's rent swept. The one event every price
-/// is read from. Negative is money leaving: an import, a wage bill.
-/// docs/economy.md §10.
+/// delivery bought. A line in the books made visible; it moves the
+/// treasury only when the other party is the outside. Negative is money
+/// leaving: an import, a wage bill. docs/economy.md §10.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Sale {

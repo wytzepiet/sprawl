@@ -2,7 +2,6 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
-import { useGame } from "../state/gameObjects";
 import type { BuildingKind, Need } from "../generated";
 
 /** A line that points at something else on the map. */
@@ -28,8 +27,7 @@ type Card =
       work: Link | null;
       at: Link | null;
       car: Link;
-      wallet: number;
-      earning: number;
+      wage: number;
       selected: Need | null;
       since: string;
       buckets: Bucket[];
@@ -63,13 +61,10 @@ type Card =
     }
   | { kind: "gone"; id: number };
 
-/** A building's purse and books, in hours of the edge's wage. */
+/** A building's prices and books, in hours of the edge's wage. */
 interface Money {
-  balance: number;
-  float: number;
-  solvent: boolean;
+  earns: number;
   jobs: number;
-  wage: number;
   prices: { need: Need; price: number; unit_cost: number; edge: number }[];
   today: Page | null;
   yesterday: Page | null;
@@ -217,9 +212,8 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
         <Row label="Work"><To link={c.work} fallback="no job" /></Row>
         <Row label="Car"><To link={c.car} /></Row>
       </Section>
-      <Section title="Purse">
-        <Row label="Wallet">{h(c.wallet)}</Row>
-        <Row label="Earns">{h(c.earning)} / h</Row>
+      <Section title="Work">
+        <Row label="Earns">{h(c.wage)} / h</Row>
       </Section>
       <Section title={`Needs, since ${c.since}`}>
         <For each={c.buckets}>
@@ -279,7 +273,6 @@ function h(v: number): string {
 
 function BuildingCard(c: Extract<Card, { kind: "building" }>) {
   const bp = BLUEPRINTS[c.building_kind];
-  const { send } = useGame();
   return (
     <>
       <Header
@@ -298,19 +291,8 @@ function BuildingCard(c: Extract<Card, { kind: "building" }>) {
       </Show>
       <Show when={c.money}>
         {(m) => (
-          <Section title="Money">
-            <Row label="Purse">
-              <span classList={{ "text-red-600 font-semibold": !m().solvent }}>{h(m().balance)}</span>
-              <Show when={m().float > 0}><span class="text-stone-400"> / {h(m().float)}</span></Show>
-            </Row>
-            <Show when={!m().solvent}>
-              <button class="my-1 w-full rounded-lg bg-stone-800 px-2 py-1 text-xs font-semibold text-white hover:bg-stone-700 cursor-pointer" onClick={() => send({ type: "Fund", data: c.id })}>
-                Put in {h(m().float - m().balance)}
-              </button>
-            </Show>
-            <Show when={m().jobs > 0}>
-              <Row label="Wage">{h(m().wage)} / h</Row>
-            </Show>
+          <Section title="Books">
+            <Row label="Earns">{h(m().earns)} / h</Row>
             <For each={m().prices}>
               {(p) => (
                 <Row label={p.need}>

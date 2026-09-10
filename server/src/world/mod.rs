@@ -55,9 +55,11 @@ pub struct World {
     pub books: HashMap<EntityId, crate::economy::Books>,
     /// The treasury's own books: what swept in, today and yesterday.
     pub income: crate::economy::Books,
-    /// Hours of need the city's buildings have served, ever, banked as each
-    /// visit ends. The level.
-    pub served: f64,
+    /// GDP to date: value served in town at the world's prices, banked as
+    /// each visit ends. The level is its running sum; today's rate is what
+    /// it has grown since midnight.
+    pub gdp: f64,
+    pub gdp_at_midnight: f64,
     /// The mayor's money, in hours of the edge's wage. docs/economy.md §8.2.
     pub treasury: f64,
     /// Money that landed on buildings since the last flush, for the clients
@@ -144,8 +146,8 @@ impl World {
             terrain_seed: 0,
             books: HashMap::new(),
             income: Default::default(),
-            served: 0.0,
-            treasury: 0.0,
+            gdp: 0.0, gdp_at_midnight: 0.0,
+            treasury: crate::economy::STAKE,
             sales: Vec::new(),
             build: Default::default(),
             laid: 0,
@@ -176,7 +178,7 @@ impl World {
             terrain_seed,
             books: HashMap::new(),
             income: Default::default(),
-            served: 0.0,
+            gdp: 0.0, gdp_at_midnight: 0.0,
             treasury: 0.0,
             sales: Vec::new(),
             build: Default::default(),
