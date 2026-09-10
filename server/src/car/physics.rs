@@ -175,17 +175,18 @@ impl Obstacle {
         } else {
             // Cruising — wake when we reach the braking point, not the obstacle.
             //
-            // Already there, at a speed the obstacle allows, there is nothing
-            // to wait for: a limit lasts until the node it guards is crossed,
-            // and a lead car that changes its mind wakes the car behind it.
-            // Both are wakes of their own. Polling here instead — every ten
-            // milliseconds, for every car crawling through a lot or holding
-            // a bend — was nine wakes in ten of a whole town.
+            // At a limit or a stop line already, at a speed it allows, there
+            // is nothing to wait for: it lasts until the node it guards is
+            // crossed, and that is a wake of its own. Asking again every ten
+            // milliseconds instead — for every car crawling through a lot or
+            // holding a bend — was nine wakes in ten of a whole town. A lead
+            // car is not fixed like that: the gap to one drifts while it is
+            // held within the slack, so it is watched.
             let brake_dist = braking_distance(my_speed, target_speed);
-            if distance <= brake_dist {
+            if distance <= brake_dist && !matches!(self, Obstacle::LeadCar { .. }) {
                 return u64::MAX;
             }
-            (distance - brake_dist) / my_speed.max(0.1)
+            (distance - brake_dist).max(0.0) / my_speed.max(0.1)
         };
 
         ((t * 1000.0) as u64).max(10)
