@@ -125,7 +125,8 @@ junctions lit up.
 
 - Deployment: the server on a VPS, the client built, reconnects.
 - Multiplayer: several players on one world, each with a build; roads
-  between cities; trade between ports as the implicit economy.
+  between cities; the port as the door, with a ferry and a batch, and
+  influence from traffic as the claim. `multiplayer.md` is the spec.
 
 *Playable:* two cities on one map, and your rush hour on their road.
 
