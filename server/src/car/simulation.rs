@@ -555,12 +555,14 @@ pub fn handle_car_wake_up(
 
     let accel_changed = ((new_accel - trip.acceleration) / ACCELERATION).abs() > 0.02;
 
-    // Wake car behind on acceleration change. Promptly either way: a queue
-    // that noticed its head pulling away only after four hundred milliseconds
-    // drained slowly enough to back up through the junction behind it, and
-    // two driveways then held each other for good.
+    // Wake car behind on acceleration change: a driver's reaction time,
+    // quicker for brake lights than for a gap opening. Not much slower than
+    // this for the gap, though: a queue that noticed its head pulling away
+    // only after four hundred milliseconds drained slowly enough to back up
+    // through the junction behind it, and two driveways then held each
+    // other for good.
     if accel_changed {
-        let delay = 50;
+        let delay = if new_accel < 0.0 { 50 } else { 150 };
         if let Some(behind) = world.car_behind_on_edge(current_edge, car_id) {
             events.wake(delay, behind);
         }
