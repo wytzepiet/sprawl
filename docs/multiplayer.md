@@ -105,9 +105,18 @@ long approach.
   maximal narrow runs, so between two blocks there is always water wide
   enough to wait in, and a ship in a block waits for nothing but its
   own exit.
-- **Phasing stays where it is harmless.** In open water two ships
-  crossing a bay overlap for a tick at most and no route depends on
-  it; in blocks and at berths they never share a tile.
+- **In open water, off to starboard.** Ships pass port to port, the
+  rule of the sea: a fixed sideways offset on the straight leg between
+  two waypoints, so two ships heading opposite ways clear each other by
+  construction, with no negotiation and no lane. In blocks and at
+  berths they never share a tile.
+- **Nothing is remembered.** Every voyage is routed fresh over the
+  regions and blocks the coast makes, and no lane persists: a new port
+  is a new destination, a removed one leaves no trace, and ships between
+  the same two ports line up on the same route because the route is the
+  same, not because anyone kept it. The road generator remembers roads
+  because a road is built and costs tiles; at sea neither is true, so
+  there is nothing to keep.
 - **The berth is a lot**, as many tiles as the ship. Ships queue for it
   with the same reservation window. One berth and three ships in the
   roads is the harbour's rush hour, and the capacity that lets prices
