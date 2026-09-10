@@ -193,6 +193,8 @@ fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: E
             Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, earning, at, b, w, now, crowd, routes, true)),
             Need::Rest | Need::Home => verdict_at(world, r, earning, at, b, r.home, now, crowd, routes, true),
             Need::Eat | Need::Leisure | Need::Fuel => search(world, r, earning, at, b, now, crowd, routes),
+            // Nobody carries it: a building's, delivered by a call.
+            Need::Services => Verdict::Nothing,
         })
         .collect()
 }
@@ -859,7 +861,7 @@ fn pay_the_tab(world: &mut World, events: &mut EventQueue, id: EntityId, at: Ent
     let (Some(need), tab) = (r.selected, std::mem::take(&mut r.tab)) else { return };
     if tab > 0.0 && matches!(world.objects.get(at).map(|e| &e.object), Some(GameObject::Building(_))) {
         economy::sale(world, id, at, need, tab, now);
-        crate::calls::restock(world, events, at, now);
+        crate::calls::turn(world, events, at, now);
     }
 }
 

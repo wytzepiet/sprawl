@@ -92,8 +92,8 @@ export default function World() {
   function mount(entry: GameObjectEntry): (() => void) | null {
     switch (entry.object.kind) {
       case "Building":
-        // Red where no joined road reaches it; grey where the shelves are bare.
-        return mountBuilding(entry, pool, !reached(entry) ? DORMANT : (entry.object.data as Building).stock.cap === 0 || (entry.object.data as Building).stock.level > 0 ? SOLID : EMPTY);
+        // Red where no joined road reaches it; grey where any stock is bare.
+        return mountBuilding(entry, pool, !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY);
       case "Car":
         return mountCar(entry, pool, scene, SOLID);
       case "RoadNode":

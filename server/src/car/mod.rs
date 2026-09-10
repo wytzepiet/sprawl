@@ -17,14 +17,14 @@ pub const INTERSECTION_STOP_MARGIN: f64 = 0.4;
 /// the vehicle's own length.
 pub fn nose(role: crate::protocol::CarRole) -> f64 {
     match role {
-        crate::protocol::CarRole::Private => 0.175,
+        crate::protocol::CarRole::Private | crate::protocol::CarRole::Company => 0.175,
         crate::protocol::CarRole::Van => 0.225,
         crate::protocol::CarRole::Truck => 0.1,
     }
 }
 pub fn tail(role: crate::protocol::CarRole) -> f64 {
     match role {
-        crate::protocol::CarRole::Private => 0.175,
+        crate::protocol::CarRole::Private | crate::protocol::CarRole::Company => 0.175,
         crate::protocol::CarRole::Van => 0.225,
         crate::protocol::CarRole::Truck => 0.7,
     }

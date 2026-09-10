@@ -35,7 +35,7 @@ type Card =
   | {
       kind: "car";
       id: number;
-      role: "Private" | "Van" | "Truck";
+      role: "Private" | "Van" | "Truck" | "Company";
       owner: Link;
       rider: Link | null;
       fuel: number | null;
@@ -49,7 +49,7 @@ type Card =
       label: string;
       building_kind: BuildingKind;
       reached: boolean;
-      stock: number | null;
+      stocks: { need: Need; full: number }[];
       spots: number | null;
       here: { who: Link; doing: Need | null }[];
       household: Link[];
@@ -235,7 +235,7 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
 }
 
 function CarCard(c: Extract<Card, { kind: "car" }>) {
-  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : "Car";
+  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : c.role === "Company" ? "Company car" : "Car";
   return (
     <>
       <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : "parked out of sight"} />
@@ -284,9 +284,9 @@ function BuildingCard(c: Extract<Card, { kind: "building" }>) {
           </span>
         }
       />
-      <Show when={c.stock !== null}>
-        <Section title="Shelves">
-          <Row label="Stock"><Bar value={c.stock!} color={c.stock! <= 0 ? "#D9483B" : "#57A773"} /></Row>
+      <Show when={c.stocks.length > 0}>
+        <Section title="Stocks">
+          <For each={c.stocks}>{(s) => <Row label={s.need}><Bar value={s.full} color={s.full <= 0 ? "#D9483B" : "#57A773"} /></Row>}</For>
         </Section>
       </Show>
       <Show when={c.money}>

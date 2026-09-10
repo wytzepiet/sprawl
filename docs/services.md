@@ -3,8 +3,9 @@
 Status: specification, agreed 2026-09-05. §2–4 built the same day (roads
 have no speed of their own yet). §5 built for stock: `calls.rs`, the
 supermarket and warehouse rows, trucks from beyond the edge or a
-warehouse's own, empty shelves drawn grey. Fire, illness, the inspect
-panel not yet. §3 was rewritten 2026-09-09 when the spawner went
+warehouse's own, empty shelves drawn grey; and for services, the
+office's car (`economy.md` §12.5). Fire, illness, the inspect panel not
+yet. §3 was rewritten 2026-09-09 when the spawner went
 (`shelved.md`): nothing arrives on its own any more, so all that is left
 of that section is where a placed building may land. Follows
 `residents.md` (how residents decide), and supersedes the parts of it
