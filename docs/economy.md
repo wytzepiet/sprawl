@@ -148,16 +148,33 @@ curve alone decides when it is served, exactly as now. It is the habit
 that gets a resident out of the house, and it stays: money is not the
 reason to work here (§6.3).
 
-**Labour is a good, and a home is its row.** A house draws what its
-household consumes — meals, fuel, evenings, and services: the repairs and
-upkeep a household pays for that are on no shelf — and fills a labour
-stock of a shift a head a day. The stock does not keep: an hour not sold
-is gone by morning, which is the one way labour is not coal. The house
-is where every chain starts, and it has running costs like a well. Which
-is what keeps a street of houses by the exit from being a mint (§11.12):
-a household that consumes a day's wage a day nets the town nothing by
-commuting, and earns it something only when the town serves it cheaper
-than the outside does.
+**Labour is a good, and a home is its row.** A house turns what its
+household consumes into hours of labour, the way a factory turns crates
+into goods, and the recipe is already written: `Need::drain` is the
+inputs a head a day, from time-use data, and the shift is the output.
+
+| in, a head a day | out |
+|---|---|
+| a night; about two and a half sittings; an evening; fuel by the tile; services — the upkeep, repairs and everything else a household pays for that is on no shelf | a shift of labour |
+
+The labour stock does not keep: an hour not sold is gone by morning,
+which is the one way labour is not coal. The house is where every chain
+starts, and it has running costs like a well. Its inputs are fetched by
+the household driving to them, which is the delivery for goods served
+in person (§6.1), and the score decides when; the row only says how
+much. Which is what keeps a street of houses by the exit from being a
+mint (§11.12): a household consumes nine tenths of what its labour is
+worth (§8.1), and nets the town the rest only when nothing crosses.
+
+**A row with an empty input stops.** A factory with an empty yard does
+not run; a household with an empty stock does not work: the Work tap is
+closed to a resident whose food, sleep, time off or tank stands at zero,
+until it does not. That is the one consequence at zero for a stock that
+drains by time, and it is what a holiday is: time off run to nothing,
+work off the table, and the score sending them to refill it. A week of
+night shifts and long drives ends the same way in a lie-in; illness,
+when it comes (step 5), is a sick day by the same rule. Nothing enforces
+a recipe; the row stops when it is short, as every row does.
 
 A **good** is a stock that moves. Today: the container and the crate.
 Two more come with this document:
@@ -360,19 +377,35 @@ That is Hume's price-specie flow (1752), and the band is it.
   exceeds the edge's plus the trip in, and none falls below the edge's
   minus the trip out. Every price lives in that band, and the band is a
   distance.
-- **`edge_price` is not authored.** It is what the good costs to make
+- **`edge_price` is not authored.** It is what a row's output is worth
   beyond the edge, where the same rows run at capacity at the edge wage
-  of one, link by link along the chain: a crate is a farm's hours per
-  crate, a meal is the crate plus the counter's hours per meal with every
-  seat full. Plus the **crossing**: a share of the value lost each way
-  for carrying it across, the iceberg cost of trade theory (Samuelson
-  1954), and the one number the door authors. The world sells to the
-  town at cost plus the crossing and buys from it at cost less the
-  crossing. A town that makes a good under the world's cost less the
-  crossing exports it; one that makes it over the world's cost plus the
-  crossing imports it; between, it makes its own and trades nothing.
-  Until the chain behind a good has a row in town, its hours at the edge
-  are a number with the row's name on it (§13.3).
+  of one, link by link along the chain, and every row's output is worth
+  more than what went in: **the inputs bought in, plus the labour, plus
+  what the row keeps.** For a firm what it keeps is capital's share of
+  what labour added, a third — the split of value added between labour
+  and capital is among the steadiest numbers in economics — so a firm's
+  output is its inputs plus its labour over two thirds. For a household
+  what it keeps is its saving, a tenth of income, so a head's labour is
+  worth its inputs over nine tenths. A crate is the farm's labour over
+  two thirds; a meal is the crate plus the counter's labour over two
+  thirds; a shift is a head's night, sittings, evening, fuel and services
+  over nine tenths, which is the edge wage of one. Two numbers, each with
+  a referent, and every price follows. Plus the **crossing**: a share of
+  the value lost each way for carrying it across, the iceberg cost of
+  trade theory (Samuelson 1954). The world sells to the town at its price
+  plus the crossing and buys at its price less the crossing, labour
+  included. Until the chain behind a good has a row in town, its price at
+  the edge is a number with the row's name on it (§13.3).
+- **The town's money is what its rows keep.** A factory in town pays its
+  people the labour share and keeps capital's third on everything it
+  makes, less the crossing on what it ships; that is why exporting fills
+  the treasury, and why capital is worth placing. A house keeps its
+  household's tenth when nothing crosses; a commuter's tenth is eaten by
+  the crossing, so a bedroom town nets about nothing. A shop keeps its
+  third on the meal it adds to the crate, and what it saves the treasury
+  is the crossing on a meal that would otherwise have crossed. The deeper
+  the chain in town, the more shares the town keeps: that is
+  specialisation paying, from two numbers.
 - **The edge hires everyone at `edge_wage`**, at every exit, forever. So
   no wage falls below it minus the commute, and nobody starves: the drive
   is the price, and it is always payable. Needs served at the edge are
@@ -383,14 +416,14 @@ That is Hume's price-specie flow (1752), and the band is it.
   off the map and back. This is what makes offices and factories the
   town's export base before there is a port.
 - **The door breaks even, by construction.** A household that buys its
-  whole row at the edge and sells its labour there nets the town nothing,
-  because what a head consumes in a day at the edge's prices comes to
-  what a head earns there in a day. That is not a calibration but a check
-  on the household row, and its referent is that households spend what
-  they earn. Then every net flow through the door is because the town
-  does something different from the outside: cheaper meals keep money
-  in, higher productivity brings it in. One check, no mechanism, and a
-  test (§11.9).
+  whole row at the edge and sells its labour there nets the town its
+  saving less the crossing, which at a tenth each is nothing. That is not
+  a calibration but the household row's own arithmetic: its inputs at
+  the world's prices are nine tenths of what its labour sells for. Then
+  every net flow through the door is because the town does something
+  different from the outside: a row of its own keeps a share, a meal
+  served in town keeps the crossing. One check, no mechanism, and a test
+  (§11.9).
 
 Money enters when labour or goods are sold at the edge — a resident's
 shift there, a lorry leaving loaded; it leaves when they are bought
@@ -545,11 +578,13 @@ Each step is playable and nothing before step 2 can hurt anyone.
    §12.4 has what it needs decided.
 5. **Services and wear.** The office's stock and its car; the workshop;
    the household's services stock.
-6. **Rows.** Every workplace's inputs, output and rate on its row, with
-   productivity as the number a placement buys; `edge_price` derived
-   from the rows at capacity plus the crossing (§8.1); freight as fuel
-   and hours per leg. Lands with the farm, the first row with two links
-   behind it.
+6. **Rows.** Every workplace's inputs, output and rate on its row;
+   `edge_price` derived link by link from the rows at capacity, each
+   keeping its share, plus the crossing (§8.1); freight as fuel and
+   hours per leg. Lands with the farm, the first row with two links
+   behind it. Step 4 already prices what exists: a pass-through's hours
+   at one over two thirds, and the household at nine tenths of the edge
+   wage.
 7. **Panels, the board, the advisor's tools.**
 
 Then, with the port: freight, haulers, classes, the second door.
@@ -771,25 +806,30 @@ and what running it found.
   new scale.
 - **The crossing is a tenth** (§13.8) until a season says otherwise.
 
-What running the season found, and did not fix. Ten days of the full
-town, the bedroom town and the job centre (§11.12): the full town and
-the job centre sit at zero from the first day, the door taking in about
-480 hours a day and asked for more; the bedroom town nets six hours a
-head a day. The bedroom town is the door's check failing (§8.1): a
-household's row draws housing and about an hour of food, fuel and
-evenings at the world's prices, some four hours short of the eight a
-head earns there, and the gap is the mint. Price the household honestly
-and the mint closes — and every town is in deficit, because a world
-that prices everything at cost leaves a town that sells labour and buys
-consumption nothing but the crossing, twice, against it. The old design
-hid the same fact by seeding every purse and pricing a meal for the
-ladder. So step 6 is not a refinement: money in town has to come from
-value added that the world's prices carry and the town's owner
-captures — §5.1's markup, cost plus a margin, which Blinder's firms
-post and the world's would too, and a factory in town keeps less the
-crossing — or from rows the town runs better than the world does. Which,
-and the number, are the decision §13.12 holds, and the no-harm and
-bare-town seasons stay red until it is made.
+What running the first cut found. Ten days of the full town, the
+bedroom town and the job centre (§11.12), with the world pricing
+everything at the cost of its inputs and the household drawing housing
+alone: the full town and the job centre sat at zero from the first day,
+and the bedroom town netted six hours a head a day. The mint was the
+household row four hours short of its own labour's worth; and a world
+priced at cost leaves a town nothing but the crossing, twice, against
+it — the old design hid the same fact by seeding every purse and
+pricing a meal for the ladder. What closed it is §8.1's two shares:
+every row's output is worth its inputs plus what the row keeps, and
+the town's money is what its rows keep. As built:
+
+- **A pass-through's hours** sell to the edge at one over two thirds
+  an hour, less the crossing: capital's third on labour that made
+  nothing else. GDP banks the hours at the world's price.
+- **The household draws nine tenths of the edge wage a day** at the
+  world's prices: a night at a third of a day's wage, sittings and an
+  evening at the table's prices, transport at its budget sixth, and
+  services as the rest, about 2.4 hours a head a day, imported with the
+  night's upkeep until an office in town makes them. Fuel is what the
+  car burns; the sixth is the row's estimate of it, and the check holds
+  in the broad lines, which is what it is for.
+- **An empty stock closes the Work tap** (§4), and the wake budget and
+  the tenure season are the tests of what the ladder does with it.
 
 
 ## 13. Open
@@ -810,13 +850,12 @@ bare-town seasons stay red until it is made.
 8. The crossing's value (§8.1), with a referent: iceberg estimates for
    trade costs run from a tenth to a half of value; a border between a
    town and its region is the low end.
-9. Productivity per workplace row (§12 step 6): what an hour makes, in
-   units of its output, and its referent.
-10. The household's services rate (§4): what upkeep a head costs a day,
-    so that the door breaks even (§8.1) as a property of the row. The
-    season says the row is four hours a head a day short (§12.4).
+9. ~~Productivity per workplace row.~~ Capital's share of what labour
+   adds, a third, on every firm's row (§8.1); rows the town runs better
+   than the world wait for the tree.
+10. ~~The household's services rate.~~ The balance of the row at nine
+    tenths of the edge wage (§8.1, §12.4).
 11. What selling out means for a household's hours, so that the ask can
     nudge (§12.4).
-12. Where the town's money comes from in a world priced at cost (§12.4):
-    a markup in the world's prices that the town's rows keep, or rows
-    the town runs better than the world. The value, with its referent.
+12. ~~Where the town's money comes from in a world priced at cost.~~
+    What its rows keep: capital's third, the household's tenth (§8.1).

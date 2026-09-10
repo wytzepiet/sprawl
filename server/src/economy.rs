@@ -84,12 +84,38 @@ pub fn export(cost: f64) -> f64 {
 /// building used to open with, in one place. §12.4.
 pub const STAKE: f64 = 100.0;
 
-/// A night of housing, per head: what the household row draws in upkeep
-/// a day, imported from beyond the edge until an office in town makes
-/// services, and what a night served in town is worth in GDP. Households
-/// spend a third of their income on housing; a day at the edge earns
-/// eight. §4, §13.10.
+/// What a row keeps of what it adds, and so what the town's money is
+/// (§8.1). A firm's output is worth its inputs plus its labour over one
+/// less capital's share: the split of value added between labour and
+/// capital, about a third to capital, is among the steadiest numbers in
+/// economics. A household's labour is worth its inputs over one less its
+/// saving: households consume about nine tenths of what they earn.
+pub const CAPITAL: f64 = 1.0 / 3.0;
+pub const SAVING: f64 = 0.1;
+/// What an hour of labour makes, at the world's price, when it makes
+/// nothing else: a pass-through's export.
+pub fn adds(labour: f64) -> f64 {
+    labour / (1.0 - CAPITAL)
+}
+
+/// The household row's inputs a head a day, at the world's prices,
+/// which come to nine tenths of a day's wage at the edge (§4, §8.1).
+/// A night of housing is a third of the day's wage; sittings and an
+/// evening are the table's; transport is its budget sixth, an estimate
+/// of what the car burns; services — upkeep, repairs, and everything
+/// else on no shelf — are the rest. The night and the services are
+/// imported until an office in town makes them; the night is what a
+/// night served in town is worth in GDP.
 pub const HOUSING: f64 = 8.0 / 3.0;
+pub const TRANSPORT: f64 = 8.0 / 6.0;
+pub fn household() -> f64 {
+    8.0 * EDGE_WAGE * (1.0 - SAVING)
+}
+pub fn services() -> f64 {
+    let sittings = 2.4 * edge_price(Need::Eat);
+    let evening = edge_price(Need::Leisure);
+    household() - HOUSING - sittings - evening - TRANSPORT
+}
 
 /// What a household asks for an hour of its labour. The town's: what the
 /// edge would pay them, net of the crossing, since below that they sell
@@ -318,10 +344,10 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
                 return;
             }
             // A workplace with nothing to sell sells its hours to the
-            // edge, at the world's price less the crossing: a
-            // pass-through, until goods give it an output. §12.1.
+            // edge, at what an hour makes, less the crossing: a
+            // pass-through, until goods give it an output. §12.1, §8.1.
             if !service(kind) && sells(kind).next().is_none() {
-                let made = units * EDGE_WAGE;
+                let made = adds(units * EDGE_WAGE);
                 world.gdp += made;
                 world.books.entry(at).or_default().today(now).revenue += export(made);
                 world.sales.push(Sale { building: at, amount: export(made), at: now });
@@ -432,12 +458,12 @@ pub fn fetched(world: &mut World, depot: EntityId, now: GameTime) {
 
 /// Midnight: every building counts its day. Each price steps by its own
 /// stock, the books turn a page, and every household in town draws its
-/// night of housing: a night served, and its upkeep bought from beyond
-/// the edge. §4, §5.
+/// night of housing and its services: a night served, and both bought
+/// from beyond the edge until an office in town makes them. §4, §5.
 pub fn day(world: &mut World, now: GameTime) {
     let heads = world.resident_ids().into_iter().filter(|&id| !outside(world, id)).count() as f64;
     world.gdp += heads * HOUSING;
-    door(world, -heads * HOUSING, now);
+    door(world, -heads * import(HOUSING + services()), now);
     world.gdp_at_midnight = world.gdp;
     world.income.today(now);
     let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
@@ -725,9 +751,9 @@ mod tests {
         assert!(pay > 9.0 * import(EDGE_WAGE), "a commuter is paid the crossing and the drive: {pay}");
         sale(&mut world, commuter, office, Need::Work, 9.0, 0);
         let door = world.income.on(0).clone();
-        assert!((door.revenue - export(9.0 * EDGE_WAGE)).abs() < 1e-9, "the office sold its hours for {}", door.revenue);
+        assert!((door.revenue - export(adds(9.0 * EDGE_WAGE))).abs() < 1e-9, "the office sold its hours for {}", door.revenue);
         assert!((door.purchases - pay).abs() < 1e-9, "the commuter took home {}", door.purchases);
-        assert!((world.gdp - 9.0).abs() < 1e-9, "hours made in town are GDP at the world's price: {}", world.gdp);
+        assert!((world.gdp - adds(9.0)).abs() < 1e-9, "hours made in town are GDP at the world's price: {}", world.gdp);
 
         let home_ask = ask(&world, resident(&world, local).home);
         if let Some(GameObject::Resident(r)) = world.objects.get_mut(local).map(|e| &mut e.object) {
@@ -747,6 +773,21 @@ mod tests {
         assert!((before - world.treasury - edge_price(Need::Eat)).abs() < 1e-9, "a meal at the edge is an import");
     }
 
+    /// §8.1, §11.9: the household row's inputs at the world's prices are
+    /// nine tenths of what its labour sells for, so a household that
+    /// works and consumes at the edge nets the town its saving less the
+    /// crossing, which at a tenth each is nothing. And a firm's hour is
+    /// worth its labour over two thirds.
+    #[test]
+    fn the_door_breaks_even_by_the_rows_arithmetic() {
+        let inputs = HOUSING + 2.4 * edge_price(Need::Eat) + edge_price(Need::Leisure) + TRANSPORT + services();
+        assert!((inputs - 8.0 * (1.0 - SAVING)).abs() < 1e-9, "the row draws {inputs}");
+        assert!(services() > 0.0, "the table prices the rest of the row over a day's wage");
+        let net = export(8.0 * EDGE_WAGE) - inputs;
+        assert!(net.abs() < 8.0 * SAVING + 1e-9, "a commuter nets the town {net}");
+        assert!((adds(2.0) - 3.0).abs() < 1e-9);
+    }
+
     /// §10: GDP is value served in town at the world's prices, whatever
     /// the town charged; labour counts inside what it makes; a night is
     /// housing, banked once a head at midnight and bought at the door.
@@ -758,11 +799,11 @@ mod tests {
         let mut world = town();
         world.place_on_street(at(4), House).unwrap();
         world.settle();
-        world.treasury = 10.0;
+        world.treasury = 15.0;
         let heads = world.resident_ids().len() as f64;
         day(&mut world, DAY_MS as u64);
         assert!((world.gdp - heads * HOUSING).abs() < 1e-9, "{heads} nights served: {}", world.gdp);
-        assert!((10.0 - world.treasury - heads * HOUSING).abs() < 1e-9, "and bought from beyond the edge: {}", world.treasury);
+        assert!((15.0 - world.treasury - heads * import(HOUSING + services())).abs() < 1e-9, "and bought from beyond the edge: {}", world.treasury);
         // An import the treasury cannot pay for is paid as far as it goes.
         day(&mut world, 2 * DAY_MS as u64);
         assert_eq!(world.treasury, 0.0);
