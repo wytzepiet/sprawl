@@ -79,10 +79,13 @@ pub fn export(cost: f64) -> f64 {
     cost * (1.0 - CROSSING)
 }
 
-/// What the mayor founds the town with: enough to import for a few days
-/// before the first shift is sold beyond the edge. The floats every
-/// building used to open with, in one place. §12.4.
-pub const STAKE: f64 = 100.0;
+/// What the mayor founds the town with: a few weeks of the starting
+/// households' imports, so the town can buy fuel and crates until its
+/// first shifts are sold beyond the edge. A treasury at zero cannot
+/// import fuel, and a town without fuel cannot work, which is a trap a
+/// fresh town must not start in. The floats every building used to open
+/// with, in one place. §12.4.
+pub const STAKE: f64 = 500.0;
 
 /// What a row keeps of what it adds, and so what the town's money is
 /// (§8.1). A firm's output is worth its inputs plus its labour over one

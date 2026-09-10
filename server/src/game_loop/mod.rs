@@ -1316,6 +1316,22 @@ mod tests {
         BuildingKind::ALL.into_iter().filter(|&k| crate::blueprint::blueprint(k).price.is_finite()).collect()
     }
 
+    /// A town shaped like a town, for the seasons: mostly homes, an export
+    /// base of offices, factories and workshops with about as many desks
+    /// as the homes have people, and one of each shop. Forty plots.
+    /// `placeable` cycles every kind equally, which is seventeen shops,
+    /// bars, supermarkets and warehouses for 177 people — the mix for a
+    /// wake budget, not for a purse.
+    fn town_mix() -> Vec<BuildingKind> {
+        use BuildingKind::*;
+        vec![
+            House, Apartment, Office, House, Apartment, Shop, House, Factory, Apartment, House,
+            Workshop, Apartment, House, Bar, Office, House, Apartment, Restaurant, House, Factory,
+            Apartment, House, GasStation, Apartment, Office, House, Supermarket, Apartment, House, Workshop,
+            Factory, House, Apartment, Warehouse, House, Apartment, House, Apartment, House, Apartment,
+        ]
+    }
+
     /// A street drawn to a house that was standing dormant moves people in.
     ///
     /// Placing and demolishing settle for themselves; drawing road did not,
@@ -1392,6 +1408,10 @@ mod tests {
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
         assert!(!world.edge.is_empty(), "the street has to run off the map, or nobody can arrive at all");
+        // Forty buildings placed at once are a town that grew; give it the
+        // working capital one would have, a week of its households' row,
+        // and measure from there.
+        world.treasury = crate::economy::STAKE + 7.0 * world.resident_ids().len() as f64 * crate::economy::household();
         let mut wakes = 0;
         let mut now = 0;
         let end = days * DAY_MS as u64;
@@ -1472,7 +1492,7 @@ mod tests {
     fn season_the_band_holds_and_nothing_rings() {
         use crate::economy::{edge_price, EDGE_WAGE};
         let mut prices: std::collections::BTreeMap<(EntityId, crate::needs::Need), Vec<f64>> = Default::default();
-        let (world, _) = season(&placeable(), season_days(), |world, _, _| {
+        let (world, _) = season(&town_mix(), season_days(), |world, _, _| {
             for e in world.objects.iter() {
                 let GameObject::Building(ref b) = e.object else { continue };
                 if world.edge.contains(&e.id) {
@@ -1517,7 +1537,12 @@ mod tests {
     fn season_no_harm() {
         let days = season_days();
         let mut last_gdp = 0.0;
-        let (world, _) = season(&placeable(), days, |world, day, _| {
+        let mut began = 0.0;
+        let (world, _) = season(&town_mix(), days, |world, day, _| {
+            if day == 1 {
+                let door = world.income.before(DAY_MS as u64);
+                began = world.treasury - door.revenue + door.purchases;
+            }
             let door = world.income.before(day * DAY_MS as u64);
             println!("day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}", world.treasury, world.gdp - last_gdp, door.revenue, door.purchases);
             last_gdp = world.gdp;
@@ -1531,15 +1556,18 @@ mod tests {
                 }
             }
         });
-        assert!(world.treasury > crate::economy::STAKE, "the season ended with {} in the treasury, from {}", world.treasury, crate::economy::STAKE);
         let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_)) && !world.edge.contains(&e.id)).map(|e| e.id).collect();
         ids.sort_unstable();
         for id in ids {
             let GameObject::Building(ref b) = world.objects.get(id).unwrap().object else { unreachable!() };
             let page = world.books.get(&id).map(|k| k.before(days * DAY_MS as u64).clone()).unwrap_or_default();
             let margin = page.revenue - page.purchases - page.wages;
-            println!("{id} {:?}: in {:.1} out {:.1} wages {:.1} margin {margin:.1}{}", b.kind, page.revenue, page.purchases, page.wages, if margin < 0.0 { " — in the red" } else { "" });
+            let staff = world.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(ref r) if r.work == Some(id))).count();
+            println!("{id} {:?}: {staff} of {} desks, {:.1} hours; in {:.1} out {:.1} wages {:.1} margin {margin:.1}{}", b.kind, crate::blueprint::blueprint(b.kind).jobs, page.hours, page.revenue, page.purchases, page.wages, if margin < 0.0 { " — in the red" } else { "" });
         }
+        let at_the_edge = world.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(ref r) if r.work.is_some_and(|w| world.edge.contains(&w)))).count();
+        println!("{at_the_edge} residents work beyond the edge");
+        assert!(world.treasury > began, "the season ended with {} in the treasury, from {began}", world.treasury);
     }
 
     /// §11.12, the bare towns: a street of homes and nothing else, whose
@@ -1554,10 +1582,16 @@ mod tests {
         use BuildingKind::*;
         let days = season_days();
         let mut rates = Vec::new();
-        for (name, mix) in [("full", placeable()), ("bedroom", vec![House, Apartment]), ("job centre", vec![Office, Factory, Workshop])] {
-            let (world, _) = season(&mix, days, |_, _, _| {});
+        for (name, mix) in [("full", town_mix()), ("bedroom", vec![House, Apartment]), ("job centre", vec![Office, Factory, Workshop])] {
+            let mut began = 0.0;
+            let (world, _) = season(&mix, days, |world, day, _| {
+                if day == 1 {
+                    let door = world.income.before(DAY_MS as u64);
+                    began = world.treasury - door.revenue + door.purchases;
+                }
+            });
             let residents = world.resident_ids().len().max(1);
-            let rate = world.treasury / residents as f64 / days as f64;
+            let rate = (world.treasury - began) / residents as f64 / days as f64;
             println!("{name}: treasury {:.1} and GDP {:.1} over {days} days, {residents} residents: {rate:.3} a resident-day", world.treasury, world.gdp);
             rates.push(rate);
         }
@@ -1574,7 +1608,7 @@ mod tests {
         let mut jobs: std::collections::BTreeMap<EntityId, Option<EntityId>> = Default::default();
         let mut changes = 0u32;
         let mut wakes_so_far = 0u64;
-        let (world, _) = season(&placeable(), season_days(), |world, day, wakes| {
+        let (world, _) = season(&town_mix(), season_days(), |world, day, wakes| {
             // Wakes per resident-day, day by day: a storm shows here first.
             println!("day {day}: {} wakes per resident", (wakes - wakes_so_far) / world.resident_ids().len().max(1) as u64);
             wakes_so_far = wakes;
