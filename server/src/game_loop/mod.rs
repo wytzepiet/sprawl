@@ -466,7 +466,7 @@ fn handle_road_demolish(
             route[ri]
         };
 
-        if try_reroute(world, intersections, events, car_id, from_node, dest, ri, now) {
+        if try_reroute(world, intersections, events, car_id, from_node, dest, now) {
             continue;
         }
 
@@ -502,7 +502,6 @@ fn try_reroute(
     car_id: EntityId,
     from_node: EntityId,
     dest: EntityId,
-    ri: usize,
     now: GameTime,
 ) -> bool {
     let Some(to_node) = world.approach(dest) else { return false };
@@ -526,20 +525,10 @@ fn try_reroute(
         None => return false,
     };
 
-    // Clean up old state (mirror despawn_car's edge cleanup)
+    // Out of every queue on the old route: a car stands in the queues of the
+    // whole run ahead of it, not just the tile it is on.
     world.unregister_car_route(car_id, &old_route);
-    if ri >= 1 {
-        let old_edge = (old_route[ri - 1], old_route[ri]);
-        if let Some(seg) = world.edges.get_mut(&old_edge) {
-            seg.cars.retain(|&id| id != car_id);
-        }
-    }
-    if ri + 1 < old_route.len() {
-        let next_edge = (old_route[ri], old_route[ri + 1]);
-        if let Some(seg) = world.edges.get_mut(&next_edge) {
-            seg.cars.retain(|&id| id != car_id);
-        }
-    }
+    world.remove_car_from_edges(car_id);
     let woken = intersections.remove_car_from_all(car_id);
     for (_node, woken_id) in woken {
         events.wake(0, woken_id);

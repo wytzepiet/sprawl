@@ -304,9 +304,10 @@ impl RoadNetwork {
 
     /// Does a run of road end here — because others meet it, or because it
     /// stops? Distinct from `is_intersection`, which is about arbitrating who
-    /// goes first and so only counts genuine forks.
+    /// goes first and so only counts genuine forks. A node the network has
+    /// never heard of — a lot's, off the street — is not mid-run either.
     pub fn is_junction(&self, node: EntityId) -> bool {
-        self.adj.get(&node).map_or(false, |a| a.len() != 2)
+        self.adj.get(&node).is_none_or(|a| a.len() != 2)
     }
 
     /// The run leaving this junction by this neighbour, and whether that is
