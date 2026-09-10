@@ -226,6 +226,8 @@ Nothing before the port milestone. Then:
 ## 9. Open
 
 1. The width of a road's claim, and the survey radius in a shared world.
+   Keep-right in wide water, as a routing preference for the right of
+   the centreline, if the picture wants it; left out until it does.
 2. Whether influence needs buildings as a source at all, or a placed
    building's driveway is the only seed.
 3. The ferry's three numbers per season, and the first sailing's hour.
