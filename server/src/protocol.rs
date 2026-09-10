@@ -487,8 +487,13 @@ pub struct Growth {
     pub gdp: f64,
     /// What the town has to spend: earned at the door, net of what it built.
     pub treasury: f64,
-    /// Today's net at the door so far.
+    /// Today's net at the door so far, and what went out: the treasury
+    /// over it is days of imports left.
     pub income: f64,
+    pub imports: f64,
+    /// Nothing at the door and nobody fit to work: the town is dead.
+    /// docs/economy.md §9.
+    pub dead: bool,
     /// The build: the nodes of the tree taken.
     pub taken: Vec<crate::tree::Cell>,
     /// Tiles of road the mayor may still lay.

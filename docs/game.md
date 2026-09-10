@@ -107,8 +107,10 @@ capacity and charges a crossing, so nothing can run away and no price is
 authored. Two numbers: GDP, hours of need served in town, which is how
 rich the town is and what opens the tree; and the treasury, what the
 town has earned from the outside net of what the mayor built, which is
-what the mayor can spend. Ignoring all of this must never hurt; reading
-it is how you win. `economy.md` is the mechanism.
+what the mayor can spend. Nothing crosses the edge for a town with
+nothing to pay, and a town that cannot feed itself dies; so a town must
+sell something, or grow its own. Ignoring prices never hurts; reading
+them is how you win. `economy.md` is the mechanism.
 
 ## Power
 

@@ -55,9 +55,12 @@ Eight rules carry it. The first five are economics; the last three are ours.
    (§8) is a choice, made on purpose. And every mechanism is the arcade
    version of its referent: one number where the world has a curve, a day
    where the world has a quarter, one door where the world has a globe.
-8. **Ignoring the economy never hurts; reading it only helps.** A player
-   who places buildings and watches cars must be fine. Prices are the
-   layer for the player who wants to win.
+8. **Ignoring prices never hurts; reading them only helps. A town must
+   sell something.** A player who places buildings and watches cars must
+   be fine, as long as the town has a door: nothing crosses it for a
+   town with nothing to pay, and a town that cannot feed itself dies
+   (§9). Prices are the layer for the player who wants to win; the door
+   is the one stake.
 
 Two numbers say how the town is doing, and they are different things.
 **GDP** is hours of need served in town, per day: the town's real
@@ -406,11 +409,15 @@ That is Hume's price-specie flow (1752), and the band is it.
   is the crossing on a meal that would otherwise have crossed. The deeper
   the chain in town, the more shares the town keeps: that is
   specialisation paying, from two numbers.
-- **The edge hires everyone at `edge_wage`**, at every exit, forever. So
-  no wage falls below it minus the commute, and nobody starves: the drive
-  is the price, and it is always payable. Needs served at the edge are
-  served at the edge's prices; a resident is served whatever the treasury
-  holds, because the floor has to be a floor.
+- **The edge hires everyone at `edge_wage`**, at every exit, forever,
+  like any good the edge buys without limit. So no wage falls below it
+  minus the commute, and a town's people can always sell their hours,
+  which is the export of last resort. What the edge sells, a meal, a
+  tank, the groceries behind a meal at home, a commuter's shift, it
+  sells to a town that can pay: **nothing crosses the door at zero.**
+  There is no floor but the town's own shelves, and no mercy; a broke
+  town lives on what it holds and what it makes, and its people at the
+  edge earning its way back.
 - **What nobody in town buys, the edge buys.** A workplace whose output
   has no local buyer sells it at the edge, its truck or its staff driving
   off the map and back. This is what makes offices and factories the
@@ -474,10 +481,17 @@ a day; a purse running dry was a bar with a full shelf and nothing to
 say. Nothing propagates through households: consumption is set by needs
 and needs do not spiral.
 
-The one failure is the town's. A treasury at zero cannot import: shelves
-empty and go grey, and residents eat at the edge, where they are served
-anyway and owe nothing, and work there, which brings money back. That is
-rule 8 made mechanical, once.
+The one failure is the town's, and it is final. A treasury at zero
+cannot import: shelves and pumps run down and go grey, commuters stop
+coming, and the town lives on what it holds and makes. A sound town
+bounces in a day, since its exporters keep selling; a town that eats
+more than it sells runs its shelves down, then its people's stomachs,
+and a row with an empty input stops (§4): nobody fit to work, nothing
+sold, nothing crossing. That town is dead, on the map, over days, and
+the dial says so. A farm is what makes a town unkillable: food grown in
+town is served without the door, so a broke town still eats, still
+works, and exports its way back. That is rule 8 made mechanical, once,
+with the one stake the game has.
 
 Emigration (`game.md` §Money, "the floor is emigration") is no longer
 needed for the floor and is filed.
@@ -833,6 +847,15 @@ the town's money is what its rows keep. As built:
 - **An empty stock closes the Work tap** (§4). The wake budget held at
   36 a resident-day on the first day and 20 after, and tenure stayed at
   zero changes.
+- **Nothing crosses the door at zero**, and there is no floor. A meal
+  beyond the edge, the groceries behind one at home and a commuter's
+  shift are options only while the treasury can pay for them; the first
+  cut served a broke town's people for free, which was the one mercy in
+  the model and inconsistent with its crates. A town is dead when
+  nothing is at the door and nobody is fit to work, and the dial says
+  so. In practice a town with anyone fit to work bootstraps: a partial
+  shift on an empty stomach is still sold, and labour is the export of
+  last resort; death needs a town whose people cannot work at all.
 - **The stake is five hundred**, a few weeks of a starting town's
   imports. The first cut started at a hundred, gone at the first
   midnight; a treasury at zero cannot import fuel, a dry tank closes the

@@ -132,7 +132,11 @@ impl World {
                 let wage = economy::delivered_wage(economy::ask(self, r.home), commute_h(home, line.at), line.hours);
                 offers.push((priced(wage, r.work == Some(at)), at, Seller::Household(id), wage));
             }
-            if let Some(exit) = self.nearest_edge(line.at).and_then(|e| where_is.get(&e).copied()) {
+            // The outside sells labour to a town that can pay for it, like
+            // any other good (docs/economy.md §8.2).
+            if self.treasury > 0.0
+                && let Some(exit) = self.nearest_edge(line.at).and_then(|e| where_is.get(&e).copied())
+            {
                 let wage = economy::delivered_wage(economy::import(economy::EDGE_WAGE), commute_h(exit, line.at), line.hours);
                 offers.push((priced(wage, false), at, Seller::Outside, wage));
             }

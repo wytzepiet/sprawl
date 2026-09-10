@@ -1,3 +1,4 @@
+import { Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { setTreeOpen } from "./SkillTree";
@@ -25,9 +26,19 @@ const CIRCUMFERENCE = 2 * Math.PI * R;
 export default function GrowthMeter() {
   const { growth } = useGame();
   const treasury = () => growth().treasury;
+  /** Days the treasury covers at today's imports; nothing crosses the door at zero. */
+  const cover = () => (growth().imports > 0 ? treasury() / growth().imports : Infinity);
+  const low = () => cover() < 3;
 
   return (
     <>
+      <Show when={growth().dead}>
+        <div class="fixed inset-x-0 bottom-24 z-20 flex justify-center pointer-events-none">
+          <span class="rounded-full bg-stone-900/90 px-4 py-2 text-sm font-bold text-white shadow-lg">
+            The town is dead: nothing at the door, and nobody fit to work.
+          </span>
+        </div>
+      </Show>
       <span class="fixed bottom-4 left-4 select-none cursor-pointer" onClick={() => setTreeOpen(true)} title="The skill tree (L)">
         <Dial color="#5B57C8" now={growth().toward} max={growth().needed} caption={`GDP ${Math.floor(growth().gdp)} today`}>
           <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
@@ -41,7 +52,7 @@ export default function GrowthMeter() {
           the door netted today. No ring: there is no goal but the one the
           mayor is saving for. */}
       <span class="fixed bottom-4 right-4 flex select-none flex-col items-center gap-1.5 pointer-events-none">
-        <Dial color="#57A773" now={treasury()} max={0} caption={`${growth().income >= 0 ? "+" : ""}${Math.floor(growth().income)} today`}>
+        <Dial color={low() ? "#D9483B" : "#57A773"} now={treasury()} max={0} caption={low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : ""}${Math.floor(growth().income)} today`}>
           <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
             <span class="text-[13px] font-bold tabular-nums">{Math.floor(treasury())}</span>
             <span class="text-[7px] font-bold uppercase tracking-widest text-white/50">hours</span>

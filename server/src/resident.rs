@@ -205,6 +205,12 @@ fn fit(buckets: &[Bucket]) -> bool {
     buckets.iter().all(|b| b.need.constant() || b.stock.level > 0.0)
 }
 
+/// Whether anyone in town could work: a town where nobody can, with
+/// nothing at the door, is dead (docs/economy.md §9).
+pub fn anyone_fit(world: &World) -> bool {
+    world.resident_ids().into_iter().filter_map(|id| resident(world, id).map(|r| buckets(world, r))).any(|b| fit(&b))
+}
+
 /// The ways out from where a resident stands, searched once for the whole
 /// decision. `None` where no road reaches the building.
 fn routes_from(world: &World, at: EntityId) -> Option<Routes<'_>> {
@@ -239,9 +245,21 @@ fn verdict_at(
         crow_flies_ms(world, at, building)
     };
     // A shift is sold, not bought, and once taken it is the constant
-    // habit: whoever hired them is where.
+    // habit: whoever hired them is where. A meal beyond the edge, or the
+    // groceries behind one at home, cross the door, and nothing crosses
+    // a door the town cannot pay at (docs/economy.md §8.2); a commuter
+    // eating beyond the edge is spending the outside's money there.
     let price = if b.need == Need::Work { 0.0 } else { economy::price_of(world, building, b.need) };
-    let cost = Cost { price, earning };
+    let crossing = if b.need == Need::Work || world.edge.contains(&r.home) {
+        0.0
+    } else if world.edge.contains(&building) {
+        1.0
+    } else if building == r.home {
+        1.0 + economy::CROSSING
+    } else {
+        0.0
+    };
+    let cost = Cost { price, earning, crossing };
     taps_of(world, building)
         .iter()
         .filter(|t| t.need == b.need)
@@ -249,12 +267,14 @@ fn verdict_at(
         .fold(Verdict::Nothing, Verdict::better)
 }
 
-/// What a visit costs: the posted price per unit of the need, and what an
-/// hour of money is worth to whoever pays it.
+/// What a visit costs: the posted price per unit of the need, what an
+/// hour of money is worth to whoever pays it, and how much of the price
+/// crosses the door, which the town has to be able to pay.
 #[derive(Clone, Copy)]
 struct Cost {
     price: f64,
     earning: f64,
+    crossing: f64,
 }
 
 /// The best of whatever is around, found the way a search finds anything
@@ -439,7 +459,11 @@ fn evaluate(
     }
     let (departure, leave, drained, entry) = planned;
     // The visit's price, in the resident's own hours, in milliseconds.
+    // What would cross the door is no option when the town cannot pay it.
     let money = cost.price * drained / bucket.need.unit();
+    if money * cost.crossing > world.treasury {
+        return Verdict::Nothing;
+    }
     let priced = money / cost.earning * HOUR;
     let score = bucket.stock.weight() * drained / ((leave - now) as f64 + priced);
     Verdict::Go {
@@ -927,7 +951,7 @@ mod bench {
             let now = (i as u64 * 977) % DAY_MS as u64;
             let mut bucket = b.clone();
             bucket.stock.take((i % 100) as f64 * 1000.0);
-            let cost = Cost { price: 0.5, earning: 1.0 };
+            let cost = Cost { price: 0.5, earning: 1.0, crossing: 0.0 };
             if let Verdict::Go { .. } = evaluate(&world, r.car, home, shop, tap, &bucket, now, 1, 60_000, false, cost) {
                 hits += 1;
             }

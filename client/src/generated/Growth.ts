@@ -23,9 +23,15 @@ gdp: number,
  */
 treasury: number, 
 /**
- * Today's net at the door so far.
+ * Today's net at the door so far, and what went out: the treasury
+ * over it is days of imports left.
  */
-income: number, 
+income: number, imports: number, 
+/**
+ * Nothing at the door and nobody fit to work: the town is dead.
+ * docs/economy.md §9.
+ */
+dead: boolean, 
 /**
  * The build: the nodes of the tree taken.
  */

@@ -590,6 +590,7 @@ pub fn level(served: f64) -> (u32, f64) {
 pub fn growth(world: &World, now: GameTime) -> Growth {
     let (level, reached) = level(world.gdp);
     let door = world.income.on(now);
+    let residents = world.resident_ids().len();
     Growth {
         level,
         toward: world.gdp - reached,
@@ -597,6 +598,8 @@ pub fn growth(world: &World, now: GameTime) -> Growth {
         gdp: world.gdp - world.gdp_at_midnight,
         treasury: world.treasury,
         income: door.revenue - door.purchases,
+        imports: door.purchases,
+        dead: world.treasury <= 0.0 && residents > 0 && !crate::resident::anyone_fit(world),
         taken: world.build.taken(),
         road_tiles_left: world.build.road_tiles().saturating_sub(world.laid),
     }

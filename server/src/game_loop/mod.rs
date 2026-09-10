@@ -1751,6 +1751,67 @@ mod tests {
         assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
     }
 
+    /// Nothing crosses the door at zero (docs/economy.md §8.2, §9): a
+    /// broke town's desks are not filled from beyond the edge, and nobody
+    /// eats there until the first shift is sold; then the door has
+    /// something in it and they do, which is labour as the export of last
+    /// resort. A town whose people cannot work, with nothing at the door,
+    /// is dead and stays dead.
+    #[test]
+    fn a_broke_town_buys_nothing_beyond_the_edge_until_it_sells() {
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::Apartment, 2); // seven people
+        let office = build(&mut world, 30, BuildingKind::Office, 2); // twelve desks
+        world.treasury = 0.0;
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let people = world.resident_ids();
+        let is = |world: &World, id: EntityId, f: &dyn Fn(&crate::protocol::Resident) -> bool| matches!(world.objects.get(id).unwrap().object, GameObject::Resident(ref r) if f(r));
+        assert!(people.iter().all(|&id| is(&world, id, &|r| !world.edge.contains(&r.home))), "the edge sold labour to a town that cannot pay");
+        assert_eq!(people.iter().filter(|&&id| is(&world, id, &|r| r.work == Some(office))).count(), 7, "the office has its town's seven and no more");
+        let day = DAY_MS as u64;
+        let (mut ate_out_broke, mut ate_out_paid, mut first_sale) = (false, false, None);
+        let mut now = 0;
+        while step(&mut world, &mut events, &mut intersections, &mut now, 2 * day) {
+            let door = world.income.on(now).revenue + world.income.before(now).revenue;
+            if door > 0.0 && first_sale.is_none() {
+                first_sale = Some(now);
+            }
+            let out = people.iter().any(|&id| at_of(&world, id).is_some_and(|a| world.edge.contains(&a)) && doing(&world, id) == Some(crate::needs::Need::Eat));
+            if first_sale.is_none() {
+                ate_out_broke |= out;
+            } else {
+                ate_out_paid |= out;
+            }
+        }
+        assert!(!ate_out_broke, "somebody ate beyond the edge on the town's empty purse");
+        assert!(first_sale.is_some(), "the office never sold a shift");
+        assert!(ate_out_paid, "with money in the door nobody ate beyond the edge");
+        assert!(!crate::economy::growth(&world, now).dead);
+
+        // Nobody fit to work and nothing at the door: dead, and nothing
+        // moves to change it.
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::Apartment, 2);
+        world.treasury = 0.0;
+        let mut events = EventQueue::new();
+        settle_and_wake(&mut world, &mut events);
+        for id in world.resident_ids() {
+            if let Some(GameObject::Resident(r)) = world.objects.get_mut(id).map(|e| &mut e.object) {
+                for b in &mut r.buckets {
+                    if b.need == crate::needs::Need::Eat {
+                        b.stock.level = 0.0;
+                    }
+                }
+            }
+        }
+        assert!(crate::economy::growth(&world, 0).dead, "a town nobody can work in is alive");
+        let mut now = 0;
+        while step(&mut world, &mut events, &mut intersections, &mut now, day) {}
+        assert!(crate::economy::growth(&world, now).dead && world.treasury == 0.0, "the dead town came back: {}", world.treasury);
+    }
+
     /// A vacancy the city cannot fill from among its own is filled from off
     /// the map: someone whose home is the road exit, who drives in to work
     /// and is gone again by night.
