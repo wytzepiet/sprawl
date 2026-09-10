@@ -83,62 +83,45 @@ long approach.
 - **A ship fills its tile**, and is as many tiles long as its class: a
   ferry one, a container ship three, held along its path the way a
   lorry's nose and tail are held on a road. Two ships cannot share a
-  tile, and nothing else about the sea's traffic has to be designed.
-- **A sea network is derived from the coast**, as the road network is
-  from road tiles, and nobody places a lane. A pass from the shore
-  gives every water tile its clearance. Water narrower than the
-  **passing width** — three tiles, room for two ships to pass — is
-  restricted, and contracts into **blocks**, maximal runs of narrow
-  water with a mouth at each end; everything wider is open. The
-  network's nodes are the mouths and the berths; its edges are the
-  straight legs between them across open water, and the runs through
-  the blocks. A\* routes each voyage over it the way cars route over
-  stretches and junctions, and two ships between the same ports take
-  the same legs because the legs are the same. Perpendicular narrows
-  meeting are one block; nothing overlaps because nothing is drawn. The
-  passing width is the sea's one number.
-- **A leg is a segment.** Ships on the same leg going the same way
-  follow each other with a gap by length, as cars on a stretch do; a
-  convoy is ships that want the same thing at the same time. A leg has
-  no capacity, so nothing slows a ship on open water but a slower one
-  ahead, and with one speed per class that is another class, which
-  passes on the outside. A route favours open water — a block costs
-  its length plus the wait to expect at its mouth — and favours a used
-  leg a little: each leg holds a **use** stock, filled by the ships
-  that take it and drained by time (`economy.md` §4, one type), and a
-  route pays a small discount on it, a few percent of length. Traffic
-  converges on a few trunk legs and crossings fall, the way a bay
-  reads under a separation scheme; a removed port's legs fade in a day
-  because nothing fills them; and the discount is small enough that
-  no ship detours far to join a lane.
-- **A block is signalled**, as a single-track railway is. A ship
-  reserves it before entering, `parking.md`'s reservation window over
-  a passage instead of a spot: free, or held by ships going the same
-  way, it enters and follows; held against it, it waits at the mouth,
-  first come, ties by length. Same-direction ships go through as a
-  convoy and the other side waits for the block to clear, which is how
+  tile.
+- **Lanes are one-way, and laid by routing.** Nobody places a lane. A
+  voyage is an A\* search over the water's tiles with heading in the
+  state, and the lane is the path it took, remembered as a **use**
+  stock on each tile with a direction, filled by the ships that take it
+  and drained by time (`economy.md` §4, one type). "Existing" means
+  used; a removed port's lanes fade in a day, and nothing sailed last
+  season steers this one. The search weighs four things, and every
+  behaviour below is one of them:
+  - **Along an existing lane, its way: cheap.** Reuse, so trunks form,
+    crossings fall, and a bay reads like a separation scheme.
+  - **Beside a lane, one tile clear: normal**, and a little cheaper on
+    its right. A return lane lies beside the outbound one with a tile
+    between, so ships pass port to port with no rule about passing.
+    Lane, gap, lane is three tiles: the passing width.
+  - **Against a lane: dear**, and taking it makes the lane two-way. In
+    open water this is never paid, since the tile beside is always
+    there; a two-way lane appears only where there is no room for two,
+    which is restricted water, and two-way is what a block is.
+  - **A turn costs by its angle**, 45° a little, 90° a lot, and a long
+    class may not turn 90° at all, which is its turning circle. Lanes
+    come out as the diagonals and doglegs of a chart, and a lane a
+    ferry laid is one a container ship can follow.
+- **A two-way lane is a block**, signalled as a single-track railway
+  is. A ship reserves the whole run before entering, `parking.md`'s
+  reservation window over a passage instead of a spot: free, or held
+  by ships going the same way, it enters and follows; held against it,
+  it waits at the mouth, first come, ties by length. Same-direction
+  ships go through as a convoy and the other side waits, which is how
   Suez runs, and with Suez's fairness: once a ship waits at the far
   mouth the signal closes to new entries, the block drains, and it
-  flips, so a steady stream one way cannot starve the other. No
-  deadlock by construction: blocks are contracted to maximal narrow
-  runs, however many pieces or branches they have, so between two
-  blocks there is always water wide enough to wait in, and a ship in a
-  block waits for nothing but its own exit.
-- **In open water, off to starboard.** Ships pass port to port, the
-  rule of the sea: a leg's two directions run a tile to their right of
-  its line. The offset is of the legs, never of the points — offsetting
-  points folds the inside of a right turn into a loop — and the corners
-  are joined the way `bezier.rs` joins a road's lanes round a bend: at
-  a right turn the offset legs meet before the corner and the ship
-  turns there; at a left turn a chord crosses the outside. A join that
-  would land on the shore is capped at the clearance, and at a block's
-  mouth the offset is nothing, which is the centreline the block wants.
-  No negotiation. In blocks and at berths ships never share a tile.
-- **The only memory is the use stock, and it forgets.** The network
-  is the coast's: a new port is a new node, a removed one is gone, and
-  what its ships wore into the legs drains away behind them. The road
-  generator remembers roads because a road is built and costs tiles;
-  at sea the coast has already done the building.
+  flips. A block is the whole two-way run, however many pieces or
+  branches, so a ship in one waits for nothing but its own exit, and
+  there is no deadlock.
+- **A lane is a segment.** Ships on a lane going its way follow each
+  other with a gap by length, as cars on a stretch do; a convoy is
+  ships that want the same thing at the same time. Open water off the
+  lanes has no interaction, and nothing slows a ship there but a
+  slower one ahead, which is another class, passing on the outside.
 - **The berth is a lot**, as many tiles as the ship. Ships queue for it
   with the same reservation window. One berth and three ships in the
   roads is the harbour's rush hour, and the capacity that lets prices
@@ -150,9 +133,9 @@ long approach.
   the port it gets, and where the terminal stands is a choice of
   bottleneck read off the map. This is `economy.md` §13.6's mechanism.
 
-Shipping is one pathfinder on a water grid and one physics profile,
-slow with a long stop; everything else it needs is a lot, a reservation
-or a segment already written.
+Shipping is one search on a water grid with four costs, one physics
+profile, slow with a long stop, and a use stock on tiles; everything
+else it needs is a lot, a reservation or a segment already written.
 
 ## 3. The fog
 
@@ -272,8 +255,8 @@ Nothing before the port milestone. Then:
 ## 9. Open
 
 1. The width of a road's claim, and the survey radius in a shared world.
-   The use stock's drain and the discount on it, the sea's two small
-   numbers.
+   The sea's small numbers: the use stock's drain, the four costs of
+   the search, and the passing width.
 2. Whether influence needs buildings as a source at all, or a placed
    building's driveway is the only seed.
 3. The ferry's three numbers per season, and the first sailing's hour.
