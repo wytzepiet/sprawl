@@ -109,8 +109,7 @@ export function mountCar(
   const car = entry.object.data as Car;
   if (car.role === "Truck") return mountLorry(entry.id, car, pool, scene, look);
   const van = car.role === "Van";
-  // A company car is a car in the fleet's white.
-  const color = van || car.role === "Company" ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
+  const color = van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
   const bucket = van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
   pool.ensureBucket(bucket, van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
 

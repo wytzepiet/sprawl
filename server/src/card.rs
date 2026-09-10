@@ -41,7 +41,7 @@ fn link(world: &World, id: EntityId) -> Value {
             CarRole::Private => name(c.owner) + "'s car",
             CarRole::Van => "Van".into(),
             CarRole::Truck => "Lorry".into(),
-            CarRole::Company => "Company car".into(),
+            CarRole::Company => "Car".into(),
         }),
         _ => ("gone", "gone".into()),
     };

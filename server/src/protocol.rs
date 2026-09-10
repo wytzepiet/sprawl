@@ -150,9 +150,10 @@ pub enum CarRole {
     Truck,
     /// A depot's van, on the last mile to a shop.
     Van,
-    /// A company car: an office's, its staff driving out to whoever called
-    /// for services, or in from beyond the edge where the town has no
-    /// office.
+    /// An ordinary car that is a building's: an office's, its staff
+    /// driving out to whoever called for services, or a consultant's in
+    /// from beyond the edge where the town has no office. Looks like any
+    /// car; only who dispatches it differs.
     Company,
 }
 
