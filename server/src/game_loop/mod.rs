@@ -1572,6 +1572,12 @@ mod tests {
         for day in 1..=days {
             let midnight = day * DAY_MS as u64;
             while step_counting(&mut world, &mut events, &mut intersections, &mut now, midnight.min(end), &mut wakes) {}
+            // A town that gridlocks is not a town being measured: nobody is
+            // a day late for anything. Two driveways two tiles apart hold
+            // each other for good on the third day, once the offices' cars
+            // are on the street (docs/parking.md §9).
+            let stuck = world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.as_ref().is_some_and(|t| now > t.eta + DAY_MS as u64))).count();
+            assert_eq!(stuck, 0, "day {day}: {stuck} cars a day past their due time — the street has gridlocked");
             each_day(&world, day, wakes);
         }
         (world, wakes)

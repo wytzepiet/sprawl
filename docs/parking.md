@@ -471,3 +471,23 @@ Steps 5 and 6 were §3.7 and §3.8; both are history (see the sections).
    through the middle.
 
 Roughly: 3, 2, 2, 2, 1, 2 and 2 days. Steps 1, 3 and 4 are built.
+
+## 9. Open
+
+- **Gridlock between driveways (2026-09-10).** With the offices' cars on
+  the street (`economy.md` §12.5) the season town's one street locks up
+  on its third day and stays locked. Two driveway junctions two tiles
+  apart each hold a car whose tail is still in the box because the car
+  ahead stands at the other junction's stop line, a tile on; one waits
+  to turn across the first box, the other is queued behind a car pulling
+  out of a lot that conflicts with the second box's holder. Every car
+  in a box entered it without room to leave. The rule with a referent
+  is the box junction — no entry without a clear exit — and as a
+  grant-time check of room on the road beyond it cleared this cycle; but
+  it needs the edge queues to be in physical order, and a re-planned
+  trip, a car pulling out of a spot into a lane, and the order cars
+  happen to wake all put a car behind one that registered later, which
+  the reservation then turns into a new deadlock. Each fix found the
+  next inversion, so none was kept. What it needs is §4.2's giving way
+  by length, or queues ordered by position. Until then the seasons
+  (`game_loop`, `season`) assert that nobody is a day late and stop.
