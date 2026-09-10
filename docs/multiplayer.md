@@ -84,15 +84,30 @@ long approach.
   ferry one, a container ship three, held along its path the way a
   lorry's nose and tail are held on a road. Two ships cannot share a
   tile, and nothing else about the sea's traffic has to be designed.
-- **Navigation is A\* on the water's tiles.** The paths it finds are
-  the sea's roads, and the water's own width is the rules.
-- **A channel's width is its lanes.** One tile wide is a one-lane
-  bridge: the first ship in holds the passage, the next waits at the
-  mouth, and the hold is `parking.md`'s reservation window over a
-  passage instead of a spot. Two tiles wide is two-way. Open water is as
-  many lanes as it is wide, which is why nothing interacts there. Where
-  two ships would meet, the giving-way rule is `parking.md`'s, by
-  length: the long one cannot stop, so the short one waits.
+- **A sea network is derived from the water tiles**, as the road
+  network is from road tiles, and nobody places a lane. A pass from the
+  shore gives every water tile its clearance. Water narrower than the
+  **passing width** — three tiles, room for two ships to pass with
+  nothing deciding it — contracts into **blocks**, maximal runs of
+  narrow water with a mouth at each end; everything wider is open, and
+  ships steer straight between waypoints there with no rule. A\*
+  routes over open regions and block mouths the way cars route over
+  stretches and junctions. Perpendicular narrows meeting are a wider
+  narrow, one block; nothing overlaps because nothing is drawn. The
+  passing width is the sea's one number.
+- **A block is signalled**, as a single-track railway is. A ship
+  reserves it before entering, `parking.md`'s reservation window over
+  a passage instead of a spot: free, or held by ships going the same
+  way, it enters and follows; held against it, it waits at the mouth,
+  first come, ties by length. Same-direction ships go through as a
+  convoy and the other side waits for the block to clear, which is how
+  Suez runs. No deadlock by construction: blocks are contracted to
+  maximal narrow runs, so between two blocks there is always water wide
+  enough to wait in, and a ship in a block waits for nothing but its
+  own exit.
+- **Phasing stays where it is harmless.** In open water two ships
+  crossing a bay overlap for a tick at most and no route depends on
+  it; in blocks and at berths they never share a tile.
 - **The berth is a lot**, as many tiles as the ship. Ships queue for it
   with the same reservation window. One berth and three ships in the
   roads is the harbour's rush hour, and the capacity that lets prices
