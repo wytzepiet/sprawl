@@ -911,3 +911,10 @@ the town's money is what its rows keep. As built:
     nudge (§12.4).
 12. ~~Where the town's money comes from in a world priced at cost.~~
     What its rows keep: capital's third, the household's tenth (§8.1).
+13. The household row's transport is a budget sixth, and its services
+    the balance; the car burns what it burns. With freight (§12 step 6)
+    the row's transport becomes the fuel the commute costs, per tile at
+    the world's price, services get their own share, and the door's
+    check (§11.9) becomes a season print. Until then a household nets a
+    little over its tenth when it drives less than the sixth, which is
+    the bedroom town's 1.19 against 0.72 (§12.4).
