@@ -2067,14 +2067,18 @@ mod tests {
         assert!(stages(&world).iter().all(|&s| s == Stage::Cut), "by the third evening the land is {:?}", stages(&world));
         assert!((yard(&world) - stages(&world).len() as f64 * crop).abs() < 1e-6 || world.calls.iter().any(|c| c.at == farm && c.kind == calls::CallKind::Pickup) || world.books[&farm].on(2 * day + 20 * day / 24).revenue > 0.0, "the harvest is not in the yard, nor called for, nor sold: {}", yard(&world));
 
-        // The warehouse's shelf run low: its lorry fetches from the farm,
-        // the nearer source, at the farm's posted price, two lines.
-        let now = 2 * day + 22 * day / 24;
-        pump(&mut world, &mut events, &mut intersections, 2 * day + 20 * day / 24, now);
+        // The harvest's pickups come and go; then the warehouse's shelf
+        // run low: its lorry fetches from the farm, the nearer source, at
+        // the farm's posted price, two lines.
+        let mut now = 2 * day + 20 * day / 24;
+        while world.calls.iter().any(|c| c.at == farm) && now < 4 * day {
+            pump(&mut world, &mut events, &mut intersections, now, now + day / 24);
+            now += day / 24;
+        }
+        assert!(world.calls.iter().all(|c| c.at != farm), "the farm's pickups never cleared: {:?}", world.calls);
         if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
             b.stocks.get_mut(&Need::Eat).unwrap().level = 300.0;
         }
-        world.calls.retain(|c| c.at != farm);
         let price = match world.objects.get(farm).unwrap().object {
             GameObject::Building(ref b) => b.prices[&Need::Eat],
             _ => unreachable!(),
@@ -2099,7 +2103,8 @@ mod tests {
         // A yard with no room for a crop, and no lorry: a pickup from
         // beyond the edge, paid as it leaves the map.
         let now = now + 3 * day / 24;
-        world.calls.retain(|c| c.at != farm);
+        let lorries = |world: &World| world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == crate::protocol::CarRole::Truck)).count();
+        let stood = lorries(&world);
         if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
             let s = b.stocks.get_mut(&Need::Eat).unwrap();
             s.level = s.cap - crop / 2.0;
@@ -2112,7 +2117,7 @@ mod tests {
         assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Pickup), "the pickup never left: {:?}", world.calls);
         let paid = crate::economy::export(full * crate::economy::wholesale(Need::Eat));
         assert!((world.treasury - before - paid).abs() < 5.0, "the edge paid {} for the yard, not {paid}", world.treasury - before);
-        assert!(!world.objects.iter().any(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == crate::protocol::CarRole::Truck)), "the pickup lorry stayed");
+        assert!(lorries(&world) <= stood, "the pickup lorry stayed");
     }
 
     /// Nothing crosses the door at zero (docs/economy.md §8.2, §9): a

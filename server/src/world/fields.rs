@@ -49,12 +49,15 @@ impl World {
         self.is_buildable(t) && self.terrain.get(&(t.x, t.y)) == Some(&crate::protocol::TerrainType::Grass)
     }
 
-    /// A farm reached by a street claims its land: the grass connected to
-    /// its plot on every side but the street's, nearest by the walk
-    /// first, as much as a shift can plough, so a compact block round the
-    /// farm. Bounded by whatever is not open grass, so a road, a wood or
-    /// a beach is the edge of the farm, and a farm on cramped ground is a
-    /// smaller farm. The first shift's ploughing makes it a field.
+    /// A farm reached by a street claims its land: of the grass connected
+    /// to its plot on every side but the street's, the nearest tiles by
+    /// the chessboard's measure, as much as a shift can plough, so a
+    /// square block round the farm that a sweep works in long rows — and
+    /// never more than a few tiles further by the walk than as the crow
+    /// flies, so the land does not wrap round the end of a road. Bounded
+    /// by whatever is not open grass, so a road, a wood or a beach is the
+    /// edge of the farm, and a farm on cramped ground is a smaller farm.
+    /// The first shift's ploughing makes it a field.
     pub fn claim_land(&mut self, farm: EntityId) {
         let Some(e) = self.objects.get(farm) else { return };
         let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return };
@@ -67,7 +70,13 @@ impl World {
         let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
         let (w, h) = (p.size.0 as i32, p.size.1 as i32);
         // The tiles round the plot, less the street side.
-        let mut queue: VecDeque<GridCoord> = VecDeque::new();
+        // How far a tile is from the plot as the crow flies, by the
+        // chessboard's measure.
+        let reach = |t: GridCoord| -> i32 { (pos.x - t.x).max(t.x - (pos.x + w - 1)).max(0).max((pos.y - t.y).max(t.y - (pos.y + h - 1)).max(0)) };
+        // The walk from the plot, tile by tile, over open grass, from every
+        // side but the street's; a tile further by the walk than by the
+        // crow by more than a few is round the end of something.
+        let mut queue: VecDeque<(GridCoord, i32)> = VecDeque::new();
         let mut seen: HashSet<(i32, i32)> = HashSet::new();
         for t in Self::footprint(pos, p.size) {
             for (dx, dy) in AROUND[..4].iter() {
@@ -75,26 +84,26 @@ impl World {
                 let inside = n.x >= pos.x && n.y >= pos.y && n.x < pos.x + w && n.y < pos.y + h;
                 let street_side = (dx * fx + dy * fy) > 0;
                 if !inside && !street_side && seen.insert((n.x, n.y)) {
-                    queue.push_back(n);
+                    queue.push_back((n, 1));
                 }
             }
         }
-        let mut land = Vec::new();
-        while let Some(t) = queue.pop_front() {
-            if land.len() >= wanted {
-                break;
-            }
-            if !self.is_open(t) {
+        let side = (wanted as f64).sqrt().ceil() as i32 + 2;
+        let mut grass: Vec<(i32, i32, GridCoord)> = Vec::new();
+        while let Some((t, walk)) = queue.pop_front() {
+            if !self.is_open(t) || reach(t) > side || walk > reach(t) + 4 {
                 continue;
             }
-            land.push(Tile { at: t, stage: Stage::Grass, since: 0 });
+            grass.push((reach(t), walk, t));
             for (dx, dy) in AROUND[..4].iter() {
                 let n = GridCoord { x: t.x + dx, y: t.y + dy };
                 if seen.insert((n.x, n.y)) {
-                    queue.push_back(n);
+                    queue.push_back((n, walk + 1));
                 }
             }
         }
+        grass.sort_by_key(|&(r, walk, t)| (r, walk, t.y, t.x));
+        let land: Vec<Tile> = grass.into_iter().take(wanted).map(|(_, _, at)| Tile { at, stage: Stage::Grass, since: 0 }).collect();
         if let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object) {
             b.land = land;
         }
@@ -214,10 +223,10 @@ impl World {
     /// A run over a batch of tiles with the fewest turns: rows along the
     /// batch's long axis, driven alternately each way so that a change of
     /// row is two gentle turns over a diagonal step and never a hairpin,
-    /// the rows nearest the yard first so that a run cut short stays near
-    /// the farm; and between one tile and the next, if they do not touch,
-    /// the shortest way over the farm's own ground, diagonals allowed.
-    /// From the yard, and back to it.
+    /// taken in order from the end nearest the yard to the far end so the
+    /// path never doubles back; and between one tile and the next, if
+    /// they do not touch, the shortest way over the farm's own ground,
+    /// diagonals allowed. From the yard, and back to it.
     fn sweep(&self, farm: EntityId, yard: GridCoord, batch: &[GridCoord]) -> Option<Vec<GridCoord>> {
         if batch.is_empty() {
             return None;
@@ -236,25 +245,47 @@ impl World {
             row.sort_by_key(|t| if along_x { t.x } else { t.y });
             rows.push(row);
         }
-        rows.sort_by_key(|row| if along_x { (row[0].y - yard.y).abs() } else { (row[0].x - yard.x).abs() });
+        // From the yard's end of the field to the other.
+        let near_end = |row: &Vec<GridCoord>| if along_x { (row[0].y - yard.y).abs() } else { (row[0].x - yard.x).abs() };
+        if near_end(&rows[rows.len() - 1]) < near_end(&rows[0]) {
+            rows.reverse();
+        }
         let ground = self.drivable(farm);
-        let mut path = vec![yard];
-        let mut at = yard;
-        for row in rows.iter_mut() {
-            // Enter the row at whichever end is nearer.
-            let (first, last) = (row[0], row[row.len() - 1]);
-            if dist(at, last) < dist(at, first) {
-                row.reverse();
+        // Home along the field's edge, not across it: over the tiles with
+        // something other than land on a side, or any ground if the edge
+        // does not join up.
+        let edge: HashSet<(i32, i32)> = ground
+            .iter()
+            .copied()
+            .filter(|&(x, y)| AROUND[..4].iter().any(|(dx, dy)| !ground.contains(&(x + dx, y + dy))))
+            .collect();
+        // The first row may be driven either way; the way that leaves the
+        // last row ending nearer the yard makes the shorter run.
+        let mut best: Option<Vec<GridCoord>> = None;
+        for flip in [false, true] {
+            let mut path = vec![yard];
+            let mut at = yard;
+            for (i, row) in rows.iter().enumerate() {
+                let mut row = row.clone();
+                // Enter the row at whichever end is nearer; the first row as
+                // this attempt says.
+                let (first, last) = (row[0], row[row.len() - 1]);
+                if if i == 0 { flip } else { dist(at, last) < dist(at, first) } {
+                    row.reverse();
+                }
+                for &t in row.iter() {
+                    let Some(leg) = self.over(&ground, at, t) else { return None };
+                    path.extend(leg.into_iter().skip(1));
+                    at = t;
+                }
             }
-            for &t in row.iter() {
-                let leg = self.over(&ground, at, t)?;
-                path.extend(leg.into_iter().skip(1));
-                at = t;
+            let Some(home) = self.over(&edge, at, yard).or_else(|| self.over(&ground, at, yard)) else { return None };
+            path.extend(home.into_iter().skip(1));
+            if best.as_ref().is_none_or(|b| path.len() < b.len()) {
+                best = Some(path);
             }
         }
-        let home = self.over(&ground, at, yard)?;
-        path.extend(home.into_iter().skip(1));
-        Some(path)
+        best
     }
 
     /// The shortest drive from one tile to another over the given ground,
@@ -485,7 +516,10 @@ mod tests {
             let ground = world.drivable(farm);
             assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "{name}: the tractor left the farm's ground");
             let turns = path.windows(3).filter(|w| (w[1].x - w[0].x, w[1].y - w[0].y) != (w[2].x - w[1].x, w[2].y - w[1].y)).count();
-            println!("  {turns} turns over {} steps", path.len());
+            let mut seen = HashSet::new();
+            let again = path.iter().filter(|t| !seen.insert((t.x, t.y))).count();
+            println!("  {turns} turns over {} steps, {again} tiles driven twice", path.len());
+            assert!(again * 5 < path.len(), "{name}: {again} of {} steps retrace", path.len());
         }
     }
 

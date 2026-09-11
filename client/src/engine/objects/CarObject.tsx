@@ -261,12 +261,33 @@ interface Follower {
   length: number;
 }
 
+/** A trip on the roads: the route's points, offset onto the lane, driven
+ *  by the trip's physics. */
 function follow(car: Car): Follower | null {
   const data = car.trip!;
-  const centerNodes = data.route_positions.map(
-    ([x, y]) => new Vector3(x, y, 0),
-  );
-  const nodes = offsetNodes(centerNodes, LANE_OFFSET, data.from_lot, data.to_lot);
+  const centerNodes = data.route_positions.map(([x, y]) => new Vector3(x, y, 0));
+  return followPath(centerNodes, LANE_OFFSET, data.from_lot, data.to_lot, {
+    updated_at: data.updated_at, progress: data.progress, speed: data.speed, acceleration: data.acceleration,
+  });
+}
+
+/** A tractor on its run over the land: the planned tiles, centre to
+ *  centre with no lane, driven at the run's steady pace. The same path
+ *  and the same drive as a trip, so it corners like anything else. */
+function followRun(car: Car): Follower | null {
+  const run = car.run!;
+  const pts = run.path.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0));
+  return followPath(pts, 0, 0, 0, { updated_at: run.started, progress: 0, speed: 1000 / run.pace, acceleration: 0 });
+}
+
+function followPath(
+  centerNodes: Vector3[],
+  offset: number,
+  fromLot: number,
+  toLot: number,
+  data: { updated_at: number; progress: number; speed: number; acceleration: number },
+): Follower | null {
+  const nodes = offsetNodes(centerNodes, offset, fromLot, toLot);
   const pathPoints: Vector3[] = [];
 
   for (let i = 0; i < nodes.length - 1; i++) {
@@ -319,33 +340,6 @@ function follow(car: Car): Follower | null {
       if (dt > tStop) dt = tStop;
     }
     return at(data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt);
-  };
-  return { now, at, length };
-}
-
-/** A tractor on its run: tile to tile over the land, a tile every `pace`
- *  milliseconds from `started`, no lane and no corner rounding, the nose
- *  pointing at the next tile. */
-function followRun(car: Car): Follower | null {
-  const run = car.run!;
-  const pts = run.path.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0));
-  if (pts.length < 2) return null;
-  const path = new Path3D(pts);
-  const distances = path.getDistances();
-  const length = distances[distances.length - 1];
-  const at = (dist: number): Fix => {
-    const normalized = Math.min(Math.max(0, dist / length), 1);
-    const p = path.getPointAt(normalized);
-    const tangent = path.getTangentAt(normalized);
-    return { pos: [p.x, p.y, CAR_Z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2], dist: normalized * length };
-  };
-  const now = (): Fix => {
-    // Steps done so far, and how far into the current one.
-    const t = Math.max(0, simNow() - run.started) / run.pace;
-    const i = Math.min(Math.floor(t), pts.length - 1);
-    const f = Math.min(1, t - i);
-    const d = distances[i] + (i + 1 < pts.length ? (distances[i + 1] - distances[i]) * f : 0);
-    return at(d);
   };
   return { now, at, length };
 }
