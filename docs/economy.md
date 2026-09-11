@@ -528,7 +528,8 @@ Everything a price does is an event on the map first.
   outside. A red lump on a truck in from the edge is an import.
 - **The building.** Shelves grey at empty stock (built); a yard stacked at
   full output; the inspect panel shows each stock's level, price, and its
-  trend over the season. The books keep thirty pages for it, a ring;
+  trend over the season. The books keep thirty pages for it, a ring
+  buffer written over in a circle;
   the nudge and a building's earning still read yesterday's alone, since
   a price that answered an average would be slow to notice an empty
   shelf (§12.3). A day's page is a couple of hundred bytes, so a season
