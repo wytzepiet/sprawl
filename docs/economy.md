@@ -1492,3 +1492,13 @@ What running it found, thirty days of the three towns against §12.7:
     reaches first, and the second finds the first's tiles occupied
     only if they were built on. Whether two farms may claim the same
     grass has not come up.
+23. The band's season fails on the office after the fifth cut of the
+    land (§12.8): its services price climbs in a sawtooth over the last
+    ten days, 2.06 to 2.40, a notch past what hunting at the band's
+    edge allows, where the cut before had it settle at 2.05. The farm
+    is fine — forty-nine pickups, the same as before — and the office
+    is not in the field's code; but the town is busier (GDP 1509 a day
+    against 1321) with services stocks empty in four homes, and the
+    office's page shows nothing sold on the last day. Whether the
+    farm's changed hours moved the town or the office's price was
+    always this close to ringing is open.
