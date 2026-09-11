@@ -516,18 +516,33 @@ Everything a price does is an event on the map first.
   level that is its running sum. The treasury, which steps at the door
   and only there: a lorry leaving loaded, a shift worked beyond the
   edge, a placement.
+- **The door records a good with every line.** Every hour that crosses
+  it is a good crossing — a crate, a tank, a unit of services, an hour
+  of labour in a commuter's pocket — and the town's books say which,
+  in and out, per day; a placement is its own line, since materials
+  from beyond the edge are what a building is. Everything below that
+  splits money by what it bought is this one record read back.
 - **The lump.** A `Sale` on the wire: building, amount, when the sale
   ends. The number floats above the building; it is a line in the books
   made visible, and it moves the meter only when the other party is the
   outside. A red lump on a truck in from the edge is an import.
 - **The building.** Shelves grey at empty stock (built); a yard stacked at
   full output; the inspect panel shows each stock's level, price, and its
-  trend over the week.
+  trend over the week. The books keep seven pages for it; the nudge and
+  a building's earning still read yesterday's alone, since a price that
+  answered a week's average would be slow to notice an empty shelf
+  (§12.3). Books are learned, not saved, so a loaded world starts its
+  week from nothing. (As built: two pages; step 7 makes it seven.)
 - **The company.** Revenue, purchases, wages, margin, and what of each
   crossed the door. A refinery whose margin has gone negative is a
   line, not a mystery.
-- **The town.** Per need, visits served per day; per good, in and out per
-  day. The cinema's decline is a number beside the pump's.
+- **The town.** Per need, what was served in a day at the world's
+  prices, which adds up to the dial, and the visits behind it; per good,
+  what crossed the door in and out, and what the mayor built, which
+  adds up to the treasury's step. The cinema's decline is a number
+  beside the pump's, and a town losing money can see it is the services
+  it never made (§13.16). (Step 7; the door's split was first read off a
+  throwaway tally, 2026-09-11.)
 - **The region.** Per good, per town: price, stock, trade. Each row a link
   to the map. Trucks leaving for the edge loaded are the same fact at
   build zoom.
