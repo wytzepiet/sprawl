@@ -70,9 +70,12 @@ impl World {
         let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
         let (w, h) = (p.size.0 as i32, p.size.1 as i32);
         // The tiles round the plot, less the street side.
-        // How far a tile is from the plot as the crow flies, by the
-        // chessboard's measure.
-        let reach = |t: GridCoord| -> i32 { (pos.x - t.x).max(t.x - (pos.x + w - 1)).max(0).max((pos.y - t.y).max(t.y - (pos.y + h - 1)).max(0)) };
+        // How far a tile is from the plot as the crow flies: by the
+        // chessboard's measure, which grows a square, and by the taxicab's,
+        // which is the least any walk can be.
+        let off = |t: GridCoord| -> (i32, i32) { ((pos.x - t.x).max(t.x - (pos.x + w - 1)).max(0), (pos.y - t.y).max(t.y - (pos.y + h - 1)).max(0)) };
+        let reach = |t: GridCoord| -> i32 { let (dx, dy) = off(t); dx.max(dy) };
+        let taxi = |t: GridCoord| -> i32 { let (dx, dy) = off(t); dx + dy };
         // The walk from the plot, tile by tile, over open grass, from every
         // side but the street's; a tile further by the walk than by the
         // crow by more than a few is round the end of something.
@@ -91,7 +94,7 @@ impl World {
         let side = (wanted as f64).sqrt().ceil() as i32 + 2;
         let mut grass: Vec<(i32, i32, GridCoord)> = Vec::new();
         while let Some((t, walk)) = queue.pop_front() {
-            if !self.is_open(t) || reach(t) > side || walk > reach(t) + 4 {
+            if !self.is_open(t) || reach(t) > side || walk > taxi(t) + 4 {
                 continue;
             }
             grass.push((reach(t), walk, t));
@@ -161,6 +164,16 @@ impl World {
         }) else {
             return;
         };
+        let Some((job, batch)) = self.batch(farm, now) else {
+            // A crop still ripening: the farm wakes when the last of it is.
+            if let Some(GameObject::Building(b)) = self.objects.get(farm).map(|e| &e.object)
+                && let Some(ripe) = b.land.iter().filter(|t| t.stage == Stage::Sown).map(|t| t.since + RIPEN).max()
+                && ripe > now
+            {
+                events.wake(ripe - now, farm);
+            }
+            return;
+        };
         let on_shift = crate::blueprint::blueprint(kind).taps.iter().any(|t| t.need == crate::needs::Need::Work && t.curve.integral(now, now + 1_000) > 0.0);
         if !on_shift || !crate::calls::staffed(self, farm) {
             return;
@@ -171,16 +184,6 @@ impl World {
             .find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == CarRole::Tractor && c.trip.is_none() && c.run.is_none() && c.away == 0))
             .map(|e| e.id)
         else {
-            return;
-        };
-        let Some((job, batch)) = self.batch(farm, now) else {
-            // A crop still ripening: the farm wakes when the last of it is.
-            if let Some(GameObject::Building(b)) = self.objects.get(farm).map(|e| &e.object)
-                && let Some(ripe) = b.land.iter().filter(|t| t.stage == Stage::Sown).map(|t| t.since + RIPEN).max()
-                && ripe > now
-            {
-                events.wake(ripe - now, farm);
-            }
             return;
         };
         let Some(yard) = self.yard_gate(farm, &batch) else { return };
@@ -220,21 +223,26 @@ impl World {
         self.yard_tiles(farm).into_iter().min_by_key(|&y| batch.iter().map(|&t| dist(y, t)).min().unwrap_or(i32::MAX))
     }
 
-    /// A run over a batch of tiles with the fewest turns: rows along the
-    /// batch's long axis, driven alternately each way so that a change of
-    /// row is two gentle turns over a diagonal step and never a hairpin,
-    /// taken in order from the end nearest the yard to the far end so the
-    /// path never doubles back; and between one tile and the next, if
-    /// they do not touch, the shortest way over the farm's own ground,
-    /// diagonals allowed. From the yard, and back to it.
+    /// A run over a batch of tiles with the fewest turns: rows parallel to
+    /// the street the farm fronts, driven alternately each way so that a
+    /// change of row is two gentle turns over a diagonal step and never a
+    /// hairpin, taken in order from the street's end to the far end so the
+    /// path never doubles back and the field is worked away from the
+    /// road; and between one tile and the next, if they do not touch, the
+    /// shortest way over the farm's own ground, diagonals allowed. From
+    /// the yard, and back to it.
     fn sweep(&self, farm: EntityId, yard: GridCoord, batch: &[GridCoord]) -> Option<Vec<GridCoord>> {
         if batch.is_empty() {
             return None;
         }
         let (xs, ys): (Vec<i32>, Vec<i32>) = batch.iter().map(|t| (t.x, t.y)).unzip();
         let (x0, x1, y0, y1) = (*xs.iter().min()?, *xs.iter().max()?, *ys.iter().min()?, *ys.iter().max()?);
-        // Rows across the short axis, each swept along the long one.
-        let along_x = x1 - x0 >= y1 - y0;
+        // Rows parallel to the street: across the facing.
+        let facing = match self.objects.get(farm).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.facing,
+            _ => return None,
+        };
+        let along_x = crate::blueprint::FACINGS[facing as usize % 4].1 != 0;
         let mut rows: Vec<Vec<GridCoord>> = Vec::new();
         let (r0, r1) = if along_x { (y0, y1) } else { (x0, x1) };
         for r in r0..=r1 {

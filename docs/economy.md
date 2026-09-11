@@ -1313,17 +1313,36 @@ allows. What stands:
   its call; a call nothing has answered gives way to what the stock
   says now. A workplace takes its turn as a worker arrives, and a
   building's wake is its turn.
+- **The rows run parallel to the street** and the field is worked away
+  from the road, row by row; the first row is driven whichever way
+  leaves the whole run shorter, and the tractor comes home along the
+  field's edge, not across it. The land is claimed by the chessboard's
+  measure from the plot, so it grows as a square a sweep works in long
+  rows, and never more than a few tiles further by the walk than by
+  the taxicab, so it does not wrap round the end of a road. A first
+  cut took rows by their distance from the yard, which interleaved the
+  rows either side of it and doubled the path back across the field;
+  watched in the game, and fixed from the drawing.
 - **On the client** the land is a tile type the terrain mesher lays
   over the grass from the farm's record, so it gets the corners any
   ground gets and a block of it reads as one shape; the crop stands on
   the sown tiles as the trees stand on the forest, through the same
-  pass, grown by the clock; the tractor is drawn along its run, tile
-  to tile; and where it last drove are its tyre marks, the run's path
-  laid like a road, brown, with the field's own colour down the middle
-  so two stripes show, redrawn with the next run. The tractor is drawn
-  as a van in the farm's green until it has a shape of its own. Not
-  yet watched in the game itself: the container this was built in has
-  no GPU for the map.
+  pass, grown by the clock; the tractor is drawn along its run by the
+  same follower as a trip, the planned tiles as its path, no lane, a
+  steady pace; and its tyre marks are two faint stripes a wheel apart
+  with nothing between, a step at a time from tile centre to tile
+  centre, so where two paths cross all four show. The marks are laid
+  behind the tractor as it goes, the step it is on stretched to where
+  it is, and under the plough a strip a tile wide in the field's colour
+  goes down the same way, so the ground turns brown continuously and
+  the terrain's own tiles catch up underneath. Between runs the farm's
+  record holds the last run's path and the marks are drawn from that.
+  The tractor is drawn as a van in the farm's green until it has a
+  shape of its own.
+- **The hands take the third day off.** Two full shifts run a hand's
+  time off to nothing, which closes the Work tap (§4), so on the third
+  morning nobody comes and the harvest waits a day. The residents'
+  model, not the farm's, and the cycle is three days or four for it.
 
 What running it found, thirty days of the three towns against §12.7:
 

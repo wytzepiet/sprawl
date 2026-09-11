@@ -4,6 +4,7 @@ import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
+import { layStep, stretch, type Laid } from "./ruts";
 import type { Car, GameObjectEntry } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
 
@@ -134,14 +135,40 @@ export function mountCar(
   const initial = f.now();
   const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
   parts.set(entry.id, [{ key: bucket, id: instanceId }]);
+  // A tractor leaves its marks behind it as it goes, and under the plough
+  // the ground turns brown a wheel's turn at a time: the steps it has
+  // done are laid whole, the one it is on stretched to where it is.
+  const run = car.run;
+  const trail: Laid[][] = [];
+  let head: { step: number; laid: Laid[] } | null = null;
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
     carPoses.set(entry.id, [result.pos[0], result.pos[1]]);
+    if (!run) return;
+    const strip = run.job === "Plough";
+    const t = Math.max(0, (simNow() - run.started) / run.pace);
+    const done = Math.min(Math.floor(t), run.path.length - 1);
+    while (trail.length < done) {
+      const k = trail.length + 1;
+      trail.push(layStep(pool, look, run.path[k - 1], run.path[k], 1, strip));
+    }
+    if (done + 1 < run.path.length) {
+      const k = done + 1;
+      const part = Math.max(0.01, t - done);
+      if (head && head.step !== k) {
+        for (const { key, id } of head.laid) pool.removeInstance(key, id);
+        head = null;
+      }
+      if (!head) head = { step: k, laid: layStep(pool, look, run.path[k - 1], run.path[k], part, strip) };
+      else stretch(pool, head.laid, run.path[k - 1], run.path[k], part);
+    }
   });
   return () => {
     scene.onBeforeRenderObservable.remove(observer);
     pool.removeInstance(bucket, instanceId);
+    for (const step of trail) for (const { key, id } of step) pool.removeInstance(key, id);
+    if (head) for (const { key, id } of head.laid) pool.removeInstance(key, id);
     carPoses.delete(entry.id);
     parts.delete(entry.id);
   };

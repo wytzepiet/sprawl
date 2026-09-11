@@ -3,7 +3,7 @@ import type { InstancePool } from "../InstancePool";
 import { shapeFor, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
 import { plot } from "../../blueprints";
 import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
-import { buildRoadGeometry, type ArmInfo } from "./roadGeometry";
+import { layStep } from "./ruts";
 import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
 import { parts } from "../../state/selection";
@@ -73,42 +73,13 @@ export function mountBuilding(
     }
   }
 
-  // A farm's tyre marks: where the tractor last drove, laid like a road,
-  // brown, with the field's own colour down the middle so two stripes
-  // show. Redrawn with the next run.
+  // A farm's tyre marks: where the tractor last drove, a step at a time.
+  // Redrawn with the next run.
   const ruts = data.ruts;
-  for (let i = 0; i < ruts.length; i++) {
-    const arms: ArmInfo[] = [];
-    for (const j of [i - 1, i + 1]) {
-      if (j < 0 || j >= ruts.length) continue;
-      const dx = ruts[j].x - ruts[i].x, dy = ruts[j].y - ruts[i].y;
-      if (dx === 0 && dy === 0) continue;
-      const angle = Math.atan2(dy, dx);
-      arms.push({ angle: angle < 0 ? angle + 2 * Math.PI : angle, flow: "twoway" });
-    }
-    if (arms.length === 0) continue;
-    const key = arms.map((a) => a.angle.toFixed(3)).sort().join("_");
-    const at: [number, number, number] = [ruts[i].x + 0.5, ruts[i].y + 0.5, 0];
-    const lay = (name: string, hw: number, z: number, tint: Color3) => {
-      const bk = `rut_${name}_${key}${look.key}`;
-      const geo = buildRoadGeometry(arms, hw, z);
-      if (!geo) return;
-      pool.ensureBucket(bk, geo, look.tint(tint), false, true);
-      placed.push({ key: bk, id: pool.addInstance(bk, at) });
-    };
-    lay("mark", RUT_HALF_W, RUT_Z, RUT);
-    lay("crown", RUT_HALF_W - RUT_STRIPE, RUT_Z + 0.002, FIELD);
-  }
+  for (let i = 1; i < ruts.length; i++) placed.push(...layStep(pool, look, ruts[i - 1], ruts[i], 1, false));
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);
     parts.delete(entry.id);
   };
 }
-
-/** Tyre marks: two stripes a wheel wide, pressed into the field. */
-const RUT = Color3.FromHexString("#8A6A3A");
-const FIELD = Color3.FromHexString("#C9B26A");
-const RUT_HALF_W = 0.2;
-const RUT_STRIPE = 0.07;
-const RUT_Z = 0.012;

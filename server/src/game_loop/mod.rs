@@ -2063,8 +2063,12 @@ mod tests {
         pump(&mut world, &mut events, &mut intersections, 20 * day / 24, day + 20 * day / 24);
         assert!(stages(&world).iter().all(|&s| s == Stage::Sown), "by the second evening the land is {:?}", stages(&world));
         assert_eq!(yard(&world), 0.0);
-        pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 2 * day + 20 * day / 24);
-        assert!(stages(&world).iter().all(|&s| s == Stage::Cut), "by the third evening the land is {:?}", stages(&world));
+        pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 2 * day + 7 * day / 24);
+        // The hands' time off has run out after two full shifts, so the
+        // third day may be their holiday: the harvest comes on the third
+        // or the fourth.
+        pump(&mut world, &mut events, &mut intersections, 2 * day + 7 * day / 24, 3 * day + 20 * day / 24);
+        assert!(stages(&world).iter().all(|&s| s == Stage::Cut), "by the fourth evening the land is {:?}", stages(&world));
         assert!((yard(&world) - stages(&world).len() as f64 * crop).abs() < 1e-6 || world.calls.iter().any(|c| c.at == farm && c.kind == calls::CallKind::Pickup) || world.books[&farm].on(2 * day + 20 * day / 24).revenue > 0.0, "the harvest is not in the yard, nor called for, nor sold: {}", yard(&world));
 
         // The harvest's pickups come and go; then the warehouse's shelf
