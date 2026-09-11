@@ -10,8 +10,9 @@
 //! ploughing turns the ground, seeding starts the crop, harvesting lands
 //! a tile's crop in the yard. It works a field as a farmer does: out of
 //! the yard along the lane round the barn, once round the outline for
-//! the headland, then straight rows along the long side, and home along
-//! the edge, never turning sharper than a right angle. Off the roads
+//! the headland, then straight rows along the long side turning on the
+//! headland, and home along the edge, never turning sharper than a right
+//! angle. Off the roads
 //! entirely: a run is a list of tiles and a pace, no route, no claims, no
 //! queue. A tile the mayor builds or roads over is dropped at the farm's
 //! next look, and the tractor's last path stays on the ground as its
@@ -244,9 +245,10 @@ impl World {
     /// A run over a batch of tiles as a farmer drives one: from the yard
     /// along the lane to the corner of the field nearest it, once round
     /// the outline for the headland, then the inside in straight rows
-    /// along the long side, each driven the way back from the last, from
-    /// the yard's side of the field to the far side; and home along the
-    /// edge. Never a turn sharper than a right angle: between one tile and
+    /// along the long side from headland to headland, each driven the way
+    /// back from the last with the turn made on the headland, from the
+    /// yard's side of the field to the far side; and home along the edge.
+    /// Never a turn sharper than a right angle: between one tile and
     /// the next the shortest way that keeps to that, and a tile there is
     /// no such way to is left — the headland has already been round it.
     /// Round the outline either way; whichever leaves fewer tiles and the
@@ -269,11 +271,13 @@ impl World {
         let corner = |t: &GridCoord| (t.x == x0 || t.x == x1) && (t.y == y0 || t.y == y1);
         let start = (0..outline.len()).filter(|&i| corner(&outline[i])).min_by_key(|&i| dist(outline[i], yard)).or_else(|| (0..outline.len()).min_by_key(|&i| dist(outline[i], yard)))?;
         outline.rotate_left(start);
-        // The inside, in rows along the long side, from the yard's side.
+        // The inside, in rows along the long side, from the yard's side;
+        // each row from headland to headland, so the turn between one
+        // row and the next is made on the outline, as the outline is for.
         let along_x = x1 - x0 >= y1 - y0;
         let mut rows: Vec<Vec<GridCoord>> = Vec::new();
         for r in if along_x { y0 + 1..y1 } else { x0 + 1..x1 } {
-            let mut row: Vec<GridCoord> = batch.iter().copied().filter(|t| if along_x { t.y == r && t.x > x0 && t.x < x1 } else { t.x == r && t.y > y0 && t.y < y1 }).collect();
+            let mut row: Vec<GridCoord> = batch.iter().copied().filter(|t| if along_x { t.y == r } else { t.x == r }).collect();
             if !row.is_empty() {
                 row.sort_by_key(|t| if along_x { t.x } else { t.y });
                 rows.push(row);
@@ -294,22 +298,23 @@ impl World {
             }
             let mut path = vec![yard];
             let mut left = 0;
-            // The tiles in the order they are wanted: the outline, then
-            // each row from whichever end the tractor is nearer.
-            let mut order = round;
+            // The tiles in the order they are wanted: the outline, driven
+            // over the edge and never across the inside, then each row
+            // from whichever end the tractor is nearer, over any ground.
+            let mut order: Vec<(GridCoord, &HashSet<(i32, i32)>)> = round.iter().map(|&t| (t, &edge)).collect();
             for row in rows.iter() {
-                let at = order[order.len() - 1];
+                let at = order[order.len() - 1].0;
                 if dist(at, row[row.len() - 1]) < dist(at, row[0]) {
-                    order.extend(row.iter().rev());
+                    order.extend(row.iter().rev().map(|&t| (t, &ground)));
                 } else {
-                    order.extend(row);
+                    order.extend(row.iter().map(|&t| (t, &ground)));
                 }
             }
-            for (i, &t) in order.iter().enumerate() {
+            for (i, &(t, over)) in order.iter().enumerate() {
                 // Arrive heading for the tile after, when that is a step
                 // away, so the row runs straight; failing that, anyhow.
-                let then = order.get(i + 1).copied().filter(|n| dist(t, *n) == 1);
-                match self.over(&ground, &path, t, then).or_else(|| then.and_then(|_| self.over(&ground, &path, t, None))) {
+                let then = order.get(i + 1).map(|n| n.0).filter(|n| dist(t, *n) == 1);
+                match self.over(over, &path, t, then).or_else(|| then.and_then(|_| self.over(over, &path, t, None))) {
                     Some(leg) => path.extend(leg),
                     None => left += 1,
                 }
@@ -598,7 +603,7 @@ mod tests {
             let mut seen = HashSet::new();
             let again = path.iter().filter(|t| !seen.insert((t.x, t.y))).count();
             println!("  {turns} turns over {} steps, {again} tiles driven twice", path.len());
-            assert!(again * 5 < path.len(), "{name}: {again} of {} steps retrace", path.len());
+            assert!(again * 3 < path.len(), "{name}: {again} of {} steps retrace", path.len());
         }
     }
 

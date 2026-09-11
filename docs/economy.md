@@ -1289,10 +1289,11 @@ allows. What stands:
   to the corner of the field nearest it; once round the outline for
   the headland, which is where a real tractor turns and what draws the
   field's edge first; then the inside in straight rows along the long
-  side, each driven the way back from the last, from the yard's side
-  of the field to the far side, a change of row two right angles over
-  the next row's end tile; and home along the edge, not across the
-  field. Never a turn sharper than a right angle: between one tile and
+  side from headland to headland, each driven the way back from the
+  last, from the yard's side of the field to the far side, a change of
+  row two right angles made on the headland, which is what a headland
+  is for; and home along the edge, not across the field. Never a turn
+  sharper than a right angle: between one tile and
   the next the tractor takes the shortest way that keeps to that,
   arriving headed for the tile after so the row runs straight, and a
   tile no such way reaches it leaves — the headland has already been
