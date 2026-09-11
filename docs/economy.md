@@ -528,11 +528,15 @@ Everything a price does is an event on the map first.
   outside. A red lump on a truck in from the edge is an import.
 - **The building.** Shelves grey at empty stock (built); a yard stacked at
   full output; the inspect panel shows each stock's level, price, and its
-  trend over the week. The books keep seven pages for it; the nudge and
-  a building's earning still read yesterday's alone, since a price that
-  answered a week's average would be slow to notice an empty shelf
-  (§12.3). Books are learned, not saved, so a loaded world starts its
-  week from nothing. (As built: two pages; step 7 makes it seven.)
+  trend over the season. The books keep thirty pages for it, a ring;
+  the nudge and a building's earning still read yesterday's alone, since
+  a price that answered an average would be slow to notice an empty
+  shelf (§12.3). A day's page is a couple of hundred bytes, so a season
+  for a thousand buildings is a few megabytes, sent only when a card is
+  opened; a server left running would grow books without limit, and
+  the questions a card answers are a season's. Books are learned, not
+  saved, so a loaded world starts its season from nothing. (As built:
+  two pages; step 7 makes it thirty.)
 - **The company.** Revenue, purchases, wages, margin, and what of each
   crossed the door. A refinery whose margin has gone negative is a
   line, not a mystery.
