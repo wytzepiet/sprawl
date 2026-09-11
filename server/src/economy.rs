@@ -275,14 +275,15 @@ pub fn makes(kind: BuildingKind, need: Need) -> bool {
     blueprint(kind).makes.is_some_and(|m| m.good == need)
 }
 
-/// What lands on a maker's shelf at once: a field's crop where the row
-/// is a farm's, else a shift's make, its hours at the row's rate in one
-/// lump as the tab is paid. A shelf with less room than this ships, or
-/// calls for pickup, before the load is lost to it (`calls::turn`), and
-/// offers no work meanwhile (`hiring`).
+/// What lands on a maker's shelf at once: a tile's crop where the row
+/// is a farm's, at the least a farm's land comes to, else a shift's
+/// make, its hours at the row's rate in one lump as the tab is paid. A
+/// shelf with less room than this ships, or calls for pickup, before
+/// the load is lost to it (`calls::turn`), and offers no work meanwhile
+/// (`hiring`).
 pub fn lump(kind: BuildingKind) -> f64 {
     if farm(kind) {
-        return crop(kind);
+        return crop(kind, crate::world::fields::capacity(kind) as usize);
     }
     blueprint(kind).makes.map_or(0.0, |m| shift_hours(kind) * m.per_hour)
 }
@@ -293,10 +294,11 @@ pub fn farm(kind: BuildingKind) -> bool {
 }
 
 /// What one tile of a farm's land grows in a cycle: the yard, a
-/// harvest, over the tiles a shift's ploughing makes a farm of. A farm
-/// on cramped ground has fewer, and makes less.
-pub fn crop(kind: BuildingKind) -> f64 {
-    blueprint(kind).stock as f64 / crate::world::fields::capacity(kind)
+/// harvest, over the tiles the farm has, so a harvest fills the yard
+/// whatever ground the farm got. A farm on cramped ground has fewer
+/// tiles and a longer wait between runs, not a smaller harvest.
+pub fn crop(kind: BuildingKind, tiles: usize) -> f64 {
+    blueprint(kind).stock as f64 / tiles.max(1) as f64
 }
 
 /// The tractor cut a tile: its crop lands in the yard. The farm's own,
@@ -1034,7 +1036,7 @@ mod tests {
         let hand = world.resident_ids().into_iter().find(|&id| resident(&world, id).work == Some(farm) && !world.edge.contains(&resident(&world, id).home)).expect("the farm hired next door");
         assert!(depot(Farm) && makes(Farm, Need::Eat) && sells(Farm).eq([Need::Eat]), "the farm is not a depot of crates");
         assert!(super::farm(Farm) && !super::farm(Office));
-        assert!((crop(Farm) - 1944.0 / crate::world::fields::capacity(Farm)).abs() < 1e-9);
+        assert!((crop(Farm, 200) - 1944.0 / 200.0).abs() < 1e-9 && (lump(Farm) - 1944.0 / crate::world::fields::capacity(Farm)).abs() < 1e-9);
         assert_eq!(shelf(&world, farm, Need::Eat), crate::needs::Stock { level: 0.0, cap: rated(Farm, Need::Eat) }, "the yard is founded with a make, or is not a day's");
         assert_eq!(building(&world, farm).prices[&Need::Eat], wholesale(Need::Eat), "it opens at the crate's price");
         assert_eq!(unit_cost(Farm, Need::Eat), export(wholesale(Need::Eat)), "its floor is not what the edge pays");
@@ -1044,15 +1046,15 @@ mod tests {
         assert!(!buys(Farm, Need::Eat) && !buys(Office, Need::Services) && buys(Shop, Need::Eat) && buys(Warehouse, Need::Eat) && buys(Shop, Need::Services), "the rows buy the wrong things");
 
         // A tile cut is a crop in the yard, and no line.
-        harvested(&mut world, farm, crop(Farm));
-        assert_eq!((shelf(&world, farm, Need::Eat).level, world.treasury, world.gdp), (crop(Farm), 100.0, 0.0), "the harvest moved money, or counted");
+        harvested(&mut world, farm, crop(Farm, 200));
+        assert_eq!((shelf(&world, farm, Need::Eat).level, world.treasury, world.gdp), (crop(Farm, 200), 100.0, 0.0), "the harvest moved money, or counted");
         assert!(world.books.get(&farm).is_none_or(|k| k.on(0).purchases == 0.0) && world.sales.is_empty(), "a harvest is a line");
 
         // A yard with no room for a crop offers no work, and a lorry
         // from beyond the edge takes it away.
         let yard = shelf(&world, farm, Need::Eat).cap;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
-            b.stocks.get_mut(&Need::Eat).unwrap().level = yard - crop(Farm) / 2.0;
+            b.stocks.get_mut(&Need::Eat).unwrap().level = yard - lump(Farm) / 2.0;
         }
         assert!(!hiring(&world, farm), "a full yard hires");
         let load = shipped(&mut world, farm, Need::Eat);

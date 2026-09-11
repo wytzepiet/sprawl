@@ -2035,7 +2035,8 @@ mod tests {
                 _ => unreachable!(),
             }
         };
-        assert_eq!(stages(&world).len(), crate::world::fields::capacity(BuildingKind::Farm) as usize, "the farm claimed {} tiles", stages(&world).len());
+        let wanted = crate::world::fields::capacity(BuildingKind::Farm) as usize;
+        assert!(stages(&world).len() <= wanted && stages(&world).len() > wanted * 9 / 10, "the farm claimed {} tiles of {wanted}", stages(&world).len());
         assert_eq!(yard(&world), 0.0, "the yard is founded with a make");
         let hands = world.resident_ids().into_iter().filter(|&id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(r)) if r.work == Some(farm))).count();
         assert!(hands > 0, "the farm hired nobody");
@@ -2045,8 +2046,8 @@ mod tests {
         // the land, a shift's worth; by evening it is a field, the tractor
         // is home, its path is the tyre marks, and the yard is empty.
         let day = DAY_MS as u64;
-        let crop = crate::economy::crop(BuildingKind::Farm);
         let land = stages(&world).len();
+        let crop = crate::economy::crop(BuildingKind::Farm, land);
         pump(&mut world, &mut events, &mut intersections, 0, 20 * day / 24);
         assert!(stages(&world).iter().all(|&s| s == Stage::Ploughed), "by evening the land is {:?}", stages(&world));
         assert!(stages(&world).len() >= land * 9 / 10, "the plough reached {} of {land} tiles", stages(&world).len());

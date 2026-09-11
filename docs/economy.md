@@ -1258,35 +1258,54 @@ and it was thrown away too, because the tractor should drive the
 land, not stop beside it, and a field should be any shape the land
 allows. What stands:
 
-- **The land is what a shift ploughs.** A farm reached by a street
-  claims the grass connected to its plot on every side but the
-  street's, nearest by the walk first, as much as a shift can plough:
-  the shift over the tractor's pace, less a tenth for the ground driven
-  between rows, about two hundred tiles. Bounded by whatever is not
-  open grass, so a road, a wood or a beach is the edge of the farm, and
-  a farm on cramped ground is a smaller farm that makes less. A tile is
-  ordinary grass to the placer and the road brush; one built or roaded
-  over is dropped at the farm's next look. The land lives on the farm's
-  own record, a stage and a time per tile, and nothing else.
-- **The tractor drives the land.** Off the roads entirely: a run is a
-  list of tiles and a pace, two and a half minutes of the clock a tile,
-  no route, no claims, no queue. It does its job to each tile as it
-  arrives — the plough turns grass or stubble to bare ground, the seed
-  starts a crop, the harvest lands a tile's crop in the yard as it is
-  cut — and a run covers the whole field in one go: a sweep planned
-  over the tiles that want the job, rows along the ground's long axis,
-  driven back and forth so a change of row is two gentle turns over a
-  diagonal step and never a hairpin, rows nearest the yard first, the
-  shortest way over the farm's own ground where two tiles do not
-  touch, out of the yard and back to it. The barn is not ground; the
-  yard is. A test draws the sweep over three shapes of land, and it
+- **The land is a rectangle behind the plot, as much as a shift
+  ploughs.** A farm reached by a street claims a rectangle of open
+  grass behind its plot, begun as the row along the plot's back and
+  grown a row at a time until it is as much as a shift can plough — the
+  shift over the tractor's pace, less a tenth for the headland and the
+  lane, about two hundred tiles. A row goes on the long side, so the
+  short side catches up and the field tends to square; on the flank
+  that keeps it centred on the yard; never toward the street. A row
+  that would run onto anything but open grass is not taken, so a road,
+  a house or a wood is the edge of the field and the rectangle grows
+  the other way instead; a row that would take the field past its size
+  is not taken either, and when no row can be, the field is done, a
+  row or so short of the number. A farm on cramped ground is a smaller
+  farm with the same yard: a tile's crop is the yard over the land the
+  farm has, so a harvest fills the yard whatever ground it got. A tile
+  is ordinary grass to the placer and the road brush; one built or
+  roaded over is dropped at the farm's next look. The land lives on
+  the farm's own record, a stage and a time per tile, and nothing
+  else. This is how the Midwest is laid out: fields are rectangles on
+  the survey grid with the farmstead on the road frontage, and a field
+  is any other shape only where something forced it.
+- **The tractor drives the land as a farmer does.** Off the roads
+  entirely: a run is a list of tiles and a pace, two and a half minutes
+  of the clock a tile, no route, no claims, no queue. It does its job
+  to each tile as it arrives — the plough turns grass or stubble to
+  bare ground, the seed starts a crop, the harvest lands a tile's crop
+  in the yard as it is cut — and a run covers the whole field in one
+  go. Out of the yard along the lane, the open ground round the plot,
+  to the corner of the field nearest it; once round the outline for
+  the headland, which is where a real tractor turns and what draws the
+  field's edge first; then the inside in straight rows along the long
+  side, each driven the way back from the last, from the yard's side
+  of the field to the far side, a change of row two right angles over
+  the next row's end tile; and home along the edge, not across the
+  field. Never a turn sharper than a right angle: between one tile and
+  the next the tractor takes the shortest way that keeps to that,
+  arriving headed for the tile after so the row runs straight, and a
+  tile no such way reaches it leaves — the headland has already been
+  round it. The outline is driven whichever way round leaves fewer
+  tiles and the shorter run. The barn is not ground; the yard and the
+  lane are. A test draws the sweep over three shapes of land, and it
   was looked at.
 - **One run a day, three days a cycle.** Plough day, seed day, harvest
   day. A crop sown by the end of a shift is ripe by the next morning,
   half a day, so the harvest is the third day. The yard holds a
   harvest, three days of the row's make, taken away by pickup that
-  night; a crop is the yard over the land at capacity, about ten
-  crates a tile. The tractor goes with a hand on shift and the shift
+  night; a crop is the yard over the farm's land, about ten crates a
+  tile. The tractor goes with a hand on shift and the shift
   open, and the farm wakes itself when the last of its crop is ripe.
   A harvest with no room left in the yard leaves the crop standing.
 - **The farm keeps no lorry and no van.** Its crates leave by the
@@ -1313,16 +1332,15 @@ allows. What stands:
   its call; a call nothing has answered gives way to what the stock
   says now. A workplace takes its turn as a worker arrives, and a
   building's wake is its turn.
-- **The rows run parallel to the street** and the field is worked away
-  from the road, row by row; the first row is driven whichever way
-  leaves the whole run shorter, and the tractor comes home along the
-  field's edge, not across it. The land is claimed by the chessboard's
-  measure from the plot, so it grows as a square a sweep works in long
-  rows, and never more than a few tiles further by the walk than by
-  the taxicab, so it does not wrap round the end of a road. A first
-  cut took rows by their distance from the yard, which interleaved the
-  rows either side of it and doubled the path back across the field;
-  watched in the game, and fixed from the drawing.
+- **Three cuts of the land and the sweep.** The first claimed the
+  grass connected to the plot, nearest by the walk, and swept rows by
+  their distance from the yard, which interleaved the rows either side
+  of it and doubled the path back across the field. The second claimed
+  by the chessboard's measure with a bound on the walk, for a block
+  that tended to square, and swept rows parallel to the street with
+  diagonal row changes; watched in the game, the block was a rounded
+  blob and the rows turned sharp at ragged ends. The third is what
+  stands: the rectangle, the headland and the right angle.
 - **On the client** there is no field but where the plough has been.
   The tractor is drawn along its run on the same rounded path as a
   trip, the planned tiles as its path, no lane, but by the server's

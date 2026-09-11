@@ -1,18 +1,21 @@
 //! A farm's land, and the tractor's runs over it. docs/economy.md §12.8.
 //!
-//! When a street reaches a farm it claims the connected grass behind and
-//! beside its plot, bounded by roads, water, forest, beach and anything
-//! built: any shape the land allows. The land is what the first shift
-//! ploughs: the plough run sweeps the grass nearest the yard first, rows
-//! along the ground's long axis driven back and forth, and stops where the
-//! shift ends; what it ploughed is the farm, the rest is grass again. Each
-//! tile is then at a stage of one cycle — ploughed, sown, cut — and the
-//! tractor drives the whole field in one run a day, doing the job to each
-//! tile as it arrives: seeding starts the crop, harvesting lands a tile's
-//! crop in the yard, ploughing turns the stubble. Off the roads entirely:
-//! a run is a list of tiles and a pace, no route, no claims, no queue. A
-//! tile the mayor builds or roads over is dropped at the farm's next look,
-//! and the tractor's last path stays on the ground as its tyre marks.
+//! When a street reaches a farm it claims a rectangle of grass behind its
+//! plot, grown a row at a time on whichever side keeps it squarest until
+//! it is as much as a shift can plough, and stopping short of a road, a
+//! wood, a beach or anything built: a field is a rectangle unless
+//! something forced it not to be. Each tile is then at a stage of one
+//! cycle — grass, ploughed, sown, cut — and the tractor drives the whole
+//! field in one run a day, doing the job to each tile as it arrives:
+//! ploughing turns the ground, seeding starts the crop, harvesting lands
+//! a tile's crop in the yard. It works a field as a farmer does: out of
+//! the yard along the lane round the barn, once round the outline for
+//! the headland, then straight rows along the long side, and home along
+//! the edge, never turning sharper than a right angle. Off the roads
+//! entirely: a run is a list of tiles and a pace, no route, no claims, no
+//! queue. A tile the mayor builds or roads over is dropped at the farm's
+//! next look, and the tractor's last path stays on the ground as its
+//! tyre marks.
 
 use std::collections::{HashSet, VecDeque};
 
@@ -49,64 +52,69 @@ impl World {
         self.is_buildable(t) && self.terrain.get(&(t.x, t.y)) == Some(&crate::protocol::TerrainType::Grass)
     }
 
-    /// A farm reached by a street claims its land: of the grass connected
-    /// to its plot on every side but the street's, the nearest tiles by
-    /// the chessboard's measure, as much as a shift can plough, so a
-    /// square block round the farm that a sweep works in long rows — and
-    /// never more than a few tiles further by the walk than as the crow
-    /// flies, so the land does not wrap round the end of a road. Bounded
-    /// by whatever is not open grass, so a road, a wood or a beach is the
-    /// edge of the farm, and a farm on cramped ground is a smaller farm.
-    /// The first shift's ploughing makes it a field.
+    /// A farm reached by a street claims its land: a rectangle of open
+    /// grass behind its plot, begun as the row along the plot's back and
+    /// grown a row at a time — on the long side, so the short side catches
+    /// up and the field tends to square; on the flank that keeps it
+    /// centred on the yard; never toward the street — until it is as much
+    /// as a shift can plough. A row that would run onto anything but open
+    /// grass is not taken, so a road, a house or a wood is the edge of the
+    /// field and the rectangle grows the other way; a row that would take
+    /// the field past its size is not taken either, and when no row can
+    /// be, the field is done. The first shift's ploughing makes it a field.
     pub fn claim_land(&mut self, farm: EntityId) {
         let Some(e) = self.objects.get(farm) else { return };
         let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return };
         let (kind, facing) = (b.kind, b.facing);
-        let wanted = capacity(kind) as usize;
+        let wanted = capacity(kind) as i32;
         if !economy::farm(kind) || !b.land.is_empty() {
             return;
         }
         let p = plot(kind, facing);
         let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
         let (w, h) = (p.size.0 as i32, p.size.1 as i32);
-        // The tiles round the plot, less the street side.
-        // How far a tile is from the plot as the crow flies: by the
-        // chessboard's measure, which grows a square, and by the taxicab's,
-        // which is the least any walk can be.
-        let off = |t: GridCoord| -> (i32, i32) { ((pos.x - t.x).max(t.x - (pos.x + w - 1)).max(0), (pos.y - t.y).max(t.y - (pos.y + h - 1)).max(0)) };
-        let reach = |t: GridCoord| -> i32 { let (dx, dy) = off(t); dx.max(dy) };
-        let taxi = |t: GridCoord| -> i32 { let (dx, dy) = off(t); dx + dy };
-        // The walk from the plot, tile by tile, over open grass, from every
-        // side but the street's; a tile further by the walk than by the
-        // crow by more than a few is round the end of something.
-        let mut queue: VecDeque<(GridCoord, i32)> = VecDeque::new();
-        let mut seen: HashSet<(i32, i32)> = HashSet::new();
+        // The row along the plot's back: the plot's tiles stepped one away
+        // from the street, less the plot itself.
+        let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
         for t in Self::footprint(pos, p.size) {
-            for (dx, dy) in AROUND[..4].iter() {
-                let n = GridCoord { x: t.x + dx, y: t.y + dy };
-                let inside = n.x >= pos.x && n.y >= pos.y && n.x < pos.x + w && n.y < pos.y + h;
-                let street_side = (dx * fx + dy * fy) > 0;
-                if !inside && !street_side && seen.insert((n.x, n.y)) {
-                    queue.push_back((n, 1));
-                }
-            }
-        }
-        let side = (wanted as f64).sqrt().ceil() as i32 + 2;
-        let mut grass: Vec<(i32, i32, GridCoord)> = Vec::new();
-        while let Some((t, walk)) = queue.pop_front() {
-            if !self.is_open(t) || reach(t) > side || walk > taxi(t) + 4 {
+            let n = GridCoord { x: t.x - fx, y: t.y - fy };
+            if n.x >= pos.x && n.y >= pos.y && n.x < pos.x + w && n.y < pos.y + h {
                 continue;
             }
-            grass.push((reach(t), walk, t));
-            for (dx, dy) in AROUND[..4].iter() {
-                let n = GridCoord { x: t.x + dx, y: t.y + dy };
-                if seen.insert((n.x, n.y)) {
-                    queue.push_back((n, walk + 1));
-                }
-            }
+            (x0, y0, x1, y1) = (x0.min(n.x), y0.min(n.y), x1.max(n.x), y1.max(n.y));
         }
-        grass.sort_by_key(|&(r, walk, t)| (r, walk, t.y, t.x));
-        let land: Vec<Tile> = grass.into_iter().take(wanted).map(|(_, _, at)| Tile { at, stage: Stage::Grass, since: 0 }).collect();
+        let open = |x0: i32, y0: i32, x1: i32, y1: i32| (y0..=y1).all(|y| (x0..=x1).all(|x| self.is_open(GridCoord { x, y })));
+        if !open(x0, y0, x1, y1) {
+            return;
+        }
+        let (cx, cy) = (pos.x * 2 + w - 1, pos.y * 2 + h - 1);
+        loop {
+            let (dx, dy) = (x1 - x0 + 1, y1 - y0 + 1);
+            if dx * dy >= wanted {
+                break;
+            }
+            // Each side but the street's, as the rectangle would be with a
+            // row added there: the long sides first, then the flank nearer
+            // the yard's middle.
+            let mut sides: Vec<(i32, i32, (i32, i32, i32, i32))> = AROUND[..4]
+                .iter()
+                .filter(|&&(sx, sy)| (sx, sy) != (fx, fy))
+                .map(|&(sx, sy)| {
+                    let grown = (x0.min(x0 + sx), y0.min(y0 + sy), x1.max(x1 + sx), y1.max(y1 + sy));
+                    let row = if sx != 0 { dy } else { dx };
+                    let off = ((grown.0 + grown.2 - cx).abs(), (grown.1 + grown.3 - cy).abs());
+                    (-row, off.0 + off.1, grown)
+                })
+                .collect();
+            sides.sort();
+            let Some(&(_, _, (gx0, gy0, gx1, gy1))) = sides.iter().find(|&&(_, _, (gx0, gy0, gx1, gy1))| {
+                (gx1 - gx0 + 1) * (gy1 - gy0 + 1) <= wanted && open(gx0, gy0, gx1, gy1)
+            }) else {
+                break;
+            };
+            (x0, y0, x1, y1) = (gx0, gy0, gx1, gy1);
+        }
+        let land: Vec<Tile> = (y0..=y1).flat_map(|y| (x0..=x1).map(move |x| Tile { at: GridCoord { x, y }, stage: Stage::Grass, since: 0 })).collect();
         if let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object) {
             b.land = land;
         }
@@ -135,7 +143,7 @@ impl World {
         let sown = tiles(Stage::Sown);
         if !sown.is_empty() {
             let ripe = b.land.iter().filter(|t| t.stage == Stage::Sown).all(|t| now >= t.since + RIPEN);
-            let room = b.stocks.get(&economy::shelf_need(b.kind)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind));
+            let room = b.stocks.get(&economy::shelf_need(b.kind)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind, b.land.len()));
             if ripe && room {
                 return Some((Job::Harvest, sown));
             }
@@ -197,12 +205,22 @@ impl World {
         events.wake(PACE, tractor);
     }
 
-    /// The tiles the tractor may drive: the farm's land and its yard,
-    /// never the barn.
+    /// The tiles the tractor may drive: the farm's land, its yard, and the
+    /// lane — the open ground round the plot, which is how the tractor
+    /// gets from the yard at the street to the field behind the barn.
+    /// Never the barn.
     fn drivable(&self, farm: EntityId) -> HashSet<(i32, i32)> {
         let mut ground: HashSet<(i32, i32)> = self.yard_tiles(farm).into_iter().map(|t| (t.x, t.y)).collect();
-        if let Some(GameObject::Building(b)) = self.objects.get(farm).map(|e| &e.object) {
-            ground.extend(b.land.iter().map(|t| (t.at.x, t.at.y)));
+        let Some(e) = self.objects.get(farm) else { return ground };
+        let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return ground };
+        ground.extend(b.land.iter().map(|t| (t.at.x, t.at.y)));
+        for t in Self::footprint(pos, plot(b.kind, b.facing).size) {
+            for (dx, dy) in AROUND {
+                let n = GridCoord { x: t.x + dx, y: t.y + dy };
+                if self.is_open(n) {
+                    ground.insert((n.x, n.y));
+                }
+            }
         }
         ground
     }
@@ -223,104 +241,129 @@ impl World {
         self.yard_tiles(farm).into_iter().min_by_key(|&y| batch.iter().map(|&t| dist(y, t)).min().unwrap_or(i32::MAX))
     }
 
-    /// A run over a batch of tiles with the fewest turns: rows parallel to
-    /// the street the farm fronts, driven alternately each way so that a
-    /// change of row is two gentle turns over a diagonal step and never a
-    /// hairpin, taken in order from the street's end to the far end so the
-    /// path never doubles back and the field is worked away from the
-    /// road; and between one tile and the next, if they do not touch, the
-    /// shortest way over the farm's own ground, diagonals allowed. From
-    /// the yard, and back to it.
+    /// A run over a batch of tiles as a farmer drives one: from the yard
+    /// along the lane to the corner of the field nearest it, once round
+    /// the outline for the headland, then the inside in straight rows
+    /// along the long side, each driven the way back from the last, from
+    /// the yard's side of the field to the far side; and home along the
+    /// edge. Never a turn sharper than a right angle: between one tile and
+    /// the next the shortest way that keeps to that, and a tile there is
+    /// no such way to is left — the headland has already been round it.
+    /// Round the outline either way; whichever leaves fewer tiles and the
+    /// shorter run.
     fn sweep(&self, farm: EntityId, yard: GridCoord, batch: &[GridCoord]) -> Option<Vec<GridCoord>> {
         if batch.is_empty() {
             return None;
         }
-        let (xs, ys): (Vec<i32>, Vec<i32>) = batch.iter().map(|t| (t.x, t.y)).unzip();
-        let (x0, x1, y0, y1) = (*xs.iter().min()?, *xs.iter().max()?, *ys.iter().min()?, *ys.iter().max()?);
-        // Rows parallel to the street: across the facing.
-        let facing = match self.objects.get(farm).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.facing,
-            _ => return None,
-        };
-        let along_x = crate::blueprint::FACINGS[facing as usize % 4].1 != 0;
-        let mut rows: Vec<Vec<GridCoord>> = Vec::new();
-        let (r0, r1) = if along_x { (y0, y1) } else { (x0, x1) };
-        for r in r0..=r1 {
-            let mut row: Vec<GridCoord> = batch.iter().copied().filter(|t| if along_x { t.y == r } else { t.x == r }).collect();
-            if row.is_empty() {
-                continue;
+        let set: HashSet<(i32, i32)> = batch.iter().map(|t| (t.x, t.y)).collect();
+        let (x0, x1) = (batch.iter().map(|t| t.x).min()?, batch.iter().map(|t| t.x).max()?);
+        let (y0, y1) = (batch.iter().map(|t| t.y).min()?, batch.iter().map(|t| t.y).max()?);
+        // The outline, clockwise from the corner nearest the yard.
+        let mut outline: Vec<GridCoord> = Vec::new();
+        let mut seen: HashSet<(i32, i32)> = HashSet::new();
+        for (x, y) in (x0..=x1).map(|x| (x, y0)).chain((y0..=y1).map(|y| (x1, y))).chain((x0..=x1).rev().map(|x| (x, y1))).chain((y0..=y1).rev().map(|y| (x0, y))) {
+            if set.contains(&(x, y)) && seen.insert((x, y)) {
+                outline.push(GridCoord { x, y });
             }
-            row.sort_by_key(|t| if along_x { t.x } else { t.y });
-            rows.push(row);
         }
-        // From the yard's end of the field to the other.
-        let near_end = |row: &Vec<GridCoord>| if along_x { (row[0].y - yard.y).abs() } else { (row[0].x - yard.x).abs() };
-        if near_end(&rows[rows.len() - 1]) < near_end(&rows[0]) {
+        let corner = |t: &GridCoord| (t.x == x0 || t.x == x1) && (t.y == y0 || t.y == y1);
+        let start = (0..outline.len()).filter(|&i| corner(&outline[i])).min_by_key(|&i| dist(outline[i], yard)).or_else(|| (0..outline.len()).min_by_key(|&i| dist(outline[i], yard)))?;
+        outline.rotate_left(start);
+        // The inside, in rows along the long side, from the yard's side.
+        let along_x = x1 - x0 >= y1 - y0;
+        let mut rows: Vec<Vec<GridCoord>> = Vec::new();
+        for r in if along_x { y0 + 1..y1 } else { x0 + 1..x1 } {
+            let mut row: Vec<GridCoord> = batch.iter().copied().filter(|t| if along_x { t.y == r && t.x > x0 && t.x < x1 } else { t.x == r && t.y > y0 && t.y < y1 }).collect();
+            if !row.is_empty() {
+                row.sort_by_key(|t| if along_x { t.x } else { t.y });
+                rows.push(row);
+            }
+        }
+        let near = |row: &Vec<GridCoord>| if along_x { (row[0].y - yard.y).abs() } else { (row[0].x - yard.x).abs() };
+        if rows.len() > 1 && near(&rows[rows.len() - 1]) < near(&rows[0]) {
             rows.reverse();
         }
         let ground = self.drivable(farm);
-        // Home along the field's edge, not across it: over the tiles with
-        // something other than land on a side, or any ground if the edge
-        // does not join up.
-        let edge: HashSet<(i32, i32)> = ground
-            .iter()
-            .copied()
-            .filter(|&(x, y)| AROUND[..4].iter().any(|(dx, dy)| !ground.contains(&(x + dx, y + dy))))
-            .collect();
-        // The first row may be driven either way; the way that leaves the
-        // last row ending nearer the yard makes the shorter run.
-        let mut best: Option<Vec<GridCoord>> = None;
-        for flip in [false, true] {
+        // Home along the edge: the headland, the lane and the yard.
+        let edge: HashSet<(i32, i32)> = ground.iter().copied().filter(|t| !set.contains(t) || outline.iter().any(|o| (o.x, o.y) == *t)).collect();
+        let mut best: Option<(usize, Vec<GridCoord>)> = None;
+        for widdershins in [false, true] {
+            let mut round = outline.clone();
+            if widdershins {
+                round[1..].reverse();
+            }
             let mut path = vec![yard];
-            let mut at = yard;
-            for (i, row) in rows.iter().enumerate() {
-                let mut row = row.clone();
-                // Enter the row at whichever end is nearer; the first row as
-                // this attempt says.
-                let (first, last) = (row[0], row[row.len() - 1]);
-                if if i == 0 { flip } else { dist(at, last) < dist(at, first) } {
-                    row.reverse();
-                }
-                for &t in row.iter() {
-                    let Some(leg) = self.over(&ground, at, t) else { return None };
-                    path.extend(leg.into_iter().skip(1));
-                    at = t;
+            let mut left = 0;
+            // The tiles in the order they are wanted: the outline, then
+            // each row from whichever end the tractor is nearer.
+            let mut order = round;
+            for row in rows.iter() {
+                let at = order[order.len() - 1];
+                if dist(at, row[row.len() - 1]) < dist(at, row[0]) {
+                    order.extend(row.iter().rev());
+                } else {
+                    order.extend(row);
                 }
             }
-            let Some(home) = self.over(&edge, at, yard).or_else(|| self.over(&ground, at, yard)) else { return None };
-            path.extend(home.into_iter().skip(1));
-            if best.as_ref().is_none_or(|b| path.len() < b.len()) {
-                best = Some(path);
+            for (i, &t) in order.iter().enumerate() {
+                // Arrive heading for the tile after, when that is a step
+                // away, so the row runs straight; failing that, anyhow.
+                let then = order.get(i + 1).copied().filter(|n| dist(t, *n) == 1);
+                match self.over(&ground, &path, t, then).or_else(|| then.and_then(|_| self.over(&ground, &path, t, None))) {
+                    Some(leg) => path.extend(leg),
+                    None => left += 1,
+                }
+            }
+            let home = self.over(&edge, &path, yard, None).or_else(|| self.over(&ground, &path, yard, None))?;
+            path.extend(home);
+            if best.as_ref().is_none_or(|(l, b)| (left, path.len()) < (*l, b.len())) {
+                best = Some((left, path));
             }
         }
-        best
+        best.map(|(_, path)| path)
     }
 
-    /// The shortest drive from one tile to another over the given ground,
-    /// eight ways, both ends included. Two tiles that touch are one step.
-    fn over(&self, ground: &HashSet<(i32, i32)>, from: GridCoord, to: GridCoord) -> Option<Vec<GridCoord>> {
-        if dist(from, to) <= 1 {
-            return Some(vec![from, to]);
-        }
-        let mut came: std::collections::HashMap<(i32, i32), (i32, i32)> = std::collections::HashMap::new();
-        let mut queue = VecDeque::from([(from.x, from.y)]);
-        came.insert((from.x, from.y), (from.x, from.y));
-        while let Some((x, y)) = queue.pop_front() {
-            if (x, y) == (to.x, to.y) {
-                let mut way = vec![to];
-                let mut cur = (x, y);
-                while cur != (from.x, from.y) {
+    /// The shortest drive on from a path to a tile over the given ground,
+    /// eight ways, turning no sharper than a right angle — from the way
+    /// the path's last step was heading, or any way from a standing start
+    /// — and arriving, if a tile after is given, heading so that the step
+    /// on to it is no sharper either. The tiles after the path's last, the
+    /// destination included; or none, if no such drive reaches it.
+    fn over(&self, ground: &HashSet<(i32, i32)>, path: &[GridCoord], to: GridCoord, then: Option<GridCoord>) -> Option<Vec<GridCoord>> {
+        let from = *path.last()?;
+        let heading = match path.len() {
+            0 | 1 => None,
+            n => Some((from.x - path[n - 2].x, from.y - path[n - 2].y)),
+        };
+        let arrived = |way: Option<(i32, i32)>| match (way, then) {
+            (Some((wx, wy)), Some(n)) => wx * (n.x - to.x) + wy * (n.y - to.y) >= 0,
+            _ => true,
+        };
+        // A state is a tile and the way the tractor came onto it.
+        type State = ((i32, i32), Option<(i32, i32)>);
+        let start: State = ((from.x, from.y), heading);
+        let mut came: std::collections::HashMap<State, State> = std::collections::HashMap::from([(start, start)]);
+        let mut queue = VecDeque::from([start]);
+        while let Some(state @ ((x, y), way)) = queue.pop_front() {
+            if (x, y) == (to.x, to.y) && arrived(way) {
+                let mut drive = Vec::new();
+                let mut cur = state;
+                while cur != start {
+                    drive.push(GridCoord { x: cur.0 .0, y: cur.0 .1 });
                     cur = came[&cur];
-                    way.push(GridCoord { x: cur.0, y: cur.1 });
                 }
-                way.reverse();
-                return Some(way);
+                drive.reverse();
+                return Some(drive);
             }
             for (dx, dy) in AROUND {
+                if way.is_some_and(|(wx, wy)| wx * dx + wy * dy < 0) {
+                    continue;
+                }
                 let n = (x + dx, y + dy);
-                if (ground.contains(&n) || n == (to.x, to.y)) && !came.contains_key(&n) {
-                    came.insert(n, (x, y));
-                    queue.push_back(n);
+                let next: State = (n, Some((dx, dy)));
+                if (ground.contains(&n) || n == (to.x, to.y)) && !came.contains_key(&next) {
+                    came.insert(next, state);
+                    queue.push_back(next);
                 }
             }
         }
@@ -343,7 +386,7 @@ impl World {
         let Some(&here) = run.path.get(k) else { return };
         self.update_position(tractor, here);
         let crop = self.objects.get(farm).and_then(|e| match e.object {
-            GameObject::Building(ref b) => Some(economy::crop(b.kind)),
+            GameObject::Building(ref b) => Some(economy::crop(b.kind, b.land.len())),
             _ => None,
         });
         let mut cut = 0.0;
@@ -397,7 +440,7 @@ mod tests {
     /// and its land.
     fn land() -> World {
         let mut world = World::new();
-        for y in -12..14 {
+        for y in -12..24 {
             for x in -4..60 {
                 world.terrain.insert((x, y), TerrainType::Grass);
             }
@@ -429,6 +472,11 @@ mod tests {
         }
     }
 
+    /// Whether a path turns sharper than a right angle anywhere.
+    fn sharp(path: &[GridCoord]) -> bool {
+        path.windows(3).any(|w| (w[1].x - w[0].x) * (w[2].x - w[1].x) + (w[1].y - w[0].y) * (w[2].y - w[1].y) < 0)
+    }
+
     /// Drive a run to its end, one tile at a time.
     fn drive(world: &mut World, events: &mut EventQueue, tractor: EntityId, mut now: GameTime) -> GameTime {
         while run_of(world, tractor).is_some() {
@@ -438,24 +486,37 @@ mod tests {
         now
     }
 
-    /// §12.8: a farm reached by a street claims its row's land, the grass
-    /// connected to its plot on every side but the street's, all of it
-    /// grass and none of it on the street; a road through the land is
-    /// its edge, and a farm in the woods claims nothing.
+    /// The land's bounding rectangle: its corners, and whether it is full.
+    fn rect(tiles: &[Tile]) -> (i32, i32, i32, i32, bool) {
+        let (x0, x1) = (tiles.iter().map(|t| t.at.x).min().unwrap(), tiles.iter().map(|t| t.at.x).max().unwrap());
+        let (y0, y1) = (tiles.iter().map(|t| t.at.y).min().unwrap(), tiles.iter().map(|t| t.at.y).max().unwrap());
+        (x0, y0, x1, y1, ((x1 - x0 + 1) * (y1 - y0 + 1)) as usize == tiles.len())
+    }
+
+    /// §12.8: a farm reached by a street claims a rectangle of grass
+    /// behind its plot, near enough square, as much as a shift ploughs
+    /// and no more, all of it grass and none of it on the street; a road
+    /// behind the plot is its edge and the field grows along it instead,
+    /// and a farm in the woods claims nothing.
     #[test]
     fn a_farm_claims_the_grass_behind_it() {
         let mut world = land();
-        let (farm, tiles) = farm_at(&mut world, 10);
-        assert_eq!(tiles.len(), capacity(BuildingKind::Farm) as usize, "the farm claimed {} tiles", tiles.len());
-        assert!(tiles.iter().all(|t| t.at.x.abs_diff(10) < 20), "the land is not round the farm");
+        let (_, tiles) = farm_at(&mut world, 10);
+        let wanted = capacity(BuildingKind::Farm) as usize;
+        let (x0, y0, x1, y1, full) = rect(&tiles);
+        assert!(full, "the land is not a rectangle");
+        assert!(tiles.len() <= wanted && tiles.len() + (x1 - x0 + 1).max(y1 - y0 + 1) as usize > wanted, "the farm claimed {} tiles of {wanted}", tiles.len());
+        assert!((x1 - x0).abs_diff(y1 - y0) <= 1, "the field is {}x{}, not square", x1 - x0 + 1, y1 - y0 + 1);
+        assert!(y0 == 5 && x0 <= 10 && x1 >= 12, "the field {x0},{y0}..{x1},{y1} is not behind the plot");
         assert!(tiles.iter().all(|t| t.stage == Stage::Grass && world.is_open(t.at)));
-        assert!(tiles.iter().all(|t| t.at.y >= 1), "land was claimed across the street: {:?}", tiles.iter().filter(|t| t.at.y < 1).map(|t| t.at).collect::<Vec<_>>());
         assert_eq!(world.laid, 0);
-        // Bounded: a road four tiles behind the plot walls the land in.
+        // Bounded: a road four tiles behind the plot walls the land in,
+        // and the field runs along the road instead.
         let mut walled = land();
         walled.place_road_path(&(-4..60).map(|x| GridCoord { x, y: 6 }).collect::<Vec<_>>());
         let (_, tiles) = farm_at(&mut walled, 10);
-        assert!(!tiles.is_empty() && tiles.iter().all(|t| t.at.y < 6), "the land crossed the road");
+        let (_, y0, _, y1, full) = rect(&tiles);
+        assert!(full && y0 == 5 && y1 == 5 && tiles.len() > 20, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
         // Nothing to claim in a wood.
         let mut woods = land();
         for y in -12..14 {
@@ -505,7 +566,10 @@ mod tests {
             }
             for (i, t) in path.iter().enumerate().take(steps) {
                 let c = if i == 0 { 'Y' } else { char::from_digit((i % 36) as u32, 36).unwrap() };
-                grid[(t.y + 4) as usize][(t.x + 4) as usize] = c;
+                let cell = &mut grid[(t.y + 4) as usize][(t.x + 4) as usize];
+                if *cell == '.' || *cell == ',' {
+                    *cell = c;
+                }
             }
             for t in World::footprint(GridCoord { x: 14, y: 1 }, (3, 4)) {
                 if !world.yard_tiles(farm).contains(&t) {
@@ -515,13 +579,21 @@ mod tests {
             if shape == 2 {
                 grid[12][21] = 'H';
             }
-            println!("{name}: {} tiles, {} steps (first {steps} drawn, 0-9a-z then round again)", batch.len(), path.len());
+            println!("{name}: {} tiles, {} steps (first {steps} drawn, 0-9a-z then round again, first visit only)", batch.len(), path.len());
+            println!("  home: {:?}", path.iter().rev().take(12).map(|t| (t.x, t.y)).collect::<Vec<_>>());
             for row in grid.iter().skip(4) {
                 println!("  {}", row.iter().collect::<String>());
             }
             assert!(path.windows(2).all(|w| dist(w[0], w[1]) == 1), "{name}: a step is not to a neighbour");
             let ground = world.drivable(farm);
             assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "{name}: the tractor left the farm's ground");
+            assert!(!sharp(&path), "{name}: a turn sharper than a right angle");
+            assert!(batch.iter().all(|t| path.contains(t)), "{name}: the sweep missed a tile");
+            // The headland first: every tile on the outline before any inside it.
+            let (x0, y0, x1, y1, _) = rect(&tiles(&world, farm));
+            let inside = |t: &GridCoord| t.x > x0 && t.x < x1 && t.y > y0 && t.y < y1;
+            let first_inside = path.iter().position(inside).unwrap_or(path.len());
+            assert!(batch.iter().filter(|t| !inside(t)).all(|t| path.iter().position(|p| p == t).unwrap() < first_inside), "{name}: the outline was not driven first");
             let turns = path.windows(3).filter(|w| (w[1].x - w[0].x, w[1].y - w[0].y) != (w[2].x - w[1].x, w[2].y - w[1].y)).count();
             let mut seen = HashSet::new();
             let again = path.iter().filter(|t| !seen.insert((t.x, t.y))).count();
@@ -572,6 +644,7 @@ mod tests {
         let path = world.sweep(farm, pos, &batch).expect("a sweep");
         assert_eq!((path[0], *path.last().unwrap()), (pos, pos), "the run does not start and end at the yard");
         assert!(path.windows(2).all(|w| dist(w[0], w[1]) == 1), "a step of the run is not to a neighbour");
+        assert!(!sharp(&path), "a turn sharper than a right angle");
         assert!(batch.iter().all(|t| path.contains(t)), "the sweep missed a tile");
         let ground = world.drivable(farm);
         assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "the tractor left the farm's ground");
@@ -606,7 +679,7 @@ mod tests {
         }
         let now = drive(&mut world, &mut events, tractor, now);
         assert!(stages(&world).iter().all(|&s| s == Stage::Cut));
-        assert!((yard(&world) - tiles.len() as f64 * economy::crop(BuildingKind::Farm)).abs() < 1e-9, "the yard holds {}", yard(&world));
+        assert!((yard(&world) - 1944.0).abs() < 1e-9, "the harvest does not fill the yard: {}", yard(&world));
         // Round again: plough the stubble. And a full yard leaves the
         // crop standing.
         assert_eq!(world.batch(farm, now).map(|b| b.0), Some(Job::Plough));
