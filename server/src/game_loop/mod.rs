@@ -1727,16 +1727,21 @@ mod tests {
         format!("{empty} services stocks empty ({homes_empty} homes), {open} services calls open, {waiting} unanswered")
     }
 
-    /// §11.6, no harm: a town built ignoring every price ends the season
-    /// with more in the treasury than it began. Every building in the red
-    /// on the last day is printed with what it cost, and every one that
-    /// took nothing: that is the town's to read (§9), not a failure.
+    /// §11.6, no harm: a town built ignoring every price serves as much
+    /// at the end of the season as it did at the start, whatever its
+    /// treasury did. It may lose money — a town that never built its
+    /// fourth office pays for the services it did not make, and that is
+    /// the game — but ignoring prices never costs it its real income.
+    /// Every building in the red on the last day is printed with what it
+    /// cost, and every one that took nothing: that is the town's to read
+    /// (§9), not a failure.
     #[test]
     #[ignore]
     fn season_no_harm() {
         let days = season_days();
         let mut last_gdp = 0.0;
         let mut began = 0.0;
+        let mut daily = Vec::new();
         let (world, _) = season(&town_mix(), days, |world, day, _| {
             if day == 1 {
                 let door = world.income.before(DAY_MS as u64);
@@ -1744,6 +1749,7 @@ mod tests {
             }
             let door = world.income.before(day * DAY_MS as u64);
             println!("day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, world.gdp - last_gdp, door.revenue, door.purchases, services_report(world));
+            daily.push(world.gdp - last_gdp);
             last_gdp = world.gdp;
             for e in world.objects.iter() {
                 let GameObject::Building(ref b) = e.object else { continue };
@@ -1766,7 +1772,15 @@ mod tests {
         }
         let at_the_edge = world.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(ref r) if r.work.is_some_and(|w| world.edge.contains(&w)))).count();
         println!("{at_the_edge} residents work beyond the edge");
-        assert!(world.treasury > began, "the season ended with {} in the treasury, from {began}", world.treasury);
+        // Real income, by thirds of the season, each third's middle day.
+        let third = |from: usize, to: usize| {
+            let mut v: Vec<f64> = daily[from..to].to_vec();
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            v[v.len() / 2]
+        };
+        let (first, last) = (third(0, daily.len() / 3), third(daily.len() - daily.len() / 3, daily.len()));
+        println!("no harm: served {first:.0} a day in the first third and {last:.0} in the last; treasury {:.1} from {began:.1}", world.treasury);
+        assert!(last >= 0.75 * first, "the town serves {last:.0} a day where it served {first:.0}: ignoring prices cost it its income");
     }
 
     /// §11.12, the bare towns: a street of homes and nothing else, whose

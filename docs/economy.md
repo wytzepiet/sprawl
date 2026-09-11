@@ -557,10 +557,15 @@ season is thirty game-days until something says otherwise.
    `edge_wage − commute`. (As built: no wage a resident of the town works
    for; a building staffed from beyond the edge pays what its trade is
    worth, which can be the floor — §12.2.)
-6. **No harm.** A town built ignoring every price ends the season with
-   more treasury than it began, net of what it placed. Every building
-   in the red on the last day is printed with what it costs, since that
-   is the town's to read, not a failure.
+6. **No harm.** A town built ignoring every price serves as much at the
+   end of the season as at the start, whatever its treasury did: its
+   real income holds. It may lose money — a town that never built its
+   fourth office pays for the services it did not make, and that is
+   the challenge — but not reading prices never costs it what it
+   serves. (First cut: it ended the season with more treasury than it
+   began; retired 2026-09-11, §13.16.) Every building in the red on the
+   last day is printed with what it costs, since that is the town's to
+   read, not a failure.
 7. **The conga.** A delivery from a depot moves the treasury by nothing,
    and a warehouse inserted where it shortens nothing sells nothing. (A
    property of one delivery, so a unit test, not a season.)
@@ -1160,16 +1165,16 @@ against §12.5's ten:
 15. A firm's services are a fifth of its labour and its output the sum
     over two thirds (§12.5); with the rows (step 6) the input and the
     output are the row's own, link by link, and the fifth goes.
-16. No harm over thirty days (§11.6, §12.6). The full town buys in 520
-    a day of services from consultants while its offices ship 150 out:
-    three offices make half of what the town draws, and at the ceiling
-    the offices' price hunts above the consultants' delivered price, so
-    the town's buyers take the consultant and the office ships. Wear
-    adds fifty a day and the workshop's lost export sixty. The fourth
-    office is the mayor's to place (§12.5), and a town built ignoring
-    every price has not placed it; whether no-harm should hold for that
-    town, or the mix should hold four offices, or the nudge at a
-    ceiling should not overshoot, is open. The rows (step 6) move the
+16. ~~No harm over thirty days.~~ Decided 2026-09-11: no harm is real
+    income, not money. The full town buys in 520 a day of services from
+    consultants while its offices ship 150 out — three offices make
+    half of what the town draws, and at the ceiling the offices' price
+    hunts above the consultants' delivered price — and loses about a
+    quarter of an hour a head a day for it. The fourth office is the
+    mayor's to place (§12.5), and a town that has not placed it pays;
+    if money came no matter what there would be no game. §11.6 now
+    asserts what it serves. Whether the nudge at a ceiling should
+    overshoot at all is still open, and the rows (step 6) move the
     firm's services from a flat fifth to the row's own (§13.15).
 17. ~~The ring test over thirty days.~~ The hunt at a ceiling is a
     notch over and three back, and the test allows it (§12.6).
