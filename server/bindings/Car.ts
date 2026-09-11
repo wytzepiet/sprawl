@@ -2,6 +2,7 @@
 import type { CarRole } from "./CarRole";
 import type { Need } from "./Need";
 import type { Pose } from "./Pose";
+import type { Run } from "./Run";
 import type { Stock } from "./Stock";
 import type { Trip } from "./Trip";
 
@@ -28,4 +29,8 @@ spot: Pose | null,
  * right at a workshop. The car's, though its driver decides when to
  * stop. A save from before cars had them gets them full.
  */
-stocks: { [key in Need]?: Stock }, };
+stocks: { [key in Need]?: Stock }, 
+/**
+ * A tractor's run over its farm's land, while it is on one.
+ */
+run: Run | null, };

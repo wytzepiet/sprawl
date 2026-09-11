@@ -276,36 +276,31 @@ pub fn makes(kind: BuildingKind, need: Need) -> bool {
 }
 
 /// What lands on a maker's shelf at once: a field's crop where the row
-/// has fields, else a shift's make, its hours at the row's rate in one
+/// is a farm's, else a shift's make, its hours at the row's rate in one
 /// lump as the tab is paid. A shelf with less room than this ships, or
 /// calls for pickup, before the load is lost to it (`calls::turn`), and
 /// offers no work meanwhile (`hiring`).
 pub fn lump(kind: BuildingKind) -> f64 {
-    if fields(kind) > 0 {
+    if farm(kind) {
         return crop(kind);
     }
     blueprint(kind).makes.map_or(0.0, |m| shift_hours(kind) * m.per_hour)
 }
 
-/// The fields a kind works. Zero for every row but a farm's. §12.8.
-pub fn fields(kind: BuildingKind) -> u32 {
-    blueprint(kind).fields
+/// Works land with a tractor. §12.8.
+pub fn farm(kind: BuildingKind) -> bool {
+    blueprint(kind).farm
 }
 
-/// What one of its fields grows in a day, ripe for the tractor: the
-/// row's day over its fields.
+/// What one tile of a farm's land grows in a cycle: the yard, a
+/// harvest, over the tiles a shift's ploughing makes a farm of. A farm
+/// on cramped ground has fewer, and makes less.
 pub fn crop(kind: BuildingKind) -> f64 {
-    blueprint(kind).stock as f64 / fields(kind) as f64
+    blueprint(kind).stock as f64 / crate::world::fields::capacity(kind)
 }
 
-/// A field is ripe when the clock says so: a day after its last harvest,
-/// and at once when first claimed. Nothing grows a number.
-pub fn ripe(field: &crate::protocol::Field, now: GameTime) -> bool {
-    now >= field.ripe
-}
-
-/// The tractor is home: a field's crop lands in the yard. The farm's
-/// own, so no line and no money. §12.8.
+/// The tractor cut a tile: its crop lands in the yard. The farm's own,
+/// so no line and no money. §12.8.
 pub fn harvested(world: &mut World, farm: EntityId, load: f64) {
     let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) else { return };
     if let Some(m) = blueprint(b.kind).makes
@@ -554,10 +549,10 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             }
             // A row that makes something fills its shelf at its rate;
             // what does not fit is lost, which is the full yard stopping
-            // the line (§4). A row with fields makes by the harvest: its
-            // hands drive the tractor (`calls::turn`).
+            // the line (§4). A farm makes by the harvest: its hands drive
+            // the tractor (`world/fields.rs`).
             if let Some(row) = blueprint(kind).makes
-                && fields(kind) == 0
+                && !farm(kind)
                 && let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object)
                 && let Some(stock) = b.stocks.get_mut(&row.good)
             {
@@ -1025,13 +1020,12 @@ mod tests {
 
     /// §12.7 and §12.8, the farm: its crates are a depot's shelf — it
     /// opens at the crate's price and floors at what the edge pays — but
-    /// a shift grows nothing in the yard, its fields do: a field is ripe
-    /// a day after its harvest, by the clock, and a harvest lands its
-    /// crop in the yard with no line and no money. A yard with no room
-    /// for a crop offers no work; a lorry from beyond the edge takes the
-    /// yard away at the crate's price less the crossing.
+    /// a shift grows nothing in the yard, its land does: a tile cut lands
+    /// its crop in the yard with no line and no money. A yard with no
+    /// room for a crop offers no work; a lorry from beyond the edge takes
+    /// the yard away at the crate's price less the crossing.
     #[test]
-    fn a_farm_grows_on_its_fields_and_sells_crates_like_a_depot() {
+    fn a_farm_grows_on_its_land_and_sells_crates_like_a_depot() {
         let mut world = town();
         world.place_on_street(at(4), House).unwrap();
         let farm = world.place_on_street(at(8), Farm).unwrap();
@@ -1039,7 +1033,8 @@ mod tests {
         world.treasury = 100.0;
         let hand = world.resident_ids().into_iter().find(|&id| resident(&world, id).work == Some(farm) && !world.edge.contains(&resident(&world, id).home)).expect("the farm hired next door");
         assert!(depot(Farm) && makes(Farm, Need::Eat) && sells(Farm).eq([Need::Eat]), "the farm is not a depot of crates");
-        assert_eq!((fields(Farm), fields(Office), crop(Farm)), (8, 0, 81.0));
+        assert!(super::farm(Farm) && !super::farm(Office));
+        assert!((crop(Farm) - 1944.0 / crate::world::fields::capacity(Farm)).abs() < 1e-9);
         assert_eq!(shelf(&world, farm, Need::Eat), crate::needs::Stock { level: 0.0, cap: rated(Farm, Need::Eat) }, "the yard is founded with a make, or is not a day's");
         assert_eq!(building(&world, farm).prices[&Need::Eat], wholesale(Need::Eat), "it opens at the crate's price");
         assert_eq!(unit_cost(Farm, Need::Eat), export(wholesale(Need::Eat)), "its floor is not what the edge pays");
@@ -1048,11 +1043,7 @@ mod tests {
         assert_eq!(shelf(&world, farm, Need::Eat).level, 0.0, "a shift grew crates in the yard");
         assert!(!buys(Farm, Need::Eat) && !buys(Office, Need::Services) && buys(Shop, Need::Eat) && buys(Warehouse, Need::Eat) && buys(Shop, Need::Services), "the rows buy the wrong things");
 
-        // A field ripens by the clock, and a harvest is no line.
-        let field = building(&world, farm).fields[0];
-        assert!(ripe(&field, 0), "a fresh field is not ripe");
-        let cut = crate::protocol::Field { at: field.at, ripe: DAY_MS as u64 + 10 };
-        assert!(!ripe(&cut, DAY_MS as u64 / 2) && ripe(&cut, DAY_MS as u64 + 10));
+        // A tile cut is a crop in the yard, and no line.
         harvested(&mut world, farm, crop(Farm));
         assert_eq!((shelf(&world, farm, Need::Eat).level, world.treasury, world.gdp), (crop(Farm), 100.0, 0.0), "the harvest moved money, or counted");
         assert!(world.books.get(&farm).is_none_or(|k| k.on(0).purchases == 0.0) && world.sales.is_empty(), "a harvest is a line");

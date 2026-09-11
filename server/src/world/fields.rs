@@ -1,143 +1,365 @@
-//! A farm's fields, and the track it lays to them. docs/economy.md §12.8.
+//! A farm's land, and the tractor's runs over it. docs/economy.md §12.8.
 //!
-//! When a street reaches a farm it lays a track: a street of its own, from
-//! the street tile at its plot's corner along its flank and on into open
-//! grass, and claims the grass on either side as its fields — tiles on the
-//! farm's own record, each with when its crop is ripe, and nothing else:
-//! a day after the tractor last took it, by the clock. The track
-//! dead-ends in the fields, so nothing routes over it whose destination is
-//! not on it: private by construction, and an ordinary junction where it
-//! meets the street. Forest, beach and anything already standing stop it,
-//! so where the farm goes is the decision; and a field is ordinary grass
-//! to the placer and the road brush, so building over one costs the farm
-//! that field and nothing else.
+//! When a street reaches a farm it claims the connected grass behind and
+//! beside its plot, bounded by roads, water, forest, beach and anything
+//! built: any shape the land allows. The land is what the first shift
+//! ploughs: the plough run sweeps the grass nearest the yard first, rows
+//! along the ground's long axis driven back and forth, and stops where the
+//! shift ends; what it ploughed is the farm, the rest is grass again. Each
+//! tile is then at a stage of one cycle — ploughed, sown, cut — and the
+//! tractor drives the whole field in one run a day, doing the job to each
+//! tile as it arrives: seeding starts the crop, harvesting lands a tile's
+//! crop in the yard, ploughing turns the stubble. Off the roads entirely:
+//! a run is a list of tiles and a pace, no route, no claims, no queue. A
+//! tile the mayor builds or roads over is dropped at the farm's next look,
+//! and the tractor's last path stays on the ground as its tyre marks.
 
-use crate::blueprint::{plot, FACINGS};
+use std::collections::{HashSet, VecDeque};
+
+use crate::blueprint::plot;
 use crate::economy;
+use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::protocol::{EntityId, Field, GameObject, GridCoord, TerrainType};
+use crate::protocol::{CarRole, EntityId, GameObject, GridCoord, Job, Run, Stage, Tile, DAY_MS};
 use crate::world::World;
 
-/// How far along its flank a track may run.
-const TRACK: i32 = 10;
+/// How long the tractor takes to cross a tile, working it: two and a
+/// half minutes of the game's clock, two seconds watched at full speed,
+/// so a shift's ploughing is a couple of hundred tiles.
+pub const PACE: GameTime = DAY_MS as GameTime / 600;
+/// Days in the cycle: a plough day, a seed day, a harvest day. The yard
+/// holds a harvest, which is this many days of the row's make.
+pub const CYCLE: u32 = 3;
+/// A crop sown by the end of a shift is ripe by the next morning.
+pub const RIPEN: GameTime = DAY_MS as GameTime / 2;
+/// The tiles a shift's ploughing makes a farm of, on open ground: the
+/// shift over the pace, less the ground driven between rows. What a
+/// farm's land comes to at capacity, and what its yard is divided by.
+pub fn capacity(kind: crate::protocol::BuildingKind) -> f64 {
+    (economy::shift_hours(kind) * economy::HOUR / PACE as f64 * 0.9).round()
+}
+
+/// The eight ways off a tile: straight first, then the diagonals.
+const AROUND: [(i32, i32); 8] = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)];
 
 impl World {
-    /// Open grass with nothing on it: what a track is laid over and a
-    /// field claimed from, and what a field stays while it is one.
-    fn is_grass(&self, t: GridCoord) -> bool {
-        self.is_buildable(t) && self.terrain.get(&(t.x, t.y)) == Some(&TerrainType::Grass)
+    /// Open grass with nothing on it: what a farm claims, and what a tile
+    /// of its land stays while it is one.
+    fn is_open(&self, t: GridCoord) -> bool {
+        self.is_buildable(t) && self.terrain.get(&(t.x, t.y)) == Some(&crate::protocol::TerrainType::Grass)
     }
 
-    /// Lay a farm's track and claim its fields, once it stands on a street.
-    /// Along whichever flank reaches the street and finds more grass; a
-    /// farm with no such flank has no fields, and shows it.
-    pub fn lay_fields(&mut self, farm: EntityId) {
+    /// A farm reached by a street claims its land: the grass connected to
+    /// its plot on every side but the street's, nearest by the walk
+    /// first, as much as a shift can plough, so a compact block round the
+    /// farm. Bounded by whatever is not open grass, so a road, a wood or
+    /// a beach is the edge of the farm, and a farm on cramped ground is a
+    /// smaller farm. The first shift's ploughing makes it a field.
+    pub fn claim_land(&mut self, farm: EntityId) {
         let Some(e) = self.objects.get(farm) else { return };
         let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return };
         let (kind, facing) = (b.kind, b.facing);
-        let wanted = economy::fields(kind) as usize;
-        if wanted == 0 || !b.fields.is_empty() {
+        let wanted = capacity(kind) as usize;
+        if !economy::farm(kind) || !b.land.is_empty() {
             return;
         }
         let p = plot(kind, facing);
-        let (fx, fy) = FACINGS[facing as usize % 4];
+        let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
         let (w, h) = (p.size.0 as i32, p.size.1 as i32);
-        // The plot's two corners on the street side, and the flank that
-        // leads away from each.
-        let corners: [(GridCoord, (i32, i32)); 2] = match (fx, fy) {
-            (0, -1) => [(GridCoord { x: pos.x, y: pos.y }, (-1, 0)), (GridCoord { x: pos.x + w - 1, y: pos.y }, (1, 0))],
-            (0, _) => [(GridCoord { x: pos.x, y: pos.y + h - 1 }, (-1, 0)), (GridCoord { x: pos.x + w - 1, y: pos.y + h - 1 }, (1, 0))],
-            (-1, _) => [(GridCoord { x: pos.x, y: pos.y }, (0, -1)), (GridCoord { x: pos.x, y: pos.y + h - 1 }, (0, 1))],
-            _ => [(GridCoord { x: pos.x + w - 1, y: pos.y }, (0, -1)), (GridCoord { x: pos.x + w - 1, y: pos.y + h - 1 }, (0, 1))],
-        };
-        let mut best: Option<(Vec<GridCoord>, Vec<GridCoord>)> = None;
-        for (corner, (sx, sy)) in corners {
-            // The street tile beside the corner, which the track leaves from.
-            let start = GridCoord { x: corner.x + sx + fx, y: corner.y + sy + fy };
-            if !self.road_node_at(start).is_some_and(|n| self.is_street(n)) {
+        // The tiles round the plot, less the street side.
+        let mut queue: VecDeque<GridCoord> = VecDeque::new();
+        let mut seen: HashSet<(i32, i32)> = HashSet::new();
+        for t in Self::footprint(pos, p.size) {
+            for (dx, dy) in AROUND[..4].iter() {
+                let n = GridCoord { x: t.x + dx, y: t.y + dy };
+                let inside = n.x >= pos.x && n.y >= pos.y && n.x < pos.x + w && n.y < pos.y + h;
+                let street_side = (dx * fx + dy * fy) > 0;
+                if !inside && !street_side && seen.insert((n.x, n.y)) {
+                    queue.push_back(n);
+                }
+            }
+        }
+        let mut land = Vec::new();
+        while let Some(t) = queue.pop_front() {
+            if land.len() >= wanted {
+                break;
+            }
+            if !self.is_open(t) {
                 continue;
             }
-            let mut track = vec![start];
-            let mut fields = Vec::new();
-            for i in 0..TRACK {
-                let t = GridCoord { x: corner.x + sx - fx * i, y: corner.y + sy - fy * i };
-                if !self.is_grass(t) || fields.len() >= wanted {
-                    break;
+            land.push(Tile { at: t, stage: Stage::Grass, since: 0 });
+            for (dx, dy) in AROUND[..4].iter() {
+                let n = GridCoord { x: t.x + dx, y: t.y + dy };
+                if seen.insert((n.x, n.y)) {
+                    queue.push_back(n);
                 }
-                track.push(t);
-                for side in [1, -1] {
-                    let f = GridCoord { x: t.x + sx * side, y: t.y + sy * side };
-                    if fields.len() < wanted && self.is_grass(f) && !fields.contains(&f) {
-                        fields.push(f);
-                    }
-                }
-            }
-            if !fields.is_empty() && best.as_ref().is_none_or(|(_, f)| fields.len() > f.len()) {
-                best = Some((track, fields));
             }
         }
-        let Some((track, fields)) = best else { return };
-        self.place_road_path(&track);
         if let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object) {
-            b.fields = fields.into_iter().map(|at| Field { at, ripe: 0 }).collect();
-            b.track = track;
+            b.land = land;
         }
     }
 
-    /// A field built over, or roaded over, is a field no more: the farm
-    /// keeps only the tiles still grass.
+    /// A tile built over, or roaded over, is land no more: the farm keeps
+    /// only the tiles still open.
     pub fn tend(&mut self, farm: EntityId) {
         let Some(GameObject::Building(b)) = self.objects.get(farm).map(|e| &e.object) else { return };
-        let kept: Vec<Field> = b.fields.iter().copied().filter(|f| self.is_grass(f.at)).collect();
-        if kept.len() != b.fields.len()
+        let kept: Vec<Tile> = b.land.iter().copied().filter(|t| self.is_open(t.at)).collect();
+        if kept.len() != b.land.len()
             && let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object)
         {
-            b.fields = kept;
+            b.land = kept;
         }
     }
 
-    /// The tractor stands at a track node: the ripe field beside it is
-    /// brought in, and starts again from now. Returns the crop.
-    pub fn harvest(&mut self, farm: EntityId, node: EntityId, now: GameTime) -> f64 {
-        let Some(at) = self.objects.get(node).and_then(|e| e.position) else { return 0.0 };
-        let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object) else { return 0.0 };
-        let crop = economy::crop(b.kind);
-        let ripe = b.fields.iter_mut().find(|f| (f.at.x - at.x).abs() + (f.at.y - at.y).abs() == 1 && economy::ripe(f, now));
-        match ripe {
-            Some(f) => {
-                f.ripe = now + crate::protocol::DAY_MS as GameTime;
-                crop
+    /// The tractor's next job, and the tiles that want it: the harvest,
+    /// once every sown tile is ripe and the yard has room for a crop;
+    /// else the plough, for grass and stubble; else the seed, for bare
+    /// ground. A batch is complete or it waits, so that one run takes it
+    /// all and the cycle keeps in step.
+    fn batch(&self, farm: EntityId, now: GameTime) -> Option<(Job, Vec<GridCoord>)> {
+        let Some(GameObject::Building(b)) = self.objects.get(farm).map(|e| &e.object) else { return None };
+        let tiles = |stage: Stage| -> Vec<GridCoord> { b.land.iter().filter(|t| t.stage == stage).map(|t| t.at).collect() };
+        let sown = tiles(Stage::Sown);
+        if !sown.is_empty() {
+            let ripe = b.land.iter().filter(|t| t.stage == Stage::Sown).all(|t| now >= t.since + RIPEN);
+            let room = b.stocks.get(&economy::shelf_need(b.kind)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind));
+            if ripe && room {
+                return Some((Job::Harvest, sown));
             }
-            None => 0.0,
+            if ripe {
+                return None;
+            }
         }
+        let rough: Vec<GridCoord> = b.land.iter().filter(|t| matches!(t.stage, Stage::Grass | Stage::Cut)).map(|t| t.at).collect();
+        if !rough.is_empty() {
+            return Some((Job::Plough, rough));
+        }
+        let bare = tiles(Stage::Ploughed);
+        if !bare.is_empty() && sown.is_empty() {
+            return Some((Job::Seed, bare));
+        }
+        None
     }
 
-    /// A farm goes, and its track with it: the tiles it laid, not the
-    /// street it left from.
-    pub fn take_up_track(&mut self, farm: EntityId) {
-        let Some(GameObject::Building(b)) = self.objects.get(farm).map(|e| &e.object) else { return };
-        let track: Vec<GridCoord> = b.track.iter().skip(1).copied().collect();
-        for t in track {
-            if let Some(node) = self.road_node_at(t) {
-                for edge in self.edges_involving(node) {
-                    self.remove_edge(edge.0, edge.1);
+    /// The farm's turn for its tractor: with a hand on shift, the tractor
+    /// in its yard, and a batch wanting a job, it sets out on a run.
+    pub fn farm_run(&mut self, events: &mut EventQueue, farm: EntityId, now: GameTime) {
+        self.tend(farm);
+        let Some(kind) = self.objects.get(farm).and_then(|e| match e.object {
+            GameObject::Building(ref b) => Some(b.kind),
+            _ => None,
+        }) else {
+            return;
+        };
+        let on_shift = crate::blueprint::blueprint(kind).taps.iter().any(|t| t.need == crate::needs::Need::Work && t.curve.integral(now, now + 1_000) > 0.0);
+        if !on_shift || !crate::calls::staffed(self, farm) {
+            return;
+        }
+        let Some(tractor) = self
+            .objects
+            .iter()
+            .find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == CarRole::Tractor && c.trip.is_none() && c.run.is_none() && c.away == 0))
+            .map(|e| e.id)
+        else {
+            return;
+        };
+        let Some((job, batch)) = self.batch(farm, now) else {
+            // A crop still ripening: the farm wakes when the last of it is.
+            if let Some(GameObject::Building(b)) = self.objects.get(farm).map(|e| &e.object)
+                && let Some(ripe) = b.land.iter().filter(|t| t.stage == Stage::Sown).map(|t| t.since + RIPEN).max()
+                && ripe > now
+            {
+                events.wake(ripe - now, farm);
+            }
+            return;
+        };
+        let Some(yard) = self.yard_gate(farm, &batch) else { return };
+        let Some(path) = self.sweep(farm, yard, &batch) else { return };
+        self.release_spot(tractor);
+        self.update_position(tractor, yard);
+        if let Some(GameObject::Car(c)) = self.objects.get_mut(tractor).map(|e| &mut e.object) {
+            c.spot = None;
+            c.run = Some(Run { job, path, started: now, pace: PACE, next: 0 });
+        }
+        events.wake(PACE, tractor);
+    }
+
+    /// The tiles the tractor may drive: the farm's land and its yard,
+    /// never the barn.
+    fn drivable(&self, farm: EntityId) -> HashSet<(i32, i32)> {
+        let mut ground: HashSet<(i32, i32)> = self.yard_tiles(farm).into_iter().map(|t| (t.x, t.y)).collect();
+        if let Some(GameObject::Building(b)) = self.objects.get(farm).map(|e| &e.object) {
+            ground.extend(b.land.iter().map(|t| (t.at.x, t.at.y)));
+        }
+        ground
+    }
+
+    /// The farm's yard: its plot less the barn.
+    fn yard_tiles(&self, farm: EntityId) -> Vec<GridCoord> {
+        let Some(e) = self.objects.get(farm) else { return Vec::new() };
+        let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return Vec::new() };
+        let p = plot(b.kind, b.facing);
+        let ((bx, by), (bw, bh)) = p.building;
+        let barn = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
+        Self::footprint(pos, p.size).filter(|t| !(t.x >= barn.x && t.y >= barn.y && t.x < barn.x + bw as i32 && t.y < barn.y + bh as i32)).collect()
+    }
+
+    /// Where a run leaves the yard and comes back to it: the yard tile
+    /// nearest the batch.
+    fn yard_gate(&self, farm: EntityId, batch: &[GridCoord]) -> Option<GridCoord> {
+        self.yard_tiles(farm).into_iter().min_by_key(|&y| batch.iter().map(|&t| dist(y, t)).min().unwrap_or(i32::MAX))
+    }
+
+    /// A run over a batch of tiles with the fewest turns: rows along the
+    /// batch's long axis, driven alternately each way so that a change of
+    /// row is two gentle turns over a diagonal step and never a hairpin,
+    /// the rows nearest the yard first so that a run cut short stays near
+    /// the farm; and between one tile and the next, if they do not touch,
+    /// the shortest way over the farm's own ground, diagonals allowed.
+    /// From the yard, and back to it.
+    fn sweep(&self, farm: EntityId, yard: GridCoord, batch: &[GridCoord]) -> Option<Vec<GridCoord>> {
+        if batch.is_empty() {
+            return None;
+        }
+        let (xs, ys): (Vec<i32>, Vec<i32>) = batch.iter().map(|t| (t.x, t.y)).unzip();
+        let (x0, x1, y0, y1) = (*xs.iter().min()?, *xs.iter().max()?, *ys.iter().min()?, *ys.iter().max()?);
+        // Rows across the short axis, each swept along the long one.
+        let along_x = x1 - x0 >= y1 - y0;
+        let mut rows: Vec<Vec<GridCoord>> = Vec::new();
+        let (r0, r1) = if along_x { (y0, y1) } else { (x0, x1) };
+        for r in r0..=r1 {
+            let mut row: Vec<GridCoord> = batch.iter().copied().filter(|t| if along_x { t.y == r } else { t.x == r }).collect();
+            if row.is_empty() {
+                continue;
+            }
+            row.sort_by_key(|t| if along_x { t.x } else { t.y });
+            rows.push(row);
+        }
+        rows.sort_by_key(|row| if along_x { (row[0].y - yard.y).abs() } else { (row[0].x - yard.x).abs() });
+        let ground = self.drivable(farm);
+        let mut path = vec![yard];
+        let mut at = yard;
+        for row in rows.iter_mut() {
+            // Enter the row at whichever end is nearer.
+            let (first, last) = (row[0], row[row.len() - 1]);
+            if dist(at, last) < dist(at, first) {
+                row.reverse();
+            }
+            for &t in row.iter() {
+                let leg = self.over(&ground, at, t)?;
+                path.extend(leg.into_iter().skip(1));
+                at = t;
+            }
+        }
+        let home = self.over(&ground, at, yard)?;
+        path.extend(home.into_iter().skip(1));
+        Some(path)
+    }
+
+    /// The shortest drive from one tile to another over the given ground,
+    /// eight ways, both ends included. Two tiles that touch are one step.
+    fn over(&self, ground: &HashSet<(i32, i32)>, from: GridCoord, to: GridCoord) -> Option<Vec<GridCoord>> {
+        if dist(from, to) <= 1 {
+            return Some(vec![from, to]);
+        }
+        let mut came: std::collections::HashMap<(i32, i32), (i32, i32)> = std::collections::HashMap::new();
+        let mut queue = VecDeque::from([(from.x, from.y)]);
+        came.insert((from.x, from.y), (from.x, from.y));
+        while let Some((x, y)) = queue.pop_front() {
+            if (x, y) == (to.x, to.y) {
+                let mut way = vec![to];
+                let mut cur = (x, y);
+                while cur != (from.x, from.y) {
+                    cur = came[&cur];
+                    way.push(GridCoord { x: cur.0, y: cur.1 });
                 }
-                self.demolish_node(node);
+                way.reverse();
+                return Some(way);
+            }
+            for (dx, dy) in AROUND {
+                let n = (x + dx, y + dy);
+                if (ground.contains(&n) || n == (to.x, to.y)) && !came.contains_key(&n) {
+                    came.insert(n, (x, y));
+                    queue.push_back(n);
+                }
             }
         }
+        None
     }
+
+    /// The tractor arrives at the next tile of its run and does its job to
+    /// it: the plough turns grass or stubble to bare ground, the seed
+    /// starts a crop, the harvest lands a crop in the yard and leaves
+    /// stubble — or, with no room left in the yard, leaves the crop
+    /// standing. At the end of the run it is home, its path is the tyre
+    /// marks, and the farm takes its turn for the next run.
+    pub fn tractor_step(&mut self, events: &mut EventQueue, tractor: EntityId, now: GameTime) {
+        let Some(GameObject::Car(c)) = self.objects.get(tractor).map(|e| &e.object) else { return };
+        let (farm, Some(run)) = (c.owner, c.run.clone()) else { return };
+        let Some(&here) = run.path.get(run.next) else { return };
+        self.update_position(tractor, here);
+        let crop = self.objects.get(farm).and_then(|e| match e.object {
+            GameObject::Building(ref b) => Some(economy::crop(b.kind)),
+            _ => None,
+        });
+        let mut cut = 0.0;
+        if let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object)
+            && let Some(tile) = b.land.iter_mut().find(|t| t.at == here)
+        {
+            match (run.job, tile.stage) {
+                (Job::Plough, Stage::Grass | Stage::Cut) => (tile.stage, tile.since) = (Stage::Ploughed, now),
+                (Job::Seed, Stage::Ploughed) => (tile.stage, tile.since) = (Stage::Sown, now),
+                (Job::Harvest, Stage::Sown) => {
+                    let room = b.stocks.get(&economy::shelf_need(b.kind)).is_some_and(|s| s.short() + 1e-6 >= crop.unwrap_or(0.0));
+                    if room {
+                        (tile.stage, tile.since) = (Stage::Cut, now);
+                        cut = crop.unwrap_or(0.0);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if cut > 0.0 {
+            economy::harvested(self, farm, cut);
+        }
+        let last = run.next + 1 >= run.path.len();
+        if let Some(GameObject::Car(c)) = self.objects.get_mut(tractor).map(|e| &mut e.object) {
+            if last {
+                c.run = None;
+            } else if let Some(r) = c.run.as_mut() {
+                r.next += 1;
+            }
+        }
+        if !last {
+            events.wake(PACE, tractor);
+            return;
+        }
+        if let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object) {
+            b.ruts = run.path;
+        }
+        self.park_in_lot(farm, tractor, now);
+        economy::refilled(self, tractor, now);
+        crate::calls::turn(self, events, farm, now);
+    }
+}
+
+/// Steps between two tiles, eight ways: the longer of the two distances.
+fn dist(a: GridCoord, b: GridCoord) -> i32 {
+    (a.x - b.x).abs().max((a.y - b.y).abs())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::BuildingKind;
+    use crate::needs::Need;
+    use crate::protocol::{BuildingKind, TerrainType};
 
     /// Grass either side of a street along y = 0, deep enough for a farm
-    /// and its track.
+    /// and its land.
     fn land() -> World {
         let mut world = World::new();
-        for y in -12..12 {
+        for y in -12..14 {
             for x in -4..60 {
                 world.terrain.insert((x, y), TerrainType::Grass);
             }
@@ -146,86 +368,214 @@ mod tests {
         world
     }
 
-    fn farm_at(world: &mut World, x: i32) -> (EntityId, Vec<Field>) {
+    fn farm_at(world: &mut World, x: i32) -> (EntityId, Vec<Tile>) {
         let farm = world.place_on_street(GridCoord { x, y: 1 }, BuildingKind::Farm).unwrap();
-        let fields = match world.objects.get(farm).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.fields.clone(),
-            _ => unreachable!(),
-        };
-        (farm, fields)
+        (farm, tiles(world, farm))
     }
 
-    /// §12.8: a farm reached by a street lays a track from the street
-    /// along its flank and claims eight fields of grass beside it, each
-    /// touching the track, which is joined to the street; laid free, and
-    /// again does nothing.
-    #[test]
-    fn a_farm_lays_a_track_and_claims_its_fields() {
-        let mut world = land();
-        let (farm, fields) = farm_at(&mut world, 10);
-        assert_eq!(fields.len(), economy::fields(BuildingKind::Farm) as usize, "the farm claimed {} fields", fields.len());
-        let door = world.road_node_for_building(farm).unwrap();
-        for f in &fields {
-            assert!(world.is_grass(f.at), "a field is not grass");
-            let node = crate::calls::beside(&world, f.at).expect("a field touches no track");
-            assert!(world.network.connected(door, node), "a field cannot be reached from the farm");
-        }
-        assert_eq!(world.laid, 0, "the track counted against the build");
-        world.lay_fields(farm);
-        assert_eq!(farm_at_fields(&world, farm).len(), fields.len(), "laid twice");
-        // The track goes with the farm; the street stays.
-        let track = match world.objects.get(farm).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.track.clone(),
-            _ => unreachable!(),
-        };
-        assert!(track.len() > 2 && world.road_node_at(track[0]).is_some());
-        world.remove_building(farm);
-        assert!(world.road_node_at(track[0]).is_some() && track[1..].iter().all(|&t| world.road_node_at(t).is_none()), "the track was left behind");
-    }
-
-    fn farm_at_fields(world: &World, farm: EntityId) -> Vec<Field> {
+    fn tiles(world: &World, farm: EntityId) -> Vec<Tile> {
         match world.objects.get(farm).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.fields.clone(),
+            Some(GameObject::Building(b)) => b.land.clone(),
             _ => Vec::new(),
         }
     }
 
-    /// Forest and beach are not farmland: a farm standing in either, with
-    /// no grass along its flanks, claims nothing and shows it.
-    #[test]
-    fn forest_and_beach_are_not_fields() {
-        let mut world = land();
-        for y in -12..12 {
-            for x in -4..30 {
-                world.terrain.insert((x, y), TerrainType::Forest);
-            }
-            for x in 30..60 {
-                world.terrain.insert((x, y), TerrainType::Beach);
-            }
-        }
-        let (_, woods) = farm_at(&mut world, 10);
-        let (_, sands) = farm_at(&mut world, 40);
-        assert!(woods.is_empty() && sands.is_empty(), "fields were claimed from forest or beach");
+    fn tractor(world: &World, farm: EntityId) -> EntityId {
+        world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm)).map(|e| e.id).expect("a tractor in the yard")
     }
 
-    /// A field is ordinary grass to the mayor: build on it and the farm
-    /// keeps the rest. A field is ripe a day after its harvest.
+    fn run_of(world: &World, tractor: EntityId) -> Option<Run> {
+        match world.objects.get(tractor).map(|e| &e.object) {
+            Some(GameObject::Car(c)) => c.run.clone(),
+            _ => None,
+        }
+    }
+
+    /// Drive a run to its end, one tile at a time.
+    fn drive(world: &mut World, events: &mut EventQueue, tractor: EntityId, mut now: GameTime) -> GameTime {
+        while run_of(world, tractor).is_some() {
+            now += PACE;
+            world.tractor_step(events, tractor, now);
+        }
+        now
+    }
+
+    /// §12.8: a farm reached by a street claims its row's land, the grass
+    /// connected to its plot on every side but the street's, all of it
+    /// grass and none of it on the street; a road through the land is
+    /// its edge, and a farm in the woods claims nothing.
     #[test]
-    fn a_field_built_over_is_a_field_no_more() {
+    fn a_farm_claims_the_grass_behind_it() {
         let mut world = land();
-        let (farm, fields) = farm_at(&mut world, 10);
-        let lost = fields[0].at;
-        assert!(world.place_building(lost, BuildingKind::House, 2).is_some(), "a field could not be built on");
+        let (farm, tiles) = farm_at(&mut world, 10);
+        assert_eq!(tiles.len(), capacity(BuildingKind::Farm) as usize, "the farm claimed {} tiles", tiles.len());
+        assert!(tiles.iter().all(|t| t.at.x.abs_diff(10) < 20), "the land is not round the farm");
+        assert!(tiles.iter().all(|t| t.stage == Stage::Grass && world.is_open(t.at)));
+        assert!(tiles.iter().all(|t| t.at.y >= 1), "land was claimed across the street: {:?}", tiles.iter().filter(|t| t.at.y < 1).map(|t| t.at).collect::<Vec<_>>());
+        assert_eq!(world.laid, 0);
+        // Bounded: a road four tiles behind the plot walls the land in.
+        let mut walled = land();
+        walled.place_road_path(&(-4..60).map(|x| GridCoord { x, y: 6 }).collect::<Vec<_>>());
+        let (_, tiles) = farm_at(&mut walled, 10);
+        assert!(!tiles.is_empty() && tiles.iter().all(|t| t.at.y < 6), "the land crossed the road");
+        // Nothing to claim in a wood.
+        let mut woods = land();
+        for y in -12..14 {
+            for x in -4..60 {
+                woods.terrain.insert((x, y), TerrainType::Forest);
+            }
+        }
+        let (_, tiles) = farm_at(&mut woods, 10);
+        assert!(tiles.is_empty(), "fields were claimed from forest");
+    }
+
+    /// The sweep, drawn: the plough's path over three shapes of ground —
+    /// an open block behind the farm, land on both flanks, and a field
+    /// with a house in it — printed as a grid so it can be looked at.
+    /// `cargo test draw_the_sweep -- --nocapture`. Asserted: every step a
+    /// neighbour of the last, nothing driven through the barn or the
+    /// house, and few turns.
+    #[test]
+    fn draw_the_sweep() {
+        for (name, shape) in [("open block", 0), ("both flanks", 1), ("a house in the field", 2)] {
+            let mut world = World::new();
+            for y in -4..16 {
+                for x in -4..40 {
+                    world.terrain.insert((x, y), TerrainType::Grass);
+                }
+            }
+            world.place_road_path(&(-2..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+            if shape == 0 {
+                // Walls of forest on the flanks: land only behind.
+                for y in 1..16 {
+                    for x in [-4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 22, 23, 24, 25, 26, 27, 28, 29, 30] {
+                        world.terrain.insert((x, y), TerrainType::Forest);
+                    }
+                }
+            }
+            if shape == 2 {
+                world.place_building(GridCoord { x: 17, y: 8 }, BuildingKind::House, 2);
+            }
+            let farm = world.place_on_street(GridCoord { x: 14, y: 1 }, BuildingKind::Farm).unwrap();
+            let batch: Vec<GridCoord> = tiles(&world, farm).iter().map(|t| t.at).collect();
+            let gate = world.yard_gate(farm, &batch).unwrap();
+            let path = world.sweep(farm, gate, &batch).expect("a sweep");
+            let steps = 130usize.min(path.len());
+            let mut grid: Vec<Vec<char>> = (0..20).map(|_| vec!['.'; 44]).collect();
+            for t in &batch {
+                grid[(t.y + 4) as usize][(t.x + 4) as usize] = ',';
+            }
+            for (i, t) in path.iter().enumerate().take(steps) {
+                let c = if i == 0 { 'Y' } else { char::from_digit((i % 36) as u32, 36).unwrap() };
+                grid[(t.y + 4) as usize][(t.x + 4) as usize] = c;
+            }
+            for t in World::footprint(GridCoord { x: 14, y: 1 }, (3, 4)) {
+                if !world.yard_tiles(farm).contains(&t) {
+                    grid[(t.y + 4) as usize][(t.x + 4) as usize] = '#';
+                }
+            }
+            if shape == 2 {
+                grid[12][21] = 'H';
+            }
+            println!("{name}: {} tiles, {} steps (first {steps} drawn, 0-9a-z then round again)", batch.len(), path.len());
+            for row in grid.iter().skip(4) {
+                println!("  {}", row.iter().collect::<String>());
+            }
+            assert!(path.windows(2).all(|w| dist(w[0], w[1]) == 1), "{name}: a step is not to a neighbour");
+            let ground = world.drivable(farm);
+            assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "{name}: the tractor left the farm's ground");
+            let turns = path.windows(3).filter(|w| (w[1].x - w[0].x, w[1].y - w[0].y) != (w[2].x - w[1].x, w[2].y - w[1].y)).count();
+            println!("  {turns} turns over {} steps", path.len());
+        }
+    }
+
+    /// A tile is ordinary grass to the mayor: build on it and the farm
+    /// keeps the rest.
+    #[test]
+    fn a_tile_built_over_is_land_no_more() {
+        let mut world = land();
+        let (farm, tiles) = farm_at(&mut world, 10);
+        let lost = tiles[tiles.len() - 1].at;
+        assert!(world.place_building(lost, BuildingKind::House, 2).is_some(), "a tile could not be built on");
         world.tend(farm);
-        let kept = farm_at_fields(&world, farm);
-        assert_eq!(kept.len(), fields.len() - 1);
-        assert!(kept.iter().all(|f| f.at != lost));
-        // Harvest the first: its crop is the row's, and it is not ripe again
-        // until tomorrow.
-        let node = crate::calls::beside(&world, kept[0].at).unwrap();
-        let day = crate::protocol::DAY_MS as u64;
-        assert_eq!(world.harvest(farm, node, 5 * day), economy::crop(BuildingKind::Farm));
-        assert_eq!(world.harvest(farm, node, 5 * day + 1000), 0.0, "harvested twice");
-        assert_eq!(world.harvest(farm, node, 6 * day), economy::crop(BuildingKind::Farm), "not ripe a day on");
+        let kept = self::tiles(&world, farm);
+        assert_eq!(kept.len(), tiles.len() - 1);
+        assert!(kept.iter().all(|t| t.at != lost));
+    }
+
+    /// The cycle: the tractor ploughs every tile in one run, seeds them in
+    /// the next, and a day on harvests them, each tile's crop landing in
+    /// the yard as it is cut; the run goes from the yard over the farm's
+    /// own ground and back, every step a neighbour of the last, and its
+    /// path is the tyre marks. A yard with no room leaves the crop
+    /// standing.
+    #[test]
+    fn the_tractor_ploughs_seeds_and_harvests_in_runs() {
+        let mut world = land();
+        let (farm, tiles) = farm_at(&mut world, 10);
+        let mut events = EventQueue::new();
+        let tractor = tractor(&world, farm);
+        let yard = |world: &World| match world.objects.get(farm).unwrap().object {
+            GameObject::Building(ref b) => b.stocks[&Need::Eat].level,
+            _ => unreachable!(),
+        };
+        let stages = |world: &World| -> Vec<Stage> { self::tiles(world, farm).iter().map(|t| t.stage).collect() };
+        // Nobody on shift: no run.
+        world.farm_run(&mut events, farm, 0);
+        assert!(run_of(&world, tractor).is_none(), "the tractor went out with nobody to drive it");
+        // The plough.
+        let now = 1_000;
+        let (job, batch) = world.batch(farm, now).expect("a job");
+        assert_eq!((job, batch.len()), (Job::Plough, tiles.len()));
+        let pos = world.yard_gate(farm, &batch).unwrap();
+        let path = world.sweep(farm, pos, &batch).expect("a sweep");
+        assert_eq!((path[0], *path.last().unwrap()), (pos, pos), "the run does not start and end at the yard");
+        assert!(path.windows(2).all(|w| dist(w[0], w[1]) == 1), "a step of the run is not to a neighbour");
+        assert!(batch.iter().all(|t| path.contains(t)), "the sweep missed a tile");
+        let ground = world.drivable(farm);
+        assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "the tractor left the farm's ground");
+        // Turns: a sweep of a block is about one turn a row.
+        let turns = path.windows(3).filter(|w| (w[1].x - w[0].x, w[1].y - w[0].y) != (w[2].x - w[1].x, w[2].y - w[1].y)).count();
+        assert!(turns * 3 < path.len(), "{turns} turns over {} steps", path.len());
+        if let Some(GameObject::Car(c)) = world.objects.get_mut(tractor).map(|e| &mut e.object) {
+            c.run = Some(Run { job, path: path.clone(), started: now, pace: PACE, next: 0 });
+        }
+        let now = drive(&mut world, &mut events, tractor, now);
+        assert!(stages(&world).iter().all(|&s| s == Stage::Ploughed), "not every tile was ploughed");
+        assert_eq!(match world.objects.get(farm).unwrap().object { GameObject::Building(ref b) => b.ruts.clone(), _ => unreachable!() }, path, "the tyre marks are not the run");
+        // The seed, then nothing until the crop is ripe.
+        let (job, batch) = world.batch(farm, now).expect("a job");
+        assert_eq!((job, batch.len()), (Job::Seed, tiles.len()));
+        let path = world.sweep(farm, pos, &batch).unwrap();
+        if let Some(GameObject::Car(c)) = world.objects.get_mut(tractor).map(|e| &mut e.object) {
+            c.run = Some(Run { job, path, started: now, pace: PACE, next: 0 });
+        }
+        let sown_at = now;
+        let now = drive(&mut world, &mut events, tractor, now);
+        assert!(stages(&world).iter().all(|&s| s == Stage::Sown));
+        assert!(world.batch(farm, now).is_none(), "a job before the crop is ripe");
+        assert!(world.batch(farm, sown_at + DAY_MS as u64 / 2).is_none());
+        // The harvest, a day on: every tile's crop in the yard.
+        let now = sown_at + DAY_MS as u64 + PACE * 200;
+        let (job, batch) = world.batch(farm, now).expect("a harvest");
+        assert_eq!((job, batch.len()), (Job::Harvest, tiles.len()));
+        let path = world.sweep(farm, pos, &batch).unwrap();
+        if let Some(GameObject::Car(c)) = world.objects.get_mut(tractor).map(|e| &mut e.object) {
+            c.run = Some(Run { job, path, started: now, pace: PACE, next: 0 });
+        }
+        let now = drive(&mut world, &mut events, tractor, now);
+        assert!(stages(&world).iter().all(|&s| s == Stage::Cut));
+        assert!((yard(&world) - tiles.len() as f64 * economy::crop(BuildingKind::Farm)).abs() < 1e-9, "the yard holds {}", yard(&world));
+        // Round again: plough the stubble. And a full yard leaves the
+        // crop standing.
+        assert_eq!(world.batch(farm, now).map(|b| b.0), Some(Job::Plough));
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
+            for t in b.land.iter_mut() {
+                (t.stage, t.since) = (Stage::Sown, 0);
+            }
+            let s = b.stocks.get_mut(&Need::Eat).unwrap();
+            s.level = s.cap;
+        }
+        assert!(world.batch(farm, now).is_none(), "a harvest with no room in the yard");
     }
 }

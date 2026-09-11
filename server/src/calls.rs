@@ -9,8 +9,8 @@
 //! price in hours of its own earning plus the drive. A depot's own shelf
 //! running low sends its own lorry to fetch: to the cheapest source it
 //! can reach, a maker's yard in town or the world beyond the edge, and
-//! back with the load; a farm's tractor fetches its ripe fields the same
-//! way, at no price (§12.8). A maker's shelf running full sends its car
+//! back with the load. A farm's tractor is no call at all: it runs over
+//! the farm's own land (`world/fields.rs`). A maker's shelf running full sends its car
 //! out with the load, since what nobody in town buys the edge buys
 //! (§8.1), or, with no lorry of its own, calls for one from beyond the
 //! edge to come and take it. A vehicle drives to the caller, spends the
@@ -26,7 +26,7 @@ use crate::economy;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::needs::Need;
-use crate::protocol::{Car, CarRole, EntityId, GameObject, GridCoord, DAY_MS};
+use crate::protocol::{Car, CarRole, EntityId, GameObject, DAY_MS};
 use crate::world::pathfinding::Routes;
 use crate::world::World;
 
@@ -39,9 +39,8 @@ pub enum CallKind {
     /// or one from beyond the edge.
     Stock,
     /// The building's own vehicle out for its input and back with it: a
-    /// depot's lorry to a maker's yard or beyond the edge, a farm's
-    /// tractor to a ripe field. `from` says where it went; `None` is
-    /// beyond the edge.
+    /// depot's lorry to a maker's yard or beyond the edge. `from` says
+    /// where it went; `None` is beyond the edge.
     Fetch,
     /// A maker's own vehicle out past the edge with a load nobody in
     /// town bought, and back paid.
@@ -95,33 +94,10 @@ fn van(good: Need) -> CarRole {
     if good == Need::Services { CarRole::Company } else { CarRole::Van }
 }
 
-/// Which of a kind's own vehicles fetches its input: the tractor where
-/// it keeps one, else the lorry.
-fn fetcher(kind: crate::protocol::BuildingKind) -> CarRole {
-    if blueprint(kind).vehicles.contains(&CarRole::Tractor) { CarRole::Tractor } else { CarRole::Truck }
-}
-
 /// A hand on shift at the building: a tractor goes only with someone to
 /// drive it.
-fn staffed(world: &World, building: EntityId) -> bool {
+pub fn staffed(world: &World, building: EntityId) -> bool {
     world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at == Some(building) && r.selected == Some(Need::Work)))
-}
-
-/// Where a farm's tractor stops for a field: the track beside it, or any
-/// road the field touches.
-pub fn beside(world: &World, at: GridCoord) -> Option<EntityId> {
-    [(0, -1), (1, 0), (0, 1), (-1, 0)].into_iter().find_map(|(dx, dy)| world.road_node_at(GridCoord { x: at.x + dx, y: at.y + dy }))
-}
-
-/// A farm's ripe fields, as the road nodes beside them. A field built
-/// over since the last look is dropped first (`World::tend`).
-fn ripe_fields(world: &mut World, farm: EntityId, now: GameTime) -> Vec<EntityId> {
-    world.tend(farm);
-    let Some(GameObject::Building(b)) = world.objects.get(farm).map(|e| &e.object) else { return Vec::new() };
-    let mut nodes: Vec<EntityId> = b.fields.iter().filter(|f| economy::ripe(f, now)).filter_map(|f| beside(world, f.at)).collect();
-    nodes.sort_unstable();
-    nodes.dedup();
-    nodes
 }
 
 /// A stock changed, or time passed: the building takes its turn. Time
@@ -144,9 +120,11 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
     {
         if shelf.short() < economy::lump(kind) {
             call(if blueprint(kind).vehicles.contains(&lorry(make.good)) { CallKind::Ship } else { CallKind::Pickup }, make.good);
-        } else if economy::fields(kind) > 0 && staffed(world, building) && !ripe_fields(world, building, now).is_empty() {
-            call(CallKind::Fetch, make.good);
         }
+    }
+    // A farm's tractor sets out on a run, with a hand to drive it.
+    if economy::farm(kind) {
+        world.farm_run(events, building, now);
     }
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
     for (&good, stock) in &b.stocks {
@@ -203,8 +181,8 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
         if world.road_node_for_building(at).is_none() {
             continue;
         }
-        let Some((here, order, bk)) = world.objects.get(at).and_then(|e| match e.object {
-            GameObject::Building(ref b) => Some((e.position?, b.stocks.get(&good)?.short(), b.kind)),
+        let Some((here, order)) = world.objects.get(at).and_then(|e| match e.object {
+            GameObject::Building(ref b) => Some((e.position?, b.stocks.get(&good)?.short())),
             _ => None,
         }) else {
             continue
@@ -221,14 +199,10 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             // The building's own vehicle goes for its input: to a source
             // in town, or out past the edge if the town can pay for what
             // it brings back (docs/economy.md §9).
-            CallKind::Fetch => free_vehicle(world, at, fetcher(bk)).and_then(|(car, door)| match cheapest_source(world, at, good, now)? {
+            CallKind::Fetch => free_vehicle(world, at, lorry(good)).and_then(|(car, door)| match cheapest_source(world, at, good, now)? {
                 Source::Edge(exit) => crate::car::spawn::leave_for_edge(world, events, car, door, exit, now).then_some(car),
                 Source::Seller(seller) => crate::car::spawn::start_trip(world, events, car, door, seller, now, GameTime::MAX).then(|| {
                     world.calls[i].from = Some(seller);
-                    car
-                }),
-                Source::Field(node) => crate::car::spawn::drive_to(world, events, car, door, node, now).then(|| {
-                    world.calls[i].from = Some(node);
                     car
                 }),
             }),
@@ -273,8 +247,6 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
 enum Source {
     /// A seller in town: a maker's yard.
     Seller(EntityId),
-    /// A farm's own ripe field: the road node beside it.
-    Field(EntityId),
     /// Beyond the edge, by the road that leaves it.
     Edge(EntityId),
 }
@@ -282,25 +254,17 @@ enum Source {
 /// Where a building's own vehicle fetches its input from: the cheapest
 /// landed, which is the load at the posted price in hours of the
 /// building's own earning, plus the drive there and back and the wait at
-/// the far end. A farm fetches its own ripe fields, at no price, so the
-/// nearest; anything else fetches from a maker's yard in town with the
-/// good on it, or from beyond the edge while the town can pay. A row
-/// never fetches what it makes from anyone else. `None` where nothing
-/// can be reached.
+/// the far end — a maker's yard in town with the good on it, or beyond
+/// the edge while the town can pay. `None` where nothing can be reached.
 fn cheapest_source(world: &mut World, at: EntityId, good: Need, now: GameTime) -> Option<Source> {
-    let (order, here, kind) = match world.objects.get(at) {
+    let (order, here) = match world.objects.get(at) {
         Some(e) => match e.object {
-            GameObject::Building(ref b) => (b.stocks.get(&good)?.short(), e.position?, b.kind),
+            GameObject::Building(ref b) => (b.stocks.get(&good)?.short(), e.position?),
             _ => return None,
         },
         None => return None,
     };
     let door = world.road_node_for_building(at)?;
-    if economy::fields(kind) > 0 {
-        let fields = ripe_fields(world, at, now);
-        let mut routes = Routes::from(world, door);
-        return fields.into_iter().filter_map(|node| Some((routes.cost_to(node)?, node))).min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, node)| Source::Field(node));
-    }
     let mut makers: Vec<EntityId> = world
         .objects
         .iter()
@@ -434,13 +398,18 @@ fn fleet_of(world: &World, facility: EntityId) -> Vec<EntityId> {
 /// in its yard with nothing to do is filled and put right there
 /// (`economy::refilled`).
 pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: GameTime) {
-    let (owner, away, here) = match world.objects.get(car) {
+    let (owner, away, here, run) = match world.objects.get(car) {
         Some(e) => match e.object {
-            GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none() => (c.owner, c.away, e.position),
+            GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none() => (c.owner, c.away, e.position, c.run.is_some()),
             _ => return,
         },
         None => return,
     };
+    // A tractor on its run is at the next tile.
+    if run {
+        world.tractor_step(events, car, now);
+        return;
+    }
     // Home with nothing to do: filled and put right in the yard, at the
     // building's cost.
     let Some(i) = world.calls.iter().position(|c| c.answered_by == Some(car)) else {
@@ -487,10 +456,6 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
                 (Some(door), Some(exit)) => crate::car::spawn::leave_for_edge(world, events, car, door, exit, now),
                 _ => false,
             }
-        } else if let Some(node) = call.from.filter(|&s| matches!(world.objects.get(s).map(|e| &e.object), Some(GameObject::RoadNode(_)))) {
-            // At a field: its crop is the load, and the field starts again.
-            world.calls[i].load = world.harvest(call.at, node, now);
-            crate::car::spawn::start_trip(world, events, car, node, owner, now, GameTime::MAX)
         } else {
             let seller = call.from.unwrap();
             let order = match world.objects.get(call.at).map(|e| &e.object) {
@@ -520,7 +485,6 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         // without limit.
         CallKind::Ship => economy::exported(world, call.at, call.good, call.load, now),
         CallKind::Fetch => match call.from {
-            Some(from) if matches!(world.objects.get(from).map(|e| &e.object), Some(GameObject::RoadNode(_))) => economy::harvested(world, call.at, call.load),
             Some(seller) => economy::delivered(world, call.at, Some(seller), call.good, call.load, now),
             None => economy::delivered(world, call.at, None, call.good, f64::INFINITY, now),
         },

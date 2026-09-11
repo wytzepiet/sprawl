@@ -117,7 +117,7 @@ export function mountCar(
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,
   // and the car is out of sight until it moves.
-  if (!car.trip) {
+  if (!car.trip && !car.run) {
     if (!car.spot) return () => {};
     const { at, heading } = car.spot;
     const instanceId = pool.addInstance(bucket, [at[0], at[1], van ? GROUND + 0.11 : CAR_Z], [0, 0, heading - Math.PI / 2]);
@@ -129,7 +129,7 @@ export function mountCar(
       parts.delete(entry.id);
     };
   }
-  const f = follow(car);
+  const f = car.run ? followRun(car) : follow(car);
   if (!f) return () => {};
   const initial = f.now();
   const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
@@ -319,6 +319,33 @@ function follow(car: Car): Follower | null {
       if (dt > tStop) dt = tStop;
     }
     return at(data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt);
+  };
+  return { now, at, length };
+}
+
+/** A tractor on its run: tile to tile over the land, a tile every `pace`
+ *  milliseconds from `started`, no lane and no corner rounding, the nose
+ *  pointing at the next tile. */
+function followRun(car: Car): Follower | null {
+  const run = car.run!;
+  const pts = run.path.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0));
+  if (pts.length < 2) return null;
+  const path = new Path3D(pts);
+  const distances = path.getDistances();
+  const length = distances[distances.length - 1];
+  const at = (dist: number): Fix => {
+    const normalized = Math.min(Math.max(0, dist / length), 1);
+    const p = path.getPointAt(normalized);
+    const tangent = path.getTangentAt(normalized);
+    return { pos: [p.x, p.y, CAR_Z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2], dist: normalized * length };
+  };
+  const now = (): Fix => {
+    // Steps done so far, and how far into the current one.
+    const t = Math.max(0, simNow() - run.started) / run.pace;
+    const i = Math.min(Math.floor(t), pts.length - 1);
+    const f = Math.min(1, t - i);
+    const d = distances[i] + (i + 1 < pts.length ? (distances[i + 1] - distances[i]) * f : 0);
+    return at(d);
   };
   return { now, at, length };
 }

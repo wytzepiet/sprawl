@@ -121,25 +121,61 @@ pub struct Building {
     /// edge's price to a save from before prices.
     #[serde(default)]
     pub prices: std::collections::BTreeMap<crate::needs::Need, f64>,
-    /// A farm's fields: the grass it works, each with when its crop is
-    /// ripe. Laid with its track when a street reaches it
-    /// (`world/fields.rs`); dropped when built over.
+    /// A farm's land: the grass it claimed when a street reached it, each
+    /// tile at a stage of the cycle the tractor drives it through
+    /// (`world/fields.rs`). A tile built over is dropped.
     #[serde(default)]
-    pub fields: Vec<Field>,
-    /// The track a farm laid to its fields, tile by tile from the street,
-    /// so it can be taken up with the farm.
+    pub land: Vec<Tile>,
+    /// Where the tractor last drove: the tyre marks, one run's path, drawn
+    /// as a brown road with two stripes. Redrawn by the next run.
     #[serde(default)]
-    pub track: Vec<GridCoord>,
+    pub ruts: Vec<GridCoord>,
 }
 
-/// A tile of a farm's land, and when its crop is ripe: a day after the
-/// tractor last took it, and at once for a field just claimed.
+/// A tile of a farm's land, and where it is in the cycle: grass until the
+/// tractor ploughs it, bare until it seeds it, growing from `since` until a
+/// day on, cut after the harvest, and ploughed again.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct Field {
+pub struct Tile {
     pub at: GridCoord,
+    pub stage: Stage,
     #[ts(type = "number")]
-    pub ripe: u64,
+    pub since: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Stage {
+    Grass,
+    Ploughed,
+    Sown,
+    Cut,
+}
+
+/// What a tractor does to a tile as it drives over it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Job {
+    Plough,
+    Seed,
+    Harvest,
+}
+
+/// A tractor's run over the land: the tiles it drives in order, doing its
+/// job to each as it arrives, a tile every `pace` milliseconds from
+/// `started`. Off the roads: no route, no claims, no queue.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Run {
+    pub job: Job,
+    pub path: Vec<GridCoord>,
+    #[ts(type = "number")]
+    pub started: u64,
+    #[ts(type = "number")]
+    pub pace: u64,
+    /// The next tile to arrive at.
+    pub next: usize,
 }
 
 impl Building {
@@ -154,8 +190,8 @@ impl Building {
             facing,
             stocks: stocks(kind).into_iter().map(|(need, cap)| (need, if makes(kind, need) { crate::needs::Stock { level: 0.0, cap } } else { crate::needs::Stock::full(cap) })).collect(),
             prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
-            fields: Vec::new(),
-            track: Vec::new(),
+            land: Vec::new(),
+            ruts: Vec::new(),
         }
     }
 }
@@ -237,12 +273,15 @@ pub struct Car {
     /// stop. A save from before cars had them gets them full.
     #[serde(default = "crate::needs::Bucket::driven")]
     pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
+    /// A tractor's run over its farm's land, while it is on one.
+    #[serde(default)]
+    pub run: Option<Run>,
 }
 
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven() }
+        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None }
     }
 }
 

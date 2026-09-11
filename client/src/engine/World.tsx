@@ -1,4 +1,5 @@
 import { onCleanup, createEffect, on } from "solid-js";
+import { simNow } from "../network/clock";
 import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
@@ -75,10 +76,12 @@ export default function World() {
       terrain.markBuilt(t.x, t.y);
       return key;
     });
-    for (const f of b.fields) {
-      const key = `${f.at.x},${f.at.y}`;
+    for (const t of b.land) {
+      if (t.stage === "Grass") continue;
+      const key = `${t.at.x},${t.at.y}`;
       fieldTiles.add(key);
-      terrain.markBuilt(f.at.x, f.at.y);
+      if (t.stage === "Sown") cropTiles.set(key, t.since); else cropTiles.delete(key);
+      terrain.markBuilt(t.at.x, t.at.y);
       keys.push(key);
     }
     return keys;
@@ -88,13 +91,27 @@ export default function World() {
     for (const key of keys ?? []) {
       builtTiles.delete(key);
       fieldTiles.delete(key);
+      cropTiles.delete(key);
       const [x, y] = key.split(",").map(Number);
       terrain.markBuilt(x, y);
     }
   }
 
   const fieldTiles = new Set<string>();
-  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, (x, y) => isBuilt(x, y) || fieldTiles.has(`${x},${y}`), (x, y) => fieldTiles.has(`${x},${y}`));
+  // A sown tile, and when: the crop stands on it, grown by the clock.
+  const cropTiles = new Map<string, number>();
+  const RIPEN = 600_000;
+  const terrain = new TerrainChunks(
+    scene,
+    shadowGenerator()!,
+    theme,
+    (x, y) => isBuilt(x, y) || fieldTiles.has(`${x},${y}`),
+    (x, y) => fieldTiles.has(`${x},${y}`),
+    (x, y) => {
+      const since = cropTiles.get(`${x},${y}`);
+      return since === undefined ? null : Math.min(1, Math.max(0, (simNow() - since) / RIPEN));
+    },
+  );
   const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));

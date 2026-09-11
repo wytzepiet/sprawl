@@ -854,6 +854,50 @@ export function buildChunk(
  * and roads are live game state — so unlike buildChunk this stays on the main
  * thread. It is cheap: placement is a pure seeded function of the tile coords.
  */
+/** A crop plant: a low flat box, a few to a tile, in rows. */
+export const CROP = boxGeo(0.26, 0.1, 0.12);
+
+/** Where a farm's crop stands: one matrix per plant on every sown tile in
+ *  the chunk, in three rows across the tile. `cropAt` says how grown a
+ *  tile's crop is, 0 to 1, or null for no crop. */
+export function buildCrops(chunkX: number, chunkY: number, cropAt: (x: number, y: number) => number | null): Float32Array {
+  const originX = chunkX * CHUNK_SIZE;
+  const originY = chunkY * CHUNK_SIZE;
+  const out: number[] = [];
+  for (let y = originY; y < originY + CHUNK_SIZE; y++) {
+    for (let x = originX; x < originX + CHUNK_SIZE; x++) {
+      const grown = cropAt(x, y);
+      if (grown === null) continue;
+      const s = 0.3 + 0.7 * grown;
+      for (const [ox, oy] of [[0.5, 0.2], [0.5, 0.5], [0.5, 0.8]]) {
+        out.push(
+          1, 0, 0, 0,
+          0, s, 0, 0,
+          0, 0, s, 0,
+          x - originX + ox, y - originY + oy, 0, 1,
+        );
+      }
+    }
+  }
+  return new Float32Array(out);
+}
+
+function boxGeo(w: number, d: number, h: number): MeshGeometry {
+  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
+  const face = (corners: [number, number, number][], n: [number, number, number]) => {
+    const base = positions.length / 3;
+    for (const c of corners) { positions.push(...c); normals.push(...n); }
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const [hx, hy] = [w / 2, d / 2];
+  face([[-hx, -hy, h], [hx, -hy, h], [hx, hy, h], [-hx, hy, h]], [0, 0, 1]);
+  face([[-hx, -hy, 0], [-hx, -hy, h], [hx, -hy, h], [hx, -hy, 0]], [0, -1, 0]);
+  face([[hx, hy, 0], [hx, hy, h], [-hx, hy, h], [-hx, hy, 0]], [0, 1, 0]);
+  face([[-hx, hy, 0], [-hx, hy, h], [-hx, -hy, h], [-hx, -hy, 0]], [-1, 0, 0]);
+  face([[hx, -hy, 0], [hx, -hy, h], [hx, hy, h], [hx, hy, 0]], [1, 0, 0]);
+  return { positions, normals, indices };
+}
+
 export function buildTrees(
   tiles: Uint8Array,
   chunkX: number,
