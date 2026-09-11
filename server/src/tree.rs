@@ -58,7 +58,7 @@ pub const MAP: &[&str] = &[
     "                              W . . I                                    ",
     "                                    .                                    ",
     "                                    .                                    ",
-    "                                    I                                    ",
+    "                                    I . . P                              ",
 ];
 
 /// What taking a node does. Odds and unlocks only; no verbs.
@@ -118,6 +118,7 @@ pub static LEGEND: &[(char, Row)] = {
         ('o', Row { name: "One-way streets", effect: OneWay, cost: 1, blurb: "One-way streets. Half the road, all the throughput." }),
         ('M', Row { name: "Supermarket", effect: Building { building: Supermarket }, cost: 1, blurb: "Shopping for a whole district. Shelves that run low, and a truck to fill them." }),
         ('V', Row { name: "Warehouse", effect: Building { building: Warehouse }, cost: 1, blurb: "Where stock comes from. Its trucks answer the shops' calls; without one, every delivery comes from beyond the edge." }),
+        ('P', Row { name: "Farm", effect: Building { building: Farm }, cost: 1, blurb: "Where food comes from. Four hands fill a yard with crates; a van takes them to the shops, and what nobody in town buys goes out to the edge." }),
         ('T', Row { name: "Through roads", effect: Road, cost: 1, blurb: "Roads nothing fronts onto: nothing arrives beside them, and nothing turns out of a driveway into the traffic." }),
     ]
 };
@@ -338,7 +339,7 @@ mod tests {
     #[test]
     fn the_tree_holds_up() {
         check();
-        assert_eq!(nodes().len(), 32);
+        assert_eq!(nodes().len(), 33);
     }
 
     #[test]

@@ -53,13 +53,23 @@ pub struct Blueprint {
     /// shelf. Every kind but the edge holds a services stock besides
     /// (`economy::stocks`).
     pub stock: u32,
-    /// What its labour fills its shelf with, a unit an hour: an office's
-    /// services. None for a row that buys its shelf in, or sells nothing
-    /// but its hours.
-    pub makes: Option<Need>,
+    /// What its labour fills its shelf with, and how many an hour: an
+    /// office's services, a farm's crates. None for a row that buys its
+    /// shelf in, or sells nothing but its hours.
+    pub makes: Option<Make>,
     /// The vehicles it runs, each in a dock of its yard. A kind with a
     /// shelf and vehicles sells the shelf by delivery (`economy::depot`).
     pub vehicles: &'static [CarRole],
+}
+
+/// A row's output: the good, and units of it an hour of labour makes.
+/// What the good is worth beyond the edge follows from the rate
+/// (`economy::wholesale`), so the rate is the one number a maker's row
+/// carries about its price.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Make {
+    pub good: Need,
+    pub per_hour: f64,
 }
 
 /// The row for a kind.
@@ -104,6 +114,13 @@ pub fn plot(kind: BuildingKind, facing: u8) -> Plot {
 /// Every tap of every kind — what a need can be served by, anywhere.
 pub fn all_taps() -> impl Iterator<Item = &'static Tap> {
     BLUEPRINTS.iter().flat_map(|(_, b)| b.taps.iter())
+}
+
+/// The row that makes a good, if one in the table does: the office for
+/// services, the farm for crates. The world runs the same row at
+/// capacity, which is what prices the good beyond the edge.
+pub fn maker(good: Need) -> Option<Make> {
+    BLUEPRINTS.iter().find_map(|(_, b)| b.makes.filter(|m| m.good == good))
 }
 
 static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
@@ -182,7 +199,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // make: twelve desks, nine hours.
         (Office, Blueprint {
             class: Commerce, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 15.0,
-            stock: 108, makes: Some(Services), vehicles: &[CarRole::Company],
+            stock: 108, makes: Some(Make { good: Services, per_hour: 1.0 }), vehicles: &[CarRole::Company],
             taps: vec![shift(8, 17, 12)],
         }),
         // The garage: cars come in worn and leave put right, two bays at a
@@ -259,6 +276,19 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             stock: 240, makes: None, vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van],
             taps: vec![shift(6, 18, 6)],
         }),
+        // Where food comes from. Four hands, six to three, each growing a
+        // sitting's worth every few minutes: at eighteen crates an hour a
+        // day's work feeds sixty people, a fifth of what a modern farm
+        // manages and about what a market garden does. The crate's price
+        // beyond the edge is this rate read back (economy.md §8.1). Its
+        // yard is a depot's: the van takes crates to whoever calls, the
+        // lorry takes what nobody in town buys out to the edge. Its shelf
+        // is a day's make.
+        (Farm, Blueprint {
+            class: Industry, homes: 0, jobs: 4, size: (3, 2), lot: (2, 2), price: 40.0,
+            stock: 648, makes: Some(Make { good: Eat, per_hour: 18.0 }), vehicles: &[CarRole::Truck, CarRole::Van],
+            taps: vec![shift(6, 15, 4)],
+        }),
         // The world beyond the survey, standing where a road runs off the
         // map. Every tap in the game, never closed and never crowded: a
         // town with no restaurant still eats, a job nobody in town wants is
@@ -295,9 +325,9 @@ pub fn check() {
         assert_eq!(*kind, BuildingKind::ALL[i], "{kind:?} missing from BuildingKind::ALL");
         // A maker's shelf is a day of what its labour makes, and it
         // delivers what it makes.
-        if let Some(good) = b.makes {
+        if let Some(Make { good, per_hour }) = b.makes {
             let hours: f64 = b.taps.iter().filter(|t| t.need == Need::Work).map(Tap::rated).sum();
-            assert_eq!(b.stock as f64, hours, "{kind:?}'s shelf is not a day's make of {good:?}");
+            assert_eq!(b.stock as f64, hours * per_hour, "{kind:?}'s shelf is not a day's make of {good:?}");
             assert!(!b.vehicles.is_empty(), "{kind:?} makes {good:?} and has nothing to deliver it in");
         }
         for tap in &b.taps {

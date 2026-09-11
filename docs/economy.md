@@ -79,10 +79,11 @@ out of these rules rather than be added.
 
 ## 2. What exists, and what stays
 
-- **Steps 1 to 5, as built** (§12.2 to §12.6): stocks, posted prices,
+- **Steps 1 to 6, as built** (§12.2 to §12.7): stocks, posted prices,
   the building's turn, the one purse and the door, labour bought on the
   building's turn, services made at the office and drawn by every
-  building, wear on the car and the workshop's bays. All stand.
+  building, wear on the car and the workshop's bays, the farm and the
+  rows behind the crate and the meal. All stand.
 - **Purses.** Every resident had a wallet and every building a balance;
   each kept a float and swept the rest to the treasury, a resident's
   sweep was rent, and a building whose purse ran dry stopped. Built, run
@@ -637,13 +638,14 @@ Each step is playable and nothing before step 2 can hurt anyone.
 5. **Services and wear.** The office's stock and its car; the workshop;
    the household's services stock. §12.5 has what services needed
    decided, §12.6 wear.
-6. **Rows.** Every workplace's inputs, output and rate on its row;
-   `edge_price` derived link by link from the rows at capacity, each
-   keeping its share, plus the crossing (§8.1); freight as fuel and
-   hours per leg. Lands with the farm, the first row with two links
-   behind it. Step 4 already prices what exists: a pass-through's hours
-   at one over two thirds, and the household at nine tenths of the edge
-   wage.
+6. **Rows.** A maker's output and rate on its row; `edge_price`
+   derived link by link from the rows at capacity, each keeping its
+   share, plus the crossing (§8.1). Lands with the farm, the first row
+   with two links behind it: the crate is the farm's row read back and
+   the meal is the crate plus the counter. Step 4 already priced what
+   existed — a pass-through's hours at one over two thirds, the
+   household at nine tenths of the edge wage — and freight in money was
+   §12.6's fuel and upkeep per tile. §12.7 has what it needed decided.
 7. **Panels, the board, the advisor's tools.**
 
 Then, with the port: freight, haulers, classes, the second door.
@@ -1146,6 +1148,90 @@ against §12.5's ten:
   ends at zero, since it runs the deficit above with no stake to run it
   on.
 
+### 12.7 Step 6, the farm and the rows, to the number and as built
+
+Built 2026-09-11. The decisions the mechanism did not make on its own,
+and what running it found.
+
+- **A maker's row carries its rate.** What a row makes is a good and
+  how many of it an hour of labour makes: the office's one unit, the
+  farm's eighteen crates. A shift fills the shelf at the rate, the
+  shelf is a day's make, and the world runs the same row at capacity,
+  so what the good is worth beyond the edge is the rate read back —
+  the hour over the rate, with the services bought in for it, over two
+  thirds (§8.1). A crate is a farm hand's three and a third minutes,
+  which comes to a tenth of an hour; a unit of services is the office's
+  hour, 1.8 as before, now by the same rule rather than a line of its
+  own. `wholesale` is one rule: a maker's row where the table has one,
+  and half the counter's price where it has none.
+- **The meal is the crate plus the counter.** The world's counter
+  spends under two minutes of labour on a meal — labour a sixth of the
+  till, between a supermarket's tenth and a restaurant's third — which
+  puts the meal at the fifth of an hour §12.2 set for the ladder. The
+  number that was the meal's price is now the counter's minutes, and
+  the ladder is what chose them, said so. The town's own counters are
+  staffed far over the world's (§13.7): two staff and a hundred and
+  twenty-six seats a day at a shop come to eight minutes a meal, so at
+  the world's price a shop's margin is its crate and nothing else, and
+  it pays the difference as §9 says it may.
+- **Two links, then the authored rest.** Fuel, parts and an evening
+  have no row in town; each keeps its number with the row's name on it
+  (§13.3), and the delivery behind a tank and the parts behind a
+  service stay half the counter's price.
+- **The farm.** Industry, four hands six to three, a three-by-two with
+  a depot's yard: a van for the shops' calls and a lorry for the edge.
+  Its yard holds a day's make, 648 crates, which feeds sixty people — a
+  fifth of what a modern farm manages, about what a market garden does.
+  It is a depot of crates exactly as the warehouse is: a shop's turn
+  finds it beside the warehouse and the edge by delivered price, it
+  opens at the crate's price, floors at what the edge pays, and a yard
+  that stood full at the last look ships to the edge. A node past the
+  factory on the industry avenue. The tractor and the fields of §7
+  wait: a field is a lot the tractor drives, and lots as road are
+  `parking.md`'s, not yet built; until then the farm's row is hands
+  and a yard.
+- **The fifth stays** (§13.15). Each row's services input would be
+  the same fifth on every row, since no row has a referent of its own,
+  so the constant stays one and the rows carry what differs.
+- **Freight** (§5.3) in money is §12.6's fuel and upkeep per tile on
+  the row that sent the vehicle; the driver's hours are the staff's
+  wages, on the row already. Nothing more was built for it, and the
+  household's transport stays the budget sixth (§13.13).
+
+What running it found, thirty days of the three towns, the full town
+with a farm in a factory's place, against §12.6:
+
+- **The full town** loses a sixth of an hour a head a day where it lost
+  a quarter, at 11.6 GDP a head a day where it was 12: a farm's four
+  hands in place of a factory's twelve desks make less GDP than the
+  desks did, and cost the door less. Its treasury runs from 6,145 to
+  5,583 over the season, about nineteen a day; no-harm holds, at
+  1,169 served a day in the first third and 1,400 in the last. The
+  farm ships to the edge about twenty times in the season, 648 crates
+  each at the crate's price less the crossing, some forty a day
+  against thirty of wages; the shops' calls for crates, one to three a
+  day, go to the farm's van, the warehouse's or the edge's lorry by
+  delivered price, and the farm's share of them is small. The farm's
+  crate settles at its floor, what the edge pays, and the warehouse's
+  at its own, the edge's wholesale, a tenth over; every shop's meal
+  drifts from the counter's fifth down to the crate over the season,
+  piling up, as before.
+- **A full yard is paid for.** Four hands make 580 crates a day of the
+  yard's 648, a shift's make lands on the yard in one lump as the tab
+  is paid, and the yard ships only when a look finds it full: so the
+  lump that overflows it loses what does not fit, about a fifth of
+  the farm's make over the season, and the hands are paid for it. §4
+  says a full yard stops the line, felt as wages not paid; as built the
+  line runs and the make is lost, at the office as at the farm, where
+  the office's sales in town hide it. §13.19.
+- **The bedroom town and the job centre** are as §12.6 left them, a
+  quarter under and 1.7 under a head a day: neither has a farm, and
+  nothing else moved.
+- **The slump** ends the season with 179 in the treasury where it ended
+  at zero, and serves two thirds of a good day at its worst after the
+  first week.
+- **The band holds and nothing rings; tenure is zero changes.**
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
@@ -1174,17 +1260,23 @@ against §12.5's ten:
 12. ~~Where the town's money comes from in a world priced at cost.~~
     What its rows keep: capital's third, the household's tenth (§8.1).
 13. The household row's transport is a budget sixth, and its services
-    the balance; the car burns what it burns. With freight (§12 step 6)
-    the row's transport becomes the fuel the commute costs, per tile at
-    the world's price, services get their own share, and the door's
-    check (§11.9) becomes a season print. Until then a household nets a
-    little over its tenth when it drives less than the sixth, which is
-    the bedroom town's 1.19 against 0.72 (§12.4).
+    the balance; the car burns what it burns. Step 6 left it so
+    (§12.7): making the row's transport the fuel the commute costs,
+    per tile at the world's price, with services given their own
+    share, is a rebalancing of the household row with a season of its
+    own to run, and the door's check (§11.9) becomes a season print
+    with it. Until then a household nets a little over its tenth when
+    it drives less than the sixth, which is the bedroom town's 1.19
+    against 0.72 (§12.4), and under nothing when it drives far more
+    (§13.18).
 14. ~~Wear (§4): a car's second per-tile stock, the workshop as its
     tap.~~ §12.6.
-15. A firm's services are a fifth of its labour and its output the sum
-    over two thirds (§12.5); with the rows (step 6) the input and the
-    output are the row's own, link by link, and the fifth goes.
+15. ~~A firm's services are a fifth of its labour and its output the
+    sum over two thirds (§12.5); with the rows (step 6) the input and
+    the output are the row's own, link by link, and the fifth goes.~~
+    The output is the row's own (§12.7); the fifth stays, one constant
+    on every row, since no row has a services referent of its own and
+    a number copied onto every row is not a row's.
 16. ~~No harm over thirty days.~~ Decided 2026-09-11: no harm is real
     income, not money. The full town buys in 520 a day of services from
     consultants while its offices ship 150 out — three offices make
@@ -1194,11 +1286,17 @@ against §12.5's ten:
     mayor's to place (§12.5), and a town that has not placed it pays;
     if money came no matter what there would be no game. §11.6 now
     asserts what it serves. Whether the nudge at a ceiling should
-    overshoot at all is still open, and the rows (step 6) move the
-    firm's services from a flat fifth to the row's own (§13.15).
+    overshoot at all is still open; the rows (§12.7) left the firm's
+    services at the fifth (§13.15).
 17. ~~The ring test over thirty days.~~ The hunt at a ceiling is a
     notch over and three back, and the test allows it (§12.6).
 18. The bedroom town nets under nothing once its cars wear (§12.6):
     right by the row's arithmetic, and the first town the model calls a
     mistake. Whether the player is told so before the season says it is
     §10's.
+19. A full yard is paid for (§12.7): a maker's hands work while the
+    yard is full and the make that does not fit is lost, where §4 has
+    the line stop and the wages go unpaid. The Work tap should close on
+    a full yard as it closes on an empty stock, or the yard should ship
+    before the lump that overflows it; a fifth of the farm's make goes
+    this way.

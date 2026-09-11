@@ -68,6 +68,10 @@ pub enum BuildingKind {
     /// Where stock comes from: trucks that answer the shops' calls. Placed
     /// by the mayor.
     Warehouse,
+    /// Where food comes from: hands that fill a yard with crates, a van
+    /// that takes them to the shops, and a lorry for what nobody in town
+    /// buys. Placed by the mayor.
+    Farm,
     /// The world beyond the survey, standing where a road runs off the map.
     /// Not placed by anyone: it appears at every road exit and moves with
     /// the frontier. See `blueprint.rs`.
@@ -76,7 +80,7 @@ pub enum BuildingKind {
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 12] = [
+    pub const ALL: [BuildingKind; 13] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -88,6 +92,7 @@ impl BuildingKind {
         BuildingKind::GasStation,
         BuildingKind::Supermarket,
         BuildingKind::Warehouse,
+        BuildingKind::Farm,
         BuildingKind::Edge,
     ];
 }

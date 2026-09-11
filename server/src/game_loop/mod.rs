@@ -1476,8 +1476,10 @@ mod tests {
 
     /// A town shaped like a town, for the seasons: mostly homes, an export
     /// base of offices and factories with about as many desks as the homes
-    /// have people, and one of each shop — the workshop among them, since
-    /// wear made it the garage (docs/economy.md §12.6). Forty plots.
+    /// have people, one of each shop — the workshop among them, since
+    /// wear made it the garage (docs/economy.md §12.6) — and a farm in a
+    /// factory's place, the first row with a link behind the shops'
+    /// (§12.7). Forty plots.
     /// `placeable` cycles every kind equally, which is seventeen shops,
     /// bars, supermarkets and warehouses for 177 people — the mix for a
     /// wake budget, not for a purse.
@@ -1487,7 +1489,7 @@ mod tests {
             House, Apartment, Office, House, Apartment, Shop, House, Factory, Apartment, House,
             Workshop, Apartment, House, Bar, Office, House, Apartment, Restaurant, House, Factory,
             Apartment, House, GasStation, Apartment, Office, House, Supermarket, Apartment, House, Factory,
-            Factory, House, Apartment, Warehouse, House, Apartment, House, Apartment, House, Apartment,
+            Farm, House, Apartment, Warehouse, House, Apartment, House, Apartment, House, Apartment,
         ]
     }
 
