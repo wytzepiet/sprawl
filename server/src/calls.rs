@@ -86,12 +86,14 @@ fn van(good: Need) -> CarRole {
 /// services are drawn for the time since the last look; a stock at its
 /// reorder point calls for it — a depot's own shelf for a fetch from
 /// beyond the edge, anything else for a delivery — and a maker's shelf
-/// that stood full ships to the edge. A row never calls for what its own
-/// labour makes.
+/// with no room for the next shift's make ships to the edge, since a
+/// shift lands on the shelf in one lump as its tab is paid and a lump
+/// that does not fit is lost (docs/economy.md §12.7). A row never calls
+/// for what its own labour makes.
 pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
     let kind = b.kind;
-    let full: Vec<Need> = b.stocks.iter().filter(|(good, s)| economy::makes(kind, **good) && s.level >= s.cap).map(|(good, _)| *good).collect();
+    let full: Vec<Need> = b.stocks.iter().filter(|(good, s)| economy::makes(kind, **good) && s.short() < economy::lump(kind)).map(|(good, _)| *good).collect();
     economy::drawn(world, building, now);
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
     let mut calls = Vec::new();

@@ -1218,12 +1218,15 @@ with a farm in a factory's place, against §12.6:
   piling up, as before.
 - **A full yard is paid for.** Four hands make 580 crates a day of the
   yard's 648, a shift's make lands on the yard in one lump as the tab
-  is paid, and the yard ships only when a look finds it full: so the
-  lump that overflows it loses what does not fit, about a fifth of
-  the farm's make over the season, and the hands are paid for it. §4
-  says a full yard stops the line, felt as wages not paid; as built the
-  line runs and the make is lost, at the office as at the farm, where
-  the office's sales in town hide it. §13.19.
+  is paid, and the yard shipped only when a look found it full: so the
+  lump that overflowed it lost what did not fit, about a fifth of the
+  farm's make over the season, and the hands were paid for it. Now a
+  maker's shelf ships when it has no room for the next shift's lump.
+  With that the farm ships twenty-four times in the season, keeps a
+  margin near what the row promises, and the full town's drift halves
+  to about thirteen a day. §4 says a full yard stops the line, felt as
+  wages not paid; as built the line runs on, at the office as at the
+  farm, and that is §13.19.
 - **The bedroom town and the job centre** are as §12.6 left them, a
   quarter under and 1.7 under a head a day: neither has a farm, and
   nothing else moved.
@@ -1295,8 +1298,9 @@ with a farm in a factory's place, against §12.6:
     mistake. Whether the player is told so before the season says it is
     §10's.
 19. A full yard is paid for (§12.7): a maker's hands work while the
-    yard is full and the make that does not fit is lost, where §4 has
-    the line stop and the wages go unpaid. The Work tap should close on
-    a full yard as it closes on an empty stock, or the yard should ship
-    before the lump that overflows it; a fifth of the farm's make goes
-    this way.
+    yard is full, where §4 has the line stop and the wages go unpaid.
+    The Work tap should close on a full yard as it closes on an empty
+    stock, which needs the make to land as it is made rather than as a
+    lump at the tab, so that the hour the yard fills is the hour the
+    tap closes. Comes with the fields, where the make lands a load at a
+    time.

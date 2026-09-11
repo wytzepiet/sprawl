@@ -275,6 +275,13 @@ pub fn makes(kind: BuildingKind, need: Need) -> bool {
     blueprint(kind).makes.is_some_and(|m| m.good == need)
 }
 
+/// What one shift lands on a maker's shelf: its hours at the row's rate,
+/// in one lump as the tab is paid. A shelf with less room than this
+/// ships before the lump is lost to it (`calls::turn`).
+pub fn lump(kind: BuildingKind) -> f64 {
+    blueprint(kind).makes.map_or(0.0, |m| shift_hours(kind) * m.per_hour)
+}
+
 /// Keeps a shelf and runs vehicles: sells its shelf by delivery,
 /// answering the calls of stocks running low with a van or a car of its
 /// own.
