@@ -314,7 +314,14 @@ pub fn open(world: &mut World, id: EntityId) {
 pub fn reorder(world: &World, building: EntityId, need: Need) -> f64 {
     let Some(kind) = kind_of(world, building) else { return 0.0 };
     let lead = world.books.get(&building).and_then(|k| k.lead).unwrap_or(crate::calls::AWAY_MS);
-    let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| t.slots).sum();
+    // A full house is everyone who can be there at once, which for a
+    // visitor tap is the lot's spots, as the crowd is counted
+    // (`resident::slots_at`): two bays with seven cars queued in the lot
+    // is a rush of seven.
+    let seats: u32 = match world.spots_at(building) {
+        Some(n) if blueprint(kind).taps.iter().any(|t| t.need == need) => n,
+        _ => blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| t.slots).sum(),
+    };
     let draw = if need == Need::Services { draw(kind) } else { 0.0 };
     (rated(kind, need) + draw) * lead as f64 / DAY_MS as f64 + seats as f64
 }
@@ -549,6 +556,30 @@ pub fn exported(world: &mut World, maker: EntityId, need: Need, load: f64, now: 
     world.books.entry(maker).or_default().today(now).revenue += due;
     world.sales.push(Sale { building: maker, amount: due, at: now });
     door(world, due, now);
+}
+
+/// A facility's vehicle is home: its tank is filled and its wear put
+/// right in the yard, and the building pays the world's price for what
+/// the trip used, at wholesale plus the crossing, as the depot's fuel
+/// and parts are bought in bulk from beyond the edge until a row in
+/// town sells them. The freight of §5.3 in money: fuel and upkeep per
+/// tile, on the row that sent the vehicle. Nobody sits in a fleet
+/// vehicle, so nobody weighs its needs; the building's turn does, when
+/// it comes home. A line in the books and the door, no GDP:
+/// intermediate. §12.6.
+pub fn refilled(world: &mut World, car: EntityId, now: GameTime) {
+    let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) else { return };
+    let owner = c.owner;
+    let mut due = 0.0;
+    for (&need, stock) in c.stocks.iter_mut() {
+        due += stock.short() / stock.cap * wholesale(need);
+        stock.level = stock.cap;
+    }
+    if due <= 0.0 || kind_of(world, owner).is_none() {
+        return;
+    }
+    world.books.entry(owner).or_default().today(now).purchases += import(due);
+    door(world, -import(due), now);
 }
 
 /// A delivery landed: `load` of `need` onto `buyer`'s stock, from
@@ -1012,6 +1043,54 @@ mod tests {
         take(&mut world, home, Need::Services, two_days);
         drawn(&mut world, home, 2 * DAY_MS as u64);
         assert!((world.gdp - heads * services()).abs() < 1e-9, "a night with nothing in the stock was served");
+    }
+
+    /// §12.6: a depot's van is filled and put right in the yard, and the
+    /// depot buys what the trip used from beyond the edge, at wholesale
+    /// plus the crossing; a consultant's car from the edge is never in
+    /// anyone's yard, and costs the town nothing but its call.
+    #[test]
+    fn a_fleet_vehicle_is_refilled_in_the_yard() {
+        let mut world = town();
+        let depot = world.place_on_street(at(20), Warehouse).unwrap();
+        crate::calls::stable(&mut world, depot);
+        let van = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot)).map(|e| e.id).expect("a van in the yard");
+        world.treasury = 100.0;
+        crate::resident::drove(&mut world, van, 250.0);
+        let tanks = 250.0 / Need::Fuel.tiles();
+        let services = 250.0 / Need::Wear.tiles();
+        refilled(&mut world, van, 0);
+        let fuel = match world.objects.get(van).map(|e| &e.object) {
+            Some(GameObject::Car(c)) => c.stocks.clone(),
+            _ => unreachable!(),
+        };
+        assert!(fuel.values().all(|s| s.level == s.cap), "the yard did not fill it");
+        let cost = import(tanks * wholesale(Need::Fuel) + services * wholesale(Need::Wear));
+        assert!((100.0 - world.treasury - cost).abs() < 1e-9, "the fill cost {}", 100.0 - world.treasury);
+        assert!((world.books[&depot].on(0).purchases - cost).abs() < 1e-9, "the depot's books say {}", world.books[&depot].on(0).purchases);
+        assert_eq!(world.gdp, 0.0, "a fleet's fuel is not a need served");
+        refilled(&mut world, van, 0);
+        assert!((100.0 - world.treasury - cost).abs() < 1e-9, "a full van was charged");
+    }
+
+    /// A shelf that reorders before it is full never stops ordering: every
+    /// kind's shelf holds more than its taps could sell while a lorry is
+    /// away beyond the edge with the lot full, which is where a fresh
+    /// building's reorder point stands.
+    #[test]
+    fn every_shelf_is_bigger_than_its_reorder_point() {
+        let mut world = town();
+        let mut x = 4;
+        for kind in BuildingKind::ALL {
+            if blueprint(kind).stock == 0 || !blueprint(kind).price.is_finite() {
+                continue;
+            }
+            let b = world.place_on_street(at(x), kind).unwrap();
+            x += 8;
+            let need = shelf_need(kind);
+            let s = reorder(&world, b, need);
+            assert!(s < blueprint(kind).stock as f64, "{kind:?} reorders {need:?} at {s} with a shelf of {}", blueprint(kind).stock);
+        }
     }
 
     /// §6.2, `(s, S)`: a shelf reorders when what is on it would not last

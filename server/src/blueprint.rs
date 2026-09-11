@@ -229,10 +229,12 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         }),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
-        // Its shelf is tanks: a delivery is a tanker's worth.
+        // Its shelf is tanks: a delivery is a tanker's worth, and more than
+        // four pumps could sell in the two hours a tanker is away with the
+        // lot full, or it would never stop ordering.
         (GasStation, Blueprint {
             class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (2, 1), price: 14.0,
-            stock: 30, makes: None, vehicles: &[],
+            stock: 40, makes: None, vehicles: &[],
             taps: vec![
                 shift(6, 22, 1),
                 pump(always(), 4),

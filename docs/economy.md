@@ -571,6 +571,11 @@ season is thirty game-days until something says otherwise.
 10. ~~**No sinks.**~~ There is nothing outside the treasury to be one.
 11. **Tenure.** Over a season the fraction of residents who change jobs in
     a month sits near the referent.
+13. **The slump.** The full town founded broke: nothing in the treasury
+    until something is sold. After the first week no day serves less
+    than half of what a good day does. (As built: it does not spiral; it
+    serves about half a good day at its worst, and ends at zero because
+    the full town itself runs a deficit — §12.6, §13.16.)
 12. **The bedroom town, and the job centre.** A street of houses beside
     the exit and nothing else, its residents commuting to the edge; and
     a street of workplaces and nothing else, staffed from beyond it.
@@ -1046,6 +1051,29 @@ the tank's, read again.
   is scored as time lost (§6.1) and the edge is open now. The edge
   serves wear at the bay's rate, as it serves everything.
 - **On the card**, a car's stocks are its bars, fuel and wear alike.
+- **A fleet vehicle is filled in the yard.** Nobody sits in a van, so
+  nobody weighs its tank; the building's turn does, when the van comes
+  home: its tank is filled and its wear put right there, and the
+  building buys what the trip used from beyond the edge at wholesale
+  plus the crossing, as a depot buys fuel and parts in bulk. That is
+  §5.3's freight in money — fuel and upkeep per tile, on the row that
+  sent the vehicle — a line in the books and the door and no GDP. A
+  consultant's car from the edge is never in anyone's yard and costs the
+  town nothing but its call. Before this a fleet's tanks drained and
+  nothing refilled them.
+- **A full house is the lot.** The reorder point's margin, everyone the
+  taps seat at once, is now the lot's spots for a visitor tap, as the
+  crowd is counted (`resident::slots_at`): two bays with seven cars
+  queued in the lot is a rush of seven, and the workshop's parts ran out
+  on every burst of worn cars, its price stepping up on each stock-out
+  and down for days after. With the lot as the margin it settles to its
+  floor. The rule found the gas station's shelf a tank short of its own
+  reorder point — four pumps round the clock and a full lot come to
+  thirty-one tanks in the two hours a tanker is away — so it ordered
+  without pause; its shelf is forty, and a test holds every shelf above
+  its reorder point.
+- **The season mix keeps one workshop**, a factory in the other's place:
+  a garage is a shop for cars, and the mix has one of each shop.
 
 What running it found. Six cars worn to their last day of driving go to
 the workshop, three to a bay, none to the edge; fourteen at once are a
@@ -1061,15 +1089,19 @@ is a day late for anything, and a claim on a junction lapses when its
 holder stands still (`parking.md` §9). Thirty days of the three towns,
 against §12.5's ten:
 
-- **The full town** nets about half an hour a head a day *under* where
-  §12.5 had it two over, at 11.2 GDP a head a day where it was 11.3.
-  The two workshops are the difference: their seventy-two hours a day
-  sold to the edge as a pass-through's, and now sell about fourteen
-  services a day in town instead, each worth six where the hour was
-  1.8, with the parts crossing the door in. A workshop is in the red by
-  ten a day, and by a hundred on the day its parts land. That is
-  §13.16, and the season mix's to settle: a garage is a shop for cars,
-  and the mix has two where it has one of every other shop.
+- **The full town** nets about a quarter of an hour a head a day
+  *under* where §12.5 had it two over, at 12 GDP a head a day where it
+  was 11.3, and no-harm (§11.6) fails over thirty days. The door, split
+  by what crosses it: pass-throughs' hours sell 470 a day and the
+  offices ship 150; consultants from the edge cost 520 a day, half of
+  everything out, because three offices make about half of what the
+  town draws and the offices' price hunts above the consultants' at the
+  ceiling, so the town buys in what its offices ship out; crates, fuel
+  and parts cost 80; wear costs 50 more than before, at the workshop
+  and beyond the edge; the workshop's lost export is 60. Over ten days
+  the town is in the black by 120 a day, on the two days of services
+  and the full shelves it was founded with; over thirty it is not.
+  That is §13.16.
 - **The bedroom town** nets a quarter of an hour a head a day under,
   where §12.5 had it 1.7 over. Its people drive four hundred tiles a day
   to the edge and back, so the tank and the service together cost them
@@ -1079,10 +1111,15 @@ against §12.5's ten:
   the first time the model has said a bedroom town is a bad idea.
 - **The job centre** loses 1.7 a head a day where it lost 1.5, its
   imported labour now driving worn cars too.
-- **The offices' price still rings** over thirty days, up a notch and
-  down two around the band's ceiling, as it did at the step 5 tip: the
-  ring test's tolerance was set on ten days, and this is the nudge at a
-  ceiling (§12.5), not wear.
+- **The offices' price hunts** at the band's ceiling over thirty days,
+  a notch over and the way back under: two notches down to undo the one
+  up, and one more for the day it takes sales to answer a price. The
+  ring test allows that width and no more; the workshop's parts price
+  rang wider until the lot became its margin (above).
+- **The slump** (§11.13): founded broke, the full town serves half a
+  good day at its worst after the first week and does not spiral; it
+  ends at zero, since it runs the deficit above with no stake to run it
+  on.
 
 ## 13. Open
 
@@ -1123,18 +1160,19 @@ against §12.5's ten:
 15. A firm's services are a fifth of its labour and its output the sum
     over two thirds (§12.5); with the rows (step 6) the input and the
     output are the row's own, link by link, and the fifth goes.
-16. The workshop's idle hours. A garage with two bays and four staff
-    sold its hours to the edge while it had nothing to sell; now it
-    sells services in town and exports nothing, and two of them turn
-    the full town's net from about two a head a day to about half an
-    hour under (§12.6). One workshop and a factory in the season mix,
-    or a bay's idle hours sold beyond the edge as a pass-through's are,
-    is the choice; the rows (step 6) make it moot, since a row's labour
-    is then an input to what it makes.
-17. The ring test over thirty days: the offices' price at the band's
-    ceiling steps up five and down three, three notches wide, and the
-    test allows one (§12.5, §12.6). Either the tolerance is a season's,
-    or the nudge at a ceiling wants a smaller step.
+16. No harm over thirty days (§11.6, §12.6). The full town buys in 520
+    a day of services from consultants while its offices ship 150 out:
+    three offices make half of what the town draws, and at the ceiling
+    the offices' price hunts above the consultants' delivered price, so
+    the town's buyers take the consultant and the office ships. Wear
+    adds fifty a day and the workshop's lost export sixty. The fourth
+    office is the mayor's to place (§12.5), and a town built ignoring
+    every price has not placed it; whether no-harm should hold for that
+    town, or the mix should hold four offices, or the nudge at a
+    ceiling should not overshoot, is open. The rows (step 6) move the
+    firm's services from a flat fifth to the row's own (§13.15).
+17. ~~The ring test over thirty days.~~ The hunt at a ceiling is a
+    notch over and three back, and the test allows it (§12.6).
 18. The bedroom town nets under nothing once its cars wear (§12.6):
     right by the row's arithmetic, and the first town the model calls a
     mistake. Whether the player is told so before the season says it is

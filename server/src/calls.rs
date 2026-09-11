@@ -301,13 +301,19 @@ fn fleet_of(world: &World, facility: EntityId) -> Vec<EntityId> {
 /// A vehicle woke while parked. Private cars have nothing to think about;
 /// a vehicle on a call has finished unloading, and delivers; one beyond
 /// the edge comes back in, and one home from beyond fills the depot, or
-/// is paid for what it took.
+/// is paid for what it took; and one home in its yard is filled and put
+/// right there (`economy::refilled`).
 pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: GameTime) {
     let (owner, away) = match world.objects.get(car).map(|e| &e.object) {
         Some(GameObject::Car(c)) if c.role != CarRole::Private && c.trip.is_none() => (c.owner, c.away),
         _ => return,
     };
-    let Some(i) = world.calls.iter().position(|c| c.answered_by == Some(car)) else { return };
+    // Home with nothing to do: filled and put right in the yard, at the
+    // building's cost.
+    let Some(i) = world.calls.iter().position(|c| c.answered_by == Some(car)) else {
+        economy::refilled(world, car, now);
+        return;
+    };
     if away > 0 {
         // Back in from beyond the edge, home to the yard.
         let home = world.objects.get(owner).and_then(|e| e.position);
@@ -355,7 +361,8 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         (now - call.raised) / 1000
     );
     if call.kind == CallKind::Edge {
-        // Nothing to do: the vehicle is in its dock.
+        // Nothing to do: the vehicle is in its dock, and is filled there.
+        economy::refilled(world, car, now);
     } else if facility {
         let back = world
             .road_node_for_building(call.at)
