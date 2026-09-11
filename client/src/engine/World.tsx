@@ -76,10 +76,12 @@ export default function World() {
       return key;
     });
     for (const t of b.land) {
-      if (t.stage !== "Sown") continue;
       const key = `${t.at.x},${t.at.y}`;
-      cropTiles.set(key, t.since);
-      terrain.markBuilt(t.at.x, t.at.y);
+      landTiles.add(key);
+      if (t.stage === "Sown") {
+        cropTiles.set(key, t.since);
+        terrain.markBuilt(t.at.x, t.at.y);
+      }
       keys.push(key);
     }
     return keys;
@@ -88,12 +90,16 @@ export default function World() {
   function uncover(keys: string[] | undefined) {
     for (const key of keys ?? []) {
       builtTiles.delete(key);
+      landTiles.delete(key);
       cropTiles.delete(key);
       const [x, y] = key.split(",").map(Number);
       terrain.markBuilt(x, y);
     }
   }
 
+  // A farm's land: where the plough's strip is drawn, and nowhere else.
+  const landTiles = new Set<string>();
+  const isLand = (x: number, y: number) => landTiles.has(`${x},${y}`);
   // A sown tile, and when: the crop stands on it, grown by the clock.
   const cropTiles = new Map<string, number>();
   const RIPEN = 600_000;
@@ -116,9 +122,9 @@ export default function World() {
     switch (entry.object.kind) {
       case "Building":
         // Red where no joined road reaches it; grey where any stock is bare.
-        return mountBuilding(entry, pool, !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY);
+        return mountBuilding(entry, pool, !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY, isLand);
       case "Car":
-        return mountCar(entry, pool, scene, SOLID);
+        return mountCar(entry, pool, scene, SOLID, isLand);
       case "RoadNode":
         return mountRoad(entry, pool, theme(), getEntity);
       default:

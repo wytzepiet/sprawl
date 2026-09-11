@@ -59,6 +59,7 @@ export function mountCar(
   pool: InstancePool,
   scene: Scene,
   look: Look,
+  land: (x: number, y: number) => boolean,
 ): () => void {
   const car = entry.object.data as Car;
   if (car.role === "Truck") return mountLorry(entry.id, car, pool, scene, look);
@@ -89,7 +90,7 @@ export function mountCar(
   parts.set(entry.id, [{ key: bucket, id: instanceId }]);
   // A tractor leaves its marks behind it as it goes, and under the plough
   // the ground turns brown a wheel's turn at a time.
-  const trail = car.run ? new Trail(pool, f.drawn, car.run.job === "Plough") : null;
+  const trail = car.run ? new Trail(pool, f.drawn, car.run.job === "Plough" ? land : null) : null;
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);

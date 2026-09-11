@@ -2113,26 +2113,31 @@ mod tests {
         assert!(bought >= fetched * price - 1e-6, "the depot's books say {bought} for {} of crates", fetched * price);
 
         // A yard with no room for a crop, and no lorry: a pickup from
-        // beyond the edge, paid as it leaves the map.
+        // beyond the edge, paid as it leaves the map. The warehouse's
+        // shelf is filled first, so its lorry wants nothing from the yard
+        // meanwhile.
         let now = now + 3 * day / 24;
         let lorries = |world: &World| world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == crate::protocol::CarRole::Truck)).count();
         let stood = lorries(&world);
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            let s = b.stocks.get_mut(&Need::Eat).unwrap();
+            s.level = s.cap;
+        }
         if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
             let s = b.stocks.get_mut(&Need::Eat).unwrap();
             s.level = s.cap - crop / 2.0;
         }
         let full = yard(&world);
-        let before = world.treasury;
+        let before = world.books.get(&farm).map_or(0.0, |k| k.on(now + 6 * day / 24).revenue);
         calls::turn(&mut world, &mut events, farm, now);
         assert!(world.calls.iter().any(|c| c.at == farm && c.kind == calls::CallKind::Pickup), "a full yard called for no pickup: {:?}", world.calls);
         pump(&mut world, &mut events, &mut intersections, now, now + 6 * day / 24);
         assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Pickup), "the pickup never left: {:?}", world.calls);
-        // The edge pays for the yard — less a load the warehouse's lorry
-        // may have fetched from it first, which is paid in town.
+        // Paid onto the farm's page: the treasury is everyone's purse and
+        // the town buys from beyond the edge meanwhile.
         let paid = crate::economy::export(full * crate::economy::wholesale(Need::Eat));
-        let load = crate::economy::export(crate::blueprint::blueprint(BuildingKind::Warehouse).stock as f64 * crate::economy::wholesale(Need::Eat));
-        let got = world.treasury - before;
-        assert!(got > paid - load - 5.0 && got < paid + 5.0, "the edge paid {got} for the yard, not {paid}");
+        let got = world.books[&farm].on(now + 6 * day / 24).revenue - before;
+        assert!((got - paid).abs() < 5.0, "the edge paid {got} for the yard, not {paid}");
         assert!(lorries(&world) <= stood, "the pickup lorry stayed");
     }
 

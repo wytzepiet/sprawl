@@ -320,80 +320,108 @@ impl World {
         let start = perimeter.iter().position(|&c| c == corner)?;
         perimeter.rotate_left(start);
         let outline: Vec<GridCoord> = perimeter.iter().filter(|c| set.contains(c)).map(|&(x, y)| GridCoord { x, y }).collect();
-        // The inside, in rows along the long side, from the yard's side;
-        // each row from headland to headland, so the turn between one
-        // row and the next is made on the outline, as the outline is for.
-        let along_x = x1 - x0 >= y1 - y0;
-        let mut rows: Vec<Vec<GridCoord>> = Vec::new();
-        for r in if along_x { y0 + 1..y1 } else { x0 + 1..x1 } {
-            let mut row: Vec<GridCoord> = batch.iter().copied().filter(|t| if along_x { t.y == r } else { t.x == r }).collect();
-            if !row.is_empty() {
-                row.sort_by_key(|t| if along_x { t.x } else { t.y });
-                rows.push(row);
+        // The inside, in rows from the yard's side; each row a run of
+        // field from headland to headland, so the turn between one row
+        // and the next is made on the outline, as the outline is for. A
+        // line broken by a cutout is as many rows as it has runs. Along
+        // whichever way breaks on fewer cutouts — past the farmstead, not
+        // through its lot — and the long side when both break alike.
+        let runs = |along_x: bool| -> Vec<Vec<GridCoord>> {
+            let mut rows: Vec<Vec<GridCoord>> = Vec::new();
+            for r in if along_x { y0 + 1..y1 } else { x0 + 1..x1 } {
+                let mut line: Vec<GridCoord> = batch.iter().copied().filter(|t| if along_x { t.y == r } else { t.x == r }).collect();
+                line.sort_by_key(|t| if along_x { t.x } else { t.y });
+                for t in line {
+                    match rows.last_mut() {
+                        Some(row) if if along_x { row[0].y == t.y && t.x == row[row.len() - 1].x + 1 } else { row[0].x == t.x && t.y == row[row.len() - 1].y + 1 } => row.push(t),
+                        _ => rows.push(vec![t]),
+                    }
+                }
             }
-        }
+            rows
+        };
+        let (mut rows, along_x) = match (runs(true), runs(false)) {
+            (x, y) if x.len() < y.len() || x.len() == y.len() && x1 - x0 >= y1 - y0 => (x, true),
+            (_, y) => (y, false),
+        };
         let near = |row: &Vec<GridCoord>| if along_x { (row[0].y - yard.y).abs() } else { (row[0].x - yard.x).abs() };
         if rows.len() > 1 && near(&rows[rows.len() - 1]) < near(&rows[0]) {
             rows.reverse();
         }
         let ground = self.drivable(farm);
         let safe = escapable(&ground, yard);
+        // The lot is where the tractor lives, not a way through: rows
+        // are joined over the field and the lane, never the lot.
+        let yard_tiles = self.yard_tiles(farm);
+        let field: HashSet<(i32, i32)> = ground.iter().copied().filter(|t| !yard_tiles.iter().any(|y| (y.x, y.y) == *t)).collect();
         // The edge: the field's boundary — its tiles with something other
         // than field on a side, round the barn and every cutout as well as
         // the outside — and the lane and the yard. What the outline is
         // driven over, and the way home.
         let edge: HashSet<(i32, i32)> = ground.iter().copied().filter(|&(x, y)| !set.contains(&(x, y)) || AROUND[..4].iter().any(|(dx, dy)| !set.contains(&(x + dx, y + dy)))).collect();
-        let mut best: Option<(Vec<GridCoord>, Vec<GridCoord>)> = None;
+        // Whichever way round skips fewer tiles as it goes, then the shorter.
+        let mut best: Option<(Vec<GridCoord>, Vec<GridCoord>, usize)> = None;
         for widdershins in [false, true] {
             // Either way round from the corner.
             let mut round = outline.clone();
             if widdershins {
-                round = perimeter.iter().skip(1).rev().chain(perimeter.iter().take(1)).filter(|c| set.contains(c)).map(|&(x, y)| GridCoord { x, y }).collect();
+                round = perimeter.iter().take(1).chain(perimeter.iter().skip(1).rev()).filter(|c| set.contains(c)).map(|&(x, y)| GridCoord { x, y }).collect();
             }
             let mut path = vec![yard];
             // The tiles in the order they are wanted: the outline, driven
             // over the edge and across the inside only where the edge does
             // not join up, then each row from whichever end the tractor is
             // nearer, over any ground.
-            let mut order: Vec<(GridCoord, &HashSet<(i32, i32)>)> = round.iter().map(|&t| (t, &edge)).collect();
-            for row in rows.iter() {
+            // Each tile with the ground its leg may use and the run it is
+            // in: the outline, then each row.
+            let mut order: Vec<(GridCoord, &HashSet<(i32, i32)>, usize)> = round.iter().map(|&t| (t, &edge, 0)).collect();
+            for (r, row) in rows.iter().enumerate() {
                 let at = order[order.len() - 1].0;
                 if dist(at, row[row.len() - 1]) < dist(at, row[0]) {
-                    order.extend(row.iter().rev().map(|&t| (t, &ground)));
+                    order.extend(row.iter().rev().map(|&t| (t, &field, r + 1)));
                 } else {
-                    order.extend(row.iter().map(|&t| (t, &ground)));
+                    order.extend(row.iter().map(|&t| (t, &field, r + 1)));
                 }
             }
-            for (i, &(t, over)) in order.iter().enumerate() {
-                // Arrive heading for the tile after, when that is a step
-                // away, so the row runs straight; failing that, anyhow.
-                let then = order.get(i + 1).map(|n| n.0).filter(|n| dist(t, *n) == 1);
-                let leg = [(over, then), (over, None), (&ground, then), (&ground, None)]
-                    .into_iter()
-                    .find_map(|(over, then)| self.over(over, &safe, &path, t, then));
-                if let Some(leg) = leg {
-                    path.extend(leg);
+            let mut skipped = 0;
+            for (i, &(t, over, run)) in order.iter().enumerate() {
+                // Arrive heading for the tile after in the same run, when
+                // that is a step away, so the row runs straight — but not
+                // by looping round to get the heading: a tile it would take
+                // more than a couple of steps over the plain way to arrive
+                // at properly is left, and the ground beyond it too.
+                let then = order.get(i + 1).filter(|n| n.2 == run && dist(t, n.0) == 1).map(|n| n.0);
+                let plain = [over, &ground].into_iter().find_map(|g| self.over(g, &safe, &path, t, None, &AROUND));
+                let leg = match then {
+                    None => plain,
+                    Some(_) => [over, &ground].into_iter().find_map(|g| self.over(g, &safe, &path, t, then, &AROUND)).filter(|leg| plain.as_ref().is_none_or(|p| leg.len() <= p.len() + 2)),
+                };
+                match leg {
+                    Some(leg) => path.extend(leg),
+                    None => skipped += 1,
                 }
             }
-            let home = self.over(&edge, &safe, &path, yard, None).or_else(|| self.over(&ground, &safe, &path, yard, None))?;
+            // Home along the edge, four ways, so the corners are taken and
+            // not cut.
+            let home = self.over(&edge, &safe, &path, yard, None, &AROUND[..4]).or_else(|| self.over(&ground, &safe, &path, yard, None, &AROUND))?;
             path.extend(home);
             // What the whole run never reached.
             let left: Vec<GridCoord> = batch.iter().copied().filter(|t| !path.contains(t)).collect();
-            if best.as_ref().is_none_or(|(b, l)| (left.len(), path.len()) < (l.len(), b.len())) {
-                best = Some((path, left));
+            if best.as_ref().is_none_or(|(b, _, k)| (skipped, path.len()) < (*k, b.len())) {
+                best = Some((path, left, skipped));
             }
         }
-        best
+        best.map(|(path, left, _)| (path, left))
     }
 
     /// The shortest drive on from a path to a tile over the given ground,
-    /// eight ways, turning no sharper than a right angle — from the way
+    /// the given ways, turning no sharper than a right angle — from the way
     /// the path's last step was heading, or any way from a standing start
     /// — and arriving, if a tile after is given, heading so that the step
     /// on to it is no sharper either, and always so that it can still get
     /// home (`safe`). The tiles after the path's last, the destination
     /// included; or none, if no such drive reaches it.
-    fn over(&self, ground: &HashSet<(i32, i32)>, safe: &HashSet<State>, path: &[GridCoord], to: GridCoord, then: Option<GridCoord>) -> Option<Vec<GridCoord>> {
+    fn over(&self, ground: &HashSet<(i32, i32)>, safe: &HashSet<State>, path: &[GridCoord], to: GridCoord, then: Option<GridCoord>, ways: &[(i32, i32)]) -> Option<Vec<GridCoord>> {
         let from = *path.last()?;
         let heading = match path.len() {
             0 | 1 => None,
@@ -417,7 +445,7 @@ impl World {
                 drive.reverse();
                 return Some(drive);
             }
-            for (dx, dy) in AROUND {
+            for &(dx, dy) in ways {
                 if way.is_some_and(|(wx, wy)| wx * dx + wy * dy < 0) {
                     continue;
                 }

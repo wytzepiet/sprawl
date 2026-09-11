@@ -1298,27 +1298,32 @@ allows. What stands:
   go. Out of the yard along the lane, the open ground round the plot,
   to the corner of the field nearest it; once round the outline for
   the headland, which is where a real tractor turns and what draws the
-  field's edge first; then the inside in straight rows along the long
-  side from headland to headland, each driven the way back from the
+  field's edge first; then the inside in straight rows from headland
+  to headland, each a run of field, each driven the way back from the
   last, from the yard's side of the field to the far side, a change of
   row two right angles made on the headland, which is what a headland
-  is for; round the barn by the yard in front of it or the ground
-  behind; and home along the edge, not across the field. Never a turn
-  sharper than a right angle: between one tile and the next the
-  tractor takes the shortest way that keeps to that, arriving headed
-  for the tile after so the row runs straight, and never onto a tile
-  it could not get home from that way — the states it can get home
-  from are found once, backwards from the yard — so it is never stuck
-  in a pocket. A tile no such way reaches it leaves, and a tile left
-  is land no more: the field is what the tractor can drive. The
-  outline starts at the rectangle's corner nearest the yard, whether
-  or not that corner is field, and is driven whichever way round
-  leaves fewer tiles and the shorter run, over the edge — the field's
-  boundary, the lane and the yard — and across the inside only where
-  a cutout breaks the edge. The barn is not ground; the yard and the
-  lane are. A test draws the sweep over four shapes of land, the
-  fourth a farm with neighbours a tile away on both flanks as a town
-  builds them, and it was looked at.
+  is for. The rows run whichever way breaks on fewer cutouts — past
+  the farmstead, not through its lot, since the lot is where the
+  tractor lives and not a way through — and along the long side when
+  both ways break alike; and home along the edge four ways, so the
+  corners are taken and not cut. Never a turn sharper than a right
+  angle: between one tile and the next the tractor takes the shortest
+  way that keeps to that, arriving headed for the tile after in its
+  run so the row runs straight, but never looping round to get the
+  heading: a tile it would take more than a couple of steps over the
+  plain way to arrive at properly is left, so a ragged edge is shaved
+  straight rather than hooked round. Never onto a tile it could not
+  get home from that way — the states it can get home from are found
+  once, backwards from the yard — so it is never stuck in a pocket. A
+  tile left is land no more: the field is what the tractor can drive.
+  The outline starts at the rectangle's corner nearest the yard,
+  whether or not that corner is field, and is driven whichever way
+  round skips fewer tiles as it goes and then the shorter, over the
+  edge — the field's boundary, the lane and the yard — and across the
+  inside only where a cutout breaks the edge. The barn is not ground;
+  the yard and the lane are. A test draws the sweep over four shapes
+  of land, the fourth a farm with neighbours a tile away on both
+  flanks as a town builds them, and it was looked at.
 - **One run a day, three days a cycle.** Plough day, seed day, harvest
   day. A crop sown by the end of a shift is ripe by the next morning,
   half a day, so the harvest is the third day. The yard holds a
@@ -1378,8 +1383,9 @@ allows. What stands:
   ploughed ground are ribbons along that same path, curves and all, so
   they lie exactly under its wheels: two faint stripes a wheel apart
   with nothing between, so where two paths cross all four show, and
-  under the plough a strip a tile wide in the field's colour. A ribbon
-  is built whole when the run is sent and shown as far as the tractor
+  under the plough a strip a tile wide in the field's colour, over the
+  land only and never the lot or the lane. A ribbon is built whole
+  when the run is sent and shown as far as the tractor
   has got, its frontier pulled back each frame to where the tractor is,
   so the marks end under it and nothing is laid twice or blinks. The run
   itself carries nothing that changes as it goes — the tile is the

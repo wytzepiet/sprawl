@@ -18,6 +18,7 @@ export function mountBuilding(
   entry: GameObjectEntry,
   pool: InstancePool,
   look: Look,
+  land: (x: number, y: number) => boolean,
 ): () => void {
   const data = entry.object.data as Building;
   const pos = entry.position;
@@ -78,7 +79,7 @@ export function mountBuilding(
   // it ploughed and the marks it left, along the path it drove. Every
   // run works the same ground, so the last run's path is the field.
   const drawn = data.ruts.length > 1 ? drawnPath(data.ruts.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0)), 0, 0, 0) : null;
-  const ruts = drawn ? new Trail(pool, drawn, true) : null;
+  const ruts = drawn ? new Trail(pool, drawn, land) : null;
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);

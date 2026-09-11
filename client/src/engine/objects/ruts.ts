@@ -7,8 +7,9 @@ import type { DrawnPath } from "./drawnPath";
  * is drawn on, curves and all, so they lie exactly under its wheels. The
  * marks are two faint stripes a wheel apart with nothing between, so
  * where two paths cross all four show; under the plough a strip a tile
- * wide in the field's colour, which is the ground turned brown. There is
- * no field but this: a field is where the plough has been.
+ * wide in the field's colour, which is the ground turned brown, over the
+ * land only. There is no field but this: a field is where the plough has
+ * been.
  *
  * A ribbon is built whole and shown as far as the tractor has got: the
  * sections behind it as they are, the one ahead pulled back to where it
@@ -36,7 +37,7 @@ class Ribbon {
   /** Sections drawn whole: the frontier is the next. */
   private shown: number;
 
-  constructor(material: StandardMaterial, private drawn: DrawnPath, private lanes: Lanes, private z: number) {
+  constructor(material: StandardMaterial, private drawn: DrawnPath, private lanes: Lanes, private z: number, keep?: (x: number, y: number) => boolean) {
     const { points } = drawn;
     const n = points.length;
     for (let i = 0; i < n; i++) {
@@ -56,12 +57,17 @@ class Ribbon {
     const normals: number[] = [], indices: number[] = [];
     for (let i = 0; i < n * lanes.length * 2; i++) normals.push(0, 0, 1);
     for (let i = 0; i + 1 < n; i++) {
+      // A segment left out keeps its place in the index buffer as six of
+      // one vertex, nothing drawn, so the count shown still counts segments.
+      const mx = (points[i].x + points[i + 1].x) / 2, my = (points[i].y + points[i + 1].y) / 2;
+      const out = keep !== undefined && !keep(Math.floor(mx), Math.floor(my));
       for (let l = 0; l < lanes.length; l++) {
         const [l0, r0] = this.vertex(i, l), [l1, r1] = this.vertex(i + 1, l);
         // Clockwise seen from above, as the lots' slabs are, so the face
         // is up: the normal runs left, so the quad's turn is the reverse
         // of one laid out along x and y.
-        indices.push(l0, r0, r1, l0, r1, l1);
+        if (out) indices.push(l0, l0, l0, l0, l0, l0);
+        else indices.push(l0, r0, r1, l0, r1, l1);
       }
     }
     this.mesh = new Mesh("ruts", material.getScene());
@@ -118,14 +124,15 @@ class Ribbon {
   }
 }
 
-/** The marks along a path, and under the plough the strip too. Whole
- *  until told how far the tractor has got. */
+/** The marks along a path, and under the plough the strip too — the
+ *  strip only over the land, not the lot or the lane the tractor crosses
+ *  to get to it. Whole until told how far the tractor has got. */
 export class Trail {
   private ribbons: Ribbon[];
 
-  constructor(pool: InstancePool, drawn: DrawnPath, strip: boolean) {
+  constructor(pool: InstancePool, drawn: DrawnPath, land: ((x: number, y: number) => boolean) | null) {
     this.ribbons = [new Ribbon(pool.material("rut", RUT), drawn, MARKS, RUT_Z)];
-    if (strip) this.ribbons.push(new Ribbon(pool.material("strip", FIELD), drawn, STRIP, STRIP_Z));
+    if (land) this.ribbons.push(new Ribbon(pool.material("strip", FIELD), drawn, STRIP, STRIP_Z, land));
   }
 
   reach(dist: number): void {
