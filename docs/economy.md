@@ -1258,17 +1258,21 @@ and it was thrown away too, because the tractor should drive the
 land, not stop beside it, and a field should be any shape the land
 allows. What stands:
 
-- **The land is a rectangle behind the plot, as much as a shift
-  ploughs.** A farm reached by a street claims a rectangle of open
-  grass behind its plot, begun as the row along the plot's back and
-  grown a row at a time until it is as much as a shift can plough — the
+- **The land is a rectangle round the farmstead, as much as a shift
+  ploughs.** A farm reached by a street claims a rectangle of grass
+  round its plot, with the plot cut out of it and whatever else stands
+  in it — a house, a road, a wood — cut out too; the land is the open
+  grass in it the tractor can reach from the yard, four ways, so a road
+  through the rectangle is the field's edge and nothing lies beyond it
+  the tractor cannot get to. Begun as the plot itself and grown a row
+  at a time until the land in it is as much as a shift can plough — the
   shift over the tractor's pace, less a tenth for the headland and the
-  lane, about two hundred tiles. A row goes on the long side, so the
-  short side catches up and the field tends to square; on the flank
-  that keeps it centred on the yard; never toward the street. A row
-  that would run onto anything but open grass is not taken, so a road,
-  a house or a wood is the edge of the field and the rectangle grows
-  the other way instead; a row that would take the field past its size
+  lane, about two hundred tiles — the cutouts made up for by growing
+  further. A row goes on the long side, so the short side catches up
+  and the field tends to square; on the flank that keeps it centred on
+  the yard; never toward the street. A row that adds no land is not
+  taken, so a road along the field is its edge and the rectangle grows
+  the other way instead; a row that would take the land past its size
   is not taken either, and when no row can be, the field is done, a
   row or so short of the number. A farm on cramped ground is a smaller
   farm with the same yard: a tile's crop is the yard over the land the
@@ -1277,8 +1281,9 @@ allows. What stands:
   roaded over is dropped at the farm's next look. The land lives on
   the farm's own record, a stage and a time per tile, and nothing
   else. This is how the Midwest is laid out: fields are rectangles on
-  the survey grid with the farmstead on the road frontage, and a field
-  is any other shape only where something forced it.
+  the survey grid with the farmstead on the road frontage inside its
+  own land, and a field is any other shape only where something forced
+  it.
 - **The tractor drives the land as a farmer does.** Off the roads
   entirely: a run is a list of tiles and a pace, two and a half minutes
   of the clock a tile, no route, no claims, no queue. It does its job
@@ -1292,7 +1297,8 @@ allows. What stands:
   side from headland to headland, each driven the way back from the
   last, from the yard's side of the field to the far side, a change of
   row two right angles made on the headland, which is what a headland
-  is for; and home along the edge, not across the field. Never a turn
+  is for; round the barn by the yard in front of it or the ground
+  behind; and home along the edge, not across the field. Never a turn
   sharper than a right angle: between one tile and
   the next the tractor takes the shortest way that keeps to that,
   arriving headed for the tile after so the row runs straight, and a
@@ -1340,8 +1346,11 @@ allows. What stands:
   by the chessboard's measure with a bound on the walk, for a block
   that tended to square, and swept rows parallel to the street with
   diagonal row changes; watched in the game, the block was a rounded
-  blob and the rows turned sharp at ragged ends. The third is what
-  stands: the rectangle, the headland and the right angle.
+  blob and the rows turned sharp at ragged ends. The third was a
+  rectangle behind the plot, with rows ending a tile short of the
+  headland and turning on the crop. What stands is the fourth: the
+  rectangle round the farmstead with its cutouts, the headland driven
+  first and turned on, and the right angle.
 - **On the client** there is no field but where the plough has been.
   The tractor is drawn along its run on the same rounded path as a
   trip, the planned tiles as its path, no lane, but by the server's

@@ -1,10 +1,11 @@
 //! A farm's land, and the tractor's runs over it. docs/economy.md §12.8.
 //!
-//! When a street reaches a farm it claims a rectangle of grass behind its
-//! plot, grown a row at a time on whichever side keeps it squarest until
-//! it is as much as a shift can plough, and stopping short of a road, a
-//! wood, a beach or anything built: a field is a rectangle unless
-//! something forced it not to be. Each tile is then at a stage of one
+//! When a street reaches a farm it claims a rectangle of grass round its
+//! plot, grown a row at a time on whichever side keeps it squarest, the
+//! barn and anything else standing in it — a house, a road, a wood — cut
+//! out and made up for, until the land in it is as much as a shift can
+//! plough: a field is a rectangle with the farmstead in it, and any other
+//! shape only where something forced it. Each tile is then at a stage of one
 //! cycle — grass, ploughed, sown, cut — and the tractor drives the whole
 //! field in one run a day, doing the job to each tile as it arrives:
 //! ploughing turns the ground, seeding starts the crop, harvesting lands
@@ -53,47 +54,54 @@ impl World {
         self.is_buildable(t) && self.terrain.get(&(t.x, t.y)) == Some(&crate::protocol::TerrainType::Grass)
     }
 
-    /// A farm reached by a street claims its land: a rectangle of open
-    /// grass behind its plot, begun as the row along the plot's back and
-    /// grown a row at a time — on the long side, so the short side catches
-    /// up and the field tends to square; on the flank that keeps it
-    /// centred on the yard; never toward the street — until it is as much
-    /// as a shift can plough. A row that would run onto anything but open
-    /// grass is not taken, so a road, a house or a wood is the edge of the
-    /// field and the rectangle grows the other way; a row that would take
-    /// the field past its size is not taken either, and when no row can
-    /// be, the field is done. The first shift's ploughing makes it a field.
+    /// A farm reached by a street claims its land: a rectangle round its
+    /// plot with the plot cut out of it, and whatever else stands in it —
+    /// a house, a road, a wood — cut out too; what is left is the open
+    /// grass in it the tractor can reach from the yard. Begun as the plot
+    /// and grown a row at a time — on the long side, so the short side
+    /// catches up and the field tends to square; on the flank that keeps
+    /// it centred on the yard; never toward the street — until the land
+    /// in it is as much as a shift can plough, the cutouts made up for.
+    /// A row that adds no land is not taken, so a road along the field is
+    /// its edge and the rectangle grows the other way; a row that would
+    /// take the land past its size is not taken either, and when no row
+    /// can be, the field is done. The first shift's ploughing makes it a
+    /// field.
     pub fn claim_land(&mut self, farm: EntityId) {
         let Some(e) = self.objects.get(farm) else { return };
         let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return };
         let (kind, facing) = (b.kind, b.facing);
-        let wanted = capacity(kind) as i32;
+        let wanted = capacity(kind) as usize;
         if !economy::farm(kind) || !b.land.is_empty() {
             return;
         }
         let p = plot(kind, facing);
         let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
         let (w, h) = (p.size.0 as i32, p.size.1 as i32);
-        // The row along the plot's back: the plot's tiles stepped one away
-        // from the street, less the plot itself.
-        let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-        for t in Self::footprint(pos, p.size) {
-            let n = GridCoord { x: t.x - fx, y: t.y - fy };
-            if n.x >= pos.x && n.y >= pos.y && n.x < pos.x + w && n.y < pos.y + h {
-                continue;
+        let yard = self.yard_tiles(farm);
+        // The land in a rectangle: its open tiles the tractor can reach
+        // from the yard, four ways, round whatever is cut out.
+        let land_in = |(x0, y0, x1, y1): (i32, i32, i32, i32)| -> Vec<GridCoord> {
+            let mut seen: HashSet<(i32, i32)> = yard.iter().map(|t| (t.x, t.y)).collect();
+            let mut queue: VecDeque<GridCoord> = yard.iter().copied().collect();
+            let mut land = Vec::new();
+            while let Some(t) = queue.pop_front() {
+                for (dx, dy) in AROUND[..4].iter() {
+                    let n = GridCoord { x: t.x + dx, y: t.y + dy };
+                    if n.x >= x0 && n.y >= y0 && n.x <= x1 && n.y <= y1 && seen.insert((n.x, n.y)) && self.is_open(n) {
+                        land.push(n);
+                        queue.push_back(n);
+                    }
+                }
             }
-            (x0, y0, x1, y1) = (x0.min(n.x), y0.min(n.y), x1.max(n.x), y1.max(n.y));
-        }
-        let open = |x0: i32, y0: i32, x1: i32, y1: i32| (y0..=y1).all(|y| (x0..=x1).all(|x| self.is_open(GridCoord { x, y })));
-        if !open(x0, y0, x1, y1) {
-            return;
-        }
+            land.sort_by_key(|t| (t.y, t.x));
+            land
+        };
+        let mut rect = (pos.x, pos.y, pos.x + w - 1, pos.y + h - 1);
+        let mut land = land_in(rect);
         let (cx, cy) = (pos.x * 2 + w - 1, pos.y * 2 + h - 1);
-        loop {
-            let (dx, dy) = (x1 - x0 + 1, y1 - y0 + 1);
-            if dx * dy >= wanted {
-                break;
-            }
+        while land.len() < wanted {
+            let (x0, y0, x1, y1) = rect;
             // Each side but the street's, as the rectangle would be with a
             // row added there: the long sides first, then the flank nearer
             // the yard's middle.
@@ -102,22 +110,22 @@ impl World {
                 .filter(|&&(sx, sy)| (sx, sy) != (fx, fy))
                 .map(|&(sx, sy)| {
                     let grown = (x0.min(x0 + sx), y0.min(y0 + sy), x1.max(x1 + sx), y1.max(y1 + sy));
-                    let row = if sx != 0 { dy } else { dx };
-                    let off = ((grown.0 + grown.2 - cx).abs(), (grown.1 + grown.3 - cy).abs());
-                    (-row, off.0 + off.1, grown)
+                    let row = if sx != 0 { y1 - y0 + 1 } else { x1 - x0 + 1 };
+                    let off = (grown.0 + grown.2 - cx).abs() + (grown.1 + grown.3 - cy).abs();
+                    (-row, off, grown)
                 })
                 .collect();
             sides.sort();
-            let Some(&(_, _, (gx0, gy0, gx1, gy1))) = sides.iter().find(|&&(_, _, (gx0, gy0, gx1, gy1))| {
-                (gx1 - gx0 + 1) * (gy1 - gy0 + 1) <= wanted && open(gx0, gy0, gx1, gy1)
+            let Some((grown, more)) = sides.into_iter().find_map(|(_, _, grown)| {
+                let more = land_in(grown);
+                (more.len() > land.len() && more.len() <= wanted).then_some((grown, more))
             }) else {
                 break;
             };
-            (x0, y0, x1, y1) = (gx0, gy0, gx1, gy1);
+            (rect, land) = (grown, more);
         }
-        let land: Vec<Tile> = (y0..=y1).flat_map(|y| (x0..=x1).map(move |x| Tile { at: GridCoord { x, y }, stage: Stage::Grass, since: 0 })).collect();
         if let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object) {
-            b.land = land;
+            b.land = land.into_iter().map(|at| Tile { at, stage: Stage::Grass, since: 0 }).collect();
         }
     }
 
@@ -499,20 +507,22 @@ mod tests {
     }
 
     /// §12.8: a farm reached by a street claims a rectangle of grass
-    /// behind its plot, near enough square, as much as a shift ploughs
-    /// and no more, all of it grass and none of it on the street; a road
-    /// behind the plot is its edge and the field grows along it instead,
-    /// and a farm in the woods claims nothing.
+    /// round its plot with the plot cut out, near enough square, as much
+    /// as a shift ploughs and no more, all of it grass and none of it on
+    /// the street; a road behind the plot is its edge and the field grows
+    /// along it instead, with the road's side made up for; a house in the
+    /// field is cut out and made up for; and a farm in the woods claims
+    /// nothing.
     #[test]
     fn a_farm_claims_the_grass_behind_it() {
         let mut world = land();
         let (_, tiles) = farm_at(&mut world, 10);
         let wanted = capacity(BuildingKind::Farm) as usize;
-        let (x0, y0, x1, y1, full) = rect(&tiles);
-        assert!(full, "the land is not a rectangle");
+        let (x0, y0, x1, y1, _) = rect(&tiles);
+        assert_eq!(((x1 - x0 + 1) * (y1 - y0 + 1)) as usize, tiles.len() + 12, "the land is not the rectangle less the plot");
         assert!(tiles.len() <= wanted && tiles.len() + (x1 - x0 + 1).max(y1 - y0 + 1) as usize > wanted, "the farm claimed {} tiles of {wanted}", tiles.len());
         assert!((x1 - x0).abs_diff(y1 - y0) <= 1, "the field is {}x{}, not square", x1 - x0 + 1, y1 - y0 + 1);
-        assert!(y0 == 5 && x0 <= 10 && x1 >= 12, "the field {x0},{y0}..{x1},{y1} is not behind the plot");
+        assert!(y0 == 1 && x0 < 10 && x1 > 12 && y1 > 4, "the field {x0},{y0}..{x1},{y1} is not round the plot");
         assert!(tiles.iter().all(|t| t.stage == Stage::Grass && world.is_open(t.at)));
         assert_eq!(world.laid, 0);
         // Bounded: a road four tiles behind the plot walls the land in,
@@ -520,8 +530,15 @@ mod tests {
         let mut walled = land();
         walled.place_road_path(&(-4..60).map(|x| GridCoord { x, y: 6 }).collect::<Vec<_>>());
         let (_, tiles) = farm_at(&mut walled, 10);
-        let (_, y0, _, y1, full) = rect(&tiles);
-        assert!(full && y0 == 5 && y1 == 5 && tiles.len() > 20, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
+        let (_, y0, _, y1, _) = rect(&tiles);
+        assert!(y0 == 1 && y1 == 5 && tiles.len() + 5 > wanted, "the walled-in field is {} tiles, y {y0}..{y1}", tiles.len());
+        // A house in the field is cut out, and the field made up for it.
+        let mut cramped = land();
+        cramped.place_building(GridCoord { x: 4, y: 6 }, BuildingKind::House, 2);
+        let (_, tiles) = farm_at(&mut cramped, 10);
+        let (x0, y0, x1, y1, _) = rect(&tiles);
+        assert!(tiles.len() + (x1 - x0 + 1).max(y1 - y0 + 1) as usize > wanted, "the house was not made up for: {} tiles", tiles.len());
+        assert!(!tiles.iter().any(|t| t.at == GridCoord { x: 4, y: 6 }), "the house is land");
         // Nothing to claim in a wood.
         let mut woods = land();
         for y in -12..14 {
@@ -576,13 +593,14 @@ mod tests {
                     *cell = c;
                 }
             }
-            for t in World::footprint(GridCoord { x: 14, y: 1 }, (3, 4)) {
-                if !world.yard_tiles(farm).contains(&t) {
-                    grid[(t.y + 4) as usize][(t.x + 4) as usize] = '#';
+            let (x0, y0, x1, y1, _) = rect(&tiles(&world, farm));
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    let t = GridCoord { x, y };
+                    if !world.is_open(t) && !world.yard_tiles(farm).contains(&t) {
+                        grid[(y + 4) as usize][(x + 4) as usize] = '#';
+                    }
                 }
-            }
-            if shape == 2 {
-                grid[12][21] = 'H';
             }
             println!("{name}: {} tiles, {} steps (first {steps} drawn, 0-9a-z then round again, first visit only)", batch.len(), path.len());
             println!("  home: {:?}", path.iter().rev().take(12).map(|t| (t.x, t.y)).collect::<Vec<_>>());
@@ -595,7 +613,6 @@ mod tests {
             assert!(!sharp(&path), "{name}: a turn sharper than a right angle");
             assert!(batch.iter().all(|t| path.contains(t)), "{name}: the sweep missed a tile");
             // The headland first: every tile on the outline before any inside it.
-            let (x0, y0, x1, y1, _) = rect(&tiles(&world, farm));
             let inside = |t: &GridCoord| t.x > x0 && t.x < x1 && t.y > y0 && t.y < y1;
             let first_inside = path.iter().position(inside).unwrap_or(path.len());
             assert!(batch.iter().filter(|t| !inside(t)).all(|t| path.iter().position(|p| p == t).unwrap() < first_inside), "{name}: the outline was not driven first");

@@ -2067,15 +2067,17 @@ mod tests {
         pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 2 * day + 7 * day / 24);
         // The hands' time off has run out after two full shifts, so the
         // third day may be their holiday: the harvest comes on the third
-        // or the fourth.
+        // or the fourth, and on the third the stubble may be ploughed
+        // again by the fourth evening.
         pump(&mut world, &mut events, &mut intersections, 2 * day + 7 * day / 24, 3 * day + 20 * day / 24);
-        assert!(stages(&world).iter().all(|&s| s == Stage::Cut), "by the fourth evening the land is {:?}", stages(&world));
+        assert!(stages(&world).iter().all(|&s| matches!(s, Stage::Cut | Stage::Ploughed)), "by the fourth evening the land is {:?}", stages(&world));
         assert!((yard(&world) - stages(&world).len() as f64 * crop).abs() < 1e-6 || world.calls.iter().any(|c| c.at == farm && c.kind == calls::CallKind::Pickup) || world.books[&farm].on(2 * day + 20 * day / 24).revenue > 0.0, "the harvest is not in the yard, nor called for, nor sold: {}", yard(&world));
 
         // The harvest's pickups come and go; then the warehouse's shelf
         // run low: its lorry fetches from the farm, the nearer source, at
-        // the farm's posted price, two lines.
-        let mut now = 2 * day + 20 * day / 24;
+        // the farm's posted price, two lines. The clock goes on from where
+        // the world is: an event queue is not pumped backwards.
+        let mut now = 3 * day + 20 * day / 24;
         while world.calls.iter().any(|c| c.at == farm) && now < 4 * day {
             pump(&mut world, &mut events, &mut intersections, now, now + day / 24);
             now += day / 24;
