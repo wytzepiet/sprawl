@@ -43,7 +43,7 @@ pub fn park_car(
             }
         }
     }
-    let woken = intersections.remove_car_from_all(car_id);
+    let woken = intersections.remove_car_from_all(car_id, events.now());
     for (_node_id, woken_id) in woken {
         events.wake(0, woken_id);
     }
@@ -98,7 +98,7 @@ pub fn park_at_home(
         // No owner to speak of: scrap it.
         None => {
             events.clear_dedup(car_id);
-            let _ = intersections.remove_car_from_all(car_id);
+            let _ = intersections.remove_car_from_all(car_id, events.now());
             world.despawn_car(car_id);
         }
     }
@@ -369,7 +369,7 @@ pub fn handle_car_wake_up(
             // the road exit is a building, and its door is a road node.
             if role != CarRole::Private && world.network.is_exit(*trip.route.last().unwrap()) {
                 world.unregister_car_route(car_id, &trip.route);
-                let woken = intersections.remove_car_from_all(car_id);
+                let woken = intersections.remove_car_from_all(car_id, now);
                 for (_, id) in woken {
                     events.wake(0, id);
                 }
@@ -400,11 +400,18 @@ pub fn handle_car_wake_up(
     let mut node_dist = seg_start;
     for k in (1..ri).rev().take(4) {
         if cur_progress - node_dist >= tail(role) {
-            for woken_id in intersections.clear_car(trip.route[k], car_id) {
+            for woken_id in intersections.clear_car(trip.route[k], car_id, now) {
                 events.wake(0, woken_id);
             }
         } else {
             tail_clears = Some(node_dist + tail(role));
+            // Standing with its tail in the box: after a few seconds it
+            // waves the others through, as it would at the line.
+            if cur_speed < 0.01 {
+                for woken_id in intersections.lapse(trip.route[k], car_id, now) {
+                    events.wake(0, woken_id);
+                }
+            }
         }
         node_dist -= trip.segment_lengths[k];
     }
@@ -423,9 +430,29 @@ pub fn handle_car_wake_up(
             {
                 intersections
                     .get_or_create(trip.route[k])
-                    .register(car_id, from_dir, to_dir);
+                    .register(car_id, from_dir, to_dir, now);
+            }
+            // Holding the junction and going nowhere: after a few seconds
+            // of that, wave the others through and queue again. Standing
+            // is a crawl under a hundredth of a tile a second, since a
+            // car held at a gap never quite reads zero.
+            if cur_speed < 0.01 {
+                for woken_id in intersections.lapse(trip.route[k], car_id, now) {
+                    events.wake(0, woken_id);
+                }
             }
             if !intersections.has_passage(trip.route[k], car_id) {
+                // Nothing held beyond a junction it has no passage at: a
+                // claim made from behind it while it had one, and kept
+                // after that lapsed, would be a junction held by a car
+                // that cannot reach it.
+                for &beyond in trip.route.iter().take(trip.route.len() - 1).skip(k + 1).take(QUEUE_AHEAD) {
+                    if world.is_intersection(beyond) {
+                        for woken_id in intersections.remove_car(beyond, car_id, now) {
+                            events.wake(0, woken_id);
+                        }
+                    }
+                }
                 break;
             }
         }

@@ -16,8 +16,9 @@ const HOUR: f64 = H as f64;
 /// carries it in `drain`; a **constant** need is imposed by the world and
 /// carries it in the curve of whatever serves it, holding a fixed level
 /// meanwhile; a **driven** need is used up by the road, a little per tile,
-/// and is the car's rather than the day's. And one is a building's alone:
-/// **services**, drawn by the day of operation and delivered by a call.
+/// and is the car's rather than the day's — the tank, and wear. And one is
+/// a building's alone: **services**, drawn by the day of operation and
+/// delivered by a call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Need {
@@ -35,6 +36,10 @@ pub enum Need {
     Leisure,
     /// The tank. Used by the mile rather than the hour, and refilled at a pump.
     Fuel,
+    /// The car's wear: used by the mile too, slower, and put right at a
+    /// workshop. What a breakdown costs, the way the tank is what running
+    /// dry costs (docs/economy.md §4).
+    Wear,
     /// Upkeep, repairs and everything else on no shelf: what an office
     /// makes from its labour, a unit an hour, and every building and home
     /// draws by the day. No tap serves it; a car delivers it
@@ -44,22 +49,36 @@ pub enum Need {
 
 impl Need {
     /// Baseline first, so ties fall to staying put.
-    pub const ALL: [Need; 7] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure, Need::Fuel, Need::Services];
-    /// The needs a person carries. The tank is the car's, though its
-    /// driver is the one who decides to fill it.
+    pub const ALL: [Need; 8] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure, Need::Fuel, Need::Wear, Need::Services];
+    /// The needs a person carries. The tank and the wear are the car's,
+    /// though its driver is the one who decides to stop for them.
     pub const OWN: [Need; 5] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure];
+    /// The needs a car carries: used by the tile, and weighed by whoever
+    /// drives it.
+    pub const DRIVEN: [Need; 2] = [Need::Fuel, Need::Wear];
 
-    /// A tank's worth, in tiles. What sets how often anyone stops for fuel.
-    pub const TANK_TILES: f64 = 500.0;
+    /// A full stock's worth, in tiles: a tank, and a service. What sets how
+    /// often anyone stops for either. A service lasts two and a half
+    /// tanks — every ten days or so for a commuter, so the workshop sees
+    /// each car a few times a season and the tank still sets the rhythm.
+    pub fn tiles(self) -> f64 {
+        match self {
+            Need::Fuel => 500.0,
+            Need::Wear => 1200.0,
+            _ => f64::INFINITY,
+        }
+    }
 
     /// Stock used per tile driven.
-    pub fn per_tile() -> f64 {
-        Need::Fuel.cap() / Need::TANK_TILES
+    pub fn per_tile(self) -> f64 {
+        self.cap() / self.tiles()
     }
 
     /// How long a fill takes: twenty minutes at the pump, so the pump's
     /// rate is the tank over that.
     pub const FILL_MS: f64 = HOUR / 3.0;
+    /// How long a service takes in the bay: an hour.
+    pub const SERVICE_MS: f64 = HOUR;
 
     /// Holds its level: the world's curves say when, not the stock.
     pub fn constant(self) -> bool {
@@ -70,7 +89,7 @@ impl Need {
     /// constant need. For `D` hours a day at unit rate this is `D / (24 - D)`.
     pub fn drain(self) -> f64 {
         match self {
-            Need::Work | Need::Home | Need::Fuel | Need::Services => 0.0,
+            Need::Work | Need::Home | Need::Fuel | Need::Wear | Need::Services => 0.0,
             Need::Rest => 8.0 / 16.0,
             // About 1.2 hours a day, as people actually spend: a sitting is
             // owed ten hours after the last, and lunch out is worth the
@@ -94,6 +113,9 @@ impl Need {
             // scored against its price. A near-empty tank then beats an
             // evening in and loses to a shift, as it should.
             Need::Fuel => 2.0 * HOUR,
+            // What a breakdown costs: a morning towed and a repair waited
+            // on, twice a dry tank.
+            Need::Wear => 4.0 * HOUR,
             // An hour of an office's make: the unit. A building's stock of
             // it has a cap of its own (`economy::stocks`).
             Need::Services => HOUR,
@@ -101,12 +123,12 @@ impl Need {
     }
 
     /// The one thing a tap sells, in milliseconds of need: a sitting, an
-    /// evening, a tank, an hour of labour. A price is per one of these,
+    /// evening, a tank, a service, an hour of labour. A price is per one of these,
     /// and a shelf counts them. docs/economy.md §12.1.
     pub fn unit(self) -> f64 {
         match self {
             Need::Work | Need::Home | Need::Rest | Need::Services => HOUR,
-            Need::Eat | Need::Leisure | Need::Fuel => self.cap(),
+            Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => self.cap(),
         }
     }
 
@@ -121,8 +143,9 @@ impl Need {
             Need::Work => 0.5 * cap,
             Need::Home => 0.7 * cap,
             // Everyone drives in from beyond the edge, where fuel is
-            // unlimited: the tank is full, less the drive in.
-            Need::Rest | Need::Eat | Need::Leisure | Need::Fuel | Need::Services => cap,
+            // unlimited: the tank is full, less the drive in, and the car
+            // freshly serviced.
+            Need::Rest | Need::Eat | Need::Leisure | Need::Fuel | Need::Wear | Need::Services => cap,
         };
         Stock { level, cap }
     }
@@ -227,9 +250,10 @@ impl Bucket {
         Need::OWN.iter().map(|&need| Bucket { need, stock: need.fresh(), shortfall: 0.0 }).collect()
     }
 
-    /// A car's tank, as issued: full.
-    pub fn tank() -> Stock {
-        Need::Fuel.fresh()
+    /// A car's stocks, as issued: a full tank, freshly serviced. What a
+    /// save from before a car carried them gets.
+    pub fn driven() -> std::collections::BTreeMap<Need, Stock> {
+        Need::DRIVEN.into_iter().map(|need| (need, need.fresh())).collect()
     }
 
     /// Any need a saved resident predates, issued fresh; any they no longer

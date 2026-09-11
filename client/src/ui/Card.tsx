@@ -38,7 +38,7 @@ type Card =
       role: "Private" | "Van" | "Truck" | "Company";
       owner: Link;
       rider: Link | null;
-      fuel: number | null;
+      stocks: { need: Need; full: number }[];
       trip: { to: Link; due: string; late_s: number } | null;
       parked_at: Link | null;
       answering: { what: string; for: Link; since: string }[];
@@ -242,9 +242,9 @@ function CarCard(c: Extract<Card, { kind: "car" }>) {
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
         <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
-        <Show when={c.fuel !== null}>
-          <Row label="Fuel"><Bar value={c.fuel!} color={c.fuel! < 0.2 ? "#D9483B" : "#57A773"} /></Row>
-        </Show>
+        <For each={c.stocks}>
+          {(s) => <Row label={s.need}><Bar value={s.full} color={s.full < 0.2 ? "#D9483B" : "#57A773"} /></Row>}
+        </For>
       </Section>
       <Show when={c.trip}>
         {(t) => (

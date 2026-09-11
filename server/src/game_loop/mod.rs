@@ -533,7 +533,7 @@ fn try_reroute(
     // whole run ahead of it, not just the tile it is on.
     world.unregister_car_route(car_id, &old_route);
     world.remove_car_from_edges(car_id);
-    let woken = intersections.remove_car_from_all(car_id);
+    let woken = intersections.remove_car_from_all(car_id, now);
     for (_node, woken_id) in woken {
         events.wake(0, woken_id);
     }
@@ -1079,7 +1079,8 @@ mod tests {
 
     /// Services, docs/economy.md §4: a home's stock run low calls, the
     /// office's car answers with what the office's staff made, unloads
-    /// at the door and comes home, and no money crosses; a shift that
+    /// at the door and comes home, and nothing crosses but the car's
+    /// fuel, bought when it is filled in the yard; a shift that
     /// fills the office's shelf sends the car out past the edge with the
     /// load, and it comes home paid.
     #[test]
@@ -1110,7 +1111,11 @@ mod tests {
         pump(&mut world, &mut events, &mut intersections, 0, 2 * DAY_MS as u64 / 24);
         assert!(world.calls.is_empty(), "the call was answered");
         assert!(week - level(&world, home) < crate::economy::draw(BuildingKind::House), "the home's stock is not full again: {}", level(&world, home));
-        assert_eq!(world.treasury, 100.0, "a delivery inside the town moved money");
+        // The load moved no money; the car's fuel and wear did, bought
+        // from beyond the edge when it was filled in the yard: forty
+        // tiles there and back, at wholesale plus the crossing.
+        let filled = crate::economy::import(40.0 * (crate::economy::wholesale(Need::Fuel) / Need::Fuel.tiles() + crate::economy::wholesale(Need::Wear) / Need::Wear.tiles()));
+        assert!(world.treasury < 100.0 && world.treasury > 100.0 - 2.0 * filled, "the delivery cost the town {}, not the car's fill", 100.0 - world.treasury);
         let e = world.objects.get(car).expect("the office keeps its car");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none()) && e.position == world.objects.get(office).unwrap().position, "not parked back at the office");
 
@@ -1131,8 +1136,9 @@ mod tests {
         let paid = crate::economy::export(load * crate::economy::edge_price(Need::Services));
         let took = world.books[&office].on(now).revenue - sold_in_town;
         assert!((took - paid).abs() < 1e-9, "the edge paid {took} for the load");
-        // Less what the town bought meanwhile: a meal at the edge, a lunch.
-        assert!(world.treasury > 100.0 + paid - 1.0, "the treasury rose by {}", world.treasury - 100.0);
+        // Less what the town bought meanwhile: a meal at the edge, a lunch,
+        // and the car's fill for the drive out and back.
+        assert!(world.treasury > 100.0 + paid - 2.0, "the treasury rose by {}", world.treasury - 100.0);
     }
 
     /// A street of homes and nothing else: every home calls for services
@@ -1396,6 +1402,72 @@ mod tests {
         assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
     }
 
+    /// A car wears by the tile as it burns fuel, slower, and when it is
+    /// nearly worn out its driver takes it to the workshop, where a bay
+    /// puts it right in an hour off a shelf of parts. Six cars are worn to
+    /// their last day of driving overnight, three to a bay; by the second
+    /// evening each has been in, none went to the edge for it, and the
+    /// bays have sold that many services. (Fourteen at once is a queue
+    /// at two bays, and the last to wake find the edge quicker: the crowd
+    /// of docs/residents.md §4, which is the second workshop's argument.)
+    #[test]
+    fn worn_cars_go_to_the_workshop() {
+        use crate::needs::Need;
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::Apartment, 2);
+        build(&mut world, 6, BuildingKind::Apartment, 2);
+        build(&mut world, 60, BuildingKind::Office, 2);
+        build(&mut world, 40, BuildingKind::Shop, 1);
+        build(&mut world, 24, BuildingKind::GasStation, 1);
+        let workshop = build(&mut world, 30, BuildingKind::Workshop, 1);
+
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let people = world.resident_ids();
+        let cars: Vec<EntityId> = people
+            .iter()
+            .filter_map(|&id| match world.objects.get(id).map(|e| &e.object) {
+                Some(GameObject::Resident(r)) if !world.edge.contains(&r.home) => Some(r.car),
+                _ => None,
+            })
+            .take(6)
+            .collect();
+        for (i, &car) in cars.iter().enumerate() {
+            if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+                c.stocks.get_mut(&Need::Wear).unwrap().level = (10 + 10 * i) as f64 * Need::Wear.per_tile();
+            }
+        }
+
+        let day = DAY_MS as u64;
+        let mut visits = 0;
+        let mut elsewhere = 0;
+        let mut last: Vec<(Option<EntityId>, Option<Need>)> = people.iter().map(|_| (None, None)).collect();
+        let mut now = 0;
+        // Up to the second midnight, not onto it: the books keep two pages,
+        // and the second midnight would turn the first day's out.
+        while step(&mut world, &mut events, &mut intersections, &mut now, 2 * day - STEP_MS) {
+            for (i, &id) in people.iter().enumerate() {
+                let state = (at_of(&world, id), doing(&world, id));
+                if state != last[i] {
+                    match state {
+                        (Some(at), Some(Need::Wear)) if at == workshop => visits += 1,
+                        (Some(at), Some(Need::Wear)) if world.edge.contains(&at) => elsewhere += 1,
+                        _ => {}
+                    }
+                    last[i] = state;
+                }
+            }
+        }
+        println!("{visits} services in two days for {} worn cars, {elsewhere} beyond the edge", cars.len());
+        assert_eq!((visits, elsewhere), (cars.len(), 0), "{visits} services for {} worn cars, {elsewhere} beyond the edge", cars.len());
+        let books = &world.books[&workshop];
+        let sold = books.on(now).sold.get(&Need::Wear).copied().unwrap_or(0.0) + books.before(now).sold.get(&Need::Wear).copied().unwrap_or(0.0);
+        assert!((sold - visits as f64).abs() < 1e-9, "the bays sold {sold} services for {visits} visits");
+        let d = crate::resident::demand(&world, now);
+        assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
+    }
+
     /// Every kind the mayor could put down: everything with a price. The
     /// edge has none, and is not placed by anyone.
     fn placeable() -> Vec<BuildingKind> {
@@ -1403,8 +1475,9 @@ mod tests {
     }
 
     /// A town shaped like a town, for the seasons: mostly homes, an export
-    /// base of offices, factories and workshops with about as many desks
-    /// as the homes have people, and one of each shop. Forty plots.
+    /// base of offices and factories with about as many desks as the homes
+    /// have people, and one of each shop — the workshop among them, since
+    /// wear made it the garage (docs/economy.md §12.6). Forty plots.
     /// `placeable` cycles every kind equally, which is seventeen shops,
     /// bars, supermarkets and warehouses for 177 people — the mix for a
     /// wake budget, not for a purse.
@@ -1413,7 +1486,7 @@ mod tests {
         vec![
             House, Apartment, Office, House, Apartment, Shop, House, Factory, Apartment, House,
             Workshop, Apartment, House, Bar, Office, House, Apartment, Restaurant, House, Factory,
-            Apartment, House, GasStation, Apartment, Office, House, Supermarket, Apartment, House, Workshop,
+            Apartment, House, GasStation, Apartment, Office, House, Supermarket, Apartment, House, Factory,
             Factory, House, Apartment, Warehouse, House, Apartment, House, Apartment, House, Apartment,
         ]
     }
@@ -1471,7 +1544,13 @@ mod tests {
 
     /// `live`, with a look at the town at the end of every day: after the
     /// midnight wake, so the tills are counted and the prices stepped.
-    fn season(mix: &[BuildingKind], days: u64, mut each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
+    fn season(mix: &[BuildingKind], days: u64, each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
+        season_with(mix, days, true, each_day)
+    }
+
+    /// `season`, founded with the working capital a grown town would have,
+    /// or broke: nothing in the treasury on the first morning.
+    fn season_with(mix: &[BuildingKind], days: u64, capital: bool, mut each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
         let mut world = street();
         // Forty plots in a row, a tile apart: a lot claims the tile beside
         // it for its ring, and a house may not stand on it.
@@ -1497,7 +1576,7 @@ mod tests {
         // Forty buildings placed at once are a town that grew; give it the
         // working capital one would have, a week of its households' row,
         // and measure from there.
-        world.treasury = crate::economy::STAKE + 7.0 * world.resident_ids().len() as f64 * crate::economy::household();
+        world.treasury = if capital { crate::economy::STAKE + 7.0 * world.resident_ids().len() as f64 * crate::economy::household() } else { 0.0 };
         let mut wakes = 0;
         let mut now = 0;
         let end = days * DAY_MS as u64;
@@ -1506,6 +1585,13 @@ mod tests {
         for day in 1..=days {
             let midnight = day * DAY_MS as u64;
             while step_counting(&mut world, &mut events, &mut intersections, &mut now, midnight.min(end), &mut wakes) {}
+            // A town that gridlocks is not a town being measured: nobody is
+            // a day late for anything. Two driveways two tiles apart held
+            // each other for good on the third day, once the offices' cars
+            // were on the street, until claims lapsed (docs/parking.md §9).
+            let stuck = world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.as_ref().is_some_and(|t| now > t.eta + DAY_MS as u64))).count();
+            assert_eq!(stuck, 0, "day {day}: {stuck} cars a day past their due time — the street has gridlocked");
+            println!("day {day}: {} claims lapsed so far", intersections.lapses);
             each_day(&world, day, wakes);
         }
         (world, wakes)
@@ -1608,13 +1694,16 @@ mod tests {
             // Steady state is the last third of the season. Ringing is a
             // price that turns around day after day; a price still
             // settling turns around never, and one pinned to the band's
-            // edge steps a notch up and back — over the edge's delivered
-            // price it piles up, under it it sells out — which is the
-            // step's own size, not a ring.
+            // edge hunts — over the edge's delivered price it piles up,
+            // under it it sells out — a notch over and the way back
+            // under: two notches down to undo the one up, and one more
+            // for the day it takes sales to answer a price. That is the
+            // steps' own size, not a ring.
             let tail = &series[series.len().saturating_sub((series.len() / 3).max(3))..];
             let turns = tail.windows(3).filter(|w| (w[1] - w[0]) * (w[2] - w[1]) < 0.0).count();
             let (lo, hi) = tail.iter().fold((f64::INFINITY, 0.0f64), |(lo, hi), &p| (lo.min(p), hi.max(p)));
-            assert!(turns <= 2 || hi / lo <= (1.0 + crate::economy::PRICE_UP).powi(2) + 1e-9, "building {id}'s {need:?} price rings: {tail:.2?}");
+            let hunt = (1.0 + crate::economy::PRICE_UP) / (1.0 - crate::economy::PRICE_DOWN).powi(3);
+            assert!(turns <= 2 || hi / lo <= hunt + 1e-9, "building {id}'s {need:?} price rings: {tail:.2?}");
             println!("{id} {need:?}: {:.2} → {:.2}", series[0], series[series.len() - 1]);
         }
     }
@@ -1638,16 +1727,21 @@ mod tests {
         format!("{empty} services stocks empty ({homes_empty} homes), {open} services calls open, {waiting} unanswered")
     }
 
-    /// §11.6, no harm: a town built ignoring every price ends the season
-    /// with more in the treasury than it began. Every building in the red
-    /// on the last day is printed with what it cost, and every one that
-    /// took nothing: that is the town's to read (§9), not a failure.
+    /// §11.6, no harm: a town built ignoring every price serves as much
+    /// at the end of the season as it did at the start, whatever its
+    /// treasury did. It may lose money — a town that never built its
+    /// fourth office pays for the services it did not make, and that is
+    /// the game — but ignoring prices never costs it its real income.
+    /// Every building in the red on the last day is printed with what it
+    /// cost, and every one that took nothing: that is the town's to read
+    /// (§9), not a failure.
     #[test]
     #[ignore]
     fn season_no_harm() {
         let days = season_days();
         let mut last_gdp = 0.0;
         let mut began = 0.0;
+        let mut daily = Vec::new();
         let (world, _) = season(&town_mix(), days, |world, day, _| {
             if day == 1 {
                 let door = world.income.before(DAY_MS as u64);
@@ -1655,6 +1749,7 @@ mod tests {
             }
             let door = world.income.before(day * DAY_MS as u64);
             println!("day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, world.gdp - last_gdp, door.revenue, door.purchases, services_report(world));
+            daily.push(world.gdp - last_gdp);
             last_gdp = world.gdp;
             for e in world.objects.iter() {
                 let GameObject::Building(ref b) = e.object else { continue };
@@ -1677,7 +1772,15 @@ mod tests {
         }
         let at_the_edge = world.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(ref r) if r.work.is_some_and(|w| world.edge.contains(&w)))).count();
         println!("{at_the_edge} residents work beyond the edge");
-        assert!(world.treasury > began, "the season ended with {} in the treasury, from {began}", world.treasury);
+        // Real income, by thirds of the season, each third's middle day.
+        let third = |from: usize, to: usize| {
+            let mut v: Vec<f64> = daily[from..to].to_vec();
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            v[v.len() / 2]
+        };
+        let (first, last) = (third(0, daily.len() / 3), third(daily.len() - daily.len() / 3, daily.len()));
+        println!("no harm: served {first:.0} a day in the first third and {last:.0} in the last; treasury {:.1} from {began:.1}", world.treasury);
+        assert!(last >= 0.75 * first, "the town serves {last:.0} a day where it served {first:.0}: ignoring prices cost it its income");
     }
 
     /// §11.12, the bare towns: a street of homes and nothing else, whose
@@ -1716,6 +1819,33 @@ mod tests {
         assert!(rates[1] <= rates[0] + saving, "the bedroom town is a mint: {rates:.3?}");
         assert!(gdps[1] < gdps[0], "the bedroom town is the richer one: {gdps:.2?}");
         assert!(rates[2] <= rates[0], "the job centre out-earns the full one: {rates:.3?}");
+    }
+
+    /// §9, the slump: a town founded broke — nothing in the treasury, so
+    /// nothing crosses the door until something is sold — lives on what it
+    /// holds and makes, and its exporters and its people's shifts beyond
+    /// the edge reopen the door. It is a bad time, not an end: after the
+    /// first week no day serves less than half of what a good day does.
+    /// Whether it ends with money is the full town's question (§13.16),
+    /// not the slump's: the same town with a stake runs the same deficit.
+    #[test]
+    #[ignore]
+    fn season_slump() {
+        let days = season_days();
+        let mut last_gdp = 0.0;
+        let mut daily = Vec::new();
+        let (world, _) = season_with(&town_mix(), days, false, |world, day, _| {
+            let door = world.income.before(day * DAY_MS as u64);
+            println!("slump day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, world.gdp - last_gdp, door.revenue, door.purchases, services_report(world));
+            daily.push(world.gdp - last_gdp);
+            last_gdp = world.gdp;
+        });
+        let mut sorted = daily.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let good = sorted[sorted.len() * 3 / 4];
+        let worst = daily.iter().skip(7).cloned().fold(f64::INFINITY, f64::min);
+        println!("slump: a good day serves {good:.0}, the worst after the first week {worst:.0}; treasury {:.1}", world.treasury);
+        assert!(worst >= good / 2.0, "the slump was an end: a day served {worst:.0} against a good day's {good:.0}");
     }
 
     /// §11.11, tenure: over a season the share of residents who change

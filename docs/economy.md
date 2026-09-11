@@ -4,9 +4,9 @@ Status: specification, drafted 2026-09-09 and reworked twice the same
 day: once after an argument about where money goes when nobody spends
 it, and again after one about where it comes from. The second rework is
 the first rule below — the town has one purse — and everything that
-followed from purses went with them (`shelved.md`). Built through the
-services of step 5 of §12; §12.2 to §12.5 record what building each step
-decided, and wear (step 5's other half) is open (§13.14). Supersedes
+followed from purses went with them (`shelved.md`). Built through step
+5 of §12, services and wear; §12.2 to §12.6 record what building each
+step decided. Supersedes
 `game.md` §Money, which
 points here. Builds on `residents.md` (buckets, taps, the
 score), `services.md` (calls) and `parking.md` (lots as the place
@@ -79,10 +79,10 @@ out of these rules rather than be added.
 
 ## 2. What exists, and what stays
 
-- **Steps 1 to 5, as built** (§12.2 to §12.5): stocks, posted prices,
+- **Steps 1 to 5, as built** (§12.2 to §12.6): stocks, posted prices,
   the building's turn, the one purse and the door, labour bought on the
   building's turn, services made at the office and drawn by every
-  building. All stand.
+  building, wear on the car and the workshop's bays. All stand.
 - **Purses.** Every resident had a wallet and every building a balance;
   each kept a float and swept the rest to the treasury, a resident's
   sweep was rent, and a building whose purse ran dry stopped. Built, run
@@ -516,18 +516,38 @@ Everything a price does is an event on the map first.
   level that is its running sum. The treasury, which steps at the door
   and only there: a lorry leaving loaded, a shift worked beyond the
   edge, a placement.
+- **The door records a good with every line.** Every hour that crosses
+  it is a good crossing — a crate, a tank, a unit of services, an hour
+  of labour in a commuter's pocket — and the town's books say which,
+  in and out, per day; a placement is its own line, since materials
+  from beyond the edge are what a building is. Everything below that
+  splits money by what it bought is this one record read back.
 - **The lump.** A `Sale` on the wire: building, amount, when the sale
   ends. The number floats above the building; it is a line in the books
   made visible, and it moves the meter only when the other party is the
   outside. A red lump on a truck in from the edge is an import.
 - **The building.** Shelves grey at empty stock (built); a yard stacked at
   full output; the inspect panel shows each stock's level, price, and its
-  trend over the week.
+  trend over the season. The books keep thirty pages for it, a ring
+  buffer written over in a circle;
+  the nudge and a building's earning still read yesterday's alone, since
+  a price that answered an average would be slow to notice an empty
+  shelf (§12.3). A day's page is a couple of hundred bytes, so a season
+  for a thousand buildings is a few megabytes, sent only when a card is
+  opened; a server left running would grow books without limit, and
+  the questions a card answers are a season's. Books are learned, not
+  saved, so a loaded world starts its season from nothing. (As built:
+  two pages; step 7 makes it thirty.)
 - **The company.** Revenue, purchases, wages, margin, and what of each
   crossed the door. A refinery whose margin has gone negative is a
   line, not a mystery.
-- **The town.** Per need, visits served per day; per good, in and out per
-  day. The cinema's decline is a number beside the pump's.
+- **The town.** Per need, what was served in a day at the world's
+  prices, which adds up to the dial, and the visits behind it; per good,
+  what crossed the door in and out, and what the mayor built, which
+  adds up to the treasury's step. The cinema's decline is a number
+  beside the pump's, and a town losing money can see it is the services
+  it never made (§13.16). (Step 7; the door's split was first read off a
+  throwaway tally, 2026-09-11.)
 - **The region.** Per good, per town: price, stock, trade. Each row a link
   to the map. Trucks leaving for the edge loaded are the same fact at
   build zoom.
@@ -557,10 +577,15 @@ season is thirty game-days until something says otherwise.
    `edge_wage − commute`. (As built: no wage a resident of the town works
    for; a building staffed from beyond the edge pays what its trade is
    worth, which can be the floor — §12.2.)
-6. **No harm.** A town built ignoring every price ends the season with
-   more treasury than it began, net of what it placed. Every building
-   in the red on the last day is printed with what it costs, since that
-   is the town's to read, not a failure.
+6. **No harm.** A town built ignoring every price serves as much at the
+   end of the season as at the start, whatever its treasury did: its
+   real income holds. It may lose money — a town that never built its
+   fourth office pays for the services it did not make, and that is
+   the challenge — but not reading prices never costs it what it
+   serves. (First cut: it ended the season with more treasury than it
+   began; retired 2026-09-11, §13.16.) Every building in the red on the
+   last day is printed with what it costs, since that is the town's to
+   read, not a failure.
 7. **The conga.** A delivery from a depot moves the treasury by nothing,
    and a warehouse inserted where it shortens nothing sells nothing. (A
    property of one delivery, so a unit test, not a season.)
@@ -571,6 +596,11 @@ season is thirty game-days until something says otherwise.
 10. ~~**No sinks.**~~ There is nothing outside the treasury to be one.
 11. **Tenure.** Over a season the fraction of residents who change jobs in
     a month sits near the referent.
+13. **The slump.** The full town founded broke: nothing in the treasury
+    until something is sold. After the first week no day serves less
+    than half of what a good day does. (As built: it does not spiral; it
+    serves about half a good day at its worst, and ends at zero because
+    the full town itself runs a deficit — §12.6, §13.16.)
 12. **The bedroom town, and the job centre.** A street of houses beside
     the exit and nothing else, its residents commuting to the edge; and
     a street of workplaces and nothing else, staffed from beyond it.
@@ -606,7 +636,7 @@ Each step is playable and nothing before step 2 can hurt anyone.
    §12.4 has what it needs decided.
 5. **Services and wear.** The office's stock and its car; the workshop;
    the household's services stock. §12.5 has what services needed
-   decided; wear waits (§13.14).
+   decided, §12.6 wear.
 6. **Rows.** Every workplace's inputs, output and rate on its row;
    `edge_price` derived link by link from the rows at capacity, each
    keeping its share, plus the crossing (§8.1); freight as fuel and
@@ -896,7 +926,7 @@ the town's money is what its rows keep. As built:
 
 ### 12.5 Step 5, services, to the number and as built
 
-Built 2026-09-10; wear and the workshop wait (§13.14). The decisions
+Built 2026-09-10; wear followed the same day (§12.6). The decisions
 the mechanism did not make on its own, and what running it found.
 
 - **Services is a good like the others, keyed with them.** `Services`
@@ -1016,6 +1046,105 @@ cargo test season -- --ignored --nocapture`), against §12.4's ten:
   with their bullets: a home priced money in nothing and always bought
   from the edge; and an unanswered call was never tried again.
 
+### 12.6 Step 5, wear, to the number and as built
+
+Built 2026-09-10. Wear is the tank's twin, and nearly every decision is
+the tank's, read again.
+
+- **Wear is a driven need beside fuel.** A car carries its stocks as a
+  building does, by good: the tank and the wear, each used by the tile
+  at its own rate, and the driver weighs both with their own needs, one
+  bucket more in the search. Nothing else in the search knows which is
+  which; a car at zero closes the Work tap as a dry tank does (§4).
+- **The numbers.** A service lasts 1,200 tiles, two and a half tanks:
+  every ten days or so for a commuter, so the workshop sees each car a
+  few times a season and the tank still sets the rhythm. What a
+  breakdown costs is four hours, twice a dry tank — a morning towed and
+  a repair waited on — and a bay puts a car right in an hour. A service
+  is worth six hours at the edge: with the tank's three, the two come
+  to the transport sixth at a commuter's hundred and twenty tiles a day,
+  which is §13.13's first half closed — the household now spends on its
+  car about what the row estimates for it. The parts behind a service
+  are half, wholesale, as the crate behind a meal.
+- **The workshop is the garage.** Two bays, a shelf of thirty services'
+  worth of parts fetched from beyond the edge as a pump's tanks are, a
+  price over the counter like a shop's, opened at the edge's and floored
+  at the parts. Its four staff are no longer a pass-through: it sells
+  something. The bays are open round the clock like the pumps, and for
+  the same reason: a car nearly worn out at two in the morning would
+  otherwise be driven to the edge, since the wait for the doors to open
+  is scored as time lost (§6.1) and the edge is open now. The edge
+  serves wear at the bay's rate, as it serves everything.
+- **On the card**, a car's stocks are its bars, fuel and wear alike.
+- **A fleet vehicle is filled in the yard.** Nobody sits in a van, so
+  nobody weighs its tank; the building's turn does, when the van comes
+  home: its tank is filled and its wear put right there, and the
+  building buys what the trip used from beyond the edge at wholesale
+  plus the crossing, as a depot buys fuel and parts in bulk. That is
+  §5.3's freight in money — fuel and upkeep per tile, on the row that
+  sent the vehicle — a line in the books and the door and no GDP. A
+  consultant's car from the edge is never in anyone's yard and costs the
+  town nothing but its call. Before this a fleet's tanks drained and
+  nothing refilled them.
+- **A full house is the lot.** The reorder point's margin, everyone the
+  taps seat at once, is now the lot's spots for a visitor tap, as the
+  crowd is counted (`resident::slots_at`): two bays with seven cars
+  queued in the lot is a rush of seven, and the workshop's parts ran out
+  on every burst of worn cars, its price stepping up on each stock-out
+  and down for days after. With the lot as the margin it settles to its
+  floor. The rule found the gas station's shelf a tank short of its own
+  reorder point — four pumps round the clock and a full lot come to
+  thirty-one tanks in the two hours a tanker is away — so it ordered
+  without pause; its shelf is forty, and a test holds every shelf above
+  its reorder point.
+- **The season mix keeps one workshop**, a factory in the other's place:
+  a garage is a shop for cars, and the mix has one of each shop.
+
+What running it found. Six cars worn to their last day of driving go to
+the workshop, three to a bay, none to the edge; fourteen at once are a
+queue at two bays, and the last to wake find the edge quicker — the
+crowd of `residents.md` §4, and the second workshop's argument.
+
+**The seasons.** They could not be run at first: the season town of
+§12.4 gridlocked on its third day as the code stood merged, two
+driveways two tiles apart holding each other for good once the offices'
+cars were on the street, and every season since the day's two merges
+had measured a dead town without saying so. `season` now asserts nobody
+is a day late for anything, and a claim on a junction lapses when its
+holder stands still (`parking.md` §9). Thirty days of the three towns,
+against §12.5's ten:
+
+- **The full town** nets about a quarter of an hour a head a day
+  *under* where §12.5 had it two over, at 12 GDP a head a day where it
+  was 11.3, and no-harm (§11.6) fails over thirty days. The door, split
+  by what crosses it: pass-throughs' hours sell 470 a day and the
+  offices ship 150; consultants from the edge cost 520 a day, half of
+  everything out, because three offices make about half of what the
+  town draws and the offices' price hunts above the consultants' at the
+  ceiling, so the town buys in what its offices ship out; crates, fuel
+  and parts cost 80; wear costs 50 more than before, at the workshop
+  and beyond the edge; the workshop's lost export is 60. Over ten days
+  the town is in the black by 120 a day, on the two days of services
+  and the full shelves it was founded with; over thirty it is not.
+  That is §13.16.
+- **The bedroom town** nets a quarter of an hour a head a day under,
+  where §12.5 had it 1.7 over. Its people drive four hundred tiles a day
+  to the edge and back, so the tank and the service together cost them
+  two hours a day against the row's transport sixth of 1.3: a commute
+  that long eats the household's tenth and more, which is Rosen's
+  compensating differential arriving from the other side (§5.2), and
+  the first time the model has said a bedroom town is a bad idea.
+- **The job centre** loses 1.7 a head a day where it lost 1.5, its
+  imported labour now driving worn cars too.
+- **The offices' price hunts** at the band's ceiling over thirty days,
+  a notch over and the way back under: two notches down to undo the one
+  up, and one more for the day it takes sales to answer a price. The
+  ring test allows that width and no more; the workshop's parts price
+  rang wider until the lot became its margin (above).
+- **The slump** (§11.13): founded broke, the full town serves half a
+  good day at its worst after the first week and does not spiral; it
+  ends at zero, since it runs the deficit above with no stake to run it
+  on.
 
 ## 13. Open
 
@@ -1051,9 +1180,25 @@ cargo test season -- --ignored --nocapture`), against §12.4's ten:
     check (§11.9) becomes a season print. Until then a household nets a
     little over its tenth when it drives less than the sixth, which is
     the bedroom town's 1.19 against 0.72 (§12.4).
-14. Wear (§4): a car's second per-tile stock, the workshop as its tap.
-    Step 5's other half; services went first because the office was
-    already a row with nothing to sell.
+14. ~~Wear (§4): a car's second per-tile stock, the workshop as its
+    tap.~~ §12.6.
 15. A firm's services are a fifth of its labour and its output the sum
     over two thirds (§12.5); with the rows (step 6) the input and the
     output are the row's own, link by link, and the fifth goes.
+16. ~~No harm over thirty days.~~ Decided 2026-09-11: no harm is real
+    income, not money. The full town buys in 520 a day of services from
+    consultants while its offices ship 150 out — three offices make
+    half of what the town draws, and at the ceiling the offices' price
+    hunts above the consultants' delivered price — and loses about a
+    quarter of an hour a head a day for it. The fourth office is the
+    mayor's to place (§12.5), and a town that has not placed it pays;
+    if money came no matter what there would be no game. §11.6 now
+    asserts what it serves. Whether the nudge at a ceiling should
+    overshoot at all is still open, and the rows (step 6) move the
+    firm's services from a flat fifth to the row's own (§13.15).
+17. ~~The ring test over thirty days.~~ The hunt at a ceiling is a
+    notch over and three back, and the test allows it (§12.6).
+18. The bedroom town nets under nothing once its cars wear (§12.6):
+    right by the row's arithmetic, and the first town the model calls a
+    mistake. Whether the player is told so before the season says it is
+    §10's.

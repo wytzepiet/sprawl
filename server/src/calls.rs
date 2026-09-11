@@ -22,7 +22,7 @@ use crate::blueprint::blueprint;
 use crate::economy;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::needs::{Bucket, Need};
+use crate::needs::Need;
 use crate::protocol::{Car, CarRole, EntityId, GameObject, DAY_MS};
 use crate::world::pathfinding::Routes;
 use crate::world::World;
@@ -182,7 +182,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
                     // From beyond the edge: a lorry, or a consultant's car,
                     // appears on the road out past the frontier and drives
                     // in. It belongs to nobody here; it goes when it is done.
-                    let car = world.insert_at(GameObject::Car(Car { owner: at, trip: None, role: lorry(good), spot: None, away: 0, fuel: Bucket::tank() }), None);
+                    let car = world.insert_at(GameObject::Car(Car::new(at, lorry(good))), None);
                     let started = crate::car::spawn::start_trip(world, events, car, entry, at, now, GameTime::MAX);
                     if !started {
                         world.despawn_car(car);
@@ -270,7 +270,7 @@ pub fn stable(world: &mut World, facility: EntityId) {
     let tile = world.objects.get(facility).and_then(|e| e.position);
     let have = fleet_of(world, facility).len();
     for &role in blueprint(kind).vehicles.iter().skip(have) {
-        let car = world.insert_at(GameObject::Car(Car { owner: facility, trip: None, role, spot: None, away: 0, fuel: Bucket::tank() }), tile);
+        let car = world.insert_at(GameObject::Car(Car::new(facility, role)), tile);
         world.park_in_lot(facility, car, 0);
     }
 }
@@ -301,13 +301,19 @@ fn fleet_of(world: &World, facility: EntityId) -> Vec<EntityId> {
 /// A vehicle woke while parked. Private cars have nothing to think about;
 /// a vehicle on a call has finished unloading, and delivers; one beyond
 /// the edge comes back in, and one home from beyond fills the depot, or
-/// is paid for what it took.
+/// is paid for what it took; and one home in its yard is filled and put
+/// right there (`economy::refilled`).
 pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: GameTime) {
     let (owner, away) = match world.objects.get(car).map(|e| &e.object) {
         Some(GameObject::Car(c)) if c.role != CarRole::Private && c.trip.is_none() => (c.owner, c.away),
         _ => return,
     };
-    let Some(i) = world.calls.iter().position(|c| c.answered_by == Some(car)) else { return };
+    // Home with nothing to do: filled and put right in the yard, at the
+    // building's cost.
+    let Some(i) = world.calls.iter().position(|c| c.answered_by == Some(car)) else {
+        economy::refilled(world, car, now);
+        return;
+    };
     if away > 0 {
         // Back in from beyond the edge, home to the yard.
         let home = world.objects.get(owner).and_then(|e| e.position);
@@ -355,7 +361,8 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         (now - call.raised) / 1000
     );
     if call.kind == CallKind::Edge {
-        // Nothing to do: the vehicle is in its dock.
+        // Nothing to do: the vehicle is in its dock, and is filled there.
+        economy::refilled(world, car, now);
     } else if facility {
         let back = world
             .road_node_for_building(call.at)

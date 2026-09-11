@@ -79,8 +79,8 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Value {
         "wage": r.wage,
         "selected": r.selected,
         "since": hhmm(r.last_update),
-        // The tank is the car's; its card shows it.
-        "buckets": thinking["buckets"].as_array().map(|bs| bs.iter().filter(|b| b["need"] != "Fuel").cloned().collect::<Vec<_>>()),
+        // The tank and the wear are the car's; its card shows them.
+        "buckets": thinking["buckets"].as_array().map(|bs| bs.iter().filter(|b| b["need"] != "Fuel" && b["need"] != "Wear").cloned().collect::<Vec<_>>()),
     })
 }
 
@@ -90,7 +90,6 @@ fn car(world: &World, id: EntityId, c: &Car, now: GameTime) -> Value {
         Some(GameObject::Resident(r)) if r.at == Some(id) => Some(link(world, c.owner)),
         _ => None,
     };
-    let fuel = c.fuel.level / c.fuel.cap;
     let trip = c.trip.as_ref().map(|t| json!({
         "to": link(world, t.destination),
         "due": hhmm(t.eta),
@@ -118,7 +117,7 @@ fn car(world: &World, id: EntityId, c: &Car, now: GameTime) -> Value {
         "role": c.role,
         "owner": link(world, c.owner),
         "rider": rider,
-        "fuel": fuel,
+        "stocks": c.stocks.iter().map(|(need, s)| json!({ "need": need, "full": s.level / s.cap })).collect::<Vec<_>>(),
         "trip": trip,
         "parked_at": parked_at,
         "answering": answering,

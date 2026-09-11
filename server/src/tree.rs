@@ -112,7 +112,7 @@ pub static LEGEND: &[(char, Row)] = {
         ('B', Row { name: "Bar", effect: Building { building: Bar }, cost: 1, blurb: "The last place open. The evening's traffic goes here, and comes home at two." }),
         ('G', Row { name: "Gas station", effect: Building { building: GasStation }, cost: 1, blurb: "Cars run dry. Pumps round the clock, wherever the driving is." }),
         ('I', Row { name: "Industry", effect: Weight { class: Industry, times: 1.4 }, cost: 1, blurb: "Jobs that keep to themselves. Industry costs less." }),
-        ('W', Row { name: "Workshop", effect: Building { building: Workshop }, cost: 1, blurb: "Six jobs, seven to four." }),
+        ('W', Row { name: "Workshop", effect: Building { building: Workshop }, cost: 1, blurb: "Four jobs, seven to four, and two bays: cars come in worn and leave put right." }),
         ('F', Row { name: "Factory", effect: Building { building: Factory }, cost: 1, blurb: "Twenty-four jobs, six to three. The morning rush starts here." }),
         ('r', Row { name: "Roads", effect: RoadTiles { tiles: 60 }, cost: 1, blurb: "Sixty more tiles of road. Room to build." }),
         ('o', Row { name: "One-way streets", effect: OneWay, cost: 1, blurb: "One-way streets. Half the road, all the throughput." }),

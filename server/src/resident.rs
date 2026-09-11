@@ -157,27 +157,27 @@ pub fn handle_resident_wake(
     }
 }
 
-/// Everything a resident weighs: their own buckets, and their car's tank,
-/// which they drive and so decide for. In one list, in one order, so an
-/// index into the verdicts is an index into this.
+/// Everything a resident weighs: their own buckets, and their car's — the
+/// tank and the wear — which they drive and so decide for. In one list,
+/// in one order, so an index into the verdicts is an index into this.
 fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
     let mut all = r.buckets.clone();
     if let Some(GameObject::Car(c)) = world.objects.get(r.car).map(|e| &e.object) {
-        all.push(Bucket { need: Need::Fuel, stock: c.fuel, shortfall: 0.0 });
+        all.extend(c.stocks.iter().map(|(&need, &stock)| Bucket { need, stock, shortfall: 0.0 }));
     }
     all
 }
 
 /// Put the buckets back where each lives: the person's on the person, the
-/// tank on the car.
+/// car's on the car.
 fn store(world: &mut World, id: EntityId, car: EntityId, buckets: &[Bucket]) {
     if let Some(GameObject::Resident(me)) = world.objects.get_mut(id).map(|e| &mut e.object) {
-        me.buckets = buckets.iter().filter(|b| b.need != Need::Fuel).cloned().collect();
+        me.buckets = buckets.iter().filter(|b| !Need::DRIVEN.contains(&b.need)).cloned().collect();
     }
-    if let Some(tank) = buckets.iter().find(|b| b.need == Need::Fuel)
-        && let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object)
-    {
-        c.fuel = tank.stock;
+    if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+        for b in buckets.iter().filter(|b| Need::DRIVEN.contains(&b.need)) {
+            c.stocks.insert(b.need, b.stock);
+        }
     }
 }
 
@@ -192,7 +192,7 @@ fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: E
             Need::Work if !fit(buckets) => Verdict::Nothing,
             Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, earning, at, b, w, now, crowd, routes, true)),
             Need::Rest | Need::Home => verdict_at(world, r, earning, at, b, r.home, now, crowd, routes, true),
-            Need::Eat | Need::Leisure | Need::Fuel => search(world, r, earning, at, b, now, crowd, routes),
+            Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => search(world, r, earning, at, b, now, crowd, routes),
             // Nobody carries it: a building's, delivered by a call.
             Need::Services => Verdict::Nothing,
         })
@@ -200,7 +200,7 @@ fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: E
 }
 
 /// A row with an empty input stops (docs/economy.md §4): a resident
-/// whose food, sleep, time off or tank stands at zero cannot work until
+/// whose food, sleep, time off, tank or car stands at zero cannot work until
 /// it does not. Time off run to nothing is a holiday; a week of night
 /// shifts ends in a lie-in.
 fn fit(buckets: &[Bucket]) -> bool {
@@ -819,10 +819,13 @@ fn resident_mut(world: &mut World, id: EntityId) -> Option<&mut Resident> {
     }
 }
 
-/// A trip's end: what it burned comes off the tank.
+/// A trip's end: what it burned comes off the tank, and what it wore off
+/// the car.
 pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
     if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
-        c.fuel.take(tiles * Need::per_tile());
+        for (need, stock) in c.stocks.iter_mut() {
+            stock.take(tiles * need.per_tile());
+        }
     }
 }
 
