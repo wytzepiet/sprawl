@@ -284,6 +284,11 @@ export class InstancePool {
     }
   }
 
+  /** A material painted as a bucket's is, for a mesh of its own. */
+  material(key: string, color: Color3): StandardMaterial {
+    return this.ensureBucket(key, WARM_TRIANGLE, color, false, true).material;
+  }
+
   updateMaterials(ambientColor: Color3): void {
     this.ambient = ambientColor;
     for (const bucket of this.buckets.values()) {

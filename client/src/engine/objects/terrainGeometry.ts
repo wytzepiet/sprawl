@@ -16,11 +16,7 @@ export interface RGB {
   b: number;
 }
 
-/** What a tile is drawn as: the survey's types, and a farm's field laid
- *  over grass by the client from the farm's own record, so a field gets
- *  the same corners as any other kind of ground. */
-export type Tile = TerrainType | "Field";
-export type TerrainPalette = Record<Tile, RGB>;
+export type TerrainPalette = Record<TerrainType, RGB>;
 
 /** One mesh's vertex data. All transferable. */
 export interface MeshBuffers {
@@ -55,13 +51,12 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
   );
 }
 
-const ELEVATION: Record<Tile, number> = {
+const ELEVATION: Record<TerrainType, number> = {
   Water: -0.5,
   Beach: 0,
   Grass: 0,
   Forest: 0,
   Mountain: 2.0,
-  Field: 0,
 };
 
 // Seeded PRNG (xorshift32)
@@ -501,13 +496,11 @@ function grow(src: Float32Array, length: number): Float32Array<ArrayBuffer> {
 // so the server only sends types. `corners[i]` needs the 3x3 neighbourhood;
 // `cornerMask` needs the neighbours' corners, so it reaches two tiles out.
 
-export type TypeAt = (x: number, y: number) => Tile | undefined;
+export type TypeAt = (x: number, y: number) => TerrainType | undefined;
 
 /** Which terrain type wins when two differing neighbours meet at a corner. */
-const CORNER_PRIORITY: Record<Tile, number> = {
+const CORNER_PRIORITY: Record<TerrainType, number> = {
   Beach: 4,
-  // A field rounds out over the grass it was claimed from.
-  Field: 3.5,
   Grass: 3,
   Forest: 2,
   Mountain: 1,
@@ -532,7 +525,7 @@ const EDGE_CHECKS: [[number, number, number], [number, number, number]][] = [
 ];
 
 /** Corner overlays for one tile, or nulls where the corner is square. */
-function cornersAt(x: number, y: number, typeAt: TypeAt): (Tile | null)[] {
+function cornersAt(x: number, y: number, typeAt: TypeAt): (TerrainType | null)[] {
   const mine = typeAt(x, y);
   if (mine === undefined) return [null, null, null, null];
 
@@ -554,7 +547,7 @@ function cornersAt(x: number, y: number, typeAt: TypeAt): (Tile | null)[] {
 function cornerMask(
   x: number,
   y: number,
-  corners: (Tile | null)[],
+  corners: (TerrainType | null)[],
   sampler: TerrainSampler,
 ): number {
   let mask = 0;
@@ -569,16 +562,14 @@ function cornerMask(
 
 export interface TerrainSampler {
   typeAt: TypeAt;
-  cornersOf(x: number, y: number): (Tile | null)[];
+  cornersOf(x: number, y: number): (TerrainType | null)[];
 }
 
 /** Wire encoding, in the server's TerrainType::to_byte order. */
-/** Wire encoding, in the server's TerrainType::to_byte order, and one more
- *  the client lays over it: a field (`TerrainChunks`). */
-export const FIELD_BYTE = 5;
-const TYPE_BY_BYTE: Tile[] = ["Water", "Beach", "Grass", "Forest", "Mountain", "Field"];
+/** Wire encoding, in the server's TerrainType::to_byte order. */
+const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain"];
 
-const NO_CORNERS: (Tile | null)[] = [null, null, null, null];
+const NO_CORNERS: (TerrainType | null)[] = [null, null, null, null];
 
 /**
  * Every tile reads its own corners and, for the mask, its neighbours' — so
@@ -592,7 +583,7 @@ export function createSampler(
   originX: number,
   originY: number,
 ): TerrainSampler {
-  const cache = new Array<(Tile | null)[] | undefined>(stride * stride);
+  const cache = new Array<(TerrainType | null)[] | undefined>(stride * stride);
 
   const typeAt: TypeAt = (x, y) => {
     const ix = x - originX;
@@ -704,7 +695,7 @@ function appendTile(
   y: number,
   originX: number,
   originY: number,
-  tt: Tile,
+  tt: TerrainType,
   palette: TerrainPalette,
   sampler: TerrainSampler,
 ): void {

@@ -110,7 +110,7 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[]; hovered: 
 
     // One chunk of grass, in white: the map's ground and its grid.
     const white = { r: 1, g: 1, b: 1 };
-    const palette: TerrainPalette = { Water: white, Beach: white, Grass: white, Forest: white, Mountain: white, Field: white };
+    const palette: TerrainPalette = { Water: white, Beach: white, Grass: white, Forest: white, Mountain: white };
     const tiles = new Uint8Array(CHUNK_STRIDE * CHUNK_STRIDE).fill(2); // Grass
     const chunk = buildChunk(tiles, 0, 0, palette)!;
     const ground = new Mesh("shelf_ground", scene);

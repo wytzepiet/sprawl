@@ -1,17 +1,18 @@
-import { Color3 } from "@babylonjs/core";
+import { Color3, Mesh, VertexBuffer, VertexData, type StandardMaterial } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
-import type { GridCoord } from "../../generated";
-import type { Look } from "./look";
-import { buildKerbGeometry, buildRoadGeometry, type ArmInfo } from "./roadGeometry";
+import type { DrawnPath } from "./drawnPath";
 
 /**
- * Tyre marks and the ploughed strip, drawn as a road is: a shape per tile
- * of the path from the arms to the tiles before and after it, so corners
- * and ends join as a road's do. The marks are the road's kerbs without the
- * road — two faint stripes a wheel apart with nothing between, so where
- * two paths cross all four show — and under the plough a strip a tile wide
- * in the field's colour, which is the ground turned brown behind the
- * tractor before the terrain catches up.
+ * Tyre marks and the ploughed strip: ribbons along the path the tractor
+ * is drawn on, curves and all, so they lie exactly under its wheels. The
+ * marks are two faint stripes a wheel apart with nothing between, so
+ * where two paths cross all four show; under the plough a strip a tile
+ * wide in the field's colour, which is the ground turned brown. There is
+ * no field but this: a field is where the plough has been.
+ *
+ * A ribbon is built whole and shown as far as the tractor has got: the
+ * sections behind it as they are, the one ahead pulled back to where it
+ * is, so the ribbon ends under the tractor and nothing is laid twice.
  */
 export const RUT = Color3.FromHexString("#B49E5C");
 export const FIELD = Color3.FromHexString("#C9B26A");
@@ -21,115 +22,115 @@ const STRIPE = 0.045;
 const RUT_Z = 0.014;
 const STRIP_Z = 0.011;
 
-export type Laid = { key: string; id: number };
+/** A ribbon's lanes: from and to, across the path, left to right. */
+type Lanes = [number, number][];
+const MARKS: Lanes = [[-TRACK - STRIPE / 2, -TRACK + STRIPE / 2], [TRACK - STRIPE / 2, TRACK + STRIPE / 2]];
+const STRIP: Lanes = [[-0.5, 0.5]];
 
-/** The arms of a tile of the path: toward the tile before and the tile after. */
-function armsAt(path: GridCoord[], k: number): ArmInfo[] {
-  const arms: ArmInfo[] = [];
-  for (const j of [k - 1, k + 1]) {
-    if (j < 0 || j >= path.length) continue;
-    const dx = path[j].x - path[k].x, dy = path[j].y - path[k].y;
-    if (dx === 0 && dy === 0) continue;
-    const angle = Math.atan2(dy, dx);
-    arms.push({ angle: angle < 0 ? angle + 2 * Math.PI : angle, flow: "twoway" });
-  }
-  return arms;
-}
+class Ribbon {
+  private mesh: Mesh;
+  private positions: Float32Array;
+  /** The sections' centres and left-hand normals, as built. */
+  private centres: [number, number][] = [];
+  private normals: [number, number][] = [];
+  /** Sections drawn whole: the frontier is the next. */
+  private shown: number;
 
-/** Lay the marks on one tile of the path, and the strip under it if asked. */
-export function layTile(pool: InstancePool, look: Look, path: GridCoord[], k: number, strip: boolean): Laid[] {
-  const arms = armsAt(path, k);
-  if (arms.length === 0) return [];
-  const key = arms.map((a) => a.angle.toFixed(3)).sort().join("_");
-  const at: [number, number, number] = [path[k].x + 0.5, path[k].y + 0.5, 0];
-  const out: Laid[] = [];
-  if (strip) {
-    const bk = `strip_${key}${look.key}`;
-    const geo = buildRoadGeometry(arms, 0.5, STRIP_Z);
-    if (geo) {
-      pool.ensureBucket(bk, geo, look.tint(FIELD), false, true);
-      out.push({ key: bk, id: pool.addInstance(bk, at) });
-    }
-  }
-  const bk = `rut_${key}${look.key}`;
-  const geo = buildKerbGeometry(arms, TRACK + STRIPE / 2, TRACK - STRIPE / 2, RUT_Z);
-  if (geo) {
-    pool.ensureBucket(bk, geo, look.tint(RUT), false, true);
-    out.push({ key: bk, id: pool.addInstance(bk, at) });
-  }
-  return out;
-}
-
-type Geo = { positions: number[]; normals: number[]; indices: number[] };
-
-function quads(rects: [number, number, number, number][], z: number): Geo {
-  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
-  for (const [x0, y0, x1, y1] of rects) {
-    const base = positions.length / 3;
-    // Wound as the lots' slabs are, so the face is up.
-    for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) { positions.push(x, y, z); normals.push(0, 0, 1); }
-    indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
-  }
-  return { positions, normals, indices };
-}
-
-/** A straight unit step of marks, from x = 0 to 1: the tile being driven. */
-const RUT_STEP = quads([[0, TRACK - STRIPE / 2, 1, TRACK + STRIPE / 2], [0, -TRACK - STRIPE / 2, 1, -TRACK + STRIPE / 2]], RUT_Z);
-const STRIP_STEP = quads([[0, -0.5, 1, 0.5]], STRIP_Z);
-
-/**
- * The marks under a tractor as it goes, from the yard to where it is now.
- * Progress `p` counts tiles: at `k` the tractor is on the centre of the
- * path's `k`th tile, between them so far along the way. A tile's shape
- * reaches half way to its neighbours, so it is laid whole once the
- * tractor is past that, at `k + 1/2`; from there to the tractor run two
- * straight pieces along the path, stretched each frame and never laid
- * again, so nothing blinks as a tile is crossed.
- */
-export class Trail {
-  private whole = 0;
-  private laid: Laid[] = [];
-  private head: Laid[][] = [];
-
-  constructor(private pool: InstancePool, private look: Look, private path: GridCoord[], private strip: boolean) {
-    for (let i = 0; i < 2; i++) {
-      const pieces: Laid[] = [];
-      if (strip) {
-        const key = `strip_step${look.key}`;
-        pool.ensureBucket(key, STRIP_STEP, look.tint(FIELD), false, true);
-        pieces.push({ key, id: pool.addInstance(key, [0, 0, 0], [0, 0, 0], [0, 1, 1]) });
+  constructor(material: StandardMaterial, private drawn: DrawnPath, private lanes: Lanes, private z: number) {
+    const { points } = drawn;
+    const n = points.length;
+    for (let i = 0; i < n; i++) {
+      let tx = 0, ty = 0;
+      for (const [a, b] of [[i - 1, i], [i, i + 1]]) {
+        if (a < 0 || b >= n) continue;
+        const dx = points[b].x - points[a].x, dy = points[b].y - points[a].y;
+        const len = Math.hypot(dx, dy) || 1;
+        tx += dx / len; ty += dy / len;
       }
-      const key = `rut_step${look.key}`;
-      pool.ensureBucket(key, RUT_STEP, look.tint(RUT), false, true);
-      pieces.push({ key, id: pool.addInstance(key, [0, 0, 0], [0, 0, 0], [0, 1, 1]) });
-      this.head.push(pieces);
+      const len = Math.hypot(tx, ty) || 1;
+      this.centres.push([points[i].x, points[i].y]);
+      this.normals.push([-ty / len, tx / len]);
+    }
+    this.positions = new Float32Array(n * lanes.length * 6);
+    for (let i = 0; i < n; i++) this.section(i, this.centres[i], this.normals[i]);
+    const normals: number[] = [], indices: number[] = [];
+    for (let i = 0; i < n * lanes.length * 2; i++) normals.push(0, 0, 1);
+    for (let i = 0; i + 1 < n; i++) {
+      for (let l = 0; l < lanes.length; l++) {
+        const [l0, r0] = this.vertex(i, l), [l1, r1] = this.vertex(i + 1, l);
+        // Wound as the lots' slabs are, so the face is up.
+        indices.push(l0, r1, r0, l0, l1, r1);
+      }
+    }
+    this.mesh = new Mesh("ruts", material.getScene());
+    const vd = new VertexData();
+    vd.positions = this.positions;
+    vd.normals = normals;
+    vd.indices = indices;
+    vd.applyToMesh(this.mesh, true);
+    this.mesh.material = material;
+    this.mesh.isPickable = false;
+    this.mesh.receiveShadows = true;
+    this.shown = n - 1;
+  }
+
+  /** The two vertex indices of section `i`, lane `l`: left and right. */
+  private vertex(i: number, l: number): [number, number] {
+    const v = (i * this.lanes.length + l) * 2;
+    return [v, v + 1];
+  }
+
+  private section(i: number, [cx, cy]: [number, number], [nx, ny]: [number, number]): void {
+    for (let l = 0; l < this.lanes.length; l++) {
+      const [from, to] = this.lanes[l];
+      const [left, right] = this.vertex(i, l);
+      this.positions.set([cx + nx * from, cy + ny * from, this.z], left * 3);
+      this.positions.set([cx + nx * to, cy + ny * to, this.z], right * 3);
     }
   }
 
-  reach(p: number): void {
-    const { path } = this;
-    const m = Math.min(Math.floor(p + 0.5), path.length - 1);
-    while (this.whole < m) this.laid.push(...layTile(this.pool, this.look, path, this.whole++, this.strip));
-    // From the last whole tile's edge to the centre of the tile the tractor
-    // is coming from, then on toward the next as far as it has got.
-    this.piece(0, m - 1, m, 0.5, Math.min(1, p - (m - 1)));
-    this.piece(1, m, m + 1, 0, p - m);
-  }
-
-  /** One straight piece along the step from tile `a` to `b`, from `f0` to `f1` of the way. */
-  private piece(i: number, a: number, b: number, f0: number, f1: number): void {
-    const { path } = this;
-    if (a < 0 || b >= path.length || f1 <= f0) {
-      for (const { key, id } of this.head[i]) this.pool.updateInstance(key, id, undefined, undefined, [0, 1, 1]);
-      return;
+  /** Show the ribbon as far as `dist` along the path. */
+  reach(dist: number): void {
+    const { distances, path, length } = this.drawn;
+    const last = distances.length - 1;
+    // The sections behind the tractor, whole; the section at its frontier
+    // pulled back to where it is; the one that was the frontier before,
+    // put back where it belongs.
+    let n = Math.min(this.shown, last - 1);
+    while (n < last && distances[n + 1] <= dist) n++;
+    while (n > 0 && distances[n] > dist) n--;
+    this.section(this.shown, this.centres[this.shown], this.normals[this.shown]);
+    if (n < last) {
+      const p = path.getPointAt(dist / length);
+      const t = path.getTangentAt(dist / length);
+      const len = Math.hypot(t.x, t.y) || 1;
+      this.section(n + 1, [p.x, p.y], [-t.y / len, t.x / len]);
     }
-    const dx = path[b].x - path[a].x, dy = path[b].y - path[a].y;
-    const pos: [number, number, number] = [path[a].x + 0.5 + dx * f0, path[a].y + 0.5 + dy * f0, 0];
-    for (const { key, id } of this.head[i]) this.pool.updateInstance(key, id, pos, [0, 0, Math.atan2(dy, dx)], [Math.hypot(dx, dy) * (f1 - f0), 1, 1]);
+    this.shown = Math.min(n + 1, last);
+    this.mesh.updateVerticesData(VertexBuffer.PositionKind, this.positions);
+    this.mesh.subMeshes[0].indexCount = this.shown * this.lanes.length * 6;
   }
 
   dispose(): void {
-    for (const { key, id } of this.laid) this.pool.removeInstance(key, id);
-    for (const pieces of this.head) for (const { key, id } of pieces) this.pool.removeInstance(key, id);
+    this.mesh.dispose();
+  }
+}
+
+/** The marks along a path, and under the plough the strip too. Whole
+ *  until told how far the tractor has got. */
+export class Trail {
+  private ribbons: Ribbon[];
+
+  constructor(pool: InstancePool, drawn: DrawnPath, strip: boolean) {
+    this.ribbons = [new Ribbon(pool.material("rut", RUT), drawn, MARKS, RUT_Z)];
+    if (strip) this.ribbons.push(new Ribbon(pool.material("strip", FIELD), drawn, STRIP, STRIP_Z));
+  }
+
+  reach(dist: number): void {
+    for (const r of this.ribbons) r.reach(dist);
+  }
+
+  dispose(): void {
+    for (const r of this.ribbons) r.dispose();
   }
 }

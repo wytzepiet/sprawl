@@ -18,7 +18,6 @@ import {
   CHUNK_SIZE,
   CHUNK_SKIRT,
   CHUNK_STRIDE,
-  FIELD_BYTE,
   GRID_LINE,
   TREE_TRUNK,
   type ChunkGeometry,
@@ -122,7 +121,6 @@ export class TerrainChunks {
     private shadowGenerator: ShadowGenerator,
     private theme: () => Theme,
     private isBuilt: (x: number, y: number) => boolean,
-    private isField: (x: number, y: number) => boolean,
     private cropAt: (x: number, y: number) => number | null,
   ) {
     this.borderTex = createBorderTexture(scene);
@@ -171,7 +169,6 @@ export class TerrainChunks {
       Grass: { r: t.land.r, g: t.land.g, b: t.land.b },
       Forest: { r: t.forest.r, g: t.forest.g, b: t.forest.b },
       Mountain: { r: t.mountain.r, g: t.mountain.g, b: t.mountain.b },
-      Field: { r: t.field.r, g: t.field.g, b: t.field.b },
     };
   }
 
@@ -246,24 +243,6 @@ export class TerrainChunks {
     }
   }
 
-  /** The chunk's tiles with a farm's fields laid over the grass, so the
-   *  mesher gives a field the corners it gives any ground. */
-  private withFields(tiles: Uint8Array, cx: number, cy: number): Uint8Array {
-    const stride = CHUNK_SIZE + 2 * CHUNK_SKIRT;
-    const ox = cx * CHUNK_SIZE - CHUNK_SKIRT;
-    const oy = cy * CHUNK_SIZE - CHUNK_SKIRT;
-    let laid: Uint8Array | null = null;
-    for (let iy = 0; iy < stride; iy++) {
-      for (let ix = 0; ix < stride; ix++) {
-        if (this.isField(ox + ix, oy + iy)) {
-          laid ??= tiles.slice();
-          laid[iy * stride + ix] = FIELD_BYTE;
-        }
-      }
-    }
-    return laid ?? tiles;
-  }
-
   private async requestBuild(key: string): Promise<void> {
     const tiles = this.tiles.get(key);
     if (!tiles) {
@@ -276,7 +255,7 @@ export class TerrainChunks {
     let geometry: ChunkGeometry | null;
     try {
       // tiles is cloned, not transferred — we keep it for tree rebuilds.
-      geometry = await this.builder.build(this.withFields(tiles, cx, cy), cx, cy, this.palette());
+      geometry = await this.builder.build(tiles, cx, cy, this.palette());
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
       // leaves a permanent hole that now reads as fog. Queue it again instead.

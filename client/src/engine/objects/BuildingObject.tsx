@@ -1,9 +1,10 @@
-import { Color3 } from "@babylonjs/core";
+import { Color3, Vector3 } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { shapeFor, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
 import { plot } from "../../blueprints";
 import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
-import { layTile } from "./ruts";
+import { Trail } from "./ruts";
+import { drawnPath } from "./drawnPath";
 import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
 import { parts } from "../../state/selection";
@@ -73,13 +74,15 @@ export function mountBuilding(
     }
   }
 
-  // A farm's tyre marks: where the tractor last drove, a tile at a time,
-  // joined as a road is. Redrawn with the next run.
-  const ruts = data.ruts;
-  for (let i = 0; i < ruts.length; i++) placed.push(...layTile(pool, look, ruts, i, false));
+  // A farm's field: the ground its tractor last drove over, the strip
+  // it ploughed and the marks it left, along the path it drove. Every
+  // run works the same ground, so the last run's path is the field.
+  const drawn = data.ruts.length > 1 ? drawnPath(data.ruts.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0)), 0, 0, 0) : null;
+  const ruts = drawn ? new Trail(pool, drawn, true) : null;
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);
+    ruts?.dispose();
     parts.delete(entry.id);
   };
 }
