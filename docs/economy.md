@@ -83,7 +83,8 @@ out of these rules rather than be added.
   the building's turn, the one purse and the door, labour bought on the
   building's turn, services made at the office and drawn by every
   building, wear on the car and the workshop's bays, the farm and the
-  rows behind the crate and the meal. All stand.
+  rows behind the crate and the meal, the fields and the tractor. All
+  stand.
 - **Purses.** Every resident had a wallet and every building a balance;
   each kept a float and swept the rest to the treasury, a resident's
   sweep was rent, and a building whose purse ran dry stopped. Built, run
@@ -356,16 +357,24 @@ threshold to the buyer as a hiring cost.
 ## 7. Moving goods
 
 A truck carries one load, from the seller to the buyer, and goes home.
-**A farm's tractor is its delivery.** A field is a lot the tractor
-drives, to seed and to harvest; the farm's row is tractor-hours per
-field, and a field the tractor cannot reach in a day yields nothing
-that day. Fields too far from the yard, or too many, show as unworked
-fields on the map before they show as a number, and the second farm is
-the fix. Roads to the fields matter, because the drive is the delivery.
+**A farm's tractor is its delivery.** A field is a plot of grass with a
+crop that ripens by the day, on a track the farm lays from the street
+into the land beside it; the tractor drives the roads like any car and
+the track like a driveway, and brings a ripe field's crop home to the
+yard. A field the tractor cannot reach in a day yields nothing that
+day. Fields too far from the yard, or too few because the land was
+forest or beach, show on the map before they show as a number, and the
+second farm is the fix. Roads to the fields matter, because the drive
+is the delivery. **A fetch is one thing:** a building's own vehicle
+goes to the cheapest seller of its input it can reach — beyond the
+edge, a seller in town, or its own fields — and brings the load home.
 **The warehouse** is a building with stocks of many goods that buys from
-producers and the edge and sells locally. **Construction** is unchanged:
-materials are a good, the construction firm a building, the site a call
-(`game.md` §Goods).
+producers and the edge and sells locally: its lorry fetches from the
+farm when the farm is nearer than the edge. **What nobody in town
+fetches, the edge fetches:** a maker with no lorry of its own calls for
+pickup, and one comes from beyond the edge. **Construction** is
+unchanged: materials are a good, the construction firm a building, the
+site a call (`game.md` §Goods).
 
 Filed: orders as a record with a hauler; handling classes (box, liquid,
 bulk) and a port per class; joint replenishment, so a ship fills with
@@ -999,7 +1008,8 @@ the mechanism did not make on its own, and what running it found.
   at the world's prices, until it has a day of takings.
 - **Founded full**, like a shelf: a placed home has two days of
   services in hand it did not pay for, as a placed shop has a full
-  shelf.
+  shelf. (A maker's own shelf is founded empty since §12.8: what a row
+  buys is founded full, what it makes is not.)
 - **A call nothing could answer is tried again in an hour.** Before, an
   open call was tried again only when another call was raised or a
   vehicle came home. A home calls at midnight with the household's car
@@ -1235,6 +1245,104 @@ with a farm in a factory's place, against §12.6:
   first week.
 - **The band holds and nothing rings; tenure is zero changes.**
 
+### 12.8 Fields and the tractor, to the number and as built
+
+Built 2026-09-11, on §7 and a conversation: the farm should turn the
+land around it into fields and work them with a tractor that drives the
+roads like any car; the sketchy part was how a tractor enters and
+leaves a road. Answered the way a driveway already answers it — a
+permanent private road, not a graph edited per trip. A first cut made
+each field a building of a kind nobody may place, for what that gave
+free — a place a trip ends, a stock, a card — and was thrown away the
+same day: a field is not a plot, it blocked the tile, and it needed a
+radius to find its farm. What stands:
+
+- **A field is a tile on the farm's own record**, and when its crop is
+  ripe: at once when claimed, a day after the tractor last took it.
+  Nothing grows a number; the clock says. Its crop is the row's day
+  over its fields, 81 crates of the 648. No stock, no card, no entity.
+  Forest and beach do not qualify, so where the farm goes is the
+  decision; and a field is ordinary grass to the placer and the road
+  brush, so building over one costs the farm that field and nothing
+  else — the farm drops it at its next look.
+- **The track is a street the farm lays.** From the street tile at its
+  plot's corner, along its flank and on into open grass, up to its
+  fields' count and ten tiles, stopping at anything that is not grass;
+  the grass on either side is its fields. The track joins the street at
+  an ordinary junction with ordinary claims, and is private by
+  construction: it dead-ends in the fields, so nothing routes over it
+  whose destination is not on it. Laid free, like a driveway, and taken
+  up with the farm.
+- **A harvest is a fetch.** A depot's lorry already fetched its shelf's
+  good from beyond the edge; now a building's own vehicle fetches from
+  the cheapest source it can reach — beyond the edge, a maker's yard in
+  town at its posted price, or, for a farm, its own ripe field at no
+  price, the nearest by road — and lands the load on its shelf when it
+  is home. That one rule is the tractor's trip and the warehouse's fetch
+  from the farm. A farm never fetches from the edge, since the yard is
+  what it makes. The tractor's trip ends on the track node beside the
+  field, the one new thing: a trip that ends on a road rather than at
+  a building. It goes while a hand is on shift and the yard has room
+  for a crop, and only for a field that is ripe; a hand arriving is a
+  change at the building, so the farm takes its turn as its hands come
+  in, and the tractor is out by half past six.
+- **The farm keeps no lorry and no van.** Its crates leave by the
+  warehouse's lorry, or by pickup: a maker with no lorry of its own
+  whose shelf has no room for the next crop calls, and a lorry from
+  beyond the edge drives in, loads the yard, and drives off the map,
+  paid as it leaves at the crate's price less the crossing. The office
+  keeps its car and ships itself. So a farm sells in town only through
+  a warehouse, which is what §7 says a warehouse is for.
+- **A maker is founded with nothing made.** Every shelf was founded
+  full, a maker's with a day's make it never made: an office placed for
+  fifteen hours shipped a hundred and seventy-five the same morning.
+  Now what a row buys is founded full and what it makes is not, so a
+  farm's first crates are its tractor's, and a broke town's first sale
+  is a factory's hours, as §12.4 meant.
+- **The Work tap closes on a full yard** (§13.19): a maker's shelf with
+  no room for the next load offers no work, as an empty stock closes
+  the tap at home. And a resident whose workplace is not hiring works
+  beyond the edge that day: labour as the export of last resort (§8.1),
+  which was written and not built.
+- **One call a good a building.** A vehicle already on its way keeps
+  its call; a call nothing has answered gives way to what the stock
+  says now. Before, an unanswered harvest call, raised with no field
+  ripe, stood in the way of every pickup, and a full yard sat full for
+  a season.
+- **The numbers.** Eight fields a farm, a crop of 81 each, which is the
+  row's 648 a day; a track of up to ten tiles; a harvest is the
+  tractor's stop at the field. The tractor drives at a car's speed
+  until roads have speeds of their own.
+- **On the client** a field is a tile type the terrain mesher lays over
+  the grass from the farm's record, so it gets the corners any ground
+  gets and a block of fields reads as one shape; no tree stands on one.
+  The tractor is drawn as a van in the farm's green until it has a
+  shape of its own.
+
+What running it found, thirty days of the full town against §12.7:
+
+- **The farm harvests six fields a day** of eight, and the yard goes
+  out by pickup about twenty-one times in the season, 648 crates each,
+  at the crate's price less the crossing: some forty a day against
+  twenty-seven of wages. The warehouse fetches from it every four days
+  or so, 240 at a time. The hands work twenty-nine hours of thirty-six:
+  a yard with no room sends them to the edge for the day.
+- **The full town loses a third of an hour a head a day** where §12.7
+  had it at a sixth, at 11.8 GDP a head a day, and the difference is
+  the founding gift gone: three offices founded with a day's make each
+  shipped it in the first morning, 525 hours the town never earned,
+  and the farm's own founding yard 58 more, which over thirty days is
+  the sixth. The real drift was always a third.
+- **The bedroom town** nets two fifths under where it netted a quarter
+  under, with the same GDP: a call nothing has answered now gives way
+  to a fresh one at every look, so its homes' calls for services are
+  tried at every look rather than every hour, more consultants come,
+  and the town pays for what it draws. The job centre was not rerun.
+- **No harm, the band, no ringing, tenure and the slump hold.** The
+  slump ends the season with 369 in the treasury.
+
+AS BUILT
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
@@ -1297,10 +1405,14 @@ with a farm in a factory's place, against §12.6:
     right by the row's arithmetic, and the first town the model calls a
     mistake. Whether the player is told so before the season says it is
     §10's.
-19. A full yard is paid for (§12.7): a maker's hands work while the
-    yard is full, where §4 has the line stop and the wages go unpaid.
-    The Work tap should close on a full yard as it closes on an empty
-    stock, which needs the make to land as it is made rather than as a
-    lump at the tab, so that the hour the yard fills is the hour the
-    tap closes. Comes with the fields, where the make lands a load at a
-    time.
+19. ~~A full yard is paid for (§12.7).~~ §12.8: the tap closes on a
+    yard with no room for the next load, and the hands work beyond the
+    edge that day. The office's make still lands as a lump at the tab,
+    so its tap closes a shift late; the farm's lands a crop at a time.
+20. A vehicle on a call does not stand the ten minutes at the door
+    (`calls::SERVICE_MS`): the wake that should hold it is lost to an
+    earlier one, and a call is answered in the drive alone. Older than
+    the fields, seen by them: eight harvests by half past six.
+21. Fields are not owned but placed: a farm demolished leaves its
+    fields as grass, and two farms whose tracks meet would share the
+    fields between them. Neither has come up.

@@ -95,6 +95,27 @@ pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: Entity
     true
 }
 
+/// A farm's tractor sets out for a field: out of its dock and along the
+/// roads to the track node beside it, where it stops on the road. No
+/// place is claimed at the far end; a track is the farm's own.
+pub fn drive_to(world: &mut World, events: &mut EventQueue, car_id: EntityId, from_node: EntityId, node: EntityId, now: GameTime) -> bool {
+    let owner = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
+        _ => return false,
+    };
+    let out = world.way_out(car_id).unwrap_or_default();
+    let from_node = out.last().copied().unwrap_or(from_node);
+    let path = match pathfinding::Routes::from(world, from_node).route_to(node) {
+        Some(r) if r.len() >= 2 => r,
+        _ => return false,
+    };
+    let from_lot = out.len().saturating_sub(1);
+    let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
+    world.release_spot(car_id);
+    launch(world, events, car_id, owner, node, route, from_lot, 0, 0, now);
+    true
+}
+
 fn launch(
     world: &mut World,
     events: &mut EventQueue,

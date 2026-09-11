@@ -1,5 +1,6 @@
 pub mod bezier;
 mod buildings;
+mod fields;
 mod geometry;
 pub mod lots;
 pub mod network;

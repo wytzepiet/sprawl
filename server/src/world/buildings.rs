@@ -353,8 +353,9 @@ impl World {
             return false;
         };
         self.place_road_path(&[street_pos, door]);
-        // Reached: a depot's lorries come with it.
+        // Reached: a depot's lorries come with it, and a farm's fields.
         crate::calls::stable(self, id);
+        self.lay_fields(id);
         true
     }
 
@@ -387,6 +388,7 @@ impl World {
 
     /// The one way a building leaves.
     pub fn remove_building(&mut self, id: EntityId) {
+        self.take_up_track(id);
         self.drop_lot(id);
         let Some(entry) = self.objects.get(id) else { return };
         let Some(pos) = entry.position else { return };

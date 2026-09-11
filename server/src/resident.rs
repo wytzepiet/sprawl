@@ -190,7 +190,14 @@ fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: E
         .iter()
         .map(|b| match b.need {
             Need::Work if !fit(buckets) => Verdict::Nothing,
-            Need::Work => r.work.map_or(Verdict::Nothing, |w| verdict_at(world, r, earning, at, b, w, now, crowd, routes, true)),
+            // A maker's yard with no room for the next load offers no work
+            // (docs/economy.md §13.19); the edge hires everyone, always,
+            // which is labour as the export of last resort (§8.1).
+            Need::Work => r
+                .work
+                .filter(|&w| economy::hiring(world, w))
+                .or_else(|| world.objects.get(r.home).and_then(|e| e.position).and_then(|p| world.nearest_edge(p)))
+                .map_or(Verdict::Nothing, |w| verdict_at(world, r, earning, at, b, w, now, crowd, routes, true)),
             Need::Rest | Need::Home => verdict_at(world, r, earning, at, b, r.home, now, crowd, routes, true),
             Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => search(world, r, earning, at, b, now, crowd, routes),
             // Nobody carries it: a building's, delivered by a call.
@@ -839,8 +846,15 @@ pub fn set_at(world: &mut World, events: &mut EventQueue, id: EntityId, place: E
         settle(world, id, from, now, &crowd);
         pay_the_tab(world, events, id, from, now);
     }
+    let mut hired = false;
     if let Some(r) = resident_mut(world, id) {
         r.at = Some(place);
+        hired = r.work == Some(place);
+    }
+    // A hand arriving is a change at the workplace: a farm's tractor goes
+    // out with someone to drive it (docs/economy.md §12.8).
+    if hired {
+        crate::calls::turn(world, events, place, now);
     }
 }
 

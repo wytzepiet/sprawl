@@ -63,27 +63,38 @@ export default function World() {
     return tiles;
   }
 
-  /** Claim a building's tiles, returning the keys so they can be released. */
+  /** Claim a building's tiles, and a farm's fields, returning the keys so
+   *  they can be released. A field is ground the terrain draws as a field
+   *  (`TerrainChunks`), and no tree stands on one. */
   function cover(entry: GameObjectEntry): string[] {
     if (entry.object.kind !== "Building" || !entry.position) return [];
     const b = entry.object.data as Building;
-    return footprint(entry.position, b.size).map((t) => {
+    const keys = footprint(entry.position, b.size).map((t) => {
       const key = `${t.x},${t.y}`;
       builtTiles.set(key, entry.id);
       terrain.markBuilt(t.x, t.y);
       return key;
     });
+    for (const f of b.fields) {
+      const key = `${f.at.x},${f.at.y}`;
+      fieldTiles.add(key);
+      terrain.markBuilt(f.at.x, f.at.y);
+      keys.push(key);
+    }
+    return keys;
   }
 
   function uncover(keys: string[] | undefined) {
     for (const key of keys ?? []) {
       builtTiles.delete(key);
+      fieldTiles.delete(key);
       const [x, y] = key.split(",").map(Number);
       terrain.markBuilt(x, y);
     }
   }
 
-  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt);
+  const fieldTiles = new Set<string>();
+  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, (x, y) => isBuilt(x, y) || fieldTiles.has(`${x},${y}`), (x, y) => fieldTiles.has(`${x},${y}`));
   const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));

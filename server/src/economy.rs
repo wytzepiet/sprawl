@@ -275,11 +275,69 @@ pub fn makes(kind: BuildingKind, need: Need) -> bool {
     blueprint(kind).makes.is_some_and(|m| m.good == need)
 }
 
-/// What one shift lands on a maker's shelf: its hours at the row's rate,
-/// in one lump as the tab is paid. A shelf with less room than this
-/// ships before the lump is lost to it (`calls::turn`).
+/// What lands on a maker's shelf at once: a field's crop where the row
+/// has fields, else a shift's make, its hours at the row's rate in one
+/// lump as the tab is paid. A shelf with less room than this ships, or
+/// calls for pickup, before the load is lost to it (`calls::turn`), and
+/// offers no work meanwhile (`hiring`).
 pub fn lump(kind: BuildingKind) -> f64 {
+    if fields(kind) > 0 {
+        return crop(kind);
+    }
     blueprint(kind).makes.map_or(0.0, |m| shift_hours(kind) * m.per_hour)
+}
+
+/// The fields a kind works. Zero for every row but a farm's. §12.8.
+pub fn fields(kind: BuildingKind) -> u32 {
+    blueprint(kind).fields
+}
+
+/// What one of its fields grows in a day, ripe for the tractor: the
+/// row's day over its fields.
+pub fn crop(kind: BuildingKind) -> f64 {
+    blueprint(kind).stock as f64 / fields(kind) as f64
+}
+
+/// A field is ripe when the clock says so: a day after its last harvest,
+/// and at once when first claimed. Nothing grows a number.
+pub fn ripe(field: &crate::protocol::Field, now: GameTime) -> bool {
+    now >= field.ripe
+}
+
+/// The tractor is home: a field's crop lands in the yard. The farm's
+/// own, so no line and no money. §12.8.
+pub fn harvested(world: &mut World, farm: EntityId, load: f64) {
+    let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) else { return };
+    if let Some(m) = blueprint(b.kind).makes
+        && let Some(yard) = b.stocks.get_mut(&m.good)
+    {
+        yard.add(load);
+    }
+}
+
+/// A row calls only for what it buys: the services it draws, and the
+/// shelf its counter sells from or its vans deliver, unless its own
+/// labour or fields fill it.
+pub fn buys(kind: BuildingKind, need: Need) -> bool {
+    let bp = blueprint(kind);
+    if makes(kind, need) {
+        return false;
+    }
+    if need == Need::Services {
+        return draw(kind) > 0.0;
+    }
+    need == shelf_need(kind) && bp.stock > 0 && (bp.taps.iter().any(|t| t.need == need) || depot(kind))
+}
+
+/// Does a maker's shelf have room for the next load? One with none
+/// offers no work: a full yard stops the line, felt as wages not paid
+/// (§4, §13.19). Everything else always hires.
+pub fn hiring(world: &World, building: EntityId) -> bool {
+    let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return false };
+    match blueprint(b.kind).makes {
+        Some(m) => b.stocks.get(&m.good).is_none_or(|s| s.short() >= lump(b.kind)),
+        None => true,
+    }
 }
 
 /// Keeps a shelf and runs vehicles: sells its shelf by delivery,
@@ -353,26 +411,26 @@ pub fn reorder(world: &World, building: EntityId, need: Need) -> f64 {
     (rated(kind, need) + draw) * lead as f64 / DAY_MS as f64 + seats as f64
 }
 
-/// A building draws its services as time passes: at every look at its
-/// stocks, what the row used since the last look comes off the stock —
-/// a home by the heads under its roof, a firm by its row — and what the
-/// stock had of it a home banks as GDP, a night served at the world's
-/// price. A firm's draw is a line, not GDP: intermediate. An empty stock
-/// serves nothing. The first look after a load only starts the clock.
-/// §4, §10.
-pub fn drawn(world: &mut World, building: EntityId, now: GameTime) {
+/// Time passed at a building: at every look at its stocks, what the row
+/// used since the last look comes off its services — a home by the
+/// heads under its roof, a firm by its row — and what the stock had of
+/// it a home banks as GDP, a night served at the world's price. A
+/// firm's draw is a line, not GDP: intermediate. An empty stock serves
+/// nothing. The first look after a load only starts the clock. §4, §10.
+pub fn passed(world: &mut World, building: EntityId, now: GameTime) {
     let Some(kind) = kind_of(world, building) else { return };
     let bp = blueprint(kind);
-    let Some(since) = world.books.entry(building).or_default().drawn.replace(now) else { return };
+    let Some(since) = world.books.entry(building).or_default().looked.replace(now) else { return };
+    let days = now.saturating_sub(since) as f64 / DAY_MS as f64;
     let rate = if bp.homes > 0 {
         let heads = world.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(ref r) if r.home == building)).count() as f64;
         heads * services() / edge_price(Need::Services)
     } else {
         draw(kind)
     };
-    let due = rate * now.saturating_sub(since) as f64 / DAY_MS as f64;
     let Some(GameObject::Building(b)) = world.objects.get_mut(building).map(|e| &mut e.object) else { return };
     let Some(stock) = b.stocks.get_mut(&Need::Services) else { return };
+    let due = rate * days;
     let served = due.min(stock.level);
     stock.take(due);
     if bp.homes > 0 {
@@ -496,8 +554,10 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             }
             // A row that makes something fills its shelf at its rate;
             // what does not fit is lost, which is the full yard stopping
-            // the line (§4).
+            // the line (§4). A row with fields makes by the harvest: its
+            // hands drive the tractor (`calls::turn`).
             if let Some(row) = blueprint(kind).makes
+                && fields(kind) == 0
                 && let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object)
                 && let Some(stock) = b.stocks.get_mut(&row.good)
             {
@@ -610,11 +670,12 @@ pub fn refilled(world: &mut World, car: EntityId, now: GameTime) {
 }
 
 /// A delivery landed: `load` of `need` onto `buyer`'s stock, from
-/// `seller`'s or from beyond the edge. From a depot it is two lines at
-/// the depot's posted price and moves nothing; from beyond the edge the
-/// town buys the load at the edge's wholesale plus the crossing, as far
-/// as the treasury goes. A lorry home from a fetch lands a load without
-/// limit: the shelf fills. §7, §8.2.
+/// `seller`'s or from beyond the edge. From a seller in town it is two
+/// lines at the seller's posted price and moves nothing; from beyond
+/// the edge the town buys the load at the edge's wholesale plus the
+/// crossing, as far as the treasury goes. A lorry home from a fetch
+/// beyond the edge lands a load without limit: the shelf fills. §7,
+/// §8.2.
 pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, need: Need, load: f64, now: GameTime) {
     let unit = seller.map_or(import(wholesale(need)), |s| price_of(world, s, need));
     let Some(GameObject::Building(b)) = world.objects.get_mut(buyer).map(|e| &mut e.object) else { return };
@@ -709,9 +770,9 @@ pub struct Books {
     /// landing: the lead time the reorder point covers. None until there
     /// has been one.
     pub lead: Option<GameTime>,
-    /// When its services were last drawn (`drawn`). None until the first
-    /// look, which starts the clock.
-    pub drawn: Option<GameTime>,
+    /// When time last passed at it (`passed`): services drawn, a crop
+    /// grown. None until the first look, which starts the clock.
+    pub looked: Option<GameTime>,
 }
 
 impl Books {
@@ -962,38 +1023,53 @@ mod tests {
         assert!((world.gdp - load * edge_price(Need::Services)).abs() < 1e-9, "what the town sold out is GDP at the world's price: {}", world.gdp);
     }
 
-    /// §12.7, the farm: a shift fills its yard at the row's rate, its
-    /// crates are a depot's shelf — a shop's call is answered by its van
-    /// at its posted price, two lines and no money — and a yard nobody in
-    /// town empties ships to the edge at the crate's price less the
-    /// crossing. It opens at the crate's price and floors at the edge's.
+    /// §12.7 and §12.8, the farm: its crates are a depot's shelf — it
+    /// opens at the crate's price and floors at what the edge pays — but
+    /// a shift grows nothing in the yard, its fields do: a field is ripe
+    /// a day after its harvest, by the clock, and a harvest lands its
+    /// crop in the yard with no line and no money. A yard with no room
+    /// for a crop offers no work; a lorry from beyond the edge takes the
+    /// yard away at the crate's price less the crossing.
     #[test]
-    fn a_farm_fills_its_yard_with_crates_and_sells_them_like_a_depot() {
+    fn a_farm_grows_on_its_fields_and_sells_crates_like_a_depot() {
         let mut world = town();
         world.place_on_street(at(4), House).unwrap();
         let farm = world.place_on_street(at(8), Farm).unwrap();
-        let shop = world.place_on_street(at(20), Shop).unwrap();
         world.settle();
         world.treasury = 100.0;
         let hand = world.resident_ids().into_iter().find(|&id| resident(&world, id).work == Some(farm) && !world.edge.contains(&resident(&world, id).home)).expect("the farm hired next door");
         assert!(depot(Farm) && makes(Farm, Need::Eat) && sells(Farm).eq([Need::Eat]), "the farm is not a depot of crates");
-        assert_eq!(shelf(&world, farm, Need::Eat).cap, rated(Farm, Need::Eat), "the yard is a day's make");
+        assert_eq!((fields(Farm), fields(Office), crop(Farm)), (8, 0, 81.0));
+        assert_eq!(shelf(&world, farm, Need::Eat), crate::needs::Stock { level: 0.0, cap: rated(Farm, Need::Eat) }, "the yard is founded with a make, or is not a day's");
         assert_eq!(building(&world, farm).prices[&Need::Eat], wholesale(Need::Eat), "it opens at the crate's price");
         assert_eq!(unit_cost(Farm, Need::Eat), export(wholesale(Need::Eat)), "its floor is not what the edge pays");
-        take(&mut world, farm, Need::Eat, 648.0);
+        assert!(hiring(&world, farm), "an empty yard offers no work");
         sale(&mut world, hand, farm, Need::Work, 2.0, 0);
-        assert_eq!(shelf(&world, farm, Need::Eat).level, 36.0, "two hours grew {}", shelf(&world, farm, Need::Eat).level);
-        assert_eq!((world.treasury, world.gdp), (100.0, 0.0), "growing crossed the door, or counted before it was sold");
-        take(&mut world, shop, Need::Eat, 30.0);
-        let load = loaded(&mut world, farm, Need::Eat, 30.0, 0);
-        delivered(&mut world, shop, Some(farm), Need::Eat, load, 0);
-        assert_eq!((world.treasury, load), (100.0, 30.0), "a delivery inside the town moved money");
-        let due = 30.0 * wholesale(Need::Eat);
-        assert!((world.books[&farm].on(0).revenue - due).abs() < 1e-9 && (world.books[&shop].on(0).purchases - due).abs() < 1e-9, "the books disagree");
+        assert_eq!(shelf(&world, farm, Need::Eat).level, 0.0, "a shift grew crates in the yard");
+        assert!(!buys(Farm, Need::Eat) && !buys(Office, Need::Services) && buys(Shop, Need::Eat) && buys(Warehouse, Need::Eat) && buys(Shop, Need::Services), "the rows buy the wrong things");
+
+        // A field ripens by the clock, and a harvest is no line.
+        let field = building(&world, farm).fields[0];
+        assert!(ripe(&field, 0), "a fresh field is not ripe");
+        let cut = crate::protocol::Field { at: field.at, ripe: DAY_MS as u64 + 10 };
+        assert!(!ripe(&cut, DAY_MS as u64 / 2) && ripe(&cut, DAY_MS as u64 + 10));
+        harvested(&mut world, farm, crop(Farm));
+        assert_eq!((shelf(&world, farm, Need::Eat).level, world.treasury, world.gdp), (crop(Farm), 100.0, 0.0), "the harvest moved money, or counted");
+        assert!(world.books.get(&farm).is_none_or(|k| k.on(0).purchases == 0.0) && world.sales.is_empty(), "a harvest is a line");
+
+        // A yard with no room for a crop offers no work, and a lorry
+        // from beyond the edge takes it away.
+        let yard = shelf(&world, farm, Need::Eat).cap;
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
+            b.stocks.get_mut(&Need::Eat).unwrap().level = yard - crop(Farm) / 2.0;
+        }
+        assert!(!hiring(&world, farm), "a full yard hires");
         let load = shipped(&mut world, farm, Need::Eat);
         exported(&mut world, farm, Need::Eat, load, 0);
-        assert!((world.treasury - 100.0 - export(6.0 * wholesale(Need::Eat))).abs() < 1e-9, "the edge paid {}", world.treasury - 100.0);
-        assert!((world.gdp - 6.0 * wholesale(Need::Eat)).abs() < 1e-9, "crates sold out are GDP at the world's price");
+        assert!((world.treasury - 100.0 - export(load * wholesale(Need::Eat))).abs() < 1e-9, "the edge paid {}", world.treasury - 100.0);
+        assert!((world.gdp - load * wholesale(Need::Eat)).abs() < 1e-9, "crates sold out are GDP at the world's price");
+        let shop = world.place_on_street(at(30), Shop).unwrap();
+        assert!(hiring(&world, farm) && hiring(&world, shop), "an emptied yard, or a shop, does not hire");
     }
 
     /// §8.2, the door: money moves only when one party is the outside. A
@@ -1035,7 +1111,10 @@ mod tests {
         assert!((world.treasury - before - export(8.0 * EDGE_WAGE)).abs() < 1e-9, "a shift beyond the edge brought {}", world.treasury - before);
         // An office's shift is made, not sold: it goes on the shelf.
         let (gdp, before) = (world.gdp, world.treasury);
-        take(&mut world, office, Need::Services, 9.0);
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(office).map(|e| &mut e.object) {
+            let s = b.stocks.get_mut(&Need::Services).unwrap();
+            s.level = s.cap - 9.0;
+        }
         sale(&mut world, local, office, Need::Work, 9.0, 0);
         assert_eq!((world.gdp, world.treasury), (gdp, before), "an office's shift was sold at the door");
         assert_eq!(shelf(&world, office, Need::Services).short(), 0.0, "and did not fill the shelf");
@@ -1101,18 +1180,18 @@ mod tests {
         let two_days = shelf(&world, home, Need::Services).cap;
         // The first look starts the clock; a day later, a day is drawn.
         for id in [home, shop] {
-            drawn(&mut world, id, 0);
+            passed(&mut world, id, 0);
         }
         assert_eq!((world.gdp, shelf(&world, home, Need::Services).level), (0.0, two_days), "the first look drew");
         for id in [home, shop] {
-            drawn(&mut world, id, DAY_MS as u64);
+            passed(&mut world, id, DAY_MS as u64);
         }
         assert!((world.gdp - heads * services()).abs() < 1e-9, "{heads} nights served: {}", world.gdp);
         assert_eq!(world.treasury, 15.0, "the night crossed the door");
         assert!((two_days - shelf(&world, home, Need::Services).level - heads * services() / edge_price(Need::Services)).abs() < 1e-9, "the home drew {}", two_days - shelf(&world, home, Need::Services).level);
         assert!((stocks(Shop)[&Need::Services] - shelf(&world, shop, Need::Services).level - draw(Shop)).abs() < 1e-9, "the shop drew its row's");
         take(&mut world, home, Need::Services, two_days);
-        drawn(&mut world, home, 2 * DAY_MS as u64);
+        passed(&mut world, home, 2 * DAY_MS as u64);
         assert!((world.gdp - heads * services()).abs() < 1e-9, "a night with nothing in the stock was served");
     }
 

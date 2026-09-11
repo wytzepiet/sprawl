@@ -23,6 +23,7 @@ const carGeo = boxGeometry(0.18, 0.35, 0.15);
 /** A van: a box a car and a bit long, tall, and always the same white. */
 const vanGeo = boxGeometry(0.2, 0.45, 0.22);
 const VAN = new Color3(0.92, 0.92, 0.9);
+const TRACTOR = new Color3(0.36, 0.55, 0.16);
 /** A lorry: a cab-over tractor and a semi-trailer, two boxes. The tractor
  *  is the vehicle the server moves; the trailer hangs off a hitch near
  *  the tractor's tail and follows it, its heading the line from its own
@@ -108,9 +109,10 @@ export function mountCar(
 ): () => void {
   const car = entry.object.data as Car;
   if (car.role === "Truck") return mountLorry(entry.id, car, pool, scene, look);
-  const van = car.role === "Van";
-  const color = van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
-  const bucket = van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
+  // A tractor is drawn as a van in the farm's green until it has a shape of its own.
+  const van = car.role === "Van" || car.role === "Tractor";
+  const color = car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
+  const bucket = car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
   pool.ensureBucket(bucket, van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,

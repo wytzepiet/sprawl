@@ -121,20 +121,41 @@ pub struct Building {
     /// edge's price to a save from before prices.
     #[serde(default)]
     pub prices: std::collections::BTreeMap<crate::needs::Need, f64>,
+    /// A farm's fields: the grass it works, each with when its crop is
+    /// ripe. Laid with its track when a street reaches it
+    /// (`world/fields.rs`); dropped when built over.
+    #[serde(default)]
+    pub fields: Vec<Field>,
+    /// The track a farm laid to its fields, tile by tile from the street,
+    /// so it can be taken up with the farm.
+    #[serde(default)]
+    pub track: Vec<GridCoord>,
+}
+
+/// A tile of a farm's land, and when its crop is ripe: a day after the
+/// tractor last took it, and at once for a field just claimed.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Field {
+    pub at: GridCoord,
+    #[ts(type = "number")]
+    pub ripe: u64,
 }
 
 impl Building {
-    /// One of a kind, founded: its shelf full and its prices the edge's —
-    /// what the outside charges is the one price a shop that has sold
-    /// nothing yet can know.
+    /// One of a kind, founded: what it buys in full, what it makes not
+    /// yet made, and its prices the edge's — what the outside charges is
+    /// the one price a shop that has sold nothing yet can know.
     pub fn new(kind: BuildingKind, size: (u8, u8), facing: u8) -> Building {
-        use crate::economy::{edge_price_of, sells, stocks};
+        use crate::economy::{edge_price_of, makes, sells, stocks};
         Building {
             kind,
             size,
             facing,
-            stocks: stocks(kind).into_iter().map(|(need, cap)| (need, crate::needs::Stock::full(cap))).collect(),
+            stocks: stocks(kind).into_iter().map(|(need, cap)| (need, if makes(kind, need) { crate::needs::Stock { level: 0.0, cap } } else { crate::needs::Stock::full(cap) })).collect(),
             prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
+            fields: Vec::new(),
+            track: Vec::new(),
         }
     }
 }
@@ -160,6 +181,9 @@ pub enum CarRole {
     /// from beyond the edge where the town has no office. Looks like any
     /// car; only who dispatches it differs.
     Company,
+    /// A farm's: out along the track to a ripe field and home with the
+    /// crop, driven by a hand on shift. On the road it is a slow car.
+    Tractor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

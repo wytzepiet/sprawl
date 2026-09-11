@@ -14,12 +14,12 @@ warehouse and trucks from the edge, the supermarket, day and night, a
 fresh world per seed. Nothing arrives on its own: the spawner went on
 2026-09-09 (`shelved.md`). Money: one purse moved at the door, posted
 prices, labour bought on the building's turn, services from the office,
-wear at the workshop, the farm making crates for the shops and the edge,
-with the crate and the meal priced from the rows (`economy.md` §12
-steps 1 to 6).
+wear at the workshop, the farm with its fields and tractor, its crates
+fetched by the warehouse or picked up for the edge, with the crate and
+the meal priced from the rows (`economy.md` §12 steps 1 to 6, §12.8).
 
 Not built: parking past the driveway, the container and the factory's
-yard, the tractor and its fields, the port, power, fire, hospital, the
+yard, the port, power, fire, hospital, the
 inspect panel, road speed and priority, levels, trains, multiplayer,
 deployment. Of milestone 3, road past the allowance, moving and
 demolishing do not cost money yet.
@@ -73,9 +73,10 @@ A second chain, and space on the map.
 
 - Food as a second token (the crate); farms as big placeables that fill
   with work; supermarkets and restaurants call for food. Built as
-  `economy.md` §12.7: the farm's hands fill its yard with crates, its
-  van answers the shops' calls, its lorry takes the rest to the edge.
-  Fields the tractor drives wait for lots as road (`parking.md`).
+  `economy.md` §12.7 and §12.8: the farm lays a track into the grass
+  beside it and claims fields, its tractor brings each in as it ripens,
+  the warehouse's lorry fetches from its yard, and a lorry from beyond
+  the edge comes for what nobody in town buys.
 - The warehouse holds both.
 - The port: a facility on the coast whose vehicle is a ship, a second
   door with the edge's prices and cheaper freight. Haulers, handling
