@@ -11,8 +11,7 @@ import { buildKerbGeometry, buildRoadGeometry, type ArmInfo } from "./roadGeomet
  * road — two faint stripes a wheel apart with nothing between, so where
  * two paths cross all four show — and under the plough a strip a tile wide
  * in the field's colour, which is the ground turned brown behind the
- * tractor before the terrain catches up. The tile the tractor is on is a
- * straight piece stretched to where it is, until it reaches the next.
+ * tractor before the terrain catches up.
  */
 export const RUT = Color3.FromHexString("#B49E5C");
 export const FIELD = Color3.FromHexString("#C9B26A");
@@ -78,30 +77,59 @@ function quads(rects: [number, number, number, number][], z: number): Geo {
 const RUT_STEP = quads([[0, TRACK - STRIPE / 2, 1, TRACK + STRIPE / 2], [0, -TRACK - STRIPE / 2, 1, -TRACK + STRIPE / 2]], RUT_Z);
 const STRIP_STEP = quads([[0, -0.5, 1, 0.5]], STRIP_Z);
 
-function segment(a: GridCoord, b: GridCoord): { pos: [number, number, number]; rot: [number, number, number]; len: number } {
-  const dx = b.x - a.x, dy = b.y - a.y;
-  return { pos: [a.x + 0.5, a.y + 0.5, 0], rot: [0, 0, Math.atan2(dy, dx)], len: Math.hypot(dx, dy) };
-}
+/**
+ * The marks under a tractor as it goes, from the yard to where it is now.
+ * Progress `p` counts tiles: at `k` the tractor is on the centre of the
+ * path's `k`th tile, between them so far along the way. A tile's shape
+ * reaches half way to its neighbours, so it is laid whole once the
+ * tractor is past that, at `k + 1/2`; from there to the tractor run two
+ * straight pieces along the path, stretched each frame and never laid
+ * again, so nothing blinks as a tile is crossed.
+ */
+export class Trail {
+  private whole = 0;
+  private laid: Laid[] = [];
+  private head: Laid[][] = [];
 
-/** Lay the straight piece from one tile's centre toward the next, `part`
- *  of the way. */
-export function layHead(pool: InstancePool, look: Look, a: GridCoord, b: GridCoord, part: number, strip: boolean): Laid[] {
-  const { pos, rot, len } = segment(a, b);
-  const scale: [number, number, number] = [len * part, 1, 1];
-  const out: Laid[] = [];
-  if (strip) {
-    const key = `strip_step${look.key}`;
-    pool.ensureBucket(key, STRIP_STEP, look.tint(FIELD), false, true);
-    out.push({ key, id: pool.addInstance(key, pos, rot, scale) });
+  constructor(private pool: InstancePool, private look: Look, private path: GridCoord[], private strip: boolean) {
+    for (let i = 0; i < 2; i++) {
+      const pieces: Laid[] = [];
+      if (strip) {
+        const key = `strip_step${look.key}`;
+        pool.ensureBucket(key, STRIP_STEP, look.tint(FIELD), false, true);
+        pieces.push({ key, id: pool.addInstance(key, [0, 0, 0], [0, 0, 0], [0, 1, 1]) });
+      }
+      const key = `rut_step${look.key}`;
+      pool.ensureBucket(key, RUT_STEP, look.tint(RUT), false, true);
+      pieces.push({ key, id: pool.addInstance(key, [0, 0, 0], [0, 0, 0], [0, 1, 1]) });
+      this.head.push(pieces);
+    }
   }
-  const key = `rut_step${look.key}`;
-  pool.ensureBucket(key, RUT_STEP, look.tint(RUT), false, true);
-  out.push({ key, id: pool.addInstance(key, pos, rot, scale) });
-  return out;
-}
 
-/** Stretch the head to a new part of its segment. */
-export function stretch(pool: InstancePool, laid: Laid[], a: GridCoord, b: GridCoord, part: number): void {
-  const { pos, rot, len } = segment(a, b);
-  for (const { key, id } of laid) pool.updateInstance(key, id, pos, rot, [len * part, 1, 1]);
+  reach(p: number): void {
+    const { path } = this;
+    const m = Math.min(Math.floor(p + 0.5), path.length - 1);
+    while (this.whole < m) this.laid.push(...layTile(this.pool, this.look, path, this.whole++, this.strip));
+    // From the last whole tile's edge to the centre of the tile the tractor
+    // is coming from, then on toward the next as far as it has got.
+    this.piece(0, m - 1, m, 0.5, Math.min(1, p - (m - 1)));
+    this.piece(1, m, m + 1, 0, p - m);
+  }
+
+  /** One straight piece along the step from tile `a` to `b`, from `f0` to `f1` of the way. */
+  private piece(i: number, a: number, b: number, f0: number, f1: number): void {
+    const { path } = this;
+    if (a < 0 || b >= path.length || f1 <= f0) {
+      for (const { key, id } of this.head[i]) this.pool.updateInstance(key, id, undefined, undefined, [0, 1, 1]);
+      return;
+    }
+    const dx = path[b].x - path[a].x, dy = path[b].y - path[a].y;
+    const pos: [number, number, number] = [path[a].x + 0.5 + dx * f0, path[a].y + 0.5 + dy * f0, 0];
+    for (const { key, id } of this.head[i]) this.pool.updateInstance(key, id, pos, [0, 0, Math.atan2(dy, dx)], [Math.hypot(dx, dy) * (f1 - f0), 1, 1]);
+  }
+
+  dispose(): void {
+    for (const { key, id } of this.laid) this.pool.removeInstance(key, id);
+    for (const pieces of this.head) for (const { key, id } of pieces) this.pool.removeInstance(key, id);
+  }
 }

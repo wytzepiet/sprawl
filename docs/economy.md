@@ -1327,16 +1327,25 @@ allows. What stands:
   over the grass from the farm's record, so it gets the corners any
   ground gets and a block of it reads as one shape; the crop stands on
   the sown tiles as the trees stand on the forest, through the same
-  pass, grown by the clock; the tractor is drawn along its run by the
-  same follower as a trip, the planned tiles as its path, no lane, a
-  steady pace; and its tyre marks are two faint stripes a wheel apart
-  with nothing between, a step at a time from tile centre to tile
-  centre, so where two paths cross all four show. The marks are laid
-  behind the tractor as it goes, the step it is on stretched to where
-  it is, and under the plough a strip a tile wide in the field's colour
-  goes down the same way, so the ground turns brown continuously and
-  the terrain's own tiles catch up underneath. Between runs the farm's
-  record holds the last run's path and the marks are drawn from that.
+  pass, grown by the clock; the tractor is drawn along its run on the
+  same rounded path as a trip, the planned tiles as its path, no lane,
+  but by the server's clock rather than its own physics: on the run's
+  `k`th tile `k` paces after it started, wherever the corners put that,
+  so it stands where the server has it when the job is done there. Its
+  tyre marks are a road's kerbs without the road, two faint stripes a
+  wheel apart with nothing between, one shape a tile with arms to the
+  tiles before and after, so where two paths cross all four show. They
+  are laid behind the tractor as it goes: a tile whole once the tractor
+  is past the half-way to the next, where its shape ends, and from
+  there to the tractor two straight pieces stretched every frame and
+  never laid again, so nothing blinks as a tile is crossed; under the
+  plough a strip a tile wide in the field's colour goes down the same
+  way, so the ground turns brown continuously and the terrain's own
+  tiles catch up underneath. The run itself carries nothing that changes
+  as it goes — the tile is the clock's — so the server sends it once,
+  and the client does not tear the marks down and lay them again at
+  every step. Between runs the farm's record holds the last run's path
+  and the marks are drawn from that.
   The tractor is drawn as a van in the farm's green until it has a
   shape of its own.
 - **The hands take the third day off.** Two full shifts run a hand's

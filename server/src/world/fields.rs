@@ -192,7 +192,7 @@ impl World {
         self.update_position(tractor, yard);
         if let Some(GameObject::Car(c)) = self.objects.get_mut(tractor).map(|e| &mut e.object) {
             c.spot = None;
-            c.run = Some(Run { job, path, started: now, pace: PACE, next: 0 });
+            c.run = Some(Run { job, path, started: now, pace: PACE });
         }
         events.wake(PACE, tractor);
     }
@@ -327,7 +327,7 @@ impl World {
         None
     }
 
-    /// The tractor arrives at the next tile of its run and does its job to
+    /// The tractor arrives at the tile of its run the clock names and does its job to
     /// it: the plough turns grass or stubble to bare ground, the seed
     /// starts a crop, the harvest lands a crop in the yard and leaves
     /// stubble — or, with no room left in the yard, leaves the crop
@@ -336,7 +336,11 @@ impl World {
     pub fn tractor_step(&mut self, events: &mut EventQueue, tractor: EntityId, now: GameTime) {
         let Some(GameObject::Car(c)) = self.objects.get(tractor).map(|e| &e.object) else { return };
         let (farm, Some(run)) = (c.owner, c.run.clone()) else { return };
-        let Some(&here) = run.path.get(run.next) else { return };
+        // The tile is the clock's: the run began on the first, and reaches
+        // one more every pace. Nothing on the car changes from step to
+        // step, so nothing is resent until the run is over.
+        let k = ((now - run.started) / run.pace) as usize;
+        let Some(&here) = run.path.get(k) else { return };
         self.update_position(tractor, here);
         let crop = self.objects.get(farm).and_then(|e| match e.object {
             GameObject::Building(ref b) => Some(economy::crop(b.kind)),
@@ -362,17 +366,12 @@ impl World {
         if cut > 0.0 {
             economy::harvested(self, farm, cut);
         }
-        let last = run.next + 1 >= run.path.len();
-        if let Some(GameObject::Car(c)) = self.objects.get_mut(tractor).map(|e| &mut e.object) {
-            if last {
-                c.run = None;
-            } else if let Some(r) = c.run.as_mut() {
-                r.next += 1;
-            }
-        }
-        if !last {
+        if k + 1 < run.path.len() {
             events.wake(PACE, tractor);
             return;
+        }
+        if let Some(GameObject::Car(c)) = self.objects.get_mut(tractor).map(|e| &mut e.object) {
+            c.run = None;
         }
         if let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object) {
             b.ruts = run.path;
@@ -580,7 +579,7 @@ mod tests {
         let turns = path.windows(3).filter(|w| (w[1].x - w[0].x, w[1].y - w[0].y) != (w[2].x - w[1].x, w[2].y - w[1].y)).count();
         assert!(turns * 3 < path.len(), "{turns} turns over {} steps", path.len());
         if let Some(GameObject::Car(c)) = world.objects.get_mut(tractor).map(|e| &mut e.object) {
-            c.run = Some(Run { job, path: path.clone(), started: now, pace: PACE, next: 0 });
+            c.run = Some(Run { job, path: path.clone(), started: now, pace: PACE });
         }
         let now = drive(&mut world, &mut events, tractor, now);
         assert!(stages(&world).iter().all(|&s| s == Stage::Ploughed), "not every tile was ploughed");
@@ -590,7 +589,7 @@ mod tests {
         assert_eq!((job, batch.len()), (Job::Seed, tiles.len()));
         let path = world.sweep(farm, pos, &batch).unwrap();
         if let Some(GameObject::Car(c)) = world.objects.get_mut(tractor).map(|e| &mut e.object) {
-            c.run = Some(Run { job, path, started: now, pace: PACE, next: 0 });
+            c.run = Some(Run { job, path, started: now, pace: PACE });
         }
         let sown_at = now;
         let now = drive(&mut world, &mut events, tractor, now);
@@ -603,7 +602,7 @@ mod tests {
         assert_eq!((job, batch.len()), (Job::Harvest, tiles.len()));
         let path = world.sweep(farm, pos, &batch).unwrap();
         if let Some(GameObject::Car(c)) = world.objects.get_mut(tractor).map(|e| &mut e.object) {
-            c.run = Some(Run { job, path, started: now, pace: PACE, next: 0 });
+            c.run = Some(Run { job, path, started: now, pace: PACE });
         }
         let now = drive(&mut world, &mut events, tractor, now);
         assert!(stages(&world).iter().all(|&s| s == Stage::Cut));

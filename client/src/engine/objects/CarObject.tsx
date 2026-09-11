@@ -4,8 +4,9 @@ import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
-import { layHead, layTile, stretch, type Laid } from "./ruts";
+import { Trail } from "./ruts";
 import type { Car, GameObjectEntry } from "../../generated";
+import type { Run } from "../../generated/Run";
 import { carPoses, parts } from "../../state/selection";
 
 /// Everyone keeps their car for life, and its id never changes — so neither
@@ -136,38 +137,19 @@ export function mountCar(
   const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
   parts.set(entry.id, [{ key: bucket, id: instanceId }]);
   // A tractor leaves its marks behind it as it goes, and under the plough
-  // the ground turns brown a wheel's turn at a time: the steps it has
-  // done are laid whole, the one it is on stretched to where it is.
+  // the ground turns brown a wheel's turn at a time.
   const run = car.run;
-  const trail: Laid[][] = [];
-  let head: { step: number; laid: Laid[] } | null = null;
+  const trail = run ? new Trail(pool, look, run.path, run.job === "Plough") : null;
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
     carPoses.set(entry.id, [result.pos[0], result.pos[1]]);
-    if (!run) return;
-    const strip = run.job === "Plough";
-    const t = Math.max(0, (simNow() - run.started) / run.pace);
-    const done = Math.min(Math.floor(t), run.path.length - 1);
-    // The tiles reached so far, whole, with their arms; then the straight
-    // piece from the last of them toward the next, as far as the tractor is.
-    while (trail.length <= done) trail.push(layTile(pool, look, run.path, trail.length, strip));
-    if (done + 1 < run.path.length) {
-      const k = done + 1;
-      const part = Math.max(0.01, t - done);
-      if (head && head.step !== k) {
-        for (const { key, id } of head.laid) pool.removeInstance(key, id);
-        head = null;
-      }
-      if (!head) head = { step: k, laid: layHead(pool, look, run.path[k - 1], run.path[k], part, strip) };
-      else stretch(pool, head.laid, run.path[k - 1], run.path[k], part);
-    }
+    if (run) trail!.reach(tileNow(run));
   });
   return () => {
     scene.onBeforeRenderObservable.remove(observer);
     pool.removeInstance(bucket, instanceId);
-    for (const step of trail) for (const { key, id } of step) pool.removeInstance(key, id);
-    if (head) for (const { key, id } of head.laid) pool.removeInstance(key, id);
+    trail?.dispose();
     carPoses.delete(entry.id);
     parts.delete(entry.id);
   };
@@ -298,14 +280,31 @@ function follow(car: Car): Follower | null {
 }
 
 /** A tractor on its run over the land: the planned tiles, centre to
- *  centre with no lane, driven at the run's steady pace. The same path
- *  and the same drive as a trip, so it corners like anything else. */
+ *  centre with no lane, on the same rounded path as a trip so it corners
+ *  like anything else — but by the server's clock, not by its own
+ *  physics: on the run's `k`th tile `k` paces after it started, wherever
+ *  the corners put that on the path, so it is where the server has it
+ *  when the job is done there. */
 function followRun(car: Car): Follower | null {
   const run = car.run!;
-  const pts = run.path.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0));
-  return followPath(pts, 0, 0, 0, { updated_at: run.started, progress: 0, speed: 1000 / run.pace, acceleration: 0 });
+  const drawn = drawnPath(run.path.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0)), 0, 0, 0);
+  if (!drawn) return null;
+  const { at, atNode, length } = drawn;
+  const now = (): Fix => {
+    const tile = tileNow(run);
+    const k = Math.min(Math.floor(tile), atNode.length - 2);
+    return at(atNode[k] + (atNode[k + 1] - atNode[k]) * (tile - k));
+  };
+  return { now, at, length };
 }
 
+/** How far along its run a tractor is, in tiles: on the `k`th at `k`,
+ *  between two so far along the way, by the server's clock. */
+function tileNow(run: Run): number {
+  return Math.min(Math.max(0, (simNow() - run.started) / run.pace), run.path.length - 1);
+}
+
+/** A trip's drive along its drawn path: its own physics, extrapolated. */
 function followPath(
   centerNodes: Vector3[],
   offset: number,
@@ -313,20 +312,41 @@ function followPath(
   toLot: number,
   data: { updated_at: number; progress: number; speed: number; acceleration: number },
 ): Follower | null {
+  const drawn = drawnPath(centerNodes, offset, fromLot, toLot);
+  if (!drawn) return null;
+  const { at, length } = drawn;
+  const now = (): Fix => {
+    let dt = Math.max(0, (simNow() - data.updated_at) / 1000);
+    if (data.acceleration < 0) {
+      const tStop = -data.speed / data.acceleration;
+      if (dt > tStop) dt = tStop;
+    }
+    return at(data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt);
+  };
+  return { now, at, length };
+}
+
+/** The path a car is drawn on: the nodes, offset onto the lane, the
+ *  corners rounded. `atNode[k]` is the distance along it where the car
+ *  passes node `k` — through the middle of the curve at a corner. */
+function drawnPath(centerNodes: Vector3[], offset: number, fromLot: number, toLot: number): { at(dist: number): Fix; atNode: number[]; length: number } | null {
   const nodes = offsetNodes(centerNodes, offset, fromLot, toLot);
   const pathPoints: Vector3[] = [];
+  const nodeIndex: number[] = [];
 
   for (let i = 0; i < nodes.length - 1; i++) {
     const a = nodes[i];
     const b = nodes[i + 1];
     const segLen = Vector3.Distance(a, b);
-    if (segLen < 1e-9) continue;
+    if (segLen < 1e-9) {
+      nodeIndex.push(pathPoints.length - 1);
+      continue;
+    }
     const dir = b.subtract(a).scaleInPlace(1 / segLen);
 
-    const start = i > 0 ? a.add(dir.scale(segLen * 0.5)) : a.clone();
-
     if (i === 0) {
-      pathPoints.push(start);
+      pathPoints.push(a.clone());
+      nodeIndex.push(0);
     }
 
     if (i + 2 < nodes.length) {
@@ -342,9 +362,11 @@ function followPath(
 
       for (let s = 1; s <= BEZIER_SAMPLES; s++) {
         pathPoints.push(quadBezier(beforeB, b, afterB, s / BEZIER_SAMPLES));
+        if (s * 2 === BEZIER_SAMPLES) nodeIndex.push(pathPoints.length - 1);
       }
     } else {
       pathPoints.push(b);
+      nodeIndex.push(pathPoints.length - 1);
     }
   }
 
@@ -352,6 +374,7 @@ function followPath(
   const path = new Path3D(pathPoints);
   const distances = path.getDistances();
   const length = distances[distances.length - 1];
+  const atNode = nodeIndex.map((i) => distances[Math.max(0, i)]);
 
   const at = (dist: number): Fix => {
     const normalized = Math.min(Math.max(0, dist / length), 1);
@@ -359,15 +382,7 @@ function followPath(
     const tangent = path.getTangentAt(normalized);
     return { pos: [p.x, p.y, CAR_Z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2], dist: normalized * length };
   };
-  const now = (): Fix => {
-    let dt = Math.max(0, (simNow() - data.updated_at) / 1000);
-    if (data.acceleration < 0) {
-      const tStop = -data.speed / data.acceleration;
-      if (dt > tStop) dt = tStop;
-    }
-    return at(data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt);
-  };
-  return { now, at, length };
+  return { at, atNode, length };
 }
 
 /** Where a trip's reverse tail begins, as a distance along its drawn path:

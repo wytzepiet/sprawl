@@ -163,8 +163,10 @@ pub enum Job {
 }
 
 /// A tractor's run over the land: the tiles it drives in order, doing its
-/// job to each as it arrives, a tile every `pace` milliseconds from
-/// `started`. Off the roads: no route, no claims, no queue.
+/// job to each as it arrives, standing on the first at `started` and
+/// reaching one more every `pace` milliseconds. Off the roads: no route,
+/// no claims, no queue — and nothing that changes as it goes, so the
+/// run is sent once.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Run {
@@ -174,8 +176,6 @@ pub struct Run {
     pub started: u64,
     #[ts(type = "number")]
     pub pace: u64,
-    /// The next tile to arrive at.
-    pub next: usize,
 }
 
 impl Building {
