@@ -302,6 +302,11 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
     world.gdp_at_midnight = meta.gdp;
     world.treasury = meta.treasury;
     world.build = crate::tree::Build::load(meta.taken);
+    // SPRAWL_ALL: the whole tree and a bottomless purse, to test any building.
+    if std::env::var("SPRAWL_ALL").is_ok() {
+        world.build = crate::tree::Build::all();
+        world.treasury = 1_000_000.0;
+    }
     (world, meta.sim_time)
 }
 

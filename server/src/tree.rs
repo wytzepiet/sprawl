@@ -227,6 +227,11 @@ impl Build {
         b
     }
 
+    /// Every node taken: the whole tree, for testing.
+    pub fn all() -> Self {
+        Build { taken: nodes().into_iter().collect() }
+    }
+
     /// The nodes taken, in reading order: what a save writes down.
     pub fn taken(&self) -> Vec<Cell> {
         let mut v: Vec<Cell> = self.taken.iter().copied().collect();
