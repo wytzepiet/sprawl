@@ -1052,21 +1052,37 @@ the workshop, three to a bay, none to the edge; fourteen at once are a
 queue at two bays, and the last to wake find the edge quicker — the
 crowd of `residents.md` §4, and the second workshop's argument.
 
-**The seasons could not be run.** The season town of §12.4 gridlocks on
-its third day as the code stands merged — two driveways two tiles apart
-holding each other for good once the offices' cars are on the street
-(`parking.md` §9) — and it had been doing so since the day's two merges
-met; the tests passed because nothing in them asked whether anyone
-moved. `season` now asserts that nobody is a day late for anything, and
-stops there. Under an experimental box-junction rule that was tried and
-not kept, the full town ran ten days: mean wear sat at six to seven
-tenths, the two workshops sold seven to twenty services a day, nobody
-was worn out, and the full town's treasury fell about half an hour a
-head a day where §12.5 had it rising two — the workshops' seventy-two
-hours a day no longer sell to the edge, and their parts cross the door
-in. That is the no-harm season's question now (§13.16), and it waits on
-the street.
+**The seasons.** They could not be run at first: the season town of
+§12.4 gridlocked on its third day as the code stood merged, two
+driveways two tiles apart holding each other for good once the offices'
+cars were on the street, and every season since the day's two merges
+had measured a dead town without saying so. `season` now asserts nobody
+is a day late for anything, and a claim on a junction lapses when its
+holder stands still (`parking.md` §9). Thirty days of the three towns,
+against §12.5's ten:
 
+- **The full town** nets about half an hour a head a day *under* where
+  §12.5 had it two over, at 11.2 GDP a head a day where it was 11.3.
+  The two workshops are the difference: their seventy-two hours a day
+  sold to the edge as a pass-through's, and now sell about fourteen
+  services a day in town instead, each worth six where the hour was
+  1.8, with the parts crossing the door in. A workshop is in the red by
+  ten a day, and by a hundred on the day its parts land. That is
+  §13.16, and the season mix's to settle: a garage is a shop for cars,
+  and the mix has two where it has one of every other shop.
+- **The bedroom town** nets a quarter of an hour a head a day under,
+  where §12.5 had it 1.7 over. Its people drive four hundred tiles a day
+  to the edge and back, so the tank and the service together cost them
+  two hours a day against the row's transport sixth of 1.3: a commute
+  that long eats the household's tenth and more, which is Rosen's
+  compensating differential arriving from the other side (§5.2), and
+  the first time the model has said a bedroom town is a bad idea.
+- **The job centre** loses 1.7 a head a day where it lost 1.5, its
+  imported labour now driving worn cars too.
+- **The offices' price still rings** over thirty days, up a notch and
+  down two around the band's ceiling, as it did at the step 5 tip: the
+  ring test's tolerance was set on ten days, and this is the nudge at a
+  ceiling (§12.5), not wear.
 
 ## 13. Open
 
@@ -1115,7 +1131,11 @@ the street.
     or a bay's idle hours sold beyond the edge as a pass-through's are,
     is the choice; the rows (step 6) make it moot, since a row's labour
     is then an input to what it makes.
-17. The season town gridlocks on its third day (`parking.md` §9), so
-    every season since the merges of 2026-09-10 measures a dead town.
-    `season` asserts nobody is a day late and stops; the seasons of
-    §12.5 and §12.6 stand as the last that ran.
+17. The ring test over thirty days: the offices' price at the band's
+    ceiling steps up five and down three, three notches wide, and the
+    test allows one (§12.5, §12.6). Either the tolerance is a season's,
+    or the nudge at a ceiling wants a smaller step.
+18. The bedroom town nets under nothing once its cars wear (§12.6):
+    right by the row's arithmetic, and the first town the model calls a
+    mistake. Whether the player is told so before the season says it is
+    §10's.
