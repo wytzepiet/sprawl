@@ -3,7 +3,7 @@ import type { InstancePool } from "../InstancePool";
 import { shapeFor, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
 import { plot } from "../../blueprints";
 import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
-import { layStep } from "./ruts";
+import { layTile } from "./ruts";
 import type { Look } from "./look";
 import type { Building, GameObjectEntry } from "../../generated";
 import { parts } from "../../state/selection";
@@ -73,10 +73,10 @@ export function mountBuilding(
     }
   }
 
-  // A farm's tyre marks: where the tractor last drove, a step at a time.
-  // Redrawn with the next run.
+  // A farm's tyre marks: where the tractor last drove, a tile at a time,
+  // joined as a road is. Redrawn with the next run.
   const ruts = data.ruts;
-  for (let i = 1; i < ruts.length; i++) placed.push(...layStep(pool, look, ruts[i - 1], ruts[i], 1, false));
+  for (let i = 0; i < ruts.length; i++) placed.push(...layTile(pool, look, ruts, i, false));
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);

@@ -4,7 +4,7 @@ import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
-import { layStep, stretch, type Laid } from "./ruts";
+import { layHead, layTile, stretch, type Laid } from "./ruts";
 import type { Car, GameObjectEntry } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
 
@@ -149,10 +149,9 @@ export function mountCar(
     const strip = run.job === "Plough";
     const t = Math.max(0, (simNow() - run.started) / run.pace);
     const done = Math.min(Math.floor(t), run.path.length - 1);
-    while (trail.length < done) {
-      const k = trail.length + 1;
-      trail.push(layStep(pool, look, run.path[k - 1], run.path[k], 1, strip));
-    }
+    // The tiles reached so far, whole, with their arms; then the straight
+    // piece from the last of them toward the next, as far as the tractor is.
+    while (trail.length <= done) trail.push(layTile(pool, look, run.path, trail.length, strip));
     if (done + 1 < run.path.length) {
       const k = done + 1;
       const part = Math.max(0.01, t - done);
@@ -160,7 +159,7 @@ export function mountCar(
         for (const { key, id } of head.laid) pool.removeInstance(key, id);
         head = null;
       }
-      if (!head) head = { step: k, laid: layStep(pool, look, run.path[k - 1], run.path[k], part, strip) };
+      if (!head) head = { step: k, laid: layHead(pool, look, run.path[k - 1], run.path[k], part, strip) };
       else stretch(pool, head.laid, run.path[k - 1], run.path[k], part);
     }
   });

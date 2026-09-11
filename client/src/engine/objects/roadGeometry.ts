@@ -157,6 +157,43 @@ function sharpCorner(
 // --- Geometry builders ---
 
 export function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshGeometry | null {
+  const boundary = roadBoundary(arms, hw);
+  return boundary && fanGeometry(boundary, z);
+}
+
+/**
+ * A road's kerbs without the road: the ring between the outline at one
+ * half-width and the same outline at a narrower one. The two outlines have
+ * the same points in the same order, since only the width differs, so the
+ * ring is a strip of quads between them. What a tractor's tyre marks are
+ * drawn as, so that where two paths cross all four stripes show.
+ */
+export function buildKerbGeometry(arms: ArmInfo[], outer: number, inner: number, z: number): MeshGeometry | null {
+  const o = roadBoundary(arms, outer);
+  const i = roadBoundary(arms, inner);
+  if (!o || !i || o.length !== i.length) return null;
+  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
+  const n = o.length;
+  for (const pt of o) { positions.push(pt.x, pt.y, z); normals.push(0, 0, 1); }
+  for (const pt of i) { positions.push(pt.x, pt.y, z); normals.push(0, 0, 1); }
+  // Each triangle wound to face +Z, as the fan does.
+  const tri = (a: number, b: number, c: number) => {
+    const ax = positions[a * 3], ay = positions[a * 3 + 1];
+    const bx = positions[b * 3] - ax, by = positions[b * 3 + 1] - ay;
+    const cx = positions[c * 3] - ax, cy = positions[c * 3 + 1] - ay;
+    if (bx * cy - by * cx > 0) indices.push(a, c, b);
+    else indices.push(a, b, c);
+  };
+  for (let k = 0; k < n; k++) {
+    const k1 = (k + 1) % n;
+    tri(k, k1, n + k1);
+    tri(k, n + k1, n + k);
+  }
+  return { positions, normals, indices };
+}
+
+/** The outline of a node's road surface at a half-width, or null with no arms. */
+function roadBoundary(arms: ArmInfo[], hw: number): Point[] | null {
   if (arms.length === 0) return null;
 
   const sorted = [...arms].sort((a, b) => a.angle - b.angle);
@@ -203,7 +240,7 @@ export function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshG
     }
   }
 
-  return fanGeometry(boundary, z);
+  return boundary;
 }
 
 export function buildChevronGeometry(a: number): MeshGeometry {
