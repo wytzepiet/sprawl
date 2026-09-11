@@ -533,7 +533,7 @@ fn try_reroute(
     // whole run ahead of it, not just the tile it is on.
     world.unregister_car_route(car_id, &old_route);
     world.remove_car_from_edges(car_id);
-    let woken = intersections.remove_car_from_all(car_id);
+    let woken = intersections.remove_car_from_all(car_id, now);
     for (_node, woken_id) in woken {
         events.wake(0, woken_id);
     }
@@ -1573,11 +1573,12 @@ mod tests {
             let midnight = day * DAY_MS as u64;
             while step_counting(&mut world, &mut events, &mut intersections, &mut now, midnight.min(end), &mut wakes) {}
             // A town that gridlocks is not a town being measured: nobody is
-            // a day late for anything. Two driveways two tiles apart hold
+            // a day late for anything. Two driveways two tiles apart held
             // each other for good on the third day, once the offices' cars
-            // are on the street (docs/parking.md §9).
+            // were on the street, until claims lapsed (docs/parking.md §9).
             let stuck = world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.as_ref().is_some_and(|t| now > t.eta + DAY_MS as u64))).count();
             assert_eq!(stuck, 0, "day {day}: {stuck} cars a day past their due time — the street has gridlocked");
+            println!("day {day}: {} claims lapsed so far", intersections.lapses);
             each_day(&world, day, wakes);
         }
         (world, wakes)

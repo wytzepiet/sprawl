@@ -61,8 +61,9 @@ this document can say only what changes.
   it is let through when its path does not cross anyone already passing,
   found by sweeping counter-clockwise from its entry arm, which is the
   right-hand rule. Without passage it must stop `INTERSECTION_STOP_MARGIN`
-  short of the node. Its claim is dropped the moment its route index has
-  passed the node (`intersection/mod.rs`, `simulation.rs`).
+  short of the node. Its claim lasts until its tail is through the node,
+  and lapses if it holds it standing still for ten seconds (§9)
+  (`intersection/mod.rs`, `simulation.rs`).
 - **Trips.** A trip is born at a driveway node with a route, a free-flow
   ETA fixed at departure, and the physics to extrapolate from; it dies on
   arrival, when the car is placed on the building and the driver steps out
@@ -474,20 +475,35 @@ Roughly: 3, 2, 2, 2, 1, 2 and 2 days. Steps 1, 3 and 4 are built.
 
 ## 9. Open
 
-- **Gridlock between driveways (2026-09-10).** With the offices' cars on
-  the street (`economy.md` §12.5) the season town's one street locks up
-  on its third day and stays locked. Two driveway junctions two tiles
-  apart each hold a car whose tail is still in the box because the car
-  ahead stands at the other junction's stop line, a tile on; one waits
-  to turn across the first box, the other is queued behind a car pulling
-  out of a lot that conflicts with the second box's holder. Every car
-  in a box entered it without room to leave. The rule with a referent
-  is the box junction — no entry without a clear exit — and as a
-  grant-time check of room on the road beyond it cleared this cycle; but
-  it needs the edge queues to be in physical order, and a re-planned
-  trip, a car pulling out of a spot into a lane, and the order cars
-  happen to wake all put a car behind one that registered later, which
-  the reservation then turns into a new deadlock. Each fix found the
-  next inversion, so none was kept. What it needs is §4.2's giving way
-  by length, or queues ordered by position. Until then the seasons
-  (`game_loop`, `season`) assert that nobody is a day late and stop.
+- **Gridlock between driveways (2026-09-10), curbed 2026-09-11.** With
+  the offices' cars on the street (`economy.md` §12.5) the season town's
+  one street locked up on its third day and stayed locked. Two driveway
+  junctions two tiles apart each held a car whose tail was still in the
+  box because the car ahead stood at the other junction's stop line, a
+  tile on; one waited to turn across the first box, the other was queued
+  behind a car pulling out of a lot that conflicted with the second
+  box's holder. Every car in a box had entered it without room to leave.
+  What curbs it is what a driver does: **a claim held by a car that is
+  not moving lapses after ten seconds** (`intersection::PATIENCE`), at
+  the line or with its tail in the box, and the car queues again at the
+  back; a car that has lost passage at a junction holds nothing beyond
+  it, and a car that has left one holds nothing there. No claim can then
+  outlive whatever is blocking it, so no cycle of claims can hold. The
+  cost is honesty for a second at a time: a car turns through a box
+  where another's tail still stands. The gauge is lapses a day, printed
+  by `season`: seventeen in a whole season of the full town, and about
+  thirty-five a day in the bedroom town and the job centre, whose every
+  resident uses one street. A climb in that number is the street model
+  asking for the rest.
+- **The rest.** The rule with a referent is the box junction — no entry
+  without a clear exit — and as a grant-time check of room on the road
+  beyond it cleared the cycle above; but it needs the edge queues to be
+  in physical order, and a re-planned trip, a car pulling out of a spot
+  into a lane, and the order cars happen to wake all put a car behind
+  one that registered later, which the reservation then turns into a new
+  deadlock. So: queues ordered by position, or §4.2's giving way by
+  length, then the box rule. And driveways as give-way lines rather than
+  junctions — through traffic never claims one, a car turning in or out
+  yields to what is coming — which would also let runs span whole
+  streets for the search and for `stretch_end`. The season guard
+  (`game_loop`, `season`: nobody a day late) judges all of it.
