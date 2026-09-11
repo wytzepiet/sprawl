@@ -14,8 +14,8 @@ import type { DrawnPath } from "./drawnPath";
  * sections behind it as they are, the one ahead pulled back to where it
  * is, so the ribbon ends under the tractor and nothing is laid twice.
  */
-export const RUT = Color3.FromHexString("#B49E5C");
-export const FIELD = Color3.FromHexString("#C9B26A");
+export const RUT = Color3.FromHexString("#D6C78F");
+export const FIELD = Color3.FromHexString("#ECDFAC");
 /** Half the track: how far each wheel runs from the path's centre. */
 const TRACK = 0.13;
 const STRIPE = 0.045;
