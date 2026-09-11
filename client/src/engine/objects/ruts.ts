@@ -26,8 +26,9 @@ function quads(rects: [number, number, number, number][], z: number): Geo {
   const positions: number[] = [], normals: number[] = [], indices: number[] = [];
   for (const [x0, y0, x1, y1] of rects) {
     const base = positions.length / 3;
+    // Wound as the lots' slabs are, so the face is up.
     for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) { positions.push(x, y, z); normals.push(0, 0, 1); }
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
   }
   return { positions, normals, indices };
 }

@@ -14,7 +14,7 @@ import type { Theme } from "./theme";
 import {
   buildCrops,
   buildTrees,
-  CROP,
+  CROP_H,
   CHUNK_SIZE,
   CHUNK_SKIRT,
   CHUNK_STRIDE,
@@ -26,6 +26,10 @@ import {
   type TerrainPalette,
 } from "./objects/terrainGeometry";
 import type { TerrainApi } from "./terrainWorker";
+import { boxGeometry } from "./objects/buildings";
+
+/** A crop plant: a low flat box. */
+const CROP = boxGeometry(0.26, 0.1, CROP_H);
 import { viewExtent } from "./view";
 
 export { CHUNK_SIZE };

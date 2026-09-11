@@ -854,8 +854,9 @@ export function buildChunk(
  * and roads are live game state — so unlike buildChunk this stays on the main
  * thread. It is cheap: placement is a pure seeded function of the tile coords.
  */
-/** A crop plant: a low flat box, a few to a tile, in rows. */
-export const CROP = boxGeo(0.26, 0.1, 0.12);
+/** A crop plant's height: a low box, a few to a tile, in rows, built on
+ *  the main thread (`TerrainChunks`) and lifted by half its height here. */
+export const CROP_H = 0.12;
 
 /** Where a farm's crop stands: one matrix per plant on every sown tile in
  *  the chunk, in three rows across the tile. `cropAt` says how grown a
@@ -874,28 +875,12 @@ export function buildCrops(chunkX: number, chunkY: number, cropAt: (x: number, y
           1, 0, 0, 0,
           0, s, 0, 0,
           0, 0, s, 0,
-          x - originX + ox, y - originY + oy, 0, 1,
+          x - originX + ox, y - originY + oy, (CROP_H / 2) * s, 1,
         );
       }
     }
   }
   return new Float32Array(out);
-}
-
-function boxGeo(w: number, d: number, h: number): MeshGeometry {
-  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
-  const face = (corners: [number, number, number][], n: [number, number, number]) => {
-    const base = positions.length / 3;
-    for (const c of corners) { positions.push(...c); normals.push(...n); }
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  };
-  const [hx, hy] = [w / 2, d / 2];
-  face([[-hx, -hy, h], [hx, -hy, h], [hx, hy, h], [-hx, hy, h]], [0, 0, 1]);
-  face([[-hx, -hy, 0], [-hx, -hy, h], [hx, -hy, h], [hx, -hy, 0]], [0, -1, 0]);
-  face([[hx, hy, 0], [hx, hy, h], [-hx, hy, h], [-hx, hy, 0]], [0, 1, 0]);
-  face([[-hx, hy, 0], [-hx, hy, h], [-hx, -hy, h], [-hx, -hy, 0]], [-1, 0, 0]);
-  face([[hx, -hy, 0], [hx, -hy, h], [hx, hy, h], [hx, hy, 0]], [1, 0, 0]);
-  return { positions, normals, indices };
 }
 
 export function buildTrees(
