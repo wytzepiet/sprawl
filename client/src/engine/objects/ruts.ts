@@ -58,8 +58,10 @@ class Ribbon {
     for (let i = 0; i + 1 < n; i++) {
       for (let l = 0; l < lanes.length; l++) {
         const [l0, r0] = this.vertex(i, l), [l1, r1] = this.vertex(i + 1, l);
-        // Wound as the lots' slabs are, so the face is up.
-        indices.push(l0, r1, r0, l0, l1, r1);
+        // Clockwise seen from above, as the lots' slabs are, so the face
+        // is up: the normal runs left, so the quad's turn is the reverse
+        // of one laid out along x and y.
+        indices.push(l0, r0, r1, l0, r1, l1);
       }
     }
     this.mesh = new Mesh("ruts", material.getScene());
