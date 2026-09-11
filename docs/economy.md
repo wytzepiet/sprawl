@@ -1264,7 +1264,10 @@ allows. What stands:
   in it — a house, a road, a wood — cut out too; the land is the open
   grass in it the tractor can reach from the yard, four ways, so a road
   through the rectangle is the field's edge and nothing lies beyond it
-  the tractor cannot get to. Begun as the plot itself and grown a row
+  the tractor cannot get to — and less any sliver, a tile with no field
+  on either side of it across one axis: a strip a tile wide beside the
+  barn or between two neighbours' plots is yard or lane, not field, and
+  no tractor could turn in it. Begun as the plot itself and grown a row
   at a time until the land in it is as much as a shift can plough — the
   shift over the tractor's pace, less a tenth for the headland and the
   lane, about two hundred tiles — the cutouts made up for by growing
@@ -1278,7 +1281,9 @@ allows. What stands:
   farm with the same yard: a tile's crop is the yard over the land the
   farm has, so a harvest fills the yard whatever ground it got. A tile
   is ordinary grass to the placer and the road brush; one built or
-  roaded over is dropped at the farm's next look. The land lives on
+  roaded over is dropped at the farm's next look, and with it whatever
+  that leaves the tractor unable to work, by the same rule. The land
+  lives on
   the farm's own record, a stage and a time per tile, and nothing
   else. This is how the Midwest is laid out: fields are rectangles on
   the survey grid with the farmstead on the road frontage inside its
@@ -1299,14 +1304,21 @@ allows. What stands:
   row two right angles made on the headland, which is what a headland
   is for; round the barn by the yard in front of it or the ground
   behind; and home along the edge, not across the field. Never a turn
-  sharper than a right angle: between one tile and
-  the next the tractor takes the shortest way that keeps to that,
-  arriving headed for the tile after so the row runs straight, and a
-  tile no such way reaches it leaves — the headland has already been
-  round it. The outline is driven whichever way round leaves fewer
-  tiles and the shorter run. The barn is not ground; the yard and the
-  lane are. A test draws the sweep over three shapes of land, and it
-  was looked at.
+  sharper than a right angle: between one tile and the next the
+  tractor takes the shortest way that keeps to that, arriving headed
+  for the tile after so the row runs straight, and never onto a tile
+  it could not get home from that way — the states it can get home
+  from are found once, backwards from the yard — so it is never stuck
+  in a pocket. A tile no such way reaches it leaves, and a tile left
+  is land no more: the field is what the tractor can drive. The
+  outline starts at the rectangle's corner nearest the yard, whether
+  or not that corner is field, and is driven whichever way round
+  leaves fewer tiles and the shorter run, over the edge — the field's
+  boundary, the lane and the yard — and across the inside only where
+  a cutout breaks the edge. The barn is not ground; the yard and the
+  lane are. A test draws the sweep over four shapes of land, the
+  fourth a farm with neighbours a tile away on both flanks as a town
+  builds them, and it was looked at.
 - **One run a day, three days a cycle.** Plough day, seed day, harvest
   day. A crop sown by the end of a shift is ripe by the next morning,
   half a day, so the harvest is the third day. The yard holds a
@@ -1348,9 +1360,15 @@ allows. What stands:
   diagonal row changes; watched in the game, the block was a rounded
   blob and the rows turned sharp at ragged ends. The third was a
   rectangle behind the plot, with rows ending a tile short of the
-  headland and turning on the crop. What stands is the fourth: the
-  rectangle round the farmstead with its cutouts, the headland driven
-  first and turned on, and the right angle.
+  headland and turning on the crop. The fourth put the farmstead in
+  the field and, run for a season in a town, never worked: the
+  rectangle took the alleys a tile wide between the neighbours' plots,
+  the tractor drove into one, could not turn, and no run was ever
+  planned again — thirty days with nothing in or out. What stands is
+  the fifth: the rectangle round the farmstead with its cutouts and
+  without its slivers, the headland driven first and turned on, the
+  right angle, and a drive that never goes where it cannot get home
+  from.
 - **On the client** there is no field but where the plough has been.
   The tractor is drawn along its run on the same rounded path as a
   trip, the planned tiles as its path, no lane, but by the server's

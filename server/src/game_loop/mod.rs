@@ -2127,8 +2127,12 @@ mod tests {
         assert!(world.calls.iter().any(|c| c.at == farm && c.kind == calls::CallKind::Pickup), "a full yard called for no pickup: {:?}", world.calls);
         pump(&mut world, &mut events, &mut intersections, now, now + 6 * day / 24);
         assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Pickup), "the pickup never left: {:?}", world.calls);
+        // The edge pays for the yard — less a load the warehouse's lorry
+        // may have fetched from it first, which is paid in town.
         let paid = crate::economy::export(full * crate::economy::wholesale(Need::Eat));
-        assert!((world.treasury - before - paid).abs() < 5.0, "the edge paid {} for the yard, not {paid}", world.treasury - before);
+        let load = crate::economy::export(crate::blueprint::blueprint(BuildingKind::Warehouse).stock as f64 * crate::economy::wholesale(Need::Eat));
+        let got = world.treasury - before;
+        assert!(got > paid - load - 5.0 && got < paid + 5.0, "the edge paid {got} for the yard, not {paid}");
         assert!(lorries(&world) <= stood, "the pickup lorry stayed");
     }
 
