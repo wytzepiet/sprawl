@@ -12,7 +12,9 @@ import {
   Vector3,
   DirectionalLight,
   HemisphericLight,
+  RenderTargetTexture,
   ShadowGenerator,
+  type AbstractEngine,
 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { viewExtent } from "./view";
@@ -21,22 +23,28 @@ import { viewExtent } from "./view";
 // Time config
 // ---------------------------------------------------------------------------
 
-/** Real seconds for one full game day. */
 /** Half-extent of the sun's ortho frustum beyond which shadows stop rendering. */
 const SHADOW_MAX_RADIUS = 50;
 
 /**
- * Shadow map resolution. The sun's frustum is at most SHADOW_MAX_RADIUS across,
- * so 2048 still gives ~20 texels per tile — the map is cleared and written every
- * refresh, and 4096 was costing 67MB of bandwidth per frame for detail this
- * top-down view cannot show.
- *
- * The map refreshes every frame (Babylon's default). It has to: the sun moves
- * every frame, so a map rendered at half rate lags the shading that samples it
- * and the mismatch beats at 30Hz — which reads as dense geometry like trees
- * blinking. Resolution is the bandwidth lever here, not refresh rate.
+ * The sun's frustum reaches this much past the view. The map is drawn every
+ * other frame, so between two drawings a pan carries the view a frame's worth
+ * past what the map covers, and ground beyond the map's edge is unshadowed.
  */
-const SHADOW_MAP_SIZE = 2048;
+const SHADOW_MARGIN = 1.05;
+
+/**
+ * Shadow map resolution: the power of two under the longer side of the screen,
+ * so the map holds at most a texel per pixel. It is bilinearly compared, so a
+ * texel short of a pixel only softens the edge, which is the look anyway. The
+ * map is cleared and written every time it is drawn, and its size is the
+ * bandwidth — 4096 once cost 67MB a frame for detail a top-down view cannot
+ * show.
+ */
+function shadowMapSize(engine: AbstractEngine): number {
+  const longest = Math.max(engine.getRenderWidth(), engine.getRenderHeight());
+  return Math.min(2048, Math.max(512, 2 ** Math.floor(Math.log2(longest))));
+}
 
 // ---------------------------------------------------------------------------
 // Color palette per time-of-day
@@ -195,7 +203,8 @@ export default function DayNightLights(props: ParentProps) {
   sunLight.autoUpdateExtends = false;
 
   // --- Shadow generator ---
-  const shadowGen = new ShadowGenerator(SHADOW_MAP_SIZE, sunLight);
+  const engine = scene.getEngine();
+  const shadowGen = new ShadowGenerator(shadowMapSize(engine), sunLight);
   shadowGen.usePercentageCloserFiltering = true;
   shadowGen.filteringQuality = ShadowGenerator.QUALITY_LOW;
   shadowGen.bias = 0.001;
@@ -205,8 +214,62 @@ export default function DayNightLights(props: ParentProps) {
   shadowGen.normalBias = 0.02;
   setShadowGen(shadowGen);
 
-  // --- Per-frame update ---
   const camera = scene.activeCamera!;
+  /** Half the longer side of the view, in tiles; measured every frame. */
+  let radius = 0;
+
+  /**
+   * Point the sun and fit its frustum to the view. Runs as the map is about to
+   * be drawn and at no other time, so the map and the shading that samples it
+   * always agree on where the sun is. Moving the sun between drawings is what
+   * made a half-rate map beat against the shading, and dense geometry like
+   * trees blink with it.
+   */
+  const aimSun = () => {
+    const t = timeOfDay();
+    sunLight.direction = sunDirection(t);
+    sunLight.intensity = 0.4 * sunElevation(t);
+
+    const reach = radius * SHADOW_MARGIN;
+    const dir = sunLight.direction;
+    sunLight.position.x = camera.position.x - dir.x * reach;
+    sunLight.position.y = camera.position.y - dir.y * reach;
+    sunLight.position.z = -dir.z * reach;
+    sunLight.shadowMinZ = 0;
+    sunLight.shadowMaxZ = reach * 2;
+    sunLight.orthoLeft = -reach;
+    sunLight.orthoRight = reach;
+    sunLight.orthoTop = reach;
+    sunLight.orthoBottom = -reach;
+    // The ortho extents are plain fields — writing them does not invalidate the
+    // cached projection. Babylon otherwise only rebuilds it when the light's
+    // position or direction moves, so a zoom (camera still, extents changed)
+    // would keep rendering the shadow map at the previous scale.
+    sunLight.forceProjectionMatrixCompute();
+  };
+
+  /**
+   * The map is drawn every other frame: shadows do not have to keep up with
+   * a pan the way the ground under the pointer does, and drawing every caster
+   * is the one pass this scene has besides the picture itself. Reassigning the
+   * size makes a new map, so this is applied to each one.
+   */
+  const configureMap = () => {
+    const map = shadowGen.getShadowMap()!;
+    map.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONEVERYTWOFRAMES;
+    // Ahead of the generator's own hook, which caches the light's matrix for
+    // the frame the moment it runs.
+    map.onBeforeRenderObservable.add(aimSun, undefined, true);
+  };
+  configureMap();
+  const resizeObs = engine.onResizeObservable.add(() => {
+    const size = shadowMapSize(engine);
+    if (size === shadowGen.mapSize) return;
+    shadowGen.mapSize = size;
+    configureMap();
+  });
+
+  // --- Per-frame update ---
   let lastColorStep = -1;
   const obs = scene.onBeforeRenderObservable.add(() => {
     // The sun follows the simulation, not the render loop — so fast-forwarding
@@ -233,35 +296,17 @@ export default function DayNightLights(props: ParentProps) {
       scene.clearColor.a = sky.a;
     }
 
-    const elev = sunElevation(t);
-    sunLight.direction = sunDirection(t);
-    sunLight.intensity = 0.4 * elev;
-
-    const view = viewExtent(scene, scene.getEngine().getRenderingCanvas()!);
-    const radius = Math.max(view.halfW, view.halfH);
-    const dir = sunLight.direction;
-    sunLight.position.x = camera.position.x - dir.x * radius;
-    sunLight.position.y = camera.position.y - dir.y * radius;
-    sunLight.position.z = -dir.z * radius;
-    sunLight.shadowMinZ = 0;
-    sunLight.shadowMaxZ = radius * 2;
-    sunLight.orthoLeft = -radius;
-    sunLight.orthoRight = radius;
-    sunLight.orthoTop = radius;
-    sunLight.orthoBottom = -radius;
-    // The ortho extents are plain fields — writing them does not invalidate the
-    // cached projection. Babylon otherwise only rebuilds it when the light's
-    // position or direction moves, so a zoom (camera still, extents changed)
-    // would keep rendering the shadow map at the previous scale.
-    sunLight.forceProjectionMatrixCompute();
-
-    // Zoomed out far enough that shadows are sub-pixel: skip the whole shadow
-    // pass rather than re-render every caster into a map nobody can read.
-    sunLight.shadowEnabled = radius < SHADOW_MAX_RADIUS;
+    const view = viewExtent(scene, engine.getRenderingCanvas()!);
+    radius = Math.max(view.halfW, view.halfH);
+    // Zoomed out far enough that shadows are sub-pixel, or the sun down and
+    // its light at zero: skip the whole shadow pass rather than draw every
+    // caster into a map nobody can read.
+    sunLight.shadowEnabled = radius < SHADOW_MAX_RADIUS && sunElevation(t) > 0;
   });
 
   onCleanup(() => {
     scene.onBeforeRenderObservable.remove(obs);
+    engine.onResizeObservable.remove(resizeObs);
     hemiLight.dispose();
     shadowGen.dispose();
     sunLight.dispose();
