@@ -68,6 +68,10 @@ pub enum BuildingKind {
     /// Where stock comes from: trucks that answer the shops' calls. Placed
     /// by the mayor.
     Warehouse,
+    /// Where food comes from: hands that fill a yard with crates, a van
+    /// that takes them to the shops, and a lorry for what nobody in town
+    /// buys. Placed by the mayor.
+    Farm,
     /// The world beyond the survey, standing where a road runs off the map.
     /// Not placed by anyone: it appears at every road exit and moves with
     /// the frontier. See `blueprint.rs`.
@@ -76,7 +80,7 @@ pub enum BuildingKind {
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 12] = [
+    pub const ALL: [BuildingKind; 13] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -88,6 +92,7 @@ impl BuildingKind {
         BuildingKind::GasStation,
         BuildingKind::Supermarket,
         BuildingKind::Warehouse,
+        BuildingKind::Farm,
         BuildingKind::Edge,
     ];
 }
@@ -116,20 +121,77 @@ pub struct Building {
     /// edge's price to a save from before prices.
     #[serde(default)]
     pub prices: std::collections::BTreeMap<crate::needs::Need, f64>,
+    /// A farm's land: the grass it claimed when a street reached it, each
+    /// tile at a stage of the cycle the tractor drives it through
+    /// (`world/fields.rs`). A tile built over is dropped.
+    #[serde(default)]
+    pub land: Vec<Tile>,
+    /// Where the tractor last drove: the tyre marks, one run's path, drawn
+    /// as a brown road with two stripes. Redrawn by the next run.
+    #[serde(default)]
+    pub ruts: Vec<GridCoord>,
+}
+
+/// A tile of a farm's land, and where it is in the cycle: grass until the
+/// tractor ploughs it, bare until it seeds it, growing from `since` until a
+/// day on, cut after the harvest, and ploughed again.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Tile {
+    pub at: GridCoord,
+    pub stage: Stage,
+    #[ts(type = "number")]
+    pub since: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Stage {
+    Grass,
+    Ploughed,
+    Sown,
+    Cut,
+}
+
+/// What a tractor does to a tile as it drives over it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Job {
+    Plough,
+    Seed,
+    Harvest,
+}
+
+/// A tractor's run over the land: the tiles it drives in order, doing its
+/// job to each as it arrives, standing on the first at `started` and
+/// reaching one more every `pace` milliseconds. Off the roads: no route,
+/// no claims, no queue — and nothing that changes as it goes, so the
+/// run is sent once.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Run {
+    pub job: Job,
+    pub path: Vec<GridCoord>,
+    #[ts(type = "number")]
+    pub started: u64,
+    #[ts(type = "number")]
+    pub pace: u64,
 }
 
 impl Building {
-    /// One of a kind, founded: its shelf full and its prices the edge's —
-    /// what the outside charges is the one price a shop that has sold
-    /// nothing yet can know.
+    /// One of a kind, founded: what it buys in full, what it makes not
+    /// yet made, and its prices the edge's — what the outside charges is
+    /// the one price a shop that has sold nothing yet can know.
     pub fn new(kind: BuildingKind, size: (u8, u8), facing: u8) -> Building {
-        use crate::economy::{edge_price_of, sells, stocks};
+        use crate::economy::{edge_price_of, makes, sells, stocks};
         Building {
             kind,
             size,
             facing,
-            stocks: stocks(kind).into_iter().map(|(need, cap)| (need, crate::needs::Stock::full(cap))).collect(),
+            stocks: stocks(kind).into_iter().map(|(need, cap)| (need, if makes(kind, need) { crate::needs::Stock { level: 0.0, cap } } else { crate::needs::Stock::full(cap) })).collect(),
             prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
+            land: Vec::new(),
+            ruts: Vec::new(),
         }
     }
 }
@@ -155,6 +217,9 @@ pub enum CarRole {
     /// from beyond the edge where the town has no office. Looks like any
     /// car; only who dispatches it differs.
     Company,
+    /// A farm's: out along the track to a ripe field and home with the
+    /// crop, driven by a hand on shift. On the road it is a slow car.
+    Tractor,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -208,12 +273,15 @@ pub struct Car {
     /// stop. A save from before cars had them gets them full.
     #[serde(default = "crate::needs::Bucket::driven")]
     pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
+    /// A tractor's run over its farm's land, while it is on one.
+    #[serde(default)]
+    pub run: Option<Run>,
 }
 
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven() }
+        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None }
     }
 }
 

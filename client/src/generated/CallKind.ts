@@ -3,4 +3,4 @@
 /**
  * What a call is for, and so who answers it.
  */
-export type CallKind = "Stock" | "Edge";
+export type CallKind = "Stock" | "Fetch" | "Ship" | "Pickup";

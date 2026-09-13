@@ -157,6 +157,12 @@ function sharpCorner(
 // --- Geometry builders ---
 
 export function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshGeometry | null {
+  const boundary = roadBoundary(arms, hw);
+  return boundary && fanGeometry(boundary, z);
+}
+
+/** The outline of a node's road surface at a half-width, or null with no arms. */
+function roadBoundary(arms: ArmInfo[], hw: number): Point[] | null {
   if (arms.length === 0) return null;
 
   const sorted = [...arms].sort((a, b) => a.angle - b.angle);
@@ -203,7 +209,7 @@ export function buildRoadGeometry(arms: ArmInfo[], hw: number, z: number): MeshG
     }
   }
 
-  return fanGeometry(boundary, z);
+  return boundary;
 }
 
 export function buildChevronGeometry(a: number): MeshGeometry {

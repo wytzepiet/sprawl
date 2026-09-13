@@ -1,9 +1,11 @@
-import { Color3, Path3D, Vector3 } from "@babylonjs/core";
+import { Color3, Vector3 } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
+import { Trail } from "./ruts";
+import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
 import type { Car, GameObjectEntry } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
 
@@ -23,6 +25,7 @@ const carGeo = boxGeometry(0.18, 0.35, 0.15);
 /** A van: a box a car and a bit long, tall, and always the same white. */
 const vanGeo = boxGeometry(0.2, 0.45, 0.22);
 const VAN = new Color3(0.92, 0.92, 0.9);
+const TRACTOR = new Color3(0.36, 0.55, 0.16);
 /** A lorry: a cab-over tractor and a semi-trailer, two boxes. The tractor
  *  is the vehicle the server moves; the trailer hangs off a hitch near
  *  the tractor's tail and follows it, its heading the line from its own
@@ -37,7 +40,6 @@ const HITCH = 0.06;
 const CAB_COLOR = new Color3(0.28, 0.36, 0.58);
 const TRAILER_COLOR = new Color3(0.9, 0.9, 0.88);
 const LANE_OFFSET = 0.11;
-const BEZIER_SAMPLES = 8;
 
 const CAR_Z = 0.095;
 /** A box sits on the ground: its centre is half its height up. */
@@ -52,70 +54,24 @@ function hash(id: number, salt: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 0xffffffff;
 }
 
-function quadBezier(
-  a: Vector3,
-  control: Vector3,
-  b: Vector3,
-  t: number,
-): Vector3 {
-  const mt = 1 - t;
-  return new Vector3(
-    mt * mt * a.x + 2 * mt * t * control.x + t * t * b.x,
-    mt * mt * a.y + 2 * mt * t * control.y + t * t * b.y,
-    0,
-  );
-}
-
-/**
- * Each node moved onto the right-hand lane. The lot nodes at either end of
- * a route — the spot pulled out of, the spot driven into — are where they
- * are, and the car slides onto the lane between them and the street.
- */
-function offsetNodes(nodes: Vector3[], offset: number, fromLot: number, toLot: number): Vector3[] {
-  const result: Vector3[] = [];
-  for (let i = 0; i < nodes.length; i++) {
-    if (i < fromLot || i >= nodes.length - toLot) {
-      result.push(nodes[i].clone());
-      continue;
-    }
-    let dx = 0,
-      dy = 0;
-    if (i > 0) {
-      dx += nodes[i].x - nodes[i - 1].x;
-      dy += nodes[i].y - nodes[i - 1].y;
-    }
-    if (i < nodes.length - 1) {
-      dx += nodes[i + 1].x - nodes[i].x;
-      dy += nodes[i + 1].y - nodes[i].y;
-    }
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 1e-9) {
-      result.push(nodes[i].clone());
-      continue;
-    }
-    const rx = (-dy / len) * offset;
-    const ry = (dx / len) * offset;
-    result.push(new Vector3(nodes[i].x + rx, nodes[i].y + ry, 0));
-  }
-  return result;
-}
-
 export function mountCar(
   entry: GameObjectEntry,
   pool: InstancePool,
   scene: Scene,
   look: Look,
+  land: (x: number, y: number) => boolean,
 ): () => void {
   const car = entry.object.data as Car;
   if (car.role === "Truck") return mountLorry(entry.id, car, pool, scene, look);
-  const van = car.role === "Van";
-  const color = van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
-  const bucket = van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
+  // A tractor is drawn as a van in the farm's green until it has a shape of its own.
+  const van = car.role === "Van" || car.role === "Tractor";
+  const color = car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
+  const bucket = car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
   pool.ensureBucket(bucket, van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,
   // and the car is out of sight until it moves.
-  if (!car.trip) {
+  if (!car.trip && !car.run) {
     if (!car.spot) return () => {};
     const { at, heading } = car.spot;
     const instanceId = pool.addInstance(bucket, [at[0], at[1], van ? GROUND + 0.11 : CAR_Z], [0, 0, heading - Math.PI / 2]);
@@ -127,19 +83,24 @@ export function mountCar(
       parts.delete(entry.id);
     };
   }
-  const f = follow(car);
+  const f = car.run ? followRun(car) : follow(car);
   if (!f) return () => {};
   const initial = f.now();
   const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
   parts.set(entry.id, [{ key: bucket, id: instanceId }]);
+  // A tractor leaves its marks behind it as it goes, and under the plough
+  // the ground turns brown a wheel's turn at a time.
+  const trail = car.run ? new Trail(pool, f.drawn, car.run.job === "Plough" ? land : null) : null;
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
     carPoses.set(entry.id, [result.pos[0], result.pos[1]]);
+    trail?.reach(result.dist);
   });
   return () => {
     scene.onBeforeRenderObservable.remove(observer);
     pool.removeInstance(bucket, instanceId);
+    trail?.dispose();
     carPoses.delete(entry.id);
     parts.delete(entry.id);
   };
@@ -247,69 +208,56 @@ function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look
   };
 }
 
-/** Where a car on a trip is at any moment, from the trip the server sent:
- *  its route rounded at the corners, and its own physics extrapolated. */
-type Fix = { pos: [number, number, number]; rot: [number, number, number]; dist: number };
-
 /** A car's drawn path for its trip: the route rounded at the corners, and
  *  where the car is on it now from its own physics, or at any distance. */
 interface Follower {
   now(): Fix;
   at(dist: number): Fix;
   length: number;
+  drawn: DrawnPath;
 }
 
+/** A trip on the roads: the route's points, offset onto the lane, driven
+ *  by the trip's physics. */
 function follow(car: Car): Follower | null {
   const data = car.trip!;
-  const centerNodes = data.route_positions.map(
-    ([x, y]) => new Vector3(x, y, 0),
-  );
-  const nodes = offsetNodes(centerNodes, LANE_OFFSET, data.from_lot, data.to_lot);
-  const pathPoints: Vector3[] = [];
+  const centerNodes = data.route_positions.map(([x, y]) => new Vector3(x, y, 0));
+  return followPath(centerNodes, LANE_OFFSET, data.from_lot, data.to_lot, {
+    updated_at: data.updated_at, progress: data.progress, speed: data.speed, acceleration: data.acceleration,
+  });
+}
 
-  for (let i = 0; i < nodes.length - 1; i++) {
-    const a = nodes[i];
-    const b = nodes[i + 1];
-    const segLen = Vector3.Distance(a, b);
-    if (segLen < 1e-9) continue;
-    const dir = b.subtract(a).scaleInPlace(1 / segLen);
-
-    const start = i > 0 ? a.add(dir.scale(segLen * 0.5)) : a.clone();
-
-    if (i === 0) {
-      pathPoints.push(start);
-    }
-
-    if (i + 2 < nodes.length) {
-      const r1 = segLen * 0.5;
-      const beforeB = b.subtract(dir.scale(r1));
-      pathPoints.push(beforeB);
-
-      const c = nodes[i + 2];
-      const nextLen = Vector3.Distance(b, c);
-      const r2 = nextLen * 0.5;
-      const nextDir = c.subtract(b).scaleInPlace(1 / Math.max(nextLen, 1e-9));
-      const afterB = b.add(nextDir.scale(r2));
-
-      for (let s = 1; s <= BEZIER_SAMPLES; s++) {
-        pathPoints.push(quadBezier(beforeB, b, afterB, s / BEZIER_SAMPLES));
-      }
-    } else {
-      pathPoints.push(b);
-    }
-  }
-
-  if (pathPoints.length < 2) return null;
-  const path = new Path3D(pathPoints);
-  const distances = path.getDistances();
-  const length = distances[distances.length - 1];
-
-  const at = (dist: number): Fix => {
-    const normalized = Math.min(Math.max(0, dist / length), 1);
-    const p = path.getPointAt(normalized);
-    const tangent = path.getTangentAt(normalized);
-    return { pos: [p.x, p.y, CAR_Z], rot: [0, 0, Math.atan2(tangent.y, tangent.x) - Math.PI / 2], dist: normalized * length };
+/** A tractor on its run over the land: the planned tiles, centre to
+ *  centre with no lane, on the same rounded path as a trip so it corners
+ *  like anything else — but by the server's clock, not by its own
+ *  physics: on the run's `k`th tile `k` paces after it started, wherever
+ *  the corners put that on the path, so it is where the server has it
+ *  when the job is done there. */
+function followRun(car: Car): Follower | null {
+  const run = car.run!;
+  const drawn = drawnPath(run.path.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0)), 0, 0, 0);
+  if (!drawn) return null;
+  const { atNode, length } = drawn;
+  const at = (dist: number) => drawn.at(dist, CAR_Z);
+  const now = (): Fix => {
+    const tile = Math.min(Math.max(0, (simNow() - run.started) / run.pace), run.path.length - 1);
+    const k = Math.min(Math.floor(tile), atNode.length - 2);
+    return at(atNode[k] + (atNode[k + 1] - atNode[k]) * (tile - k));
   };
+  return { now, at, length, drawn };
+}
+
+/** A trip's drive along its drawn path: its own physics, extrapolated. */
+function followPath(
+  centerNodes: Vector3[],
+  offset: number,
+  fromLot: number,
+  toLot: number,
+  data: { updated_at: number; progress: number; speed: number; acceleration: number },
+): Follower | null {
+  const drawn = drawnPath(centerNodes, offset, fromLot, toLot);
+  if (!drawn) return null;
+  const at = (dist: number) => drawn.at(dist, CAR_Z);
   const now = (): Fix => {
     let dt = Math.max(0, (simNow() - data.updated_at) / 1000);
     if (data.acceleration < 0) {
@@ -318,7 +266,7 @@ function follow(car: Car): Follower | null {
     }
     return at(data.progress + data.speed * dt + 0.5 * data.acceleration * dt * dt);
   };
-  return { now, at, length };
+  return { now, at, length: drawn.length, drawn };
 }
 
 /** Where a trip's reverse tail begins, as a distance along its drawn path:

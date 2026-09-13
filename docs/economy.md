@@ -79,10 +79,12 @@ out of these rules rather than be added.
 
 ## 2. What exists, and what stays
 
-- **Steps 1 to 5, as built** (§12.2 to §12.6): stocks, posted prices,
+- **Steps 1 to 6, as built** (§12.2 to §12.7): stocks, posted prices,
   the building's turn, the one purse and the door, labour bought on the
   building's turn, services made at the office and drawn by every
-  building, wear on the car and the workshop's bays. All stand.
+  building, wear on the car and the workshop's bays, the farm and the
+  rows behind the crate and the meal, the land and the tractor. All
+  stand.
 - **Purses.** Every resident had a wallet and every building a balance;
   each kept a float and swept the rest to the treasury, a resident's
   sweep was rent, and a building whose purse ran dry stopped. Built, run
@@ -355,16 +357,24 @@ threshold to the buyer as a hiring cost.
 ## 7. Moving goods
 
 A truck carries one load, from the seller to the buyer, and goes home.
-**A farm's tractor is its delivery.** A field is a lot the tractor
-drives, to seed and to harvest; the farm's row is tractor-hours per
-field, and a field the tractor cannot reach in a day yields nothing
-that day. Fields too far from the yard, or too many, show as unworked
-fields on the map before they show as a number, and the second farm is
-the fix. Roads to the fields matter, because the drive is the delivery.
+**A farm's tractor is its delivery.** A field is a plot of grass with a
+crop that ripens by the day, on a track the farm lays from the street
+into the land beside it; the tractor drives the roads like any car and
+the track like a driveway, and brings a ripe field's crop home to the
+yard. A field the tractor cannot reach in a day yields nothing that
+day. Fields too far from the yard, or too few because the land was
+forest or beach, show on the map before they show as a number, and the
+second farm is the fix. Roads to the fields matter, because the drive
+is the delivery. **A fetch is one thing:** a building's own vehicle
+goes to the cheapest seller of its input it can reach — beyond the
+edge, a seller in town, or its own fields — and brings the load home.
 **The warehouse** is a building with stocks of many goods that buys from
-producers and the edge and sells locally. **Construction** is unchanged:
-materials are a good, the construction firm a building, the site a call
-(`game.md` §Goods).
+producers and the edge and sells locally: its lorry fetches from the
+farm when the farm is nearer than the edge. **What nobody in town
+fetches, the edge fetches:** a maker with no lorry of its own calls for
+pickup, and one comes from beyond the edge. **Construction** is
+unchanged: materials are a good, the construction firm a building, the
+site a call (`game.md` §Goods).
 
 Filed: orders as a record with a hauler; handling classes (box, liquid,
 bulk) and a port per class; joint replenishment, so a ship fills with
@@ -637,13 +647,14 @@ Each step is playable and nothing before step 2 can hurt anyone.
 5. **Services and wear.** The office's stock and its car; the workshop;
    the household's services stock. §12.5 has what services needed
    decided, §12.6 wear.
-6. **Rows.** Every workplace's inputs, output and rate on its row;
-   `edge_price` derived link by link from the rows at capacity, each
-   keeping its share, plus the crossing (§8.1); freight as fuel and
-   hours per leg. Lands with the farm, the first row with two links
-   behind it. Step 4 already prices what exists: a pass-through's hours
-   at one over two thirds, and the household at nine tenths of the edge
-   wage.
+6. **Rows.** A maker's output and rate on its row; `edge_price`
+   derived link by link from the rows at capacity, each keeping its
+   share, plus the crossing (§8.1). Lands with the farm, the first row
+   with two links behind it: the crate is the farm's row read back and
+   the meal is the crate plus the counter. Step 4 already priced what
+   existed — a pass-through's hours at one over two thirds, the
+   household at nine tenths of the edge wage — and freight in money was
+   §12.6's fuel and upkeep per tile. §12.7 has what it needed decided.
 7. **Panels, the board, the advisor's tools.**
 
 Then, with the port: freight, haulers, classes, the second door.
@@ -997,7 +1008,8 @@ the mechanism did not make on its own, and what running it found.
   at the world's prices, until it has a day of takings.
 - **Founded full**, like a shelf: a placed home has two days of
   services in hand it did not pay for, as a placed shop has a full
-  shelf.
+  shelf. (A maker's own shelf is founded empty since §12.8: what a row
+  buys is founded full, what it makes is not.)
 - **A call nothing could answer is tried again in an hour.** Before, an
   open call was tried again only when another call was raised or a
   vehicle came home. A home calls at midnight with the household's car
@@ -1146,6 +1158,270 @@ against §12.5's ten:
   ends at zero, since it runs the deficit above with no stake to run it
   on.
 
+### 12.7 Step 6, the farm and the rows, to the number and as built
+
+Built 2026-09-11. The decisions the mechanism did not make on its own,
+and what running it found.
+
+- **A maker's row carries its rate.** What a row makes is a good and
+  how many of it an hour of labour makes: the office's one unit, the
+  farm's eighteen crates. A shift fills the shelf at the rate, the
+  shelf is a day's make, and the world runs the same row at capacity,
+  so what the good is worth beyond the edge is the rate read back —
+  the hour over the rate, with the services bought in for it, over two
+  thirds (§8.1). A crate is a farm hand's three and a third minutes,
+  which comes to a tenth of an hour; a unit of services is the office's
+  hour, 1.8 as before, now by the same rule rather than a line of its
+  own. `wholesale` is one rule: a maker's row where the table has one,
+  and half the counter's price where it has none.
+- **The meal is the crate plus the counter.** The world's counter
+  spends under two minutes of labour on a meal — labour a sixth of the
+  till, between a supermarket's tenth and a restaurant's third — which
+  puts the meal at the fifth of an hour §12.2 set for the ladder. The
+  number that was the meal's price is now the counter's minutes, and
+  the ladder is what chose them, said so. The town's own counters are
+  staffed far over the world's (§13.7): two staff and a hundred and
+  twenty-six seats a day at a shop come to eight minutes a meal, so at
+  the world's price a shop's margin is its crate and nothing else, and
+  it pays the difference as §9 says it may.
+- **Two links, then the authored rest.** Fuel, parts and an evening
+  have no row in town; each keeps its number with the row's name on it
+  (§13.3), and the delivery behind a tank and the parts behind a
+  service stay half the counter's price.
+- **The farm.** Industry, four hands six to three, a three-by-two with
+  a depot's yard: a van for the shops' calls and a lorry for the edge.
+  Its yard holds a day's make, 648 crates, which feeds sixty people — a
+  fifth of what a modern farm manages, about what a market garden does.
+  It is a depot of crates exactly as the warehouse is: a shop's turn
+  finds it beside the warehouse and the edge by delivered price, it
+  opens at the crate's price, floors at what the edge pays, and a yard
+  that stood full at the last look ships to the edge. A node past the
+  factory on the industry avenue. The tractor and the fields of §7
+  wait: a field is a lot the tractor drives, and lots as road are
+  `parking.md`'s, not yet built; until then the farm's row is hands
+  and a yard.
+- **The fifth stays** (§13.15). Each row's services input would be
+  the same fifth on every row, since no row has a referent of its own,
+  so the constant stays one and the rows carry what differs.
+- **Freight** (§5.3) in money is §12.6's fuel and upkeep per tile on
+  the row that sent the vehicle; the driver's hours are the staff's
+  wages, on the row already. Nothing more was built for it, and the
+  household's transport stays the budget sixth (§13.13).
+
+What running it found, thirty days of the three towns, the full town
+with a farm in a factory's place, against §12.6:
+
+- **The full town** loses a sixth of an hour a head a day where it lost
+  a quarter, at 11.6 GDP a head a day where it was 12: a farm's four
+  hands in place of a factory's twelve desks make less GDP than the
+  desks did, and cost the door less. Its treasury runs from 6,145 to
+  5,583 over the season, about nineteen a day; no-harm holds, at
+  1,169 served a day in the first third and 1,400 in the last. The
+  farm ships to the edge about twenty times in the season, 648 crates
+  each at the crate's price less the crossing, some forty a day
+  against thirty of wages; the shops' calls for crates, one to three a
+  day, go to the farm's van, the warehouse's or the edge's lorry by
+  delivered price, and the farm's share of them is small. The farm's
+  crate settles at its floor, what the edge pays, and the warehouse's
+  at its own, the edge's wholesale, a tenth over; every shop's meal
+  drifts from the counter's fifth down to the crate over the season,
+  piling up, as before.
+- **A full yard is paid for.** Four hands make 580 crates a day of the
+  yard's 648, a shift's make lands on the yard in one lump as the tab
+  is paid, and the yard shipped only when a look found it full: so the
+  lump that overflowed it lost what did not fit, about a fifth of the
+  farm's make over the season, and the hands were paid for it. Now a
+  maker's shelf ships when it has no room for the next shift's lump.
+  With that the farm ships twenty-four times in the season, keeps a
+  margin near what the row promises, and the full town's drift halves
+  to about thirteen a day. §4 says a full yard stops the line, felt as
+  wages not paid; as built the line runs on, at the office as at the
+  farm, and that is §13.19.
+- **The bedroom town and the job centre** are as §12.6 left them, a
+  quarter under and 1.7 under a head a day: neither has a farm, and
+  nothing else moved.
+- **The slump** ends the season with 179 in the treasury where it ended
+  at zero, and serves two thirds of a good day at its worst after the
+  first week.
+- **The band holds and nothing rings; tenure is zero changes.**
+
+### 12.8 The land and the tractor, to the number and as built
+
+Built 2026-09-11, on §7 and a conversation, in three cuts the same
+day. The first made each field a building of a kind nobody may place,
+for what that gave free — a place a trip ends, a stock, a card — and
+was thrown away: a field is not a plot, it blocked the tile, and it
+needed a radius to find its farm. The second laid a track, a private
+street from the farm's corner into the grass, with fields as tiles
+beside it that the tractor fetched one at a time by road; it worked,
+and it was thrown away too, because the tractor should drive the
+land, not stop beside it, and a field should be any shape the land
+allows. What stands:
+
+- **The land is a rectangle round the farmstead, as much as a shift
+  ploughs.** A farm reached by a street claims a rectangle of grass
+  round its plot, with the plot cut out of it and whatever else stands
+  in it — a house, a road, a wood — cut out too; the land is the open
+  grass in it the tractor can reach from the yard, four ways, so a road
+  through the rectangle is the field's edge and nothing lies beyond it
+  the tractor cannot get to — and less any sliver, a tile with no field
+  on either side of it across one axis: a strip a tile wide beside the
+  barn or between two neighbours' plots is yard or lane, not field, and
+  no tractor could turn in it. Begun as the plot itself and grown a row
+  at a time until the land in it is as much as a shift can plough — the
+  shift over the tractor's pace, less a tenth for the headland and the
+  lane, about two hundred tiles — the cutouts made up for by growing
+  further. A row goes on the long side, so the short side catches up
+  and the field tends to square; on the flank that keeps it centred on
+  the yard; never toward the street. A row that adds no land is not
+  taken, so a road along the field is its edge and the rectangle grows
+  the other way instead; a row that would take the land past its size
+  is not taken either, and when no row can be, the field is done, a
+  row or so short of the number. A farm on cramped ground is a smaller
+  farm with the same yard: a tile's crop is the yard over the land the
+  farm has, so a harvest fills the yard whatever ground it got. A tile
+  is ordinary grass to the placer and the road brush; one built or
+  roaded over is dropped at the farm's next look, and with it whatever
+  that leaves the tractor unable to work, by the same rule. The land
+  lives on
+  the farm's own record, a stage and a time per tile, and nothing
+  else. This is how the Midwest is laid out: fields are rectangles on
+  the survey grid with the farmstead on the road frontage inside its
+  own land, and a field is any other shape only where something forced
+  it.
+- **The tractor drives the land as a farmer does.** Off the roads
+  entirely: a run is a list of tiles and a pace, two and a half minutes
+  of the clock a tile, no route, no claims, no queue. It does its job
+  to each tile as it arrives — the plough turns grass or stubble to
+  bare ground, the seed starts a crop, the harvest lands a tile's crop
+  in the yard as it is cut — and a run covers the whole field in one
+  go. Out of the yard along the lane, the open ground round the plot,
+  to the corner of the field nearest it; once round the outline for
+  the headland, which is where a real tractor turns and what draws the
+  field's edge first; then the inside in straight rows from headland
+  to headland, each a run of field, each driven the way back from the
+  last, from the yard's side of the field to the far side, a change of
+  row two right angles made on the headland, which is what a headland
+  is for. The rows run whichever way breaks on fewer cutouts — past
+  the farmstead, not through its lot, since the lot is where the
+  tractor lives and not a way through — and along the long side when
+  both ways break alike; and home along the edge four ways, so the
+  corners are taken and not cut. Never a turn sharper than a right
+  angle: between one tile and the next the tractor takes the shortest
+  way that keeps to that, arriving headed for the tile after in its
+  run so the row runs straight, but never looping round to get the
+  heading: a tile it would take more than a couple of steps over the
+  plain way to arrive at properly is left, so a ragged edge is shaved
+  straight rather than hooked round. Never onto a tile it could not
+  get home from that way — the states it can get home from are found
+  once, backwards from the yard — so it is never stuck in a pocket. A
+  tile left is land no more: the field is what the tractor can drive.
+  The outline starts at the rectangle's corner nearest the yard,
+  whether or not that corner is field, and is driven whichever way
+  round skips fewer tiles as it goes and then the shorter, over the
+  edge — the field's boundary, the lane and the yard — and across the
+  inside only where a cutout breaks the edge. The barn is not ground;
+  the yard and the lane are. A test draws the sweep over four shapes
+  of land, the fourth a farm with neighbours a tile away on both
+  flanks as a town builds them, and it was looked at.
+- **One run a day, three days a cycle.** Plough day, seed day, harvest
+  day. A crop sown by the end of a shift is ripe by the next morning,
+  half a day, so the harvest is the third day. The yard holds a
+  harvest, three days of the row's make, taken away by pickup that
+  night; a crop is the yard over the farm's land, about ten crates a
+  tile. The tractor goes with a hand on shift and the shift
+  open, and the farm wakes itself when the last of its crop is ripe.
+  A harvest with no room left in the yard leaves the crop standing.
+- **The farm keeps no lorry and no van.** Its crates leave by the
+  warehouse's lorry, which fetches from the cheapest source it can
+  reach — a maker's yard in town at its posted price, or beyond the
+  edge — or by pickup: a maker with no lorry of its own whose shelf
+  has no room for the next load calls, and a lorry from beyond the
+  edge drives in, loads the yard, and drives off the map, paid as it
+  leaves at the crate's price less the crossing. The office keeps its
+  car and ships itself. So a farm sells in town only through a
+  warehouse, which is what §7 says a warehouse is for.
+- **A maker is founded with nothing made.** Every shelf was founded
+  full, a maker's with a day's make it never made: an office placed for
+  fifteen hours shipped a hundred and seventy-five the same morning.
+  Now what a row buys is founded full and what it makes is not, so a
+  farm's first crates are its third day's, and a broke town's first
+  sale is a factory's hours, as §12.4 meant.
+- **The Work tap closes on a full yard** (§13.19): a maker's shelf with
+  no room for the next load offers no work, as an empty stock closes
+  the tap at home. And a resident whose workplace is not hiring works
+  beyond the edge that day: labour as the export of last resort (§8.1),
+  which was written and not built.
+- **One call a good a building.** A vehicle already on its way keeps
+  its call; a call nothing has answered gives way to what the stock
+  says now. A workplace takes its turn as a worker arrives, and a
+  building's wake is its turn.
+- **Three cuts of the land and the sweep.** The first claimed the
+  grass connected to the plot, nearest by the walk, and swept rows by
+  their distance from the yard, which interleaved the rows either side
+  of it and doubled the path back across the field. The second claimed
+  by the chessboard's measure with a bound on the walk, for a block
+  that tended to square, and swept rows parallel to the street with
+  diagonal row changes; watched in the game, the block was a rounded
+  blob and the rows turned sharp at ragged ends. The third was a
+  rectangle behind the plot, with rows ending a tile short of the
+  headland and turning on the crop. The fourth put the farmstead in
+  the field and, run for a season in a town, never worked: the
+  rectangle took the alleys a tile wide between the neighbours' plots,
+  the tractor drove into one, could not turn, and no run was ever
+  planned again — thirty days with nothing in or out. What stands is
+  the fifth: the rectangle round the farmstead with its cutouts and
+  without its slivers, the headland driven first and turned on, the
+  right angle, and a drive that never goes where it cannot get home
+  from.
+- **On the client** there is no field but where the plough has been.
+  The tractor is drawn along its run on the same rounded path as a
+  trip, the planned tiles as its path, no lane, but by the server's
+  clock rather than its own physics: on the run's `k`th tile `k` paces
+  after it started, wherever the corners put that, so it stands where
+  the server has it when the job is done there. Its tyre marks and the
+  ploughed ground are ribbons along that same path, curves and all, so
+  they lie exactly under its wheels: two faint stripes a wheel apart
+  with nothing between, so where two paths cross all four show, and
+  under the plough a strip a tile wide in the field's colour, over the
+  land only and never the lot or the lane. A ribbon is built whole
+  when the run is sent and shown as far as the tractor
+  has got, its frontier pulled back each frame to where the tractor is,
+  so the marks end under it and nothing is laid twice or blinks. The run
+  itself carries nothing that changes as it goes — the tile is the
+  clock's — so the server sends it once. Between runs the farm's record
+  holds the last run's path and the strip and the marks are drawn from
+  that: every run works the same ground, so the last run's path is the
+  field. The terrain knows nothing of fields; the crop stands on the
+  sown tiles as the trees stand on the forest, through the same pass,
+  grown by the clock. The tractor is drawn as a van in the farm's green
+  until it has a shape of its own.
+- **The hands take the third day off.** Two full shifts run a hand's
+  time off to nothing, which closes the Work tap (§4), so on the third
+  morning nobody comes and the harvest waits a day. The residents'
+  model, not the farm's, and the cycle is three days or four for it.
+
+What running it found, thirty days of the three towns against §12.7:
+
+- **The full town loses a fifth of an hour a head a day** where §12.7
+  had it at a sixth, at 11.5 GDP a head a day. The farm's yard goes
+  out by pickup on every third day, three or four lorries on the day
+  as the harvest lands, about nine tenths of the row's make; on a
+  harvest day the farm's page shows 175 in against 21 of wages, and
+  over the cycle it nets about thirty-seven a day. The offices' founding
+  gift is gone (above), which is most of the difference from §12.7.
+- **The bedroom town** nets two fifths under where it netted a quarter
+  under, with the same GDP: a call nothing has answered now gives way
+  to a fresh one at every look, so its homes' calls for services are
+  tried at every look rather than every hour, more consultants come,
+  and the town pays for what it draws. The job centre is as it was.
+- **No harm, the band, no ringing, tenure and the slump hold.** The
+  slump ends the season with 416 in the treasury.
+- **A day is twenty minutes.** Found the hard way, reading a harvest
+  that took "36 s" as a lost stop: the log's seconds are the clock's,
+  and thirty-six of them are forty-three minutes of the game, the
+  drive and the ten minutes at the door both in. Nothing was lost.
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
@@ -1174,17 +1450,23 @@ against §12.5's ten:
 12. ~~Where the town's money comes from in a world priced at cost.~~
     What its rows keep: capital's third, the household's tenth (§8.1).
 13. The household row's transport is a budget sixth, and its services
-    the balance; the car burns what it burns. With freight (§12 step 6)
-    the row's transport becomes the fuel the commute costs, per tile at
-    the world's price, services get their own share, and the door's
-    check (§11.9) becomes a season print. Until then a household nets a
-    little over its tenth when it drives less than the sixth, which is
-    the bedroom town's 1.19 against 0.72 (§12.4).
+    the balance; the car burns what it burns. Step 6 left it so
+    (§12.7): making the row's transport the fuel the commute costs,
+    per tile at the world's price, with services given their own
+    share, is a rebalancing of the household row with a season of its
+    own to run, and the door's check (§11.9) becomes a season print
+    with it. Until then a household nets a little over its tenth when
+    it drives less than the sixth, which is the bedroom town's 1.19
+    against 0.72 (§12.4), and under nothing when it drives far more
+    (§13.18).
 14. ~~Wear (§4): a car's second per-tile stock, the workshop as its
     tap.~~ §12.6.
-15. A firm's services are a fifth of its labour and its output the sum
-    over two thirds (§12.5); with the rows (step 6) the input and the
-    output are the row's own, link by link, and the fifth goes.
+15. ~~A firm's services are a fifth of its labour and its output the
+    sum over two thirds (§12.5); with the rows (step 6) the input and
+    the output are the row's own, link by link, and the fifth goes.~~
+    The output is the row's own (§12.7); the fifth stays, one constant
+    on every row, since no row has a services referent of its own and
+    a number copied onto every row is not a row's.
 16. ~~No harm over thirty days.~~ Decided 2026-09-11: no harm is real
     income, not money. The full town buys in 520 a day of services from
     consultants while its offices ship 150 out — three offices make
@@ -1194,11 +1476,33 @@ against §12.5's ten:
     mayor's to place (§12.5), and a town that has not placed it pays;
     if money came no matter what there would be no game. §11.6 now
     asserts what it serves. Whether the nudge at a ceiling should
-    overshoot at all is still open, and the rows (step 6) move the
-    firm's services from a flat fifth to the row's own (§13.15).
+    overshoot at all is still open; the rows (§12.7) left the firm's
+    services at the fifth (§13.15).
 17. ~~The ring test over thirty days.~~ The hunt at a ceiling is a
     notch over and three back, and the test allows it (§12.6).
 18. The bedroom town nets under nothing once its cars wear (§12.6):
     right by the row's arithmetic, and the first town the model calls a
     mistake. Whether the player is told so before the season says it is
     §10's.
+19. ~~A full yard is paid for (§12.7).~~ §12.8: the tap closes on a
+    yard with no room for the next load, and the hands work beyond the
+    edge that day. The office's make still lands as a lump at the tab,
+    so its tap closes a shift late; the farm's lands a crop at a time.
+20. ~~A vehicle on a call does not stand the ten minutes at the
+    door.~~ It does; the reading was in the wrong unit (§12.8).
+21. The tractor drives at a fixed pace over any tile of its land, and
+    a run redraws the farm's whole record every step, a message a tile.
+    Fine for one farm; a district of them is a lot of wire, and the
+    fix is a stage change sent as a diff.
+22. Two farms whose land touches share nothing: each claims what it
+    reaches first, and the second finds the first's tiles occupied
+    only if they were built on. Whether two farms may claim the same
+    grass has not come up.
+23. ~~The band's season fails on the office after the fifth cut of
+    the land (§12.8): its services price climbs in a sawtooth over the
+    last ten days, 2.06 to 2.40, a notch past what hunting at the
+    band's edge allows.~~ The sweep's next cut, rows past the lot and
+    no looping round, changed the farm's hours again and the office
+    settled at 2.15 with the band holding: the town's sensitivity to
+    the farm's hours, not a fault of the office. Forty-two pickups the
+    season, 5241 in the treasury at its end.

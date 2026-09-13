@@ -5,17 +5,22 @@ something you can sit down and play for an evening and notice is better
 than the last. Estimates are working days for one person with an
 assistant; they are guesses, and the order matters more than the numbers.
 
-## Where we are (2026-09-09)
+## Where we are (2026-09-11)
 
 Built: roads and streets, one-way, the tree as the build, every kind on
 the build menu as a piece of map, placed by hand and paid for out of the
 treasury, residents with needs and commutes, call-outs for stock with a
 warehouse and trucks from the edge, the supermarket, day and night, a
 fresh world per seed. Nothing arrives on its own: the spawner went on
-2026-09-09 (`shelved.md`). Money: purses, wages, posted prices, the
-sweep, every sale a lump on the map (`economy.md` §12 steps 1 and 2).
+2026-09-09 (`shelved.md`). Money: one purse moved at the door, posted
+prices, labour bought on the building's turn, services from the office,
+wear at the workshop, the farm with its land and tractor — ploughed,
+sown and harvested in runs over the field, a day each — its crates
+fetched by the warehouse or picked up for the edge, with the crate and
+the meal priced from the rows (`economy.md` §12 steps 1 to 6, §12.8).
 
-Not built: parking, goods, food, the port, power, fire, hospital, the
+Not built: parking past the driveway, the container and the factory's
+yard, the port, power, fire, hospital, the
 inspect panel, road speed and priority, levels, trains, multiplayer,
 deployment. Of milestone 3, road past the allowance, moving and
 demolishing do not cost money yet.
@@ -68,7 +73,11 @@ was too far, and you fix it with a road.
 A second chain, and space on the map.
 
 - Food as a second token (the crate); farms as big placeables that fill
-  with work; supermarkets and restaurants call for food.
+  with work; supermarkets and restaurants call for food. Built as
+  `economy.md` §12.7 and §12.8: the farm claims the grass round it,
+  its tractor ploughs, seeds and harvests it in one run a day over the
+  whole field, the warehouse's lorry fetches from its yard, and a lorry
+  from beyond the edge comes for what nobody in town buys.
 - The warehouse holds both.
 - The port: a facility on the coast whose vehicle is a ship, a second
   door with the edge's prices and cheaper freight. Haulers, handling

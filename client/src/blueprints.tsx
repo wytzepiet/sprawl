@@ -208,6 +208,19 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     lot: [2, 2],
     yard: true,
   },
+  Farm: {
+    label: "Farm",
+    color: "#5B8C2A",
+    // A barn: the gambrel roof, the big door, and a hayloft window.
+    glyph: "M12 2 21 8.5V22H3V8.5zM10.5 6.5h3v3h-3zM8 13h8v9H8zm1.6 1.6v5.8h4.8v-5.8z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.4],
+    price: 40, tab: "work",
+    size: [3, 2],
+    lot: [2, 2],
+    yard: true,
+  },
   Edge: {
     label: "Beyond the edge",
     color: "#6B7280",

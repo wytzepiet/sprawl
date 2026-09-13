@@ -353,8 +353,9 @@ impl World {
             return false;
         };
         self.place_road_path(&[street_pos, door]);
-        // Reached: a depot's lorries come with it.
+        // Reached: a depot's lorries come with it, and a farm claims its land.
         crate::calls::stable(self, id);
+        self.claim_land(id);
         true
     }
 

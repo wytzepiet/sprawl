@@ -302,6 +302,11 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
     world.gdp_at_midnight = meta.gdp;
     world.treasury = meta.treasury;
     world.build = crate::tree::Build::load(meta.taken);
+    // SPRAWL_ALL: the whole tree and a bottomless purse, to test any building.
+    if std::env::var("SPRAWL_ALL").is_ok() {
+        world.build = crate::tree::Build::all();
+        world.treasury = 1_000_000.0;
+    }
     (world, meta.sim_time)
 }
 
@@ -597,6 +602,8 @@ fn handle_wake(
     match world.objects.get(id).map(|e| &e.object) {
         Some(GameObject::Car(_)) => handle_car_wake_up(world, events, intersections, id, now),
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
+        // A building's wake is its turn: a farm whose crop has ripened.
+        Some(GameObject::Building(_)) => crate::calls::turn(world, events, id, now),
         // Midnight: every till is counted, every price steps, and everyone
         // looks at the openings again.
         None if id == MIDNIGHT => {
@@ -898,8 +905,9 @@ mod tests {
     /// in from outside: immigrants need somewhere unseen to come from.
     fn street() -> World {
         let mut world = World::new();
-        // Deep enough for a supermarket and its lot behind the street.
-        for y in -6..6 {
+        // Deep enough for a supermarket and its lot behind the street, and
+        // a farm's track and fields beyond that.
+        for y in -6..14 {
             for x in -4..170 {
                 world.terrain.insert((x, y), TerrainType::Grass);
             }
@@ -1089,6 +1097,11 @@ mod tests {
         let mut world = street();
         let home = build(&mut world, 0, BuildingKind::House, 1);
         let office = build(&mut world, 20, BuildingKind::Office, 1);
+        // A day's make already on the shelf: a maker is founded with none.
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(office).map(|e| &mut e.object) {
+            let s = b.stocks.get_mut(&Need::Services).unwrap();
+            s.level = s.cap;
+        }
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
@@ -1132,7 +1145,7 @@ mod tests {
         let load = world.calls[0].load;
         assert!(load > day - crate::economy::draw(BuildingKind::Office) && load <= day, "the car took {load} of {day}");
         pump(&mut world, &mut events, &mut intersections, now, now + 12 * DAY_MS as u64 / 24);
-        assert!(world.calls.is_empty(), "the car did not come home");
+        assert!(world.calls.is_empty(), "the car did not come home: {:?}", world.calls);
         let paid = crate::economy::export(load * crate::economy::edge_price(Need::Services));
         let took = world.books[&office].on(now).revenue - sold_in_town;
         assert!((took - paid).abs() < 1e-9, "the edge paid {took} for the load");
@@ -1192,7 +1205,7 @@ mod tests {
         let mut answered: Option<EntityId> = None;
         let mut away = false;
         let watch = |world: &World, answered: &mut Option<EntityId>, away: &mut bool| {
-            if let Some(car) = world.calls.iter().find(|c| c.kind == calls::CallKind::Edge).and_then(|c| c.answered_by) {
+            if let Some(car) = world.calls.iter().find(|c| c.kind == calls::CallKind::Fetch).and_then(|c| c.answered_by) {
                 *answered = Some(car);
             }
             *away |= answered.is_some_and(|car| world.objects.get(car).is_some_and(|e| e.position.is_none()));
@@ -1201,7 +1214,7 @@ mod tests {
         // shop take it down to its reorder point within a week of them.
         let mut t = 0;
         let mut rounds = 0;
-        while world.calls.iter().all(|c| c.kind != calls::CallKind::Edge) {
+        while world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
             rounds += 1;
             assert!(rounds <= 8, "the depot never ran low: {}", stock(&world, depot));
             sell(&mut world, &mut events, shop, 35.0, t);
@@ -1219,14 +1232,14 @@ mod tests {
             while step(&mut world, &mut events, &mut intersections, &mut t, until) {
                 watch(&world, &mut answered, &mut away);
             }
-            if answered.is_some() && world.calls.iter().all(|c| c.kind != calls::CallKind::Edge) {
+            if answered.is_some() && world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
                 break;
             }
         }
         let lorry = answered.expect("one of its lorries answers the fetch");
         assert!(fleet.contains(&lorry), "the fetch went to one of the depot's own lorries");
         assert!(away, "the lorry was never beyond the edge");
-        assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Edge), "the fetch is done");
+        assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch), "the fetch is done");
         assert_eq!(stock(&world, depot), 1.0, "the depot is full again");
         let e = world.objects.get(lorry).unwrap();
         assert_eq!(e.position, world.objects.get(depot).unwrap().position, "the lorry is back in its dock");
@@ -1476,8 +1489,10 @@ mod tests {
 
     /// A town shaped like a town, for the seasons: mostly homes, an export
     /// base of offices and factories with about as many desks as the homes
-    /// have people, and one of each shop — the workshop among them, since
-    /// wear made it the garage (docs/economy.md §12.6). Forty plots.
+    /// have people, one of each shop — the workshop among them, since
+    /// wear made it the garage (docs/economy.md §12.6) — and a farm in a
+    /// factory's place, the first row with a link behind the shops'
+    /// (§12.7). Forty plots.
     /// `placeable` cycles every kind equally, which is seventeen shops,
     /// bars, supermarkets and warehouses for 177 people — the mix for a
     /// wake budget, not for a purse.
@@ -1487,7 +1502,7 @@ mod tests {
             House, Apartment, Office, House, Apartment, Shop, House, Factory, Apartment, House,
             Workshop, Apartment, House, Bar, Office, House, Apartment, Restaurant, House, Factory,
             Apartment, House, GasStation, Apartment, Office, House, Supermarket, Apartment, House, Factory,
-            Factory, House, Apartment, Warehouse, House, Apartment, House, Apartment, House, Apartment,
+            Farm, House, Apartment, Warehouse, House, Apartment, House, Apartment, House, Apartment,
         ]
     }
 
@@ -1563,7 +1578,7 @@ mod tests {
         // The street runs on well past anything built on it, so it leaves
         // the survey: a town with a way off the map is the one being
         // measured, since the edge is an option for every bucket.
-        for y in -6..6 {
+        for y in -6..14 {
             for x in 170..400 {
                 world.terrain.insert((x, y), TerrainType::Grass);
             }
@@ -1993,16 +2008,151 @@ mod tests {
         assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
     }
 
+    /// Land and the tractor, docs/economy.md §12.8: a farm on a street
+    /// claims its land; with a hand on shift its tractor ploughs it in a
+    /// run, seeds it in the next, and a day on harvests it, each tile's
+    /// crop landing in the yard as it is cut, while the hands' shifts
+    /// grow nothing in the yard themselves. A warehouse whose shelf runs
+    /// low fetches from the farm's yard with its own lorry, two lines at
+    /// the farm's price and no money; and a yard with no room for a crop
+    /// and no lorry of its own is taken away by one from beyond the edge,
+    /// paid as it leaves the map.
+    #[test]
+    fn a_tractor_works_the_land_and_a_lorry_fetches_from_the_yard() {
+        use crate::needs::Need;
+        use crate::protocol::Stage;
+        let mut world = street();
+        build(&mut world, 0, BuildingKind::House, 1);
+        build(&mut world, 3, BuildingKind::House, 1);
+        let farm = build(&mut world, 10, BuildingKind::Farm, 1);
+        let depot = build(&mut world, 30, BuildingKind::Warehouse, 1);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        world.treasury = 1000.0;
+        let yard = |world: &World| match world.objects.get(farm).unwrap().object {
+            GameObject::Building(ref b) => b.stocks[&Need::Eat].level,
+            _ => unreachable!(),
+        };
+        let stages = |world: &World| -> Vec<Stage> {
+            match world.objects.get(farm).unwrap().object {
+                GameObject::Building(ref b) => b.land.iter().map(|t| t.stage).collect(),
+                _ => unreachable!(),
+            }
+        };
+        let wanted = crate::world::fields::capacity(BuildingKind::Farm) as usize;
+        assert!(stages(&world).len() <= wanted && stages(&world).len() > wanted * 9 / 10, "the farm claimed {} tiles of {wanted}", stages(&world).len());
+        assert_eq!(yard(&world), 0.0, "the yard is founded with a make");
+        let hands = world.resident_ids().into_iter().filter(|&id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(r)) if r.work == Some(farm))).count();
+        assert!(hands > 0, "the farm hired nobody");
+        let tractor = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm)).map(|e| e.id).expect("the farm keeps a tractor");
+        assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == crate::protocol::CarRole::Tractor));
+        // The first day: the hands come at six and the tractor ploughs
+        // the land, a shift's worth; by evening it is a field, the tractor
+        // is home, its path is the tyre marks, and the yard is empty.
+        let day = DAY_MS as u64;
+        let land = stages(&world).len();
+        let crop = crate::economy::crop(BuildingKind::Farm, land);
+        pump(&mut world, &mut events, &mut intersections, 0, 20 * day / 24);
+        assert!(stages(&world).iter().all(|&s| s == Stage::Ploughed), "by evening the land is {:?}", stages(&world));
+        assert!(stages(&world).len() >= land * 9 / 10, "the plough reached {} of {land} tiles", stages(&world).len());
+        assert_eq!(yard(&world), 0.0, "something landed in the yard before a harvest");
+        assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.run.is_none() && c.trip.is_none()), "the tractor is not home");
+        let ruts = match world.objects.get(farm).unwrap().object {
+            GameObject::Building(ref b) => b.ruts.len(),
+            _ => unreachable!(),
+        };
+        assert!(ruts >= stages(&world).len(), "the tyre marks are {ruts} tiles");
+        // The second day: seeded. The third: ripe by morning, harvested
+        // by evening, a harvest in the yard, and a lorry from beyond the
+        // edge called for it.
+        pump(&mut world, &mut events, &mut intersections, 20 * day / 24, day + 20 * day / 24);
+        assert!(stages(&world).iter().all(|&s| s == Stage::Sown), "by the second evening the land is {:?}", stages(&world));
+        assert_eq!(yard(&world), 0.0);
+        pump(&mut world, &mut events, &mut intersections, day + 20 * day / 24, 2 * day + 7 * day / 24);
+        // The hands' time off has run out after two full shifts, so the
+        // third day may be their holiday: the harvest comes on the third
+        // or the fourth, and on the third the stubble may be ploughed
+        // again by the fourth evening.
+        pump(&mut world, &mut events, &mut intersections, 2 * day + 7 * day / 24, 3 * day + 20 * day / 24);
+        assert!(stages(&world).iter().all(|&s| matches!(s, Stage::Cut | Stage::Ploughed)), "by the fourth evening the land is {:?}", stages(&world));
+        assert!((yard(&world) - stages(&world).len() as f64 * crop).abs() < 1e-6 || world.calls.iter().any(|c| c.at == farm && c.kind == calls::CallKind::Pickup) || world.books[&farm].on(2 * day + 20 * day / 24).revenue > 0.0, "the harvest is not in the yard, nor called for, nor sold: {}", yard(&world));
+
+        // The harvest's pickups come and go; then the warehouse's shelf
+        // run low: its lorry fetches from the farm, the nearer source, at
+        // the farm's posted price, two lines. The clock goes on from where
+        // the world is: an event queue is not pumped backwards.
+        let mut now = 3 * day + 20 * day / 24;
+        while world.calls.iter().any(|c| c.at == farm) && now < 4 * day {
+            pump(&mut world, &mut events, &mut intersections, now, now + day / 24);
+            now += day / 24;
+        }
+        assert!(world.calls.iter().all(|c| c.at != farm), "the farm's pickups never cleared: {:?}", world.calls);
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
+            b.stocks.get_mut(&Need::Eat).unwrap().level = 300.0;
+        }
+        let price = match world.objects.get(farm).unwrap().object {
+            GameObject::Building(ref b) => b.prices[&Need::Eat],
+            _ => unreachable!(),
+        };
+        let before = (yard(&world), world.books.get(&depot).map_or(0.0, |k| k.on(now).purchases), world.books.get(&farm).map_or(0.0, |k| k.on(now).revenue));
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            b.stocks.get_mut(&Need::Eat).unwrap().level = 0.0;
+        }
+        calls::turn(&mut world, &mut events, depot, now);
+        let fetch = world.calls.iter().find(|c| c.at == depot && c.kind == calls::CallKind::Fetch).expect("the depot fetches");
+        assert_eq!(fetch.from, Some(farm), "the lorry went past the farm to the edge");
+        pump(&mut world, &mut events, &mut intersections, now, now + 3 * day / 24);
+        assert!(world.calls.iter().all(|c| c.at != depot), "the fetch did not land: {:?}; lorries {:?}", world.calls, world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Truck)).map(|e| (e.id, e.position, matches!(e.object, GameObject::Car(ref c) if c.trip.is_some()))).collect::<Vec<_>>());
+        let fetched = before.0 - yard(&world);
+        assert!(fetched > 0.0, "the lorry took nothing from the yard");
+        assert!((world.books[&farm].on(now).revenue - before.2 - fetched * price).abs() < 1e-6, "the farm's books say {} for {fetched} crates at {price}; the depot took {}", world.books[&farm].on(now).revenue - before.2, world.books[&depot].on(now).purchases);
+        // Two lines: what the farm's page took in, the depot's paid out,
+        // with whatever else the depot bought that night on top.
+        let bought = world.books[&depot].on(now).purchases - before.1;
+        assert!(bought >= fetched * price - 1e-6, "the depot's books say {bought} for {} of crates", fetched * price);
+
+        // A yard with no room for a crop, and no lorry: a pickup from
+        // beyond the edge, paid as it leaves the map. The warehouse's
+        // shelf is filled first, so its lorry wants nothing from the yard
+        // meanwhile.
+        let now = now + 3 * day / 24;
+        let lorries = |world: &World| world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == crate::protocol::CarRole::Truck)).count();
+        let stood = lorries(&world);
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            let s = b.stocks.get_mut(&Need::Eat).unwrap();
+            s.level = s.cap;
+        }
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
+            let s = b.stocks.get_mut(&Need::Eat).unwrap();
+            s.level = s.cap - crop / 2.0;
+        }
+        let full = yard(&world);
+        let before = world.books.get(&farm).map_or(0.0, |k| k.on(now + 6 * day / 24).revenue);
+        calls::turn(&mut world, &mut events, farm, now);
+        assert!(world.calls.iter().any(|c| c.at == farm && c.kind == calls::CallKind::Pickup), "a full yard called for no pickup: {:?}", world.calls);
+        pump(&mut world, &mut events, &mut intersections, now, now + 6 * day / 24);
+        assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Pickup), "the pickup never left: {:?}", world.calls);
+        // Paid onto the farm's page: the treasury is everyone's purse and
+        // the town buys from beyond the edge meanwhile.
+        let paid = crate::economy::export(full * crate::economy::wholesale(Need::Eat));
+        let got = world.books[&farm].on(now + 6 * day / 24).revenue - before;
+        assert!((got - paid).abs() < 5.0, "the edge paid {got} for the yard, not {paid}");
+        assert!(lorries(&world) <= stood, "the pickup lorry stayed");
+    }
+
     /// Nothing crosses the door at zero (docs/economy.md §8.2, §9): a
     /// broke town's desks are not filled from beyond the edge, and nobody
     /// eats there until the first shift is sold; then the door has
     /// something in it and they do, which is labour as the export of last
-    /// resort, and why zero is a slump and not an end.
+    /// resort, and why zero is a slump and not an end. A factory's, sold
+    /// to the edge the day it is worked: a maker is founded with nothing
+    /// made, and would take days to fill a shelf worth shipping.
     #[test]
     fn a_broke_town_buys_nothing_beyond_the_edge_until_it_sells() {
         let mut world = street();
         build(&mut world, 0, BuildingKind::Apartment, 2); // seven people
-        let office = build(&mut world, 30, BuildingKind::Office, 2); // twelve desks
+        let office = build(&mut world, 30, BuildingKind::Factory, 2); // twelve desks
         world.treasury = 0.0;
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();

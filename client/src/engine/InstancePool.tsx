@@ -217,6 +217,7 @@ export class InstancePool {
     id: number,
     pos?: [number, number, number],
     rot?: [number, number, number],
+    scale?: [number, number, number],
   ): void {
     const bucket = this.buckets.get(key);
     if (!bucket) return;
@@ -226,6 +227,7 @@ export class InstancePool {
     const tr = bucket.transforms;
     if (pos) { tr[t] = pos[0]; tr[t + 1] = pos[1]; tr[t + 2] = pos[2]; }
     if (rot) { tr[t + 3] = rot[0]; tr[t + 4] = rot[1]; tr[t + 5] = rot[2]; }
+    if (scale) { tr[t + 6] = scale[0]; tr[t + 7] = scale[1]; tr[t + 8] = scale[2]; }
     composeMatrix(bucket, index);
   }
 
@@ -280,6 +282,11 @@ export class InstancePool {
       bucket.mesh.setEnabled(bucket.count > 0);
       bucket.dirty = false;
     }
+  }
+
+  /** A material painted as a bucket's is, for a mesh of its own. */
+  material(key: string, color: Color3): StandardMaterial {
+    return this.ensureBucket(key, WARM_TRIANGLE, color, false, true).material;
   }
 
   updateMaterials(ambientColor: Color3): void {
