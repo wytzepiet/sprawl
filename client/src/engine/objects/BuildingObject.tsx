@@ -1,12 +1,16 @@
-import { Color3, Vector3 } from "@babylonjs/core";
+import { Color3, Vector3, type Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { shapeFor, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
 import { plot } from "../../blueprints";
 import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
-import { Trail } from "./ruts";
+import { Strip, type RGB } from "./strip";
 import { drawnPath } from "./drawnPath";
 import type { Look } from "./look";
+import type { Theme } from "../theme";
+import { simNow } from "../../network/clock";
 import type { Building, GameObjectEntry } from "../../generated";
+import type { Job } from "../../generated/Job";
+import type { Tile } from "../../generated/Tile";
 import { parts } from "../../state/selection";
 
 /** The slab is white like a street, with the street's kerb round it, and
@@ -14,11 +18,50 @@ import { parts } from "../../state/selection";
 export const ASPHALT = Color3.FromHexString("#FFFFFF");
 export const KERB = Color3.FromHexString("#DFE1E1");
 
+/** A farm's field is the ground the tractor last drove, a strip a tile
+ *  wide along its path, painted flat like a map's farmland in one tone
+ *  for the stage the last run left it in — earth, growing, ripe,
+ *  stubble — with the furrows along the tractor's path in a shade
+ *  darker, lit as the roads and the lots are, and no grid over it. A run paints the
+ *  stage it leaves behind the tractor, over the field as it was. */
+export const FIELD_Z = 0.008;
+/** How long a sown crop takes to ripen, as the server has it. */
+const RIPEN = 600_000;
+const rgb = (c: Color3): RGB => [c.r, c.g, c.b];
+/** The tone a job leaves behind the tractor: the plough turns the
+ *  ground to earth, the harvest leaves stubble, and the seed leaves the
+ *  earth as it found it — the green comes with the clock. */
+export const leaves = (theme: Theme, job: Job): RGB | null => (job === "Plough" ? rgb(theme.earth) : job === "Harvest" ? rgb(theme.stubble) : null);
+/** The field's tone between runs: the stage the last run left it in,
+ *  which mid-run is the stage of the tiles not yet reached — the ones
+ *  longest unchanged — since the run paints the new stage itself. A sown
+ *  field grows as one, by the clock from the last tile sown: earth
+ *  greening over the first part of the half day, green turning gold
+ *  over the rest, ripe when the server counts it ripe too. */
+export function fieldTone(theme: Theme, land: Tile[]): RGB | null {
+  const oldest = land.reduce<Tile | null>((a, t) => (a === null || t.since < a.since ? t : a), null);
+  switch (oldest?.stage) {
+    case "Ploughed": return rgb(theme.earth);
+    case "Cut": return rgb(theme.stubble);
+    case "Sown": {
+      const since = Math.max(...land.filter((t) => t.stage === "Sown").map((t) => t.since));
+      const k = Math.min(1, Math.max(0, (simNow() - since) / RIPEN));
+      const mix = (a: Color3, b: Color3, t: number): RGB => [a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t];
+      return k < 0.6 ? mix(theme.earth, theme.growing, k / 0.6) : mix(theme.growing, theme.ripe, (k - 0.6) / 0.4);
+    }
+    default: return null;
+  }
+}
+/** The field along a path over the land, in a tone. */
+export const field = (pool: InstancePool, drawn: NonNullable<ReturnType<typeof drawnPath>>, land: Set<string>, z: number, tone: RGB) =>
+  new Strip(pool.material("field", Color3.White()), drawn, (x, y) => land.has(`${x},${y}`), z, tone);
+
 export function mountBuilding(
   entry: GameObjectEntry,
   pool: InstancePool,
+  scene: Scene,
+  theme: Theme,
   look: Look,
-  land: (x: number, y: number) => boolean,
 ): () => void {
   const data = entry.object.data as Building;
   const pos = entry.position;
@@ -75,15 +118,26 @@ export function mountBuilding(
     }
   }
 
-  // A farm's field: the ground its tractor last drove over, the strip
-  // it ploughed and the marks it left, along the path it drove. Every
-  // run works the same ground, so the last run's path is the field.
+  // A farm's field: the ground its tractor last drove over, along the
+  // path it drove, in the tone the last run left. Every run works the
+  // same ground, so the last run's path is the field. Repainted now and
+  // then while the crop ripens, so it is seen to turn.
   const drawn = data.ruts.length > 1 ? drawnPath(data.ruts.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0)), 0, 0, 0) : null;
-  const ruts = drawn ? new Trail(pool, drawn, land) : null;
+  const tone = fieldTone(theme, data.land);
+  const strip = drawn && tone ? field(pool, drawn, new Set(data.land.map((t) => `${t.at.x},${t.at.y}`)), FIELD_Z, tone) : null;
+  let painted = performance.now();
+  const observer = strip && data.land.some((t) => t.stage === "Sown" && simNow() - t.since < RIPEN)
+    ? scene.onBeforeRenderObservable.add(() => {
+        if (performance.now() - painted < 500) return;
+        painted = performance.now();
+        strip.paint(fieldTone(theme, data.land)!);
+      })
+    : null;
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    ruts?.dispose();
+    if (observer) scene.onBeforeRenderObservable.remove(observer);
+    strip?.dispose();
     parts.delete(entry.id);
   };
 }

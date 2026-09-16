@@ -1,4 +1,5 @@
 import type { MeshGeometry } from "../Mesh";
+import { GRID_LINE } from "./terrainGeometry";
 import type { BuildingKind } from "../../generated";
 import { BLUEPRINTS } from "../../blueprints";
 
@@ -17,7 +18,8 @@ export const BUILDING_SIZE = 1.0 - 2 * PLOT_MARGIN;
  * its surface, so the driveway runs into it with no seam and its kerb
  * never shows across the lot.
  */
-export const SLAB = { inset: 0.1, kerb: 0.04, radius: 0.13, z: 0.017, kerbZ: 0.016 };
+/** The slab's kerb is as wide as the map's grid line, like a road's. */
+export const SLAB = { inset: 0.1, kerb: GRID_LINE, radius: 0.13, z: 0.017, kerbZ: 0.016 };
 /** Every building's walls have this much of a corner: enough to keep a
  *  corner out from under a diagonal road's kerb, and the slab's corners are
  *  the same arcs 0.05 further out. */

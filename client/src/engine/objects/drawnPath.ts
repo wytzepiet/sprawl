@@ -61,7 +61,7 @@ function offsetNodes(nodes: Vector3[], offset: number, fromLot: number, toLot: n
 }
 
 /** The path a car is drawn on: the nodes, offset onto the lane, the
- *  corners rounded. What a car drives and what a tractor's marks follow. */
+ *  corners rounded. */
 export function drawnPath(centerNodes: Vector3[], offset: number, fromLot: number, toLot: number): DrawnPath | null {
   const nodes = offsetNodes(centerNodes, offset, fromLot, toLot);
   const points: Vector3[] = [];

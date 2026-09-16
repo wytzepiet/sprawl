@@ -1,5 +1,4 @@
 import { onCleanup, createEffect, on } from "solid-js";
-import { simNow } from "../network/clock";
 import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
@@ -64,8 +63,8 @@ export default function World() {
     return tiles;
   }
 
-  /** Claim a building's tiles, and a farm's sown land, returning the keys
-   *  so they can be released. The crop stands on the sown tiles. */
+  /** Claim a building's tiles, returning the keys so they can be
+   *  released. */
   function cover(entry: GameObjectEntry): string[] {
     if (entry.object.kind !== "Building" || !entry.position) return [];
     const b = entry.object.data as Building;
@@ -75,44 +74,18 @@ export default function World() {
       terrain.markBuilt(t.x, t.y);
       return key;
     });
-    for (const t of b.land) {
-      const key = `${t.at.x},${t.at.y}`;
-      landTiles.add(key);
-      if (t.stage === "Sown") {
-        cropTiles.set(key, t.since);
-        terrain.markBuilt(t.at.x, t.at.y);
-      }
-      keys.push(key);
-    }
     return keys;
   }
 
   function uncover(keys: string[] | undefined) {
     for (const key of keys ?? []) {
       builtTiles.delete(key);
-      landTiles.delete(key);
-      cropTiles.delete(key);
       const [x, y] = key.split(",").map(Number);
       terrain.markBuilt(x, y);
     }
   }
 
-  // A farm's land: where the plough's strip is drawn, and nowhere else.
-  const landTiles = new Set<string>();
-  const isLand = (x: number, y: number) => landTiles.has(`${x},${y}`);
-  // A sown tile, and when: the crop stands on it, grown by the clock.
-  const cropTiles = new Map<string, number>();
-  const RIPEN = 600_000;
-  const terrain = new TerrainChunks(
-    scene,
-    shadowGenerator()!,
-    theme,
-    isBuilt,
-    (x, y) => {
-      const since = cropTiles.get(`${x},${y}`);
-      return since === undefined ? null : Math.min(1, Math.max(0, (simNow() - since) / RIPEN));
-    },
-  );
+  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt);
   const fog = new FogOfWar(scene);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
@@ -122,9 +95,9 @@ export default function World() {
     switch (entry.object.kind) {
       case "Building":
         // Red where no joined road reaches it; grey where any stock is bare.
-        return mountBuilding(entry, pool, !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY, isLand);
+        return mountBuilding(entry, pool, scene, theme(), !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY);
       case "Car":
-        return mountCar(entry, pool, scene, SOLID, isLand);
+        return mountCar(entry, pool, scene, theme(), SOLID);
       case "RoadNode":
         return mountRoad(entry, pool, theme(), getEntity);
       default:

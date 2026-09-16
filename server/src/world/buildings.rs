@@ -336,23 +336,24 @@ impl World {
         self.occupied.get(&(tile.x, tile.y)).copied()
     }
 
-    /// Give a building its driveway, if a street is adjacent. Already served,
-    /// or nothing adjacent: nothing happens. The driveway is an ordinary road
-    /// that happens to end inside the building: the car drives in and
-    /// despawns there.
+    /// Give a building its driveway, if a street is adjacent; nothing
+    /// adjacent, nothing happens. The driveway is an ordinary road that
+    /// happens to end inside the building: the car drives in and despawns
+    /// there. A building already served — placed over a road's stub, so
+    /// its driveway was there before it was — keeps that one, and is
+    /// reached all the same.
     pub fn attach_driveway(&mut self, id: EntityId) -> bool {
-        if self.road_node_for_building(id).is_some() {
-            return true;
+        if self.road_node_for_building(id).is_none() {
+            let Some(entry) = self.objects.get(id) else { return false };
+            let (Some(pos), GameObject::Building(b)) = (entry.position, &entry.object) else {
+                return false;
+            };
+            let Some((street, door)) = self.driveway_for(pos, b.kind, b.facing, true) else { return false };
+            let Some(street_pos) = self.objects.get(street).and_then(|e| e.position) else {
+                return false;
+            };
+            self.place_road_path(&[street_pos, door]);
         }
-        let Some(entry) = self.objects.get(id) else { return false };
-        let (Some(pos), GameObject::Building(b)) = (entry.position, &entry.object) else {
-            return false;
-        };
-        let Some((street, door)) = self.driveway_for(pos, b.kind, b.facing, true) else { return false };
-        let Some(street_pos) = self.objects.get(street).and_then(|e| e.position) else {
-            return false;
-        };
-        self.place_road_path(&[street_pos, door]);
         // Reached: a depot's lorries come with it, and a farm claims its land.
         crate::calls::stable(self, id);
         self.claim_land(id);

@@ -12,9 +12,7 @@ import {
 import * as Comlink from "comlink";
 import type { Theme } from "./theme";
 import {
-  buildCrops,
   buildTrees,
-  CROP_H,
   CHUNK_SIZE,
   CHUNK_SKIRT,
   CHUNK_STRIDE,
@@ -25,10 +23,7 @@ import {
   type TerrainPalette,
 } from "./objects/terrainGeometry";
 import type { TerrainApi } from "./terrainWorker";
-import { boxGeometry } from "./objects/buildings";
 
-/** A crop plant: a low flat box. */
-const CROP = boxGeometry(0.26, 0.1, CROP_H);
 import { viewExtent } from "./view";
 
 export { CHUNK_SIZE };
@@ -72,11 +67,9 @@ interface ChunkMeshes {
   ground: Mesh;
   cliffs: Mesh;
   trees: Mesh;
-  crops: Mesh;
   /** Empty meshes must stay disabled — see applyBuffers. */
   hasCliffs: boolean;
   hasTrees: boolean;
-  hasCrops: boolean;
 }
 
 const floorDiv = (a: number, b: number) => Math.floor(a / b);
@@ -111,7 +104,6 @@ export class TerrainChunks {
   private groundMat: StandardMaterial;
   private cliffMat: StandardMaterial;
   private treeMat: StandardMaterial;
-  private cropMat: StandardMaterial;
   private borderTex: RawTexture;
   private observer: Nullable<Observer<Scene>>;
   private detailVisible = true;
@@ -121,7 +113,6 @@ export class TerrainChunks {
     private shadowGenerator: ShadowGenerator,
     private theme: () => Theme,
     private isBuilt: (x: number, y: number) => boolean,
-    private cropAt: (x: number, y: number) => number | null,
   ) {
     this.borderTex = createBorderTexture(scene);
 
@@ -149,8 +140,6 @@ export class TerrainChunks {
 
     this.treeMat = new StandardMaterial("terrain_tree", scene);
     this.treeMat.specularColor = Color3.Black();
-    this.cropMat = new StandardMaterial("terrain_crop", scene);
-    this.cropMat.specularColor = Color3.Black();
 
     this.updateMaterials(new Color3(1, 1, 1));
 
@@ -297,11 +286,6 @@ export class TerrainChunks {
     // Without this the mesh keeps the lone base cylinder's bounds and the
     // whole chunk's trees get frustum-culled as soon as the origin leaves view.
     meshes.trees.thinInstanceRefreshBoundingInfo(true);
-    // A farm's crop stands the same way, on its sown tiles.
-    const crops = buildCrops(cx, cy, this.cropAt);
-    meshes.hasCrops = crops.length > 0;
-    meshes.crops.thinInstanceSetBuffer("matrix", crops, 16, true);
-    meshes.crops.thinInstanceRefreshBoundingInfo(true);
     this.applyDetail(meshes);
   }
 
@@ -322,17 +306,8 @@ export class TerrainChunks {
     treeData.normals = TREE_TRUNK.normals;
     treeData.applyToMesh(trees);
 
-    const crops = new Mesh(`chunk_${key}_crops`, this.scene);
-    crops.material = this.cropMat;
-    crops.receiveShadows = true;
-    const cropData = new VertexData();
-    cropData.positions = CROP.positions;
-    cropData.indices = CROP.indices;
-    cropData.normals = CROP.normals;
-    cropData.applyToMesh(crops);
-
-    const meshes: ChunkMeshes = { ground, cliffs, trees, crops, hasCliffs: false, hasTrees: false, hasCrops: false };
-    for (const mesh of [ground, cliffs, trees, crops]) {
+    const meshes: ChunkMeshes = { ground, cliffs, trees, hasCliffs: false, hasTrees: false };
+    for (const mesh of [ground, cliffs, trees]) {
       mesh.isPickable = false;
       mesh.position.x = originX;
       mesh.position.y = originY;
@@ -375,7 +350,6 @@ export class TerrainChunks {
     meshes.ground.dispose();
     meshes.cliffs.dispose();
     meshes.trees.dispose();
-    meshes.crops.dispose();
     this.chunks.delete(key);
   }
 
@@ -392,7 +366,6 @@ export class TerrainChunks {
   private applyDetail(meshes: ChunkMeshes): void {
     meshes.cliffs.setEnabled(this.detailVisible && meshes.hasCliffs);
     meshes.trees.setEnabled(this.detailVisible && meshes.hasTrees);
-    meshes.crops.setEnabled(this.detailVisible && meshes.hasCrops);
   }
 
   updateMaterials(ambient: Color3): void {
@@ -402,8 +375,7 @@ export class TerrainChunks {
     this.groundMat.emissiveColor = ambient.scale(0.15);
     this.cliffMat.emissiveColor = ambient.scale(0.7);
 
-    // Trees are a single colour, so they keep it on the material; a crop
-    // the same, in its own green.
+    // Trees are a single colour, so they keep it on the material.
     const tree = this.theme().forest;
     this.treeMat.diffuseColor = tree;
     this.treeMat.emissiveColor = new Color3(
@@ -411,9 +383,6 @@ export class TerrainChunks {
       tree.g * ambient.g * 0.15,
       tree.b * ambient.b * 0.15,
     );
-    const crop = this.theme().crop;
-    this.cropMat.diffuseColor = crop;
-    this.cropMat.emissiveColor = new Color3(crop.r * ambient.r * 0.15, crop.g * ambient.g * 0.15, crop.b * ambient.b * 0.15);
   }
 
   dispose(): void {
@@ -422,7 +391,6 @@ export class TerrainChunks {
     this.groundMat.dispose();
     this.cliffMat.dispose();
     this.treeMat.dispose();
-    this.cropMat.dispose();
     this.borderTex.dispose();
     this.worker.terminate();
     this.tiles.clear();

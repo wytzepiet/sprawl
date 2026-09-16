@@ -181,8 +181,6 @@ impl World {
             expanded.push(b);
         }
         let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, road, false)).collect();
-        // A street reaches whatever dormant building stands beside it.
-        self.attach_driveways_along(&expanded);
         for pair in ids.windows(2) {
             let (a, b) = (pair[0], pair[1]);
             // Add outgoing a→b
@@ -200,6 +198,10 @@ impl World {
             self.insert_edge(a, b);
             self.insert_edge(b, a);
         }
+        // A street reaches whatever dormant building stands beside it — once
+        // the nodes are joined, since a building reached stables its fleet
+        // in a lot read off its driveway and the street it joins.
+        self.attach_driveways_along(&expanded);
     }
 
     /// Remove the road node standing at `pos`.

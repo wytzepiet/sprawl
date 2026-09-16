@@ -845,35 +845,6 @@ export function buildChunk(
  * and roads are live game state — so unlike buildChunk this stays on the main
  * thread. It is cheap: placement is a pure seeded function of the tile coords.
  */
-/** A crop plant's height: a low box, a few to a tile, in rows, built on
- *  the main thread (`TerrainChunks`) and lifted by half its height here. */
-export const CROP_H = 0.12;
-
-/** Where a farm's crop stands: one matrix per plant on every sown tile in
- *  the chunk, in three rows across the tile. `cropAt` says how grown a
- *  tile's crop is, 0 to 1, or null for no crop. */
-export function buildCrops(chunkX: number, chunkY: number, cropAt: (x: number, y: number) => number | null): Float32Array {
-  const originX = chunkX * CHUNK_SIZE;
-  const originY = chunkY * CHUNK_SIZE;
-  const out: number[] = [];
-  for (let y = originY; y < originY + CHUNK_SIZE; y++) {
-    for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-      const grown = cropAt(x, y);
-      if (grown === null) continue;
-      const s = 0.3 + 0.7 * grown;
-      for (const [ox, oy] of [[0.5, 0.2], [0.5, 0.5], [0.5, 0.8]]) {
-        out.push(
-          1, 0, 0, 0,
-          0, s, 0, 0,
-          0, 0, s, 0,
-          x - originX + ox, y - originY + oy, (CROP_H / 2) * s, 1,
-        );
-      }
-    }
-  }
-  return new Float32Array(out);
-}
-
 export function buildTrees(
   tiles: Uint8Array,
   chunkX: number,

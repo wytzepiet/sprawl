@@ -1,4 +1,5 @@
 import type { MeshGeometry } from "../Mesh";
+import { GRID_LINE } from "./terrainGeometry";
 
 /**
  * Road surface geometry: pure maths over a set of arm angles, with no Babylon
@@ -13,7 +14,8 @@ type Point = { x: number; y: number };
 
 export const ROAD_WIDTH = 0.4;
 export const HALF_W = ROAD_WIDTH / 2;
-export const BORDER_HALF_W = HALF_W + 0.04;
+/** The kerb is as wide as the map's grid line. */
+export const BORDER_HALF_W = HALF_W + GRID_LINE;
 const CURVE_SEGMENTS = 8;
 export const ROAD_Z = 0.02;
 export const BORDER_Z = 0.015;

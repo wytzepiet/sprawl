@@ -4,9 +4,12 @@ import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
-import { Trail } from "./ruts";
 import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
-import type { Car, GameObjectEntry } from "../../generated";
+import type { Theme } from "../theme";
+import type { Strip } from "./strip";
+import { field, FIELD_Z, leaves } from "./BuildingObject";
+import { getEntity } from "../../state/gameObjects";
+import type { Building, Car, GameObjectEntry } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
 
 /// Everyone keeps their car for life, and its id never changes — so neither
@@ -58,8 +61,8 @@ export function mountCar(
   entry: GameObjectEntry,
   pool: InstancePool,
   scene: Scene,
+  theme: Theme,
   look: Look,
-  land: (x: number, y: number) => boolean,
 ): () => void {
   const car = entry.object.data as Car;
   if (car.role === "Truck") return mountLorry(entry.id, car, pool, scene, look);
@@ -88,19 +91,26 @@ export function mountCar(
   const initial = f.now();
   const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
   parts.set(entry.id, [{ key: bucket, id: instanceId }]);
-  // A tractor leaves its marks behind it as it goes, and under the plough
-  // the ground turns brown a wheel's turn at a time.
-  const trail = car.run ? new Trail(pool, f.drawn, car.run.job === "Plough" ? land : null) : null;
+  // On a run the ground turns behind the tractor to what the job leaves
+  // — earth under the plough, stubble behind the harvest — over the
+  // farm's land and nowhere else, laid over the field as it was.
+  let strip: Strip | null = null;
+  const tone = car.run && leaves(theme, car.run.job);
+  if (tone) {
+    const farm = getEntity(car.owner);
+    const land = new Set(farm?.object.kind === "Building" ? (farm.object.data as Building).land.map((t) => `${t.at.x},${t.at.y}`) : []);
+    strip = field(pool, f.drawn, land, FIELD_Z + 0.002, tone);
+  }
   const observer = scene.onBeforeRenderObservable.add(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
     carPoses.set(entry.id, [result.pos[0], result.pos[1]]);
-    trail?.reach(result.dist);
+    strip?.reach(result.dist);
   });
   return () => {
     scene.onBeforeRenderObservable.remove(observer);
     pool.removeInstance(bucket, instanceId);
-    trail?.dispose();
+    strip?.dispose();
     carPoses.delete(entry.id);
     parts.delete(entry.id);
   };

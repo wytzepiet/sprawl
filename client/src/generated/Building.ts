@@ -38,7 +38,8 @@ prices: { [key in Need]?: number },
  */
 land: Array<Tile>, 
 /**
- * Where the tractor last drove: the tyre marks, one run's path, drawn
- * as a brown road with two stripes. Redrawn by the next run.
+ * Where the tractor last drove: one run's path, which the client
+ * draws the field along, corners and all. Every run works the same
+ * ground, so the last run's path is the field. Redrawn by the next.
  */
 ruts: Array<GridCoord>, };

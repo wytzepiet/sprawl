@@ -2049,7 +2049,7 @@ mod tests {
         assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == crate::protocol::CarRole::Tractor));
         // The first day: the hands come at six and the tractor ploughs
         // the land, a shift's worth; by evening it is a field, the tractor
-        // is home, its path is the tyre marks, and the yard is empty.
+        // is home, and the yard is empty.
         let day = DAY_MS as u64;
         let land = stages(&world).len();
         let crop = crate::economy::crop(BuildingKind::Farm, land);
@@ -2058,11 +2058,6 @@ mod tests {
         assert!(stages(&world).len() >= land * 9 / 10, "the plough reached {} of {land} tiles", stages(&world).len());
         assert_eq!(yard(&world), 0.0, "something landed in the yard before a harvest");
         assert!(matches!(world.objects.get(tractor).map(|e| &e.object), Some(GameObject::Car(c)) if c.run.is_none() && c.trip.is_none()), "the tractor is not home");
-        let ruts = match world.objects.get(farm).unwrap().object {
-            GameObject::Building(ref b) => b.ruts.len(),
-            _ => unreachable!(),
-        };
-        assert!(ruts >= stages(&world).len(), "the tyre marks are {ruts} tiles");
         // The second day: seeded. The third: ripe by morning, harvested
         // by evening, a harvest in the yard, and a lorry from beyond the
         // edge called for it.

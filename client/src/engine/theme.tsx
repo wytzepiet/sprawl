@@ -15,7 +15,13 @@ const light = {
   water: hex3("#85D7FA"),
   beach: hex3("#F5F1D8"),
   forest: hex3("#B3E590"),
-  crop: hex3("#7FBF3F"),
+  // A field through its season: ploughed earth beside the beach, the
+  // growing crop beside the grass, the ripe crop beside the highway's
+  // yellow, the stubble between.
+  earth: hex3("#F1CE9A"),
+  growing: hex3("#C3EA7C"),
+  ripe: hex3("#F7D96E"),
+  stubble: hex3("#EFE6BC"),
   mountain: hex3("#F8F7F6"),
   grid: hex3("#8BA87A"),
   road: hex3("#FFFFFF"),
@@ -30,7 +36,10 @@ const dark = {
   water: hex3("#0A1535"),
   beach: hex3("#2A2518"),
   forest: hex3("#053030"),
-  crop: hex3("#2E5A2A"),
+  earth: hex3("#6B5230"),
+  growing: hex3("#4A6B2A"),
+  ripe: hex3("#7A6428"),
+  stubble: hex3("#5E5A40"),
   mountain: hex3("#4D4D47"),
   grid: hex3("#3A4A34"),
   road: hex3("#2A2D35"),

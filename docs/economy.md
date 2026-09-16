@@ -1267,23 +1267,29 @@ allows. What stands:
   the tractor cannot get to — and less any sliver, a tile with no field
   on either side of it across one axis: a strip a tile wide beside the
   barn or between two neighbours' plots is yard or lane, not field, and
-  no tractor could turn in it. Begun as the plot itself and grown a row
+  no tractor could turn in it. What falls away beside the plot is still
+  the lane, and the field beyond is reached across it: a farm with a
+  road a tile off both flanks, found in play 2026-09-15 with no land at
+  all, has its field behind the barn. Begun as the plot itself and grown a row
   at a time until the land in it is as much as a shift can plough — the
   shift over the tractor's pace, less a tenth for the headland and the
   lane, about two hundred tiles — the cutouts made up for by growing
   further. A row goes on the long side, so the short side catches up
   and the field tends to square; on the flank that keeps it centred on
-  the yard; never toward the street. A row that adds no land is not
-  taken, so a road along the field is its edge and the rectangle grows
-  the other way instead; a row that would take the land past its size
+  the yard; on any side, the street's included. A row that adds no
+  land is not taken, so a road along the field is its edge and the
+  rectangle grows the other way instead — which is why a farm on a
+  street claims behind and beside itself, and one reached some other
+  way claims all round; a row that would take the land past its size
   is not taken either, and when no row can be, the field is done, a
   row or so short of the number. A farm on cramped ground is a smaller
   farm with the same yard: a tile's crop is the yard over the land the
   farm has, so a harvest fills the yard whatever ground it got. A tile
   is ordinary grass to the placer and the road brush; one built or
   roaded over is dropped at the farm's next look, and with it whatever
-  that leaves the tractor unable to work, by the same rule. The land
-  lives on
+  that leaves the tractor unable to work, by the same rule. Another
+  farm's land is not open to it: first claim wins, and a farm placed
+  beside a neighbour's field grows the other way. The land lives on
   the farm's own record, a stage and a time per tile, and nothing
   else. This is how the Midwest is laid out: fields are rectangles on
   the survey grid with the farmstead on the road frontage inside its
@@ -1295,35 +1301,40 @@ allows. What stands:
   to each tile as it arrives — the plough turns grass or stubble to
   bare ground, the seed starts a crop, the harvest lands a tile's crop
   in the yard as it is cut — and a run covers the whole field in one
-  go. Out of the yard along the lane, the open ground round the plot,
-  to the corner of the field nearest it; once round the outline for
-  the headland, which is where a real tractor turns and what draws the
-  field's edge first; then the inside in straight rows from headland
-  to headland, each a run of field, each driven the way back from the
-  last, from the yard's side of the field to the far side, a change of
-  row two right angles made on the headland, which is what a headland
-  is for. The rows run whichever way breaks on fewer cutouts — past
-  the farmstead, not through its lot, since the lot is where the
-  tractor lives and not a way through — and along the long side when
-  both ways break alike; and home along the edge four ways, so the
-  corners are taken and not cut. Never a turn sharper than a right
-  angle: between one tile and the next the tractor takes the shortest
-  way that keeps to that, arriving headed for the tile after in its
-  run so the row runs straight, but never looping round to get the
-  heading: a tile it would take more than a couple of steps over the
-  plain way to arrive at properly is left, so a ragged edge is shaved
-  straight rather than hooked round. Never onto a tile it could not
-  get home from that way — the states it can get home from are found
-  once, backwards from the yard — so it is never stuck in a pocket. A
-  tile left is land no more: the field is what the tractor can drive.
-  The outline starts at the rectangle's corner nearest the yard,
-  whether or not that corner is field, and is driven whichever way
-  round skips fewer tiles as it goes and then the shorter, over the
-  edge — the field's boundary, the lane and the yard — and across the
-  inside only where a cutout breaks the edge. The barn is not ground;
-  the yard and the lane are. A test draws the sweep over four shapes
-  of land, the fourth a farm with neighbours a tile away on both
-  flanks as a town builds them, and it was looked at.
+  go, in two passes. The headland is every tile of the field that
+  touches something that is not field, eight ways: the outside, the
+  coast, the barn and the lane, a house in the middle. It is driven
+  round as a ring, each tile the nearest not yet driven from where the
+  last was, straight on before a turn, over the headland itself where
+  it can; a house inside gets its own small ring, reached across the
+  rows with the implement up. The inside is the rest, in straight rows
+  along the grain — whichever way is cut by fewer things, past the
+  farmstead and not through its lot, and the long side when both are
+  cut alike — each a run of inside tiles, the nearest run left from
+  wherever the last one ended and driven from its nearer end, so the
+  rows alternate and every turn is made on the headland: a step out, a
+  step along it, a step back in, which is what a headland is for. A
+  strip two tiles wide is all headland and gets no rows; a strip three
+  wide gets one down its spine; so the tractor never zigzags across
+  the grain in a sliver. The plough does the rows first and the
+  headland last, as a ploughman does, so the scuffs of the turns are
+  turned under; the drill and the harvest do the headland first, to
+  have room to turn. Then home along the headland. Never a turn
+  sharper than a right angle: between one tile and the next the
+  tractor takes the shortest way that keeps to that, arriving headed
+  for the tile after in its run so the row runs straight, and where a
+  ragged edge leaves no room to turn — a coast running diagonally,
+  each row a tile shorter than the last — it loops round over the rows
+  already worked to come back the other way, as a farmer does. Never
+  onto a tile it could not get home from that way — the states it can
+  get home from are found once, backwards from the yard — so it is
+  never stuck in a pocket. A tile it cannot reach that way is left,
+  and is land no more: the field is what the tractor can drive. The
+  barn is not ground; the yard and the lane are. A test draws the
+  sweep over six shapes of land, seeding and ploughing, among them a
+  farm with neighbours a tile away on both flanks as a town builds
+  them, a house in the field, and a coast running diagonally either
+  way, and it was looked at.
 - **One run a day, three days a cycle.** Plough day, seed day, harvest
   day. A crop sown by the end of a shift is ripe by the next morning,
   half a day, so the harvest is the third day. The yard holds a
@@ -1373,29 +1384,76 @@ allows. What stands:
   the fifth: the rectangle round the farmstead with its cutouts and
   without its slivers, the headland driven first and turned on, the
   right angle, and a drive that never goes where it cannot get home
-  from.
-- **On the client** there is no field but where the plough has been.
-  The tractor is drawn along its run on the same rounded path as a
-  trip, the planned tiles as its path, no lane, but by the server's
-  clock rather than its own physics: on the run's `k`th tile `k` paces
-  after it started, wherever the corners put that, so it stands where
-  the server has it when the job is done there. Its tyre marks and the
-  ploughed ground are ribbons along that same path, curves and all, so
-  they lie exactly under its wheels: two faint stripes a wheel apart
-  with nothing between, so where two paths cross all four show, and
-  under the plough a strip a tile wide in the field's colour, over the
-  land only and never the lot or the lane. A ribbon is built whole
-  when the run is sent and shown as far as the tractor
-  has got, its frontier pulled back each frame to where the tractor is,
-  so the marks end under it and nothing is laid twice or blinks. The run
-  itself carries nothing that changes as it goes — the tile is the
-  clock's — so the server sends it once. Between runs the farm's record
-  holds the last run's path and the strip and the marks are drawn from
-  that: every run works the same ground, so the last run's path is the
-  field. The terrain knows nothing of fields; the crop stands on the
-  sown tiles as the trees stand on the forest, through the same pass,
-  grown by the clock. The tractor is drawn as a van in the farm's green
-  until it has a shape of its own.
+  from. A sixth pass, 2026-09-14, watched in play: rows on a diagonal
+  coast were shaved short and left grass holes, and a row cut by the
+  barn was driven twice over to reach its other half, so the nearest
+  run comes next, the loop is allowed, and a farm keeps off its
+  neighbour's land. A seventh, 2026-09-15, took a step back: the
+  outline had been the rectangle's perimeter, so the barn was never
+  ringed, the cornering was whatever the search found, and a sliver
+  against the grain was zigzagged; now the headland is the field's
+  own contour, the rows are the inside only, and the pass order is the
+  job's. The perimeter, its rotation to the nearest corner, the
+  clockwise-or-widdershins trial and the ring-closing went with it.
+- **On the client** there is no field but where the plough has been:
+  a strip a tile wide along the tractor's path, curves and all, painted
+  flat like a map's farmland in one tone, and the tones are siblings of
+  what is already on the map: ploughed earth beside the beach, the
+  growing crop beside the grass, the ripe crop beside the highway's
+  yellow, the stubble between. A run paints what it leaves — earth
+  under the plough, stubble behind the harvest, and the seed leaves
+  the earth as it found it — behind the tractor, over the field as it
+  was, and when the run is done the field is that tone whole; mid-run
+  the field under it shows the stage of the tiles not yet reached, the
+  ones longest unchanged. A sown field grows as one, by the clock from
+  the last tile sown, which is when the server counts it ripe too: the
+  earth greens over the first part of the half day and the green turns
+  gold over the rest, as a drilled field does, repainted every half
+  second while it does, so a field is seen to turn and no corner of it
+  is yellower than another. A tone
+  per tile was tried first and made a field a patchy gradient. Over
+  the strip run the furrows, thin lanes a shade darker a quarter tile
+  apart along the same path, as wide as the grid's lines and one on
+  each edge, so every field carries the tractor's own curves and the
+  loops it made round a coast. The implement is down over the land the
+  first time the tractor enters a tile and up on every later visit —
+  the turns on the headland, a crossing to the far side of the barn or
+  to a ring round a house, the way home — so nothing is painted but
+  the work, and a turn on the headland leaves the headland's own
+  furrows, as a lifted plough does. Ground and furrows are one mesh in
+  the order driven, so where a pass does cross earlier work the later
+  paints over the earlier rather than the two showing through each
+  other. No grid over it: the map's grid
+  was textured over the field for a while, in map coordinates so its
+  lines fell on the tile boundaries (a raw texture clamps unless told
+  to wrap, and clamped it painted the whole strip the line's shade
+  with no line), and taken off again to see the field plain. Lit as
+  the roads and the lots are. A straight tile of it is one
+  quad; a corner is the few the rounded path has. The tractor is drawn
+  along its run on the same rounded path as a trip, the planned tiles
+  as its path, no lane, but by the server's clock rather than its own
+  physics: on the run's `k`th tile `k` paces after it started,
+  wherever the corners put that, so it stands where the server has it
+  when the job is done there. Under the plough the strip is built whole
+  when the run is sent and shown as far as the tractor has got, its
+  frontier pulled back each frame to under the tractor, so the ground
+  turns as the tractor passes and nothing is laid twice or blinks. Between runs the farm's record holds the last run's path and
+  the field is drawn from that, whole: every run works the same
+  ground, so the last run's path is the field, and the run in progress
+  lies a hair above it. The strip is drawn over the land only, never
+  the lot or the lane. The run carries nothing that changes as it goes
+  — the tile is the clock's — so the server sends it once. The terrain
+  knows nothing of fields, and nothing stands on one. Tried and thrown
+  away on the way here: tyre marks, which hid the grid and made every
+  loop a scar; a field of square tiles, which lost the corners the
+  tractor turns; and a crop of little plants on the sown tiles — three
+  flat dashes a tile, then rows of jittered prisms with shadows —
+  which was the most detailed thing on a map that draws a forest as a
+  blob, in colours that belonged to nothing else on it. Farmland from
+  the air is a patchwork of flat tones with drill lines, and maps keep
+  a flat tint with at most one mark; this is that, with the one mark
+  the tractor draws. The tractor is drawn as a van in the farm's
+  green until it has a shape of its own.
 - **The hands take the third day off.** Two full shifts run a hand's
   time off to nothing, which closes the Work tap (§4), so on the third
   morning nobody comes and the harvest waits a day. The residents'
