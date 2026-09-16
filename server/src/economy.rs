@@ -431,7 +431,7 @@ pub fn passed(world: &mut World, building: EntityId, now: GameTime) {
     let served = due.min(stock.level);
     stock.take(due);
     if bp.homes > 0 {
-        world.gdp += served * wholesale(Need::Services);
+        gdp(world, Need::Services, served * wholesale(Need::Services), now);
     }
 }
 
@@ -491,21 +491,38 @@ pub fn value(kind: BuildingKind, need: Need) -> f64 {
     }
 }
 
-/// Money crossing the door: in when the town sold, out when it bought.
-/// Money out stops at nothing: an import the treasury cannot pay for is
-/// paid as far as it goes. Returns what moved. §8.2.
-fn door(world: &mut World, amount: f64, now: GameTime) -> f64 {
-    let book = world.income.today(now);
+/// Money crossing the door, and the good it bought: in when the town
+/// sold, out when it bought. Money out stops at nothing: an import the
+/// treasury cannot pay for is paid as far as it goes. Returns what moved.
+/// §8.2, §10.
+fn door(world: &mut World, good: Need, amount: f64, now: GameTime) -> f64 {
+    let book = world.town.today(now);
     if amount >= 0.0 {
-        book.revenue += amount;
+        *book.sold.entry(good).or_default() += amount;
         world.treasury += amount;
         amount
     } else {
         let paid = (-amount).min(world.treasury);
-        book.purchases += paid;
+        *book.bought.entry(good).or_default() += paid;
         world.treasury -= paid;
         -paid
     }
+}
+
+/// Value served in town at the world's prices: a line on the town's page
+/// under the need it served, and the level's running sum. §10.
+pub fn gdp(world: &mut World, need: Need, value: f64, now: GameTime) {
+    if value > 0.0 {
+        world.gdp += value;
+        *world.town.today(now).served.entry(need).or_default() += value;
+    }
+}
+
+/// The mayor placed something: materials from beyond the edge are what
+/// a building is, so it is the door's own line, paid in full. §10.
+pub fn built(world: &mut World, price: f64, now: GameTime) {
+    world.town.today(now).built += price;
+    world.treasury -= price;
 }
 
 fn outside(world: &World, resident: EntityId) -> bool {
@@ -535,7 +552,7 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             if edge {
                 // A shift beyond the edge: the town sold its labour.
                 if !commuter {
-                    door(world, due, now);
+                    door(world, Need::Work, due, now);
                 }
                 return;
             }
@@ -544,10 +561,12 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             // pass-through, until goods give it an output. §12.1, §8.1.
             if sells(kind).next().is_none() {
                 let made = adds(units * EDGE_WAGE);
-                world.gdp += made;
-                world.books.entry(at).or_default().today(now).revenue += export(made);
+                gdp(world, Need::Work, made, now);
+                let book = world.books.entry(at).or_default().today(now);
+                book.revenue += export(made);
+                book.exported += export(made);
                 world.sales.push(Sale { building: at, amount: export(made), at: now });
-                door(world, export(made), now);
+                door(world, Need::Work, export(made), now);
             }
             // A row that makes something fills its shelf at its rate;
             // what does not fit is lost, which is the full yard stopping
@@ -565,7 +584,7 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             book.hours += units;
             // A commuter takes the wage home, beyond the edge.
             if commuter {
-                door(world, -due, now);
+                door(world, Need::Work, -due, now);
             }
         }
         Need::Home | Need::Rest | Need::Services => {}
@@ -575,25 +594,28 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
                 // A meal beyond the edge is the town buying one, unless
                 // the eater lives there too.
                 if !commuter {
-                    door(world, -due, now);
+                    door(world, need, -due, now);
                 }
                 return;
             }
             // The groceries behind a meal at home are the edge's, until
             // something in town sells them.
             if blueprint(kind).homes > 0 {
-                door(world, -import(due), now);
+                door(world, need, -import(due), now);
                 return;
             }
             let book = world.books.entry(at).or_default().today(now);
             book.revenue += due;
             *book.sold.entry(need).or_default() += units;
+            // A commuter's lunch is a meal sold to the outside.
+            if commuter {
+                book.exported += due;
+            }
             if due > 0.0 {
                 world.sales.push(Sale { building: at, amount: due, at: now });
             }
-            // A commuter's lunch is a meal sold to the outside.
             if commuter {
-                door(world, due, now);
+                door(world, need, due, now);
             }
             if let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object)
                 && let Some(stock) = b.stocks.get_mut(&need)
@@ -636,10 +658,12 @@ pub fn shipped(world: &mut World, maker: EntityId, need: Need) -> f64 {
 /// world's price. §8.1.
 pub fn exported(world: &mut World, maker: EntityId, need: Need, load: f64, now: GameTime) {
     let due = export(load * wholesale(need));
-    world.gdp += load * wholesale(need);
-    world.books.entry(maker).or_default().today(now).revenue += due;
+    gdp(world, need, load * wholesale(need), now);
+    let book = world.books.entry(maker).or_default().today(now);
+    book.revenue += due;
+    book.exported += due;
     world.sales.push(Sale { building: maker, amount: due, at: now });
-    door(world, due, now);
+    door(world, need, due, now);
 }
 
 /// A facility's vehicle is home: its tank is filled and its wear put
@@ -654,16 +678,20 @@ pub fn exported(world: &mut World, maker: EntityId, need: Need, load: f64, now: 
 pub fn refilled(world: &mut World, car: EntityId, now: GameTime) {
     let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) else { return };
     let owner = c.owner;
-    let mut due = 0.0;
+    let mut due = Vec::new();
     for (&need, stock) in c.stocks.iter_mut() {
-        due += stock.short() / stock.cap * wholesale(need);
+        due.push((need, import(stock.short() / stock.cap * wholesale(need))));
         stock.level = stock.cap;
     }
-    if due <= 0.0 || kind_of(world, owner).is_none() {
+    if kind_of(world, owner).is_none() {
         return;
     }
-    world.books.entry(owner).or_default().today(now).purchases += import(due);
-    door(world, -import(due), now);
+    for (need, due) in due.into_iter().filter(|&(_, due)| due > 0.0) {
+        let book = world.books.entry(owner).or_default().today(now);
+        book.purchases += due;
+        book.imported += due;
+        door(world, need, -due, now);
+    }
 }
 
 /// A delivery landed: `load` of `need` onto `buyer`'s stock, from
@@ -683,7 +711,11 @@ pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, n
     }
     let due = units * unit;
     stock.add(units);
-    world.books.entry(buyer).or_default().today(now).purchases += due;
+    let book = world.books.entry(buyer).or_default().today(now);
+    book.purchases += due;
+    if seller.is_none() {
+        book.imported += due;
+    }
     world.sales.push(Sale { building: buyer, amount: -due, at: now });
     match seller {
         Some(seller) => {
@@ -693,7 +725,7 @@ pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, n
             world.sales.push(Sale { building: seller, amount: due, at: now });
         }
         None => {
-            door(world, -due, now);
+            door(world, need, -due, now);
         }
     }
 }
@@ -701,8 +733,7 @@ pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, n
 /// Midnight: every building counts its day. Each price steps by its own
 /// stock, and the books turn a page. §5.
 pub fn day(world: &mut World, now: GameTime) {
-    world.gdp_at_midnight = world.gdp;
-    world.income.today(now);
+    world.town.today(now);
     let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
     ids.sort_unstable();
     for id in ids {
@@ -737,8 +768,7 @@ fn kind_of(world: &World, building: EntityId) -> Option<BuildingKind> {
 }
 
 /// One day of a building's books: what came in, what went out, what was
-/// sold, and how much labour was bought. The town's own books are the
-/// door: in and out.
+/// sold, and how much labour was bought.
 #[derive(Debug, Default, Clone)]
 pub struct Day {
     pub revenue: f64,
@@ -746,6 +776,9 @@ pub struct Day {
     pub wages: f64,
     /// Hours of labour paid for.
     pub hours: f64,
+    /// Of the revenue and the purchases, what crossed the door.
+    pub exported: f64,
+    pub imported: f64,
     /// Units sold, per need.
     pub sold: BTreeMap<Need, f64>,
     /// Hours of need served, per tap: for a workplace, labour received.
@@ -754,15 +787,44 @@ pub struct Day {
     pub sold_out: bool,
 }
 
-static EMPTY: std::sync::LazyLock<Day> = std::sync::LazyLock::new(Day::default);
-
-/// A building's books: today's page and yesterday's, keyed by the day
-/// today is. Learned, not saved — a loaded world starts counting afresh.
+/// One day of the town's books: what was served at the world's prices,
+/// per need, which adds up to the dial; and what crossed the door, per
+/// good, in and out, and what the mayor built, which adds up to the
+/// treasury's step. §10.
 #[derive(Debug, Default, Clone)]
-pub struct Books {
+pub struct Town {
+    pub served: BTreeMap<Need, f64>,
+    pub sold: BTreeMap<Need, f64>,
+    pub bought: BTreeMap<Need, f64>,
+    pub built: f64,
+}
+
+impl Town {
+    pub fn gdp(&self) -> f64 {
+        self.served.values().sum()
+    }
+    pub fn revenue(&self) -> f64 {
+        self.sold.values().sum()
+    }
+    pub fn purchases(&self) -> f64 {
+        self.bought.values().sum()
+    }
+}
+
+/// How many pages the books keep: a season, the span the questions a
+/// card answers are asked over. §10.
+pub const SEASON: usize = 30;
+
+/// A season of pages, one a day, written over in a circle. Learned, not
+/// saved — a loaded world starts counting afresh.
+#[derive(Debug, Clone)]
+pub struct Books<P = Day> {
+    /// The day the last page written is for, and the first day written.
     pub day: u64,
-    pub today: Day,
-    pub yesterday: Day,
+    opened: u64,
+    pages: Vec<P>,
+    /// A day nothing was written on.
+    blank: P,
     /// How long the last delivery took, from the call to the load
     /// landing: the lead time the reorder point covers. None until there
     /// has been one.
@@ -772,39 +834,45 @@ pub struct Books {
     pub looked: Option<GameTime>,
 }
 
-impl Books {
-    /// Today's page, turning it if the day has moved on.
-    pub fn today(&mut self, now: GameTime) -> &mut Day {
+impl<P: Default> Default for Books<P> {
+    fn default() -> Self {
+        Books { day: 0, opened: u64::MAX, pages: std::iter::repeat_with(P::default).take(SEASON).collect(), blank: P::default(), lead: None, looked: None }
+    }
+}
+
+impl<P: Default> Books<P> {
+    /// Today's page, turning it if the day has moved on. The days skipped
+    /// are days nothing was written on.
+    pub fn today(&mut self, now: GameTime) -> &mut P {
         let day = now / DAY_MS as u64;
-        if day != self.day {
-            self.yesterday = if day == self.day + 1 { std::mem::take(&mut self.today) } else { Day::default() };
-            self.today = Day::default();
-            self.day = day;
+        for d in (self.day + 1).max(day.saturating_sub(SEASON as u64 - 1))..=day {
+            self.pages[d as usize % SEASON] = P::default();
         }
-        &mut self.today
+        self.day = self.day.max(day);
+        self.opened = self.opened.min(day);
+        &mut self.pages[day as usize % SEASON]
     }
 
     /// Today's page as it stands, without turning it.
-    pub fn on(&self, now: GameTime) -> &Day {
+    pub fn on(&self, now: GameTime) -> &P {
         self.page(now / DAY_MS as u64)
     }
 
     /// The last whole day's page: yesterday's, as of `now`. The first day
     /// has none.
-    pub fn before(&self, now: GameTime) -> &Day {
-        (now / DAY_MS as u64).checked_sub(1).map_or(&EMPTY, |day| self.page(day))
+    pub fn before(&self, now: GameTime) -> &P {
+        (now / DAY_MS as u64).checked_sub(1).map_or(&self.blank, |day| self.page(day))
     }
 
     /// The page for a day, by the calendar: a day nothing was written on
-    /// is empty, however long ago the last entry was.
-    fn page(&self, day: u64) -> &Day {
-        if day == self.day {
-            &self.today
-        } else if day + 1 == self.day {
-            &self.yesterday
-        } else {
-            &EMPTY
-        }
+    /// is blank, however long ago the last entry was.
+    fn page(&self, day: u64) -> &P {
+        if day <= self.day && self.day - day < SEASON as u64 { &self.pages[day as usize % SEASON] } else { &self.blank }
+    }
+
+    /// Every page since the books were opened, oldest first, today's last.
+    pub fn season(&self) -> impl Iterator<Item = &P> {
+        (self.opened.max(self.day.saturating_sub(SEASON as u64 - 1))..=self.day).map(|d| self.page(d))
     }
 }
 
@@ -827,21 +895,22 @@ pub fn level(served: f64) -> (u32, f64) {
 /// Everything the dials need to draw themselves.
 pub fn growth(world: &World, now: GameTime) -> Growth {
     let (level, reached) = level(world.gdp);
-    let door = world.income.on(now);
+    let town = world.town.on(now);
     Growth {
         level,
         toward: world.gdp - reached,
         needed: LEVEL_BASE * (level as f64 + 1.0),
-        gdp: world.gdp - world.gdp_at_midnight,
+        gdp: town.gdp(),
         treasury: world.treasury,
-        income: door.revenue - door.purchases,
-        imports: door.purchases,
+        income: town.revenue() - town.purchases() - town.built,
+        imports: town.purchases(),
         taken: world.build.taken(),
         road_tiles_left: world.build.road_tiles().saturating_sub(world.laid),
     }
 }
 
-/// A building's money, readable: what it charges, and its books. §10.
+/// A building's money, readable: what it charges, and its books, today's
+/// page and the season's. §10.
 pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
     let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return Value::Null };
     let books = world.books.get(&id);
@@ -851,6 +920,8 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
             "purchases": d.purchases,
             "wages": d.wages,
             "margin": d.revenue - d.purchases - d.wages,
+            "exported": d.exported,
+            "imported": d.imported,
             "sold": d.sold,
         })
     };
@@ -863,7 +934,20 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
             "need": need, "price": p, "unit_cost": unit_cost(b.kind, *need), "edge": edge_price_of(b.kind, *need),
         })).collect::<Vec<_>>(),
         "today": books.map(|k| page(k.on(now))),
-        "yesterday": books.map(|k| page(k.before(now))),
+        "season": books.map(|k| k.season().map(page).collect::<Vec<_>>()),
+    })
+}
+
+/// The town's page: what it served today and what crossed the door, and
+/// the season behind it. Each line is the dial or the treasury's step
+/// read back by need or by good. §10.
+pub fn town(world: &World, now: GameTime) -> Value {
+    let page = |t: &Town| json!({ "served": t.served, "sold": t.sold, "bought": t.bought, "built": t.built });
+    json!({
+        "gdp": world.gdp,
+        "treasury": world.treasury,
+        "today": page(world.town.on(now)),
+        "season": world.town.season().map(page).collect::<Vec<_>>(),
     })
 }
 
@@ -892,16 +976,23 @@ mod tests {
     #[test]
     fn the_books_turn_a_page_at_midnight() {
         let day = DAY_MS as u64;
-        let mut b = Books::default();
+        let mut b: Books = Books::default();
         b.today(100).revenue += 3.0;
         assert_eq!(b.on(100).revenue, 3.0);
         b.today(day + 5).revenue += 1.0;
-        assert_eq!((b.yesterday.revenue, b.today.revenue), (3.0, 1.0));
+        assert_eq!((b.before(day + 5).revenue, b.on(day + 5).revenue), (3.0, 1.0));
         // A day skipped is a day with nothing in it.
         b.today(3 * day);
-        assert_eq!(b.yesterday.revenue, 0.0);
+        assert_eq!(b.before(3 * day).revenue, 0.0);
         // And the first day has no yesterday at all.
-        assert_eq!(Books::default().before(100).revenue, 0.0);
+        assert_eq!(Books::<Day>::default().before(100).revenue, 0.0);
+        // The season is every page since the books were opened, and no
+        // more than thirty: the first page is written over by the
+        // thirty-first, and a day before the season is blank.
+        assert_eq!(b.season().map(|p| p.revenue).collect::<Vec<_>>(), vec![3.0, 1.0, 0.0, 0.0]);
+        b.today(SEASON as u64 * day).revenue += 5.0;
+        assert_eq!(b.season().count(), SEASON);
+        assert_eq!((b.season().next().unwrap().revenue, b.on(0).revenue), (1.0, 0.0));
     }
 
     /// Grass, a street that runs off the survey so the edge stands at its
@@ -1090,9 +1181,10 @@ mod tests {
         let pay = 9.0 * resident(&world, commuter).wage;
         assert!(pay > 9.0 * import(EDGE_WAGE), "a commuter is paid the crossing and the drive: {pay}");
         sale(&mut world, commuter, factory, Need::Work, 9.0, 0);
-        let door = world.income.on(0).clone();
-        assert!((door.revenue - export(adds(9.0 * EDGE_WAGE))).abs() < 1e-9, "the factory sold its hours for {}", door.revenue);
-        assert!((door.purchases - pay).abs() < 1e-9, "the commuter took home {}", door.purchases);
+        let door = world.town.on(0).clone();
+        assert!((door.sold[&Need::Work] - export(adds(9.0 * EDGE_WAGE))).abs() < 1e-9, "the factory sold its hours for {}", door.revenue());
+        assert!((door.bought[&Need::Work] - pay).abs() < 1e-9, "the commuter took home {}", door.purchases());
+        assert!((door.served[&Need::Work] - world.gdp).abs() < 1e-9, "the town's page does not add up to the dial");
         assert!((world.gdp - adds(9.0)).abs() < 1e-9, "hours made in town are GDP at the world's price: {}", world.gdp);
 
         let home_ask = ask(&world, resident(&world, local).home);

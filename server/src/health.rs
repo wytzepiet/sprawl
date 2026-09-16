@@ -80,6 +80,11 @@ pub async fn card(Path(id): Path<EntityId>, State(state): State<AppState>) -> St
     ask(&state, Ask::Card(id)).await
 }
 
+/// The town's page: `/town`.
+pub async fn town(State(state): State<AppState>) -> String {
+    ask(&state, Ask::Town).await
+}
+
 /// Where a kind would land with its building under a point: what the
 /// dragged ghost draws. `/site/House?x=12.5&y=3.2`.
 pub async fn site(Path(kind): Path<String>, Query(q): Query<HashMap<String, String>>, State(state): State<AppState>) -> String {

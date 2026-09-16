@@ -43,6 +43,8 @@ pub enum Ask {
     Call(EntityId),
     /// The card for one thing on the map, whatever it is.
     Card(EntityId),
+    /// The town's page: what it served and what crossed the door.
+    Town,
     /// Where a kind would land with its building under this point.
     Site { kind: crate::protocol::BuildingKind, x: f64, y: f64 },
 }

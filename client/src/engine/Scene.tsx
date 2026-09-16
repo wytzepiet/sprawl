@@ -19,6 +19,7 @@ import LumpLayer from "../ui/LumpLayer";
 import GrowthMeter from "../ui/GrowthMeter";
 import SkillTree from "../ui/SkillTree";
 import Card from "../ui/Card";
+import Board from "../ui/Board";
 
 function SceneInner() {
   return (
@@ -41,6 +42,7 @@ function SceneInner() {
         <LumpLayer />
         <GrowthMeter />
         <Card />
+        <Board />
         <SkillTree />
       </Canvas>
       <BuildModeToolbar />

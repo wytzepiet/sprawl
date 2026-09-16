@@ -54,13 +54,12 @@ pub struct World {
     /// served, today and yesterday. Learned, not saved — a loaded world
     /// starts counting afresh.
     pub books: HashMap<EntityId, crate::economy::Books>,
-    /// The treasury's own books: what swept in, today and yesterday.
-    pub income: crate::economy::Books,
+    /// The town's own books: what it served, and what crossed the door.
+    pub town: crate::economy::Books<crate::economy::Town>,
     /// GDP to date: value served in town at the world's prices, banked as
     /// each visit ends. The level is its running sum; today's rate is what
     /// it has grown since midnight.
     pub gdp: f64,
-    pub gdp_at_midnight: f64,
     /// The mayor's money, in hours of the edge's wage. docs/economy.md §8.2.
     pub treasury: f64,
     /// Money that landed on buildings since the last flush, for the clients
@@ -146,8 +145,8 @@ impl World {
             node_cars: HashMap::new(),
             terrain_seed: 0,
             books: HashMap::new(),
-            income: Default::default(),
-            gdp: 0.0, gdp_at_midnight: 0.0,
+            town: Default::default(),
+            gdp: 0.0,
             treasury: crate::economy::STAKE,
             sales: Vec::new(),
             build: Default::default(),
@@ -178,8 +177,8 @@ impl World {
             node_cars: HashMap::new(),
             terrain_seed,
             books: HashMap::new(),
-            income: Default::default(),
-            gdp: 0.0, gdp_at_midnight: 0.0,
+            town: Default::default(),
+            gdp: 0.0,
             treasury: 0.0,
             sales: Vec::new(),
             build: Default::default(),

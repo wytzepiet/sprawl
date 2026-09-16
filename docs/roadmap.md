@@ -5,7 +5,7 @@ something you can sit down and play for an evening and notice is better
 than the last. Estimates are working days for one person with an
 assistant; they are guesses, and the order matters more than the numbers.
 
-## Where we are (2026-09-11)
+## Where we are (2026-09-16)
 
 Built: roads and streets, one-way, the tree as the build, every kind on
 the build menu as a piece of map, placed by hand and paid for out of the
@@ -18,10 +18,12 @@ wear at the workshop, the farm with its land and tractor — ploughed,
 sown and harvested in runs over the field, a day each — its crates
 fetched by the warehouse or picked up for the edge, with the crate and
 the meal priced from the rows (`economy.md` §12 steps 1 to 6, §12.8).
+Legibility: a card for anything on the map with a season of books, and
+the town's page, the two dials read back by need and by good (§12.9).
 
 Not built: parking past the driveway, the container and the factory's
-yard, the port, power, fire, hospital, the
-inspect panel, road speed and priority, levels, trains, multiplayer,
+yard, the port, power, fire, hospital, the region's page and the
+advisor, road speed and priority, levels, trains, multiplayer,
 deployment. Of milestone 3, road past the allowance, moving and
 demolishing do not cost money yet.
 

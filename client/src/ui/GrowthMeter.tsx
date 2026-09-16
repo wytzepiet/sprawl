@@ -1,6 +1,7 @@
 import type { JSX } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { setTreeOpen } from "./SkillTree";
+import { setBoardOpen } from "./Board";
 
 /** Ring geometry, in the dial's own 60-unit box. */
 const R = 25;
@@ -42,8 +43,9 @@ export default function GrowthMeter() {
 
       {/* What the town has to spend, in hours of the edge's wage, and what
           the door netted today. No ring: there is no goal but the one the
-          mayor is saving for. */}
-      <span class="fixed bottom-4 right-4 flex select-none flex-col items-center gap-1.5 pointer-events-none">
+          mayor is saving for. A tap opens the town's page, the two dials
+          read back by need and by good. */}
+      <span class="fixed bottom-4 right-4 flex select-none flex-col items-center gap-1.5 cursor-pointer" onClick={() => setBoardOpen((o) => !o)} title="The town's books">
         <Dial color={low() ? "#D9483B" : "#57A773"} now={treasury()} max={0} caption={low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : ""}${Math.floor(growth().income)} today`}>
           <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
             <span class="text-[13px] font-bold tabular-nums">{Math.floor(treasury())}</span>
