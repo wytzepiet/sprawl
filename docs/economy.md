@@ -538,7 +538,9 @@ Everything a price does is an event on the map first.
   outside. A red lump on a truck in from the edge is an import.
 - **The building.** Shelves grey at empty stock (built); a yard stacked at
   full output; the inspect panel shows each stock's level, price, and its
-  trend over the season. The books keep thirty pages for it, a ring
+  trend over the season (built, §12.9: each page keeps the price its day
+  closed at, and the card draws the season's pages and today's as a line
+  over the edge's price). The books keep thirty pages for it, a ring
   buffer written over in a circle;
   the nudge and a building's earning still read yesterday's alone, since
   a price that answered an average would be slow to notice an empty
@@ -1515,9 +1517,24 @@ the advisor.
   page opens from the treasury dial: served per need, in and out at the
   door per good, what was built, and the treasury's step, today and a
   day over the season, each block's total above its lines. `/town`
-  answers the same for anything that cannot click. The trend line §10
-  drew — each stock's price over the season — is not drawn; the pages
-  are there for it.
+  answers the same for anything that cannot click.
+- **The trend line.** Second cut, the same day: a page keeps the price
+  its day traded at, written at midnight when the day is closed and the
+  price stepped from it, so today's page has none and today's price is
+  the building's. Beside each price on the card a line runs over the
+  season's closed days to today, with the edge's price dashed under it:
+  a price hunting above the world's, sitting on it, or fallen to its
+  floor reads at a glance, which is what §11.5 and §11.8 assert in
+  print. Scaled to the series and the edge together, never narrower
+  than a tenth of the edge's price, so a flat line stays flat and a
+  notch shows as a notch.
+- **Midnight waited for the mayor.** Found on the first look at the
+  line: the loop's start woke every resident but never armed the
+  midnight wake, which only the settle after a placement did. A fresh
+  world, or a loaded one, ran with no day turning — no price stepped,
+  no page closed, the books one long day — until the mayor built
+  something, and every season print had built something first. The
+  start settles and arms the day the way a placement does.
 - **A fresh world started broke.** Found on the first look: the load
   read the treasury back from a metadata table that had no row yet,
   and the zero it read overwrote the stake (§12.4). Every new world was

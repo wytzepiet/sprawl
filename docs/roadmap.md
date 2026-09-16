@@ -18,8 +18,9 @@ wear at the workshop, the farm with its land and tractor — ploughed,
 sown and harvested in runs over the field, a day each — its crates
 fetched by the warehouse or picked up for the edge, with the crate and
 the meal priced from the rows (`economy.md` §12 steps 1 to 6, §12.8).
-Legibility: a card for anything on the map with a season of books, and
-the town's page, the two dials read back by need and by good (§12.9).
+Legibility: a card for anything on the map with a season of books and
+each price's line over it, and the town's page, the two dials read back
+by need and by good (§12.9).
 
 Not built: parking past the driveway, the container and the factory's
 yard, the port, power, fire, hospital, the region's page and the

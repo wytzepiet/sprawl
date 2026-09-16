@@ -78,6 +78,9 @@ interface Page {
   /** Of the revenue and the purchases, what crossed the door. */
   exported: number;
   imported: number;
+  /** The price the day traded at, per need; written when the day closed,
+   *  so today's page has none yet. */
+  prices: Partial<Record<Need, number>>;
 }
 
 /** How often an open card asks again. The world moves; the card should too. */
@@ -270,6 +273,31 @@ function CarCard(c: Extract<Card, { kind: "car" }>) {
   );
 }
 
+/**
+ * A price over the season, each closed day and then today's, with the
+ * edge's price dashed under it: a glance says whether it hunts above the
+ * world's, sits on it, or has fallen to its floor. Scaled to the series
+ * and the edge together, never narrower than a tenth of the edge's, so a
+ * flat line stays flat and a five-percent step shows as a step.
+ */
+function Trend(props: { series: number[]; edge: number }) {
+  const W = 44;
+  const H = 12;
+  const lo = () => Math.min(...props.series, props.edge);
+  const span = () => Math.max(Math.max(...props.series, props.edge) - lo(), 0.1 * props.edge, 1e-9);
+  const y = (v: number) => (H - 1 - ((v - lo()) / span()) * (H - 2)).toFixed(1);
+  const x = (i: number) => (0.5 + (i / (props.series.length - 1)) * (W - 1)).toFixed(1);
+  const path = () => props.series.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
+  return (
+    <Show when={props.series.length > 1}>
+      <svg width={W} height={H} class="inline-block align-middle mr-1.5">
+        <line x1="0" x2={W} y1={y(props.edge)} y2={y(props.edge)} stroke="#A8A29E" stroke-dasharray="2 2" />
+        <path d={path()} fill="none" stroke="#5B57C8" stroke-width="1.2" stroke-linejoin="round" />
+      </svg>
+    </Show>
+  );
+}
+
 /** Hours of the edge's wage, to a tenth. */
 function h(v: number): string {
   return `${v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)} h`;
@@ -300,6 +328,7 @@ function BuildingCard(c: Extract<Card, { kind: "building" }>) {
             <For each={m().prices}>
               {(p) => (
                 <Row label={p.need}>
+                  <Trend series={[...(m().season ?? []).flatMap((d) => d.prices[p.need] ?? []), p.price]} edge={p.edge} />
                   {h(p.price)} <span class="text-stone-400">· edge {h(p.edge)}</span>
                 </Row>
               )}
