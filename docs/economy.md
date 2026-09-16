@@ -546,8 +546,8 @@ Everything a price does is an event on the map first.
   for a thousand buildings is a few megabytes, sent only when a card is
   opened; a server left running would grow books without limit, and
   the questions a card answers are a season's. Books are learned, not
-  saved, so a loaded world starts its season from nothing. (As built:
-  two pages; step 7 makes it thirty.)
+  saved, so a loaded world starts its season from nothing. (Built,
+  §12.9.)
 - **The company.** Revenue, purchases, wages, margin, and what of each
   crossed the door. A refinery whose margin has gone negative is a
   line, not a mystery.
@@ -556,8 +556,8 @@ Everything a price does is an event on the map first.
   what crossed the door in and out, and what the mayor built, which
   adds up to the treasury's step. The cinema's decline is a number
   beside the pump's, and a town losing money can see it is the services
-  it never made (§13.16). (Step 7; the door's split was first read off a
-  throwaway tally, 2026-09-11.)
+  it never made (§13.16). (Built, §12.9; the door's split was first read
+  off a throwaway tally, 2026-09-11.)
 - **The region.** Per good, per town: price, stock, trade. Each row a link
   to the map. Trucks leaving for the edge loaded are the same fact at
   build zoom.
@@ -655,7 +655,9 @@ Each step is playable and nothing before step 2 can hurt anyone.
    existed — a pass-through's hours at one over two thirds, the
    household at nine tenths of the edge wage — and freight in money was
    §12.6's fuel and upkeep per tile. §12.7 has what it needed decided.
-7. **Panels, the board, the advisor's tools.**
+7. **Panels, the board, the advisor's tools.** The books to a season,
+   the town's page, the company's line on the card (§12.9); the region
+   and the advisor wait.
 
 Then, with the port: freight, haulers, classes, the second door.
 
@@ -1480,6 +1482,59 @@ What running it found, thirty days of the three towns against §12.7:
   and thirty-six of them are forty-three minutes of the game, the
   drive and the ten minutes at the door both in. Nothing was lost.
 
+### 12.9 Step 7, the books and the town's page, as built
+
+Built 2026-09-16, the first cut of step 7: what §10 asks for under the
+building, the company and the town, and nothing that needs the port or
+the advisor.
+
+- **The books keep a season.** Thirty pages in a ring, keyed by the
+  calendar: a page is found by its day, a day nothing was written on is
+  blank however long ago the last entry was, and the thirty-first day
+  writes over the first. The season is every page since the books were
+  opened, thirty at most, so a shop's card can say "twelve days of
+  books" and mean it. The ring is generic over its page, so the town's
+  books are the same ring with a page of their own. The nudge still
+  reads yesterday's page alone (§12.3). Learned, not saved: a loaded
+  world opens its books on the day it loads.
+- **The door records a good with every line.** What crosses it is
+  written under the need it served — a crate, a tank, a unit of
+  services, an hour of labour in a commuter's pocket, the groceries
+  behind a meal at home — in and out, per day, and a placement is its
+  own line, since materials from beyond the edge are what a building
+  is. The one function that moves the treasury takes the good; the one
+  that moves the dial takes the need, so every hour of GDP is on the
+  town's page under what served it. Today's GDP is today's page added
+  up, and the number the loop used to keep from midnight went.
+- **The company's line.** Of a building's revenue and its purchases,
+  what crossed the door: a lorry's load sold to the edge, a commuter's
+  lunch, a fetch from beyond it, the fleet's fuel. Wages a commuter
+  takes home are not split out yet.
+- **The panel.** The card's books show today and a day over the
+  season, side by side, with the door's share under each. The town's
+  page opens from the treasury dial: served per need, in and out at the
+  door per good, what was built, and the treasury's step, today and a
+  day over the season, each block's total above its lines. `/town`
+  answers the same for anything that cannot click. The trend line §10
+  drew — each stock's price over the season — is not drawn; the pages
+  are there for it.
+- **A fresh world started broke.** Found on the first look: the load
+  read the treasury back from a metadata table that had no row yet,
+  and the zero it read overwrote the stake (§12.4). Every new world was
+  the slump's first day (§11.13) until it sold a shift beyond the
+  edge. A fresh world keeps its stake now, and only a loaded one reads
+  its money back.
+- **What the first look showed.** Seed 7's starting town, three days
+  at twenty times: it serves about eight hours a day, seven of them
+  services and one meals, and loses about forty at the door, twenty-seven
+  of them wages commuters take home and fifteen consultants from beyond
+  the edge, against half an hour of lunches sold. The stake lasts
+  twelve days. That is §13.16 on the starting town, read off the page
+  instead of a season's print: the town has homes, and the jobs and
+  services beside them are staffed and served from beyond the edge
+  until the mayor builds them. Whether the starting mix should say so
+  before the page does is §10's question, still open (§13.18).
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
@@ -1556,6 +1611,10 @@ What running it found, thirty days of the three towns against §12.7:
     reaches first, and the second finds the first's tiles occupied
     only if they were built on. Whether two farms may claim the same
     grass has not come up.
+24. The visits behind the served line (§10) are not counted: the town's
+    page says what each need was worth, not how many times it was
+    served. The lump on the wire is per sale, so the count is a line
+    away when a panel wants it.
 23. ~~The band's season fails on the office after the fifth cut of
     the land (§12.8): its services price climbs in a sawtooth over the
     last ten days, 2.06 to 2.40, a notch past what hunting at the

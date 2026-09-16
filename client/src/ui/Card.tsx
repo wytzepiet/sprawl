@@ -61,19 +61,23 @@ type Card =
     }
   | { kind: "gone"; id: number };
 
-/** A building's prices and books, in hours of the edge's wage. */
+/** A building's prices and books, in hours of the edge's wage: today's
+ *  page, and every page since it opened, thirty at most. */
 interface Money {
   earns: number;
   jobs: number;
   prices: { need: Need; price: number; unit_cost: number; edge: number }[];
   today: Page | null;
-  yesterday: Page | null;
+  season: Page[] | null;
 }
 interface Page {
   revenue: number;
   purchases: number;
   wages: number;
   margin: number;
+  /** Of the revenue and the purchases, what crossed the door. */
+  exported: number;
+  imported: number;
 }
 
 /** How often an open card asks again. The world moves; the card should too. */
@@ -301,14 +305,30 @@ function BuildingCard(c: Extract<Card, { kind: "building" }>) {
               )}
             </For>
             <Show when={m().today}>
-              {(t) => (
-                <>
-                  <Row label="Today in">{h(t().revenue)}</Row>
-                  <Show when={t().purchases > 0}><Row label="Bought">{h(t().purchases)}</Row></Show>
-                  <Show when={t().wages > 0}><Row label="Wages">{h(t().wages)}</Row></Show>
-                  <Row label="Margin"><span classList={{ "text-red-600": t().margin < 0 }}>{h(t().margin)}</span></Row>
-                </>
-              )}
+              {(t) => {
+                const season = m().season ?? [];
+                const mean = (f: (p: Page) => number) => (season.length ? season.reduce((a, p) => a + f(p), 0) / season.length : 0);
+                const line = (label: string, f: (p: Page) => number, red?: boolean) => (
+                  <Row label={label}>
+                    <span class="tabular-nums" classList={{ "text-red-600": red && f(t()) < 0 }}>{h(f(t()))}</span>
+                    <span class="inline-block w-14 text-right text-stone-400 tabular-nums">{h(mean(f))}</span>
+                  </Row>
+                );
+                return (
+                  <>
+                    <Row label={`${season.length} ${season.length === 1 ? "day" : "days"} of books`}>
+                      <span class="text-[10px] uppercase tracking-widest text-stone-400">today</span>
+                      <span class="inline-block w-14 text-right text-[10px] uppercase tracking-widest text-stone-400">/ day</span>
+                    </Row>
+                    {line("In", (p) => p.revenue)}
+                    <Show when={t().exported > 0 || mean((p) => p.exported) > 0}>{line("· at the door", (p) => p.exported)}</Show>
+                    <Show when={t().purchases > 0 || mean((p) => p.purchases) > 0}>{line("Bought", (p) => p.purchases)}</Show>
+                    <Show when={t().imported > 0 || mean((p) => p.imported) > 0}>{line("· from beyond it", (p) => p.imported)}</Show>
+                    <Show when={t().wages > 0 || mean((p) => p.wages) > 0}>{line("Wages", (p) => p.wages)}</Show>
+                    {line("Margin", (p) => p.margin, true)}
+                  </>
+                );
+              }}
             </Show>
           </Section>
         )}

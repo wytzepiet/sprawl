@@ -549,7 +549,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         if !world.edge.contains(&at)
             && let Some(k) = kind(world, at)
         {
-            world.gdp += out / need.unit() * economy::value(k, need);
+            economy::gdp(world, need, out / need.unit() * economy::value(k, need), now);
         }
         if let Some(r) = resident_mut(world, id) {
             r.tab += out / need.unit();

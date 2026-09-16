@@ -195,6 +195,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Demand => crate::resident::demand(&world, now),
                         Ask::Lot(id) => world.inspect_lot(id, now),
                         Ask::Card(id) => crate::card::card(&world, id, now),
+                        Ask::Town => crate::economy::town(&world, now),
                         Ask::Site { kind, x, y } => serde_json::to_value(world.site_under(x, y, kind)).unwrap_or_default(),
                         Ask::Call(id) => {
                             // Its shelf, emptied: a depot fetches, a maker
@@ -295,13 +296,14 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
     let mut world = if entries.is_empty() {
         World::new()
     } else {
-        World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed)
+        // What the city has served, and what the mayor has, outlive a
+        // restart; a fresh world keeps its stake.
+        let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
+        world.gdp = meta.gdp;
+        world.treasury = meta.treasury;
+        world.build = crate::tree::Build::load(meta.taken);
+        world
     };
-    // What the city has served, and what the mayor has, outlive a restart.
-    world.gdp = meta.gdp;
-    world.gdp_at_midnight = meta.gdp;
-    world.treasury = meta.treasury;
-    world.build = crate::tree::Build::load(meta.taken);
     // SPRAWL_ALL: the whole tree and a bottomless purse, to test any building.
     if std::env::var("SPRAWL_ALL").is_ok() {
         world.build = crate::tree::Build::all();
@@ -381,7 +383,7 @@ fn handle_player_action(
             let placed = allowed.then(|| world.place_site(site, place.kind)).flatten();
             match placed {
                 Some(_) => {
-                    world.treasury -= price;
+                    crate::economy::built(world, price, now);
                     settle_and_wake(world, events);
                 }
                 // Said out loud: a click that does nothing is the kind of
@@ -1180,7 +1182,7 @@ mod tests {
         for &home in &homes {
             assert!(level(&world, home) > 0.0, "home {home} ran dry: {:?}", world.calls);
         }
-        let bought = world.income.on(3 * day).purchases + world.income.before(3 * day).purchases;
+        let bought = world.town.on(3 * day).purchases() + world.town.before(3 * day).purchases();
         let heads = world.resident_ids().len() as f64;
         let a_day = heads * crate::economy::import(crate::economy::services());
         assert!(bought > a_day, "the consultants were paid {bought} over two days for {heads} heads");
@@ -1759,11 +1761,11 @@ mod tests {
         let mut daily = Vec::new();
         let (world, _) = season(&town_mix(), days, |world, day, _| {
             if day == 1 {
-                let door = world.income.before(DAY_MS as u64);
-                began = world.treasury - door.revenue + door.purchases;
+                let door = world.town.before(DAY_MS as u64);
+                began = world.treasury - door.revenue() + door.purchases();
             }
-            let door = world.income.before(day * DAY_MS as u64);
-            println!("day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, world.gdp - last_gdp, door.revenue, door.purchases, services_report(world));
+            let door = world.town.before(day * DAY_MS as u64);
+            println!("day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, world.gdp - last_gdp, door.revenue(), door.purchases(), services_report(world));
             daily.push(world.gdp - last_gdp);
             last_gdp = world.gdp;
             for e in world.objects.iter() {
@@ -1817,11 +1819,11 @@ mod tests {
             let mut began = 0.0;
             let (world, _) = season(&mix, days, |world, day, _| {
                 if day == 1 {
-                    let door = world.income.before(DAY_MS as u64);
-                    began = world.treasury - door.revenue + door.purchases;
+                    let door = world.town.before(DAY_MS as u64);
+                    began = world.treasury - door.revenue() + door.purchases();
                 }
-                let door = world.income.before(day * DAY_MS as u64);
-                println!("{name} day {day}: treasury {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, door.revenue, door.purchases, services_report(world));
+                let door = world.town.before(day * DAY_MS as u64);
+                println!("{name} day {day}: treasury {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, door.revenue(), door.purchases(), services_report(world));
             });
             let residents = world.resident_ids().len().max(1);
             let rate = (world.treasury - began) / residents as f64 / days as f64;
@@ -1850,8 +1852,8 @@ mod tests {
         let mut last_gdp = 0.0;
         let mut daily = Vec::new();
         let (world, _) = season_with(&town_mix(), days, false, |world, day, _| {
-            let door = world.income.before(day * DAY_MS as u64);
-            println!("slump day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, world.gdp - last_gdp, door.revenue, door.purchases, services_report(world));
+            let door = world.town.before(day * DAY_MS as u64);
+            println!("slump day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, world.gdp - last_gdp, door.revenue(), door.purchases(), services_report(world));
             daily.push(world.gdp - last_gdp);
             last_gdp = world.gdp;
         });
@@ -2160,7 +2162,7 @@ mod tests {
         let (mut ate_out_broke, mut ate_out_paid, mut first_sale) = (false, false, None);
         let mut now = 0;
         while step(&mut world, &mut events, &mut intersections, &mut now, 2 * day) {
-            let door = world.income.on(now).revenue + world.income.before(now).revenue;
+            let door = world.town.on(now).revenue() + world.town.before(now).revenue();
             if door > 0.0 && first_sale.is_none() {
                 first_sale = Some(now);
             }

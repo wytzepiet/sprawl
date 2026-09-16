@@ -47,6 +47,7 @@ async fn main() {
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
         .route("/tree", axum::routing::get(health::tree))
         .route("/inspect/{id}", axum::routing::get(health::card))
+        .route("/town", axum::routing::get(health::town))
         .route("/site/{kind}", axum::routing::get(health::site))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
