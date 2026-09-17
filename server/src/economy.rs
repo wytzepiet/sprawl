@@ -740,14 +740,16 @@ pub fn day(world: &mut World, now: GameTime) {
         if world.edge.contains(&id) {
             continue;
         }
-        // Turn the page, and read the day that just ended.
+        // Turn the page, and close the day that just ended: it traded at
+        // the price it is stepped from, and the page keeps it.
         let books = world.books.entry(id).or_default();
         books.today(now);
-        let book = books.before(now).clone();
+        let book = books.closing(now);
         let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { continue };
         let kind = b.kind;
         for need in sells(kind) {
             let Some(price) = b.prices.get_mut(&need) else { continue };
+            book.prices.insert(need, *price);
             let sold = book.sold.get(&need).copied().unwrap_or(0.0);
             let could = rated(kind, need);
             if (need == shelf_need(kind) && book.sold_out) || sold > SELLING_OUT * could {
@@ -785,6 +787,9 @@ pub struct Day {
     pub served: BTreeMap<Need, f64>,
     /// The shelf ran empty at some point.
     pub sold_out: bool,
+    /// The price the day traded at, per need: written when the day
+    /// closes, so the season's pages are the trend line. §10.
+    pub prices: BTreeMap<Need, f64>,
 }
 
 /// One day of the town's books: what was served at the world's prices,
@@ -864,6 +869,14 @@ impl<P: Default> Books<P> {
         (now / DAY_MS as u64).checked_sub(1).map_or(&self.blank, |day| self.page(day))
     }
 
+    /// Yesterday's page, to close it: what midnight writes about the day
+    /// that just ended. After `today(now)` has turned the page, so
+    /// yesterday's is in the ring.
+    pub fn closing(&mut self, now: GameTime) -> &mut P {
+        let day = (now / DAY_MS as u64).saturating_sub(1);
+        &mut self.pages[day as usize % SEASON]
+    }
+
     /// The page for a day, by the calendar: a day nothing was written on
     /// is blank, however long ago the last entry was.
     fn page(&self, day: u64) -> &P {
@@ -923,6 +936,7 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
             "exported": d.exported,
             "imported": d.imported,
             "sold": d.sold,
+            "prices": d.prices,
         })
     };
     json!({
@@ -1392,6 +1406,11 @@ mod tests {
         day(&mut world, 2 * midnight);
         day(&mut world, 3 * midnight);
         assert_eq!(price(&world), floor, "quiet days took it under the floor, or not back to it");
+        // Each day's page keeps the price it traded at: the trend line.
+        let traded: Vec<f64> = world.books[&depot].season().map(|p| p.prices.get(&Need::Eat).copied().unwrap_or(f64::NAN)).collect();
+        assert_eq!(traded.len(), 4, "three closed days and today: {traded:?}");
+        assert!((traded[0] - floor).abs() < 1e-9 && (traded[1] - floor * 1.05).abs() < 1e-9 && traded[2] < traded[1], "{traded:?}");
+        assert!(traded[3].is_nan(), "today's price is on the building until it closes: {traded:?}");
     }
 
     #[test]

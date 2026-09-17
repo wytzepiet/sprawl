@@ -94,10 +94,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         println!("loaded {} objects from db", world.objects.all_entries().len());
     }
     // Whatever is standing gets its people, whether it was just laid out or
-    // loaded from a save written before anyone lived here. Then everyone
-    // thinks once — trips do not survive a save, so a loaded world is
-    // entirely people standing still until they do.
-    world.settle();
+    // loaded from a save written before anyone lived here, and the day is
+    // due to turn. Then everyone thinks once — trips do not survive a save,
+    // so a loaded world is entirely people standing still until they do.
+    settle_and_wake(&mut world, &mut events);
     for id in world.resident_ids() {
         wake_resident(&world, &mut events, id);
     }
