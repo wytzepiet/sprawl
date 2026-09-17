@@ -5,6 +5,8 @@ import type { Need } from "../generated";
 /** One day of the town's books, in hours of the edge's wage. */
 interface TownPage {
   served: Partial<Record<Need, number>>;
+  /** The visits behind the served line: lumps paid in town, per need. */
+  visits: Partial<Record<Need, number>>;
   sold: Partial<Record<Need, number>>;
   bought: Partial<Record<Need, number>>;
   built: number;
@@ -80,7 +82,14 @@ export default function Board() {
 
           <Section title="Served" today={sum(t().today.served)} season={mean(t().season, (p) => sum(p.served))}>
             <For each={needs(t(), (p) => p.served)}>
-              {(need) => <Line label={need} today={t().today.served[need] ?? 0} season={mean(t().season, (p) => p.served[need] ?? 0)} />}
+              {(need) => (
+                <>
+                  <Line label={need} today={t().today.served[need] ?? 0} season={mean(t().season, (p) => p.served[need] ?? 0)} />
+                  <Show when={(t().today.visits[need] ?? 0) > 0 || t().season.some((p) => (p.visits[need] ?? 0) > 0)}>
+                    <Count label="visits" today={t().today.visits[need] ?? 0} season={mean(t().season, (p) => p.visits[need] ?? 0)} />
+                  </Show>
+                </>
+              )}
             </For>
           </Section>
 
@@ -125,6 +134,19 @@ function Section(props: { title: string; today: number; season: number; children
       </div>
       <Line label="" today={props.today} season={props.season} bold />
       {props.children}
+    </div>
+  );
+}
+
+/** The count under a line: how many times, today and a day over the season. */
+function Count(props: { label: string; today: number; season: number }) {
+  return (
+    <div class="flex justify-between gap-2 -mt-0.5 pb-0.5 text-[11px] text-stone-400 tabular-nums">
+      <span class="pl-3">{props.label}</span>
+      <span class="text-right">
+        <span class="inline-block w-12 text-right">{props.today}</span>
+        <span class="inline-block w-12 text-right">{props.season.toFixed(props.season >= 10 ? 0 : 1)}</span>
+      </span>
     </div>
   );
 }

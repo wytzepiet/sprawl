@@ -518,6 +518,14 @@ pub fn gdp(world: &mut World, need: Need, value: f64, now: GameTime) {
     }
 }
 
+/// One visit paid for in town: the count behind the served line, so the
+/// town's page says how many times a need was served and not only what
+/// it was worth. A night is served by the day, not by a visit, so it has
+/// none. §10.
+fn visit(world: &mut World, need: Need, now: GameTime) {
+    *world.town.today(now).visits.entry(need).or_default() += 1;
+}
+
 /// The mayor placed something: materials from beyond the edge are what
 /// a building is, so it is the door's own line, paid in full. §10.
 pub fn built(world: &mut World, price: f64, now: GameTime) {
@@ -567,6 +575,7 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
                 book.exported += export(made);
                 world.sales.push(Sale { building: at, amount: export(made), at: now });
                 door(world, Need::Work, export(made), now);
+                visit(world, need, now);
             }
             // A row that makes something fills its shelf at its rate;
             // what does not fit is lost, which is the full yard stopping
@@ -582,8 +591,10 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             let book = world.books.entry(at).or_default().today(now);
             book.wages += due;
             book.hours += units;
-            // A commuter takes the wage home, beyond the edge.
+            // A commuter takes the wage home, beyond the edge: the
+            // company's line says how much of its wage bill left.
             if commuter {
+                book.remitted += due;
                 door(world, Need::Work, -due, now);
             }
         }
@@ -598,6 +609,7 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
                 }
                 return;
             }
+            visit(world, need, now);
             // The groceries behind a meal at home are the edge's, until
             // something in town sells them.
             if blueprint(kind).homes > 0 {
@@ -776,6 +788,8 @@ pub struct Day {
     pub revenue: f64,
     pub purchases: f64,
     pub wages: f64,
+    /// Of the wages, what commuters took home beyond the edge.
+    pub remitted: f64,
     /// Hours of labour paid for.
     pub hours: f64,
     /// Of the revenue and the purchases, what crossed the door.
@@ -799,6 +813,8 @@ pub struct Day {
 #[derive(Debug, Default, Clone)]
 pub struct Town {
     pub served: BTreeMap<Need, f64>,
+    /// The visits behind the served line: lumps paid in town, per need.
+    pub visits: BTreeMap<Need, u32>,
     pub sold: BTreeMap<Need, f64>,
     pub bought: BTreeMap<Need, f64>,
     pub built: f64,
@@ -932,6 +948,7 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
             "revenue": d.revenue,
             "purchases": d.purchases,
             "wages": d.wages,
+            "remitted": d.remitted,
             "margin": d.revenue - d.purchases - d.wages,
             "exported": d.exported,
             "imported": d.imported,
@@ -956,7 +973,7 @@ pub fn inspect(world: &World, id: EntityId, now: GameTime) -> Value {
 /// the season behind it. Each line is the dial or the treasury's step
 /// read back by need or by good. §10.
 pub fn town(world: &World, now: GameTime) -> Value {
-    let page = |t: &Town| json!({ "served": t.served, "sold": t.sold, "bought": t.bought, "built": t.built });
+    let page = |t: &Town| json!({ "served": t.served, "visits": t.visits, "sold": t.sold, "bought": t.bought, "built": t.built });
     json!({
         "gdp": world.gdp,
         "treasury": world.treasury,
@@ -1198,6 +1215,9 @@ mod tests {
         let door = world.town.on(0).clone();
         assert!((door.sold[&Need::Work] - export(adds(9.0 * EDGE_WAGE))).abs() < 1e-9, "the factory sold its hours for {}", door.revenue());
         assert!((door.bought[&Need::Work] - pay).abs() < 1e-9, "the commuter took home {}", door.purchases());
+        assert!((world.books[&factory].on(0).remitted - pay).abs() < 1e-9, "the factory's line does not say what its commuter took home");
+        assert_eq!(world.books[&shop].on(0).remitted, 0.0, "a local's wage left the shop's line");
+        assert_eq!(door.visits[&Need::Work], 1, "a pass-through's shift is the one visit behind its line");
         assert!((door.served[&Need::Work] - world.gdp).abs() < 1e-9, "the town's page does not add up to the dial");
         assert!((world.gdp - adds(9.0)).abs() < 1e-9, "hours made in town are GDP at the world's price: {}", world.gdp);
 
@@ -1223,9 +1243,11 @@ mod tests {
         assert_eq!(world.treasury, before, "a meal in town moved money");
         sale(&mut world, commuter, shop, Need::Eat, 1.0, 0);
         assert!((world.treasury - before - price_of(&world, shop, Need::Eat)).abs() < 1e-9, "a commuter's lunch is an export");
+        assert_eq!(world.town.on(0).visits[&Need::Eat], 2, "two meals in town are two visits");
         let before = world.treasury;
         sale(&mut world, local, edge, Need::Eat, 1.0, 0);
         assert!((before - world.treasury - edge_price(Need::Eat)).abs() < 1e-9, "a meal at the edge is an import");
+        assert_eq!(world.town.on(0).visits[&Need::Eat], 2, "a meal beyond the edge is no visit in town");
     }
 
     /// §8.1, §11.9: the household row's inputs at the world's prices are
