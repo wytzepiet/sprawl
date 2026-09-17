@@ -5,7 +5,7 @@ something you can sit down and play for an evening and notice is better
 than the last. Estimates are working days for one person with an
 assistant; they are guesses, and the order matters more than the numbers.
 
-## Where we are (2026-09-16)
+## Where we are (2026-09-17)
 
 Built: roads and streets, one-way, the tree as the build, every kind on
 the build menu as a piece of map, placed by hand and paid for out of the
@@ -20,12 +20,17 @@ fetched by the warehouse or picked up for the edge, with the crate and
 the meal priced from the rows (`economy.md` §12 steps 1 to 6, §12.8).
 Legibility: a card for anything on the map with a season of books and
 each price's line over it, and the town's page, the two dials read back
-by need and by good (§12.9).
+by need and by good, with the visits behind each and what a company's
+commuters took home (§12.9). The port: a depot on the coast whose lorry
+is a ship, sailing from its quay to the map's edge and back with every
+shelf's worth at the sea's crossing, a fifth of the road's; goods have a
+handling class, and the port and the warehouse hold everything boxed
+(§12.10).
 
 Not built: parking past the driveway, the container and the factory's
-yard, the port, power, fire, hospital, the region's page and the
-advisor, road speed and priority, levels, trains, multiplayer,
-deployment. Of milestone 3, road past the allowance, moving and
+yard, exports by ship and haulers, power, fire, hospital, the region's
+page and the advisor, road speed and priority, levels, trains,
+multiplayer, deployment. Of milestone 3, road past the allowance, moving and
 demolishing do not cost money yet.
 
 ## Milestone 1: You can see the cars (≈ 4 days)
@@ -83,8 +88,9 @@ A second chain, and space on the map.
   from beyond the edge comes for what nobody in town buys.
 - The warehouse holds both.
 - The port: a facility on the coast whose vehicle is a ship, a second
-  door with the edge's prices and cheaper freight. Haulers, handling
-  classes and the rest of what `economy.md` filed come with it.
+  door with the edge's prices and cheaper freight. Built as
+  `economy.md` §12.10, with the handling classes; haulers stay filed
+  until a call an owner's vehicle cannot answer.
 
 *Playable:* a farm belt outside town, trucks at harvest, and the choice
 of where the warehouse goes between farms and shops.

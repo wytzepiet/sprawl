@@ -221,6 +221,19 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     lot: [2, 2],
     yard: true,
   },
+  Port: {
+    label: "Port",
+    color: "#2B6CA3",
+    // A quay with a crane over it: the mast, the jib, and the hook.
+    glyph: "M2 19h20v3H2zM6 3h3v16H6zM9 5h12v2.5H9zM17.5 7.5h2.5v5h-2.5zM16 12.5h5.5v2.5H16z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.5],
+    price: 80, tab: "services",
+    size: [3, 2],
+    lot: [2, 2],
+    yard: true,
+  },
   Edge: {
     label: "Beyond the edge",
     color: "#6B7280",

@@ -20,6 +20,8 @@ pub fn nose(role: crate::protocol::CarRole) -> f64 {
         crate::protocol::CarRole::Private | crate::protocol::CarRole::Company => 0.175,
         crate::protocol::CarRole::Van | crate::protocol::CarRole::Tractor => 0.225,
         crate::protocol::CarRole::Truck => 0.1,
+        // Never on a road; the water has no queue.
+        crate::protocol::CarRole::Ship => 0.5,
     }
 }
 pub fn tail(role: crate::protocol::CarRole) -> f64 {
@@ -27,6 +29,7 @@ pub fn tail(role: crate::protocol::CarRole) -> f64 {
         crate::protocol::CarRole::Private | crate::protocol::CarRole::Company => 0.175,
         crate::protocol::CarRole::Van | crate::protocol::CarRole::Tractor => 0.225,
         crate::protocol::CarRole::Truck => 0.7,
+        crate::protocol::CarRole::Ship => 0.5,
     }
 }
 

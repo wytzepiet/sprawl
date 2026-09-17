@@ -116,7 +116,7 @@ impl World {
         }
         for facing in 0..4u8 {
             let pos = at(facing);
-            if Self::footprint(pos, crate::blueprint::plot(kind, facing).size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t)) {
+            if self.fits(pos, kind, facing) {
                 let found = self.driveway_for(pos, kind, facing, true);
                 return Site { pos, facing, fits: true, door: found.map(|(_, d)| d), street: found.and_then(|(s, _)| street_at(s)) };
             }
@@ -222,12 +222,19 @@ impl World {
     /// The street and door a kind's plot would have at `pos` facing this
     /// way, if it fits there.
     pub fn site_facing(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<(EntityId, GridCoord)> {
-        let p = crate::blueprint::plot(kind, facing);
-        let open = Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t));
-        if !open {
+        if !self.fits(pos, kind, facing) {
             return None;
         }
         self.driveway_for(pos, kind, facing, false)
+    }
+
+    /// Can a kind's plot stand here this way round: open ground under the
+    /// whole footprint, and, for a kind whose lorry is a ship, water
+    /// behind its back for the quay (`world/sea.rs`).
+    pub fn fits(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> bool {
+        let p = crate::blueprint::plot(kind, facing);
+        Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t))
+            && (!crate::economy::ships(kind) || self.quay_at(pos, kind, facing).is_some())
     }
 
     fn building_covers(pos: GridCoord, size: (u8, u8), t: GridCoord) -> bool {
@@ -289,11 +296,11 @@ impl World {
         kind: BuildingKind,
         facing: u8,
     ) -> Option<EntityId> {
-        let size = crate::blueprint::plot(kind, facing).size;
-        let tiles: Vec<GridCoord> = Self::footprint(pos, size).collect();
-        if !tiles.iter().all(|&t| self.is_buildable(t) || self.is_driveway_stub(t)) {
+        if !self.fits(pos, kind, facing) {
             return None;
         }
+        let size = crate::blueprint::plot(kind, facing).size;
+        let tiles: Vec<GridCoord> = Self::footprint(pos, size).collect();
         let id = self.insert_at(GameObject::Building(Building::new(kind, size, facing)), Some(pos));
         for tile in &tiles {
             self.occupied.insert((tile.x, tile.y), id);

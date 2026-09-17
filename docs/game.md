@@ -77,8 +77,9 @@ produce goods**, **farms produce food**, both call for pickup. **Shops,
 supermarkets and restaurants consume them** and call for delivery. A
 buyer takes the cheapest delivered option, and a **warehouse** is what
 wins when it is nearer than the producer. What nobody in town buys, the
-edge buys, by road, slowly. The **port**, later, is a second door with
-cheaper freight. **Trains** are a bigger, cheaper truck from a station
+edge buys, by road, slowly. The **port** is a second door on the coast
+with cheaper freight: its ship brings everything boxed in from beyond
+the horizon (`economy.md` §12.10). **Trains** are a bigger, cheaper truck from a station
 on a mainline the map was born with.
 
 **Construction is a delivery.** A placed site is a call; a construction

@@ -35,7 +35,7 @@ type Card =
   | {
       kind: "car";
       id: number;
-      role: "Private" | "Van" | "Truck" | "Company" | "Tractor";
+      role: "Private" | "Van" | "Truck" | "Company" | "Tractor" | "Ship";
       owner: Link;
       rider: Link | null;
       stocks: { need: Need; full: number }[];
@@ -244,7 +244,7 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
 }
 
 function CarCard(c: Extract<Card, { kind: "car" }>) {
-  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : c.role === "Tractor" ? "Tractor" : "Car";
+  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : c.role === "Tractor" ? "Tractor" : c.role === "Ship" ? "Ship" : "Car";
   return (
     <>
       <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : "parked out of sight"} />

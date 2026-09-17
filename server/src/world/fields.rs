@@ -190,7 +190,7 @@ impl World {
         let sown = tiles(Stage::Sown);
         if !sown.is_empty() {
             let ripe = b.land.iter().filter(|t| t.stage == Stage::Sown).all(|t| now >= t.since + RIPEN);
-            let room = b.stocks.get(&economy::shelf_need(b.kind)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind, b.land.len()));
+            let room = crate::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m.good)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind, b.land.len()));
             if ripe && room {
                 return Some((Job::Harvest, sown));
             }
@@ -501,7 +501,7 @@ impl World {
                 (Job::Plough, Stage::Grass | Stage::Cut) => (tile.stage, tile.since) = (Stage::Ploughed, now),
                 (Job::Seed, Stage::Ploughed) => (tile.stage, tile.since) = (Stage::Sown, now),
                 (Job::Harvest, Stage::Sown) => {
-                    let room = b.stocks.get(&economy::shelf_need(b.kind)).is_some_and(|s| s.short() + 1e-6 >= crop.unwrap_or(0.0));
+                    let room = crate::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m.good)).is_some_and(|s| s.short() + 1e-6 >= crop.unwrap_or(0.0));
                     if room {
                         (tile.stage, tile.since) = (Stage::Cut, now);
                         cut = crop.unwrap_or(0.0);
