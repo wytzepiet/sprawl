@@ -47,7 +47,26 @@ pub enum Need {
     Services,
 }
 
+/// How a good is handled on its way through a door: boxed, or liquid.
+/// A port is per class (docs/economy.md §12.10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cargo {
+    Box,
+    Liquid,
+}
+
 impl Need {
+    /// The class a good is handled in: crates and parts come boxed, a
+    /// tank's litres are liquid, and services and labour are people and
+    /// have none. docs/economy.md §12.10.
+    pub fn cargo(self) -> Option<Cargo> {
+        match self {
+            Need::Eat | Need::Wear => Some(Cargo::Box),
+            Need::Fuel => Some(Cargo::Liquid),
+            _ => None,
+        }
+    }
+
     /// Baseline first, so ties fall to staying put.
     pub const ALL: [Need; 8] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure, Need::Fuel, Need::Wear, Need::Services];
     /// The needs a person carries. The tank and the wear are the car's,

@@ -149,6 +149,12 @@ impl World {
             && !node.outgoing.contains(&from_id) {
                 node.outgoing.push(from_id);
             }
+
+        // Reached, as by a survey road: a depot's fleet and a farm's land
+        // come with the driveway, not with the first call.
+        if into_building && let Some(id) = self.claimed_plot_at(to) {
+            self.attach_driveway(id);
+        }
     }
 
     /// Lay a street along a path, both ways, with no player-input checks:

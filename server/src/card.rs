@@ -43,6 +43,7 @@ fn link(world: &World, id: EntityId) -> Value {
             CarRole::Truck => "Lorry".into(),
             CarRole::Company => "Car".into(),
             CarRole::Tractor => "Tractor".into(),
+            CarRole::Ship => "Ship".into(),
         }),
         _ => ("gone", "gone".into()),
     };

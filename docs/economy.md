@@ -6,7 +6,7 @@ it, and again after one about where it comes from. The second rework is
 the first rule below — the town has one purse — and everything that
 followed from purses went with them (`shelved.md`). Built through step
 5 of §12, services and wear; §12.2 to §12.6 record what building each
-step decided. Supersedes
+step decided. Built through step 7 and the port (§12.10), 2026-09-17. Supersedes
 `game.md` §Money, which
 points here. Builds on `residents.md` (buckets, taps, the
 score), `services.md` (calls) and `parking.md` (lots as the place
@@ -79,12 +79,13 @@ out of these rules rather than be added.
 
 ## 2. What exists, and what stays
 
-- **Steps 1 to 6, as built** (§12.2 to §12.7): stocks, posted prices,
-  the building's turn, the one purse and the door, labour bought on the
-  building's turn, services made at the office and drawn by every
-  building, wear on the car and the workshop's bays, the farm and the
-  rows behind the crate and the meal, the land and the tractor. All
-  stand.
+- **Steps 1 to 7 and the port, as built** (§12.2 to §12.10): stocks,
+  posted prices, the building's turn, the one purse and the door, labour
+  bought on the building's turn, services made at the office and drawn
+  by every building, wear on the car and the workshop's bays, the farm
+  and the rows behind the crate and the meal, the land and the tractor,
+  the books to a season and the town's page, the port on the coast with
+  its ship and the sea's crossing. All stand.
 - **Purses.** Every resident had a wallet and every building a balance;
   each kept a float and swept the rest to the treasury, a resident's
   sweep was rent, and a building whose purse ran dry stopped. Built, run
@@ -122,8 +123,9 @@ never trades; the mayor builds.
 **The edge** is the world beyond, with rows of its own that never run
 short and prices that do not move (§8.1).
 
-Filed, until the port exists: haulers as companies whose stock is idle
-capacity. Today a building's own truck moves its goods, or the edge's.
+Filed still, the port built (§12.10): haulers as companies whose stock
+is idle capacity. A building's own truck moves its goods, or the edge's,
+and a port's ship moves the port's.
 
 ## 4. Stocks
 
@@ -271,11 +273,12 @@ leaves the house, and whoever hired them is where.
 
 ### 5.3 Freight
 
-Filed until the port. Today a truck is its owner's, and what it costs is
-the fuel and the driver's hours, which are already in unit cost. A
-hauler's posted price per container per tile, and a ship's floor at a
-fraction of a truck's because one crew moves a hundred boxes, come back
-with the second door (§8.1).
+A truck is its owner's, and what it costs is the fuel and the driver's
+hours, which are already in unit cost. A ship is its port's, and its
+floor is a fraction of a truck's because one crew moves a hundred boxes:
+its fuel and wear a tile over a shelf's worth, and the sea's crossing a
+fifth of the road's (§12.10). Filed still: a hauler's posted price per
+container per tile, for a company that carries for others.
 
 ## 6. Choosing: one protocol
 
@@ -376,10 +379,10 @@ pickup, and one comes from beyond the edge. **Construction** is
 unchanged: materials are a good, the construction firm a building, the
 site a call (`game.md` §Goods).
 
-Filed: orders as a record with a hauler; handling classes (box, liquid,
-bulk) and a port per class; joint replenishment, so a ship fills with
-everything at once; multi-drop rounds. Each waits for the vehicle that
-needs it.
+Handling classes and joint replenishment came with the port (§12.10): a
+good is boxed or liquid, a port is per class, and its ship fills every
+shelf at once. Filed: orders as a record with a hauler; multi-drop
+rounds. Each waits for the vehicle that needs it.
 
 ## 8. The door, and where money goes
 
@@ -460,11 +463,11 @@ ends at a bound with a name: drain it out and prices fall to floors,
 wages to the edge, exports become attractive and it comes back; flood it
 in and prices rise to the ceiling and imports become attractive.
 
-Later, **the port** is a second door with the same prices and cheaper
-freight, on a sea that is one connected body so that one price is the
-world's. Filed: the world's costs drifting slowly with its net trade,
-one global rule, so that a season's meta moves. Not before a season
-exists.
+**The port** (§12.10) is the second door: the same prices, the sea's
+crossing a fifth of the road's, on a sea that is one body joined to the
+map's edge, so that one price is the world's. Filed: the world's costs
+drifting slowly with its net trade, one global rule, so that a season's
+meta moves. Not before a season exists.
 
 ### 8.2 One purse
 
@@ -661,7 +664,9 @@ Each step is playable and nothing before step 2 can hurt anyone.
    the town's page, the company's line on the card (§12.9); the region
    and the advisor wait.
 
-Then, with the port: freight, haulers, classes, the second door.
+8. **The port.** The second door: a depot on the coast whose lorry is a
+   ship, the sea's crossing, the handling classes, the ship that fills
+   every shelf at once (§12.10). Haulers stay filed.
 
 ### 12.1 Step 1, to the number
 
@@ -1510,8 +1515,9 @@ the advisor.
   up, and the number the loop used to keep from midnight went.
 - **The company's line.** Of a building's revenue and its purchases,
   what crossed the door: a lorry's load sold to the edge, a commuter's
-  lunch, a fetch from beyond it, the fleet's fuel. Wages a commuter
-  takes home are not split out yet.
+  lunch, a fetch from beyond it, the fleet's fuel; and of its wages,
+  what commuters took home (built 2026-09-17, with the visits behind
+  each need on the town's page, §13.24).
 - **The panel.** The card's books show today and a day over the
   season, side by side, with the door's share under each. The town's
   page opens from the treasury dial: served per need, in and out at the
@@ -1552,6 +1558,150 @@ the advisor.
   until the mayor builds them. Whether the starting mix should say so
   before the page does is §10's question, still open (§13.18).
 
+### 12.10 The port, to the number
+
+The second door (§8.1), the roadmap's milestone 4: a facility on the
+coast whose vehicle is a ship, with the edge's prices and cheaper
+freight. Decided 2026-09-17, before the code, as follows.
+
+- **The port is a depot whose lorry is a ship.** It keeps shelves, buys
+  what it holds from beyond the edge, sells it to whoever calls by its
+  vans, posts a price on each shelf and nudges it by its own stock, and
+  its books are a company's, all as the warehouse does (§12.3). What
+  differs is the fetch: its ship sails from the quay behind it to the
+  horizon, is away a sailing, and comes back with every shelf's worth at
+  once. Nothing new decides anything: the building's turn raises the
+  same call, the same lead is learned, the same nudge steps the price,
+  and a shop's turn weighs the port's van against the warehouse's and
+  the world's lorry by the delivered price as it does today. A warehouse
+  fetches from the port as it fetches from a farm's yard, a seller in
+  town whose shelf is filled without a fetch from town, so a port on the
+  coast feeds a warehouse inland and the shops behind it, which is the
+  chain a port is the head of.
+- **The sea's crossing.** The world's price is the world's whichever
+  door it comes by, so that one price is the world's (§8.1); what differs
+  is the crossing, the share lost for carrying it over, and by sea it is
+  a fifth of the road's: two hundredths. The referent: ocean freight
+  runs at a tenth of road freight a tonne-kilometre and less, and sea
+  freight as a share of a cargo's value sits at a few percent against
+  the tenth a border costs, because one crew moves a hundred boxes
+  (§5.3). The port pays wholesale plus the sea's crossing for what its
+  ship lands, and the ship's own fuel and wear a tile of the voyage
+  (§12.6), spread over a shelf's worth, which is the ship's floor at a
+  fraction of a truck's. So the port's cost a crate sits under the
+  road's by the difference of the crossings, and that is what a port is
+  for: the ceiling of the band on what comes boxed drops by that much
+  where the port's van reaches.
+- **Handling classes.** A good has a class by how it is handled: crates
+  and parts come boxed, a tank's litres are liquid, and services and
+  labour are people and have none. A port is per class, and the one
+  built handles boxes: its shelves are every boxed good the town buys,
+  crates and parts, a shelf of the row's size each. The warehouse
+  handles boxes too, and so holds both (`roadmap.md` milestone 4): a
+  lorry brings one shelf's worth a trip, a ship fills every shelf at
+  once, which is the joint replenishment §7 filed. The liquid port, a
+  tanker terminal, is the same row with a tank, and waits for a fuel
+  trade worth one: today a tanker from beyond the edge fills a pump's
+  shelf in two hours.
+- **The coast.** The sea is the water joined to the map's edge, charted
+  once from the terrain; water that is not is a lake, and no port stands
+  on it. A port stands with its back to the sea: its footprint is land
+  like any plot's, its lot a yard for its vans on the street side, and a
+  tile of the sea behind its building's back face is the quay, where the
+  ship stands when it is home. The voyage is the shortest way over the
+  sea toward the map's edge, cut where it enters the fog: the ship sails
+  out of sight there, is away the sailing, and sails back in the way it
+  went. §13.6, how scarce coast should be, settles as: as scarce as the
+  map's. Nothing is added; a town born inland builds its road to the
+  sea. (First written with the fog as the horizon; what changed it is
+  below.)
+- **Numbers.** Dockers six, six to six, like the warehouse. Price 80
+  hours, a warehouse and a half, for the quay. A shelf of 240 a good, the
+  warehouse's. A tile every 1.2 seconds of the clock: a ship at twenty
+  knots on twelve-metre tiles, a little under a car. Four hours beyond
+  the horizon, twice a lorry's absence beyond the edge, so the lead the
+  reorder point learns is the voyage out and back plus the sailing, and
+  a port's shelf reorders at about a quarter full.
+- **Haulers stay filed.** A hauler is a company whose vehicles carry for
+  others at a posted price a load a tile, its stock the idle capacity
+  (§3). Nothing in town raises a call an owner's vehicle or the world's
+  cannot answer: every fetch is the buyer's lorry, every delivery the
+  seller's van or the world's lorry, and the port's ship is its own, as
+  the warehouse's lorry is. What §5.3 said would come back with the
+  second door, the ship's floor at a fraction of a truck's, comes back
+  as the ship's fuel over a shelf's worth. A third party's freight as a
+  line in two sets of books waits for the first call an owner's vehicle
+  cannot answer, which is the maker whose surplus should leave by ship.
+- **Not this cut.** Exports by ship. A maker's surplus goes out by road
+  as before, its own lorry or a pickup from beyond the edge, at the
+  road's crossing. For it to leave by sea the port would carry for the
+  maker, which is the hauler above, or buy it for its own shelf and ship
+  out what piles up, which is a trader; neither has a rule worth writing
+  until a season says the road's crossing on exports is a line the
+  treasury feels. The multiplayer's port (`multiplayer.md` §2), the
+  ferry that brings commuters and the batch that is the door's
+  capacity, is this building with a timetable, later.
+
+As built, 2026-09-17, with what the first look found:
+
+- **The sea is the water joined to the map's edge, not the fog.** The
+  horizon was to be the fog. Seed 7's starting town stands on a lake a
+  hundred tiles across that the survey covers from the first day, since
+  the roads laid to the neighbouring anchors reveal twelve chunks each
+  way, so a port on its shore had no fog to reach and sailed nowhere;
+  and with the whole map surveyed no water there reaches the map's edge
+  at all. The sea is now charted once from the terrain, every water
+  tile joined to the map's edge, flooded from the edge inward; water
+  that is not is a lake, and the ghost refuses a port whose back is on
+  one. The voyage is the shortest way over the sea toward the map's
+  edge, cut where it enters the fog, so a ship out of the survey is out
+  of sight either way. Seed 7's nearest sea is thirty-six tiles from
+  its town; of the first twenty seeds, fourteen start within a dozen
+  tiles of the sea and one a hundred and twenty off (`where_the_sea_is`,
+  an ignored test that prints it).
+- **The look.** Seed 7 at twenty times, a port on the east coast with
+  fifty-two tiles of street drawn out to it: staffed from beyond the
+  edge on the first morning, the whole wage bill on its remitted line;
+  a consultant's services on the third day, and its van's first nine
+  crates to a shop. Its shelves emptied by hand, the ship sailed 221
+  tiles to the map's edge, was away the sailing, came back the way it
+  went, and landed both shelves at once at the sea's crossing, as the
+  harness asserts to the hour.
+- **A stale call sent the ship out empty.** The two fetches, crates
+  and parts, were raised together; the ship answered the first and
+  landed both shelves, but the second call, unanswered, outlived the
+  landing, since a building's turn replaced unanswered calls only with
+  fresh ones for the same good and dropped none. So the ship sailed
+  again for a full shelf, and the lead learned from that call, raised
+  before the first voyage, was two voyages, which put the reorder point
+  above the shelf and the ship at sea for good. Every unanswered call at
+  a building now gives way to what its stocks say at its turn. A lorry
+  never showed this: one call is one load.
+- **The lead makes the port a hungry depot.** A depot reorders at what
+  its shelf could sell over the lead, a shelf turned once a day (§6.2,
+  §12.3); a voyage of 221 tiles out and back and four hours away is
+  fourteen hours, so the port reorders at about forty percent sold and
+  the ship brings ninety crates a sailing, where the road's lorry brings
+  a shelf every two hours. Right by the rule; whether a depot's rated
+  sales should be its shelf turned once a day or what it sold yesterday
+  is §13.25.
+- **The fleet stands from the day the street reaches it.** The mayor's
+  brush laid a driveway onto a plot without the reached step the
+  survey's roads take, so a warehouse's lorries and a port's ship
+  appeared at their first dispatch and the card's fleet stood empty
+  until then. The brush reaches a plot now as a survey road does.
+- **The seasons, with the warehouse holding parts.** All five hold: the
+  band and no ringing, no harm (1167 a day served in the first third,
+  1405 in the last), tenure at nothing, the slump's worst day 915
+  against a good day's 1347. The full town ends the season at 5985 in
+  the treasury from 6145, where the last print (§13.23) ended at 5241:
+  its workshop buys parts from the warehouse's van at the world's price
+  now, where it bought them beyond the edge with the crossing on each.
+- **Not seen yet.** A warehouse fetching from the port, and the band's
+  ceiling on crates dropping where the port's van reaches: the starting
+  town's shops buy a crate or two a day, so nothing ran short enough to
+  move a price in three days. That is a season's to say (§13.26).
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
@@ -1560,7 +1710,9 @@ the advisor.
 4. Household delivery (§6.1) — permitted, unbuilt. Until then a meal at
    home is groceries from the edge (§12.2).
 5. `edge_price` drift for seasons (§8.1).
-6. How scarce coast should be, when the port comes.
+6. ~~How scarce coast should be, when the port comes.~~ As scarce as
+   the map's: the sea is the water joined to its edge, and most
+   starting towns are on it (§12.10).
 7. Shop labour against shop trade (§12.2): fewer staff per shop, shorter
    shifts, or a town whose shops are meant to fail until it has a
    district — and the price of a meal against the ladder, which §12.2
@@ -1581,7 +1733,8 @@ the advisor.
     What its rows keep: capital's third, the household's tenth (§8.1).
 13. The household row's transport is a budget sixth, and its services
     the balance; the car burns what it burns. Step 6 left it so
-    (§12.7): making the row's transport the fuel the commute costs,
+    (§12.7), and the port (§12.10) now stands, so the row can be
+    balanced once against both doors: making the row's transport the fuel the commute costs,
     per tile at the world's price, with services given their own
     share, is a rebalancing of the household row with a season of its
     own to run, and the door's check (§11.9) becomes a season print
@@ -1628,10 +1781,10 @@ the advisor.
     reaches first, and the second finds the first's tiles occupied
     only if they were built on. Whether two farms may claim the same
     grass has not come up.
-24. The visits behind the served line (§10) are not counted: the town's
-    page says what each need was worth, not how many times it was
-    served. The lump on the wire is per sale, so the count is a line
-    away when a panel wants it.
+24. ~~The visits behind the served line (§10) are not counted.~~ Built
+    2026-09-17: the town's page counts the lumps paid in town under
+    each need beside what it was worth; a night is served by the day
+    and has no visit to count.
 23. ~~The band's season fails on the office after the fifth cut of
     the land (§12.8): its services price climbs in a sawtooth over the
     last ten days, 2.06 to 2.40, a notch past what hunting at the
@@ -1640,3 +1793,17 @@ the advisor.
     settled at 2.15 with the band holding: the town's sensitivity to
     the farm's hours, not a fault of the office. Forty-two pickups the
     season, 5241 in the treasury at its end.
+25. A depot's rated sales are its shelf turned once a day (§12.3), so a
+    port with a fourteen-hour lead reorders at forty percent sold and
+    sails for ninety crates (§12.10). Yesterday's sales would make the
+    reorder point the town's and not the shelf's, and a fresh depot's
+    first day would want a number.
+26. A season with a port: §11.5 and §11.8 over the full town with a
+    port beside the warehouse, to see the ceiling on crates drop where
+    the port's van reaches and the warehouse fetch from the quay.
+    The town test's street has no coast yet.
+27. Exports by ship (§12.10): a maker's surplus leaves by road at the
+    road's crossing. The port carrying for the maker is the hauler
+    filed at §3; the port buying it and shipping out what piles up is a
+    trader. Which, when a season says the road's crossing on exports is
+    a line the treasury feels.

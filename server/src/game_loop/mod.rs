@@ -201,10 +201,12 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                             // Its shelf, emptied: a depot fetches, a maker
                             // is full again by tomorrow, anything else
                             // calls for stock.
-                            if let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object)
-                                && let Some(stock) = b.stocks.get_mut(&crate::economy::shelf_need(b.kind))
-                            {
-                                stock.level = 0.0;
+                            if let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) {
+                                for need in crate::economy::shelves(b.kind) {
+                                    if let Some(stock) = b.stocks.get_mut(&need) {
+                                        stock.level = 0.0;
+                                    }
+                                }
                             }
                             crate::calls::turn(&mut world, &mut events, id, now);
                             serde_json::json!({ "calls": world.calls.iter().map(|c| serde_json::json!({ "kind": format!("{:?}", c.kind), "good": c.good, "at": c.at, "answered_by": c.answered_by })).collect::<Vec<_>>() })
@@ -839,10 +841,13 @@ mod tests {
         calls::turn(world, events, shop, now);
     }
 
-    /// A shelf, as a fraction of full.
+    /// The first shelf, as a fraction of full.
     fn stock(world: &World, building: EntityId) -> f64 {
         match world.objects.get(building).unwrap().object {
-            GameObject::Building(ref b) => b.stocks[&crate::economy::shelf_need(b.kind)].level / b.stocks[&crate::economy::shelf_need(b.kind)].cap,
+            GameObject::Building(ref b) => {
+                let s = &b.stocks[&crate::economy::shelves(b.kind)[0]];
+                s.level / s.cap
+            }
             _ => unreachable!(),
         }
     }
@@ -1246,6 +1251,94 @@ mod tests {
         let e = world.objects.get(lorry).unwrap();
         assert_eq!(e.position, world.objects.get(depot).unwrap().position, "the lorry is back in its dock");
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none() && c.spot.is_some()));
+    }
+
+    /// The second door (docs/economy.md §12.10): a port stands with its
+    /// back to the water, its vans answer the shops' calls like a
+    /// warehouse's, and when its shelves run low its ship sails from the
+    /// quay to the horizon, is away the sailing, and comes home to land
+    /// every shelf's worth at once at the sea's crossing, a fifth of the
+    /// road's.
+    #[test]
+    fn a_port_fetches_by_ship_and_its_vans_deliver() {
+        let mut world = street();
+        // The sea, behind the street's south side from x = 40 on.
+        for y in 5..14 {
+            for x in 40..170 {
+                world.terrain.insert((x, y), TerrainType::Water);
+            }
+        }
+        let shop = build(&mut world, 20, BuildingKind::Shop, 1);
+        assert!(world.place_on_street(GridCoord { x: 30, y: 1 }, BuildingKind::Port).is_none(), "a port stood with its back on land");
+        let port = build(&mut world, 60, BuildingKind::Port, 1);
+        let quay = world.quay(port).expect("a port has a quay");
+        assert_eq!(world.terrain.get(&(quay.x, quay.y)), Some(&TerrainType::Water), "the quay is on land");
+        let ship = world
+            .objects
+            .iter()
+            .find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == port && c.role == crate::protocol::CarRole::Ship))
+            .map(|e| e.id)
+            .expect("a ship from the day it is reached");
+        assert_eq!(world.objects.get(ship).unwrap().position, Some(quay), "the ship is not at the quay");
+        let shelves = |w: &World| match w.objects.get(port).unwrap().object {
+            GameObject::Building(ref b) => crate::economy::shelves(b.kind).into_iter().map(|n| (n, b.stocks[&n].level / b.stocks[&n].cap)).collect::<Vec<_>>(),
+            _ => unreachable!(),
+        };
+        assert_eq!(shelves(&world).into_iter().map(|(n, _)| n).collect::<Vec<_>>(), vec![crate::needs::Need::Eat, crate::needs::Need::Wear], "a port holds everything that comes boxed");
+
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let mut sailed = false;
+        let mut gone = false;
+        let watch = |world: &World, sailed: &mut bool, gone: &mut bool| {
+            let e = world.objects.get(ship).unwrap();
+            *sailed |= matches!(e.object, GameObject::Car(ref c) if c.run.as_ref().is_some_and(|r| r.job == crate::protocol::Job::Sail));
+            *gone |= e.position.is_none();
+        };
+        // The shop sells; the port's van restocks it, off the port's shelf.
+        let mut t = 0;
+        let mut rounds = 0;
+        while world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
+            rounds += 1;
+            assert!(rounds <= 8, "the port never ran low: {:?}", shelves(&world));
+            sell(&mut world, &mut events, shop, 35.0, t);
+            let van = world.calls.iter().find(|c| c.kind == calls::CallKind::Stock).and_then(|c| c.answered_by).expect("a van answers");
+            assert!(matches!(world.objects.get(van).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Van && c.owner == port), "not the port's van");
+            let until = t + 3 * DAY_MS as u64 / 24;
+            while step(&mut world, &mut events, &mut intersections, &mut t, until) {
+                watch(&world, &mut sailed, &mut gone);
+            }
+        }
+        assert_eq!(world.calls.iter().find(|c| c.kind == calls::CallKind::Fetch).and_then(|c| c.answered_by), Some(ship), "the fetch is not the ship's");
+        let before = world.treasury;
+        let crates_short = match world.objects.get(port).unwrap().object {
+            GameObject::Building(ref b) => b.stocks[&crate::needs::Need::Eat].short(),
+            _ => unreachable!(),
+        };
+        for _ in 0..40 {
+            let until = t + calls::AWAY_MS / 4;
+            while step(&mut world, &mut events, &mut intersections, &mut t, until) {
+                watch(&world, &mut sailed, &mut gone);
+            }
+            if world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
+                break;
+            }
+        }
+        assert!(sailed, "the ship never sailed");
+        assert!(gone, "the ship was never beyond the horizon");
+        assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch), "the fetch is done");
+        assert!(shelves(&world).iter().all(|&(_, full)| full == 1.0), "every shelf is full again: {:?}", shelves(&world));
+        let e = world.objects.get(ship).unwrap();
+        assert_eq!(e.position, Some(quay), "the ship is not home at the quay");
+        assert!(matches!(e.object, GameObject::Car(ref c) if c.run.is_none() && c.spot.is_some()));
+        // Paid at the sea's crossing: what the load cost the town is under
+        // what the road would have charged by the difference.
+        let paid = world.town.on(t).bought[&crate::needs::Need::Eat];
+        let by_sea = crates_short * crate::economy::landed(BuildingKind::Port, crate::economy::wholesale(crate::needs::Need::Eat));
+        let by_road = crates_short * crate::economy::import(crate::economy::wholesale(crate::needs::Need::Eat));
+        assert!((paid - by_sea).abs() < 1e-6, "the crates cost {paid}, not {by_sea} by sea");
+        assert!(paid < by_road, "no cheaper than the road: {paid} against {by_road}");
+        assert!(before - world.treasury > paid, "the ship's own fuel was not paid for");
     }
 
     /// Every wake, every arrival: the log the model in docs/residents.md is
@@ -2132,7 +2225,7 @@ mod tests {
         assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Pickup), "the pickup never left: {:?}", world.calls);
         // Paid onto the farm's page: the treasury is everyone's purse and
         // the town buys from beyond the edge meanwhile.
-        let paid = crate::economy::export(full * crate::economy::wholesale(Need::Eat));
+        let paid = crate::economy::export(full * crate::economy::wholesale(crate::needs::Need::Eat));
         let got = world.books[&farm].on(now + 6 * day / 24).revenue - before;
         assert!((got - paid).abs() < 5.0, "the edge paid {got} for the yard, not {paid}");
         assert!(lorries(&world) <= stood, "the pickup lorry stayed");

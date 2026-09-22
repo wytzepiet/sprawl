@@ -83,8 +83,15 @@ pub const SERVICE_MS: GameTime = DAY_MS as GameTime / 144;
 pub const RETRY_MS: GameTime = DAY_MS as GameTime / 24;
 pub const RETRY: EntityId = EntityId::MAX - 1;
 
-/// Who carries a good over the edge: a lorry for crates and tanks, a car
-/// for someone who does the job on site.
+fn kind_of(world: &World, building: EntityId) -> Option<crate::protocol::BuildingKind> {
+    match world.objects.get(building)?.object {
+        GameObject::Building(ref b) => Some(b.kind),
+        _ => None,
+    }
+}
+
+/// Who carries a good over the edge by road: a lorry for crates and
+/// tanks, a car for someone who does the job on site.
 fn lorry(good: Need) -> CarRole {
     if good == Need::Services { CarRole::Company } else { CarRole::Truck }
 }
@@ -129,14 +136,16 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
     for (&good, stock) in &b.stocks {
         if economy::buys(kind, good) && stock.level < economy::reorder(world, building, good) {
-            call(if economy::depot(kind) && good == economy::shelf_need(kind) { CallKind::Fetch } else { CallKind::Stock }, good);
+            call(if economy::depot(kind) && economy::shelves(kind).contains(&good) { CallKind::Fetch } else { CallKind::Stock }, good);
         }
     }
     // One call a good a building: a vehicle already on its way keeps its
-    // call; a call nothing has answered yet gives way to what the stock
-    // says now.
+    // call; every call nothing has answered yet gives way to what the
+    // stock says now, including one for a shelf that filled meanwhile —
+    // a ship lands every shelf at once, and the call for the second
+    // shelf must not send it out again empty (docs/economy.md §12.10).
     calls.retain(|c| !world.calls.iter().any(|o| o.at == c.at && o.good == c.good && o.answered_by.is_some()));
-    world.calls.retain(|o| !(o.answered_by.is_none() && calls.iter().any(|c| c.at == o.at && c.good == o.good)));
+    world.calls.retain(|o| !(o.at == building && o.answered_by.is_none()));
     if !calls.is_empty() {
         world.calls.extend(calls);
         dispatch(world, events, now);
@@ -153,11 +162,11 @@ pub fn turns(world: &mut World, events: &mut EventQueue, now: GameTime) {
     }
 }
 
-/// Does this building have anything on the shelf its taps sell from? A
-/// building that keeps no shelf always does.
+/// Does this building have something on every shelf its taps sell from?
+/// A building that keeps no shelf always does.
 pub fn stocked(world: &World, building: EntityId) -> bool {
     match world.objects.get(building).map(|e| &e.object) {
-        Some(GameObject::Building(b)) => b.stocks.get(&economy::shelf_need(b.kind)).is_none_or(|s| s.level > 0.0),
+        Some(GameObject::Building(b)) => blueprint(b.kind).taps.iter().all(|t| b.stocks.get(&t.need).is_none_or(|s| s.level > 0.0)),
         _ => false,
     }
 }
@@ -181,8 +190,8 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
         if world.road_node_for_building(at).is_none() {
             continue;
         }
-        let Some((here, order)) = world.objects.get(at).and_then(|e| match e.object {
-            GameObject::Building(ref b) => Some((e.position?, b.stocks.get(&good)?.short())),
+        let Some((here, row, order)) = world.objects.get(at).and_then(|e| match e.object {
+            GameObject::Building(ref b) => Some((e.position?, b.kind, b.stocks.get(&good)?.short())),
             _ => None,
         }) else {
             continue
@@ -196,6 +205,9 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
                     car
                 })
             }),
+            // A port's ship sails for its shelves, while the town can pay
+            // for what it brings back (docs/economy.md §9, §12.10).
+            CallKind::Fetch if economy::ships(row) => free_vehicle(world, at, CarRole::Ship).and_then(|(ship, _)| (world.treasury > 0.0 && world.set_sail(events, ship, now)).then_some(ship)),
             // The building's own vehicle goes for its input: to a source
             // in town, or out past the edge if the town can pay for what
             // it brings back (docs/economy.md §9).
@@ -254,8 +266,9 @@ enum Source {
 /// Where a building's own vehicle fetches its input from: the cheapest
 /// landed, which is the load at the posted price in hours of the
 /// building's own earning, plus the drive there and back and the wait at
-/// the far end — a maker's yard in town with the good on it, or beyond
-/// the edge while the town can pay. `None` where nothing can be reached.
+/// the far end — a maker's yard or a port's quay in town with the good
+/// on it (`economy::source`), or beyond the edge while the town can pay.
+/// `None` where nothing can be reached.
 fn cheapest_source(world: &mut World, at: EntityId, good: Need, now: GameTime) -> Option<Source> {
     let (order, here) = match world.objects.get(at) {
         Some(e) => match e.object {
@@ -268,7 +281,7 @@ fn cheapest_source(world: &mut World, at: EntityId, good: Need, now: GameTime) -
     let mut makers: Vec<EntityId> = world
         .objects
         .iter()
-        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::makes(b.kind, good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
+        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::source(b.kind, good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
         .map(|e| e.id)
         .collect();
     makers.sort_unstable();
@@ -321,7 +334,7 @@ fn cheapest_seller(world: &mut World, at: EntityId, good: Need, now: GameTime) -
     let mut depots: Vec<EntityId> = world
         .objects
         .iter()
-        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::depot(b.kind) && economy::shelf_need(b.kind) == good && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
+        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::depot(b.kind) && economy::shelves(b.kind).contains(&good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
         .map(|e| e.id)
         .collect();
     depots.sort_unstable();
@@ -363,7 +376,11 @@ pub fn stable(world: &mut World, facility: EntityId) {
     let have = fleet_of(world, facility).len();
     for &role in blueprint(kind).vehicles.iter().skip(have) {
         let car = world.insert_at(GameObject::Car(Car::new(facility, role)), tile);
-        world.park_in_lot(facility, car, 0);
+        if role == CarRole::Ship {
+            world.moor(car);
+        } else {
+            world.park_in_lot(facility, car, 0);
+        }
     }
 }
 
@@ -373,7 +390,7 @@ fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole) -> Option<
     let door = world.road_node_for_building(facility)?;
     stable(world, facility);
     let car = fleet_of(world, facility).into_iter().find(|&car| {
-        matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.away == 0)
+        matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.run.is_none() && c.away == 0)
     })?;
     Some((car, door))
 }
@@ -398,16 +415,20 @@ fn fleet_of(world: &World, facility: EntityId) -> Vec<EntityId> {
 /// in its yard with nothing to do is filled and put right there
 /// (`economy::refilled`).
 pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: GameTime) {
-    let (owner, away, here, run) = match world.objects.get(car) {
+    let (owner, away, here, run, role) = match world.objects.get(car) {
         Some(e) => match e.object {
-            GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none() => (c.owner, c.away, e.position, c.run.is_some()),
+            GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none() => (c.owner, c.away, e.position, c.run.is_some(), c.role),
             _ => return,
         },
         None => return,
     };
-    // A tractor on its run is at the next tile.
+    // A tractor on its run, or a ship on its voyage, is at the next tile.
     if run {
-        world.tractor_step(events, car, now);
+        if role == CarRole::Ship {
+            world.ship_step(events, car, now);
+        } else {
+            world.tractor_step(events, car, now);
+        }
         return;
     }
     // Home with nothing to do: filled and put right in the yard, at the
@@ -428,11 +449,16 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
             dispatch(world, events, now);
             return;
         }
-        // Back in from beyond the edge, home to the yard.
+        // Back in from beyond the edge, home to the yard: over the
+        // horizon to the quay, or in at the nearest exit and along the
+        // roads.
         let home = world.objects.get(owner).and_then(|e| e.position);
-        let came = home
-            .and_then(|p| world.entry_node_near(p))
-            .is_some_and(|entry| crate::car::spawn::start_trip(world, events, car, entry, owner, now, GameTime::MAX));
+        let came = if role == CarRole::Ship {
+            world.sail_home(events, car, now)
+        } else {
+            home.and_then(|p| world.entry_node_near(p))
+                .is_some_and(|entry| crate::car::spawn::start_trip(world, events, car, entry, owner, now, GameTime::MAX))
+        };
         if came {
             if let Some(entry) = world.objects.get_mut(car)
                 && let GameObject::Car(ref mut c) = entry.object
@@ -482,10 +508,15 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
     match call.kind {
         // A maker's car is paid for its load; a lorry lands its, from a
         // seller in town at the seller's price or from beyond the edge
-        // without limit.
+        // without limit; a ship lands every shelf's worth at once.
         CallKind::Ship => economy::exported(world, call.at, call.good, call.load, now),
         CallKind::Fetch => match call.from {
             Some(seller) => economy::delivered(world, call.at, Some(seller), call.good, call.load, now),
+            None if role == CarRole::Ship => {
+                for good in kind_of(world, call.at).map(economy::shelves).unwrap_or_default() {
+                    economy::delivered(world, call.at, None, good, f64::INFINITY, now);
+                }
+            }
             None => economy::delivered(world, call.at, None, call.good, f64::INFINITY, now),
         },
         CallKind::Pickup => {}

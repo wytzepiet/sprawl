@@ -72,6 +72,10 @@ pub enum BuildingKind {
     /// that takes them to the shops, and a lorry for what nobody in town
     /// buys. Placed by the mayor.
     Farm,
+    /// The second door: a depot on the coast whose lorry is a ship, its
+    /// shelves filled from beyond the horizon at the sea's crossing and
+    /// sold by van. Placed by the mayor, with its back to the water.
+    Port,
     /// The world beyond the survey, standing where a road runs off the map.
     /// Not placed by anyone: it appears at every road exit and moves with
     /// the frontier. See `blueprint.rs`.
@@ -80,7 +84,7 @@ pub enum BuildingKind {
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 13] = [
+    pub const ALL: [BuildingKind; 14] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -93,6 +97,7 @@ impl BuildingKind {
         BuildingKind::Supermarket,
         BuildingKind::Warehouse,
         BuildingKind::Farm,
+        BuildingKind::Port,
         BuildingKind::Edge,
     ];
 }
@@ -154,20 +159,23 @@ pub enum Stage {
     Cut,
 }
 
-/// What a tractor does to a tile as it drives over it.
+/// What a vehicle does to a tile as it drives over it: a tractor's job
+/// on the land, or a ship's sailing over the water, which does nothing
+/// to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Job {
     Plough,
     Seed,
     Harvest,
+    Sail,
 }
 
-/// A tractor's run over the land: the tiles it drives in order, doing its
-/// job to each as it arrives, standing on the first at `started` and
-/// reaching one more every `pace` milliseconds. Off the roads: no route,
-/// no claims, no queue — and nothing that changes as it goes, so the
-/// run is sent once.
+/// A run off the roads: a tractor's over the land, a ship's over the
+/// water. The tiles it drives in order, doing its job to each as it
+/// arrives, standing on the first at `started` and reaching one more
+/// every `pace` milliseconds. No route, no claims, no queue — and nothing
+/// that changes as it goes, so the run is sent once.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Run {
@@ -221,6 +229,9 @@ pub enum CarRole {
     /// A farm's: out along the track to a ripe field and home with the
     /// crop, driven by a hand on shift. On the road it is a slow car.
     Tractor,
+    /// A port's: from the quay behind it over the water to the horizon,
+    /// and back with every shelf's worth at once. Never on a road.
+    Ship,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -274,7 +285,8 @@ pub struct Car {
     /// stop. A save from before cars had them gets them full.
     #[serde(default = "crate::needs::Bucket::driven")]
     pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
-    /// A tractor's run over its farm's land, while it is on one.
+    /// A tractor's run over its farm's land, or a ship's voyage, while
+    /// it is on one.
     #[serde(default)]
     pub run: Option<Run>,
 }

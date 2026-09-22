@@ -31,6 +31,7 @@ spot: Pose | null,
  */
 stocks: { [key in Need]?: Stock }, 
 /**
- * A tractor's run over its farm's land, while it is on one.
+ * A tractor's run over its farm's land, or a ship's voyage, while
+ * it is on one.
  */
 run: Run | null, };

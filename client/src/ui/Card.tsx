@@ -35,7 +35,7 @@ type Card =
   | {
       kind: "car";
       id: number;
-      role: "Private" | "Van" | "Truck" | "Company" | "Tractor";
+      role: "Private" | "Van" | "Truck" | "Company" | "Tractor" | "Ship";
       owner: Link;
       rider: Link | null;
       stocks: { need: Need; full: number }[];
@@ -74,6 +74,8 @@ interface Page {
   revenue: number;
   purchases: number;
   wages: number;
+  /** Of the wages, what commuters took home beyond the edge. */
+  remitted: number;
   margin: number;
   /** Of the revenue and the purchases, what crossed the door. */
   exported: number;
@@ -242,7 +244,7 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
 }
 
 function CarCard(c: Extract<Card, { kind: "car" }>) {
-  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : c.role === "Tractor" ? "Tractor" : "Car";
+  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : c.role === "Tractor" ? "Tractor" : c.role === "Ship" ? "Ship" : "Car";
   return (
     <>
       <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : "parked out of sight"} />
@@ -354,6 +356,7 @@ function BuildingCard(c: Extract<Card, { kind: "building" }>) {
                     <Show when={t().purchases > 0 || mean((p) => p.purchases) > 0}>{line("Bought", (p) => p.purchases)}</Show>
                     <Show when={t().imported > 0 || mean((p) => p.imported) > 0}>{line("· from beyond it", (p) => p.imported)}</Show>
                     <Show when={t().wages > 0 || mean((p) => p.wages) > 0}>{line("Wages", (p) => p.wages)}</Show>
+                    <Show when={t().remitted > 0 || mean((p) => p.remitted) > 0}>{line("· home beyond it", (p) => p.remitted)}</Show>
                     {line("Margin", (p) => p.margin, true)}
                   </>
                 );

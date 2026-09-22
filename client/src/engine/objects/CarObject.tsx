@@ -47,6 +47,12 @@ const LANE_OFFSET = 0.11;
 const CAR_Z = 0.095;
 /** A box sits on the ground: its centre is half its height up. */
 const GROUND = CAR_Z - 0.15 / 2;
+/** A ship: a long low hull, dark, afloat on the water, which lies half
+ *  a unit under the land. */
+const HULL = { w: 0.45, l: 1.6, h: 0.2 };
+const shipGeo = boxGeometry(HULL.w, HULL.l, HULL.h);
+const SHIP = new Color3(0.2, 0.24, 0.3);
+const SHIP_Z = -0.5 + HULL.h / 2;
 
 /// Small deterministic hash so a car's colour is a fact about the car, not
 /// a roll of the dice.
@@ -68,16 +74,18 @@ export function mountCar(
   if (car.role === "Truck") return mountLorry(entry.id, car, pool, scene, look);
   // A tractor is drawn as a van in the farm's green until it has a shape of its own.
   const van = car.role === "Van" || car.role === "Tractor";
-  const color = car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
-  const bucket = car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
-  pool.ensureBucket(bucket, van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
+  const ship = car.role === "Ship";
+  const color = ship ? SHIP : car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
+  const bucket = ship ? `ship${look.key}` : car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
+  pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
+  const z = ship ? SHIP_Z : CAR_Z;
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,
   // and the car is out of sight until it moves.
   if (!car.trip && !car.run) {
     if (!car.spot) return () => {};
     const { at, heading } = car.spot;
-    const instanceId = pool.addInstance(bucket, [at[0], at[1], van ? GROUND + 0.11 : CAR_Z], [0, 0, heading - Math.PI / 2]);
+    const instanceId = pool.addInstance(bucket, [at[0], at[1], van ? GROUND + 0.11 : z], [0, 0, heading - Math.PI / 2]);
     carPoses.set(entry.id, [at[0], at[1]]);
     parts.set(entry.id, [{ key: bucket, id: instanceId }]);
     return () => {
@@ -86,7 +94,7 @@ export function mountCar(
       parts.delete(entry.id);
     };
   }
-  const f = car.run ? followRun(car) : follow(car);
+  const f = car.run ? followRun(car, z) : follow(car);
   if (!f) return () => {};
   const initial = f.now();
   const instanceId = pool.addInstance(bucket, initial.pos, initial.rot);
@@ -237,18 +245,19 @@ function follow(car: Car): Follower | null {
   });
 }
 
-/** A tractor on its run over the land: the planned tiles, centre to
+/** A tractor on its run over the land, or a ship on its voyage: the
+ *  planned tiles, centre to
  *  centre with no lane, on the same rounded path as a trip so it corners
  *  like anything else — but by the server's clock, not by its own
  *  physics: on the run's `k`th tile `k` paces after it started, wherever
  *  the corners put that on the path, so it is where the server has it
  *  when the job is done there. */
-function followRun(car: Car): Follower | null {
+function followRun(car: Car, z: number): Follower | null {
   const run = car.run!;
   const drawn = drawnPath(run.path.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0)), 0, 0, 0);
   if (!drawn) return null;
   const { atNode, length } = drawn;
-  const at = (dist: number) => drawn.at(dist, CAR_Z);
+  const at = (dist: number) => drawn.at(dist, z);
   const now = (): Fix => {
     const tile = Math.min(Math.max(0, (simNow() - run.started) / run.pace), run.path.length - 1);
     const k = Math.min(Math.floor(tile), atNode.length - 2);

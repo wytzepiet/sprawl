@@ -13,7 +13,7 @@ use std::sync::LazyLock;
 use serde_json::{json, Value};
 
 use crate::needs::curve::Curve;
-use crate::needs::{Need, Tap};
+use crate::needs::{Cargo, Need, Tap};
 use crate::protocol::{CarRole, BuildingKind, DAY_MS};
 
 const H: u32 = DAY_MS / 24;
@@ -59,7 +59,13 @@ pub struct Blueprint {
     pub makes: Option<Make>,
     /// The vehicles it runs, each in a dock of its yard. A kind with a
     /// shelf and vehicles sells the shelf by delivery (`economy::depot`).
+    /// A kind whose vehicle is a ship fetches by sea, at the sea's
+    /// crossing, and stands with its back to the water.
     pub vehicles: &'static [CarRole],
+    /// The handling class it keeps a shelf of every good in: a depot's
+    /// boxes. None for a row with one shelf, its make's or its taps'
+    /// (`economy::shelves`). docs/economy.md §12.10.
+    pub handles: Option<Cargo>,
     /// A farm: its land is what its tractor ploughs in a shift, and its
     /// yard holds a harvest, the cycle's make (docs/economy.md §12.8).
     pub farm: bool,
@@ -175,19 +181,19 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     vec![
         (House, Blueprint {
             class: Living, homes: 2, jobs: 0, size: (1, 1), lot: (0, 0), price: 5.0,
-            stock: 0, makes: None, vehicles: &[], farm: false,
+            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
             taps: household(2),
         }),
         (Apartment, Blueprint {
             class: Living, homes: 7, jobs: 0, size: (2, 1), lot: (2, 1), price: 15.0,
-            stock: 0, makes: None, vehicles: &[], farm: false,
+            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
             taps: household(7),
         }),
         // A shop seats as many as it staffs, and the high street is somewhere
         // to be until late.
         (Shop, Blueprint {
             class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 18.0,
-            stock: 40, makes: None, vehicles: &[], farm: false,
+            stock: 40, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(9, 18, 2),
                 meal(hours(9 * H, 18 * H), 7),
@@ -202,7 +208,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // make: twelve desks, nine hours.
         (Office, Blueprint {
             class: Commerce, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 15.0,
-            stock: 108, makes: Some(Make { good: Services, per_hour: 1.0 }), vehicles: &[CarRole::Company], farm: false,
+            stock: 108, makes: Some(Make { good: Services, per_hour: 1.0 }), vehicles: &[CarRole::Company], farm: false, handles: None,
             taps: vec![shift(8, 17, 12)],
         }),
         // The garage: cars come in worn and leave put right, two bays at a
@@ -214,7 +220,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // pump's tanks.
         (Workshop, Blueprint {
             class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (2, 1), price: 8.0,
-            stock: 30, makes: None, vehicles: &[], farm: false,
+            stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(7, 16, 4),
                 bay(always(), 2),
@@ -222,14 +228,14 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         }),
         (Factory, Blueprint {
             class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 25.0,
-            stock: 0, makes: None, vehicles: &[], farm: false,
+            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![shift(6, 15, 12)],
         }),
         // A restaurant seats a dozen, from lunch until late, and is an evening
         // out in itself. The first kind the mayor can place by hand.
         (Restaurant, Blueprint {
             class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (2, 1), price: 16.0,
-            stock: 30, makes: None, vehicles: &[], farm: false,
+            stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(11, 23, 3),
                 meal(hours(11 * H, 22 * H), 7),
@@ -240,7 +246,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // staff, an evening's crowd, a kitchen until eleven.
         (Bar, Blueprint {
             class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 16.0,
-            stock: 30, makes: None, vehicles: &[], farm: false,
+            stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(18, 2, 2),
                 meal(hours(18 * H, 23 * H), 7),
@@ -254,7 +260,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // lot full, or it would never stop ordering.
         (GasStation, Blueprint {
             class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (2, 1), price: 14.0,
-            stock: 40, makes: None, vehicles: &[], farm: false,
+            stock: 40, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(6, 22, 1),
                 pump(always(), 4),
@@ -265,18 +271,19 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // placeable with something to run out of.
         (Supermarket, Blueprint {
             class: Commerce, homes: 0, jobs: 6, size: (2, 2), lot: (2, 1), price: 47.0,
-            stock: 150, makes: None, vehicles: &[], farm: false,
+            stock: 150, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(8, 21, 6),
                 meal(hours(8 * H, 21 * H), 12),
             ],
         }),
         // Where stock comes from. Its trucks answer the shops' calls; until
-        // there is one, every delivery comes from beyond the edge. Its
-        // shelf is six shops' worth.
+        // there is one, every delivery comes from beyond the edge. It
+        // holds everything that comes boxed, a shelf of six shops' worth
+        // each: crates, and the parts a workshop fits.
         (Warehouse, Blueprint {
             class: Industry, homes: 0, jobs: 6, size: (2, 2), lot: (2, 2), price: 56.0,
-            stock: 240, makes: None, vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van], farm: false,
+            stock: 240, makes: None, vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van], farm: false, handles: Some(Cargo::Box),
             taps: vec![shift(6, 18, 6)],
         }),
         // Where food comes from. Four hands, six to three, each growing a
@@ -292,8 +299,18 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // yard is a harvest: the cycle's three days of make.
         (Farm, Blueprint {
             class: Industry, homes: 0, jobs: 4, size: (3, 2), lot: (2, 2), price: 40.0,
-            stock: 1944, makes: Some(Make { good: Eat, per_hour: 18.0 }), vehicles: &[CarRole::Tractor], farm: true,
+            stock: 1944, makes: Some(Make { good: Eat, per_hour: 18.0 }), vehicles: &[CarRole::Tractor], farm: true, handles: None,
             taps: vec![shift(6, 15, 4)],
+        }),
+        // The second door (economy.md §12.10): a depot whose lorry is a
+        // ship. Six dockers, six to six; a shelf of everything that comes
+        // boxed, the warehouse's size, filled by the ship at the sea's
+        // crossing, a fifth of the road's; vans for the last mile. It
+        // stands with its back to the water, and the ship at the quay.
+        (Port, Blueprint {
+            class: Industry, homes: 0, jobs: 6, size: (3, 2), lot: (2, 2), price: 80.0,
+            stock: 240, makes: None, vehicles: &[CarRole::Ship, CarRole::Van, CarRole::Van], farm: false, handles: Some(Cargo::Box),
+            taps: vec![shift(6, 18, 6)],
         }),
         // The world beyond the survey, standing where a road runs off the
         // map. Every tap in the game, never closed and never crowded: a
@@ -305,7 +322,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // (see `resident::served`).
         (Edge, Blueprint {
             class: Commerce, homes: 0, jobs: u32::MAX, size: (1, 1), lot: (0, 0), price: f64::INFINITY,
-            stock: 0, makes: None, vehicles: &[], farm: false,
+            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 everywhere(Home, 1.0),
                 everywhere(Work, 1.0),
@@ -338,6 +355,9 @@ pub fn check() {
             assert!(!b.vehicles.is_empty(), "{kind:?} makes {good:?} and has nothing to deliver it in");
         }
         assert!(!b.farm || b.vehicles.contains(&CarRole::Tractor), "{kind:?} farms without a tractor");
+        // A ship brings a shelf's worth of a class; a row with one and no
+        // shelf, or no class, has nothing for it to bring.
+        assert!(!b.vehicles.contains(&CarRole::Ship) || (b.stock > 0 && b.handles.is_some()), "{kind:?} has a ship and nothing for it to bring");
         for tap in &b.taps {
             // T1: a fixed-length service still takes time.
             assert!(tap.rate.is_finite() || tap.overhead > 0, "{kind:?} serves {:?} instantly and for free", tap.need);
