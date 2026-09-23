@@ -1,10 +1,11 @@
 # Multiplayer: one world, many towns, one sea
 
 Status: specification, argued 2026-09-10 on top of `economy.md` step 4.
-Nothing here is built; it is written so the reasoning is not lost before
-the port milestone (`roadmap.md`). Builds on `economy.md` (the door, the
-band, the crossing, the building's turn), `services.md` §5 (calls) and
-the survey (`world.rs`, `revealed`). The archived guide's one hard rule
+On 2026-09-23 §1 and §2 became the single-player design and moved to
+`game.md`; §3's fog is gone with the survey; §4 onward stands. Nothing
+here is built. Builds on `economy.md` (the door, the
+band, the crossing, the building's turn) and `services.md` §5 (calls).
+The archived guide's one hard rule
 survives: a road that would disconnect someone from what they depend on
 can never be demolished.
 
@@ -12,9 +13,10 @@ can never be demolished.
 
 ## 1. The idea
 
-Several players build towns on one map. Each has a build, a treasury and
-a GDP of its own (`economy.md` §1); the map, the fog, the sea and the
-roads are shared. The outside stands beyond the sea and nowhere else.
+Several players build towns on one island. Each has a build, a reserve
+and a GDP of its own (`economy.md` §1); the island, the sea and the roads
+are shared. The door, the ferry and the batch are single-player design
+now, in `game.md`; this section keeps the five rules for the record. The outside stands beyond the sea and nowhere else.
 Towns reach each other by road, and reach the outside by ship.
 
 Five rules carry it, and each is a thing the game already has, moved.
@@ -23,9 +25,9 @@ Five rules carry it, and each is a thing the game already has, moved.
    (`blueprint.rs`, `Edge`) stands at a terminal on the coast, with the
    same taps, prices and crossing, and its lorries and commuters come
    off a ferry instead of appearing at a road end.
-2. **The fog is the survey, and it is shared.** What any town has
-   surveyed, everyone can see. Land nobody has surveyed is fog, and it
-   is nobody's.
+2. ~~The fog is the survey, and it is shared.~~ There is no fog: the
+   island is seen whole by everyone from the first minute (`game.md`
+   §The island and the door).
 3. **The claim is influence, and influence is traffic.** A road tile
    holds a stock of influence per player, filled by that player's cars
    driving it, drained by time. Rights follow the stock.
@@ -38,6 +40,12 @@ Five rules carry it, and each is a thing the game already has, moved.
    young.
 
 ## 2. The port
+
+*Moved to `game.md` §The island and the door on 2026-09-23: the terminal,
+the ferry with its batch, capacity as what makes prices move, berths per
+class from the tree. What follows is the original text, kept because it
+carries the referents; where it says the fog line read the map's edge.*
+
 
 A town's terminal is the edge (`economy.md` §8.1): a building the mayor
 did not place and cannot demolish, serving every good the outside sells
@@ -152,6 +160,14 @@ else it needs is a lot, a reservation or a segment already written.
 
 ## 3. The fog
 
+*Superseded 2026-09-23: there is no fog and no survey (`shelved.md`). The
+island is seen whole, and what the shared survey was for, seeing the
+neighbours' lights and the region board before a road meets, is simply
+true from the first minute. The text below is kept for the brake it
+described: lifting land toward a rival cost road, and the road allowance
+is still that brake.*
+
+
 The survey is what stands: a building surveys the land around it
 (`REVEAL_RADIUS`), and a laid road surveys a strip beside it. In one
 world the surveyed set is one set: any town's survey is everyone's to
@@ -224,8 +240,8 @@ Nothing incentivises trade; the rows do.
 
 ## 6. Spawning
 
-Towns spawn on the coast with a terminal, spaced so their surveys do
-not touch: more than two survey radii apart. Fifty spawns on one day are
+Towns spawn on the coast with a terminal, spaced so that neither is in
+the other's shadow: further apart than a town grows in its first season. Fifty spawns on one day are
 fifty coastal towns with fog between them, each with its door, none in
 anyone's shadow. The interior is settled by growth, and a young town
 walks into it only by choice.
@@ -250,14 +266,11 @@ this document adds are the same rule:
 
 Nothing before the port milestone. Then:
 
-1. **The coast.** Map generation with a sea that is one body and fog in
-   its middle, and spawns on it. The pre-existing road network and the
-   road exits go; the terminal stands where a road meets the coast, and
-   every town starts with one.
-2. **The ferry.** `AWAY_MS` with a timetable and a batch. The edge's
-   lorries and commuters ride it. The port row's three numbers.
-3. **The shared survey and the road strip.** Roads survey; any town's
-   survey is everyone's.
+1. ~~The coast.~~ The island, the terminal and the ferry are
+   `roadmap.md` milestone 1, single player.
+2. ~~The ferry.~~ The same.
+3. ~~The shared survey and the road strip.~~ No survey; the road strip
+   is the claim below.
 4. **Influence.** The stock per tile per player, filled by traffic,
    seeded by placement; build and demolish rights from it; the
    disconnection rule.

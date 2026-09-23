@@ -5,95 +5,109 @@ something you can sit down and play for an evening and notice is better
 than the last. Estimates are working days for one person with an
 assistant; they are guesses, and the order matters more than the numbers.
 
-## Where we are (2026-09-17)
+## Where we are (2026-09-23)
 
 Built: roads and streets, one-way, the tree as the build, every kind on
 the build menu as a piece of map, placed by hand and paid for out of the
 treasury, residents with needs and commutes, call-outs for stock with a
 warehouse and trucks from the edge, the supermarket, day and night, a
-fresh world per seed. Nothing arrives on its own: the spawner went on
-2026-09-09 (`shelved.md`). Money: one purse moved at the door, posted
-prices, labour bought on the building's turn, services from the office,
-wear at the workshop, the farm with its land and tractor — ploughed,
-sown and harvested in runs over the field, a day each — its crates
-fetched by the warehouse or picked up for the edge, with the crate and
-the meal priced from the rows (`economy.md` §12 steps 1 to 6, §12.8).
-Legibility: a card for anything on the map with a season of books and
-each price's line over it, and the town's page, the two dials read back
-by need and by good, with the visits behind each and what a company's
-commuters took home (§12.9). The port: a depot on the coast whose lorry
-is a ship, sailing from its quay to the map's edge and back with every
-shelf's worth at the sea's crossing, a fifth of the road's; goods have a
-handling class, and the port and the warehouse hold everything boxed
-(§12.10).
+fresh world per seed. Money: one purse moved at the door, posted prices,
+labour bought on the building's turn, the farm with its land and tractor,
+its crates fetched by the warehouse or picked up for the edge. Legibility:
+a card for anything on the map with a season of books and each price's
+line over it, and the town's page. The port: a depot on the coast whose
+lorry is a ship, sailing to the map's edge and back with every shelf's
+worth at the sea's crossing (`economy.md` §12.10).
 
-Not built: parking past the driveway, the container and the factory's
-yard, exports by ship and haulers, power, fire, hospital, the region's
-page and the advisor, road speed and priority, levels, trains,
-multiplayer, deployment. Of milestone 3, road past the allowance, moving and
-demolishing do not cost money yet.
+Decided on 2026-09-23 and not built: the island seen whole, the terminal
+as the door with the world's ferry and its batch, sites built from
+delivered materials, the tapped lorry and the warehouse as the first
+hire, one material and a works, the cut of services, wear and leisure.
+`game.md` is the design; the built sections of `economy.md` are the
+record of the code until it changes.
 
-## Milestone 1: You can see the cars (≈ 4 days)
+Not built, unchanged: parking past the driveway, power, fire, hospital,
+the advisor, road speed and priority, levels, trains, multiplayer,
+deployment.
 
-The city becomes legible at the scale of one car.
+## Milestone 0: The cut (≈ 2 days)
 
-- Parking as `parking.md` lays it out. Step 1 is built: lot nodes, trips
-  that end in a spot, cars drawn from them, two spots on every driveway.
-  Next, spot tables per row, then giving way by length and reverse gear.
-- Warehouse at 3x2 with truck bays.
+Delete before building. Each goes to `shelved.md` with its last commit.
 
-*Playable:* watch a household leave for work and come home; count the
-cars at the supermarket.
+- Services as a good: the office's row, the consultant's car, the firm's
+  fifth, the household's services stock.
+- Wear, parts and the workshop.
+- Leisure, bars, restaurants as evenings out; the household's budget
+  shares.
+- The survey and the fog, the generated road network, the road exit.
+- The port's own ship (it becomes the world's, at a berth, in milestone
+  1).
+
+Then the seasons again with three goods, crates, fuel and labour, to see
+that the band, no harm and tenure still hold on the smaller town.
+
+*Playable:* the same town, smaller, and every truck on it carries
+something you can name.
+
+## Milestone 1: The opening (≈ 6 days)
+
+The ten minutes `game.md` §The opening describes, from nothing.
+
+- The generator makes an island: land that thins with distance from the
+  centre until it is sea, a coast every spawn can stand on. The map is
+  the island; no survey, no fog, no roads born with it.
+- The terminal, placed by the player on the coast, standing at once. The
+  world's ferry on a timetable with a batch: cars off the ramp, boxes
+  onto the quay, which is the built port's shelves under a new name.
+  The starting kit in its hold.
+- A placement is a site with a materials stock and a call; the building
+  stands when it is full; a tap before the first load cancels it.
+  One material, boxed, on the quay to begin with.
+- The town's one lorry, answering taps: a source, then a destination.
+  The warehouse as the first hire, its lorries fetching from the quay
+  and its vans delivering on their own.
+- The pump, opening full, refilled by a tanker off the ferry.
+- Legibility for the opening only: the icon over a waiting site, the
+  meter's one line, the terminal's card, lumps at the ramp.
+
+*Playable:* place the terminal, draw a road, build a shop with your own
+lorry, place a warehouse and watch it take over.
 
 ## Milestone 2: Goods move (≈ 5 days)
 
 The industrial half of the game exists.
 
-- Stock becomes goods; factories fill a yard with work; calls get a
-  direction (delivery, pickup); the container drawn on a loaded truck.
-- The warehouse holds a level, and wins a call when it is nearer than
-  the producer.
-- The edge trades by road: a truck out past the frontier and back, for
-  whatever the town lacks and whatever it makes that nobody here buys.
+- The cargo drawn on a loaded truck, the crates on the tractor.
+- The works: a row that makes materials from ore, its yard filling with
+  work; ore from a mine on the mountain, or bulk off the ferry, dear.
+- Exports by ship: a maker's surplus carried to the quay and gone on the
+  next sailing, paid at the sea's crossing when the boat leaves.
+- The container berth from the tree: boxes by the shipload at a fifth of
+  the ferry's crossing.
 
-*Playable:* a factory district feeding a shopping street through a
-warehouse, and the road between them as the thing you fix.
+*Playable:* a works that stops the lorries from the quay, and the road
+between the mine and the sites as the thing you fix.
 
-## Milestone 3: Money (≈ 5 days)
+## Milestone 3: Money you can read (≈ 3 days)
 
-Every sale is a lump and every purse is real. `economy.md` §12 is the
-order inside this milestone.
+- Every building's card leads with its net at the door, houses with
+  books of their own.
+- The ghost's cost line: what this building would cost the reserve
+  today, and from where.
+- The town's page with the season and the one chart.
+- The crossing's value, run through the seasons (`economy.md` §13.8).
 
-- The shelf, the tank and the bucket become one stock. Wallets and
-  balances; wages paid; every purse keeps a float and sweeps the rest to
-  the treasury. Level stays hours served, banked in lumps.
-- Posted prices with the nudge; the labour stock and wages on it;
-  `price / earning` in the resident's score; jobs ranked by wage, with a
-  switching threshold. Prices held to the edge's band.
-- Placeables, road tiles beyond the allowance, moving and demolishing
-  cost money. The dial shows income as a rate over the lumps.
+*Playable:* the first time you place a works because the quay's list told
+you to, and watch its card pay for itself.
 
-*Playable:* the first time a shop's price climbs because the warehouse
-was too far, and you fix it with a road.
+## Milestone 4: Food and farms (≈ 2 days)
 
-## Milestone 4: Food and farms (≈ 3 days)
+Mostly built. What remains: the warehouse fetching from the quay, the
+band's ceiling on crates dropping where the port's van reaches, and a
+second farm as the answer to fields too far from the yard.
 
-A second chain, and space on the map.
-
-- Food as a second token (the crate); farms as big placeables that fill
-  with work; supermarkets and restaurants call for food. Built as
-  `economy.md` §12.7 and §12.8: the farm claims the grass round it,
-  its tractor ploughs, seeds and harvests it in one run a day over the
-  whole field, the warehouse's lorry fetches from its yard, and a lorry
-  from beyond the edge comes for what nobody in town buys.
-- The warehouse holds both.
-- The port: a facility on the coast whose vehicle is a ship, a second
-  door with the edge's prices and cheaper freight. Built as
-  `economy.md` §12.10, with the handling classes; haulers stay filed
-  until a call an owner's vehicle cannot answer.
-
-*Playable:* a farm belt outside town, trucks at harvest, and the choice
-of where the warehouse goes between farms and shops.
+*Playable:* a farm belt outside town and the choice of where the
+warehouse goes between farms and shops.
 
 ## Milestone 5: Roads that are roads (≈ 5 days)
 
@@ -110,10 +124,10 @@ the high street.
 
 ## Milestone 6: Power (≈ 5 days)
 
-- The plant as a facility that calls for coal; coal as bulk from the port.
+- The plant as a facility that calls for coal; coal as bulk at a berth.
 - Pylons, the one drawn line, plant to substation.
-- Substations with a reach along the roads; the placer's ghost lights the
-  reach.
+- Substations with a reach along the roads; the placer's ghost lights
+  the reach.
 - Night as the gauge: unpowered buildings dark, powered ones lit.
 
 *Playable:* siting a plant by the port and pulling a pylon line across the
@@ -124,11 +138,10 @@ water to the town.
 - Fire as a stock: full until it ignites, draining while it burns,
   spreading to a neighbour's, rubble at zero; the fire station's truck.
 - Health as a stock only a hospital refills; the ambulance.
-- The inspect panel: per-day rates on any building, each line pointing at
-  the map.
+- The inspect panel: per-day rates on any building, each line pointing
+  at the map.
 
-*Playable:* the first fire you were too far from, and the panel that
-tells you a shop is bleeding on deliveries.
+*Playable:* the first fire you were too far from.
 
 ## Milestone 8: The advisor (≈ 3 days)
 
@@ -142,18 +155,19 @@ junctions lit up.
 ## Milestone 9: Other people (≈ 8 days)
 
 - Deployment: the server on a VPS, the client built, reconnects.
-- Multiplayer: several players on one world, each with a build; roads
-  between cities; the port as the door, with a ferry and a batch, and
-  influence from traffic as the claim. `multiplayer.md` is the spec.
+- Multiplayer: several towns on one island, each with a build and a
+  terminal; roads between them; influence from traffic as the claim; the
+  region board. `multiplayer.md` §4 onward is the spec.
 
-*Playable:* two cities on one map, and your rush hour on their road.
+*Playable:* two towns on one island, and your rush hour on their road.
 
 ## Later, if a build asks for it
 
-Trains from a mainline the map is born with. Nuclear. Mining as bulk on
-rails. Tourists and the airport as a door. Obedience as a stock, the
-park that refills it, the police and the jail. Tram as a mid-game reward,
-if ever.
+Sidings and trains from a quarry to a works. Berths per class: the tank
+and the bulk carrier. The raw goods table, one per avenue. Nuclear.
+Tourists and the airport as a door. Obedience as a stock, the park that
+refills it, the police. A ride-along camera in any vehicle. Tram as a
+mid-game reward, if ever.
 
 ## How each step is done
 
