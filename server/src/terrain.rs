@@ -2,20 +2,36 @@ use std::collections::HashMap;
 
 use noise::{NoiseFn, Simplex};
 
-use crate::protocol::TerrainType;
+use crate::protocol::{ChunkCoord, TerrainType, CHUNK_SIZE};
 
-const WIDTH: i32 = 512;
-const HEIGHT: i32 = 512;
-/// Three layers of noise. A continental one, whose features are oceans and
+/// The map, in tiles and in chunks.
+const WIDTH: i32 = 1024;
+const HEIGHT: i32 = 1024;
+pub const CHUNKS_MIN: i32 = -(WIDTH / 2) / CHUNK_SIZE;
+pub const CHUNKS_MAX: i32 = (WIDTH / 2) / CHUNK_SIZE - 1;
+/// Four layers of noise. A continental one, whose features are seas and
 /// mountain ranges about `1 / COARSE` tiles across, and a fine one that
 /// gives the coast its bays and the land its woods and hills. The third,
 /// larger than either, says how rugged a region is: where it is high the
 /// fine layer has its say and the heights are stretched, which makes
 /// cliffs and a broken coast; where it is low the land rolls and flattens
-/// into plains.
+/// into plains. The fourth is the ocean, as wide as the map, and it is a
+/// step rather than a wave: its noise is squashed through a steep
+/// S-curve, so nearly everywhere is either sea floor or continental
+/// shelf, with the slope between them a narrow band. The floor lies
+/// further under the tide line than the other three layers can raise, so
+/// an island is the rare place where the coarse layer peaks in rugged
+/// country; the shelf lifts the land only enough to drain most of its
+/// low ground, and a lake is what is left in the rest.
 const COARSE: f64 = 0.012;
 const FINE: f64 = 0.05;
 const RUGGED: f64 = 0.006;
+const OCEAN: f64 = 0.002;
+/// How steep the step is: the slope between floor and shelf is about
+/// `1 / (OCEAN * OCEAN_GAIN)` tiles wide.
+const OCEAN_GAIN: f64 = 5.0;
+const SEA_FLOOR: f64 = 3.0;
+const SHELF: f64 = 0.8;
 /// The fine layer's share of the height, from the flattest region to the
 /// most rugged.
 const DETAIL: (f64, f64) = (0.1, 0.9);
@@ -25,91 +41,103 @@ const RELIEF: (f64, f64) = (0.35, 2.2);
 /// layer, stretched, is over the range line.
 const HILL: f64 = 0.4;
 const RANGE: f64 = 0.6;
-/// The ground is raised a little around the origin, fading out over this
-/// many tiles. Simplex noise is exactly zero at the origin, which put every
-/// seed's first town on the tide line; this puts it on a plot of land.
-const START_LAND: f64 = 64.0;
+/// The ground is raised a little around the origin and the ocean is held
+/// back from it: flat out to the survey's edge, then fading over as far
+/// again. Simplex noise is exactly zero at the origin, which put every
+/// seed's first town on the tide line, and an ocean there would put the
+/// starting town under the sea or on a spit of beach with no room for
+/// it. This puts the survey on land, with the coast where the ocean comes
+/// close beyond it.
+const START_LAND: f64 = 48.0;
 const START_RAISE: f64 = 0.2;
 
 fn elev(t: TerrainType) -> i32 {
     match t {
-        TerrainType::Water => -1,
+        TerrainType::Sea | TerrainType::Water => -1,
         TerrainType::Beach | TerrainType::Grass | TerrainType::Forest => 0,
         TerrainType::Mountain => 2,
     }
 }
 
-/// Terrain is derived state: deterministic in the seed, never persisted,
-/// and never an entity. Returns the tile types for the whole world.
+/// The four layers, seeded.
+struct Layers {
+    elevation: Simplex,
+    moisture: Simplex,
+    rugged: Simplex,
+    ocean: Simplex,
+}
+
+impl Layers {
+    fn new(seed: u32) -> Self {
+        Layers { elevation: Simplex::new(seed), moisture: Simplex::new(seed.wrapping_add(1)), rugged: Simplex::new(seed.wrapping_add(2)), ocean: Simplex::new(seed.wrapping_add(3)) }
+    }
+
+    /// One tile's type from the layers alone, before smoothing.
+    fn tile(&self, x: i32, y: i32) -> TerrainType {
+        let span = |(lo, hi): (f64, f64), t: f64| lo + (hi - lo) * t;
+        let (fx, fy) = (x as f64, y as f64);
+        let r = 0.5 + 0.5 * self.rugged.get([fx * RUGGED, fy * RUGGED]);
+        let detail = span(DETAIL, r);
+        // Averaging two independent noises crowds the result toward zero,
+        // which would leave almost nothing over the mountain line; scaled
+        // back so the blend is spread as widely as either layer alone.
+        let spread = ((1.0 - detail).powi(2) + detail.powi(2)).sqrt();
+        let blend = |n: &Simplex| ((1.0 - detail) * n.get([fx * COARSE, fy * COARSE]) + detail * n.get([fx * FINE, fy * FINE])) / spread;
+        let inland = 1.0 - ((((x * x + y * y) as f64).sqrt() - START_LAND) / START_LAND).clamp(0.0, 1.0);
+        let step = (OCEAN_GAIN * self.ocean.get([fx * OCEAN, fy * OCEAN])).tanh();
+        let deep = step * if step < 0.0 { SEA_FLOOR } else { SHELF };
+        let e = blend(&self.elevation) * span(RELIEF, r) + START_RAISE * inland + deep + inland * (-deep).max(0.0);
+        let m = blend(&self.moisture);
+        // A mountain is high ground in range country: the height above
+        // says whether this is a hill, the continental layer alone says
+        // whether the region is the kind that has ranges — the way
+        // moisture says whether it has forest. Neither makes a peak by
+        // itself, so ranges are contiguous and stand on high ground.
+        let range = self.elevation.get([fx * COARSE, fy * COARSE]) * span(RELIEF, r);
+
+        if e < -0.05 {
+            // Water on the ocean's side of the step is the sea; water on
+            // the shelf is a lake, whatever its size.
+            if step < 0.0 { TerrainType::Sea } else { TerrainType::Water }
+        } else if e < 0.05 {
+            TerrainType::Beach
+        } else if e > HILL && range > RANGE {
+            TerrainType::Mountain
+        } else if m > 0.15 {
+            TerrainType::Forest
+        } else {
+            TerrainType::Grass
+        }
+    }
+}
+
+/// One chunk of terrain, derived from the seed and nothing else. Terrain
+/// is never persisted and never an entity. Smoothed against an apron of
+/// its neighbours' tiles,
+/// computed the same way, so the seams agree: a tile that three or more of
+/// its four neighbours stand above or below takes their level.
+pub fn chunk(seed: u32, c: ChunkCoord) -> Vec<((i32, i32), TerrainType)> {
+    let layers = Layers::new(seed);
+    let (x0, y0) = (c.cx * CHUNK_SIZE, c.cy * CHUNK_SIZE);
+    let n = CHUNK_SIZE + 2;
+    let raw: Vec<TerrainType> = (0..n * n).map(|i| layers.tile(x0 - 1 + i % n, y0 - 1 + i / n)).collect();
+    let at = |x: i32, y: i32| raw[((y - y0 + 1) * n + (x - x0 + 1)) as usize];
+    let mut out = Vec::with_capacity((CHUNK_SIZE * CHUNK_SIZE) as usize);
+    for y in y0..y0 + CHUNK_SIZE {
+        for x in x0..x0 + CHUNK_SIZE {
+            let t = at(x, y);
+            let around = [at(x + 1, y), at(x - 1, y), at(x, y + 1), at(x, y - 1)];
+            let other = around.iter().filter(|&&a| elev(a) != elev(t)).count();
+            let t = if other >= 3 { *around.iter().find(|&&a| elev(a) != elev(t)).unwrap() } else { t };
+            out.push(((x, y), t));
+        }
+    }
+    out
+}
+
+/// The whole map of a seed, chunk by chunk.
 pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
-    let elevation = Simplex::new(seed);
-    let moisture = Simplex::new(seed.wrapping_add(1));
-    let rugged = Simplex::new(seed.wrapping_add(2));
-    let span = |(lo, hi): (f64, f64), t: f64| lo + (hi - lo) * t;
-
-    let origin_x = -(WIDTH / 2);
-    let origin_y = -(HEIGHT / 2);
-
-    // Pass 1: assign terrain types from noise
-    let mut types: HashMap<(i32, i32), TerrainType> = HashMap::new();
-    for y in origin_y..(origin_y + HEIGHT) {
-        for x in origin_x..(origin_x + WIDTH) {
-            let (fx, fy) = (x as f64, y as f64);
-            let r = 0.5 + 0.5 * rugged.get([fx * RUGGED, fy * RUGGED]);
-            let detail = span(DETAIL, r);
-            // Averaging two independent noises crowds the result toward zero,
-            // which would leave almost nothing over the mountain line; scaled
-            // back so the blend is spread as widely as either layer alone.
-            let spread = ((1.0 - detail).powi(2) + detail.powi(2)).sqrt();
-            let blend = |n: &Simplex| ((1.0 - detail) * n.get([fx * COARSE, fy * COARSE]) + detail * n.get([fx * FINE, fy * FINE])) / spread;
-            let inland = 1.0 - (((x * x + y * y) as f64).sqrt() / START_LAND).min(1.0);
-            let e = blend(&elevation) * span(RELIEF, r) + START_RAISE * inland;
-            let m = blend(&moisture);
-            // A mountain is high ground in range country: the height above
-            // says whether this is a hill, the continental layer alone says
-            // whether the region is the kind that has ranges — the way
-            // moisture says whether it has forest. Neither makes a peak by
-            // itself, so ranges are contiguous and stand on high ground.
-            let range = elevation.get([fx * COARSE, fy * COARSE]) * span(RELIEF, r);
-
-            let terrain_type = if e < -0.05 {
-                TerrainType::Water
-            } else if e < 0.05 {
-                TerrainType::Beach
-            } else if e > HILL && range > RANGE {
-                TerrainType::Mountain
-            } else if m > 0.15 {
-                TerrainType::Forest
-            } else {
-                TerrainType::Grass
-            };
-
-            types.insert((x, y), terrain_type);
-        }
-    }
-
-    // Pass 1b: smooth — if 3+ cardinal neighbors have a different elevation, adopt most common neighbor type
-    let cardinal: [(i32, i32); 4] = [(0, 1), (0, -1), (1, 0), (-1, 0)];
-    let mut flips: Vec<((i32, i32), TerrainType)> = Vec::new();
-    for y in origin_y..(origin_y + HEIGHT) {
-        for x in origin_x..(origin_x + WIDTH) {
-            let my_elev = elev(types[&(x, y)]);
-            let neighbors: Vec<TerrainType> = cardinal
-                .iter()
-                .filter_map(|&(dx, dy)| types.get(&(x + dx, y + dy)).copied())
-                .collect();
-            let diff_count = neighbors.iter().filter(|&&nt| elev(nt) != my_elev).count();
-            if diff_count >= 3 {
-                let replacement = neighbors.iter().find(|&&nt| elev(nt) != my_elev).unwrap();
-                flips.push(((x, y), *replacement));
-            }
-        }
-    }
-    for ((x, y), t) in flips {
-        types.insert((x, y), t);
-    }
-
-    types
+    (CHUNKS_MIN..=CHUNKS_MAX).flat_map(|cy| (CHUNKS_MIN..=CHUNKS_MAX).map(move |cx| ChunkCoord { cx, cy })).flat_map(|c| chunk(seed, c)).collect()
 }
 
 #[cfg(test)]
@@ -125,27 +153,29 @@ mod tests {
         let n = land.len() as f64;
         let share = |t: TerrainType| 100.0 * land.values().filter(|&&v| v == t).count() as f64 / n;
         eprintln!(
-            "seed {seed}: water {:.0}%  beach {:.0}%  grass {:.0}%  forest {:.0}%  mountain {:.0}%",
-            share(TerrainType::Water), share(TerrainType::Beach), share(TerrainType::Grass), share(TerrainType::Forest), share(TerrainType::Mountain)
+            "seed {seed}: sea {:.0}%  lake {:.0}%  beach {:.0}%  grass {:.0}%  forest {:.0}%  mountain {:.0}%",
+            share(TerrainType::Sea), share(TerrainType::Water), share(TerrainType::Beach), share(TerrainType::Grass), share(TerrainType::Forest), share(TerrainType::Mountain)
         );
     }
 
     /// Not an assertion: a picture, for whoever runs this with --nocapture.
-    /// The middle 256×128 tiles of `SPRAWL_SEED` (or 7), four to a character.
+    /// The whole map of `SPRAWL_SEED` (or 7), sixteen tiles to a character,
+    /// with `+` at the origin; the sea `~`, a lake `:`.
     #[test]
     fn draw_the_land() {
         let seed = std::env::var("SPRAWL_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(7);
         let land = generate(seed);
         eprintln!("seed {seed}");
-        for y in (-64..64).step_by(4) {
-            let row: String = (-128..128)
-                .step_by(4)
+        for y in (-HEIGHT / 2..HEIGHT / 2).step_by(16) {
+            let row: String = (-WIDTH / 2..WIDTH / 2)
+                .step_by(16)
                 .map(|x| {
-                    if x == 0 && y == 0 {
+                    if x.abs() < 16 && y.abs() < 16 {
                         return '+';
                     }
                     match land[&(x, y)] {
-                        TerrainType::Water => '~',
+                        TerrainType::Sea => '~',
+                        TerrainType::Water => ':',
                         TerrainType::Beach => '.',
                         TerrainType::Grass => ' ',
                         TerrainType::Forest => '^',

@@ -1,7 +1,7 @@
 import { Color3, Vector3, type Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
-import { shapeFor, BUILDING_COLOR, SLAB, variantOf, facingOf } from "./buildings";
-import { plot } from "../../blueprints";
+import { shapeFor, BUILDING_COLOR, SLAB, PLOT_MARGIN, variantOf, facingOf, boxGeometry } from "./buildings";
+import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
 import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
 import { Strip, type RGB } from "./strip";
 import { drawnPath } from "./drawnPath";
@@ -25,6 +25,9 @@ export const KERB = Color3.FromHexString("#DFE1E1");
  *  darker, lit as the roads and the lots are, and no grid over it. A run paints the
  *  stage it leaves behind the tractor, over the field as it was. */
 export const FIELD_Z = 0.008;
+/** A quay: how far out over the water it reaches, its deck's height over
+ *  the land, and how far down to the water it stands. */
+const QUAY = { deck: 0.7, top: 0.03, height: 0.53 };
 /** How long a sown crop takes to ripen, as the server has it. */
 const RIPEN = 600_000;
 const rgb = (c: Color3): RGB => [c.r, c.g, c.b];
@@ -116,6 +119,23 @@ export function mountBuilding(
     } else {
       put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, [0, 0], 0, true);
     }
+  }
+
+  // A port's quay: a pier at the land's height, the building's width,
+  // standing out one tile over the water along its back wall, where the
+  // ship lies when it is home. The water is half a unit under the land.
+  if (BLUEPRINTS[data.kind].quay && pos) {
+    const [dx, dy] = FACINGS[data.facing % 4];
+    const alongX = dx === 0;
+    // From the back wall, which stands the plot's margin in from the
+    // tile's edge, out over the water.
+    const out = (QUAY.deck - PLOT_MARGIN) / 2 - PLOT_MARGIN / 2;
+    const centre: [number, number] = alongX
+      ? [pos.x + bx + w / 2, (dy < 0 ? pos.y + by + h : pos.y + by) - dy * out]
+      : [(dx < 0 ? pos.x + bx + w : pos.x + bx) - dx * out, pos.y + by + h / 2];
+    const key = `quay_${alongX ? w : h}${look.key}`;
+    pool.ensureBucket(key, boxGeometry(alongX ? w : h, QUAY.deck, QUAY.height), look.tint(KERB), look.castShadow, true);
+    placed.push({ key, id: pool.addInstance(key, [centre[0], centre[1], QUAY.top - QUAY.height / 2], [0, 0, alongX ? 0 : Math.PI / 2]) });
   }
 
   // A farm's field: the ground its tractor last drove over, along the

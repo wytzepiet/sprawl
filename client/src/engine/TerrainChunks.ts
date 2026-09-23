@@ -154,6 +154,8 @@ export class TerrainChunks {
     const t = this.theme();
     return {
       Water: { r: t.water.r, g: t.water.g, b: t.water.b },
+      // The sea a shade deeper than a lake.
+      Sea: { r: t.water.r * 0.85, g: t.water.g * 0.85, b: t.water.b * 0.9 },
       Beach: { r: t.beach.r, g: t.beach.g, b: t.beach.b },
       Grass: { r: t.land.r, g: t.land.g, b: t.land.b },
       Forest: { r: t.forest.r, g: t.forest.g, b: t.forest.b },

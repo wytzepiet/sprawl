@@ -1612,15 +1612,17 @@ freight. Decided 2026-09-17, before the code, as follows.
   tanker terminal, is the same row with a tank, and waits for a fuel
   trade worth one: today a tanker from beyond the edge fills a pump's
   shelf in two hours.
-- **The coast.** The sea is the water joined to the map's edge, charted
-  once from the terrain; water that is not is a lake, and no port stands
-  on it. A port stands with its back to the sea: its footprint is land
+- **The coast.** The sea is the generator's word: water on the ocean's
+  side of its step is sea, water on the shelf is a lake, and no port
+  stands on a lake. A port stands with its back to the sea: its footprint is land
   like any plot's, its lot a yard for its vans on the street side, and a
   tile of the sea behind its building's back face is the quay, where the
-  ship stands when it is home. The voyage is the shortest way over the
-  sea toward the map's edge, cut where it enters the fog: the ship sails
-  out of sight there, is away the sailing, and sails back in the way it
-  went. §13.6, how scarce coast should be, settles as: as scarce as the
+  ship stands when it is home. Held near the coast, the ghost slides the
+  plot along its own axis, up to its depth, until the back wall meets
+  the water, as any plot is held to its street; a coast is hard to hit
+  to the tile. The voyage is the shortest way over the sea toward the
+  map's edge, cut where it enters the fog: the ship sails out of sight
+  there, is away the sailing, and sails back in the way it went. §13.6, how scarce coast should be, settles as: as scarce as the
   map's. Nothing is added; a town born inland builds its road to the
   sea. (First written with the fog as the horizon; what changed it is
   below.)
@@ -1659,14 +1661,17 @@ As built, 2026-09-17, with what the first look found:
   the roads laid to the neighbouring anchors reveal twelve chunks each
   way, so a port on its shore had no fog to reach and sailed nowhere;
   and with the whole map surveyed no water there reaches the map's edge
-  at all. The sea is now charted once from the terrain, every water
-  tile joined to the map's edge, flooded from the edge inward; water
-  that is not is a lake, and the ghost refuses a port whose back is on
-  one. The voyage is the shortest way over the sea toward the map's
+  at all. The sea was then charted once from the terrain, every water
+  tile joined to the map's edge, flooded from the edge inward; since
+  the ocean layer (2026-09-23) the generator says which water is sea,
+  and the ghost refuses a port whose back is on a lake. The voyage is the shortest way over the sea toward the map's
   edge, cut where it enters the fog, so a ship out of the survey is out
-  of sight either way. Seed 7's nearest sea is thirty-six tiles from
-  its town; of the first twenty seeds, fourteen start within a dozen
-  tiles of the sea and one a hundred and twenty off (`where_the_sea_is`,
+  of sight either way. Since the ocean layer (2026-09-22, `terrain.rs`:
+  a fourth noise as wide as the map, squashed to a step, that sinks the
+  ground under the other three on one side and lifts it a little on the
+  other, so a map has oceans with coasts and continents with lakes
+  rather than a lattice of channels) and the map at a thousand tiles a
+  side, a town is coastal or is not (`where_the_sea_is`,
   an ignored test that prints it).
 - **The look.** Seed 7 at twenty times, a port on the east coast with
   fifty-two tiles of street drawn out to it: staffed from beyond the

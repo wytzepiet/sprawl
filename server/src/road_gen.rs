@@ -84,17 +84,16 @@ fn anchor_for(
 fn link_chunk(
     world: &mut World,
     seed: u32,
-    terrain: &HashMap<(i32, i32), TerrainType>,
     chunk: ChunkCoord,
     road_edges: &mut HashSet<((i32, i32), (i32, i32))>,
 ) {
-    let Some(a) = anchor_for(seed, chunk, terrain) else { return };
+    let Some(a) = anchor_for(seed, chunk, &world.terrain) else { return };
     for neighbour in [
         ChunkCoord { cx: chunk.cx + 1, cy: chunk.cy + 1 },
         ChunkCoord { cx: chunk.cx - 1, cy: chunk.cy + 1 },
     ] {
-        let Some(b) = anchor_for(seed, neighbour, terrain) else { continue };
-        if let Some(path) = astar(a, b, terrain, road_edges) {
+        let Some(b) = anchor_for(seed, neighbour, &world.terrain) else { continue };
+        if let Some(path) = astar(a, b, &world.terrain, road_edges) {
             // Fed back in so the next path prefers running along this one
             // rather than beside it, which is what makes a network of it.
             for w in path.windows(2) {
@@ -118,7 +117,6 @@ fn link_chunk(
 pub fn extend_to(
     world: &mut World,
     seed: u32,
-    terrain: &HashMap<(i32, i32), TerrainType>,
     bounds: crate::protocol::ChunkBounds,
 ) {
     // Read once, not per link: this walks every entity, and the world only
@@ -128,27 +126,33 @@ pub fn extend_to(
         for cx in (bounds.min_cx - RING)..=(bounds.max_cx + RING) {
             let chunk = ChunkCoord { cx, cy };
             if world.roads_generated.insert(chunk) {
-                link_chunk(world, seed, terrain, chunk, &mut road_edges);
+                link_chunk(world, seed, chunk, &mut road_edges);
             }
         }
     }
 }
 
-/// Lay the starting network and return where the first town goes: the
-/// anchor nearest the middle of the map. The middle chunk itself may be a
-/// lake (seed 7 is), so its neighbours are tried after it, nearest first.
-pub fn generate(world: &mut World, seed: u32, terrain: &HashMap<(i32, i32), TerrainType>) -> Option<GridCoord> {
+/// Lay the starting network and return where the first town goes: of the
+/// anchors near the middle of the map, the one with the most open ground
+/// within the town's reach, nearest the middle among equals. An anchor is
+/// any open tile, and one on a spit of beach or a lake's shore has no
+/// room for three plots and their streets.
+pub fn generate(world: &mut World, seed: u32) -> Option<GridCoord> {
     let start = crate::protocol::ChunkBounds {
         min_cx: START_MIN,
         min_cy: START_MIN,
         max_cx: START_MAX - 1,
         max_cy: START_MAX - 1,
     };
-    extend_to(world, seed, terrain, start);
+    extend_to(world, seed, start);
     const NEAR_MIDDLE: [(i32, i32); 9] = [(0, 0), (1, 1), (-1, -1), (1, -1), (-1, 1), (2, 0), (0, 2), (-2, 0), (0, -2)];
+    let terrain = &world.terrain;
+    let open = |t: (i32, i32)| matches!(terrain.get(&t), Some(TerrainType::Grass | TerrainType::Beach | TerrainType::Forest));
+    let room = |(x, y): (i32, i32)| (-START_REACH..=START_REACH).flat_map(|dx| (-START_REACH..=START_REACH).map(move |dy| (x + dx, y + dy))).filter(|&t| open(t)).count();
     NEAR_MIDDLE
         .iter()
-        .find_map(|&(cx, cy)| anchor_for(seed, ChunkCoord { cx, cy }, terrain))
+        .filter_map(|&(cx, cy)| anchor_for(seed, ChunkCoord { cx, cy }, terrain))
+        .max_by_key(|&a| room(a))
         .map(|(x, y)| GridCoord { x, y })
 }
 
@@ -163,7 +167,7 @@ const START_GAP: i32 = 3;
 /// could have drawn. The street runs to the plot's front; the driveway is
 /// the building's own, as for anything that arrives. A plot that will not
 /// take its building takes its street away with it.
-pub fn start_town(world: &mut World, terrain: &HashMap<(i32, i32), TerrainType>, anchor: GridCoord, kinds: &[BuildingKind]) {
+pub fn start_town(world: &mut World, anchor: GridCoord, kinds: &[BuildingKind]) {
     let far = |a: GridCoord, b: GridCoord| (a.x - b.x).abs().max((a.y - b.y).abs());
     let mut plots: Vec<GridCoord> = (-START_REACH..=START_REACH)
         .flat_map(|dx| (-START_REACH..=START_REACH).map(move |dy| GridCoord { x: anchor.x + dx, y: anchor.y + dy }))
@@ -185,7 +189,7 @@ pub fn start_town(world: &mut World, terrain: &HashMap<(i32, i32), TerrainType>,
         if by_road {
             continue;
         }
-        let Some(path) = astar((plot.x, plot.y), (anchor.x, anchor.y), terrain, &road_edges) else { continue };
+        let Some(path) = astar((plot.x, plot.y), (anchor.x, anchor.y), &world.terrain, &road_edges) else { continue };
         let street: Vec<GridCoord> = path[1..].iter().map(|&(x, y)| GridCoord { x, y }).collect();
         // The street reaches the plot squarely and runs a tile past it
         // each way: a frontage, not a spoke, so a lot can spread along it.
@@ -297,7 +301,7 @@ fn tile_cost(
     }
     match terrain.get(&to)? {
         TerrainType::Mountain => None,
-        TerrainType::Water => Some(20.0),
+        TerrainType::Sea | TerrainType::Water => Some(20.0),
         _ => Some(LAND_COST),
     }
 }
@@ -430,7 +434,7 @@ mod tests {
         let terrain = crate::terrain::generate(7);
         let mut world = World::new();
         world.terrain = terrain.clone();
-        generate(&mut world, 7, &terrain);
+        generate(&mut world, 7);
 
         // The starting network covers chunks -1..=1. Road must exist beyond it.
         let beyond = world
@@ -455,7 +459,7 @@ mod tests {
         let terrain = crate::terrain::generate(7);
         let mut world = World::new();
         world.terrain = terrain.clone();
-        generate(&mut world, 7, &terrain);
+        generate(&mut world, 7);
 
         let key = |a, b| if a <= b { (a, b) } else { (b, a) };
         let mut links = HashSet::new();
@@ -500,14 +504,14 @@ mod tests {
         let terrain = crate::terrain::generate(7);
         let mut world = World::new();
         world.terrain = terrain.clone();
-        generate(&mut world, 7, &terrain);
+        generate(&mut world, 7);
         let before = world.objects.all_entries().len();
 
         let bounds = crate::protocol::ChunkBounds {
             min_cx: START_MIN, min_cy: START_MIN,
             max_cx: START_MAX - 1, max_cy: START_MAX - 1,
         };
-        extend_to(&mut world, 7, &terrain, bounds);
+        extend_to(&mut world, 7, bounds);
         assert_eq!(world.objects.all_entries().len(), before);
     }
 
@@ -520,13 +524,50 @@ mod tests {
         let mut world = World::new();
         world.terrain = terrain.clone();
         let t = std::time::Instant::now();
-        let anchor = generate(&mut world, 7, &terrain);
+        let anchor = generate(&mut world, 7);
         println!(
             "chunks={} anchor={:?} nodes={} in {:?}",
-            (512 / CHUNK_SIZE) * (512 / CHUNK_SIZE),
+            (crate::terrain::CHUNKS_MAX - crate::terrain::CHUNKS_MIN + 1).pow(2),
             anchor,
             world.objects.all_entries().len(),
             t.elapsed(),
         );
+    }
+
+    use crate::protocol::GameObject;
+
+    /// Every seed's survey has room for its starting town: three buildings
+    /// on open land by the anchor. The first twenty seeds stand for all,
+    /// and a generator change that strands a town on a spit shows here.
+    /// Twenty maps take forty seconds, so this runs on request; DRAW=1
+    /// draws the seeds that come up short.
+    #[test]
+    #[ignore]
+    fn every_seed_seats_its_starting_town() {
+        let kinds = [BuildingKind::House, BuildingKind::Shop, BuildingKind::Workshop];
+        let mut short = Vec::new();
+        for seed in 1..=20 {
+            let mut world = World::new();
+            world.terrain_seed = seed;
+            world.terrain = crate::terrain::generate(seed);
+            let Some(anchor) = generate(&mut world, seed) else { short.push((seed, 0)); continue };
+            start_town(&mut world, anchor, &kinds);
+            let placed = world.all_buildings().len();
+            if placed < kinds.len() {
+                short.push((seed, placed));
+                if std::env::var("DRAW").is_ok() {
+                    for y in (anchor.y - 12)..=(anchor.y + 12) {
+                        let row: String = ((anchor.x - 20)..=(anchor.x + 20)).map(|x| {
+                            let t = GridCoord { x, y };
+                            if let Some(&b) = world.occupied.get(&(x, y)) { return match world.objects.get(b).map(|e| &e.object) { Some(GameObject::Building(b)) => format!("{:?}", b.kind).chars().next().unwrap(), _ => '?' }; }
+                            if world.road_node_at(t).is_some() { return if t == anchor { '+' } else { '=' }; }
+                            match world.terrain[&(x, y)] { TerrainType::Sea => '~', TerrainType::Water => ':', TerrainType::Beach => '.', TerrainType::Grass => ' ', TerrainType::Forest => '^', TerrainType::Mountain => 'M' }
+                        }).collect();
+                        eprintln!("seed {seed}: {row}");
+                    }
+                }
+            }
+        }
+        assert!(short.is_empty(), "seeds short of a starting town (seed, placed): {short:?}");
     }
 }

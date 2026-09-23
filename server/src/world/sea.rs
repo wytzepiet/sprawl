@@ -1,19 +1,20 @@
 //! A port's quay, and its ship's voyages over the water. docs/economy.md
 //! §12.10.
 //!
-//! The sea is the water joined to the map's edge, charted once from the
-//! terrain; water that is not is a lake, and no port stands on it. A port
-//! stands with its back to the sea: the tile behind its building's back
-//! face is the quay, where the ship stands when it is home. A voyage is a
-//! run off the roads, as a tractor's is (`world/fields.rs`): the shortest
-//! way over the sea from the quay toward the map's edge, a tile every
-//! pace, as far as the fog, which is the horizon, or the map's edge where
-//! the survey reaches it. There the ship sails out of sight, is away the
-//! sailing, and sails back in the way it went; home, it is a lorry back
-//! from beyond the edge (`calls::car_idle`), and lands every shelf's worth
-//! at the sea's crossing.
+//! The sea is a tile of its own from the generator (`terrain.rs`): water
+//! on the ocean's side of the step. Water on the shelf is a lake, and no
+//! port stands on it. A port stands with its back to the sea: the tile
+//! behind its building's back face is the quay, where the ship stands when
+//! it is home. A voyage is a run off the roads, as a tractor's is
+//! (`world/fields.rs`): the shortest way over the sea from the quay toward
+//! the map's edge, a tile every pace, as far as the fog, which is the
+//! horizon, or the map's edge where the survey reaches it. There the ship
+//! sails out of sight, is away the sailing,
+//! and sails back in the way it went; home, it is a lorry back from beyond
+//! the edge (`calls::car_idle`), and lands every shelf's worth at the
+//! sea's crossing.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 use crate::blueprint::{plot, FACINGS};
 use crate::engine::event_queue::EventQueue;
@@ -32,45 +33,27 @@ pub const SAILING: GameTime = DAY_MS as GameTime / 6;
 const AROUND: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
 impl World {
-    /// The sea: every water tile joined to the map's edge, flooded from
-    /// the edge inward. Charted the first time anything asks.
-    pub fn sea(&self) -> &HashSet<(i32, i32)> {
-        self.sea.get_or_init(|| {
-            let water = |t: (i32, i32)| self.terrain.get(&t) == Some(&TerrainType::Water);
-            let off = |t: (i32, i32)| !self.terrain.contains_key(&t);
-            let mut sea: HashSet<(i32, i32)> = self.terrain.keys().copied().filter(|&t| water(t) && AROUND.iter().any(|d| off((t.0 + d.0, t.1 + d.1)))).collect();
-            let mut queue: VecDeque<(i32, i32)> = sea.iter().copied().collect();
-            while let Some(t) = queue.pop_front() {
-                for d in AROUND {
-                    let n = (t.0 + d.0, t.1 + d.1);
-                    if water(n) && sea.insert(n) {
-                        queue.push_back(n);
-                    }
-                }
-            }
-            sea
-        })
-    }
-
     /// The quay a kind's plot would have here this way round: a tile of
     /// the sea behind its building's back face, the middle one first. None
     /// where the back is on land, or on a lake.
     pub fn quay_at(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<GridCoord> {
-        let ((bx, by), (bw, bh)) = plot(kind, facing).building;
+        // The building as it lies on the grid, its size already turned
+        // with the facing.
+        let ((bx, by), (gw, gh)) = plot(kind, facing).building;
         let (dx, dy) = FACINGS[facing as usize % 4];
         let building = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
         // The back face is the row of the building furthest from the lot,
         // and the quay is one step further out from it.
         let mut back: Vec<GridCoord> = if dx == 0 {
-            let y = if dy < 0 { building.y + bh as i32 } else { building.y - 1 };
-            (0..bw as i32).map(|i| GridCoord { x: building.x + i, y }).collect()
+            let y = if dy < 0 { building.y + gh as i32 } else { building.y - 1 };
+            (0..gw as i32).map(|i| GridCoord { x: building.x + i, y }).collect()
         } else {
-            let x = if dx < 0 { building.x + bh as i32 } else { building.x - 1 };
-            (0..bw as i32).map(|i| GridCoord { x, y: building.y + i }).collect()
+            let x = if dx < 0 { building.x + gw as i32 } else { building.x - 1 };
+            (0..gh as i32).map(|i| GridCoord { x, y: building.y + i }).collect()
         };
         let mid = back[back.len() / 2];
         back.sort_by_key(|t| ((t.x - mid.x).abs() + (t.y - mid.y).abs(), t.x, t.y));
-        back.into_iter().find(|t| self.sea().contains(&(t.x, t.y)))
+        back.into_iter().find(|t| self.terrain.get(&(t.x, t.y)) == Some(&TerrainType::Sea))
     }
 
     /// A standing port's quay.
@@ -102,9 +85,9 @@ impl World {
     /// The way from the quay to the horizon: the shortest over the sea to
     /// the map's edge, cut where it enters the fog, since a ship out of
     /// the survey is out of sight either way. None from a quay that is
-    /// not on the sea.
+    /// not on the sea, or on a sea with no way out.
     fn horizon(&self, quay: GridCoord) -> Option<Vec<GridCoord>> {
-        let sea = self.sea();
+        let sea = |t: (i32, i32)| self.terrain.get(&t) == Some(&TerrainType::Sea);
         let off = |t: GridCoord| AROUND.iter().any(|d| !self.terrain.contains_key(&(t.x + d.0, t.y + d.1)));
         let mut came: HashMap<(i32, i32), (i32, i32)> = HashMap::from([((quay.x, quay.y), (quay.x, quay.y))]);
         let mut queue = VecDeque::from([quay]);
@@ -116,7 +99,7 @@ impl World {
             }
             for (dx, dy) in AROUND {
                 let n = GridCoord { x: t.x + dx, y: t.y + dy };
-                if sea.contains(&(n.x, n.y)) && !came.contains_key(&(n.x, n.y)) {
+                if sea((n.x, n.y)) && !came.contains_key(&(n.x, n.y)) {
                     came.insert((n.x, n.y), (t.x, t.y));
                     queue.push_back(n);
                 }
@@ -209,11 +192,32 @@ mod tests {
         let mut world = World::new();
         for y in -8..41 {
             for x in -60..100 {
-                world.terrain.insert((x, y), if y >= 5 { TerrainType::Water } else { TerrainType::Grass });
+                world.terrain.insert((x, y), if y >= 5 { TerrainType::Sea } else { TerrainType::Grass });
             }
         }
         world.place_road_path(&(-4..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
         world
+    }
+
+    /// Turned to face along a coast, the building's depth lies along x,
+    /// and the quay is still the tile touching the back wall — not the
+    /// one beyond it.
+    #[test]
+    fn the_quay_touches_the_back_wall_whichever_way_the_port_faces() {
+        let mut world = World::new();
+        for y in -8..8 {
+            for x in -30..30 {
+                world.terrain.insert((x, y), if x >= 20 || x <= -20 { TerrainType::Sea } else { TerrainType::Grass });
+            }
+        }
+        // Facing west, the back wall stands on x = 19 and the sea begins at 20.
+        let ((bx, _), (gw, _)) = plot(BuildingKind::Port, 3).building;
+        let pos = GridCoord { x: 20 - (bx + gw) as i32, y: 0 };
+        assert_eq!(world.quay_at(pos, BuildingKind::Port, 3), Some(GridCoord { x: 20, y: 1 }));
+        // Facing east, the back wall stands on x = -19.
+        let ((bx, _), _) = plot(BuildingKind::Port, 1).building;
+        let pos = GridCoord { x: -19 - bx as i32, y: 0 };
+        assert_eq!(world.quay_at(pos, BuildingKind::Port, 1), Some(GridCoord { x: -20, y: 1 }));
     }
 
     #[test]
@@ -224,13 +228,13 @@ mod tests {
         let port = world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Port).expect("the coast takes a port");
         let quay = world.quay(port).unwrap();
         assert_eq!(quay.y, 5, "the quay is the water behind the back face: {quay:?}");
-        assert_eq!(world.terrain[&(quay.x, quay.y)], TerrainType::Water);
+        assert_eq!(world.terrain[&(quay.x, quay.y)], TerrainType::Sea);
         // The horizon is where the map ends, the survey reaching it: the
         // last tile of water.
         let path = world.horizon(quay).expect("a way to the sea");
         assert_eq!((path[0], path.last().unwrap().y), (quay, 40));
         assert!(path.windows(2).all(|w| (w[0].x - w[1].x).abs() + (w[0].y - w[1].y).abs() == 1));
-        assert!(path.iter().all(|t| world.terrain[&(t.x, t.y)] == TerrainType::Water), "the ship sailed over land");
+        assert!(path.iter().all(|t| world.terrain[&(t.x, t.y)] == TerrainType::Sea), "the ship sailed over land");
         // Or the fog, where the survey stops short of it: the first tile
         // of the chunk nobody has surveyed.
         world.revealed.retain(|c| c.cy < 1);
@@ -241,18 +245,12 @@ mod tests {
     #[test]
     fn a_lake_takes_no_port() {
         let mut world = coast();
-        // Grass all round the water: a lake, not the sea.
-        for y in 38..41 {
-            for x in -60..100 {
-                world.terrain.insert((x, y), TerrainType::Grass);
+        // The same water, but a lake: the generator's word, not the shape.
+        for t in world.terrain.values_mut() {
+            if *t == TerrainType::Sea {
+                *t = TerrainType::Water;
             }
         }
-        for y in -8..41 {
-            for x in [-60, 99] {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        assert!(world.sea().is_empty(), "a lake was charted as the sea");
         assert!(world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Port).is_none(), "a port stood on a lake");
     }
 }
@@ -276,13 +274,13 @@ mod look {
             let mut world = World::new();
             world.terrain = crate::terrain::generate(seed);
             let terrain = world.terrain.clone();
-            let Some(anchor) = crate::road_gen::generate(&mut world, seed, &terrain) else {
+            let Some(anchor) = crate::road_gen::generate(&mut world, seed) else {
                 eprintln!("seed {seed}: no town");
                 continue;
             };
             let far = |&(x, y): &(i32, i32)| (x - anchor.x).abs().max((y - anchor.y).abs());
-            match world.sea().iter().min_by_key(|t| (far(t), t.0, t.1)) {
-                Some(t) => eprintln!("seed {seed}: town at {:?}, the sea {} tiles off at {t:?}, {} water tiles of which {} sea", anchor, far(t), terrain.values().filter(|&&v| v == TerrainType::Water).count(), world.sea().len()),
+            match terrain.iter().filter(|(_, v)| **v == TerrainType::Sea).map(|(t, _)| t).min_by_key(|t| (far(t), t.0, t.1)) {
+                Some(t) => eprintln!("seed {seed}: town at {:?}, the sea {} tiles off at {t:?}", anchor, far(t)),
                 None => eprintln!("seed {seed}: town at {:?}, no sea on the map", anchor),
             }
         }

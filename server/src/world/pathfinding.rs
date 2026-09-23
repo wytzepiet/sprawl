@@ -347,7 +347,7 @@ mod tests {
         let terrain = crate::terrain::generate(7);
         let mut world = World::new();
         world.terrain = terrain.clone();
-        crate::road_gen::generate(&mut world, 7, &terrain);
+        crate::road_gen::generate(&mut world, 7);
         world
     }
 
