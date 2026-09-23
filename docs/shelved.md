@@ -175,3 +175,210 @@ city is the pedestrian question again.
 **To bring back.** Stations as doors first (arrivals with a car), which
 costs nothing new; anything more is the entry above.
 
+
+## The survey and the fog
+
+**What.** Terrain was revealed in chunks around what a building had
+reached (`REVEAL_RADIUS`, `World::revealed`, `newly_revealed`,
+`revealed_bounds`), the client drew fog past it (`FogOfWar.ts`) and
+clamped the camera to it, a ship's voyage was cut where it entered the
+fog, and the road exits stood where a road left the survey. Multiplayer
+was to share the survey (`multiplayer.md` §3).
+
+**Why shelved.** Decided 2026-09-23. The fog did two jobs, hiding
+terrain and bounding the door, and neither survives the island: the map
+is one island seen whole, and the door is the terminal on the coast. With
+many players the surveyed land pushed the road door away from a town in
+the middle, which is why the sea became the door in the first place; and
+a player who can pan anywhere is exploring by looking, which is what the
+fog denied.
+
+**To bring back.** `revealed` and `reveal_around` in `world/mod.rs`, the
+chunk reveal in the game loop, `FogOfWar.ts` and the camera clamp. Only
+if the island is ever bigger than a player should see at once. Last lived
+at `df49b81`.
+
+## The generated road network and the road exit
+
+**What.** `road_gen.rs`: anchors in a checkerboard of chunks, the shortest
+runs between them with an acute-angle rule, a ring laid past the frontier
+so arriving from off the map was a long haul, and the starting town's
+streets laid the same way. The `Edge` building stood where a road left the
+survey, with every tap and the world's prices; everything the town lacked
+was served there (`economy.md` §8.1).
+
+**Why shelved.** Decided 2026-09-23. The first road is the player's, from
+the ramp, and a road born with the map was a road the player did not
+draw. The road exit was a door that receded as neighbours surveyed past
+it; the terminal on the coast does not. "The edge is far by design, the
+drive is the price" becomes the sailing and the boat's batch.
+
+**To bring back.** `road_gen::{generate, extend_to, start_town}`,
+`World::stand_edges`, `entry_node_near`, `nearest_edge`, the `Edge` kind.
+Last lived at `df49b81`.
+
+## Services as a good
+
+**What.** `economy.md` §12.5: services as a need drawn by the day by every
+household and a fifth of every firm's labour, made by the office at its
+row's rate, delivered by a consultant's car from an office in town or from
+beyond the edge, with the office as the town's export base before there
+was a port. `Need::Services`, `SERVICES`, `draw`, the office's `makes`,
+`CarRole::Company`.
+
+**Why shelved.** Decided 2026-09-23. It was the one good that was not a
+load: nothing to stack on a truck, nothing on a shelf, a car that drove
+to a house and back. It was the most complex row in the game, the one
+whose price rang in §13.23, and it existed to make the household row
+balance, which a player could not see. A production game keeps goods
+that are loads; the works replaces the office as the export base.
+
+**To bring back.** The office blueprint, `Need::Services` and its stock
+on homes and firms, `economy::draw`, `services()`, the fifth on
+`worth`, `season_no_harm`'s services report. Last lived at `df49b81`.
+
+## Wear, parts and the workshop
+
+**What.** `economy.md` §12.6: a second per-tile stock on every car, put
+right at a workshop that bought parts from beyond the edge or the
+warehouse, priced as a service every two and a half tanks.
+
+**Why shelved.** Decided 2026-09-23. A stock on every car and a chain that
+fed only itself, there so that a car's running cost matched a referent.
+Fuel is enough for a car to want, and a pump is enough to place for it.
+
+**To bring back.** `Need::Wear`, `Bucket::driven`'s second entry, the
+workshop blueprint, `resident::drove`'s wear line. Last lived at
+`df49b81`.
+
+## Leisure, evenings out and the household budget
+
+**What.** Leisure as a need with bars and restaurants as its taps, an
+evening out priced at the world's, and the household row's budget shares
+(`TRANSPORT` a sixth, services the balance, sittings and an evening at the
+world's price) that made a head's labour worth its inputs over nine
+tenths.
+
+**Why shelved.** Decided 2026-09-23. Sinks that were only there to be
+sinks. They consumed hours to make the row balance and nobody could watch
+them land. People eat and their cars burn fuel; that is what a person
+costs, and both are trucks on the road.
+
+**To bring back.** `Need::Leisure`, the bar and restaurant blueprints,
+`economy::household` as written, §12.4's row. Last lived at `df49b81`.
+
+## The port's own ship
+
+**What.** `economy.md` §12.10 as built: the port a depot whose lorry is a
+ship, sailing from the quay to the map's edge when a shelf ran low and
+landing every shelf's worth at the sea's crossing. `CarRole::Ship`,
+`World::{set_sail, sail_home, ship_step, moor}`, `calls::dispatch`'s
+fetch by ship.
+
+**Why shelved.** Decided 2026-09-23. The ship is the world's, on a
+timetable with a batch, and the mayor never owns one. A ship the town
+sends when it likes gives the door no size, and the size is what makes
+prices move and a works worth building. The quay, the shelves, the vans
+and the voyage over the sea all stay; only who owns the boat and when it
+sails changes.
+
+**To bring back.** `CallKind::Fetch if economy::ships(row)` and the
+reorder point as the ship's trigger. Last lived at `df49b81`.
+
+## The construction firm
+
+**What.** `game.md` as of 2026-09-09: construction as a delivery by a
+construction firm's truck, from the edge until the town had one. Never
+built; placements paid the door in full at once.
+
+**Why shelved.** Decided 2026-09-23. The site is a buyer with one stock
+and the depot is already the builder; a firm whose only product was a
+truck was a second depot with a name. Sites are built by whoever the one
+protocol sends: the tapped lorry, a depot's van, a lorry off the ferry.
+
+**To bring back.** Nothing to bring; a firm would be a depot that holds
+materials, which is a warehouse.
+
+## Haulers
+
+**What.** `economy.md` §3 and §5.3, filed from the start: a company whose
+vehicles carry for others at a posted price a load a tile, its stock idle
+capacity. Argued again 2026-09-23 for exports by ship and for the site's
+deliveries.
+
+**Why shelved.** A second dispatch mechanism, and the first step toward
+routing loads by hand, which is the Transport Fever slide. The world's
+lorry off the ferry already carries for anyone, and every building's own
+vehicle carries its own.
+
+**To bring back.** Only if a call ever exists that no owner's vehicle and
+no world's vehicle can answer.
+
+## Taxes
+
+**What.** Argued 2026-09-23: the mayor's purse as a share of every hour of
+need served in town, so that every visit paid and the closed town had a
+budget. One line in `economy::gdp`.
+
+**Why shelved.** A tax pays the town where the sale happens, so the
+tax-maximising strategy is self-sufficiency, every neighbour is a rival
+for diners, and the multiplayer island has no reason for towns to need
+each other. The door pays the town that sells to others, and that is the
+cooperative game. It would also have removed the slump, and the balance
+of trade as the score.
+
+**To bring back.** Don't. What it was for, seeing what earns money, is
+the per-building net at the door and the terminal's card.
+
+## The trade panel and the charts
+
+**What.** Argued and mocked 2026-09-23, on a Design canvas at
+https://claude.ai/artifact/Rdy5vyxzPzkQGPqT81xgxW: a docked panel of
+every good's flows; a two-row supply-and-disposition bar; a zero-centred
+bar with the overhang as the door; a self-sufficiency ratio to a 100
+percent mark; a trade-balance list with a made-here track; and the one
+that worked, a diverging bullet chart with the town's own volume as pale
+wings behind the traded slice in strong colour.
+
+**Why shelved.** A game needs a chart like that when it has six goods and
+three flows each. With three goods and the terminal's card, one line on
+the meter says what the chart said. The last chart is kept for the town's
+page, on day twenty, drawn once, and as a building's own headline.
+
+**To bring back.** The canvas holds the artboards; the data is
+`Town.sold` and `bought` per need plus made and used per good, which the
+books already keep.
+
+## The mayor's car, driving, and hand-mining
+
+**What.** Argued 2026-09-23 after the arcade idle games and Factorio: an
+avatar that carries and mines; a lorry the player steers; a car that
+takes raw goods from terrain tiles.
+
+**Why shelved.** The avatar is a fork in genre: steering, a follow camera,
+touch controls, a second way to do what the tap does. What it teaches,
+the tapped lorry and the ferry teach. Hand-mining survives without it: the
+tapped lorry may take a terrain tile as a source, slowly, which is a
+quarry's manual phase.
+
+**To bring back.** Cheapest first: a ride-along camera in any vehicle, no
+input. Then, if the itch stays, the wheel on rails: the lorry follows the
+lane, the player supplies throttle and the turn at each junction, on the
+physics that exists. Never free steering.
+
+## Conveyor belts and hand-wired supply pairs
+
+**What.** Argued 2026-09-23: Factorio's belts between buildings; or
+telling each buyer which seller it buys from, like drawing a line in
+Transport Fever.
+
+**Why shelved.** A belt is a second transport network that never meets
+the road and would win inside industry, and at twelve-metre tiles it is
+a conveyor the length of a district. Hand-wired pairs kill the one
+protocol: a shorter road would change nothing, prices would decide
+nothing, and forty buildings would be hundreds of assignments. Anno's
+rule: automatic on the island, explicit only between islands.
+
+**To bring back.** Lines, later, for the few big pipes only: a ship
+between two ports on a schedule, a siding from a quarry to a works.
+Never the last mile.

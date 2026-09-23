@@ -6,7 +6,10 @@ it, and again after one about where it comes from. The second rework is
 the first rule below — the town has one purse — and everything that
 followed from purses went with them (`shelved.md`). Built through step
 5 of §12, services and wear; §12.2 to §12.6 record what building each
-step decided. Built through step 7 and the port (§12.10), 2026-09-17. Supersedes
+step decided. Built through step 7 and the port (§12.10), 2026-09-17. On
+2026-09-23 the door became the terminal and the consumption side was cut:
+`game.md` is the design, §12.11 says what goes and what stays, and the
+built sections here are the record of the code until it changes. Supersedes
 `game.md` §Money, which
 points here. Builds on `residents.md` (buckets, taps, the
 score), `services.md` (calls) and `parking.md` (lots as the place
@@ -123,9 +126,9 @@ never trades; the mayor builds.
 **The edge** is the world beyond, with rows of its own that never run
 short and prices that do not move (§8.1).
 
-Filed still, the port built (§12.10): haulers as companies whose stock
-is idle capacity. A building's own truck moves its goods, or the edge's,
-and a port's ship moves the port's.
+Haulers are out (`shelved.md`): a building's own vehicle moves its
+goods, the world's lorry off the ferry moves the world's, and the world's
+ship moves what crosses the quay. Nothing carries for a price.
 
 ## 4. Stocks
 
@@ -391,6 +394,12 @@ because it is the part every broken game economy got wrong by pretending
 to simulate it.
 
 ### 8.1 The edge
+
+*2026-09-23: the edge is the terminal on the coast, the world's ferry with
+a batch is the door, and the drive to the edge is the sailing (`game.md`
+§The island and the door). The band, the crossing and the rules below
+stand unchanged; where this section says "the edge" read the quay, and
+where it says the drive read the boat.*
 
 A town is an open economy. Its money supply is what it has exported less
 what it has imported, and what balances that is prices: drain money out
@@ -1702,6 +1711,49 @@ As built, 2026-09-17, with what the first look found:
   town's shops buy a crate or two a day, so nothing ran short enough to
   move a price in three days. That is a season's to say (§13.26).
 
+### 12.11 The cut, 2026-09-23
+
+Decided before the code, after a day arguing the game against the games
+it borrows from (`game.md`). Complexity is mechanisms, not goods: a good
+that is a load on a shelf on a lorry costs a row in the table; a good
+that works its own way costs a mechanism. The cut removes the goods that
+were each their own mechanism, and everything that only existed to make
+the household row balance.
+
+**Goes.**
+
+- Services (§12.5): the office's row, the consultant, the firm's fifth,
+  the household's services stock, `SERVICES`, `draw`, `services()`.
+- Wear (§12.6): the second stock on every car, parts, the workshop.
+- Leisure: bars and restaurants as evenings out, `Need::Leisure`.
+- The household budget shares (§12.4, §12.7): `TRANSPORT`, the services
+  balance. A head's inputs become meals and the fuel the commute burns,
+  at the world's prices; the tenth stays as saving.
+- The road exit, the survey and the generated roads (§8.1's "the drive
+  is the price"): the sailing is the price.
+- The port's own ship (§12.10): the world's ship at a berth, on a
+  timetable with a batch.
+- Placement paid at the door in full (§12.4 "a placement is an import"):
+  a site with a materials stock, filled by deliveries, the door paying
+  only for what came from outside.
+
+**Stays.** Stocks and rows (§4), posted prices and the nudge (§5), the
+one protocol (§6), the door and the crossing (§8), one purse (§8.2), the
+slump (§9), the books and the season (§10), the band and no-harm seasons
+(§11), the farm and its tractor (§12.8), the quay as a depot's shelves
+and the voyage over the sea (§12.10).
+
+**What the seasons should say afterwards.** The band and no ringing on
+three goods, crates, fuel and labour; no harm on the smaller town; tenure
+at nothing; the slump still a slump. The no-harm print loses its services
+report. What the cut does to the treasury over a season is the number to
+record here when it runs.
+
+**Then, in order.** The opening (`roadmap.md` milestone 1): the island,
+the terminal, the ferry, the quay, sites and one material, the tapped
+lorry, the warehouse as the first hire. Then exports on the ship and the
+works. Each to the number here, as before.
+
 ## 13. Open
 
 1. ~~`α_up`, `α_down`, and the wage asymmetry, with a referent each.~~ §12.2.
@@ -1807,3 +1859,27 @@ As built, 2026-09-17, with what the first look found:
     filed at §3; the port buying it and shipping out what piles up is a
     trader. Which, when a season says the road's crossing on exports is
     a line the treasury feels.
+28. The ferry's three numbers: cars a sailing, sailings a day, the
+    crossing time, at the first tier and per step of the tree. The
+    opening wants a small boat often; the door's size should bite at
+    scale, not at minute two. A referent: a game day is twenty minutes
+    of the clock, so a boat every game hour is one a minute.
+29. The starting kit: what the first ferry lands on the quay, and the
+    reserve it comes with. Enough for the first tier, a road allowance,
+    a shop, a farm, a few houses, and not enough to skip the boat.
+30. The island's size against the number of towns. A town is a hundred
+    tiles across; the 512-tile map holds a dozen with room between.
+    Whether the island is the map or bigger than it, with sea generated
+    as the camera pans, is the generator's question.
+31. A kind's materials: its price in hours divided by the material's
+    world price, so the doc's numbers carry over, with the tree's
+    discount as fewer units. The material's own row, the works, to the
+    number.
+32. The manual phase's length: how many taps before the tree offers the
+    warehouse. Ten loads and five minutes is the guess; the player
+    should be relieved, never tired.
+33. Exports by ship on the terminal: a maker's surplus carried to the
+    quay and gone on the next sailing, paid at the sea's crossing when
+    the boat leaves. On the full town's season the road's crossing on
+    the farm's crates was 140 hours, against a treasury that moved 160
+    (2026-09-22, the last season before the cut). §13.27 as decided.
