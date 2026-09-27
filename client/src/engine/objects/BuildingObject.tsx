@@ -1,6 +1,6 @@
 import { Color3, Vector3, type Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
-import { shapeFor, BUILDING_COLOR, SLAB, PLOT_MARGIN, variantOf, facingOf, boxGeometry } from "./buildings";
+import { shapeFor, SLAB, PLOT_MARGIN, variantOf, facingOf, boxGeometry } from "./buildings";
 import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
 import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
 import { Strip, type RGB } from "./strip";
@@ -15,8 +15,8 @@ import { parts } from "../../state/selection";
 
 /** The slab is white like a street, with the street's kerb round it, and
  *  the dividers between spots are painted in the kerb's colour. */
-export const ASPHALT = Color3.FromHexString("#FFFFFF");
-export const KERB = Color3.FromHexString("#DFE1E1");
+export const ASPHALT = Color3.FromHexString("#F8F6F0");
+export const KERB = Color3.FromHexString("#E6E2D6");
 
 /** A farm's field is the ground the tractor last drove, a strip a tile
  *  wide along its path, painted flat like a map's farmland in one tone
@@ -68,7 +68,7 @@ export function mountBuilding(
 ): () => void {
   const data = entry.object.data as Building;
   const pos = entry.position;
-  const color = look.tint(Color3.FromHexString(BUILDING_COLOR));
+  const color = look.tint(Color3.FromHexString(BLUEPRINTS[data.kind].color));
   const lie = plot(data.kind, data.facing);
   const [[bx, by], [w, h]] = lie.building;
   // Size and height are part of the key: a shape is built for the plot it

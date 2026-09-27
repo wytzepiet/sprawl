@@ -11,29 +11,31 @@ const hex3 = (h: string) => Color3.FromHexString(h);
 const hex4 = (h: string) => new Color4(...hex3(h).asArray(), 1);
 
 const light = {
-  // Ground, water and sand after a pen-and-wash town plan, lifted lighter and
-  // fresher than the colours sampled from it.
-  land: hex4("#CFE58A"),
-  water: hex3("#7CC4EE"),
-  beach: hex3("#F7EBCB"),
-  // The floor between the crowns: the shade of the darkest of them.
-  forest: hex3("#5A9A3E"),
-  // Tree crowns, dark to light: the plan's three greens, lifted out of olive.
-  crowns: [hex3("#5FA543"), hex3("#86C451"), hex3("#B4DC66")],
+  // After Mini Motorways: sage land, mint water, off-white roads, and the
+  // trees the one dark note on the ground, so the buildings carry the colour.
+  land: hex4("#C6DBAB"),
+  water: hex3("#A6E1D6"),
+  beach: hex3("#F2E4C4"),
+  // The floor between the crowns: a shade under the land, as the map's
+  // darker meadows are.
+  forest: hex3("#A3C68F"),
+  // Tree crowns, dark to light: teal-greens, light enough that a forest
+  // reads as a wood and not a hole.
+  crowns: [hex3("#4F8A6C"), hex3("#63A07F"), hex3("#80B892")],
   // A field through its season: ploughed earth beside the beach, the
   // growing crop beside the grass, the ripe crop beside the highway's
   // yellow, the stubble between.
-  earth: hex3("#F1CE9A"),
-  growing: hex3("#C3EA7C"),
-  ripe: hex3("#F7D96E"),
-  stubble: hex3("#EFE6BC"),
+  earth: hex3("#EBD3A8"),
+  growing: hex3("#B5D594"),
+  ripe: hex3("#F2D680"),
+  stubble: hex3("#ECE3C4"),
   mountain: hex3("#F8F7F6"),
-  grid: hex3("#B5CF6E"),
-  road: hex3("#FFFFFF"),
-  roadBorder: hex3("#DFE1E1"),
+  grid: hex3("#BBD29E"),
+  road: hex3("#F8F6F0"),
+  roadBorder: hex3("#E6E2D6"),
   // A road, as against a street: the map's yellow for a through route.
-  highway: hex3("#F9DC72"),
-  highwayBorder: hex3("#D9B44A"),
+  highway: hex3("#F6CF6A"),
+  highwayBorder: hex3("#D9AE4A"),
 };
 
 const dark = {

@@ -16,7 +16,7 @@ import {
 } from "@babylonjs/core";
 import { createBorderTexture } from "../engine/TerrainChunks";
 import { buildChunk, CHUNK_STRIDE, type TerrainPalette } from "../engine/objects/terrainGeometry";
-import { shapeFor, BUILDING_COLOR, SLAB } from "../engine/objects/buildings";
+import { shapeFor, SLAB } from "../engine/objects/buildings";
 import { ASPHALT, KERB } from "../engine/objects/BuildingObject";
 import { frameOf, markingGeometry, runSlabGeometry, yardGeometry } from "../engine/objects/lots";
 import { createOutline } from "../engine/outline";
@@ -129,9 +129,6 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[]; hovered: 
     ground.material = groundMat;
     ground.receiveShadows = true;
 
-    const mat = new StandardMaterial("shelf_building", scene);
-    mat.diffuseColor = Color3.FromHexString(BUILDING_COLOR);
-    mat.specularColor = Color3.Black();
     const flat = (name: string, color: Color3) => {
       const m = new StandardMaterial(name, scene);
       m.diffuseColor = color;
@@ -159,7 +156,7 @@ export default function BuildMenuScene(props: { kinds: BuildingKind[]; hovered: 
       // A tile in from the slot's edge, on the grid, where the menu puts
       // its pin.
       const x0 = left - row.start[i] - 1 - w;
-      const building = solid(`shelf_${kind}`, shapeFor(kind, bw, bh, 0), mat);
+      const building = solid(`shelf_${kind}`, shapeFor(kind, bw, bh, 0), flat(`shelf_${kind}_mat`, Color3.FromHexString(BLUEPRINTS[kind].color)));
       building.position = new Vector3(x0 + w / 2, ROW + by + bh / 2, 0);
       shadows.addShadowCaster(building);
       solids.set(kind, building);

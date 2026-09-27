@@ -3,9 +3,6 @@ import { GRID_LINE } from "./terrainGeometry";
 import type { BuildingKind } from "../../generated";
 import { BLUEPRINTS } from "../../blueprints";
 
-/** Buildings themselves stay neutral — the pin says what one is. */
-export const BUILDING_COLOR = "#EFEDE8";
-
 /** Margin from the plot edge, which is what leaves the category tint visible. */
 export const PLOT_MARGIN = 0.15;
 export const BUILDING_SIZE = 1.0 - 2 * PLOT_MARGIN;
