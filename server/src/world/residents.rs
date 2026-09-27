@@ -507,8 +507,7 @@ mod tests {
         world.settle();
 
         let who = world.resident_ids()[0];
-        let edge = *world.edge.iter().next().unwrap();
-        // Stood at home with an evening owed, rather than off-map with nothing.
+        // Stood at home and hungry, rather than off-map with nothing.
         if let Some(e) = world.objects.get_mut(who)
             && let GameObject::Resident(ref mut r) = e.object
         {
@@ -519,17 +518,17 @@ mod tests {
         }
         let noon = 12 * (crate::protocol::DAY_MS as u64) / 24;
         let v = crate::resident::inspect(&world, who, noon);
-        let leisure = v["buckets"]
+        let eat = v["buckets"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|b| b["need"] == "Leisure")
-            .expect("a Leisure bucket");
-        assert_eq!(
-            leisure["option"]["building"].as_u64(),
-            Some(edge as u64),
-            "an evening out should be at the edge, not at {orphan}: {}",
-            leisure["option"],
+            .find(|b| b["need"] == "Eat")
+            .expect("an Eat bucket");
+        assert_ne!(
+            eat["option"]["building"].as_u64(),
+            Some(orphan as u64),
+            "a meal is offered at a shop no road reaches: {}",
+            eat["option"],
         );
     }
 

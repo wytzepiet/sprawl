@@ -40,12 +40,9 @@ pub fn edge_wage() -> f64 {
 /// (`wholesale`); a unit of services is the office's row. The rest have
 /// no row in town yet, so each is a number with the row's name on it
 /// (§13.3), set by the household's budget: a day at the edge earns
-/// eight, a sixth of it goes on transport, a tenth on leisure. The tank
-/// is three, and a service six (`Need::Wear`). An evening out is less
-/// than its share, because the price is added to the visit in the
-/// resident's own hours (§6.1) and the ladder of residents.md §5.5 is
-/// tuned to tenths: at an hour an evening loses to waiting up for bed
-/// and nobody goes out. Housing's third is in the household's services.
+/// eight, and a sixth of it goes on transport. The tank is three, and a
+/// service six (`Need::Wear`). Housing's third is in the household's
+/// services.
 /// Low stakes: the band turns a wrong number into a town that is a
 /// little dear or a little cheap, never one that runs away. §12.1,
 /// §12.2, §12.7.
@@ -53,7 +50,6 @@ pub fn edge_price(need: Need) -> f64 {
     match need {
         Need::Eat => worth(wholesale(need), COUNTER),
         Need::Services => wholesale(need),
-        Need::Leisure => 0.5,
         Need::Fuel => 3.0,
         // A service, every two and a half tanks: with the tank's price,
         // the two come to the transport sixth at a commuter's hundred and
@@ -149,7 +145,7 @@ pub fn adds(labour: f64) -> f64 {
 
 /// The household row's inputs a head a day, at the world's prices,
 /// which come to nine tenths of a day's wage at the edge (§4, §8.1).
-/// Sittings and an evening are the table's; transport is its budget
+/// Sittings are the table's; transport is its budget
 /// sixth, an estimate of what the car burns; services — the night's
 /// upkeep, repairs, and everything else on no shelf — are the rest,
 /// drawn from the home's services stock by the day, made by an office in
@@ -163,8 +159,7 @@ pub fn household() -> f64 {
 }
 pub fn services() -> f64 {
     let sittings = 2.4 * edge_price(Need::Eat);
-    let evening = edge_price(Need::Leisure);
-    household() - sittings - evening - TRANSPORT
+    household() - sittings - TRANSPORT
 }
 
 /// Days of its own draw a building's services stock holds: two, so it
@@ -264,8 +259,8 @@ pub fn rated(kind: BuildingKind, need: Need) -> f64 {
 }
 
 /// What the edge charges for the unit a kind sells of a need: the crate,
-/// wholesale, that a depot's van delivers; the meal, the evening or the
-/// tank over anyone else's counter. What a kind opens charging, since a
+/// wholesale, that a depot's van delivers; the meal or the tank over
+/// anyone else's counter. What a kind opens charging, since a
 /// price it has sold nothing at cannot be known yet. §12.2.
 pub fn edge_price_of(kind: BuildingKind, need: Need) -> f64 {
     if depot(kind) && shelves(kind).contains(&need) { wholesale(need) } else { edge_price(need) }
@@ -378,15 +373,12 @@ pub fn depot(kind: BuildingKind) -> bool {
     bp.stock > 0 && !bp.vehicles.is_empty()
 }
 
-/// What one unit costs a kind to sell: the delivery behind it, and
-/// nothing behind an evening out. The floor a price never goes under is
+/// What one unit costs a kind to sell: the delivery behind it. The floor a price never goes under is
 /// marginal cost — the shutdown rule: a firm sells while the price covers
 /// what the sale itself costs, and pays its staff from the margin or
 /// runs through its float (§9). The hours behind the counter are not in
-/// it on purpose: spread over a bar's evenings they come to an hour's
-/// wage each, and at that price nobody goes out (`edge_price`); spread
-/// over the day's actual sales they rise as trade falls and price a
-/// quiet shop out. A maker's floor is what the edge pays for a unit,
+/// it on purpose: spread over the day's actual sales they rise as trade
+/// falls and price a quiet shop out. A maker's floor is what the edge pays for a unit,
 /// since it can always ship one there instead. §5.1.
 pub fn unit_cost(kind: BuildingKind, need: Need) -> f64 {
     if !shelves(kind).contains(&need) {
@@ -575,7 +567,7 @@ fn outside(world: &World, resident: EntityId) -> bool {
 
 /// One visit paid for, as it ends: `units` of `need` served at `at` to
 /// `who`. A shift is sold by the resident and bought by the building; a
-/// meal, an evening, a tank or a service is bought by the resident and
+/// meal, a tank or a service is bought by the resident and
 /// sold by the building. Two lines in the books, and a lump on the map; the treasury
 /// moves only when one party is the outside — the edge, or a household
 /// beyond it. Anything that runs a shelf draws it down. §6, §8.
@@ -632,7 +624,7 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             }
         }
         Need::Home | Need::Rest | Need::Services => {}
-        Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => {
+        Need::Eat | Need::Fuel | Need::Wear => {
             let due = units * price_of(world, at, need);
             if edge {
                 // A meal beyond the edge is the town buying one, unless
@@ -1293,7 +1285,7 @@ mod tests {
     /// is what a unit of services is.
     #[test]
     fn the_door_breaks_even_by_the_rows_arithmetic() {
-        let inputs = 2.4 * edge_price(Need::Eat) + edge_price(Need::Leisure) + TRANSPORT + services();
+        let inputs = 2.4 * edge_price(Need::Eat) + TRANSPORT + services();
         assert!((inputs - 8.0 * (1.0 - SAVING)).abs() < 1e-9, "the row draws {inputs}");
         assert!(services() > 8.0 / 3.0, "the table prices the rest of the row over a day's wage");
         let net = export(8.0 * EDGE_WAGE) - inputs;

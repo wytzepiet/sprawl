@@ -41,13 +41,13 @@ pub const MAP: &[&str] = &[
     "                                .                                        ",
     "                                  .                                      ",
     "                                    .                                    ",
-    "        G                           H                     B              ",
-    "T .     .           . r .           .                     .           . S",
-    "    .   .         .   .   .         .                     .         .    ",
+    "        G                           H                                    ",
+    "T .     .           . r .           .                                 . S",
+    "    .   .         .   .   .         .                               .    ",
     "      . r . . r .     .     . r . . @ . . S .           . S . . S .      ",
-    "              .       o             .     .   .       .         .        ",
-    "              .                     .     .     . S M           .        ",
-    "              r               W . . I     R           .         R        ",
+    "              .       o             .         .       .                  ",
+    "              .                     .           . S M                    ",
+    "              r               W . . I                 .                  ",
     "                                    .                 .                  ",
     "                                      .               .                  ",
     "                                        .             .                  ",
@@ -110,9 +110,7 @@ pub static LEGEND: &[(char, Row)] = {
         ('@', Row { name: "The city", effect: Nothing, cost: 0, blurb: "Where every city starts." }),
         ('H', Row { name: "Homes", effect: Weight { class: Living, times: 1.4 }, cost: 1, blurb: "People want to live here. Homes cost less." }),
         ('A', Row { name: "Apartments", effect: Building { building: Apartment }, cost: 1, blurb: "Eight households on a plot of two. They fill fast, and empty onto the road slower." }),
-        ('S', Row { name: "Commerce", effect: Weight { class: Commerce, times: 1.4 }, cost: 1, blurb: "Somewhere to eat and something to do, from nine till late. Commerce costs less." }),
-        ('R', Row { name: "Restaurant", effect: Building { building: Restaurant }, cost: 1, blurb: "Lunch, and an evening out. A dozen at a time, with the traffic that brings." }),
-        ('B', Row { name: "Bar", effect: Building { building: Bar }, cost: 1, blurb: "The last place open. The evening's traffic goes here, and comes home at two." }),
+        ('S', Row { name: "Commerce", effect: Weight { class: Commerce, times: 1.4 }, cost: 1, blurb: "Somewhere to eat. Commerce costs less." }),
         ('G', Row { name: "Gas station", effect: Building { building: GasStation }, cost: 1, blurb: "Cars run dry. Pumps round the clock, wherever the driving is." }),
         ('I', Row { name: "Industry", effect: Weight { class: Industry, times: 1.4 }, cost: 1, blurb: "Jobs that keep to themselves. Industry costs less." }),
         ('W', Row { name: "Workshop", effect: Building { building: Workshop }, cost: 1, blurb: "Four jobs, seven to four, and two bays: cars come in worn and leave put right." }),
@@ -348,7 +346,7 @@ mod tests {
     #[test]
     fn the_tree_holds_up() {
         check();
-        assert_eq!(nodes().len(), 34);
+        assert_eq!(nodes().len(), 31);
     }
 
     #[test]
@@ -368,7 +366,7 @@ mod tests {
         let mut b = Build::default();
         assert!(b.may_place(BuildingKind::House));
         assert!(!b.may_place(BuildingKind::Factory));
-        assert!(!b.may_place(BuildingKind::Restaurant));
+        assert!(!b.may_place(BuildingKind::Supermarket));
         assert!(!b.may_draw(true, false));
         assert_eq!(b.weight(Class::Living), 1.0);
         // Walk the homes avenue: root, H, H, then the apartments.

@@ -31,9 +31,6 @@ pub enum Need {
     /// Meals take as long as the hunger owed, up to a sitting: served at
     /// home always, and wherever sells food while it is open.
     Eat,
-    /// Time off. Served indifferently at home and well at a place to go —
-    /// the first need with nothing in the world to say when.
-    Leisure,
     /// The tank. Used by the mile rather than the hour, and refilled at a pump.
     Fuel,
     /// The car's wear: used by the mile too, slower, and put right at a
@@ -68,10 +65,10 @@ impl Need {
     }
 
     /// Baseline first, so ties fall to staying put.
-    pub const ALL: [Need; 8] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure, Need::Fuel, Need::Wear, Need::Services];
+    pub const ALL: [Need; 7] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Fuel, Need::Wear, Need::Services];
     /// The needs a person carries. The tank and the wear are the car's,
     /// though its driver is the one who decides to stop for them.
-    pub const OWN: [Need; 5] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure];
+    pub const OWN: [Need; 4] = [Need::Home, Need::Work, Need::Rest, Need::Eat];
     /// The needs a car carries: used by the tile, and weighed by whoever
     /// drives it.
     pub const DRIVEN: [Need; 2] = [Need::Fuel, Need::Wear];
@@ -114,9 +111,6 @@ impl Need {
             // owed ten hours after the last, and lunch out is worth the
             // drive about six hours after breakfast.
             Need::Eat => 0.05,
-            // About five hours a day, as people actually spend, at the rate
-            // home serves it.
-            Need::Leisure => 0.35 * 5.0 / 19.0,
         }
     }
 
@@ -126,11 +120,10 @@ impl Need {
             Need::Work | Need::Home => 24.0 * HOUR,
             Need::Rest => 12.0 * HOUR,
             Need::Eat => 0.5 * HOUR,
-            Need::Leisure => 5.0 * HOUR,
             // What an empty tank costs: the afternoon it takes to be towed
             // and filled, which is what a fill has to be worth to be
-            // scored against its price. A near-empty tank then beats an
-            // evening in and loses to a shift, as it should.
+            // scored against its price. A near-empty tank then loses to a
+            // shift, as it should.
             Need::Fuel => 2.0 * HOUR,
             // What a breakdown costs: a morning towed and a repair waited
             // on, twice a dry tank.
@@ -141,13 +134,12 @@ impl Need {
         }
     }
 
-    /// The one thing a tap sells, in milliseconds of need: a sitting, an
-    /// evening, a tank, a service, an hour of labour. A price is per one of these,
+    /// The one thing a tap sells, in milliseconds of need: a sitting, a tank, a service, an hour of labour. A price is per one of these,
     /// and a shelf counts them. docs/economy.md §12.1.
     pub fn unit(self) -> f64 {
         match self {
             Need::Work | Need::Home | Need::Rest | Need::Services => HOUR,
-            Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => self.cap(),
+            Need::Eat | Need::Fuel | Need::Wear => self.cap(),
         }
     }
 
@@ -164,7 +156,7 @@ impl Need {
             // Everyone drives in from beyond the edge, where fuel is
             // unlimited: the tank is full, less the drive in, and the car
             // freshly serviced.
-            Need::Rest | Need::Eat | Need::Leisure | Need::Fuel | Need::Wear | Need::Services => cap,
+            Need::Rest | Need::Eat | Need::Fuel | Need::Wear | Need::Services => cap,
         };
         Stock { level, cap }
     }
@@ -211,8 +203,7 @@ impl Need {
     }
 }
 
-/// Something that runs down: a shelf of meals, a tank, a night's sleep, a
-/// day of time off. `(level, cap)` on whoever holds it; it drains by use
+/// Something that runs down: a shelf of meals, a tank, a night's sleep. `(level, cap)` on whoever holds it; it drains by use
 /// and refills at a tap or by a delivery. What is missing is the need, and
 /// how much of the cap is missing is its weight. docs/economy.md §4.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, TS)]

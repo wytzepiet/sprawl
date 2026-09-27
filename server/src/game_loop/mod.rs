@@ -1341,16 +1341,16 @@ mod tests {
     /// the millisecond — or something is iterating a hash map.
     type Move = (GameTime, EntityId, Option<EntityId>, Option<crate::needs::Need>);
 
-    fn arrival_log(days: u64) -> (Vec<Move>, [EntityId; 2]) {
+    fn arrival_log(days: u64) -> (Vec<Move>, EntityId) {
         let mut world = street();
         build(&mut world, 0, BuildingKind::Apartment, 2);
         build(&mut world, 6, BuildingKind::Apartment, 2);
-        let shop = build(&mut world, 30, BuildingKind::Shop, 1);
+        build(&mut world, 30, BuildingKind::Shop, 1);
         let office = build(&mut world, 60, BuildingKind::Office, 2);
         // Lunch: a shop beside the office, too far from home to staff.
         let lunch = build(&mut world, 64, BuildingKind::Shop, 1);
-        // Fuel, or every few days the whole town drives to the edge for it
-        // and makes an evening of it, which is a test of something else.
+        // Fuel, or every few days the whole town drives to the edge for it,
+        // which is a test of something else.
         build(&mut world, 18, BuildingKind::GasStation, 1);
 
         let mut events = EventQueue::new();
@@ -1385,10 +1385,7 @@ mod tests {
         // Section 6, the demand side. Nobody here wants for anything, and
         // the office's books show what it received on the last whole day:
         // twelve people, nine hours, less the lunches — and the lunch shop
-        // sold them. The last day, not the second: everyone arrives with
-        // no time off owed, and the first evening nobody goes out, so the
-        // second afternoon a few settle it in work time. Priced, an evening
-        // out is had every other night rather than every night.
+        // sold them. The last day, not the first, which is spent arriving.
         if days >= 3 {
             let d = crate::resident::demand(&world, days * DAY_MS as u64);
             assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
@@ -1408,64 +1405,7 @@ mod tests {
             // Lunches over a whole day.
             assert!(sold(lunch, "Eat", "yesterday_h") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
         }
-        (log, [shop, lunch])
-    }
-
-    /// After dark the bar is the only thing open, and people go: it sells
-    /// evenings out, and every one of them begins after eight. An evening
-    /// costs about an hour's wage, so it is had every few days, not every
-    /// night: four days, for a crowd.
-    #[test]
-    fn the_bar_gets_an_evening_crowd() {
-        let mut world = street();
-        build(&mut world, 0, BuildingKind::Apartment, 2);
-        build(&mut world, 6, BuildingKind::Apartment, 2);
-        build(&mut world, 40, BuildingKind::Office, 2);
-        let bar = build(&mut world, 12, BuildingKind::Bar, 1);
-        // Fuel in town, or the trip to the edge for it is the evening out.
-        build(&mut world, 20, BuildingKind::GasStation, 1);
-
-        let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
-        settle_and_wake(&mut world, &mut events);
-        let people = world.resident_ids();
-
-        let day = DAY_MS as u64;
-        let mut outings: Vec<GameTime> = Vec::new();
-        let mut last: Vec<(Option<EntityId>, Option<crate::needs::Need>)> = people.iter().map(|_| (None, None)).collect();
-        let mut now = 0;
-        while step(&mut world, &mut events, &mut intersections, &mut now, 4 * day) {
-            for (i, &id) in people.iter().enumerate() {
-                let state = (at_of(&world, id), doing(&world, id));
-                if state != last[i] {
-                    // An evening out begins when someone at the bar turns to
-                    // it — whether they drove over for it or stayed on after
-                    // dinner.
-                    if state == (Some(bar), Some(crate::needs::Need::Leisure)) {
-                        outings.push(now % day);
-                    }
-                    last[i] = state;
-                }
-            }
-        }
-        // The bar's lot decides its crowd: two spots, so two out at a time,
-        // and nobody turns to it before the doors open at six.
-        let d = crate::resident::demand(&world, 4 * day);
-        assert!(outings.len() >= 2, "only {} evenings out", outings.len());
-        let h = |t: GameTime| t as f64 / (day as f64 / 24.0);
-        assert!(
-            outings.iter().all(|&t| h(t) >= 18.0 || h(t) < 2.0),
-            "an outing outside opening hours: {:?}",
-            outings.iter().map(|&t| h(t)).collect::<Vec<_>>()
-        );
-
-        // And the evenings were had: the bar's books show Leisure sold.
-        let d = crate::resident::demand(&world, 4 * day);
-        let sold = d["delivered"].as_array().unwrap().iter()
-            .find(|v| v["building"] == bar && v["need"] == "Leisure")
-            .map_or(0.0, |v| v["today_h"].as_f64().unwrap() + v["yesterday_h"].as_f64().unwrap());
-        // Two spots' worth of evenings, not twelve slots' worth.
-        assert!(sold > 1.0, "the bar sold {sold}h of evenings");
+        (log, lunch)
     }
 
     #[test]
@@ -1583,14 +1523,14 @@ mod tests {
     /// wear made it the garage (docs/economy.md §12.6) — and a farm in a
     /// factory's place, the first row with a link behind the shops'
     /// (§12.7). Forty plots.
-    /// `placeable` cycles every kind equally, which is seventeen shops,
-    /// bars, supermarkets and warehouses for 177 people — the mix for a
+    /// `placeable` cycles every kind equally, which is a dozen shops,
+    /// supermarkets and warehouses for the people — the mix for a
     /// wake budget, not for a purse.
     fn town_mix() -> Vec<BuildingKind> {
         use BuildingKind::*;
         vec![
             House, Apartment, Office, House, Apartment, Shop, House, Factory, Apartment, House,
-            Workshop, Apartment, House, Bar, Office, House, Apartment, Restaurant, House, Factory,
+            Workshop, Apartment, House, House, Office, House, Apartment, Shop, House, Factory,
             Apartment, House, GasStation, Apartment, Office, House, Supermarket, Apartment, House, Factory,
             Farm, House, Apartment, Warehouse, House, Apartment, House, Apartment, House, Apartment,
         ]
@@ -1711,7 +1651,7 @@ mod tests {
     /// with the benchmark below, for a look every now and then.
     ///
     /// Two towns: one with everything, and one with nothing but homes and
-    /// jobs, where meals and evenings out go wanting. Wanting is where the
+    /// jobs, where meals and fuel go wanting. Wanting is where the
     /// storm of 2026-09-04 lived — a bucket with nothing on offer was asked
     /// again every step — so the bare town is the one that stands guard.
     #[test]
@@ -1996,7 +1936,7 @@ mod tests {
 
     #[test]
     fn the_same_town_lives_the_same_days() {
-        let (three, [shop, lunch]) = arrival_log(3);
+        let (three, lunch) = arrival_log(3);
         let (one, _) = arrival_log(1);
         // Seventeen people, each at least driving in, to work, and home.
         assert!(one.len() >= 17 * 3, "only {} moves logged", one.len());
@@ -2006,7 +1946,7 @@ mod tests {
         // The third day is a settled one. Every trip is two changes of
         // `at` — into the car, out at the door — and a day is at most seven
         // trips: to the pump and back, if the tank ran dry overnight; to
-        // work; out for lunch and back; out for the evening near work; and
+        // work; out for lunch and back; out to dinner near work; and
         // home. The shop workers eat where they stand; the office has a
         // shop next door, so its workers drive to it.
         let day = DAY_MS as u64;
@@ -2043,18 +1983,6 @@ mod tests {
             most = most.max(present.len());
         }
         assert!(most <= 12, "{most} eating at a twelve-spot shop at once");
-
-        // Time off is never more important than work (its rate is below the
-        // job's), so an outing happens after the shift, on an evening when
-        // enough of it has piled up: never for everyone at once.
-        let outings: Vec<f64> = two
-            .iter()
-            .filter(|&&(t, _, _, sel)| t >= settled && sel == Some(Need::Leisure))
-            .filter(|&&(_, _, at, _)| at == Some(shop) || at == Some(lunch))
-            .map(|&(t, ..)| (t % day) as f64 / hour as f64)
-            .collect();
-        assert!(outings.iter().all(|&h| h >= 17.0), "an outing during the shift: {outings:.1?}");
-        assert!(outings.len() < 17, "everyone out every night: {outings:.1?}");
     }
 
     /// A household with nowhere in town to work still works: the job is
@@ -2227,10 +2155,11 @@ mod tests {
     }
 
     /// Nothing crosses the door at zero (docs/economy.md §8.2, §9): a
-    /// broke town's desks are not filled from beyond the edge, and nobody
-    /// eats there until the first shift is sold; then the door has
-    /// something in it and they do, which is labour as the export of last
-    /// resort, and why zero is a slump and not an end. A factory's, sold
+    /// broke town's desks are not filled from beyond the edge, and it buys
+    /// nothing there, not even its groceries, until the first shift is
+    /// sold; then the door has something in it and it does, which is
+    /// labour as the export of last resort, and why zero is a slump and
+    /// not an end. A factory's, sold
     /// to the edge the day it is worked: a maker is founded with nothing
     /// made, and would take days to fill a shelf worth shipping.
     #[test]
@@ -2247,23 +2176,23 @@ mod tests {
         assert!(people.iter().all(|&id| is(&world, id, &|r| !world.edge.contains(&r.home))), "the edge sold labour to a town that cannot pay");
         assert_eq!(people.iter().filter(|&&id| is(&world, id, &|r| r.work == Some(office))).count(), 7, "the office has its town's seven and no more");
         let day = DAY_MS as u64;
-        let (mut ate_out_broke, mut ate_out_paid, mut first_sale) = (false, false, None);
+        let (mut bought_broke, mut bought_paid, mut first_sale) = (false, false, None);
         let mut now = 0;
         while step(&mut world, &mut events, &mut intersections, &mut now, 2 * day) {
-            let door = world.town.on(now).revenue() + world.town.before(now).revenue();
-            if door > 0.0 && first_sale.is_none() {
+            let (today, yesterday) = (world.town.on(now), world.town.before(now));
+            if today.revenue() + yesterday.revenue() > 0.0 && first_sale.is_none() {
                 first_sale = Some(now);
             }
-            let out = people.iter().any(|&id| at_of(&world, id).is_some_and(|a| world.edge.contains(&a)) && doing(&world, id) == Some(crate::needs::Need::Eat));
+            let bought = today.purchases() + yesterday.purchases() > 0.0;
             if first_sale.is_none() {
-                ate_out_broke |= out;
+                bought_broke |= bought;
             } else {
-                ate_out_paid |= out;
+                bought_paid |= bought;
             }
         }
-        assert!(!ate_out_broke, "somebody ate beyond the edge on the town's empty purse");
+        assert!(!bought_broke, "the town bought beyond the edge on an empty purse");
         assert!(first_sale.is_some(), "the office never sold a shift");
-        assert!(ate_out_paid, "with money in the door nobody ate beyond the edge");
+        assert!(bought_paid, "with money in the door the town bought nothing beyond the edge");
     }
 
     /// A vacancy the city cannot fill from among its own is filled from off

@@ -11,4 +11,4 @@
  * a building's alone: **services**, drawn by the day of operation and
  * delivered by a call.
  */
-export type Need = "Home" | "Work" | "Rest" | "Eat" | "Leisure" | "Fuel" | "Wear" | "Services";
+export type Need = "Home" | "Work" | "Rest" | "Eat" | "Fuel" | "Wear" | "Services";

@@ -137,23 +137,13 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     use Class::*;
     use Need::*;
     // Rate is what a need can matter at its most urgent (needs §5.1), so the
-    // rates rank the needs: sleep and food can pull someone out of a shift,
-    // time off cannot while it is under six tenths full, which is how it
-    // sits the day after a night out; over that, an evening out beats
-    // waiting at home for bed, which is what a night out is.
+    // rates rank the needs: sleep and food can pull someone out of a shift.
     let tap = |need, curve, slots| Tap { need, curve, rate: 1.0, overhead: 0, slots };
     let meal = |curve, slots| tap(Eat, curve, slots);
     // A pump fills a tank in twenty minutes, whatever the tank is worth; a
     // bay puts a car right in an hour.
     let pump = |curve, slots| Tap { need: Fuel, curve, rate: Fuel.cap() / Need::FILL_MS, overhead: 0, slots };
     let bay = |curve, slots| Tap { need: Wear, curve, rate: Wear.cap() / Need::SERVICE_MS, overhead: 0, slots };
-    let potter = |need, curve, slots| Tap { need, curve, rate: 0.35, overhead: 0, slots };
-    // An evening out is paid for, and the price is added to the evening in
-    // the resident's own hours (economy.md §6.1): a tenth of it at the
-    // edge's price. Eight tenths keeps the ladder where residents.md §5.5
-    // puts it: an outing pulls nobody from a shift under seven tenths, and
-    // someone out to lunch goes back to work rather than staying on.
-    let outing = |need, curve, slots| Tap { need, curve, rate: 0.8, overhead: 0, slots };
     // Staff are sized to the lot, since everyone parks in it: a one-wide lot
     // parks seven hemmed in and twelve in the open, a two-wide one seven to
     // seventeen, and staff take a third at most. A visitor tap's slots are
@@ -167,14 +157,13 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     let everywhere = |need, rate| Tap { need, curve: always(), rate, overhead: 0, slots: u32::MAX };
     // A shift: work on offer between these hours, with a place for each of the staff.
     let shift = |open: u32, close: u32, jobs: u32| tap(Work, hours(open * H, close * H), jobs);
-    // A household: sleep on offer through the night; being home, the kitchen
-    // and pottering about on offer always, to everyone who lives there.
+    // A household: sleep on offer through the night; being home and the
+    // kitchen on offer always, to everyone who lives there.
     let household = |homes: u32| {
         vec![
             tap(Rest, hours(22 * H, 7 * H), homes),
             tap(Home, always(), homes),
             meal(always(), homes),
-            potter(Leisure, always(), homes),
         ]
     };
 
@@ -189,15 +178,12 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
             taps: household(7),
         }),
-        // A shop seats as many as it staffs, and the high street is somewhere
-        // to be until late.
         (Shop, Blueprint {
             class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 18.0,
             stock: 40, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(9, 18, 2),
                 meal(hours(9 * H, 18 * H), 7),
-                outing(Leisure, hours(9 * H, 22 * H), 7),
             ],
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
@@ -230,28 +216,6 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 25.0,
             stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![shift(6, 15, 12)],
-        }),
-        // A restaurant seats a dozen, from lunch until late, and is an evening
-        // out in itself. The first kind the mayor can place by hand.
-        (Restaurant, Blueprint {
-            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (2, 1), price: 16.0,
-            stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![
-                shift(11, 23, 3),
-                meal(hours(11 * H, 22 * H), 7),
-                outing(Leisure, hours(11 * H, 22 * H), 7),
-            ],
-        }),
-        // A bar opens as the shops shut and is the last place open. Small
-        // staff, an evening's crowd, a kitchen until eleven.
-        (Bar, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 16.0,
-            stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![
-                shift(18, 2, 2),
-                meal(hours(18 * H, 23 * H), 7),
-                outing(Leisure, hours(20 * H, 2 * H), 7),
-            ],
         }),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
@@ -314,7 +278,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         }),
         // The world beyond the survey, standing where a road runs off the
         // map. Every tap in the game, never closed and never crowded: a
-        // town with no restaurant still eats, a job nobody in town wants is
+        // town with no shop still eats, a job nobody in town wants is
         // still worked. What it costs is the drive, and that is the whole
         // argument for building your own. Priceless in the literal sense —
         // the outside is not for sale, so the mayor can never afford one —
@@ -328,9 +292,6 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
                 everywhere(Work, 1.0),
                 everywhere(Rest, 1.0),
                 everywhere(Eat, 1.0),
-                // No better than an evening out in town, or the edge would
-                // raise what every bucket thinks is possible; see `Need::bounds`.
-                everywhere(Leisure, 0.8),
                 everywhere(Fuel, Fuel.cap() / Need::FILL_MS),
                 everywhere(Wear, Wear.cap() / Need::SERVICE_MS),
             ],

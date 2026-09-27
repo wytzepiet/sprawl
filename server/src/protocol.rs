@@ -54,12 +54,6 @@ pub enum BuildingKind {
     Office,
     Workshop,
     Factory,
-    /// The first special kind: a place to eat out, and to be, into the
-    /// evening. Placed by hand or offered by the city.
-    Restaurant,
-    /// Somewhere to be after dark. The first thing open when everything
-    /// else has shut.
-    Bar,
     /// Pumps that never close, and a kiosk that does.
     GasStation,
     /// Shopping for the whole street, with shelves that a warehouse keeps
@@ -84,15 +78,13 @@ pub enum BuildingKind {
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 14] = [
+    pub const ALL: [BuildingKind; 12] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
         BuildingKind::Office,
         BuildingKind::Workshop,
         BuildingKind::Factory,
-        BuildingKind::Restaurant,
-        BuildingKind::Bar,
         BuildingKind::GasStation,
         BuildingKind::Supermarket,
         BuildingKind::Warehouse,

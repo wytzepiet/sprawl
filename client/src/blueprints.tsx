@@ -148,31 +148,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     size: [2, 1],
     lot: [2, 1],
   },
-  Restaurant: {
-    label: "Restaurant",
-    color: "#D9483B",
-    // Fork and knife.
-    glyph:
-      "M5.5 2h1.6v6h1.2V2h1.4v6h1.2V2h1.6v7a3.5 3.5 0 0 1-2.2 3.3V22H7.7v-9.7A3.5 3.5 0 0 1 5.5 9zM15.5 2c2.2 1.6 3.3 4.6 3.3 8 0 1.8-.8 3-1.9 3.6V22h-2.3V2z",
-    pinUntil: SPECIAL,
-    shape: "box",
-    heights: [0.5, 0.62],
-    price: 16, tab: "shops",
-    size: [1, 1],
-    lot: [2, 1],
-  },
-  Bar: {
-    label: "Bar",
-    color: "#9B3FA0",
-    // A pint glass, tapered, with a head of foam cut across it.
-    glyph: "M5 2h14l-1.6 20H6.6zM6.3 5.5h11.4l-.2 2H6.5z",
-    pinUntil: NOTABLE,
-    shape: "box",
-    heights: [0.45, 0.55],
-    price: 16, tab: "shops",
-    size: [1, 1],
-    lot: [2, 1],
-  },
   GasStation: {
     label: "Gas station",
     color: "#A3841A",

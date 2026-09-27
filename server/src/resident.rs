@@ -199,7 +199,7 @@ fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: E
                 .or_else(|| world.objects.get(r.home).and_then(|e| e.position).and_then(|p| world.nearest_edge(p)))
                 .map_or(Verdict::Nothing, |w| verdict_at(world, r, earning, at, b, w, now, crowd, routes, true)),
             Need::Rest | Need::Home => verdict_at(world, r, earning, at, b, r.home, now, crowd, routes, true),
-            Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => search(world, r, earning, at, b, now, crowd, routes),
+            Need::Eat | Need::Fuel | Need::Wear => search(world, r, earning, at, b, now, crowd, routes),
             // Nobody carries it: a building's, delivered by a call.
             Need::Services => Verdict::Nothing,
         })
@@ -207,9 +207,8 @@ fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: E
 }
 
 /// A row with an empty input stops (docs/economy.md §4): a resident
-/// whose food, sleep, time off, tank or car stands at zero cannot work until
-/// it does not. Time off run to nothing is a holiday; a week of night
-/// shifts ends in a lie-in.
+/// whose food, sleep, tank or car stands at zero cannot work until it
+/// does not. A week of night shifts ends in a lie-in.
 fn fit(buckets: &[Bucket]) -> bool {
     buckets.iter().all(|b| b.need.constant() || b.stock.level > 0.0)
 }
