@@ -40,9 +40,8 @@ pub fn edge_wage() -> f64 {
 /// (`wholesale`); a unit of services is the office's row. The rest have
 /// no row in town yet, so each is a number with the row's name on it
 /// (§13.3), set by the household's budget: a day at the edge earns
-/// eight, and a sixth of it goes on transport. The tank is three, and a
-/// service six (`Need::Wear`). Housing's third is in the household's
-/// services.
+/// eight, and a sixth of it goes on transport. The tank is three.
+/// Housing's third is in the household's services.
 /// Low stakes: the band turns a wrong number into a town that is a
 /// little dear or a little cheap, never one that runs away. §12.1,
 /// §12.2, §12.7.
@@ -51,11 +50,6 @@ pub fn edge_price(need: Need) -> f64 {
         Need::Eat => worth(wholesale(need), COUNTER),
         Need::Services => wholesale(need),
         Need::Fuel => 3.0,
-        // A service, every two and a half tanks: with the tank's price,
-        // the two come to the transport sixth at a commuter's hundred and
-        // twenty tiles a day. Half the drive's cost is fuel and half is
-        // upkeep, near enough what running a car costs.
-        Need::Wear => 6.0,
         Need::Work => EDGE_WAGE,
         Need::Home | Need::Rest => 0.0,
     }
@@ -73,9 +67,9 @@ pub const COUNTER: f64 = 1.0 / 36.0;
 /// What the edge sells the unit on the shelf for. A good a row in town
 /// makes is worth that row's labour over two thirds: a crate is a
 /// farm hand's few minutes, a unit of services an office's hour. The
-/// delivery behind a tank and the parts behind a service have no row
-/// in town yet, and are half the price over the counter: retail margins
-/// on fuel and parts sit between a third and a half.
+/// delivery behind a tank has no row in town yet, and is half the price
+/// over the counter: retail margins on fuel sit between a third and a
+/// half.
 pub const WHOLESALE: f64 = 0.5;
 pub fn wholesale(need: Need) -> f64 {
     match crate::blueprint::maker(need) {
@@ -268,8 +262,8 @@ pub fn edge_price_of(kind: BuildingKind, need: Need) -> f64 {
 
 /// The goods a kind keeps a shelf of, each of the row's size: what its
 /// labour makes; or every good of the class it handles, a depot's boxes;
-/// or what its deliveries are — fuel where it pumps, parts where it
-/// services cars, food everywhere else that keeps a shelf. None for a
+/// or what its deliveries are — fuel where it pumps, food everywhere else
+/// that keeps a shelf. None for a
 /// row without one. §4, §12.10.
 pub fn shelves(kind: BuildingKind) -> Vec<Need> {
     let bp = blueprint(kind);
@@ -567,7 +561,7 @@ fn outside(world: &World, resident: EntityId) -> bool {
 
 /// One visit paid for, as it ends: `units` of `need` served at `at` to
 /// `who`. A shift is sold by the resident and bought by the building; a
-/// meal, a tank or a service is bought by the resident and
+/// meal or a tank is bought by the resident and
 /// sold by the building. Two lines in the books, and a lump on the map; the treasury
 /// moves only when one party is the outside — the edge, or a household
 /// beyond it. Anything that runs a shelf draws it down. §6, §8.
@@ -624,7 +618,7 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             }
         }
         Need::Home | Need::Rest | Need::Services => {}
-        Need::Eat | Need::Fuel | Need::Wear => {
+        Need::Eat | Need::Fuel => {
             let due = units * price_of(world, at, need);
             if edge {
                 // A meal beyond the edge is the town buying one, unless
@@ -703,12 +697,11 @@ pub fn exported(world: &mut World, maker: EntityId, need: Need, load: f64, now: 
     door(world, need, due, now);
 }
 
-/// A facility's vehicle is home: its tank is filled and its wear put
-/// right in the yard, and the building pays the world's price for what
-/// the trip used, at wholesale plus the crossing, as the depot's fuel
-/// and parts are bought in bulk from beyond the edge until a row in
-/// town sells them. The freight of §5.3 in money: fuel and upkeep per
-/// tile, on the row that sent the vehicle. Nobody sits in a fleet
+/// A facility's vehicle is home: its tank is filled in the yard, and the
+/// building pays the world's price for what the trip used, at wholesale
+/// plus the crossing, as the depot's fuel is bought in bulk from beyond
+/// the edge until a row in town sells it. The freight of §5.3 in money:
+/// fuel per tile, on the row that sent the vehicle. Nobody sits in a fleet
 /// vehicle, so nobody weighs its needs; the building's turn does, when
 /// it comes home. A line in the books and the door, no GDP:
 /// intermediate. §12.6.
@@ -1343,7 +1336,7 @@ mod tests {
         assert!((world.gdp - heads * services()).abs() < 1e-9, "a night with nothing in the stock was served");
     }
 
-    /// §12.6: a depot's van is filled and put right in the yard, and the
+    /// §12.6: a depot's van is filled in the yard, and the
     /// depot buys what the trip used from beyond the edge, at wholesale
     /// plus the crossing; a consultant's car from the edge is never in
     /// anyone's yard, and costs the town nothing but its call.
@@ -1356,14 +1349,13 @@ mod tests {
         world.treasury = 100.0;
         crate::resident::drove(&mut world, van, 250.0);
         let tanks = 250.0 / Need::Fuel.tiles();
-        let services = 250.0 / Need::Wear.tiles();
         refilled(&mut world, van, 0);
         let fuel = match world.objects.get(van).map(|e| &e.object) {
             Some(GameObject::Car(c)) => c.stocks.clone(),
             _ => unreachable!(),
         };
         assert!(fuel.values().all(|s| s.level == s.cap), "the yard did not fill it");
-        let cost = import(tanks * wholesale(Need::Fuel) + services * wholesale(Need::Wear));
+        let cost = import(tanks * wholesale(Need::Fuel));
         assert!((100.0 - world.treasury - cost).abs() < 1e-9, "the fill cost {}", 100.0 - world.treasury);
         assert!((world.books[&depot].on(0).purchases - cost).abs() < 1e-9, "the depot's books say {}", world.books[&depot].on(0).purchases);
         assert_eq!(world.gdp, 0.0, "a fleet's fuel is not a need served");

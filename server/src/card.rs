@@ -81,8 +81,8 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Value {
         "wage": r.wage,
         "selected": r.selected,
         "since": hhmm(r.last_update),
-        // The tank and the wear are the car's; its card shows them.
-        "buckets": thinking["buckets"].as_array().map(|bs| bs.iter().filter(|b| b["need"] != "Fuel" && b["need"] != "Wear").cloned().collect::<Vec<_>>()),
+        // The tank is the car's; its card shows it.
+        "buckets": thinking["buckets"].as_array().map(|bs| bs.iter().filter(|b| b["need"] != "Fuel").cloned().collect::<Vec<_>>()),
     })
 }
 

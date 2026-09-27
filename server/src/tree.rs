@@ -47,7 +47,7 @@ pub const MAP: &[&str] = &[
     "      . r . . r .     .     . r . . @ . . S .           . S . . S .      ",
     "              .       o             .         .       .                  ",
     "              .                     .           . S M                    ",
-    "              r               W . . I                 .                  ",
+    "              r                     I                 .                  ",
     "                                    .                 .                  ",
     "                                      .               .                  ",
     "                                        .             .                  ",
@@ -55,7 +55,7 @@ pub const MAP: &[&str] = &[
     "                                        .                                ",
     "                                      .                                  ",
     "                                    .                                    ",
-    "                              W . . I                                    ",
+    "                                    I                                    ",
     "                                    .                                    ",
     "                                    .                                    ",
     "                                    I . . P                              ",
@@ -113,7 +113,6 @@ pub static LEGEND: &[(char, Row)] = {
         ('S', Row { name: "Commerce", effect: Weight { class: Commerce, times: 1.4 }, cost: 1, blurb: "Somewhere to eat. Commerce costs less." }),
         ('G', Row { name: "Gas station", effect: Building { building: GasStation }, cost: 1, blurb: "Cars run dry. Pumps round the clock, wherever the driving is." }),
         ('I', Row { name: "Industry", effect: Weight { class: Industry, times: 1.4 }, cost: 1, blurb: "Jobs that keep to themselves. Industry costs less." }),
-        ('W', Row { name: "Workshop", effect: Building { building: Workshop }, cost: 1, blurb: "Four jobs, seven to four, and two bays: cars come in worn and leave put right." }),
         ('F', Row { name: "Factory", effect: Building { building: Factory }, cost: 1, blurb: "Twenty-four jobs, six to three. The morning rush starts here." }),
         ('r', Row { name: "Roads", effect: RoadTiles { tiles: 60 }, cost: 1, blurb: "Sixty more tiles of road. Room to build." }),
         ('o', Row { name: "One-way streets", effect: OneWay, cost: 1, blurb: "One-way streets. Half the road, all the throughput." }),
@@ -346,7 +345,7 @@ mod tests {
     #[test]
     fn the_tree_holds_up() {
         check();
-        assert_eq!(nodes().len(), 31);
+        assert_eq!(nodes().len(), 29);
     }
 
     #[test]

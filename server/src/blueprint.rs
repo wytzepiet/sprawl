@@ -143,7 +143,6 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     // A pump fills a tank in twenty minutes, whatever the tank is worth; a
     // bay puts a car right in an hour.
     let pump = |curve, slots| Tap { need: Fuel, curve, rate: Fuel.cap() / Need::FILL_MS, overhead: 0, slots };
-    let bay = |curve, slots| Tap { need: Wear, curve, rate: Wear.cap() / Need::SERVICE_MS, overhead: 0, slots };
     // Staff are sized to the lot, since everyone parks in it: a one-wide lot
     // parks seven hemmed in and twelve in the open, a two-wide one seven to
     // seventeen, and staff take a third at most. A visitor tap's slots are
@@ -197,21 +196,6 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             stock: 108, makes: Some(Make { good: Services, per_hour: 1.0 }), vehicles: &[CarRole::Company], farm: false, handles: None,
             taps: vec![shift(8, 17, 12)],
         }),
-        // The garage: cars come in worn and leave put right, two bays at a
-        // time. The bays are open round the clock like the pumps, and for
-        // the same reason: a car nearly worn out at two in the morning
-        // would otherwise be driven to the edge, since the wait for the
-        // doors to open is scored as time lost. Its shelf is parts, a
-        // service's worth each, brought in from beyond the edge like a
-        // pump's tanks.
-        (Workshop, Blueprint {
-            class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (2, 1), price: 8.0,
-            stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![
-                shift(7, 16, 4),
-                bay(always(), 2),
-            ],
-        }),
         (Factory, Blueprint {
             class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 25.0,
             stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
@@ -244,7 +228,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // Where stock comes from. Its trucks answer the shops' calls; until
         // there is one, every delivery comes from beyond the edge. It
         // holds everything that comes boxed, a shelf of six shops' worth
-        // each: crates, and the parts a workshop fits.
+        // each: crates.
         (Warehouse, Blueprint {
             class: Industry, homes: 0, jobs: 6, size: (2, 2), lot: (2, 2), price: 56.0,
             stock: 240, makes: None, vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van], farm: false, handles: Some(Cargo::Box),
@@ -293,7 +277,6 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
                 everywhere(Rest, 1.0),
                 everywhere(Eat, 1.0),
                 everywhere(Fuel, Fuel.cap() / Need::FILL_MS),
-                everywhere(Wear, Wear.cap() / Need::SERVICE_MS),
             ],
         }),
     ]

@@ -123,19 +123,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     size: [2, 1],
     lot: [2, 1],
   },
-  Workshop: {
-    label: "Workshop",
-    color: "#C97A1E",
-    // A wrench.
-    glyph:
-      "M21.5 6.2a6.3 6.3 0 0 1-8.1 8.1l-7.3 7.3a2.3 2.3 0 0 1-3.2-3.2l7.3-7.3a6.3 6.3 0 0 1 8.1-8.1l-3.7 3.7 1.1 3.2 3.2 1.1z",
-    pinUntil: NOTABLE,
-    shape: "box",
-    heights: [0.42, 0.5],
-    price: 8, tab: "work",
-    size: [1, 1],
-    lot: [2, 1],
-  },
   Factory: {
     label: "Factory",
     color: "#6B6F78",

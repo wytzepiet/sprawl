@@ -52,7 +52,6 @@ pub enum BuildingKind {
     Apartment,
     Shop,
     Office,
-    Workshop,
     Factory,
     /// Pumps that never close, and a kiosk that does.
     GasStation,
@@ -78,12 +77,11 @@ pub enum BuildingKind {
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 12] = [
+    pub const ALL: [BuildingKind; 11] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
         BuildingKind::Office,
-        BuildingKind::Workshop,
         BuildingKind::Factory,
         BuildingKind::GasStation,
         BuildingKind::Supermarket,
@@ -272,9 +270,8 @@ pub struct Car {
     /// sight.
     #[serde(default)]
     pub spot: Option<Pose>,
-    /// The tank and the wear: used by the tile, filled at a pump and put
-    /// right at a workshop. The car's, though its driver decides when to
-    /// stop. A save from before cars had them gets them full.
+    /// The tank: used by the tile, filled at a pump. The car's, though its
+    /// driver decides when to stop. A save from before cars had them gets them full.
     #[serde(default = "crate::needs::Bucket::driven")]
     pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
     /// A tractor's run over its farm's land, or a ship's voyage, while

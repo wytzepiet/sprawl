@@ -25,9 +25,8 @@ owner: number, trip: Trip | null, role: CarRole,
  */
 spot: Pose | null, 
 /**
- * The tank and the wear: used by the tile, filled at a pump and put
- * right at a workshop. The car's, though its driver decides when to
- * stop. A save from before cars had them gets them full.
+ * The tank: used by the tile, filled at a pump. The car's, though its
+ * driver decides when to stop. A save from before cars had them gets them full.
  */
 stocks: { [key in Need]?: Stock }, 
 /**
