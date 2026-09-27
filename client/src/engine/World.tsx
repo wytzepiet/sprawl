@@ -3,7 +3,7 @@ import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
 import { useTheme } from "./theme";
-import { TerrainChunks } from "./TerrainChunks";
+import { TerrainChunks, CHUNK_SIZE } from "./TerrainChunks";
 import { FogOfWar } from "./FogOfWar";
 import {
   eachEntity,
@@ -11,6 +11,7 @@ import {
   setTerrainListener,
   getEntity,
   getObjectsAt,
+  buildingAt,
   reached,
   useGame,
 } from "../state/gameObjects";
@@ -22,6 +23,8 @@ import type { Building } from "../generated";
 import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
 import { mountRoad } from "./objects/RoadNode";
+import { Dressing } from "./pieces/dressing";
+import type { Ground } from "./pieces/rules";
 
 interface MountedEntry {
   kind: string;
@@ -88,6 +91,35 @@ export default function World() {
   const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt);
   const fog = new FogOfWar(scene);
 
+  /** The map as the look's rules see it. A road on a building's tile is
+   *  its driveway, which is the building's and no street. */
+  const roadAt = (x: number, y: number) =>
+    buildingAt(x, y) ? undefined : getObjectsAt(x, y).find((o) => o.object.kind === "RoadNode");
+  const ground: Ground = {
+    building(x, y) {
+      const b = buildingAt(x, y)?.object.data as Building | undefined;
+      return b && { kind: b.kind, facing: b.facing, size: b.size };
+    },
+    road(x, y) {
+      const node = roadAt(x, y);
+      if (node?.object.kind !== "RoadNode") return undefined;
+      const { outgoing, incoming, road } = node.object.data;
+      const arms = new Map<string, [number, number]>();
+      for (const id of [...outgoing, ...incoming]) {
+        const p = getEntity(id)?.position;
+        if (p && roadAt(p.x, p.y)) arms.set(`${p.x},${p.y}`, [p.x - x, p.y - y]);
+      }
+      return { arms: [...arms.values()], through: road };
+    },
+    terrain: (x, y) => terrain.typeAt(x, y),
+  };
+  const dressing = new Dressing(pool, theme, ground);
+  /** Tiles whose dressing may have changed with this batch: whatever
+   *  landed or left, and the ring round it. */
+  const around = (dirty: Set<string>, x0: number, y0: number, x1 = x0, y1 = y0) => {
+    for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) dirty.add(`${x},${y}`);
+  };
+
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
   createEffect(on(theme, () => terrain.markAllDirty(), { defer: true }));
 
@@ -95,7 +127,7 @@ export default function World() {
     switch (entry.object.kind) {
       case "Building":
         // Red where no joined road reaches it; grey where any stock is bare.
-        return mountBuilding(entry, pool, scene, theme(), !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY);
+        return mountBuilding(entry, pool, scene, theme(), ground, !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY);
       case "Car":
         return mountCar(entry, pool, scene, theme(), SOLID);
       case "RoadNode":
@@ -107,6 +139,7 @@ export default function World() {
 
   function processOps(ops: Operation[]) {
     const dirtyRoads = new Set<string>();
+    const dressed = new Set<string>();
     // Buildings whose tile a road landed on or left: reached, or no longer.
     const dirtyBuildings = new Set<string>();
     // Anything landing or leaving on these tiles is beside the plots
@@ -133,6 +166,10 @@ export default function World() {
         case "Upsert": {
           const key = String(op.data.id);
           plotTouched(op.data);
+          if (op.data.position) {
+            const [w, h] = op.data.object.kind === "Building" ? (op.data.object.data as Building).size : [1, 1];
+            around(dressed, op.data.position.x, op.data.position.y, op.data.position.x + w - 1, op.data.position.y + h - 1);
+          }
 
 
           const existing = mounted.get(key);
@@ -178,9 +215,11 @@ export default function World() {
         case "Delete": {
           const key = String(op.data);
           const existing = mounted.get(key);
+          if (existing?.pos) around(dressed, existing.pos.x, existing.pos.y);
           if (existing?.covers) {
             for (const t of existing.covers) {
               const [x, y] = t.split(",").map(Number);
+              around(dressed, x, y);
               for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
                 const owner = builtTiles.get(`${x + dx},${y + dy}`);
                 if (owner !== undefined && String(owner) !== key) dirtyBuildings.add(String(owner));
@@ -231,6 +270,7 @@ export default function World() {
       }
     }
     remountBuildings(dirtyBuildings);
+    dressing.redraw(dressed);
     audit(ops);
   }
 
@@ -280,10 +320,14 @@ export default function World() {
     setChunk: (chunk) => {
       terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles);
       fog.setChunk(chunk.coord.cx, chunk.coord.cy);
+      const tiles = new Set<string>();
+      around(tiles, chunk.coord.cx * CHUNK_SIZE, chunk.coord.cy * CHUNK_SIZE, (chunk.coord.cx + 1) * CHUNK_SIZE - 1, (chunk.coord.cy + 1) * CHUNK_SIZE - 1);
+      dressing.redraw(tiles);
     },
     unloadChunk: (coord) => {
       terrain.unloadChunk(coord.cx, coord.cy);
       fog.unloadChunk(coord.cx, coord.cy);
+      dressing.forget(coord.cx * CHUNK_SIZE, coord.cy * CHUNK_SIZE, CHUNK_SIZE);
     },
   });
 
@@ -292,6 +336,7 @@ export default function World() {
     setTerrainListener(null);
     for (const m of mounted.values()) m.cleanup();
     mounted.clear();
+    dressing.dispose();
     terrain.dispose();
     fog.dispose();
   });

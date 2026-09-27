@@ -72,7 +72,14 @@ try {
     if (!(await fetch(`http://localhost:${CLIENT_PORT}`)).ok) throw new Error();
   });
 
-  const browser = await chromium.launch({ channel: "chrome", args: ["--enable-unsafe-webgpu"] });
+  // Desktop Chrome, on WebGPU; or, where there is none, the Chromium named
+  // by CHROME, drawing with WebGL in software (headless WebGPU there fails).
+  const chrome = process.env.CHROME;
+  const browser = await chromium.launch(
+    chrome
+      ? { executablePath: chrome, args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] }
+      : { channel: "chrome", args: ["--enable-unsafe-webgpu"] },
+  );
   const page = await browser.newPage({ viewport: VIEW, deviceScaleFactor: 2 });
   await page.goto(`http://localhost:${CLIENT_PORT}`);
   await page.waitForFunction(() => "sprawlCamera" in window);

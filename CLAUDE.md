@@ -77,7 +77,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `server/fixtures/*.txt` (a map in text; the key is in
   `server/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
   photographs each: `.dev/shots/sheet.png` has them all on one page.
-  `--keep` leaves that stack up to look round by hand. A new look gets a
+  `--keep` leaves that stack up to look round by hand. Without desktop
+  Chrome (a cloud container), `CHROME=/opt/pw-browsers/chromium` draws
+  with WebGL in software instead. A new look gets a
   fixture that shows it, so the next change can be seen not to break it.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has

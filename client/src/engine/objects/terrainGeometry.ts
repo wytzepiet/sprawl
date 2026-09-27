@@ -570,7 +570,7 @@ export interface TerrainSampler {
 
 /** Wire encoding, in the server's TerrainType::to_byte order. */
 /** Wire encoding, in the server's TerrainType::to_byte order. */
-const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain", "Sea"];
+export const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain", "Sea"];
 
 const NO_CORNERS: (TerrainType | null)[] = [null, null, null, null];
 
