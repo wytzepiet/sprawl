@@ -78,8 +78,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; the sea is seventy tiles
   off to the north-west, and seed 3 starts on the shore. `SPRAWL_ALL=1` opens
-  the whole tree and a bottomless purse, and the survey follows the camera,
-  so panning reveals the map as you go. Any fixed seed gives
+  the whole tree and a bottomless purse. Any fixed seed gives
   the same map back, so a change in behaviour is a change in the code.
   `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the whole
   map, sixteen tiles to a character.

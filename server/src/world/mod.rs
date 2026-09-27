@@ -491,11 +491,6 @@ impl World {
     pub fn reveal_around(&mut self, pos: GridCoord) {
         let min = chunk_of(GridCoord { x: pos.x - REVEAL_RADIUS, y: pos.y - REVEAL_RADIUS });
         let max = chunk_of(GridCoord { x: pos.x + REVEAL_RADIUS, y: pos.y + REVEAL_RADIUS });
-        self.reveal_chunks(min, max);
-    }
-
-    /// Reveal every chunk in a rectangle of them, corners included.
-    pub fn reveal_chunks(&mut self, min: ChunkCoord, max: ChunkCoord) {
         let mut moved = false;
         for cy in min.cy..=max.cy {
             for cx in min.cx..=max.cx {

@@ -134,18 +134,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         continue;
                     }
                     if let ClientMessage::SetChunks(bounds) = &message {
-                        // SPRAWL_ALL: the survey follows the camera, a chunk
-                        // ahead of the view so the clamp keeps giving way, to
-                        // see how a seed turned out. The tick lays the roads
-                        // as for any reveal. The outermost ring of chunks
-                        // stays fog, so a road still runs off the survey
-                        // somewhere and the edge has its doors.
-                        if std::env::var("SPRAWL_ALL").is_ok() {
-                            let (lo, hi) = (crate::terrain::CHUNKS_MIN + 1, crate::terrain::CHUNKS_MAX - 1);
-                            let min = ChunkCoord { cx: (bounds.min_cx - 1).clamp(lo, hi), cy: (bounds.min_cy - 1).clamp(lo, hi) };
-                            let max = ChunkCoord { cx: (bounds.max_cx + 1).clamp(lo, hi), cy: (bounds.max_cy + 1).clamp(lo, hi) };
-                            world.reveal_chunks(min, max);
-                        }
                         handle_set_chunks(&world, &mut clients, client_id, *bounds, clock(now, speed));
                     } else if let ClientMessage::ResetWorld = &message {
                         // Send deletes for each client's known set, then clear.
