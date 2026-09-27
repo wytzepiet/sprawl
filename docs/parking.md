@@ -1,5 +1,31 @@
 # Parking: lots, spots, manoeuvres and reservations
 
+> **Direction, 2026-09-28: parking belongs to streets.** Not yet
+> specified or built; the sections below stand until it is. Every building
+> owning a lot is what scatters slabs across the map, and it is not how a
+> town parks. The direction (`look.md`):
+>
+> - **Kerb bays** along every street that is not a through road, laid by
+>   a path rule, at any angle or curve. A bay is a spot like any other: a
+>   node hung off the street's edge, booked by a window.
+> - **Car parks and garages are placed buildings**, where the kerb runs
+>   out: a surface car park, later a multi-storey on the tree.
+> - **A building keeps a yard only where work needs one**: a
+>   warehouse's bays, a port's quay. Homes and shops park in public.
+> - **A trip ends at the nearest free spot within reach of the door**,
+>   and the rest of the way is time on the trip. Nobody is drawn walking;
+>   `game.md`'s "nobody walks" stands as "no walker is drawn", to be
+>   written there when this is built.
+> - **A full kerb makes cars cruise**: circling for a space is traffic,
+>   the restaurant with no room jams its own street, and the mayor's
+>   answer is a car park round the corner.
+> - **What goes**: the driveway as a kind of road (a road ending on a
+>   plot, one per building, the newest), lots, rings and their slabs.
+>   A car park's layout is packed from its shape when it is built.
+>
+> Open: how far "within reach" is; whether a home's residents prefer the
+> bay by their own door; how cruising picks the next street.
+
 Status: specification, drafted 2026-09-06. §8 step 1 built the same day
 in its generic form: every building has a two-spot lot on its driveway
 (`world/lots.rs`), trips end in a spot and start from one, a parked car
