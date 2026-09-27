@@ -1,0 +1,6 @@
+# A terrace: houses shoulder to shoulder along one street
+# Should read as one row of frontage, not four boxes.
+..............
+..HHHH..H.HH..
+==============
+..............

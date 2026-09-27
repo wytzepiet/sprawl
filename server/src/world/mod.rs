@@ -377,6 +377,14 @@ impl World {
         }
     }
 
+    /// Make a road a way off the map, as one crossing the frontier is, so
+    /// what it reaches is joined to the world. For worlds built by hand.
+    pub fn open_exit(&mut self, node: EntityId) {
+        let turning = self.network.set_exit(node, true);
+        self.mark_joined(turning.into_iter().chain([node]));
+        self.stand_edges();
+    }
+
     /// Take one down: the road it stood on is inside the survey now, or gone.
     fn drop_edge(&mut self, building: EntityId) {
         self.drop_lot(building);

@@ -4,6 +4,7 @@ mod card;
 mod car;
 mod economy;
 mod engine;
+mod fixtures;
 mod game_loop;
 mod health;
 mod intersection;
@@ -49,13 +50,16 @@ async fn main() {
         .route("/inspect/{id}", axum::routing::get(health::card))
         .route("/town", axum::routing::get(health::town))
         .route("/site/{kind}", axum::routing::get(health::site))
+        .route("/fixtures", axum::routing::get(|| async { axum::Json(fixtures::PLACED.get().cloned().unwrap_or_default()) }))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })
         .fallback_service(ServeDir::new(&client_dir).fallback(ServeFile::new(&index)));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:4801")
+    // Another port lets a fixture server stand beside the game's.
+    let port = std::env::var("SPRAWL_PORT").unwrap_or_else(|_| "4801".into());
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
         .unwrap();
-    println!("server listening on :4801");
+    println!("server listening on :{port}");
     axum::serve(listener, app).await.unwrap();
 }

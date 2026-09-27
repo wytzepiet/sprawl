@@ -1,0 +1,7 @@
+# A street with houses on both sides
+# Pavement, continuous frontage, maybe street trees.
+..............
+.HHH.HHHH.HH..
+==============
+.HH.HHHHH.HHH.
+..............

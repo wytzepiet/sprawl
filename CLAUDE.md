@@ -73,6 +73,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Does every seed still start?** After touching `terrain.rs` or
   `road_gen.rs`, `cargo test every_seed -- --ignored` seats the starting
   town on the first twenty seeds; `DRAW=1` draws the ones that fail.
+- **Does it still look right?** `bun run shots` builds the test towns in
+  `server/fixtures/*.txt` (a map in text; the key is in
+  `server/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
+  photographs each: `.dev/shots/sheet.png` has them all on one page.
+  `--keep` leaves that stack up to look round by hand. A new look gets a
+  fixture that shows it, so the next change can be seen not to break it.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads and forest to build into — enough to

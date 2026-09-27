@@ -177,6 +177,20 @@ export function OrthoCamera() {
     targetViewHalf = newSize;
   }
 
+  // The fixture shots point the camera from outside: straight to a place and
+  // a zoom, no travel. Dev only.
+  if (import.meta.env.DEV) {
+    (window as unknown as { sprawlCamera: unknown }).sprawlCamera = {
+      look(x: number, y: number, half: number) {
+        targetCamX = camera.position.x = x;
+        targetCamY = camera.position.y = y;
+        targetViewHalf = viewHalf = half;
+        camera.setTarget(new Vector3(x, y, 0));
+        updateProjection();
+      },
+    };
+  }
+
   // Subscription is chunk-granular, so panning within a chunk sends nothing.
   function sendViewportIfChanged() {
     const aspect = engine.getRenderWidth() / engine.getRenderHeight();

@@ -1,0 +1,7 @@
+# Houses between the street and the water
+# A jetty or a boat where a house backs onto the water.
+..............
+==============
+.HHH.HH.HHHH..
+~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~

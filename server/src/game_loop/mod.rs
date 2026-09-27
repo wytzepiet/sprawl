@@ -55,7 +55,10 @@ const STARTING_MIX: [BuildingKind; 3] = [BuildingKind::House, BuildingKind::Shop
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
-    let (mut world, mut sim_time) = load_world(&db_path);
+    let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
+    // Fixtures are built fresh on every start, at noon, standing still: the
+    // same pictures every time, lit the same way.
+    let (mut world, mut sim_time) = if fixtures.is_some() { (World::new(), DAY_MS as GameTime / 2) } else { load_world(&db_path) };
     let mut events: EventQueue = EventQueue::new();
     let mut intersections = IntersectionRegistry::new();
     let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
@@ -63,13 +66,17 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     // Terrain is derived from the seed, so it is regenerated on every start
     // rather than persisted. A fresh world also gets its roads laid out.
     let fresh = world.objects.all_entries().is_empty();
-    if fresh {
-        world.terrain_seed = new_seed();
+    if let Some(dir) = &fixtures {
+        crate::fixtures::build(&mut world, std::path::Path::new(dir));
+    } else {
+        if fresh {
+            world.terrain_seed = new_seed();
+        }
+        world.terrain = crate::terrain::generate(world.terrain_seed);
+        println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
     }
-    world.terrain = crate::terrain::generate(world.terrain_seed);
-    println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
 
-    if fresh {
+    if fresh && fixtures.is_none() {
         let seed = world.terrain_seed;
         if let Some(anchor) = crate::road_gen::generate(&mut world, seed) {
             crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
@@ -77,7 +84,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     }
 
     // Rebuild edges/indices and schedule car spawns for loaded buildings
-    if !world.objects.all_entries().is_empty() {
+    if !world.objects.all_entries().is_empty() && fixtures.is_none() {
         world.rebuild_revealed();
         world.rebuild_edges();
         world.rebuild_node_cars();
@@ -102,7 +109,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 
     let mut tick_interval = interval(Duration::from_millis(STEP_MS));
     let mut last_persist = Instant::now();
-    let mut speed: u32 = 1;
+    let mut speed: u32 = if fixtures.is_some() { 0 } else { 1 };
 
     loop {
         tick_interval.tick().await;
@@ -254,7 +261,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         // anything is flushed, so the network is never seen cut off from the
         // world in between. Only new chunks cost anything: extend_to skips
         // whatever it has already laid.
-        if !world.newly_revealed.is_empty() {
+        // Fixtures have no survey: their streets are all the road there is.
+        if !world.newly_revealed.is_empty() && fixtures.is_none() {
             let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
             crate::road_gen::extend_to(&mut world, seed, bounds);
             // That road can cross the new frontier, and a road crossing the
