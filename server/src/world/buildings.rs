@@ -107,15 +107,24 @@ impl World {
                 y: (y - by as f64 - bh as f64 / 2.0 + 0.5).floor() as i32,
             }
         };
+        // A kind whose lorry is a ship is held to the coast the way any
+        // building is held to its street: the plot slides along its own
+        // axis, up to its depth, until its back wall meets the water.
+        let reach = if crate::economy::ships(kind) { crate::blueprint::plot(kind, 0).size.1 as i32 } else { 0 };
+        let candidates = || {
+            (0..4u8).flat_map(move |facing| {
+                let (dx, dy) = crate::blueprint::FACINGS[facing as usize];
+                let held = at(facing);
+                (0..=reach).flat_map(move |k| [k, -k]).map(move |k| (GridCoord { x: held.x + k * dx, y: held.y + k * dy }, facing))
+            })
+        };
         let street_at = |id: EntityId| self.objects.get(id).and_then(|e| e.position);
-        for facing in 0..4u8 {
-            let pos = at(facing);
+        for (pos, facing) in candidates() {
             if let Some((street, door)) = self.site_facing(pos, kind, facing) {
                 return Site { pos, facing, fits: true, door: Some(door), street: street_at(street) };
             }
         }
-        for facing in 0..4u8 {
-            let pos = at(facing);
+        for (pos, facing) in candidates() {
             if self.fits(pos, kind, facing) {
                 let found = self.driveway_for(pos, kind, facing, true);
                 return Site { pos, facing, fits: true, door: found.map(|(_, d)| d), street: found.and_then(|(s, _)| street_at(s)) };

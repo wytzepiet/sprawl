@@ -74,10 +74,6 @@ pub struct World {
     pub laid: u32,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
-    /// The sea: every water tile joined to the map's edge, charted from the
-    /// terrain the first time anything asks (`world/sea.rs`). Water that is
-    /// not is a lake.
-    pub sea: std::cell::OnceCell<HashSet<(i32, i32)>>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
@@ -157,7 +153,6 @@ impl World {
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
-            sea: std::cell::OnceCell::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
             newly_revealed: Vec::new(),
@@ -190,7 +185,6 @@ impl World {
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
-            sea: std::cell::OnceCell::new(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
             newly_revealed: Vec::new(),

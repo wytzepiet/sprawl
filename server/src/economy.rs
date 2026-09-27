@@ -1068,7 +1068,7 @@ mod tests {
         // the sea a row behind that, for a port's quay.
         for y in -6..6 {
             for x in -4..300 {
-                world.terrain.insert((x, y), if y == 5 { crate::protocol::TerrainType::Water } else { crate::protocol::TerrainType::Grass });
+                world.terrain.insert((x, y), if y == 5 { crate::protocol::TerrainType::Sea } else { crate::protocol::TerrainType::Grass });
             }
         }
         world.place_road_path(&(-2..300).map(|x| crate::protocol::GridCoord { x, y: 0 }).collect::<Vec<_>>());

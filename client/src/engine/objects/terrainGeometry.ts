@@ -52,6 +52,7 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
 }
 
 const ELEVATION: Record<TerrainType, number> = {
+  Sea: -0.5,
   Water: -0.5,
   Beach: 0,
   Grass: 0,
@@ -505,6 +506,7 @@ const CORNER_PRIORITY: Record<TerrainType, number> = {
   Forest: 2,
   Mountain: 1,
   Water: 0,
+  Sea: 0,
 };
 
 /** For each corner [BL, BR, TR, TL], the two cardinal neighbours to check. */
@@ -567,7 +569,7 @@ export interface TerrainSampler {
 
 /** Wire encoding, in the server's TerrainType::to_byte order. */
 /** Wire encoding, in the server's TerrainType::to_byte order. */
-const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain"];
+const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain", "Sea"];
 
 const NO_CORNERS: (TerrainType | null)[] = [null, null, null, null];
 

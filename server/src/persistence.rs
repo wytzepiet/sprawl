@@ -130,10 +130,13 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
     let tx = conn.transaction().expect("failed to begin transaction");
 
     for entry in changed {
-        // A trip is not worth saving — its route references live world state
-        // and a restart ends it anyway. The parked car is; a save mid-trip
-        // keeps the version last seen parked, and the driver self-heals home.
-        if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some()) {
+        // A journey is not worth saving — a trip's route references live
+        // world state, and a run or a voyage or a spell beyond the edge is
+        // timed by wakes that die with the process, so a restart ends all of
+        // them anyway. The parked car is; a save mid-journey keeps the
+        // version last seen parked, and the driver self-heals home, or the
+        // shelves the ship was fetching for call again.
+        if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.away > 0) {
             continue;
         }
         // Nor is the edge: it is derived from where the roads run off the
@@ -179,4 +182,35 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
     }
 
     tx.commit().expect("failed to commit");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{Car, CarRole, GameObject, GridCoord, Job, Run};
+
+    /// A ship saved mid-voyage comes back as it was last seen at the quay:
+    /// the wakes that time a voyage die with the process, so a saved one
+    /// would stand at sea with no clock to bring it home.
+    #[test]
+    fn a_journey_is_not_saved() {
+        let dir = std::env::temp_dir().join(format!("sprawl-journey-{}", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let quay = GridCoord { x: 5, y: 5 };
+        let mut ship = Car::new(1, CarRole::Ship);
+        let moored = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(quay) };
+        save(&dir, &[moored], &[], Meta::default());
+        ship.run = Some(Run { job: Job::Sail, path: vec![quay, GridCoord { x: 5, y: 6 }], started: 0, pace: 1 });
+        let sailing = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(GridCoord { x: 5, y: 6 }) };
+        save(&dir, &[sailing], &[], Meta::default());
+        ship.run = None;
+        ship.away = 7;
+        let beyond = GameObjectEntry { id: 2, object: GameObject::Car(ship), position: None };
+        save(&dir, &[beyond], &[], Meta::default());
+        let (loaded, _) = load(&dir);
+        let _ = std::fs::remove_file(&dir);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].position, Some(quay), "the ship is not where it was last moored");
+        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.run.is_none() && c.away == 0));
+    }
 }

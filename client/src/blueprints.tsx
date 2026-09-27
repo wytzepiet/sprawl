@@ -36,6 +36,8 @@ export interface Blueprint {
   lot: [number, number];
   /** A depot: its lot is a yard of docks, not a ring, and fuses with nobody. */
   yard?: boolean;
+  /** A port: a quay along its back wall, out over the water, where its ship moors. */
+  quay?: boolean;
 }
 
 /** The four ways a plot can lie: which side the lot and street are on. */
@@ -233,6 +235,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     size: [3, 2],
     lot: [2, 2],
     yard: true,
+    quay: true,
   },
   Edge: {
     label: "Beyond the edge",

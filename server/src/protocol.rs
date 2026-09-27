@@ -358,6 +358,9 @@ pub struct Trip {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
 #[ts(export)]
 pub enum TerrainType {
+    /// The sea: water on the ocean's side of the step in `terrain.rs`, where
+    /// a ship can sail. Water is a lake.
+    Sea,
     Water,
     Beach,
     Grass,
@@ -385,6 +388,7 @@ impl TerrainType {
             TerrainType::Grass => 2,
             TerrainType::Forest => 3,
             TerrainType::Mountain => 4,
+            TerrainType::Sea => 5,
         }
     }
 }

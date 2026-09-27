@@ -70,13 +70,18 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   town at opt-level 0 cost a minute. `cargo check` is not redundant: `cargo test` compiles
   the crate with `cfg(test)` on, so a stray `#[cfg(test)]` above something the
   game needs passes the suite and leaves a server that will not build.
+- **Does every seed still start?** After touching `terrain.rs` or
+  `road_gen.rs`, `cargo test every_seed -- --ignored` seats the starting
+  town on the first twenty seeds; `DRAW=1` draws the ones that fail.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
-  open land beside the starting roads, forest to build into, and coastline —
-  enough to exercise building, tree clearing and demolition. Any fixed seed gives
+  open land beside the starting roads and forest to build into — enough to
+  exercise building, tree clearing and demolition; the sea is seventy tiles
+  off to the north-west, and seed 3 starts on the shore. `SPRAWL_ALL=1` opens
+  the whole tree and a bottomless purse. Any fixed seed gives
   the same map back, so a change in behaviour is a change in the code.
-  `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the middle of
-  the map.
+  `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the whole
+  map, sixteen tiles to a character.
 
 ## Solid 1.x
 

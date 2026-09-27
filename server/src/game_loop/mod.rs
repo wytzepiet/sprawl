@@ -71,9 +71,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 
     if fresh {
         let seed = world.terrain_seed;
-        let terrain = world.terrain.clone();
-        if let Some(anchor) = crate::road_gen::generate(&mut world, seed, &terrain) {
-            crate::road_gen::start_town(&mut world, &terrain, anchor, &STARTING_MIX);
+        if let Some(anchor) = crate::road_gen::generate(&mut world, seed) {
+            crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
         }
     }
 
@@ -88,9 +87,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         world.rebuild_laid();
         // A saved world may have been revealed further than its roads reach,
         // if it was saved before this existed.
-        let terrain = world.terrain.clone();
         let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-        crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
+        crate::road_gen::extend_to(&mut world, seed, bounds);
         println!("loaded {} objects from db", world.objects.all_entries().len());
     }
     // Whatever is standing gets its people, whether it was just laid out or
@@ -157,9 +155,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         let seed = new_seed();
                         world.terrain_seed = seed;
                         world.terrain = crate::terrain::generate(seed);
-                        let terrain = world.terrain.clone();
-                        if let Some(anchor) = crate::road_gen::generate(&mut world, seed, &terrain) {
-                            crate::road_gen::start_town(&mut world, &terrain, anchor, &STARTING_MIX);
+                        if let Some(anchor) = crate::road_gen::generate(&mut world, seed) {
+                            crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
                         }
                         settle_and_wake(&mut world, &mut events);
                         world.newly_revealed.clear();
@@ -258,9 +255,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         // world in between. Only new chunks cost anything: extend_to skips
         // whatever it has already laid.
         if !world.newly_revealed.is_empty() {
-            let terrain = world.terrain.clone();
             let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-            crate::road_gen::extend_to(&mut world, seed, &terrain, bounds);
+            crate::road_gen::extend_to(&mut world, seed, bounds);
             // That road can cross the new frontier, and a road crossing the
             // frontier is a way out; `reveal_around` stood the doors before
             // it was laid.
@@ -938,9 +934,8 @@ mod tests {
         let mut world = World::new();
         world.terrain_seed = 7;
         world.terrain = crate::terrain::generate(7);
-        let terrain = world.terrain.clone();
-        let anchor = crate::road_gen::generate(&mut world, 7, &terrain).expect("no anchor near the middle");
-        crate::road_gen::start_town(&mut world, &terrain, anchor, &STARTING_MIX);
+        let anchor = crate::road_gen::generate(&mut world, 7).expect("no anchor near the middle");
+        crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
         assert_eq!(world.all_buildings().len(), STARTING_MIX.len(), "not every starting building was placed");
         eprintln!("anchor {:?}", anchor);
         // The town, drawn: streets as dots, roads as bars, plots as letters.
@@ -1265,14 +1260,14 @@ mod tests {
         // The sea, behind the street's south side from x = 40 on.
         for y in 5..14 {
             for x in 40..170 {
-                world.terrain.insert((x, y), TerrainType::Water);
+                world.terrain.insert((x, y), TerrainType::Sea);
             }
         }
         let shop = build(&mut world, 20, BuildingKind::Shop, 1);
         assert!(world.place_on_street(GridCoord { x: 30, y: 1 }, BuildingKind::Port).is_none(), "a port stood with its back on land");
         let port = build(&mut world, 60, BuildingKind::Port, 1);
         let quay = world.quay(port).expect("a port has a quay");
-        assert_eq!(world.terrain.get(&(quay.x, quay.y)), Some(&TerrainType::Water), "the quay is on land");
+        assert_eq!(world.terrain.get(&(quay.x, quay.y)), Some(&TerrainType::Sea), "the quay is on land");
         let ship = world
             .objects
             .iter()
