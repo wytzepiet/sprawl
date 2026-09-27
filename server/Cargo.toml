@@ -28,3 +28,12 @@ opt-level = 3
 # noise is nothing and the rest is our own loop.
 [profile.dev.package.noise]
 opt-level = 3
+
+# The game loop is a spawned task, and tokio survives a task's panic: the
+# process kept its port and answered sockets with nothing, which in the
+# browser is an empty world with no error anywhere. A panic ends the server.
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

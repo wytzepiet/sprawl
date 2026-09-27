@@ -1,5 +1,6 @@
 import type { MeshGeometry } from "../Mesh";
 import { slabGeometry } from "./buildings";
+import { ROAD_Z } from "./roadGeometry";
 import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
 import type { Building, GameObjectEntry } from "../../generated";
 
@@ -16,7 +17,7 @@ const PITCH = 0.2;
 const ISLAND_END = 0.3;
 const CAR: [number, number] = [0.35, 0.18];
 /** Painted above the road surface, so a driveway's arm cannot cover it. */
-const MARK_Z = 0.022;
+const MARK_Z = ROAD_Z + 0.002;
 const MARK = 0.035;
 
 /** Where the spots' centres lie along a lot w wide. */

@@ -73,50 +73,64 @@ function nextRand(s: number): [number, number] {
   return [s, (s >>> 0) / 4294967296];
 }
 
-const TREE_SEGMENTS = 12;
+/**
+ * A tree is a crown seen from above, drawn the way a town plan draws one: a
+ * disc whose outline bulges into a few lobes, laid over its neighbours. It
+ * is only the crown, floating at the tree's own height with its shadow on
+ * the ground below, so where two crowns overlap one is plainly over the
+ * other, and the pen's line where the surface steps down off its rim is the
+ * line between them. (Domes that met halfway up had no step between them.)
+ * It is one fan, a ring of rim points round a raised middle: there are tens
+ * of thousands of trees in view, drawn again for depth and for shadow, and a
+ * crown of three rings cost five times the triangles and looked the same.
+ * The rim's normals lean outward and the middle's point up, so the light
+ * across a nearly flat crown still falls like it would on a dome.
+ */
+const CROWN_AROUND = 36;
+const CROWN_LOBES = 6;
+const CROWN_LOBE = 0.12;
+/** The tallest crown's top, in tiles at full size; the shortest is 45% of it. */
+const CROWN_HEIGHT = 0.45;
+/** How far the middle rises above the rim, as a share of the crown's height. */
+const CROWN_DOME = 0.12;
+/** How much the rim's normals lean outward, for a dome's light on a flat top. */
+const CROWN_BULGE = 0.8;
 
-function buildCylinderGeo(radius: number, height: number): MeshGeometry {
+function buildCrownGeo(): MeshGeometry {
   const positions: number[] = [];
   const normals: number[] = [];
   const indices: number[] = [];
 
-  // Side wall
-  for (let i = 0; i <= TREE_SEGMENTS; i++) {
-    const a = (i / TREE_SEGMENTS) * Math.PI * 2;
+  const n = Math.hypot(CROWN_BULGE, 1);
+  for (let j = 0; j < CROWN_AROUND; j++) {
+    const a = (j / CROWN_AROUND) * Math.PI * 2;
     const cx = Math.cos(a), cy = Math.sin(a);
-    // bottom
-    positions.push(cx * radius, cy * radius, 0);
-    normals.push(cx, cy, 0);
-    // top
-    positions.push(cx * radius, cy * radius, height);
-    normals.push(cx, cy, 0);
+    const r = 1 + CROWN_LOBE * Math.cos(CROWN_LOBES * a);
+    positions.push(cx * r, cy * r, 1);
+    normals.push((cx * CROWN_BULGE) / n, (cy * CROWN_BULGE) / n, 1 / n);
   }
-  for (let i = 0; i < TREE_SEGMENTS; i++) {
-    const b = i * 2;
-    indices.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
-  }
-
-  // Top cap
-  const topCenter = positions.length / 3;
-  positions.push(0, 0, height);
+  positions.push(0, 0, 1 + CROWN_DOME);
   normals.push(0, 0, 1);
-  for (let i = 0; i <= TREE_SEGMENTS; i++) {
-    const a = (i / TREE_SEGMENTS) * Math.PI * 2;
-    positions.push(Math.cos(a) * radius, Math.sin(a) * radius, height);
-    normals.push(0, 0, 1);
-  }
-  for (let i = 0; i < TREE_SEGMENTS; i++) {
-    indices.push(topCenter, topCenter + i + 2, topCenter + i + 1);
+  for (let j = 0; j < CROWN_AROUND; j++) {
+    indices.push(CROWN_AROUND, (j + 1) % CROWN_AROUND, j);
   }
 
   return { positions, indices, normals };
 }
 
-export const TREE_TRUNK = buildCylinderGeo(1, 1);
+export const TREE_CROWN = buildCrownGeo();
+/** A crown's radius in tiles at full size; smaller trees are down to half. */
+const TREE_RADIUS = 0.35;
 interface TreeInfo {
   x: number;
   y: number;
   scale: number;
+  /** Which way its lobes face, in radians. */
+  turn: number;
+  /** Which crown colour, 0 to 1: see CROWN_SHARES. */
+  shade: number;
+  /** How tall, 0 to 1, from the shortest crown to the tallest. */
+  tall: number;
 }
 
 const CELLS: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
@@ -135,7 +149,12 @@ function treesForTile(tx: number, ty: number): TreeInfo[] {
     } while ((x - 0.5) ** 2 + (y - 0.5) ** 2 > 0.25);
     [s, v] = nextRand(s);
     const scale = 0.5 + v * 0.5;
-    trees.push({ x, y, scale });
+    [s, v] = nextRand(s);
+    const turn = v * Math.PI * 2;
+    [s, v] = nextRand(s);
+    const shade = v;
+    [s, v] = nextRand(s);
+    trees.push({ x, y, scale, turn, shade, tall: v });
   }
   return trees;
 }
@@ -348,19 +367,18 @@ const EDGE_ENDPOINTS: [[number, number], [number, number]][] = [
     [0, 0],
   ], // left
 ];
-const EDGE_NORMALS: [number, number][] = [
-  [0, -1],
-  [1, 0],
-  [0, 1],
-  [-1, 0],
-];
+// Cliff walls are unlit and edge-on to the camera, so their normals only
+// steer the shadow pass's normal bias, which slides every
+// caster along its normal. Walls on the same ridge used to face opposite ways
+// depending on which tile drew them, and the bias pushed neighbours apart:
+// one ridge, cast as panels in and out of line. Up, for all of them.
+const UP4 = [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1];
 
 function buildEdgeCliffGeo(edgeIdx: number, height: number): MeshGeometry {
   const [[x0, y0], [x1, y1]] = EDGE_ENDPOINTS[edgeIdx];
-  const [nx, ny] = EDGE_NORMALS[edgeIdx];
   return {
     positions: [x0, y0, 0, x1, y1, 0, x1, y1, height, x0, y0, height],
-    normals: [nx, ny, 0, nx, ny, 0, nx, ny, 0, nx, ny, 0],
+    normals: UP4,
     indices: [0, 1, 2, 0, 2, 3],
   };
 }
@@ -372,7 +390,6 @@ function buildCliffGeo(
   variant: number,
   height: number,
 ): MeshGeometry {
-  const def = CORNER_DEFS[defIdx];
   const pts = getCornerCurvePoints(defIdx, variant);
 
   const positions: number[] = [];
@@ -382,25 +399,9 @@ function buildCliffGeo(
   for (let i = 0; i < pts.length - 1; i++) {
     const [x0, y0] = pts[i];
     const [x1, y1] = pts[i + 1];
-
-    // Normal perpendicular to curve tangent, pointing away from corner vertex
-    const tx = x1 - x0;
-    const ty = y1 - y0;
-    const mx = (x0 + x1) / 2 - def.cv[0];
-    const my = (y0 + y1) / 2 - def.cv[1];
-    let nx = -ty,
-      ny = tx;
-    if (nx * mx + ny * my < 0) {
-      nx = ty;
-      ny = -tx;
-    }
-    const len = Math.hypot(nx, ny);
-    nx /= len;
-    ny /= len;
-
     const base = positions.length / 3;
     positions.push(x0, y0, 0, x1, y1, 0, x1, y1, height, x0, y0, height);
-    normals.push(nx, ny, 0, nx, ny, 0, nx, ny, 0, nx, ny, 0);
+    normals.push(...UP4);
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 
@@ -776,7 +777,10 @@ function appendTile(
     );
   }
 
-  // Cardinal edge cliffs, where no corner already covers that edge
+  // Cardinal edge cliffs, where no corner already covers that edge — on
+  // either side of it. A neighbour that rounds a corner onto this edge has
+  // drawn the shore itself; a straight wall here would stand buried under
+  // that corner, and still cast its shadow past the real one.
   const diffSet = new Set(diff.map((c) => c.index));
   for (let i = 0; i < 4; i++) {
     if (diffSet.has(i) || diffSet.has((i + 1) % 4)) continue;
@@ -785,6 +789,8 @@ function appendTile(
     if (neighbor === undefined) continue;
     const neighborElev = ELEVATION[neighbor];
     if (neighborElev >= be) continue;
+    const across = sampler.cornersOf(x + dx, y + dy);
+    if (across[(i + 2) % 4] || across[(i + 3) % 4]) continue;
     append(
       sink.cliffs,
       buildEdgeCliffGeo(i, be - neighborElev),
@@ -847,15 +853,23 @@ export function buildChunk(
  * and roads are live game state — so unlike buildChunk this stays on the main
  * thread. It is cheap: placement is a pure seeded function of the tile coords.
  */
+/**
+ * How often each crown colour comes up, dark to light, as counted in the
+ * town plan the colours were sampled from: most crowns dark, fewest light.
+ */
+const CROWN_SHARES = [0.44, 0.37, 0.19];
+
 export function buildTrees(
   tiles: Uint8Array,
   chunkX: number,
   chunkY: number,
   isBuilt: (x: number, y: number) => boolean,
-): Float32Array {
+  crowns: RGB[],
+): { matrices: Float32Array; colors: Float32Array } {
   const originX = chunkX * CHUNK_SIZE;
   const originY = chunkY * CHUNK_SIZE;
-  const out: number[] = [];
+  const matrices: number[] = [];
+  const colors: number[] = [];
 
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
@@ -865,16 +879,21 @@ export function buildTrees(
       if (isBuilt(x, y)) continue;
 
       for (const tree of treesForTile(x, y)) {
-        const s = tree.scale;
-        // Column-major 4x4: scale on the diagonal, translation in the last row.
-        out.push(
-          s * 0.35, 0, 0, 0,
-          0, s * 0.35, 0, 0,
-          0, 0, s, 0,
+        const w = tree.scale * TREE_RADIUS;
+        const c = Math.cos(tree.turn) * w, s = Math.sin(tree.turn) * w;
+        // Column-major 4x4: a turn and a scale, translation in the last row.
+        matrices.push(
+          c, s, 0, 0,
+          -s, c, 0, 0,
+          0, 0, (CROWN_HEIGHT * (0.45 + 0.55 * tree.tall)) / (1 + CROWN_DOME), 0,
           x - originX + tree.x, y - originY + tree.y, 0, 1,
         );
+        let pick = 0, t = tree.shade;
+        while (pick < CROWN_SHARES.length - 1 && t >= CROWN_SHARES[pick]) t -= CROWN_SHARES[pick++];
+        const crown = crowns[pick];
+        colors.push(crown.r, crown.g, crown.b, 1);
       }
     }
   }
-  return new Float32Array(out);
+  return { matrices: new Float32Array(matrices), colors: new Float32Array(colors) };
 }

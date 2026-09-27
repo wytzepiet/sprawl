@@ -44,6 +44,23 @@ export function screenToWorld(
 }
 
 /**
+ * The ground the view covers, as a circle: where the middle of the screen
+ * lands, and how far from there the farthest corner does. Looking straight
+ * down that is half the diagonal; leaning back, the far corners run away and
+ * the circle grows toward them.
+ */
+export function groundCover(scene: Scene, canvas: HTMLCanvasElement): { cx: number; cy: number; radius: number } {
+  const { width, height } = canvas.getBoundingClientRect();
+  const mid = groundAt(scene, width / 2, height / 2);
+  let radius = 0;
+  for (const [x, y] of [[0, 0], [width, 0], [0, height], [width, height]]) {
+    const c = groundAt(scene, x, y);
+    radius = Math.max(radius, Math.hypot(c.wx - mid.wx, c.wy - mid.wy));
+  }
+  return { cx: mid.wx, cy: mid.wy, radius };
+}
+
+/**
  * Half the ground the view covers, vertically and horizontally, in tiles.
  *
  * Measured rather than derived: where the middle of the screen lands, against

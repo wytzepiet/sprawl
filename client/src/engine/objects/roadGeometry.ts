@@ -17,9 +17,13 @@ export const HALF_W = ROAD_WIDTH / 2;
 /** The kerb is as wide as the map's grid line. */
 export const BORDER_HALF_W = HALF_W + GRID_LINE;
 const CURVE_SEGMENTS = 8;
-export const ROAD_Z = 0.02;
-export const BORDER_Z = 0.015;
-export const CHEVRON_Z = 0.03;
+// A road stands clear of the ground, so the pen sees the step up to it and
+// outlines it: its border is 0.025 over the grass, and still 0.015 over a
+// terrain patch laid on the grass. Lots, their markings and cars sit
+// relative to it.
+export const ROAD_Z = 0.03;
+export const BORDER_Z = 0.025;
+export const CHEVRON_Z = 0.04;
 const CHEVRON_DEPTH = 0.12;
 
 // --- Geometry helpers ---

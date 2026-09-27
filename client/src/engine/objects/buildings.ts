@@ -19,7 +19,7 @@ export const BUILDING_SIZE = 1.0 - 2 * PLOT_MARGIN;
  * never shows across the lot.
  */
 /** The slab's kerb is as wide as the map's grid line, like a road's. */
-export const SLAB = { inset: 0.1, kerb: GRID_LINE, radius: 0.13, z: 0.017, kerbZ: 0.016 };
+export const SLAB = { inset: 0.1, kerb: GRID_LINE, radius: 0.13, z: 0.027, kerbZ: 0.026 };
 /** Every building's walls have this much of a corner: enough to keep a
  *  corner out from under a diagonal road's kerb, and the slab's corners are
  *  the same arcs 0.05 further out. */

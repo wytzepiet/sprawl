@@ -46,7 +46,9 @@ async function createEngine(el: HTMLCanvasElement): Promise<AbstractEngine> {
     // — Chrome on a blocklisted phone — would hang here with no engine at all.
     // An engine that failed to init holds no device, and disposing one throws
     // inside Babylon; the canvas is simply handed to WebGL instead.
-    const engine = new WebGPUEngine(el, options);
+    // Every feature the adapter has, rather than none: the pen reads steps
+    // off a depth map it mips, which wants full floats that can be filtered.
+    const engine = new WebGPUEngine(el, { ...options, enableAllFeatures: true });
     try {
       await engine.initAsync();
       return engine;

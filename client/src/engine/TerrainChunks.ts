@@ -17,7 +17,7 @@ import {
   CHUNK_SKIRT,
   CHUNK_STRIDE,
   GRID_LINE,
-  TREE_TRUNK,
+  TREE_CROWN,
   type ChunkGeometry,
   type MeshBuffers,
   type TerrainPalette,
@@ -282,10 +282,11 @@ export class TerrainChunks {
     if (!meshes || !tiles) return;
 
     const [cx, cy] = parseKey(key);
-    const matrices = buildTrees(tiles, cx, cy, this.isBuilt);
+    const { matrices, colors } = buildTrees(tiles, cx, cy, this.isBuilt, this.theme().crowns);
     meshes.hasTrees = matrices.length > 0;
     meshes.trees.thinInstanceSetBuffer("matrix", matrices, 16, true);
-    // Without this the mesh keeps the lone base cylinder's bounds and the
+    meshes.trees.thinInstanceSetBuffer("color", colors, 4, true);
+    // Without this the mesh keeps the lone base crown's bounds and the
     // whole chunk's trees get frustum-culled as soon as the origin leaves view.
     meshes.trees.thinInstanceRefreshBoundingInfo(true);
     this.applyDetail(meshes);
@@ -303,9 +304,9 @@ export class TerrainChunks {
     trees.material = this.treeMat;
     trees.receiveShadows = true;
     const treeData = new VertexData();
-    treeData.positions = TREE_TRUNK.positions;
-    treeData.indices = TREE_TRUNK.indices;
-    treeData.normals = TREE_TRUNK.normals;
+    treeData.positions = TREE_CROWN.positions;
+    treeData.indices = TREE_CROWN.indices;
+    treeData.normals = TREE_CROWN.normals;
     treeData.applyToMesh(trees);
 
     const meshes: ChunkMeshes = { ground, cliffs, trees, hasCliffs: false, hasTrees: false };
@@ -377,14 +378,9 @@ export class TerrainChunks {
     this.groundMat.emissiveColor = ambient.scale(0.15);
     this.cliffMat.emissiveColor = ambient.scale(0.7);
 
-    // Trees are a single colour, so they keep it on the material.
-    const tree = this.theme().forest;
-    this.treeMat.diffuseColor = tree;
-    this.treeMat.emissiveColor = new Color3(
-      tree.r * ambient.r * 0.15,
-      tree.g * ambient.g * 0.15,
-      tree.b * ambient.b * 0.15,
-    );
+    // Each tree carries its own crown colour, as the ground carries its.
+    this.treeMat.diffuseColor = Color3.White();
+    this.treeMat.emissiveColor = ambient.scale(0.15);
   }
 
   dispose(): void {

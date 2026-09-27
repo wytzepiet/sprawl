@@ -120,9 +120,6 @@ export function createOutline(scene: Scene, engine: AbstractEngine, camera: Came
   });
 
   const pass = new PostProcess("outline", "outline", ["texel", "width", "picked", "under", "underAlpha", "tint"], ["maskSampler"], 1.0, null, undefined, engine);
-  // The scene renders into this pass's texture while it is attached, so the
-  // texture has to carry the multisampling the screen would have had.
-  pass.samples = 4;
   pass.onApply = (effect) => {
     effect.setTexture("maskSampler", mask);
     effect.setFloat2("texel", 1 / engine.getRenderWidth(), 1 / engine.getRenderHeight());

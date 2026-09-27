@@ -11,10 +11,15 @@ const hex3 = (h: string) => Color3.FromHexString(h);
 const hex4 = (h: string) => new Color4(...hex3(h).asArray(), 1);
 
 const light = {
-  land: hex4("#D5F2A4"),
-  water: hex3("#85D7FA"),
-  beach: hex3("#F5F1D8"),
-  forest: hex3("#B3E590"),
+  // Ground, water and sand after a pen-and-wash town plan, lifted lighter and
+  // fresher than the colours sampled from it.
+  land: hex4("#CFE58A"),
+  water: hex3("#7CC4EE"),
+  beach: hex3("#F7EBCB"),
+  // The floor between the crowns: the shade of the darkest of them.
+  forest: hex3("#5A9A3E"),
+  // Tree crowns, dark to light: the plan's three greens, lifted out of olive.
+  crowns: [hex3("#5FA543"), hex3("#86C451"), hex3("#B4DC66")],
   // A field through its season: ploughed earth beside the beach, the
   // growing crop beside the grass, the ripe crop beside the highway's
   // yellow, the stubble between.
@@ -23,7 +28,7 @@ const light = {
   ripe: hex3("#F7D96E"),
   stubble: hex3("#EFE6BC"),
   mountain: hex3("#F8F7F6"),
-  grid: hex3("#8BA87A"),
+  grid: hex3("#B5CF6E"),
   road: hex3("#FFFFFF"),
   roadBorder: hex3("#DFE1E1"),
   // A road, as against a street: the map's yellow for a through route.
@@ -36,6 +41,7 @@ const dark = {
   water: hex3("#0A1535"),
   beach: hex3("#2A2518"),
   forest: hex3("#053030"),
+  crowns: [hex3("#042626"), hex3("#053030"), hex3("#0A3A34")],
   earth: hex3("#6B5230"),
   growing: hex3("#4A6B2A"),
   ripe: hex3("#7A6428"),

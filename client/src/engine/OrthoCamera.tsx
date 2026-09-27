@@ -5,6 +5,7 @@ import { useGame } from "../state/gameObjects";
 import { buildMode, placingBuilding } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 import { viewExtent } from "./view";
+import { createPen } from "./pen";
 import { following, setFollowing, positionOf } from "../state/selection";
 
 const BUILD_ZOOM = 8;
@@ -16,6 +17,14 @@ const BUILD_ZOOM = 8;
  * all. This one number is the whole look.
  */
 const FOV = (20 * Math.PI) / 180;
+
+/**
+ * How far the perspective view leans back from straight down, in radians. For
+ * the look only: it is put on just before a frame is drawn and taken off right
+ * after, so panning, picking and the chunk subscription all still see the
+ * camera straight above the middle of the view.
+ */
+const TILT = (25 * Math.PI) / 180;
 
 /** Which projection the map opens in. F8 swaps it, to see the two side by side. */
 const OPENS_IN_PERSPECTIVE = false;
@@ -49,6 +58,7 @@ export function OrthoCamera() {
   camera.setTarget(Vector3.Zero());
   camera.minZ = 1;
   camera.maxZ = 4000;
+  const disposePen = createPen(scene, engine, camera, canvas);
   let perspective = OPENS_IN_PERSPECTIVE;
 
   // Zoom is measured in tiles of ground, not in camera height, so it means the
@@ -213,7 +223,19 @@ export function OrthoCamera() {
     }
     clampToSurveyed();
     sendViewportIfChanged();
+    if (perspective && !debugMode) lean(1);
   });
+  const leanBackObs = scene.onAfterRenderObservable.add(() => {
+    if (perspective && !debugMode) lean(-1);
+  });
+
+  /** Swing the camera back along the ground, still aimed where it was. */
+  function lean(dir: 1 | -1) {
+    const x = camera.position.x;
+    const y = camera.position.y + (dir === -1 ? camera.position.z * Math.tan(TILT) : 0);
+    camera.position.y = y - (dir === 1 ? camera.position.z * Math.tan(TILT) : 0);
+    camera.setTarget(new Vector3(x, y, 0));
+  }
 
   // React to build mode changes
   createEffect(on(
@@ -378,12 +400,14 @@ export function OrthoCamera() {
   onCleanup(() => {
     engine.onResizeObservable.remove(resizeObs);
     scene.onBeforeRenderObservable.remove(renderObs);
+    scene.onAfterRenderObservable.remove(leanBackObs);
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
     canvas.removeEventListener("wheel", onWheel);
     canvas.removeEventListener("contextmenu", preventContextMenu);
     window.removeEventListener("keydown", onKeyDown);
+    disposePen();
     camera.dispose();
   });
 

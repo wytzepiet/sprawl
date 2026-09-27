@@ -8,6 +8,7 @@ import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
 import type { Theme } from "../theme";
 import type { Strip } from "./strip";
 import { field, FIELD_Z, leaves } from "./BuildingObject";
+import { ROAD_Z } from "./roadGeometry";
 import { getEntity } from "../../state/gameObjects";
 import type { Building, Car, GameObjectEntry } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
@@ -44,9 +45,9 @@ const CAB_COLOR = new Color3(0.28, 0.36, 0.58);
 const TRAILER_COLOR = new Color3(0.9, 0.9, 0.88);
 const LANE_OFFSET = 0.11;
 
-const CAR_Z = 0.095;
-/** A box sits on the ground: its centre is half its height up. */
-const GROUND = CAR_Z - 0.15 / 2;
+/** A box sits on the road: its centre is half its height up. */
+const CAR_Z = ROAD_Z + 0.15 / 2;
+const GROUND = ROAD_Z;
 /** A ship: a long low hull, dark, afloat on the water, which lies half
  *  a unit under the land. */
 const HULL = { w: 0.45, l: 1.6, h: 0.2 };

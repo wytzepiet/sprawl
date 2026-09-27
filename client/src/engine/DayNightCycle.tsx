@@ -16,7 +16,7 @@ import {
   type AbstractEngine,
 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
-import { viewExtent } from "./view";
+import { groundCover } from "./view";
 
 // ---------------------------------------------------------------------------
 // Time config
@@ -209,7 +209,6 @@ export default function DayNightLights(props: ParentProps) {
   shadowGen.normalBias = 0.02;
   setShadowGen(shadowGen);
 
-  const camera = scene.activeCamera!;
   const resizeObs = engine.onResizeObservable.add(() => {
     const size = shadowMapSize(engine);
     if (size !== shadowGen.mapSize) shadowGen.mapSize = size;
@@ -246,11 +245,12 @@ export default function DayNightLights(props: ParentProps) {
     sunLight.direction = sunDirection(t);
     sunLight.intensity = 0.4 * elev;
 
-    const view = viewExtent(scene, engine.getRenderingCanvas()!);
-    const radius = Math.max(view.halfW, view.halfH);
+    // Round the ground in view, not round the camera: leaning back, the
+    // camera stands well behind what it looks at.
+    const { cx, cy, radius } = groundCover(scene, engine.getRenderingCanvas()!);
     const dir = sunLight.direction;
-    sunLight.position.x = camera.position.x - dir.x * radius;
-    sunLight.position.y = camera.position.y - dir.y * radius;
+    sunLight.position.x = cx - dir.x * radius;
+    sunLight.position.y = cy - dir.y * radius;
     sunLight.position.z = -dir.z * radius;
     sunLight.shadowMinZ = 0;
     sunLight.shadowMaxZ = radius * 2;
