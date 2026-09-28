@@ -139,6 +139,15 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.
+- **Plans and roofs are exact**, not sampled (`town/footprint.ts`,
+  `town/roof.ts`). Each quarter's rules are half-planes cutting its square,
+  a building is the union of its pieces (Clipper), the streets are cut
+  away as bands along their middle lines, and a courtyard is the plan less
+  itself drawn in. Every wall raises a roof face climbing in from it, and
+  the roof over a point is the lowest face there, flat beyond reach: so
+  ridges, hips and valleys are where the faces meet, exactly. The sampled
+  mesher below is kept behind `?m=old` in the sandbox until this one has
+  what it had (rooflights, the gables' roofs).
 - **The roof is the distance in from the outline**, so a row gets a
   ridge, its end a hip and an L a valley, and nothing is told which way
   to run. A quarter is a few straight lines, so the outline is traced

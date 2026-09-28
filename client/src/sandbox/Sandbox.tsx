@@ -13,6 +13,11 @@ import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } fro
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind } from "../generated";
 import { formOf, massMesh } from "../engine/town/mass";
+import { townMesh } from "../engine/town/roof";
+
+/** The buildings' mesher: exact plans and roofs, or `?m=old`, the sampled
+ *  one, to compare until it is gone. */
+const mesh = new URLSearchParams(location.search).get("m") === "old" ? massMesh : townMesh;
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -150,7 +155,7 @@ function Board() {
       const grown = stroke.length ? base : touching(t, LETTERS[brush()], hover ?? ghost[0]);
       const id = grown.length ? tiles[grown[0][1]][grown[0][0]].id : -1;
       const shown = townOf(tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? { ...tileOf(brush()), id } : tile))), (c, r) => t.through(c, r));
-      const geo = massMesh(shown, colourOf, new Set(ghost.map(([c, r]) => `${c},${r}`)));
+      const geo = mesh(shown, colourOf, new Set(ghost.map(([c, r]) => `${c},${r}`)));
       if (geo.indices.length) overlay.push(translucent(scene, "ghost", geo, Color3.White(), 0.75));
     } else if (hover && program()) {
       overlay.push(translucent(scene, "nope", quadsAt([hover], 0.014), new Color3(0.85, 0.25, 0.2), 0.5));
@@ -363,7 +368,7 @@ function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
   add("through_kerb", merge(roads.through[0]), theme.highwayBorder);
   add("through", merge(roads.through[1]), theme.highway);
 
-  add("mass", massMesh(town, colourOf), Color3.White());
+  add("mass", mesh(town, colourOf), Color3.White());
   return meshes;
 }
 

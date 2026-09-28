@@ -63,27 +63,34 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 
 /** How far a building stands back from water. */
-const QUAY = 0.02;
-const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
+export const QUAY = 0.02;
+export const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
 /** How much further back a row stepping on the diagonal is built than
  *  the corner of a courtyard is cut: a house there is as deep as one on a
  *  straight street, where the diagonal through its tile alone would leave
  *  it a sliver. */
-const DIAGONAL = 0.45;
+export const DIAGONAL = 0.45;
 /** How far in from the corner a street corner is cut. */
-const CHAMFER = 0.2;
+export const CHAMFER = 0.2;
 
 /** The walls' height, and the roof that climbs from them `d` in. */
 export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
-function rise(t: Tile, d: number) {
-  if (formOf(t).family !== "street") return Math.min(d * 0.25, 0.06);
-  return t.storeys <= 3 ? Math.min(d * 0.75, 0.26) : Math.min(d * 0.5, 0.03);
+/** How steeply a kind's roof climbs from its walls, and how high before
+ *  it runs flat: a house's pitched, a block of flats' and a shed's nearly
+ *  flat behind a low rim. */
+export function slope(t: Tile) {
+  if (formOf(t).family !== "street") return { pitch: 0.25, height: 0.06 };
+  return t.storeys <= 3 ? { pitch: 0.75, height: 0.26 } : { pitch: 0.5, height: 0.03 };
+}
+export function rise(t: Tile, d: number) {
+  const { pitch, height } = slope(t);
+  return Math.min(d * pitch, height);
 }
 
 /** Buildings that join: the houses and shops of a street, which run on
  *  into rows whoever built them, and otherwise the tiles of one building,
  *  one kind painted as one. A factory beside a depot is two buildings. */
-const kin = (a: Tile, b: Tile) => {
+export const kin = (a: Tile, b: Tile) => {
   if (!isBuilt(a) || !isBuilt(b)) return false;
   const street = formOf(a).family === "street";
   return street ? formOf(b).family === "street" : a.kind === b.kind && a.id === b.id;
@@ -157,7 +164,7 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
  *  terrain rounds a shore's. A road tile's corner too, clear of its
  *  street: a street stepping on the diagonal leaves two corners of every
  *  step, and the row along it runs on into them. */
-const fills = (t: Tile, p: Tile, q: Tile) => ["open", "paved", "road"].includes(t.kind) && kin(p, q);
+export const fills = (t: Tile, p: Tile, q: Tile) => ["open", "paved", "road"].includes(t.kind) && kin(p, q);
 
 /** A tile's building as the look draws it: its own, or, for ground a row
  *  steps across, that row's. */
@@ -213,7 +220,7 @@ function dressing(town: Town, x: number, y: number): number {
  *  whether it is one that steps forward under a gable, every sixth. A
  *  house on a street that steps on the diagonal has no front of this kind:
  *  the road beside it is a step of the street, not the street. */
-function frontOf(town: Town, x: number, y: number) {
+export function frontOf(town: Town, x: number, y: number) {
   const [c, r] = [Math.floor(x), Math.floor(y)];
   const me = town.tile(c, r);
   if (me.kind !== "House") return null;
@@ -226,13 +233,13 @@ function frontOf(town: Town, x: number, y: number) {
   const along = fx ? y - r - 0.5 : x - c - 0.5;
   const back = 0.5 - ((x - c - 0.5) * fx + (y - r - 0.5) * fy);
   const inRow = kin(me, town.tile(c + fy, r + fx)) && kin(me, town.tile(c - fy, r - fx));
-  return { me, along, back, bay: inRow && (fx ? r : c) % 6 === 1 };
+  return { me, front, along, back, bay: inRow && (fx ? r : c) % 6 === 1 };
 }
 /** How far a gabled house steps forward of its row's front gardens. */
-const STEP = 0.12;
+export const STEP = 0.12;
 /** Half a front gable's width: nearly a house's, its point as high as the
  *  main ridge. */
-const GABLE = 0.42;
+export const GABLE = 0.42;
 
 /**
  * A shed as a business park has it: an office at its street end, a couple
@@ -242,7 +249,7 @@ const GABLE = 0.42;
  * right across, with the tile that has most street round it, the corner on
  * a junction if it has one. A workshop of a tile or three is a hall alone.
  */
-function sheds(town: Town) {
+export function sheds(town: Town) {
   const key = (c: number, r: number) => `${c},${r}`;
   const heads = new Set<string>();
   const across = new Map<string, boolean>();
@@ -288,7 +295,7 @@ function sheds(town: Town) {
   return { town: lifted, head: (c: number, r: number) => heads.has(key(c, r)), rooflight };
 }
 
-type RGB = [number, number, number];
+export type RGB = [number, number, number];
 
 /**
  * The corner an outline turns between two of its crossings of a cell's
