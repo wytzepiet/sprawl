@@ -428,7 +428,20 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The free ground, dressed: courtyard lawns, and trees in them and along
   // the streets, as crowns like the forest's.
-  const { gardens, trees, cars } = dress(town, facts(town));
+  const { gardens, trees, cars, pavement, lanes, bays } = dress(town, facts(town));
+  // Pavements under the roads, lanes and their bay lines over the pavement.
+  const flat = (polys: [number, number][][], z: number): MeshGeometry => {
+    const g: MeshGeometry = { positions: [], normals: [], indices: [] };
+    for (const poly of polys) {
+      const b0 = g.positions.length / 3;
+      for (const [x, y] of poly) g.positions.push(-x, -y, z), g.normals.push(0, 0, 1);
+      for (let i = 1; i + 1 < poly.length; i++) g.indices.push(b0, b0 + i + 1, b0 + i, b0, b0 + i, b0 + i + 1);
+    }
+    return g;
+  };
+  add("pavement", flat(pavement, 0.008), theme.paved);
+  add("lanes", flat(lanes, 0.01), theme.road);
+  add("bays", flat(bays, 0.012), theme.roadBorder);
   add("garden", quadsAt(gardens, 0.005), theme.garden);
   const crowns: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
   for (const t of trees) {

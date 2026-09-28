@@ -87,9 +87,14 @@ The code is `client/src/engine/town/`:
   a tree on its verge every third tile; through roads, junctions, bends,
   diagonals and industrial streets stay bare. A street before homes and
   shops is parked along both kerbs (fileparkeren), straight or diagonal,
-  in the strip the rows' setback leaves, clear of junctions, bends, ends
+  wholly off the road in a parking lane with its bays marked, in the strip
+  the rows' setback leaves, clear of junctions, bends, ends
   and trees, with a gap here and there. Drawn only, for now: the cars the
-  simulation parks come with `parking.md` step 1. Where a tree stands comes
+  simulation parks come with `parking.md` step 1. Every street but a
+  through road has a pavement both sides, kerb to the rows' faces, and an
+  octagon as wide round each junction whose sides meet the pavements of
+  streets straight or diagonal: a town is paved house to house, with its
+  street trees in the pavement, not grass. Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted**, a tile at a time as roads are drawn, with a
   brush per kind (`town/brush.ts`). Each kind has a program: the smallest

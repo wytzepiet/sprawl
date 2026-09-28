@@ -37,7 +37,7 @@ describe("facts and dressing", () => {
     const street = town(["HHHHHHHHHH", "==========", "HHHHHHHHHH"]);
     const cars = dress(street, facts(street)).cars;
     expect(cars.length).toBeGreaterThan(4);
-    expect(cars.every((c) => Math.abs(Math.abs(c.y - 1.5) - 0.27) < 1e-9)).toBe(true);
+    expect(cars.every((c) => Math.abs(Math.abs(c.y - 1.5) - 0.32) < 1e-9)).toBe(true);
     const through = town(["HHHHHHHHHH", "##########", "HHHHHHHHHH"]);
     expect(dress(through, facts(through)).cars.length).toBe(0);
   });
