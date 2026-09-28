@@ -48,19 +48,18 @@ The code is `client/src/engine/town/`:
   road, water, wood, open ground) and some storeys, and the road links
   between tiles. Nothing about lots, driveways, facings or who owns what:
   those are the simulation's, and the look reads none of them.
-- **A building is its tiles' squares, with its staircases made straight**
-  (`town/footprint.ts`). Tiles join into one building if they are one kind
-  (and, for sheds, offices and boxes, painted as one), beside or at a
-  corner, unless a street's line runs through that corner (across it, or
-  ending beside it and pointing at it). The building's whole outline is
-  walked as one ring, and every staircase on it, a run of unit-long sides
-  turning one way then the other for two steps or more, becomes one line
-  at forty-five degrees, a little outside its steps' middles so a row one
-  tile wide on the diagonal is as thick as a straight one. A two-deep
-  diagonal, a staircase of L's, a sheared depot: the same rule however
-  long the run. Everything else stays square. Then the outline is drawn in
-  by one width. Per-corner rules, reading one tile out, never could tell a
-  staircase from an L or a courtyard; the outline sees the whole run.
+- **A building is its tiles' squares, drawn as the terrain draws a
+  shore** (`town/footprint.ts`), each tile decided by its 3×3 alone. Tiles
+  join into one building if they are one kind (and, for sheds, offices and
+  boxes, painted as one); houses run on into rows whoever built them. A
+  step's corner is cut (neither tile beside it the building, and the
+  building going on along the diagonal past one of them); the corner
+  between two steps is filled; a street across a corner parts it. Cuts and
+  fills lie half a tile either side of a diagonal row's middle. Then the
+  outline is drawn in by one width. Anything else stays square. This is
+  the simplest version, kept as the base to refine from: an L's inside
+  corner, a two-deep diagonal, and the distance to a diagonal street each
+  wanted more, and each rule for them broke something else.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
