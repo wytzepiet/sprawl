@@ -10,7 +10,8 @@ describe("a quarter is shaped by the tiles at its corner", () => {
     const map = ["....", ".HH.", "===="];
     expect(built(map, 1, 1, 1.99, 1.5)).toBe(true); // up to the neighbour
     expect(built(map, 1, 1, 1.02, 1.5)).toBe(false); // a garden's depth from the open end
-    expect(built(map, 1, 1, 1.5, 1.95)).toBe(true); // close to the street
+    expect(built(map, 1, 1, 1.5, 1.85)).toBe(true); // close to the street
+    expect(built(map, 1, 1, 1.5, 1.95)).toBe(false); // behind a strip of front garden
     expect(built(map, 1, 1, 1.5, 1.05)).toBe(false); // but not the back
   });
 
@@ -32,7 +33,7 @@ describe("a quarter is shaped by the tiles at its corner", () => {
     const map = ["=H...", ".=H..", "..=H.", "...=."];
     expect(built(map, 2, 0, 2.1, 0.9)).toBe(true); // the open corner between two houses is theirs
     expect(built(map, 2, 0, 2.6, 0.4)).toBe(false); // but not the rest of the open tile
-    expect(built(map, 1, 0, 1.95, 0.9)).toBe(true); // and the house runs on into it
+    expect(built(map, 1, 0, 1.95, 0.8)).toBe(true); // and the house runs on into it
   });
 
   test("a street running across the corner cuts deeper, clear of the road", () => {

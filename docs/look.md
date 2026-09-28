@@ -112,9 +112,14 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
 - **A building is only so deep** from the edge of its block (a tile for
   homes and shops, more for offices, as deep as it likes for a shed): the
   rest is the block's inside, a courtyard. So a solid block is a ring of
-  houses round a garden however it was painted or mapped (13-block). A row
-  is houses, not one long building: each tile a shade of its kind's colour,
-  now and then one a storey taller or lower.
+  houses round a garden however it was painted or mapped (13-block).
+- **A row of houses is one roof, with a rhythm**, as a 1920s Utrecht street
+  is: one colour, one height, a ridge along the street, the row stood back
+  behind a strip of front garden, every fourth house stepping forward to
+  the pavement under a gable of its own with its point on the front, and a
+  dormer on each of the others. Gables and dormers are heights the roof is
+  raised to, so the valleys where they meet the main roof fall out, and the
+  front wall rises to meet the roof, so the gable's point is there too.
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.

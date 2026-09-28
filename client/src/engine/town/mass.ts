@@ -116,6 +116,10 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
   if (form.corners && a.kind === "road" && b.kind === "road" && !town.linked(c + sx, r, c, r + sy)) {
     f = Math.max(f, (CHAMFER - (1 - u - w)) / Math.SQRT2);
   }
+  // A row of houses stands back behind a strip of front garden, and the
+  // gabled ones step forward of it to the pavement.
+  const at = frontOf(town, x, y);
+  if (at && !(at.bay && Math.abs(at.along) <= GABLE)) f = Math.max(f, STEP - at.back);
   return Math.max(f, street(town, x, y, form.clear));
 }
 
@@ -126,18 +130,10 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
  *  terrain rounds a shore's. */
 const fills = (t: Tile, p: Tile, q: Tile) => (t.kind === "open" || t.kind === "paved") && kin(p, q);
 
-/** A stable number in [0, 1) for a tile. */
-const hash = (c: number, r: number, salt: number) => ((Math.imul(c * 73856093 ^ r * 19349663 ^ salt, 0x85ebca6b) >>> 0) % 4096) / 4096;
-
 /** A tile's building as the look draws it: its own, or, for ground a row
- *  steps across, that row's. A row of houses is houses, not one long
- *  building: now and then one is a storey taller or lower than the rest. */
+ *  steps across, that row's. */
 function buildingOn(town: Town, c: number, r: number): Tile | null {
   const me = town.tile(c, r);
-  if (me.kind === "House") {
-    const k = hash(c, r, 1);
-    return k < 0.14 ? { ...me, storeys: me.storeys + 1 } : k > 0.92 ? { ...me, storeys: me.storeys - 1 } : me;
-  }
   if (isBuilt(me)) return me;
   for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     const [a, b] = [town.tile(c + sx, r), town.tile(c, r + sy)];
@@ -169,6 +165,44 @@ function street(town: Town, x: number, y: number, clear: number): number {
   }
   return clear - near;
 }
+
+/**
+ * What a row of houses wears on its roof, as a height the roof is raised
+ * to: in a row along a street, every fourth house steps forward under a
+ * gable of its own, its ridge running to the street and its point on the
+ * front, and the others each have a dormer on the front slope. Where the
+ * main roof is higher it wins, so the gable's ridge dies into it and its
+ * valleys fall out. Minus infinity where there is nothing.
+ */
+function dressing(town: Town, x: number, y: number): number {
+  const at = frontOf(town, x, y);
+  if (!at) return -Infinity;
+  const { me, along, back, bay } = at;
+  if (bay) return Math.abs(along) <= GABLE && back <= 0.6 ? eaves(me) + 0.26 * (1 - Math.abs(along) / GABLE) : -Infinity;
+  return Math.abs(along) <= 0.12 && back >= 0.22 && back <= 0.36 ? eaves(me) + 0.18 : -Infinity;
+}
+
+/** For a point on a house in a row along a street: how far along the row
+ *  from the house's middle, how far back from its front, and whether it is
+ *  one that steps forward under a gable, every fourth. */
+function frontOf(town: Town, x: number, y: number) {
+  const [c, r] = [Math.floor(x), Math.floor(y)];
+  const me = town.tile(c, r);
+  if (me.kind !== "House") return null;
+  const front = ([[0, 1], [0, -1], [1, 0], [-1, 0]] as const).find(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road");
+  if (!front) return null;
+  const [fx, fy] = front;
+  const along = fx ? y - r - 0.5 : x - c - 0.5;
+  const back = 0.5 - ((x - c - 0.5) * fx + (y - r - 0.5) * fy);
+  const inRow = kin(me, town.tile(c + fy, r + fx)) && kin(me, town.tile(c - fy, r - fx));
+  return { me, along, back, bay: inRow && (fx ? r : c) % 4 === 1 };
+}
+/** How far a row of houses stands back behind its front gardens, and so
+ *  how far a gabled house steps forward of it. */
+const STEP = 0.12;
+/** Half a front gable's width: nearly a house's, its point as high as the
+ *  main ridge. */
+const GABLE = 0.42;
 
 type RGB = [number, number, number];
 
@@ -234,7 +268,10 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
       for (let j = 0; j < RES; j++) {
         for (let i = 0; i < RES; i++) {
           const k = (r * RES + j) * W + c * RES + i;
-          if (outside(town, c, r, c + (i + 0.5) / RES, r + (j + 0.5) / RES) < 0) (built[k] = 1), (owner[k] = me);
+          // The block is its tiles: depth is from their edge, so a
+          // courtyard's side is straight whatever the fronts do.
+          built[k] = 1;
+          if (outside(town, c, r, c + (i + 0.5) / RES, r + (j + 0.5) / RES) < 0) owner[k] = me;
         }
       }
     }
@@ -269,15 +306,13 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
     }
     return Math.max(0, near);
   };
-  const height = (t: Tile, x: number, y: number) => eaves(t) + rise(t, inward(x, y, roofOf(t)));
+  const height = (t: Tile, x: number, y: number) => Math.max(eaves(t) + rise(t, inward(x, y, roofOf(t))), dressing(town, x, y));
 
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const me = buildingOn(town, c, r);
       if (!me || (only && !only.has(`${c},${r}`))) continue;
-      // Each tile a shade of its kind's colour, so a row reads as houses.
-      const shade = 0.93 + 0.1 * hash(c, r, 2);
-      const rgb = colour(me.kind as BuildingKind).map((v) => Math.min(1, v * shade)) as RGB;
+      const rgb = colour(me.kind as BuildingKind);
       const top = eaves(me);
       // The tile's samples: how far outside, and how high the roof over it.
       const roof = (x: number, y: number) => height(me, x, y);
@@ -303,7 +338,9 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
             if (f0 < 0) poly.push({ p: [c + ci / RES, r + cj / RES, h[at(ci, cj)]], eave: false });
             if (f0 < 0 !== f1 < 0) {
               const t = f0 / (f0 - f1);
-              poly.push({ p: [c + (ci + (ni - ci) * t) / RES, r + (cj + (nj - cj) * t) / RES, top], eave: true });
+              const [x, y] = [c + (ci + (ni - ci) * t) / RES, r + (cj + (nj - cj) * t) / RES];
+              // The wall stands to the eaves, or up a gable to its point.
+              poly.push({ p: [x, y, Math.max(top, dressing(town, x, y))], eave: true });
             }
           });
           if (poly.length < 3) continue;
@@ -325,7 +362,7 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
             const [p, q] = [poly[k], poly[(k + 1) % poly.length]];
             if (!p.eave || !q.eave) continue;
             const m = [(p.p[0] + q.p[0]) / 2, (p.p[1] + q.p[1]) / 2];
-            wall([p.p[0], p.p[1]], [q.p[0], q.p[1]], 0, 0, top, top, [m[0] - mid[0], m[1] - mid[1]], rgb);
+            wall([p.p[0], p.p[1]], [q.p[0], q.p[1]], 0, 0, p.p[2], q.p[2], [m[0] - mid[0], m[1] - mid[1]], rgb);
           }
         }
       }
