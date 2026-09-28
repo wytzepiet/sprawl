@@ -13,6 +13,8 @@ import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } fro
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
 import { townMesh as mesh } from "../engine/town/roof";
+import { footprints } from "../engine/town/footprint";
+import earcut from "earcut";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_CROWN, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { facts } from "../engine/town/facts";
 import { dress } from "../engine/town/dressing";
@@ -296,19 +298,15 @@ function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: 
  * chunk, each with its skirt, through the builder the terrain worker runs.
  */
 function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
-  // Paved ground is a terrain of its own, rounded like a shore: every road,
-  // every building and every yard makes it, and the terrain's rule decides
-  // where it meets the grass. The server has no such type yet, so here it
-  // borrows the beach's slot and is painted as paving.
   const type = (c: number, r: number): TerrainType => {
     const ch = rows[r]?.[c];
     if (ch === "^") return "Mountain";
+    if (ch === "_") return "Beach";
     const t = town.tile(c, r);
-    if (t.kind === "road" || t.kind === "paved" || isBuilt(t)) return "Beach";
     return t.kind === "water" ? "Water" : t.kind === "wood" ? "Forest" : "Grass";
   };
   const palette: TerrainPalette = {
-    Water: theme.water, Sea: theme.water, Beach: theme.paved, Grass: theme.land, Forest: theme.forest, Mountain: theme.mountain,
+    Water: theme.water, Sea: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.mountain,
   };
   const out: Mesh[] = [];
   for (let cy = 0; cy * CHUNK_SIZE < town.h; cy++) {
@@ -377,6 +375,26 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // Roads, as the game lays them: each tile's arms to the tiles it is joined to.
   const roads = { street: [[], []] as MeshGeometry[][], through: [[], []] as MeshGeometry[][] };
+  const pavements: MeshGeometry[] = [];
+  // Under every building, its plan at full size, before the draw-in: the
+  // building stands on paving that fills its cells. And the yards.
+  const PAVED_Z = 0.006;
+  for (const mass of footprints(town, () => false, 0)) {
+    for (const poly of mass.polygons) {
+      const flat = poly.flat();
+      const holes: number[] = [];
+      let at = 0;
+      for (const ring of poly.slice(0, -1)) holes.push((at += ring.length));
+      const ids = earcut(flat.flat(), holes);
+      const g: MeshGeometry = { positions: [], normals: [], indices: [] };
+      for (const [x, y] of flat) g.positions.push(-x, -y, PAVED_Z), g.normals.push(0, 0, 1);
+      for (let i = 0; i < ids.length; i += 3) g.indices.push(ids[i], ids[i + 2], ids[i + 1]);
+      pavements.push(g);
+    }
+  }
+  const yards: Cell[] = [];
+  for (let r = 0; r < town.h; r++) for (let c = 0; c < town.w; c++) if (town.tile(c, r).kind === "paved") yards.push([c, r]);
+  pavements.push(quadsAt(yards, PAVED_Z));
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       if (town.tile(c, r).kind !== "road") continue;
@@ -390,6 +408,14 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
         }
       }
       const into = roads[town.through(c, r) ? "through" : "street"];
+      // Its kerb, then the road: the kerb a whole tile wide, pavement to
+      // the rows' faces, following the street at any angle.
+      const kerb = town.through(c, r) ? null : buildRoadGeometry(arms, 0.5, PAVED_Z);
+      if (kerb) {
+        const p = kerb.positions.slice();
+        for (let i = 0; i < p.length; i += 3) (p[i] -= c + 0.5), (p[i + 1] -= r + 0.5);
+        pavements.push({ ...kerb, positions: p });
+      }
       for (const [k, geo] of [buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z), buildRoadGeometry(arms, HALF_W, ROAD_Z)].entries()) {
         if (!geo) continue;
         const p = geo.positions.slice();
@@ -408,6 +434,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     }
     return out;
   };
+  add("pavement", merge(pavements), theme.paved);
   add("street_kerb", merge(roads.street[0]), theme.roadBorder);
   add("street", merge(roads.street[1]), theme.road);
   add("through_kerb", merge(roads.through[0]), theme.highwayBorder);

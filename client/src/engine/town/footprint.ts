@@ -240,7 +240,7 @@ function plan(town: Town) {
 }
 
 /** Every building's plan, a mass for each of its heights. */
-export function footprints(town: Town, head: (c: number, r: number) => boolean): Mass[] {
+export function footprints(town: Town, head: (c: number, r: number) => boolean, inset = INSET): Mass[] {
   const { pieces, building } = plan(town);
   const byBuilding = new Map<number, typeof pieces>();
   for (const p of pieces) {
@@ -254,7 +254,7 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
   const masses: Mass[] = [];
   for (const ps of byBuilding.values()) {
     // The whole building drawn in once, then split by height.
-    const plan = grow(whole(ps.map((p) => p.ring)), -INSET);
+    const plan = grow(whole(ps.map((p) => p.ring)), -inset);
     for (const storeys of new Set(ps.map((p) => tileOf(p).storeys))) {
       const mine = ps.filter((p) => tileOf(p).storeys === storeys);
       const shape = and(whole(mine.map((p) => p.ring)), plan);
