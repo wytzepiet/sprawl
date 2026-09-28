@@ -169,8 +169,9 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   painted. Letting go builds it. Size will be capacity: a longer frontage
   more docks, a bigger farm more fields.
 - **The sandbox** (`/sandbox` on the dev client) draws any fixture with
-  no server, and paints: a brush per kind, taller and lower, and "Copy"
-  to take the map away as a fixture. `bun run shots --sandbox` photographs
+  no server, over a faint grid of its tiles (`g` hides it), and paints: a
+  brush per kind, taller and lower, and "Copy" to take the map away as a
+  fixture. `bun run shots --sandbox` photographs
   every fixture this way in seconds.
 
 What it does not do yet: heights come from

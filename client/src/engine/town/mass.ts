@@ -76,11 +76,12 @@ export const CHAMFER = 0.2;
 /** The walls' height, and the roof that climbs from them `d` in. */
 export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
 /** How steeply a kind's roof climbs from its walls, and how high before
- *  it runs flat: a house's pitched, a block of flats' and a shed's nearly
- *  flat behind a low rim. */
+ *  it runs flat: a house's pitched, high enough that a row meets in a
+ *  sharp ridge and only a deep block goes flat on top; a block of flats'
+ *  and a shed's nearly flat behind a low rim. */
 export function slope(t: Tile) {
   if (formOf(t).family !== "street") return { pitch: 0.25, height: 0.06 };
-  return t.storeys <= 3 ? { pitch: 0.75, height: 0.26 } : { pitch: 0.5, height: 0.03 };
+  return t.storeys <= 3 ? { pitch: 0.75, height: 0.5 } : { pitch: 0.5, height: 0.03 };
 }
 export function rise(t: Tile, d: number) {
   const { pitch, height } = slope(t);

@@ -1,5 +1,5 @@
 import { createSignal, For, onCleanup, onMount } from "solid-js";
-import { Color3, Mesh, MeshBuilder, StandardMaterial, VertexData, type Scene } from "@babylonjs/core";
+import { Color3, Mesh, MeshBuilder, StandardMaterial, Vector3, VertexData, type Scene } from "@babylonjs/core";
 import Canvas, { useEngine } from "../engine/Canvas";
 import { OrthoCamera } from "../engine/OrthoCamera";
 import DayNightLights, { DayNightProvider, useDayNight } from "../engine/DayNightCycle";
@@ -214,6 +214,12 @@ function Board() {
     drawOverlay();
   };
   const onKey = (e: KeyboardEvent) => {
+    if (e.key === "g") {
+      showGrid = !showGrid;
+      const grid = scene.getMeshByName("grid");
+      if (grid) grid.isVisible = showGrid;
+      return;
+    }
     const b = BRUSHES.find((b) => b.key === e.key);
     if (b) setBrush(b.ch), drawOverlay();
   };
@@ -287,6 +293,10 @@ function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: 
 
 /** Everything a town is drawn with: the ground, water and woods, the
  *  roads, and the buildings. */
+/** Just over the roads, under every building. */
+const GRID_Z = 0.03;
+let showGrid = true;
+
 function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
   const meshes: Mesh[] = [];
   const add = (name: string, geo: MeshGeometry & { colors?: number[] }, colour: Color3) => {
@@ -369,6 +379,19 @@ function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
   add("through", merge(roads.through[1]), theme.highway);
 
   add("mass", mesh(town, colourOf), Color3.White());
+
+  // The tiles' grid, faint, over the ground and under the buildings: `g`
+  // hides it.
+  const lines: Vector3[][] = [];
+  for (let c = 0; c <= town.w; c++) lines.push([new Vector3(-c, 0, GRID_Z), new Vector3(-c, -town.h, GRID_Z)]);
+  for (let r = 0; r <= town.h; r++) lines.push([new Vector3(0, -r, GRID_Z), new Vector3(-town.w, -r, GRID_Z)]);
+  const grid = MeshBuilder.CreateLineSystem("grid", { lines }, scene);
+  grid.color = Color3.Black();
+  grid.alpha = 0.18;
+  grid.isPickable = false;
+  grid.metadata = { inked: false };
+  grid.isVisible = showGrid;
+  meshes.push(grid);
   return meshes;
 }
 
