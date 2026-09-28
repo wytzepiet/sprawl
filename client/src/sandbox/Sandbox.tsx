@@ -11,9 +11,11 @@ import { buildRoadGeometry, BORDER_HALF_W, BORDER_Z, HALF_W, ROAD_Z, type ArmInf
 import type { MeshGeometry } from "../engine/Mesh";
 import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
-import type { BuildingKind } from "../generated";
+import type { BuildingKind, TerrainType } from "../generated";
 import { formOf } from "../engine/town/mass";
 import { townMesh as mesh } from "../engine/town/roof";
+import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
+import { buildChunkDual } from "../engine/objects/dualTerrain";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -89,7 +91,7 @@ function Board() {
 
   function draw() {
     for (const m of drawn) m.dispose();
-    drawn = build(scene, town(), theme());
+    drawn = build(scene, town(), theme(), rows);
     for (const m of drawn) {
       m.receiveShadows = true;
       if (m.name === "mass") shadowGenerator()?.addShadowCaster(m);
@@ -289,11 +291,61 @@ function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: 
 
 /** Everything a town is drawn with: the ground, water and woods, the
  *  roads, and the buildings. */
+/**
+ * The ground as the game draws it, from the fixture's letters: `?t=dual`
+ * the corner grid, else the game's own. Chunk by chunk, each with its
+ * skirt, through the same builders the terrain worker runs.
+ */
+function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
+  const type = (c: number, r: number): TerrainType => {
+    const ch = rows[r]?.[c];
+    if (ch === "_") return "Beach";
+    if (ch === "^") return "Mountain";
+    const k = town.tile(c, r).kind;
+    return k === "water" ? "Water" : k === "wood" ? "Forest" : "Grass";
+  };
+  const palette: TerrainPalette = {
+    Water: theme.water, Sea: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.mountain,
+  };
+  const builder = new URLSearchParams(location.search).get("t") === "dual" ? buildChunkDual : buildChunk;
+  const out: Mesh[] = [];
+  for (let cy = 0; cy * CHUNK_SIZE < town.h; cy++) {
+    for (let cx = 0; cx * CHUNK_SIZE < town.w; cx++) {
+      const tiles = new Uint8Array(CHUNK_STRIDE * CHUNK_STRIDE);
+      for (let iy = 0; iy < CHUNK_STRIDE; iy++) {
+        for (let ix = 0; ix < CHUNK_STRIDE; ix++) {
+          tiles[iy * CHUNK_STRIDE + ix] = TYPE_BY_BYTE.indexOf(type(cx * CHUNK_SIZE + ix - CHUNK_SKIRT, cy * CHUNK_SIZE + iy - CHUNK_SKIRT));
+        }
+      }
+      const geo = builder(tiles, cx, cy, palette);
+      if (!geo) continue;
+      for (const [name, g] of [["ground", geo.ground], ["cliffs", geo.cliffs]] as const) {
+        if (!g.indices.length) continue;
+        const mesh = new Mesh(`terrain_${name}`, scene);
+        const vd = new VertexData();
+        Object.assign(vd, { positions: g.positions, indices: g.indices, normals: g.normals, colors: g.colors ?? null });
+        vd.applyToMesh(mesh);
+        // The map runs +x to the screen's left and +y up: turned about.
+        mesh.scaling.set(-1, -1, 1);
+        mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
+        const mat = new StandardMaterial(`terrain_${name}_mat`, scene);
+        mat.diffuseColor = name === "cliffs" ? new Color3(0.5, 0.5, 0.5) : Color3.White();
+        mat.specularColor = Color3.Black();
+        mat.backFaceCulling = false;
+        mesh.material = mat;
+        mesh.isPickable = false;
+        out.push(mesh);
+      }
+    }
+  }
+  return out;
+}
+
 /** Just over the roads, under every building. */
 const GRID_Z = 0.03;
 let showGrid = true;
 
-function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
+function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   const meshes: Mesh[] = [];
   const add = (name: string, geo: MeshGeometry & { colors?: number[] }, colour: Color3) => {
     if (!geo.indices.length) return;
@@ -311,7 +363,7 @@ function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
   // The ground: a sheet under it all to take the shadows and the clicks.
   const ground = MeshBuilder.CreateGround("ground", { width: town.w + 40, height: town.h + 40 }, scene);
   ground.rotation.x = Math.PI / 2;
-  ground.position.set(-town.w / 2, -town.h / 2, 0);
+  ground.position.set(-town.w / 2, -town.h / 2, -0.6);
   const gm = new StandardMaterial("ground_mat", scene);
   gm.diffuseColor = new Color3(theme.land.r, theme.land.g, theme.land.b);
   gm.specularColor = Color3.Black();
@@ -332,8 +384,7 @@ function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
     }
     return g;
   };
-  add("water", quads((t) => t.kind === "water", 0.002), theme.water);
-  add("wood", quads((t) => t.kind === "wood", 0.004), theme.forest);
+  meshes.push(...terrain(scene, town, theme, rows));
   add("paved", quads((t) => t.kind === "paved" || (isBuilt(t) && formOf(t).yard === "paved"), 0.006), theme.paved);
 
   // Roads, as the game lays them: each tile's arms to the tiles it is joined to.
