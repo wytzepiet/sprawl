@@ -9,14 +9,14 @@ import { kin } from "./mass";
  * 1. A building's tile is its whole square.
  * 2. A step's corner is cut: neither tile beside it is the building, and
  *    the building goes on along the diagonal past one of them.
- * 3. The corner between two steps is filled: ground with the building on
- *    both its sides there, and not across it.
+ * 3. An inside corner is filled: ground with the building on both its
+ *    sides there, between two steps or in an L.
  * 4. A street across a corner parts it: no cut, no fill, no joining.
  * 5. The whole outline is drawn in by one width.
  *
  * Cuts and fills lie on lines half a tile either side of a diagonal row's
  * middle, so it is a straight band as thick as a straight row. Anything
- * else stays square: a lone house, an L's inside, a courtyard.
+ * else stays square: a lone house, a straight row's end.
  */
 
 export type Pt = [number, number];
@@ -166,12 +166,12 @@ function plan(town: Town) {
   const step = (c: number, r: number, sx: number, sy: number) =>
     !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && !one(c, r, c + sx, r + sy) &&
     (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy)) && !across(c, r, sx, sy);
-  /** Is the corner of ground (c, r) towards (sx, sy) between two steps: the
-   *  building on both its sides there and not across it, and no street
-   *  across the corner or into it? */
+  /** Is the corner of ground (c, r) towards (sx, sy) filled: the building
+   *  on both its sides there (between two steps, or an L's inside), and no
+   *  street across the corner or into it? As the terrain fills every inside
+   *  corner, so every cut has its fill. */
   const fill = (c: number, r: number, sx: number, sy: number) =>
-    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && !one(c + sx, r, c + sx, r + sy) &&
-    !across(c, r, sx, sy) && !town.linked(c, r, c + sx, r + sy);
+    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && !across(c, r, sx, sy) && !town.linked(c, r, c + sx, r + sy);
   /** Tiles on the diagonal of each other, joined through a filled corner. */
   const bridged = (c: number, r: number, dx: number, dy: number) =>
     fill(c + dx, r, -dx, dy) || fill(c, r + dy, dx, -dy);

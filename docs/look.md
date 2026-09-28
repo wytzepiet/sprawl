@@ -53,13 +53,15 @@ The code is `client/src/engine/town/`:
   join into one building if they are one kind (and, for sheds, offices and
   boxes, painted as one); houses run on into rows whoever built them. A
   step's corner is cut (neither tile beside it the building, and the
-  building going on along the diagonal past one of them); the corner
-  between two steps is filled; a street across a corner parts it. Cuts and
+  building going on along the diagonal past one of them); every inside
+  corner, between two steps or in an L, is filled, as the terrain fills
+  its inside corners, so every cut has its fill; a street across a corner
+  parts it. Cuts and
   fills lie half a tile either side of a diagonal row's middle. Then the
-  outline is drawn in by one width. Anything else stays square. This is
-  the simplest version, kept as the base to refine from: an L's inside
-  corner, a two-deep diagonal, and the distance to a diagonal street each
-  wanted more, and each rule for them broke something else.
+  outline is drawn in by one width. Outside corners stay square. This is
+  the simplest version, kept as the base: exceptions to it (keeping an
+  L's inside square, straightening whole outlines) each broke something
+  else. A courtyard's corners are cut at forty-five degrees.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
