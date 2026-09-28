@@ -32,7 +32,7 @@ export interface Mass {
 }
 
 /** How far every side facing out is drawn in. */
-const INSET = 0.15;
+const INSET = 0.2;
 /** A row stepping on the diagonal is a band half a tile either side of the
  *  line through its tiles' middles, as thick as a straight row: cut and
  *  filled on the line this far out towards a corner from a tile's middle,
