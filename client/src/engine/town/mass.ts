@@ -73,11 +73,6 @@ function rise(t: Tile, d: number) {
 /** Buildings of one family, which join. */
 const kin = (a: Tile, b: Tile) => isBuilt(a) && isBuilt(b) && formOf(a).family === formOf(b).family;
 
-type Joins = (a: Tile, b: Tile) => boolean;
-/** The outline joins a building of its family; a roof only one as tall. */
-const FOOT: Joins = kin;
-const ROOF: Joins = (a, b) => kin(a, b) && b.storeys === a.storeys;
-
 /**
  * How far outside tile (c, r)'s building the point (x, y) is, as the
  * largest of its quarter's lines; below zero, inside. Joined sides draw no
@@ -89,7 +84,7 @@ const ROOF: Joins = (a, b) => kin(a, b) && b.storeys === a.storeys;
  * stepping along a diagonal street is a straight front and not a stair, and
  * the outer corner of each step is cut on the same line.
  */
-export function outside(town: Town, c: number, r: number, x: number, y: number, joins: Joins = FOOT): number {
+export function outside(town: Town, c: number, r: number, x: number, y: number): number {
   const [sx, sy] = [x < c + 0.5 ? -1 : 1, y < r + 0.5 ? -1 : 1];
   const [u, w] = [Math.abs(x - c - 0.5), Math.abs(y - r - 0.5)];
   const [a, b, d] = [town.tile(c + sx, r), town.tile(c, r + sy), town.tile(c + sx, r + sy)];
@@ -103,11 +98,11 @@ export function outside(town: Town, c: number, r: number, x: number, y: number, 
   const face = 0.5 - form.apart;
   const gap = (t: Tile) => (t.kind === "road" ? 0 : t.kind === "water" ? QUAY : form.apart);
   let f = -1;
-  const [ja, jb] = [joins(me, a), joins(me, b)];
-  if (!ja) f = Math.max(f, fills(a, me, d) ? (u - w - face) / Math.SQRT2 : u - 0.5 + (kin(me, a) ? 0 : gap(a)));
-  if (!jb) f = Math.max(f, fills(b, me, d) ? (w - u - face) / Math.SQRT2 : w - 0.5 + (kin(me, b) ? 0 : gap(b)));
-  if (ja && jb && !joins(me, d) && !fills(d, a, b)) {
-    const edge = 0.5 - (kin(me, d) ? 0 : gap(d));
+  const [ja, jb] = [kin(me, a), kin(me, b)];
+  if (!ja) f = Math.max(f, fills(a, me, d) ? (u - w - face) / Math.SQRT2 : u - 0.5 + gap(a));
+  if (!jb) f = Math.max(f, fills(b, me, d) ? (w - u - face) / Math.SQRT2 : w - 0.5 + gap(b));
+  if (ja && jb && !kin(me, d) && !fills(d, a, b)) {
+    const edge = 0.5 - gap(d);
     f = Math.max(f, Math.min(u - edge, w - edge));
   }
   // The outer corner of a step, with the row going on beyond both its
@@ -206,6 +201,43 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
     tri([p[0], p[1], z0p], [q[0], q[1], zq], [p[0], p[1], zp], n, rgb);
   };
 
+  // Which roof stands over each sample, a metre square's middle: a family
+  // and a height, one roof; open ground none. A roof climbs with the
+  // distance to the nearest sample of anything else, measured over the
+  // whole town at once, so tiles of one roof agree where they meet and a
+  // row stepping on the diagonal has one ridge.
+  const roofs = new Map<string, number>();
+  const roofOf = (t: Tile) => roofs.get(`${formOf(t).family}:${t.storeys}`) ?? roofs.set(`${formOf(t).family}:${t.storeys}`, roofs.size).get(`${formOf(t).family}:${t.storeys}`)!;
+  const [W, H] = [town.w * RES, town.h * RES];
+  const under = new Int32Array(W * H).fill(-1);
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      const me = buildingOn(town, c, r);
+      if (!me) continue;
+      const id = roofOf(me);
+      for (let j = 0; j < RES; j++) {
+        for (let i = 0; i < RES; i++) {
+          if (outside(town, c, r, c + (i + 0.5) / RES, r + (j + 0.5) / RES) < 0) under[(r * RES + j) * W + c * RES + i] = id;
+        }
+      }
+    }
+  }
+  const REACH = Math.ceil(0.4 * RES);
+  /** How far in from the edge of its roof the point is, as far as a roof
+   *  climbs. */
+  const inward = (x: number, y: number, id: number) => {
+    const [gi, gj] = [Math.floor(x * RES), Math.floor(y * RES)];
+    let near = REACH / RES;
+    for (let j = gj - REACH; j <= gj + REACH; j++) {
+      for (let i = gi - REACH; i <= gi + REACH; i++) {
+        const other = i < 0 || j < 0 || i >= W || j >= H || under[j * W + i] !== id;
+        if (other) near = Math.min(near, Math.hypot(x - (i + 0.5) / RES, y - (j + 0.5) / RES) - 0.5 / RES);
+      }
+    }
+    return Math.max(0, near);
+  };
+  const height = (t: Tile, x: number, y: number) => eaves(t) + rise(t, inward(x, y, roofOf(t)));
+
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const me = buildingOn(town, c, r);
@@ -213,7 +245,7 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
       const rgb = colour(me.kind as BuildingKind);
       const top = eaves(me);
       // The tile's samples: how far outside, and how high the roof over it.
-      const roof = (x: number, y: number) => top + rise(me, Math.max(0, -outside(town, c, r, x, y, ROOF)));
+      const roof = (x: number, y: number) => height(me, x, y);
       const f: number[] = [], h: number[] = [];
       for (let j = 0; j <= RES; j++) {
         for (let i = 0; i <= RES; i++) {
@@ -266,12 +298,11 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
       // Where a lower roof meets this one at the tile's edge, the step
       // between them, built from this, the taller side.
       for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const them = town.tile(c + dc, r + dr);
-        if (!isBuilt(them)) continue;
+        const them = buildingOn(town, c + dc, r + dr);
+        if (!them) continue;
         const edge = (k: number): [number, number] =>
           dc ? [c + (dc > 0 ? 1 : 0), r + k / RES] : [c + k / RES, r + (dr > 0 ? 1 : 0)];
-        const theirs = (x: number, y: number) =>
-          eaves(them) + rise(them, Math.max(0, -outside(town, c + dc, r + dr, x, y, ROOF)));
+        const theirs = (x: number, y: number) => height(them, x, y);
         const mine = (k: number) => (dc ? h[at(dc > 0 ? RES : 0, k)] : h[at(k, dr > 0 ? RES : 0)]);
         const inside = (k: number) => (dc ? f[at(dc > 0 ? RES : 0, k)] : f[at(k, dr > 0 ? RES : 0)]) < 0;
         const theirsInside = (k: number) => outside(town, c + dc, r + dr, ...edge(k)) < 0;

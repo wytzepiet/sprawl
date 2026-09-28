@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseTown } from "./grid";
-import { complete, paintable, PROGRAMS, type Cell } from "./brush";
+import { complete, paintable, PROGRAMS, touching, type Cell } from "./brush";
 
 const depot = PROGRAMS.Warehouse!;
 const house = PROGRAMS.House!;
@@ -40,6 +40,13 @@ describe("a painted stroke is completed to a working building", () => {
     expect(paintable(town, house, 4, 1)).toBe(true);
     expect(paintable(town, house, 4, 3)).toBe(false);
     expect(sorted(complete(town, house, [[4, 1]]))).toEqual(["4,1"]);
+  });
+
+  test("painting beside a depot grows it, a one-wide bump out of its back too", () => {
+    const built = parseTown(["==========", "...DDD....", "...DDD....", ".........."].join("\n"));
+    const grown = touching(built, "Warehouse", [4, 3]);
+    expect(grown.length).toBe(6);
+    expect(sorted(complete(built, depot, [...grown, [4, 3]]))?.length).toBe(7);
   });
 
   test("where no depot fits, there is none", () => {

@@ -10,7 +10,7 @@ import { BLUEPRINTS } from "../blueprints";
 import { buildRoadGeometry, BORDER_HALF_W, BORDER_Z, HALF_W, ROAD_Z, type ArmInfo } from "../engine/objects/roadGeometry";
 import type { MeshGeometry } from "../engine/Mesh";
 import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
-import { complete, paintable, PROGRAMS, type Cell } from "../engine/town/brush";
+import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind } from "../generated";
 import { formOf, massMesh } from "../engine/town/mass";
 
@@ -101,6 +101,9 @@ function Board() {
   // go builds it. Any other brush paints each tile it passes. The left
   // button is the brush's; the right one still pans.
   let stroke: Cell[] = [];
+  /** The building a stroke grows, if it began beside one of its kind. */
+  let base: Cell[] = [];
+  const whole = () => [...base, ...stroke];
   let stroking = false;
   let hover: Cell | null = null;
   let overlay: Mesh[] = [];
@@ -119,12 +122,14 @@ function Board() {
     const p = program();
     if (!p) return { ghost: null, next: [] as Cell[] };
     const t = town();
-    const ghost = complete(t, p, stroke.length ? stroke : hover ? [hover] : []);
+    const kind = LETTERS[brush()];
+    const seed = (cell: Cell) => (stroke.length ? whole() : touching(t, kind, cell));
+    const ghost = complete(t, p, stroke.length ? whole() : hover && paintable(t, p, ...hover) ? [...seed(hover), hover] : []);
     const next: Cell[] = [];
     for (let r = 0; r < t.h; r++) {
       for (let c = 0; c < t.w; c++) {
         if (has(stroke, [c, r]) || !paintable(t, p, c, r)) continue;
-        if (complete(t, p, stroke.length ? [...stroke, [c, r]] : [[c, r]])) next.push([c, r]);
+        if (complete(t, p, [...seed([c, r]), [c, r]])) next.push([c, r]);
       }
     }
     return { ghost, next };
@@ -156,7 +161,7 @@ function Board() {
     const [c, r] = cell;
     const p = program();
     if (p) {
-      if (has(stroke, cell) || !paintable(town(), p, c, r) || !complete(town(), p, [...stroke, cell])) return;
+      if (has(stroke, cell) || !paintable(town(), p, c, r) || !complete(town(), p, [...whole(), cell])) return;
       stroke = [...stroke, cell];
       return drawOverlay();
     }
@@ -176,6 +181,7 @@ function Board() {
     stroking = true;
     stroke = [];
     const cell = tileAt(e);
+    base = cell && program() ? touching(town(), LETTERS[brush()], cell) : [];
     if (cell) touch(cell);
   };
   const onMove = (e: PointerEvent) => {
@@ -189,8 +195,9 @@ function Board() {
     if (!stroking) return;
     stroking = false;
     const p = program();
-    const built = p && complete(town(), p, stroke);
+    const built = p && stroke.length && complete(town(), p, whole());
     stroke = [];
+    base = [];
     if (built) for (const [c, r] of built) set(c, r, brush());
     draw();
     drawOverlay();

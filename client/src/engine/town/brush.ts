@@ -112,3 +112,22 @@ function fronts(town: Town, x: number, y: number, w: number, h: number, wide: bo
   const cols = along(col(x - 1)) || along(col(x + w));
   return w === h ? rows || cols : wide ? rows : cols;
 }
+
+/**
+ * The building of this kind a painted tile touches, if any: painting beside
+ * a depot grows that depot rather than starting another, so a bump out of
+ * its back is as good as a bump out of its side.
+ */
+export function touching(town: Town, kind: string, [c, r]: Cell): Cell[] {
+  const start = [[c, r] as Cell, ...SIDES.map(([dc, dr]): Cell => [c + dc, r + dr])].find(([x, y]) => town.tile(x, y).kind === kind);
+  if (!start) return [];
+  const seen = new Set([key(start)]);
+  const out: Cell[] = [start];
+  for (let i = 0; i < out.length; i++) {
+    for (const [dc, dr] of SIDES) {
+      const n: Cell = [out[i][0] + dc, out[i][1] + dr];
+      if (town.tile(...n).kind === kind && !seen.has(key(n))) seen.add(key(n)), out.push(n);
+    }
+  }
+  return out;
+}
