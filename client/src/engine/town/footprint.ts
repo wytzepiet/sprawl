@@ -1,18 +1,20 @@
 import ClipperLib from "clipper-lib";
 import { isBuilt, type Tile, type Town } from "./grid";
-import { CHAMFER, CORNERS, DIAGONAL, fills, formOf, frontOf, GABLE, kin, QUAY, STEP } from "./mass";
+import { kin } from "./mass";
 
 /**
- * The ground plans of a town's buildings, as exact polygons.
+ * The ground plans of a town's buildings, three rules, each decided by a
+ * tile's neighbours alone:
  *
- * Every tile a building stands on, or a row steps across, is four quarters,
- * and each quarter is its square cut by a few straight lines, decided by the
- * three tiles at its corner (the dual grid, as the terrain has it). Nothing
- * is sampled: a quarter is a convex polygon, a building the union of its
- * quarters, so its walls are straight and its corners sharp. Then, as
- * whole shapes: the streets are cut away, a band along every street's
- * middle line as wide as the building keeps clear, and a building only so
- * deep from the edge of its block is left, the rest a courtyard.
+ * - A building's tile is its whole square.
+ * - A side facing a road is cut back, a pavement's width.
+ * - A row stepping on the diagonal is a straight band, as the terrain
+ *   draws a shore: each step's outer corner is cut, from the middle of
+ *   one edge to the middle of the other, and a corner of ground or road
+ *   with the building on both its sides (between two steps, or an L's
+ *   inside) is filled the same way. A street across a corner parts it.
+ *
+ * Anything else stays square: a lone house, a row's end.
  */
 
 export type Pt = [number, number];
@@ -25,9 +27,11 @@ export interface Mass {
   tile: Tile;
   storeys: number;
   polygons: Polygon[];
-  /** Keyed by the tile the colour comes from: the plan split by it. */
   parts: { tile: Tile; head: boolean; polygons: Polygon[] }[];
 }
+
+/** How far a side facing a road is cut back. */
+const PAVEMENT = 0.2;
 
 /** Clipper works in integers: a tile is this many. */
 const S = 1e5;
@@ -48,92 +52,6 @@ function cut(poly: Pt[], [a, b, c]: Half): Pt[] {
       const t = fp / (fp - fq);
       out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
     }
-  }
-  return out;
-}
-
-/** A piece of a building's plan: a convex polygon, whose it is, and the
- *  tile it lies on. */
-interface Piece {
-  owner: Tile;
-  /** Where the owner stands. */
-  at: string;
-  c: number;
-  r: number;
-  ring: Pt[];
-}
-
-/**
- * The pieces tile (c, r) gives: a built tile's four quarters, each its
- * square cut by the lines its corner draws; open ground's corners a row
- * steps across. In a quarter, u runs from the tile's middle out towards
- * the corner along x, and w along y.
- */
-function pieces(town: Town, c: number, r: number): Piece[] {
-  const me = town.tile(c, r);
-  const [mx, my] = [c + 0.5, r + 0.5];
-  const out: Piece[] = [];
-  // A quarter's square, cut by lines α·u + β·w ≤ γ, or by any one of a
-  // choice of lines (the inside corner of an L is two pieces).
-  const quarter = (sx: number, sy: number, lines: Half[], either: Half[] = []) => {
-    const world = ([a, b, g]: Half): Half => [a * sx, b * sy, g + a * sx * mx + b * sy * my];
-    let box: Pt[] = [[mx, my], [mx + 0.5 * sx, my], [mx + 0.5 * sx, my + 0.5 * sy], [mx, my + 0.5 * sy]];
-    for (const l of lines) box = cut(box, world(l));
-    return either.length ? either.map((l) => cut(box, world(l))) : [box];
-  };
-
-  if (!isBuilt(me)) {
-    // Ground a row steps across: a courtyard's corner within its quarter,
-    // a row stepping on the diagonal the half of the tile on its side of
-    // the line its back runs along.
-    for (const [cx, cy] of CORNERS) {
-      const [p, q, o] = [town.tile(c + cx, r), town.tile(c, r + cy), town.tile(c + cx, r + cy)];
-      if (!fills(me, p, q)) continue;
-      const face = 0.5 - formOf(p).apart + (kin(p, o) ? 0 : DIAGONAL);
-      // toward = (x - mx)·cx + (y - my)·cy ≥ 1 - face
-      const line: Half = [-cx, -cy, -(1 - face) - cx * mx - cy * my];
-      let ring: Pt[] = kin(p, o)
-        ? [[mx, my], [mx + 0.5 * cx, my], [mx + 0.5 * cx, my + 0.5 * cy], [mx, my + 0.5 * cy]]
-        : [[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]];
-      ring = cut(ring, line);
-      if (ring.length >= 3) out.push({ owner: p, at: `${c + cx},${r}`, c, r, ring });
-    }
-    return out;
-  }
-
-  const form = formOf(me);
-  const face = 0.5 - form.apart;
-  const gap = (t: Tile) => (t.kind === "road" ? 0 : t.kind === "water" ? QUAY : form.apart);
-  for (const [sx, sy] of CORNERS) {
-    const [a, b, d] = [town.tile(c + sx, r), town.tile(c, r + sy), town.tile(c + sx, r + sy)];
-    const [ja, jb] = [kin(me, a), kin(me, b)];
-    // Beside it, open ground a row stepping on the diagonal runs on
-    // across: no wall on that side; the row's back bounds it instead.
-    const onA = !ja && a.kind !== "road" && fills(a, me, town.tile(c + sx, r - sy)) && !kin(me, town.tile(c, r - sy));
-    const onB = !jb && b.kind !== "road" && fills(b, me, town.tile(c - sx, r + sy)) && !kin(me, town.tile(c - sx, r));
-    // Across a filled corner the face runs on the diagonal: a courtyard's,
-    // where the fourth tile round the corner is built too, or a row's back.
-    const across = (t: Tile) => face + (kin(me, t) ? 0 : DIAGONAL);
-    const lines: Half[] = [];
-    if (!ja) {
-      if (fills(a, me, d)) lines.push([1, -1, across(b)]);
-      else if (!onA) lines.push([1, 0, 0.5 - gap(a)]);
-    }
-    if (!jb) {
-      if (fills(b, me, d)) lines.push([-1, 1, across(a)]);
-      else if (!onB) lines.push([0, 1, 0.5 - gap(b)]);
-    }
-    if (onA || onB) lines.push([1, 1, face + DIAGONAL]);
-    if (form.corners && a.kind === "road" && b.kind === "road" && !town.linked(c + sx, r, c, r + sy)) {
-      lines.push([1, 1, 1 - CHAMFER]);
-    }
-    // The inside corner of an L.
-    const either: Half[] = [];
-    if (ja && jb && !kin(me, d) && !fills(d, a, b)) {
-      const edge = 0.5 - gap(d);
-      either.push([1, 0, edge], [0, 1, edge]);
-    }
-    for (const ring of quarter(sx, sy, lines, either)) if (ring.length >= 3) out.push({ owner: me, at: `${c},${r}`, c, r, ring });
   }
   return out;
 }
@@ -225,115 +143,108 @@ function tidy(ring: Pt[]): Pt[] {
   return out;
 }
 
-/** The middle lines of the streets: between road tiles joined to each
- *  other, and a road tile joined to none as a point. */
-function streets(town: Town): Pt[][] {
-  const lines: Pt[][] = [];
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      if (town.tile(c, r).kind !== "road") continue;
-      let joined = false;
-      for (const [dc, dr] of [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]]) {
-        if (!town.linked(c, r, c + dc, r + dr)) continue;
-        joined = true;
-        if (dc > 0 || (dc === 0 && dr > 0)) lines.push([[c + 0.5, r + 0.5], [c + dc + 0.5, r + dr + 0.5]]);
-      }
-      if (!joined) lines.push([[c + 0.5, r + 0.5], [c + 0.5 + 1e-4, r + 0.5]]);
-    }
-  }
-  return lines;
-}
-
-/**
- * Every building's plan, a mass for each of its heights. A building is
- * the tiles joined into one (houses into rows, a shed's tiles into the
- * shed), and the ground its rows step across.
- */
+/** Every building's plan, a mass for each of its heights. */
 export function footprints(town: Town, head: (c: number, r: number) => boolean): Mass[] {
-  // Which building each built tile is part of, by where it stands.
+  /** Are the tiles at (c, r) and (x, y) one building? */
+  const one = (c: number, r: number, x: number, y: number) =>
+    isBuilt(town.tile(c, r)) && isBuilt(town.tile(x, y)) && kin(town.tile(c, r), town.tile(x, y));
+  /** Is there a street across the corner of (c, r) towards (sx, sy),
+   *  from the tile beside it on one side to the other? */
+  const across = (c: number, r: number, sx: number, sy: number) => town.linked(c + sx, r, c, r + sy);
+  /** Is the corner of (c, r) towards (sx, sy) a step's outer corner: the
+   *  building on neither side there nor across (a street between counts
+   *  as apart), and going on along the diagonal past both sides? */
+  const step = (c: number, r: number, sx: number, sy: number) =>
+    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && (!one(c, r, c + sx, r + sy) || across(c, r, sx, sy)) &&
+    one(c, r, c + sx, r - sy) && one(c, r, c - sx, r + sy);
+  /** Is the corner of ground (c, r) towards (sx, sy) filled: one building
+   *  on both its sides there (an L's inside, or between two steps), and no
+   *  street running across the corner? */
+  const fill = (c: number, r: number, sx: number, sy: number) =>
+    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && !town.linked(c, r, c + sx, r + sy) && !across(c, r, sx, sy);
+  /** Tiles on the diagonal of each other, joined through a filled corner. */
+  const bridged = (c: number, r: number, dx: number, dy: number) =>
+    fill(c + dx, r, -dx, dy) || fill(c, r + dy, dx, -dy);
+
+  // Which building each built tile is part of: joined beside, or on the
+  // diagonal.
   const building = new Map<string, number>();
-  const tiles: Tile[][] = [];
+  let count = 0;
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       if (!isBuilt(town.tile(c, r)) || building.has(`${c},${r}`)) continue;
-      const id = tiles.length;
-      tiles.push([]);
-      const queue: [number, number][] = [[c, r]];
+      const id = count++;
+      const queue: Pt[] = [[c, r]];
       building.set(`${c},${r}`, id);
       while (queue.length) {
         const [x, y] = queue.pop()!;
-        tiles[id].push(town.tile(x, y));
-        // Beside it, and on the diagonal where a row steps across the
-        // ground between.
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-          const k = `${x + dx},${y + dy}`;
-          const [me, them] = [town.tile(x, y), town.tile(x + dx, y + dy)];
-          const joined = dx && dy ? fills(town.tile(x + dx, y), me, them) || fills(town.tile(x, y + dy), me, them) : true;
-          if (!building.has(k) && joined && kin(me, them)) building.set(k, id), queue.push([x + dx, y + dy]);
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const k = `${x + dx},${y + dy}`;
+            const joined = one(x, y, x + dx, y + dy) && (!dx || !dy || one(x, y, x + dx, y) || one(x, y, x, y + dy) || bridged(x, y, dx, dy));
+            if (!building.has(k) && joined) building.set(k, id), queue.push([x + dx, y + dy]);
+          }
         }
       }
     }
   }
-  const all: Piece[][] = tiles.map(() => []);
+
+  // Every piece, with the tile whose building, height and colour it is.
+  const pieces: { at: Pt; ring: Pt[] }[] = [];
+  const CORNERS: Pt[] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      for (const p of pieces(town, c, r)) all[building.get(p.at)!]?.push(p);
+      const [mx, my] = [c + 0.5, r + 0.5];
+      if (isBuilt(town.tile(c, r))) {
+        let ring: Pt[] = [[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]];
+        const cuts = CORNERS.filter(([sx, sy]) => step(c, r, sx, sy));
+        for (const [sx, sy] of cuts) ring = cut(ring, [sx, sy, sx * mx + sy * my + 0.5]);
+        // A side on a road, cut back, but not where the row runs on the
+        // diagonal across it.
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (town.tile(c + dx, r + dy).kind !== "road") continue;
+          if (cuts.some(([sx, sy]) => (dx && sx === dx) || (dy && sy === dy))) continue;
+          ring = cut(ring, [dx, dy, dx * mx + dy * my + 0.5 - PAVEMENT]);
+        }
+        pieces.push({ at: [c, r], ring });
+      } else {
+        // The corner between two steps of a row.
+        for (const [sx, sy] of CORNERS) {
+          if (!fill(c, r, sx, sy)) continue;
+          pieces.push({ at: [c + sx, r], ring: [[mx + sx / 2, my + sy / 2], [mx + sx / 2, my], [mx, my + sy / 2]] });
+        }
+      }
     }
   }
 
-  // The streets each form keeps clear of, and the stretches of front where
-  // a gabled house steps forward of its row's gardens.
-  const net = streets(town);
-  const bays: Pt[][] = [];
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      const at = frontOf(town, c + 0.5, r + 0.5);
-      if (!at?.bay) continue;
-      bays.push(at.front[0]
-        ? [[c, r + 0.5 - GABLE], [c + 1, r + 0.5 - GABLE], [c + 1, r + 0.5 + GABLE], [c, r + 0.5 + GABLE]]
-        : [[c + 0.5 - GABLE, r], [c + 0.5 + GABLE, r], [c + 0.5 + GABLE, r + 1], [c + 0.5 - GABLE, r + 1]]);
-    }
+  const byBuilding = new Map<number, typeof pieces>();
+  for (const p of pieces) {
+    const id = building.get(`${p.at[0]},${p.at[1]}`)!;
+    (byBuilding.get(id) ?? byBuilding.set(id, []).get(id)!).push(p);
   }
-
+  const tileOf = (p: { at: Pt }) => town.tile(...p.at);
+  // Pieces meet edge to edge: joined a hair wide and drawn back, so no
+  // hairline is left between them.
+  const whole = (rings: Pt[][]) => grow(grow(union(paths(rings)), HAIR), -HAIR);
   const masses: Mass[] = [];
-  all.forEach((ps, id) => {
-    if (!ps.length) return;
-    const form = formOf(tiles[id][0]);
-    // Only what is near it: the streets and bays within reach of its tiles.
-    const xs = ps.map((p) => p.c), ys = ps.map((p) => p.r);
-    const [x0, x1, y0, y1] = [Math.min(...xs) - 2, Math.max(...xs) + 3, Math.min(...ys) - 2, Math.max(...ys) + 3];
-    const near = (ring: Pt[]) => ring.some(([x, y]) => x >= x0 && x <= x1 && y >= y0 && y <= y1);
-    const lines = paths(net.filter(near));
-    const forward = paths(bays.filter(near));
-    const street = form.family === "street" && forward.length
-      ? union(minus(grow(lines, form.clear, true), forward), and(grow(lines, form.clear - STEP, true), forward))
-      : grow(lines, form.clear, true);
-    // Pieces meet edge to edge; grown by a hair, joined and drawn back in,
-    // no hairline is left between them to split a building.
-    const whole = (rings: Pt[][]) => grow(grow(union(paths(rings)), HAIR), -HAIR);
-    let plan = minus(whole(ps.map((p) => p.ring)), street);
-    // Only so deep from the edge of its block: deeper is a courtyard.
-    if (Number.isFinite(form.depth)) plan = minus(plan, grow(plan, -form.depth));
-    const heights = [...new Set(ps.map((p) => p.owner.storeys))];
-    for (const storeys of heights) {
-      const mine = ps.filter((p) => p.owner.storeys === storeys);
-      const shape = and(whole(mine.map((p) => p.ring)), plan);
-      // Split by colour: by kind, and a shed's head apart.
+  for (const ps of byBuilding.values()) {
+    for (const storeys of new Set(ps.map((p) => tileOf(p).storeys))) {
+      const mine = ps.filter((p) => tileOf(p).storeys === storeys);
+      const shape = whole(mine.map((p) => p.ring));
       const byColour = new Map<string, { tile: Tile; head: boolean; rings: Pt[][] }>();
       for (const p of mine) {
-        const h = p.at === `${p.c},${p.r}` && head(p.c, p.r);
-        const key = `${p.owner.kind}:${h}`;
-        const entry = byColour.get(key) ?? byColour.set(key, { tile: p.owner, head: h, rings: [] }).get(key)!;
-        entry.rings.push(p.ring);
+        const h = head(...p.at);
+        const key = `${tileOf(p).kind}:${h}`;
+        (byColour.get(key) ?? byColour.set(key, { tile: tileOf(p), head: h, rings: [] }).get(key)!).rings.push(p.ring);
       }
       masses.push({
-        tile: mine[0].owner,
+        tile: tileOf(mine[0]),
         storeys,
         polygons: polygons(shape),
         parts: [...byColour.values()].map((e) => ({ tile: e.tile, head: e.head, polygons: polygons(and(whole(e.rings), shape)) })),
       });
     }
-  });
+  }
   return masses;
 }
 

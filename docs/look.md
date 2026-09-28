@@ -139,15 +139,18 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.
-- **Plans and roofs are exact**, not sampled (`town/footprint.ts`,
-  `town/roof.ts`). Each quarter's rules are half-planes cutting its square,
-  a building is the union of its pieces (Clipper), the streets are cut
-  away as bands along their middle lines, and a courtyard is the plan less
-  itself drawn in. Every wall raises a roof face climbing in from it, and
-  the roof over a point is the lowest face there, flat beyond reach: so
-  ridges, hips and valleys are where the faces meet, exactly. The sampled
-  mesher below is kept behind `?m=old` in the sandbox until this one has
-  what it had (rooflights, the gables' roofs).
+- **Plans are the terrain's rule, with straight lines** (`town/footprint.ts`).
+  A building's tile is its whole square; a side facing a road is cut back
+  a pavement's width; a row stepping on the diagonal is a straight band,
+  each step's outer corner cut from edge middle to edge middle and the
+  corner between two steps (or an L's inside) filled the same way; a
+  street across a corner parts the tiles either side. Nothing else: each
+  tile's shape is decided by its eight neighbours. Setbacks, gardens,
+  courtyards and gables built on distances all broke on diagonals and at
+  street ends, and are gone; any comes back only as a rule of the same kind.
+- **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
+  climbing in from it, and the roof over a point is the lowest face there,
+  flat beyond its reach, so ridges, hips and valleys fall where faces meet.
 - **The roof is the distance in from the outline**, so a row gets a
   ridge, its end a hip and an L a valley, and nothing is told which way
   to run. A quarter is a few straight lines, so the outline is traced

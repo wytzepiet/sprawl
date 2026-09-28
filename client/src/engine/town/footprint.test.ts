@@ -11,9 +11,9 @@ describe("a building's plan is one exact polygon", () => {
     expect(masses[0].polygons.length).toBe(1);
   });
 
-  test("a solid block is a ring round a courtyard", () => {
-    const [block] = plans(["..........", ".========.", ".=HHHHHH=.", ".=HHHHHH=.", ".=HHHHHH=.", ".=HHHHHH=.", ".========.", ".........."]);
-    expect(block.polygons.length).toBe(1);
-    expect(block.polygons[0].length).toBe(2); // an outline and one hole
+  test("a straight row is one plain bar, cut back from its street", () => {
+    const [row] = plans(["......", ".HHHH.", "======"]);
+    expect(row.polygons.length).toBe(1);
+    expect(row.polygons[0][0].length).toBe(4);
   });
 });
