@@ -100,6 +100,15 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   So a row stepping along a diagonal street is a straight front, the back
   of it too, and a courtyard's inside corners are cut at forty-five
   degrees, as the terrain turns a staircase of water tiles into a shore.
+- **Each kind has a form**: how it meets the street and its neighbours,
+  a row of a table (`FORMS` in `town/mass.ts`). Homes and high-street
+  shops are one family, joined wall to wall at the pavement, gardens
+  behind. Offices keep a forecourt; sheds stand apart behind a paved yard;
+  a big box stands behind its car park. A family joins itself and keeps
+  its distance from the others, so an industrial estate is sheds on yards
+  and never a terrace of factories against houses. Seen in the real
+  places: Lage Weide (industry), Zuidas (offices), the ArenA Boulevard
+  (big boxes).
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.

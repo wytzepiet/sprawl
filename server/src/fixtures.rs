@@ -10,6 +10,7 @@
 //!
 //! ```text
 //! .  grass     ~  water     T  forest    _  beach     ^  mountain
+//! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  W workshop  F factory
 //! R restaurant  B bar  G gas station  M supermarket  D warehouse

@@ -15,10 +15,10 @@
 .=.H======.=HHH=.HH=H.HH=HHH=HH=HH=HH.
 ..==A...H..=HHH=.HHH=HHH=HHH==H=HS.=H.
 ..=AA.......=HHH=HHH=HHH.=HHH=HH=SS=S.
-..=AA...R...=HHH=HHH=HHHH=.HS=SH=.##..
-..=AA.RRR...=HHHH=.HR=HHH=..######.=R.
-.H=HH.RRRR...=.HH=HH.=.#####.S=H=SSH=.
-.HH=H.RR.....=..#######HS=HHHR=SH=SH=.
+..=AA...A...=HHH=HHH=HHHH=.HS=SH=.##..
+..=AA.AAA...=HHHH=.HR=HHH=..######.=R.
+.H=HH.AAAA...=.HH=HH.=.#####.S=H=SSH=.
+.HH=H.AA.....=..#######HS=HHHR=SH=SH=.
 .HH=HH...#######.=HHHHSHS=HH.H.=H=HH..
 ..#######..=.=SSH=HHHHHHH=.H.HH=HH=HH.
 .#.=W......=H=HHH=.H.HHHHH=H..H=HH=HH.

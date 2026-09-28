@@ -21,8 +21,11 @@
  *   Service roads, paths and tracks are left out: at this scale they are
  *   driveways and noise. A street is one tile wide: a boulevard mapped as
  *   two ways, or one that crosses a tile's corner, is thinned to a line.
- * - Water is `~`, woods `T`; parks and the rest stay grass.
- * - A building is what its tags, or a shop or café inside it, say: homes
+ * - Water is `~`, woods `T`, and car parks and the open ground of land
+ *   given to industry, offices and trade `:` (paved); parks and the rest
+ *   stay grass.
+ * - A building is what its tags say, or for a small one a shop or café
+ *   inside it, or for a plain one what its land is for: homes
  *   that are small or low are houses, the rest apartments. It covers every
  *   tile its footprint does, so a terrace is a row and a block is a block.
  * - Garages, sheds, churches and the like are left out.
@@ -51,6 +54,7 @@ const query = ([s, w, n, e]: number[]) => `[out:json][timeout:90][bbox:${s},${w}
   way[natural~"^(water|wood)$"]; relation[natural~"^(water|wood)$"];
   way[landuse~"^(forest|basin|reservoir)$"]; relation[landuse~"^(forest|basin|reservoir)$"];
   way[waterway=riverbank]; relation[waterway=riverbank];
+  way[amenity=parking]; way[landuse~"^(industrial|commercial|retail|residential)$"]; relation[landuse~"^(industrial|commercial|retail|residential)$"];
   node[shop]; node[amenity]; node[office]; node[craft];
 );
 out geom;`;
@@ -173,11 +177,21 @@ function rings(e: Element): LatLon[][] {
 const tagged = (e: Element) => e.tags ?? {};
 const isWater = (t: Tags) => t.natural === "water" || t.waterway === "riverbank" || t.landuse === "basin" || t.landuse === "reservoir";
 const isWood = (t: Tags) => t.natural === "wood" || t.landuse === "forest";
-for (const [test, ch] of [[isWood, "T"], [isWater, "~"]] as const) {
+/** Car parks, and the yards and forecourts of land given to work and trade. */
+const isPaved = (t: Tags) => t.amenity === "parking" || ["industrial", "commercial", "retail"].includes(t.landuse);
+for (const [test, ch] of [[isPaved, ":"], [isWood, "T"], [isWater, "~"]] as const) {
   for (const e of answer.elements) {
     if (!test(tagged(e))) continue;
     for (const ring of rings(e)) for (const [c, r] of tilesIn(inTiles(ring))) set(c, r, ch);
   }
+}
+/** What each tile's land is given to, where the map says: a building that
+ *  says no more than that it is one is taken to be what its land is for. */
+const land = new Map<string, string>();
+for (const e of answer.elements) {
+  const use = tagged(e).landuse;
+  if (!["industrial", "commercial", "retail", "residential"].includes(use)) continue;
+  for (const ring of rings(e)) for (const [c, r] of tilesIn(inTiles(ring))) land.set(`${c},${r}`, use);
 }
 
 // --- Buildings --------------------------------------------------------------
@@ -199,6 +213,15 @@ function trade(t: Tags, m2: number): string | null {
   return null;
 }
 
+/** A plain building by what its land is for: sheds and halls on
+ *  industrial land, offices on commercial, shops and big boxes on retail. */
+function byLand(use: string | undefined, m2: number): string | null | undefined {
+  if (use === "industrial") return m2 < 150 ? "" : m2 < 800 ? "W" : m2 < 5000 ? "F" : "D";
+  if (use === "commercial") return "O";
+  if (use === "retail") return m2 > 1500 ? "M" : "S";
+  return null;
+}
+
 const SKIP = new Set(["garage", "garages", "shed", "roof", "hut", "carport", "church", "chapel", "cathedral", "school", "hospital",
   "university", "public", "civic", "train_station", "transportation", "service", "greenhouse", "barn", "farm_auxiliary", "stable",
   "bunker", "ruins", "construction", "toilets", "parking", "boathouse"]);
@@ -214,7 +237,11 @@ for (const e of answer.elements) {
   for (const ring of rings(e).map(inTiles)) {
     const inner = pois.filter((p) => inside(place(p).map((m) => m / TILE) as [number, number], ring)).map((p) => p.tags!);
     const m2 = area(ring);
-    const kind = [...inner, t].map((x) => trade(x, m2)).find((k) => k !== null) ?? (HOMES.has(t.building) ? null : undefined);
+    const [mc, mr] = middle(ring);
+    // A shop or café inside says what a small building is; in a big one it
+    // is the ground floor of an office or a block of flats, which its own
+    // tags and its land say.
+    const kind = [...(m2 < 1000 ? inner : []), t].map((x) => trade(x, m2)).find((k) => k !== null) ?? (t.building === "yes" ? byLand(land.get(`${mc},${mr}`), m2) : HOMES.has(t.building) ? null : undefined);
     if (kind === undefined || kind === "") continue;
     const tiles = tilesIn(ring);
     const levels = Number(t["building:levels"] ?? 0);
@@ -224,7 +251,7 @@ for (const e of answer.elements) {
     // Every tile it covers, or its middle if it covers none: a building is
     // the tiles it stands on.
     const ch = kind ?? (flats ? "A" : "H");
-    for (const [c, r] of tiles.length ? tiles : [middle(ring)]) if (grid[r]?.[c] === "." || grid[r]?.[c] === "H") set(c, r, ch);
+    for (const [c, r] of tiles.length ? tiles : [middle(ring)]) if (".:H".includes(grid[r]?.[c] ?? "~")) set(c, r, ch);
   }
 }
 

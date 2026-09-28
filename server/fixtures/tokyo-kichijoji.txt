@@ -17,11 +17,11 @@
 .AAAH=.##.....HHHH=H=HHH====SA.=S=..S.
 .H.AH=H..##..SHHS.=H=SH=HSR==.=AM=....
 ..H.=HHSS=H###..S=R.=SH=HSS=S====...S.
-.SHH=H.H=HHA..##.=R=SHH=.H=H.SS.=SSSS.
-..H=HHHH=HHHSS=A#####R=S..=.SSSSS===S.
-..H=.HH=.HH.S=.H..=..##.S=....SS.=SS=.
-.H=HHH.=HHH.H=HHH.=AH..###...SS.=SSSR.
-.H=HHH=H...H=...H=SHHSS.SH##.SSA=HHR..
+.SHH=H.H=HHA..##.=R=SHH=.H=H.DD.=SSSS.
+..H=HHHH=HHHSS=A#####R=S..=.DDDDS===S.
+..H=.HH=.HH.S=.H..=..##.S=....DD.=SS=.
+.H=HHH.=HHH.H=HHH.=AH..###...DD.=SSSR.
+.H=HHH=H...H=...H=SHHSS.SH##.DDA=HHR..
 .=HHHH=.HHH.=....=HA...H.S..##.=....#.
 ..............................###...#.
 .............H...HS.H.AHSAADDH.AS###..

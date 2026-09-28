@@ -26,28 +26,57 @@ import { isBuilt, type Tile, type Town } from "./grid";
 /** Samples along a tile's edge. A tile is twelve metres, so one a metre. */
 const RES = 12;
 
-/** How far a building stands back from each kind of neighbour. A road's
- *  is kept by `CLEAR` instead, from the street's middle line. */
-const SETBACK: Record<string, number> = { road: 0, water: 0.02, open: 0.14, wood: 0.14 };
-/** How far a building keeps from the middle of any street, whichever way
- *  it runs: the road and its kerb, and a strip of pavement. */
-const CLEAR = 0.47;
+/**
+ * How each kind meets the street and its neighbours: its form. Homes and
+ * the shops of a high street are one family, joined wall to wall at the
+ * pavement into rows and blocks, with gardens behind. Offices keep a
+ * forecourt. Sheds stand apart behind a paved yard, and a big box behind its
+ * car park. Kinds of one family join; of different ones, each keeps its
+ * distance. Everything a form decides is here, so a new way of building is
+ * a row of this table.
+ */
+interface Form {
+  family: string;
+  /** How far it keeps from any street's middle line: the road and its
+   *  kerb, and whatever it keeps in front, pavement or yard. */
+  clear: number;
+  /** How far it stands back from open ground and from other families. */
+  apart: number;
+  /** The ground its tiles leave open, if not grass. */
+  yard?: "paved";
+  /** Its street corners are cut to the junction. */
+  corners?: boolean;
+}
+const STREET: Form = { family: "street", clear: 0.47, apart: 0.14, corners: true };
+const FORMS: Partial<Record<BuildingKind, Form>> = {
+  Office: { family: "office", clear: 0.72, apart: 0.2, yard: "paved" },
+  Workshop: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved" },
+  Factory: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved" },
+  Warehouse: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved" },
+  Supermarket: { family: "box", clear: 1.0, apart: 0.22, yard: "paved" },
+  GasStation: { family: "box", clear: 0.9, apart: 0.22, yard: "paved" },
+};
+export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
+
+/** How far a building stands back from water. */
+const QUAY = 0.02;
 /** How far in from the corner a street corner is cut. */
 const CHAMFER = 0.2;
-
-const INDUSTRY = new Set<string>(["Workshop", "Factory", "Warehouse", "Supermarket", "GasStation"]);
 
 /** The walls' height, and the roof that climbs from them `d` in. */
 export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
 function rise(t: Tile, d: number) {
-  if (INDUSTRY.has(t.kind)) return Math.min(d * 0.25, 0.06);
+  if (formOf(t).family !== "street") return Math.min(d * 0.25, 0.06);
   return t.storeys <= 3 ? Math.min(d * 0.75, 0.26) : Math.min(d * 0.5, 0.03);
 }
 
+/** Buildings of one family, which join. */
+const kin = (a: Tile, b: Tile) => isBuilt(a) && isBuilt(b) && formOf(a).family === formOf(b).family;
+
 type Joins = (a: Tile, b: Tile) => boolean;
-/** The outline joins any building; a roof only one as tall. */
-const FOOT: Joins = (_, b) => isBuilt(b);
-const ROOF: Joins = (a, b) => isBuilt(b) && b.storeys === a.storeys;
+/** The outline joins a building of its family; a roof only one as tall. */
+const FOOT: Joins = kin;
+const ROOF: Joins = (a, b) => kin(a, b) && b.storeys === a.storeys;
 
 /**
  * How far outside tile (c, r)'s building the point (x, y) is, as the
@@ -55,48 +84,51 @@ const ROOF: Joins = (a, b) => isBuilt(b) && b.storeys === a.storeys;
  * line, so a building's inside does not end at a tile's edge.
  *
  * The terrain's rule for shores holds for buildings too. Open ground with
- * buildings on both sides of a corner has that corner filled on the
- * diagonal, and a building's face runs straight across it: a row stepping
- * along a diagonal street is a straight front and not a stair, and the
- * outer corner of each step is cut on the same line.
+ * buildings of one family on both sides of a corner has that corner filled
+ * on the diagonal, and a building's face runs straight across it: a row
+ * stepping along a diagonal street is a straight front and not a stair, and
+ * the outer corner of each step is cut on the same line.
  */
 export function outside(town: Town, c: number, r: number, x: number, y: number, joins: Joins = FOOT): number {
-  const me = town.tile(c, r);
   const [sx, sy] = [x < c + 0.5 ? -1 : 1, y < r + 0.5 ? -1 : 1];
   const [u, w] = [Math.abs(x - c - 0.5), Math.abs(y - r - 0.5)];
   const [a, b, d] = [town.tile(c + sx, r), town.tile(c, r + sy), town.tile(c + sx, r + sy)];
-  const face = 0.5 - SETBACK.open;
+  const me = town.tile(c, r);
   if (!isBuilt(me)) {
     if (!fills(me, a, b)) return 1;
-    return Math.max((1 - u - w - face) / Math.SQRT2, street(town, x, y));
+    const form = formOf(a);
+    return Math.max((1 - u - w - (0.5 - form.apart)) / Math.SQRT2, street(town, x, y, form.clear));
   }
-  const gap = (t: Tile) => (isBuilt(t) ? 0 : SETBACK[t.kind]);
+  const form = formOf(me);
+  const face = 0.5 - form.apart;
+  const gap = (t: Tile) => (t.kind === "road" ? 0 : t.kind === "water" ? QUAY : form.apart);
   let f = -1;
   const [ja, jb] = [joins(me, a), joins(me, b)];
-  if (!ja) f = Math.max(f, fills(a, me, d) ? (u - w - face) / Math.SQRT2 : u - 0.5 + gap(a));
-  if (!jb) f = Math.max(f, fills(b, me, d) ? (w - u - face) / Math.SQRT2 : w - 0.5 + gap(b));
+  if (!ja) f = Math.max(f, fills(a, me, d) ? (u - w - face) / Math.SQRT2 : u - 0.5 + (kin(me, a) ? 0 : gap(a)));
+  if (!jb) f = Math.max(f, fills(b, me, d) ? (w - u - face) / Math.SQRT2 : w - 0.5 + (kin(me, b) ? 0 : gap(b)));
   if (ja && jb && !joins(me, d) && !fills(d, a, b)) {
-    const edge = 0.5 - gap(d);
+    const edge = 0.5 - (kin(me, d) ? 0 : gap(d));
     f = Math.max(f, Math.min(u - edge, w - edge));
   }
   // The outer corner of a step, with the row going on beyond both its
   // sides: cut on the diagonal the row's face runs along.
-  const steps = !isBuilt(a) && !isBuilt(b) && !isBuilt(d) && isBuilt(town.tile(c + sx, r - sy)) && isBuilt(town.tile(c - sx, r + sy));
+  const steps = !kin(me, a) && !kin(me, b) && !kin(me, d) && kin(me, town.tile(c + sx, r - sy)) && kin(me, town.tile(c - sx, r + sy));
   if (steps) f = Math.max(f, (u + w - face) / Math.SQRT2);
-  if (a.kind === "road" && b.kind === "road" && !town.linked(c + sx, r, c, r + sy)) {
+  if (form.corners && a.kind === "road" && b.kind === "road" && !town.linked(c + sx, r, c, r + sy)) {
     f = Math.max(f, (CHAMFER - (1 - u - w)) / Math.SQRT2);
   }
-  return Math.max(f, street(town, x, y));
+  return Math.max(f, street(town, x, y, form.clear));
 }
 
-/** Is `t` open ground with buildings, `p` and `q`, on both its sides at a
- *  corner? Then the corner is theirs, filled on the diagonal: a row
- *  stepping across it runs straight on, and a courtyard's inside corner is
- *  cut at forty-five degrees, as the terrain rounds a shore's. */
-const fills = (t: Tile, p: Tile, q: Tile) => t.kind === "open" && isBuilt(p) && isBuilt(q);
+/** Is `t` ground a building may take a corner of, with buildings of one
+ *  family, `p` and `q`, on both its sides there? Then the corner is
+ *  theirs, filled on the diagonal: a row stepping across it runs straight
+ *  on, and a courtyard's inside corner is cut at forty-five degrees, as the
+ *  terrain rounds a shore's. */
+const fills = (t: Tile, p: Tile, q: Tile) => (t.kind === "open" || t.kind === "paved") && kin(p, q);
 
-/** A tile's building as the look draws it: its own, or, for open ground
- *  a row steps across, that row's. */
+/** A tile's building as the look draws it: its own, or, for ground a row
+ *  steps across, that row's. */
 function buildingOn(town: Town, c: number, r: number): Tile | null {
   const me = town.tile(c, r);
   if (isBuilt(me)) return me;
@@ -107,10 +139,10 @@ function buildingOn(town: Town, c: number, r: number): Tile | null {
   return null;
 }
 
-/** How much nearer than `CLEAR` the point is to the middle line of a
+/** How much nearer than `clear` the point is to the middle line of a
  *  street: the lines between joined road tiles, at any angle, and the
  *  middle of a road tile joined to none. */
-function street(town: Town, x: number, y: number): number {
+function street(town: Town, x: number, y: number, clear: number): number {
   const [c0, r0] = [Math.floor(x), Math.floor(y)];
   let near = Infinity;
   for (let r = r0 - 1; r <= r0 + 1; r++) {
@@ -128,7 +160,7 @@ function street(town: Town, x: number, y: number): number {
       }
     }
   }
-  return CLEAR - near;
+  return clear - near;
 }
 
 type RGB = [number, number, number];

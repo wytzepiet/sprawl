@@ -9,7 +9,7 @@ import type { BuildingKind } from "../../generated";
  * Coordinates are the fixture's: column east, row south, the tile (c, r)
  * running from c to c + 1 and r to r + 1.
  */
-export type Ground = "open" | "road" | "water" | "wood";
+export type Ground = "open" | "paved" | "road" | "water" | "wood";
 
 export interface Tile {
   /** A building's kind, or the ground's. */
@@ -39,12 +39,12 @@ const STOREYS: Partial<Record<BuildingKind, number>> = {
   House: 2, Apartment: 5, Shop: 2, Restaurant: 2, Bar: 2, Office: 6, Workshop: 1, Factory: 1, Warehouse: 1, Supermarket: 1, GasStation: 1,
 };
 
-export const isBuilt = (t: Tile) => t.kind !== "open" && t.kind !== "road" && t.kind !== "water" && t.kind !== "wood";
+export const isBuilt = (t: Tile) => !["open", "paved", "road", "water", "wood"].includes(t.kind);
 
 export function tileOf(ch: string): Tile {
   const kind = LETTERS[ch];
   if (kind) return { kind, storeys: STOREYS[kind] ?? 1 };
-  const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" ? "water" : ch === "T" ? "wood" : "open";
+  const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
   return { kind: ground, storeys: 0 };
 }
 

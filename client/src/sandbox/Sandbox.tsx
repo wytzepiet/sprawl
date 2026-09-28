@@ -9,8 +9,8 @@ import { syncClock } from "../network/clock";
 import { BLUEPRINTS } from "../blueprints";
 import { buildRoadGeometry, BORDER_HALF_W, BORDER_Z, HALF_W, ROAD_Z, type ArmInfo } from "../engine/objects/roadGeometry";
 import type { MeshGeometry } from "../engine/Mesh";
-import { parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
-import { massMesh } from "../engine/town/mass";
+import { isBuilt, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
+import { formOf, massMesh } from "../engine/town/mass";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -31,8 +31,9 @@ const FIXTURES: Record<string, string> = Object.fromEntries(
 
 const BRUSHES: { key: string; ch: string; label: string }[] = [
   { key: "1", ch: "H", label: "House" }, { key: "2", ch: "A", label: "Flats" }, { key: "3", ch: "S", label: "Shop" },
-  { key: "4", ch: "O", label: "Office" }, { key: "5", ch: "W", label: "Workshop" }, { key: "6", ch: "=", label: "Street" },
-  { key: "7", ch: "#", label: "Road" }, { key: "8", ch: "~", label: "Water" }, { key: "9", ch: "T", label: "Wood" },
+  { key: "4", ch: "O", label: "Office" }, { key: "5", ch: "F", label: "Factory" }, { key: "m", ch: "M", label: "Supermarket" },
+  { key: "6", ch: "=", label: "Street" }, { key: "7", ch: "#", label: "Road" }, { key: "p", ch: ":", label: "Paved" },
+  { key: "8", ch: "~", label: "Water" }, { key: "9", ch: "T", label: "Wood" },
   { key: "0", ch: ".", label: "Clear" }, { key: "+", ch: "+", label: "Taller" }, { key: "-", ch: "-", label: "Lower" },
 ];
 
@@ -178,12 +179,13 @@ function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
   ground.material = gm;
   meshes.push(ground);
 
-  // Water a step down, so the ink finds its edge; woods a shade darker.
-  const quads = (kind: string, z: number) => {
+  // Water a step down, so the ink finds its edge; woods a shade darker; and
+  // paving, a car park's or under a building whose form leaves a yard.
+  const quads = (on: (t: Tile) => boolean, z: number) => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
     for (let r = 0; r < town.h; r++) {
       for (let c = 0; c < town.w; c++) {
-        if (town.tile(c, r).kind !== kind) continue;
+        if (!on(town.tile(c, r))) continue;
         const b = g.positions.length / 3;
         for (const [dx, dy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) g.positions.push(-(c + dx), -(r + dy), z), g.normals.push(0, 0, 1);
         g.indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
@@ -191,8 +193,9 @@ function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
     }
     return g;
   };
-  add("water", quads("water", -0.08), theme.water);
-  add("wood", quads("wood", 0.004), theme.forest);
+  add("water", quads((t) => t.kind === "water", -0.08), theme.water);
+  add("wood", quads((t) => t.kind === "wood", 0.004), theme.forest);
+  add("paved", quads((t) => t.kind === "paved" || (isBuilt(t) && formOf(t).yard === "paved"), 0.006), theme.paved);
 
   // Roads, as the game lays them: each tile's arms to the tiles it is joined to.
   const roads = { street: [[], []] as MeshGeometry[][], through: [[], []] as MeshGeometry[][] };
