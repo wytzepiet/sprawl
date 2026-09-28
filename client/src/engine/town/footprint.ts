@@ -178,10 +178,18 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
     !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && (!one(c, r, c + sx, r + sy) || online(c, r, sx, sy)) &&
     (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy));
   /** Is the corner of ground (c, r) towards (sx, sy) filled: one building
-   *  on both its sides there (an L's inside, or between two steps), and no
-   *  street running across the corner? */
+   *  on both its sides there, between two steps of a row, or an L's inside
+   *  corner that runs on along the diagonal with the next (a staircase of
+   *  L's is a diagonal row); a lone L's inside, a courtyard's corner, stays
+   *  square. And no street running across the corner. */
   const fill = (c: number, r: number, sx: number, sy: number) =>
-    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && !town.linked(c, r, c + sx, r + sy) && !across(c, r, sx, sy);
+    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) &&
+    (!one(c + sx, r, c + sx, r + sy) || inside(c + sx, r - sy, sx, sy) || inside(c - sx, r + sy, sx, sy)) &&
+    !town.linked(c, r, c + sx, r + sy) && !across(c, r, sx, sy);
+  /** Is ground (c, r) the inside corner of an L of one building, towards
+   *  (sx, sy)? */
+  const inside = (c: number, r: number, sx: number, sy: number) =>
+    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && one(c + sx, r, c + sx, r + sy);
   /** How far out the band's face lies towards corner (sx, sy) of built
    *  tile (c, r): nearer where a diagonal street's line runs through that
    *  corner, further where one runs through the opposite one. */
