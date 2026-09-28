@@ -1,0 +1,10 @@
+# A solid block of houses: built a tile deep from its edge, the middle a courtyard
+............
+.==========.
+.=HHHHHHHH=.
+.=HHHHHHHH=.
+.=HHHHHHHH=.
+.=HHHHHHHH=.
+.=HHHHHHHH=.
+.==========.
+............

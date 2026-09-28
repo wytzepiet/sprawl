@@ -109,6 +109,12 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   and never a terrace of factories against houses. Seen in the real
   places: Lage Weide (industry), Zuidas (offices), the ArenA Boulevard
   (big boxes).
+- **A building is only so deep** from the edge of its block (a tile for
+  homes and shops, more for offices, as deep as it likes for a shed): the
+  rest is the block's inside, a courtyard. So a solid block is a ring of
+  houses round a garden however it was painted or mapped (13-block). A row
+  is houses, not one long building: each tile a shade of its kind's colour,
+  now and then one a storey taller or lower.
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.

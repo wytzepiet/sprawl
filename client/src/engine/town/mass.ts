@@ -1,6 +1,7 @@
 import type { MeshGeometry } from "../Mesh";
 import type { BuildingKind } from "../../generated";
 import { isBuilt, type Tile, type Town } from "./grid";
+import { distances } from "./edt";
 
 /**
  * The buildings of a town, as one mesh, decided corner by corner.
@@ -46,15 +47,18 @@ interface Form {
   yard?: "paved";
   /** Its street corners are cut to the junction. */
   corners?: boolean;
+  /** How deep it is built from the edge of its block, in tiles; deeper is
+   *  the block's inside, a courtyard. */
+  depth: number;
 }
-const STREET: Form = { family: "street", clear: 0.47, apart: 0.14, corners: true };
+const STREET: Form = { family: "street", clear: 0.47, apart: 0.14, corners: true, depth: 1 };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
-  Office: { family: "office", clear: 0.72, apart: 0.2, yard: "paved" },
-  Workshop: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved" },
-  Factory: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved" },
-  Warehouse: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved" },
-  Supermarket: { family: "box", clear: 1.0, apart: 0.22, yard: "paved" },
-  GasStation: { family: "box", clear: 0.9, apart: 0.22, yard: "paved" },
+  Office: { family: "office", clear: 0.72, apart: 0.2, yard: "paved", depth: 2.5 },
+  Workshop: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved", depth: Infinity },
+  Factory: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved", depth: Infinity },
+  Warehouse: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved", depth: Infinity },
+  Supermarket: { family: "box", clear: 1.0, apart: 0.22, yard: "paved", depth: Infinity },
+  GasStation: { family: "box", clear: 0.9, apart: 0.22, yard: "paved", depth: Infinity },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 
@@ -122,10 +126,18 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
  *  terrain rounds a shore's. */
 const fills = (t: Tile, p: Tile, q: Tile) => (t.kind === "open" || t.kind === "paved") && kin(p, q);
 
+/** A stable number in [0, 1) for a tile. */
+const hash = (c: number, r: number, salt: number) => ((Math.imul(c * 73856093 ^ r * 19349663 ^ salt, 0x85ebca6b) >>> 0) % 4096) / 4096;
+
 /** A tile's building as the look draws it: its own, or, for ground a row
- *  steps across, that row's. */
+ *  steps across, that row's. A row of houses is houses, not one long
+ *  building: now and then one is a storey taller or lower than the rest. */
 function buildingOn(town: Town, c: number, r: number): Tile | null {
   const me = town.tile(c, r);
+  if (me.kind === "House") {
+    const k = hash(c, r, 1);
+    return k < 0.14 ? { ...me, storeys: me.storeys + 1 } : k > 0.92 ? { ...me, storeys: me.storeys - 1 } : me;
+  }
   if (isBuilt(me)) return me;
   for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     const [a, b] = [town.tile(c + sx, r), town.tile(c, r + sy)];
@@ -208,19 +220,40 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
   // row stepping on the diagonal has one ridge.
   const roofs = new Map<string, number>();
   const roofOf = (t: Tile) => roofs.get(`${formOf(t).family}:${t.storeys}`) ?? roofs.set(`${formOf(t).family}:${t.storeys}`, roofs.size).get(`${formOf(t).family}:${t.storeys}`)!;
+  // First every sample's building, then how deep into its block each lies:
+  // a building is only so deep from the edge of its block, and deeper is the
+  // block's inside, open, a courtyard. So a block of houses is a ring round
+  // a garden however it was painted, and a shed is as deep as it likes.
   const [W, H] = [town.w * RES, town.h * RES];
-  const under = new Int32Array(W * H).fill(-1);
+  const built = new Uint8Array(W * H);
+  const owner: (Tile | null)[] = new Array(W * H).fill(null);
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const me = buildingOn(town, c, r);
       if (!me) continue;
-      const id = roofOf(me);
       for (let j = 0; j < RES; j++) {
         for (let i = 0; i < RES; i++) {
-          if (outside(town, c, r, c + (i + 0.5) / RES, r + (j + 0.5) / RES) < 0) under[(r * RES + j) * W + c * RES + i] = id;
+          const k = (r * RES + j) * W + c * RES + i;
+          if (outside(town, c, r, c + (i + 0.5) / RES, r + (j + 0.5) / RES) < 0) (built[k] = 1), (owner[k] = me);
         }
       }
     }
+  }
+  const deep = distances(built, W, H);
+  /** How far into its block the point is, in tiles, from the samples round it. */
+  const into = (x: number, y: number) => {
+    const [gx, gy] = [x * RES - 0.5, y * RES - 0.5];
+    const [i, j] = [Math.floor(gx), Math.floor(gy)];
+    const [fx, fy] = [gx - i, gy - j];
+    const at = (a: number, b: number) => deep[Math.min(H - 1, Math.max(0, b)) * W + Math.min(W - 1, Math.max(0, a))];
+    const top = at(i, j) * (1 - fx) + at(i + 1, j) * fx;
+    const bottom = at(i, j + 1) * (1 - fx) + at(i + 1, j + 1) * fx;
+    return (top * (1 - fy) + bottom * fy - 0.5) / RES;
+  };
+  const under = new Int32Array(W * H).fill(-1);
+  for (let k = 0; k < W * H; k++) {
+    const t = owner[k];
+    if (t && (deep[k] - 0.5) / RES <= formOf(t).depth) under[k] = roofOf(t);
   }
   const REACH = Math.ceil(0.4 * RES);
   /** How far in from the edge of its roof the point is, as far as a roof
@@ -242,7 +275,9 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
     for (let c = 0; c < town.w; c++) {
       const me = buildingOn(town, c, r);
       if (!me || (only && !only.has(`${c},${r}`))) continue;
-      const rgb = colour(me.kind as BuildingKind);
+      // Each tile a shade of its kind's colour, so a row reads as houses.
+      const shade = 0.93 + 0.1 * hash(c, r, 2);
+      const rgb = colour(me.kind as BuildingKind).map((v) => Math.min(1, v * shade)) as RGB;
       const top = eaves(me);
       // The tile's samples: how far outside, and how high the roof over it.
       const roof = (x: number, y: number) => height(me, x, y);
@@ -250,7 +285,7 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
       for (let j = 0; j <= RES; j++) {
         for (let i = 0; i <= RES; i++) {
           const [x, y] = [c + i / RES, r + j / RES];
-          f.push(outside(town, c, r, x, y));
+          f.push(Math.max(outside(town, c, r, x, y), into(x, y) - formOf(me).depth));
           h.push(roof(x, y));
         }
       }
@@ -305,7 +340,7 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
         const theirs = (x: number, y: number) => height(them, x, y);
         const mine = (k: number) => (dc ? h[at(dc > 0 ? RES : 0, k)] : h[at(k, dr > 0 ? RES : 0)]);
         const inside = (k: number) => (dc ? f[at(dc > 0 ? RES : 0, k)] : f[at(k, dr > 0 ? RES : 0)]) < 0;
-        const theirsInside = (k: number) => outside(town, c + dc, r + dr, ...edge(k)) < 0;
+        const theirsInside = (k: number) => Math.max(outside(town, c + dc, r + dr, ...edge(k)), into(...edge(k)) - formOf(them).depth) < 0;
         for (let k = 0; k < RES; k++) {
           if (!inside(k) || !inside(k + 1) || !theirsInside(k) || !theirsInside(k + 1)) continue;
           const [p, q] = [edge(k), edge(k + 1)];
