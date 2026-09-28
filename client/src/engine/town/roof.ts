@@ -2,7 +2,8 @@ import earcut from "earcut";
 import type { MeshGeometry } from "../Mesh";
 import type { BuildingKind } from "../../generated";
 import type { Town } from "./grid";
-import { eaves, sheds, slope, type RGB } from "./mass";
+import { eaves, slope, type RGB } from "./mass";
+import { facts } from "./facts";
 import { convex, footprints, intersect, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
 
 /**
@@ -29,7 +30,7 @@ type V = [number, number, number];
 type Line = [number, number, number];
 
 export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
-  const { town, head } = sheds(painted);
+  const { town, head } = facts(painted);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */

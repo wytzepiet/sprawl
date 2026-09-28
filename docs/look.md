@@ -75,6 +75,17 @@ The code is `client/src/engine/town/`:
   hall and lighter, found from the building's tiles, its long way and the
   end with most street round it; a workshop of a tile or three is a hall
   alone.
+- **Facts, then looks** (`town/facts.ts`): a pre-pass works out what a
+  tile cannot see from its neighbours, once for the whole town: a shed's
+  office end, and a courtyard, open ground that no street and no map edge
+  reaches. Everything drawn is a function of a tile, its neighbours and
+  these facts.
+- **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
+  courtyard is a lawn with a tree on most tiles; paved ground closed in
+  stays a square. A straight street before homes, shops or open ground has
+  a tree on its verge every third tile; through roads, junctions, bends,
+  diagonals and industrial streets stay bare. Where a tree stands comes
+  from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted**, a tile at a time as roads are drawn, with a
   brush per kind (`town/brush.ts`). Each kind has a program: the smallest
   rectangle it works in, fronting a street along its long side, and how far
@@ -97,11 +108,10 @@ The code is `client/src/engine/town/`:
   (failed on real plans); plans on a fine grid by marching squares (clean
   diagonals, but nicked corners and slower, for no gain).
 
-What it does not do yet: the ground between buildings is bare; heights
-come from the kind alone; and it is in the sandbox, not the game. Next:
-the facts pre-pass and dressing, the free tiles decided like the rest (a
-courtyard's garden, street trees, and later kerb parking and front yards);
-then into the game on the terrain's chunks and worker, with the facts
+What it does not do yet: heights come from the kind alone; the dressing
+is gardens and street trees only; and it is in the sandbox, not the game.
+Next: more dressing (kerb parking, front yards, lamps before shops); then
+into the game on the terrain's chunks and worker, with the facts
 that change play (a depot's docks, an airport's gates) worked out on the
 server.
 
@@ -183,7 +193,7 @@ building's tiles, a street, a junction, or a free tile):
 1. Parking belongs to streets (`parking.md`, direction of 2026-09-28): the
    biggest change to the picture, and a deletion. The town grid goes into
    the game with it.
-2. Dressing: the free tiles, by the same rules as the rest.
+2. More dressing: kerb parking with step 1, front yards, lamps before shops.
 3. New fixtures and concepts: a shopping parade, a port, an industrial
    row, an airport.
 4. The ladders, as the growth loop arrives.

@@ -14,7 +14,9 @@ import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/to
 import type { BuildingKind, TerrainType } from "../generated";
 import { formOf } from "../engine/town/mass";
 import { townMesh as mesh } from "../engine/town/roof";
-import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
+import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_CROWN, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
+import { facts } from "../engine/town/facts";
+import { dress } from "../engine/town/dressing";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -423,6 +425,24 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   add("through", merge(roads.through[1]), theme.highway);
 
   add("mass", mesh(town, colourOf), Color3.White());
+
+  // The free ground, dressed: courtyard lawns, and trees in them and along
+  // the streets, as crowns like the forest's.
+  const { gardens, trees } = dress(town, facts(town));
+  add("garden", quadsAt(gardens, 0.005), theme.garden);
+  const crowns: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
+  for (const t of trees) {
+    const base = crowns.positions.length / 3;
+    const [w, zs] = [0.35 * t.scale, 0.35 * t.scale];
+    const rgb = theme.crowns[t.shade];
+    for (let i = 0; i < TREE_CROWN.positions.length; i += 3) {
+      crowns.positions.push(-(t.x + TREE_CROWN.positions[i] * w), -(t.y + TREE_CROWN.positions[i + 1] * w), TREE_CROWN.positions[i + 2] * zs);
+      crowns.normals.push(-TREE_CROWN.normals[i], -TREE_CROWN.normals[i + 1], TREE_CROWN.normals[i + 2]);
+      crowns.colors.push(rgb.r, rgb.g, rgb.b, 1);
+    }
+    for (const k of TREE_CROWN.indices) crowns.indices.push(base + k);
+  }
+  add("crowns", crowns, Color3.White());
 
   // The tiles' grid, faint, over the ground and under the buildings: `g`
   // hides it.
