@@ -139,16 +139,14 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.
-- **Plans are the terrain's rule, then one spacing** (`town/footprint.ts`).
+- **Plans are the terrain's rule, with a margin per face** (`town/footprint.ts`).
   A building is its tiles' whole squares, a row stepping on the diagonal a
   straight band (steps' outer corners cut, the corners between filled).
-  Then spacing, the same every way as far as the grid allows: every
-  building kept a fixed distance from each street's middle line, straight
-  or diagonal, and two different buildings meeting each give up half a
-  gap. On a square grid things on the diagonal are only 0.7 apart; any
-  rule a tile decides alone passes that on, so the spacing is done over
-  the whole shapes instead. Where nothing is near, a building keeps its
-  whole squares. Buildings join only their own kind, as terrain types do.
+  Every face, straight or diagonal, keeps a margin from what is across it:
+  from a street, a fixed distance from its middle line whichever way the
+  street runs; from another building, half a gap; from open ground, none.
+  So spacing is the same every way, and each tile's shape is still decided
+  by its neighbours alone. Buildings join only their own kind.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
