@@ -159,7 +159,7 @@ function tidy(ring: Pt[]): Pt[] {
 
 /** The pieces a town's buildings are made of, each with the tile whose
  *  building, height and colour it is, and which building each tile is. */
-export function plan(town: Town) {
+function plan(town: Town) {
   /** Are the tiles at (c, r) and (x, y) one building? */
   const one = (c: number, r: number, x: number, y: number) =>
     isBuilt(town.tile(c, r)) && isBuilt(town.tile(x, y)) && kin(town.tile(c, r), town.tile(x, y));

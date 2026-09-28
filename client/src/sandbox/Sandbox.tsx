@@ -12,15 +12,8 @@ import type { MeshGeometry } from "../engine/Mesh";
 import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind } from "../generated";
-import { formOf, massMesh } from "../engine/town/mass";
-import { townMesh } from "../engine/town/roof";
-import { rasterFootprints } from "../engine/town/raster";
-
-/** The buildings' mesher: exact plans and roofs; `?m=grid`, plans on a fine
- *  grid by marching squares, to compare; `?m=old`, the sampled one. */
-const mesh: typeof townMesh = { old: massMesh, grid: (t: Town, c: Parameters<typeof townMesh>[1], o?: Set<string>) => townMesh(t, c, o, rasterFootprints) }[
-  new URLSearchParams(location.search).get("m") ?? ""
-] ?? townMesh;
+import { formOf } from "../engine/town/mass";
+import { townMesh as mesh } from "../engine/town/roof";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the

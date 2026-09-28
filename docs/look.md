@@ -82,94 +82,33 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   road, water, wood, open ground) and some storeys, and the road links
   between tiles. Nothing about lots, driveways, facings or who owns what:
   those are the simulation's, and the look reads none of them.
-- **A built tile is four quarters**, and a quarter is shaped by the three
-  tiles at its corner: the two beside it and the one on the diagonal.
-  Built beside it, it runs on wall to wall; a road, it stops at the
-  pavement; open ground, it leaves a garden's depth. Built on both sides
-  and open on the diagonal, the corner is a courtyard's inside corner.
-  Road on both sides, the corner is cut on the diagonal to the junction.
-- **Which way a road runs is part of the corner.** Two road tiles beside
-  a quarter, joined to each other, are one street running across the
-  corner on the diagonal, and the corner is cut deep, clear of it; not
-  joined, they are two streets meeting beyond it, and the cut is a
-  chamfer. The tiles alone cannot tell these apart; the links can.
-- **Diagonals are the terrain's rule.** Open ground with buildings on
-  both sides of a corner has that corner filled on the diagonal, and the
-  buildings' faces run straight across it; the outer corner of a step,
-  with the row going on beyond both its sides, is cut on the same line.
-  So a row stepping along a diagonal street is a straight front, the back
-  of it too, and a courtyard's inside corners are cut at forty-five
-  degrees, as the terrain turns a staircase of water tiles into a shore.
-- **Each kind has a form**: how it meets the street and its neighbours,
-  a row of a table (`FORMS` in `town/mass.ts`). Homes and high-street
-  shops are one family, joined wall to wall at the pavement, gardens
-  behind. Offices keep a forecourt; sheds stand apart behind a paved yard;
-  a big box stands behind its car park. Only the street side is kept
-  open, where the docks and the parking go; elsewhere buildings stand
-  close, a narrow alley between two, and where their backs are ragged the
-  space between them is what is left over. So an industrial estate is
-  sheds packed side by side and never a terrace of factories into houses.
-  Seen in the real places: Lage Weide (industry), Zuidas (offices), the ArenA Boulevard
-  (big boxes).
-- **A building is only so deep** from the edge of its block (a tile for
-  homes and shops, more for offices, as deep as it likes for a shed): the
-  rest is the block's inside, a courtyard. So a solid block is a ring of
-  houses round a garden however it was painted or mapped (13-block).
-- **A row of houses is one roof, with a rhythm**, as a 1920s Utrecht street
-  is: one colour, one height, a ridge along the street, the row stood back
-  behind a strip of front garden, and now and then (every sixth) a house
-  stepping forward to the pavement under a gable of its own with its point
-  on the front. The gable is a height the roof is raised to, so the valleys
-  where it meets the main roof fall out. Only on a straight street: on one
-  stepping on the diagonal the road beside a house is a step, not its
-  front, and the row there is a plain band along the street, as deep as a
-  straight row's, running on into the corners of the steps the street
-  leaves and across half of each open tile behind it (12-diagonal).
-- **A shed is a business park's** (14-business, Lage Weide): its office
-  at its street end, the whole end across, a couple of storeys over the
-  hall and lighter, and rooflights across the hall's roof the short way.
-  Both are found from the building's tiles, its long way and the end with
-  most street round it; a workshop of a tile or three is a hall alone.
-- **A building is what was painted as one.** Two sheds painted side by
-  side stay two sheds, each on its yard; painting beside one grows that
-  one. Houses and shops are the exception: a street's run on into a row
-  whoever built them. A factory beside a depot is two buildings. A fixture
-  has no record of what was painted as one, so there a kind's touching
-  tiles are one building.
-- **Streets are kept clear by distance**, from the middle line of every
-  street at whatever angle it runs, not by which side a road tile is on:
-  a diagonal street gets a front parallel to it.
-- **Plans are the terrain's rule, with straight lines** (`town/footprint.ts`).
-  A building's tile is its whole square; a row stepping on the diagonal is
-  a straight band as thick as a straight row, its steps' outer corners cut
-  and the corners between them (or an L's inside) filled, on lines half a
-  tile either side of the row's middle; a street across a corner parts the tiles either side. Then the
-  whole outline is drawn in by one width, so every side facing out, to a
-  street, a garden or a neighbour, straight or diagonal, stands back alike.
-  Roads decide nothing else, and are narrower (0.3 of a tile) to leave
-  buildings room. Setbacks, gardens, courtyards and gables built
-  on distances broke on diagonals and at street ends, and are gone; any
-  comes back only as a rule of the same kind.
+- **A building is its tiles' squares, drawn as the terrain draws a
+  shore** (`town/footprint.ts`). Tiles join into one building if they are
+  one kind (and, for sheds, offices and boxes, painted as one); houses run
+  on into rows whoever built them. A row stepping on the diagonal is a
+  straight band: its steps' outer corners are cut and the corners between
+  them filled, on lines half a tile either side of the row's middle. An
+  L's inside corner stays square unless it is one of a run of them along
+  a diagonal. A diagonal street across a corner parts the tiles either
+  side. Then the whole outline is drawn in by one width, so every side
+  facing out stands back alike, straight or diagonal. Each tile's shape is
+  decided by its neighbours alone, so every layout is covered.
 - **A row keeps half a tile from its street's middle line, whatever the
-  angle.** A straight row's tile does that by itself. A row stepping
-  beside a diagonal street has its middles only 0.7 from the street, so its
-  band is cut back on the street side and filled out to its tiles' corners
-  on the other. After the draw-in its clearance is a straight row's; it is
-  a little thinner. Roads keep their own geometry; only this band reads
-  their links.
+  angle.** A straight row's tile does that by itself; beside a diagonal
+  street, whose line is only 0.7 from the row's middles, the band is cut
+  back on the street side and filled out to its tiles' corners on the
+  other. Roads keep their own geometry, 0.3 of a tile wide; buildings read
+  only their links.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
-- **The roof is the distance in from the outline**, so a row gets a
-  ridge, its end a hip and an L a valley, and nothing is told which way
-  to run. A quarter is a few straight lines, so the outline is traced
-  from samples of their largest signed distance, a metre apart, and where
-  it turns a corner between two samples the corner is put back where the
-  two walls' lines meet, sharp, and not cut off across the sample.
-  Different heights join wall to wall and keep their own roofs.
-- **Every layout is covered**: a quarter has some thirty cases, not the
-  thousands a tile has with eight neighbours, so there is nothing to
-  draw per situation, only the rules of a quarter to tune.
+  A house's roof climbs no higher than a one-tile row's ridge, so deeper
+  buildings are flat on top at that height.
+- **A shed is a business park's** (14-business, Lage Weide): its office
+  at its street end, the whole end across, a couple of storeys over the
+  hall and lighter, found from the building's tiles, its long way and the
+  end with most street round it; a workshop of a tile or three is a hall
+  alone.
 - **Buildings are painted**, a tile at a time as roads are drawn, with a
   brush per kind (`town/brush.ts`). Each kind has a program: the smallest
   rectangle it works in, fronting a street along its long side, and how far
@@ -178,13 +117,19 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   smallest working building holding it, shown as a ghost: one tile becomes a
   whole depot, painting sideways turns it, painting on makes it bigger, a
   bump and all. Only tiles it can take are lit, so nothing invalid is ever
-  painted. Letting go builds it. Size will be capacity: a longer frontage
-  more docks, a bigger farm more fields.
+  painted. Letting go builds it. Painting beside a building grows that one.
 - **The sandbox** (`/sandbox` on the dev client) draws any fixture with
   no server, over a faint grid of its tiles (`g` hides it), and paints: a
   brush per kind, taller and lower, and "Copy" to take the map away as a
-  fixture. `bun run shots --sandbox` photographs
-  every fixture this way in seconds.
+  fixture. `bun run shots --sandbox` photographs every fixture this way in
+  seconds.
+- **Tried and dropped**, so they are not tried again blind: plans sampled
+  as distance fields (wobble, clipped corners); front gardens, courtyards
+  by depth, gables and dormers built on distances (they broke on diagonals
+  and at street ends); street clearance cut from the road's drawn shape
+  (curved and notched corners); a straight-skeleton library for roofs
+  (failed on real plans); plans on a fine grid by marching squares (clean
+  diagonals, but nicked corners and slower, for no gain).
 
 What it does not do yet: heights come from
 the kind alone; the ground between buildings is bare; and it is in the
