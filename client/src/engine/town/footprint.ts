@@ -157,8 +157,9 @@ function tidy(ring: Pt[]): Pt[] {
   return out;
 }
 
-/** Every building's plan, a mass for each of its heights. */
-export function footprints(town: Town, head: (c: number, r: number) => boolean): Mass[] {
+/** The pieces a town's buildings are made of, each with the tile whose
+ *  building, height and colour it is, and which building each tile is. */
+export function plan(town: Town) {
   /** Are the tiles at (c, r) and (x, y) one building? */
   const one = (c: number, r: number, x: number, y: number) =>
     isBuilt(town.tile(c, r)) && isBuilt(town.tile(x, y)) && kin(town.tile(c, r), town.tile(x, y));
@@ -243,6 +244,12 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
     }
   }
 
+  return { pieces, building };
+}
+
+/** Every building's plan, a mass for each of its heights. */
+export function footprints(town: Town, head: (c: number, r: number) => boolean): Mass[] {
+  const { pieces, building } = plan(town);
   const byBuilding = new Map<number, typeof pieces>();
   for (const p of pieces) {
     const id = building.get(`${p.at[0]},${p.at[1]}`)!;

@@ -28,7 +28,7 @@ type V = [number, number, number];
 /** A wall's line: how far in from it a point is, a·x + b·y + c. */
 type Line = [number, number, number];
 
-export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
+export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>, plans = footprints): MeshGeometry & { colors: number[] } {
   const { town, head } = sheds(painted);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   /** A triangle in the fixture's frame, turned into the world's (+x to the
@@ -62,7 +62,7 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
     }
   };
 
-  for (const mass of footprints(town, head)) {
+  for (const mass of plans(town, head)) {
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);
