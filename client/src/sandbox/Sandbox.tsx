@@ -307,7 +307,7 @@ function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
   ground.material = gm;
   meshes.push(ground);
 
-  // Water a step down, so the ink finds its edge; woods a shade darker; and
+  // Water, woods a shade darker, and
   // paving, a car park's or under a building whose form leaves a yard.
   const quads = (on: (t: Tile) => boolean, z: number) => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
@@ -321,7 +321,7 @@ function build(scene: Scene, town: Town, theme: Theme): Mesh[] {
     }
     return g;
   };
-  add("water", quads((t) => t.kind === "water", -0.08), theme.water);
+  add("water", quads((t) => t.kind === "water", 0.002), theme.water);
   add("wood", quads((t) => t.kind === "wood", 0.004), theme.forest);
   add("paved", quads((t) => t.kind === "paved" || (isBuilt(t) && formOf(t).yard === "paved"), 0.006), theme.paved);
 
