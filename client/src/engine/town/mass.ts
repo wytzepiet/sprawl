@@ -53,12 +53,12 @@ interface Form {
 }
 const STREET: Form = { family: "street", clear: 0.47, apart: 0.14, corners: true, depth: 1 };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
-  Office: { family: "office", clear: 0.72, apart: 0.05, yard: "paved", depth: 2.5 },
-  Workshop: { family: "industry", clear: 0.8, apart: 0.05, yard: "paved", depth: Infinity },
-  Factory: { family: "industry", clear: 0.8, apart: 0.05, yard: "paved", depth: Infinity },
-  Warehouse: { family: "industry", clear: 0.8, apart: 0.05, yard: "paved", depth: Infinity },
-  Supermarket: { family: "box", clear: 1.0, apart: 0.05, yard: "paved", depth: Infinity },
-  GasStation: { family: "box", clear: 0.9, apart: 0.05, yard: "paved", depth: Infinity },
+  Office: { family: "office", clear: 0.72, apart: 0.1, yard: "paved", depth: 2.5 },
+  Workshop: { family: "industry", clear: 0.8, apart: 0.1, yard: "paved", depth: Infinity },
+  Factory: { family: "industry", clear: 0.8, apart: 0.1, yard: "paved", depth: Infinity },
+  Warehouse: { family: "industry", clear: 0.8, apart: 0.1, yard: "paved", depth: Infinity },
+  Supermarket: { family: "box", clear: 1.0, apart: 0.1, yard: "paved", depth: Infinity },
+  GasStation: { family: "box", clear: 0.9, apart: 0.1, yard: "paved", depth: Infinity },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 

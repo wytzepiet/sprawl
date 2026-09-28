@@ -105,10 +105,11 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   shops are one family, joined wall to wall at the pavement, gardens
   behind. Offices keep a forecourt; sheds stand apart behind a paved yard;
   a big box stands behind its car park. Only the street side is kept
-  open, where the docks and the parking go; elsewhere buildings stand as
-  close as their walls, a seam between two, so an industrial estate is
-  sheds packed side by side and never a terrace of factories into houses. Seen in the real
-  places: Lage Weide (industry), Zuidas (offices), the ArenA Boulevard
+  open, where the docks and the parking go; elsewhere buildings stand
+  close, a narrow alley between two, and where their backs are ragged the
+  space between them is what is left over. So an industrial estate is
+  sheds packed side by side and never a terrace of factories into houses.
+  Seen in the real places: Lage Weide (industry), Zuidas (offices), the ArenA Boulevard
   (big boxes).
 - **A building is only so deep** from the edge of its block (a tile for
   homes and shops, more for offices, as deep as it likes for a shed): the
