@@ -26,12 +26,14 @@ import { isBuilt, type Tile, type Town } from "./grid";
 /** Samples along a tile's edge. A tile is twelve metres, so one a metre. */
 const RES = 12;
 
-/** How far a building stands back from each kind of neighbour. */
-const SETBACK: Record<string, number> = { road: 0.03, water: 0.02, open: 0.14, wood: 0.14 };
-/** How far in from the corner a street corner is cut, and a corner a
- *  street runs across: clear of the road and its kerb. */
+/** How far a building stands back from each kind of neighbour. A road's
+ *  is kept by `CLEAR` instead, from the street's middle line. */
+const SETBACK: Record<string, number> = { road: 0, water: 0.02, open: 0.14, wood: 0.14 };
+/** How far a building keeps from the middle of any street, whichever way
+ *  it runs: the road and its kerb, and a strip of pavement. */
+const CLEAR = 0.47;
+/** How far in from the corner a street corner is cut. */
 const CHAMFER = 0.2;
-const CROSSED = 0.42;
 
 const INDUSTRY = new Set<string>(["Workshop", "Factory", "Warehouse", "Supermarket", "GasStation"]);
 
@@ -51,26 +53,82 @@ const ROOF: Joins = (a, b) => isBuilt(b) && b.storeys === a.storeys;
  * How far outside tile (c, r)'s building the point (x, y) is, as the
  * largest of its quarter's lines; below zero, inside. Joined sides draw no
  * line, so a building's inside does not end at a tile's edge.
+ *
+ * The terrain's rule for shores holds for buildings too. Open ground with
+ * buildings on both sides of a corner has that corner filled on the
+ * diagonal, and a building's face runs straight across it: a row stepping
+ * along a diagonal street is a straight front and not a stair, and the
+ * outer corner of each step is cut on the same line.
  */
 export function outside(town: Town, c: number, r: number, x: number, y: number, joins: Joins = FOOT): number {
   const me = town.tile(c, r);
   const [sx, sy] = [x < c + 0.5 ? -1 : 1, y < r + 0.5 ? -1 : 1];
   const [u, w] = [Math.abs(x - c - 0.5), Math.abs(y - r - 0.5)];
   const [a, b, d] = [town.tile(c + sx, r), town.tile(c, r + sy), town.tile(c + sx, r + sy)];
+  const face = 0.5 - SETBACK.open;
+  if (!isBuilt(me)) {
+    if (!fills(me, a, b)) return 1;
+    return Math.max((1 - u - w - face) / Math.SQRT2, street(town, x, y));
+  }
   const gap = (t: Tile) => (isBuilt(t) ? 0 : SETBACK[t.kind]);
   let f = -1;
   const [ja, jb] = [joins(me, a), joins(me, b)];
-  if (!ja) f = Math.max(f, u - 0.5 + gap(a));
-  if (!jb) f = Math.max(f, w - 0.5 + gap(b));
-  if (ja && jb && !joins(me, d)) {
+  if (!ja) f = Math.max(f, fills(a, me, d) ? (u - w - face) / Math.SQRT2 : u - 0.5 + gap(a));
+  if (!jb) f = Math.max(f, fills(b, me, d) ? (w - u - face) / Math.SQRT2 : w - 0.5 + gap(b));
+  if (ja && jb && !joins(me, d) && !fills(d, a, b)) {
     const edge = 0.5 - gap(d);
     f = Math.max(f, Math.min(u - edge, w - edge));
   }
-  if (a.kind === "road" && b.kind === "road") {
-    const cut = town.linked(c + sx, r, c, r + sy) ? CROSSED : CHAMFER;
-    f = Math.max(f, (cut - (1 - u - w)) / Math.SQRT2);
+  // The outer corner of a step, with the row going on beyond both its
+  // sides: cut on the diagonal the row's face runs along.
+  const steps = !isBuilt(a) && !isBuilt(b) && !isBuilt(d) && isBuilt(town.tile(c + sx, r - sy)) && isBuilt(town.tile(c - sx, r + sy));
+  if (steps) f = Math.max(f, (u + w - face) / Math.SQRT2);
+  if (a.kind === "road" && b.kind === "road" && !town.linked(c + sx, r, c, r + sy)) {
+    f = Math.max(f, (CHAMFER - (1 - u - w)) / Math.SQRT2);
   }
-  return f;
+  return Math.max(f, street(town, x, y));
+}
+
+/** Is `t` open ground with buildings, `p` and `q`, on both its sides at a
+ *  corner? Then the corner is theirs, filled on the diagonal: a row
+ *  stepping across it runs straight on, and a courtyard's inside corner is
+ *  cut at forty-five degrees, as the terrain rounds a shore's. */
+const fills = (t: Tile, p: Tile, q: Tile) => t.kind === "open" && isBuilt(p) && isBuilt(q);
+
+/** A tile's building as the look draws it: its own, or, for open ground
+ *  a row steps across, that row's. */
+function buildingOn(town: Town, c: number, r: number): Tile | null {
+  const me = town.tile(c, r);
+  if (isBuilt(me)) return me;
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const [a, b] = [town.tile(c + sx, r), town.tile(c, r + sy)];
+    if (fills(me, a, b)) return a;
+  }
+  return null;
+}
+
+/** How much nearer than `CLEAR` the point is to the middle line of a
+ *  street: the lines between joined road tiles, at any angle, and the
+ *  middle of a road tile joined to none. */
+function street(town: Town, x: number, y: number): number {
+  const [c0, r0] = [Math.floor(x), Math.floor(y)];
+  let near = Infinity;
+  for (let r = r0 - 1; r <= r0 + 1; r++) {
+    for (let c = c0 - 1; c <= c0 + 1; c++) {
+      if (town.tile(c, r).kind !== "road") continue;
+      const [px, py] = [c + 0.5, r + 0.5];
+      near = Math.min(near, Math.hypot(x - px, y - py));
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (!town.linked(c, r, c + dc, r + dr)) continue;
+          // Along the line from this middle to the next, as far as it goes.
+          const t = Math.max(0, Math.min(1, ((x - px) * dc + (y - py) * dr) / (dc * dc + dr * dr)));
+          near = Math.min(near, Math.hypot(x - px - t * dc, y - py - t * dr));
+        }
+      }
+    }
+  }
+  return CLEAR - near;
 }
 
 type RGB = [number, number, number];
@@ -117,8 +175,8 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB): MeshGeom
 
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      const me = town.tile(c, r);
-      if (!isBuilt(me)) continue;
+      const me = buildingOn(town, c, r);
+      if (!me) continue;
       const rgb = colour(me.kind as BuildingKind);
       const top = eaves(me);
       // The tile's samples: how far outside, and how high the roof over it.
@@ -183,8 +241,9 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB): MeshGeom
           eaves(them) + rise(them, Math.max(0, -outside(town, c + dc, r + dr, x, y, ROOF)));
         const mine = (k: number) => (dc ? h[at(dc > 0 ? RES : 0, k)] : h[at(k, dr > 0 ? RES : 0)]);
         const inside = (k: number) => (dc ? f[at(dc > 0 ? RES : 0, k)] : f[at(k, dr > 0 ? RES : 0)]) < 0;
+        const theirsInside = (k: number) => outside(town, c + dc, r + dr, ...edge(k)) < 0;
         for (let k = 0; k < RES; k++) {
-          if (!inside(k) || !inside(k + 1)) continue;
+          if (!inside(k) || !inside(k + 1) || !theirsInside(k) || !theirsInside(k + 1)) continue;
           const [p, q] = [edge(k), edge(k + 1)];
           const [tp, tq] = [theirs(...p), theirs(...q)];
           if (mine(k) <= tp + 1e-4 && mine(k + 1) <= tq + 1e-4) continue;

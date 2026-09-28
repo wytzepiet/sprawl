@@ -93,6 +93,16 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   corner on the diagonal, and the corner is cut deep, clear of it; not
   joined, they are two streets meeting beyond it, and the cut is a
   chamfer. The tiles alone cannot tell these apart; the links can.
+- **Diagonals are the terrain's rule.** Open ground with buildings on
+  both sides of a corner has that corner filled on the diagonal, and the
+  buildings' faces run straight across it; the outer corner of a step,
+  with the row going on beyond both its sides, is cut on the same line.
+  So a row stepping along a diagonal street is a straight front, the back
+  of it too, and a courtyard's inside corners are cut at forty-five
+  degrees, as the terrain turns a staircase of water tiles into a shore.
+- **Streets are kept clear by distance**, from the middle line of every
+  street at whatever angle it runs, not by which side a road tile is on:
+  a diagonal street gets a front parallel to it.
 - **The roof is the distance in from the outline**, so a row gets a
   ridge, its end a hip and an L a valley, and nothing is told which way
   to run. A quarter is a few straight lines, so the outline is traced
@@ -106,8 +116,7 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   to take the map away as a fixture. `bun run shots --sandbox` photographs
   every fixture this way in seconds.
 
-What it does not do yet: a street that runs on the diagonal leaves the
-buildings beside it stepped, each step's corner cut; heights come from
+What it does not do yet: heights come from
 the kind alone; the ground between buildings is bare; and it is in the
 sandbox, not the game. Next, in the sandbox: gardens and yards on the
 open ground a block closes in, shop fronts and awnings on the quarters

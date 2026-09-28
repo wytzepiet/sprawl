@@ -510,6 +510,11 @@ const CORNER_PRIORITY: Record<TerrainType, number> = {
   Sea: 0,
 };
 
+/** Does `a` take a corner from `b`? Every pair has one answer, ties
+ *  settled by name, so two kinds never both claim a corner. */
+const wins = (a: TerrainType, b: TerrainType) =>
+  CORNER_PRIORITY[a] > CORNER_PRIORITY[b] || (CORNER_PRIORITY[a] === CORNER_PRIORITY[b] && a > b);
+
 /** For each corner [BL, BR, TR, TL], the two cardinal neighbours to check. */
 const CORNER_NEIGHBORS: [[number, number], [number, number]][] = [
   [[-1, 0], [0, -1]], // BL: left + below
@@ -537,10 +542,14 @@ function cornersAt(x: number, y: number, typeAt: TypeAt): (TerrainType | null)[]
     const t2 = typeAt(x + d2[0], y + d2[1]);
     if (t1 === undefined || t2 === undefined) return null;
     if (t1 === mine || t2 === mine || ELEVATION[t1] !== ELEVATION[t2]) return null;
-    if (t1 === t2) return t1;
+    const diag = typeAt(x + d1[0] + d2[0], y + d1[1] + d2[1]);
+    // A saddle, my own kind across the diagonal: only one kind can run
+    // through the corner. Both rounding it laid their curves over each
+    // other's and crossed their cliffs; the kind that wins a corner runs
+    // through, and the other keeps its corners square.
+    if (t1 === t2) return diag === mine && !wins(t1, mine) ? null : t1;
 
     // Types differ: only round the corner if the diagonal agrees with one.
-    const diag = typeAt(x + d1[0] + d2[0], y + d1[1] + d2[1]);
     if (diag !== t1 && diag !== t2) return null;
     return CORNER_PRIORITY[t1] >= CORNER_PRIORITY[t2] ? t1 : t2;
   });
