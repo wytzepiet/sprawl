@@ -12,7 +12,6 @@ import type { MeshGeometry } from "../engine/Mesh";
 import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
-import { formOf } from "../engine/town/mass";
 import { townMesh as mesh } from "../engine/town/roof";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_CROWN, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { facts } from "../engine/town/facts";
@@ -297,15 +296,19 @@ function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: 
  * chunk, each with its skirt, through the builder the terrain worker runs.
  */
 function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
+  // Paved ground is a terrain of its own, rounded like a shore: every road,
+  // every building and every yard makes it, and the terrain's rule decides
+  // where it meets the grass. The server has no such type yet, so here it
+  // borrows the beach's slot and is painted as paving.
   const type = (c: number, r: number): TerrainType => {
     const ch = rows[r]?.[c];
-    if (ch === "_") return "Beach";
     if (ch === "^") return "Mountain";
-    const k = town.tile(c, r).kind;
-    return k === "water" ? "Water" : k === "wood" ? "Forest" : "Grass";
+    const t = town.tile(c, r);
+    if (t.kind === "road" || t.kind === "paved" || isBuilt(t)) return "Beach";
+    return t.kind === "water" ? "Water" : t.kind === "wood" ? "Forest" : "Grass";
   };
   const palette: TerrainPalette = {
-    Water: theme.water, Sea: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.mountain,
+    Water: theme.water, Sea: theme.water, Beach: theme.paved, Grass: theme.land, Forest: theme.forest, Mountain: theme.mountain,
   };
   const out: Mesh[] = [];
   for (let cy = 0; cy * CHUNK_SIZE < town.h; cy++) {
@@ -369,22 +372,8 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   ground.material = gm;
   meshes.push(ground);
 
-  // Water, woods a shade darker, and
-  // paving, a car park's or under a building whose form leaves a yard.
-  const quads = (on: (t: Tile) => boolean, z: number) => {
-    const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-    for (let r = 0; r < town.h; r++) {
-      for (let c = 0; c < town.w; c++) {
-        if (!on(town.tile(c, r))) continue;
-        const b = g.positions.length / 3;
-        for (const [dx, dy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) g.positions.push(-(c + dx), -(r + dy), z), g.normals.push(0, 0, 1);
-        g.indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
-      }
-    }
-    return g;
-  };
+  // The ground: grass, water, woods and paving, as terrain.
   meshes.push(...terrain(scene, town, theme, rows));
-  add("paved", quads((t) => t.kind === "paved" || (isBuilt(t) && formOf(t).yard === "paved"), 0.006), theme.paved);
 
   // Roads, as the game lays them: each tile's arms to the tiles it is joined to.
   const roads = { street: [[], []] as MeshGeometry[][], through: [[], []] as MeshGeometry[][] };
@@ -428,7 +417,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The free ground, dressed: courtyard lawns, and trees in them and along
   // the streets, as crowns like the forest's.
-  const { gardens, trees, cars, pavement, lanes, bays } = dress(town, facts(town));
+  const { gardens, trees, cars, lanes, bays } = dress(town, facts(town));
   // Pavements under the roads, lanes and their bay lines over the pavement.
   const flat = (polys: [number, number][][], z: number): MeshGeometry => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
@@ -439,7 +428,6 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     }
     return g;
   };
-  add("pavement", flat(pavement, 0.008), theme.paved);
   add("lanes", flat(lanes, 0.01), theme.road);
   add("bays", flat(bays, 0.012), theme.roadBorder);
   add("garden", quadsAt(gardens, 0.005), theme.garden);

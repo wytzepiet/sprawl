@@ -17,10 +17,8 @@ import { formOf } from "./mass";
  *   ends, with a gap here and there. Through roads and streets before
  *   anything else stay clear.
  *
- * - A street (not a through road) has a pavement both sides, from its
- *   kerb to the rows' faces, and round its junctions: a town's streets
- *   are paved house to house, not grass. Where cars park, the kerb side
- *   of it is a parking lane, its bays marked.
+ * - Where cars park, the kerb is a parking lane, its bays marked. (The
+ *   pavement round it is ground: roads and buildings make paved terrain.)
  *
  * Which tiles get a tree or a car, and where, comes from the place alone,
  * so the same town is always dressed the same.
@@ -50,8 +48,6 @@ export interface Dressing {
   gardens: [number, number][];
   trees: Tree[];
   cars: Car[];
-  /** Pavement, as convex polygons that overlap where they meet. */
-  pavement: Pt[][];
   /** Parking lanes, and the lines between their bays. */
   lanes: Pt[][];
   bays: Pt[][];
@@ -64,7 +60,6 @@ const KERB = 0.32;
 /** A parking lane, from the road's kerb out; then pavement to the rows'
  *  faces. */
 const LANE: [number, number] = [0.215, 0.425];
-const FACE = 0.72;
 /** Parking bays along a street: their spacing, a car and a bit. */
 const BAY = 0.42;
 /** How far from a junction, bend or end the kerb stays clear. */
@@ -110,7 +105,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   const parked = park(town);
   const clear = (x: number, y: number) => trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3);
   const cars = parked.cars.filter((car) => clear(car.x, car.y));
-  return { gardens, trees, cars, pavement: pave(town), lanes: parked.lanes, bays: parked.bays };
+  return { gardens, trees, cars, lanes: parked.lanes, bays: parked.bays };
 }
 
 const EIGHT = [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]];
@@ -120,28 +115,6 @@ const EIGHT = [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1,
 function strip(x0: number, y0: number, ux: number, uy: number, t0: number, t1: number, nx: number, ny: number, a: number, b: number): Pt[] {
   const at = (t: number, o: number): Pt => [x0 + ux * t + nx * o, y0 + uy * t + ny * o];
   return [at(t0, a), at(t1, a), at(t1, b), at(t0, b)];
-}
-
-/** Pavement both sides of every street, kerb to the rows' faces, and an
- *  octagon as wide round each of its road tiles' middles, whose sides lie
- *  along the pavements of streets straight or diagonal, so corners close. */
-function pave(town: Town): Pt[][] {
-  const out: Pt[][] = [];
-  const k = FACE * Math.tan(Math.PI / 8);
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      if (town.tile(c, r).kind !== "road" || town.through(c, r)) continue;
-      const [x, y] = [c + 0.5, r + 0.5];
-      out.push([[x + k, y - FACE], [x + FACE, y - k], [x + FACE, y + k], [x + k, y + FACE], [x - k, y + FACE], [x - FACE, y + k], [x - FACE, y - k], [x - k, y - FACE]]);
-      for (const [dc, dr] of EIGHT) {
-        if (dc < 0 || (dc === 0 && dr < 0) || !town.linked(c, r, c + dc, r + dr) || town.through(c + dc, r + dr)) continue;
-        const len = Math.hypot(dc, dr);
-        const [ux, uy] = [dc / len, dr / len];
-        out.push(strip(x, y, ux, uy, 0, len, -uy, ux, -FACE, FACE));
-      }
-    }
-  }
-  return out;
 }
 
 /** Cars parked along the kerbs of streets before homes and shops, their
