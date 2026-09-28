@@ -48,6 +48,7 @@ describe("a quarter is shaped by the tiles at its corner", () => {
 
   test("two sheds painted side by side stay two, a row of houses stays one", () => {
     const sheds = parseTown(["....", ".DD.", "===="].join("\n"));
+    expect(outside(parseTown(["....", ".DF.", "===="].join("\n")), 1, 1, 1.99, 1.5) < 0).toBe(false);
     const apart = townOf([0, 1, 2].map((r) => [0, 1, 2, 3].map((c) => ({ ...sheds.tile(c, r), id: c }))), () => false);
     expect(outside(sheds, 1, 1, 1.99, 1.5) < 0).toBe(true);
     expect(outside(apart, 1, 1, 1.99, 1.5) < 0).toBe(false);

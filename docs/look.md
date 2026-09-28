@@ -104,9 +104,10 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   a row of a table (`FORMS` in `town/mass.ts`). Homes and high-street
   shops are one family, joined wall to wall at the pavement, gardens
   behind. Offices keep a forecourt; sheds stand apart behind a paved yard;
-  a big box stands behind its car park. A family joins itself and keeps
-  its distance from the others, so an industrial estate is sheds on yards
-  and never a terrace of factories against houses. Seen in the real
+  a big box stands behind its car park. Only the street side is kept
+  open, where the docks and the parking go; elsewhere buildings stand as
+  close as their walls, a seam between two, so an industrial estate is
+  sheds packed side by side and never a terrace of factories into houses. Seen in the real
   places: Lage Weide (industry), Zuidas (offices), the ArenA Boulevard
   (big boxes).
 - **A building is only so deep** from the edge of its block (a tile for
@@ -128,8 +129,9 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
 - **A building is what was painted as one.** Two sheds painted side by
   side stay two sheds, each on its yard; painting beside one grows that
   one. Houses and shops are the exception: a street's run on into a row
-  whoever built them. A fixture has no such record, so there a family's
-  touching tiles are one building.
+  whoever built them. A factory beside a depot is two buildings. A fixture
+  has no record of what was painted as one, so there a kind's touching
+  tiles are one building.
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.

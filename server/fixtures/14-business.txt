@@ -1,16 +1,11 @@
-# A business park: sheds on paved yards, each with its office at the street end and rooflights across the hall
-..................
-.================.
-.=::::::::.:::::=.
-.=:DDDDDD:.:FFF:=.
-.=:DDDDDD:.:FFF:=.
-.=:DDDDDD:.:::::=.
-.=::::::::.:WW:.=.
-.=.........:::..=.
-.================.
-.=:::::.::::::::=.
-.=:MMM:.:DDDD:W:=.
-.=:MMM:.:DDDD:W:=.
-.=:::::.::::::::=.
-.================.
-..................
+# A business park: sheds packed side by side, each its own, with its office at the street end, rooflights across the hall and its yard to the street
+....................
+.==================.
+.=DDDDFFFWWMMM:DDD=.
+.=DDDDFFFWWMMM:DDD=.
+.=DDDD:::..MMM:DDD=.
+.=:::::WW::::::DDD=.
+.=FFFFWWWDDDDDD:WW=.
+.=FFFF...DDDDDD:WW=.
+.==================.
+....................

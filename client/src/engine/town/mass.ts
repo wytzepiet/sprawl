@@ -53,12 +53,12 @@ interface Form {
 }
 const STREET: Form = { family: "street", clear: 0.47, apart: 0.14, corners: true, depth: 1 };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
-  Office: { family: "office", clear: 0.72, apart: 0.2, yard: "paved", depth: 2.5 },
-  Workshop: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved", depth: Infinity },
-  Factory: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved", depth: Infinity },
-  Warehouse: { family: "industry", clear: 0.8, apart: 0.22, yard: "paved", depth: Infinity },
-  Supermarket: { family: "box", clear: 1.0, apart: 0.22, yard: "paved", depth: Infinity },
-  GasStation: { family: "box", clear: 0.9, apart: 0.22, yard: "paved", depth: Infinity },
+  Office: { family: "office", clear: 0.72, apart: 0.05, yard: "paved", depth: 2.5 },
+  Workshop: { family: "industry", clear: 0.8, apart: 0.05, yard: "paved", depth: Infinity },
+  Factory: { family: "industry", clear: 0.8, apart: 0.05, yard: "paved", depth: Infinity },
+  Warehouse: { family: "industry", clear: 0.8, apart: 0.05, yard: "paved", depth: Infinity },
+  Supermarket: { family: "box", clear: 1.0, apart: 0.05, yard: "paved", depth: Infinity },
+  GasStation: { family: "box", clear: 0.9, apart: 0.05, yard: "paved", depth: Infinity },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 
@@ -74,12 +74,13 @@ function rise(t: Tile, d: number) {
   return t.storeys <= 3 ? Math.min(d * 0.75, 0.26) : Math.min(d * 0.5, 0.03);
 }
 
-/** Buildings that join: of one family, and, but for the houses and shops
- *  of a street, which run on into rows whoever built them, one building. */
+/** Buildings that join: the houses and shops of a street, which run on
+ *  into rows whoever built them, and otherwise the tiles of one building,
+ *  one kind painted as one. A factory beside a depot is two buildings. */
 const kin = (a: Tile, b: Tile) => {
   if (!isBuilt(a) || !isBuilt(b)) return false;
-  const family = formOf(a).family;
-  return family === formOf(b).family && (family === "street" || a.id === b.id);
+  const street = formOf(a).family === "street";
+  return street ? formOf(b).family === "street" : a.kind === b.kind && a.id === b.id;
 };
 
 /**
