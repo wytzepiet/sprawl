@@ -122,7 +122,8 @@ function polygons(ps: Paths): Polygon[] {
     const ring: Pt[] = [];
     for (const q of p) ring.push([q.X / S, q.Y / S]);
     const clean = tidy(ring);
-    if (clean.length >= 3 && Math.abs(area(clean)) > 1e-6) rings.push(clean);
+    // A scrap too small to be a building (a hundredth of a tile) is none.
+    if (clean.length >= 3 && Math.abs(area(clean)) > 0.02) rings.push(clean);
   }
   // Outlines and holes wind opposite ways; the biggest ring is an outline.
   const sign = Math.sign(rings.reduce((big, r) => (Math.abs(area(r)) > Math.abs(big) ? area(r) : big), 0));
@@ -164,12 +165,17 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
   /** Is there a street across the corner of (c, r) towards (sx, sy),
    *  from the tile beside it on one side to the other? */
   const across = (c: number, r: number, sx: number, sy: number) => town.linked(c + sx, r, c, r + sy);
+  /** Does a diagonal street's line run through the corner of (c, r)
+   *  towards (sx, sy): across it, or from a road tile beside it away along
+   *  the same line, so the corner is where that street's end points? */
+  const online = (c: number, r: number, sx: number, sy: number) =>
+    across(c, r, sx, sy) || town.linked(c + sx, r, c + 2 * sx, r - sy) || town.linked(c, r + sy, c - sx, r + 2 * sy);
   /** Is the corner of (c, r) towards (sx, sy) a step's outer corner: the
    *  building on neither side there nor across (a street between counts
    *  as apart), and going on along the diagonal past either side (the
    *  row's end too, so the band runs straight to it)? */
   const step = (c: number, r: number, sx: number, sy: number) =>
-    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && (!one(c, r, c + sx, r + sy) || across(c, r, sx, sy)) &&
+    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && (!one(c, r, c + sx, r + sy) || online(c, r, sx, sy)) &&
     (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy));
   /** Is the corner of ground (c, r) towards (sx, sy) filled: one building
    *  on both its sides there (an L's inside, or between two steps), and no
@@ -177,10 +183,10 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
   const fill = (c: number, r: number, sx: number, sy: number) =>
     !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && !town.linked(c, r, c + sx, r + sy) && !across(c, r, sx, sy);
   /** How far out the band's face lies towards corner (sx, sy) of built
-   *  tile (c, r): nearer where a street runs across that corner, further
-   *  where one runs across the opposite one. */
+   *  tile (c, r): nearer where a diagonal street's line runs through that
+   *  corner, further where one runs through the opposite one. */
   const band = (c: number, r: number, sx: number, sy: number) =>
-    across(c, r, sx, sy) ? NEAR : across(c, r, -sx, -sy) ? FAR : BAND;
+    online(c, r, sx, sy) ? NEAR : online(c, r, -sx, -sy) ? FAR : BAND;
   /** Tiles on the diagonal of each other, joined through a filled corner. */
   const bridged = (c: number, r: number, dx: number, dy: number) =>
     fill(c + dx, r, -dx, dy) || fill(c, r + dy, dx, -dy);
