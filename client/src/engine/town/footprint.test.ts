@@ -16,4 +16,10 @@ describe("a building's plan is one exact polygon", () => {
     expect(row.polygons.length).toBe(1);
     expect(row.polygons[0][0].length).toBe(4);
   });
+
+  test("a diagonal row beside its street is the same clean band as without the street", () => {
+    const beside = plans(["=H....", ".=H...", "..=H..", "...=H.", "......"]);
+    const alone = plans([".H....", "..H...", "...H..", "....H.", "......"]);
+    expect(beside[0].polygons[0][0]).toEqual(alone[0].polygons[0][0]);
+  });
 });

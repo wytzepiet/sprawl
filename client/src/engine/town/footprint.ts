@@ -11,7 +11,7 @@ import { kin } from "./mass";
  *    the building goes on along the diagonal past one of them.
  * 3. An inside corner is filled: ground with the building on both its
  *    sides there, between two steps or in an L.
- * 4. A street across a corner parts it: no cut, no fill, no joining.
+ * 4. A street across a corner parts it: no fill and no joining there.
  * 5. The whole outline is drawn in by one width.
  *
  * Cuts and fills lie on lines half a tile either side of a diagonal row's
@@ -161,11 +161,11 @@ function plan(town: Town) {
    *  from the tile beside it on one side to the other? */
   const across = (c: number, r: number, sx: number, sy: number) => town.linked(c + sx, r, c, r + sy);
   /** Is the corner of (c, r) towards (sx, sy) a step's: the building on
-   *  neither side there nor across it, and going on along the diagonal
-   *  past one of the sides? */
+   *  neither side there nor across it (or a street between), and going on
+   *  along the diagonal past one of the sides? */
   const step = (c: number, r: number, sx: number, sy: number) =>
-    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && !one(c, r, c + sx, r + sy) &&
-    (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy)) && !across(c, r, sx, sy);
+    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && (!one(c, r, c + sx, r + sy) || across(c, r, sx, sy)) &&
+    (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy));
   /** Is the corner of ground (c, r) towards (sx, sy) filled: the building
    *  on both its sides there (between two steps, or an L's inside), and no
    *  street across the corner or into it? As the terrain fills every inside
