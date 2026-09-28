@@ -54,8 +54,9 @@ The code is `client/src/engine/town/`:
   on into rows whoever built them. A row stepping on the diagonal is a
   straight band: its steps' outer corners are cut and the corners between
   them filled, on lines half a tile either side of the row's middle. An
-  L's inside corner stays square unless it is one of a run of them along
-  a diagonal. A diagonal street across a corner parts the tiles either
+  L's inside corner is filled only where one of its arms is cut on the
+  same line, so a diagonal face runs on across it; a courtyard's corner,
+  its arms running on, stays square. A diagonal street across a corner parts the tiles either
   side. Then the whole outline is drawn in by one width, so every side
   facing out stands back alike, straight or diagonal. Each tile's shape is
   decided by its neighbours alone, so every layout is covered.
