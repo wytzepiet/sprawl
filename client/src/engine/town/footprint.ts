@@ -12,8 +12,10 @@ import { kin } from "./mass";
  *   half a tile either side of the row's middle, so it is as thick as a
  *   straight row. A
  *   street across a corner parts it: rows either side stay apart.
- * - Then the whole outline is drawn in, every side facing out alike,
- *   straight or diagonal.
+ * - Then spacing, the same every way as far as the grid allows: every
+ *   building kept a fixed distance from each street's middle line, and
+ *   two buildings meeting each give up half a gap. Where nothing is near,
+ *   a building keeps its whole squares.
  *
  * Anything else stays square: a lone house, a straight row's end.
  */
@@ -31,8 +33,11 @@ export interface Mass {
   parts: { tile: Tile; head: boolean; polygons: Polygon[] }[];
 }
 
-/** How far every side facing out is drawn in. */
-const INSET = 0.2;
+/** How far a building keeps from a street's middle line: its tile's own
+ *  edge beside a straight street, and a pavement more. */
+const CLEAR = 0.6;
+/** The gap between two buildings, each giving half. */
+const GAP = 0.2;
 /** A row stepping on the diagonal is a band half a tile either side of the
  *  line through its tiles' middles, as thick as a straight row: cut and
  *  filled on the line this far out towards a corner from a tile's middle,
@@ -83,7 +88,7 @@ const and = (a: Paths, b: Paths) => op(ClipperLib.ClipType.ctIntersection, a, b)
  *  ways, square or at forty-five degrees. */
 function grow(ps: Paths, by: number, lines = false): Paths {
   const o = new ClipperLib.ClipperOffset(4, 0.001 * S);
-  o.AddPaths(ps, ClipperLib.JoinType.jtMiter, lines ? ClipperLib.EndType.etOpenSquare : ClipperLib.EndType.etClosedPolygon);
+  o.AddPaths(ps, lines ? ClipperLib.JoinType.jtRound : ClipperLib.JoinType.jtMiter, lines ? ClipperLib.EndType.etOpenRound : ClipperLib.EndType.etClosedPolygon);
   const out: Paths = [];
   o.Execute(out, by * S);
   return out;
@@ -147,6 +152,25 @@ function tidy(ring: Pt[]): Pt[] {
     }
   }
   return out;
+}
+
+/** The middle lines of the streets: between road tiles joined to each
+ *  other, and a road tile joined to none as a point. */
+function streets(town: Town): Pt[][] {
+  const lines: Pt[][] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (town.tile(c, r).kind !== "road") continue;
+      let joined = false;
+      for (const [dc, dr] of [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]]) {
+        if (!town.linked(c, r, c + dc, r + dr)) continue;
+        joined = true;
+        if (dc > 0 || (dc === 0 && dr > 0)) lines.push([[c + 0.5, r + 0.5], [c + dc + 0.5, r + dr + 0.5]]);
+      }
+      if (!joined) lines.push([[c + 0.5, r + 0.5], [c + 0.5 + 1e-4, r + 0.5]]);
+    }
+  }
+  return lines;
 }
 
 /** Every building's plan, a mass for each of its heights. */
@@ -226,10 +250,20 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
   // Pieces meet edge to edge: joined a hair wide and drawn back, so no
   // hairline is left between them.
   const whole = (rings: Pt[][]) => grow(grow(union(paths(rings)), HAIR), -HAIR);
+  const raws = [...byBuilding.values()].map((ps) => {
+    const raw = whole(ps.map((p) => p.ring));
+    const xs = raw.flat().map((q) => q.X / S), ys = raw.flat().map((q) => q.Y / S);
+    return { ps, raw, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
+  });
+  const near = (a: number[], b: number[], by: number) => a[0] - by <= b[2] && b[0] - by <= a[2] && a[1] - by <= b[3] && b[1] - by <= a[3];
+  const streetLines = streets(town);
   const masses: Mass[] = [];
-  for (const ps of byBuilding.values()) {
-    // The whole building drawn in once, then split by height.
-    const plan = grow(whole(ps.map((p) => p.ring)), -INSET);
+  for (const { ps, raw, box } of raws) {
+    const lines = streetLines.filter((l) => l.some(([x, y]) => near(box, [x, y, x, y], 1)));
+    const others = raws.filter((o) => o.raw !== raw && near(box, o.box, GAP)).flatMap((o) => o.raw);
+    let plan = raw;
+    if (lines.length) plan = minus(plan, grow(paths(lines), CLEAR, true));
+    if (others.length) plan = minus(plan, grow(union(others), GAP / 2));
     for (const storeys of new Set(ps.map((p) => tileOf(p).storeys))) {
       const mine = ps.filter((p) => tileOf(p).storeys === storeys);
       const shape = and(whole(mine.map((p) => p.ring)), plan);

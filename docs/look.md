@@ -139,17 +139,16 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.
-- **Plans are the terrain's rule, with straight lines** (`town/footprint.ts`).
-  A building's tile is its whole square; a row stepping on the diagonal is
-  a straight band as thick as a straight row, its steps' outer corners cut
-  and the corners between them (or an L's inside) filled, on lines half a
-  tile either side of the row's middle; a street across a corner parts the tiles either side. Then the
-  whole outline is drawn in by one width, so every side facing out, to a
-  street, a garden or a neighbour, straight or diagonal, stands back alike.
-  Roads decide nothing else, and are narrower (0.3 of a tile) to leave
-  buildings room. Setbacks, gardens, courtyards and gables built
-  on distances broke on diagonals and at street ends, and are gone; any
-  comes back only as a rule of the same kind.
+- **Plans are the terrain's rule, then one spacing** (`town/footprint.ts`).
+  A building is its tiles' whole squares, a row stepping on the diagonal a
+  straight band (steps' outer corners cut, the corners between filled).
+  Then spacing, the same every way as far as the grid allows: every
+  building kept a fixed distance from each street's middle line, straight
+  or diagonal, and two different buildings meeting each give up half a
+  gap. On a square grid things on the diagonal are only 0.7 apart; any
+  rule a tile decides alone passes that on, so the spacing is done over
+  the whole shapes instead. Where nothing is near, a building keeps its
+  whole squares. Buildings join only their own kind, as terrain types do.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
