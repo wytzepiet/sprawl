@@ -15,6 +15,9 @@ export interface Tile {
   /** A building's kind, or the ground's. */
   kind: BuildingKind | Ground;
   storeys: number;
+  /** Which building the tile is part of, where that is known: two sheds
+   *  painted side by side are two sheds. Unknown, tiles of a family join. */
+  id?: number;
 }
 
 export interface Town {

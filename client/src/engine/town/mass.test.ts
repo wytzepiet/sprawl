@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseTown } from "./grid";
+import { parseTown, townOf } from "./grid";
 import { outside } from "./mass";
 
 /** Is the point (x, y) inside the building on tile (c, r)? */
@@ -44,5 +44,12 @@ describe("a quarter is shaped by the tiles at its corner", () => {
     expect(built(crossed, 1, 1, 1.2, 1.8)).toBe(false);
     expect(built(turning, 1, 1, 1.2, 1.8)).toBe(true);
     expect(built(crossed, 1, 1, 1.45, 1.55)).toBe(true);
+  });
+
+  test("two sheds painted side by side stay two, a row of houses stays one", () => {
+    const sheds = parseTown(["....", ".DD.", "===="].join("\n"));
+    const apart = townOf([0, 1, 2].map((r) => [0, 1, 2, 3].map((c) => ({ ...sheds.tile(c, r), id: c }))), () => false);
+    expect(outside(sheds, 1, 1, 1.99, 1.5) < 0).toBe(true);
+    expect(outside(apart, 1, 1, 1.99, 1.5) < 0).toBe(false);
   });
 });

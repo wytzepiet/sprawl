@@ -74,8 +74,13 @@ function rise(t: Tile, d: number) {
   return t.storeys <= 3 ? Math.min(d * 0.75, 0.26) : Math.min(d * 0.5, 0.03);
 }
 
-/** Buildings of one family, which join. */
-const kin = (a: Tile, b: Tile) => isBuilt(a) && isBuilt(b) && formOf(a).family === formOf(b).family;
+/** Buildings that join: of one family, and, but for the houses and shops
+ *  of a street, which run on into rows whoever built them, one building. */
+const kin = (a: Tile, b: Tile) => {
+  if (!isBuilt(a) || !isBuilt(b)) return false;
+  const family = formOf(a).family;
+  return family === formOf(b).family && (family === "street" || a.id === b.id);
+};
 
 /**
  * How far outside tile (c, r)'s building the point (x, y) is, as the
@@ -204,6 +209,60 @@ const STEP = 0.12;
  *  main ridge. */
 const GABLE = 0.42;
 
+/**
+ * A shed as a business park has it: an office at its street end, a couple
+ * of storeys over the hall and lighter, and rooflights across the hall's
+ * roof, running the short way. Both are the building's, found from its
+ * tiles: its long way is the way it is longer, and its head is the end,
+ * right across, with the tile that has most street round it, the corner on
+ * a junction if it has one. A workshop of a tile or three is a hall alone.
+ */
+function sheds(town: Town) {
+  const key = (c: number, r: number) => `${c},${r}`;
+  const heads = new Set<string>();
+  const across = new Map<string, boolean>();
+  const seen = new Set<string>();
+  /** How much street is round a tile, the nearer the more: behind its
+   *  yard, a shed's corner on the junction has most. */
+  const street = (c: number, r: number) => {
+    let n = 0;
+    for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (town.tile(c + dc, r + dr).kind === "road") n += 1 / (dc * dc + dr * dr);
+    return n;
+  };
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      const me = town.tile(c, r);
+      if (formOf(me).family !== "industry" || seen.has(key(c, r))) continue;
+      seen.add(key(c, r));
+      const cells = [[c, r]];
+      for (let i = 0; i < cells.length; i++) {
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const [x, y] = [cells[i][0] + dc, cells[i][1] + dr];
+          if (kin(me, town.tile(x, y)) && !seen.has(key(x, y))) seen.add(key(x, y)), cells.push([x, y]);
+        }
+      }
+      if (cells.length < 4) continue;
+      const span = (k: number) => Math.max(...cells.map((p) => p[k])) - Math.min(...cells.map((p) => p[k]));
+      const long = span(1) > span(0) ? 1 : 0;
+      for (const [x, y] of cells) across.set(key(x, y), !!long);
+      const ends = [Math.min(...cells.map((p) => p[long])), Math.max(...cells.map((p) => p[long]))];
+      const head = cells.filter((p) => ends.includes(p[long])).reduce((a, b) => (street(b[0], b[1]) > street(a[0], a[1]) ? b : a));
+      if (street(head[0], head[1])) for (const p of cells) if (p[long] === head[long]) heads.add(key(p[0], p[1]));
+    }
+  }
+  const lifted: Town = { ...town, tile: (c, r) => (heads.has(key(c, r)) ? { ...town.tile(c, r), storeys: town.tile(c, r).storeys + 2 } : town.tile(c, r)) };
+  /** How high a rooflight stands over the hall's roof `d` in from its edge:
+   *  a sawtooth, a strip every tile, clear of the walls. */
+  const rooflight = (x: number, y: number, d: number) => {
+    const k = key(Math.floor(x), Math.floor(y));
+    const run = across.get(k);
+    if (run === undefined || heads.has(k) || d < 0.2) return 0;
+    const p = (((run ? y : x) % 1) + 1) % 1;
+    return Math.abs(p - 0.5) < 0.15 ? 0.25 * (p - 0.35) : 0;
+  };
+  return { town: lifted, head: (c: number, r: number) => heads.has(key(c, r)), rooflight };
+}
+
 type RGB = [number, number, number];
 
 /**
@@ -212,7 +271,8 @@ type RGB = [number, number, number];
  * drawn with +x to the screen's left and +y up, so the tile (c, r) lies at
  * x from -c - 1 to -c, y from -r - 1 to -r.
  */
-export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
+export function massMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
+  const { town, head, rooflight } = sheds(painted);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   type V = [number, number, number];
   /** One triangle in the fixture's frame, turned into the world's and wound
@@ -306,13 +366,16 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Se
     }
     return Math.max(0, near);
   };
-  const height = (t: Tile, x: number, y: number) => Math.max(eaves(t) + rise(t, inward(x, y, roofOf(t))), dressing(town, x, y));
+  const height = (t: Tile, x: number, y: number) => {
+    const d = inward(x, y, roofOf(t));
+    return Math.max(eaves(t) + rise(t, d) + rooflight(x, y, d), dressing(town, x, y));
+  };
 
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const me = buildingOn(town, c, r);
       if (!me || (only && !only.has(`${c},${r}`))) continue;
-      const rgb = colour(me.kind as BuildingKind);
+      const rgb = colour(me.kind as BuildingKind).map((v) => (head(c, r) ? v + (1 - v) * 0.45 : v)) as RGB;
       const top = eaves(me);
       // The tile's samples: how far outside, and how high the roof over it.
       const roof = (x: number, y: number) => height(me, x, y);

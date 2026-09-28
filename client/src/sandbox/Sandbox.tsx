@@ -110,9 +110,13 @@ function Board() {
   const program = () => PROGRAMS[LETTERS[brush()]];
   const has = (cells: Cell[], [c, r]: Cell) => cells.some(([x, y]) => x === c && y === r);
 
-  function set(c: number, r: number, ch: string) {
+  /** Each stroke is a building of its own, unless it grows one. */
+  let ids = 0;
+  const idOf = () => (base.length ? tiles[base[0][1]][base[0][0]].id : undefined) ?? ++ids;
+
+  function set(c: number, r: number, ch: string, id?: number) {
     if (!tiles[r]?.[c]) return;
-    tiles[r][c] = tileOf(ch);
+    tiles[r][c] = { ...tileOf(ch), id };
     through[r][c] = ch === "#";
     rows[r] = rows[r].slice(0, c).padEnd(c, ".") + ch + rows[r].slice(c + 1);
   }
@@ -143,8 +147,9 @@ function Board() {
     const lit = quadsAt(next, 0.012);
     if (lit.indices.length) overlay.push(translucent(scene, "next", lit, Color3.White(), 0.35));
     if (ghost) {
-      const kind = LETTERS[brush()];
-      const shown = townOf(tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? { kind, storeys: tileOf(brush()).storeys } : tile))), (c, r) => t.through(c, r));
+      const grown = stroke.length ? base : touching(t, LETTERS[brush()], hover ?? ghost[0]);
+      const id = grown.length ? tiles[grown[0][1]][grown[0][0]].id : -1;
+      const shown = townOf(tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? { ...tileOf(brush()), id } : tile))), (c, r) => t.through(c, r));
       const geo = massMesh(shown, colourOf, new Set(ghost.map(([c, r]) => `${c},${r}`)));
       if (geo.indices.length) overlay.push(translucent(scene, "ghost", geo, Color3.White(), 0.75));
     } else if (hover && program()) {
@@ -196,9 +201,10 @@ function Board() {
     stroking = false;
     const p = program();
     const built = p && stroke.length && complete(town(), p, whole());
+    const id = idOf();
     stroke = [];
     base = [];
-    if (built) for (const [c, r] of built) set(c, r, brush());
+    if (built) for (const [c, r] of built) set(c, r, brush(), id);
     draw();
     drawOverlay();
   };

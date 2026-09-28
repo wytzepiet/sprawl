@@ -120,6 +120,16 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   dormer on each of the others. Gables and dormers are heights the roof is
   raised to, so the valleys where they meet the main roof fall out, and the
   front wall rises to meet the roof, so the gable's point is there too.
+- **A shed is a business park's** (14-business, Lage Weide): its office
+  at its street end, the whole end across, a couple of storeys over the
+  hall and lighter, and rooflights across the hall's roof the short way.
+  Both are found from the building's tiles, its long way and the end with
+  most street round it; a workshop of a tile or three is a hall alone.
+- **A building is what was painted as one.** Two sheds painted side by
+  side stay two sheds, each on its yard; painting beside one grows that
+  one. Houses and shops are the exception: a street's run on into a row
+  whoever built them. A fixture has no such record, so there a family's
+  touching tiles are one building.
 - **Streets are kept clear by distance**, from the middle line of every
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.
