@@ -58,7 +58,10 @@ The code is `client/src/engine/town/`:
   its inside corners, so every cut has its fill. Two tiles a street runs
   between, across their shared corner, are no neighbours to any rule: a
   building cut off by a road does not count. Cuts and
-  fills lie half a tile either side of a diagonal row's middle. Then the
+  fills lie half a tile either side of a diagonal row's middle; beside a
+  diagonal street, whose line runs through the band's corners, the band is
+  cut back on the street's side and filled out on the other, so it keeps a
+  straight row's distance from its street. Then the
   outline is drawn in by one width. Outside corners stay square. This is
   the simplest version, kept as the base: exceptions to it (keeping an
   L's inside square, straightening whole outlines) each broke something
