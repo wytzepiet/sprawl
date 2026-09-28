@@ -166,11 +166,12 @@ function street(town: Town, x: number, y: number, clear: number): number {
 type RGB = [number, number, number];
 
 /**
- * The mesh of every building in the town, in world coordinates: the map is
+ * The mesh of every building in the town, or of the tiles in `only`, in
+ * world coordinates: the map is
  * drawn with +x to the screen's left and +y up, so the tile (c, r) lies at
  * x from -c - 1 to -c, y from -r - 1 to -r.
  */
-export function massMesh(town: Town, colour: (k: BuildingKind) => RGB): MeshGeometry & { colors: number[] } {
+export function massMesh(town: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   type V = [number, number, number];
   /** One triangle in the fixture's frame, turned into the world's and wound
@@ -208,7 +209,7 @@ export function massMesh(town: Town, colour: (k: BuildingKind) => RGB): MeshGeom
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const me = buildingOn(town, c, r);
-      if (!me) continue;
+      if (!me || (only && !only.has(`${c},${r}`))) continue;
       const rgb = colour(me.kind as BuildingKind);
       const top = eaves(me);
       // The tile's samples: how far outside, and how high the roof over it.

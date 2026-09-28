@@ -120,6 +120,16 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
 - **Every layout is covered**: a quarter has some thirty cases, not the
   thousands a tile has with eight neighbours, so there is nothing to
   draw per situation, only the rules of a quarter to tune.
+- **Buildings are painted**, a tile at a time as roads are drawn, with a
+  brush per kind (`town/brush.ts`). Each kind has a program: the smallest
+  rectangle it works in, fronting a street along its long side, and how far
+  from a street it may reach (a house: one tile, the frontage only; a depot:
+  three by two, and back six). A stroke is completed as it is painted to the
+  smallest working building holding it, shown as a ghost: one tile becomes a
+  whole depot, painting sideways turns it, painting on makes it bigger, a
+  bump and all. Only tiles it can take are lit, so nothing invalid is ever
+  painted. Letting go builds it. Size will be capacity: a longer frontage
+  more docks, a bigger farm more fields.
 - **The sandbox** (`/sandbox` on the dev client) draws any fixture with
   no server, and paints: a brush per kind, taller and lower, and "Copy"
   to take the map away as a fixture. `bun run shots --sandbox` photographs
