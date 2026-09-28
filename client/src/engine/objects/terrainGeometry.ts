@@ -51,7 +51,7 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
   );
 }
 
-export const ELEVATION: Record<TerrainType, number> = {
+const ELEVATION: Record<TerrainType, number> = {
   Sea: -0.5,
   Water: -0.5,
   Beach: 0,
@@ -501,7 +501,7 @@ function grow(src: Float32Array, length: number): Float32Array<ArrayBuffer> {
 export type TypeAt = (x: number, y: number) => TerrainType | undefined;
 
 /** Which terrain type wins when two differing neighbours meet at a corner. */
-export const CORNER_PRIORITY: Record<TerrainType, number> = {
+const CORNER_PRIORITY: Record<TerrainType, number> = {
   Beach: 4,
   Grass: 3,
   Forest: 2,
@@ -512,7 +512,7 @@ export const CORNER_PRIORITY: Record<TerrainType, number> = {
 
 /** Does `a` take a corner from `b`? Every pair has one answer, ties
  *  settled by name, so two kinds never both claim a corner. */
-export const wins = (a: TerrainType, b: TerrainType) =>
+const wins = (a: TerrainType, b: TerrainType) =>
   CORNER_PRIORITY[a] > CORNER_PRIORITY[b] || (CORNER_PRIORITY[a] === CORNER_PRIORITY[b] && a > b);
 
 /** For each corner [BL, BR, TR, TL], the two cardinal neighbours to check. */
@@ -577,7 +577,6 @@ export interface TerrainSampler {
   cornersOf(x: number, y: number): (TerrainType | null)[];
 }
 
-/** Wire encoding, in the server's TerrainType::to_byte order. */
 /** Wire encoding, in the server's TerrainType::to_byte order. */
 export const TYPE_BY_BYTE: TerrainType[] = ["Water", "Beach", "Grass", "Forest", "Mountain", "Sea"];
 

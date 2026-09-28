@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 130">
-  <!-- A zebra across one arm of a junction. The arm runs down, out of the
-       tile; the stripes start clear of the road it meets and run on into
-       the street beyond. -->
-  <rect class="marking" x="30" y="80" width="7" height="30"/>
-  <rect class="marking" x="41" y="80" width="7" height="30"/>
-  <rect class="marking" x="52" y="80" width="7" height="30"/>
-  <rect class="marking" x="63" y="80" width="7" height="30"/>
-</svg>

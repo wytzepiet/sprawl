@@ -5,8 +5,6 @@ import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
 import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
 import { Strip, type RGB } from "./strip";
 import { drawnPath } from "./drawnPath";
-import { lay } from "../pieces";
-import { plotPiece, type Ground } from "../pieces/rules";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
 import { simNow } from "../../network/clock";
@@ -66,7 +64,6 @@ export function mountBuilding(
   pool: InstancePool,
   scene: Scene,
   theme: Theme,
-  ground: Ground,
   look: Look,
 ): () => void {
   const data = entry.object.data as Building;
@@ -91,24 +88,18 @@ export function mountBuilding(
   // Placed and turned, never scaled. Scaling one axis of an instance skews its
   // normals, and a building lit by skewed normals shades as though it were a
   // different shape than it is.
+  const shape = shapeFor(data.kind, w, h, variant);
+  pool.ensureBucket(poolKey, shape, color, look.castShadow, true);
   const placed: { key: string; id: number }[] = [];
-  if (data.kind === "House" && pos) {
-    // A house's look is its situation's: alone, in a terrace, on a corner.
-    placed.push(...lay(pool, theme, [plotPiece(ground, pos.x, pos.y)], `_House${look.key}`, Color3.FromHexString(BLUEPRINTS.House.color), look.tint));
-    parts.set(entry.id, placed.slice());
-  } else {
-    const shape = shapeFor(data.kind, w, h, variant);
-    pool.ensureBucket(poolKey, shape, color, look.castShadow, true);
-    placed.push({
-      key: poolKey,
-      id: pool.addInstance(
-        poolKey,
-        pos ? [pos.x + bx + w / 2, pos.y + by + h / 2, 0] : undefined,
-        [0, 0, facingOf(entry.id, w, h)],
-      ),
-    });
-    parts.set(entry.id, [placed[0]]);
-  }
+  placed.push({
+    key: poolKey,
+    id: pool.addInstance(
+      poolKey,
+      pos ? [pos.x + bx + w / 2, pos.y + by + h / 2, 0] : undefined,
+      [0, 0, facingOf(entry.id, w, h)],
+    ),
+  });
+  parts.set(entry.id, [placed[0]]);
 
   // Its lot: a slab with a kerb, and the dividers between its spots, or a
   // depot's docks.

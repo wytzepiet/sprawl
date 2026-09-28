@@ -15,7 +15,6 @@ import type { BuildingKind, TerrainType } from "../generated";
 import { formOf } from "../engine/town/mass";
 import { townMesh as mesh } from "../engine/town/roof";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
-import { buildChunkDual } from "../engine/objects/dualTerrain";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -292,9 +291,8 @@ function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: 
 /** Everything a town is drawn with: the ground, water and woods, the
  *  roads, and the buildings. */
 /**
- * The ground as the game draws it, from the fixture's letters: `?t=dual`
- * the corner grid, else the game's own. Chunk by chunk, each with its
- * skirt, through the same builders the terrain worker runs.
+ * The ground as the game draws it, from the fixture's letters: chunk by
+ * chunk, each with its skirt, through the builder the terrain worker runs.
  */
 function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   const type = (c: number, r: number): TerrainType => {
@@ -307,7 +305,6 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
   const palette: TerrainPalette = {
     Water: theme.water, Sea: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.mountain,
   };
-  const builder = new URLSearchParams(location.search).get("t") === "dual" ? buildChunkDual : buildChunk;
   const out: Mesh[] = [];
   for (let cy = 0; cy * CHUNK_SIZE < town.h; cy++) {
     for (let cx = 0; cx * CHUNK_SIZE < town.w; cx++) {
@@ -317,7 +314,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
           tiles[iy * CHUNK_STRIDE + ix] = TYPE_BY_BYTE.indexOf(type(cx * CHUNK_SIZE + ix - CHUNK_SKIRT, cy * CHUNK_SIZE + iy - CHUNK_SKIRT));
         }
       }
-      const geo = builder(tiles, cx, cy, palette);
+      const geo = buildChunk(tiles, cx, cy, palette);
       if (!geo) continue;
       for (const [name, g] of [["ground", geo.ground], ["cliffs", geo.cliffs]] as const) {
         if (!g.indices.length) continue;

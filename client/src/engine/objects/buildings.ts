@@ -38,17 +38,17 @@ export const CORNER = 0.08;
  */
 type Vec3 = [number, number, number];
 type Point = [number, number];
-export type Outline = Point[];
+type Outline = Point[];
 
 /** A regular ring. Eight sides reads as round from above; three is a wedge. */
-export function ring(sides: number, r: number, cx = 0, cy = 0): Outline {
+function ring(sides: number, r: number, cx = 0, cy = 0): Outline {
   return Array.from({ length: sides }, (_, i) => {
     const a = (i / sides) * Math.PI * 2;
     return [cx + Math.cos(a) * r, cy + Math.sin(a) * r] as Point;
   });
 }
 
-export function builder() {
+function builder() {
   const positions: number[] = [];
   const normals: number[] = [];
   const indices: number[] = [];
@@ -120,8 +120,8 @@ export function builder() {
  * a roof bay is the same depth either way, and a wide shed simply gets more of
  * them. Only the outline follows the plot.
  */
-export const WALL = { house: 0.3, factory: 0.34 };
-export const ROOF = { house: 0.28, factory: 0.24 };
+const WALL = { house: 0.3, factory: 0.34 };
+const ROOF = { house: 0.28, factory: 0.24 };
 /** Depth of one sawtooth bay, across the roof. Wide enough to read as teeth
  *  from above rather than as corrugation. */
 const BAY = 0.4;
@@ -151,13 +151,13 @@ function axes(fw: number, fh: number, ridge: "long" | "short") {
 }
 
 /** A rectangle with its corners rounded, corner to corner. */
-export function roundedRect(fw: number, fh: number, r: number, segments = 5): Outline {
+function roundedRect(fw: number, fh: number, r: number, segments = 5): Outline {
   const [x, y] = [fw / 2 - r, fh / 2 - r];
   const out: Outline = [];
   const corners: [number, number, number][] = [[x, y, 0], [-x, y, Math.PI / 2], [-x, -y, Math.PI], [x, -y, (3 * Math.PI) / 2]];
   for (const [cx, cy, a0] of corners) {
     for (let i = 0; i <= segments; i++) {
-      const a = a0 + (segments ? i / segments : 0) * (Math.PI / 2);
+      const a = a0 + (i / segments) * (Math.PI / 2);
       out.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
     }
   }
@@ -185,7 +185,7 @@ function prism(outline: Outline, height: number): MeshGeometry {
  * a house read as a house from directly above is two lit slopes meeting in a
  * line, so the roof is worth more of the height than it looks.
  */
-export function gabled(fw: number, fh: number, wall = WALL.house, roof = ROOF.house, r = CORNER): MeshGeometry {
+function gabled(fw: number, fh: number, wall = WALL.house, roof = ROOF.house): MeshGeometry {
   const b = builder();
   const f = axes(fw, fh, "long");
   const [l, w] = [f.run / 2, f.across / 2];
@@ -194,12 +194,13 @@ export function gabled(fw: number, fh: number, wall = WALL.house, roof = ROOF.ho
   const up: Point = [roof / slope, w / slope];
   // Each slope is a plane, so a rounded plan only clips it: the roof's
   // height over any point of the plan, in (along, across).
+  const r = CORNER;
   const over = ([, c]: Point) => wall + roof * (1 - Math.abs(c) / w);
   // The plan, counter-clockwise from the middle of one end wall, corners
   // rounded, and a corner under each gable's peak so the wall can rise to it.
-  const arc = (cx: number, cy: number, a0: number, n = r > 0 ? 5 : 0): Point[] =>
+  const arc = (cx: number, cy: number, a0: number, n = 5): Point[] =>
     Array.from({ length: n + 1 }, (_, i) => {
-      const a = a0 + (n ? i / n : 0) * (Math.PI / 2);
+      const a = a0 + (i / n) * (Math.PI / 2);
       return [cx + Math.cos(a) * r, cy + Math.sin(a) * r];
     });
   const plan: Point[] = [
