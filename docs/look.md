@@ -147,8 +147,7 @@ What the pattern book and the image models taught:
    are chosen for difference, one of each kind of place: terraces
    (Lombok, Levenshulme), a turned grid (the Eixample), canals (the
    Jordaan), a tangle (the Marais), lanes (Kichijoji), a woonerf town
-   (Houten), a village (Castle Combe), a cliff (Oia), an estate (Milton
-   Keynes).
+   (Houten), a village (Castle Combe), a cliff (Oia).
 2. **Concepts**: several deliberately different drawings per situation,
    into the pattern book, with image models (`OPENROUTER_API_KEY`) for
    ideas when there are none, asked for game zoom and top-down.
