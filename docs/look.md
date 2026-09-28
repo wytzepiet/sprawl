@@ -22,8 +22,8 @@ backs meet, is green. Three things were kept from the pattern book and
 they are the same form:
 
 - **Parking along the kerb** (fileparkeren), not on driveways and lots.
-- **Square corners**, a block's and a courtyard's; the diagonal is kept
-  for streets that run on it.
+- **The corner cut on the diagonal**, a house or a block turned to face
+  the junction.
 - **A garden in the middle of the block.**
 
 It gives every street a face and hides nothing behind it, which is what a
@@ -87,17 +87,19 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   Built beside it, it runs on wall to wall; a road, it stops at the
   pavement; open ground, it leaves a garden's depth. Built on both sides
   and open on the diagonal, the corner is a courtyard's inside corner.
-  Corners are square: a block, a courtyard and a street corner alike.
+  Road on both sides, the corner is cut on the diagonal to the junction.
 - **Which way a road runs is part of the corner.** Two road tiles beside
   a quarter, joined to each other, are one street running across the
   corner on the diagonal, and the corner is cut deep, clear of it; not
-  joined, they are two streets meeting beyond it, and the corner is
-  square. The tiles alone cannot tell these apart; the links can.
-- **A row stepping on the diagonal is the terrain's rule.** Open ground
-  with a building on both sides of a corner, and not on the fourth tile
-  round it (that is an L's inside, square), is a step of a row: the row
-  runs straight on across it, front and back, as the terrain turns a
-  staircase of water tiles into a shore.
+  joined, they are two streets meeting beyond it, and the cut is a
+  chamfer. The tiles alone cannot tell these apart; the links can.
+- **Diagonals are the terrain's rule.** Open ground with buildings on
+  both sides of a corner has that corner filled on the diagonal, and the
+  buildings' faces run straight across it; the outer corner of a step,
+  with the row going on beyond both its sides, is cut on the same line.
+  So a row stepping along a diagonal street is a straight front, the back
+  of it too, and a courtyard's inside corners are cut at forty-five
+  degrees, as the terrain turns a staircase of water tiles into a shore.
 - **Each kind has a form**: how it meets the street and its neighbours,
   a row of a table (`FORMS` in `town/mass.ts`). Homes and high-street
   shops are one family, joined wall to wall at the pavement, gardens

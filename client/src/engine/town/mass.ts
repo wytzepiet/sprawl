@@ -11,9 +11,9 @@ import { distances } from "./edt";
  * two beside it and the one on the diagonal. Built beside it, it runs on
  * wall to wall; a road, it stops at the pavement; open ground, it leaves a
  * garden's depth. Built on both sides but open on the diagonal, the corner
- * is the inside of an L, square. Corners are square, but where a row steps
- * on the diagonal, and where a street runs across the corner, clear of the
- * road.
+ * is the inside of a courtyard. Road on both sides, the corner is cut on the
+ * diagonal to face the junction, and cut deep, clear of the road, where the
+ * two are one street running across the corner.
  *
  * Each quarter is a handful of lines, so its outline is the zero of a
  * function that is the largest of their signed distances. The outline is
@@ -45,11 +45,13 @@ interface Form {
   apart: number;
   /** The ground its tiles leave open, if not grass. */
   yard?: "paved";
+  /** Its street corners are cut to the junction. */
+  corners?: boolean;
   /** How deep it is built from the edge of its block, in tiles; deeper is
    *  the block's inside, a courtyard. */
   depth: number;
 }
-const STREET: Form = { family: "street", clear: 0.59, apart: 0.14, depth: 1 };
+const STREET: Form = { family: "street", clear: 0.47, apart: 0.14, corners: true, depth: 1 };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
   Office: { family: "office", clear: 0.72, apart: 0.1, yard: "paved", depth: 2.5 },
   Workshop: { family: "industry", clear: 0.8, apart: 0.1, yard: "paved", depth: Infinity },
@@ -63,10 +65,13 @@ export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET
 /** How far a building stands back from water. */
 const QUAY = 0.02;
 const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
-/** How much further back than its face a row stepping on the diagonal is
- *  built: a house there is as deep as one on a straight street, where the
- *  diagonal through its tile alone would leave it a sliver. */
-const DIAGONAL = 0.45;
+/** How much further back a row stepping on the diagonal is built than
+ *  the corner of a courtyard is cut: a house there is as deep as one on a
+ *  straight street, where the diagonal through its tile alone would leave
+ *  it a sliver. */
+const DIAGONAL = 0.3;
+/** How far in from the corner a street corner is cut. */
+const CHAMFER = 0.2;
 
 /** The walls' height, and the roof that climbs from them `d` in. */
 export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
@@ -89,9 +94,11 @@ const kin = (a: Tile, b: Tile) => {
  * largest of its quarter's lines; below zero, inside. Joined sides draw no
  * line, so a building's inside does not end at a tile's edge.
  *
- * The terrain's rule for shores holds for a row stepping on the diagonal:
- * the open ground it steps across is filled on the diagonal, and its faces
- * run straight across, a straight front and back and not a stair.
+ * The terrain's rule for shores holds for buildings too. Open ground with
+ * buildings of one family on both sides of a corner has that corner filled
+ * on the diagonal, and a building's face runs straight across it: a row
+ * stepping along a diagonal street is a straight front and not a stair, and
+ * the outer corner of each step is cut on the same line.
  */
 export function outside(town: Town, c: number, r: number, x: number, y: number): number {
   const [sx, sy] = [x < c + 0.5 ? -1 : 1, y < r + 0.5 ? -1 : 1];
@@ -99,15 +106,17 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
   const [a, b, d] = [town.tile(c + sx, r), town.tile(c, r + sy), town.tile(c + sx, r + sy)];
   const me = town.tile(c, r);
   if (!isBuilt(me)) {
-    // Ground a row steps across: the half of the tile on the row's side of
-    // the line its back runs along.
+    // Ground a row takes corners of. A courtyard's corner is cut within its
+    // quarter; a row stepping on the diagonal takes the whole half of the
+    // tile on its side of the line its back runs along.
     let f = 1;
     for (const [cx, cy] of CORNERS) {
       const [p, q, o] = [town.tile(c + cx, r), town.tile(c, r + cy), town.tile(c + cx, r + cy)];
-      if (!fills(me, p, q, o)) continue;
+      if (!fills(me, p, q) || (kin(p, o) && (cx !== sx || cy !== sy))) continue;
       const form = formOf(p);
       const toward = (x - c - 0.5) * cx + (y - r - 0.5) * cy;
-      f = Math.min(f, Math.max((1 - toward - (0.5 - form.apart + DIAGONAL)) / Math.SQRT2, street(town, x, y, form.clear)));
+      const face = 0.5 - form.apart + (kin(p, o) ? 0 : DIAGONAL);
+      f = Math.min(f, Math.max((1 - toward - face) / Math.SQRT2, street(town, x, y, form.clear)));
     }
     return f;
   }
@@ -116,42 +125,49 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
   const gap = (t: Tile) => (t.kind === "road" ? 0 : t.kind === "water" ? QUAY : form.apart);
   let f = -1;
   const [ja, jb] = [kin(me, a), kin(me, b)];
-  // Where the row steps on the diagonal, across open ground beside it, its
-  // back runs on the diagonal: no wall on that side.
-  const onA = !ja && a.kind !== "road" && fills(a, me, town.tile(c + sx, r - sy), town.tile(c, r - sy));
-  const onB = !jb && b.kind !== "road" && fills(b, me, town.tile(c - sx, r + sy), town.tile(c - sx, r));
-  const back = face + DIAGONAL;
-  if (!ja) f = Math.max(f, fills(a, me, d, b) ? (u - w - back) / Math.SQRT2 : onA ? f : u - 0.5 + gap(a));
-  if (!jb) f = Math.max(f, fills(b, me, d, a) ? (w - u - back) / Math.SQRT2 : onB ? f : w - 0.5 + gap(b));
-  if (onA || onB) f = Math.max(f, (u + w - back) / Math.SQRT2);
-  // The inside corner of an L, square.
-  if (ja && jb && !kin(me, d)) {
+  // Beside it, open ground a row stepping on the diagonal runs on across: the
+  // step's other house beyond it, and no building in the fourth tile round
+  // that corner, which would make it a courtyard. No wall on that side;
+  // the row's back, on the diagonal, bounds it instead.
+  const onA = !ja && a.kind !== "road" && fills(a, me, town.tile(c + sx, r - sy)) && !kin(me, town.tile(c, r - sy));
+  const onB = !jb && b.kind !== "road" && fills(b, me, town.tile(c - sx, r + sy)) && !kin(me, town.tile(c - sx, r));
+  // Across a filled corner the face runs on the diagonal: a courtyard's,
+  // where the fourth tile round the corner is built too, or a row's back.
+  const across = (t: Tile) => face + (kin(me, t) ? 0 : DIAGONAL);
+  if (!ja) f = Math.max(f, fills(a, me, d) ? (u - w - across(b)) / Math.SQRT2 : onA ? f : u - 0.5 + gap(a));
+  if (!jb) f = Math.max(f, fills(b, me, d) ? (w - u - across(a)) / Math.SQRT2 : onB ? f : w - 0.5 + gap(b));
+  if (ja && jb && !kin(me, d) && !fills(d, a, b)) {
     const edge = 0.5 - gap(d);
     f = Math.max(f, Math.min(u - edge, w - edge));
   }
-  // A gabled house steps forward of its row's front gardens to the pavement.
+  if (onA || onB) f = Math.max(f, (u + w - face - DIAGONAL) / Math.SQRT2);
+  if (form.corners && a.kind === "road" && b.kind === "road" && !town.linked(c + sx, r, c, r + sy)) {
+    f = Math.max(f, (CHAMFER - (1 - u - w)) / Math.SQRT2);
+  }
+  // A row of houses stands back behind a strip of front garden, and the
+  // gabled ones step forward of it to the pavement.
   const at = frontOf(town, x, y);
-  const forward = at?.bay && Math.abs(at.along) <= GABLE ? STEP : 0;
-  return Math.max(f, street(town, x, y, form.clear - forward));
+  if (at && !(at.bay && Math.abs(at.along) <= GABLE)) f = Math.max(f, STEP - at.back);
+  return Math.max(f, street(town, x, y, form.clear));
 }
 
-/** Is `t` ground a row steps across on the diagonal: one building, `p`
- *  and `q`, on both its sides at a corner, and not on `o`, the fourth tile
- *  round that corner, where the corner would be an L's inside? Then the
- *  row runs straight on across it, as the terrain's shore does. A road
- *  tile's corner too, clear of its street: a street stepping on the
- *  diagonal leaves two corners of every step, and the row along it runs
- *  on into them. */
-const fills = (t: Tile, p: Tile, q: Tile, o: Tile) => ["open", "paved", "road"].includes(t.kind) && kin(p, q) && !kin(p, o);
+/** Is `t` ground a building may take a corner of, with buildings of one
+ *  family, `p` and `q`, on both its sides there? Then the corner is
+ *  theirs, filled on the diagonal: a row stepping across it runs straight
+ *  on, and a courtyard's inside corner is cut at forty-five degrees, as the
+ *  terrain rounds a shore's. A road tile's corner too, clear of its
+ *  street: a street stepping on the diagonal leaves two corners of every
+ *  step, and the row along it runs on into them. */
+const fills = (t: Tile, p: Tile, q: Tile) => ["open", "paved", "road"].includes(t.kind) && kin(p, q);
 
 /** A tile's building as the look draws it: its own, or, for ground a row
  *  steps across, that row's. */
 function buildingOn(town: Town, c: number, r: number): Tile | null {
   const me = town.tile(c, r);
   if (isBuilt(me)) return me;
-  for (const [sx, sy] of CORNERS) {
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     const [a, b] = [town.tile(c + sx, r), town.tile(c, r + sy)];
-    if (fills(me, a, b, town.tile(c + sx, r + sy))) return a;
+    if (fills(me, a, b)) return a;
   }
   return null;
 }
@@ -213,7 +229,8 @@ function frontOf(town: Town, x: number, y: number) {
   const inRow = kin(me, town.tile(c + fy, r + fx)) && kin(me, town.tile(c - fy, r - fx));
   return { me, along, back, bay: inRow && (fx ? r : c) % 6 === 1 };
 }
-/** How far a gabled house steps forward of its row's front gardens. */
+/** How far a row of houses stands back behind its front gardens, and so
+ *  how far a gabled house steps forward of it. */
 const STEP = 0.12;
 /** Half a front gable's width: nearly a house's, its point as high as the
  *  main ridge. */

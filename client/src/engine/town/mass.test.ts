@@ -15,16 +15,17 @@ describe("a quarter is shaped by the tiles at its corner", () => {
     expect(built(map, 1, 1, 1.5, 1.05)).toBe(false); // but not the back
   });
 
-  test("a courtyard's inside corners are square", () => {
+  test("a courtyard's inside corners are cut at forty-five degrees", () => {
     const map = [".....", ".HHH.", ".H.H.", ".HHH.", "....."];
-    expect(built(map, 2, 2, 2.05, 2.05)).toBe(false); // the courtyard is all open
-    expect(built(map, 1, 1, 1.8, 1.8)).toBe(true); // the corner is the building's
-    expect(built(map, 1, 1, 1.95, 1.95)).toBe(false); // but not its courtyard side
+    expect(built(map, 2, 2, 2.05, 2.05)).toBe(true); // the corner is the building's
+    expect(built(map, 2, 2, 2.5, 2.5)).toBe(false); // the middle is the courtyard
+    expect(built(map, 1, 2, 1.9, 2.5)).toBe(false); // and the faces stand back from it
   });
 
-  test("a street corner is square", () => {
+  test("a street corner is cut on the diagonal", () => {
     const map = ["...", "=H.", "==."];
-    expect(built(map, 1, 1, 1.12, 1.86)).toBe(true); // right into the corner, behind the front gardens
+    expect(built(map, 1, 1, 1.03, 1.97)).toBe(false);
+    expect(built(map, 1, 1, 1.2, 1.8)).toBe(true);
   });
 
   test("a row stepping on the diagonal is one row, across the open corners between", () => {
