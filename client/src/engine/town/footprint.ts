@@ -30,8 +30,12 @@ export interface Mass {
   parts: { tile: Tile; head: boolean; polygons: Polygon[] }[];
 }
 
-/** How far a side facing a road is cut back. */
+/** How far a side along a straight street is cut back. */
 const PAVEMENT = 0.2;
+/** Where a corner a street runs across on the diagonal is cut, measured
+ *  along the diagonal from the tile's middle: as far from the street's
+ *  middle line as a side from a straight street's. */
+const DIAGONAL = 1 - (0.5 + PAVEMENT) * Math.SQRT2;
 
 /** Clipper works in integers: a tile is this many. */
 const S = 1e5;
@@ -197,13 +201,17 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
       const [mx, my] = [c + 0.5, r + 0.5];
       if (isBuilt(town.tile(c, r))) {
         let ring: Pt[] = [[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]];
-        const cuts = CORNERS.filter(([sx, sy]) => step(c, r, sx, sy));
-        for (const [sx, sy] of cuts) ring = cut(ring, [sx, sy, sx * mx + sy * my + 0.5]);
-        // A side on a road, cut back, but not where the row runs on the
-        // diagonal across it.
+        // A corner a street runs across on the diagonal, cut back as far
+        // from it as a side from a straight street; a step's outer corner,
+        // from edge middle to edge middle.
+        for (const [sx, sy] of CORNERS) {
+          if (across(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + DIAGONAL]);
+          else if (step(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + 0.5]);
+        }
+        // A side along which a street runs straight, cut back.
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          if (town.tile(c + dx, r + dy).kind !== "road") continue;
-          if (cuts.some(([sx, sy]) => (dx && sx === dx) || (dy && sy === dy))) continue;
+          const [x, y] = [c + dx, r + dy];
+          if (!town.linked(x, y, x + dy, y + dx) && !town.linked(x, y, x - dy, y - dx)) continue;
           ring = cut(ring, [dx, dy, dx * mx + dy * my + 0.5 - PAVEMENT]);
         }
         pieces.push({ at: [c, r], ring });
@@ -211,7 +219,13 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
         // The corner between two steps of a row.
         for (const [sx, sy] of CORNERS) {
           if (!fill(c, r, sx, sy)) continue;
-          pieces.push({ at: [c + sx, r], ring: [[mx + sx / 2, my + sy / 2], [mx + sx / 2, my], [mx, my + sy / 2]] });
+          let ring: Pt[] = [[mx + sx / 2, my + sy / 2], [mx + sx / 2, my], [mx, my + sy / 2]];
+          // On a street running on the diagonal through this tile, as far
+          // back from it as the corners cut beside.
+          if (town.linked(c, r, c + sx, r - sy) || town.linked(c, r, c - sx, r + sy)) {
+            ring = cut(ring, [-sx, -sy, -(sx * mx + sy * my) - (1 - DIAGONAL)]);
+          }
+          if (ring.length >= 3) pieces.push({ at: [c + sx, r], ring });
         }
       }
     }

@@ -140,8 +140,9 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.
 - **Plans are the terrain's rule, with straight lines** (`town/footprint.ts`).
-  A building's tile is its whole square; a side facing a road is cut back
-  a pavement's width; a row stepping on the diagonal is a straight band,
+  A building's tile is its whole square; a side along which a street runs
+  straight is cut back a pavement's width, and a corner a street runs
+  across on the diagonal is cut back as far from it; a row stepping on the diagonal is a straight band,
   each step's outer corner cut from edge middle to edge middle and the
   corner between two steps (or an L's inside) filled the same way; a
   street across a corner parts the tiles either side. Nothing else: each
