@@ -150,6 +150,13 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   buildings room. Setbacks, gardens, courtyards and gables built
   on distances broke on diagonals and at street ends, and are gone; any
   comes back only as a rule of the same kind.
+- **A row keeps half a tile from its street's middle line, whatever the
+  angle.** A straight row's tile does that by itself. A row stepping
+  beside a diagonal street has its middles only 0.7 from the street, so its
+  band is cut back on the street side and filled out to its tiles' corners
+  on the other. After the draw-in its clearance is a straight row's; it is
+  a little thinner. Roads keep their own geometry; only this band reads
+  their links.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
