@@ -88,13 +88,12 @@ export function rise(t: Tile, d: number) {
   return Math.min(d * pitch, height);
 }
 
-/** Buildings that join: the houses and shops of a street, which run on
- *  into rows whoever built them, and otherwise the tiles of one building,
- *  one kind painted as one. A factory beside a depot is two buildings. */
+/** Buildings that join: tiles of one kind, as the terrain's types, and for
+ *  a kind that is not a street's (sheds, offices, boxes) of one building,
+ *  painted as one. Houses run on into rows whoever built them. */
 export const kin = (a: Tile, b: Tile) => {
-  if (!isBuilt(a) || !isBuilt(b)) return false;
-  const street = formOf(a).family === "street";
-  return street ? formOf(b).family === "street" : a.kind === b.kind && a.id === b.id;
+  if (!isBuilt(a) || !isBuilt(b) || a.kind !== b.kind) return false;
+  return formOf(a).family === "street" || a.id === b.id;
 };
 
 /**
