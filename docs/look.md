@@ -142,7 +142,9 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
 - **The roof is the distance in from the outline**, so a row gets a
   ridge, its end a hip and an L a valley, and nothing is told which way
   to run. A quarter is a few straight lines, so the outline is traced
-  from samples of their largest signed distance, a metre apart.
+  from samples of their largest signed distance, a metre apart, and where
+  it turns a corner between two samples the corner is put back where the
+  two walls' lines meet, sharp, and not cut off across the sample.
   Different heights join wall to wall and keep their own roofs.
 - **Every layout is covered**: a quarter has some thirty cases, not the
   thousands a tile has with eight neighbours, so there is nothing to

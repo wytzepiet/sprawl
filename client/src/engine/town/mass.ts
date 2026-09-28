@@ -51,7 +51,7 @@ interface Form {
    *  the block's inside, a courtyard. */
   depth: number;
 }
-const STREET: Form = { family: "street", clear: 0.47, apart: 0.14, corners: true, depth: 1 };
+const STREET: Form = { family: "street", clear: 0.59, apart: 0.14, corners: true, depth: 1 };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
   Office: { family: "office", clear: 0.72, apart: 0.1, yard: "paved", depth: 2.5 },
   Workshop: { family: "industry", clear: 0.8, apart: 0.1, yard: "paved", depth: Infinity },
@@ -69,7 +69,7 @@ const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
  *  the corner of a courtyard is cut: a house there is as deep as one on a
  *  straight street, where the diagonal through its tile alone would leave
  *  it a sliver. */
-const DIAGONAL = 0.3;
+const DIAGONAL = 0.45;
 /** How far in from the corner a street corner is cut. */
 const CHAMFER = 0.2;
 
@@ -144,11 +144,10 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
   if (form.corners && a.kind === "road" && b.kind === "road" && !town.linked(c + sx, r, c, r + sy)) {
     f = Math.max(f, (CHAMFER - (1 - u - w)) / Math.SQRT2);
   }
-  // A row of houses stands back behind a strip of front garden, and the
-  // gabled ones step forward of it to the pavement.
+  // A gabled house steps forward of its row's front gardens to the pavement.
   const at = frontOf(town, x, y);
-  if (at && !(at.bay && Math.abs(at.along) <= GABLE)) f = Math.max(f, STEP - at.back);
-  return Math.max(f, street(town, x, y, form.clear));
+  const forward = at?.bay && Math.abs(at.along) <= GABLE ? STEP : 0;
+  return Math.max(f, street(town, x, y, form.clear - forward));
 }
 
 /** Is `t` ground a building may take a corner of, with buildings of one
@@ -229,8 +228,7 @@ function frontOf(town: Town, x: number, y: number) {
   const inRow = kin(me, town.tile(c + fy, r + fx)) && kin(me, town.tile(c - fy, r - fx));
   return { me, along, back, bay: inRow && (fx ? r : c) % 6 === 1 };
 }
-/** How far a row of houses stands back behind its front gardens, and so
- *  how far a gabled house steps forward of it. */
+/** How far a gabled house steps forward of its row's front gardens. */
 const STEP = 0.12;
 /** Half a front gable's width: nearly a house's, its point as high as the
  *  main ridge. */
@@ -291,6 +289,28 @@ function sheds(town: Town) {
 }
 
 type RGB = [number, number, number];
+
+/**
+ * The corner an outline turns between two of its crossings of a cell's
+ * edges, `p` and `q`: where the lines through them, square to the way
+ * `out` climbs there, meet, if the outline turns at all and the corner is
+ * in the cell at (x0, y0).
+ */
+function corner(out: (x: number, y: number) => number, p: number[], q: number[], x0: number, y0: number): [number, number] | null {
+  const E = 1e-4;
+  const normal = ([x, y]: number[]) => {
+    const [gx, gy] = [out(x + E, y) - out(x - E, y), out(x, y + E) - out(x, y - E)];
+    const len = Math.hypot(gx, gy) || 1;
+    return [gx / len, gy / len];
+  };
+  const [n, m] = [normal(p), normal(q)];
+  const det = n[0] * m[1] - n[1] * m[0];
+  if (Math.abs(det) < 0.3) return null;
+  const [a, b] = [n[0] * p[0] + n[1] * p[1], m[0] * q[0] + m[1] * q[1]];
+  const [x, y] = [(a * m[1] - b * n[1]) / det, (n[0] * b - m[0] * a) / det];
+  const inCell = (v: number, v0: number) => v > v0 - 1e-6 && v < v0 + 1 / RES + 1e-6;
+  return inCell(x, x0) && inCell(y, y0) ? [x, y] : null;
+}
 
 /**
  * The mesh of every building in the town, or of the tiles in `only`, in
@@ -404,11 +424,12 @@ export function massMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
       const top = eaves(me);
       // The tile's samples: how far outside, and how high the roof over it.
       const roof = (x: number, y: number) => height(me, x, y);
+      const out = (x: number, y: number) => Math.max(outside(town, c, r, x, y), into(x, y) - formOf(me).depth);
       const f: number[] = [], h: number[] = [];
       for (let j = 0; j <= RES; j++) {
         for (let i = 0; i <= RES; i++) {
           const [x, y] = [c + i / RES, r + j / RES];
-          f.push(Math.max(outside(town, c, r, x, y), into(x, y) - formOf(me).depth));
+          f.push(out(x, y));
           h.push(roof(x, y));
         }
       }
@@ -432,6 +453,16 @@ export function massMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
             }
           });
           if (poly.length < 3) continue;
+          // Where the outline turns a corner inside the cell, the corner
+          // itself, where the two walls' lines meet: traced from the
+          // crossings alone it would be cut off across the cell.
+          const e = poly.findIndex((v, k) => v.eave && poly[(k + 1) % poly.length].eave);
+          const turn = e < 0 ? null : corner(out, poly[e].p, poly[(e + 1) % poly.length].p, c + i / RES, r + j / RES);
+          if (turn) {
+            poly.splice(e + 1, 0, { p: [...turn, Math.max(top, dressing(town, ...turn))], eave: true });
+            // Fanned from the corner, a cell cut round an inside corner too.
+            poly.push(...poly.splice(0, e + 1));
+          }
           // A whole cell is split along whichever diagonal its roof creases
           // on, the one whose middle is the roof's middle: split across a
           // hip instead, the ink sees every cell's fold.
