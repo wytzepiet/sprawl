@@ -428,7 +428,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The free ground, dressed: courtyard lawns, and trees in them and along
   // the streets, as crowns like the forest's.
-  const { gardens, trees } = dress(town, facts(town));
+  const { gardens, trees, cars } = dress(town, facts(town));
   add("garden", quadsAt(gardens, 0.005), theme.garden);
   const crowns: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
   for (const t of trees) {
@@ -443,6 +443,31 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     for (const k of TREE_CROWN.indices) crowns.indices.push(base + k);
   }
   add("crowns", crowns, Color3.White());
+
+  // Parked cars, boxes as the game draws its cars.
+  const CAR_COLOURS = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];
+  const parked: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
+  const [cw, cl, ch] = [0.18, 0.35, 0.15];
+  for (const car of cars) {
+    const [ca, sa] = [Math.cos(car.angle), Math.sin(car.angle)];
+    const at = (a: number, b: number): [number, number] => [car.x + ca * a - sa * b, car.y + sa * a + ca * b];
+    const corners = [at(-cl / 2, -cw / 2), at(cl / 2, -cw / 2), at(cl / 2, cw / 2), at(-cl / 2, cw / 2)];
+    const rgb = CAR_COLOURS[car.colour];
+    const quad = (pts: [number, number, number][], n: [number, number, number]) => {
+      const b0 = parked.positions.length / 3;
+      for (const [x, y, z] of pts) parked.positions.push(-x, -y, z), parked.normals.push(-n[0], -n[1], n[2]), parked.colors.push(rgb[0], rgb[1], rgb[2], 1);
+      parked.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
+    };
+    const z0 = 0.02;
+    quad(corners.map(([x, y]) => [x, y, z0 + ch] as [number, number, number]), [0, 0, 1]);
+    for (let i = 0; i < 4; i++) {
+      const [p, q] = [corners[i], corners[(i + 1) % 4]];
+      const [ex, ey] = [q[0] - p[0], q[1] - p[1]];
+      const len = Math.hypot(ex, ey);
+      quad([[p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z0 + ch], [p[0], p[1], z0 + ch]], [ey / len, -ex / len, 0]);
+    }
+  }
+  add("parked", parked, Color3.White());
 
   // The tiles' grid, faint, over the ground and under the buildings: `g`
   // hides it.

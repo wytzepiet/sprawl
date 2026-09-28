@@ -12,8 +12,13 @@ import { formOf } from "./mass";
  *   on each side that fronts homes, shops or open ground; a through road,
  *   a junction, a bend, a diagonal and an industrial street stay bare.
  *
- * Which tiles get a tree, and where on them, comes from the tile's place
- * alone, so the same town is always dressed the same.
+ * - A street before homes and shops is parked along both kerbs
+ *   (fileparkeren), straight or diagonal, clear of junctions, bends and
+ *   ends, with a gap here and there. Through roads and streets before
+ *   anything else stay clear.
+ *
+ * Which tiles get a tree or a car, and where, comes from the place alone,
+ * so the same town is always dressed the same.
  */
 export interface Tree {
   x: number;
@@ -24,11 +29,29 @@ export interface Tree {
   shade: number;
 }
 
+/** A parked car: where its middle is, which way it points (radians from
+ *  +x, y down), and which of a handful of colours. */
+export interface Car {
+  x: number;
+  y: number;
+  angle: number;
+  colour: number;
+}
+
 export interface Dressing {
   /** Tiles laid to lawn. */
   gardens: [number, number][];
   trees: Tree[];
+  cars: Car[];
 }
+
+/** How far a parked car's middle is from its street's middle line: past
+ *  the road's edge and kerb, half a car's width more. */
+const KERB = 0.27;
+/** Parking bays along a street: their spacing, a car and a bit. */
+const BAY = 0.42;
+/** How far from a junction, bend or end the kerb stays clear. */
+const CORNER = 0.7;
 
 /** A number in [0, 1) that is the same for the same tile and salt. */
 function hash(c: number, r: number, salt: number) {
@@ -66,5 +89,52 @@ export function dress(town: Town, facts: Facts): Dressing {
       }
     }
   }
-  return { gardens, trees };
+  // A car does not stand where a tree does.
+  const cars = park(town).filter((car) => trees.every((t) => Math.hypot(t.x - car.x, t.y - car.y) > 0.3));
+  return { gardens, trees, cars };
+}
+
+const EIGHT = [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]];
+
+/** Cars parked along the kerbs of streets before homes and shops. */
+function park(town: Town): Car[] {
+  const cars: Car[] = [];
+  const links = (c: number, r: number) => EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr));
+  /** A road tile the street runs straight through: two links, opposite. */
+  const straight = (c: number, r: number) => {
+    const l = links(c, r);
+    return l.length === 2 && l[0][0] === -l[1][0] && l[0][1] === -l[1][1];
+  };
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (town.tile(c, r).kind !== "road" || town.through(c, r)) continue;
+      for (const [dc, dr] of links(c, r)) {
+        // Each stretch between two road tiles once.
+        if (dc < 0 || (dc === 0 && dr < 0)) continue;
+        if (town.through(c + dc, r + dr)) continue;
+        const len = Math.hypot(dc, dr);
+        const [ux, uy] = [dc / len, dr / len];
+        const [x0, y0] = [c + 0.5, r + 0.5];
+        // Clear of a junction, bend or end at either end of the stretch.
+        const clear0 = straight(c, r) ? 0 : CORNER;
+        const clear1 = straight(c + dc, r + dr) ? 0 : CORNER;
+        const n = Math.floor(len / BAY);
+        for (let k = 0; k < n; k++) {
+          const t = (k + 0.5) * (len / n);
+          if (t < clear0 || t > len - clear1) continue;
+          for (const side of [-1, 1]) {
+            const [nx, ny] = [-uy * side, ux * side];
+            const [x, y] = [x0 + ux * t + nx * KERB, y0 + uy * t + ny * KERB];
+            // Only before homes and shops, and a gap now and then.
+            const front = town.tile(Math.floor(x + nx * 0.4), Math.floor(y + ny * 0.4));
+            if (!isBuilt(front) || formOf(front).family !== "street") continue;
+            const h = hash(Math.round(x * 100), Math.round(y * 100), 11);
+            if (h < 0.35) continue;
+            cars.push({ x, y, angle: Math.atan2(uy, ux), colour: Math.floor(hash(Math.round(x * 100), Math.round(y * 100), 13) * 8) });
+          }
+        }
+      }
+    }
+  }
+  return cars;
 }

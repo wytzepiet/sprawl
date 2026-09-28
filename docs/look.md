@@ -85,7 +85,11 @@ The code is `client/src/engine/town/`:
   courtyard is a lawn with a tree on most tiles; paved ground closed in
   stays a square. A straight street before homes, shops or open ground has
   a tree on its verge every third tile; through roads, junctions, bends,
-  diagonals and industrial streets stay bare. Where a tree stands comes
+  diagonals and industrial streets stay bare. A street before homes and
+  shops is parked along both kerbs (fileparkeren), straight or diagonal,
+  in the strip the rows' setback leaves, clear of junctions, bends, ends
+  and trees, with a gap here and there. Drawn only, for now: the cars the
+  simulation parks come with `parking.md` step 1. Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted**, a tile at a time as roads are drawn, with a
   brush per kind (`town/brush.ts`). Each kind has a program: the smallest
@@ -111,7 +115,7 @@ The code is `client/src/engine/town/`:
 
 What it does not do yet: heights come from the kind alone; the dressing
 is gardens and street trees only; and it is in the sandbox, not the game.
-Next: more dressing (kerb parking, front yards, lamps before shops); then
+Next: more dressing (front yards, lamps before shops); then
 into the game on the terrain's chunks and worker, with the facts
 that change play (a depot's docks, an airport's gates) worked out on the
 server.
