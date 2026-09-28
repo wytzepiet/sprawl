@@ -15,7 +15,7 @@ import { kin } from "./mass";
  * - Then the whole outline is drawn in, every side facing out alike,
  *   straight or diagonal.
  *
- * Anything else stays square: a lone house, a row's end.
+ * Anything else stays square: a lone house, a straight row's end.
  */
 
 export type Pt = [number, number];
@@ -159,10 +159,11 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
   const across = (c: number, r: number, sx: number, sy: number) => town.linked(c + sx, r, c, r + sy);
   /** Is the corner of (c, r) towards (sx, sy) a step's outer corner: the
    *  building on neither side there nor across (a street between counts
-   *  as apart), and going on along the diagonal past both sides? */
+   *  as apart), and going on along the diagonal past either side (the
+   *  row's end too, so the band runs straight to it)? */
   const step = (c: number, r: number, sx: number, sy: number) =>
     !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && (!one(c, r, c + sx, r + sy) || across(c, r, sx, sy)) &&
-    one(c, r, c + sx, r - sy) && one(c, r, c - sx, r + sy);
+    (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy));
   /** Is the corner of ground (c, r) towards (sx, sy) filled: one building
    *  on both its sides there (an L's inside, or between two steps), and no
    *  street running across the corner? */
