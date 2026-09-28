@@ -1,8 +1,8 @@
 # The look: a town that knows what it is next to
 
 Status: direction, 2026-09-28. Built: the palette, the pen, the fixture
-sheet, and the piece system, proven on houses, streets, junctions and
-open ground (§Pieces, as built). The concepts it was argued from are the pattern
+sheet, the piece system in the game (§Pieces, as built), and in the
+sandbox the town grid that replaces it (§The town grid). The concepts it was argued from are the pattern
 book (https://claude.ai/artifact/XUGqKzMYVtypqraRp9R8tE), where every
 drawing carries the verdict it was given.
 
@@ -70,6 +70,51 @@ situation's frame, each shape carrying its role and height (`roof`,
 and raises it; colours come from the theme by role. Adding a variation is
 a pattern and a drawing, never mesh code. Pieces are drawn around what
 the simulation owns (the road, where cars park) and never over it.
+
+### The town grid: the look decided corner by corner
+
+The piece system names situations one at a time, and a town has more
+situations than anyone will draw: the real places (`bun run osm`) came
+out as streets and houses and nothing between. Townscaper's answer is the
+dual grid, and it is this one's now (`client/src/engine/town/`):
+
+- **The town is a grid of tiles**, each one kind (a building's kind, or
+  road, water, wood, open ground) and some storeys, and the road links
+  between tiles. Nothing about lots, driveways, facings or who owns what:
+  those are the simulation's, and the look reads none of them.
+- **A built tile is four quarters**, and a quarter is shaped by the three
+  tiles at its corner: the two beside it and the one on the diagonal.
+  Built beside it, it runs on wall to wall; a road, it stops at the
+  pavement; open ground, it leaves a garden's depth. Built on both sides
+  and open on the diagonal, the corner is a courtyard's inside corner.
+  Road on both sides, the corner is cut on the diagonal to the junction.
+- **Which way a road runs is part of the corner.** Two road tiles beside
+  a quarter, joined to each other, are one street running across the
+  corner on the diagonal, and the corner is cut deep, clear of it; not
+  joined, they are two streets meeting beyond it, and the cut is a
+  chamfer. The tiles alone cannot tell these apart; the links can.
+- **The roof is the distance in from the outline**, so a row gets a
+  ridge, its end a hip and an L a valley, and nothing is told which way
+  to run. A quarter is a few straight lines, so the outline is traced
+  from samples of their largest signed distance, a metre apart.
+  Different heights join wall to wall and keep their own roofs.
+- **Every layout is covered**: a quarter has some thirty cases, not the
+  thousands a tile has with eight neighbours, so there is nothing to
+  draw per situation, only the rules of a quarter to tune.
+- **The sandbox** (`/sandbox` on the dev client) draws any fixture with
+  no server, and paints: a brush per kind, taller and lower, and "Copy"
+  to take the map away as a fixture. `bun run shots --sandbox` photographs
+  every fixture this way in seconds.
+
+What it does not do yet: a street that runs on the diagonal leaves the
+buildings beside it stepped, each step's corner cut; heights come from
+the kind alone; the ground between buildings is bare; and it is in the
+sandbox, not the game. Next, in the sandbox: gardens and yards on the
+open ground a block closes in, shop fronts and awnings on the quarters
+that face a street, heights that vary with the street, and a
+variation pass (chimneys, dormers, trees) chosen per corner. Then into
+the game: parking to the kerb, driveways and lots deleted, a building
+the tiles it covers, and the piece system below deleted with them.
 
 ### Pieces, as built
 
@@ -182,7 +227,9 @@ the ones that read at game zoom, by the rule kind that would carry them:
 1. Parking belongs to streets (`parking.md`, direction of 2026-09-28): the
    biggest change to the picture, and a deletion.
 2. The piece system, every rule kind from the start. Built 2026-09-28
-   (§Pieces, as built); the kerb bays wait for step 1.
+   (§Pieces, as built); the kerb bays wait for step 1. Superseded the same
+   day by the town grid (§The town grid), which goes into the game with
+   step 1 and takes the piece system's place.
 3. New fixtures and concepts: a diagonal street, a shopping parade, a
    port, an industrial row.
 4. The ladders, as the growth loop arrives.

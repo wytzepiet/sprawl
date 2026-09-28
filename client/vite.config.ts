@@ -14,6 +14,8 @@ export default defineConfig({
     // which lands it on the game server's — and then you are debugging a page
     // that is not the one you think.
     strictPort: true,
+    // The sandbox reads the fixtures from the server's side of the repo.
+    fs: { allow: [".."] },
     // The client derives its socket URL from location.host, so the dev server
     // has to forward /ws to the game server or it dials itself.
     proxy: {

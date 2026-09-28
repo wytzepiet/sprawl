@@ -5,8 +5,11 @@
  *   bun run osm <name> <south>,<west>,<north>,<east>     fetch from Overpass
  *   bun run osm <name> @<lat>,<lon>,<w>,<h>              the same, by its middle and size in tiles
  *   bun run osm <name> <file.json>                       an Overpass answer saved earlier
+ *   bun run osm <name>                                   made again from what was fetched
  *
- * writes `server/fixtures/<name>.txt` (the key is in `server/src/fixtures.rs`).
+ * writes `server/fixtures/<name>.txt` (the key is in `server/src/fixtures.rs`),
+ * and keeps what Overpass answered in `.dev/osm/<name>.json`, so a change
+ * here remakes every fixture without asking again.
  * A saved answer is what `https://overpass-api.de/api/interpreter` returns
  * for the query below with `out geom`; `--query s,w,n,e` prints that query,
  * to paste into overpass-turbo.eu or fetch by hand.
@@ -16,13 +19,12 @@
  * - Main roads (`primary` to `tertiary`) are `#`, the rest a car can use
  *   (`residential`, `unclassified`, `living_street`, `pedestrian`) `=`.
  *   Service roads, paths and tracks are left out: at this scale they are
- *   driveways and noise.
+ *   driveways and noise. A street is one tile wide: a boulevard mapped as
+ *   two ways, or one that crosses a tile's corner, is thinned to a line.
  * - Water is `~`, woods `T`; parks and the rest stay grass.
- * - A building is what its tags, or a shop or café inside it, say. Homes
- *   that are small or low are houses, and a house covers every tile its
- *   footprint covers, so a terrace comes out as a row; the rest are
- *   apartments. Anything else is one letter at its middle, and the server
- *   seats it on the nearest street, as the mayor's hand would.
+ * - A building is what its tags, or a shop or café inside it, say: homes
+ *   that are small or low are houses, the rest apartments. It covers every
+ *   tile its footprint does, so a terrace is a row and a block is a block.
  * - Garages, sheds, churches and the like are left out.
  *
  * `OVERPASS=<url>` asks a mirror instead, such as
@@ -30,8 +32,8 @@
  *
  * Map data © OpenStreetMap contributors, ODbL; the fixture says so.
  */
-import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 const TILE = 12;
 
@@ -53,11 +55,17 @@ const query = ([s, w, n, e]: number[]) => `[out:json][timeout:90][bbox:${s},${w}
 );
 out geom;`;
 
-const [name, where] = process.argv.slice(2).filter((a) => a !== "--query");
-if (!name || !where) {
-  console.error("usage: bun run osm <name> <south,west,north,east | @lat,lon,w,h | saved.json>   (--query prints the query)");
+const [name, given] = process.argv.slice(2).filter((a) => a !== "--query");
+if (!name) {
+  console.error("usage: bun run osm <name> [south,west,north,east | @lat,lon,w,h | saved.json]   (--query prints the query)");
   process.exit(1);
 }
+const out = resolve(import.meta.dir, `../../server/fixtures/${name}.txt`);
+const cache = resolve(import.meta.dir, `../../.dev/osm/${name}.json`);
+// Without a place, the fixture's own: its box is on its second line, and
+// its answer was kept, so it is made again from what was fetched.
+const before = existsSync(out) ? readFileSync(out, "utf8").split("\n") : [];
+const where = given ?? before[1]?.match(/^# ([-\d.,]+),/)?.[1] ?? "";
 const box = where.endsWith(".json") ? null : where.startsWith("@") ? around(where.slice(1).split(",").map(Number)) : where.split(",").map(Number);
 if (process.argv.includes("--query")) {
   console.log(query(box!));
@@ -69,7 +77,15 @@ function around([lat, lon, w, h]: number[]) {
   const dLat = (h * TILE) / 111_320 / 2, dLon = (w * TILE) / (111_320 * Math.cos((lat * Math.PI) / 180)) / 2;
   return [lat - dLat, lon - dLon, lat + dLat, lon + dLon].map((v) => +v.toFixed(5));
 }
-const answer: { elements: Element[]; bbox?: number[] } = box ? await overpass(box) : await Bun.file(where).json();
+const answer: { elements: Element[]; bbox?: number[] } = !box
+  ? await Bun.file(where).json()
+  : !given && existsSync(cache)
+    ? await Bun.file(cache).json()
+    : await overpass(box);
+if (box) {
+  mkdirSync(dirname(cache), { recursive: true });
+  writeFileSync(cache, JSON.stringify({ ...answer, bbox: box }));
+}
 
 /** Ask Overpass, which is shared and busy: a refusal is tried again a few
  *  times, further apart, before it is given up on. */
@@ -205,13 +221,10 @@ for (const e of answer.elements) {
     // Upstairs-downstairs flats in a row are a terrace at this scale: a
     // block of flats is tall or big.
     const flats = levels >= 4 || m2 > (t.building === "apartments" ? 250 : 600);
-    if (kind === null && !flats) {
-      // A house on every tile it covers: a terrace is a row of them.
-      for (const [c, r] of tiles.length ? tiles : [middle(ring)]) if (grid[r]?.[c] === ".") set(c, r, "H");
-      continue;
-    }
-    const [c, r] = middle(ring);
-    if (grid[r]?.[c] === "." || grid[r]?.[c] === "H") set(c, r, kind ?? "A");
+    // Every tile it covers, or its middle if it covers none: a building is
+    // the tiles it stands on.
+    const ch = kind ?? (flats ? "A" : "H");
+    for (const [c, r] of tiles.length ? tiles : [middle(ring)]) if (grid[r]?.[c] === "." || grid[r]?.[c] === "H") set(c, r, ch);
   }
 }
 
@@ -224,11 +237,74 @@ function middle(ring: [number, number][]): [number, number] {
 // --- Roads, last: a road crosses water on a bridge and nothing stands on it -
 
 const MAIN = /^(primary|secondary|tertiary)(_link)?$/;
+const under = grid.map((row) => [...row]);
 for (const e of answer.elements) {
   if (e.type !== "way" || !e.tags?.highway || e.tags.area === "yes") continue;
   const ch = MAIN.test(e.tags.highway) ? "#" : "=";
   const pts = inTiles(e.geometry).map(([x, y]) => [Math.floor(x), Math.floor(y)]);
   for (let i = 0; i + 1 < pts.length; i++) line(pts[i], pts[i + 1], ch);
+}
+thin();
+
+/**
+ * Roads one tile wide. A boulevard mapped as two ways, or two streets that
+ * meet at a slant, leave a band two tiles thick, and the tiles of a band
+ * all join each other: a ladder of little loops. Thinned to its middle
+ * line (Zhang and Suen), a band is one street again. Then a corner left
+ * where a line steps on the diagonal goes too, so the step is a diagonal
+ * street and not a stair. A tile given up is what was under it.
+ */
+function thin() {
+  const road = (c: number, r: number) => grid[r]?.[c] === "=" || grid[r]?.[c] === "#";
+  // A hole of a tile or three with road all round is the median of a dual
+  // carriageway, or a traffic island: road, so the band thins to one line
+  // and not to a ladder round it.
+  const seen = new Set<string>();
+  for (let r = 0; r < H; r++) {
+    for (let c = 0; c < W; c++) {
+      if (road(c, r) || seen.has(`${c},${r}`)) continue;
+      const hole: [number, number][] = [[c, r]];
+      seen.add(`${c},${r}`);
+      for (let i = 0; i < hole.length; i++) {
+        for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const [x, y] = [hole[i][0] + dc, hole[i][1] + dr];
+          if (inGrid(x, y) && !road(x, y) && !seen.has(`${x},${y}`)) seen.add(`${x},${y}`), hole.push([x, y]);
+        }
+      }
+      const edge = hole.some(([x, y]) => x === 0 || y === 0 || x === W - 1 || y === H - 1);
+      if (hole.length <= 3 && !edge) for (const [x, y] of hole) grid[y][x] = "=";
+    }
+  }
+  // Clockwise from north, as Zhang and Suen number them.
+  const ring = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+  const drop = (c: number, r: number) => (grid[r][c] = under[r][c]);
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const pass of [0, 1]) {
+      const gone: [number, number][] = [];
+      for (let r = 0; r < H; r++) {
+        for (let c = 0; c < W; c++) {
+          if (!road(c, r)) continue;
+          const n = ring.map(([dc, dr]) => road(c + dc, r + dr));
+          const count = n.filter(Boolean).length;
+          const turns = n.filter((on, i) => !on && n[(i + 1) % 8]).length;
+          const [N, E, S, Wt] = [n[0], n[2], n[4], n[6]];
+          const clear = pass === 0 ? !(N && E && S) && !(E && S && Wt) : !(N && E && Wt) && !(N && S && Wt);
+          if (count >= 2 && count <= 6 && turns === 1 && clear) gone.push([c, r]);
+        }
+      }
+      for (const [c, r] of gone) drop(c, r);
+      changed ||= gone.length > 0;
+    }
+  }
+  for (let r = 0; r < H; r++) {
+    for (let c = 0; c < W; c++) {
+      if (!road(c, r)) continue;
+      const n = ring.map(([dc, dr]) => road(c + dc, r + dr));
+      // Two sides at a right angle and nothing else: the elbow of a step.
+      if (n.filter(Boolean).length === 2 && [0, 2, 4, 6].some((i) => n[i] && n[(i + 2) % 8] && !n[(i + 1) % 8])) drop(c, r);
+    }
+  }
 }
 
 /** Bresenham between two tiles: a line one tile thick that steps on the
@@ -255,9 +331,8 @@ function bounds(elements: Element[]): number[] {
 
 // A border of grass, so no row starts with `#`, which would read as a note.
 const rows = ["." + ".".repeat(W) + ".", ...grid.map((r) => "." + r.join("") + "."), "." + ".".repeat(W) + "."];
-const title = process.env.TITLE ?? name;
+const title = process.env.TITLE ?? before[0]?.replace(/^# /, "") ?? name;
 const text = `# ${title}\n# ${south},${west},${north},${east}, from OpenStreetMap. Map data © OpenStreetMap contributors, ODbL.\n${rows.join("\n")}\n`;
-const out = resolve(import.meta.dir, `../../server/fixtures/${name}.txt`);
 writeFileSync(out, text);
 const count = (ch: string) => rows.join("").split(ch).length - 1;
 console.log(`${out}: ${W + 2}×${H + 2} tiles, ${count("H")} houses, ${count("A")} apartments, ${"SORBGMWFD".split("").reduce((a, c) => a + count(c), 0)} other buildings`);

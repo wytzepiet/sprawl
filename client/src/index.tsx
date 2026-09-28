@@ -2,6 +2,7 @@
 import { render } from "solid-js/web";
 
 import App from "./App";
+import Sandbox from "./sandbox/Sandbox";
 
 const root = document.getElementById("root");
 
@@ -11,4 +12,5 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
   );
 }
 
-render(() => <App />, root!);
+// The sandbox is the look alone, with no server: see `sandbox/Sandbox.tsx`.
+render(() => (location.pathname.startsWith("/sandbox") ? <Sandbox /> : <App />), root!);

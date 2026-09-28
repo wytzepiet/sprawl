@@ -81,13 +81,18 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   Chrome (a cloud container), `CHROME=/opt/pw-browsers/chromium` draws
   with WebGL in software instead. A new look gets a
   fixture that shows it, so the next change can be seen not to break it.
+- **The look alone:** `/sandbox?f=<fixture>` on the dev client draws a
+  fixture with no server, through the town grid (`client/src/engine/town/`,
+  `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the
+  sheet from it, in seconds.
 - **A real place as a fixture:** `bun run osm <name> @<lat>,<lon>,36,28`
   fetches that many tiles of OpenStreetMap round a point into
   `server/fixtures/<name>.txt` (`TITLE="…"` names it). Overpass is shared
   and often busy; the script tries again, `OVERPASS=<mirror url>` asks
   another, and `--query` prints the query for fetching by hand, to pass
-  the saved answer instead of the point. What becomes what is at the top
-  of `client/scripts/osm.ts`.
+  the saved answer instead of the point; `bun run osm <name>` alone makes
+  it again from the answer kept in `.dev/osm/`. What becomes what is at
+  the top of `client/scripts/osm.ts`.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads and forest to build into — enough to
