@@ -40,6 +40,12 @@ const INSET = 0.2;
  *  filled on the line this far out towards a corner from a tile's middle,
  *  in steps of x and y together (the corner itself is 1). */
 const BAND = 0.5 * Math.SQRT2;
+/** Beside a diagonal street the band keeps half a tile from the street's
+ *  middle line, as a straight row's tile does: its middles are only 0.7
+ *  from the street, so it is cut this far out on the street's side and
+ *  filled out to its tiles' corners on the other. */
+const NEAR = 1 - BAND;
+const FAR = 1;
 
 /** Clipper works in integers: a tile is this many. */
 const S = 1e5;
@@ -163,6 +169,14 @@ function plan(town: Town) {
     if (!isBuilt(town.tile(c, r)) || !isBuilt(town.tile(x, y)) || !kin(town.tile(c, r), town.tile(x, y))) return false;
     return x === c || y === r || !town.linked(x, r, c, y);
   };
+  /** Does a diagonal street's line run through the corner of (c, r)
+   *  towards (sx, sy): across it, or ending beside it and pointing at it? */
+  const online = (c: number, r: number, sx: number, sy: number) =>
+    town.linked(c + sx, r, c, r + sy) || town.linked(c + sx, r, c + 2 * sx, r - sy) || town.linked(c, r + sy, c - sx, r + 2 * sy);
+  /** How far out towards corner (sx, sy) of tile (c, r) a band's face lies:
+   *  nearer on a diagonal street's side, further on the other. */
+  const band = (c: number, r: number, sx: number, sy: number) =>
+    online(c, r, sx, sy) ? NEAR : online(c, r, -sx, -sy) ? FAR : BAND;
   /** Is the corner of (c, r) towards (sx, sy) a step's: no neighbour of
    *  the building beside it there nor across it, and one going on along
    *  the diagonal past one of the sides? */
@@ -209,13 +223,13 @@ function plan(town: Town) {
       const [mx, my] = [c + 0.5, r + 0.5];
       if (isBuilt(town.tile(c, r))) {
         let ring: Pt[] = [[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]];
-        for (const [sx, sy] of CORNERS) if (step(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + BAND]);
+        for (const [sx, sy] of CORNERS) if (step(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + band(c, r, sx, sy)]);
         pieces.push({ at: [c, r], ring });
       } else {
         // The corner between two steps of a row.
         for (const [sx, sy] of CORNERS) {
           if (!fill(c, r, sx, sy)) continue;
-          const ring = cut([[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]], [-sx, -sy, -(sx * mx + sy * my) - (1 - BAND)]);
+          const ring = cut([[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]], [-sx, -sy, -(sx * mx + sy * my) - (1 - band(c + sx, r, -sx, -sy))]);
           if (ring.length >= 3) pieces.push({ at: [c + sx, r], ring });
         }
       }

@@ -17,9 +17,17 @@ describe("a building's plan is one exact polygon", () => {
     expect(row.polygons[0][0].length).toBe(4);
   });
 
-  test("a diagonal row beside its street is the same clean band as without the street", () => {
+  test("a diagonal row beside its street is a clean band, as far from it as a straight row", () => {
     const beside = plans(["=H....", ".=H...", "..=H..", "...=H.", "......"]);
     const alone = plans([".H....", "..H...", "...H..", "....H.", "......"]);
-    expect(beside[0].polygons[0][0]).toEqual(alone[0].polygons[0][0]);
+    const ring = beside[0].polygons[0][0];
+    expect(ring.length).toBe(alone[0].polygons[0][0].length);
+    // The street's middle line is x = y; a straight row's face stands 0.5
+    // plus the draw-in from its street's middle.
+    const near = Math.min(...ring.map(([x, y]) => (x - y) / Math.SQRT2));
+    expect(near).toBeCloseTo(0.7, 1);
+    const [straight] = plans(["......", ".HHHH.", "======"]);
+    const face = Math.max(...straight.polygons[0][0].map(([, y]) => y));
+    expect(2.5 - face).toBeCloseTo(near, 1);
   });
 });
