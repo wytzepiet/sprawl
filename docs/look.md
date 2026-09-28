@@ -49,23 +49,17 @@ The code is `client/src/engine/town/`:
   between tiles. Nothing about lots, driveways, facings or who owns what:
   those are the simulation's, and the look reads none of them.
 - **A building is its tiles' squares, drawn as the terrain draws a
-  shore** (`town/footprint.ts`). Tiles join into one building if they are
-  one kind (and, for sheds, offices and boxes, painted as one); houses run
-  on into rows whoever built them. A row stepping on the diagonal is a
-  straight band: its steps' outer corners are cut and the corners between
-  them filled, on lines half a tile either side of the row's middle. An
-  L's inside corner is filled only where one of its arms is cut on the
-  same line, so a diagonal face runs on across it; a courtyard's corner,
-  its arms running on, stays square. A diagonal street across a corner parts the tiles either
-  side. Then the whole outline is drawn in by one width, so every side
-  facing out stands back alike, straight or diagonal. Each tile's shape is
-  decided by its neighbours alone, so every layout is covered.
-- **A row keeps half a tile from its street's middle line, whatever the
-  angle.** A straight row's tile does that by itself; beside a diagonal
-  street, whose line is only 0.7 from the row's middles, the band is cut
-  back on the street side and filled out to its tiles' corners on the
-  other. Roads keep their own geometry, 0.3 of a tile wide; buildings read
-  only their links.
+  shore** (`town/footprint.ts`), each tile decided by its 3×3 alone. Tiles
+  join into one building if they are one kind (and, for sheds, offices and
+  boxes, painted as one); houses run on into rows whoever built them. A
+  step's corner is cut (neither tile beside it the building, and the
+  building going on along the diagonal past one of them); the corner
+  between two steps is filled; a street across a corner parts it. Cuts and
+  fills lie half a tile either side of a diagonal row's middle. Then the
+  outline is drawn in by one width. Anything else stays square. This is
+  the simplest version, kept as the base to refine from: an L's inside
+  corner, a two-deep diagonal, and the distance to a diagonal street each
+  wanted more, and each rule for them broke something else.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.

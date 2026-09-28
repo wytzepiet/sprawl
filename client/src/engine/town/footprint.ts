@@ -3,19 +3,20 @@ import { isBuilt, type Tile, type Town } from "./grid";
 import { kin } from "./mass";
 
 /**
- * The ground plans of a town's buildings, as the terrain draws a shore:
+ * The ground plans of a town's buildings, each tile decided by its 3×3
+ * neighbourhood alone:
  *
- * - A building's tile is its whole square.
- * - A row stepping on the diagonal is a straight band: each step's outer
- *   corner is cut and a corner of other ground with the building on both
- *   its sides (between two steps, or an L's inside) is filled, on lines
- *   half a tile either side of the row's middle, so it is as thick as a
- *   straight row. A
- *   street across a corner parts it: rows either side stay apart.
- * - Then the whole outline is drawn in, every side facing out alike,
- *   straight or diagonal.
+ * 1. A building's tile is its whole square.
+ * 2. A step's corner is cut: neither tile beside it is the building, and
+ *    the building goes on along the diagonal past one of them.
+ * 3. The corner between two steps is filled: ground with the building on
+ *    both its sides there, and not across it.
+ * 4. A street across a corner parts it: no cut, no fill, no joining.
+ * 5. The whole outline is drawn in by one width.
  *
- * Anything else stays square: a lone house, a straight row's end.
+ * Cuts and fills lie on lines half a tile either side of a diagonal row's
+ * middle, so it is a straight band as thick as a straight row. Anything
+ * else stays square: a lone house, an L's inside, a courtyard.
  */
 
 export type Pt = [number, number];
@@ -38,13 +39,6 @@ const INSET = 0.2;
  *  filled on the line this far out towards a corner from a tile's middle,
  *  in steps of x and y together (the corner itself is 1). */
 const BAND = 0.5 * Math.SQRT2;
-/** Beside a diagonal street the band keeps 0.5 from the street's middle
- *  line, as a straight row's tile does: its middles are only 0.7 from the
- *  street, so it is cut this far out on the street side, and on the other
- *  filled out to its tiles' corners (further would spill into the tile
- *  beyond), a little thinner than a straight row. */
-const NEAR = 1 - BAND;
-const FAR = 1;
 
 /** Clipper works in integers: a tile is this many. */
 const S = 1e5;
@@ -166,32 +160,18 @@ function plan(town: Town) {
   /** Is there a street across the corner of (c, r) towards (sx, sy),
    *  from the tile beside it on one side to the other? */
   const across = (c: number, r: number, sx: number, sy: number) => town.linked(c + sx, r, c, r + sy);
-  /** Does a diagonal street's line run through the corner of (c, r)
-   *  towards (sx, sy): across it, or from a road tile beside it away along
-   *  the same line, so the corner is where that street's end points? */
-  const online = (c: number, r: number, sx: number, sy: number) =>
-    across(c, r, sx, sy) || town.linked(c + sx, r, c + 2 * sx, r - sy) || town.linked(c, r + sy, c - sx, r + 2 * sy);
-  /** Is the corner of (c, r) towards (sx, sy) a step's outer corner: the
-   *  building on neither side there nor across (a street between counts
-   *  as apart), and going on along the diagonal past either side (the
-   *  row's end too, so the band runs straight to it)? */
+  /** Is the corner of (c, r) towards (sx, sy) a step's: the building on
+   *  neither side there nor across it, and going on along the diagonal
+   *  past one of the sides? */
   const step = (c: number, r: number, sx: number, sy: number) =>
-    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && (!one(c, r, c + sx, r + sy) || online(c, r, sx, sy)) &&
-    (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy));
-  /** Is the corner of ground (c, r) towards (sx, sy) filled: one building
-   *  on both its sides there, no street running across the corner, and
-   *  the building not across it too (then a step of a row), or, if it is
-   *  (an L's inside), one of the L's arms cut on the same line, the corner
-   *  of it that faces away from the L being a step's. A courtyard's corner,
-   *  its arms running on, stays square. */
+    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && !one(c, r, c + sx, r + sy) &&
+    (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy)) && !across(c, r, sx, sy);
+  /** Is the corner of ground (c, r) towards (sx, sy) between two steps: the
+   *  building on both its sides there and not across it, and no street
+   *  across the corner or into it? */
   const fill = (c: number, r: number, sx: number, sy: number) =>
-    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && !town.linked(c, r, c + sx, r + sy) && !across(c, r, sx, sy) &&
-    (!one(c + sx, r, c + sx, r + sy) || step(c + sx, r, -sx, -sy) || step(c, r + sy, -sx, -sy));
-  /** How far out the band's face lies towards corner (sx, sy) of built
-   *  tile (c, r): nearer where a diagonal street's line runs through that
-   *  corner, further where one runs through the opposite one. */
-  const band = (c: number, r: number, sx: number, sy: number) =>
-    online(c, r, sx, sy) ? NEAR : online(c, r, -sx, -sy) ? FAR : BAND;
+    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && !one(c + sx, r, c + sx, r + sy) &&
+    !across(c, r, sx, sy) && !town.linked(c, r, c + sx, r + sy);
   /** Tiles on the diagonal of each other, joined through a filled corner. */
   const bridged = (c: number, r: number, dx: number, dy: number) =>
     fill(c + dx, r, -dx, dy) || fill(c, r + dy, dx, -dy);
@@ -227,13 +207,13 @@ function plan(town: Town) {
       const [mx, my] = [c + 0.5, r + 0.5];
       if (isBuilt(town.tile(c, r))) {
         let ring: Pt[] = [[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]];
-        for (const [sx, sy] of CORNERS) if (step(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + band(c, r, sx, sy)]);
+        for (const [sx, sy] of CORNERS) if (step(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + BAND]);
         pieces.push({ at: [c, r], ring });
       } else {
         // The corner between two steps of a row.
         for (const [sx, sy] of CORNERS) {
           if (!fill(c, r, sx, sy)) continue;
-          const ring = cut([[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]], [-sx, -sy, -(sx * mx + sy * my) - (1 - band(c + sx, r, -sx, -sy))]);
+          const ring = cut([[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]], [-sx, -sy, -(sx * mx + sy * my) - (1 - BAND)]);
           if (ring.length >= 3) pieces.push({ at: [c + sx, r], ring });
         }
       }
