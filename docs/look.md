@@ -140,15 +140,15 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   street at whatever angle it runs, not by which side a road tile is on:
   a diagonal street gets a front parallel to it.
 - **Plans are the terrain's rule, with straight lines** (`town/footprint.ts`).
-  A building's tile is its whole square; a side along which a street runs
-  straight is cut back a pavement's width, and a corner a street runs
-  across on the diagonal is cut back as far from it; a row stepping on the diagonal is a straight band,
-  each step's outer corner cut from edge middle to edge middle and the
-  corner between two steps (or an L's inside) filled the same way; a
-  street across a corner parts the tiles either side. Nothing else: each
-  tile's shape is decided by its eight neighbours. Setbacks, gardens,
-  courtyards and gables built on distances all broke on diagonals and at
-  street ends, and are gone; any comes back only as a rule of the same kind.
+  A building's tile is its whole square; a row stepping on the diagonal is
+  a straight band, each step's outer corner cut from edge middle to edge
+  middle and the corner between two steps (or an L's inside) filled the
+  same way; a street across a corner parts the tiles either side. Then the
+  whole outline is drawn in by one width, so every side facing out, to a
+  street, a garden or a neighbour, straight or diagonal, stands back alike.
+  Roads decide nothing else. Setbacks, gardens, courtyards and gables built
+  on distances broke on diagonals and at street ends, and are gone; any
+  comes back only as a rule of the same kind.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
