@@ -11,7 +11,8 @@ import { kin } from "./mass";
  *    the building goes on along the diagonal past one of them.
  * 3. An inside corner is filled: ground with the building on both its
  *    sides there, between two steps or in an L.
- * 4. A street across a corner parts it: no fill and no joining there.
+ * 4. Tiles a street runs between, across their shared corner, are no
+ *    neighbours to any of these rules.
  * 5. The whole outline is drawn in by one width.
  *
  * Cuts and fills lie on lines half a tile either side of a diagonal row's
@@ -154,24 +155,25 @@ function tidy(ring: Pt[]): Pt[] {
 /** The pieces a town's buildings are made of, each with the tile whose
  *  building, height and colour it is, and which building each tile is. */
 function plan(town: Town) {
-  /** Are the tiles at (c, r) and (x, y) one building? */
-  const one = (c: number, r: number, x: number, y: number) =>
-    isBuilt(town.tile(c, r)) && isBuilt(town.tile(x, y)) && kin(town.tile(c, r), town.tile(x, y));
-  /** Is there a street across the corner of (c, r) towards (sx, sy),
-   *  from the tile beside it on one side to the other? */
-  const across = (c: number, r: number, sx: number, sy: number) => town.linked(c + sx, r, c, r + sy);
-  /** Is the corner of (c, r) towards (sx, sy) a step's: the building on
-   *  neither side there nor across it (or a street between), and going on
-   *  along the diagonal past one of the sides? */
+  /** Are the tiles at (c, r) and (x, y) neighbours of one building? Two
+   *  on the diagonal of each other are not where a street runs between
+   *  them, across their shared corner: to every rule below, a building cut
+   *  off by a road is no neighbour at all. */
+  const one = (c: number, r: number, x: number, y: number) => {
+    if (!isBuilt(town.tile(c, r)) || !isBuilt(town.tile(x, y)) || !kin(town.tile(c, r), town.tile(x, y))) return false;
+    return x === c || y === r || !town.linked(x, r, c, y);
+  };
+  /** Is the corner of (c, r) towards (sx, sy) a step's: no neighbour of
+   *  the building beside it there nor across it, and one going on along
+   *  the diagonal past one of the sides? */
   const step = (c: number, r: number, sx: number, sy: number) =>
-    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && (!one(c, r, c + sx, r + sy) || across(c, r, sx, sy)) &&
+    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && !one(c, r, c + sx, r + sy) &&
     (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy));
-  /** Is the corner of ground (c, r) towards (sx, sy) filled: the building
-   *  on both its sides there (between two steps, or an L's inside), and no
-   *  street across the corner or into it? As the terrain fills every inside
-   *  corner, so every cut has its fill. */
-  const fill = (c: number, r: number, sx: number, sy: number) =>
-    !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy) && !across(c, r, sx, sy) && !town.linked(c, r, c + sx, r + sy);
+  /** Is the corner of ground (c, r) towards (sx, sy) filled: neighbours of
+   *  one building on both its sides there (between two steps, or an L's
+   *  inside)? As the terrain fills every inside corner, so every cut has
+   *  its fill. */
+  const fill = (c: number, r: number, sx: number, sy: number) => !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy);
   /** Tiles on the diagonal of each other, joined through a filled corner. */
   const bridged = (c: number, r: number, dx: number, dy: number) =>
     fill(c + dx, r, -dx, dy) || fill(c, r + dy, dx, -dy);

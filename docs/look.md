@@ -55,8 +55,9 @@ The code is `client/src/engine/town/`:
   step's corner is cut (neither tile beside it the building, and the
   building going on along the diagonal past one of them); every inside
   corner, between two steps or in an L, is filled, as the terrain fills
-  its inside corners, so every cut has its fill; a street across a corner
-  parts it. Cuts and
+  its inside corners, so every cut has its fill. Two tiles a street runs
+  between, across their shared corner, are no neighbours to any rule: a
+  building cut off by a road does not count. Cuts and
   fills lie half a tile either side of a diagonal row's middle. Then the
   outline is drawn in by one width. Outside corners stay square. This is
   the simplest version, kept as the base: exceptions to it (keeping an
