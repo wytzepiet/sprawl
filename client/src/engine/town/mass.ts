@@ -133,8 +133,10 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
  *  family, `p` and `q`, on both its sides there? Then the corner is
  *  theirs, filled on the diagonal: a row stepping across it runs straight
  *  on, and a courtyard's inside corner is cut at forty-five degrees, as the
- *  terrain rounds a shore's. */
-const fills = (t: Tile, p: Tile, q: Tile) => (t.kind === "open" || t.kind === "paved") && kin(p, q);
+ *  terrain rounds a shore's. A road tile's corner too, clear of its
+ *  street: a street stepping on the diagonal leaves two corners of every
+ *  step, and the row along it runs on into them. */
+const fills = (t: Tile, p: Tile, q: Tile) => ["open", "paved", "road"].includes(t.kind) && kin(p, q);
 
 /** A tile's building as the look draws it: its own, or, for ground a row
  *  steps across, that row's. */
@@ -174,34 +176,36 @@ function street(town: Town, x: number, y: number, clear: number): number {
 
 /**
  * What a row of houses wears on its roof, as a height the roof is raised
- * to: in a row along a street, every fourth house steps forward under a
- * gable of its own, its ridge running to the street and its point on the
- * front, and the others each have a dormer on the front slope. Where the
- * main roof is higher it wins, so the gable's ridge dies into it and its
+ * to: now and then a house steps forward under a gable of its own, its
+ * ridge running to the street and its point on the front. Where the main
+ * roof is higher it wins, so the gable's ridge dies into it and its
  * valleys fall out. Minus infinity where there is nothing.
  */
 function dressing(town: Town, x: number, y: number): number {
   const at = frontOf(town, x, y);
-  if (!at) return -Infinity;
-  const { me, along, back, bay } = at;
-  if (bay) return Math.abs(along) <= GABLE && back <= 0.6 ? eaves(me) + 0.26 * (1 - Math.abs(along) / GABLE) : -Infinity;
-  return Math.abs(along) <= 0.12 && back >= 0.22 && back <= 0.36 ? eaves(me) + 0.18 : -Infinity;
+  if (!at?.bay || Math.abs(at.along) > GABLE || at.back > 0.6) return -Infinity;
+  return eaves(at.me) + 0.26 * (1 - Math.abs(at.along) / GABLE);
 }
 
-/** For a point on a house in a row along a street: how far along the row
- *  from the house's middle, how far back from its front, and whether it is
- *  one that steps forward under a gable, every fourth. */
+/** For a point on a house in a row along a straight street: how far along
+ *  the row from the house's middle, how far back from its front, and
+ *  whether it is one that steps forward under a gable, every sixth. A
+ *  house on a street that steps on the diagonal has no front of this kind:
+ *  the road beside it is a step of the street, not the street. */
 function frontOf(town: Town, x: number, y: number) {
   const [c, r] = [Math.floor(x), Math.floor(y)];
   const me = town.tile(c, r);
   if (me.kind !== "House") return null;
-  const front = ([[0, 1], [0, -1], [1, 0], [-1, 0]] as const).find(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road");
+  const front = ([[0, 1], [0, -1], [1, 0], [-1, 0]] as const).find(([dc, dr]) => {
+    const [rc, rr] = [c + dc, r + dr];
+    return town.linked(rc, rr, rc + dr, rr + dc) || town.linked(rc, rr, rc - dr, rr - dc);
+  });
   if (!front) return null;
   const [fx, fy] = front;
   const along = fx ? y - r - 0.5 : x - c - 0.5;
   const back = 0.5 - ((x - c - 0.5) * fx + (y - r - 0.5) * fy);
   const inRow = kin(me, town.tile(c + fy, r + fx)) && kin(me, town.tile(c - fy, r - fx));
-  return { me, along, back, bay: inRow && (fx ? r : c) % 4 === 1 };
+  return { me, along, back, bay: inRow && (fx ? r : c) % 6 === 1 };
 }
 /** How far a row of houses stands back behind its front gardens, and so
  *  how far a gabled house steps forward of it. */
@@ -329,10 +333,12 @@ export function massMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
       for (let j = 0; j < RES; j++) {
         for (let i = 0; i < RES; i++) {
           const k = (r * RES + j) * W + c * RES + i;
-          // The block is its tiles: depth is from their edge, so a
-          // courtyard's side is straight whatever the fronts do.
-          built[k] = 1;
+          // The block is its buildings' tiles: depth is from their edge,
+          // so a courtyard's side is straight whatever the fronts do. Of
+          // ground a row runs on across, only what it covers, or a street
+          // between two rows would be the inside of their block.
           if (outside(town, c, r, c + (i + 0.5) / RES, r + (j + 0.5) / RES) < 0) owner[k] = me;
+          built[k] = isBuilt(town.tile(c, r)) || owner[k] ? 1 : 0;
         }
       }
     }

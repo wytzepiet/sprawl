@@ -117,11 +117,13 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   houses round a garden however it was painted or mapped (13-block).
 - **A row of houses is one roof, with a rhythm**, as a 1920s Utrecht street
   is: one colour, one height, a ridge along the street, the row stood back
-  behind a strip of front garden, every fourth house stepping forward to
-  the pavement under a gable of its own with its point on the front, and a
-  dormer on each of the others. Gables and dormers are heights the roof is
-  raised to, so the valleys where they meet the main roof fall out, and the
-  front wall rises to meet the roof, so the gable's point is there too.
+  behind a strip of front garden, and now and then (every sixth) a house
+  stepping forward to the pavement under a gable of its own with its point
+  on the front. The gable is a height the roof is raised to, so the valleys
+  where it meets the main roof fall out. Only on a straight street: on one
+  stepping on the diagonal the road beside a house is a step, not its
+  front, and the row there is a plain band along the street, running on
+  into the corners of the steps the street leaves (12-diagonal).
 - **A shed is a business park's** (14-business, Lage Weide): its office
   at its street end, the whole end across, a couple of storeys over the
   hall and lighter, and rooflights across the hall's roof the short way.
