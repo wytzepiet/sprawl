@@ -64,6 +64,12 @@ export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET
 
 /** How far a building stands back from water. */
 const QUAY = 0.02;
+const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
+/** How much further back a row stepping on the diagonal is built than
+ *  the corner of a courtyard is cut: a house there is as deep as one on a
+ *  straight street, where the diagonal through its tile alone would leave
+ *  it a sliver. */
+const DIAGONAL = 0.3;
 /** How far in from the corner a street corner is cut. */
 const CHAMFER = 0.2;
 
@@ -100,25 +106,41 @@ export function outside(town: Town, c: number, r: number, x: number, y: number):
   const [a, b, d] = [town.tile(c + sx, r), town.tile(c, r + sy), town.tile(c + sx, r + sy)];
   const me = town.tile(c, r);
   if (!isBuilt(me)) {
-    if (!fills(me, a, b)) return 1;
-    const form = formOf(a);
-    return Math.max((1 - u - w - (0.5 - form.apart)) / Math.SQRT2, street(town, x, y, form.clear));
+    // Ground a row takes corners of. A courtyard's corner is cut within its
+    // quarter; a row stepping on the diagonal takes the whole half of the
+    // tile on its side of the line its back runs along.
+    let f = 1;
+    for (const [cx, cy] of CORNERS) {
+      const [p, q, o] = [town.tile(c + cx, r), town.tile(c, r + cy), town.tile(c + cx, r + cy)];
+      if (!fills(me, p, q) || (kin(p, o) && (cx !== sx || cy !== sy))) continue;
+      const form = formOf(p);
+      const toward = (x - c - 0.5) * cx + (y - r - 0.5) * cy;
+      const face = 0.5 - form.apart + (kin(p, o) ? 0 : DIAGONAL);
+      f = Math.min(f, Math.max((1 - toward - face) / Math.SQRT2, street(town, x, y, form.clear)));
+    }
+    return f;
   }
   const form = formOf(me);
   const face = 0.5 - form.apart;
   const gap = (t: Tile) => (t.kind === "road" ? 0 : t.kind === "water" ? QUAY : form.apart);
   let f = -1;
   const [ja, jb] = [kin(me, a), kin(me, b)];
-  if (!ja) f = Math.max(f, fills(a, me, d) ? (u - w - face) / Math.SQRT2 : u - 0.5 + gap(a));
-  if (!jb) f = Math.max(f, fills(b, me, d) ? (w - u - face) / Math.SQRT2 : w - 0.5 + gap(b));
+  // Beside it, open ground a row stepping on the diagonal runs on across: the
+  // step's other house beyond it, and no building in the fourth tile round
+  // that corner, which would make it a courtyard. No wall on that side;
+  // the row's back, on the diagonal, bounds it instead.
+  const onA = !ja && a.kind !== "road" && fills(a, me, town.tile(c + sx, r - sy)) && !kin(me, town.tile(c, r - sy));
+  const onB = !jb && b.kind !== "road" && fills(b, me, town.tile(c - sx, r + sy)) && !kin(me, town.tile(c - sx, r));
+  // Across a filled corner the face runs on the diagonal: a courtyard's,
+  // where the fourth tile round the corner is built too, or a row's back.
+  const across = (t: Tile) => face + (kin(me, t) ? 0 : DIAGONAL);
+  if (!ja) f = Math.max(f, fills(a, me, d) ? (u - w - across(b)) / Math.SQRT2 : onA ? f : u - 0.5 + gap(a));
+  if (!jb) f = Math.max(f, fills(b, me, d) ? (w - u - across(a)) / Math.SQRT2 : onB ? f : w - 0.5 + gap(b));
   if (ja && jb && !kin(me, d) && !fills(d, a, b)) {
     const edge = 0.5 - gap(d);
     f = Math.max(f, Math.min(u - edge, w - edge));
   }
-  // The outer corner of a step, with the row going on beyond both its
-  // sides: cut on the diagonal the row's face runs along.
-  const steps = !kin(me, a) && !kin(me, b) && !kin(me, d) && kin(me, town.tile(c + sx, r - sy)) && kin(me, town.tile(c - sx, r + sy));
-  if (steps) f = Math.max(f, (u + w - face) / Math.SQRT2);
+  if (onA || onB) f = Math.max(f, (u + w - face - DIAGONAL) / Math.SQRT2);
   if (form.corners && a.kind === "road" && b.kind === "road" && !town.linked(c + sx, r, c, r + sy)) {
     f = Math.max(f, (CHAMFER - (1 - u - w)) / Math.SQRT2);
   }
@@ -324,7 +346,6 @@ export function massMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
   // block's inside, open, a courtyard. So a block of houses is a ring round
   // a garden however it was painted, and a shed is as deep as it likes.
   const [W, H] = [town.w * RES, town.h * RES];
-  const built = new Uint8Array(W * H);
   const owner: (Tile | null)[] = new Array(W * H).fill(null);
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
@@ -333,17 +354,14 @@ export function massMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
       for (let j = 0; j < RES; j++) {
         for (let i = 0; i < RES; i++) {
           const k = (r * RES + j) * W + c * RES + i;
-          // The block is its buildings' tiles: depth is from their edge,
-          // so a courtyard's side is straight whatever the fronts do. Of
-          // ground a row runs on across, only what it covers, or a street
-          // between two rows would be the inside of their block.
+          // Depth is from the outline, so a courtyard's side runs parallel
+          // to the street at whatever angle the street runs.
           if (outside(town, c, r, c + (i + 0.5) / RES, r + (j + 0.5) / RES) < 0) owner[k] = me;
-          built[k] = isBuilt(town.tile(c, r)) || owner[k] ? 1 : 0;
         }
       }
     }
   }
-  const deep = distances(built, W, H);
+  const deep = distances(Uint8Array.from(owner, (t) => (t ? 1 : 0)), W, H);
   /** How far into its block the point is, in tiles, from the samples round it. */
   const into = (x: number, y: number) => {
     const [gx, gy] = [x * RES - 0.5, y * RES - 0.5];

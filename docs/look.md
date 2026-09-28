@@ -122,8 +122,9 @@ dual grid, and it is this one's now (`client/src/engine/town/`):
   on the front. The gable is a height the roof is raised to, so the valleys
   where it meets the main roof fall out. Only on a straight street: on one
   stepping on the diagonal the road beside a house is a step, not its
-  front, and the row there is a plain band along the street, running on
-  into the corners of the steps the street leaves (12-diagonal).
+  front, and the row there is a plain band along the street, as deep as a
+  straight row's, running on into the corners of the steps the street
+  leaves and across half of each open tile behind it (12-diagonal).
 - **A shed is a business park's** (14-business, Lage Weide): its office
   at its street end, the whole end across, a couple of storeys over the
   hall and lighter, and rooflights across the hall's roof the short way.
