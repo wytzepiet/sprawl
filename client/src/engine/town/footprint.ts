@@ -7,9 +7,10 @@ import { kin } from "./mass";
  *
  * - A building's tile is its whole square.
  * - A row stepping on the diagonal is a straight band: each step's outer
- *   corner is cut, from the middle of one edge to the middle of the other,
- *   and a corner of other ground with the building on both its sides
- *   (between two steps, or an L's inside) is filled the same way. A
+ *   corner is cut and a corner of other ground with the building on both
+ *   its sides (between two steps, or an L's inside) is filled, on lines
+ *   half a tile either side of the row's middle, so it is as thick as a
+ *   straight row. A
  *   street across a corner parts it: rows either side stay apart.
  * - Then the whole outline is drawn in, every side facing out alike,
  *   straight or diagonal.
@@ -32,6 +33,11 @@ export interface Mass {
 
 /** How far every side facing out is drawn in. */
 const INSET = 0.15;
+/** A row stepping on the diagonal is a band half a tile either side of the
+ *  line through its tiles' middles, as thick as a straight row: cut and
+ *  filled on the line this far out towards a corner from a tile's middle,
+ *  in steps of x and y together (the corner itself is 1). */
+const BAND = 0.5 * Math.SQRT2;
 
 /** Clipper works in integers: a tile is this many. */
 const S = 1e5;
@@ -197,13 +203,14 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean):
       const [mx, my] = [c + 0.5, r + 0.5];
       if (isBuilt(town.tile(c, r))) {
         let ring: Pt[] = [[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]];
-        for (const [sx, sy] of CORNERS) if (step(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + 0.5]);
+        for (const [sx, sy] of CORNERS) if (step(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + BAND]);
         pieces.push({ at: [c, r], ring });
       } else {
         // The corner between two steps of a row.
         for (const [sx, sy] of CORNERS) {
           if (!fill(c, r, sx, sy)) continue;
-          pieces.push({ at: [c + sx, r], ring: [[mx + sx / 2, my + sy / 2], [mx + sx / 2, my], [mx, my + sy / 2]] });
+          const ring = cut([[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]], [-sx, -sy, -(sx * mx + sy * my) - (1 - BAND)]);
+          pieces.push({ at: [c + sx, r], ring });
         }
       }
     }

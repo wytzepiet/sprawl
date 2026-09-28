@@ -12,7 +12,7 @@ export type Flow = "twoway" | "out" | "in";
 export type ArmInfo = { angle: number; flow: Flow };
 type Point = { x: number; y: number };
 
-export const ROAD_WIDTH = 0.4;
+export const ROAD_WIDTH = 0.3;
 export const HALF_W = ROAD_WIDTH / 2;
 /** The kerb is as wide as the map's grid line. */
 export const BORDER_HALF_W = HALF_W + GRID_LINE;
