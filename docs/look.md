@@ -140,13 +140,43 @@ What the pattern book and the image models taught:
 ## The loop
 
 1. **Situations** are fixture towns (`server/fixtures/*.txt`); each new
-   one gets a fixture before it gets a rule.
+   one gets a fixture before it gets a rule. Drawn by hand for one idea
+   (`01-terrace`), or taken from a real place (`bun run osm`, see
+   `CLAUDE.md`), which brings the situations nobody thinks to draw: the
+   odd angle, the leftover wedge, the street that bends. The real ones
+   are chosen for difference, one of each kind of place: terraces
+   (Lombok, Levenshulme), a turned grid (the Eixample), canals (the
+   Jordaan), a tangle (the Marais), lanes (Kichijoji), a woonerf town
+   (Houten), a village (Castle Combe), a cliff (Oia), an estate (Milton
+   Keynes).
 2. **Concepts**: several deliberately different drawings per situation,
    into the pattern book, with image models (`OPENROUTER_API_KEY`) for
    ideas when there are none, asked for game zoom and top-down.
 3. **Verdicts** are the mayor's. Nothing goes into the game unkept.
 4. **Pieces**: a kept drawing becomes a piece and a rule; `bun run shots`
    shows it in the game beside the drawing it came from.
+
+## Patterns to borrow
+
+Christopher Alexander's *A Pattern Language* (1977) is a pattern book
+for towns written the way these rules are: each pattern a situation and
+what answers it. Its patterns are candidates for concepts, not verdicts;
+the ones that read at game zoom, by the rule kind that would carry them:
+
+| Pattern | Rule | In Sprawl |
+|---|---|---|
+| 38 Row Houses | plot | the terrace, built |
+| 122 Building Fronts | plot | a front that follows the street's line, bent or not |
+| 89 Corner Grocery | plot | a shop is drawn to the corner; the corner house becomes one |
+| 115 Courtyards Which Live | plot | apartments round a court that opens to the street |
+| 106 Positive Outdoor Space | free | a block's middle closed on all sides, built |
+| 60 Accessible Green, 67 Common Land | free | a green every few blocks, shared by the backs round it |
+| 61 Small Public Squares | free, node | where streets and shops meet, an open paved square |
+| 171 Tree Places | path, free | trees where people stop: a junction, a square, a gap |
+| 100 Pedestrian Street | path | shops on both sides and slow traffic: wide pavement, no kerb |
+| 52 Network of Paths and Cars | path | the woonerf: a street homes share with cars |
+| 97 Shielded Parking | free | a car park behind a row, not in front of it |
+| 53 Main Gateways | node | where a road enters a district, something marks it |
 
 ## Order
 

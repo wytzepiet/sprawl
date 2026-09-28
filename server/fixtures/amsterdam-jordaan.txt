@@ -1,0 +1,32 @@
+# Amsterdam, the Jordaan: canals and narrow terraces
+# 52.37299,4.87782,52.37601,4.88418, from OpenStreetMap. Map data © OpenStreetMap contributors, ODbL.
+......................................
+.=~=HH===..H..HH=.==~~====H=HH.HW===~.
+.==H==HH.A.HHH.=======HHH.HS=S===H=.~.
+.~==HHH..A..======H.HHHH.HH===..HH=~~.
+.~=HHHSHH===~==H=HHSHH.HH==.O=HO.=.~~.
+..=.HH===~===.H=H=RHHH===HHHH=HHH=~~..
+.=A===~===...AHHH=HH==HHHHHHH.=H=~~~=.
+.==~===HHHHA...HH===SHOHS.HHH====~~.=.
+.~==.H=HHH..HH===H=H.HHHHH===~~=~~~=H.
+.=HHHH=.HHHH==HHHH=HSSHS==~~~===~~.=S.
+.HHH..H=H===HHH.HHH=H===~~.==H=~~~=...
+.HHHHH===HHHHHAAHH===~~.===HHH=~~=.==.
+.HH===H=.H.HHH.===~~=.==HHH.H=~~=..R..
+.==HHHHH=OSHH==~~~.===HHHHHHH=~~=H..S.
+.HHH.H.H=H===~~.===HS=HH.HHSS=~~=H....
+.H..SHH===~~~.==AAHHH=HHHHH.==~~=H....
+..HH===~~=.===A...H.H.=H====.=~~=.SSS.
+.H==~~~.===HHA.....HH===HHH.R========.
+.=~~====H=HHH..HHH===.=HH.SHS=~######.
+.===HHH.HH=HHHHH==A.HS.=.HHHR#######..
+.HHA..HAHH=HH===HHHHHHH=R..###~.=.H.#.
+.HHH.HAHHH===.HHH.HRSSS=.##..=~~=RRRS.
+.HHH.AHH==.=HHH.HSH....##..RR=~~=.M.H.
+..HH..==H.A.=.HHSH...##..SSS.=~~=..HH.
+.A..==H...R.=SHH.####.HHS..H=~~.=..HH.
+.===..HHRR.H.=.##...HHRS...H=~~.=.....
+.H=H.....H..###..HSHH.HHR..H=~~.=...H.
+.HH=..SHH.##..=HRHH.H..H...==~~.=H....
+..H=H...##.....=H...H.H====H=~~=......
+......................................

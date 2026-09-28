@@ -24,7 +24,7 @@ use std::sync::OnceLock;
 
 use serde::Serialize;
 
-use crate::protocol::{BuildingKind, GridCoord, TerrainType};
+use crate::protocol::{BuildingKind, GameObject, GridCoord, TerrainType};
 use crate::world::World;
 
 /// Grass left between one fixture and the next, and round them all.
@@ -103,40 +103,26 @@ pub fn build(world: &mut World, dir: &Path) {
             }
         }
 
-        // Roads as runs, across then down: a tile in both is the junction
-        // where they meet.
-        let road = |c: char| c == '=' || c == '#';
-        let lay = |run: &mut Vec<GridCoord>, through: bool, world: &mut World| {
-            if run.len() >= 2 {
-                world.place_road_path_of(run, through);
-            }
-            run.clear();
-        };
-        for row in 0..h {
-            let mut run = Vec::new();
-            let mut through = false;
-            for col in 0..=w {
-                let c = char_at(col, row);
-                if road(c) && col < w {
-                    through |= c == '#';
-                    run.push(at(col, row));
-                } else {
-                    lay(&mut run, through, world);
-                    through = false;
-                }
-            }
-        }
-        for col in 0..w {
-            let mut run = Vec::new();
-            let mut through = false;
-            for row in 0..=h {
-                let c = char_at(col, row);
-                if road(c) && row < h {
-                    through |= c == '#';
-                    run.push(at(col, row));
-                } else {
-                    lay(&mut run, through, world);
-                    through = false;
+        // Every road tile joins the road tiles beside it, and those on its
+        // diagonals where no tile beside both already joins them, so a
+        // street may run at an angle. Through roads first: a node is a
+        // through road if it was first laid as one, so a joint is `#` only
+        // where both its tiles are.
+        let road = |col: i32, row: i32| matches!(char_at(col, row), '=' | '#');
+        let through = |col: i32, row: i32| char_at(col, row) == '#';
+        for pass in [true, false] {
+            for row in 0..h {
+                for col in 0..w {
+                    if !road(col, row) {
+                        continue;
+                    }
+                    for (dc, dr) in [(1, 0), (0, 1), (1, 1), (-1, 1)] {
+                        let (c, r) = (col + dc, row + dr);
+                        let beside = dc != 0 && dr != 0 && (road(col + dc, row) || road(col, row + dr));
+                        if road(c, r) && !beside && (through(col, row) && through(c, r)) == pass {
+                            world.place_road_path_of(&[at(col, row), at(c, r)], pass);
+                        }
+                    }
                 }
             }
         }
@@ -157,11 +143,15 @@ pub fn build(world: &mut World, dir: &Path) {
                 world.reveal_around(at(col, row));
             }
         }
-        // The first road it meets, reading west to east down the columns,
-        // leads off the map: everything that road reaches is joined.
-        let first = (0..w).flat_map(|col| (0..h).map(move |row| (col, row))).find_map(|(col, row)| world.road_node_at(at(col, row)));
-        if let Some(node) = first {
-            world.open_exit(node);
+        // Every network leads off the map: the first road of each, reading
+        // west to east down the columns, is an exit, and everything it
+        // reaches is joined. A real place cut out of a map is many.
+        for (col, row) in (0..w).flat_map(|col| (0..h).map(move |row| (col, row))) {
+            let Some(node) = world.road_node_at(at(col, row)) else { continue };
+            let joined = matches!(world.objects.get(node).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.joined);
+            if !joined {
+                world.open_exit(node);
+            }
         }
         let name = path.file_stem().unwrap().to_string_lossy().into_owned();
         let title = notes.first().map(|n| n.trim_start_matches('#').trim().to_string()).unwrap_or_else(|| name.clone());

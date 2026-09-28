@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "./dev.sh",
     "profile": "samply record -p $(lsof -tiTCP:4801 -sTCP:LISTEN)",
-    "shots": "bun client/scripts/shots.ts"
+    "shots": "bun client/scripts/shots.ts",
+    "osm": "bun client/scripts/osm.ts"
   }
 }

@@ -1,0 +1,32 @@
+# Tokyo, Kichijoji: small houses on narrow lanes
+# 35.70249,139.57261,35.70551,139.57739, from OpenStreetMap. Map data © OpenStreetMap contributors, ODbL.
+......................................
+..HHHH=HHH.=HHH=..H..==R..=.....H=.SS.
+.=SHH=HH.H=HHH=HHH..HSS==H=.....S=S...
+..==H=HHH.=HH.=.HHHHH..S.=......=..S=.
+..SR==SHH.H.H=.AH.H.H.H.S===...S=R.S=.
+..HH.===RHS..=H.HHHH.HHH=HS.==S=...=..
+..HH=.HS==HS=A.HH...HHHH=.H=..====R=..
+.HH.=HHH=S===...HHHH.H.=AH.=SHH=..==S.
+.H.=H.H=.HHB.==S..AHH..=H.=..H=..S=.=.
+.H.=.HH=HHHHSR.==HHHHA=H..=H.A=S.=SR=.
+..=HHH=HHH.H.H..S==RSH=H.=.HH=...=B=H.
+.H=HH.=H..HHHH.HHSH===SSS=H.A=RH=.S=..
+.###.=R.A.HH.....HH=R==.=R.A=A.H=H=.M.
+.=..###H.A.HH.H.HH=..=S==SSS=..=.H=.S.
+.A.AH=.##.....HHHH=H=HHS====SA.=S=....
+.H..H=H..##..SHH..=H=SH=HSR==.=AM=....
+..H.=HH.S=H###..S=..=.H=H.S=S====.S...
+..HH=H.H=HHA..##.=R=SHH=.H=H....=.SS..
+..H=HHHH=HHH..=A#####R=S..=..S..S===..
+..H=.HH=.HH..=.H..=..##.S=.......=S.=.
+.H=HHH.=HHH.H=HHH.=AH..###......=..R..
+.H=HHH=H...H=...H=.SH.S.SH##...A=HH...
+.=HHHH=.HHH.=....=HA...H.S..##.=....#.
+..............................###...#.
+............=H..=HS.H..H..A..HA.S###..
+.........HHH======HHH.AHSHH.D.....S##.
+.........HHH=..=HH=======A...H..S..#H.
+........HHH=HH=.H.=H...HH=====S....#..
+.........H.=..=HH=.H...HHH=..=====#BH.
+......................................

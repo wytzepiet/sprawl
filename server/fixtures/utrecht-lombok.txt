@@ -1,0 +1,32 @@
+# Utrecht, Lombok: nineteenth-century terraces between parallel streets
+# 52.08999,5.09534,52.09301,5.10166, from OpenStreetMap. Map data © OpenStreetMap contributors, ODbL.
+......................................
+.===H=HH=.HHHH=.HHH.=..======.#######.
+.HHH==HH=.H.H.=HHHH.=.HH=HSH=========.
+.HH=.HHHH=HH..=HHHH.=.HHH=HH=HH=HH=H..
+.HH==HHHS=HHHH=HH..A=AHHH=HH=HH.=H=HH.
+.==HH======HHH=..HH.=..W.H=HH=HH=HH=H.
+.==HHHHHHH=HHH=.HHH.=.H..H=HH=HH=HH=H.
+.===HHHHHH=HHH.=HHH=.H.HHH=HH=HH.=H=H.
+.HHH=====H=HSHH=HH.=.HA=HS==HH=HH=HH=.
+.H..HHHHH==SW.H=HH.=HH.===H=HH=HH=HH=.
+.....HHH.H=.H===========HHH.=H=HH.=H=.
+.HHHHHHHHH===..=HHH=.HH=.HSH=HH=HH=H=.
+.=.H======.=HHH=.HH=H.HH=HHH=HH=HH=HH.
+..==....H..=HHH=.HHH=HHH=HHH==H=HS.=H.
+..=.........=HHH=HHH=HHH.=HHH=HH=SS=S.
+..=.A.......=HHH=HHH=HHHH=.HS=SH=.###.
+.==.H.......=HHHH=.HR=HHH=..######.=R.
+.H=HH...R....=.HH=HH.=.#####.S=H=SSH=.
+.HH=H........=..#######HS=HHHR=SH=SH=.
+.HH=HH...#######.=HHHHSH.=HH.H.=H=HH..
+..#######..=.=SHH=HHHHHHH=.H.HH=HH=HH.
+.#.=.......=H=HHH=.H.HHHHH=H..H=HH=HH.
+.HH=W.....=.H=.HHH=HHH..===H..H=HH=HH.
+..HS=.....=HHH=HHH=H====HH=.H.HH=HH=A.
+.HHH=..H.=HHHH=H.H==HHH.H.=.H.HH=H===.
+.H==H=..=HH.HH=H.H=.HHHHHHH=HH====.=H.
+.=.HH.=.=HHH.H=.HHH=HHHHH.====H=HHHH=.
+.A.HHH.=HHHHHHH=HHH=HH====.HHH..=HHH=.
+..HHH.=H==HH.HH=SH====...HHH...~=H.HH.
+......................................
