@@ -3,21 +3,21 @@ import { isBuilt, type Tile, type Town } from "./grid";
 import { kin } from "./mass";
 
 /**
- * The ground plans of a town's buildings, each tile decided by its 3×3
- * neighbourhood alone:
+ * The ground plans of a town's buildings, drawn as roads are: a building
+ * is its tiles and the joins between them (`Town.joins`, as the brush
+ * stroke ran), and its plan is a thick line through them, one width:
  *
- * 1. A building's tile is its whole square.
- * 2. A step's corner is cut: neither tile beside it is the building, and
- *    the building goes on along the diagonal past one of them.
- * 3. An inside corner is filled: ground with the building on both its
- *    sides there, between two steps or in an L.
- * 4. Tiles a street runs between, across their shared corner, are no
- *    neighbours to any of these rules.
- * 5. The whole outline is drawn in by one width.
+ * - each tile a square of that width round its middle (unless it is only
+ *   joined on the diagonal, where the bands make its ends);
+ * - each join a band of that width from one middle to the next, beside or
+ *   on the diagonal, so a diagonal row is as thick as a straight one;
+ * - where four tiles round a corner are all joined beside each other, the
+ *   square between their middles, so a block is solid.
  *
- * Cuts and fills lie on lines half a tile either side of a diagonal row's
- * middle, so it is a straight band as thick as a straight row. Anything
- * else stays square: a lone house, a straight row's end.
+ * Tiles not joined are apart: detached houses, a gap between two sheds. A
+ * town with no strokes (a fixture, a real place) is joined by kind:
+ * beside each other, and on the diagonal unless the block is solid there
+ * or a street runs between.
  */
 
 export type Pt = [number, number];
@@ -33,19 +33,9 @@ export interface Mass {
   parts: { tile: Tile; head: boolean; polygons: Polygon[] }[];
 }
 
-/** How far every side facing out is drawn in. */
+/** How far every side facing out stands in from the tile's edge: the
+ *  thick line is 1 - 2 * INSET wide. */
 const INSET = 0.2;
-/** A row stepping on the diagonal is a band half a tile either side of the
- *  line through its tiles' middles, as thick as a straight row: cut and
- *  filled on the line this far out towards a corner from a tile's middle,
- *  in steps of x and y together (the corner itself is 1). */
-const BAND = 0.5 * Math.SQRT2;
-/** Beside a diagonal street the band keeps half a tile from the street's
- *  middle line, as a straight row's tile does: its middles are only 0.7
- *  from the street, so it is cut this far out on the street's side and
- *  filled out to its tiles' corners on the other. */
-const NEAR = 1 - BAND;
-const FAR = 1;
 
 /** Clipper works in integers: a tile is this many. */
 const S = 1e5;
@@ -158,42 +148,30 @@ function tidy(ring: Pt[]): Pt[] {
   return out;
 }
 
+/** Tiles of one kind joined as the look would, with no strokes to say:
+ *  beside each other, and on the diagonal unless the block is solid there
+ *  (both tiles beside the pair are the kind too) or a street runs between. */
+export function defaultJoins(town: Town) {
+  return (c: number, r: number, x: number, y: number) => {
+    const a = town.tile(c, r);
+    if (!kin(a, town.tile(x, y))) return false;
+    if (x === c || y === r) return true;
+    if (town.linked(x, r, c, y)) return false;
+    return !(kin(a, town.tile(x, r)) && kin(a, town.tile(c, y)));
+  };
+}
+
+const EIGHT: Pt[] = [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]];
+
 /** The pieces a town's buildings are made of, each with the tile whose
  *  building, height and colour it is, and which building each tile is. */
-function plan(town: Town) {
-  /** Are the tiles at (c, r) and (x, y) neighbours of one building? Two
-   *  on the diagonal of each other are not where a street runs between
-   *  them, across their shared corner: to every rule below, a building cut
-   *  off by a road is no neighbour at all. */
-  const one = (c: number, r: number, x: number, y: number) => {
-    if (!isBuilt(town.tile(c, r)) || !isBuilt(town.tile(x, y)) || !kin(town.tile(c, r), town.tile(x, y))) return false;
-    return x === c || y === r || !town.linked(x, r, c, y);
-  };
-  /** Does a diagonal street's line run through the corner of (c, r)
-   *  towards (sx, sy): across it, or ending beside it and pointing at it? */
-  const online = (c: number, r: number, sx: number, sy: number) =>
-    town.linked(c + sx, r, c, r + sy) || town.linked(c + sx, r, c + 2 * sx, r - sy) || town.linked(c, r + sy, c - sx, r + 2 * sy);
-  /** How far out towards corner (sx, sy) of tile (c, r) a band's face lies:
-   *  nearer on a diagonal street's side, further on the other. */
-  const band = (c: number, r: number, sx: number, sy: number) =>
-    online(c, r, sx, sy) ? NEAR : online(c, r, -sx, -sy) ? FAR : BAND;
-  /** Is the corner of (c, r) towards (sx, sy) a step's: no neighbour of
-   *  the building beside it there nor across it, and one going on along
-   *  the diagonal past one of the sides? */
-  const step = (c: number, r: number, sx: number, sy: number) =>
-    !one(c, r, c + sx, r) && !one(c, r, c, r + sy) && !one(c, r, c + sx, r + sy) &&
-    (one(c, r, c + sx, r - sy) || one(c, r, c - sx, r + sy));
-  /** Is the corner of ground (c, r) towards (sx, sy) filled: neighbours of
-   *  one building on both its sides there (between two steps, or an L's
-   *  inside)? As the terrain fills every inside corner, so every cut has
-   *  its fill. */
-  const fill = (c: number, r: number, sx: number, sy: number) => !isBuilt(town.tile(c, r)) && one(c + sx, r, c, r + sy);
-  /** Tiles on the diagonal of each other, joined through a filled corner. */
-  const bridged = (c: number, r: number, dx: number, dy: number) =>
-    fill(c + dx, r, -dx, dy) || fill(c, r + dy, dx, -dy);
+function plan(town: Town, width: number) {
+  const joined = town.joins ?? defaultJoins(town);
+  const join = (c: number, r: number, x: number, y: number) =>
+    isBuilt(town.tile(c, r)) && isBuilt(town.tile(x, y)) && (joined(c, r, x, y) || joined(x, y, c, r));
+  const h = width / 2;
 
-  // Which building each built tile is part of: joined beside, or on the
-  // diagonal.
+  // Which building each tile is: joined to it, through any chain of joins.
   const building = new Map<string, number>();
   let count = 0;
   for (let r = 0; r < town.h; r++) {
@@ -204,44 +182,56 @@ function plan(town: Town) {
       building.set(`${c},${r}`, id);
       while (queue.length) {
         const [x, y] = queue.pop()!;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const k = `${x + dx},${y + dy}`;
-            const joined = one(x, y, x + dx, y + dy) && (!dx || !dy || one(x, y, x + dx, y) || one(x, y, x, y + dy) || bridged(x, y, dx, dy));
-            if (!building.has(k) && joined) building.set(k, id), queue.push([x + dx, y + dy]);
-          }
+        for (const [dx, dy] of EIGHT) {
+          const k = `${x + dx},${y + dy}`;
+          if (!building.has(k) && join(x, y, x + dx, y + dy)) building.set(k, id), queue.push([x + dx, y + dy]);
         }
       }
     }
   }
 
-  // Every piece, with the tile whose building, height and colour it is.
+  const linksOf = (c: number, r: number) => EIGHT.filter(([dx, dy]) => join(c, r, c + dx, r + dy));
+  /** Does the tile have its own square: joined beside, or not at all? */
+  const square = (c: number, r: number) => {
+    const links = linksOf(c, r);
+    return !links.length || links.some(([dx, dy]) => !dx || !dy);
+  };
   const pieces: { at: Pt; ring: Pt[] }[] = [];
-  const CORNERS: Pt[] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
+      if (!isBuilt(town.tile(c, r))) continue;
       const [mx, my] = [c + 0.5, r + 0.5];
-      if (isBuilt(town.tile(c, r))) {
-        let ring: Pt[] = [[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]];
-        for (const [sx, sy] of CORNERS) if (step(c, r, sx, sy)) ring = cut(ring, [sx, sy, sx * mx + sy * my + band(c, r, sx, sy)]);
-        pieces.push({ at: [c, r], ring });
-      } else {
-        // The corner between two steps of a row.
-        for (const [sx, sy] of CORNERS) {
-          if (!fill(c, r, sx, sy)) continue;
-          const ring = cut([[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]], [-sx, -sy, -(sx * mx + sy * my) - (1 - band(c + sx, r, -sx, -sy))]);
-          if (ring.length >= 3) pieces.push({ at: [c + sx, r], ring });
-        }
+      const links = linksOf(c, r);
+      // The tile's own square, unless its only joins are diagonal.
+      if (square(c, r)) {
+        pieces.push({ at: [c, r], ring: [[mx - h, my - h], [mx + h, my - h], [mx + h, my + h], [mx - h, my + h]] });
+      }
+      // Each join once, as a band on to the next tile's middle, wound as
+      // the squares are; past a middle with no square, a half-width more,
+      // for the band's own end.
+      for (const [dx, dy] of links) {
+        if (dx < 0 || (dx === 0 && dy < 0)) continue;
+        const len = Math.hypot(dx, dy);
+        const [ux, uy] = [dx / len, dy / len];
+        const [nx, ny] = [-uy * h, ux * h];
+        const [ea, eb] = [square(c, r) ? 0 : h, square(c + dx, r + dy) ? 0 : h];
+        const [ax, ay] = [mx - ux * ea, my - uy * ea];
+        const [bx, by] = [mx + dx + ux * eb, my + dy + uy * eb];
+        pieces.push({ at: [c, r], ring: [[ax - nx, ay - ny], [bx - nx, by - ny], [bx + nx, by + ny], [ax + nx, ay + ny]] });
+      }
+      // A solid block: this tile and the three past its bottom right corner,
+      // all joined beside each other.
+      if (join(c, r, c + 1, r) && join(c + 1, r, c + 1, r + 1) && join(c + 1, r + 1, c, r + 1) && join(c, r + 1, c, r)) {
+        pieces.push({ at: [c, r], ring: [[mx, my], [mx + 1, my], [mx + 1, my + 1], [mx, my + 1]] });
       }
     }
   }
-
   return { pieces, building };
 }
 
 /** Every building's plan, a mass for each of its heights. */
 export function footprints(town: Town, head: (c: number, r: number) => boolean, inset = INSET): Mass[] {
-  const { pieces, building } = plan(town);
+  const { pieces, building } = plan(town, 1 - 2 * inset);
   const byBuilding = new Map<number, typeof pieces>();
   for (const p of pieces) {
     const id = building.get(`${p.at[0]},${p.at[1]}`)!;
@@ -253,8 +243,7 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean, 
   const whole = (rings: Pt[][]) => grow(grow(union(paths(rings)), HAIR), -HAIR);
   const masses: Mass[] = [];
   for (const ps of byBuilding.values()) {
-    // The whole building drawn in once, then split by height.
-    const plan = grow(whole(ps.map((p) => p.ring)), -inset);
+    const plan = whole(ps.map((p) => p.ring));
     for (const storeys of new Set(ps.map((p) => tileOf(p).storeys))) {
       const mine = ps.filter((p) => tileOf(p).storeys === storeys);
       const shape = and(whole(mine.map((p) => p.ring)), plan);

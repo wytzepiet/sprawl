@@ -48,24 +48,20 @@ The code is `client/src/engine/town/`:
   road, water, wood, open ground) and some storeys, and the road links
   between tiles. Nothing about lots, driveways, facings or who owns what:
   those are the simulation's, and the look reads none of them.
-- **A building is its tiles' squares, drawn as the terrain draws a
-  shore** (`town/footprint.ts`), each tile decided by its 3×3 alone. Tiles
-  join into one building if they are one kind (and, for sheds, offices and
-  boxes, painted as one); houses run on into rows whoever built them. A
-  step's corner is cut (neither tile beside it the building, and the
-  building going on along the diagonal past one of them); every inside
-  corner, between two steps or in an L, is filled, as the terrain fills
-  its inside corners, so every cut has its fill. Two tiles a street runs
-  between, across their shared corner, are no neighbours to any rule: a
-  building cut off by a road does not count. Cuts and
-  fills lie half a tile either side of a diagonal row's middle; beside a
-  diagonal street, whose line runs through the band's corners, the band is
-  cut back on the street's side and filled out on the other, so it keeps a
-  straight row's distance from its street. Then the
-  outline is drawn in by one width. Outside corners stay square. This is
-  the simplest version, kept as the base: exceptions to it (keeping an
-  L's inside square, straightening whole outlines) each broke something
-  else. A courtyard's corners are cut at forty-five degrees.
+- **A building is drawn as a road is** (`town/footprint.ts`): its tiles
+  and the joins between them, as the brush stroke ran (`Town.joins`), and
+  its plan one thick line through them: a square of the building's width
+  on each tile (unless it is joined only on the diagonal), a band of that
+  width along each join, beside or diagonal, so a diagonal row is as thick
+  as a straight one, and the square between four tiles joined all round,
+  so a block is solid. Tiles not joined stand apart: a stroke along a
+  street is one row, separate clicks are detached houses, and a stroke
+  that turns is an L where one that steps is a diagonal band, with nothing
+  guessed. A town with no strokes (a fixture, a real place) is joined by
+  kind, beside, and on the diagonal unless the block is solid there or a
+  street runs between. This replaced corner rules that had to guess, from
+  the tiles alone, a staircase from an L. Not yet: a diagonal row's
+  distance from a diagonal street, which the corner rules kept.
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.

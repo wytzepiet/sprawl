@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseTown } from "./grid";
+import { parseTown, townOf } from "./grid";
 import { footprints } from "./footprint";
 
 const plans = (map: string[]) => footprints(parseTown(map.join("\n")), () => false);
@@ -17,17 +17,22 @@ describe("a building's plan is one exact polygon", () => {
     expect(row.polygons[0][0].length).toBe(4);
   });
 
-  test("a diagonal row beside its street is a clean band, as far from it as a straight row", () => {
-    const beside = plans(["=H....", ".=H...", "..=H..", "...=H.", "......"]);
-    const alone = plans([".H....", "..H...", "...H..", "....H.", "......"]);
-    const ring = beside[0].polygons[0][0];
-    expect(ring.length).toBe(alone[0].polygons[0][0].length);
-    // The street's middle line is x = y; a straight row's face stands 0.5
-    // plus the draw-in from its street's middle.
-    const near = Math.min(...ring.map(([x, y]) => (x - y) / Math.SQRT2));
-    expect(near).toBeCloseTo(0.7, 1);
-    const [straight] = plans(["......", ".HHHH.", "======"]);
-    const face = Math.max(...straight.polygons[0][0].map(([, y]) => y));
-    expect(2.5 - face).toBeCloseTo(near, 1);
+  test("a diagonal row is a clean band as thick as a straight row", () => {
+    const [diag] = plans([".H....", "..H...", "...H..", "....H.", "......"]);
+    const ring = diag.polygons[0][0];
+    expect(ring.length).toBe(4);
+    const across = (ring: [number, number][]) => {
+      const d = ring.map(([x, y]) => (x - y) / Math.SQRT2);
+      return Math.max(...d) - Math.min(...d);
+    };
+    const [straight] = plans(["......", ".HHHH.", "......"]);
+    const ys = straight.polygons[0][0].map(([, y]) => y);
+    expect(across(ring)).toBeCloseTo(Math.max(...ys) - Math.min(...ys), 3);
+  });
+
+  test("tiles not joined stand apart, however close", () => {
+    const t = parseTown(["......", ".HHH..", "......"].join("\n"));
+    const apart = townOf([0, 1, 2].map((r) => [0, 1, 2, 3, 4, 5].map((c) => t.tile(c, r))), () => false, [], () => false);
+    expect(footprints(apart, () => false).length).toBe(3);
   });
 });

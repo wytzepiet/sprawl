@@ -28,6 +28,10 @@ export interface Town {
   linked(c0: number, r0: number, c1: number, r1: number): boolean;
   /** A road tile on a through road. */
   through(c: number, r: number): boolean;
+  /** Two built tiles, beside or diagonal, joined into one building, as the
+   *  brush stroke that painted them ran; unset, the look joins tiles of a
+   *  kind by its own rule (`footprint.ts`). */
+  joins?(c0: number, r0: number, c1: number, r1: number): boolean;
 }
 
 export const LETTERS: Record<string, BuildingKind> = {
@@ -66,12 +70,17 @@ export function parseTown(text: string): Town & { rows: string[] } {
   return townOf(tiles, (c, r) => rows[r]?.[c] === "#", rows);
 }
 
-export function townOf(tiles: Tile[][], through: (c: number, r: number) => boolean, rows: string[] = []): Town & { rows: string[] } {
+export function townOf(
+  tiles: Tile[][],
+  through: (c: number, r: number) => boolean,
+  rows: string[] = [],
+  joins?: (c0: number, r0: number, c1: number, r1: number) => boolean,
+): Town & { rows: string[] } {
   const h = tiles.length, w = tiles[0]?.length ?? 0;
   const tile = (c: number, r: number) => tiles[r]?.[c] ?? OPEN;
   const road = (c: number, r: number) => tile(c, r).kind === "road";
   return {
-    w, h, rows, tile, through,
+    w, h, rows, tile, through, joins,
     linked(c0, r0, c1, r1) {
       const [dc, dr] = [c1 - c0, r1 - r0];
       if (!road(c0, r0) || !road(c1, r1) || Math.max(Math.abs(dc), Math.abs(dr)) !== 1) return false;
