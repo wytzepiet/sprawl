@@ -8,20 +8,32 @@ import { isBuilt, type Tile } from "./grid";
  * `facts.ts`'s, the shapes `footprint.ts`'s, the mesh `roof.ts`'s.
  */
 
+/** What a building gives up of its own ground to a yard (`facts.ts`):
+ *  what stands in it, lorries at docks or cars in rows; which end of the
+ *  building it takes, the quiet one or the busy one; and how many it must
+ *  hold for each tile of the building. */
+export interface Yard {
+  fill: "docks" | "cars";
+  end: "quiet" | "busy";
+  per: number;
+}
+
 /** Homes and the shops of a high street are one family; offices, sheds
- *  and big boxes each another, and leave their yards paved. */
+ *  and big boxes each another. */
 interface Form {
   family: string;
-  yard?: "paved";
+  yard?: Yard;
 }
 const STREET: Form = { family: "street" };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
-  Office: { family: "office", yard: "paved" },
-  Workshop: { family: "industry", yard: "paved" },
-  Factory: { family: "industry", yard: "paved" },
-  Warehouse: { family: "industry", yard: "paved" },
-  Supermarket: { family: "box", yard: "paved" },
-  GasStation: { family: "box", yard: "paved" },
+  Office: { family: "office" },
+  Workshop: { family: "industry" },
+  Factory: { family: "industry" },
+  // A depot's lorries come and go at its back, out of sight of the junction.
+  Warehouse: { family: "industry", yard: { fill: "docks", end: "quiet", per: 0.5 } },
+  // A supermarket's car park is its shop window, on the busy corner.
+  Supermarket: { family: "box", yard: { fill: "cars", end: "busy", per: 3 } },
+  GasStation: { family: "box" },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 

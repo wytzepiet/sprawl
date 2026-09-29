@@ -492,7 +492,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The free ground, dressed: courtyard lawns, and trees in them and along
   // the streets, as crowns like the forest's.
-  const { gardens, trees, cars, lanes, bays, docks, dockLines } = dress(town, facts(town));
+  const { gardens, trees, cars, lanes, bays, docks, yardLines } = dress(town, facts(town));
   // Pavements under the roads, lanes and their bay lines over the pavement.
   const flat = (polys: [number, number][][], z: number): MeshGeometry => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
@@ -505,7 +505,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   };
   add("lanes", flat(lanes, 0.03), theme.road);
   add("bays", flat(bays, 0.032), theme.bayLine);
-  add("dock_lines", flat(dockLines, 0.025), theme.road);
+  add("yard_lines", flat(yardLines, 0.025), theme.road);
   add("garden", quadsAt(gardens, 0.005), theme.garden);
   // Trees as the forest draws them: a smooth top over a coarse body.
   for (const [name, geo] of [["tree_tops", TREE_TOP], ["tree_bodies", TREE_BODY]] as const) {

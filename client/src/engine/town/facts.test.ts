@@ -33,7 +33,7 @@ describe("facts and dressing", () => {
     // Eight tiles need four docks: two tiles of yard, three docks each.
     const yard = [0, 1, 2, 3].filter((c) => f.yard(c, 2));
     expect(yard.length).toBe(2);
-    expect(f.yard(0, 3)).toBe(false);
+    expect(f.yard(0, 3)).toBeUndefined();
     expect(f.town.tile(yard[0], 2).kind).toBe("paved");
     const { docks } = dress(t, f);
     expect(docks.length).toBe(6);
@@ -42,7 +42,17 @@ describe("facts and dressing", () => {
 
   test("a depot all on the street keeps its hall and has no yard", () => {
     const t = town(["......", "======", "DDDD..", "......"]);
-    expect(facts(t).yard(0, 2)).toBe(false);
+    expect(facts(t).yard(0, 2)).toBeUndefined();
+  });
+
+  test("a supermarket's car park takes its busy corner, and fills with cars", () => {
+    const t = town(["=.....", "======", "=MMM..", "=MMM..", "=....."]);
+    const f = facts(t);
+    // Six tiles need eighteen cars: two tiles of car park, from the corner.
+    expect(f.yard(1, 2)).toBe("cars");
+    expect(f.yard(2, 2)).toBe("cars");
+    expect(f.yard(3, 2)).toBeUndefined();
+    expect(dress(t, f).cars.length).toBeGreaterThan(8);
   });
 
   test("a straight street before homes has trees every third tile, a through road none", () => {

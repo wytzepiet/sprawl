@@ -83,10 +83,12 @@ The code is `client/src/engine/town/`:
 - **Facts, then looks** (`town/facts.ts`): a pre-pass works out what a
   tile cannot see from its neighbours, once for the whole town: a shed's
   office end; a courtyard, open ground that no street and no map edge
-  reaches; and a depot's yard, as much of it as its docks need: street
-  tiles in one run from its quiet end, each with docks on the hall wall
-  across from its street, until there is a dock for every two tiles of
-  depot. The rest is depot, its office at the busy end. Everything drawn is a function of a tile, its neighbours and
+  reaches; and a yard, where a kind keeps one (`mass.ts`): as much of the
+  building's own ground as the yard must hold, street tiles in one run
+  from its quiet end or its busy one. A depot's is at the quiet end, a
+  dock for every two tiles, its office at the busy end; a supermarket's
+  car park is on the busy corner, three cars to a tile of shop. The rest
+  is building. Everything drawn is a function of a tile, its neighbours and
   these facts.
 - **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
   courtyard is a lawn with a tree on most tiles; paved ground closed in
@@ -99,8 +101,9 @@ The code is `client/src/engine/town/`:
   and trees, with a gap here and there. Drawn only, for now: the cars the
   simulation parks come with `parking.md` step 1. A depot's yard has lorry
   bays along the hall wall across from its street, three to a tile, a door
-  behind each and lorries backed up to most: one brush paints the depot,
-  and its docks come with it. The pavement is
+  behind each and lorries backed up to most; a car park has an aisle
+  along its street between two rows of bays, ten cars to a tile, most
+  taken. One brush paints the building, and its yard comes with it. The pavement is
   ground: every road, building and yard makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal

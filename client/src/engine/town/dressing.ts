@@ -1,5 +1,5 @@
 import { isBuilt, type Town } from "./grid";
-import { DOCKS, type Facts } from "./facts";
+import { DOCKS, PARKED, type Facts } from "./facts";
 import { formOf } from "./mass";
 import { CAB, CAR, HALF_W, TRAILER } from "../objects/roadGeometry";
 import { INSET } from "./footprint";
@@ -64,8 +64,8 @@ export interface Dressing {
   lanes: Pt[][];
   bays: Pt[][];
   docks: Dock[];
-  /** The lines between the docks' bays, out across the yard. */
-  dockLines: Pt[][];
+  /** The lines between the bays of yards: docks and car parks. */
+  yardLines: Pt[][];
 }
 
 /** A lorry bay's depth: a lorry and a little. */
@@ -122,12 +122,45 @@ export function dress(town: Town, facts: Facts): Dressing {
   const parked = park(town);
   const clear = (x: number, y: number) => trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3);
   const cars = parked.cars.filter((car) => clear(car.x, car.y));
-  return { gardens, trees, cars, lanes: parked.lanes, bays: parked.bays, ...docks(town, facts) };
+  const lorries = docks(town, facts), lots = carParks(town, facts);
+  return { gardens, trees, cars: [...cars, ...lots.cars], lanes: parked.lanes, bays: parked.bays, docks: lorries.docks, yardLines: [...lorries.lines, ...lots.lines] };
+}
+
+/** A car park: on each tile, an aisle along its street between two rows
+ *  of bays, nose in, one backing onto the pavement and one onto the shop,
+ *  most of them taken. */
+function carParks(town: Town, facts: Facts): { cars: Car[]; lines: Pt[][] } {
+  const cars: Car[] = [], lines: Pt[][] = [];
+  const ROW = 0.35, ACROSS = PARKED / 2;
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (facts.yard(c, r) !== "cars") continue;
+      const toStreet = [[0, -1], [0, 1], [-1, 0], [1, 0]].find(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road");
+      if (!toStreet) continue;
+      // Toward the street (nx, ny), and along it (ux, uy).
+      const [nx, ny] = toStreet;
+      const [ux, uy] = [-ny, nx];
+      const [x0, y0] = [c + 0.5, r + 0.5];
+      for (const side of [1, -1]) {
+        for (let k = 0; k <= ACROSS; k++) {
+          const t = k / ACROSS - 0.5;
+          lines.push(strip(x0, y0, ux, uy, t - 0.008, t + 0.008, nx * side, ny * side, 0.5 - ROW, 0.5));
+          if (k === ACROSS) continue;
+          const m = t + 0.5 / ACROSS;
+          const [x, y] = [x0 + ux * m + nx * side * (0.5 - ROW / 2), y0 + uy * m + ny * side * (0.5 - ROW / 2)];
+          const h = hash(Math.round(x * 100), Math.round(y * 100), 19);
+          if (h < 0.25) continue;
+          cars.push({ x, y, angle: Math.atan2(ny * side, nx * side), colour: Math.floor(hash(Math.round(x * 100), Math.round(y * 100), 23) * 8) });
+        }
+      }
+    }
+  }
+  return { cars, lines };
 }
 
 /** A depot's docks: wherever its yard meets its hall, a row of lorry bays
  *  along the hall's wall, some with a lorry backed up to the door. */
-function docks(town: Town, facts: Facts): { docks: Dock[]; dockLines: Pt[][] } {
+function docks(town: Town, facts: Facts): { docks: Dock[]; lines: Pt[][] } {
   const out: Dock[] = [], lines: Pt[][] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
@@ -146,7 +179,7 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; dockLines: Pt[][] } {
       }
     }
   }
-  return { docks: out, dockLines: lines };
+  return { docks: out, lines };
 }
 
 const EIGHT = [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]];

@@ -1,5 +1,5 @@
 import { isBuilt, type Town } from "./grid";
-import { formOf } from "./mass";
+import { formOf, type Yard } from "./mass";
 import { defaultJoins } from "./footprint";
 
 /**
@@ -11,21 +11,26 @@ import { defaultJoins } from "./footprint";
  *   taller (in `town`, the town as drawn).
  * - **Enclosed**: open ground closed in by buildings, a courtyard, which
  *   no street and no edge of the map reaches.
- * - **Yards**: as much of a depot as its docks need is its yard, open
- *   paved ground where lorries stand: tiles beside a street, the quiet end
- *   first, each giving docks along the hall behind it, until there is a
- *   dock for every two tiles of depot. The rest is depot, and its office
- *   stands at the busy end, away from the yard.
+ * - **Yards**: a building whose kind keeps a yard (`mass.ts`) gives up as
+ *   much of its ground as the yard must hold: tiles beside a street, in
+ *   one run from its quiet end or its busy one, until there is room
+ *   enough. The rest is building. A depot's yard holds lorries at docks
+ *   on the wall across from its street, and its office stands at the busy
+ *   end; a supermarket's holds cars in rows, its car park on the corner.
  */
 
 /** Lorry bays along a dock: three to a tile of wall. */
 export const DOCKS = 3;
+/** Cars in a tile of car park: two rows of five, an aisle between. */
+export const PARKED = 10;
+
 export interface Facts {
   /** The town as drawn: the painted one with the heads raised. */
   town: Town;
   head(c: number, r: number): boolean;
   enclosed(c: number, r: number): boolean;
-  yard(c: number, r: number): boolean;
+  /** What stands in a tile of yard, if it is one. */
+  yard(c: number, r: number): Yard["fill"] | undefined;
   /** A yard tile's docks: the ways to the hall walls it faces, straight
    *  across from its street. */
   docks(c: number, r: number): [number, number][];
@@ -34,8 +39,8 @@ export interface Facts {
 export function facts(painted: Town): Facts {
   const yard = yards(painted);
   const walls = docksOf(painted, (c, r) => yard.has(`${c},${r}`));
-  // The yard is open ground, but the depot keeps the joins it was painted
-  // with, so the walls round its yard stand square.
+  // The yard is open ground, but the building keeps the joins it was
+  // painted with, so the walls round its yard stand square.
   const open: Town = {
     ...painted,
     joins: painted.joins ?? defaultJoins(painted),
@@ -47,28 +52,29 @@ export function facts(painted: Town): Facts {
     town: lifted,
     head: (c, r) => heads.has(`${c},${r}`),
     enclosed: (c, r) => closed.has(`${c},${r}`),
-    yard: (c, r) => yard.has(`${c},${r}`),
-    docks: (c, r) => (yard.has(`${c},${r}`) ? walls(c, r) : []),
+    yard: (c, r) => yard.get(`${c},${r}`),
+    docks: (c, r) => (yard.get(`${c},${r}`) === "docks" ? walls(c, r) : []),
   };
 }
 
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-/** Each depot's tiles, as its joins hold them together. */
-function depots(town: Town): [number, number][][] {
+/** Each building of a kind with a yard, as its joins hold it together. */
+function buildings(town: Town): [number, number][][] {
   const joined = town.joins ?? defaultJoins(town);
   const seen = new Set<string>();
   const out: [number, number][][] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      if (town.tile(c, r).kind !== "Warehouse" || seen.has(`${c},${r}`)) continue;
+      const kind = town.tile(c, r).kind;
+      if (!formOf(town.tile(c, r)).yard || seen.has(`${c},${r}`)) continue;
       seen.add(`${c},${r}`);
       const cells: [number, number][] = [[c, r]];
       for (let i = 0; i < cells.length; i++) {
         const [a, b] = cells[i];
         for (const [dc, dr] of SIDES) {
           const [x, y] = [a + dc, b + dr];
-          if (town.tile(x, y).kind === "Warehouse" && !seen.has(`${x},${y}`) && (joined(a, b, x, y) || joined(x, y, a, b))) seen.add(`${x},${y}`), cells.push([x, y]);
+          if (town.tile(x, y).kind === kind && !seen.has(`${x},${y}`) && (joined(a, b, x, y) || joined(x, y, a, b))) seen.add(`${x},${y}`), cells.push([x, y]);
         }
       }
       out.push(cells);
@@ -77,10 +83,10 @@ function depots(town: Town): [number, number][][] {
   return out;
 }
 
-/** A yard tile's docks: toward each depot tile that is not yard and lies
- *  straight across from a street the yard tile is on. */
+/** A yard tile's docks: toward each tile of its building that is not yard
+ *  and lies straight across from a street the yard tile is on. */
 const docksOf = (town: Town, yard: (c: number, r: number) => boolean) => (c: number, r: number) =>
-  SIDES.filter(([dc, dr]) => town.tile(c - dc, r - dr).kind === "road" && town.tile(c + dc, r + dr).kind === "Warehouse" && !yard(c + dc, r + dr)) as [number, number][];
+  SIDES.filter(([dc, dr]) => town.tile(c - dc, r - dr).kind === "road" && town.tile(c + dc, r + dr).kind === town.tile(c, r).kind && !yard(c + dc, r + dr)) as [number, number][];
 
 /** How much street is round a tile, the nearer the more: a corner on a
  *  junction has most. */
@@ -90,25 +96,29 @@ function streetAround(town: Town, c: number, r: number) {
   return n;
 }
 
-/** Each depot's yard: street-side tiles in one run from the quietest,
- *  until their docks are one for every two tiles of the depot. */
-function yards(town: Town): Set<string> {
-  const out = new Set<string>();
-  for (const cells of depots(town)) {
+/** Each building's yard: street-side tiles in one run from its quiet or
+ *  its busy end, until the yard holds what the building needs. */
+function yards(town: Town): Map<string, Yard["fill"]> {
+  const out = new Map<string, Yard["fill"]>();
+  for (const cells of buildings(town)) {
+    const { fill, end, per } = formOf(town.tile(...cells[0])).yard!;
     const yard = new Set<string>();
     const inYard = (c: number, r: number) => yard.has(`${c},${r}`);
     const walls = docksOf(town, inYard);
-    const docks = () => [...yard].reduce((n, k) => n + DOCKS * walls(...(k.split(",").map(Number) as [number, number])).length, 0);
-    const quiet = (a: [number, number], b: [number, number]) => streetAround(town, ...a) - streetAround(town, ...b) || a[1] - b[1] || a[0] - b[0];
-    while (docks() * 2 < cells.length && yard.size + 1 < cells.length) {
+    const street = (c: number, r: number) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road");
+    const holds = (c: number, r: number) => (fill === "docks" ? DOCKS * walls(c, r).length : street(c, r) ? PARKED : 0);
+    const held = () => [...yard].reduce((n, k) => n + holds(...(k.split(",").map(Number) as [number, number])), 0);
+    const order = (a: [number, number], b: [number, number]) =>
+      (end === "quiet" ? 1 : -1) * (streetAround(town, ...a) - streetAround(town, ...b)) || a[1] - b[1] || a[0] - b[0];
+    while (held() < per * cells.length && yard.size + 1 < cells.length) {
       const next = cells
-        .filter(([c, r]) => !inYard(c, r) && walls(c, r).length)
+        .filter(([c, r]) => !inYard(c, r) && holds(c, r))
         .filter(([c, r]) => !yard.size || SIDES.some(([dc, dr]) => inYard(c + dc, r + dr)))
-        .sort(quiet)[0];
+        .sort(order)[0];
       if (!next) break;
       yard.add(`${next[0]},${next[1]}`);
     }
-    for (const k of yard) out.add(k);
+    for (const k of yard) out.set(k, fill);
   }
   return out;
 }
