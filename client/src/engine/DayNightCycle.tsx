@@ -116,10 +116,11 @@ function ramp<T>(
 // Time-of-day stops
 // ---------------------------------------------------------------------------
 
-// t: 0 = midnight, 0.5 = noon. A Dutch summer's day: the sun is up from
-// twenty past four to twenty to eight, and the night is short.
-export const SUNRISE = 0.18;
-export const SUNSET = 0.82;
+// t: 0 = midnight, 0.5 = noon. A Dutch summer's day, by the clock: the sun
+// is up from twenty past five to ten at night, highest at twenty to two,
+// and the night is short.
+export const SUNRISE = 5.33 / 24;
+export const SUNSET = 22 / 24;
 
 const ambientStops: [number, Color3][] = [
   [0.0, AMB_MIDNIGHT],
