@@ -61,14 +61,18 @@ const SKY_LIGHT = new Color3(0.74, 0.86, 1.22);
 const SUN_HIGH = new Color3(1.15, 1.02, 0.75);
 const SUN_LOW = new Color3(1.6, 0.8, 0.3);
 
+/** A shadow is drawn no longer than the sun this high would cast it. */
+const LOWEST = 0.1;
+
 /** The sun's light at an elevation: gold low down, near white most of
- *  the way up. Its strength is the day's, fading only at the horizon, and more
- *  when low, as an eye opens up to it: a low sun lights the ground at a
- *  slant, and its gold should still reach it. */
+ *  the way up. It is stronger when low, as an eye opens up to it, since a
+ *  low sun lights the ground at a slant and its gold should still reach
+ *  it; and it fades out just above the lowest sun, so the roofs it lights
+ *  and the shadows it casts go together, before the shadows stop growing. */
 function sunLightAt(elev: number): { colour: Color3; strength: number } {
   const high = Math.min(1, elev / 0.7);
   const colour = lerp3(SUN_LOW, SUN_HIGH, high * high * (3 - 2 * high));
-  return { colour, strength: (0.5 * Math.min(1, elev / 0.08)) / Math.max(elev, 0.42) };
+  return { colour, strength: (0.5 * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
 }
 
 const SKY_MIDNIGHT = new Color4(0.15, 0.15, 0.25, 1);
@@ -152,9 +156,6 @@ function sunElevation(t: number): number {
   if (t < SUNRISE || t > SUNSET) return 0;
   return Math.sin(sunAngle(t));
 }
-
-/** A shadow is drawn no longer than the sun this high would cast it. */
-const LOWEST = 0.15;
 
 function sunDirection(t: number): Vector3 {
   if (t < SUNRISE || t > SUNSET) return new Vector3(0, -0.4, -1).normalize();
@@ -276,9 +277,6 @@ export default function DayNightLights(props: ParentProps) {
     const sun = sunLightAt(elev);
     sunLight.intensity = sun.strength;
     sunLight.diffuse = sun.colour;
-    // Shadows fade as they lengthen, and are gone before they stop
-    // growing at the lowest sun.
-    shadowGen.setDarkness(1 - Math.min(1, Math.max(0, (elev - LOWEST) / 0.3)));
 
     // Round the ground in view, not round the camera: leaning back, the
     // camera stands well behind what it looks at.
