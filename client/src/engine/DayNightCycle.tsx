@@ -234,10 +234,7 @@ export default function DayNightLights(props: ParentProps) {
   // --- Shadow generator ---
   const engine = scene.getEngine();
   const shadowGen = new ShadowGenerator(shadowMapSize(engine), sunLight);
-  // Sharp where a shadow meets what casts it, softer the further it falls,
-  // as the sun is a disc and not a point: long evening shadows blur out.
-  shadowGen.useContactHardeningShadow = true;
-  shadowGen.contactHardeningLightSizeUVRatio = 0.006;
+  shadowGen.usePercentageCloserFiltering = true;
   shadowGen.filteringQuality = ShadowGenerator.QUALITY_LOW;
   shadowGen.bias = 0.001;
   // Tree trunks are cylinders, so most of their surface sits at a grazing angle
