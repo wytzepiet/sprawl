@@ -380,7 +380,9 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   // as a straight edge) at full size, then its corners rounded as the
   // terrain's are. A town is paved house to house, a diagonal street as
   // wide as a straight one.
-  const PAVED_Z = 0.006;
+  // A kerb's height over the grass, so the pen inks its edge as it inks a
+  // road's; under the roads.
+  const PAVED_Z = 0.02;
   const PAVING: Tile = { kind: "House", storeys: 1 };
   const paved = townOf(
     Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
@@ -414,7 +416,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
         }
       }
       const into = roads[town.through(c, r) ? "through" : "street"];
-      for (const [k, geo] of [buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z), buildRoadGeometry(arms, HALF_W, ROAD_Z)].entries()) {
+      for (const [k, geo] of [buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z + PAVED_Z), buildRoadGeometry(arms, HALF_W, ROAD_Z + PAVED_Z)].entries()) {
         if (!geo) continue;
         const p = geo.positions.slice();
         for (let i = 0; i < p.length; i += 3) (p[i] -= c + 0.5), (p[i + 1] -= r + 0.5);
@@ -453,8 +455,8 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     }
     return g;
   };
-  add("lanes", flat(lanes, 0.01), theme.road);
-  add("bays", flat(bays, 0.012), theme.roadBorder);
+  add("lanes", flat(lanes, 0.03), theme.road);
+  add("bays", flat(bays, 0.032), theme.roadBorder);
   add("garden", quadsAt(gardens, 0.005), theme.garden);
   const crowns: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
   for (const t of trees) {
@@ -484,7 +486,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
       for (const [x, y, z] of pts) parked.positions.push(-x, -y, z), parked.normals.push(-n[0], -n[1], n[2]), parked.colors.push(rgb[0], rgb[1], rgb[2], 1);
       parked.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
     };
-    const z0 = 0.02;
+    const z0 = 0.03;
     quad(corners.map(([x, y]) => [x, y, z0 + ch] as [number, number, number]), [0, 0, 1]);
     for (let i = 0; i < 4; i++) {
       const [p, q] = [corners[i], corners[(i + 1) % 4]];
