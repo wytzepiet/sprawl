@@ -116,40 +116,49 @@ function ramp<T>(
 // Time-of-day stops
 // ---------------------------------------------------------------------------
 
-// t: 0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk
+// t: 0 = midnight, 0.5 = noon. A Dutch summer's day: the sun is up from
+// twenty past four to twenty to eight, and the night is short.
+export const SUNRISE = 0.18;
+export const SUNSET = 0.82;
 
 const ambientStops: [number, Color3][] = [
   [0.0, AMB_MIDNIGHT],
-  [0.2, AMB_MIDNIGHT],
-  [0.28, AMB_DAWN],
-  [0.38, AMB_NOON],
-  [0.62, AMB_NOON],
-  [0.72, AMB_DUSK],
-  [0.8, AMB_MIDNIGHT],
+  [SUNRISE - 0.03, AMB_MIDNIGHT],
+  [SUNRISE + 0.04, AMB_DAWN],
+  [SUNRISE + 0.14, AMB_NOON],
+  [SUNSET - 0.14, AMB_NOON],
+  [SUNSET - 0.04, AMB_DUSK],
+  [SUNSET + 0.03, AMB_MIDNIGHT],
   [1.0, AMB_MIDNIGHT],
 ];
 
 const skyStops: [number, Color4][] = [
   [0.0, SKY_MIDNIGHT],
-  [0.2, SKY_MIDNIGHT],
-  [0.28, SKY_DAWN],
-  [0.38, SKY_NOON],
-  [0.62, SKY_NOON],
-  [0.72, SKY_DUSK],
-  [0.8, SKY_MIDNIGHT],
+  [SUNRISE - 0.03, SKY_MIDNIGHT],
+  [SUNRISE + 0.04, SKY_DAWN],
+  [SUNRISE + 0.14, SKY_NOON],
+  [SUNSET - 0.14, SKY_NOON],
+  [SUNSET - 0.04, SKY_DUSK],
+  [SUNSET + 0.03, SKY_MIDNIGHT],
   [1.0, SKY_MIDNIGHT],
 ];
 
+/** How far the sun has come across the sky, 0 at sunrise to π at sunset. */
+const sunAngle = (t: number) => ((t - SUNRISE) / (SUNSET - SUNRISE)) * Math.PI;
+
 /** Sun elevation: 0 at horizon, 1 at zenith. 0 during night. */
 function sunElevation(t: number): number {
-  if (t < 0.25 || t > 0.75) return 0;
-  return Math.sin(((t - 0.25) / 0.5) * Math.PI);
+  if (t < SUNRISE || t > SUNSET) return 0;
+  return Math.sin(sunAngle(t));
 }
 
+/** A shadow is drawn no longer than the sun this high would cast it. */
+const LOWEST = 0.15;
+
 function sunDirection(t: number): Vector3 {
-  if (t < 0.25 || t > 0.75) return new Vector3(0, -0.4, -1).normalize();
-  const angle = ((t - 0.25) / 0.5) * Math.PI; // 0=dawn, π/2=noon, π=dusk
-  const elev = Math.max(Math.sin(angle), 0.15);
+  if (t < SUNRISE || t > SUNSET) return new Vector3(0, -0.4, -1).normalize();
+  const angle = sunAngle(t); // 0=dawn, π/2=noon, π=dusk
+  const elev = Math.max(Math.sin(angle), LOWEST);
   const horiz = Math.cos(angle);
   // Sun comes from slightly above (positive Y), so shadows fall downward on screen
   return new Vector3(-horiz, -0.4, -elev).normalize();
@@ -266,6 +275,9 @@ export default function DayNightLights(props: ParentProps) {
     const sun = sunLightAt(elev);
     sunLight.intensity = sun.strength;
     sunLight.diffuse = sun.colour;
+    // Shadows fade as they lengthen, and are gone before they stop
+    // growing at the lowest sun.
+    shadowGen.setDarkness(1 - Math.min(1, Math.max(0, (elev - LOWEST) / 0.3)));
 
     // Round the ground in view, not round the camera: leaning back, the
     // camera stands well behind what it looks at.
