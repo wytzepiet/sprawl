@@ -39,6 +39,13 @@ describe("a building's plan is one exact polygon", () => {
     expect(ring.length).toBeLessThanOrEqual(8);
   });
 
+  test("a house alone turns to face a diagonal street, and not a straight one", () => {
+    // Turned, a corner points along the tile's middle line.
+    const turned = (map: string[]) => plans(map)[0].polygons[0][0].some(([x]) => Math.abs(x - 0.5) < 1e-9);
+    expect(turned(["=....", "H=...", "..=..", "....."])).toBe(true);
+    expect(turned(["=====", "H....", "....."])).toBe(false);
+  });
+
   test("tiles not joined stand apart, however close", () => {
     const t = parseTown(["......", ".HHH..", "......"].join("\n"));
     const apart = townOf([0, 1, 2].map((r) => [0, 1, 2, 3, 4, 5].map((c) => t.tile(c, r))), () => false, [], () => false);

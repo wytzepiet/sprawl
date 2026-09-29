@@ -196,6 +196,16 @@ function plan(town: Town, width: number) {
     const links = linksOf(c, r);
     return !links.length || links.some(([dx, dy]) => !dx || !dy);
   };
+  /** Do most of the street links on the tiles round it run diagonally? */
+  const onDiagonal = (c: number, r: number) => {
+    let lean = 0;
+    for (const [dx, dy] of EIGHT) {
+      const [x, y] = [c + dx, r + dy];
+      if (town.tile(x, y).kind !== "road") continue;
+      for (const [ex, ey] of EIGHT) if (town.linked(x, y, x + ex, y + ey)) lean += ex && ey ? 1 : -1;
+    }
+    return lean > 0;
+  };
   const pieces: { at: Pt; ring: Pt[] }[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
@@ -214,6 +224,10 @@ function plan(town: Town, width: number) {
           const step = has(sx, -sy) || has(-sx, sy);
           if (step && !(has(sx, 0) && has(0, sy))) ring = cut(ring, [sx, sy, sx * mx + sy * my + h * Math.SQRT2]);
         }
+        // A tile standing alone faces the streets round it: turned a
+        // quarter over where they run diagonally, as big as it was.
+        const d = h * Math.SQRT2;
+        if (!links.length && onDiagonal(c, r)) ring = [[mx, my - d], [mx + d, my], [mx, my + d], [mx - d, my]];
         pieces.push({ at: [c, r], ring });
       }
       // Each join once, as a band on to the next tile's middle, wound as
