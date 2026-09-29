@@ -51,7 +51,9 @@ The code is `client/src/engine/town/`:
 - **A building is drawn as a road is** (`town/footprint.ts`): its tiles
   and the joins between them, as the brush stroke ran (`Town.joins`), and
   its plan one thick line through them: a square of the building's width
-  on each tile (unless it is joined only on the diagonal), a band of that
+  on each tile (unless it is joined only on the diagonal; where the tile
+  steps on the diagonal, its corner there is cut on the band's edge, so a
+  row two wide is one clean band too), a band of that
   width along each join, beside or diagonal, so a diagonal row is as thick
   as a straight one, and the square between four tiles joined all round,
   so a block is solid. Tiles not joined stand apart: a stroke along a

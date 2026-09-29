@@ -30,6 +30,15 @@ describe("a building's plan is one exact polygon", () => {
     expect(across(ring)).toBeCloseTo(Math.max(...ys) - Math.min(...ys), 3);
   });
 
+  test("a diagonal row two wide is a clean band, no step poking out", () => {
+    const [row] = plans(["HH.....", ".HH....", "..HH...", "...HH..", "......."]);
+    const ring = row.polygons[0][0];
+    // Along its long sides, every corner lies on one of two diagonal lines.
+    const d = ring.map(([x, y]) => +(x - y).toFixed(3));
+    expect(new Set(d.filter((v) => v === Math.min(...d) || v === Math.max(...d))).size).toBe(2);
+    expect(ring.length).toBeLessThanOrEqual(8);
+  });
+
   test("tiles not joined stand apart, however close", () => {
     const t = parseTown(["......", ".HHH..", "......"].join("\n"));
     const apart = townOf([0, 1, 2].map((r) => [0, 1, 2, 3, 4, 5].map((c) => t.tile(c, r))), () => false, [], () => false);

@@ -204,7 +204,17 @@ function plan(town: Town, width: number) {
       const links = linksOf(c, r);
       // The tile's own square, unless its only joins are diagonal.
       if (square(c, r)) {
-        pieces.push({ at: [c, r], ring: [[mx - h, my - h], [mx + h, my - h], [mx + h, my + h], [mx - h, my + h]] });
+        // Less a corner where the building steps on the diagonal: a
+        // diagonal join across that corner's way, and the tile not joined
+        // on both sides towards it. The cut lies on the band's edge, so a
+        // row two or more wide runs straight along its diagonal.
+        let ring: Pt[] = [[mx - h, my - h], [mx + h, my - h], [mx + h, my + h], [mx - h, my + h]];
+        const has = (dx: number, dy: number) => links.some(([x, y]) => x === dx && y === dy);
+        for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+          const step = has(sx, -sy) || has(-sx, sy);
+          if (step && !(has(sx, 0) && has(0, sy))) ring = cut(ring, [sx, sy, sx * mx + sy * my + h * Math.SQRT2]);
+        }
+        pieces.push({ at: [c, r], ring });
       }
       // Each join once, as a band on to the next tile's middle, wound as
       // the squares are; past a middle with no square, a half-width more,
