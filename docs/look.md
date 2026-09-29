@@ -110,12 +110,13 @@ The code is `client/src/engine/town/`:
   smallest working building holding it, shown as a ghost: one tile becomes a
   whole depot, painting sideways turns it, painting on makes it bigger, a
   bump and all. Only tiles it can take are lit, so nothing invalid is ever
-  painted. Letting go builds it. Painting beside a building grows that one.
+  painted. Letting go builds it. A stroke begun on a building grows that
+  one.
 - **The sandbox** (`/sandbox` on the dev client) draws any fixture with
-  no server, over a faint grid of its tiles (`g` hides it), and paints: a
-  brush per kind, taller and lower, and "Copy" to take the map away as a
-  fixture. `bun run shots --sandbox` photographs every fixture this way in
-  seconds.
+  no server, at any time of day (`?t=`, 0 midnight, 0.5 noon), over a
+  faint grid of its tiles (`g` hides it), and paints: a brush per kind,
+  taller and lower, and "Copy" to take the map away as a fixture. `bun run
+  shots --sandbox` photographs every fixture this way in seconds.
 - **Tried and dropped**, so they are not tried again blind: plans sampled
   as distance fields (wobble, clipped corners); front gardens, courtyards
   by depth, gables and dormers built on distances (they broke on diagonals

@@ -151,15 +151,11 @@ function Board() {
   const program = () => PROGRAMS[LETTERS[brush()]];
   const has = (cells: Cell[], [c, r]: Cell) => cells.some(([x, y]) => x === c && y === r);
 
-  /** Each stroke is a building of its own, unless it grows one. */
-  let ids = 0;
-  const idOf = () => (base.length ? tiles[base[0][1]][base[0][0]].id : undefined) ?? ++ids;
-
-  function set(c: number, r: number, ch: string, id?: number) {
+  function set(c: number, r: number, ch: string) {
     if (!tiles[r]?.[c]) return;
     // What is painted over leaves the building it was part of.
     if (joins) for (const k of [...joins]) if (k.startsWith(`${c},${r}:`) || k.endsWith(`:${c},${r}`)) joins.delete(k);
-    tiles[r][c] = { ...tileOf(ch), id };
+    tiles[r][c] = tileOf(ch);
     through[r][c] = ch === "#";
     rows[r] = rows[r].slice(0, c).padEnd(c, ".") + ch + rows[r].slice(c + 1);
   }
@@ -189,8 +185,7 @@ function Board() {
     const lit = quadsAt(next, 0.012);
     if (lit.indices.length) overlay.push(translucent(scene, "next", lit, Color3.White(), 0.35));
     if (ghost) {
-      const id = base.length ? tiles[base[0][1]][base[0][0]].id : -1;
-      const ghostTiles = tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? { ...tileOf(brush()), id } : tile)));
+      const ghostTiles = tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? tileOf(brush()) : tile)));
       const all = joins ?? fixed(t);
       const shown = townOf(ghostTiles, (c, r) => t.through(c, r), [], joinsOf(new Set([...all, ...strokeJoins(t, ghost)])));
       const geo = mesh(shown, colourOf, new Set(ghost.map(([c, r]) => `${c},${r}`)));
@@ -257,12 +252,11 @@ function Board() {
     stroking = false;
     const p = program();
     const built = p && stroke.length && complete(town(), p, whole());
-    const id = idOf();
     if (built) {
       const t = town();
       const made = strokeJoins(t, built);
       joins = joins ?? fixed(t);
-      for (const [c, r] of built) if (!has(base, [c, r])) set(c, r, brush(), id);
+      for (const [c, r] of built) if (!has(base, [c, r])) set(c, r, brush());
       for (const k of made) joins.add(k);
     }
     stroke = [];

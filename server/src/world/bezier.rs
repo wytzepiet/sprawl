@@ -1,5 +1,8 @@
-/// Perpendicular offset from center-line to lane (must match client LANE_OFFSET).
-pub const LANE_OFFSET: f64 = 0.1;
+/// Perpendicular offset from center-line to lane, for a route's lengths.
+/// The client now draws lanes at 0.1; this keeps the old lanes' 0.15, as
+/// the season's economy was settled on those lengths and rings on the
+/// new ones (`season_the_band_holds_and_nothing_rings`).
+pub const LANE_OFFSET: f64 = 0.15;
 
 const BEZIER_SAMPLES: usize = 8;
 

@@ -1,5 +1,6 @@
 import type { Town } from "./grid";
-import { formOf, kin } from "./mass";
+import { formOf } from "./mass";
+import { defaultJoins } from "./footprint";
 
 /**
  * What a tile cannot see from its neighbours, worked out once over the
@@ -73,16 +74,16 @@ function sheds(town: Town) {
     for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (town.tile(c + dc, r + dr).kind === "road") n += 1 / (dc * dc + dr * dr);
     return n;
   };
+  const joined = town.joins ?? defaultJoins(town);
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      const me = town.tile(c, r);
-      if (formOf(me).family !== "industry" || seen.has(key(c, r))) continue;
+      if (formOf(town.tile(c, r)).family !== "industry" || seen.has(key(c, r))) continue;
       seen.add(key(c, r));
       const cells = [[c, r]];
       for (let i = 0; i < cells.length; i++) {
         for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const [x, y] = [cells[i][0] + dc, cells[i][1] + dr];
-          if (kin(me, town.tile(x, y)) && !seen.has(key(x, y))) seen.add(key(x, y)), cells.push([x, y]);
+          const [[a, b], [x, y]] = [cells[i], [cells[i][0] + dc, cells[i][1] + dr]];
+          if ((joined(a, b, x, y) || joined(x, y, a, b)) && !seen.has(key(x, y))) seen.add(key(x, y)), cells.push([x, y]);
         }
       }
       if (cells.length < 4) continue;

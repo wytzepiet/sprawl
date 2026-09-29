@@ -15,9 +15,6 @@ export interface Tile {
   /** A building's kind, or the ground's. */
   kind: BuildingKind | Ground;
   storeys: number;
-  /** Which building the tile is part of, where that is known: two sheds
-   *  painted side by side are two sheds. Unknown, tiles of a family join. */
-  id?: number;
 }
 
 export interface Town {
@@ -65,7 +62,6 @@ const OPEN: Tile = { kind: "open", storeys: 0 };
 export function parseTown(text: string): Town & { rows: string[] } {
   const rows = text.split("\n").filter((l) => l.trim() && !l.startsWith("#")).map((l) => l.replace(/\s/g, ""));
   const w = Math.max(...rows.map((r) => r.length));
-  const h = rows.length;
   const tiles = rows.map((row) => Array.from({ length: w }, (_, c) => tileOf(row[c] ?? ".")));
   return townOf(tiles, (c, r) => rows[r]?.[c] === "#", rows);
 }

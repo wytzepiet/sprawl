@@ -36,12 +36,8 @@ export function slope(t: Tile) {
   return t.storeys <= 3 ? { pitch: 0.75, height: 0.225 } : { pitch: 0.5, height: 0.03 };
 }
 
-/** Buildings that join: tiles of one kind, as the terrain's types, and for
- *  a kind that is not a street's (sheds, offices, boxes) of one building,
- *  painted as one. Houses run on into rows whoever built them. */
-export const kin = (a: Tile, b: Tile) => {
-  if (!isBuilt(a) || !isBuilt(b) || a.kind !== b.kind) return false;
-  return formOf(a).family === "street" || a.id === b.id;
-};
+/** Buildings that may join, where no stroke says: tiles of one kind, as
+ *  the terrain's types are. */
+export const kin = (a: Tile, b: Tile) => isBuilt(a) && isBuilt(b) && a.kind === b.kind;
 
 export type RGB = [number, number, number];
