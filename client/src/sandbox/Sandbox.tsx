@@ -6,6 +6,7 @@ import DayNightLights, { DayNightProvider, useDayNight } from "../engine/DayNigh
 import { ThemeProvider, useTheme, type Theme } from "../engine/theme";
 import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
+import { BLUEPRINTS } from "../blueprints";
 import { buildRoadGeometry, CAR, HALF_W, ROAD_Z, type ArmInfo } from "../engine/objects/roadGeometry";
 import type { MeshGeometry } from "../engine/Mesh";
 import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
@@ -315,8 +316,11 @@ function Board() {
   );
 }
 
-/** Every building is white: the town is told apart by its shapes. */
-const colourOf = (): [number, number, number] => [0.97, 0.96, 0.94];
+/** A building is near white, a pale wash of its kind's colour. */
+const colourOf = (k: BuildingKind): [number, number, number] => {
+  const c = Color3.FromHexString(BLUEPRINTS[k].color);
+  return [c.r, c.g, c.b].map((v) => 0.97 + (v - 0.97) * 0.35) as [number, number, number];
+};
 
 /** Flat squares on some tiles, a little over the ground. */
 function quadsAt(cells: Cell[], z: number): MeshGeometry {
