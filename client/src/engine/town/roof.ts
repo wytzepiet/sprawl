@@ -4,7 +4,7 @@ import type { BuildingKind } from "../../generated";
 import type { Town } from "./grid";
 import { eaves, slope, type RGB } from "./mass";
 import { facts } from "./facts";
-import { convex, footprints, intersect, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
+import { blunt, convex, footprints, intersect, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
 
 /**
  * The buildings of a town as one mesh: every plan (`footprint.ts`) walled
@@ -23,7 +23,14 @@ import { convex, footprints, intersect, subtract, unite, type Half, type Polygon
  * two walls; then less wherever another wall's face is lower. All of it
  * is straight lines, cut exactly (`footprint.ts`), so nothing is sampled
  * and nothing can fail to meet.
+ *
+ * Then the outside corners are rounded off from above, roof and all, as a
+ * cutter would: the roof keeps its sharp ridges and hips, and a rounded
+ * wall rises to wherever the roof is over it.
  */
+
+/** How round a building's outside corners are, from above. */
+const CORNER = 0.06;
 
 type V = [number, number, number];
 /** A wall's line: how far in from it a point is, a·x + b·y + c. */
@@ -79,24 +86,30 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
     const colourAt = (p: Pt): RGB => tint(mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0]);
 
     for (const polygon of mass.polygons) {
-      // Walls: every edge of every ring, from the ground to the eaves. The
+      const outline = blunt([polygon], CORNER);
+      // The roof over a point of the plan: as high as it is far in from
+      // the nearest wall, to its reach.
+      const walls = polygon.flatMap((ring) => ring.map((p, i): [Pt, Pt] => [p, ring[(i + 1) % ring.length]]));
+      const roofAt = (p: Pt) => top + pitch * Math.min(reach, ...walls.map(([a, b]) => toSegment(p, a, b)));
+      // Walls: every edge of every ring, from the ground to the roof. The
       // building is on each ring's left.
-      for (const ring of polygon) {
+      for (const ring of outline.flat()) {
         ring.forEach((p, i) => {
           const q = ring[(i + 1) % ring.length];
           const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
           const len = Math.hypot(dx, dy);
           const n: V = [dy / len, -dx / len, 0];
           const rgb = colourAt([(p[0] + q[0]) / 2 - n[0] * 1e-3, (p[1] + q[1]) / 2 - n[1] * 1e-3]);
-          tri([p[0], p[1], 0], [q[0], q[1], 0], [q[0], q[1], top], n, rgb);
-          tri([p[0], p[1], 0], [q[0], q[1], top], [p[0], p[1], top], n, rgb);
+          const [zp, zq] = [roofAt(p), roofAt(q)];
+          tri([p[0], p[1], 0], [q[0], q[1], 0], [q[0], q[1], zq], n, rgb);
+          tri([p[0], p[1], 0], [q[0], q[1], zq], [p[0], p[1], zp], n, rgb);
         });
       }
       const faces = roofFaces(polygon, reach);
       for (const { line, region } of faces) {
-        paint(region, ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
+        paint(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
       }
-      paint(subtract([polygon], unite(faces.flatMap((f) => f.region))), () => top + height);
+      paint(subtract(outline, unite(faces.flatMap((f) => f.region))), () => top + height);
     }
   }
   return { positions, normals, colors, indices };
@@ -162,6 +175,13 @@ function roofFaces(polygon: Polygon, reach: number): { line: Line; region: Polyg
     const region = intersect([[mine.ring]], [polygon]);
     return { line: wall.line, region: lower.length ? subtract(region, lower) : region };
   });
+}
+
+/** How far a point is from a segment. */
+function toSegment([x, y]: Pt, [ax, ay]: Pt, [bx, by]: Pt) {
+  const [dx, dy] = [bx - ax, by - ay];
+  const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(x - ax - t * dx, y - ay - t * dy);
 }
 
 function inPolygon(p: Pt, polygon: Polygon) {

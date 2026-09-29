@@ -72,7 +72,9 @@ The code is `client/src/engine/town/`:
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
   A house's roof climbs no higher than a one-tile row's ridge, so deeper
-  buildings are flat on top at that height.
+  buildings are flat on top at that height. Then the outside corners are rounded
+  off from above, roof and all, so the roof stays sharp and the walls rise
+  to meet it.
 - **A shed is a business park's** (14-business, Lage Weide): its office
   at its street end, the whole end across, a couple of storeys over the
   hall and lighter, found from the building's tiles, its long way and the
