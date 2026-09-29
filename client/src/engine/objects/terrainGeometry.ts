@@ -74,51 +74,55 @@ function nextRand(s: number): [number, number] {
 }
 
 /**
- * A tree is a crown seen from above, drawn the way a town plan draws one: a
- * disc whose outline bulges into a few lobes, laid over its neighbours. It
- * is only the crown, floating at the tree's own height with its shadow on
- * the ground below, so where two crowns overlap one is plainly over the
- * other, and the pen's line where the surface steps down off its rim is the
- * line between them. (Domes that met halfway up had no step between them.)
- * It is one fan, a ring of rim points round a raised middle: there are tens
- * of thousands of trees in view, drawn again for depth and for shadow, and a
- * crown of three rings cost five times the triangles and looked the same.
- * The rim's normals lean outward and the middle's point up, so the light
- * across a nearly flat crown still falls like it would on a dome.
+ * A tree is a round crown on a cylinder, drawn twice over the same place: a
+ * smooth top that takes the shadows falling on it, and a coarse body under
+ * it, eight-sided, that casts the tree's shadow and takes none. There are
+ * tens of thousands of trees in view, drawn again for shadow, so only the
+ * top, which is what the eye sees, is smooth.
  */
-const CROWN_AROUND = 36;
-const CROWN_LOBES = 6;
-const CROWN_LOBE = 0.12;
+const TOP_AROUND = 32;
+const BODY_AROUND = 8;
 /** The tallest crown's top, in tiles at full size; the shortest is 45% of it. */
 const CROWN_HEIGHT = 0.45;
-/** How far the middle rises above the rim, as a share of the crown's height. */
-const CROWN_DOME = 0.12;
-/** How much the rim's normals lean outward, for a dome's light on a flat top. */
-const CROWN_BULGE = 0.8;
 
-function buildCrownGeo(): MeshGeometry {
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const indices: number[] = [];
-
-  const n = Math.hypot(CROWN_BULGE, 1);
-  for (let j = 0; j < CROWN_AROUND; j++) {
-    const a = (j / CROWN_AROUND) * Math.PI * 2;
-    const cx = Math.cos(a), cy = Math.sin(a);
-    const r = 1 + CROWN_LOBE * Math.cos(CROWN_LOBES * a);
-    positions.push(cx * r, cy * r, 1);
-    normals.push((cx * CROWN_BULGE) / n, (cy * CROWN_BULGE) / n, 1 / n);
+/** The top: a disc of radius 1 at height 1. */
+function buildTreeTop(): MeshGeometry {
+  const positions = [0, 0, 1], normals = [0, 0, 1], indices: number[] = [];
+  for (let j = 0; j < TOP_AROUND; j++) {
+    const a = (j / TOP_AROUND) * Math.PI * 2;
+    positions.push(Math.cos(a), Math.sin(a), 1);
+    normals.push(0, 0, 1);
+    indices.push(0, 1 + ((j + 1) % TOP_AROUND), 1 + j);
   }
-  positions.push(0, 0, 1 + CROWN_DOME);
-  normals.push(0, 0, 1);
-  for (let j = 0; j < CROWN_AROUND; j++) {
-    indices.push(CROWN_AROUND, (j + 1) % CROWN_AROUND, j);
-  }
-
   return { positions, indices, normals };
 }
 
-export const TREE_CROWN = buildCrownGeo();
+/** The body: a cylinder of radius 1 from the ground to a little under the
+ *  top, far enough that the top is not in its body's shadow, and capped so
+ *  its shadow is whole from any sun. */
+function buildTreeBody(): MeshGeometry {
+  const h = 0.9;
+  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
+  for (let j = 0; j < BODY_AROUND; j++) {
+    const a = (j / BODY_AROUND) * Math.PI * 2;
+    const [cx, cy] = [Math.cos(a), Math.sin(a)];
+    positions.push(cx, cy, 0, cx, cy, h);
+    normals.push(cx, cy, 0, cx, cy, 0);
+    const [b, n] = [2 * j, 2 * ((j + 1) % BODY_AROUND)];
+    indices.push(b, b + 1, n, b + 1, n + 1, n);
+  }
+  const cap = positions.length / 3;
+  for (let j = 0; j < BODY_AROUND; j++) {
+    const a = (j / BODY_AROUND) * Math.PI * 2;
+    positions.push(Math.cos(a), Math.sin(a), h);
+    normals.push(0, 0, 1);
+  }
+  for (let j = 1; j + 1 < BODY_AROUND; j++) indices.push(cap, cap + j + 1, cap + j);
+  return { positions, indices, normals };
+}
+
+export const TREE_TOP = buildTreeTop();
+export const TREE_BODY = buildTreeBody();
 /** A crown's radius in tiles at full size; smaller trees are down to half. */
 const TREE_RADIUS = 0.35;
 interface TreeInfo {
@@ -893,7 +897,7 @@ export function buildTrees(
         matrices.push(
           c, s, 0, 0,
           -s, c, 0, 0,
-          0, 0, (CROWN_HEIGHT * (0.45 + 0.55 * tree.tall)) / (1 + CROWN_DOME), 0,
+          0, 0, CROWN_HEIGHT * (0.45 + 0.55 * tree.tall), 0,
           x - originX + tree.x, y - originY + tree.y, 0, 1,
         );
         let pick = 0, t = tree.shade;

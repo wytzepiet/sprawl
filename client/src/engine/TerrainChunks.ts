@@ -17,7 +17,8 @@ import {
   CHUNK_SKIRT,
   CHUNK_STRIDE,
   GRID_LINE,
-  TREE_CROWN,
+  TREE_BODY,
+  TREE_TOP,
   type ChunkGeometry,
   type MeshBuffers,
   type TerrainPalette,
@@ -66,7 +67,10 @@ export function createBorderTexture(scene: Scene, border = BORDER): RawTexture {
 interface ChunkMeshes {
   ground: Mesh;
   cliffs: Mesh;
+  /** The trees' smooth tops, which take shadows, and their coarse bodies,
+   *  which cast them: one set of instances drawn with both. */
   trees: Mesh;
+  treeTops: Mesh;
   /** Empty meshes must stay disabled — see applyBuffers. */
   hasCliffs: boolean;
   hasTrees: boolean;
@@ -284,11 +288,13 @@ export class TerrainChunks {
     const [cx, cy] = parseKey(key);
     const { matrices, colors } = buildTrees(tiles, cx, cy, this.isBuilt, this.theme().crowns);
     meshes.hasTrees = matrices.length > 0;
-    meshes.trees.thinInstanceSetBuffer("matrix", matrices, 16, true);
-    meshes.trees.thinInstanceSetBuffer("color", colors, 4, true);
-    // Without this the mesh keeps the lone base crown's bounds and the
-    // whole chunk's trees get frustum-culled as soon as the origin leaves view.
-    meshes.trees.thinInstanceRefreshBoundingInfo(true);
+    for (const mesh of [meshes.trees, meshes.treeTops]) {
+      mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
+      mesh.thinInstanceSetBuffer("color", colors, 4, true);
+      // Without this the mesh keeps the lone base crown's bounds and the
+      // whole chunk's trees get frustum-culled as soon as the origin leaves view.
+      mesh.thinInstanceRefreshBoundingInfo(true);
+    }
     this.applyDetail(meshes);
   }
 
@@ -300,17 +306,20 @@ export class TerrainChunks {
     const cliffs = new Mesh(`chunk_${key}_cliffs`, this.scene);
     cliffs.material = this.cliffMat;
 
-    const trees = new Mesh(`chunk_${key}_trees`, this.scene);
-    trees.material = this.treeMat;
-    trees.receiveShadows = true;
-    const treeData = new VertexData();
-    treeData.positions = TREE_CROWN.positions;
-    treeData.indices = TREE_CROWN.indices;
-    treeData.normals = TREE_CROWN.normals;
-    treeData.applyToMesh(trees);
+    const [trees, treeTops] = [TREE_BODY, TREE_TOP].map((geo, i) => {
+      const mesh = new Mesh(`chunk_${key}_tree${i ? "_tops" : "s"}`, this.scene);
+      mesh.material = this.treeMat;
+      const data = new VertexData();
+      data.positions = geo.positions;
+      data.indices = geo.indices;
+      data.normals = geo.normals;
+      data.applyToMesh(mesh);
+      return mesh;
+    });
+    treeTops.receiveShadows = true;
 
-    const meshes: ChunkMeshes = { ground, cliffs, trees, hasCliffs: false, hasTrees: false };
-    for (const mesh of [ground, cliffs, trees]) {
+    const meshes: ChunkMeshes = { ground, cliffs, trees, treeTops, hasCliffs: false, hasTrees: false };
+    for (const mesh of [ground, cliffs, trees, treeTops]) {
       mesh.isPickable = false;
       mesh.position.x = originX;
       mesh.position.y = originY;
@@ -353,6 +362,7 @@ export class TerrainChunks {
     meshes.ground.dispose();
     meshes.cliffs.dispose();
     meshes.trees.dispose();
+    meshes.treeTops.dispose();
     this.chunks.delete(key);
   }
 
@@ -369,6 +379,7 @@ export class TerrainChunks {
   private applyDetail(meshes: ChunkMeshes): void {
     meshes.cliffs.setEnabled(this.detailVisible && meshes.hasCliffs);
     meshes.trees.setEnabled(this.detailVisible && meshes.hasTrees);
+    meshes.treeTops.setEnabled(this.detailVisible && meshes.hasTrees);
   }
 
   updateMaterials(ambient: Color3): void {

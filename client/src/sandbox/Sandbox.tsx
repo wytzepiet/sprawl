@@ -15,7 +15,7 @@ import type { BuildingKind, TerrainType } from "../generated";
 import { townMesh as mesh } from "../engine/town/roof";
 import { defaultJoins, footprints, soften } from "../engine/town/footprint";
 import earcut from "earcut";
-import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_CROWN, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
+import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_BODY, TREE_TOP, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { facts } from "../engine/town/facts";
 import { dress } from "../engine/town/dressing";
 
@@ -130,8 +130,9 @@ function Board() {
     for (const m of drawn) m.dispose();
     drawn = build(scene, town(), theme(), rows);
     for (const m of drawn) {
-      m.receiveShadows = true;
-      if (m.name === "mass") shadowGenerator()?.addShadowCaster(m);
+      // A tree's body casts its shadow and its top takes the others'.
+      m.receiveShadows = m.name !== "tree_bodies";
+      if (m.name === "mass" || m.name === "tree_bodies") shadowGenerator()?.addShadowCaster(m);
     }
   }
 
@@ -510,19 +511,22 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   add("lanes", flat(lanes, 0.03), theme.road);
   add("bays", flat(bays, 0.032), theme.bayLine);
   add("garden", quadsAt(gardens, 0.005), theme.garden);
-  const crowns: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
-  for (const t of trees) {
-    const base = crowns.positions.length / 3;
-    const [w, zs] = [0.35 * t.scale, 0.35 * t.scale];
-    const rgb = theme.crowns[t.shade];
-    for (let i = 0; i < TREE_CROWN.positions.length; i += 3) {
-      crowns.positions.push(-(t.x + TREE_CROWN.positions[i] * w), -(t.y + TREE_CROWN.positions[i + 1] * w), TREE_CROWN.positions[i + 2] * zs);
-      crowns.normals.push(-TREE_CROWN.normals[i], -TREE_CROWN.normals[i + 1], TREE_CROWN.normals[i + 2]);
-      crowns.colors.push(rgb.r, rgb.g, rgb.b, 1);
+  // Trees as the forest draws them: a smooth top over a coarse body.
+  for (const [name, geo] of [["tree_tops", TREE_TOP], ["tree_bodies", TREE_BODY]] as const) {
+    const out: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
+    for (const t of trees) {
+      const base = out.positions.length / 3;
+      const [w, zs] = [0.35 * t.scale, 0.35 * t.scale];
+      const rgb = theme.crowns[t.shade];
+      for (let i = 0; i < geo.positions.length; i += 3) {
+        out.positions.push(-(t.x + geo.positions[i] * w), -(t.y + geo.positions[i + 1] * w), geo.positions[i + 2] * zs);
+        out.normals.push(-geo.normals[i], -geo.normals[i + 1], geo.normals[i + 2]);
+        out.colors.push(rgb.r, rgb.g, rgb.b, 1);
+      }
+      for (const k of geo.indices) out.indices.push(base + k);
     }
-    for (const k of TREE_CROWN.indices) crowns.indices.push(base + k);
+    add(name, out, Color3.White());
   }
-  add("crowns", crowns, Color3.White());
 
   // Parked cars, boxes as the game draws its cars.
   const CAR_COLOURS = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];
