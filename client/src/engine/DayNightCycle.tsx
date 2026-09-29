@@ -154,19 +154,26 @@ const skyStops: [number, Color4][] = [
 /** How far the sun has come across the sky, 0 at sunrise to π at sunset. */
 const sunAngle = (t: number) => ((t - SUNRISE) / (SUNSET - SUNRISE)) * Math.PI;
 
-/** Sun elevation: 0 at horizon, 1 at zenith. 0 during night. */
+/** How high the sun climbs at noon, where 1 is overhead: a northern
+ *  summer's sun, which never quite gets there, so more of the day is spent
+ *  low and gold. */
+const PEAK = 0.8;
+/** How far to the north the sun's path lies: up the screen, so shadows
+ *  fall down it. */
+const NORTH = 0.55;
+
+/** Sun elevation: 0 at horizon, PEAK at noon. 0 during night. */
 function sunElevation(t: number): number {
   if (t < SUNRISE || t > SUNSET) return 0;
-  return Math.sin(sunAngle(t));
+  return PEAK * Math.sin(sunAngle(t));
 }
 
 function sunDirection(t: number): Vector3 {
-  if (t < SUNRISE || t > SUNSET) return new Vector3(0, -0.4, -1).normalize();
+  if (t < SUNRISE || t > SUNSET) return new Vector3(0, -NORTH, -1).normalize();
   const angle = sunAngle(t); // 0=dawn, π/2=noon, π=dusk
-  const elev = Math.max(Math.sin(angle), LOWEST);
+  const elev = Math.max(PEAK * Math.sin(angle), LOWEST);
   const horiz = Math.cos(angle);
-  // Sun comes from slightly above (positive Y), so shadows fall downward on screen
-  return new Vector3(-horiz, -0.4, -elev).normalize();
+  return new Vector3(-horiz, -NORTH, -elev).normalize();
 }
 
 // ---------------------------------------------------------------------------
