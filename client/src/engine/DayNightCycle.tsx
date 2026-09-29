@@ -235,7 +235,7 @@ export default function DayNightLights(props: ParentProps) {
   const engine = scene.getEngine();
   const shadowGen = new ShadowGenerator(shadowMapSize(engine), sunLight);
   shadowGen.usePercentageCloserFiltering = true;
-  shadowGen.filteringQuality = ShadowGenerator.QUALITY_LOW;
+  shadowGen.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
   shadowGen.bias = 0.001;
   // Tree trunks are cylinders, so most of their surface sits at a grazing angle
   // to a low sun — the case a constant bias cannot cover without detaching the
