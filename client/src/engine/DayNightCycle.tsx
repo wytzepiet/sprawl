@@ -157,7 +157,7 @@ const sunAngle = (t: number) => ((t - SUNRISE) / (SUNSET - SUNRISE)) * Math.PI;
 /** How high the sun climbs at noon, where 1 is overhead: a northern
  *  summer's sun, which never quite gets there, so more of the day is spent
  *  low and gold. */
-const PEAK = 0.65;
+const PEAK = 0.8;
 /** How far to the north the sun's path lies: up the screen, so shadows
  *  fall down it. */
 const NORTH = 0.55;
