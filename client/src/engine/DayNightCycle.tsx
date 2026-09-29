@@ -49,6 +49,11 @@ const AMB_MIDNIGHT = new Color3(0.35, 0.35, 0.5);
 const AMB_DAWN = new Color3(0.85, 0.55, 0.35);
 const AMB_NOON = new Color3(0.82, 0.82, 0.8);
 const AMB_DUSK = new Color3(0.85, 0.45, 0.3);
+/** The sky's light is blue and the sun's warm, so where the sun is shut out
+ *  a surface is its colour times the blue: grass goes teal, a red roof
+ *  raspberry, white periwinkle. In the sun the two add to near white. */
+const SKY_LIGHT = new Color3(0.8, 0.88, 1.15);
+const SUN_LIGHT = new Color3(1.25, 1.1, 0.8);
 
 const SKY_MIDNIGHT = new Color4(0.15, 0.15, 0.25, 1);
 const SKY_DAWN = new Color4(0.58, 0.42, 0.3, 1);
@@ -195,6 +200,7 @@ export default function DayNightLights(props: ParentProps) {
   const sunLight = new DirectionalLight("sun", sunDirection(0.35), scene);
   sunLight.intensity = 0.4 * sunElevation(0.35);
   sunLight.specular = Color3.Black();
+  sunLight.diffuse = SUN_LIGHT;
   sunLight.autoUpdateExtends = false;
 
   // --- Shadow generator ---
@@ -232,7 +238,7 @@ export default function DayNightLights(props: ParentProps) {
 
       const amb = ramp(ambientStops, qt, lerp3);
       setAmbient(amb);
-      hemiLight.diffuse = amb;
+      hemiLight.diffuse = amb.multiply(SKY_LIGHT);
 
       const sky = ramp(skyStops, qt, lerp4);
       scene.clearColor.r = sky.r;
