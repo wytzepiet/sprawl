@@ -11,22 +11,36 @@ import { defaultJoins } from "./footprint";
  *   taller (in `town`, the town as drawn).
  * - **Enclosed**: open ground closed in by buildings, a courtyard, which
  *   no street and no edge of the map reaches.
- * - **Yards**: a depot's tiles beside a street are its yard, open paved
- *   ground where lorries stand at its docks, as long as some of the depot
- *   is left behind them to be its hall. A depot on a corner has a yard
- *   round the corner, and docks on both its walls.
+ * - **Yards**: as much of a depot as its docks need is its yard, open
+ *   paved ground where lorries stand: tiles beside a street, the quiet end
+ *   first, each giving docks along the hall behind it, until there is a
+ *   dock for every two tiles of depot. The rest is depot, and its office
+ *   stands at the busy end, away from the yard.
  */
+
+/** Lorry bays along a dock: three to a tile of wall. */
+export const DOCKS = 3;
 export interface Facts {
   /** The town as drawn: the painted one with the heads raised. */
   town: Town;
   head(c: number, r: number): boolean;
   enclosed(c: number, r: number): boolean;
   yard(c: number, r: number): boolean;
+  /** A yard tile's docks: the ways to the hall walls it faces, straight
+   *  across from its street. */
+  docks(c: number, r: number): [number, number][];
 }
 
 export function facts(painted: Town): Facts {
   const yard = yards(painted);
-  const open: Town = { ...painted, tile: (c, r) => (yard.has(`${c},${r}`) ? { kind: "paved", storeys: 0 } : painted.tile(c, r)) };
+  const walls = docksOf(painted, (c, r) => yard.has(`${c},${r}`));
+  // The yard is open ground, but the depot keeps the joins it was painted
+  // with, so the walls round its yard stand square.
+  const open: Town = {
+    ...painted,
+    joins: painted.joins ?? defaultJoins(painted),
+    tile: (c, r) => (yard.has(`${c},${r}`) ? { kind: "paved", storeys: 0 } : painted.tile(c, r)),
+  };
   const { lifted, heads } = sheds(open);
   const closed = courtyards(open);
   return {
@@ -34,6 +48,7 @@ export function facts(painted: Town): Facts {
     head: (c, r) => heads.has(`${c},${r}`),
     enclosed: (c, r) => closed.has(`${c},${r}`),
     yard: (c, r) => yard.has(`${c},${r}`),
+    docks: (c, r) => (yard.has(`${c},${r}`) ? walls(c, r) : []),
   };
 }
 
@@ -62,12 +77,38 @@ function depots(town: Town): [number, number][][] {
   return out;
 }
 
-/** The depots' tiles beside a street, where some of the depot is left. */
+/** A yard tile's docks: toward each depot tile that is not yard and lies
+ *  straight across from a street the yard tile is on. */
+const docksOf = (town: Town, yard: (c: number, r: number) => boolean) => (c: number, r: number) =>
+  SIDES.filter(([dc, dr]) => town.tile(c - dc, r - dr).kind === "road" && town.tile(c + dc, r + dr).kind === "Warehouse" && !yard(c + dc, r + dr)) as [number, number][];
+
+/** How much street is round a tile, the nearer the more: a corner on a
+ *  junction has most. */
+function streetAround(town: Town, c: number, r: number) {
+  let n = 0;
+  for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (town.tile(c + dc, r + dr).kind === "road") n += 1 / (dc * dc + dr * dr);
+  return n;
+}
+
+/** Each depot's yard: street-side tiles in one run from the quietest,
+ *  until their docks are one for every two tiles of the depot. */
 function yards(town: Town): Set<string> {
   const out = new Set<string>();
   for (const cells of depots(town)) {
-    const front = cells.filter(([c, r]) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road"));
-    if (front.length < cells.length) for (const [c, r] of front) out.add(`${c},${r}`);
+    const yard = new Set<string>();
+    const inYard = (c: number, r: number) => yard.has(`${c},${r}`);
+    const walls = docksOf(town, inYard);
+    const docks = () => [...yard].reduce((n, k) => n + DOCKS * walls(...(k.split(",").map(Number) as [number, number])).length, 0);
+    const quiet = (a: [number, number], b: [number, number]) => streetAround(town, ...a) - streetAround(town, ...b) || a[1] - b[1] || a[0] - b[0];
+    while (docks() * 2 < cells.length && yard.size + 1 < cells.length) {
+      const next = cells
+        .filter(([c, r]) => !inYard(c, r) && walls(c, r).length)
+        .filter(([c, r]) => !yard.size || SIDES.some(([dc, dr]) => inYard(c + dc, r + dr)))
+        .sort(quiet)[0];
+      if (!next) break;
+      yard.add(`${next[0]},${next[1]}`);
+    }
+    for (const k of yard) out.add(k);
   }
   return out;
 }
@@ -110,13 +151,7 @@ function sheds(town: Town) {
   const key = (c: number, r: number) => `${c},${r}`;
   const heads = new Set<string>();
   const seen = new Set<string>();
-  /** How much street is round a tile, the nearer the more: behind its
-   *  yard, a shed's corner on the junction has most. */
-  const street = (c: number, r: number) => {
-    let n = 0;
-    for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (town.tile(c + dc, r + dr).kind === "road") n += 1 / (dc * dc + dr * dr);
-    return n;
-  };
+  const street = (c: number, r: number) => streetAround(town, c, r);
   const joined = town.joins ?? defaultJoins(town);
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {

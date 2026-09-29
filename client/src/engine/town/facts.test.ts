@@ -27,15 +27,16 @@ describe("facts and dressing", () => {
     expect(f.town.tile(1, 1).storeys).toBe(t.tile(1, 1).storeys + 2);
   });
 
-  test("a depot's tiles on the street are its yard, with lorry bays along its hall", () => {
+  test("a depot gives up as much street-side ground as its docks need, the rest is depot", () => {
     const t = town(["......", "======", "DDDD..", "DDDD..", "......"]);
     const f = facts(t);
-    expect(f.yard(0, 2)).toBe(true);
+    // Eight tiles need four docks: two tiles of yard, three docks each.
+    const yard = [0, 1, 2, 3].filter((c) => f.yard(c, 2));
+    expect(yard.length).toBe(2);
     expect(f.yard(0, 3)).toBe(false);
-    expect(f.town.tile(0, 2).kind).toBe("paved");
-    // Three bays to each of the four tiles of wall, facing the street.
+    expect(f.town.tile(yard[0], 2).kind).toBe("paved");
     const { docks } = dress(t, f);
-    expect(docks.length).toBe(12);
+    expect(docks.length).toBe(6);
     expect(docks.every((d) => Math.abs(d.angle + Math.PI / 2) < 1e-9)).toBe(true);
   });
 

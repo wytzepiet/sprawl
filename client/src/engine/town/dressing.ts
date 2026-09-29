@@ -1,5 +1,5 @@
 import { isBuilt, type Town } from "./grid";
-import type { Facts } from "./facts";
+import { DOCKS, type Facts } from "./facts";
 import { formOf } from "./mass";
 import { CAB, CAR, HALF_W, TRAILER } from "../objects/roadGeometry";
 import { INSET } from "./footprint";
@@ -68,9 +68,7 @@ export interface Dressing {
   dockLines: Pt[][];
 }
 
-/** Lorry bays along a dock: three to a tile's wall, each as deep as a
- *  lorry and a little. */
-const DOCKS = 3;
+/** A lorry bay's depth: a lorry and a little. */
 const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
 
 /** A parking lane, from just past the road's edge (0.2) out, a car wide
@@ -133,9 +131,7 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; dockLines: Pt[][] } {
   const out: Dock[] = [], lines: Pt[][] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      if (!facts.yard(c, r)) continue;
-      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        if (town.tile(c + dc, r + dr).kind !== "Warehouse" || facts.yard(c + dc, r + dr)) continue;
+      for (const [dc, dr] of facts.docks(c, r)) {
         // The wall, and along it (ux, uy); out of the bays is (-dc, -dr).
         const [wx, wy] = [c + 0.5 + dc * (0.5 + INSET), r + 0.5 + dr * (0.5 + INSET)];
         const [ux, uy] = [-dr, dc];
