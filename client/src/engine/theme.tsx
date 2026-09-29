@@ -32,8 +32,8 @@ const light = {
   mountain: hex3("#F8F7F6"),
   // A courtyard's lawn, a shade greener than the land round it.
   garden: hex3("#AED08F"),
-  // A yard or a car park: paving, a shade under the road's white.
-  paved: hex3("#DDD9CE"),
+  // A yard, a car park or a pavement: cream, warmer than the road's white.
+  paved: hex3("#EDE1C6"),
   grid: hex3("#BBD29E"),
   road: hex3("#F8F6F0"),
   bayLine: hex3("#E6E2D6"),
