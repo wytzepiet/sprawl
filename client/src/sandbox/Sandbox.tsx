@@ -13,7 +13,7 @@ import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } fro
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
 import { townMesh as mesh } from "../engine/town/roof";
-import { footprints } from "../engine/town/footprint";
+import { footprints, soften } from "../engine/town/footprint";
 import earcut from "earcut";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_CROWN, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { facts } from "../engine/town/facts";
@@ -375,26 +375,32 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // Roads, as the game lays them: each tile's arms to the tiles it is joined to.
   const roads = { street: [[], []] as MeshGeometry[][], through: [[], []] as MeshGeometry[][] };
-  const pavements: MeshGeometry[] = [];
-  // Under every building, its plan at full size, before the draw-in: the
-  // building stands on paving that fills its cells. And the yards.
+  // The pavement: every road, building and yard makes paved ground, shaped
+  // by the buildings' own rule (the terrain's corners, a diagonal as far out
+  // as a straight edge) at full size, then its corners rounded as the
+  // terrain's are. A town is paved house to house, a diagonal street as
+  // wide as a straight one.
   const PAVED_Z = 0.006;
-  for (const mass of footprints(town, () => false, 0)) {
-    for (const poly of mass.polygons) {
-      const flat = poly.flat();
-      const holes: number[] = [];
-      let at = 0;
-      for (const ring of poly.slice(0, -1)) holes.push((at += ring.length));
-      const ids = earcut(flat.flat(), holes);
-      const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-      for (const [x, y] of flat) g.positions.push(-x, -y, PAVED_Z), g.normals.push(0, 0, 1);
-      for (let i = 0; i < ids.length; i += 3) g.indices.push(ids[i], ids[i + 2], ids[i + 1]);
-      pavements.push(g);
-    }
+  const PAVING: Tile = { kind: "House", storeys: 1 };
+  const paved = townOf(
+    Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
+      const t = town.tile(c, r);
+      return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
+    })),
+    () => false,
+  );
+  const pavements: MeshGeometry[] = [];
+  for (const poly of soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3)) {
+    const flat = poly.flat();
+    const holes: number[] = [];
+    let at = 0;
+    for (const ring of poly.slice(0, -1)) holes.push((at += ring.length));
+    const ids = earcut(flat.flat(), holes);
+    const g: MeshGeometry = { positions: [], normals: [], indices: [] };
+    for (const [x, y] of flat) g.positions.push(-x, -y, PAVED_Z), g.normals.push(0, 0, 1);
+    for (let i = 0; i < ids.length; i += 3) g.indices.push(ids[i], ids[i + 2], ids[i + 1]);
+    pavements.push(g);
   }
-  const yards: Cell[] = [];
-  for (let r = 0; r < town.h; r++) for (let c = 0; c < town.w; c++) if (town.tile(c, r).kind === "paved") yards.push([c, r]);
-  pavements.push(quadsAt(yards, PAVED_Z));
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       if (town.tile(c, r).kind !== "road") continue;
@@ -408,14 +414,6 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
         }
       }
       const into = roads[town.through(c, r) ? "through" : "street"];
-      // Its kerb, then the road: the kerb a whole tile wide, pavement to
-      // the rows' faces, following the street at any angle.
-      const kerb = town.through(c, r) ? null : buildRoadGeometry(arms, 0.5, PAVED_Z);
-      if (kerb) {
-        const p = kerb.positions.slice();
-        for (let i = 0; i < p.length; i += 3) (p[i] -= c + 0.5), (p[i + 1] -= r + 0.5);
-        pavements.push({ ...kerb, positions: p });
-      }
       for (const [k, geo] of [buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z), buildRoadGeometry(arms, HALF_W, ROAD_Z)].entries()) {
         if (!geo) continue;
         const p = geo.positions.slice();

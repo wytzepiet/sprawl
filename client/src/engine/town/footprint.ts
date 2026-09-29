@@ -282,6 +282,20 @@ export function convex(halves: Half[], [x0, y0, x1, y1]: [number, number, number
   return ring;
 }
 
+/** A region with every corner rounded to radius `r`, outside and in, as
+ *  the terrain rounds its shores; straight sides stay where they are. */
+export function soften(region: Polygon[], r: number): Polygon[] {
+  const round = (ps: Paths, by: number) => {
+    const o = new ClipperLib.ClipperOffset(2, 0.002 * S);
+    o.AddPaths(ps, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
+    const out: Paths = [];
+    o.Execute(out, by * S);
+    return out;
+  };
+  const ps = paths(region.flat());
+  return polygons(round(round(round(round(ps, -r), r), r), -r));
+}
+
 /** Regions, as sets of polygons: together, apart, in common. */
 export const unite = (a: Polygon[]) => polygons(union(paths(a.flat())));
 export const subtract = (a: Polygon[], b: Polygon[]) => polygons(minus(paths(a.flat()), paths(b.flat())));

@@ -91,12 +91,12 @@ The code is `client/src/engine/town/`:
   the rows' setback leaves, clear of junctions, bends, ends
   and trees, with a gap here and there. Drawn only, for now: the cars the
   simulation parks come with `parking.md` step 1. The pavement is
-  two shapes the town already has: under every street, the road's own
-  geometry a whole tile wide; under every building, its plan at full size,
-  before the draw-in. So a town is paved house to house along its streets,
-  each building stands on paving filling its cells, and the grass left
-  between is square-edged like the rest. (Smoothed as terrain, it read too
-  soft.) Where a tree stands comes
+  ground: every road, building and yard makes paved ground, shaped by the
+  buildings' own rule run on it at full size (the terrain's corners in
+  straight lines, a diagonal as far out as a straight edge, so a diagonal
+  street is as wide as a straight one), then every corner rounded as the
+  terrain rounds a shore (`soften`). So a town is paved house to house,
+  and the grass left between blocks has soft edges. Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted**, a tile at a time as roads are drawn, with a
   brush per kind (`town/brush.ts`). Each kind has a program: the smallest
