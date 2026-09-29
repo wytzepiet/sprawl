@@ -197,9 +197,15 @@ function Board() {
     }
   }
 
+  /** The tile under the pointer; while stroking, only near its middle, so
+   *  a drag on the diagonal steps corner to corner and never takes the
+   *  tile beside it passes. */
   const tileAt = (e: PointerEvent): Cell | null => {
     const hit = scene.pick(e.offsetX, e.offsetY, (m) => m.name === "ground");
-    return hit?.pickedPoint ? [Math.floor(-hit.pickedPoint.x), Math.floor(-hit.pickedPoint.y)] : null;
+    if (!hit?.pickedPoint) return null;
+    const [x, y] = [-hit.pickedPoint.x, -hit.pickedPoint.y];
+    const cell: Cell = [Math.floor(x), Math.floor(y)];
+    return !stroking || Math.hypot(x - cell[0] - 0.5, y - cell[1] - 0.5) < 0.45 ? cell : null;
   };
 
   function touch(cell: Cell) {

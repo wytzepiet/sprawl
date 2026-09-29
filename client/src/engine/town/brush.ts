@@ -1,5 +1,6 @@
 import type { BuildingKind } from "../../generated";
 import type { Town } from "./grid";
+import { defaultJoins } from "./footprint";
 
 /**
  * Buildings are painted, a tile at a time, as roads are drawn. What is
@@ -38,6 +39,7 @@ export const PROGRAMS: Partial<Record<BuildingKind, Program>> = {
 
 const key = ([c, r]: Cell) => `${c},${r}`;
 const SIDES: Cell[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const EIGHT: Cell[] = [...SIDES, [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 /** Ground a building may be painted on. */
 const free = (town: Town, c: number, r: number) => ["open", "paved"].includes(town.tile(c, r).kind);
@@ -55,14 +57,17 @@ function near(town: Town, c: number, r: number, k: number) {
 /** Can this tile be part of a building of this program at all? */
 export const paintable = (town: Town, p: Program, c: number, r: number) => free(town, c, r) && near(town, c, r, p.reach);
 
-function connected(cells: Cell[]) {
+/** One piece: painted tiles hold together on the diagonal too, as the
+ *  stroke ran; a tile completion adds must sit beside one. */
+function connected(cells: Cell[], painted: Set<string>) {
   const all = new Set(cells.map(key));
   const seen = new Set([key(cells[0])]);
   const queue = [cells[0]];
   while (queue.length) {
     const [c, r] = queue.pop()!;
-    for (const [dc, dr] of SIDES) {
+    for (const [dc, dr] of EIGHT) {
       const k = key([c + dc, r + dr]);
+      if (dc && dr && !(painted.has(key([c, r])) && painted.has(k))) continue;
       if (all.has(k) && !seen.has(k)) seen.add(k), queue.push([c + dc, r + dr]);
     }
   }
@@ -91,7 +96,7 @@ export function complete(town: Town, p: Program, stroke: Cell[]): Cell[] | null 
         if (!rect.every(([c, r]) => painted.has(key([c, r])) || paintable(town, p, c, r))) continue;
         if (!fronts(town, x, y, w, h, w >= h)) continue;
         const cells = [...stroke, ...rect.filter((t) => !painted.has(key(t)))];
-        if (!connected(cells)) continue;
+        if (!connected(cells, painted)) continue;
         const added = cells.length - stroke.length;
         const covered = rect.length - added;
         if (!best || added < best.added || (added === best.added && covered > best.covered)) best = { cells, added, covered };
@@ -115,19 +120,21 @@ function fronts(town: Town, x: number, y: number, w: number, h: number, wide: bo
 
 /**
  * The building of this kind a painted tile touches, if any, and only that
- * one: painting beside a depot grows that depot rather than starting
- * another, so a bump out of its back is as good as a bump out of its side.
+ * one, as its joins hold it together: painting beside a depot grows that
+ * depot rather than starting another, so a bump out of its back is as good
+ * as a bump out of its side.
  */
 export function touching(town: Town, kind: string, [c, r]: Cell): Cell[] {
   const start = [[c, r] as Cell, ...SIDES.map(([dc, dr]): Cell => [c + dc, r + dr])].find(([x, y]) => town.tile(x, y).kind === kind);
   if (!start) return [];
-  const { id } = town.tile(...start);
+  const joined = town.joins ?? defaultJoins(town);
   const seen = new Set([key(start)]);
   const out: Cell[] = [start];
   for (let i = 0; i < out.length; i++) {
-    for (const [dc, dr] of SIDES) {
-      const n: Cell = [out[i][0] + dc, out[i][1] + dr];
-      if (town.tile(...n).kind === kind && town.tile(...n).id === id && !seen.has(key(n))) seen.add(key(n)), out.push(n);
+    const [x, y] = out[i];
+    for (const [dc, dr] of EIGHT) {
+      const n: Cell = [x + dc, y + dr];
+      if (!seen.has(key(n)) && (joined(x, y, ...n) || joined(...n, x, y))) seen.add(key(n)), out.push(n);
     }
   }
   return out;

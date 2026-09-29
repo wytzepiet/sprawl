@@ -49,6 +49,11 @@ describe("a painted stroke is completed to a working building", () => {
     expect(sorted(complete(built, depot, [...grown, [4, 3]]))?.length).toBe(7);
   });
 
+  test("a stroke may step on the diagonal", () => {
+    const lane = parseTown(["======", "......", "......", "======"].join("\n"));
+    expect(sorted(complete(lane, house, [[1, 1], [2, 2], [3, 1]]))).toEqual(["1,1", "2,2", "3,1"]);
+  });
+
   test("where no depot fits, there is none", () => {
     const tight = parseTown(["=====", "=.T..", "=T..."].join("\n"));
     expect(complete(tight, depot, [[3, 1]])).toBeNull();
