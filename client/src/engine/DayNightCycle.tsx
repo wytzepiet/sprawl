@@ -46,14 +46,30 @@ function shadowMapSize(engine: AbstractEngine): number {
 // ---------------------------------------------------------------------------
 
 const AMB_MIDNIGHT = new Color3(0.35, 0.35, 0.5);
-const AMB_DAWN = new Color3(0.85, 0.55, 0.35);
+// The sky stays cool as the sun goes down, dimmer and a little lavender:
+// it is the sun that turns gold, so a golden hour is warm light and blue
+// shadows at once.
+const AMB_DAWN = new Color3(0.55, 0.52, 0.66);
 const AMB_NOON = new Color3(0.82, 0.82, 0.8);
-const AMB_DUSK = new Color3(0.85, 0.45, 0.3);
+const AMB_DUSK = new Color3(0.5, 0.48, 0.62);
 /** The sky's light is blue and the sun's warm, so where the sun is shut out
  *  a surface is its colour times the blue: grass goes teal, a red roof
  *  raspberry, white periwinkle. In the sun the two add to near white. */
-const SKY_LIGHT = new Color3(0.8, 0.88, 1.15);
-const SUN_LIGHT = new Color3(1.25, 1.1, 0.8);
+const SKY_LIGHT = new Color3(0.74, 0.86, 1.22);
+/** The sun high, and low: low, its light has crossed so much air that the
+ *  blue is scattered out of it, and what is left is gold. */
+const SUN_HIGH = new Color3(1.15, 1.02, 0.75);
+const SUN_LOW = new Color3(1.6, 0.8, 0.3);
+
+/** The sun's light at an elevation: gold low down, near white most of
+ *  the way up. Its strength is the day's, fading only at the horizon, and more
+ *  when low, as an eye opens up to it: a low sun lights the ground at a
+ *  slant, and its gold should still reach it. */
+function sunLightAt(elev: number): { colour: Color3; strength: number } {
+  const high = Math.min(1, elev / 0.7);
+  const colour = lerp3(SUN_LOW, SUN_HIGH, high * high * (3 - 2 * high));
+  return { colour, strength: (0.5 * Math.min(1, elev / 0.08)) / Math.max(elev, 0.42) };
+}
 
 const SKY_MIDNIGHT = new Color4(0.15, 0.15, 0.25, 1);
 const SKY_DAWN = new Color4(0.58, 0.42, 0.3, 1);
@@ -198,9 +214,7 @@ export default function DayNightLights(props: ParentProps) {
   hemiLight.specular = Color3.Black();
 
   const sunLight = new DirectionalLight("sun", sunDirection(0.35), scene);
-  sunLight.intensity = 0.4 * sunElevation(0.35);
   sunLight.specular = Color3.Black();
-  sunLight.diffuse = SUN_LIGHT;
   sunLight.autoUpdateExtends = false;
 
   // --- Shadow generator ---
@@ -249,7 +263,9 @@ export default function DayNightLights(props: ParentProps) {
 
     const elev = sunElevation(t);
     sunLight.direction = sunDirection(t);
-    sunLight.intensity = 0.4 * elev;
+    const sun = sunLightAt(elev);
+    sunLight.intensity = sun.strength;
+    sunLight.diffuse = sun.colour;
 
     // Round the ground in view, not round the camera: leaning back, the
     // camera stands well behind what it looks at.

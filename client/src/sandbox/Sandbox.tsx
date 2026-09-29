@@ -48,7 +48,8 @@ const BRUSHES: { key: string; ch: string; label: string }[] = [
 ];
 
 export default function Sandbox() {
-  syncClock(60_000, 0, 120_000);
+  // Noon, or the time of day `?t=` names (0 midnight, 0.5 noon), stopped.
+  syncClock(Number(new URLSearchParams(location.search).get("t") ?? 0.5) * 120_000, 0, 120_000);
   return (
     <ThemeProvider>
       <DayNightProvider>
