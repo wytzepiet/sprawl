@@ -8,7 +8,7 @@ import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
 import type { Theme } from "../theme";
 import type { Strip } from "./strip";
 import { field, FIELD_Z, leaves } from "./BuildingObject";
-import { CAR, LANE_OFFSET, ROAD_Z } from "./roadGeometry";
+import { CAB, CAR, LANE_OFFSET, ROAD_Z, TRAILER } from "./roadGeometry";
 import { getEntity } from "../../state/gameObjects";
 import type { Building, Car, GameObjectEntry } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
@@ -35,8 +35,6 @@ const TRACTOR = new Color3(0.36, 0.55, 0.16);
  *  the tractor's tail and follows it, its heading the line from its own
  *  axle to the hitch, the axle always one trailer length behind. Forward
  *  that is stable and swings through a corner the way a trailer does. */
-const CAB = { w: 0.17, l: 0.17, h: 0.21 };
-const TRAILER = { w: 0.17, l: 0.46, h: 0.22, axle: 0.37, overhang: 0.025 };
 const cabGeo = boxGeometry(CAB.w, CAB.l, CAB.h);
 const trailerGeo = boxGeometry(TRAILER.w, TRAILER.l, TRAILER.h);
 /** How far behind the tractor's centre the hitch sits. */

@@ -1,4 +1,4 @@
-import type { Town } from "./grid";
+import { isBuilt, type Town } from "./grid";
 import { formOf } from "./mass";
 import { defaultJoins } from "./footprint";
 
@@ -11,22 +11,65 @@ import { defaultJoins } from "./footprint";
  *   taller (in `town`, the town as drawn).
  * - **Enclosed**: open ground closed in by buildings, a courtyard, which
  *   no street and no edge of the map reaches.
+ * - **Yards**: a depot's tiles beside a street are its yard, open paved
+ *   ground where lorries stand at its docks, as long as some of the depot
+ *   is left behind them to be its hall. A depot on a corner has a yard
+ *   round the corner, and docks on both its walls.
  */
 export interface Facts {
   /** The town as drawn: the painted one with the heads raised. */
   town: Town;
   head(c: number, r: number): boolean;
   enclosed(c: number, r: number): boolean;
+  yard(c: number, r: number): boolean;
 }
 
 export function facts(painted: Town): Facts {
-  const { lifted, heads } = sheds(painted);
-  const closed = courtyards(painted);
+  const yard = yards(painted);
+  const open: Town = { ...painted, tile: (c, r) => (yard.has(`${c},${r}`) ? { kind: "paved", storeys: 0 } : painted.tile(c, r)) };
+  const { lifted, heads } = sheds(open);
+  const closed = courtyards(open);
   return {
     town: lifted,
     head: (c, r) => heads.has(`${c},${r}`),
     enclosed: (c, r) => closed.has(`${c},${r}`),
+    yard: (c, r) => yard.has(`${c},${r}`),
   };
+}
+
+const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/** Each depot's tiles, as its joins hold them together. */
+function depots(town: Town): [number, number][][] {
+  const joined = town.joins ?? defaultJoins(town);
+  const seen = new Set<string>();
+  const out: [number, number][][] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (town.tile(c, r).kind !== "Warehouse" || seen.has(`${c},${r}`)) continue;
+      seen.add(`${c},${r}`);
+      const cells: [number, number][] = [[c, r]];
+      for (let i = 0; i < cells.length; i++) {
+        const [a, b] = cells[i];
+        for (const [dc, dr] of SIDES) {
+          const [x, y] = [a + dc, b + dr];
+          if (town.tile(x, y).kind === "Warehouse" && !seen.has(`${x},${y}`) && (joined(a, b, x, y) || joined(x, y, a, b))) seen.add(`${x},${y}`), cells.push([x, y]);
+        }
+      }
+      out.push(cells);
+    }
+  }
+  return out;
+}
+
+/** The depots' tiles beside a street, where some of the depot is left. */
+function yards(town: Town): Set<string> {
+  const out = new Set<string>();
+  for (const cells of depots(town)) {
+    const front = cells.filter(([c, r]) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road"));
+    if (front.length < cells.length) for (const [c, r] of front) out.add(`${c},${r}`);
+  }
+  return out;
 }
 
 /** Open ground in regions (joined side by side) that touch neither a road
@@ -83,7 +126,7 @@ function sheds(town: Town) {
       for (let i = 0; i < cells.length; i++) {
         for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           const [[a, b], [x, y]] = [cells[i], [cells[i][0] + dc, cells[i][1] + dr]];
-          if ((joined(a, b, x, y) || joined(x, y, a, b)) && !seen.has(key(x, y))) seen.add(key(x, y)), cells.push([x, y]);
+          if (isBuilt(town.tile(x, y)) && (joined(a, b, x, y) || joined(x, y, a, b)) && !seen.has(key(x, y))) seen.add(key(x, y)), cells.push([x, y]);
         }
       }
       if (cells.length < 4) continue;

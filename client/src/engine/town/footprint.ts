@@ -35,7 +35,7 @@ export interface Mass {
 
 /** How far every side facing out stands in from the tile's edge: the
  *  thick line is 1 - 2 * INSET wide. */
-const INSET = 0.2;
+export const INSET = 0.2;
 
 /** Clipper works in integers: a tile is this many. */
 const S = 1e5;

@@ -18,6 +18,9 @@ export const HALF_W = ROAD_WIDTH / 2;
 /** A car, across, along and up: in its lane, a little room either side
  *  and between it and the car it passes. */
 export const CAR = { w: 0.15, l: 0.29, h: 0.125 };
+/** A lorry: a cab-over tractor and a semi-trailer, two boxes. */
+export const CAB = { w: 0.17, l: 0.17, h: 0.21 };
+export const TRAILER = { w: 0.17, l: 0.46, h: 0.22, axle: 0.37, overhang: 0.025 };
 /** A lane's middle, from the road's. */
 export const LANE_OFFSET = ROAD_WIDTH / 4;
 const CURVE_SEGMENTS = 8;

@@ -1,7 +1,8 @@
 import { isBuilt, type Town } from "./grid";
 import type { Facts } from "./facts";
 import { formOf } from "./mass";
-import { CAR, HALF_W } from "../objects/roadGeometry";
+import { CAB, CAR, HALF_W, TRAILER } from "../objects/roadGeometry";
+import { INSET } from "./footprint";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -33,6 +34,16 @@ export interface Tree {
   shade: number;
 }
 
+/** A lorry bay at a depot's dock: where its middle meets the wall, the way
+ *  out of it (radians from +x, y down), and whether a lorry stands in it,
+ *  backed up to the door. */
+export interface Dock {
+  x: number;
+  y: number;
+  angle: number;
+  lorry: boolean;
+}
+
 /** A parked car: where its middle is, which way it points (radians from
  *  +x, y down), and which of a handful of colours. */
 export interface Car {
@@ -52,7 +63,15 @@ export interface Dressing {
   /** Parking lanes, and the lines between their bays. */
   lanes: Pt[][];
   bays: Pt[][];
+  docks: Dock[];
+  /** The lines between the docks' bays, out across the yard. */
+  dockLines: Pt[][];
 }
+
+/** Lorry bays along a dock: three to a tile's wall, each as deep as a
+ *  lorry and a little. */
+const DOCKS = 3;
+const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
 
 /** A parking lane, from just past the road's edge (0.2) out, a car wide
  *  and a little room either side; then pavement to the rows' faces. */
@@ -105,7 +124,33 @@ export function dress(town: Town, facts: Facts): Dressing {
   const parked = park(town);
   const clear = (x: number, y: number) => trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3);
   const cars = parked.cars.filter((car) => clear(car.x, car.y));
-  return { gardens, trees, cars, lanes: parked.lanes, bays: parked.bays };
+  return { gardens, trees, cars, lanes: parked.lanes, bays: parked.bays, ...docks(town, facts) };
+}
+
+/** A depot's docks: wherever its yard meets its hall, a row of lorry bays
+ *  along the hall's wall, some with a lorry backed up to the door. */
+function docks(town: Town, facts: Facts): { docks: Dock[]; dockLines: Pt[][] } {
+  const out: Dock[] = [], lines: Pt[][] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (!facts.yard(c, r)) continue;
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (town.tile(c + dc, r + dr).kind !== "Warehouse" || facts.yard(c + dc, r + dr)) continue;
+        // The wall, and along it (ux, uy); out of the bays is (-dc, -dr).
+        const [wx, wy] = [c + 0.5 + dc * (0.5 + INSET), r + 0.5 + dr * (0.5 + INSET)];
+        const [ux, uy] = [-dr, dc];
+        for (let k = 0; k <= DOCKS; k++) {
+          const t = k / DOCKS - 0.5;
+          lines.push(strip(wx, wy, ux, uy, t - 0.008, t + 0.008, -dc, -dr, 0, DOCK_DEPTH));
+          if (k === DOCKS) continue;
+          const m = t + 0.5 / DOCKS;
+          const [x, y] = [wx + ux * m, wy + uy * m];
+          out.push({ x, y, angle: Math.atan2(-dr, -dc), lorry: hash(Math.round(x * 100), Math.round(y * 100), 17) < 0.6 });
+        }
+      }
+    }
+  }
+  return { docks: out, dockLines: lines };
 }
 
 const EIGHT = [[1, 0], [0, 1], [1, 1], [1, -1], [-1, 0], [0, -1], [-1, -1], [-1, 1]];

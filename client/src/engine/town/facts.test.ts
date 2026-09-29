@@ -20,11 +20,28 @@ describe("facts and dressing", () => {
   });
 
   test("a shed's end nearest the street is its office", () => {
-    const t = town(["======", "=DDD..", "=DDD..", "......"]);
+    const t = town(["======", "=FFF..", "=FFF..", "......"]);
     const f = facts(t);
     expect(f.head(1, 1)).toBe(true);
     expect(f.head(3, 1)).toBe(false);
     expect(f.town.tile(1, 1).storeys).toBe(t.tile(1, 1).storeys + 2);
+  });
+
+  test("a depot's tiles on the street are its yard, with lorry bays along its hall", () => {
+    const t = town(["......", "======", "DDDD..", "DDDD..", "......"]);
+    const f = facts(t);
+    expect(f.yard(0, 2)).toBe(true);
+    expect(f.yard(0, 3)).toBe(false);
+    expect(f.town.tile(0, 2).kind).toBe("paved");
+    // Three bays to each of the four tiles of wall, facing the street.
+    const { docks } = dress(t, f);
+    expect(docks.length).toBe(12);
+    expect(docks.every((d) => Math.abs(d.angle + Math.PI / 2) < 1e-9)).toBe(true);
+  });
+
+  test("a depot all on the street keeps its hall and has no yard", () => {
+    const t = town(["......", "======", "DDDD..", "......"]);
+    expect(facts(t).yard(0, 2)).toBe(false);
   });
 
   test("a straight street before homes has trees every third tile, a through road none", () => {

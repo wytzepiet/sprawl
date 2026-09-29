@@ -7,7 +7,8 @@ import { ThemeProvider, useTheme, type Theme } from "../engine/theme";
 import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
 import { BLUEPRINTS } from "../blueprints";
-import { buildRoadGeometry, CAR, HALF_W, ROAD_Z, type ArmInfo } from "../engine/objects/roadGeometry";
+import type { RGB } from "../engine/town/mass";
+import { buildRoadGeometry, CAB, CAR, HALF_W, ROAD_Z, TRAILER, type ArmInfo } from "../engine/objects/roadGeometry";
 import type { MeshGeometry } from "../engine/Mesh";
 import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
@@ -491,7 +492,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The free ground, dressed: courtyard lawns, and trees in them and along
   // the streets, as crowns like the forest's.
-  const { gardens, trees, cars, lanes, bays } = dress(town, facts(town));
+  const { gardens, trees, cars, lanes, bays, docks, dockLines } = dress(town, facts(town));
   // Pavements under the roads, lanes and their bay lines over the pavement.
   const flat = (polys: [number, number][][], z: number): MeshGeometry => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
@@ -504,6 +505,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   };
   add("lanes", flat(lanes, 0.03), theme.road);
   add("bays", flat(bays, 0.032), theme.bayLine);
+  add("dock_lines", flat(dockLines, 0.025), theme.road);
   add("garden", quadsAt(gardens, 0.005), theme.garden);
   // Trees as the forest draws them: a smooth top over a coarse body.
   for (const [name, geo] of [["tree_tops", TREE_TOP], ["tree_bodies", TREE_BODY]] as const) {
@@ -522,28 +524,39 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     add(name, out, Color3.White());
   }
 
-  // Parked cars, boxes as the game draws its cars.
-  const CAR_COLOURS = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];
+  // Parked cars and lorries at the docks, boxes as the game draws them,
+  // and a door in the wall behind every dock.
+  const CAR_COLOURS: RGB[] = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];
   const parked: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
-  const [cw, cl, ch] = [CAR.w, CAR.l, CAR.h];
-  for (const car of cars) {
-    const [ca, sa] = [Math.cos(car.angle), Math.sin(car.angle)];
-    const at = (a: number, b: number): [number, number] => [car.x + ca * a - sa * b, car.y + sa * a + ca * b];
-    const corners = [at(-cl / 2, -cw / 2), at(cl / 2, -cw / 2), at(cl / 2, cw / 2), at(-cl / 2, cw / 2)];
-    const rgb = CAR_COLOURS[car.colour];
-    const quad = (pts: [number, number, number][], n: [number, number, number]) => {
-      const b0 = parked.positions.length / 3;
-      for (const [x, y, z] of pts) parked.positions.push(-x, -y, z), parked.normals.push(-n[0], -n[1], n[2]), parked.colors.push(rgb[0], rgb[1], rgb[2], 1);
-      parked.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
-    };
+  const quad = (pts: [number, number, number][], n: [number, number, number], rgb: RGB) => {
+    const b0 = parked.positions.length / 3;
+    for (const [x, y, z] of pts) parked.positions.push(-x, -y, z), parked.normals.push(-n[0], -n[1], n[2]), parked.colors.push(rgb[0], rgb[1], rgb[2], 1);
+    parked.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
+  };
+  /** A box `l` long along `angle`, `w` wide and `h` tall, its middle at (x, y). */
+  const box = (x: number, y: number, angle: number, [w, l, h]: number[], rgb: RGB) => {
+    const [ca, sa] = [Math.cos(angle), Math.sin(angle)];
+    const at = (a: number, b: number): [number, number] => [x + ca * a - sa * b, y + sa * a + ca * b];
+    const corners = [at(-l / 2, -w / 2), at(l / 2, -w / 2), at(l / 2, w / 2), at(-l / 2, w / 2)];
     const z0 = 0.03;
-    quad(corners.map(([x, y]) => [x, y, z0 + ch] as [number, number, number]), [0, 0, 1]);
+    quad(corners.map(([x, y]) => [x, y, z0 + h] as [number, number, number]), [0, 0, 1], rgb);
     for (let i = 0; i < 4; i++) {
       const [p, q] = [corners[i], corners[(i + 1) % 4]];
       const [ex, ey] = [q[0] - p[0], q[1] - p[1]];
       const len = Math.hypot(ex, ey);
-      quad([[p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z0 + ch], [p[0], p[1], z0 + ch]], [ey / len, -ex / len, 0]);
+      quad([[p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z0 + h], [p[0], p[1], z0 + h]], [ey / len, -ex / len, 0], rgb);
     }
+  };
+  for (const car of cars) box(car.x, car.y, car.angle, [CAR.w, CAR.l, CAR.h], CAR_COLOURS[car.colour]);
+  for (const dock of docks) {
+    const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];
+    // The door, just proud of the wall.
+    const [dx, dy, half] = [dock.x + ux * 0.004, dock.y + uy * 0.004, 0.11];
+    quad([[dx - uy * half, dy + ux * half, 0.03], [dx + uy * half, dy - ux * half, 0.03], [dx + uy * half, dy - ux * half, 0.22], [dx - uy * half, dy + ux * half, 0.22]], [ux, uy, 0], [0.22, 0.24, 0.3]);
+    if (!dock.lorry) continue;
+    const trailer = 0.01 + TRAILER.l / 2, cab = 0.01 + TRAILER.l + 0.02 + CAB.l / 2;
+    box(dock.x + ux * trailer, dock.y + uy * trailer, dock.angle, [TRAILER.w, TRAILER.l, TRAILER.h], [0.9, 0.9, 0.88]);
+    box(dock.x + ux * cab, dock.y + uy * cab, dock.angle, [CAB.w, CAB.l, CAB.h], [0.28, 0.36, 0.58]);
   }
   add("parked", parked, Color3.White());
 
