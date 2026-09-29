@@ -49,12 +49,9 @@ const AMB_MIDNIGHT = new Color3(0.35, 0.35, 0.5);
 // The sky stays cool as the sun goes down, dimmer and a little lavender:
 // it is the sun that turns gold, so a golden hour is warm light and blue
 // shadows at once.
-const AMB_DAWN = new Color3(0.66, 0.62, 0.74);
+const AMB_DAWN = new Color3(0.55, 0.52, 0.66);
 const AMB_NOON = new Color3(0.82, 0.82, 0.8);
-const AMB_DUSK = new Color3(0.62, 0.58, 0.72);
-/** The sky just after sunset and just before sunrise: the sun is gone, but
- *  the sky round where it went still glows, and lights the town gold. */
-const AMB_GLOW = new Color3(1.5, 1.0, 0.66);
+const AMB_DUSK = new Color3(0.5, 0.48, 0.62);
 /** The sky's light is blue and the sun's warm, so where the sun is shut out
  *  a surface is its colour times the blue: grass goes teal, a red roof
  *  raspberry, white periwinkle. In the sun the two add to near white. */
@@ -131,14 +128,12 @@ export const SUNSET = 22 / 24;
 
 const ambientStops: [number, Color3][] = [
   [0.0, AMB_MIDNIGHT],
-  [SUNRISE - 0.045, AMB_MIDNIGHT],
-  [SUNRISE - 0.005, AMB_GLOW],
-  [SUNRISE + 0.05, AMB_DAWN],
+  [SUNRISE - 0.03, AMB_MIDNIGHT],
+  [SUNRISE + 0.04, AMB_DAWN],
   [SUNRISE + 0.14, AMB_NOON],
   [SUNSET - 0.14, AMB_NOON],
-  [SUNSET - 0.05, AMB_DUSK],
-  [SUNSET + 0.005, AMB_GLOW],
-  [SUNSET + 0.045, AMB_MIDNIGHT],
+  [SUNSET - 0.04, AMB_DUSK],
+  [SUNSET + 0.03, AMB_MIDNIGHT],
   [1.0, AMB_MIDNIGHT],
 ];
 
