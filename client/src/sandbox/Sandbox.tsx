@@ -214,6 +214,9 @@ function Board() {
     const p = program();
     if (p) {
       if (has(stroke, cell)) return;
+      // Run on to another building of the kind, and the stroke joins it.
+      const kind = LETTERS[brush()];
+      if (!has(base, cell) && tiles[r]?.[c]?.kind === kind) base = [...base, ...touching(town(), kind, cell).filter((t) => !has(base, t))];
       if (!has(base, cell) && (!paintable(town(), p, c, r) || !complete(town(), p, [...whole(), cell]))) return;
       stroke = [...stroke, cell];
       return drawOverlay();

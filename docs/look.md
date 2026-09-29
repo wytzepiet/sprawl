@@ -62,7 +62,8 @@ The code is `client/src/engine/town/`:
   street is one row, separate clicks are detached houses, and a stroke
   that turns is an L where one that steps is a diagonal band, with nothing
   guessed; a stroke over a building's own tiles joins them as it runs,
-  so a drag across an inside corner fills it on the diagonal. A town with no strokes (a fixture, a real place) is joined by
+  so a drag across an inside corner fills it on the diagonal, and one
+  run on to another building of its kind joins the two. A town with no strokes (a fixture, a real place) is joined by
   kind, beside, and on the diagonal unless the block is solid there or a
   street runs between. This replaced corner rules that had to guess, from
   the tiles alone, a staircase from an L. Not yet: a diagonal row's
