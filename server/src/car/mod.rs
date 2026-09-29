@@ -11,24 +11,24 @@ pub const ACCELERATION: f64 = 0.45;
 pub const DECELERATION: f64 = 0.4;
 pub const INTERSECTION_STOP_MARGIN: f64 = 0.4;
 /// How far a vehicle reaches ahead of and behind the point the simulation
-/// moves. A car is 0.35 tiles about its middle; a lorry is a cab-over
-/// tractor with a semi-trailer behind it, 0.8 tiles in all, and the point
+/// moves. A car is 0.29 tiles about its middle; a lorry is a cab-over
+/// tractor with a semi-trailer behind it, 0.67 tiles in all, and the point
 /// is the tractor. Following distance and the hold on a junction are by
 /// the vehicle's own length.
 pub fn nose(role: crate::protocol::CarRole) -> f64 {
     match role {
-        crate::protocol::CarRole::Private | crate::protocol::CarRole::Company => 0.175,
-        crate::protocol::CarRole::Van | crate::protocol::CarRole::Tractor => 0.225,
-        crate::protocol::CarRole::Truck => 0.1,
+        crate::protocol::CarRole::Private | crate::protocol::CarRole::Company => 0.145,
+        crate::protocol::CarRole::Van | crate::protocol::CarRole::Tractor => 0.185,
+        crate::protocol::CarRole::Truck => 0.085,
         // Never on a road; the water has no queue.
         crate::protocol::CarRole::Ship => 0.5,
     }
 }
 pub fn tail(role: crate::protocol::CarRole) -> f64 {
     match role {
-        crate::protocol::CarRole::Private | crate::protocol::CarRole::Company => 0.175,
-        crate::protocol::CarRole::Van | crate::protocol::CarRole::Tractor => 0.225,
-        crate::protocol::CarRole::Truck => 0.7,
+        crate::protocol::CarRole::Private | crate::protocol::CarRole::Company => 0.145,
+        crate::protocol::CarRole::Van | crate::protocol::CarRole::Tractor => 0.185,
+        crate::protocol::CarRole::Truck => 0.58,
         crate::protocol::CarRole::Ship => 0.5,
     }
 }

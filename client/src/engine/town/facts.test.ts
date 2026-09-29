@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseTown } from "./grid";
 import { facts } from "./facts";
 import { dress } from "./dressing";
+import { CAR, HALF_W } from "../objects/roadGeometry";
 
 const town = (map: string[]) => parseTown(map.join("\n"));
 
@@ -37,7 +38,7 @@ describe("facts and dressing", () => {
     const street = town(["HHHHHHHHHH", "==========", "HHHHHHHHHH"]);
     const cars = dress(street, facts(street)).cars;
     expect(cars.length).toBeGreaterThan(4);
-    expect(cars.every((c) => Math.abs(Math.abs(c.y - 1.5) - 0.32) < 1e-9)).toBe(true);
+    expect(cars.every((c) => Math.abs(c.y - 1.5) - CAR.w / 2 > HALF_W)).toBe(true);
     const through = town(["HHHHHHHHHH", "##########", "HHHHHHHHHH"]);
     expect(dress(through, facts(through)).cars.length).toBe(0);
   });

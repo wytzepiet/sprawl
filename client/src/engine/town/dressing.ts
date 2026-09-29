@@ -1,6 +1,7 @@
 import { isBuilt, type Town } from "./grid";
 import type { Facts } from "./facts";
 import { formOf } from "./mass";
+import { CAR, HALF_W } from "../objects/roadGeometry";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -53,15 +54,14 @@ export interface Dressing {
   bays: Pt[][];
 }
 
-/** How far a parked car's middle is from its street's middle line: wholly
- *  off the road, past its edge and kerb line (0.21), half a car's width
- *  (0.09) and a little more. */
-const KERB = 0.32;
-/** A parking lane, from the road's kerb out; then pavement to the rows'
- *  faces. */
-const LANE: [number, number] = [0.215, 0.425];
+/** A parking lane, from just past the road's edge (0.2) out, a car wide
+ *  and a little room either side; then pavement to the rows' faces. */
+const LANE: [number, number] = [HALF_W + 0.015, HALF_W + 0.015 + CAR.w + 0.03];
+/** How far a parked car's middle is from its street's middle line: the
+ *  lane's middle, wholly off the road. */
+const KERB = (LANE[0] + LANE[1]) / 2;
 /** Parking bays along a street: their spacing, a car and a bit. */
-const BAY = 0.42;
+const BAY = CAR.l + 0.07;
 /** How far from a junction, bend or end the kerb stays clear. */
 const CORNER = 0.7;
 

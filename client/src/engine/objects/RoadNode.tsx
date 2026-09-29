@@ -3,8 +3,6 @@ import type { InstancePool } from "../InstancePool";
 import {
   buildChevronGeometry,
   buildRoadGeometry,
-  BORDER_HALF_W,
-  BORDER_Z,
   CHEVRON_Z,
   HALF_W,
   ROAD_Z,
@@ -95,15 +93,9 @@ export function mountRoad(
   const { joined, road } = entry.object.data as RoadNode;
   const paint = (c: Color3) => (joined ? c : cutOff(c));
 
-  // A surface of the given arms: kerb, then road, lifted by z.
-  const lay = (name: string, of: ArmInfo[], border: Color3, surface: Color3, z: number, edge: number) => {
+  // A surface of the given arms, lifted by z.
+  const lay = (name: string, of: ArmInfo[], surface: Color3, z: number) => {
     const key = armsKey(of) + (joined ? "" : "_cut");
-    const borderGeo = buildRoadGeometry(of, edge, BORDER_Z + z);
-    if (borderGeo) {
-      const bk = `${name}_border_${key}`;
-      pool.ensureBucket(bk, borderGeo, paint(border), false, true);
-      instances.push({ key: bk, id: pool.addInstance(bk, pos) });
-    }
     const roadGeo = buildRoadGeometry(of, HALF_W, ROAD_Z + z);
     if (roadGeo) {
       const rk = `${name}_${key}`;
@@ -115,11 +107,11 @@ export function mountRoad(
   // A street is white. A road is the map's yellow, and reads as one
   // continuous piece: where a street joins it, the whole junction is laid
   // in white underneath — the street curving onto the road — and the road's
-  // own arms in yellow over it, kerb and all.
+  // own arms in yellow over it.
   const main = road ? arms.filter((a) => a.road) : arms;
-  if (main.length < arms.length) lay("road", arms, theme.roadBorder, theme.road, 0, BORDER_HALF_W);
-  if (road) lay("highway", main, theme.highwayBorder, theme.highway, HIGHWAY_LIFT, BORDER_HALF_W);
-  else lay("road", arms, theme.roadBorder, theme.road, 0, BORDER_HALF_W);
+  if (main.length < arms.length) lay("road", arms, theme.road, 0);
+  if (road) lay("highway", main, theme.highway, HIGHWAY_LIFT);
+  else lay("road", arms, theme.road, 0);
 
   for (const arm of arms) {
     if (arm.flow !== "out") continue;

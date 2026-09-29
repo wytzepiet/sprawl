@@ -1,5 +1,5 @@
 /// Perpendicular offset from center-line to lane (must match client LANE_OFFSET).
-pub const LANE_OFFSET: f64 = 0.15;
+pub const LANE_OFFSET: f64 = 0.1;
 
 const BEZIER_SAMPLES: usize = 8;
 

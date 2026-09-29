@@ -3,7 +3,7 @@ import type { BuildingKind, Cell, Effect } from "../generated";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { useGame } from "../state/gameObjects";
 import { tree as fetched, at as cellAt, type Tree } from "../state/tree";
-import { buildRoadGeometry, BORDER_HALF_W, HALF_W, type ArmInfo } from "../engine/objects/roadGeometry";
+import { buildRoadGeometry, HALF_W, type ArmInfo } from "../engine/objects/roadGeometry";
 
 /**
  * The skill tree, drawn as a town plan.
@@ -157,25 +157,17 @@ export default function SkillTree() {
             <svg class="absolute inset-0 h-full w-full">
               <g transform={`translate(${view().x + (window.innerWidth - 48 - plan().w * view().scale) / 2}, ${view().y + (window.innerHeight - 48 - plan().h * view().scale) / 2}) scale(${view().scale})`}>
                 {/* Roads, cell by cell in the map's own shapes: a run lit when
-                    both its ends stand, dim when one does, faint otherwise.
-                    The kerbs of every cell go down first, then every surface,
-                    so a surface is never cut by its neighbour's kerb. */}
-                <For each={[BORDER_HALF_W, HALF_W]}>
-                  {(hw) => (
-                    <For each={plan().runs}>
-                      {(run) => {
-                        const ends = () => Number(taken().has(k(run.a))) + Number(taken().has(k(run.b)));
-                        const fill = () => hw === HALF_W
-                          ? (ends() === 2 ? "#D8CFC4" : ends() === 1 ? "#BFB7AE" : "#86965F")
-                          : (ends() === 2 ? "#6E6259" : ends() === 1 ? "#9E948B" : "#7E8E5C");
-                        return (
-                          <For each={[run.a, ...run.cells, run.b]}>
-                            {(c) => <polygon points={plan().outline(c, hw)} fill={fill()} class="transition-[fill] duration-300" />}
-                          </For>
-                        );
-                      }}
-                    </For>
-                  )}
+                    both its ends stand, dim when one does, faint otherwise. */}
+                <For each={plan().runs}>
+                  {(run) => {
+                    const ends = () => Number(taken().has(k(run.a))) + Number(taken().has(k(run.b)));
+                    const fill = () => (ends() === 2 ? "#D8CFC4" : ends() === 1 ? "#BFB7AE" : "#86965F");
+                    return (
+                      <For each={[run.a, ...run.cells, run.b]}>
+                        {(c) => <polygon points={plan().outline(c, HALF_W)} fill={fill()} class="transition-[fill] duration-300" />}
+                      </For>
+                    );
+                  }}
                 </For>
                 {/* Buildings: solid when taken, outlined when the next point could build them, a footing otherwise. */}
                 <For each={plan().nodes}>

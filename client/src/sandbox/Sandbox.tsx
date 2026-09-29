@@ -7,7 +7,7 @@ import { ThemeProvider, useTheme, type Theme } from "../engine/theme";
 import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
 import { BLUEPRINTS } from "../blueprints";
-import { buildRoadGeometry, BORDER_HALF_W, BORDER_Z, HALF_W, ROAD_Z, type ArmInfo } from "../engine/objects/roadGeometry";
+import { buildRoadGeometry, CAR, HALF_W, ROAD_Z, type ArmInfo } from "../engine/objects/roadGeometry";
 import type { MeshGeometry } from "../engine/Mesh";
 import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
@@ -426,7 +426,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   meshes.push(...terrain(scene, town, theme, rows));
 
   // Roads, as the game lays them: each tile's arms to the tiles it is joined to.
-  const roads = { street: [[], []] as MeshGeometry[][], through: [[], []] as MeshGeometry[][] };
+  const roads = { street: [] as MeshGeometry[], through: [] as MeshGeometry[] };
   // The pavement: every road, building and yard makes paved ground, shaped
   // by the buildings' own rule (the terrain's corners, a diagonal as far out
   // as a straight edge) at full size, then its corners rounded as the
@@ -467,13 +467,11 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
           }
         }
       }
-      const into = roads[town.through(c, r) ? "through" : "street"];
-      for (const [k, geo] of [buildRoadGeometry(arms, BORDER_HALF_W, BORDER_Z + PAVED_Z), buildRoadGeometry(arms, HALF_W, ROAD_Z + PAVED_Z)].entries()) {
-        if (!geo) continue;
-        const p = geo.positions.slice();
-        for (let i = 0; i < p.length; i += 3) (p[i] -= c + 0.5), (p[i + 1] -= r + 0.5);
-        into[k].push({ ...geo, positions: p });
-      }
+      const geo = buildRoadGeometry(arms, HALF_W, ROAD_Z + PAVED_Z);
+      if (!geo) continue;
+      const p = geo.positions.slice();
+      for (let i = 0; i < p.length; i += 3) (p[i] -= c + 0.5), (p[i + 1] -= r + 0.5);
+      roads[town.through(c, r) ? "through" : "street"].push({ ...geo, positions: p });
     }
   }
   const merge = (gs: MeshGeometry[]): MeshGeometry => {
@@ -487,10 +485,8 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     return out;
   };
   add("pavement", merge(pavements), theme.paved);
-  add("street_kerb", merge(roads.street[0]), theme.roadBorder);
-  add("street", merge(roads.street[1]), theme.road);
-  add("through_kerb", merge(roads.through[0]), theme.highwayBorder);
-  add("through", merge(roads.through[1]), theme.highway);
+  add("street", merge(roads.street), theme.road);
+  add("through", merge(roads.through), theme.highway);
 
   add("mass", mesh(town, colourOf), Color3.White());
 
@@ -508,7 +504,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     return g;
   };
   add("lanes", flat(lanes, 0.03), theme.road);
-  add("bays", flat(bays, 0.032), theme.roadBorder);
+  add("bays", flat(bays, 0.032), theme.bayLine);
   add("garden", quadsAt(gardens, 0.005), theme.garden);
   const crowns: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
   for (const t of trees) {
@@ -527,7 +523,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   // Parked cars, boxes as the game draws its cars.
   const CAR_COLOURS = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];
   const parked: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
-  const [cw, cl, ch] = [0.18, 0.35, 0.15];
+  const [cw, cl, ch] = [CAR.w, CAR.l, CAR.h];
   for (const car of cars) {
     const [ca, sa] = [Math.cos(car.angle), Math.sin(car.angle)];
     const at = (a: number, b: number): [number, number] => [car.x + ca * a - sa * b, car.y + sa * a + ca * b];
