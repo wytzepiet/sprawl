@@ -56,23 +56,26 @@ const AMB_DUSK = new Color3(0.5, 0.48, 0.62);
  *  a surface is its colour times the blue: grass goes teal, a red roof
  *  raspberry, white periwinkle. In the sun the two add to near white. */
 const SKY_LIGHT = new Color3(0.74, 0.86, 1.22);
-/** The sun high, and low: low, its light has crossed so much air that the
- *  blue is scattered out of it, and what is left is gold. */
-const SUN_HIGH = new Color3(1.15, 1.02, 0.75);
-const SUN_LOW = new Color3(1.6, 0.8, 0.3);
+/** The sun by its elevation: the lower, the more air its light has
+ *  crossed and the more blue is scattered out of it, so near white high,
+ *  gold low, and a deep orange red as it sets. */
+const sunStops: [number, Color3][] = [
+  [0, new Color3(1.8, 0.42, 0.16)],
+  [0.14, new Color3(1.8, 0.42, 0.16)],
+  [0.3, new Color3(1.65, 0.78, 0.3)],
+  [0.7, new Color3(1.15, 1.02, 0.75)],
+  [1, new Color3(1.15, 1.02, 0.75)],
+];
 
 /** A shadow is drawn no longer than the sun this high would cast it. */
 const LOWEST = 0.1;
 
-/** The sun's light at an elevation: gold low down, near white most of
- *  the way up. It is stronger when low, as an eye opens up to it, since a
+/** The sun's light at an elevation. It is stronger when low, as an eye opens up to it, since a
  *  low sun lights the ground at a slant and its gold should still reach
  *  it; and it fades out just above the lowest sun, so the roofs it lights
  *  and the shadows it casts go together, before the shadows stop growing. */
 function sunLightAt(elev: number): { colour: Color3; strength: number } {
-  const high = Math.min(1, elev / 0.7);
-  const colour = lerp3(SUN_LOW, SUN_HIGH, high * high * (3 - 2 * high));
-  return { colour, strength: (0.5 * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
+  return { colour: ramp(sunStops, elev, lerp3), strength: (0.5 * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
 }
 
 const SKY_MIDNIGHT = new Color4(0.15, 0.15, 0.25, 1);
