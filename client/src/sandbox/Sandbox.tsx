@@ -92,19 +92,22 @@ function Board() {
     return out;
   }
   /** The joins a stroke makes: each tile to the next it ran on to, beside
-   *  or on the diagonal (not across a street), its first to the building it
-   *  began on, and the tiles completion added to their neighbours. */
-  function strokeJoins(t: Town, cells: Cell[], from: Cell | null): Set<string> {
+   *  or on the diagonal, whether new or already the building's, and the
+   *  tiles completion added to their neighbours. A diagonal crosses
+   *  anything but a street or another building's diagonal. */
+  function strokeJoins(t: Town, cells: Cell[]): Set<string> {
     const out = new Set<string>();
+    const joined = t.joins ?? defaultJoins(t);
     const near = (a: Cell, b: Cell) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1])) === 1;
     const link = (a: Cell, b: Cell) => {
-      if (a[0] !== b[0] && a[1] !== b[1] && t.linked(b[0], a[1], a[0], b[1])) return;
+      const [p, q]: Cell[] = [[b[0], a[1]], [a[0], b[1]]];
+      const crossed = t.linked(...p, ...q) || ((joined(...p, ...q) || joined(...q, ...p)) && !has(cells, p));
+      if (a[0] !== b[0] && a[1] !== b[1] && crossed) return;
       out.add(jkey(a[0], a[1], b[0], b[1]));
     };
-    const path = from ? [from, ...stroke] : stroke;
-    for (let i = 1; i < path.length; i++) if (near(path[i - 1], path[i])) link(path[i - 1], path[i]);
+    for (let i = 1; i < stroke.length; i++) if (near(stroke[i - 1], stroke[i])) link(stroke[i - 1], stroke[i]);
     for (const a of cells) {
-      if (has(stroke, a)) continue;
+      if (has(stroke, a) || has(base, a)) continue;
       for (const b of cells) if (near(a, b) && (a[0] === b[0] || a[1] === b[1])) link(a, b);
     }
     return out;
@@ -137,12 +140,10 @@ function Board() {
   // go builds it. Any other brush paints each tile it passes. The left
   // button is the brush's; the right one still pans.
   let stroke: Cell[] = [];
-  /** The building a stroke grows, if it began beside one of its kind. */
+  /** The building a stroke grows, if it began on one of its kind. */
   let base: Cell[] = [];
-  const whole = () => [...base, ...stroke];
+  const whole = () => [...base, ...stroke.filter((c) => !has(base, c))];
   let stroking = false;
-  /** The building tile a stroke began on, if it grows one. */
-  let start: Cell | null = null;
   let hover: Cell | null = null;
   let overlay: Mesh[] = [];
   const program = () => PROGRAMS[LETTERS[brush()]];
@@ -189,7 +190,7 @@ function Board() {
       const id = base.length ? tiles[base[0][1]][base[0][0]].id : -1;
       const ghostTiles = tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? { ...tileOf(brush()), id } : tile)));
       const all = joins ?? fixed(t);
-      const shown = townOf(ghostTiles, (c, r) => t.through(c, r), [], joinsOf(new Set([...all, ...strokeJoins(t, ghost, start)])));
+      const shown = townOf(ghostTiles, (c, r) => t.through(c, r), [], joinsOf(new Set([...all, ...strokeJoins(t, ghost)])));
       const geo = mesh(shown, colourOf, new Set(ghost.map(([c, r]) => `${c},${r}`)));
       if (geo.indices.length) overlay.push(translucent(scene, "ghost", geo, Color3.White(), 0.75));
     } else if (hover && program()) {
@@ -212,7 +213,8 @@ function Board() {
     const [c, r] = cell;
     const p = program();
     if (p) {
-      if (has(stroke, cell) || !paintable(town(), p, c, r) || !complete(town(), p, [...whole(), cell])) return;
+      if (has(stroke, cell)) return;
+      if (!has(base, cell) && (!paintable(town(), p, c, r) || !complete(town(), p, [...whole(), cell]))) return;
       stroke = [...stroke, cell];
       return drawOverlay();
     }
@@ -229,14 +231,13 @@ function Board() {
     if (e.target !== canvas || e.button !== 0) return;
     // The brush's, not the camera's: it would pan on the drag.
     e.stopPropagation();
+    const cell = tileAt(e);
     stroking = true;
     stroke = [];
-    const cell = tileAt(e);
     // A stroke begun on a building of its kind grows it; begun anywhere
     // else, it is a building of its own, detached from its neighbours.
     const on = cell && tiles[cell[1]]?.[cell[0]]?.kind === LETTERS[brush()];
     base = on && program() ? touching(town(), LETTERS[brush()], cell) : [];
-    start = on ? cell : null;
     if (cell) touch(cell);
   };
   const onMove = (e: PointerEvent) => {
@@ -254,14 +255,13 @@ function Board() {
     const id = idOf();
     if (built) {
       const t = town();
-      const made = strokeJoins(t, built, start);
+      const made = strokeJoins(t, built);
       joins = joins ?? fixed(t);
-      for (const [c, r] of built) set(c, r, brush(), id);
+      for (const [c, r] of built) if (!has(base, [c, r])) set(c, r, brush(), id);
       for (const k of made) joins.add(k);
     }
     stroke = [];
     base = [];
-    start = null;
     draw();
     drawOverlay();
   };
