@@ -83,8 +83,10 @@ The code is `client/src/engine/town/`:
 - **Facts, then looks** (`town/facts.ts`): a pre-pass works out what a
   tile cannot see from its neighbours, once for the whole town: a shed's
   office end; a courtyard, open ground that no street and no map edge
-  reaches; and a depot's yard, its own tiles beside a street, where some
-  of the depot is left behind them for its hall. Everything drawn is a function of a tile, its neighbours and
+  reaches; and a depot's yard, as much of it as its docks need: street
+  tiles in one run from its quiet end, each with docks on the hall wall
+  across from its street, until there is a dock for every two tiles of
+  depot. The rest is depot, its office at the busy end. Everything drawn is a function of a tile, its neighbours and
   these facts.
 - **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
   courtyard is a lawn with a tree on most tiles; paved ground closed in
@@ -96,9 +98,9 @@ The code is `client/src/engine/town/`:
   the rows' setback leaves, clear of junctions, bends, ends
   and trees, with a gap here and there. Drawn only, for now: the cars the
   simulation parks come with `parking.md` step 1. A depot's yard has lorry
-  bays wherever it meets the hall, three to a tile of wall, a door behind
-  each and lorries backed up to most: one brush paints the depot, and its
-  docks come with it, on a corner along both walls. The pavement is
+  bays along the hall wall across from its street, three to a tile, a door
+  behind each and lorries backed up to most: one brush paints the depot,
+  and its docks come with it. The pavement is
   ground: every road, building and yard makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal
