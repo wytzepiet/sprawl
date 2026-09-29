@@ -316,10 +316,9 @@ function Board() {
   );
 }
 
-/** A building is near white, a pale wash of its kind's colour. */
 const colourOf = (k: BuildingKind): [number, number, number] => {
   const c = Color3.FromHexString(BLUEPRINTS[k].color);
-  return [c.r, c.g, c.b].map((v) => 0.97 + (v - 0.97) * 0.35) as [number, number, number];
+  return [c.r, c.g, c.b];
 };
 
 /** Flat squares on some tiles, a little over the ground. */

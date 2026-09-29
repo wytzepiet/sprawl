@@ -19,9 +19,9 @@ const light = {
   // The floor between the crowns: a shade under the land, as the map's
   // darker meadows are.
   forest: hex3("#A3C68F"),
-  // Tree crowns, dark to light: teal-greens, light enough that a forest
-  // reads as a wood and not a hole.
-  crowns: [hex3("#4F8A6C"), hex3("#63A07F"), hex3("#80B892")],
+  // Tree crowns, dark to light: deep teal-greens, the dark note, light
+  // enough that a forest reads as a wood and not a hole.
+  crowns: [hex3("#3C635D"), hex3("#4B7767"), hex3("#628F78")],
   // A field through its season: ploughed earth beside the beach, the
   // growing crop beside the grass, the ripe crop beside the highway's
   // yellow, the stubble between.
@@ -32,8 +32,9 @@ const light = {
   mountain: hex3("#F8F7F6"),
   // A courtyard's lawn, a shade greener than the land round it.
   garden: hex3("#AED08F"),
-  // A yard, a car park or a pavement: cream, warmer than the road's white.
-  paved: hex3("#EDE1C6"),
+  // A yard, a car park or a pavement: a pale plot, a shade under the
+  // road's white.
+  paved: hex3("#E8ECDF"),
   grid: hex3("#BBD29E"),
   road: hex3("#F8F6F0"),
   bayLine: hex3("#E6E2D6"),
