@@ -55,8 +55,8 @@ The code is `client/src/engine/town/`:
   steps on the diagonal, its corner there is cut on the band's edge, so a
   row two wide is one clean band too), a band of that
   width along each join, beside or diagonal, so a diagonal row is as thick
-  as a straight one, a house standing alone turned a quarter over where most
-  streets round it run diagonally, and the square between four tiles
+  as a straight one, a house standing alone turned a quarter over where a
+  diagonal street runs past its corner (not beside a bend or dead end), and the square between four tiles
   joined all round,
   so a block is solid. Tiles not joined stand apart: a stroke along a
   street is one row, separate clicks are detached houses, and a stroke

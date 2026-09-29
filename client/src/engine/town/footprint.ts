@@ -196,16 +196,10 @@ function plan(town: Town, width: number) {
     const links = linksOf(c, r);
     return !links.length || links.some(([dx, dy]) => !dx || !dy);
   };
-  /** Do most of the street links on the tiles round it run diagonally? */
-  const onDiagonal = (c: number, r: number) => {
-    let lean = 0;
-    for (const [dx, dy] of EIGHT) {
-      const [x, y] = [c + dx, r + dy];
-      if (town.tile(x, y).kind !== "road") continue;
-      for (const [ex, ey] of EIGHT) if (town.linked(x, y, x + ex, y + ey)) lean += ex && ey ? 1 : -1;
-    }
-    return lean > 0;
-  };
+  /** Does a diagonal street run past one of its corners, from the tile
+   *  on one side of that corner to the tile on the other? */
+  const onDiagonal = (c: number, r: number) =>
+    [[1, 1], [1, -1], [-1, 1], [-1, -1]].some(([sx, sy]) => town.linked(c + sx, r, c, r + sy));
   const pieces: { at: Pt; ring: Pt[] }[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
@@ -224,8 +218,8 @@ function plan(town: Town, width: number) {
           const step = has(sx, -sy) || has(-sx, sy);
           if (step && !(has(sx, 0) && has(0, sy))) ring = cut(ring, [sx, sy, sx * mx + sy * my + h * Math.SQRT2]);
         }
-        // A tile standing alone faces the streets round it: turned a
-        // quarter over where they run diagonally, as big as it was.
+        // A tile standing alone faces its street: turned a quarter over
+        // where one runs diagonally past a corner, as big as it was.
         const d = h * Math.SQRT2;
         if (!links.length && onDiagonal(c, r)) ring = [[mx, my - d], [mx + d, my], [mx, my + d], [mx - d, my]];
         pieces.push({ at: [c, r], ring });
