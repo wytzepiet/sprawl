@@ -74,12 +74,11 @@ The code is `client/src/engine/town/`:
   A house's roof climbs no higher than a one-tile row's ridge, so deeper
   buildings are flat on top at that height. Then the outside corners are rounded
   off from above, roof and all, so the roof stays sharp and the walls rise
-  to meet it. Flats, offices and big boxes are capped instead,
-  the way a model town's blocks are: a flat roof a shade darker, and on it
-  a slab a shade lighter, drawn in from the edge. And now and then a roof
-  has a quirk, a plain box a model maker would stick on: a plant room on
-  a cap, a chimney on a house's ridge; a shed has pale rooflights across
-  its hall. Where each goes comes from its tile alone.
+  to meet it. An office tower is capped instead, the way a model
+  town's towers are: a flat roof a shade darker, and on it a slab a shade
+  lighter, drawn in from the edge. Tried and dropped (2026-09-30): the cap
+  on every flat roof, and quirks on roofs (plant rooms, chimneys,
+  rooflights), too small for the map: big lines only.
 - **A shed is a business park's** (14-business, Lage Weide): its office
   at its street end, the whole end across, a couple of storeys over the
   hall and lighter, found from the building's tiles, its long way and the

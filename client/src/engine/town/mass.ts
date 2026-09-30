@@ -48,15 +48,10 @@ export function slope(t: Tile) {
   return t.storeys <= 3 ? { pitch: 0.75, height: 0.225 } : { pitch: 0.5, height: 0.03 };
 }
 
-/** How a kind is roofed: a pitched roof for homes and shops of a few
- *  storeys; a flat roof with a second, smaller slab on it, the way a
- *  model town's blocks are capped, for flats, offices and big boxes; a
- *  shed's low roof with rooflights for industry. */
-export function roofOf(t: Tile): "pitched" | "cap" | "shed" {
-  const family = formOf(t).family;
-  if (family === "industry") return "shed";
-  return family === "street" && t.storeys <= 3 ? "pitched" : "cap";
-}
+/** An office tower is capped, the way a model town's towers are: a flat
+ *  roof with a second, smaller slab on it. Everything else is roofed by
+ *  its slope. */
+export const capped = (t: Tile) => t.kind === "Office";
 
 /** Buildings that may join, where no stroke says: tiles of one kind, as
  *  the terrain's types are. */

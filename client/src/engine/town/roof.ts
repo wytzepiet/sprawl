@@ -2,8 +2,7 @@ import earcut from "earcut";
 import type { MeshGeometry } from "../Mesh";
 import type { BuildingKind } from "../../generated";
 import type { Town } from "./grid";
-import { eaves, roofOf, slope, type RGB } from "./mass";
-import { hash } from "./dressing";
+import { capped, eaves, slope, type RGB } from "./mass";
 import { facts } from "./facts";
 import { blunt, convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
 
@@ -29,17 +28,13 @@ import { blunt, convex, footprints, intersect, shrink, subtract, unite, type Hal
  * cutter would: the roof keeps its sharp ridges and hips, and a rounded
  * wall rises to wherever the roof is over it.
  *
- * Flats, offices and big boxes are capped instead: a flat roof, and on it
- * a second slab drawn in from the edge. And now and then a roof has a
- * quirk, a thing a model town's maker would stick on: a plant room on a
- * cap, a chimney on a house, rooflights across a shed. Each is a plain
- * box, and where it goes comes from the tile it stands on alone.
+ * An office tower is capped instead: a flat roof a shade darker, and on
+ * it a slab a shade lighter drawn in from the edge, the way a model
+ * town's towers are. Big lines only: nothing smaller.
  */
 
 /** A cap's slab: how far in from the edge, and how high. */
-const CAP_IN = 0.1, CAP_H = 0.035;
-const PLANT: RGB = [0.8, 0.8, 0.83];
-const GLASS: RGB = [0.9, 0.94, 0.97];
+const CAP_IN = 0.15, CAP_H = 0.05;
 
 /** How round a building's outside corners are, from above. */
 const CORNER = 0.06;
@@ -101,37 +96,21 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
     };
     const colourAt = (p: Pt): RGB => tint(mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0]);
     /** Walls round a region from z0 up to its top at z1, coloured as the
-     *  building is, or in `rgb`, and the top. */
-    const prism = (region: Polygon[], z0: number, z1: (p: Pt) => number, rgb?: RGB, dim = 1) => {
+     *  building is, and the top, a shade darker or lighter by `dim`. */
+    const prism = (region: Polygon[], z0: number, z1: (p: Pt) => number, dim = 1) => {
       for (const ring of region.flat()) {
         ring.forEach((p, i) => {
           const q = ring[(i + 1) % ring.length];
           const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
           const len = Math.hypot(dx, dy);
           const n: V = [dy / len, -dx / len, 0];
-          const c = rgb ?? colourAt([(p[0] + q[0]) / 2 - n[0] * 1e-3, (p[1] + q[1]) / 2 - n[1] * 1e-3]);
+          const c = colourAt([(p[0] + q[0]) / 2 - n[0] * 1e-3, (p[1] + q[1]) / 2 - n[1] * 1e-3]);
           tri([p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1(q)], n, c);
           tri([p[0], p[1], z0], [q[0], q[1], z1(q)], [p[0], p[1], z1(p)], n, c);
         });
       }
-      if (rgb) for (const poly of region) fill(poly, z1, rgb);
-      else paint(region, z1, dim);
+      paint(region, z1, dim);
     };
-    /** A box on the roof, `w` by `d` round (x, y), from z0 up to z1. */
-    const block = ([x, y]: Pt, w: number, d: number, z0: number, z1: number, rgb: RGB) =>
-      prism([[[[x - w / 2, y - d / 2], [x + w / 2, y - d / 2], [x + w / 2, y + d / 2], [x - w / 2, y + d / 2]]]], z0, () => z1, rgb);
-    /** The middles of the tiles a region covers, well inside it. */
-    const middles = (region: Polygon[]) => {
-      const all = region.flat(2);
-      const out: [number, number][] = [];
-      for (let r = Math.floor(Math.min(...all.map((p) => p[1]))); r < Math.max(...all.map((p) => p[1])); r++) {
-        for (let c = Math.floor(Math.min(...all.map((p) => p[0]))); c < Math.max(...all.map((p) => p[0])); c++) {
-          if (region.some((poly) => inPolygon([c + 0.5, r + 0.5], poly))) out.push([c, r]);
-        }
-      }
-      return out;
-    };
-    const kind = roofOf(mass.tile);
 
     const bumps = services.map((s): Polygon => [s.bump]).filter((b) => intersect([b], mass.polygons).length);
     for (const polygon of unite([...subtract(mass.polygons, cuts), ...bumps])) {
@@ -140,18 +119,11 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
       // the nearest wall, to its reach.
       const walls = polygon.flatMap((ring) => ring.map((p, i): [Pt, Pt] => [p, ring[(i + 1) % ring.length]]));
       const roofAt = (p: Pt) => top + pitch * Math.min(reach, ...walls.map(([a, b]) => toSegment(p, a, b)));
-      if (kind === "cap") {
+      if (capped(mass.tile)) {
         // Walls to the eaves, a flat roof a shade darker, and on it the
-        // slab a shade lighter; now and then a plant room on the slab.
-        prism(outline, 0, () => top, undefined, 0.82);
-        const slab = shrink(outline, CAP_IN);
-        prism(slab, top, () => top + CAP_H, undefined, 1.15);
-        const room = shrink(slab, 0.12);
-        for (const [c, r] of middles(room)) {
-          if (hash(c, r, 31) > 0.3) continue;
-          const p: Pt = [c + 0.3 + 0.4 * hash(c, r, 32), r + 0.3 + 0.4 * hash(c, r, 33)];
-          if (room.some((poly) => inPolygon(p, poly))) block(p, 0.2, 0.14, top + CAP_H, top + CAP_H + 0.06, PLANT);
-        }
+        // slab a shade lighter.
+        prism(outline, 0, () => top, 0.82);
+        prism(shrink(outline, CAP_IN), top, () => top + CAP_H, 1.15);
         continue;
       }
       // Walls: every edge of every ring, from the ground to the roof.
@@ -162,26 +134,6 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
       }
       const flat = subtract(outline, unite(faces.flatMap((f) => f.region)));
       paint(flat, () => top + height);
-      if (kind === "shed" && !mass.parts.some((part) => part.head)) {
-        // Rooflights: pale strips across the hall's flat top, its short
-        // way, two to a tile; none on an office end.
-        const all = flat.flat(2);
-        if (!all.length) continue;
-        const [x0, y0, x1, y1] = [Math.min(...all.map((p) => p[0])), Math.min(...all.map((p) => p[1])), Math.max(...all.map((p) => p[0])), Math.max(...all.map((p) => p[1]))];
-        const across = x1 - x0 < y1 - y0;
-        const strips: Polygon[] = [];
-        for (let t = (across ? y0 : x0) + 0.2; t < (across ? y1 : x1) - 0.15; t += 0.5) {
-          strips.push(across ? [[[x0, t], [x1, t], [x1, t + 0.1], [x0, t + 0.1]]] : [[[t, y0], [t + 0.1, y0], [t + 0.1, y1], [t, y1]]]);
-        }
-        for (const poly of intersect(strips, shrink(flat, 0.05))) fill(poly, () => top + height + 0.004, GLASS);
-      } else {
-        // Now and then a chimney, on the ridge over a tile's middle.
-        for (const [c, r] of middles(shrink(outline, 0.12))) {
-          if (hash(c, r, 41) > 0.25) continue;
-          const p: Pt = [c + 0.5 + 0.15 * (hash(c, r, 42) - 0.5), r + 0.5];
-          block(p, 0.08, 0.08, roofAt(p) - 0.03, roofAt(p) + 0.07, tint(mass.parts[0]).map((v) => v * 0.7) as RGB);
-        }
-      }
     }
   }
   return { positions, normals, colors, indices };
