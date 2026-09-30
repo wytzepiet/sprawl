@@ -15,8 +15,8 @@ import { blunt, convex, footprints, intersect, shrink, subtract, unite, type Hal
  * nearest wall. So two walls facing each other meet in a ridge, two meeting
  * at an outside corner in a hip, at an inside corner in a valley, wherever
  * the plan puts them and whatever its shape. A face reaches only so far in
- * (a house's to its ridge height, a shed's to a low rim), and beyond every
- * face the roof is flat.
+ * (a house's to its ridge height; a shed's and a big box's nowhere, as
+ * they are flat), and beyond every face the roof is flat.
  *
  * A wall's face is the band within that reach of it, cut at its two ends
  * where it meets its neighbours' faces, on the line halfway between the
@@ -128,7 +128,7 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
       }
       // Walls: every edge of every ring, from the ground to the roof.
       prism(outline, 0, roofAt);
-      const faces = roofFaces(polygon, reach);
+      const faces = reach > 0 ? roofFaces(polygon, reach) : [];
       for (const { line, region } of faces) {
         paint(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
       }

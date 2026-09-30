@@ -42,9 +42,10 @@ export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
 /** How steeply a kind's roof climbs from its walls, and how high before
  *  it runs flat: a house's pitched, no higher than a one-tile row's ridge
  *  (0.3 in from its walls), so anything deeper is flat on top at that
- *  height; a block of flats' and a shed's nearly flat behind a low rim. */
+ *  height; a block of flats' nearly flat behind a low rim; a shed's or a
+ *  big box's flat, as a depot's is seen from above. */
 export function slope(t: Tile) {
-  if (formOf(t).family !== "street") return { pitch: 0.25, height: 0.06 };
+  if (formOf(t).family !== "street") return { pitch: 1, height: 0 };
   return t.storeys <= 3 ? { pitch: 0.75, height: 0.225 } : { pitch: 0.5, height: 0.03 };
 }
 
