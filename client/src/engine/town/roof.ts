@@ -37,7 +37,9 @@ type V = [number, number, number];
 type Line = [number, number, number];
 
 export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
-  const { town, head } = facts(painted);
+  const { town, head, services } = facts(painted);
+  // A service lane is cut from its building, and its bump added.
+  const cuts = services.map((s): Polygon => [s.cut]);
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */
@@ -85,7 +87,8 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
     };
     const colourAt = (p: Pt): RGB => tint(mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0]);
 
-    for (const polygon of mass.polygons) {
+    const bumps = services.map((s): Polygon => [s.bump]).filter((b) => intersect([b], mass.polygons).length);
+    for (const polygon of unite([...subtract(mass.polygons, cuts), ...bumps])) {
       const outline = blunt([polygon], CORNER);
       // The roof over a point of the plan: as high as it is far in from
       // the nearest wall, to its reach.

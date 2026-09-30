@@ -55,6 +55,18 @@ describe("facts and dressing", () => {
     expect(dress(t, f).cars.length).toBeGreaterThan(8);
   });
 
+  test("a supermarket two deep takes deliveries at the back, a small one at the kerb", () => {
+    const big = town(["=.....", "======", "=MMM..", "=MMM..", "=MMM..", "=....."]);
+    const [service] = facts(big).services;
+    expect(service).toBeDefined();
+    // The bump sticks out past the shop's tiles (x 1 to 4, y 2 to 5).
+    const [xs, ys] = [service.bump.map(([x]) => x), service.bump.map(([, y]) => y)];
+    expect(Math.max(...xs) > 4 || Math.min(...xs) < 1 || Math.max(...ys) > 5 || Math.min(...ys) < 2).toBe(true);
+    expect(dress(big, facts(big)).docks.length).toBe(1);
+    const small = town(["=.....", "======", "=MM...", "=MM...", "=....."]);
+    expect(facts(small).services.length).toBe(0);
+  });
+
   test("a straight street before homes has trees every third tile, a through road none", () => {
     const street = town(["..........", "==========", "HHHHHHHHHH"]);
     expect(dress(street, facts(street)).trees.length).toBe(6);

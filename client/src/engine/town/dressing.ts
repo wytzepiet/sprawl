@@ -123,7 +123,11 @@ export function dress(town: Town, facts: Facts): Dressing {
   const clear = (x: number, y: number) => trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3);
   const cars = parked.cars.filter((car) => clear(car.x, car.y));
   const lorries = docks(town, facts), lots = carParks(town, facts);
-  return { gardens, trees, cars: [...cars, ...lots.cars], lanes: parked.lanes, bays: parked.bays, docks: lorries.docks, yardLines: [...lorries.lines, ...lots.lines] };
+  const service = facts.services;
+  return {
+    gardens, trees, cars: [...cars, ...lots.cars], lanes: [...parked.lanes, ...service.map((s) => s.lane)], bays: parked.bays,
+    docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines],
+  };
 }
 
 /** A car park: on each tile, an aisle along its street between two rows

@@ -88,7 +88,12 @@ The code is `client/src/engine/town/`:
   from its quiet end or its busy one. A depot's is at the quiet end, a
   dock for every two tiles, its office at the busy end; a supermarket's
   car park is on the busy corner, three cars to a tile of shop. The rest
-  is building. Everything drawn is a function of a tile, its neighbours and
+  is building. A supermarket two tiles deep and wide also takes its
+  deliveries at the back, as real ones do (six Dutch ones from
+  OpenStreetMap, 2026-09-30): a lane cut from its quieter side, front to
+  back, and at its end a bump on the back wall, the loading bay, with a
+  lorry backed up to it. Neither takes a tile: the lane is cut from the
+  building, the bump stands in the margins behind it. Everything drawn is a function of a tile, its neighbours and
   these facts.
 - **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
   courtyard is a lawn with a tree on most tiles; paved ground closed in
@@ -126,6 +131,13 @@ The code is `client/src/engine/town/`:
   faint grid of its tiles (`g` hides it), and paints: a brush per kind,
   taller and lower, and "Copy" to take the map away as a fixture. `bun run
   shots --sandbox` photographs every fixture this way in seconds.
+- **Not yet: a finer grid under the ground.** Three by three to a tile,
+  a sub-cell fits a car, a bay row and aisle and bay row make a tile, and
+  lanes, bays, bumps and alleys would be labels on sub-cells. Weighed on
+  2026-09-30 and left for now: nothing yet needs ground shared across
+  buildings, and a grid squares off diagonals. Worth trying when back
+  alleys, a port's quay or a yard across a block need it: for the ground
+  between buildings, never for the buildings' own shapes.
 - **Tried and dropped**, so they are not tried again blind: plans sampled
   as distance fields (wobble, clipped corners); front gardens, courtyards
   by depth, gables and dormers built on distances (they broke on diagonals

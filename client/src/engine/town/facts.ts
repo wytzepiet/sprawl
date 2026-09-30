@@ -1,6 +1,6 @@
 import { isBuilt, type Town } from "./grid";
 import { formOf, type Yard } from "./mass";
-import { defaultJoins } from "./footprint";
+import { defaultJoins, INSET, type Pt } from "./footprint";
 
 /**
  * What a tile cannot see from its neighbours, worked out once over the
@@ -17,7 +17,28 @@ import { defaultJoins } from "./footprint";
  *   enough. The rest is building. A depot's yard holds lorries at docks
  *   on the wall across from its street, and its office stands at the busy
  *   end; a supermarket's holds cars in rows, its car park on the corner.
+ * - **Service bays**: a supermarket two tiles or more each way takes its
+ *   deliveries at the back. A lane is cut from its quieter side, from the
+ *   front to the back, and at the lane's end a bump sticks out of the back
+ *   wall: the loading bay, its door facing up the lane, a lorry backed up
+ *   to it. None of it takes a tile: the lane is cut from the building, the
+ *   bump stands in the margins behind it.
  */
+
+/** A supermarket's service bay, in the town's plan: the lane cut from the
+ *  building, the bump added to it, the lane's tarmac, and the dock at the
+ *  bump's door. */
+export interface Service {
+  cut: Pt[];
+  bump: Pt[];
+  lane: Pt[];
+  dock: { x: number; y: number; angle: number };
+}
+/** The lane's width, cut from the building beyond its inset. */
+const LANE = 0.3;
+/** How far the bump reaches past its tile's edge: into the margin beyond,
+ *  still short of a building there. */
+const BUMP = 0.12;
 
 /** Lorry bays along a dock: three to a tile of wall. */
 export const DOCKS = 3;
@@ -34,6 +55,7 @@ export interface Facts {
   /** A yard tile's docks: the ways to the hall walls it faces, straight
    *  across from its street. */
   docks(c: number, r: number): [number, number][];
+  services: Service[];
 }
 
 export function facts(painted: Town): Facts {
@@ -54,7 +76,51 @@ export function facts(painted: Town): Facts {
     enclosed: (c, r) => closed.has(`${c},${r}`),
     yard: (c, r) => yard.get(`${c},${r}`),
     docks: (c, r) => (yard.get(`${c},${r}`) === "docks" ? walls(c, r) : []),
+    services: services(painted, yard),
   };
+}
+
+/** Each supermarket's service bay, where it is two tiles or more each way:
+ *  in the frame of its front `f` (toward its car park, or its street) and
+ *  its quieter side `s`. */
+function services(town: Town, yard: Map<string, Yard["fill"]>): Service[] {
+  const out: Service[] = [];
+  for (const cells of buildings(town)) {
+    if (town.tile(...cells[0]).kind !== "Supermarket") continue;
+    const shop = cells.filter(([c, r]) => !yard.has(`${c},${r}`));
+    const open = (c: number, r: number) => yard.has(`${c},${r}`) || town.tile(c, r).kind === "road";
+    // Its front: the side with most car park and street along it.
+    const along = ([dc, dr]: number[]) => shop.filter(([c, r]) => open(c + dc, r + dr)).length;
+    const f = [...SIDES].sort((a, b) => along(b) - along(a))[0];
+    if (!shop.length || !along(f)) continue;
+    /** A tile's extent along an axis. */
+    const span = ([ux, uy]: number[], [c, r]: [number, number]) => {
+      const ks = [[c, r], [c + 1, r], [c, r + 1], [c + 1, r + 1]].map(([x, y]) => x * ux + y * uy);
+      return [Math.min(...ks), Math.max(...ks)];
+    };
+    const extent = (u: number[]) => [Math.min(...shop.map((t) => span(u, t)[0])), Math.max(...shop.map((t) => span(u, t)[1]))];
+    const back = [-f[0], -f[1]];
+    const [a0, a1] = extent(back);
+    const sides = [[-f[1], f[0]], [f[1], -f[0]]];
+    if (a1 - a0 < 2 || extent(sides[0])[1] + extent(sides[1])[1] < 2) continue;
+    // The quieter side: less street round its back corner.
+    const corner = (s: number[]) => shop.reduce((best, t) => (span(s, t)[1] + span(back, t)[1] > span(s, best)[1] + span(back, best)[1] ? t : best));
+    const s = sides.map((s) => ({ s, n: streetAround(town, ...corner(s)) })).sort((a, b) => a.n - b.n)[0].s;
+    const q1 = extent(s)[1];
+    /** A point by how far back it is and how far to the side. */
+    const at = (a: number, q: number): Pt => [a * back[0] + q * s[0], a * back[1] + q * s[1]];
+    const box = (a: number, b: number, p: number, q: number): Pt[] => [at(a, p), at(b, p), at(b, q), at(a, q)];
+    const wall = a1 - INSET;
+    const mid = q1 - INSET / 2 - LANE / 2 - 0.03;
+    const [x, y] = at(wall, mid);
+    out.push({
+      cut: box(a0 - 0.01, a1 + 0.01, q1 - INSET - LANE, q1 + 0.01),
+      bump: box(wall - 0.05, a1 + BUMP, q1 - INSET - LANE - 0.45, q1 - 0.05),
+      lane: box(a0, wall, q1 - INSET - LANE, q1 - 0.06),
+      dock: { x, y, angle: Math.atan2(-back[1], -back[0]) },
+    });
+  }
+  return out;
 }
 
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
