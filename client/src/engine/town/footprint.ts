@@ -309,5 +309,7 @@ function round(ps: Paths, by: number) {
 
 /** Regions, as sets of polygons: together, apart, in common. */
 export const unite = (a: Polygon[]) => polygons(union(paths(a.flat())));
+/** A region drawn in by `by` all round. */
+export const shrink = (a: Polygon[], by: number) => polygons(grow(paths(a.flat()), -by));
 export const subtract = (a: Polygon[], b: Polygon[]) => polygons(minus(paths(a.flat()), paths(b.flat())));
 export const intersect = (a: Polygon[], b: Polygon[]) => polygons(and(paths(a.flat()), paths(b.flat())));

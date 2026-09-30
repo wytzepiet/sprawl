@@ -83,7 +83,7 @@ const BAY = CAR.l + 0.07;
 const CORNER = 0.7;
 
 /** A number in [0, 1) that is the same for the same tile and salt. */
-function hash(c: number, r: number, salt: number) {
+export function hash(c: number, r: number, salt: number) {
   let s = (c * 374761393 + r * 668265263 + salt * 1013904223) | 0;
   s = Math.imul(s ^ (s >>> 13), 1274126177);
   return ((s ^ (s >>> 16)) >>> 0) / 4294967296;
