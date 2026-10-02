@@ -22,6 +22,15 @@
 > - **What goes**: the driveway as a kind of road (a road ending on a
 >   plot, one per building, the newest), lots, rings and their slabs.
 >   A car park's layout is packed from its shape when it is built.
+> - **Driveways stay where a house leaves room** (2026-10-02, the
+>   mayor): a house with open ground beside it parks its cars on a drive
+>   down that side, as the town grid draws it (`look.md`); the middle of
+>   a row parks at the kerb. Kerb parking is how dense towns park almost
+>   everywhere, driveways how suburbs do; the neighbours decide which,
+>   not a country. Enough by design: a house's two cars fit its drive or
+>   its own frontage of kerb (two bays to a tile); flats outrun their
+>   kerb, which is where a car park becomes the mayor's job; a shop's
+>   visitors take its frontage and then the nearest bays round about.
 >
 > Open: how far "within reach" is; whether a home's residents prefer the
 > bay by their own door; how cruising picks the next street.

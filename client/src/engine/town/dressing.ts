@@ -2,7 +2,7 @@ import { isBuilt, type Town } from "./grid";
 import { DOCKS, PARKED, type Facts } from "./facts";
 import { formOf } from "./mass";
 import { CAB, CAR, HALF_W, TRAILER } from "../objects/roadGeometry";
-import { INSET } from "./footprint";
+import { defaultJoins, INSET } from "./footprint";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -128,18 +128,79 @@ export function dress(town: Town, facts: Facts): Dressing {
       }
     }
   }
-  // A car does not stand where a tree does, nor its bay.
+  // A car does not stand where a tree does, nor its bay; nor across a
+  // driveway's mouth.
+  const drives = driveways(town);
+  const mouthFree = (p: Pt[]) => {
+    const [x, y] = [p.reduce((a, q) => a + q[0], 0) / p.length, p.reduce((a, q) => a + q[1], 0) / p.length];
+    return drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
+  };
   const parked = park(town);
-  const clear = (x: number, y: number) => trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3);
-  const cars = parked.cars.filter((car) => clear(car.x, car.y));
+  parked.lanes = parked.lanes.filter(mouthFree);
+  parked.bays = parked.bays.filter(mouthFree);
+  const clear = (x: number, y: number) => trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3) && mouthFree([[x, y]]);
+  const cars = [...parked.cars.filter((car) => clear(car.x, car.y)), ...drives.cars];
   const lorries = docks(town, facts), lots = carParks(town, facts);
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...parked.lanes, ...service.map((s) => s.lane), ...port.ramps], bays: parked.bays,
+    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...parked.lanes, ...drives.strips, ...service.map((s) => s.lane), ...port.ramps], bays: parked.bays,
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
+}
+
+/** A driveway's width: the margin a house leaves beside it, wall to the
+ *  plot's edge, which a car fits with a little either side. */
+const DRIVE = INSET;
+
+/**
+ * Driveways, where a house leaves room for one: a house with a street
+ * running straight past its front, on a side where it is joined to nothing, gets a drive
+ * down that side, from the road's edge to its back wall, and a car or two
+ * on it, nose in. Open ground beside it is the side it takes (the end of a
+ * row, a semi, a house alone); a house with a building beside it on both
+ * sides, joined or not, has none, and parks at the kerb. Built beside, the
+ * drive goes. So a suburb has driveways and a terrace parks in the street,
+ * and nobody chose: as with everything else, the neighbours decide.
+ */
+function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[] } {
+  const strips: Pt[][] = [], cars: Car[] = [], mouths: Pt[] = [];
+  const joined = town.joins ?? defaultJoins(town);
+  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (town.tile(c, r).kind !== "House") continue;
+      // Toward its street (fx, fy): a side with a street running straight
+      // past it, beside the house along its front.
+      const front = [[0, 1], [0, -1], [1, 0], [-1, 0]].find(([fx, fy]) => {
+        const [x, y] = [c + fx, r + fy];
+        return road(x, y) && (town.linked(x, y, x - fy, y + fx) || town.linked(x, y, x + fy, y - fx));
+      });
+      if (!front) continue;
+      const [fx, fy] = front;
+      // A side the house is joined to nothing on, with open ground there.
+      const side = [[-fy, fx], [fy, -fx]].find(([sx, sy]) => {
+        const [x, y] = [c + sx, r + sy];
+        const t = town.tile(x, y);
+        return !isBuilt(t) && t.kind !== "road" && t.kind !== "water" && !joined(c, r, x, y);
+      });
+      if (!side) continue;
+      const [sx, sy] = side;
+      // Down the margin on that side: from the road's edge, across the
+      // pavement, to the back wall.
+      const [x0, y0] = [c + 0.5 + sx * (0.5 - DRIVE / 2), r + 0.5 + sy * (0.5 - DRIVE / 2)];
+      strips.push(strip(x0, y0, sx, sy, -DRIVE / 2, DRIVE / 2, -fx, -fy, -(1 - HALF_W), 0.5 - INSET));
+      mouths.push([x0 + fx * (1 - KERB), y0 + fy * (1 - KERB)]);
+      // One car, or two nose to tail, nose to the house.
+      const n = hash(c, r, 41) < 0.5 ? 1 : 2;
+      for (let k = 0; k < n; k++) {
+        const back = 0.15 - k * (CAR.l + 0.04);
+        cars.push({ x: x0 - fx * back, y: y0 - fy * back, angle: Math.atan2(-fy, -fx), colour: Math.floor(hash(c, r, 43 + k) * 8) });
+      }
+    }
+  }
+  return { strips, cars, mouths };
 }
 
 /** A ferry port: its yard in queue lanes running down to the water, four

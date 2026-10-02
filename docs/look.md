@@ -113,7 +113,14 @@ The code is `client/src/engine/town/`:
   bays along the hall wall across from its street, three to a tile, a door
   behind each and lorries backed up to most; a car park has an aisle
   along its street between two rows of bays, ten cars to a tile, most
-  taken. One brush paints the building, and its yard comes with it. The pavement is
+  taken. One brush paints the building, and its yard comes with it.
+  A house with open ground beside it, on a side it is joined to nothing
+  on, has a driveway down that side, from the road's edge to its back
+  wall, a car or two on it nose in, and no kerb bay across its mouth: a
+  house alone, a semi, the ends of a row. The middle of a row, and a
+  house with buildings on both sides, park at the kerb. Built beside,
+  the drive goes. So a suburb has driveways and a terrace parks in the
+  street, by the neighbours alone (`17-driveways`, 2026-10-02). The pavement is
   ground: every road, building and yard makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal
