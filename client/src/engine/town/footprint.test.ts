@@ -51,7 +51,7 @@ describe("a building's plan is one exact polygon", () => {
 
   test("tiles not joined stand apart, however close", () => {
     const t = parseTown(["......", ".HHH..", "......"].join("\n"));
-    const apart = townOf([0, 1, 2].map((r) => [0, 1, 2, 3, 4, 5].map((c) => t.tile(c, r))), () => "street", [], () => false);
+    const apart = townOf([0, 1, 2].map((r) => [0, 1, 2, 3, 4, 5].map((c) => t.tile(c, r))), () => false, [], () => false);
     expect(footprints(apart, () => false).length).toBe(3);
   });
 });

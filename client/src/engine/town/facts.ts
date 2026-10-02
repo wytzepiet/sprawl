@@ -1,6 +1,7 @@
-import { isBuilt, isStreet, type Town } from "./grid";
+import { isBuilt, type Town } from "./grid";
 import { formOf, type Yard } from "./mass";
 import { defaultJoins, INSET, type Pt } from "./footprint";
+import { CAB, HALF_W, TRAILER } from "../objects/roadGeometry";
 
 /**
  * What a tile cannot see from its neighbours, worked out once over the
@@ -29,24 +30,24 @@ import { defaultJoins, INSET, type Pt } from "./footprint";
  *   front to the back, and at the lane's end a bump sticks out of the back
  *   wall: the loading bay, its door facing up the lane, a lorry backed up
  *   to it. None of it takes a tile: the lane is cut from the building, the
- *   bump stands in the margins behind it. Where an alley runs behind it,
- *   any supermarket takes its deliveries there instead, at a bay let into
- *   the back wall, its side and its car park whole.
+ *   bump stands in the margins behind it. A supermarket with a street
+ *   behind it, its back wall long enough, takes its deliveries there
+ *   instead: a lay-by let into the back wall, the lorry backed in along
+ *   it, out of the street, its side and its car park whole.
  */
 
 /** A supermarket's service bay, in the town's plan: the lane cut from the
  *  building, the bump added to it, the lane's tarmac, and the dock at the
- *  bump's door; or, off an alley, a bay let into the back wall, no bump. */
+ *  bump's door. */
 export interface Service {
   cut: Pt[];
   bump?: Pt[];
   lane: Pt[];
   dock: { x: number; y: number; angle: number };
 }
-/** A loading bay off an alley: as wide as a lorry and a little, and as
- *  deep into the back wall as its tail tucks in. */
-const BAY_W = 0.26;
-const BAY_DEPTH = 0.2;
+/** A lay-by off a street behind: a lorry's length and a little along the
+ *  back wall, its width and a little deep. */
+const LAYBY = { l: CAB.l + TRAILER.l + 0.1, d: TRAILER.w + 0.07 };
 /** The lane's width, cut from the building beyond its inset. */
 const LANE = 0.3;
 /** How far the bump reaches past its tile's edge: into the margin beyond,
@@ -134,7 +135,7 @@ function berth(town: Town, cells: [number, number][]) {
     return cells.filter(([c, r]) => c * s[0] + r * s[1] === far);
   };
   const sides = [[-to[1], to[0]], [to[1], -to[0]]] as [number, number][];
-  const side = sides.find((s) => column(s).some(([c, r]) => SIDES.some(([dc, dr]) => isStreet(town, c + dc, r + dr)))) ?? sides[0];
+  const side = sides.find((s) => column(s).some(([c, r]) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road"))) ?? sides[0];
   return { to, side, exit: column(side) };
 }
 
@@ -146,10 +147,11 @@ function services(town: Town, yard: Map<string, Yard["fill"]>): Service[] {
   for (const cells of buildings(town)) {
     if (town.tile(...cells[0]).kind !== "Supermarket") continue;
     const shop = cells.filter(([c, r]) => !yard.has(`${c},${r}`));
-    const open = (c: number, r: number) => yard.has(`${c},${r}`) || isStreet(town, c, r);
+    const open = (c: number, r: number) => yard.has(`${c},${r}`) || town.tile(c, r).kind === "road";
     // Its front: the side with most car park and street along it.
     const along = ([dc, dr]: number[]) => shop.filter(([c, r]) => open(c + dc, r + dr)).length;
-    const f = [...SIDES].sort((a, b) => along(b) - along(a))[0];
+    const behindStreet = backStreet(town, cells);
+    const f = behindStreet ? [-behindStreet[0], -behindStreet[1]] : [...SIDES].sort((a, b) => along(b) - along(a))[0];
     if (!shop.length || !along(f)) continue;
     /** A tile's extent along an axis. */
     const span = ([ux, uy]: number[], [c, r]: [number, number]) => {
@@ -158,23 +160,29 @@ function services(town: Town, yard: Map<string, Yard["fill"]>): Service[] {
     };
     const extent = (u: number[]) => [Math.min(...shop.map((t) => span(u, t)[0])), Math.max(...shop.map((t) => span(u, t)[1]))];
     const back = [-f[0], -f[1]];
-    // An alley behind it: deliveries come that way, to a bay let into the
-    // back wall, and nothing is cut from its side or its car park.
-    const behind = shop.filter(([c, r]) => town.tile(c + back[0], r + back[1]).kind === "road" && town.way(c + back[0], r + back[1]) === "alley");
+    // A street behind it: deliveries come that way, to a lay-by let into
+    // the back wall, the lorry backed in along it, out of the street; and
+    // nothing is cut from its side or its car park.
+    const [sx, sy] = [-back[1], back[0]];
+    const behind = shop.filter(([c, r]) => town.tile(c + back[0], r + back[1]).kind === "road");
     if (behind.length) {
-      const [sx, sy] = [-back[1], back[0]];
-      const [c, r] = behind.sort((p, q) => p[0] * sx + p[1] * sy - (q[0] * sx + q[1] * sy))[Math.floor((behind.length - 1) / 2)];
-      /** A point by how far back from the tile's middle and how far aside. */
-      const at = (a: number, q: number): Pt => [c + 0.5 + back[0] * a + sx * q, r + 0.5 + back[1] * a + sy * q];
-      const box = (a: number, b: number, p: number, q: number): Pt[] => [at(a, p), at(b, p), at(b, q), at(a, q)];
-      const inner = 0.5 - INSET - BAY_DEPTH;
-      const [x, y] = at(inner, 0);
-      out.push({
-        cut: box(inner, 0.5 - INSET + 0.01, -BAY_W / 2, BAY_W / 2),
-        lane: box(inner, 0.9, -BAY_W / 2, BAY_W / 2),
-        dock: { x, y, angle: Math.atan2(back[1], back[0]) },
-      });
-      continue;
+      const [q0, q1] = [Math.min(...behind.map((t) => span([sx, sy], t)[0])), Math.max(...behind.map((t) => span([sx, sy], t)[1]))];
+      const wallBack = Math.max(...behind.map((t) => span(back, t)[1])) - INSET;
+      if (q1 - q0 - 2 * INSET >= LAYBY.l) {
+        /** A point by how far back and how far to the side. */
+        const at = (a: number, q: number): Pt => [a * back[0] + q * sx, a * back[1] + q * sy];
+        const box = (a: number, b: number, p: number, q: number): Pt[] => [at(a, p), at(b, p), at(b, q), at(a, q)];
+        const [m0, m1] = [(q0 + q1 - LAYBY.l) / 2, (q0 + q1 + LAYBY.l) / 2];
+        const inner = wallBack - LAYBY.d;
+        const [x, y] = at(inner + LAYBY.d / 2, m0 + 0.02);
+        out.push({
+          cut: box(inner, wallBack + 0.01, m0, m1),
+          // Its floor, out to the street's edge, as asphalt.
+          lane: box(inner, wallBack + INSET + 0.5 - HALF_W + 0.02, m0, m1),
+          dock: { x, y, angle: Math.atan2(sy, sx) },
+        });
+        continue;
+      }
     }
     const [a0, a1] = extent(back);
     const sides = [[-f[1], f[0]], [f[1], -f[0]]];
@@ -228,18 +236,34 @@ function buildings(town: Town): [number, number][][] {
 /** A yard tile's docks: toward each tile of its building that is not yard
  *  and lies straight across from a street the yard tile is on. */
 const docksOf = (town: Town, yard: (c: number, r: number) => boolean) => (c: number, r: number) =>
-  SIDES.filter(([dc, dr]) => isStreet(town, c - dc, r - dr) && town.tile(c + dc, r + dr).kind === town.tile(c, r).kind && !yard(c + dc, r + dr)) as [number, number][];
+  SIDES.filter(([dc, dr]) => town.tile(c - dc, r - dr).kind === "road" && town.tile(c + dc, r + dr).kind === town.tile(c, r).kind && !yard(c + dc, r + dr)) as [number, number][];
 
 /** How much street is round a tile, the nearer the more: a corner on a
  *  junction has most. */
 function streetAround(town: Town, c: number, r: number) {
   let n = 0;
-  for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (isStreet(town, c + dc, r + dr)) n += 1 / (dc * dc + dr * dr);
+  for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (town.tile(c + dc, r + dr).kind === "road") n += 1 / (dc * dc + dr * dr);
   return n;
 }
 
+/** A building's back street, where it has streets on two opposite sides:
+ *  the one with less built across it. A high street has shops facing each
+ *  other; the street behind a parade has open ground across. Null where
+ *  there is no street behind, or no telling. */
+function backStreet(town: Town, cells: [number, number][]): [number, number] | null {
+  const across = ([dx, dy]: number[]) => cells.filter(([c, r]) => town.tile(c + dx, r + dy).kind === "road").reduce((n, [c, r]) => n + (isBuilt(town.tile(c + 2 * dx, r + 2 * dy)) ? 1 : 0), 0);
+  const fronted = ([dx, dy]: number[]) => cells.some(([c, r]) => town.tile(c + dx, r + dy).kind === "road");
+  for (const d of [[1, 0], [0, 1]] as [number, number][]) {
+    const o: [number, number] = [-d[0], -d[1]];
+    if (!fronted(d) || !fronted(o) || across(d) === across(o)) continue;
+    return across(d) < across(o) ? d : o;
+  }
+  return null;
+}
+
 /** Each building's yard: street-side tiles in one run from its quiet or
- *  its busy end, until the yard holds what the building needs. */
+ *  its busy end, until the yard holds what the building needs; never on
+ *  its back street alone. */
 function yards(town: Town): Map<string, Yard["fill"]> {
   const out = new Map<string, Yard["fill"]>();
   for (const cells of buildings(town)) {
@@ -251,7 +275,8 @@ function yards(town: Town): Map<string, Yard["fill"]> {
     const exit = new Set((lie?.exit ?? []).map(([c, r]) => `${c},${r}`));
     const inYard = (c: number, r: number) => yard.has(`${c},${r}`) || exit.has(`${c},${r}`);
     const walls = docksOf(town, inYard);
-    const street = (c: number, r: number) => SIDES.some(([dc, dr]) => isStreet(town, c + dc, r + dr));
+    const back = backStreet(town, cells);
+    const street = (c: number, r: number) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road" && !(back && dc === back[0] && dr === back[1]));
     const holds = (c: number, r: number) => (fill === "docks" ? DOCKS * walls(c, r).length : fill === "ferry" ? QUEUED : street(c, r) ? PARKED : 0);
     const shore = (c: number, r: number) => Math.min(...cells.filter(([x, y]) => SIDES.some(([dc, dr]) => town.tile(x + dc, y + dr).kind === "water")).map(([x, y]) => Math.abs(x - c) + Math.abs(y - r)));
     const held = () => [...yard].reduce((n, k) => n + holds(...(k.split(",").map(Number) as [number, number])), 0);

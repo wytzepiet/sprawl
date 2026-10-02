@@ -11,15 +11,6 @@ import type { BuildingKind } from "../../generated";
  */
 export type Ground = "open" | "paved" | "road" | "water" | "wood";
 
-/** What a road is: a street, which things front and park along; a road, a
- *  through route nothing fronts; an alley, a lorry wide, behind things,
- *  that deliveries come by and nothing faces. */
-export type Way = "street" | "road" | "alley";
-const WAYS: Record<string, Way> = { "=": "street", "#": "road", "-": "alley" };
-
-/** A street a building can front: a road tile that is no alley. */
-export const isStreet = (town: Town, c: number, r: number) => town.tile(c, r).kind === "road" && town.way(c, r) !== "alley";
-
 export interface Tile {
   /** A building's kind, or the ground's. */
   kind: BuildingKind | Ground;
@@ -32,8 +23,8 @@ export interface Town {
   tile(c: number, r: number): Tile;
   /** Two road tiles, beside or diagonal, that a street runs between. */
   linked(c0: number, r0: number, c1: number, r1: number): boolean;
-  /** What a road tile is part of. */
-  way(c: number, r: number): Way;
+  /** A road tile on a through road. */
+  through(c: number, r: number): boolean;
   /** Two built tiles, beside or diagonal, joined into one building, as the
    *  brush stroke that painted them ran; unset, the look joins tiles of a
    *  kind by its own rule (`footprint.ts`). */
@@ -57,7 +48,7 @@ export const isBuilt = (t: Tile) => !["open", "paved", "road", "water", "wood"].
 export function tileOf(ch: string): Tile {
   const kind = LETTERS[ch];
   if (kind) return { kind, storeys: STOREYS[kind] ?? 1 };
-  const ground: Ground = WAYS[ch] ? "road" : ch === "~" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
+  const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
   return { kind: ground, storeys: 0 };
 }
 
@@ -72,12 +63,12 @@ export function parseTown(text: string): Town & { rows: string[] } {
   const rows = text.split("\n").filter((l) => l.trim() && !l.startsWith("#")).map((l) => l.replace(/\s/g, ""));
   const w = Math.max(...rows.map((r) => r.length));
   const tiles = rows.map((row) => Array.from({ length: w }, (_, c) => tileOf(row[c] ?? ".")));
-  return townOf(tiles, (c, r) => WAYS[rows[r]?.[c]] ?? "street", rows);
+  return townOf(tiles, (c, r) => rows[r]?.[c] === "#", rows);
 }
 
 export function townOf(
   tiles: Tile[][],
-  way: (c: number, r: number) => Way,
+  through: (c: number, r: number) => boolean,
   rows: string[] = [],
   joins?: (c0: number, r0: number, c1: number, r1: number) => boolean,
 ): Town & { rows: string[] } {
@@ -85,7 +76,7 @@ export function townOf(
   const tile = (c: number, r: number) => tiles[r]?.[c] ?? OPEN;
   const road = (c: number, r: number) => tile(c, r).kind === "road";
   return {
-    w, h, rows, tile, way, joins,
+    w, h, rows, tile, through, joins,
     linked(c0, r0, c1, r1) {
       const [dc, dr] = [c1 - c0, r1 - r0];
       if (!road(c0, r0) || !road(c1, r1) || Math.max(Math.abs(dc), Math.abs(dr)) !== 1) return false;

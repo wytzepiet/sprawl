@@ -1,5 +1,5 @@
 import type { BuildingKind } from "../../generated";
-import { isStreet, type Town } from "./grid";
+import type { Town } from "./grid";
 import { defaultJoins } from "./footprint";
 
 /**
@@ -48,7 +48,7 @@ const free = (town: Town, c: number, r: number) => ["open", "paved"].includes(to
 function near(town: Town, c: number, r: number, k: number) {
   for (let dr = -k; dr <= k; dr++) {
     for (let dc = -k + Math.abs(dr); dc <= k - Math.abs(dr); dc++) {
-      if (isStreet(town, c + dc, r + dr)) return true;
+      if (town.tile(c + dc, r + dr).kind === "road") return true;
     }
   }
   return false;
@@ -109,7 +109,7 @@ export function complete(town: Town, p: Program, stroke: Cell[]): Cell[] | null 
 /** Does the rectangle have a whole long side on a street? A square, any
  *  side. */
 function fronts(town: Town, x: number, y: number, w: number, h: number, wide: boolean) {
-  const road = (c: number, r: number) => isStreet(town, c, r);
+  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   const along = (cells: Cell[]) => cells.every(([c, r]) => road(c, r));
   const row = (r: number) => Array.from({ length: w }, (_, i): Cell => [x + i, r]);
   const col = (c: number) => Array.from({ length: h }, (_, i): Cell => [c, y + i]);
