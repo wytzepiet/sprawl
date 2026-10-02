@@ -85,6 +85,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   fixture with no server, through the town grid (`client/src/engine/town/`,
   `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the
   sheet from it, in seconds.
+- **Building something that is seen:** read `docs/style.md` first: the
+  verdicts so far, how to check a new thing, and where to find real
+  examples. In a cloud session Overpass may not answer; the main
+  OpenStreetMap API and the open aerial photos (PDOK for the Netherlands,
+  USGS NAIP for the US) do, with the URLs in `style.md`.
 - **A real place as a fixture:** `bun run osm <name> @<lat>,<lon>,36,28`
   fetches that many tiles of OpenStreetMap round a point into
   `server/fixtures/<name>.txt` (`TITLE="…"` names it). Overpass is shared

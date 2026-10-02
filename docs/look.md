@@ -1,8 +1,9 @@
 # The look: a town that knows what it is next to
 
-Status: direction, 2026-09-28. Built: the palette, the pen, the fixture
-sheet, and in the sandbox the town grid (§The town grid), which goes into
-the game with parking. The concepts it was argued from are the pattern
+Status: direction, 2026-09-28; the town grid's state as of 2026-10-02.
+Built: the palette, the pen, the fixture sheet, and in the sandbox the
+town grid (§The town grid), which goes into the game with parking. How to
+judge a new thing, and every verdict so far, is `style.md`. The concepts it was argued from are the pattern
 book (https://claude.ai/artifact/XUGqKzMYVtypqraRp9R8tE), where every
 drawing carries the verdict it was given.
 
@@ -147,7 +148,10 @@ The code is `client/src/engine/town/`:
   than a sailing's cars queue back onto the approach road: the player's
   to give a port road enough. A look of the sandbox's for now: `P` is a
   port there and grass to the server, until the game says which berths a
-  port has.
+  port has. **Not right, and kept as the counter-example** (`style.md`):
+  its yard is drawn, so its back rows cannot be reached, and a real queue
+  is a wide road of many lanes, not a square. It is rebuilt on
+  `network.md`.
 - **Not yet: a finer grid under the ground.** Three by three to a tile,
   a sub-cell fits a car, a bay row and aisle and bay row make a tile, and
   lanes, bays, bumps and alleys would be labels on sub-cells. Weighed on
@@ -163,12 +167,13 @@ The code is `client/src/engine/town/`:
   (failed on real plans); plans on a fine grid by marching squares (clean
   diagonals, but nicked corners and slower, for no gain).
 
-What it does not do yet: heights come from the kind alone; the dressing
-is gardens and street trees only; and it is in the sandbox, not the game.
-Next: more dressing (front yards, lamps before shops); then
-into the game on the terrain's chunks and worker, with the facts
-that change play (a depot's docks, an airport's gates) worked out on the
-server.
+What it does not do yet: heights come from the kind alone; the yards'
+lanes, bays and docks are drawn by hand in `dressing.ts`, not yet the
+links and stops of `network.md`; and it is in the sandbox, not the game.
+Next (`style.md` §Next): the network primitives, the yards re-made on
+them, cars that turn naturally; then into the game on the terrain's chunks
+and worker, with the facts that change play (a depot's docks, an
+airport's gates) worked out on the server.
 
 ## The ladders
 
