@@ -109,7 +109,7 @@ a copy where it is removed; if the mayor cannot tell the two apart, the
 guides carry it, and if they can, the guides are what changes. Kept small,
 and run when the guides change, not as a pipeline.
 
-Proposed, waiting for the mayor's yes:
+In, by the mayor's yes of 2026-10-02:
 
 - Building plans: rows, blocks, diagonals (`12-diagonal`, `15-city`).
 - Roads, pavement and kerb parking (`15-city`).
@@ -160,4 +160,6 @@ The order for the sessions after this one:
    lanes, stops, the reachability check; the car park, docks and service
    lane re-made on them.
 4. **Cars that turn and park naturally**, with the physics check.
-5. **The canon**, once the mayor has said yes to its entries.
+5. **The canon**: its first entries are in (§The canon); a first
+   rebuild of one of them from the guides alone shows whether they carry
+   it.
