@@ -18,14 +18,24 @@ short.
 
 A little model of a town on a map, not a real town. Mini Motorways' calm
 (its palette, its light, its clean shapes) with what is Sprawl's own:
-pitched roofs on homes, joined rows and perimeter blocks, cars at the kerb,
-the ink line. European blocks and American suburbs both have a place
+pitched roofs on homes, joined rows and perimeter blocks, cars at the kerb.
+No outlines: shapes are told apart by colour and light alone (2026-10-02).
+European blocks and American suburbs both have a place
 (strokes make rows or detached houses).
 
 ## The verdicts
 
 Each a rule, why, and when it was given. New verdicts go here.
 
+- **Sketch, then rule** (2026-10-02). A new thing is drawn first, by
+  hand, as SVG in the plan's style and scale, two or three variants
+  beside real examples; the mayor picks one, and only then is it written
+  as rules, the plan (`bun run plan`) the check that the rules draw what
+  was picked. Guessing in code and showing the result cost five rounds
+  of correction on a loading bay. The game is seen from above, so most
+  things can be judged in a sketch.
+- **No outlines** (2026-10-02). The black ink line round everything is
+  gone, from the game and the plan.
 - **Big lines only.** Nothing smaller than about a tenth of a tile reads at
   the game's zoom. Plant rooms, chimneys and rooflights were tried and
   were noise (2026-09-30).

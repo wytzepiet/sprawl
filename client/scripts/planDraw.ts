@@ -19,7 +19,6 @@ const T = themes.light;
 const hex = (c: { r: number; g: number; b: number }) =>
   "#" + [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("");
 const CARS = ["#e64033", "#d9d9e0", "#333847", "#4066bf", "#a6a6ad", "#8c2626", "#338066", "#cca640"];
-const INK = "#1d2128";
 
 type Traced = { points: Pt[]; tight: Pt[]; strobe: Pt[][] }[];
 
@@ -35,7 +34,7 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
     out.push(`<polyline fill="none" stroke="${colour}" stroke-width="${w}" points="${pts.map(([x, y]) => `${f(x)},${f(y)}`).join(" ")}"/>`);
   /** A box `l` long along `angle`, `w` wide, its middle at (x, y). */
   const box = (x: number, y: number, angle: number, l: number, w: number, colour: string) =>
-    out.push(`<rect x="${f(-l / 2)}" y="${f(-w / 2)}" width="${f(l)}" height="${f(w)}" fill="${colour}" stroke="${INK}" stroke-width="0.01" transform="translate(${f(x)} ${f(y)}) rotate(${f((angle * 180) / Math.PI)})"/>`);
+    out.push(`<rect x="${f(-l / 2)}" y="${f(-w / 2)}" width="${f(l)}" height="${f(w)}" fill="${colour}" transform="translate(${f(x)} ${f(y)}) rotate(${f((angle * 180) / Math.PI)})"/>`);
   const tiles = (pick: (t: Tile, c: number, r: number) => boolean): Polygon[] => {
     const squares: Polygon[] = [];
     for (let r = 0; r < town.h; r++) for (let c = 0; c < town.w; c++) if (pick(town.tile(c, r), c, r)) squares.push([[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]]);
@@ -46,7 +45,7 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   fill(soften(unite(tiles((t) => t.kind === "water")), 0.3), hex(T.water));
   fill(soften(unite(tiles((t) => t.kind === "wood")), 0.3), hex(T.forest));
 
-  fill(pavement(town), hex(T.paved), `stroke="${INK}" stroke-width="0.015"`);
+  fill(pavement(town), hex(T.paved));
 
   const fs = facts(town);
   const dressing = dress(town, fs);
@@ -55,8 +54,8 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   // The asphalt: roads, and the lanes and drives leading off them, one
   // surface.
   const { street, through } = asphalt(town, dressing.lanes);
-  fill(street, hex(T.road), `stroke="${INK}" stroke-width="0.015"`);
-  fill(through, hex(T.highway), `stroke="${INK}" stroke-width="0.015"`);
+  fill(street, hex(T.road));
+  fill(through, hex(T.highway));
 
   // What stands on the ground: yard lines, lorries at docks, parked
   // cars.
@@ -90,7 +89,6 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
       const { pitch, height } = slope(mass.tile);
       if (height > 0) for (const face of roofFaces(polygon, height / pitch)) fill(face.region, "none", `stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.02"`);
     }
-    fill(outline, "none", `stroke="${INK}" stroke-width="0.03"`);
   }
 
   for (const t of dressing.trees) out.push(`<circle cx="${f(t.x)}" cy="${f(t.y)}" r="${f(0.2 * t.scale)}" fill="${hex(T.crowns[t.shade])}"/>`);

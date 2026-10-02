@@ -1,7 +1,8 @@
 # The look: a town that knows what it is next to
 
 Status: direction, 2026-09-28; the town grid's state as of 2026-10-02.
-Built: the palette, the pen, the fixture sheet, and in the sandbox the
+Built: the palette, the fixture sheet (the pen, an ink line round
+everything, dropped 2026-10-02), and in the sandbox the
 town grid (§The town grid), which goes into the game with parking. How to
 judge a new thing, and every verdict so far, is `style.md`. The concepts it was argued from are the pattern
 book (https://claude.ai/artifact/XUGqKzMYVtypqraRp9R8tE), where every

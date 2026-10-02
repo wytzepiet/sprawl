@@ -425,8 +425,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   // The ground: grass, water, woods and paving, as terrain.
   meshes.push(...terrain(scene, town, theme, rows));
 
-  // A kerb's height over the grass, so the pen inks its edge as it inks a
-  // road's; under the roads.
+  // A kerb's height over the grass, under the roads.
   const PAVED_Z = 0.02;
   /** Polygons laid flat at a height. */
   const flatPolygons = (polys: Polygon[], z: number): MeshGeometry => {
@@ -535,7 +534,6 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   grid.color = Color3.Black();
   grid.alpha = 0.18;
   grid.isPickable = false;
-  grid.metadata = { inked: false };
   grid.isVisible = showGrid;
   meshes.push(grid);
   return meshes;
