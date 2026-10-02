@@ -72,7 +72,7 @@ type ThemeContextType = {
 
 const ThemeContext = createContext<ThemeContextType>();
 
-const themes = { light, dark } as const;
+export const themes = { light, dark } as const;
 
 export function ThemeProvider(props: ParentProps) {
   const [mode, setMode] = createSignal<ThemeMode>("light");

@@ -43,10 +43,18 @@ type V = [number, number, number];
 /** A wall's line: how far in from it a point is, a·x + b·y + c. */
 type Line = [number, number, number];
 
-export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
+/** Every building's plan as it stands: its masses, a service lane cut from
+ *  each and its bump added, each piece's outline rounded from above. */
+export function* plans(painted: Town) {
   const { town, head, services } = facts(painted);
-  // A service lane is cut from its building, and its bump added.
   const cuts = services.map((s): Polygon => [s.cut]);
+  for (const mass of footprints(town, head)) {
+    const bumps = services.map((s): Polygon => [s.bump]).filter((b) => intersect([b], mass.polygons).length);
+    for (const polygon of unite([...subtract(mass.polygons, cuts), ...bumps])) yield { mass, polygon, outline: blunt([polygon], CORNER) };
+  }
+}
+
+export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */
@@ -79,7 +87,7 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
     }
   };
 
-  for (const mass of footprints(town, head)) {
+  for (const { mass, polygon, outline } of plans(painted)) {
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);
@@ -112,36 +120,32 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
       paint(region, z1, dim);
     };
 
-    const bumps = services.map((s): Polygon => [s.bump]).filter((b) => intersect([b], mass.polygons).length);
-    for (const polygon of unite([...subtract(mass.polygons, cuts), ...bumps])) {
-      const outline = blunt([polygon], CORNER);
-      // The roof over a point of the plan: as high as it is far in from
-      // the nearest wall, to its reach.
-      const walls = polygon.flatMap((ring) => ring.map((p, i): [Pt, Pt] => [p, ring[(i + 1) % ring.length]]));
-      const roofAt = (p: Pt) => top + pitch * Math.min(reach, ...walls.map(([a, b]) => toSegment(p, a, b)));
-      if (capped(mass.tile)) {
-        // Walls to the eaves, a flat roof a shade darker, and on it the
-        // slab a shade lighter.
-        prism(outline, 0, () => top, 0.82);
-        prism(shrink(outline, CAP_IN), top, () => top + CAP_H, 1.15);
-        continue;
-      }
-      // Walls: every edge of every ring, from the ground to the roof.
-      prism(outline, 0, roofAt);
-      const faces = reach > 0 ? roofFaces(polygon, reach) : [];
-      for (const { line, region } of faces) {
-        paint(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
-      }
-      const flat = subtract(outline, unite(faces.flatMap((f) => f.region)));
-      paint(flat, () => top + height);
+    // The roof over a point of the plan: as high as it is far in from
+    // the nearest wall, to its reach.
+    const walls = polygon.flatMap((ring) => ring.map((p, i): [Pt, Pt] => [p, ring[(i + 1) % ring.length]]));
+    const roofAt = (p: Pt) => top + pitch * Math.min(reach, ...walls.map(([a, b]) => toSegment(p, a, b)));
+    if (capped(mass.tile)) {
+      // Walls to the eaves, a flat roof a shade darker, and on it the
+      // slab a shade lighter.
+      prism(outline, 0, () => top, 0.82);
+      prism(shrink(outline, CAP_IN), top, () => top + CAP_H, 1.15);
+      continue;
     }
+    // Walls: every edge of every ring, from the ground to the roof.
+    prism(outline, 0, roofAt);
+    const faces = reach > 0 ? roofFaces(polygon, reach) : [];
+    for (const { line, region } of faces) {
+      paint(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
+    }
+    const flat = subtract(outline, unite(faces.flatMap((f) => f.region)));
+    paint(flat, () => top + height);
   }
   return { positions, normals, colors, indices };
 }
 
 /** Each wall's face of a roof that climbs `reach` in from its walls: its
  *  wall's line, and where on the plan it is the lowest face. */
-function roofFaces(polygon: Polygon, reach: number): { line: Line; region: Polygon[] }[] {
+export function roofFaces(polygon: Polygon, reach: number): { line: Line; region: Polygon[] }[] {
   const all = polygon.flat();
   const box: [number, number, number, number] = [
     Math.min(...all.map((p) => p[0])) - 1, Math.min(...all.map((p) => p[1])) - 1,

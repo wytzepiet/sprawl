@@ -144,10 +144,9 @@ The order for the sessions after this one:
    - **Seeing motion**: vehicles' paths logged and plotted, and a short
      sequence of frames, for what a still cannot show (cars turning too
      sharp); the physics check reads the same paths.
-   - **A plan view**: the town grid and the network drawn flat as SVG,
-     no light, no 3D: instant and exact, and comparable between two
-     versions. In a cloud session a sandbox photograph takes twenty
-     seconds to a minute; most layout questions need only the plan.
+   - **A plan view**: built 2026-10-02, `bun run plan` (`CLAUDE.md`):
+     the town grid drawn flat as SVG, instant and exact, and `--at` a
+     before and after. The network goes in it when it is built.
    - **Asking why**: what is at a tile, what it is joined to, why a stop
      is red.
 1. **A research tool**: one command that takes a place, anywhere, and

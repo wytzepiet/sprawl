@@ -1,0 +1,140 @@
+/**
+ * A fixture's town as a flat SVG, layer on layer as the sandbox lays its
+ * meshes (`src/sandbox/Sandbox.tsx`), from the same code: the ground, the
+ * pavement, the roads, the dressing, the buildings and their roofs' edges.
+ * `plan.ts` is the command.
+ */
+import type { BuildingKind } from "../src/generated";
+import { isBuilt, parseTown, townOf, type Tile } from "../src/engine/town/grid";
+import { footprints, intersect, shrink, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
+import { facts } from "../src/engine/town/facts";
+import { dress, FERRY } from "../src/engine/town/dressing";
+import { plans, roofFaces } from "../src/engine/town/roof";
+import { capped, slope } from "../src/engine/town/mass";
+import { buildRoadGeometry, CAB, CAR, HALF_W, TRAILER, type ArmInfo } from "../src/engine/objects/roadGeometry";
+import { BLUEPRINTS } from "../src/blueprints";
+import { themes } from "../src/engine/theme";
+
+const T = themes.light;
+const hex = (c: { r: number; g: number; b: number }) =>
+  "#" + [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("");
+const CARS = ["#e64033", "#d9d9e0", "#333847", "#4066bf", "#a6a6ad", "#8c2626", "#338066", "#cca640"];
+const INK = "#1d2128";
+
+export function planSvg(text: string, { crop, px }: { crop?: [number, number, number, number]; px: number }): string {
+  const town = parseTown(text);
+  const [c0, r0, c1, r1] = crop ?? [0, 0, town.w, town.h];
+  const out: string[] = [];
+  const f = (v: number) => +v.toFixed(3);
+  const d = (poly: Polygon) => poly.map((ring) => "M" + ring.map(([x, y]) => `${f(x)} ${f(y)}`).join("L") + "Z").join("");
+  const fill = (polys: Polygon[], colour: string, extra = "") =>
+    polys.length && out.push(`<path fill-rule="evenodd" fill="${colour}" ${extra} d="${polys.map(d).join("")}"/>`);
+  const line = (pts: Pt[], colour: string, w: number) =>
+    out.push(`<polyline fill="none" stroke="${colour}" stroke-width="${w}" points="${pts.map(([x, y]) => `${f(x)},${f(y)}`).join(" ")}"/>`);
+  /** A box `l` long along `angle`, `w` wide, its middle at (x, y). */
+  const box = (x: number, y: number, angle: number, l: number, w: number, colour: string) =>
+    out.push(`<rect x="${f(-l / 2)}" y="${f(-w / 2)}" width="${f(l)}" height="${f(w)}" fill="${colour}" stroke="${INK}" stroke-width="0.01" transform="translate(${f(x)} ${f(y)}) rotate(${f((angle * 180) / Math.PI)})"/>`);
+  const tiles = (pick: (t: Tile, c: number, r: number) => boolean): Polygon[] => {
+    const squares: Polygon[] = [];
+    for (let r = 0; r < town.h; r++) for (let c = 0; c < town.w; c++) if (pick(town.tile(c, r), c, r)) squares.push([[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]]);
+    return squares;
+  };
+
+  // The ground: water and woods rounded as the terrain rounds them.
+  fill(soften(unite(tiles((t) => t.kind === "water")), 0.3), hex(T.water));
+  fill(soften(unite(tiles((t) => t.kind === "wood")), 0.3), hex(T.forest));
+
+  // The pavement, by the buildings' own rule at full size, softened.
+  const PAVING: Tile = { kind: "House", storeys: 1 };
+  const paved = townOf(
+    Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
+      const t = town.tile(c, r);
+      return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
+    })),
+    () => false,
+  );
+  fill(soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3), hex(T.paved), `stroke="${INK}" stroke-width="0.015"`);
+
+  const fs = facts(town);
+  const dressing = dress(town, fs);
+  fill(dressing.gardens.map(([c, r]): Polygon => [[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]]), hex(T.garden));
+
+  // Roads, each tile's arms as the game lays them, joined into one surface.
+  for (const through of [false, true]) {
+    const tris: Polygon[] = [];
+    for (let r = 0; r < town.h; r++) {
+      for (let c = 0; c < town.w; c++) {
+        if (town.tile(c, r).kind !== "road" || town.through(c, r) !== through) continue;
+        const arms: ArmInfo[] = [];
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (!(dc || dr) || !town.linked(c, r, c + dc, r + dr)) continue;
+            const a = Math.atan2(-dr, -dc);
+            arms.push({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" });
+          }
+        }
+        const geo = buildRoadGeometry(arms, HALF_W, 0);
+        if (!geo) continue;
+        const p = geo.positions;
+        const pt = (i: number): Pt => [c + 0.5 - p[3 * i], r + 0.5 - p[3 * i + 1]];
+        for (let i = 0; i < geo.indices.length; i += 3) {
+          const tri = [pt(geo.indices[i]), pt(geo.indices[i + 1]), pt(geo.indices[i + 2])];
+          // Walls and skirts stand on edge: only what lies flat is road.
+          const area = (tri[1][0] - tri[0][0]) * (tri[2][1] - tri[0][1]) - (tri[2][0] - tri[0][0]) * (tri[1][1] - tri[0][1]);
+          if (Math.abs(area) > 1e-6) tris.push([area > 0 ? tri : tri.reverse()]);
+        }
+      }
+    }
+    // Grown a hair and drawn back, so no seam is left between triangles.
+    fill(shrink(shrink(tris, -1e-3), 1e-3), hex(through ? T.highway : T.road), `stroke="${INK}" stroke-width="0.015"`);
+  }
+
+  // What stands on the ground: parking lanes and bays, yard lines,
+  // service lanes, lorries at docks, parked cars.
+  fill(dressing.lanes.map((r) => [r]), hex(T.road));
+  fill(fs.services.map((s) => [s.lane]), hex(T.road));
+  fill(dressing.bays.map((r) => [r]), "#b8b2a0");
+  fill(dressing.yardLines.map((r) => [r]), "#b8b2a0");
+  for (const car of dressing.cars) box(car.x, car.y, car.angle, CAR.l, CAR.w, CARS[car.colour]);
+  for (const dock of [...dressing.docks, ...fs.services.map((s) => ({ ...s.dock, lorry: true }))]) {
+    const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];
+    line([[dock.x - uy * 0.11, dock.y + ux * 0.11], [dock.x + uy * 0.11, dock.y - ux * 0.11]], "#383d4d", 0.03);
+    if (!dock.lorry) continue;
+    const trailer = 0.01 + TRAILER.l / 2, cab = 0.01 + TRAILER.l + 0.02 + CAB.l / 2;
+    box(dock.x + ux * trailer, dock.y + uy * trailer, dock.angle, TRAILER.l, TRAILER.w, "#e6e6e0");
+    box(dock.x + ux * cab, dock.y + uy * cab, dock.angle, CAB.l, CAB.w, "#475c94");
+  }
+  for (const ship of dressing.ships) {
+    box(ship.x, ship.y, ship.angle, FERRY.l, FERRY.w, "#f5f5f2");
+    const [ux, uy] = [Math.cos(ship.angle), Math.sin(ship.angle)];
+    box(ship.x + ux * 0.4, ship.y + uy * 0.4, ship.angle, FERRY.l * 0.5, FERRY.w * 0.75, "#2b6ba3");
+  }
+
+  // The buildings: each part its kind's colour, a head lighter; the roof's
+  // faces' edges, ridges and hips, thin and light; an office's cap.
+  for (const { mass, polygon, outline } of plans(town)) {
+    for (const part of mass.parts) {
+      const base = BLUEPRINTS[part.tile.kind as BuildingKind]?.color ?? "#888888";
+      const rgb = [1, 3, 5].map((i) => parseInt(base.slice(i, i + 2), 16) / 255).map((v) => (part.head ? v + (1 - v) * 0.45 : v));
+      fill(mass.parts.length === 1 ? outline : intersect(part.polygons, outline), hex({ r: rgb[0], g: rgb[1], b: rgb[2] }));
+    }
+    if (capped(mass.tile)) {
+      out.push(`<path fill="#ffffff" fill-opacity="0.25" d="${d(polygon)}"/>`);
+    } else {
+      const { pitch, height } = slope(mass.tile);
+      if (height > 0) for (const face of roofFaces(polygon, height / pitch)) fill(face.region, "none", `stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.02"`);
+    }
+    fill(outline, "none", `stroke="${INK}" stroke-width="0.03"`);
+  }
+
+  for (const t of dressing.trees) out.push(`<circle cx="${f(t.x)}" cy="${f(t.y)}" r="${f(0.2 * t.scale)}" fill="${hex(T.crowns[t.shade])}"/>`);
+
+  // The grid, faint, every fifth line darker and numbered.
+  for (let c = c0; c <= c1; c++) out.push(`<line x1="${c}" y1="${r0}" x2="${c}" y2="${r1}" stroke="#000" stroke-opacity="${c % 5 ? 0.06 : 0.18}" stroke-width="0.02"/>`);
+  for (let r = r0; r <= r1; r++) out.push(`<line x1="${c0}" y1="${r}" x2="${c1}" y2="${r}" stroke="#000" stroke-opacity="${r % 5 ? 0.06 : 0.18}" stroke-width="0.02"/>`);
+  for (let c = Math.ceil(c0 / 5) * 5; c < c1; c += 5) out.push(`<text x="${c + 0.08}" y="${r0 + 0.35}" font-size="0.3" fill="#000" fill-opacity="0.5">${c}</text>`);
+  for (let r = Math.ceil(r0 / 5) * 5; r < r1; r += 5) if (r !== r0 || c0 % 5) out.push(`<text x="${c0 + 0.08}" y="${r + 0.35}" font-size="0.3" fill="#000" fill-opacity="0.5">${r}</text>`);
+
+  const [w, h] = [c1 - c0, r1 - r0];
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w * px}" height="${h * px}" viewBox="${c0} ${r0} ${w} ${h}" font-family="system-ui"><rect x="${c0}" y="${r0}" width="${w}" height="${h}" fill="${hex(T.land)}"/>${out.join("")}</svg>\n`;
+}
