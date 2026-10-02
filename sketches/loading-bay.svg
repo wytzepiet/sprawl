@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1560 620" font-family="system-ui, sans-serif">
+  <!--
+    The loading bay, three ways, for the mayor to pick. Drawn by hand in
+    the plan's palette and scale: a tile is 60 px, a car 0.29 x 0.15, a
+    lorry's trailer 0.46 x 0.17 and its cab 0.17. The same corner
+    supermarket each time (three tiles by two, its car park on the high
+    street's corner), a quiet side street down its right.
+  -->
+  <defs>
+    <style>
+      .land { fill: #C6DBAB }
+      .paved { fill: #E8ECDF }
+      .road { fill: #F8F6F0 }
+      .shop { fill: #6EC1E4 }
+      .shop-dark { fill: #58A9CC }
+      .trailer { fill: #E6E6E0 }
+      .cab { fill: #475C94 }
+      .door { fill: #383D4D }
+      .bay { fill: none; stroke: #B8B2A0; stroke-width: 1.2 }
+      .label { font-size: 15px; fill: #2b2f36; font-weight: 600 }
+      .note { font-size: 12px; fill: #555b66 }
+      .grid { stroke: #000; stroke-opacity: 0.06; stroke-width: 1 }
+    </style>
+    <!-- A car, its middle at 0,0, pointing along +x. -->
+    <rect id="car" x="-8.7" y="-4.5" width="17.4" height="9" rx="1.5"/>
+    <!-- A lorry: trailer from 0 along +x, the cab beyond it. Its tail is at 0,0. -->
+    <g id="lorry">
+      <rect class="trailer" x="0" y="-5.1" width="27.6" height="10.2" rx="1"/>
+      <rect class="cab" x="28.8" y="-5.1" width="10.2" height="10.2" rx="1.5"/>
+    </g>
+    <!-- One scene: 7 tiles by 5, the high street along the bottom, the side street down the right. -->
+    <g id="scene">
+      <rect class="land" width="420" height="300"/>
+      <!-- pavement round the block -->
+      <rect class="paved" x="0" y="0" width="390" height="270" rx="18"/>
+      <!-- the high street, and the side street -->
+      <rect class="road" x="0" y="258" width="420" height="24"/>
+      <rect class="road" x="318" y="0" width="24" height="300"/>
+      <!-- grid -->
+      <path class="grid" d="M60 0V300M120 0V300M180 0V300M240 0V300M300 0V300M360 0V300M0 60H420M0 120H420M0 180H420M0 240H420"/>
+      <!-- the car park on the high street's corner: two tiles at the front -->
+      <g class="bay">
+        <path d="M132 186H288M132 234H288"/>
+      </g>
+      <g fill="#E64033"><use href="#car" transform="translate(150 198) rotate(90)"/></g>
+      <g fill="#333847"><use href="#car" transform="translate(174 198) rotate(90)"/></g>
+      <g fill="#D9D9E0"><use href="#car" transform="translate(222 198) rotate(90)"/></g>
+      <g fill="#4066BF"><use href="#car" transform="translate(246 222) rotate(90)"/></g>
+      <g fill="#338066"><use href="#car" transform="translate(150 222) rotate(90)"/></g>
+      <g fill="#CCA640"><use href="#car" transform="translate(270 222) rotate(90)"/></g>
+      <!-- kerb cars on the high street -->
+      <g fill="#A6A6AD"><use href="#car" transform="translate(40 246)"/></g>
+      <g fill="#8C2626"><use href="#car" transform="translate(70 246)"/></g>
+    </g>
+  </defs>
+
+  <rect width="1560" height="620" fill="#ffffff"/>
+
+  <!-- A: the dock square to the side wall, a short block, the lorry backed straight up to it off the side street. -->
+  <g transform="translate(20 90) scale(1.18)">
+    <text class="label" x="0" y="-44">A · Square to the side wall</text>
+    <text class="note" x="0" y="-22"><tspan x="0">The lorry backs straight up to a short block</tspan><tspan x="0" dy="14">on the quiet side; nothing cut, nothing paved.</tspan></text>
+    <use href="#scene"/>
+    <!-- the shop: three tiles across the back row and the right-hand front tile -->
+    <path class="shop" d="M132 72H288V168H132Z"/>
+    <!-- the block on the side wall -->
+    <rect class="shop-dark" x="288" y="96" width="12" height="20"/>
+    <rect class="door" x="299" y="99" width="2" height="14"/>
+    <!-- the lorry, its tail to the block, cab out in the side street -->
+    <use href="#lorry" transform="translate(301 106) rotate(0)"/>
+  </g>
+
+  <!-- B: an extrusion at the lorry's back: a loading box at the back corner, the lorry backed in along the back wall from the side street. -->
+  <g transform="translate(540 90) scale(1.18)">
+    <text class="label" x="0" y="-44">B · A box at the lorry's back</text>
+    <text class="note" x="0" y="-22"><tspan x="0">A loading box stands out of the back corner;</tspan><tspan x="0" dy="14">the lorry backs in along the back wall.</tspan></text>
+    <use href="#scene"/>
+    <path class="shop" d="M132 84H288V168H132Z"/>
+    <!-- the box at the back corner -->
+    <rect class="shop-dark" x="132" y="56" width="22" height="28"/>
+    <rect class="door" x="153" y="62" width="2" height="16"/>
+    <!-- the lorry along the back wall, tail to the box, cab toward the side street -->
+    <use href="#lorry" transform="translate(155 70)"/>
+    <!-- its way in: a strip of the block's own ground behind the shop, out to the side street -->
+    <path d="M155 60H318V80H155Z" fill="#F8F6F0" opacity="0.6"/>
+    <use href="#lorry" transform="translate(155 70)"/>
+  </g>
+
+  <!-- C: the lorry parked along the side street's kerb, a short canopy over the gap at its tail. -->
+  <g transform="translate(1060 90) scale(1.18)">
+    <text class="label" x="0" y="-44">C · Along the kerb, a canopy at its tail</text>
+    <text class="note" x="0" y="-22"><tspan x="0">The lorry stands at the side street's kerb;</tspan><tspan x="0" dy="14">a short canopy reaches its back door.</tspan></text>
+    <use href="#scene"/>
+    <path class="shop" d="M132 72H288V168H132Z"/>
+    <!-- the canopy from the side wall to the kerb -->
+    <rect class="shop-dark" x="288" y="132" width="24" height="12"/>
+    <!-- the lorry along the kerb, its tail at the canopy, pointing up the side street -->
+    <use href="#lorry" transform="translate(311 138) rotate(-90)"/>
+  </g>
+
+  <text class="note" x="20" y="575">The faint grid is one tile. Lorry: trailer 0.46 × 0.17 tiles, cab 0.17. The shop's car park (two tiles) faces the high street in all three.</text>
+  <text class="note" x="20" y="595">Not shown: with no quiet street, the lane down the shop's side (as in 14-business, approved).</text>
+</svg>
