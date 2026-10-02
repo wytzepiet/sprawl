@@ -58,7 +58,7 @@ export interface Dressing {
   trees: Tree[];
   cars: Car[];
   /** What is driven on off the road and joins it (`asphalt`): drives,
-   *  service lanes, ramps. */
+   *  ramps. */
   lanes: Pt[][];
   docks: Dock[];
   /** The lines between the bays of yards: docks, car parks and a ferry
@@ -126,22 +126,14 @@ export function dress(town: Town, facts: Facts): Dressing {
   // A car does not stand where a tree does, nor its bay; nor across a
   // driveway's mouth.
   const drives = driveways(town);
-  // Nor across a service lane's mouth, its box and a car length round it;
-  // nor where a lorry stands at the kerb to unload.
-  const across = (x: number, y: number) =>
-    facts.services.some(({ lane, dock }) => {
-      if (!lane) return Math.hypot(dock.x - x, dock.y - y) < CAB.l + TRAILER.l + BAY / 2;
-      const [xs, ys] = [lane.map((p) => p[0]), lane.map((p) => p[1])];
-      return x > Math.min(...xs) - BAY / 2 && x < Math.max(...xs) + BAY / 2 && y > Math.min(...ys) - BAY / 2 && y < Math.max(...ys) + BAY / 2;
-    });
   const clear = (x: number, y: number) =>
-    trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2) && !across(x, y);
+    trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
   const cars = [...park(town, facts).filter((car) => clear(car.x, car.y)), ...drives.cars];
   const lorries = docks(town, facts), lots = carParks(town, facts);
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...service.flatMap((s) => (s.lane ? [s.lane] : [])), ...port.ramps],
+    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...port.ramps],
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
@@ -172,10 +164,9 @@ const ROUND = 0.05;
 /**
  * The asphalt: the roads as the game lays them, each tile's arms to the
  * tiles it is joined to, and what is driven on that leads off them,
- * driveways, service lanes, ramps, as one surface, its corners rounded in
- * and out, so a drive reads as the road carried on. A kerb's parking lane
- * stands apart, beside it. Through roads keep their own colour, cut from
- * it straight.
+ * driveways and ramps, as one surface, its corners rounded in and out,
+ * so a drive reads as the road carried on. Through roads keep their own
+ * colour, cut from it straight.
  */
 export function asphalt(town: Town, lanes: Pt[][]): { street: Polygon[]; through: Polygon[] } {
   const tiles = (through: boolean) => {

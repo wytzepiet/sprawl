@@ -55,13 +55,14 @@ describe("facts and dressing", () => {
     expect(dress(t, f).cars.length).toBeGreaterThan(8);
   });
 
-  test("a supermarket two deep takes deliveries at the back, a small one at the kerb", () => {
+  test("a supermarket two tiles each way takes deliveries in a corner cut from it, off the road", () => {
     const big = town(["=.....", "======", "=MMM..", "=MMM..", "=MMM..", "=....."]);
     const [service] = facts(big).services;
-    expect(service).toBeDefined();
-    // The bump sticks out past the shop's tiles (x 1 to 4, y 2 to 5).
-    const [xs, ys] = [service.bump!.map(([x]) => x), service.bump!.map(([, y]) => y)];
-    expect(Math.max(...xs) > 4 || Math.min(...xs) < 1 || Math.max(...ys) > 5 || Math.min(...ys) < 2).toBe(true);
+    // The cut lies in the shop's tiles (x 1 to 4, y 2 to 5), and the
+    // lorry with it: its tail at the dock, a lorry long along its way.
+    const { x, y, angle } = service.dock;
+    const cab = [x + Math.cos(angle) * 0.65, y + Math.sin(angle) * 0.65];
+    for (const [px, py] of [...service.cut, [x, y], cab]) expect(px >= 1 && px <= 4 && py >= 2 && py <= 5).toBe(true);
     expect(dress(big, facts(big)).docks.length).toBe(1);
     const small = town(["=.....", "======", "=MM...", "=MM...", "=....."]);
     expect(facts(small).services.length).toBe(0);

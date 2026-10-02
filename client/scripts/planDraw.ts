@@ -6,7 +6,7 @@
  */
 import type { BuildingKind } from "../src/generated";
 import { parseTown, type Tile } from "../src/engine/town/grid";
-import { soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
+import { intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
 import { facts } from "../src/engine/town/facts";
 import { asphalt, dress, FERRY, pavement } from "../src/engine/town/dressing";
 import { plans, roofFaces } from "../src/engine/town/roof";
@@ -51,7 +51,7 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   const dressing = dress(town, fs);
   fill(dressing.gardens.map(([c, r]): Polygon => [[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]]), hex(T.garden));
 
-  // The asphalt: roads, and the lanes and drives leading off them, one
+  // The asphalt: roads, and the drives and ramps leading off them, one
   // surface.
   const { street, through } = asphalt(town, dressing.lanes);
   fill(street, hex(T.road));
@@ -61,7 +61,7 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   // cars.
   fill(dressing.yardLines.map((r) => [r]), "#b8b2a0");
   for (const car of dressing.cars) box(car.x, car.y, car.angle, CAR.l, CAR.w, CARS[car.colour]);
-  for (const dock of [...dressing.docks, ...fs.services.map((s) => ({ ...s.dock, lorry: true }))]) {
+  for (const dock of dressing.docks) {
     const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];
     line([[dock.x - uy * 0.11, dock.y + ux * 0.11], [dock.x + uy * 0.11, dock.y - ux * 0.11]], "#383d4d", 0.03);
     if (!dock.lorry) continue;
@@ -77,12 +77,12 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
 
   // The buildings: each part its kind's colour, a head lighter; the roof's
   // faces' edges, ridges and hips, thin and light; an office's cap.
-  for (const { mass, polygon, outline, within } of plans(town)) {
-    mass.parts.forEach((part, i) => {
+  for (const { mass, polygon, outline } of plans(town)) {
+    for (const part of mass.parts) {
       const base = BLUEPRINTS[part.tile.kind as BuildingKind]?.color ?? "#888888";
       const rgb = [1, 3, 5].map((k) => parseInt(base.slice(k, k + 2), 16) / 255).map((v) => (part.head ? v + (1 - v) * 0.45 : v));
-      fill(within(outline, i), hex({ r: rgb[0], g: rgb[1], b: rgb[2] }));
-    });
+      fill(mass.parts.length === 1 ? outline : intersect(part.polygons, outline), hex({ r: rgb[0], g: rgb[1], b: rgb[2] }));
+    }
     if (capped(mass.tile)) {
       out.push(`<path fill="#ffffff" fill-opacity="0.25" d="${d(polygon)}"/>`);
     } else {

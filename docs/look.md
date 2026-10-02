@@ -94,12 +94,13 @@ The code is `client/src/engine/town/`:
   from its quiet end or its busy one. A depot's is at the quiet end, a
   dock for every two tiles, its office at the busy end; a supermarket's
   car park is on the busy corner, three cars to a tile of shop. The rest
-  is building. A supermarket two tiles deep and wide also takes its
-  deliveries at the back, as real ones do (six Dutch ones from
-  OpenStreetMap, 2026-09-30): a lane cut from its quieter side, front to
-  back, and at its end a bump on the back wall, the loading bay, with a
-  lorry backed up to it. Neither takes a tile: the lane is cut from the
-  building, the bump stands in the margins behind it. Everything drawn is a function of a tile, its neighbours and
+  is building. A supermarket whose shop is two tiles each way also takes its
+  deliveries, in a corner cut from it a lorry long and wide, the lorry
+  backed in along the wall with its tail to the door: the back corner if
+  a street runs behind, else down a side street, else at the front
+  corner beside the car park (`sketches/loading-bay.svg`, D to F, the
+  mayor, 2026-10-02). The lorry stands in the shop's own tiles, never on
+  a road. Everything drawn is a function of a tile, its neighbours and
   these facts.
 - **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
   courtyard is a lawn with a tree on most tiles; paved ground closed in
@@ -122,17 +123,11 @@ The code is `client/src/engine/town/`:
   house with buildings on both sides, park at the kerb. Built beside,
   the drive goes. So a suburb has driveways and a terrace parks in the
   street, by the neighbours alone (`17-driveways`, 2026-10-02). The
-  road, the drives and the service lanes are one asphalt (`asphalt` in
+  road and the drives are one asphalt (`asphalt` in
   `dressing.ts`), its corners rounded in and out, so a drive reads as
   the road carried on. The kerb is not the road, and is not drawn: the
   cars beside the road are enough (2026-10-02, the mayor). A street
-  behind a building is just a street (the mayor, 2026-10-02). A
-  supermarket takes its deliveries by the quietest street along its
-  shop whose wall there is a lorry long: a loading block stands out of
-  the wall to the kerb, and the lorry parks along the kerb with its tail
-  to it, nothing cut from its side or its car park and nothing paved for
-  it, the grey is enough (`19-back-street`). Where no wall is long
-  enough, the lane down its side as before. The pavement is
+  behind a building is just a street (the mayor, 2026-10-02). The pavement is
   ground: every road, building and yard makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal
@@ -200,7 +195,7 @@ airport's gates) worked out on the server.
 shape the player paints, not from a choice. A supermarket of one tile is
 a corner shop, its customers at the kerb; of two or three, it gives its
 busy corner to a car park; once the shop itself is two tiles each way, a
-service lane and loading bay at the back; past that the car park grows,
+loading bay cut from a corner; past that the car park grows,
 three cars to a tile of shop (`18-supermarkets`). Built: the
 supermarket. To come, the same way: a depot from a lock-up with a van to
 a yard of docks, a petrol station from a kiosk and a pump at the kerb to

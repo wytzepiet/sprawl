@@ -1,7 +1,7 @@
 import { isBuilt, type Town } from "./grid";
 import { formOf, type Yard } from "./mass";
 import { defaultJoins, INSET, type Pt } from "./footprint";
-import { CAB, HALF_W, TRAILER } from "../objects/roadGeometry";
+import { CAB, TRAILER } from "../objects/roadGeometry";
 
 /**
  * What a tile cannot see from its neighbours, worked out once over the
@@ -25,36 +25,24 @@ import { CAB, HALF_W, TRAILER } from "../objects/roadGeometry";
  *   tiles as one ferry load fills; the rest, in the far corner, is the
  *   terminal. At the middle of its water's edge, a ramp, and
  *   the ferry moored stern on to it (`ferries`).
- * - **Service bays**: a supermarket two tiles or more each way takes its
- *   deliveries at the back. A lane is cut from its quieter side, from the
- *   front to the back, and at the lane's end a bump sticks out of the back
- *   wall: the loading bay, its door facing up the lane, a lorry backed up
- *   to it. None of it takes a tile: the lane is cut from the building, the
- *   bump stands in the margins behind it. A supermarket with another
- *   street besides its front, its wall there a lorry long, takes its
- *   deliveries by the quietest: a loading block standing out of that
- *   wall to the kerb, the lorry parked along the kerb with its tail to
- *   it, its side and car park whole.
+ * - **Loading bays**: a supermarket whose shop is two tiles or more each
+ *   way takes its deliveries in a corner cut from it, a lorry long and
+ *   wide, the lorry backed in along the wall with its tail to the door.
+ *   The back corner if a street runs behind, else down a side street,
+ *   else down a side with room, beside the car park. The lorry stands in
+ *   the shop's own tiles: never on a road, nothing paved for it.
  */
 
-/** A supermarket's service bay, in the town's plan: the lane cut from the
- *  building, the bump added to it, the lane's tarmac, and the dock at the
- *  bump's door. */
+/** A supermarket's loading bay, in the town's plan: the corner cut from
+ *  the building, and the dock at its inner end, where the lorry's tail
+ *  is. */
 export interface Service {
-  cut?: Pt[];
-  bump?: Pt[];
-  lane?: Pt[];
+  cut: Pt[];
   dock: { x: number; y: number; angle: number };
 }
-/** Room along a wall for a lorry parked at the kerb and the loading
- *  block it backs to, and the block's width along the wall. */
-const BLOCK = { w: 0.16 };
-const LAYBY = { l: CAB.l + TRAILER.l + BLOCK.w + 0.06 };
-/** The lane's width, cut from the building beyond its inset. */
-const LANE = 0.3;
-/** How far the bump reaches past its tile's edge: into the margin beyond,
- *  still short of a building there. */
-const BUMP = 0.12;
+/** The cutout: a lorry long and a little over, a lorry wide and a little
+ *  over. */
+const BAY = { l: TRAILER.l + 0.02 + CAB.l + 0.04, w: TRAILER.w + 0.06 };
 
 /** Lorry bays along a dock: three to a tile of wall. */
 export const DOCKS = 3;
@@ -141,73 +129,61 @@ function berth(town: Town, cells: [number, number][]) {
   return { to, side, exit: column(side) };
 }
 
-/** Each supermarket's service bay, where it is two tiles or more each way:
- *  in the frame of its front `f` (toward its car park, or its street) and
- *  its quieter side `s`. */
+/** Each supermarket's loading bay, where its shop is two tiles or more
+ *  each way: a lorry-sized cutout in a corner, in the frame of the wall
+ *  `d` it runs along and the way `s` the lorry's cab points, out of the
+ *  corner. */
 function services(town: Town, yard: Map<string, Yard["fill"]>): Service[] {
   const out: Service[] = [];
   for (const cells of buildings(town)) {
     if (town.tile(...cells[0]).kind !== "Supermarket") continue;
     const shop = cells.filter(([c, r]) => !yard.has(`${c},${r}`));
-    const open = (c: number, r: number) => yard.has(`${c},${r}`) || town.tile(c, r).kind === "road";
-    // Its front: the side with most car park and street along it.
-    const along = ([dc, dr]: number[]) => shop.filter(([c, r]) => open(c + dc, r + dr)).length;
-    const f = [...SIDES].sort((a, b) => along(b) - along(a))[0];
-    if (!shop.length || !along(f)) continue;
-    /** A tile's extent along an axis. */
-    const span = ([ux, uy]: number[], [c, r]: [number, number]) => {
-      const ks = [[c, r], [c + 1, r], [c, r + 1], [c + 1, r + 1]].map(([x, y]) => x * ux + y * uy);
-      return [Math.min(...ks), Math.max(...ks)];
-    };
-    const extent = (u: number[]) => [Math.min(...shop.map((t) => span(u, t)[0])), Math.max(...shop.map((t) => span(u, t)[1]))];
+    const parked = (c: number, r: number) => yard.has(`${c},${r}`);
+    const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+    // Its front: the side with most car park along it, then street.
+    const along = (open: typeof road, [dc, dr]: number[]) => shop.filter(([c, r]) => open(c + dc, r + dr)).length;
+    const f = [...SIDES].sort((a, b) => along(parked, b) - along(parked, a) || along(road, b) - along(road, a))[0];
+    if (!shop.length || !(along(parked, f) + along(road, f))) continue;
+    /** How far a tile reaches along an axis. */
+    const far = ([ux, uy]: number[], [c, r]: [number, number]) => Math.max(c * ux + r * uy, (c + 1) * ux + r * uy, c * ux + (r + 1) * uy, (c + 1) * ux + (r + 1) * uy);
+    const extent = (u: number[]) => Math.max(...shop.map((t) => far(u, t))) + Math.max(...shop.map((t) => far([-u[0], -u[1]], t)));
+    if (extent(f) < 2 || extent([f[1], f[0]]) < 2) continue;
     const back = [-f[0], -f[1]];
-    // Deliveries come by the quietest street along its shop, to a loading
-    // block standing out of the wall there, the lorry parked
-    // along the kerb with its tail to the block, where that wall is a
-    // lorry long: nothing is cut from its side or its car park.
-    const layby = SIDES.flatMap((d) => {
-      const on = shop.filter(([c, r]) => town.tile(c + d[0], r + d[1]).kind === "road");
-      const [sx, sy] = [-d[1], d[0]];
-      if (!on.length) return [];
-      const [q0, q1] = [Math.min(...on.map((t) => span([sx, sy], t)[0])), Math.max(...on.map((t) => span([sx, sy], t)[1]))];
-      if (q1 - q0 - 2 * INSET < LAYBY.l) return [];
-      const quiet = on.reduce((n, [c, r]) => n + streetAround(town, c + d[0], r + d[1]), 0) / on.length;
-      return [{ d, sx, sy, q0, q1, wall: Math.max(...on.map((t) => span(d, t)[1])) - INSET, quiet }];
-    }).sort((a, b) => a.quiet - b.quiet)[0];
-    if (layby) {
-      const { d, sx, sy, q0, q1, wall } = layby;
-      /** A point by how far out toward that street and how far along it. */
-      const at = (a: number, q: number): Pt => [a * d[0] + q * sx, a * d[1] + q * sy];
-      const box = (a: number, b: number, p: number, q: number): Pt[] => [at(a, p), at(b, p), at(b, q), at(a, q)];
-      // The block at one end of the wall, out to the kerb; the lorry at
-      // the kerb beside it, its tail to the block's side.
-      const m0 = (q0 + q1 - LAYBY.l) / 2;
-      const kerb = wall + INSET + 0.5 - HALF_W - 0.03 - TRAILER.w / 2;
-      const [x, y] = at(kerb, m0 + BLOCK.w);
-      out.push({
-        bump: box(wall - 0.2, kerb + TRAILER.w / 2, m0, m0 + BLOCK.w),
-        dock: { x, y, angle: Math.atan2(sy, sx) },
-      });
-      continue;
-    }
-    const [a0, a1] = extent(back);
     const sides = [[-f[1], f[0]], [f[1], -f[0]]];
-    if (a1 - a0 < 2 || extent(sides[0])[1] + extent(sides[1])[1] < 2) continue;
-    // The quieter side: less street round its back corner.
-    const corner = (s: number[]) => shop.reduce((best, t) => (span(s, t)[1] + span(back, t)[1] > span(s, best)[1] + span(back, best)[1] ? t : best));
-    const s = sides.map((s) => ({ s, n: streetAround(town, ...corner(s)) })).sort((a, b) => a.n - b.n)[0].s;
-    const q1 = extent(s)[1];
-    /** A point by how far back it is and how far to the side. */
-    const at = (a: number, q: number): Pt => [a * back[0] + q * s[0], a * back[1] + q * s[1]];
-    const box = (a: number, b: number, p: number, q: number): Pt[] => [at(a, p), at(b, p), at(b, q), at(a, q)];
-    const wall = a1 - INSET;
-    const mid = q1 - INSET / 2 - LANE / 2 - 0.03;
-    const [x, y] = at(wall, mid);
+    const street = (d: number[]) => shop.some(([c, r]) => far(d, [c, r]) === Math.max(...shop.map((t) => far(d, t))) && town.tile(c + d[0], r + d[1]).kind === "road");
+    /** The tile at the corner of walls `d` and `s`: furthest along `d`,
+     *  then along `s`. */
+    const corner = (d: number[], s: number[]) => shop.reduce((best, t) => (far(d, t) - far(d, best) || far(s, t) - far(s, best)) > 0 ? t : best);
+    const mine = new Set(cells.map(([c, r]) => `${c},${r}`));
+    const room = (c: number, r: number) => mine.has(`${c},${r}`) || !isBuilt(town.tile(c, r));
+    const free = (d: number[], s: number[]) => {
+      const [c, r] = corner(d, s);
+      return room(c + d[0], r + d[1]) && room(c + d[0] + s[0], r + d[1] + s[1]);
+    };
+    const quiet = (d: number[]) => shop.reduce((n, [c, r]) => n + streetAround(town, c + d[0], r + d[1]), 0);
+    /** Out of the corner of `d` and `s`, straight onto a street rather
+     *  than across the car park. */
+    const clear = (d: number[], s: number[]) => {
+      const [c, r] = corner(d, s);
+      return !parked(c + s[0], r + s[1]);
+    };
+    // The back, if a street runs behind, the cab toward a side street, or
+    // a side with room; else a side with a street, the cab to the back;
+    // else a side with room, the cab to the front, beside the car park
+    // rather than through it.
+    const [d, s] =
+      street(back) ? [back, sides.find(street) ?? sides.find((s) => free(back, s)) ?? sides[0]]
+      : sides.some(street) ? [sides.filter(street).sort((a, b) => quiet(a) - quiet(b))[0], back]
+      : [sides.filter((d) => free(d, f)).sort((a, b) => +clear(b, f) - +clear(a, f))[0], f];
+    if (!d) continue;
+    const [c, r] = corner(d, s);
+    const [wall, end] = [far(d, [c, r]) - INSET, far(s, [c, r]) - INSET];
+    /** A point by how far out along `d` and how far along `s`. */
+    const at = (a: number, q: number): Pt => [a * d[0] + q * s[0], a * d[1] + q * s[1]];
+    const [x, y] = at(wall - BAY.w / 2, end - BAY.l);
     out.push({
-      cut: box(a0 - 0.01, a1 + 0.01, q1 - INSET - LANE, q1 + 0.01),
-      bump: box(wall - 0.05, a1 + BUMP, q1 - INSET - LANE - 0.45, q1 - 0.05),
-      lane: box(a0, wall, q1 - INSET - LANE, q1 - 0.06),
-      dock: { x, y, angle: Math.atan2(-back[1], -back[0]) },
+      cut: [at(wall - BAY.w, end - BAY.l), at(wall + INSET, end - BAY.l), at(wall + INSET, end + INSET), at(wall - BAY.w, end + INSET)],
+      dock: { x, y, angle: Math.atan2(s[1], s[0]) },
     });
   }
   return out;
