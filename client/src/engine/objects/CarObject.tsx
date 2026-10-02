@@ -189,10 +189,10 @@ const driving = new Map<number, { route: string; drive: Drive; x: number; v: num
  *  clock. */
 function follow(id: number, car: Car, rig: Rig) {
   const t = car.trip!;
-  const route = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.reverse]);
+  const route = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing]);
   let me = driving.get(id);
   if (me?.route !== route) {
-    const drive = driveTrip(t.route_positions as Pt[], t.from_lot, t.to_lot, t.reverse, rig);
+    const drive = driveTrip(t.route_positions as Pt[], t.from_lot, t.to_lot, t.backing, rig);
     if (!drive) return null;
     me = { route, drive, x: Number.NaN, v: 0, then: simNow() };
     driving.set(id, me);

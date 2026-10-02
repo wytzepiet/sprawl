@@ -506,7 +506,7 @@ pub fn handle_car_wake_up(
     // In a lot, a crawl: on any edge that ends at a lot node, from its start.
     // Backing in, half that.
     if world.lot_nodes.contains_key(&trip.route[ri]) {
-        let reversing = ri + trip.reverse >= trip.route.len();
+        let reversing = trip.backing.iter().any(|&[a, b]| a < ri && ri <= b);
         obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: if reversing { LOT_SPEED / 2.0 } else { LOT_SPEED } });
     }
     if let Some(limit) = bend(world, &trip.route, ri) {

@@ -36,7 +36,7 @@ const CHUNK = 32;
 /** Quiet this long and the server has said all it will about a command;
  *  silent this long, and it will say nothing. */
 const SETTLE_MS = 400;
-const WAIT_MS = 2000;
+const WAIT_MS = 5000;
 /** The server's top speed (`MAX_SPEED` in `game_loop`). */
 const FULL = 50;
 
@@ -79,7 +79,7 @@ ws.onmessage = (e) => {
   for (const op of msg.data.ops as Op[]) {
     const trip = op.op === "Upsert" && op.data.object.kind === "Car" && op.data.object.data.trip;
     if (!trip) continue;
-    const t: Recorded = { car: (op as any).data.id, role: (op as any).data.object.data.role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, reverse: trip.reverse };
+    const t: Recorded = { car: (op as any).data.id, role: (op as any).data.object.data.role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, backing: trip.backing };
     trips.set(`${t.car}:${JSON.stringify(t.route)}`, t);
   }
 };

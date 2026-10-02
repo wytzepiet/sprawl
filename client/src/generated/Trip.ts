@@ -20,10 +20,11 @@ eta: number, route_positions: Array<[number, number]>,
  */
 from_lot: number, to_lot: number, 
 /**
- * How many edges at the end are driven backwards: a lorry backing
- * into its dock. Drawn facing the other way, trailer first.
+ * The stretches driven backwards, as `[a, b]`: the edges from route[k]
+ * to route[k + 1] for a <= k < b. A car backing out of its driveway, a
+ * lorry backing into its dock. Each end of one is a change of gear.
  */
-reverse: number, 
+backing: Array<[number, number]>, 
 /**
  * Cumulative distance along the route.
  */

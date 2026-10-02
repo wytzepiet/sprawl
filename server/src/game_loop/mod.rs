@@ -562,7 +562,7 @@ fn try_reroute(
         world.update_position(car_id, pos);
     }
 
-    let reverse = world.reverse_tail(car_id);
+    let backing = crate::car::spawn::backing(0, world.reverse_tail(car_id), new_route.len());
     if let Some(entry) = world.objects.get_mut(car_id)
         && let GameObject::Car(ref mut car) = entry.object
         && let Some(ref mut t) = car.trip
@@ -571,7 +571,7 @@ fn try_reroute(
         t.route_positions = route_positions;
         t.from_lot = 0;
         t.to_lot = to_lot;
-        t.reverse = reverse;
+        t.backing = backing;
         t.segment_lengths = segment_lengths;
         t.total_route_length = total;
         t.route_index = 1;

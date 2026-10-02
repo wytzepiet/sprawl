@@ -26,6 +26,13 @@
 > Open: how far "within reach" is; whether a home's residents prefer the
 > bay by their own door; how cruising picks the next street.
 
+Changes of gear, 2026-10-02: a trip carries the stretches of its route
+driven backwards (`Trip::backing`, edges `[a, b)`), not only a tail, and
+the client drives each part as a vehicle steers (`driver.ts`). A house's
+car drives onto its driveway nose first, from the street, and backs out
+onto it; a lorry still backs into its dock. A kerb bay will be the same:
+a few nodes and a change of gear.
+
 Status: specification, drafted 2026-09-06. §8 step 1 built the same day
 in its generic form: every building has a two-spot lot on its driveway
 (`world/lots.rs`), trips end in a spot and start from one, a parked car

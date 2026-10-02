@@ -6,9 +6,8 @@
 //! Nothing about a lot is streamed: a parked car carries its pose, a moving
 //! one its route.
 //!
-//! Two shapes. A kind with no lot parks two cars on its driveway, nose out,
-//! one each lane: a car drives in past the driveway node, turns, and comes
-//! out onto its lane. A kind with a lot has a ring: a one-way loop of lane
+//! Two shapes. A kind with no lot parks two cars on its driveway, side by
+//! side: a car drives in nose first and backs out onto the street. A kind with a lot has a ring: a one-way loop of lane
 //! hugging the lot's edge, spots in the island inside it, each driven
 //! through from the front lane to the back one. A lot is its building's
 //! own — as wide as its kind says, never a neighbour's — with as many
@@ -117,8 +116,8 @@ struct Member {
 
 /// The way in and out of a lot, as node sequences the routes are made of.
 enum Way {
-    /// A driveway pair: in from the driveway node to the spot, out from the
-    /// spot straight to the street; the door is the driveway node itself.
+    /// A driveway pair: in from the street to the spot nose first, out
+    /// backing straight to the street; the door is the driveway node.
     Driveway { driveway: EntityId, street: EntityId },
     /// A ring, as its nodes in the order the flow takes them, cyclic, with
     /// each spot's entry and exit on it.
@@ -294,17 +293,18 @@ impl World {
                 lot.edges = edges;
                 return Some(lot);
             }
-            // A driveway pair. Spot 0 is on the lane a car leaves by.
+            // A driveway pair, driven into nose first and backed out of.
+            // Spot 0 is on the lane a car leaves by.
             let (driveway, street) = seat.gates[0];
             let d = self.node_pos(driveway)?;
             let s = self.node_pos(street)?;
             let len = ((s[0] - d[0]).powi(2) + (s[1] - d[1]).powi(2)).sqrt();
             let out = [(s[0] - d[0]) / len, (s[1] - d[1]) / len];
-            let heading = out[1].atan2(out[0]);
+            let heading = (-out[1]).atan2(-out[0]);
             for side in [1.0, -1.0] {
                 let at = [d[0] + out[0] * SPOT_OUT - out[1] * LANE * side, d[1] + out[1] * SPOT_OUT + out[0] * LANE * side];
                 let id = node(self, at);
-                edge(self, driveway, id);
+                edge(self, street, id);
                 edge(self, id, street);
                 spots.push(Spot { node: id, pose: Pose { at, heading }, windows: Vec::new() });
             }
@@ -894,8 +894,8 @@ impl World {
         let lot = self.lots.get(&key)?;
         let m = lot.members.iter().find(|m| m.building == building)?;
         Some(match (&lot.way, claim) {
-            (Way::Driveway { driveway, .. }, Claim::Spot(i)) => vec![*driveway, lot.spots[i].node],
-            (Way::Driveway { driveway, .. }, Claim::Door(_)) => vec![*driveway],
+            (Way::Driveway { street, .. }, Claim::Spot(i)) => vec![*street, lot.spots[i].node],
+            (Way::Driveway { driveway, street }, Claim::Door(_)) => vec![*street, *driveway],
             // Along the lane past the mouth to the stop point, then back
             // to the mouth and into the dock: the last two edges in reverse.
             (Way::Yard { lane, bays, street }, Claim::Spot(i)) => {
@@ -921,19 +921,28 @@ impl World {
         })
     }
 
-    /// The node a street route to this building ends at: its driveway, or
-    /// for a ring or a yard the street node its entrance joins — and for
-    /// something with no lot at all, the road it stands on.
+    /// The node a street route to this building ends at: the street node
+    /// its driveway or entrance joins — and for something with no lot at
+    /// all, the road it stands on.
     pub fn approach(&mut self, building: EntityId) -> Option<EntityId> {
         if self.lot_mut(building).is_none() {
             return self.road_node_for_building(building);
         }
         let lot = self.lot_mut(building)?;
         Some(match lot.way {
-            Way::Driveway { driveway, .. } => driveway,
-            Way::Yard { street, .. } => street,
+            Way::Driveway { street, .. } | Way::Yard { street, .. } => street,
             Way::Ring { .. } => entrance(lot, lot.members.iter().find(|m| m.building == building)?).1,
         })
+    }
+
+    /// How many edges at the start of the car's way out are driven
+    /// backwards: one off a driveway, onto the street; none anywhere else.
+    pub fn backs_out(&self, car: EntityId) -> usize {
+        let Some(&key) = self.claims.get(&car) else { return 0 };
+        match (self.lots.get(&key).map(|l| &l.way), self.claim_of(key, car)) {
+            (Some(Way::Driveway { .. }), Some(Claim::Spot(_))) => 1,
+            _ => 0,
+        }
     }
 
     /// How many edges at the end of the car's way in are driven backwards:
@@ -1156,6 +1165,35 @@ mod tests {
         // Staff at a depot stop at the door: a yard has no car spots.
         let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
         assert!(matches!(world.claim_spot(depot, car, 0, GameTime::MAX), Some(Claim::Door(_))));
+    }
+
+    /// A house's car drives onto its driveway nose first, stands facing the
+    /// house, and backs out onto the street when it leaves: the first edge
+    /// of the trip out is driven backwards, and then it drives on.
+    #[test]
+    fn a_car_backs_out_of_its_driveway() {
+        let mut world = street();
+        let house = world.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::House).unwrap();
+        let depot = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Warehouse).unwrap();
+        let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
+        let way = world.way_in(house, car, 0, GameTime::MAX).unwrap();
+        let driveway = world.node_pos(world.road_node_for_building(house).unwrap()).unwrap();
+        let spot = world.node_pos(way[1]).unwrap();
+        world.park_in_lot(house, car, 0);
+        let pose = match world.objects.get(car).map(|e| &e.object) {
+            Some(GameObject::Car(c)) => c.spot.unwrap(),
+            _ => unreachable!(),
+        };
+        let (dx, dy) = (driveway[0] - spot[0], driveway[1] - spot[1]);
+        assert!(pose.heading.cos() * dx + pose.heading.sin() * dy > 0.0, "parked facing the house, the way it drove in");
+        assert_eq!(world.backs_out(car), 1, "backed off the driveway");
+        let mut events = crate::engine::event_queue::EventQueue::new();
+        assert!(crate::car::spawn::start_trip(&mut world, &mut events, car, way[0], depot, 0, GameTime::MAX));
+        let trip = match world.objects.get(car).map(|e| &e.object) {
+            Some(GameObject::Car(c)) => c.trip.clone().unwrap(),
+            _ => unreachable!(),
+        };
+        assert_eq!(trip.backing, vec![[0, 1]], "the first edge backwards, the rest forward");
     }
 
 }

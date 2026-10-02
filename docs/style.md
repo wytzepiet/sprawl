@@ -175,9 +175,12 @@ The order for the sessions after this one:
    server's, fed its speed. A seed-7 morning: the tightest street turn
    per trip from 0.23 to 0.29 typically, with no drive ending off its
    route. Where a route turns tighter than a car can (a lot's aisle, a
-   driveway), the driver is put back on it: those want routes of a few
-   waypoints with a change to reverse, the next step. Lorries backing
-   are untried in a running game. The 0.45 above may be the wrong
+   driveway), the driver is put back on it. Trips now carry their
+   changes of gear (`parking.md`): a house's car backs out of its
+   driveway, a lorry backs into its dock, both seen on the plan from
+   the server's own tests (`a_car_backs_out_of_its_driveway`). Still
+   too tight for a car to turn: a driveway two-thirds of a tile from
+   the street, a ring's spots; the kerb bays to come want room. The 0.45 above may be the wrong
    number: 5.5 m is a turning circle at the outer wheel, kerb to kerb,
    and the middle of a car turns at about 4 m, 0.33.
 5. **The canon**: its first entries are in (§The canon); a first
