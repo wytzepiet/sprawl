@@ -33,7 +33,7 @@ export interface Town {
 
 export const LETTERS: Record<string, BuildingKind> = {
   H: "House", A: "Apartment", S: "Shop", O: "Office", W: "Workshop", F: "Factory",
-  R: "Restaurant", B: "Bar", G: "GasStation", M: "Supermarket", D: "Warehouse",
+  R: "Restaurant", B: "Bar", G: "GasStation", M: "Supermarket", D: "Warehouse", P: "Port",
 };
 
 /** How tall each kind is built. One height for a kind: a height picked per

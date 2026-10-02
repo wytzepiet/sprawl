@@ -13,8 +13,8 @@ import { isBuilt, type Tile } from "./grid";
  *  building it takes, the quiet one or the busy one; and how many it must
  *  hold for each tile of the building. */
 export interface Yard {
-  fill: "docks" | "cars";
-  end: "quiet" | "busy";
+  fill: "docks" | "cars" | "ferry";
+  end: "quiet" | "busy" | "water";
   per: number;
 }
 
@@ -34,6 +34,9 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   // A supermarket's car park is its shop window, on the busy corner.
   Supermarket: { family: "box", yard: { fill: "cars", end: "busy", per: 3 } },
   GasStation: { family: "box" },
+  // A ferry port is its marshalling yard, from the water back, all but
+  // the terminal by the road.
+  Port: { family: "port", yard: { fill: "ferry", end: "water", per: Infinity } },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 

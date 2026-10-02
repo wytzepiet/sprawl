@@ -67,6 +67,15 @@ describe("facts and dressing", () => {
     expect(facts(small).services.length).toBe(0);
   });
 
+  test("a ferry port is its queue yard and a terminal, with a ferry at the middle of its quay", () => {
+    const t = town(["~~~~~~", "~~~~~~", ".PPPP.", ".PPPP.", "======"]);
+    const f = facts(t);
+    expect(f.yard(1, 2)).toBe("ferry");
+    expect([1, 2, 3, 4].filter((c) => !f.yard(c, 3)).length).toBe(1);
+    expect(f.ferries).toEqual([{ to: [0, -1], x: 3.5, y: 2 }]);
+    expect(dress(t, f).ships.length).toBe(1);
+  });
+
   test("a straight street before homes has trees every third tile, a through road none", () => {
     const street = town(["..........", "==========", "HHHHHHHHHH"]);
     expect(dress(street, facts(street)).trees.length).toBe(6);

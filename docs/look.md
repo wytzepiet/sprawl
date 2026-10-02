@@ -135,6 +135,15 @@ The code is `client/src/engine/town/`:
   faint grid of its tiles (`g` hides it), and paints: a brush per kind,
   taller and lower, and "Copy" to take the map away as a fixture. `bun run
   shots --sandbox` photographs every fixture this way in seconds.
+- **A ferry port** (16-ferry, after Den Helder, Harlingen, Hoek van Holland
+  and Harwich in OpenStreetMap, 2026-10-02) is its marshalling yard: the
+  same yard rule from the water back, queue lanes four to a tile running
+  down to the quay, the cars in them thinning from the front of the queue
+  to the back, and the tile furthest from the water its terminal. At the
+  middle of the quay a ramp, and the ferry moored stern on to it, drawn
+  bigger than true so it reads beside the yard. A look of the sandbox's
+  for now: `P` is a port there and grass to the server, until the game
+  says which berths a port has.
 - **Not yet: a finer grid under the ground.** Three by three to a tile,
   a sub-cell fits a car, a bay row and aisle and bay row make a tile, and
   lanes, bays, bumps and alleys would be labels on sub-cells. Weighed on

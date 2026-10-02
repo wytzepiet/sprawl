@@ -1,0 +1,13 @@
+# A ferry terminal: queue lanes down to the ramp, the ferry at its berth, the terminal by the road
+# The port's letter is the sandbox's alone for now: the server draws it as grass.
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+______PPPPPP________~~
+......PPPPPP......___~
+......PPPPPP.........~
+......PPPPPP..........
+======================
+..HHHH..SSRR..HHHH....

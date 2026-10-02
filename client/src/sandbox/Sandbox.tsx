@@ -18,7 +18,7 @@ import { defaultJoins, footprints, soften } from "../engine/town/footprint";
 import earcut from "earcut";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_BODY, TREE_TOP, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { facts } from "../engine/town/facts";
-import { dress } from "../engine/town/dressing";
+import { dress, FERRY } from "../engine/town/dressing";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -42,7 +42,7 @@ const FIXTURES: Record<string, string> = Object.fromEntries(
 
 const BRUSHES: { key: string; ch: string; label: string }[] = [
   { key: "1", ch: "H", label: "House" }, { key: "2", ch: "A", label: "Flats" }, { key: "3", ch: "S", label: "Shop" },
-  { key: "4", ch: "O", label: "Office" }, { key: "5", ch: "F", label: "Factory" }, { key: "d", ch: "D", label: "Depot" }, { key: "m", ch: "M", label: "Supermarket" },
+  { key: "4", ch: "O", label: "Office" }, { key: "5", ch: "F", label: "Factory" }, { key: "d", ch: "D", label: "Depot" }, { key: "m", ch: "M", label: "Supermarket" }, { key: "f", ch: "P", label: "Ferry port" },
   { key: "6", ch: "=", label: "Street" }, { key: "7", ch: "#", label: "Road" }, { key: "p", ch: ":", label: "Paved" },
   { key: "8", ch: "~", label: "Water" }, { key: "9", ch: "T", label: "Wood" },
   { key: "0", ch: ".", label: "Clear" }, { key: "+", ch: "+", label: "Taller" }, { key: "-", ch: "-", label: "Lower" },
@@ -492,7 +492,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The free ground, dressed: courtyard lawns, and trees in them and along
   // the streets, as crowns like the forest's.
-  const { gardens, trees, cars, lanes, bays, docks, yardLines } = dress(town, facts(town));
+  const { gardens, trees, cars, lanes, bays, docks, yardLines, ships } = dress(town, facts(town));
   // Pavements under the roads, lanes and their bay lines over the pavement.
   const flat = (polys: [number, number][][], z: number): MeshGeometry => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
@@ -534,11 +534,10 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     parked.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
   };
   /** A box `l` long along `angle`, `w` wide and `h` tall, its middle at (x, y). */
-  const box = (x: number, y: number, angle: number, [w, l, h]: number[], rgb: RGB) => {
+  const box = (x: number, y: number, angle: number, [w, l, h]: number[], rgb: RGB, z0 = 0.03) => {
     const [ca, sa] = [Math.cos(angle), Math.sin(angle)];
     const at = (a: number, b: number): [number, number] => [x + ca * a - sa * b, y + sa * a + ca * b];
     const corners = [at(-l / 2, -w / 2), at(l / 2, -w / 2), at(l / 2, w / 2), at(-l / 2, w / 2)];
-    const z0 = 0.03;
     quad(corners.map(([x, y]) => [x, y, z0 + h] as [number, number, number]), [0, 0, 1], rgb);
     for (let i = 0; i < 4; i++) {
       const [p, q] = [corners[i], corners[(i + 1) % 4]];
@@ -547,6 +546,13 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
       quad([[p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z0 + h], [p[0], p[1], z0 + h]], [ey / len, -ex / len, 0], rgb);
     }
   };
+  // A ferry: a white hull, and on it a deckhouse in the port's blue,
+  // toward the bow.
+  for (const ship of ships) {
+    const [ux, uy] = [Math.cos(ship.angle), Math.sin(ship.angle)];
+    box(ship.x, ship.y, ship.angle, [FERRY.w, FERRY.l, 0.16], [0.96, 0.96, 0.95], -0.02);
+    box(ship.x + ux * 0.4, ship.y + uy * 0.4, ship.angle, [FERRY.w * 0.75, FERRY.l * 0.5, 0.14], [0.17, 0.42, 0.64], 0.14);
+  }
   for (const car of cars) box(car.x, car.y, car.angle, [CAR.w, CAR.l, CAR.h], CAR_COLOURS[car.colour]);
   for (const dock of docks) {
     const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];

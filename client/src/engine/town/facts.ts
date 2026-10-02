@@ -17,6 +17,10 @@ import { defaultJoins, INSET, type Pt } from "./footprint";
  *   enough. The rest is building. A depot's yard holds lorries at docks
  *   on the wall across from its street, and its office stands at the busy
  *   end; a supermarket's holds cars in rows, its car park on the corner.
+ * - **Ferry ports**: a port is its marshalling yard, queue lanes from the
+ *   water back to the road, all but the tile furthest from the water,
+ *   which is its terminal. At the middle of its water's edge, a ramp, and
+ *   the ferry moored stern on to it (`ferries`).
  * - **Service bays**: a supermarket two tiles or more each way takes its
  *   deliveries at the back. A lane is cut from its quieter side, from the
  *   front to the back, and at the lane's end a bump sticks out of the back
@@ -56,6 +60,15 @@ export interface Facts {
    *  across from its street. */
   docks(c: number, r: number): [number, number][];
   services: Service[];
+  ferries: Ferry[];
+}
+
+/** A ferry port's berth: which way the water is from its quay, and the
+ *  middle of its water's edge, where the ramp is. */
+export interface Ferry {
+  to: [number, number];
+  x: number;
+  y: number;
 }
 
 export function facts(painted: Town): Facts {
@@ -77,7 +90,25 @@ export function facts(painted: Town): Facts {
     yard: (c, r) => yard.get(`${c},${r}`),
     docks: (c, r) => (yard.get(`${c},${r}`) === "docks" ? walls(c, r) : []),
     services: services(painted, yard),
+    ferries: ferries(painted, yard),
   };
+}
+
+/** Each ferry port's berth: on the side with most water along it, at the
+ *  middle of that edge. */
+function ferries(town: Town, yard: Map<string, Yard["fill"]>): Ferry[] {
+  const out: Ferry[] = [];
+  for (const cells of buildings(town)) {
+    if (formOf(town.tile(...cells[0])).yard?.fill !== "ferry") continue;
+    const wet = (c: number, r: number) => town.tile(c, r).kind === "water";
+    const along = ([dc, dr]: number[]) => cells.filter(([c, r]) => wet(c + dc, r + dr)).length;
+    const to = [...SIDES].sort((a, b) => along(b) - along(a))[0] as [number, number];
+    const edge = cells.filter(([c, r]) => wet(c + to[0], r + to[1]) && yard.has(`${c},${r}`));
+    if (!edge.length) continue;
+    const [c, r] = edge.sort((a, b) => a[0] - b[0] || a[1] - b[1])[Math.floor(edge.length / 2)];
+    out.push({ to, x: c + 0.5 + to[0] / 2, y: r + 0.5 + to[1] / 2 });
+  }
+  return out;
 }
 
 /** Each supermarket's service bay, where it is two tiles or more each way:
@@ -172,10 +203,11 @@ function yards(town: Town): Map<string, Yard["fill"]> {
     const inYard = (c: number, r: number) => yard.has(`${c},${r}`);
     const walls = docksOf(town, inYard);
     const street = (c: number, r: number) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road");
-    const holds = (c: number, r: number) => (fill === "docks" ? DOCKS * walls(c, r).length : street(c, r) ? PARKED : 0);
+    const holds = (c: number, r: number) => (fill === "docks" ? DOCKS * walls(c, r).length : fill === "ferry" ? 1 : street(c, r) ? PARKED : 0);
+    const shore = (c: number, r: number) => Math.min(...cells.filter(([x, y]) => SIDES.some(([dc, dr]) => town.tile(x + dc, y + dr).kind === "water")).map(([x, y]) => Math.abs(x - c) + Math.abs(y - r)));
     const held = () => [...yard].reduce((n, k) => n + holds(...(k.split(",").map(Number) as [number, number])), 0);
     const order = (a: [number, number], b: [number, number]) =>
-      (end === "quiet" ? 1 : -1) * (streetAround(town, ...a) - streetAround(town, ...b)) || a[1] - b[1] || a[0] - b[0];
+      (end === "water" ? shore(...a) - shore(...b) : (end === "quiet" ? 1 : -1) * (streetAround(town, ...a) - streetAround(town, ...b))) || a[1] - b[1] || a[0] - b[0];
     while (held() < per * cells.length && yard.size + 1 < cells.length) {
       const next = cells
         .filter(([c, r]) => !inYard(c, r) && holds(c, r))
