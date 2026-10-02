@@ -8,7 +8,7 @@ import type { BuildingKind } from "../src/generated";
 import { isBuilt, parseTown, townOf, type Tile } from "../src/engine/town/grid";
 import { footprints, intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
 import { facts } from "../src/engine/town/facts";
-import { asphalt, dress, FERRY, kerbs } from "../src/engine/town/dressing";
+import { asphalt, dress, FERRY } from "../src/engine/town/dressing";
 import { plans, roofFaces } from "../src/engine/town/roof";
 import { capped, slope } from "../src/engine/town/mass";
 import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
@@ -66,11 +66,9 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   const { street, through } = asphalt(town, dressing.lanes);
   fill(street, hex(T.road), `stroke="${INK}" stroke-width="0.015"`);
   fill(through, hex(T.highway), `stroke="${INK}" stroke-width="0.015"`);
-  fill(kerbs(dressing.kerbs), hex(T.road));
 
-  // What stands on the ground: bays, yard lines, lorries at docks, parked
+  // What stands on the ground: yard lines, lorries at docks, parked
   // cars.
-  fill(dressing.bays.map((r) => [r]), "#b8b2a0");
   fill(dressing.yardLines.map((r) => [r]), "#b8b2a0");
   for (const car of dressing.cars) box(car.x, car.y, car.angle, CAR.l, CAR.w, CARS[car.colour]);
   for (const dock of [...dressing.docks, ...fs.services.map((s) => ({ ...s.dock, lorry: true }))]) {

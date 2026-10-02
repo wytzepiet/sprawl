@@ -37,7 +37,6 @@ const light = {
   paved: hex3("#E8ECDF"),
   grid: hex3("#BBD29E"),
   road: hex3("#F8F6F0"),
-  bayLine: hex3("#E6E2D6"),
   // A road, as against a street: the map's yellow for a through route.
   highway: hex3("#F6CF6A"),
 };
@@ -57,7 +56,6 @@ const dark = {
   paved: hex3("#30333B"),
   grid: hex3("#3A4A34"),
   road: hex3("#2A2D35"),
-  bayLine: hex3("#151720"),
   highway: hex3("#5A4C22"),
 };
 

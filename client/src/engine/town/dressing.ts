@@ -19,9 +19,6 @@ import { defaultJoins, INSET, intersect, shrink, soften, subtract, unite, type P
  *   ends, with a gap here and there. Through roads and streets before
  *   anything else stay clear.
  *
- * - Where cars park, the kerb is a parking lane, its bays marked. (The
- *   pavement round it is ground: roads and buildings make paved terrain.)
- *
  * Which tiles get a tree or a car, and where, comes from the place alone,
  * so the same town is always dressed the same.
  */
@@ -63,10 +60,6 @@ export interface Dressing {
   /** What is driven on off the road and joins it (`asphalt`): drives,
    *  service lanes, ramps. */
   lanes: Pt[][];
-  /** Parking lanes along the kerb, apart from the road, and the lines
-   *  between their bays. */
-  kerbs: Pt[][];
-  bays: Pt[][];
   docks: Dock[];
   /** The lines between the bays of yards: docks, car parks and a ferry
    *  port's queue lanes. */
@@ -85,12 +78,10 @@ const RAMP = { l: 0.3, w: 0.55 };
 /** A lorry bay's depth: a lorry and a little. */
 const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
 
-/** A parking lane, from just past the road's edge (0.2) out, a car wide
- *  and a little room either side; then pavement to the rows' faces. */
-const LANE: [number, number] = [HALF_W + 0.015, HALF_W + 0.015 + CAR.w + 0.03];
-/** How far a parked car's middle is from its street's middle line: the
- *  lane's middle, wholly off the road. */
-const KERB = (LANE[0] + LANE[1]) / 2;
+/** How far a parked car's middle is from its street's middle line: beside
+ *  the road, wholly off it, with a little room. Nothing marks where it
+ *  stands: the car is enough. */
+const KERB = HALF_W + 0.03 + CAR.w / 2;
 /** Parking bays along a street: their spacing, a car and a bit. */
 const BAY = CAR.l + 0.07;
 /** How far from a junction, bend or end the kerb stays clear. */
@@ -135,20 +126,14 @@ export function dress(town: Town, facts: Facts): Dressing {
   // A car does not stand where a tree does, nor its bay; nor across a
   // driveway's mouth.
   const drives = driveways(town);
-  const mouthFree = (p: Pt[]) => {
-    const [x, y] = [p.reduce((a, q) => a + q[0], 0) / p.length, p.reduce((a, q) => a + q[1], 0) / p.length];
-    return drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
-  };
-  const parked = park(town);
-  parked.lanes = parked.lanes.filter(mouthFree);
-  parked.bays = parked.bays.filter(mouthFree);
-  const clear = (x: number, y: number) => trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3) && mouthFree([[x, y]]);
-  const cars = [...parked.cars.filter((car) => clear(car.x, car.y)), ...drives.cars];
+  const clear = (x: number, y: number) =>
+    trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
+  const cars = [...park(town).filter((car) => clear(car.x, car.y)), ...drives.cars];
   const lorries = docks(town, facts), lots = carParks(town, facts);
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...service.map((s) => s.lane), ...port.ramps], kerbs: parked.lanes, bays: parked.bays,
+    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...service.map((s) => s.lane), ...port.ramps],
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
@@ -165,9 +150,6 @@ const ROUND = 0.05;
  * stands apart, beside it. Through roads keep their own colour, cut from
  * it straight.
  */
-/** The kerbs' parking lanes, each run one strip, its ends rounded. */
-export const kerbs = (lanes: Pt[][]): Polygon[] => soften(unite(lanes.map((l): Polygon => [l])), ROUND);
-
 export function asphalt(town: Town, lanes: Pt[][]): { street: Polygon[]; through: Polygon[] } {
   const tiles = (through: boolean) => {
     const tris: Polygon[] = [];
@@ -359,10 +341,9 @@ function strip(x0: number, y0: number, ux: number, uy: number, t0: number, t1: n
   return [at(t0, a), at(t1, a), at(t1, b), at(t0, b)];
 }
 
-/** Cars parked along the kerbs of streets before homes and shops, their
- *  lane and its bays. */
-function park(town: Town): { cars: Car[]; lanes: Pt[][]; bays: Pt[][] } {
-  const cars: Car[] = [], lanes: Pt[][] = [], bays: Pt[][] = [];
+/** Cars parked along the kerbs of streets before homes and shops. */
+function park(town: Town): Car[] {
+  const cars: Car[] = [];
   const links = (c: number, r: number) => EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr));
   /** A road tile the street runs straight through: two links, opposite. */
   const straight = (c: number, r: number) => {
@@ -393,9 +374,6 @@ function park(town: Town): { cars: Car[]; lanes: Pt[][]; bays: Pt[][] } {
             // Only before homes and shops, and a gap now and then.
             const front = town.tile(Math.floor(x + nx * 0.4), Math.floor(y + ny * 0.4));
             if (!isBuilt(front) || formOf(front).family !== "street") continue;
-            const [b0, b1] = [t - len / n / 2, t + len / n / 2];
-            lanes.push(strip(x0, y0, ux, uy, b0, b1, nx, ny, LANE[0], LANE[1]));
-            for (const e of [b0, b1]) bays.push(strip(x0, y0, ux, uy, e - 0.008, e + 0.008, nx, ny, LANE[0], LANE[1]));
             const h = hash(Math.round(x * 100), Math.round(y * 100), 11);
             if (h < 0.35) continue;
             cars.push({ x, y, angle: Math.atan2(uy, ux), colour: Math.floor(hash(Math.round(x * 100), Math.round(y * 100), 13) * 8) });
@@ -404,5 +382,5 @@ function park(town: Town): { cars: Car[]; lanes: Pt[][]; bays: Pt[][] } {
       }
     }
   }
-  return { cars, lanes, bays };
+  return cars;
 }

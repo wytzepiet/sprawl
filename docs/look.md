@@ -106,7 +106,7 @@ The code is `client/src/engine/town/`:
   a tree on its verge every third tile; through roads, junctions, bends,
   diagonals and industrial streets stay bare. A street before homes and
   shops is parked along both kerbs (fileparkeren), straight or diagonal,
-  wholly off the road in a parking lane with its bays marked, in the strip
+  wholly off the road beside it, nothing marking where they stand, in the strip
   the rows' setback leaves, clear of junctions, bends, ends
   and trees, with a gap here and there. Drawn only, for now: the cars the
   simulation parks come with `parking.md` step 1. A depot's yard has lorry
@@ -123,8 +123,8 @@ The code is `client/src/engine/town/`:
   street, by the neighbours alone (`17-driveways`, 2026-10-02). The
   road, the drives and the service lanes are one asphalt (`asphalt` in
   `dressing.ts`), its corners rounded in and out, so a drive reads as
-  the road carried on; a kerb's parking lane stands apart beside it, its
-  ends rounded (2026-10-02, the mayor: the kerb is not the road). The pavement is
+  the road carried on. The kerb is not the road, and is not drawn: the
+  cars beside the road are enough (2026-10-02, the mayor). The pavement is
   ground: every road, building and yard makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal

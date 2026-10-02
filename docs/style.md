@@ -62,6 +62,8 @@ Each a rule, why, and when it was given. New verdicts go here.
 - **Roads.** Asphalt alone, 0.4 wide; the pavement is the kerb. A car 0.15
   wide in a 0.2 lane, with room at the edge and between two passing.
   Parked cars wholly off the road.
+- **Kerb parking is the cars alone**: nothing marks a bay, the cars
+  beside the road are enough (2026-10-02). Driveways join the road.
 - **Parking belongs to streets; yards are only as big as what they serve,**
   at the end that suits them: a depot's lorries at its quiet end, a
   supermarket's car park on its busy corner, deliveries round the back.

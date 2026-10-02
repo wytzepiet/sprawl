@@ -18,7 +18,7 @@ import { defaultJoins, footprints, soften, type Polygon } from "../engine/town/f
 import earcut from "earcut";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_BODY, TREE_TOP, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { facts } from "../engine/town/facts";
-import { asphalt, dress, FERRY, kerbs } from "../engine/town/dressing";
+import { asphalt, dress, FERRY } from "../engine/town/dressing";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -460,17 +460,15 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The free ground, dressed, and the asphalt: the roads, and the lanes and
   // drives leading off them, one surface.
-  const { gardens, trees, cars, lanes, kerbs: parking, bays, docks, yardLines, ships } = dress(town, facts(town));
+  const { gardens, trees, cars, lanes, docks, yardLines, ships } = dress(town, facts(town));
   const { street, through } = asphalt(town, lanes);
   add("street", flatPolygons(street, ROAD_Z + PAVED_Z), theme.road);
   add("through", flatPolygons(through, ROAD_Z + PAVED_Z), theme.highway);
-  add("kerbs", flatPolygons(kerbs(parking), 0.03), theme.road);
 
   add("mass", mesh(town, colourOf), Color3.White());
 
-  // Courtyard lawns, and trees in them and along the streets, as crowns
-  // like the forest's.
-  // Pavements under the roads, lanes and their bay lines over the pavement.
+  // Yard lines and courtyard lawns over the pavement; trees in the lawns
+  // and along the streets, as crowns like the forest's.
   const flat = (polys: [number, number][][], z: number): MeshGeometry => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
     for (const poly of polys) {
@@ -480,7 +478,6 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     }
     return g;
   };
-  add("bays", flat(bays, 0.032), theme.bayLine);
   add("yard_lines", flat(yardLines, 0.025), theme.road);
   add("garden", quadsAt(gardens, 0.005), theme.garden);
   // Trees as the forest draws them: a smooth top over a coarse body.
