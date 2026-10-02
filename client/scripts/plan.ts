@@ -11,8 +11,10 @@
  *   --live x,y[,r]                     the running game round its tile (x, y),
  *                                      r tiles each way (20), drawn as `live`;
  *                                      numbered in the game's tiles, for `bun run act`
- *   --paths                            with --live, the trips `bun run act watch`
- *                                      recorded, bends tighter than a car turns red
+ *   --paths[=car,car]                  with --live, the trips `bun run act watch`
+ *                                      recorded (these cars' alone), driven as
+ *                                      `driver.ts` steers them: a strobe of each
+ *                                      vehicle, bends tighter than a car turns red
  *   --at <git ref>                     the town grid's code as it was at <ref>,
  *                                      drawn beside today's: a before and after
  *                                      (any commit since this script came)
@@ -49,8 +51,13 @@ const flag = (name: string) => {
 const png = args.includes("--png") && (args.splice(args.indexOf("--png"), 1), true);
 const crop = flag("--crop")?.split(",").map(Number) as [number, number, number, number] | undefined;
 const at = flag("--at");
-const withPaths = args.includes("--paths") && (args.splice(args.indexOf("--paths"), 1), true);
-const paths = withPaths ? (await import("./paths")).trace(JSON.parse(readFileSync(`${ROOT}/.dev/paths.json`, "utf8"))) : undefined;
+// `--paths`, or `--paths=12,34` for those cars' trips alone.
+const pathsArg = args.find((a) => a.startsWith("--paths"));
+if (pathsArg) args.splice(args.indexOf(pathsArg), 1);
+const only = pathsArg?.split("=")[1]?.split(",").map(Number);
+const paths = pathsArg
+  ? (await import("./paths")).trace(JSON.parse(readFileSync(`${ROOT}/.dev/paths.json`, "utf8")).filter((t: { car: number }) => !only || only.includes(t.car)))
+  : undefined;
 const live = flag("--live")?.split(",");
 if (live) {
   const [x, y, r = "20"] = live;

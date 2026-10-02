@@ -8,6 +8,7 @@
     "shots": "bun client/scripts/shots.ts",
     "osm": "bun client/scripts/osm.ts",
     "plan": "bun client/scripts/plan.ts",
-    "act": "bun client/scripts/act.ts"
+    "act": "bun client/scripts/act.ts",
+    "look": "bun client/scripts/look.ts"
   }
 }

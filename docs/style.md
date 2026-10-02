@@ -165,7 +165,21 @@ The order for the sessions after this one:
 3. **The network primitives** (`network.md`), in the sandbox: links with
    lanes, stops, the reachability check; the car park, docks and service
    lane re-made on them.
-4. **Cars that turn and park naturally**, with the physics check.
+4. **Cars that turn and park naturally**, with the physics check. Begun
+   2026-10-02, on the mayor's direction that the server stays light and
+   the source of truth and only the drawing changes: the client drives
+   each trip (`driver.ts`), a lead axle steering for a point ahead at
+   no more than full lock, every body pointing where its own axle moves
+   (a trailer cuts in, a backing cab follows its trailer), kept by the
+   server's distance along the route; the drawn distance eased onto the
+   server's, fed its speed. A seed-7 morning: the tightest street turn
+   per trip from 0.23 to 0.29 typically, with no drive ending off its
+   route. Where a route turns tighter than a car can (a lot's aisle, a
+   driveway), the driver is put back on it: those want routes of a few
+   waypoints with a change to reverse, the next step. Lorries backing
+   are untried in a running game. The 0.45 above may be the wrong
+   number: 5.5 m is a turning circle at the outer wheel, kerb to kerb,
+   and the middle of a car turns at about 4 m, 0.33.
 5. **The canon**: its first entries are in (§The canon); a first
    rebuild of one of them from the guides alone shows whether they carry
    it.

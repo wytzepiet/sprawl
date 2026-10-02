@@ -1,12 +1,11 @@
 /**
- * Vehicles' paths as the client draws them, and the physics check that
- * reads them (`docs/style.md`, §Three layers of checking). `bun run act
- * watch` records the trips, `bun run plan --live … --paths` draws them,
- * every bend tighter than a car can turn marked.
+ * Vehicles' trips as the client drives them (`driver.ts`), and the
+ * physics check that reads them (`docs/style.md`, §Three layers of
+ * checking). `bun run act watch` records the trips, `bun run plan --live …
+ * --paths` draws them, every bend tighter than a car can turn marked.
  */
-import { Vector3 } from "@babylonjs/core";
-import { drawnPath } from "../src/engine/objects/drawnPath";
-import { LANE_OFFSET } from "../src/engine/objects/roadGeometry";
+import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
+import { CAR_RIG, driveTrip, LORRY_RIG, type Pose } from "../src/engine/objects/driver";
 
 type Pt = [number, number];
 
@@ -24,12 +23,6 @@ export interface Recorded {
 
 /** A car turns no tighter than this, in tiles (5.5 m). */
 export const TIGHTEST = 0.45;
-
-/** Where the car's middle goes, as `CarObject.tsx` draws a trip. */
-export function drawn(t: Recorded): Pt[] {
-  const d = drawnPath(t.route.map(([x, y]) => new Vector3(x, y, 0)), LANE_OFFSET, t.from_lot, t.to_lot);
-  return d ? d.points.map((p): Pt => [p.x, p.y]) : [];
-}
 
 /** How tightly the path turns at each point between two others: the radius
  *  of the circle through the three, in tiles; straight is Infinity. */
@@ -59,10 +52,29 @@ export function part(t: Recorded, points: Pt[], i: number): "out" | "street" | "
   return best < t.from_lot ? "out" : best >= t.route.length - t.to_lot ? "in" : "street";
 }
 
-/** Every trip's drawn path, and the points on it tighter than a car turns. */
+/** A box on the plan: its corners. */
+const box = (p: Pose, l: number, w: number): Pt[] => {
+  const [c, n] = [Math.cos(p.heading), Math.sin(p.heading)];
+  return [[-l / 2, -w / 2], [l / 2, -w / 2], [l / 2, w / 2], [-l / 2, w / 2]].map(([a, b]): Pt => [p.x + c * a - n * b, p.y + n * a + c * b]);
+};
+
+/** Every trip as it is driven (`driver.ts`): the track of its middle,
+ *  the points on it tighter than a car turns, and the vehicle every so
+ *  often along it, a strobe photograph of the drive. */
 export const trace = (trips: Recorded[]) =>
   trips.map((t) => {
-    const points = drawn(t);
+    const lorry = t.role === "Truck";
+    const d = driveTrip(t.route, t.from_lot, t.to_lot, t.reverse, lorry ? LORRY_RIG : CAR_RIG);
+    if (!d) return { points: [], tight: [], strobe: [] };
+    const points: Pt[] = [], strobe: Pt[][] = [];
+    for (let s = 0; s <= d.length; s += 0.02) {
+      const { body, trailer } = d.at(s);
+      points.push([body.x, body.y]);
+      if (Math.round(s / 0.02) % 12 === 0) {
+        strobe.push(box(body, lorry ? CAB.l : CAR.l, lorry ? CAB.w : CAR.w));
+        if (trailer) strobe.push(box(trailer, TRAILER.l, TRAILER.w));
+      }
+    }
     const r = radii(points);
-    return { points, tight: points.filter((_, i) => r[i] < TIGHTEST) };
+    return { points, tight: points.filter((_, i) => r[i] < TIGHTEST), strobe };
   });

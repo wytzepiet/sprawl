@@ -21,7 +21,7 @@ const hex = (c: { r: number; g: number; b: number }) =>
 const CARS = ["#e64033", "#d9d9e0", "#333847", "#4066bf", "#a6a6ad", "#8c2626", "#338066", "#cca640"];
 const INK = "#1d2128";
 
-type Traced = { points: Pt[]; tight: Pt[] }[];
+type Traced = { points: Pt[]; tight: Pt[]; strobe: Pt[][] }[];
 
 export function planSvg(text: string, { crop, px, paths }: { crop?: [number, number, number, number]; px: number; paths?: Traced }): string {
   const town = parseTown(text);
@@ -135,7 +135,8 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   const origin = text.match(/^# origin (-?\d+),(-?\d+)/m)?.slice(1).map(Number);
   if (origin && paths) {
     const map = ([x, y]: Pt): Pt => [origin[0] + 1 - x, origin[1] + 1 - y];
-    for (const p of paths) line(p.points.map(map), "#3a5bd9", 0.025);
+    for (const p of paths) line(p.points.map(map), "#3a5bd9", 0.015);
+    for (const p of paths) for (const b of p.strobe) out.push(`<polygon points="${b.map(map).map(([x, y]) => `${f(x)},${f(y)}`).join(" ")}" fill="#3a5bd9" fill-opacity="0.12" stroke="#3a5bd9" stroke-width="0.008"/>`);
     for (const p of paths) for (const t of p.tight.map(map)) out.push(`<circle cx="${f(t[0])}" cy="${f(t[1])}" r="0.035" fill="#e0301e"/>`);
   }
 

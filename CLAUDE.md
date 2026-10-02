@@ -96,8 +96,14 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   have stood and whether it fit. To set up a situation and watch it:
   `watch 2 5,80` (or `--to 0.45`) runs the clock and records every trip
   round that tile to `.dev/paths.json`, as the client draws them, and
-  counts the bends tighter than a car turns (style.md's 0.45);
-  `bun run plan --live 6,79,6 --paths` draws them, those bends red.
+  counts the bends tighter than a car turns (style.md's 0.45), as the
+  client drives them (`client/src/engine/objects/driver.ts`); `bun run
+  plan --live 6,79,6 --paths` draws them, a strobe of each vehicle, those
+  bends red, and `--paths=<car,car>` those cars' trips alone.
+- **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
+  many tiles each way), `--frames 8 --every 250` a short run of them
+  and a strip, in `.dev/look/`; in a cloud container it draws in software
+  and takes most of a minute.
 - **The look alone:** `/sandbox?f=<fixture>` on the dev client draws a
   fixture with no server, through the town grid (`client/src/engine/town/`,
   `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the

@@ -28,7 +28,7 @@
  * one `bun run dev` runs, or SPRAWL_PORT's.
  */
 import { decode, encode } from "@msgpack/msgpack";
-import { drawn, part, radii, TIGHTEST, type Recorded } from "./paths";
+import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
 
 const PORT = Number(process.env.SPRAWL_PORT ?? 4801);
 /** The server's chunk, in tiles (`CHUNK_SIZE` in `protocol.rs`). */
@@ -126,15 +126,16 @@ function watched(): string[] {
   Bun.write(`${import.meta.dir}/../../.dev/paths.json`, JSON.stringify(all));
   const tight = { out: [] as number[], street: [] as number[], in: [] as number[] };
   let worst = { r: Infinity, at: [0, 0], car: 0, part: "" };
-  for (const t of all) {
-    const pts = drawn(t);
+  const traced = trace(all);
+  all.forEach((t, k) => {
+    const pts = traced[k].points;
     radii(pts).forEach((r, i) => {
       if (r >= TIGHTEST) return;
       const where = part(t, pts, i);
       tight[where].push(r);
       if (r < worst.r) worst = { r, at: pts[i], car: t.car, part: where };
     });
-  }
+  });
   return [
     `${all.length} trips → .dev/paths.json`,
     ...Object.entries(tight).filter(([, rs]) => rs.length).map(([where, rs]) =>
