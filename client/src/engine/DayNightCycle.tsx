@@ -46,9 +46,37 @@ function shadowMapSize(engine: AbstractEngine): number {
 // ---------------------------------------------------------------------------
 
 const AMB_MIDNIGHT = new Color3(0.35, 0.35, 0.5);
-const AMB_DAWN = new Color3(0.85, 0.55, 0.35);
+// The sky stays cool as the sun goes down, dimmer and a little lavender:
+// it is the sun that turns gold, so a golden hour is warm light and blue
+// shadows at once.
+const AMB_DAWN = new Color3(0.55, 0.52, 0.66);
 const AMB_NOON = new Color3(0.82, 0.82, 0.8);
-const AMB_DUSK = new Color3(0.85, 0.45, 0.3);
+const AMB_DUSK = new Color3(0.5, 0.48, 0.62);
+/** The sky's light is blue and the sun's warm, so where the sun is shut out
+ *  a surface is its colour times the blue: grass goes teal, a red roof
+ *  raspberry, white periwinkle. In the sun the two add to near white. */
+const SKY_LIGHT = new Color3(0.74, 0.86, 1.22);
+/** The sun by its elevation: the lower, the more air its light has
+ *  crossed and the more blue is scattered out of it, so near white high,
+ *  gold low, and a deep orange red as it sets. */
+const sunStops: [number, Color3][] = [
+  [0, new Color3(1.8, 0.42, 0.16)],
+  [0.14, new Color3(1.8, 0.42, 0.16)],
+  [0.3, new Color3(1.65, 0.78, 0.3)],
+  [0.7, new Color3(1.15, 1.02, 0.75)],
+  [1, new Color3(1.15, 1.02, 0.75)],
+];
+
+/** A shadow is drawn no longer than the sun this high would cast it. */
+const LOWEST = 0.1;
+
+/** The sun's light at an elevation. It is stronger when low, as an eye opens up to it, since a
+ *  low sun lights the ground at a slant and its gold should still reach
+ *  it; and it fades out just above the lowest sun, so the roofs it lights
+ *  and the shadows it casts go together, before the shadows stop growing. */
+function sunLightAt(elev: number): { colour: Color3; strength: number } {
+  return { colour: ramp(sunStops, elev, lerp3), strength: (0.5 * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
+}
 
 const SKY_MIDNIGHT = new Color4(0.15, 0.15, 0.25, 1);
 const SKY_DAWN = new Color4(0.58, 0.42, 0.3, 1);
@@ -95,43 +123,57 @@ function ramp<T>(
 // Time-of-day stops
 // ---------------------------------------------------------------------------
 
-// t: 0 = midnight, 0.25 = dawn, 0.5 = noon, 0.75 = dusk
+// t: 0 = midnight, 0.5 = noon. A Dutch summer's day, by the clock: the sun
+// is up from twenty past five to ten at night, highest at twenty to two,
+// and the night is short.
+export const SUNRISE = 5.33 / 24;
+export const SUNSET = 22 / 24;
 
 const ambientStops: [number, Color3][] = [
   [0.0, AMB_MIDNIGHT],
-  [0.2, AMB_MIDNIGHT],
-  [0.28, AMB_DAWN],
-  [0.38, AMB_NOON],
-  [0.62, AMB_NOON],
-  [0.72, AMB_DUSK],
-  [0.8, AMB_MIDNIGHT],
+  [SUNRISE - 0.03, AMB_MIDNIGHT],
+  [SUNRISE + 0.04, AMB_DAWN],
+  [SUNRISE + 0.14, AMB_NOON],
+  [SUNSET - 0.14, AMB_NOON],
+  [SUNSET - 0.04, AMB_DUSK],
+  [SUNSET + 0.03, AMB_MIDNIGHT],
   [1.0, AMB_MIDNIGHT],
 ];
 
 const skyStops: [number, Color4][] = [
   [0.0, SKY_MIDNIGHT],
-  [0.2, SKY_MIDNIGHT],
-  [0.28, SKY_DAWN],
-  [0.38, SKY_NOON],
-  [0.62, SKY_NOON],
-  [0.72, SKY_DUSK],
-  [0.8, SKY_MIDNIGHT],
+  [SUNRISE - 0.03, SKY_MIDNIGHT],
+  [SUNRISE + 0.04, SKY_DAWN],
+  [SUNRISE + 0.14, SKY_NOON],
+  [SUNSET - 0.14, SKY_NOON],
+  [SUNSET - 0.04, SKY_DUSK],
+  [SUNSET + 0.03, SKY_MIDNIGHT],
   [1.0, SKY_MIDNIGHT],
 ];
 
-/** Sun elevation: 0 at horizon, 1 at zenith. 0 during night. */
+/** How far the sun has come across the sky, 0 at sunrise to π at sunset. */
+const sunAngle = (t: number) => ((t - SUNRISE) / (SUNSET - SUNRISE)) * Math.PI;
+
+/** How high the sun climbs at noon, where 1 is overhead: a northern
+ *  summer's sun, which never quite gets there, so more of the day is spent
+ *  low and gold. */
+const PEAK = 0.8;
+/** How far to the north the sun's path lies: up the screen, so shadows
+ *  fall down it. */
+const NORTH = 0.55;
+
+/** Sun elevation: 0 at horizon, PEAK at noon. 0 during night. */
 function sunElevation(t: number): number {
-  if (t < 0.25 || t > 0.75) return 0;
-  return Math.sin(((t - 0.25) / 0.5) * Math.PI);
+  if (t < SUNRISE || t > SUNSET) return 0;
+  return PEAK * Math.sin(sunAngle(t));
 }
 
 function sunDirection(t: number): Vector3 {
-  if (t < 0.25 || t > 0.75) return new Vector3(0, -0.4, -1).normalize();
-  const angle = ((t - 0.25) / 0.5) * Math.PI; // 0=dawn, π/2=noon, π=dusk
-  const elev = Math.max(Math.sin(angle), 0.15);
+  if (t < SUNRISE || t > SUNSET) return new Vector3(0, -NORTH, -1).normalize();
+  const angle = sunAngle(t); // 0=dawn, π/2=noon, π=dusk
+  const elev = Math.max(PEAK * Math.sin(angle), LOWEST);
   const horiz = Math.cos(angle);
-  // Sun comes from slightly above (positive Y), so shadows fall downward on screen
-  return new Vector3(-horiz, -0.4, -elev).normalize();
+  return new Vector3(-horiz, -NORTH, -elev).normalize();
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +235,6 @@ export default function DayNightLights(props: ParentProps) {
   hemiLight.specular = Color3.Black();
 
   const sunLight = new DirectionalLight("sun", sunDirection(0.35), scene);
-  sunLight.intensity = 0.4 * sunElevation(0.35);
   sunLight.specular = Color3.Black();
   sunLight.autoUpdateExtends = false;
 
@@ -201,7 +242,7 @@ export default function DayNightLights(props: ParentProps) {
   const engine = scene.getEngine();
   const shadowGen = new ShadowGenerator(shadowMapSize(engine), sunLight);
   shadowGen.usePercentageCloserFiltering = true;
-  shadowGen.filteringQuality = ShadowGenerator.QUALITY_LOW;
+  shadowGen.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
   shadowGen.bias = 0.001;
   // Tree trunks are cylinders, so most of their surface sits at a grazing angle
   // to a low sun — the case a constant bias cannot cover without detaching the
@@ -232,7 +273,7 @@ export default function DayNightLights(props: ParentProps) {
 
       const amb = ramp(ambientStops, qt, lerp3);
       setAmbient(amb);
-      hemiLight.diffuse = amb;
+      hemiLight.diffuse = amb.multiply(SKY_LIGHT);
 
       const sky = ramp(skyStops, qt, lerp4);
       scene.clearColor.r = sky.r;
@@ -243,7 +284,9 @@ export default function DayNightLights(props: ParentProps) {
 
     const elev = sunElevation(t);
     sunLight.direction = sunDirection(t);
-    sunLight.intensity = 0.4 * elev;
+    const sun = sunLightAt(elev);
+    sunLight.intensity = sun.strength;
+    sunLight.diffuse = sun.colour;
 
     // Round the ground in view, not round the camera: leaning back, the
     // camera stands well behind what it looks at.

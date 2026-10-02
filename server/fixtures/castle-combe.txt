@@ -1,0 +1,32 @@
+# Castle Combe: an English village on its stream
+# 51.49149,-2.23212,51.49451,-2.22588, from OpenStreetMap. Map data © OpenStreetMap contributors, ODbL.
+......................................
+.TTTTTT....T...T.......TTTT...T==TTTT.
+.TTTTT....TT............TT...T=TTTTTT.
+.TT.TT.....===..............==TTTTTTT.
+..T.......=H.........H....==TTTTTTTTT.
+.A.........=H.HH....H...==TTTTTTTTTTT.
+.AA........=HH.......H.=TTTTTTTTTTTTT.
+.AA.........====HH....=TTTTTTTTTTTTTT.
+.AAA......H.HHH.=AAA.=H.TTTTTTTTTTTTT.
+.AA.....HHH......=AA=H..TTTTTTTTTTTT..
+...........H.....H=.=HH..TTTTTTTTTT...
+.................H==..H...TTTTTTTTT...
+.................R.=H....TTTTTTTTTT...
+...................=H....TTTTTTTTTT...
+..................H=H.....TTTTTTTTTT..
+..................H=H.....TTTTTTTTTT..
+..................H=R.....TTTTTTTTTT..
+.................HH=R.HH..TTTTTTTTTT..
+..................H=H.H...TTTTTTTTTT..
+................H..=H.....TTTTTTTTTTT.
+.T.................=H.....TTTTTTTTTTT.
+.TTTTTTT...........=H.....TTTTTTTTTTT.
+.TTTTTTTTTT........=.H..HTTTTTTTTTTTT.
+.TTTTTTTTTT......H.==H.H.TTTTTTTTTTTT.
+.TTTTTTTTTTT......=.H==..TTTTTTTTTTTT.
+.TTTTTTTTTTT......=.H.H..TTTTTTTTTTTT.
+.....TTTTTTTT.....=.......TTTTTTTTTTT.
+......TTTTTTT....=.......TTTTTTTTTTTT.
+......TTTTTTT....=.....TTTTTTTTTTTTTT.
+......................................

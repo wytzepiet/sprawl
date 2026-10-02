@@ -1,6 +1,6 @@
 import type { MeshGeometry } from "../Mesh";
 import { slabGeometry } from "./buildings";
-import { ROAD_Z } from "./roadGeometry";
+import { CAR, ROAD_Z } from "./roadGeometry";
 import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
 import type { Building, GameObjectEntry } from "../../generated";
 
@@ -15,7 +15,6 @@ import type { Building, GameObjectEntry } from "../../generated";
  */
 const PITCH = 0.2;
 const ISLAND_END = 0.3;
-const CAR: [number, number] = [0.35, 0.18];
 /** Painted above the road surface, so a driveway's arm cannot cover it. */
 const MARK_Z = ROAD_Z + 0.002;
 const MARK = 0.035;
@@ -149,7 +148,7 @@ function flat() {
 /** The dividers between neighbouring spots in a lot w wide. */
 export function markingGeometry(w: number): MeshGeometry {
   const g = flat();
-  const cl = CAR[0] / 2 + 0.03;
+  const cl = CAR.l / 2 + 0.03;
   const us = spotsAcross(w);
   for (let i = 0; i + 1 < us.length; i++) {
     const u = (us[i] + us[i + 1]) / 2;

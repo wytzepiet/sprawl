@@ -152,6 +152,9 @@ export function createPen(scene: Scene, engine: AbstractEngine, camera: Camera, 
     "pen_depth", { ratio: 1 }, scene, true, true, type, false,
     Texture.TRILINEAR_SAMPLINGMODE, true, false, false, Constants.TEXTUREFORMAT_RED,
   );
+  // What is drawn over the picture, not in it (a grid, a guide), says so
+  // and is left out of the depth the pen inks.
+  map.renderListPredicate = (m) => m.metadata?.inked !== false;
   const depth = scene.enableDepthRenderer(camera, false, type === Constants.TEXTURETYPE_FLOAT, Texture.TRILINEAR_SAMPLINGMODE, true, map);
   depth.clearColor = new Color4(EMPTY, 0, 0, 1);
 

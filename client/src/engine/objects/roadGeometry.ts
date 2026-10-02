@@ -1,5 +1,4 @@
 import type { MeshGeometry } from "../Mesh";
-import { GRID_LINE } from "./terrainGeometry";
 
 /**
  * Road surface geometry: pure maths over a set of arm angles, with no Babylon
@@ -12,17 +11,23 @@ export type Flow = "twoway" | "out" | "in";
 export type ArmInfo = { angle: number; flow: Flow };
 type Point = { x: number; y: number };
 
+/** A road is its asphalt alone, two lanes: the pavement beside it is its
+ *  kerb. */
 export const ROAD_WIDTH = 0.4;
 export const HALF_W = ROAD_WIDTH / 2;
-/** The kerb is as wide as the map's grid line. */
-export const BORDER_HALF_W = HALF_W + GRID_LINE;
+/** A car, across, along and up: in its lane, a little room either side
+ *  and between it and the car it passes. */
+export const CAR = { w: 0.15, l: 0.29, h: 0.125 };
+/** A lorry: a cab-over tractor and a semi-trailer, two boxes. */
+export const CAB = { w: 0.17, l: 0.17, h: 0.21 };
+export const TRAILER = { w: 0.17, l: 0.46, h: 0.22, axle: 0.37, overhang: 0.025 };
+/** A lane's middle, from the road's. */
+export const LANE_OFFSET = ROAD_WIDTH / 4;
 const CURVE_SEGMENTS = 8;
 // A road stands clear of the ground, so the pen sees the step up to it and
-// outlines it: its border is 0.025 over the grass, and still 0.015 over a
-// terrain patch laid on the grass. Lots, their markings and cars sit
-// relative to it.
+// outlines it: 0.03 over the grass, and still 0.02 over a terrain patch
+// laid on the grass. Lots, their markings and cars sit relative to it.
 export const ROAD_Z = 0.03;
-export const BORDER_Z = 0.025;
 export const CHEVRON_Z = 0.04;
 const CHEVRON_DEPTH = 0.12;
 

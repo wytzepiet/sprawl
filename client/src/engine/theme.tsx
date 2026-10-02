@@ -19,9 +19,9 @@ const light = {
   // The floor between the crowns: a shade under the land, as the map's
   // darker meadows are.
   forest: hex3("#A3C68F"),
-  // Tree crowns, dark to light: teal-greens, light enough that a forest
-  // reads as a wood and not a hole.
-  crowns: [hex3("#4F8A6C"), hex3("#63A07F"), hex3("#80B892")],
+  // Tree crowns, dark to light: deep teal-greens, the dark note, light
+  // enough that a forest reads as a wood and not a hole.
+  crowns: [hex3("#3C635D"), hex3("#4B7767"), hex3("#628F78")],
   // A field through its season: ploughed earth beside the beach, the
   // growing crop beside the grass, the ripe crop beside the highway's
   // yellow, the stubble between.
@@ -30,12 +30,16 @@ const light = {
   ripe: hex3("#F2D680"),
   stubble: hex3("#ECE3C4"),
   mountain: hex3("#F8F7F6"),
+  // A courtyard's lawn, a shade greener than the land round it.
+  garden: hex3("#AED08F"),
+  // A yard, a car park or a pavement: a pale plot, a shade under the
+  // road's white.
+  paved: hex3("#E8ECDF"),
   grid: hex3("#BBD29E"),
   road: hex3("#F8F6F0"),
-  roadBorder: hex3("#E6E2D6"),
+  bayLine: hex3("#E6E2D6"),
   // A road, as against a street: the map's yellow for a through route.
   highway: hex3("#F6CF6A"),
-  highwayBorder: hex3("#D9AE4A"),
 };
 
 const dark = {
@@ -49,11 +53,12 @@ const dark = {
   ripe: hex3("#7A6428"),
   stubble: hex3("#5E5A40"),
   mountain: hex3("#4D4D47"),
+  garden: hex3("#1F4030"),
+  paved: hex3("#30333B"),
   grid: hex3("#3A4A34"),
   road: hex3("#2A2D35"),
-  roadBorder: hex3("#151720"),
+  bayLine: hex3("#151720"),
   highway: hex3("#5A4C22"),
-  highwayBorder: hex3("#2E2610"),
 };
 
 export type Theme = typeof light;

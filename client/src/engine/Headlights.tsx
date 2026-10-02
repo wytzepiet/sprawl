@@ -1,7 +1,7 @@
 import { createContext, useContext, createMemo, onCleanup, type ParentProps } from "solid-js";
 import { ClusteredLightContainer } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
-import { useDayNight } from "./DayNightCycle";
+import { SUNRISE, SUNSET, useDayNight } from "./DayNightCycle";
 
 interface HeadlightState {
   container: ClusteredLightContainer;
@@ -37,11 +37,9 @@ export default function Headlights(props: ParentProps) {
   window.addEventListener("resize", updateTiles);
 
   const headlightIntensity = createMemo(() => {
+    // On from a little before sunset until a little after sunrise.
     const t = timeOfDay();
-    if (t < 0.20 || t > 0.80) return 1.0;
-    if (t < 0.30) return 1.0 - (t - 0.20) / 0.10;
-    if (t > 0.70) return (t - 0.70) / 0.10;
-    return 0.0;
+    return Math.min(1, Math.max(0, (SUNRISE + 0.06 - t) / 0.06, (t - (SUNSET - 0.06)) / 0.06));
   });
 
   onCleanup(() => {

@@ -1,0 +1,32 @@
+# Barcelona, the Eixample: chamfered blocks round courtyards
+# 41.39149,2.15941,41.39451,2.16459, from OpenStreetMap. Map data © OpenStreetMap contributors, ODbL.
+......................................
+.AAS.=AAAASS=.SSS=.#...AAAS.#=AAA.A.R.
+.AS.=RRSSAA=.SSSS.=.#...AA.#.O=A.AARA.
+.S.=RARASS=.RSSSSS=..#....#.SOO=AAHAA.
+..=RSSRRA.=ARR.SSSS=..=.=#.SSOOO=HAAA.
+.=.SSRRR.=AAAR..SSSS==###..S.O.AA=AAA.
+..=.RRR.=AAAAA...SSAS..#....OSSAAA=AA.
+.S==..==SAAAAAA.SSASS.#=#=..SSSSA..=A.
+.SS=.=.RR.AA....SA.S.#...#=..SSS....=.
+.SS.==.RSOO.A..HASS.#.....##..S.....#.
+.RS====.OOAO.A.AAAS#.SSS....#......#..
+.R.=...=.AOORAA.AA#.RRSSS..H=#....#.A.
+..=SSS..=.ORRARRA#=.SSSSS....#=..#.RR.
+.=SSSAS..=.RA.R.#..=SSSS......#.#=.RS.
+.SRSASSA.==.SSS#.AA.=SS........#=..SS.
+.SHRSSAAA.==..#.SAHS.=........#=#...S.
+.=HHAAAARR.=.#.SSSSAA.=......##..#....
+..=AAAARRAA=#=.SSSSAAA.=....#.....#...
+.A.=AAARRAA#..=.SSSSAAA.=..#.SSA..=...
+.AAA=AAARR#....=.SSSSARR.=#.HSAAA..#..
+.AAAH=ARA#.RSAA.=.SSSSRR.#.SSAAASSS=..
+.AASAA=R#.RRSAAA.=.SSSS.#.ASAAASSOO...
+.AASSAA#.AARSAAAA.=.SS.#.SAAAASSOOS...
+.AAASS#.AAAAAAAASS.=..#.SSSAAAHOOSSS..
+.ASAA#.AAAAAAAASSSR.=#.AASRRAAAORRSS..
+.AAS#.AAAAAAAASSSRR.##.AARRAAAAARRR#..
+...#.AAAAAAAASSSRR.#..=.RRSSAAAAAR.#..
+..#.AAAAAAAAOOSSS..#SS.=.OSSAAAAA##.R.
+....AAAAAAAAAOOS.##SSSS.=.SAAAAA#..S..
+......................................

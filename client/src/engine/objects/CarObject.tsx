@@ -8,7 +8,7 @@ import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
 import type { Theme } from "../theme";
 import type { Strip } from "./strip";
 import { field, FIELD_Z, leaves } from "./BuildingObject";
-import { ROAD_Z } from "./roadGeometry";
+import { CAB, CAR, LANE_OFFSET, ROAD_Z, TRAILER } from "./roadGeometry";
 import { getEntity } from "../../state/gameObjects";
 import type { Building, Car, GameObjectEntry } from "../../generated";
 import { carPoses, parts } from "../../state/selection";
@@ -25,9 +25,9 @@ const PALETTE = [
   new Color3(0.2, 0.5, 0.4),
   new Color3(0.8, 0.65, 0.25),
 ];
-const carGeo = boxGeometry(0.18, 0.35, 0.15);
+const carGeo = boxGeometry(CAR.w, CAR.l, CAR.h);
 /** A van: a box a car and a bit long, tall, and always the same white. */
-const vanGeo = boxGeometry(0.2, 0.45, 0.22);
+const vanGeo = boxGeometry(0.17, 0.37, 0.18);
 const VAN = new Color3(0.92, 0.92, 0.9);
 const TRACTOR = new Color3(0.36, 0.55, 0.16);
 /** A lorry: a cab-over tractor and a semi-trailer, two boxes. The tractor
@@ -35,18 +35,15 @@ const TRACTOR = new Color3(0.36, 0.55, 0.16);
  *  the tractor's tail and follows it, its heading the line from its own
  *  axle to the hitch, the axle always one trailer length behind. Forward
  *  that is stable and swings through a corner the way a trailer does. */
-const CAB = { w: 0.2, l: 0.2, h: 0.25 };
-const TRAILER = { w: 0.2, l: 0.55, h: 0.27, axle: 0.45, overhang: 0.03 };
 const cabGeo = boxGeometry(CAB.w, CAB.l, CAB.h);
 const trailerGeo = boxGeometry(TRAILER.w, TRAILER.l, TRAILER.h);
 /** How far behind the tractor's centre the hitch sits. */
-const HITCH = 0.06;
+const HITCH = 0.05;
 const CAB_COLOR = new Color3(0.28, 0.36, 0.58);
 const TRAILER_COLOR = new Color3(0.9, 0.9, 0.88);
-const LANE_OFFSET = 0.11;
 
 /** A box sits on the road: its centre is half its height up. */
-const CAR_Z = ROAD_Z + 0.15 / 2;
+const CAR_Z = ROAD_Z + CAR.h / 2;
 const GROUND = ROAD_Z;
 /** A ship: a long low hull, dark, afloat on the water, which lies half
  *  a unit under the land. */
