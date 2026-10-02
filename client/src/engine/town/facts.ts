@@ -39,6 +39,10 @@ import { CAB, TRAILER } from "../objects/roadGeometry";
 export interface Service {
   cut: Pt[];
   dock: { x: number; y: number; angle: number };
+  /** The corner tile, the wall it runs along and the way its cab points. */
+  corner: [number, number];
+  d: number[];
+  s: number[];
 }
 /** The cutout: a lorry long and a little over, a lorry wide and a little
  *  over. */
@@ -184,6 +188,7 @@ function services(town: Town, yard: Map<string, Yard["fill"]>): Service[] {
     out.push({
       cut: [at(wall - BAY.w, end - BAY.l), at(wall + INSET, end - BAY.l), at(wall + INSET, end + INSET), at(wall - BAY.w, end + INSET)],
       dock: { x, y, angle: Math.atan2(s[1], s[0]) },
+      corner: [c, r], d, s,
     });
   }
   return out;
