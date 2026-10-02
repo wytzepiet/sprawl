@@ -124,14 +124,14 @@ The code is `client/src/engine/town/`:
   road, the drives and the service lanes are one asphalt (`asphalt` in
   `dressing.ts`), its corners rounded in and out, so a drive reads as
   the road carried on. The kerb is not the road, and is not drawn: the
-  cars beside the road are enough (2026-10-02, the mayor). A **back
-  street** is any street behind a building, not a kind of road (the
-  mayor, 2026-10-02): where a building has streets on two opposite
-  sides, its front is the one with buildings across it, its back the one
-  with open ground across. Its car park faces the front; a supermarket
-  takes its deliveries at the back, at a lay-by let into its back wall,
-  the lorry backed in along it out of the street, as real ones do, with
-  nothing cut from its side or its car park (`19-back-street`). The pavement is
+  cars beside the road are enough (2026-10-02, the mayor). A street
+  behind a building is just a street (the mayor, 2026-10-02). A
+  supermarket takes its deliveries by the quietest street along its
+  shop whose wall there is a lorry long: a loading block stands out of
+  the wall to the kerb, and the lorry parks along the kerb with its tail
+  to it, nothing cut from its side or its car park and nothing paved for
+  it, the grey is enough (`19-back-street`). Where no wall is long
+  enough, the lane down its side as before. The pavement is
   ground: every road, building and yard makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal

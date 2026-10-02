@@ -126,10 +126,11 @@ export function dress(town: Town, facts: Facts): Dressing {
   // A car does not stand where a tree does, nor its bay; nor across a
   // driveway's mouth.
   const drives = driveways(town);
-  // Nor across a service lane's or a lay-by's mouth: its box, and a car
-  // length round it.
+  // Nor across a service lane's mouth, its box and a car length round it;
+  // nor where a lorry stands at the kerb to unload.
   const across = (x: number, y: number) =>
-    facts.services.some(({ lane }) => {
+    facts.services.some(({ lane, dock }) => {
+      if (!lane) return Math.hypot(dock.x - x, dock.y - y) < CAB.l + TRAILER.l + BAY / 2;
       const [xs, ys] = [lane.map((p) => p[0]), lane.map((p) => p[1])];
       return x > Math.min(...xs) - BAY / 2 && x < Math.max(...xs) + BAY / 2 && y > Math.min(...ys) - BAY / 2 && y < Math.max(...ys) + BAY / 2;
     });
@@ -140,7 +141,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...service.map((s) => s.lane), ...port.ramps],
+    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...service.flatMap((s) => (s.lane ? [s.lane] : [])), ...port.ramps],
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };

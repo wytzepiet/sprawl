@@ -47,10 +47,14 @@ type Line = [number, number, number];
  *  each and its bump added, each piece's outline rounded from above. */
 export function* plans(painted: Town) {
   const { town, head, services } = facts(painted);
-  const cuts = services.map((s): Polygon => [s.cut]);
+  const cuts = services.flatMap((s): Polygon[] => (s.cut ? [[s.cut]] : []));
   for (const mass of footprints(town, head)) {
     const bumps = services.flatMap((s): Polygon[] => (s.bump ? [[s.bump]] : [])).filter((b) => intersect([b], mass.polygons).length);
-    for (const polygon of unite([...subtract(mass.polygons, cuts), ...bumps])) yield { mass, polygon, outline: blunt([polygon], CORNER) };
+    // What of a region each part has: the first part whatever the others
+    // do not, so a bump added to the building is painted too.
+    const rest = mass.parts.map((_, i) => unite(mass.parts.filter((__, j) => j !== i).flatMap((p) => p.polygons)));
+    const within = (region: Polygon[], i: number) => (mass.parts.length === 1 ? region : i === 0 ? subtract(region, rest[0]) : intersect(region, mass.parts[i].polygons));
+    for (const polygon of unite([...subtract(mass.polygons, cuts), ...bumps])) yield { mass, polygon, outline: blunt([polygon], CORNER), within };
   }
 }
 
@@ -87,7 +91,7 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
     }
   };
 
-  for (const { mass, polygon, outline } of plans(painted)) {
+  for (const { mass, polygon, outline, within } of plans(painted)) {
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);
@@ -96,11 +100,11 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
       colour(part.tile.kind as BuildingKind).map((v) => (part.head ? v + (1 - v) * 0.45 : v)) as RGB;
     /** A region, coloured by the parts it lies in. */
     const paint = (region: Polygon[], z: (p: Pt) => number, dim = 1) => {
-      for (const part of mass.parts) {
+      mass.parts.forEach((part, i) => {
         // Below one a shade darker, above it a shade toward white.
         const rgb = tint(part).map((v) => (dim < 1 ? v * dim : v + (1 - v) * (dim - 1))) as RGB;
-        for (const piece of mass.parts.length === 1 ? region : intersect(region, part.polygons)) fill(piece, z, rgb);
-      }
+        for (const piece of within(region, i)) fill(piece, z, rgb);
+      });
     };
     const colourAt = (p: Pt): RGB => tint(mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0]);
     /** Walls round a region from z0 up to its top at z1, coloured as the

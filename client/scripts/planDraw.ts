@@ -6,7 +6,7 @@
  */
 import type { BuildingKind } from "../src/generated";
 import { parseTown, type Tile } from "../src/engine/town/grid";
-import { intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
+import { soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
 import { facts } from "../src/engine/town/facts";
 import { asphalt, dress, FERRY, pavement } from "../src/engine/town/dressing";
 import { plans, roofFaces } from "../src/engine/town/roof";
@@ -78,12 +78,12 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
 
   // The buildings: each part its kind's colour, a head lighter; the roof's
   // faces' edges, ridges and hips, thin and light; an office's cap.
-  for (const { mass, polygon, outline } of plans(town)) {
-    for (const part of mass.parts) {
+  for (const { mass, polygon, outline, within } of plans(town)) {
+    mass.parts.forEach((part, i) => {
       const base = BLUEPRINTS[part.tile.kind as BuildingKind]?.color ?? "#888888";
-      const rgb = [1, 3, 5].map((i) => parseInt(base.slice(i, i + 2), 16) / 255).map((v) => (part.head ? v + (1 - v) * 0.45 : v));
-      fill(mass.parts.length === 1 ? outline : intersect(part.polygons, outline), hex({ r: rgb[0], g: rgb[1], b: rgb[2] }));
-    }
+      const rgb = [1, 3, 5].map((k) => parseInt(base.slice(k, k + 2), 16) / 255).map((v) => (part.head ? v + (1 - v) * 0.45 : v));
+      fill(within(outline, i), hex({ r: rgb[0], g: rgb[1], b: rgb[2] }));
+    });
     if (capped(mass.tile)) {
       out.push(`<path fill="#ffffff" fill-opacity="0.25" d="${d(polygon)}"/>`);
     } else {
