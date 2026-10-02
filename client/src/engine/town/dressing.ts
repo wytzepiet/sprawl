@@ -60,8 +60,12 @@ export interface Dressing {
   gardens: [number, number][];
   trees: Tree[];
   cars: Car[];
-  /** Parking lanes, and the lines between their bays. */
+  /** What is driven on off the road and joins it (`asphalt`): drives,
+   *  service lanes, ramps. */
   lanes: Pt[][];
+  /** Parking lanes along the kerb, apart from the road, and the lines
+   *  between their bays. */
+  kerbs: Pt[][];
   bays: Pt[][];
   docks: Dock[];
   /** The lines between the bays of yards: docks, car parks and a ferry
@@ -81,9 +85,9 @@ const RAMP = { l: 0.3, w: 0.55 };
 /** A lorry bay's depth: a lorry and a little. */
 const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
 
-/** A parking lane, from the road's edge (0.2) out, a car wide and a
- *  little room either side; then pavement to the rows' faces. */
-const LANE: [number, number] = [HALF_W, HALF_W + 0.015 + CAR.w + 0.03];
+/** A parking lane, from just past the road's edge (0.2) out, a car wide
+ *  and a little room either side; then pavement to the rows' faces. */
+const LANE: [number, number] = [HALF_W + 0.015, HALF_W + 0.015 + CAR.w + 0.03];
 /** How far a parked car's middle is from its street's middle line: the
  *  lane's middle, wholly off the road. */
 const KERB = (LANE[0] + LANE[1]) / 2;
@@ -144,7 +148,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...parked.lanes, ...drives.strips, ...service.map((s) => s.lane), ...port.ramps], bays: parked.bays,
+    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...service.map((s) => s.lane), ...port.ramps], kerbs: parked.lanes, bays: parked.bays,
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
@@ -155,11 +159,15 @@ const ROUND = 0.05;
 
 /**
  * The asphalt: the roads as the game lays them, each tile's arms to the
- * tiles it is joined to, and everything driven on that leads off them,
- * parking lanes, driveways, service lanes, ramps, as one surface, its
- * corners rounded in and out, so a bay or a drive reads as the road
- * carried on. Through roads keep their own colour, cut from it straight.
+ * tiles it is joined to, and what is driven on that leads off them,
+ * driveways, service lanes, ramps, as one surface, its corners rounded in
+ * and out, so a drive reads as the road carried on. A kerb's parking lane
+ * stands apart, beside it. Through roads keep their own colour, cut from
+ * it straight.
  */
+/** The kerbs' parking lanes, each run one strip, its ends rounded. */
+export const kerbs = (lanes: Pt[][]): Polygon[] => soften(unite(lanes.map((l): Polygon => [l])), ROUND);
+
 export function asphalt(town: Town, lanes: Pt[][]): { street: Polygon[]; through: Polygon[] } {
   const tiles = (through: boolean) => {
     const tris: Polygon[] = [];
