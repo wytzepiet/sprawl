@@ -6,12 +6,12 @@
  */
 import type { BuildingKind } from "../src/generated";
 import { isBuilt, parseTown, townOf, type Tile } from "../src/engine/town/grid";
-import { footprints, intersect, shrink, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
+import { footprints, intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
 import { facts } from "../src/engine/town/facts";
-import { dress, FERRY } from "../src/engine/town/dressing";
+import { asphalt, dress, FERRY } from "../src/engine/town/dressing";
 import { plans, roofFaces } from "../src/engine/town/roof";
 import { capped, slope } from "../src/engine/town/mass";
-import { buildRoadGeometry, CAB, CAR, HALF_W, TRAILER, type ArmInfo } from "../src/engine/objects/roadGeometry";
+import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
 import { BLUEPRINTS } from "../src/blueprints";
 import { themes } from "../src/engine/theme";
 
@@ -61,40 +61,14 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   const dressing = dress(town, fs);
   fill(dressing.gardens.map(([c, r]): Polygon => [[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]]), hex(T.garden));
 
-  // Roads, each tile's arms as the game lays them, joined into one surface.
-  for (const through of [false, true]) {
-    const tris: Polygon[] = [];
-    for (let r = 0; r < town.h; r++) {
-      for (let c = 0; c < town.w; c++) {
-        if (town.tile(c, r).kind !== "road" || town.through(c, r) !== through) continue;
-        const arms: ArmInfo[] = [];
-        for (let dr = -1; dr <= 1; dr++) {
-          for (let dc = -1; dc <= 1; dc++) {
-            if (!(dc || dr) || !town.linked(c, r, c + dc, r + dr)) continue;
-            const a = Math.atan2(-dr, -dc);
-            arms.push({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" });
-          }
-        }
-        const geo = buildRoadGeometry(arms, HALF_W, 0);
-        if (!geo) continue;
-        const p = geo.positions;
-        const pt = (i: number): Pt => [c + 0.5 - p[3 * i], r + 0.5 - p[3 * i + 1]];
-        for (let i = 0; i < geo.indices.length; i += 3) {
-          const tri = [pt(geo.indices[i]), pt(geo.indices[i + 1]), pt(geo.indices[i + 2])];
-          // Walls and skirts stand on edge: only what lies flat is road.
-          const area = (tri[1][0] - tri[0][0]) * (tri[2][1] - tri[0][1]) - (tri[2][0] - tri[0][0]) * (tri[1][1] - tri[0][1]);
-          if (Math.abs(area) > 1e-6) tris.push([area > 0 ? tri : tri.reverse()]);
-        }
-      }
-    }
-    // Grown a hair and drawn back, so no seam is left between triangles.
-    fill(shrink(shrink(tris, -1e-3), 1e-3), hex(through ? T.highway : T.road), `stroke="${INK}" stroke-width="0.015"`);
-  }
+  // The asphalt: roads, and the lanes and drives leading off them, one
+  // surface.
+  const { street, through } = asphalt(town, dressing.lanes);
+  fill(street, hex(T.road), `stroke="${INK}" stroke-width="0.015"`);
+  fill(through, hex(T.highway), `stroke="${INK}" stroke-width="0.015"`);
 
-  // What stands on the ground: parking lanes and bays, yard lines,
-  // service lanes, lorries at docks, parked cars.
-  fill(dressing.lanes.map((r) => [r]), hex(T.road));
-  fill(fs.services.map((s) => [s.lane]), hex(T.road));
+  // What stands on the ground: bays, yard lines, lorries at docks, parked
+  // cars.
   fill(dressing.bays.map((r) => [r]), "#b8b2a0");
   fill(dressing.yardLines.map((r) => [r]), "#b8b2a0");
   for (const car of dressing.cars) box(car.x, car.y, car.angle, CAR.l, CAR.w, CARS[car.colour]);

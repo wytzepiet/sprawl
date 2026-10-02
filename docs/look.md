@@ -120,7 +120,10 @@ The code is `client/src/engine/town/`:
   house alone, a semi, the ends of a row. The middle of a row, and a
   house with buildings on both sides, park at the kerb. Built beside,
   the drive goes. So a suburb has driveways and a terrace parks in the
-  street, by the neighbours alone (`17-driveways`, 2026-10-02). The pavement is
+  street, by the neighbours alone (`17-driveways`, 2026-10-02). The
+  road, its parking lanes, the drives and the service lanes are one
+  asphalt (`asphalt` in `dressing.ts`), its corners rounded in and out,
+  so a bay or a drive reads as the road carried on (2026-10-02). The pavement is
   ground: every road, building and yard makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal

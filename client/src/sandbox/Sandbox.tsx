@@ -8,17 +8,17 @@ import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
 import { BLUEPRINTS } from "../blueprints";
 import type { RGB } from "../engine/town/mass";
-import { buildRoadGeometry, CAB, CAR, HALF_W, ROAD_Z, TRAILER, type ArmInfo } from "../engine/objects/roadGeometry";
+import { CAB, CAR, ROAD_Z, TRAILER } from "../engine/objects/roadGeometry";
 import type { MeshGeometry } from "../engine/Mesh";
 import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
 import { townMesh as mesh } from "../engine/town/roof";
-import { defaultJoins, footprints, soften } from "../engine/town/footprint";
+import { defaultJoins, footprints, soften, type Polygon } from "../engine/town/footprint";
 import earcut from "earcut";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_BODY, TREE_TOP, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { facts } from "../engine/town/facts";
-import { dress, FERRY } from "../engine/town/dressing";
+import { asphalt, dress, FERRY } from "../engine/town/dressing";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -425,8 +425,6 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   // The ground: grass, water, woods and paving, as terrain.
   meshes.push(...terrain(scene, town, theme, rows));
 
-  // Roads, as the game lays them: each tile's arms to the tiles it is joined to.
-  const roads = { street: [] as MeshGeometry[], through: [] as MeshGeometry[] };
   // The pavement: every road, building and yard makes paved ground, shaped
   // by the buildings' own rule (the terrain's corners, a diagonal as far out
   // as a straight edge) at full size, then its corners rounded as the
@@ -443,56 +441,34 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     })),
     () => false,
   );
-  const pavements: MeshGeometry[] = [];
-  for (const poly of soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3)) {
-    const flat = poly.flat();
-    const holes: number[] = [];
-    let at = 0;
-    for (const ring of poly.slice(0, -1)) holes.push((at += ring.length));
-    const ids = earcut(flat.flat(), holes);
+  /** Polygons laid flat at a height. */
+  const flatPolygons = (polys: Polygon[], z: number): MeshGeometry => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-    for (const [x, y] of flat) g.positions.push(-x, -y, PAVED_Z), g.normals.push(0, 0, 1);
-    for (let i = 0; i < ids.length; i += 3) g.indices.push(ids[i], ids[i + 2], ids[i + 1]);
-    pavements.push(g);
-  }
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      if (town.tile(c, r).kind !== "road") continue;
-      const arms: ArmInfo[] = [];
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          if ((dc || dr) && town.linked(c, r, c + dc, r + dr)) {
-            const a = Math.atan2(-dr, -dc);
-            arms.push({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" });
-          }
-        }
-      }
-      const geo = buildRoadGeometry(arms, HALF_W, ROAD_Z + PAVED_Z);
-      if (!geo) continue;
-      const p = geo.positions.slice();
-      for (let i = 0; i < p.length; i += 3) (p[i] -= c + 0.5), (p[i + 1] -= r + 0.5);
-      roads[town.through(c, r) ? "through" : "street"].push({ ...geo, positions: p });
+    for (const poly of polys) {
+      const flat = poly.flat();
+      const holes: number[] = [];
+      let at = 0;
+      for (const ring of poly.slice(0, -1)) holes.push((at += ring.length));
+      const ids = earcut(flat.flat(), holes);
+      const b0 = g.positions.length / 3;
+      for (const [x, y] of flat) g.positions.push(-x, -y, z), g.normals.push(0, 0, 1);
+      for (let i = 0; i < ids.length; i += 3) g.indices.push(b0 + ids[i], b0 + ids[i + 2], b0 + ids[i + 1]);
     }
-  }
-  const merge = (gs: MeshGeometry[]): MeshGeometry => {
-    const out: MeshGeometry = { positions: [], normals: [], indices: [] };
-    for (const g of gs) {
-      const b = out.positions.length / 3;
-      out.positions.push(...g.positions);
-      out.normals.push(...g.normals);
-      out.indices.push(...g.indices.map((i) => i + b));
-    }
-    return out;
+    return g;
   };
-  add("pavement", merge(pavements), theme.paved);
-  add("street", merge(roads.street), theme.road);
-  add("through", merge(roads.through), theme.highway);
+  add("pavement", flatPolygons(soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3), PAVED_Z), theme.paved);
+
+  // The free ground, dressed, and the asphalt: the roads, and the lanes and
+  // drives leading off them, one surface.
+  const { gardens, trees, cars, lanes, bays, docks, yardLines, ships } = dress(town, facts(town));
+  const { street, through } = asphalt(town, lanes);
+  add("street", flatPolygons(street, ROAD_Z + PAVED_Z), theme.road);
+  add("through", flatPolygons(through, ROAD_Z + PAVED_Z), theme.highway);
 
   add("mass", mesh(town, colourOf), Color3.White());
 
-  // The free ground, dressed: courtyard lawns, and trees in them and along
-  // the streets, as crowns like the forest's.
-  const { gardens, trees, cars, lanes, bays, docks, yardLines, ships } = dress(town, facts(town));
+  // Courtyard lawns, and trees in them and along the streets, as crowns
+  // like the forest's.
   // Pavements under the roads, lanes and their bay lines over the pavement.
   const flat = (polys: [number, number][][], z: number): MeshGeometry => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
@@ -503,7 +479,6 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     }
     return g;
   };
-  add("lanes", flat(lanes, 0.03), theme.road);
   add("bays", flat(bays, 0.032), theme.bayLine);
   add("yard_lines", flat(yardLines, 0.025), theme.road);
   add("garden", quadsAt(gardens, 0.005), theme.garden);

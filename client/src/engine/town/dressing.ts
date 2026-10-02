@@ -1,8 +1,8 @@
 import { isBuilt, type Town } from "./grid";
 import { DOCKS, PARKED, type Facts } from "./facts";
 import { formOf } from "./mass";
-import { CAB, CAR, HALF_W, TRAILER } from "../objects/roadGeometry";
-import { defaultJoins, INSET } from "./footprint";
+import { buildRoadGeometry, CAB, CAR, HALF_W, TRAILER, type ArmInfo } from "../objects/roadGeometry";
+import { defaultJoins, INSET, intersect, shrink, soften, subtract, unite, type Polygon } from "./footprint";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -81,9 +81,9 @@ const RAMP = { l: 0.3, w: 0.55 };
 /** A lorry bay's depth: a lorry and a little. */
 const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
 
-/** A parking lane, from just past the road's edge (0.2) out, a car wide
- *  and a little room either side; then pavement to the rows' faces. */
-const LANE: [number, number] = [HALF_W + 0.015, HALF_W + 0.015 + CAR.w + 0.03];
+/** A parking lane, from the road's edge (0.2) out, a car wide and a
+ *  little room either side; then pavement to the rows' faces. */
+const LANE: [number, number] = [HALF_W, HALF_W + 0.015 + CAR.w + 0.03];
 /** How far a parked car's middle is from its street's middle line: the
  *  lane's middle, wholly off the road. */
 const KERB = (LANE[0] + LANE[1]) / 2;
@@ -148,6 +148,46 @@ export function dress(town: Town, facts: Facts): Dressing {
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
+}
+
+/** How round the asphalt's corners are, in and out. */
+const ROUND = 0.05;
+
+/**
+ * The asphalt: the roads as the game lays them, each tile's arms to the
+ * tiles it is joined to, and everything driven on that leads off them,
+ * parking lanes, driveways, service lanes, ramps, as one surface, its
+ * corners rounded in and out, so a bay or a drive reads as the road
+ * carried on. Through roads keep their own colour, cut from it straight.
+ */
+export function asphalt(town: Town, lanes: Pt[][]): { street: Polygon[]; through: Polygon[] } {
+  const tiles = (through: boolean) => {
+    const tris: Polygon[] = [];
+    for (let r = 0; r < town.h; r++) {
+      for (let c = 0; c < town.w; c++) {
+        if (town.tile(c, r).kind !== "road" || town.through(c, r) !== through) continue;
+        const arms: ArmInfo[] = [];
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (!(dc || dr) || !town.linked(c, r, c + dc, r + dr)) continue;
+            const a = Math.atan2(-dr, -dc);
+            arms.push({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" });
+          }
+        }
+        const geo = buildRoadGeometry(arms, HALF_W, 0);
+        if (!geo) continue;
+        // The geometry is the world's (x and y the other way); flat only.
+        const p = geo.positions;
+        const at = (i: number): Pt => [c + 0.5 - p[3 * i], r + 0.5 - p[3 * i + 1]];
+        for (let i = 0; i < geo.indices.length; i += 3) tris.push([[at(geo.indices[i]), at(geo.indices[i + 1]), at(geo.indices[i + 2])]]);
+      }
+    }
+    // Grown a hair and drawn back, so no seam is left between triangles.
+    return shrink(shrink(tris, -1e-3), 1e-3);
+  };
+  const through = tiles(true);
+  const all = soften(unite([...tiles(false), ...through, ...lanes.map((l): Polygon => [l])]), ROUND);
+  return { street: subtract(all, through), through: intersect(through, all) };
 }
 
 /** A driveway's width: the margin a house leaves beside it, wall to the
