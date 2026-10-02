@@ -49,7 +49,7 @@ export function* plans(painted: Town) {
   const { town, head, services } = facts(painted);
   const cuts = services.map((s): Polygon => [s.cut]);
   for (const mass of footprints(town, head)) {
-    const bumps = services.map((s): Polygon => [s.bump]).filter((b) => intersect([b], mass.polygons).length);
+    const bumps = services.flatMap((s): Polygon[] => (s.bump ? [[s.bump]] : [])).filter((b) => intersect([b], mass.polygons).length);
     for (const polygon of unite([...subtract(mass.polygons, cuts), ...bumps])) yield { mass, polygon, outline: blunt([polygon], CORNER) };
   }
 }

@@ -1,4 +1,4 @@
-import { isBuilt, type Town } from "./grid";
+import { isBuilt, isStreet, type Town } from "./grid";
 import { formOf, type Yard } from "./mass";
 import { defaultJoins, INSET, type Pt } from "./footprint";
 
@@ -29,18 +29,24 @@ import { defaultJoins, INSET, type Pt } from "./footprint";
  *   front to the back, and at the lane's end a bump sticks out of the back
  *   wall: the loading bay, its door facing up the lane, a lorry backed up
  *   to it. None of it takes a tile: the lane is cut from the building, the
- *   bump stands in the margins behind it.
+ *   bump stands in the margins behind it. Where an alley runs behind it,
+ *   any supermarket takes its deliveries there instead, at a bay let into
+ *   the back wall, its side and its car park whole.
  */
 
 /** A supermarket's service bay, in the town's plan: the lane cut from the
  *  building, the bump added to it, the lane's tarmac, and the dock at the
- *  bump's door. */
+ *  bump's door; or, off an alley, a bay let into the back wall, no bump. */
 export interface Service {
   cut: Pt[];
-  bump: Pt[];
+  bump?: Pt[];
   lane: Pt[];
   dock: { x: number; y: number; angle: number };
 }
+/** A loading bay off an alley: as wide as a lorry and a little, and as
+ *  deep into the back wall as its tail tucks in. */
+const BAY_W = 0.26;
+const BAY_DEPTH = 0.2;
 /** The lane's width, cut from the building beyond its inset. */
 const LANE = 0.3;
 /** How far the bump reaches past its tile's edge: into the margin beyond,
@@ -128,7 +134,7 @@ function berth(town: Town, cells: [number, number][]) {
     return cells.filter(([c, r]) => c * s[0] + r * s[1] === far);
   };
   const sides = [[-to[1], to[0]], [to[1], -to[0]]] as [number, number][];
-  const side = sides.find((s) => column(s).some(([c, r]) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road"))) ?? sides[0];
+  const side = sides.find((s) => column(s).some(([c, r]) => SIDES.some(([dc, dr]) => isStreet(town, c + dc, r + dr)))) ?? sides[0];
   return { to, side, exit: column(side) };
 }
 
@@ -140,7 +146,7 @@ function services(town: Town, yard: Map<string, Yard["fill"]>): Service[] {
   for (const cells of buildings(town)) {
     if (town.tile(...cells[0]).kind !== "Supermarket") continue;
     const shop = cells.filter(([c, r]) => !yard.has(`${c},${r}`));
-    const open = (c: number, r: number) => yard.has(`${c},${r}`) || town.tile(c, r).kind === "road";
+    const open = (c: number, r: number) => yard.has(`${c},${r}`) || isStreet(town, c, r);
     // Its front: the side with most car park and street along it.
     const along = ([dc, dr]: number[]) => shop.filter(([c, r]) => open(c + dc, r + dr)).length;
     const f = [...SIDES].sort((a, b) => along(b) - along(a))[0];
@@ -152,6 +158,24 @@ function services(town: Town, yard: Map<string, Yard["fill"]>): Service[] {
     };
     const extent = (u: number[]) => [Math.min(...shop.map((t) => span(u, t)[0])), Math.max(...shop.map((t) => span(u, t)[1]))];
     const back = [-f[0], -f[1]];
+    // An alley behind it: deliveries come that way, to a bay let into the
+    // back wall, and nothing is cut from its side or its car park.
+    const behind = shop.filter(([c, r]) => town.tile(c + back[0], r + back[1]).kind === "road" && town.way(c + back[0], r + back[1]) === "alley");
+    if (behind.length) {
+      const [sx, sy] = [-back[1], back[0]];
+      const [c, r] = behind.sort((p, q) => p[0] * sx + p[1] * sy - (q[0] * sx + q[1] * sy))[Math.floor((behind.length - 1) / 2)];
+      /** A point by how far back from the tile's middle and how far aside. */
+      const at = (a: number, q: number): Pt => [c + 0.5 + back[0] * a + sx * q, r + 0.5 + back[1] * a + sy * q];
+      const box = (a: number, b: number, p: number, q: number): Pt[] => [at(a, p), at(b, p), at(b, q), at(a, q)];
+      const inner = 0.5 - INSET - BAY_DEPTH;
+      const [x, y] = at(inner, 0);
+      out.push({
+        cut: box(inner, 0.5 - INSET + 0.01, -BAY_W / 2, BAY_W / 2),
+        lane: box(inner, 0.9, -BAY_W / 2, BAY_W / 2),
+        dock: { x, y, angle: Math.atan2(back[1], back[0]) },
+      });
+      continue;
+    }
     const [a0, a1] = extent(back);
     const sides = [[-f[1], f[0]], [f[1], -f[0]]];
     if (a1 - a0 < 2 || extent(sides[0])[1] + extent(sides[1])[1] < 2) continue;
@@ -204,13 +228,13 @@ function buildings(town: Town): [number, number][][] {
 /** A yard tile's docks: toward each tile of its building that is not yard
  *  and lies straight across from a street the yard tile is on. */
 const docksOf = (town: Town, yard: (c: number, r: number) => boolean) => (c: number, r: number) =>
-  SIDES.filter(([dc, dr]) => town.tile(c - dc, r - dr).kind === "road" && town.tile(c + dc, r + dr).kind === town.tile(c, r).kind && !yard(c + dc, r + dr)) as [number, number][];
+  SIDES.filter(([dc, dr]) => isStreet(town, c - dc, r - dr) && town.tile(c + dc, r + dr).kind === town.tile(c, r).kind && !yard(c + dc, r + dr)) as [number, number][];
 
 /** How much street is round a tile, the nearer the more: a corner on a
  *  junction has most. */
 function streetAround(town: Town, c: number, r: number) {
   let n = 0;
-  for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (town.tile(c + dc, r + dr).kind === "road") n += 1 / (dc * dc + dr * dr);
+  for (let dr = -3; dr <= 3; dr++) for (let dc = -3; dc <= 3; dc++) if (isStreet(town, c + dc, r + dr)) n += 1 / (dc * dc + dr * dr);
   return n;
 }
 
@@ -227,7 +251,7 @@ function yards(town: Town): Map<string, Yard["fill"]> {
     const exit = new Set((lie?.exit ?? []).map(([c, r]) => `${c},${r}`));
     const inYard = (c: number, r: number) => yard.has(`${c},${r}`) || exit.has(`${c},${r}`);
     const walls = docksOf(town, inYard);
-    const street = (c: number, r: number) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road");
+    const street = (c: number, r: number) => SIDES.some(([dc, dr]) => isStreet(town, c + dc, r + dr));
     const holds = (c: number, r: number) => (fill === "docks" ? DOCKS * walls(c, r).length : fill === "ferry" ? QUEUED : street(c, r) ? PARKED : 0);
     const shore = (c: number, r: number) => Math.min(...cells.filter(([x, y]) => SIDES.some(([dc, dr]) => town.tile(x + dc, y + dr).kind === "water")).map(([x, y]) => Math.abs(x - c) + Math.abs(y - r)));
     const held = () => [...yard].reduce((n, k) => n + holds(...(k.split(",").map(Number) as [number, number])), 0);

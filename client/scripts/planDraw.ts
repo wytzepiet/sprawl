@@ -5,10 +5,10 @@
  * `plan.ts` is the command.
  */
 import type { BuildingKind } from "../src/generated";
-import { isBuilt, parseTown, townOf, type Tile } from "../src/engine/town/grid";
-import { footprints, intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
+import { parseTown, type Tile } from "../src/engine/town/grid";
+import { intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
 import { facts } from "../src/engine/town/facts";
-import { asphalt, dress, FERRY } from "../src/engine/town/dressing";
+import { asphalt, dress, FERRY, pavement } from "../src/engine/town/dressing";
 import { plans, roofFaces } from "../src/engine/town/roof";
 import { capped, slope } from "../src/engine/town/mass";
 import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
@@ -46,16 +46,7 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   fill(soften(unite(tiles((t) => t.kind === "water")), 0.3), hex(T.water));
   fill(soften(unite(tiles((t) => t.kind === "wood")), 0.3), hex(T.forest));
 
-  // The pavement, by the buildings' own rule at full size, softened.
-  const PAVING: Tile = { kind: "House", storeys: 1 };
-  const paved = townOf(
-    Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
-      const t = town.tile(c, r);
-      return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
-    })),
-    () => false,
-  );
-  fill(soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3), hex(T.paved), `stroke="${INK}" stroke-width="0.015"`);
+  fill(pavement(town), hex(T.paved), `stroke="${INK}" stroke-width="0.015"`);
 
   const fs = facts(town);
   const dressing = dress(town, fs);

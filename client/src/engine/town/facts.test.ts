@@ -60,7 +60,7 @@ describe("facts and dressing", () => {
     const [service] = facts(big).services;
     expect(service).toBeDefined();
     // The bump sticks out past the shop's tiles (x 1 to 4, y 2 to 5).
-    const [xs, ys] = [service.bump.map(([x]) => x), service.bump.map(([, y]) => y)];
+    const [xs, ys] = [service.bump!.map(([x]) => x), service.bump!.map(([, y]) => y)];
     expect(Math.max(...xs) > 4 || Math.min(...xs) < 1 || Math.max(...ys) > 5 || Math.min(...ys) < 2).toBe(true);
     expect(dress(big, facts(big)).docks.length).toBe(1);
     const small = town(["=.....", "======", "=MM...", "=MM...", "=....."]);

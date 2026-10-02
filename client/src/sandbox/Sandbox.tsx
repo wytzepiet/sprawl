@@ -10,15 +10,15 @@ import { BLUEPRINTS } from "../blueprints";
 import type { RGB } from "../engine/town/mass";
 import { CAB, CAR, ROAD_Z, TRAILER } from "../engine/objects/roadGeometry";
 import type { MeshGeometry } from "../engine/Mesh";
-import { isBuilt, LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
+import { LETTERS, parseTown, tileOf, townOf, type Tile, type Town, type Way } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
 import { townMesh as mesh } from "../engine/town/roof";
-import { defaultJoins, footprints, soften, type Polygon } from "../engine/town/footprint";
+import { defaultJoins, type Polygon } from "../engine/town/footprint";
 import earcut from "earcut";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_BODY, TREE_TOP, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { facts } from "../engine/town/facts";
-import { asphalt, dress, FERRY } from "../engine/town/dressing";
+import { asphalt, dress, FERRY, pavement } from "../engine/town/dressing";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -43,7 +43,7 @@ const FIXTURES: Record<string, string> = Object.fromEntries(
 const BRUSHES: { key: string; ch: string; label: string }[] = [
   { key: "1", ch: "H", label: "House" }, { key: "2", ch: "A", label: "Flats" }, { key: "3", ch: "S", label: "Shop" },
   { key: "4", ch: "O", label: "Office" }, { key: "5", ch: "F", label: "Factory" }, { key: "d", ch: "D", label: "Depot" }, { key: "m", ch: "M", label: "Supermarket" }, { key: "f", ch: "P", label: "Ferry port" },
-  { key: "6", ch: "=", label: "Street" }, { key: "7", ch: "#", label: "Road" }, { key: "p", ch: ":", label: "Paved" },
+  { key: "6", ch: "=", label: "Street" }, { key: "7", ch: "#", label: "Road" }, { key: "a", ch: "-", label: "Alley" }, { key: "p", ch: ":", label: "Paved" },
   { key: "8", ch: "~", label: "Water" }, { key: "9", ch: "T", label: "Wood" },
   { key: "0", ch: ".", label: "Clear" }, { key: "+", ch: "+", label: "Taller" }, { key: "-", ch: "-", label: "Lower" },
 ];
@@ -77,7 +77,7 @@ function Board() {
 
   let rows: string[] = [];
   let tiles: Tile[][] = [];
-  let through: boolean[][] = [];
+  let ways: Way[][] = [];
   let drawn: Mesh[] = [];
 
   /** Which tiles are joined into one building, as the strokes ran; null
@@ -85,7 +85,7 @@ function Board() {
   let joins: Set<string> | null = null;
   const jkey = (c: number, r: number, x: number, y: number) => (c < x || (c === x && r < y) ? `${c},${r}:${x},${y}` : `${x},${y}:${c},${r}`);
   const joinsOf = (set: Set<string>) => (c: number, r: number, x: number, y: number) => set.has(jkey(c, r, x, y));
-  const town = (): Town => townOf(tiles, (c, r) => !!through[r]?.[c], [], joins ? joinsOf(joins) : undefined);
+  const town = (): Town => townOf(tiles, (c, r) => ways[r]?.[c] ?? "street", [], joins ? joinsOf(joins) : undefined);
   /** The joins the look makes by kind, written down: where strokes begin. */
   function fixed(t: Town): Set<string> {
     const j = defaultJoins(t);
@@ -119,7 +119,7 @@ function Board() {
     const t = parseTown(FIXTURES[fixture] ?? "");
     rows = t.rows;
     tiles = Array.from({ length: t.h }, (_, r) => Array.from({ length: t.w }, (_, c) => t.tile(c, r)));
-    through = Array.from({ length: t.h }, (_, r) => Array.from({ length: t.w }, (_, c) => t.through(c, r)));
+    ways = Array.from({ length: t.h }, (_, r) => Array.from({ length: t.w }, (_, c) => t.way(c, r)));
     joins = null;
     draw();
     const cam = (window as unknown as { sprawlCamera?: { look(x: number, y: number, half: number): void } }).sprawlCamera;
@@ -157,7 +157,7 @@ function Board() {
     // What is painted over leaves the building it was part of.
     if (joins) for (const k of [...joins]) if (k.startsWith(`${c},${r}:`) || k.endsWith(`:${c},${r}`)) joins.delete(k);
     tiles[r][c] = tileOf(ch);
-    through[r][c] = ch === "#";
+    ways[r][c] = ch === "#" ? "road" : ch === "-" ? "alley" : "street";
     rows[r] = rows[r].slice(0, c).padEnd(c, ".") + ch + rows[r].slice(c + 1);
   }
 
@@ -188,7 +188,7 @@ function Board() {
     if (ghost) {
       const ghostTiles = tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? tileOf(brush()) : tile)));
       const all = joins ?? fixed(t);
-      const shown = townOf(ghostTiles, (c, r) => t.through(c, r), [], joinsOf(new Set([...all, ...strokeJoins(t, ghost)])));
+      const shown = townOf(ghostTiles, (c, r) => t.way(c, r), [], joinsOf(new Set([...all, ...strokeJoins(t, ghost)])));
       const geo = mesh(shown, colourOf, new Set(ghost.map(([c, r]) => `${c},${r}`)));
       if (geo.indices.length) overlay.push(translucent(scene, "ghost", geo, Color3.White(), 0.75));
     } else if (hover && program()) {
@@ -425,22 +425,9 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   // The ground: grass, water, woods and paving, as terrain.
   meshes.push(...terrain(scene, town, theme, rows));
 
-  // The pavement: every road, building and yard makes paved ground, shaped
-  // by the buildings' own rule (the terrain's corners, a diagonal as far out
-  // as a straight edge) at full size, then its corners rounded as the
-  // terrain's are. A town is paved house to house, a diagonal street as
-  // wide as a straight one.
   // A kerb's height over the grass, so the pen inks its edge as it inks a
   // road's; under the roads.
   const PAVED_Z = 0.02;
-  const PAVING: Tile = { kind: "House", storeys: 1 };
-  const paved = townOf(
-    Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
-      const t = town.tile(c, r);
-      return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
-    })),
-    () => false,
-  );
   /** Polygons laid flat at a height. */
   const flatPolygons = (polys: Polygon[], z: number): MeshGeometry => {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
@@ -456,7 +443,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     }
     return g;
   };
-  add("pavement", flatPolygons(soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3), PAVED_Z), theme.paved);
+  add("pavement", flatPolygons(pavement(town), PAVED_Z), theme.paved);
 
   // The free ground, dressed, and the asphalt: the roads, and the lanes and
   // drives leading off them, one surface.

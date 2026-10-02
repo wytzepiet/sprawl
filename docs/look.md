@@ -124,7 +124,14 @@ The code is `client/src/engine/town/`:
   road, the drives and the service lanes are one asphalt (`asphalt` in
   `dressing.ts`), its corners rounded in and out, so a drive reads as
   the road carried on. The kerb is not the road, and is not drawn: the
-  cars beside the road are enough (2026-10-02, the mayor). The pavement is
+  cars beside the road are enough (2026-10-02, the mayor). An **alley**
+  (`-` in a fixture) is a road a lorry wide, behind things: nothing
+  fronts it, parks along it or grows beside it, and it is not paved. A
+  building with an alley behind it takes its deliveries there, at a bay
+  let into its back wall, so nothing is cut from its side or its car
+  park, and no car park faces the alley (`19-alley`, 2026-10-02, the
+  mayor: an alley behind a parade costs a strip of land and gives every
+  shop on it its parking back). The pavement is
   ground: every road, building and yard makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal
