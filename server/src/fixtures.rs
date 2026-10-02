@@ -4,7 +4,8 @@
 //!
 //! `SPRAWL_FIXTURES=fixtures` starts the server on them instead of a seed.
 //! The script beside the client (`bun run shots`) points the camera at each
-//! one in turn and lays the pictures out on one sheet.
+//! one in turn and lays the pictures out on one sheet. `draw` is the other
+//! way: any part of the running game as a fixture's text (`/map`).
 //!
 //! A fixture is a grid, one character a tile, top row north:
 //!
@@ -62,6 +63,10 @@ fn building(c: char) -> Option<BuildingKind> {
         'D' => Warehouse,
         _ => return None,
     })
+}
+
+fn letter(kind: BuildingKind) -> char {
+    "HASOWFRBGMD".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
@@ -161,4 +166,34 @@ pub fn build(world: &mut World, dir: &Path) {
     }
     println!("fixtures: built {} from {}", placed.len(), dir.display());
     let _ = PLACED.set(placed);
+}
+
+/// The tiles within `r` of a point as a fixture's text, laid out as the map
+/// is seen (+x to the left, +y up), so it reads, and draws, as the game
+/// does. A building's whole plot is its letter. The first line names the
+/// game's tile at column 0, row 0: a column on is a tile less of x, a row
+/// on a tile less of y.
+pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
+    let mut out = format!("# The game round {x},{y}\n# origin {},{}\n", x + r, y + r);
+    for ty in (y - r..=y + r).rev() {
+        for tx in (x - r..=x + r).rev() {
+            let road = world.road_node_at(GridCoord { x: tx, y: ty }).and_then(|id| world.objects.get(id));
+            let built = world.occupied.get(&(tx, ty)).and_then(|&id| world.objects.get(id));
+            out.push(match (road.map(|e| &e.object), built.map(|e| &e.object)) {
+                // A plot's driveway is road on its own tile: the plot is the
+                // building's.
+                (_, Some(GameObject::Building(b))) => letter(b.kind),
+                (Some(GameObject::RoadNode(n)), _) => if n.road { '#' } else { '=' },
+                _ => match world.terrain.get(&(tx, ty)) {
+                    Some(TerrainType::Sea | TerrainType::Water) => '~',
+                    Some(TerrainType::Forest) => 'T',
+                    Some(TerrainType::Beach) => '_',
+                    Some(TerrainType::Mountain) => '^',
+                    _ => '.',
+                },
+            });
+        }
+        out.push('\n');
+    }
+    out
 }

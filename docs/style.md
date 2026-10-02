@@ -134,13 +134,15 @@ The order for the sessions after this one:
    leans on them. What exists reads snapshots: `/health`, `/town`,
    `/inspect/{id}`, the `/debug/…` routes, `bun run shots` of the
    fixtures, the town and season tests. Missing:
-   - **Acting**: place a road or a building, set the speed, move the
-     clock on the running game, from a command, as the mayor's hand does,
-     so an agent can set up a situation and watch it.
-   - **Looking anywhere**: one shot command for the game and the sandbox
-     that takes a place, a zoom, a time of day and a crop, and scripted
-     brush strokes for the sandbox. (Written by hand all through
-     2026-09-28 to 10-02 and lost with each container: commit them.)
+   - **Acting**: built 2026-10-02, `bun run act` (`CLAUDE.md`): roads,
+     buildings, demolition, the speed and the clock, on the running game,
+     each answered with what changed.
+   - **Looking anywhere**: the plan of any place in the running game is
+     built (`bun run plan --live`). Missing: one photograph command for
+     the game and the sandbox that takes a place, a zoom, a time of day
+     and a crop, and scripted brush strokes for the sandbox. (Written by
+     hand all through 2026-09-28 to 10-02 and lost with each container:
+     commit them.)
    - **Seeing motion**: vehicles' paths logged and plotted, and a short
      sequence of frames, for what a still cannot show (cars turning too
      sharp); the physics check reads the same paths.
@@ -148,7 +150,8 @@ The order for the sessions after this one:
      the town grid drawn flat as SVG, instant and exact, and `--at` a
      before and after. The network goes in it when it is built.
    - **Asking why**: what is at a tile, what it is joined to, why a stop
-     is red.
+     is red. So far only `/site` (a refused building's plot: where, and
+     whether it fits, not why not).
 1. **A research tool**: one command that takes a place, anywhere, and
    lays its map and photo side by side, as was done by hand for the
    supermarkets and ferries.

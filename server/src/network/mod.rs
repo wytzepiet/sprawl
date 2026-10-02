@@ -47,6 +47,8 @@ pub enum Ask {
     Town,
     /// Where a kind would land with its building under this point.
     Site { kind: crate::protocol::BuildingKind, x: f64, y: f64 },
+    /// The tiles round a point as a fixture's text.
+    Map { x: i32, y: i32, r: i32 },
 }
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);

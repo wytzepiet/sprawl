@@ -1,0 +1,173 @@
+/**
+ * The mayor's hand, from a command: what the toolbar does, sent to the
+ * running game over its own socket, and what changed said back. So an agent
+ * can set up a situation and watch it.
+ *
+ *   bun run act road 10,4 20,4 20,9     a street through these tiles, stepping
+ *                                       as the brush does, diagonals and all
+ *       --road | --one-way              a through road, or one way
+ *   bun run act build House 12,5        a building held over this tile
+ *   bun run act demolish 12,5           whatever stands on the tile
+ *   bun run act speed 0                 sim steps per tick; 0 pauses
+ *   bun run act run 2                   two hours on at full speed, then the
+ *       --to 0.83                       speed it had; or on to this time of
+ *                                       day (0 midnight, 0.5 noon)
+ *   bun run act time                    the clock, as now and time of day
+ *   bun run act reset                   a new world
+ *   bun run act - < steps.txt           one command a line; # comments
+ *
+ * Tiles are the game's own (x, y), as `bun run plan --live` numbers them;
+ * on the map +x is to the left and +y up. Each command answers with what it
+ * made and took away, and a command that changed nothing says so, since
+ * the server refuses quietly (the build's gate, the purse, a plot that does
+ * not fit; refusals of buildings are in `.dev/server.log`). The game is the
+ * one `bun run dev` runs, or SPRAWL_PORT's.
+ */
+import { decode, encode } from "@msgpack/msgpack";
+
+const PORT = Number(process.env.SPRAWL_PORT ?? 4801);
+/** The server's chunk, in tiles (`CHUNK_SIZE` in `protocol.rs`). */
+const CHUNK = 32;
+/** Quiet this long and the server has said all it will about a command;
+ *  silent this long, and it will say nothing. */
+const SETTLE_MS = 400;
+const WAIT_MS = 2000;
+/** The server's top speed (`MAX_SPEED` in `game_loop`). */
+const FULL = 50;
+
+type Pt = [number, number];
+type Entry = { id: number; object: { kind: string; data: any }; position: { x: number; y: number } | null };
+type Op = { op: "Upsert"; data: Entry } | { op: "Delete"; data: number };
+
+const lines = process.argv[2] === "-"
+  ? (await Bun.stdin.text()).split("\n").map((l) => l.replace(/#.*/, "").trim()).filter(Boolean).map((l) => l.split(/\s+/))
+  : [process.argv.slice(2)];
+const tile = (s: string): Pt => {
+  const m = s.match(/^(-?\d+),(-?\d+)$/);
+  if (!m) throw new Error(`not a tile: ${s} (want x,y)`);
+  return [Number(m[1]), Number(m[2])];
+};
+
+// The chunks every tile named lies in, a chunk round, so the server tells
+// us of what is built there.
+const named = lines.flat().filter((a) => /^-?\d+,-?\d+$/.test(a)).map(tile);
+const chunks = named.length ? named : [[0, 0] as Pt];
+const ch = (v: number) => Math.floor(v / CHUNK);
+const bounds = {
+  min_cx: Math.min(...chunks.map((p) => ch(p[0]))) - 1, min_cy: Math.min(...chunks.map((p) => ch(p[1]))) - 1,
+  max_cx: Math.max(...chunks.map((p) => ch(p[0]))) + 1, max_cy: Math.max(...chunks.map((p) => ch(p[1]))) + 1,
+};
+
+const known = new Map<number, Entry>();
+let clock = { now: 0, speed: 1, day_ms: 1 };
+let heard = Date.now();
+let ops: Op[] = [];
+const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+ws.binaryType = "arraybuffer";
+ws.onmessage = (e) => {
+  const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as { type: string; data: any };
+  if (msg.type !== "Update") return;
+  clock = msg.data.clock;
+  if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
+};
+await new Promise((ok, fail) => ((ws.onopen = ok), (ws.onerror = () => fail(new Error(`no game on port ${PORT}: bun run dev`)))));
+const send = (type: string, data?: unknown) => ws.send(encode(data === undefined ? { type } : { type, data }));
+/** What the server said about a command: its first word, then whatever
+ *  follows until it is quiet; or nothing, if it says nothing for a while. */
+async function settled() {
+  const asked = Date.now();
+  do await Bun.sleep(100);
+  while (heard < asked ? Date.now() - asked < WAIT_MS : Date.now() - heard < SETTLE_MS);
+  const out = ops;
+  ops = [];
+  return out;
+}
+/** What a batch of ops made and took away, cars and residents aside. */
+function changes(batch: Op[]): string[] {
+  const made: Entry[] = [], gone: Entry[] = [];
+  for (const op of batch) {
+    if (op.op === "Upsert") {
+      if (!known.has(op.data.id)) made.push(op.data);
+      known.set(op.data.id, op.data);
+    } else if (known.has(op.data)) {
+      gone.push(known.get(op.data)!);
+      known.delete(op.data);
+    }
+  }
+  const say = (e: Entry) => {
+    const at = e.position ? ` at ${e.position.x},${e.position.y}` : "";
+    return e.object.kind === "Building" ? `${e.object.data.kind} #${e.id}${at}` : `${e.object.kind}${at}`;
+  };
+  const quiet = (e: Entry) => e.object.kind === "Car" || e.object.kind === "Resident";
+  const roads = (es: Entry[]) => es.filter((e) => e.object.kind === "RoadNode").length;
+  const rest = (es: Entry[]) => es.filter((e) => !quiet(e) && e.object.kind !== "RoadNode").map(say);
+  return [
+    ...(roads(made) ? [`+ ${roads(made)} road tiles`] : []), ...rest(made).map((s) => `+ ${s}`),
+    ...(roads(gone) ? [`- ${roads(gone)} road tiles`] : []), ...rest(gone).map((s) => `- ${s}`),
+  ];
+}
+const timeOfDay = () => (clock.now % clock.day_ms) / clock.day_ms;
+const hhmm = (t: number) => `${String(Math.floor(t * 24)).padStart(2, "0")}:${String(Math.floor((t * 1440) % 60)).padStart(2, "0")}`;
+
+send("SetChunks", bounds);
+changes(await settled());
+
+for (const [verb, ...rest] of lines) {
+  const flags = rest.filter((a) => a.startsWith("--"));
+  const args = rest.filter((a) => !a.startsWith("--"));
+  switch (verb) {
+    case "road": {
+      const pts = args.map(tile);
+      for (let i = 1; i < pts.length; i++) {
+        let [x, y] = pts[i - 1];
+        const [tx, ty] = pts[i];
+        // A tile at a time, as the brush lays it: straight or diagonal.
+        while (x !== tx || y !== ty) {
+          const [nx, ny] = [x + Math.sign(tx - x), y + Math.sign(ty - y)];
+          send("PlaceRoad", { from: { x, y }, to: { x: nx, y: ny }, one_way: flags.includes("--one-way"), road: flags.includes("--road") });
+          [x, y] = [nx, ny];
+        }
+      }
+      break;
+    }
+    case "build":
+      send("PlaceBuilding", { at: [tile(args[1])[0] + 0.5, tile(args[1])[1] + 0.5], kind: args[0] });
+      break;
+    case "demolish":
+      send("DemolishRoad", { pos: { x: tile(args[0])[0], y: tile(args[0])[1] } });
+      break;
+    case "speed":
+      send("SetSpeed", Number(args[0]));
+      break;
+    case "reset":
+      send("ResetWorld");
+      break;
+    case "time":
+      break;
+    case "run": {
+      const to = flags.includes("--to") ? Number(rest[rest.indexOf("--to") + 1]) : undefined;
+      const until = to !== undefined
+        ? clock.now + (((to - timeOfDay() + 1) % 1) * clock.day_ms)
+        : clock.now + (Number(args[0]) * clock.day_ms) / 24;
+      // The clock as the server has it: a paused town sends no updates.
+      const now = async () => (await (await fetch(`http://localhost:${PORT}/health`)).json()).sim_time as number;
+      const was = clock.speed;
+      send("SetSpeed", FULL);
+      while ((clock.now = await now()) < until) await Bun.sleep(200);
+      send("SetSpeed", was);
+      clock.speed = was;
+      break;
+    }
+    default:
+      throw new Error(`no such command: ${verb}`);
+  }
+  const said = changes(await settled());
+  console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
+  for (const s of said.length ? said : verb === "time" || verb === "speed" || verb === "run" ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  // A building refused: where the ghost would have put it, and whether it fit.
+  if (verb === "build" && !said.length) {
+    const [x, y] = tile(args[1]);
+    console.log(`    site: ${(await (await fetch(`http://localhost:${PORT}/site/${args[0]}?x=${x + 0.5}&y=${y + 0.5}`)).text()).replace(/\s+/g, " ")}`);
+  }
+}
+ws.close();

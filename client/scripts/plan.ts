@@ -8,6 +8,9 @@
  *   bun run plan 14-business 16-ferry  these, by name or by path
  *   --crop c0,r0,c1,r1                 only these tiles (c1, r1 not included)
  *   --png                              a picture of each beside the SVG, and a sheet
+ *   --live x,y[,r]                     the running game round its tile (x, y),
+ *                                      r tiles each way (20), drawn as `live`;
+ *                                      numbered in the game's tiles, for `bun run act`
  *   --at <git ref>                     the town grid's code as it was at <ref>,
  *                                      drawn beside today's: a before and after
  *                                      (any commit since this script came)
@@ -44,6 +47,16 @@ const flag = (name: string) => {
 const png = args.includes("--png") && (args.splice(args.indexOf("--png"), 1), true);
 const crop = flag("--crop")?.split(",").map(Number) as [number, number, number, number] | undefined;
 const at = flag("--at");
+const live = flag("--live")?.split(",");
+if (live) {
+  const [x, y, r = "20"] = live;
+  const port = process.env.SPRAWL_PORT ?? 4801;
+  const map = await fetch(`http://localhost:${port}/map?x=${x}&y=${y}&r=${r}`).then((res) => res.text()).catch(() => {
+    throw new Error(`no game on port ${port}: bun run dev`);
+  });
+  await Bun.write(`${ROOT}/.dev/plan/live.txt`, map);
+  args.push(`${ROOT}/.dev/plan/live.txt`);
+}
 const paths = (args.length ? args : readdirSync(`${ROOT}/server/fixtures`).filter((f) => f.endsWith(".txt")).sort()).map((a) =>
   existsSync(a) ? resolve(a) : `${ROOT}/server/fixtures/${a.replace(/\.txt$/, "")}.txt`,
 );

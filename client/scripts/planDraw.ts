@@ -129,11 +129,16 @@ export function planSvg(text: string, { crop, px }: { crop?: [number, number, nu
 
   for (const t of dressing.trees) out.push(`<circle cx="${f(t.x)}" cy="${f(t.y)}" r="${f(0.2 * t.scale)}" fill="${hex(T.crowns[t.shade])}"/>`);
 
-  // The grid, faint, every fifth line darker and numbered.
-  for (let c = c0; c <= c1; c++) out.push(`<line x1="${c}" y1="${r0}" x2="${c}" y2="${r1}" stroke="#000" stroke-opacity="${c % 5 ? 0.06 : 0.18}" stroke-width="0.02"/>`);
-  for (let r = r0; r <= r1; r++) out.push(`<line x1="${c0}" y1="${r}" x2="${c1}" y2="${r}" stroke="#000" stroke-opacity="${r % 5 ? 0.06 : 0.18}" stroke-width="0.02"/>`);
-  for (let c = Math.ceil(c0 / 5) * 5; c < c1; c += 5) out.push(`<text x="${c + 0.08}" y="${r0 + 0.35}" font-size="0.3" fill="#000" fill-opacity="0.5">${c}</text>`);
-  for (let r = Math.ceil(r0 / 5) * 5; r < r1; r += 5) if (r !== r0 || c0 % 5) out.push(`<text x="${c0 + 0.08}" y="${r + 0.35}" font-size="0.3" fill="#000" fill-opacity="0.5">${r}</text>`);
+  // The grid, faint, every fifth tile's edge darker and the tile numbered:
+  // in the fixture's columns and rows, or for the game's map (`/map`), in
+  // the game's own tiles, a column on being a tile less of x.
+  const origin = text.match(/^# origin (-?\d+),(-?\d+)/m)?.slice(1).map(Number);
+  const nameC = (c: number) => (origin ? origin[0] - c : c), nameR = (r: number) => (origin ? origin[1] - r : r);
+  const fifth = (n: number) => ((n % 5) + 5) % 5 === 0;
+  for (let c = c0; c <= c1; c++) out.push(`<line x1="${c}" y1="${r0}" x2="${c}" y2="${r1}" stroke="#000" stroke-opacity="${fifth(nameC(c)) ? 0.18 : 0.06}" stroke-width="0.02"/>`);
+  for (let r = r0; r <= r1; r++) out.push(`<line x1="${c0}" y1="${r}" x2="${c1}" y2="${r}" stroke="#000" stroke-opacity="${fifth(nameR(r)) ? 0.18 : 0.06}" stroke-width="0.02"/>`);
+  for (let c = c0 + 1; c < c1; c++) if (fifth(nameC(c))) out.push(`<text x="${c + 0.08}" y="${r0 + 0.35}" font-size="0.3" fill="#000" fill-opacity="0.5">${nameC(c)}</text>`);
+  for (let r = r0 + 1; r < r1; r++) if (fifth(nameR(r))) out.push(`<text x="${c0 + 0.08}" y="${r + 0.35}" font-size="0.3" fill="#000" fill-opacity="0.5">${nameR(r)}</text>`);
 
   const [w, h] = [c1 - c0, r1 - r0];
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w * px}" height="${h * px}" viewBox="${c0} ${r0} ${w} ${h}" font-family="system-ui"><rect x="${c0}" y="${r0}" width="${w}" height="${h}" fill="${hex(T.land)}"/>${out.join("")}</svg>\n`;

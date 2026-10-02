@@ -85,8 +85,15 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   in `.dev/plan/`, from the sandbox's own code, in well under a second a
   fixture: no light, no 3D, no browser. `--png` adds pictures and a sheet,
   `--crop c0,r0,c1,r1` a part (`PX=80` for a closer look), `--at <ref>`
-  the same drawn from the code at another commit beside today's. Most
+  the same drawn from the code at another commit beside today's,
+  `--live x,y[,r]` the running game round a tile (from `/map`), numbered
+  in the game's own tiles and drawn as the town grid will draw it. Most
   layout questions need only this; photographs are for light and height.
+- **The mayor's hand:** `bun run act road 7,78 7,85 0,85`, `build House
+  5,86`, `demolish 5,86`, `speed 0`, `run 2` (hours, or `--to 0.83` of a
+  day), `reset`; `bun run act - < steps` reads one a line. Each says what
+  it made and took away, and a building refused says where it would
+  have stood and whether it fit. To set up a situation and watch it.
 - **The look alone:** `/sandbox?f=<fixture>` on the dev client draws a
   fixture with no server, through the town grid (`client/src/engine/town/`,
   `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the

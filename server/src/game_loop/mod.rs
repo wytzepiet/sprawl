@@ -201,6 +201,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Card(id) => crate::card::card(&world, id, now),
                         Ask::Town => crate::economy::town(&world, now),
                         Ask::Site { kind, x, y } => serde_json::to_value(world.site_under(x, y, kind)).unwrap_or_default(),
+                        Ask::Map { x, y, r } => crate::fixtures::draw(&world, x, y, r).into(),
                         Ask::Call(id) => {
                             // Its shelf, emptied: a depot fetches, a maker
                             // is full again by tomorrow, anything else

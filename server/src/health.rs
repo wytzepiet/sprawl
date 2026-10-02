@@ -95,6 +95,14 @@ pub async fn site(Path(kind): Path<String>, Query(q): Query<HashMap<String, Stri
     ask(&state, Ask::Site { kind, x: at("x"), y: at("y") }).await
 }
 
+/// The tiles round a point as a fixture's text, drawn as the map is seen:
+/// what `bun run plan` draws of the running game. `/map?x=0&y=0&r=20`.
+pub async fn map(Query(q): Query<HashMap<String, String>>, State(state): State<AppState>) -> String {
+    let at = |k: &str, or: i32| q.get(k).and_then(|v| v.parse::<i32>().ok()).unwrap_or(or);
+    let text = ask(&state, Ask::Map { x: at("x", 0), y: at("y", 0), r: at("r", 20) }).await;
+    serde_json::from_str::<String>(&text).unwrap_or(text)
+}
+
 /// Raise a stock call at a building now: a delivery to watch.
 pub async fn call(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
     ask(&state, Ask::Call(id)).await
