@@ -377,7 +377,8 @@ function park(town: Town): { cars: Car[]; lanes: Pt[][]; bays: Pt[][] } {
         const n = Math.floor(len / BAY);
         for (let k = 0; k < n; k++) {
           const t = (k + 0.5) * (len / n);
-          if (t < clear0 || t > len - clear1) continue;
+          // The whole bay clear of the junction, not just its middle.
+          if (t - len / n / 2 < clear0 || t + len / n / 2 > len - clear1) continue;
           for (const side of [-1, 1]) {
             const [nx, ny] = [-uy * side, ux * side];
             const [x, y] = [x0 + ux * t + nx * KERB, y0 + uy * t + ny * KERB];
