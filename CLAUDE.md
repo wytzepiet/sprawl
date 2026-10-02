@@ -93,7 +93,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   5,86`, `demolish 5,86`, `speed 0`, `run 2` (hours, or `--to 0.83` of a
   day), `reset`; `bun run act - < steps` reads one a line. Each says what
   it made and took away, and a building refused says where it would
-  have stood and whether it fit. To set up a situation and watch it.
+  have stood and whether it fit. To set up a situation and watch it:
+  `watch 2 5,80` (or `--to 0.45`) runs the clock and records every trip
+  round that tile to `.dev/paths.json`, as the client draws them, and
+  counts the bends tighter than a car turns (style.md's 0.45);
+  `bun run plan --live 6,79,6 --paths` draws them, those bends red.
 - **The look alone:** `/sandbox?f=<fixture>` on the dev client draws a
   fixture with no server, through the town grid (`client/src/engine/town/`,
   `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the

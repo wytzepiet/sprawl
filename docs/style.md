@@ -143,9 +143,13 @@ The order for the sessions after this one:
      and a crop, and scripted brush strokes for the sandbox. (Written by
      hand all through 2026-09-28 to 10-02 and lost with each container:
      commit them.)
-   - **Seeing motion**: vehicles' paths logged and plotted, and a short
-     sequence of frames, for what a still cannot show (cars turning too
-     sharp); the physics check reads the same paths.
+   - **Seeing motion**: paths built 2026-10-02 (`bun run act watch`,
+     `plan --paths`), with the first physics check, the tightest turn.
+     Its first reading, a seed-7 morning: every street corner about 0.35
+     (a corner rounded half a tile each way can be no wider), every turn
+     into a driveway or a lot's spot near 0.03, a dead end's U-turn 0.01.
+     Missing: the other checks (easing in, slowing before a bend, a
+     trailer's sweep) and a short sequence of frames.
    - **A plan view**: built 2026-10-02, `bun run plan` (`CLAUDE.md`):
      the town grid drawn flat as SVG, instant and exact, and `--at` a
      before and after. The network goes in it when it is built.

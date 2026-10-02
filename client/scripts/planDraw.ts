@@ -21,7 +21,9 @@ const hex = (c: { r: number; g: number; b: number }) =>
 const CARS = ["#e64033", "#d9d9e0", "#333847", "#4066bf", "#a6a6ad", "#8c2626", "#338066", "#cca640"];
 const INK = "#1d2128";
 
-export function planSvg(text: string, { crop, px }: { crop?: [number, number, number, number]; px: number }): string {
+type Traced = { points: Pt[]; tight: Pt[] }[];
+
+export function planSvg(text: string, { crop, px, paths }: { crop?: [number, number, number, number]; px: number; paths?: Traced }): string {
   const town = parseTown(text);
   const [c0, r0, c1, r1] = crop ?? [0, 0, town.w, town.h];
   const out: string[] = [];
@@ -129,10 +131,17 @@ export function planSvg(text: string, { crop, px }: { crop?: [number, number, nu
 
   for (const t of dressing.trees) out.push(`<circle cx="${f(t.x)}" cy="${f(t.y)}" r="${f(0.2 * t.scale)}" fill="${hex(T.crowns[t.shade])}"/>`);
 
+  // Vehicles' paths, in the game's tiles: a column on is a tile less of x.
+  const origin = text.match(/^# origin (-?\d+),(-?\d+)/m)?.slice(1).map(Number);
+  if (origin && paths) {
+    const map = ([x, y]: Pt): Pt => [origin[0] + 1 - x, origin[1] + 1 - y];
+    for (const p of paths) line(p.points.map(map), "#3a5bd9", 0.025);
+    for (const p of paths) for (const t of p.tight.map(map)) out.push(`<circle cx="${f(t[0])}" cy="${f(t[1])}" r="0.035" fill="#e0301e"/>`);
+  }
+
   // The grid, faint, every fifth tile's edge darker and the tile numbered:
   // in the fixture's columns and rows, or for the game's map (`/map`), in
   // the game's own tiles, a column on being a tile less of x.
-  const origin = text.match(/^# origin (-?\d+),(-?\d+)/m)?.slice(1).map(Number);
   const nameC = (c: number) => (origin ? origin[0] - c : c), nameR = (r: number) => (origin ? origin[1] - r : r);
   const fifth = (n: number) => ((n % 5) + 5) % 5 === 0;
   for (let c = c0; c <= c1; c++) out.push(`<line x1="${c}" y1="${r0}" x2="${c}" y2="${r1}" stroke="#000" stroke-opacity="${fifth(nameC(c)) ? 0.18 : 0.06}" stroke-width="0.02"/>`);

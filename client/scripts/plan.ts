@@ -11,6 +11,8 @@
  *   --live x,y[,r]                     the running game round its tile (x, y),
  *                                      r tiles each way (20), drawn as `live`;
  *                                      numbered in the game's tiles, for `bun run act`
+ *   --paths                            with --live, the trips `bun run act watch`
+ *                                      recorded, bends tighter than a car turns red
  *   --at <git ref>                     the town grid's code as it was at <ref>,
  *                                      drawn beside today's: a before and after
  *                                      (any commit since this script came)
@@ -47,6 +49,8 @@ const flag = (name: string) => {
 const png = args.includes("--png") && (args.splice(args.indexOf("--png"), 1), true);
 const crop = flag("--crop")?.split(",").map(Number) as [number, number, number, number] | undefined;
 const at = flag("--at");
+const withPaths = args.includes("--paths") && (args.splice(args.indexOf("--paths"), 1), true);
+const paths = withPaths ? (await import("./paths")).trace(JSON.parse(readFileSync(`${ROOT}/.dev/paths.json`, "utf8"))) : undefined;
 const live = flag("--live")?.split(",");
 if (live) {
   const [x, y, r = "20"] = live;
@@ -57,7 +61,7 @@ if (live) {
   await Bun.write(`${ROOT}/.dev/plan/live.txt`, map);
   args.push(`${ROOT}/.dev/plan/live.txt`);
 }
-const paths = (args.length ? args : readdirSync(`${ROOT}/server/fixtures`).filter((f) => f.endsWith(".txt")).sort()).map((a) =>
+const files = (args.length ? args : readdirSync(`${ROOT}/server/fixtures`).filter((f) => f.endsWith(".txt")).sort()).map((a) =>
   existsSync(a) ? resolve(a) : `${ROOT}/server/fixtures/${a.replace(/\.txt$/, "")}.txt`,
 );
 mkdirSync(OUT, { recursive: true });
@@ -81,14 +85,14 @@ async function drawer(ref?: string): Promise<typeof import("./planDraw")> {
 const versions = [{ draw: await drawer(), suffix: "" }];
 if (at) versions.push({ draw: await drawer(at), suffix: `.${at.replace(/\W/g, "_")}` });
 const drawn: { name: string; file: string; title: string }[] = [];
-for (const path of paths) {
+for (const path of files) {
   const name = basename(path, ".txt");
   const text = readFileSync(path, "utf8");
   const title = text.split("\n")[0].replace(/^#\s*/, "");
   const t0 = performance.now();
   for (const { draw, suffix } of versions) {
     const file = `${OUT}/${name}${suffix}.svg`;
-    await Bun.write(file, draw.planSvg(text, { crop, px: PX }));
+    await Bun.write(file, draw.planSvg(text, { crop, px: PX, paths }));
     drawn.push({ name: `${name}${suffix}`, file, title });
   }
   console.log(`${name}: ${Math.round(performance.now() - t0)} ms`);

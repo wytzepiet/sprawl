@@ -12,6 +12,10 @@
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
  *                                       day (0 midnight, 0.5 noon)
+ *   bun run act watch 2 5,84            two hours on at full speed, every trip
+ *                                       round that tile recorded to
+ *                                       .dev/paths.json, and every bend tighter
+ *                                       than a car turns counted
  *   bun run act time                    the clock, as now and time of day
  *   bun run act reset                   a new world
  *   bun run act - < steps.txt           one command a line; # comments
@@ -24,6 +28,7 @@
  * one `bun run dev` runs, or SPRAWL_PORT's.
  */
 import { decode, encode } from "@msgpack/msgpack";
+import { drawn, part, radii, TIGHTEST, type Recorded } from "./paths";
 
 const PORT = Number(process.env.SPRAWL_PORT ?? 4801);
 /** The server's chunk, in tiles (`CHUNK_SIZE` in `protocol.rs`). */
@@ -62,6 +67,8 @@ const known = new Map<number, Entry>();
 let clock = { now: 0, speed: 1, day_ms: 1 };
 let heard = Date.now();
 let ops: Op[] = [];
+/** Every trip seen, once each. */
+const trips = new Map<string, Recorded>();
 const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
 ws.binaryType = "arraybuffer";
 ws.onmessage = (e) => {
@@ -69,6 +76,12 @@ ws.onmessage = (e) => {
   if (msg.type !== "Update") return;
   clock = msg.data.clock;
   if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
+  for (const op of msg.data.ops as Op[]) {
+    const trip = op.op === "Upsert" && op.data.object.kind === "Car" && op.data.object.data.trip;
+    if (!trip) continue;
+    const t: Recorded = { car: (op as any).data.id, role: (op as any).data.object.data.role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, reverse: trip.reverse };
+    trips.set(`${t.car}:${JSON.stringify(t.route)}`, t);
+  }
 };
 await new Promise((ok, fail) => ((ws.onopen = ok), (ws.onerror = () => fail(new Error(`no game on port ${PORT}: bun run dev`)))));
 const send = (type: string, data?: unknown) => ws.send(encode(data === undefined ? { type } : { type, data }));
@@ -106,12 +119,37 @@ function changes(batch: Op[]): string[] {
     ...(roads(gone) ? [`- ${roads(gone)} road tiles`] : []), ...rest(gone).map((s) => `- ${s}`),
   ];
 }
+/** The trips seen, kept for `bun run plan --paths`, and their bends
+ *  tighter than a car turns, by where on the trip they are. */
+function watched(): string[] {
+  const all = [...trips.values()];
+  Bun.write(`${import.meta.dir}/../../.dev/paths.json`, JSON.stringify(all));
+  const tight = { out: [] as number[], street: [] as number[], in: [] as number[] };
+  let worst = { r: Infinity, at: [0, 0], car: 0, part: "" };
+  for (const t of all) {
+    const pts = drawn(t);
+    radii(pts).forEach((r, i) => {
+      if (r >= TIGHTEST) return;
+      const where = part(t, pts, i);
+      tight[where].push(r);
+      if (r < worst.r) worst = { r, at: pts[i], car: t.car, part: where };
+    });
+  }
+  return [
+    `${all.length} trips → .dev/paths.json`,
+    ...Object.entries(tight).filter(([, rs]) => rs.length).map(([where, rs]) =>
+      `${rs.length} points tighter than ${TIGHTEST} ${where === "street" ? "on the street" : `pulling ${where}`}, tightest ${Math.min(...rs).toFixed(2)}`),
+    ...(worst.r < Infinity ? [`tightest of all: ${worst.r.toFixed(2)} at ${worst.at.map((v) => v.toFixed(2)).join(",")}, car #${worst.car}, ${worst.part}`] : []),
+  ];
+}
 const timeOfDay = () => (clock.now % clock.day_ms) / clock.day_ms;
 const hhmm = (t: number) => `${String(Math.floor(t * 24)).padStart(2, "0")}:${String(Math.floor((t * 1440) % 60)).padStart(2, "0")}`;
 
 send("SetChunks", bounds);
 changes(await settled());
 
+/** What a command has to say beyond what it changed. */
+let report: string[] = [];
 for (const [verb, ...rest] of lines) {
   const flags = rest.filter((a) => a.startsWith("--"));
   const args = rest.filter((a) => !a.startsWith("--"));
@@ -144,7 +182,9 @@ for (const [verb, ...rest] of lines) {
       break;
     case "time":
       break;
+    case "watch":
     case "run": {
+      trips.clear();
       const to = flags.includes("--to") ? Number(rest[rest.indexOf("--to") + 1]) : undefined;
       const until = to !== undefined
         ? clock.now + (((to - timeOfDay() + 1) % 1) * clock.day_ms)
@@ -156,14 +196,16 @@ for (const [verb, ...rest] of lines) {
       while ((clock.now = await now()) < until) await Bun.sleep(200);
       send("SetSpeed", was);
       clock.speed = was;
+      if (verb === "watch") report = watched();
       break;
     }
     default:
       throw new Error(`no such command: ${verb}`);
   }
-  const said = changes(await settled());
+  const said = [...changes(await settled()), ...report];
+  report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : verb === "time" || verb === "speed" || verb === "run" ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
   // A building refused: where the ghost would have put it, and whether it fit.
   if (verb === "build" && !said.length) {
     const [x, y] = tile(args[1]);
