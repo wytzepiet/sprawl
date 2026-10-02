@@ -13,7 +13,7 @@ import { isBuilt, type Tile } from "./grid";
  *  building it takes, the quiet one, the busy one or the one on the water;
  *  and how much it must hold, for a building so many tiles big. */
 export interface Yard {
-  fill: "docks" | "cars" | "ferry";
+  fill: "docks" | "cars" | "ferry" | "exit";
   end: "quiet" | "busy" | "water";
   need: (tiles: number) => number;
 }

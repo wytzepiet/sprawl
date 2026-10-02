@@ -136,15 +136,18 @@ The code is `client/src/engine/town/`:
   taller and lower, and "Copy" to take the map away as a fixture. `bun run
   shots --sandbox` photographs every fixture this way in seconds.
 - **A ferry port** (16-ferry, after Den Helder, Harlingen, Hoek van Holland
-  and Harwich in OpenStreetMap, 2026-10-02) is its marshalling yard: the
-  same yard rule from the water back, as many tiles of queue lanes as one
-  ferry load fills (forty cars, eight to a tile), running down to the
-  quay, the cars in them thinning from the front of the queue
-  to the back, and the rest of the port, back by the road, its terminal. At the
-  middle of the quay a ramp, and the ferry moored stern on to it, drawn
-  bigger than true so it reads beside the yard. A look of the sandbox's
-  for now: `P` is a port there and grass to the server, until the game
-  says which berths a port has.
+  and Harwich in OpenStreetMap, 2026-10-02) lays out as they do: down one
+  side, the side whose end reaches a street, its exit road, from the ramp
+  at the quay back to the street, so the cars come off before the queue
+  goes on; beside it the marshalling yard, by the same yard rule from the
+  water back, as many tiles of queue lanes as one sailing fills (forty
+  cars, eight to a tile), the cars thinning from the front of the queue to
+  the back; and the terminal in the far corner. The ferry is moored stern
+  on to the ramp, drawn bigger than true so it reads beside the yard. More
+  than a sailing's cars queue back onto the approach road: the player's
+  to give a port road enough. A look of the sandbox's for now: `P` is a
+  port there and grass to the server, until the game says which berths a
+  port has.
 - **Not yet: a finer grid under the ground.** Three by three to a tile,
   a sub-cell fits a car, a bay row and aisle and bay row make a tile, and
   lanes, bays, bumps and alleys would be labels on sub-cells. Weighed on

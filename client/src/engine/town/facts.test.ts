@@ -67,13 +67,16 @@ describe("facts and dressing", () => {
     expect(facts(small).services.length).toBe(0);
   });
 
-  test("a ferry port's yard holds one sailing, the rest is its terminal, a ferry at the middle of its quay", () => {
+  test("a ferry port: an exit road down its side, a yard for one sailing beside it, the terminal in the far corner", () => {
     const t = town(["~~~~~~", "~~~~~~", ".PPPP.", ".PPPP.", "======"]);
     const f = facts(t);
-    // Forty cars, eight to a tile: the quay's row and one tile behind it.
-    expect([1, 2, 3, 4].every((c) => f.yard(c, 2) === "ferry")).toBe(true);
-    expect([1, 2, 3, 4].filter((c) => !f.yard(c, 3)).length).toBe(3);
-    expect(f.ferries).toEqual([{ to: [0, -1], x: 3.5, y: 2 }]);
+    // The exit down the side whose end reaches the street, quay to road.
+    expect([f.yard(4, 2), f.yard(4, 3)]).toEqual(["exit", "exit"]);
+    // Forty cars, eight to a tile: five tiles, the nearest the exit first.
+    expect([1, 2, 3].every((c) => f.yard(c, 2) === "ferry")).toBe(true);
+    expect([f.yard(3, 3), f.yard(2, 3), f.yard(1, 3)]).toEqual(["ferry", "ferry", undefined]);
+    // The ramp at the quay end of the exit.
+    expect(f.ferries).toEqual([{ to: [0, -1], side: [1, 0], x: 4.5, y: 2 }]);
     expect(dress(t, f).ships.length).toBe(1);
   });
 

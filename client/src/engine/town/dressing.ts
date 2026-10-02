@@ -144,18 +144,27 @@ export function dress(town: Town, facts: Facts): Dressing {
 
 /** A ferry port: its yard in queue lanes running down to the water, four
  *  to a tile, the cars waiting in them thinning out from the front of the
- *  queue to the back; a ramp at the berth, and the ferry moored stern on
- *  to it. */
+ *  queue to the back; down its side the exit road the cars come off by;
+ *  a ramp at the quay end of the exit, and the ferry moored stern on to
+ *  it. */
 function ferries(town: Town, facts: Facts) {
   const cars: Car[] = [], lines: Pt[][] = [], ramps: Pt[][] = [], ships: Dressing["ships"] = [];
   if (!facts.ferries.length) return { cars, lines, ramps, ships };
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      if (facts.yard(c, r) !== "ferry") continue;
+      const fill = facts.yard(c, r);
+      if (fill !== "ferry" && fill !== "exit") continue;
       const near = facts.ferries.reduce((a, b) => (Math.hypot(b.x - c, b.y - r) < Math.hypot(a.x - c, a.y - r) ? b : a));
       const [tx, ty] = near.to;
       const [ux, uy] = [-ty, tx];
       const [x0, y0] = [c + 0.5, r + 0.5];
+      if (fill === "exit") {
+        // The exit road: a lane from the ramp to the street, and now and
+        // then a car just off the boat, driving away from the water.
+        ramps.push(strip(x0, y0, tx, ty, -0.5, 0.5, ux, uy, -0.17, 0.17));
+        if (hash(c, r, 37) < 0.5) cars.push({ x: x0, y: y0, angle: Math.atan2(-ty, -tx), colour: Math.floor(hash(c, r, 38) * 8) });
+        continue;
+      }
       for (const o of [-0.25, 0, 0.25]) lines.push(strip(x0, y0, tx, ty, -0.5, 0.5, ux, uy, o - 0.006, o + 0.006));
       for (const o of [-0.375, -0.125, 0.125, 0.375]) {
         for (const t of [-0.22, 0.22]) {
