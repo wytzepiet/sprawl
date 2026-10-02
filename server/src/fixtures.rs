@@ -170,7 +170,7 @@ pub fn build(world: &mut World, dir: &Path) {
 
 /// The tiles within `r` of a point as a fixture's text, laid out as the map
 /// is seen (+x to the left, +y up), so it reads, and draws, as the game
-/// does. A building's whole plot is its letter. The first line names the
+/// does. A building is its letter, its lot or yard paved. The first line names the
 /// game's tile at column 0, row 0: a column on is a tile less of x, a row
 /// on a tile less of y.
 pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
@@ -180,9 +180,16 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
             let road = world.road_node_at(GridCoord { x: tx, y: ty }).and_then(|id| world.objects.get(id));
             let built = world.occupied.get(&(tx, ty)).and_then(|&id| world.objects.get(id));
             out.push(match (road.map(|e| &e.object), built.map(|e| &e.object)) {
-                // A plot's driveway is road on its own tile: the plot is the
-                // building's.
-                (_, Some(GameObject::Building(b))) => letter(b.kind),
+                // A plot's lot or yard is paved; the rest is the building,
+                // its driveway included, which is road on its own tile.
+                (_, Some(GameObject::Building(b))) => {
+                    let at = built.and_then(|e| e.position).unwrap_or(GridCoord { x: tx, y: ty });
+                    let in_lot = crate::blueprint::plot(b.kind, b.facing).lot.is_some_and(|((lx, ly), (w, h))| {
+                        let (x, y) = (tx - at.x - lx as i32, ty - at.y - ly as i32);
+                        (0..w as i32).contains(&x) && (0..h as i32).contains(&y)
+                    });
+                    if in_lot { ':' } else { letter(b.kind) }
+                }
                 (Some(GameObject::RoadNode(n)), _) => if n.road { '#' } else { '=' },
                 _ => match world.terrain.get(&(tx, ty)) {
                     Some(TerrainType::Sea | TerrainType::Water) => '~',
