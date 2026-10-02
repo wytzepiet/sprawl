@@ -33,7 +33,7 @@ export const PROGRAMS: Partial<Record<BuildingKind, Program>> = {
   Workshop: { w: 2, d: 1, reach: 3 },
   Factory: { w: 2, d: 2, reach: 6 },
   Warehouse: { w: 3, d: 2, reach: 6 },
-  Supermarket: { w: 3, d: 2, reach: 4 },
+  Supermarket: { w: 1, d: 1, reach: 4 },
   GasStation: { w: 2, d: 1, reach: 1 },
 };
 

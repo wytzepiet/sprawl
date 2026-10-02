@@ -128,7 +128,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   const drives = driveways(town);
   const clear = (x: number, y: number) =>
     trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
-  const cars = [...park(town).filter((car) => clear(car.x, car.y)), ...drives.cars];
+  const cars = [...park(town, facts).filter((car) => clear(car.x, car.y)), ...drives.cars];
   const lorries = docks(town, facts), lots = carParks(town, facts);
   const service = facts.services;
   const port = ferries(town, facts);
@@ -342,7 +342,7 @@ function strip(x0: number, y0: number, ux: number, uy: number, t0: number, t1: n
 }
 
 /** Cars parked along the kerbs of streets before homes and shops. */
-function park(town: Town): Car[] {
+function park(town: Town, facts: Facts): Car[] {
   const cars: Car[] = [];
   const links = (c: number, r: number) => EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr));
   /** A road tile the street runs straight through: two links, opposite. */
@@ -371,9 +371,11 @@ function park(town: Town): Car[] {
           for (const side of [-1, 1]) {
             const [nx, ny] = [-uy * side, ux * side];
             const [x, y] = [x0 + ux * t + nx * KERB, y0 + uy * t + ny * KERB];
-            // Only before homes and shops, and a gap now and then.
-            const front = town.tile(Math.floor(x + nx * 0.4), Math.floor(y + ny * 0.4));
-            if (!isBuilt(front) || formOf(front).family !== "street") continue;
+            // Only before homes, shops and a supermarket's own front (not
+            // its car park's), and a gap now and then.
+            const [fc, fr] = [Math.floor(x + nx * 0.4), Math.floor(y + ny * 0.4)];
+            const front = town.tile(fc, fr);
+            if (!isBuilt(front) || facts.yard(fc, fr) || (formOf(front).family !== "street" && front.kind !== "Supermarket")) continue;
             const h = hash(Math.round(x * 100), Math.round(y * 100), 11);
             if (h < 0.35) continue;
             cars.push({ x, y, angle: Math.atan2(uy, ux), colour: Math.floor(hash(Math.round(x * 100), Math.round(y * 100), 13) * 8) });

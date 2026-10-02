@@ -188,6 +188,18 @@ airport's gates) worked out on the server.
 
 ## The ladders
 
+**Drawn bigger** (2026-10-02, the mayor): a kind's stages come from the
+shape the player paints, not from a choice. A supermarket of one tile is
+a corner shop, its customers at the kerb; of two or three, it gives its
+busy corner to a car park; once the shop itself is two tiles each way, a
+service lane and loading bay at the back; past that the car park grows,
+three cars to a tile of shop (`18-supermarkets`). Built: the
+supermarket. To come, the same way: a depot from a lock-up with a van to
+a yard of docks, a petrol station from a kiosk and a pump at the kerb to
+a canopy over a row of pumps. The server's buildings come in one size a
+kind for now; the stages mean something in play when a building's
+capacity grows with the shape painted.
+
 What each kind becomes as it does well, and with its neighbours:
 
 - **Homes**: a house, a pair, a terrace, then storeys along the block
