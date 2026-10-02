@@ -137,9 +137,10 @@ The code is `client/src/engine/town/`:
   shots --sandbox` photographs every fixture this way in seconds.
 - **A ferry port** (16-ferry, after Den Helder, Harlingen, Hoek van Holland
   and Harwich in OpenStreetMap, 2026-10-02) is its marshalling yard: the
-  same yard rule from the water back, queue lanes four to a tile running
-  down to the quay, the cars in them thinning from the front of the queue
-  to the back, and the tile furthest from the water its terminal. At the
+  same yard rule from the water back, as many tiles of queue lanes as one
+  ferry load fills (forty cars, eight to a tile), running down to the
+  quay, the cars in them thinning from the front of the queue
+  to the back, and the rest of the port, back by the road, its terminal. At the
   middle of the quay a ramp, and the ferry moored stern on to it, drawn
   bigger than true so it reads beside the yard. A look of the sandbox's
   for now: `P` is a port there and grass to the server, until the game

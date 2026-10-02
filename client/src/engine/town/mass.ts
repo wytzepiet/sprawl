@@ -10,13 +10,16 @@ import { isBuilt, type Tile } from "./grid";
 
 /** What a building gives up of its own ground to a yard (`facts.ts`):
  *  what stands in it, lorries at docks or cars in rows; which end of the
- *  building it takes, the quiet one or the busy one; and how many it must
- *  hold for each tile of the building. */
+ *  building it takes, the quiet one, the busy one or the one on the water;
+ *  and how much it must hold, for a building so many tiles big. */
 export interface Yard {
   fill: "docks" | "cars" | "ferry";
   end: "quiet" | "busy" | "water";
-  per: number;
+  need: (tiles: number) => number;
 }
+
+/** What a ferry carries, in cars: its yard holds the next sailing's. */
+export const FERRY_LOAD = 40;
 
 /** Homes and the shops of a high street are one family; offices, sheds
  *  and big boxes each another. */
@@ -30,13 +33,13 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Workshop: { family: "industry" },
   Factory: { family: "industry" },
   // A depot's lorries come and go at its back, out of sight of the junction.
-  Warehouse: { family: "industry", yard: { fill: "docks", end: "quiet", per: 0.5 } },
+  Warehouse: { family: "industry", yard: { fill: "docks", end: "quiet", need: (n) => n / 2 } },
   // A supermarket's car park is its shop window, on the busy corner.
-  Supermarket: { family: "box", yard: { fill: "cars", end: "busy", per: 3 } },
+  Supermarket: { family: "box", yard: { fill: "cars", end: "busy", need: (n) => 3 * n } },
   GasStation: { family: "box" },
-  // A ferry port is its marshalling yard, from the water back, all but
-  // the terminal by the road.
-  Port: { family: "port", yard: { fill: "ferry", end: "water", per: Infinity } },
+  // A ferry port's marshalling yard holds one sailing, from the water back;
+  // the rest is its terminal.
+  Port: { family: "port", yard: { fill: "ferry", end: "water", need: () => FERRY_LOAD } },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 
