@@ -135,13 +135,13 @@ export function dress(town: Town, facts: Facts): Dressing {
       const [ew, ns] = [town.linked(c, r, c - 1, r) || town.linked(c, r, c + 1, r), town.linked(c, r, c, r - 1) || town.linked(c, r, c, r + 1)];
       const diagonal = [[1, 1], [1, -1], [-1, 1], [-1, -1]].some(([dc, dr]) => town.linked(c, r, c + dc, r + dr));
       if (ew === ns || diagonal) continue;
-      if ((ew ? c : r) % 3 !== 1) continue;
+      if ((ew ? c : r) % 2 !== 1) continue;
       for (const side of [-1, 1]) {
         const [x, y] = ew ? [c, r + side] : [c + side, r];
         const t = town.tile(x, y);
         if (t.kind !== "open" && !(isBuilt(t) && formOf(t).family === "street")) continue;
         const [ox, oy] = ew ? [0, side * 0.55] : [side * 0.55, 0];
-        trees.push({ x: c + 0.5 + ox, y: r + 0.5 + oy, scale: 0.5, shade: Math.floor(3 * hash(c, r, side + 7)) });
+        trees.push({ x: c + 0.5 + ox, y: r + 0.5 + oy, scale: 0.8, shade: Math.floor(3 * hash(c, r, side + 7)) });
       }
     }
   }
@@ -149,7 +149,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   // driveway's mouth.
   const drives = driveways(town);
   const clear = (x: number, y: number) =>
-    trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
+    trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.2 * t.scale + CAR.w / 2) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
   const cars = [...park(town, facts).filter((car) => clear(car.x, car.y)), ...drives.cars];
   const lorries = docks(town, facts), lots = carParks(town, facts);
   const service = facts.services;
