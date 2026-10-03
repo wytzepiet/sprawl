@@ -315,20 +315,20 @@ dragging, and a building is the tiles it was painted on.
 
 What changes, in the order it can be built and seen:
 
-1. **The wire: one command, from and to.** `Build { tool, from, to }`,
-   the tool a street (one way or not), a road, a kind of building, or
-   demolish, replaces `PlaceRoad`, `PlaceBuilding` and `DemolishRoad`. A
-   tap is from and to the same tile. The server turns the two into tiles
-   by one rule: the tiles between them on one of the eight directions, as
-   a road is laid, completed by a building's program (`town/brush.ts`,
-   ported) to the smallest building that works. While the mayor drags,
-   the same command asked as a question answers with the tiles, or why
-   not, and is the ghost (it replaces `Site`); letting go builds what it
-   answered. A road still winds, its drawer sending a step at a time; a
-   building is sent once, on letting go, since it is completed whole.
-   `Building` carries its tiles in place of `size` and `facing`. The
-   rule lives only on the server: the sandbox draws fixtures and paints
-   no more.
+1. **The wire: one command, a step at a time.** `Build { tool, from,
+   to }`, the tool a street (one way or not), a road, a kind of
+   building, or demolish, replaces `PlaceRoad`, `PlaceBuilding` and
+   `DemolishRoad`. A drag is its steps, from one tile to the next, each
+   built as it is sent, as a road is drawn now; a tap is from and to the
+   same tile. A tile painted beside its own kind joins it: houses make a
+   row, and the first step of a depot builds the smallest that works
+   (`town/brush.ts`'s programs, ported) and the steps after grow it.
+   Each step is paid for and checked alone, and a drag that runs out of
+   money stops there. Nothing is held while the mayor drags: no draft,
+   no ghost to agree with the build, no `Site`; what is seen is what was
+   built. `Building` carries its tiles in place of `size` and `facing`.
+   The rule lives only on the server: the sandbox draws fixtures and
+   paints no more.
 2. **The server.** A building is its tiles: `blueprint::plot`, facings
    and the ring in `world/lots.rs` are deleted, its drive pairs and yards
    kept; the yard is read off the building's shape by the rule `facts.ts`
