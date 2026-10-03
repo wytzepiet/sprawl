@@ -317,16 +317,22 @@ impl World {
         ids
     }
 
-    /// The nearest road exit to a tile, as a building: the door everything
-    /// from beyond the map comes in by, and the last stop of everything
-    /// leaving. By id at a tie, so a world answers the same way however its
-    /// sets iterate.
+    /// The road exit nearest the building on a tile, as a building: the
+    /// door everything from beyond the map comes in by, and the last stop
+    /// of everything leaving. Nearest by road, the quickest drive from the
+    /// building's own: a door on a road that never joins its street, though
+    /// it stand next door, is no way in. By id at a tie, so a world answers
+    /// the same way however its sets iterate.
     pub fn nearest_edge(&self, pos: GridCoord) -> Option<EntityId> {
-        self.edge
-            .iter()
-            .filter_map(|&b| Some((b, self.objects.get(b)?.position?)))
-            .min_by_key(|&(b, p)| ((p.x - pos.x).abs().max((p.y - pos.y).abs()), b))
-            .map(|(b, _)| b)
+        let from = self.occupied.get(&(pos.x, pos.y)).and_then(|&b| self.road_node_for_building(b))?;
+        let mut routes = crate::world::pathfinding::Routes::from(self, from);
+        let mut doors: Vec<EntityId> = self.edge.iter().copied().collect();
+        doors.sort_unstable();
+        doors
+            .into_iter()
+            .filter_map(|b| Some((routes.cost_to(self.road_node_for_building(b)?)?, b)))
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, b)| b)
     }
 
     /// The road that door stands on: where a car appears from off the map,
