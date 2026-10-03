@@ -11,7 +11,8 @@ describe("facts and dressing", () => {
     const t = town(["=======", "=HHHHH=", "=H...H=", "=HHHHH=", "======="]);
     const f = facts(t);
     expect(f.enclosed(3, 2)).toBe(true);
-    expect(dress(t, f).gardens.length).toBe(3);
+    const lawn = dress(t, f).gardens.map(([c, r]) => `${c},${r}`);
+    expect(["2,2", "3,2", "4,2"].every((k) => lawn.includes(k))).toBe(true);
   });
 
   test("open ground a street reaches is not", () => {

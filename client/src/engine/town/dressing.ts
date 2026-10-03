@@ -2,7 +2,7 @@ import { isBuilt, townOf, type Tile, type Town } from "./grid";
 import { DOCKS, PARKED, type Facts } from "./facts";
 import { formOf } from "./mass";
 import { buildRoadGeometry, CAB, CAR, HALF_W, TRAILER, type ArmInfo } from "../objects/roadGeometry";
-import { defaultJoins, footprints, INSET, intersect, shrink, soften, subtract, unite, type Polygon } from "./footprint";
+import { footprints, INSET, intersect, shrink, soften, subtract, unite, type Polygon } from "./footprint";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -138,14 +138,21 @@ export function dress(town: Town, facts: Facts): Dressing {
         const [x, y] = ew ? [c, r + side] : [c + side, r];
         const t = town.tile(x, y);
         if (t.kind !== "open" && !(isBuilt(t) && formOf(t).family === "street")) continue;
-        const [ox, oy] = ew ? [0, side * 0.55] : [side * 0.55, 0];
-        trees.push({ x: c + 0.5 + ox, y: r + 0.5 + oy, scale: 0.5, shade: Math.floor(3 * hash(c, r, side + 7)) });
+        // Between two plots, where no drive comes out.
+        const [tx, ty] = ew ? [c, r + 0.5 + side * 0.55] : [c + 0.5 + side * 0.55, r];
+        trees.push({ x: tx, y: ty, scale: 0.5, shade: Math.floor(3 * hash(c, r, side + 7)) });
       }
     }
   }
   // A car does not stand where a tree does, nor its bay; nor across a
   // driveway's mouth.
   const drives = driveways(town);
+  // Nor a tree on a drive.
+  const onDrive = (t: Tree) => drives.strips.some((q) => {
+    const [xs, ys] = [q.map((p) => p[0]), q.map((p) => p[1])];
+    return t.x > Math.min(...xs) - 0.1 && t.x < Math.max(...xs) + 0.1 && t.y > Math.min(...ys) - 0.1 && t.y < Math.max(...ys) + 0.1;
+  });
+  trees.splice(0, trees.length, ...trees.filter((t) => !onDrive(t)));
   const clear = (x: number, y: number) =>
     trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.2 * t.scale + CAR.w / 2) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
   const cars = [...park(town, facts).filter((car) => clear(car.x, car.y)), ...drives.cars];
@@ -218,23 +225,22 @@ export function asphalt(town: Town, lanes: Pt[][]): { street: Polygon[]; through
   return { street: subtract(all, through), through: intersect(through, all) };
 }
 
-/** A driveway's width: the margin a house leaves beside it, wall to the
- *  plot's edge, which a car fits with a little either side. */
-const DRIVE = INSET;
+/** A driveway: as wide as two cars side by side with a little room, the
+ *  cars' middles a little either side of the house's (`LANE` in the
+ *  server's `lots.rs`), and how far out from the house's middle they stand
+ *  (`SPOT_OUT`): wholly before its front wall, short of the road. */
+const DRIVE = 0.42;
+const DRIVE_LANE = 0.11;
+const DRIVE_OUT = 0.47;
 
 /**
- * Driveways, where a house leaves room for one: a house with a street
- * running straight past its front, on a side where it is joined to nothing, gets a drive
- * down that side, from the road's edge to its back wall, and a car or two
- * on it, nose in. Open ground beside it is the side it takes (the end of a
- * row, a semi, a house alone); a house with a building beside it on both
- * sides, joined or not, has none, and parks at the kerb. Built beside, the
- * drive goes. So a suburb has driveways and a terrace parks in the street,
- * and nobody chose: as with everything else, the neighbours decide.
+ * Driveways: a house with a street running straight past its front has a
+ * drive straight in from the road to its front wall, and on it, as the
+ * game parks them, its household's two cars side by side, nose to the
+ * house; one now and then, the other out.
  */
 function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[] } {
   const strips: Pt[][] = [], cars: Car[] = [], mouths: Pt[] = [];
-  const joined = town.joins ?? defaultJoins(town);
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
@@ -247,24 +253,14 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[] } {
       });
       if (!front) continue;
       const [fx, fy] = front;
-      // A side the house is joined to nothing on, with open ground there.
-      const side = [[-fy, fx], [fy, -fx]].find(([sx, sy]) => {
-        const [x, y] = [c + sx, r + sy];
-        const t = town.tile(x, y);
-        return !isBuilt(t) && t.kind !== "road" && t.kind !== "water" && !joined(c, r, x, y);
-      });
-      if (!side) continue;
-      const [sx, sy] = side;
-      // Down the margin on that side: from the road's edge, across the
-      // pavement, to the back wall.
-      const [x0, y0] = [c + 0.5 + sx * (0.5 - DRIVE / 2), r + 0.5 + sy * (0.5 - DRIVE / 2)];
-      strips.push(strip(x0, y0, sx, sy, -DRIVE / 2, DRIVE / 2, -fx, -fy, -(1 - HALF_W), 0.5 - INSET));
+      const [x0, y0] = [c + 0.5, r + 0.5];
+      // From the front wall out across the pavement to the road's edge.
+      strips.push(strip(x0, y0, -fy, fx, -DRIVE / 2, DRIVE / 2, fx, fy, 0.5 - INSET, 1 - HALF_W + 0.02));
       mouths.push([x0 + fx * (1 - KERB), y0 + fy * (1 - KERB)]);
-      // One car, or two nose to tail, nose to the house.
-      const n = hash(c, r, 41) < 0.5 ? 1 : 2;
-      for (let k = 0; k < n; k++) {
-        const back = 0.15 - k * (CAR.l + 0.04);
-        cars.push({ x: x0 - fx * back, y: y0 - fy * back, angle: Math.atan2(-fy, -fx), colour: Math.floor(hash(c, r, 43 + k) * 8) });
+      const one = hash(c, r, 41) < 0.25;
+      for (const side of [-1, 1]) {
+        if (one && side === (hash(c, r, 42) < 0.5 ? -1 : 1)) continue;
+        cars.push({ x: x0 + fx * DRIVE_OUT - fy * DRIVE_LANE * side, y: y0 + fy * DRIVE_OUT + fx * DRIVE_LANE * side, angle: Math.atan2(-fy, -fx), colour: Math.floor(hash(c, r, 43 + side) * 8) });
       }
     }
   }

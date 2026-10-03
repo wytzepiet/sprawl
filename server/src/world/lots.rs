@@ -25,9 +25,11 @@ use serde_json::{json, Value};
 use crate::world::World;
 use crate::world::segments::EdgeSegment;
 
-/// A driveway spot: how far out from the plot's centre a car's centre stands,
-/// half its length, and half the gap between the two lanes.
-const SPOT_OUT: f64 = 0.35;
+/// A driveway spot: how far out from the plot's centre a car's centre
+/// stands, wholly before the house's front wall and short of the road, and
+/// half the gap between the two cars (`DRIVE_OUT` and `DRIVE_LANE` in the
+/// client's `dressing.ts`, which draws the drive).
+const SPOT_OUT: f64 = 0.47;
 const LANE: f64 = 0.11;
 
 /// The ring, in tiles: how far the lane's centre sits in from the lot's
