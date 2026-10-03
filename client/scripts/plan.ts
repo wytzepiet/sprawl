@@ -18,8 +18,6 @@
  *   --at <git ref>                     the town grid's code as it was at <ref>,
  *                                      drawn beside today's: a before and after
  *                                      (any commit since this script came)
- *   --sub                              the town on its subgrid (`town/sub.ts`),
- *                                      drawn beside today's
  *
  * Writes `.dev/plan/<name>.svg` (`<name>.<ref>.svg` with `--at`), and with
  * `--png` the same as PNG and `.dev/plan/sheet.png`. Roofs are drawn as
@@ -53,7 +51,6 @@ const flag = (name: string) => {
 const png = args.includes("--png") && (args.splice(args.indexOf("--png"), 1), true);
 const crop = flag("--crop")?.split(",").map(Number) as [number, number, number, number] | undefined;
 const at = flag("--at");
-const sub = args.includes("--sub") && (args.splice(args.indexOf("--sub"), 1), true);
 // `--paths`, or `--paths=12,34` for those cars' trips alone.
 const pathsArg = args.find((a) => a.startsWith("--paths"));
 if (pathsArg) args.splice(args.indexOf(pathsArg), 1);
@@ -94,7 +91,6 @@ async function drawer(ref?: string): Promise<typeof import("./planDraw")> {
 
 const versions = [{ draw: await drawer(), suffix: "" }];
 if (at) versions.push({ draw: await drawer(at), suffix: `.${at.replace(/\W/g, "_")}` });
-if (sub) versions.push({ draw: await import("./subDraw"), suffix: ".sub" });
 const drawn: { name: string; file: string; title: string }[] = [];
 for (const path of files) {
   const name = basename(path, ".txt");
@@ -124,7 +120,7 @@ if (png) {
   await page.setViewportSize({ width: 1800, height: 800 });
   await page.setContent(`<style>
     body { margin: 16px; font: 13px system-ui; background: #fff; }
-    main { display: grid; grid-template-columns: repeat(${at || sub ? 2 : 3}, 1fr); gap: 16px; align-items: start; }
+    main { display: grid; grid-template-columns: repeat(${at ? 2 : 3}, 1fr); gap: 16px; align-items: start; }
     figure { margin: 0; } svg { width: 100%; height: auto; display: block; border-radius: 4px; }
     figcaption { padding: 4px 2px; color: #444; }
   </style><main>${cells}</main>`);
