@@ -101,6 +101,15 @@ export function dress(town: Town, facts: Facts): Dressing {
   const trees: Tree[] = [];
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   const backs = backGardens(town);
+  // A house stands in its lawn, and so does the plot beside it on the
+  // street: the pavement is the road's, not the house's.
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      const t = town.tile(c, r);
+      const beside = t.kind === "open" && !backs.has(`${c},${r}`) && [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => town.tile(c + dx, r + dy).kind === "House") && [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => road(c + dx, r + dy));
+      if (t.kind === "House" || beside) gardens.push([c, r]);
+    }
+  }
   for (const [key, house] of backs) {
     const [c, r] = key.split(",").map(Number);
     gardens.push([c, r]);
@@ -153,18 +162,18 @@ export function dress(town: Town, facts: Facts): Dressing {
 }
 
 /**
- * The pavement: every road, building and yard makes paved ground, shaped
- * by the buildings' own rule (the terrain's corners, a diagonal as far out
- * as a straight edge) at full size, then its corners rounded as the
- * terrain's are. A town is paved house to house, a diagonal street as wide
- * as a straight one.
+ * The pavement: every road, building and yard but a house makes paved
+ * ground, shaped by the buildings' own rule (the terrain's corners, a
+ * diagonal as far out as a straight edge) at full size, then its corners
+ * rounded as the terrain's are. A street's pavement is its sidewalk; a
+ * house stands in its lawn. A diagonal street is as wide as a straight one.
  */
 export function pavement(town: Town): Polygon[] {
   const PAVING: Tile = { kind: "House", storeys: 1 };
   const paved = townOf(
     Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
       const t = town.tile(c, r);
-      return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
+      return t.kind === "road" || t.kind === "paved" || (isBuilt(t) && t.kind !== "House") ? PAVING : t;
     })),
     () => false,
   );
