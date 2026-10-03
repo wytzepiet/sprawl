@@ -1,8 +1,8 @@
-import { isBuilt, type Town } from "./grid";
+import { isBuilt, townOf, type Tile, type Town } from "./grid";
 import { DOCKS, PARKED, type Facts } from "./facts";
 import { formOf } from "./mass";
-import { CAB, CAR, HALF_W, TRAILER } from "../objects/roadGeometry";
-import { INSET } from "./footprint";
+import { buildRoadGeometry, CAB, CAR, HALF_W, TRAILER, type ArmInfo } from "../objects/roadGeometry";
+import { footprints, INSET, intersect, shrink, soften, subtract, unite, type Polygon } from "./footprint";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -18,9 +18,6 @@ import { INSET } from "./footprint";
  *   (fileparkeren), straight or diagonal, clear of junctions, bends and
  *   ends, with a gap here and there. Through roads and streets before
  *   anything else stay clear.
- *
- * - Where cars park, the kerb is a parking lane, its bays marked. (The
- *   pavement round it is ground: roads and buildings make paved terrain.)
  *
  * Which tiles get a tree or a car, and where, comes from the place alone,
  * so the same town is always dressed the same.
@@ -60,9 +57,9 @@ export interface Dressing {
   gardens: [number, number][];
   trees: Tree[];
   cars: Car[];
-  /** Parking lanes, and the lines between their bays. */
+  /** What is driven on off the road and joins it (`asphalt`): drives,
+   *  ramps. */
   lanes: Pt[][];
-  bays: Pt[][];
   docks: Dock[];
   /** The lines between the bays of yards: docks, car parks and a ferry
    *  port's queue lanes. */
@@ -81,12 +78,10 @@ const RAMP = { l: 0.3, w: 0.55 };
 /** A lorry bay's depth: a lorry and a little. */
 const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
 
-/** A parking lane, from just past the road's edge (0.2) out, a car wide
- *  and a little room either side; then pavement to the rows' faces. */
-const LANE: [number, number] = [HALF_W + 0.015, HALF_W + 0.015 + CAR.w + 0.03];
-/** How far a parked car's middle is from its street's middle line: the
- *  lane's middle, wholly off the road. */
-const KERB = (LANE[0] + LANE[1]) / 2;
+/** How far a parked car's middle is from its street's middle line: beside
+ *  the road, wholly off it, with a little room. Nothing marks where it
+ *  stands: the car is enough. */
+const KERB = HALF_W + 0.03 + CAR.w / 2;
 /** Parking bays along a street: their spacing, a car and a bit. */
 const BAY = CAR.l + 0.07;
 /** How far from a junction, bend or end the kerb stays clear. */
@@ -103,8 +98,28 @@ export function dress(town: Town, facts: Facts): Dressing {
   const gardens: [number, number][] = [];
   const trees: Tree[] = [];
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  const backs = backGardens(town);
+  // A house stands in its lawn, and so does the plot beside it on the
+  // street: the pavement is the road's, not the house's.
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
+      const t = town.tile(c, r);
+      const beside = t.kind === "open" && !backs.has(`${c},${r}`) && [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => town.tile(c + dx, r + dy).kind === "House") && [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => road(c + dx, r + dy));
+      if (t.kind === "House" || beside) gardens.push([c, r]);
+    }
+  }
+  for (const [key, house] of backs) {
+    const [c, r] = key.split(",").map(Number);
+    gardens.push([c, r]);
+    // Now and then a tree, toward the back.
+    if (hash(c, r, 31) < 0.2) {
+      const [bx, by] = [c + 0.5 - (house[0] - c) * 0.22, r + 0.5 - (house[1] - r) * 0.22];
+      trees.push({ x: bx + 0.3 * (hash(c, r, 32) - 0.5), y: by + 0.3 * (hash(c, r, 33) - 0.5), scale: 0.6 + 0.3 * hash(c, r, 34), shade: Math.floor(3 * hash(c, r, 35)) });
+    }
+  }
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (backs.has(`${c},${r}`)) continue;
       if (facts.enclosed(c, r) && town.tile(c, r).kind === "open") {
         gardens.push([c, r]);
         // One tree on most tiles of a garden, somewhere off the middle.
@@ -123,23 +138,184 @@ export function dress(town: Town, facts: Facts): Dressing {
         const [x, y] = ew ? [c, r + side] : [c + side, r];
         const t = town.tile(x, y);
         if (t.kind !== "open" && !(isBuilt(t) && formOf(t).family === "street")) continue;
-        const [ox, oy] = ew ? [0, side * 0.55] : [side * 0.55, 0];
-        trees.push({ x: c + 0.5 + ox, y: r + 0.5 + oy, scale: 0.5, shade: Math.floor(3 * hash(c, r, side + 7)) });
+        // Between two plots, where no drive comes out.
+        const [tx, ty] = ew ? [c, r + 0.5 + side * 0.55] : [c + 0.5 + side * 0.55, r];
+        trees.push({ x: tx, y: ty, scale: 0.5, shade: Math.floor(3 * hash(c, r, side + 7)) });
       }
     }
   }
-  // A car does not stand where a tree does, nor its bay.
-  const parked = park(town);
-  const clear = (x: number, y: number) => trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.3);
-  const cars = parked.cars.filter((car) => clear(car.x, car.y));
+  // A car does not stand where a tree does, nor its bay; nor across a
+  // driveway's mouth.
+  const drives = driveways(town);
+  // Nor a tree on a drive.
+  const onDrive = (t: Tree) => drives.strips.some((q) => {
+    const [xs, ys] = [q.map((p) => p[0]), q.map((p) => p[1])];
+    return t.x > Math.min(...xs) - 0.1 && t.x < Math.max(...xs) + 0.1 && t.y > Math.min(...ys) - 0.1 && t.y < Math.max(...ys) + 0.1;
+  });
+  trees.splice(0, trees.length, ...trees.filter((t) => !onDrive(t)));
+  const clear = (x: number, y: number) =>
+    trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.2 * t.scale + CAR.w / 2) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
+  const cars = [...park(town, facts).filter((car) => clear(car.x, car.y)), ...drives.cars];
   const lorries = docks(town, facts), lots = carParks(town, facts);
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...parked.lanes, ...service.map((s) => s.lane), ...port.ramps], bays: parked.bays,
+    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: port.ramps,
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
+}
+
+/**
+ * The pavement: every road, building and yard but a house makes paved
+ * ground, shaped by the buildings' own rule (the terrain's corners, a
+ * diagonal as far out as a straight edge) at full size, then its corners
+ * rounded as the terrain's are. A street's pavement is its sidewalk; a
+ * house stands in its lawn. A diagonal street is as wide as a straight one.
+ */
+export function pavement(town: Town): Polygon[] {
+  const PAVING: Tile = { kind: "House", storeys: 1 };
+  const paved = townOf(
+    Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
+      const t = town.tile(c, r);
+      return t.kind === "road" || t.kind === "paved" || (isBuilt(t) && t.kind !== "House") ? PAVING : t;
+    })),
+    () => false,
+  );
+  return soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3);
+}
+
+/** How round the asphalt's corners are, in and out. */
+const ROUND = 0.05;
+
+/**
+ * The asphalt: the roads as the game lays them, each tile's arms to the
+ * tiles it is joined to and to the houses whose drives it leads to, and
+ * what else is driven on that leads off them, ramps, as one surface, its corners rounded in and out,
+ * so a drive reads as the road carried on. Through roads keep their own
+ * colour, cut from it straight.
+ */
+export function asphalt(town: Town, lanes: Pt[][]): { street: Polygon[]; through: Polygon[] } {
+  // A drive is an arm of its street, toward the house, and the house's
+  // tile an arm back to the street, which ends under the house.
+  const drives = new Map<string, [number, number][]>();
+  const toward = (c: number, r: number, dc: number, dr: number) => {
+    const k = `${c},${r}`;
+    drives.set(k, [...(drives.get(k) ?? []), [dc, dr]]);
+  };
+  for (const [c, r, fx, fy] of driveways(town).arms) {
+    toward(c + fx, r + fy, -fx, -fy);
+    toward(c, r, fx, fy);
+  }
+  const tiles = (through: boolean) => {
+    const tris: Polygon[] = [];
+    for (let r = 0; r < town.h; r++) {
+      for (let c = 0; c < town.w; c++) {
+        const drive = drives.get(`${c},${r}`) ?? [];
+        if ((town.tile(c, r).kind !== "road" && !drive.length) || town.through(c, r) !== through) continue;
+        const arms: ArmInfo[] = [];
+        const arm = (dc: number, dr: number) => {
+          const a = Math.atan2(-dr, -dc);
+          arms.push({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" });
+        };
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if ((dc || dr) && town.linked(c, r, c + dc, r + dr)) arm(dc, dr);
+          }
+        }
+        for (const [dc, dr] of drive) arm(dc, dr);
+        const geo = buildRoadGeometry(arms, HALF_W, 0);
+        if (!geo) continue;
+        // The geometry is the world's (x and y the other way); flat only.
+        const p = geo.positions;
+        const at = (i: number): Pt => [c + 0.5 - p[3 * i], r + 0.5 - p[3 * i + 1]];
+        for (let i = 0; i < geo.indices.length; i += 3) tris.push([[at(geo.indices[i]), at(geo.indices[i + 1]), at(geo.indices[i + 2])]]);
+      }
+    }
+    // Grown a hair and drawn back, so no seam is left between triangles.
+    return shrink(shrink(tris, -1e-3), 1e-3);
+  };
+  const through = tiles(true);
+  const all = soften(unite([...tiles(false), ...through, ...lanes.map((l): Polygon => [l])]), ROUND);
+  return { street: subtract(all, through), through: intersect(through, all) };
+}
+
+/** A driveway: as wide as two cars side by side with a little room, the
+ *  cars' middles a little either side of the house's (`LANE` in the
+ *  server's `lots.rs`), and how far out from the house's middle they stand
+ *  (`SPOT_OUT`): wholly before its front wall, short of the road. */
+const DRIVE = 0.42;
+const DRIVE_LANE = 0.11;
+const DRIVE_OUT = 0.47;
+
+/**
+ * Driveways: a house with a street running straight past its front has a
+ * drive straight in from the road to its front wall, a road like any
+ * other (`asphalt` draws it as an arm of the street, curves and all), and
+ * on it, as the game parks them, its household's two cars side by side,
+ * nose to the house; one now and then, the other out. By house and the
+ * way to its street, and the drive's ground, which no tree stands on.
+ */
+function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[]; arms: [number, number, number, number][] } {
+  const strips: Pt[][] = [], cars: Car[] = [], mouths: Pt[] = [], arms: [number, number, number, number][] = [];
+  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (town.tile(c, r).kind !== "House") continue;
+      // Toward its street (fx, fy): a side with a street running straight
+      // past it, beside the house along its front.
+      const front = [[0, 1], [0, -1], [1, 0], [-1, 0]].find(([fx, fy]) => {
+        const [x, y] = [c + fx, r + fy];
+        return road(x, y) && !town.through(x, y) && (town.linked(x, y, x - fy, y + fx) || town.linked(x, y, x + fy, y - fx));
+      });
+      if (!front) continue;
+      const [fx, fy] = front;
+      const [x0, y0] = [c + 0.5, r + 0.5];
+      arms.push([c, r, fx, fy]);
+      // From the front wall out across the pavement to the road's edge.
+      strips.push(strip(x0, y0, -fy, fx, -DRIVE / 2, DRIVE / 2, fx, fy, 0.5 - INSET, 1 - HALF_W + 0.02));
+      mouths.push([x0 + fx * (1 - KERB), y0 + fy * (1 - KERB)]);
+      const one = hash(c, r, 41) < 0.25;
+      for (const side of [-1, 1]) {
+        if (one && side === (hash(c, r, 42) < 0.5 ? -1 : 1)) continue;
+        cars.push({ x: x0 + fx * DRIVE_OUT - fy * DRIVE_LANE * side, y: y0 + fy * DRIVE_OUT + fx * DRIVE_LANE * side, angle: Math.atan2(-fy, -fx), colour: Math.floor(hash(c, r, 43 + side) * 8) });
+      }
+    }
+  }
+  return { strips, cars, mouths, arms };
+}
+
+/**
+ * Back gardens: open ground straight behind a house, on the side away
+ * from its street, is its garden, a tile deep. Two rows of houses back to
+ * back with two tiles between them have a garden each, as a grid town's
+ * blocks do. By the tile it lies on, the house it is behind.
+ */
+function backGardens(town: Town): Map<string, [number, number]> {
+  const out = new Map<string, [number, number]>();
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (town.tile(c, r).kind !== "open") continue;
+      for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+        const [hx, hy] = [c + dx, r + dy];
+        if (town.tile(hx, hy).kind !== "House" || town.tile(hx + dx, hy + dy).kind !== "road") continue;
+        out.set(`${c},${r}`, [hx, hy]);
+        break;
+      }
+    }
+  }
+  // An empty plot in the row beside a garden, with no house before it,
+  // the neighbour takes in: a bigger garden, not a gap. One step only.
+  for (const [key, [hx, hy]] of [...out]) {
+    const [c, r] = key.split(",").map(Number);
+    const [bx, by] = [c - hx, r - hy];
+    for (const s of [-1, 1]) {
+      const [x, y] = [c + by * s, r + bx * s];
+      if (out.has(`${x},${y}`) || town.tile(x, y).kind !== "open" || town.tile(x - bx, y - by).kind === "road") continue;
+      out.set(`${x},${y}`, [hx, hy]);
+    }
+  }
+  return out;
 }
 
 /** A ferry port: its yard in queue lanes running down to the water, four
@@ -250,10 +426,9 @@ function strip(x0: number, y0: number, ux: number, uy: number, t0: number, t1: n
   return [at(t0, a), at(t1, a), at(t1, b), at(t0, b)];
 }
 
-/** Cars parked along the kerbs of streets before homes and shops, their
- *  lane and its bays. */
-function park(town: Town): { cars: Car[]; lanes: Pt[][]; bays: Pt[][] } {
-  const cars: Car[] = [], lanes: Pt[][] = [], bays: Pt[][] = [];
+/** Cars parked along the kerbs of streets before homes and shops. */
+function park(town: Town, facts: Facts): Car[] {
+  const cars: Car[] = [];
   const links = (c: number, r: number) => EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr));
   /** A road tile the street runs straight through: two links, opposite. */
   const straight = (c: number, r: number) => {
@@ -276,16 +451,16 @@ function park(town: Town): { cars: Car[]; lanes: Pt[][]; bays: Pt[][] } {
         const n = Math.floor(len / BAY);
         for (let k = 0; k < n; k++) {
           const t = (k + 0.5) * (len / n);
-          if (t < clear0 || t > len - clear1) continue;
+          // The whole bay clear of the junction, not just its middle.
+          if (t - len / n / 2 < clear0 || t + len / n / 2 > len - clear1) continue;
           for (const side of [-1, 1]) {
             const [nx, ny] = [-uy * side, ux * side];
             const [x, y] = [x0 + ux * t + nx * KERB, y0 + uy * t + ny * KERB];
-            // Only before homes and shops, and a gap now and then.
-            const front = town.tile(Math.floor(x + nx * 0.4), Math.floor(y + ny * 0.4));
-            if (!isBuilt(front) || formOf(front).family !== "street") continue;
-            const [b0, b1] = [t - len / n / 2, t + len / n / 2];
-            lanes.push(strip(x0, y0, ux, uy, b0, b1, nx, ny, LANE[0], LANE[1]));
-            for (const e of [b0, b1]) bays.push(strip(x0, y0, ux, uy, e - 0.008, e + 0.008, nx, ny, LANE[0], LANE[1]));
+            // Only before homes, shops and a supermarket's own front (not
+            // its car park's), and a gap now and then.
+            const [fc, fr] = [Math.floor(x + nx * 0.4), Math.floor(y + ny * 0.4)];
+            const front = town.tile(fc, fr);
+            if (!isBuilt(front) || facts.yard(fc, fr) || (formOf(front).family !== "street" && front.kind !== "Supermarket")) continue;
             const h = hash(Math.round(x * 100), Math.round(y * 100), 11);
             if (h < 0.35) continue;
             cars.push({ x, y, angle: Math.atan2(uy, ux), colour: Math.floor(hash(Math.round(x * 100), Math.round(y * 100), 13) * 8) });
@@ -294,5 +469,5 @@ function park(town: Town): { cars: Car[]; lanes: Pt[][]; bays: Pt[][] } {
       }
     }
   }
-  return { cars, lanes, bays };
+  return cars;
 }

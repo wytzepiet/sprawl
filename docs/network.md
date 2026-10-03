@@ -143,7 +143,7 @@ props. Sketches, to be argued:
   lane and changes only at a node, by the wiring rule. Kerb parking and
   stops are `parking.md` step 1 and §5.
 - **Order**: the network type and the check in the sandbox; the car park,
-  the depot's docks and the supermarket's service lane re-made as
+  the depot's docks and the supermarket's loading bay re-made as
   templates, deleting their hand-drawn strips in `dressing.ts` (if they
   come out both nicer and correct, the primitives are right); then the
   ferry; then lanes in the game's roads, one-way two-lane first.

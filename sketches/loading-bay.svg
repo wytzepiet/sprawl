@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1560 940" font-family="system-ui, sans-serif">
+  <!--
+    The loading bay, six ways, for the mayor to pick. Drawn by hand in
+    the plan's palette and scale: a tile is 60 px, a car 0.29 x 0.15, a
+    lorry's trailer 0.46 x 0.17 and its cab 0.17. The same supermarket
+    each time (a back row of three tiles, its car park on the high
+    street), with whichever quiet streets the panel names. No lorry
+    stands on a road; it stands on the block's own ground, against the
+    shop.
+  -->
+  <defs>
+    <style>
+      .land { fill: #C6DBAB }
+      .paved { fill: #E8ECDF }
+      .road { fill: #F8F6F0 }
+      .shop { fill: #6EC1E4 }
+      .shop-dark { fill: #58A9CC }
+      .trailer { fill: #E6E6E0 }
+      .cab { fill: #475C94 }
+      .door { fill: #383D4D }
+      .bay { fill: none; stroke: #B8B2A0; stroke-width: 1.2 }
+      .label { font-size: 15px; fill: #2b2f36; font-weight: 600 }
+      .note { font-size: 12px; fill: #555b66 }
+      .grid { stroke: #000; stroke-opacity: 0.06; stroke-width: 1 }
+    </style>
+    <!-- A car, its middle at 0,0, pointing along +x. -->
+    <rect id="car" x="-8.7" y="-4.5" width="17.4" height="9" rx="1.5"/>
+    <!-- A lorry: its tail at 0,0, the trailer along +x, the cab beyond it. 39 long. -->
+    <g id="lorry">
+      <rect class="trailer" x="0" y="-5.1" width="27.6" height="10.2" rx="1"/>
+      <rect class="cab" x="28.8" y="-5.1" width="10.2" height="10.2" rx="1.5"/>
+    </g>
+    <!-- The ground: 7 tiles by 5, the high street along the bottom, kerb cars on it. -->
+    <g id="ground">
+      <rect class="land" width="420" height="300"/>
+      <rect class="paved" width="420" height="258"/>
+      <rect class="road" x="0" y="258" width="420" height="24"/>
+      <path class="grid" d="M60 0V300M120 0V300M180 0V300M240 0V300M300 0V300M360 0V300M0 60H420M0 120H420M0 180H420M0 240H420"/>
+      <g fill="#A6A6AD"><use href="#car" transform="translate(40 249)"/></g>
+      <g fill="#8C2626"><use href="#car" transform="translate(70 249)"/></g>
+    </g>
+    <rect id="side-street" class="road" x="318" y="0" width="24" height="258"/>
+    <rect id="back-street" class="road" x="0" y="18" width="318" height="24"/>
+    <!-- The car park: two tiles in front of the shop. -->
+    <g id="car-park">
+      <path class="bay" d="M132 186H264M132 234H264"/>
+      <g fill="#E64033"><use href="#car" transform="translate(150 198) rotate(90)"/></g>
+      <g fill="#333847"><use href="#car" transform="translate(174 198) rotate(90)"/></g>
+      <g fill="#D9D9E0"><use href="#car" transform="translate(222 198) rotate(90)"/></g>
+      <g fill="#4066BF"><use href="#car" transform="translate(246 222) rotate(90)"/></g>
+      <g fill="#338066"><use href="#car" transform="translate(150 222) rotate(90)"/></g>
+    </g>
+  </defs>
+
+  <rect width="1560" height="940" fill="#ffffff"/>
+
+  <!-- A: a back street. The lorry parks along the back wall, its tail to a small block. -->
+  <g transform="translate(20 80) scale(1.15)">
+    <text class="label" x="0" y="-44">A · Back street: along the back wall</text>
+    <text class="note" x="0" y="-24">Pulls in off the back street, stops at a small block.</text>
+    <use href="#ground"/><use href="#side-street"/><use href="#back-street"/><use href="#car-park"/>
+    <path class="shop" d="M132 72H288V168H132Z"/>
+    <rect class="shop-dark" x="138" y="61" width="10" height="11"/>
+    <use href="#lorry" transform="translate(149 66.5)"/>
+  </g>
+
+  <!-- B: a side street. The same along the side wall. -->
+  <g transform="translate(540 80) scale(1.15)">
+    <text class="label" x="0" y="-44">B · Side street: along the side wall</text>
+    <text class="note" x="0" y="-24">The same, off the quiet side street.</text>
+    <use href="#ground"/><use href="#side-street"/><use href="#car-park"/>
+    <path class="shop" d="M132 72H288V168H132Z"/>
+    <rect class="shop-dark" x="288" y="152" width="11" height="10"/>
+    <use href="#lorry" transform="translate(293.5 151) rotate(-90)"/>
+  </g>
+
+  <!-- C: no quiet street. The approved lane off the high street, a block at the lorry's tail. -->
+  <g transform="translate(1060 80) scale(1.15)">
+    <text class="label" x="0" y="-44">C · No quiet street: the lane (approved)</text>
+    <text class="note" x="0" y="-24">Backs up a lane off the high street to a block.</text>
+    <use href="#ground"/><use href="#car-park"/>
+    <path class="road" d="M294 258V100H312V258Z"/>
+    <path class="shop" d="M132 72H288V168H132Z"/>
+    <rect class="shop-dark" x="288" y="88" width="22" height="11"/>
+    <use href="#lorry" transform="translate(303 100) rotate(90)"/>
+  </g>
+
+  <!-- D: a cutout in the back corner, open to the back street. -->
+  <g transform="translate(20 510) scale(1.15)">
+    <text class="label" x="0" y="-44">D · Cutout, back corner</text>
+    <text class="note" x="0" y="-24">The corner taken out; backs in off the back street.</text>
+    <use href="#ground"/><use href="#side-street"/><use href="#back-street"/><use href="#car-park"/>
+    <path class="shop" d="M132 72H236V90H288V168H132Z"/>
+    <use href="#lorry" transform="translate(237 80)"/>
+  </g>
+
+  <!-- E: a cutout down the side, open to the side street. -->
+  <g transform="translate(540 510) scale(1.15)">
+    <text class="label" x="0" y="-44">E · Cutout, side</text>
+    <text class="note" x="0" y="-24">No back street: the cutout faces the side street.</text>
+    <use href="#ground"/><use href="#side-street"/><use href="#car-park"/>
+    <path class="shop" d="M132 72H288V82H270V124H288V168H132Z"/>
+    <use href="#lorry" transform="translate(279 123) rotate(-90)"/>
+  </g>
+
+  <!-- F: a cutout in the front corner, from the high street, beside the car park. -->
+  <g transform="translate(1060 510) scale(1.15)">
+    <text class="label" x="0" y="-44">F · Cutout, front corner</text>
+    <text class="note" x="0" y="-24">Only the high street: backs in beside the car park.</text>
+    <use href="#ground"/><use href="#car-park"/>
+    <path class="shop" d="M132 72H288V126H270V168H132Z"/>
+    <use href="#lorry" transform="translate(279 127) rotate(90)"/>
+  </g>
+
+  <text class="note" x="20" y="900">The faint grid is one tile. Lorry: trailer 0.46 × 0.17 tiles, cab 0.17. Nothing is paved for it: the gray is the block's own ground.</text>
+  <text class="note" x="20" y="920">As a rule: the back if there is a quiet street behind, else the side, else the front. A–C keep the shop whole and add a block; D–F cut its corner.</text>
+</svg>

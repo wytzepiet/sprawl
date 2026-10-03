@@ -5,7 +5,6 @@ import { useGame } from "../state/gameObjects";
 import { buildMode, placingBuilding } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 import { viewExtent } from "./view";
-import { createPen } from "./pen";
 import { following, setFollowing, positionOf } from "../state/selection";
 
 const BUILD_ZOOM = 8;
@@ -58,7 +57,6 @@ export function OrthoCamera() {
   camera.setTarget(Vector3.Zero());
   camera.minZ = 1;
   camera.maxZ = 4000;
-  const disposePen = createPen(scene, engine, camera, canvas);
   let perspective = OPENS_IN_PERSPECTIVE;
 
   // Zoom is measured in tiles of ground, not in camera height, so it means the
@@ -421,7 +419,6 @@ export function OrthoCamera() {
     canvas.removeEventListener("wheel", onWheel);
     canvas.removeEventListener("contextmenu", preventContextMenu);
     window.removeEventListener("keydown", onKeyDown);
-    disposePen();
     camera.dispose();
   });
 

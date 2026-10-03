@@ -22,9 +22,25 @@
 > - **What goes**: the driveway as a kind of road (a road ending on a
 >   plot, one per building, the newest), lots, rings and their slabs.
 >   A car park's layout is packed from its shape when it is built.
+> - **Driveways stay where a house leaves room** (2026-10-02, the
+>   mayor): a house with open ground beside it parks its cars on a drive
+>   down that side, as the town grid draws it (`look.md`); the middle of
+>   a row parks at the kerb. Kerb parking is how dense towns park almost
+>   everywhere, driveways how suburbs do; the neighbours decide which,
+>   not a country. Enough by design: a house's two cars fit its drive or
+>   its own frontage of kerb (two bays to a tile); flats outrun their
+>   kerb, which is where a car park becomes the mayor's job; a shop's
+>   visitors take its frontage and then the nearest bays round about.
 >
 > Open: how far "within reach" is; whether a home's residents prefer the
 > bay by their own door; how cruising picks the next street.
+
+Changes of gear, 2026-10-02: a trip carries the stretches of its route
+driven backwards (`Trip::backing`, edges `[a, b)`), not only a tail, and
+the client drives each part as a vehicle steers (`driver.ts`). A house's
+car drives onto its driveway nose first, from the street, and backs out
+onto it; a lorry still backs into its dock. A kerb bay will be the same:
+a few nodes and a change of gear.
 
 Status: specification, drafted 2026-09-06. §8 step 1 built the same day
 in its generic form: every building has a two-spot lot on its driveway

@@ -201,6 +201,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Card(id) => crate::card::card(&world, id, now),
                         Ask::Town => crate::economy::town(&world, now),
                         Ask::Site { kind, x, y } => serde_json::to_value(world.site_under(x, y, kind)).unwrap_or_default(),
+                        Ask::Map { x, y, r } => crate::fixtures::draw(&world, x, y, r).into(),
                         Ask::Call(id) => {
                             // Its shelf, emptied: a depot fetches, a maker
                             // is full again by tomorrow, anything else
@@ -561,7 +562,7 @@ fn try_reroute(
         world.update_position(car_id, pos);
     }
 
-    let reverse = world.reverse_tail(car_id);
+    let backing = crate::car::spawn::backing(0, world.reverse_tail(car_id), new_route.len());
     if let Some(entry) = world.objects.get_mut(car_id)
         && let GameObject::Car(ref mut car) = entry.object
         && let Some(ref mut t) = car.trip
@@ -570,7 +571,7 @@ fn try_reroute(
         t.route_positions = route_positions;
         t.from_lot = 0;
         t.to_lot = to_lot;
-        t.reverse = reverse;
+        t.backing = backing;
         t.segment_lengths = segment_lengths;
         t.total_route_length = total;
         t.route_index = 1;
@@ -932,6 +933,44 @@ mod tests {
         world
             .place_on_street(GridCoord { x, y: 1 }, kind)
             .unwrap_or_else(|| panic!("the street should give a {kind:?} at x={x} its driveway"))
+    }
+
+    /// A fresh world fills: every household of the starting town has a way
+    /// in from beyond the map. Seed 7's nearest door as the crow flies is on
+    /// a road that never joins the town, and its people waited there for
+    /// ever.
+    #[test]
+    fn every_household_of_a_fresh_world_can_drive_in() {
+        let mut world = World::new();
+        world.terrain_seed = 7;
+        world.terrain = crate::terrain::generate(7);
+        let anchor = crate::road_gen::generate(&mut world, 7).expect("no anchor near the middle");
+        crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
+        // As the game opens it: the survey extended to what is revealed,
+        // which lays roads that never join the town, doors and all.
+        world.rebuild_revealed();
+        world.rebuild_edges();
+        world.rebuild_node_cars();
+        world.rebuild_occupied();
+        world.restore_spots();
+        world.rebuild_roads_generated();
+        world.rebuild_laid();
+        let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
+        crate::road_gen::extend_to(&mut world, seed, bounds);
+        world.stand_edges();
+        world.settle();
+        let ids = world.resident_ids();
+        assert!(!ids.is_empty(), "nobody to move in");
+        for id in ids {
+            let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| e.object.clone()) else { continue };
+            if world.edge.contains(&r.home) {
+                continue;
+            }
+            let home = world.objects.get(r.home).and_then(|e| e.position).unwrap();
+            let entry = world.entry_node_near(home).expect("no door");
+            let to = world.approach(r.home).expect("no way to the door of home");
+            assert!(crate::world::pathfinding::Routes::from(&world, entry).route_to(to).is_some(), "resident {id} has no road in from {entry}");
+        }
     }
 
     /// A fresh world is not empty land: the survey's anchors each get a
@@ -1582,7 +1621,9 @@ mod tests {
     /// Every kind the mayor could put down: everything with a price. The
     /// edge has none, and is not placed by anyone.
     fn placeable() -> Vec<BuildingKind> {
-        BuildingKind::ALL.into_iter().filter(|&k| crate::blueprint::blueprint(k).price.is_finite()).collect()
+        // The port aside: it stands with its back to the sea, and the
+        // test street has none.
+        BuildingKind::ALL.into_iter().filter(|&k| crate::blueprint::blueprint(k).price.is_finite() && k != BuildingKind::Port).collect()
     }
 
     /// A town shaped like a town, for the seasons: mostly homes, an export

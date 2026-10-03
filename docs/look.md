@@ -1,7 +1,8 @@
 # The look: a town that knows what it is next to
 
 Status: direction, 2026-09-28; the town grid's state as of 2026-10-02.
-Built: the palette, the pen, the fixture sheet, and in the sandbox the
+Built: the palette, the fixture sheet (the pen, an ink line round
+everything, dropped 2026-10-02), and in the sandbox the
 town grid (§The town grid), which goes into the game with parking. How to
 judge a new thing, and every verdict so far, is `style.md`. The concepts it was argued from are the pattern
 book (https://claude.ai/artifact/XUGqKzMYVtypqraRp9R8tE), where every
@@ -93,33 +94,50 @@ The code is `client/src/engine/town/`:
   from its quiet end or its busy one. A depot's is at the quiet end, a
   dock for every two tiles, its office at the busy end; a supermarket's
   car park is on the busy corner, three cars to a tile of shop. The rest
-  is building. A supermarket two tiles deep and wide also takes its
-  deliveries at the back, as real ones do (six Dutch ones from
-  OpenStreetMap, 2026-09-30): a lane cut from its quieter side, front to
-  back, and at its end a bump on the back wall, the loading bay, with a
-  lorry backed up to it. Neither takes a tile: the lane is cut from the
-  building, the bump stands in the margins behind it. Everything drawn is a function of a tile, its neighbours and
+  is building. A supermarket whose shop is two tiles each way also takes its
+  deliveries, in a corner cut from it a lorry long and wide, the lorry
+  backed in along the wall with its tail to the door: the back corner if
+  a street runs behind, else down a side street, else at the front
+  corner beside the car park (`sketches/loading-bay.svg`, D to F, the
+  mayor, 2026-10-02). The lorry stands in the shop's own tiles, never on
+  a road. Everything drawn is a function of a tile, its neighbours and
   these facts.
 - **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
   courtyard is a lawn with a tree on most tiles; paved ground closed in
-  stays a square. A straight street before homes, shops or open ground has
+  stays a square. A house stands in its lawn, the plot beside it on its
+  street too, and the open tile behind it, on the side away from its
+  street, is its back garden, now and then with a tree: houses back to
+  back with two tiles between them make a block of lots, as a grid town's
+  do (`20-block`). An empty plot beside a garden is taken into it. A straight street before homes, shops or open ground has
   a tree on its verge every third tile; through roads, junctions, bends,
   diagonals and industrial streets stay bare. A street before homes and
   shops is parked along both kerbs (fileparkeren), straight or diagonal,
-  wholly off the road in a parking lane with its bays marked, in the strip
+  wholly off the road beside it, nothing marking where they stand, in the strip
   the rows' setback leaves, clear of junctions, bends, ends
   and trees, with a gap here and there. Drawn only, for now: the cars the
   simulation parks come with `parking.md` step 1. A depot's yard has lorry
   bays along the hall wall across from its street, three to a tile, a door
   behind each and lorries backed up to most; a car park has an aisle
   along its street between two rows of bays, ten cars to a tile, most
-  taken. One brush paints the building, and its yard comes with it. The pavement is
-  ground: every road, building and yard makes paved ground, shaped by the
+  taken. One brush paints the building, and its yard comes with it.
+  Every house on a straight street has a drive straight in from the road
+  to its front wall, an arm of the street with its curves, and on it,
+  where the game parks them (`lots.rs`),
+  its two cars side by side, nose to the house and wholly in front of it,
+  and no kerb car across its mouth (the mayor, 2026-10-03). The street's
+  trees stand between two plots, where no drive comes out. The
+  road and the drives are one asphalt (`asphalt` in
+  `dressing.ts`), its corners rounded in and out, so a drive reads as
+  the road carried on. The kerb is not the road, and is not drawn: the
+  cars beside the road are enough (2026-10-02, the mayor). A street
+  behind a building is just a street (the mayor, 2026-10-02). The pavement is
+  ground: every road, yard and building but a house makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal
   street is as wide as a straight one), then every corner rounded as the
-  terrain rounds a shore (`soften`). So a town is paved house to house,
-  and the grass left between blocks has soft edges. Where a tree stands comes
+  terrain rounds a shore (`soften`). So a street's pavement is its sidewalk,
+  a town centre is paved shop to shop, a suburb is green with a sidewalk
+  round each block, and the grass left between blocks has soft edges. Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted**, a tile at a time as roads are drawn, with a
   brush per kind (`town/brush.ts`). Each kind has a program: the smallest
@@ -176,6 +194,18 @@ and worker, with the facts that change play (a depot's docks, an
 airport's gates) worked out on the server.
 
 ## The ladders
+
+**Drawn bigger** (2026-10-02, the mayor): a kind's stages come from the
+shape the player paints, not from a choice. A supermarket of one tile is
+a corner shop, its customers at the kerb; of two or three, it gives its
+busy corner to a car park; once the shop itself is two tiles each way, a
+loading bay cut from a corner; past that the car park grows,
+three cars to a tile of shop (`18-supermarkets`). Built: the
+supermarket. To come, the same way: a depot from a lock-up with a van to
+a yard of docks, a petrol station from a kiosk and a pump at the kerb to
+a canopy over a row of pumps. The server's buildings come in one size a
+kind for now; the stages mean something in play when a building's
+capacity grows with the shape painted.
 
 What each kind becomes as it does well, and with its neighbours:
 

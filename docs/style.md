@@ -18,14 +18,24 @@ short.
 
 A little model of a town on a map, not a real town. Mini Motorways' calm
 (its palette, its light, its clean shapes) with what is Sprawl's own:
-pitched roofs on homes, joined rows and perimeter blocks, cars at the kerb,
-the ink line. European blocks and American suburbs both have a place
+pitched roofs on homes, joined rows and perimeter blocks, cars at the kerb.
+No outlines: shapes are told apart by colour and light alone (2026-10-02).
+European blocks and American suburbs both have a place
 (strokes make rows or detached houses).
 
 ## The verdicts
 
 Each a rule, why, and when it was given. New verdicts go here.
 
+- **Sketch, then rule** (2026-10-02). A new thing is drawn first, by
+  hand, as SVG in the plan's style and scale, two or three variants
+  beside real examples; the mayor picks one, and only then is it written
+  as rules, the plan (`bun run plan`) the check that the rules draw what
+  was picked. Guessing in code and showing the result cost five rounds
+  of correction on a loading bay. The game is seen from above, so most
+  things can be judged in a sketch.
+- **No outlines** (2026-10-02). The black ink line round everything is
+  gone, from the game and the plan.
 - **Big lines only.** Nothing smaller than about a tenth of a tile reads at
   the game's zoom. Plant rooms, chimneys and rooflights were tried and
   were noise (2026-09-30).
@@ -62,6 +72,8 @@ Each a rule, why, and when it was given. New verdicts go here.
 - **Roads.** Asphalt alone, 0.4 wide; the pavement is the kerb. A car 0.15
   wide in a 0.2 lane, with room at the edge and between two passing.
   Parked cars wholly off the road.
+- **Kerb parking is the cars alone**: nothing marks a bay, the cars
+  beside the road are enough (2026-10-02). Driveways join the road.
 - **Parking belongs to streets; yards are only as big as what they serve,**
   at the end that suits them: a depot's lorries at its quiet end, a
   supermarket's car park on its busy corner, deliveries round the back.
@@ -134,22 +146,28 @@ The order for the sessions after this one:
    leans on them. What exists reads snapshots: `/health`, `/town`,
    `/inspect/{id}`, the `/debug/…` routes, `bun run shots` of the
    fixtures, the town and season tests. Missing:
-   - **Acting**: place a road or a building, set the speed, move the
-     clock on the running game, from a command, as the mayor's hand does,
-     so an agent can set up a situation and watch it.
-   - **Looking anywhere**: one shot command for the game and the sandbox
-     that takes a place, a zoom, a time of day and a crop, and scripted
-     brush strokes for the sandbox. (Written by hand all through
-     2026-09-28 to 10-02 and lost with each container: commit them.)
-   - **Seeing motion**: vehicles' paths logged and plotted, and a short
-     sequence of frames, for what a still cannot show (cars turning too
-     sharp); the physics check reads the same paths.
-   - **A plan view**: the town grid and the network drawn flat as SVG,
-     no light, no 3D: instant and exact, and comparable between two
-     versions. In a cloud session a sandbox photograph takes twenty
-     seconds to a minute; most layout questions need only the plan.
+   - **Acting**: built 2026-10-02, `bun run act` (`CLAUDE.md`): roads,
+     buildings, demolition, the speed and the clock, on the running game,
+     each answered with what changed.
+   - **Looking anywhere**: the plan of any place in the running game is
+     built (`bun run plan --live`). Missing: one photograph command for
+     the game and the sandbox that takes a place, a zoom, a time of day
+     and a crop, and scripted brush strokes for the sandbox. (Written by
+     hand all through 2026-09-28 to 10-02 and lost with each container:
+     commit them.)
+   - **Seeing motion**: paths built 2026-10-02 (`bun run act watch`,
+     `plan --paths`), with the first physics check, the tightest turn.
+     Its first reading, a seed-7 morning: every street corner about 0.35
+     (a corner rounded half a tile each way can be no wider), every turn
+     into a driveway or a lot's spot near 0.03, a dead end's U-turn 0.01.
+     Missing: the other checks (easing in, slowing before a bend, a
+     trailer's sweep) and a short sequence of frames.
+   - **A plan view**: built 2026-10-02, `bun run plan` (`CLAUDE.md`):
+     the town grid drawn flat as SVG, instant and exact, and `--at` a
+     before and after. The network goes in it when it is built.
    - **Asking why**: what is at a tile, what it is joined to, why a stop
-     is red.
+     is red. So far only `/site` (a refused building's plot: where, and
+     whether it fits, not why not).
 1. **A research tool**: one command that takes a place, anywhere, and
    lays its map and photo side by side, as was done by hand for the
    supermarkets and ferries.
@@ -159,7 +177,24 @@ The order for the sessions after this one:
 3. **The network primitives** (`network.md`), in the sandbox: links with
    lanes, stops, the reachability check; the car park, docks and service
    lane re-made on them.
-4. **Cars that turn and park naturally**, with the physics check.
+4. **Cars that turn and park naturally**, with the physics check. Begun
+   2026-10-02, on the mayor's direction that the server stays light and
+   the source of truth and only the drawing changes: the client drives
+   each trip (`driver.ts`), a lead axle steering for a point ahead at
+   no more than full lock, every body pointing where its own axle moves
+   (a trailer cuts in, a backing cab follows its trailer), kept by the
+   server's distance along the route; the drawn distance eased onto the
+   server's, fed its speed. A seed-7 morning: the tightest street turn
+   per trip from 0.23 to 0.29 typically, with no drive ending off its
+   route. Where a route turns tighter than a car can (a lot's aisle, a
+   driveway), the driver is put back on it. Trips now carry their
+   changes of gear (`parking.md`): a house's car backs out of its
+   driveway, a lorry backs into its dock, both seen on the plan from
+   the server's own tests (`a_car_backs_out_of_its_driveway`). Still
+   too tight for a car to turn: a driveway two-thirds of a tile from
+   the street, a ring's spots; the kerb bays to come want room. The 0.45 above may be the wrong
+   number: 5.5 m is a turning circle at the outer wheel, kerb to kerb,
+   and the middle of a car turns at about 4 m, 0.33.
 5. **The canon**: its first entries are in (§The canon); a first
    rebuild of one of them from the guides alone shows whether they carry
    it.

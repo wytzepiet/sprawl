@@ -31,6 +31,7 @@ pub fn start_trip(
         return false;
     };
     let out = world.way_out(car_id).unwrap_or_default();
+    let backs_out = world.backs_out(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
 
     let path = match pathfinding::Routes::from(world, from_node).route_to(to_node) {
@@ -68,9 +69,10 @@ pub fn start_trip(
     let free_ms = ((path_len - 1) as f64 / CRUISE_SPEED * 1000.0) as GameTime;
     let Some(way_in) = world.way_in(dest_building, car_id, now + free_ms, until.saturating_add(crate::world::lots::SLACK)) else { return false };
     let to_lot = way_in.len() - 1;
-    let reverse = world.reverse_tail(car_id);
+    let backs_in = world.reverse_tail(car_id);
     let route: Vec<EntityId> = head.into_iter().chain(way_in[1..].iter().copied()).collect();
-    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, reverse, now);
+    let backing = backing(backs_out, backs_in, route.len());
+    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, now);
     true
 }
 
@@ -83,6 +85,7 @@ pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: Entity
         _ => return false,
     };
     let out = world.way_out(car_id).unwrap_or_default();
+    let backs_out = world.backs_out(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
     let path = match pathfinding::Routes::from(world, from_node).route_to(exit) {
         Some(r) if r.len() >= 2 => r,
@@ -91,7 +94,8 @@ pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: Entity
     let from_lot = out.len().saturating_sub(1);
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     world.release_spot(car_id);
-    launch(world, events, car_id, owner, owner, route, from_lot, 0, 0, now);
+    let backing = backing(backs_out, 0, route.len());
+    launch(world, events, car_id, owner, owner, route, from_lot, 0, backing, now);
     true
 }
 
@@ -104,7 +108,7 @@ fn launch(
     route: Vec<EntityId>,
     from_lot: usize,
     to_lot: usize,
-    reverse: usize,
+    backing: Vec<[usize; 2]>,
     now: GameTime,
 ) {
     let first_edge = (route[0], route[1]);
@@ -132,7 +136,7 @@ fn launch(
             route_positions,
             from_lot,
             to_lot,
-            reverse,
+            backing,
             progress: 0.0,
             speed: 0.0,
             acceleration: ACCELERATION,
@@ -162,6 +166,20 @@ fn launch(
         seg.cars.push_back(car_id);
     }
     events.wake(0, car_id);
+}
+
+/// The stretches of a route of `len` nodes driven backwards: its first
+/// `out` edges, backing out of where it stood, and its last `into`, backing
+/// into where it is going.
+pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
+    let mut v = Vec::new();
+    if out > 0 {
+        v.push([0, out]);
+    }
+    if into > 0 {
+        v.push([len - 1 - into, len - 1]);
+    }
+    v
 }
 
 /// Find the cumulative distance to the start of an edge in a trip's route.

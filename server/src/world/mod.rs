@@ -317,13 +317,17 @@ impl World {
         ids
     }
 
-    /// The nearest road exit to a tile, as a building: the door everything
-    /// from beyond the map comes in by, and the last stop of everything
-    /// leaving. By id at a tie, so a world answers the same way however its
-    /// sets iterate.
+    /// The road exit nearest the building on a tile, as a building: the
+    /// door everything from beyond the map comes in by, and the last stop
+    /// of everything leaving. Nearest as the crow flies, among the doors on
+    /// a road its own joins: one on a road that never meets its street,
+    /// though it stand next door, is no way in. By id at a tie, so a world
+    /// answers the same way however its sets iterate.
     pub fn nearest_edge(&self, pos: GridCoord) -> Option<EntityId> {
+        let from = self.occupied.get(&(pos.x, pos.y)).and_then(|&b| self.road_node_for_building(b))?;
         self.edge
             .iter()
+            .filter(|&&b| self.road_node_for_building(b).is_some_and(|n| self.network.connected(from, n)))
             .filter_map(|&b| Some((b, self.objects.get(b)?.position?)))
             .min_by_key(|&(b, p)| ((p.x - pos.x).abs().max((p.y - pos.y).abs()), b))
             .map(|(b, _)| b)
