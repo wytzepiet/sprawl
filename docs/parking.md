@@ -127,7 +127,7 @@ Decided 2026-09-07 over drawings at the game's scale (a tile is 12 m, a
 car 4.2 by 2.2, a one-way lane 2.4). The ring lot won; what follows is
 its geometry and the rules around it.
 
-### 3.1 The ring
+### 3.1 The ring (replaced by §3.9, 2026-10-03)
 
 A lot tile carries a one-way ring of lane hugging its edge, cars in the
 island inside it, each spot a pull-through: in from the lane on the
@@ -308,6 +308,29 @@ row, the lot is its own thing: a run with its own frontage, the
 building just the building. Until then the plot is building plus lot
 and the client draws the building on the back of it; the pin sits over
 the building either way.
+
+### 3.9 The car park: aisles, not a ring (2026-10-03)
+
+The ring is replaced. One tile deep it cannot be driven: its corners turn
+at 0.2 and a car turns no tighter than 0.45, and every lot that turns a
+car round inside one tile is the same. Drawn out at the game's scale in
+`sketches/car-park*.png` (`bun sketches/car-park.ts`), bays placed by
+test:
+
+- **An aisle** is a straight one-way lane 0.22 wide with bays at 60° on
+  both sides, 0.2 across: a car drives in nose first and backs out the
+  way it was going. Aisles run along the lot's long side, the bays along
+  them the whole length of the lot; a lane that only leads to aisles has
+  none.
+- **Two ways out, or no lot.** In at one end and out at the other, on
+  its street, a side street or a back street. A lot that cannot have two
+  (one tile, a street that stops short) is not laid; a building that
+  small parks on the kerb.
+- **Bigger lots branch and gather**: one way in, a feeder branching into
+  an aisle a row, the aisles gathering into one way out. A gathering is
+  a junction (`intersection/`), and gives way as one.
+- About 7 cars a tile, against the ring's 3.5: two tiles hold 12, three
+  21, and a lot through to a back street 8 a tile with no turn at all.
 
 ## 4. Driving in the lot
 

@@ -280,10 +280,66 @@ building's tiles, a street, a junction, or a free tile):
 
 ## Order
 
-1. Parking belongs to streets (`parking.md`, direction of 2026-09-28): the
-   biggest change to the picture, and a deletion. The town grid goes into
-   the game with it.
-2. More dressing: kerb parking with step 1, front yards, lamps before shops.
+1. **The town grid in the game** (§Into the game, below): painted
+   buildings, one toolbar, the grid drawing the live world, and the
+   rings gone. Parking belongs to streets (`parking.md`, direction of
+   2026-09-28) follows it; until kerb bays come, a house parks on its
+   drive and a shop's visitors on its row's slots.
+2. More dressing: kerb parking with its bays, front yards, lamps before
+   shops.
 3. New fixtures and concepts: a shopping parade, a port, an industrial
    row, an airport.
 4. The ladders, as the growth loop arrives.
+
+## Into the game
+
+Plan, 2026-10-03. Decided by the mayor the same day: building is
+dragging, and a building is the tiles it was painted on.
+
+- **One toolbar, drag for everything.** Select, each kind of road, each
+  kind of building the tree has opened, demolish. Pick one and drag on
+  the map; the brush's ghost (`town/brush.ts`) is what letting go builds.
+  The card shelf's drag-to-place, its ghost and `/site` go.
+- **A building is its tiles.** A stroke of houses is a house a tile, each
+  with its two homes, its drive and its two cars, drawn as one row
+  because the grid joins kin (`01-terrace`). A kind that works as one
+  building (the depot, the supermarket, the factory, the port) is one
+  building a stroke, as big as it was painted. The economy is untouched:
+  it counts buildings as it does now. The plot, its facing and its fixed
+  size go.
+- **The rings go.** A house parks on its drive pair, as now. A building
+  whose kind keeps a yard has the yard read off its shape (`facts.ts`):
+  the depot's docks, the port's lanes, the supermarket's car park, laid
+  out as aisles (`parking.md` §3.9). Everyone else parks on the row's
+  slots until kerb bays come.
+
+What changes, in the order it can be built and seen:
+
+1. **The wire.** `PlaceBuilding { at, kind }` becomes a stroke: the kind
+   and the tiles the ghost showed. The client completes the stroke (one
+   rule, `brush.ts`, the one the player watched); the server checks it
+   (the tiles free, the kind's reach to a street) and takes the tiles as
+   given, or refuses. `Building` carries its tiles in place of `size`
+   and `facing`. Roads and demolition are strokes too, as they nearly
+   are already.
+2. **The server.** A building is its tiles: `blueprint::plot`, facings
+   and the ring in `world/lots.rs` are deleted, its drive pairs and yards
+   kept; the yard is read off the building's shape by the rule `facts.ts`
+   draws it with, ported (a yard must be what the grid draws, or the cars
+   stand on the lawn).
+3. **The drawing.** The grid draws the live world: a `Town` made from the
+   game's own objects (buildings' tiles, roads' links, the terrain), as
+   `/map` already does for `bun run plan --live`, in chunks the way
+   `TerrainChunks` draws the land, each rebuilt when an operation touches
+   it or its neighbours. In the game the dressing draws no cars: every
+   car is the simulation's. A building no road reaches, or with nothing
+   on its shelves, is tinted in its roof (`objects/look.ts`); a farm's
+   fields grow as they do. `BuildingObject`, `objects/buildings.ts` and
+   `objects/lots.ts` are deleted.
+4. **The toolbar.** The build menu becomes the way to pick a tool; the
+   shelf goes.
+5. **The car park** (`parking.md` §3.9): the supermarket's yard laid out
+   as aisles, on the server as lot nodes and in the drawing as asphalt
+   and bays, one layout for both.
+
+Then kerb bays, which make the dressing's kerb cars real.
