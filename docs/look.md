@@ -104,7 +104,11 @@ The code is `client/src/engine/town/`:
   these facts.
 - **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
   courtyard is a lawn with a tree on most tiles; paved ground closed in
-  stays a square. A straight street before homes, shops or open ground has
+  stays a square. A house stands in its lawn, the plot beside it on its
+  street too, and the open tile behind it, on the side away from its
+  street, is its back garden, now and then with a tree: houses back to
+  back with two tiles between them make a block of lots, as a grid town's
+  do (`20-block`). An empty plot beside a garden is taken into it. A straight street before homes, shops or open ground has
   a tree on its verge every third tile; through roads, junctions, bends,
   diagonals and industrial streets stay bare. A street before homes and
   shops is parked along both kerbs (fileparkeren), straight or diagonal,
@@ -128,12 +132,13 @@ The code is `client/src/engine/town/`:
   the road carried on. The kerb is not the road, and is not drawn: the
   cars beside the road are enough (2026-10-02, the mayor). A street
   behind a building is just a street (the mayor, 2026-10-02). The pavement is
-  ground: every road, building and yard makes paved ground, shaped by the
+  ground: every road, yard and building but a house makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal
   street is as wide as a straight one), then every corner rounded as the
-  terrain rounds a shore (`soften`). So a town is paved house to house,
-  and the grass left between blocks has soft edges. Where a tree stands comes
+  terrain rounds a shore (`soften`). So a street's pavement is its sidewalk,
+  a town centre is paved shop to shop, a suburb is green with a sidewalk
+  round each block, and the grass left between blocks has soft edges. Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted**, a tile at a time as roads are drawn, with a
   brush per kind (`town/brush.ts`). Each kind has a program: the smallest
