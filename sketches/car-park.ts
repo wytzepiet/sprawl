@@ -1,4 +1,4 @@
-// Car park sketches (`bun sketches/car-park.ts sketches/car-park.svg [big]`): herringbone lots in situations, at the game's scale.
+// Car park sketches (`bun sketches/car-park.ts sketches/car-park.svg [big|tall]`): herringbone lots in situations, at the game's scale.
 // A tile is 60 px; a car 0.29 x 0.15; a one-way aisle 0.22; a car turns no
 // tighter than 0.45. Bays are placed by test, not by hand: a car stands
 // where it is wholly on its lot, clear of every aisle, and clear of others.
@@ -48,6 +48,10 @@ type Panel = {
   paths: Turtle[];
   ring?: { x0: number; x1: number };
   W?: number; H?: number;
+  /** Which way the aisles run, x along the street (the default) or y back from it. */
+  along?: "x" | "y";
+  /** A back street along the top row. */
+  back?: boolean;
 };
 
 function samples(segs: Seg[]): P[] {
@@ -116,9 +120,9 @@ function bays(panel: Panel) {
   const reach = (CAR.l / 2) * Math.sin(ANGLE) + (CAR.w / 2) * Math.cos(ANGLE);
   for (const t of panel.paths) {
     for (const s of t.segs) {
-      // Bays line the aisles that run along the street, the whole width of
-      // the lot; a lane that only leads to them has none.
-      if (s.kind !== "line" || Math.abs(Math.sin(s.h)) > 0.5) continue;
+      // Bays line the aisles, the whole length of the lot; a lane that only
+      // leads to them has none.
+      if (s.kind !== "line" || Math.abs(panel.along === "y" ? Math.cos(s.h) : Math.sin(s.h)) > 0.5) continue;
       const L = Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]);
       const [ux, uy] = [Math.cos(s.h), Math.sin(s.h)];
       for (const side of [-1, 1]) {
@@ -173,9 +177,11 @@ function render(panel: Panel, ox: number, oy: number) {
     let [x0, y0, x1, y1] = [c, r, c + 1, r + 1];
     if (r === Y - 1 && panel.main && c + 1 > panel.main[0] && c < panel.main[1]) y1 = Y + 0.3;
     if (c === 1 && panel.side) x0 = 0.7;
+    if (r === 1 && panel.back) y0 = 0.7;
     g += `<rect class="paved" x="${f(x0)}" y="${f(y0)}" width="${f(x1 - x0)}" height="${f(y1 - y0)}"/>`;
   }
   if (panel.main) g += `<rect class="road" x="${f(panel.main[0])}" y="${f(Y + 0.3)}" width="${f(panel.main[1] - panel.main[0])}" height="${f(0.4)}" rx="${panel.main[1] < W ? 12 : 0}"/>`;
+  if (panel.back) g += `<rect class="road" x="0" y="${f(0.3)}" width="${f(W)}" height="${f(0.4)}"/>`;
   if (panel.side) g += `<rect class="road" x="${f(0.3)}" y="0" width="${f(0.4)}" height="${f(Y + 0.7)}"/>`;
   g += `<path class="grid" d="${Array.from({ length: W - 1 }, (_, i) => i + 1).map((x) => `M${x * T} 0V${H * T}`).join("")}${Array.from({ length: H - 1 }, (_, i) => i + 1).map((y) => `M0 ${y * T}H${W * T}`).join("")}"/>`;
   for (const [c, r] of panel.shop) {
@@ -272,8 +278,22 @@ const big: Panel[] = [
     W: 8, H: 4, main: [0, 8], paths: aisles(1, 6, [0.5, 1.5, 2.5], 3.5),
   }),
 ];
-const sheet = process.argv[3] === "big" ? big : panels;
-const COLS = process.argv[3] === "big" ? 2 : 4, GX = 70, GY = 120, MX = 40, MY = 110;
+const tall: Panel[] = [
+  P(rect(1, 2, 0, 2), rect(3, 4, 0, 2), {
+    key: "J", title: "Two wide, three deep", note: ["Up one aisle, round the back, down the other:", "both ways on the one street, a turn of 0.5."],
+    H: 4, main: [0, 6], along: "y", paths: [new Turtle(1.5, 3.45, NORTH).go(2.8).turn(0.5, 1, 180).go(2.8)],
+  }),
+  P(rect(1, 1, 1, 3), rect(2, 3, 1, 3), {
+    key: "K", title: "Through to a back street", note: ["One tile wide, in off one street and out onto the", "other: no turn at all."],
+    H: 5, main: [0, 6], back: true, along: "y", paths: [new Turtle(1.5, 4.45, NORTH).go(3.9)],
+  }),
+  P(rect(1, 3, 0, 2), rect(4, 5, 0, 2), {
+    key: "L", title: "Three wide, three deep", note: ["Two aisles up from the street, gathered along", "the back into a third down to one way out."],
+    H: 4, main: [0, 6], along: "y", paths: [1.5, 2.5].map((x) => new Turtle(x, 3.45, NORTH).go(2.75).turn(TURN, 1).go(3.05 - (x + TURN)).turn(TURN, 1).go(2.75)),
+  }),
+];
+const sheet = process.argv[3] === "big" ? big : process.argv[3] === "tall" ? tall : panels;
+const COLS = process.argv[3] ? 2 : 4, GX = 70, GY = 120, MX = 40, MY = 110;
 const PW = Math.max(...sheet.map((p) => (p.W ?? 6) * T)), PH = Math.max(...sheet.map((p) => (p.H ?? 3) * T));
 let body = "";
 const counts: Record<string, string> = {};
