@@ -4,6 +4,7 @@
  *   bun run shots          build the fixtures, photograph each, write the sheet, stop
  *   bun run shots --keep   the same, then leave the stack up at localhost:4810
  *   bun run shots --sandbox   each fixture in the sandbox instead, with no server
+ *   bun run shots 20-block    only these fixtures, by name
  *
  * A stack of its own beside the game's — server on 4811, client on 4810 — so
  * it never touches the running game or its world. The server builds
@@ -31,6 +32,7 @@ const keep = process.argv.includes("--keep");
 /** The sandbox draws each fixture alone from its text: no server to build
  *  or wait for, and the look as the town grid has it (`engine/town`). */
 const sandbox = process.argv.includes("--sandbox");
+const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 mkdirSync(OUT, { recursive: true });
 rmSync(`${ROOT}/.dev/fixtures.db`, { force: true });
 
@@ -100,7 +102,8 @@ try {
   await page.waitForTimeout(SETTLE_MS * 2);
 
   const aspect = VIEW.width / VIEW.height;
-  for (const f of fixtures) {
+  const shot = fixtures.filter((f) => !only.length || only.includes(f.name));
+  for (const f of shot) {
     if (sandbox) {
       // The sandbox frames a fixture itself when it opens one.
       await page.goto(`http://localhost:${CLIENT_PORT}/sandbox?f=${f.name}`);
@@ -121,7 +124,7 @@ try {
 
   const png = async (name: string) => Buffer.from(await Bun.file(`${OUT}/${name}.png`).arrayBuffer()).toString("base64");
   const cells = (
-    await Promise.all(fixtures.map(async (f) => `<figure><img src="data:image/png;base64,${await png(f.name)}"><figcaption><b>${f.name}</b> ${f.title}</figcaption></figure>`))
+    await Promise.all(shot.map(async (f) => `<figure><img src="data:image/png;base64,${await png(f.name)}"><figcaption><b>${f.name}</b> ${f.title}</figcaption></figure>`))
   ).join("");
   const sheet = await browser.newPage({ viewport: { width: 1800, height: 800 } });
   await sheet.setContent(`<style>
@@ -133,7 +136,7 @@ try {
   await sheet.waitForLoadState("load");
   await sheet.screenshot({ path: `${OUT}/sheet.png`, fullPage: true });
   await browser.close();
-  console.log(`${fixtures.length} fixtures → ${OUT}/sheet.png`);
+  console.log(`${shot.length} fixtures → ${OUT}/sheet.png`);
 } finally {
   if (keep) console.log(`stack left up: http://localhost:${CLIENT_PORT} (Ctrl-C stops it)`);
   else stop();
