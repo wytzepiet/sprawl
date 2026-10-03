@@ -321,10 +321,15 @@ What changes, in the order it can be built and seen:
    `DemolishRoad`. A drag is its steps, from one tile to the next, each
    built as it is sent, as a road is drawn now; a tap is from and to the
    same tile. A tile painted beside its own kind joins it: houses make a
-   row, and the first step of a depot builds the smallest that works
-   (`town/brush.ts`'s programs, ported) and the steps after grow it.
-   Each step is paid for and checked alone, and a drag that runs out of
-   money stops there. Nothing is held while the mayor drags: no draft,
+   row. A building keeps the tiles the mayor painted apart from those it
+   was completed with, and every step completes it again from what was
+   painted (`town/brush.ts`'s programs, ported): the first step of a
+   depot builds the smallest that works, a step sideways turns it to
+   follow, as the brush's ghost does, and steps past it grow it; tiles
+   no longer needed go back to open ground. Each step is checked alone;
+   a new building is paid for when it is first laid, its reshaping is
+   not (a price by the tile, if big buildings prove too cheap), and a
+   drag that runs out of money stops there. Nothing is held while the mayor drags: no draft,
    no ghost to agree with the build, no `Site`; what is seen is what was
    built. `Building` carries its tiles in place of `size` and `facing`.
    The rule lives only on the server: the sandbox draws fixtures and
