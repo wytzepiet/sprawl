@@ -121,7 +121,8 @@ The code is `client/src/engine/town/`:
   along its street between two rows of bays, ten cars to a tile, most
   taken. One brush paints the building, and its yard comes with it.
   Every house on a straight street has a drive straight in from the road
-  to its front wall, and on it, where the game parks them (`lots.rs`),
+  to its front wall, an arm of the street with its curves, and on it,
+  where the game parks them (`lots.rs`),
   its two cars side by side, nose to the house and wholly in front of it,
   and no kerb car across its mouth (the mayor, 2026-10-03). The street's
   trees stand between two plots, where no drive comes out. The

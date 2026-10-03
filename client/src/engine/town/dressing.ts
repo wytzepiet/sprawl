@@ -160,7 +160,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...port.ramps],
+    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: port.ramps,
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
@@ -190,25 +190,40 @@ const ROUND = 0.05;
 
 /**
  * The asphalt: the roads as the game lays them, each tile's arms to the
- * tiles it is joined to, and what is driven on that leads off them,
- * driveways and ramps, as one surface, its corners rounded in and out,
+ * tiles it is joined to and to the houses whose drives it leads to, and
+ * what else is driven on that leads off them, ramps, as one surface, its corners rounded in and out,
  * so a drive reads as the road carried on. Through roads keep their own
  * colour, cut from it straight.
  */
 export function asphalt(town: Town, lanes: Pt[][]): { street: Polygon[]; through: Polygon[] } {
+  // A drive is an arm of its street, toward the house, and the house's
+  // tile an arm back to the street, which ends under the house.
+  const drives = new Map<string, [number, number][]>();
+  const toward = (c: number, r: number, dc: number, dr: number) => {
+    const k = `${c},${r}`;
+    drives.set(k, [...(drives.get(k) ?? []), [dc, dr]]);
+  };
+  for (const [c, r, fx, fy] of driveways(town).arms) {
+    toward(c + fx, r + fy, -fx, -fy);
+    toward(c, r, fx, fy);
+  }
   const tiles = (through: boolean) => {
     const tris: Polygon[] = [];
     for (let r = 0; r < town.h; r++) {
       for (let c = 0; c < town.w; c++) {
-        if (town.tile(c, r).kind !== "road" || town.through(c, r) !== through) continue;
+        const drive = drives.get(`${c},${r}`) ?? [];
+        if ((town.tile(c, r).kind !== "road" && !drive.length) || town.through(c, r) !== through) continue;
         const arms: ArmInfo[] = [];
+        const arm = (dc: number, dr: number) => {
+          const a = Math.atan2(-dr, -dc);
+          arms.push({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" });
+        };
         for (let dr = -1; dr <= 1; dr++) {
           for (let dc = -1; dc <= 1; dc++) {
-            if (!(dc || dr) || !town.linked(c, r, c + dc, r + dr)) continue;
-            const a = Math.atan2(-dr, -dc);
-            arms.push({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" });
+            if ((dc || dr) && town.linked(c, r, c + dc, r + dr)) arm(dc, dr);
           }
         }
+        for (const [dc, dr] of drive) arm(dc, dr);
         const geo = buildRoadGeometry(arms, HALF_W, 0);
         if (!geo) continue;
         // The geometry is the world's (x and y the other way); flat only.
@@ -235,12 +250,14 @@ const DRIVE_OUT = 0.47;
 
 /**
  * Driveways: a house with a street running straight past its front has a
- * drive straight in from the road to its front wall, and on it, as the
- * game parks them, its household's two cars side by side, nose to the
- * house; one now and then, the other out.
+ * drive straight in from the road to its front wall, a road like any
+ * other (`asphalt` draws it as an arm of the street, curves and all), and
+ * on it, as the game parks them, its household's two cars side by side,
+ * nose to the house; one now and then, the other out. By house and the
+ * way to its street, and the drive's ground, which no tree stands on.
  */
-function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[] } {
-  const strips: Pt[][] = [], cars: Car[] = [], mouths: Pt[] = [];
+function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[]; arms: [number, number, number, number][] } {
+  const strips: Pt[][] = [], cars: Car[] = [], mouths: Pt[] = [], arms: [number, number, number, number][] = [];
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
@@ -249,11 +266,12 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[] } {
       // past it, beside the house along its front.
       const front = [[0, 1], [0, -1], [1, 0], [-1, 0]].find(([fx, fy]) => {
         const [x, y] = [c + fx, r + fy];
-        return road(x, y) && (town.linked(x, y, x - fy, y + fx) || town.linked(x, y, x + fy, y - fx));
+        return road(x, y) && !town.through(x, y) && (town.linked(x, y, x - fy, y + fx) || town.linked(x, y, x + fy, y - fx));
       });
       if (!front) continue;
       const [fx, fy] = front;
       const [x0, y0] = [c + 0.5, r + 0.5];
+      arms.push([c, r, fx, fy]);
       // From the front wall out across the pavement to the road's edge.
       strips.push(strip(x0, y0, -fy, fx, -DRIVE / 2, DRIVE / 2, fx, fy, 0.5 - INSET, 1 - HALF_W + 0.02));
       mouths.push([x0 + fx * (1 - KERB), y0 + fy * (1 - KERB)]);
@@ -264,7 +282,7 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[] } {
       }
     }
   }
-  return { strips, cars, mouths };
+  return { strips, cars, mouths, arms };
 }
 
 /**
