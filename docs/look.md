@@ -315,13 +315,20 @@ dragging, and a building is the tiles it was painted on.
 
 What changes, in the order it can be built and seen:
 
-1. **The wire.** `PlaceBuilding { at, kind }` becomes a stroke: the kind
-   and the tiles the ghost showed. The client completes the stroke (one
-   rule, `brush.ts`, the one the player watched); the server checks it
-   (the tiles free, the kind's reach to a street) and takes the tiles as
-   given, or refuses. `Building` carries its tiles in place of `size`
-   and `facing`. Roads and demolition are strokes too, as they nearly
-   are already.
+1. **The wire: one command, from and to.** `Build { tool, from, to }`,
+   the tool a street (one way or not), a road, a kind of building, or
+   demolish, replaces `PlaceRoad`, `PlaceBuilding` and `DemolishRoad`. A
+   tap is from and to the same tile. The server turns the two into tiles
+   by one rule: the tiles between them on one of the eight directions, as
+   a road is laid, completed by a building's program (`town/brush.ts`,
+   ported) to the smallest building that works. While the mayor drags,
+   the same command asked as a question answers with the tiles, or why
+   not, and is the ghost (it replaces `Site`); letting go builds what it
+   answered. A road still winds, its drawer sending a step at a time; a
+   building is sent once, on letting go, since it is completed whole.
+   `Building` carries its tiles in place of `size` and `facing`. The
+   rule lives only on the server: the sandbox draws fixtures and paints
+   no more.
 2. **The server.** A building is its tiles: `blueprint::plot`, facings
    and the ring in `world/lots.rs` are deleted, its drive pairs and yards
    kept; the yard is read off the building's shape by the rule `facts.ts`
