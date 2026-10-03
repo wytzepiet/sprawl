@@ -61,6 +61,8 @@ export interface Dressing {
    *  ramps. */
   lanes: Pt[][];
   docks: Dock[];
+  /** Low hedges between neighbours' back gardens. */
+  hedges: Pt[][];
   /** The lines between the bays of yards: docks, car parks and a ferry
    *  port's queue lanes. */
   yardLines: Pt[][];
@@ -98,8 +100,19 @@ export function dress(town: Town, facts: Facts): Dressing {
   const gardens: [number, number][] = [];
   const trees: Tree[] = [];
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  const backs = backGardens(town);
+  for (const [key, house] of backs) {
+    const [c, r] = key.split(",").map(Number);
+    gardens.push([c, r]);
+    // A tree in some, toward the back fence.
+    if (hash(c, r, 31) < 0.45) {
+      const [bx, by] = [c + 0.5 - (house[0] - c) * 0.22, r + 0.5 - (house[1] - r) * 0.22];
+      trees.push({ x: bx + 0.3 * (hash(c, r, 32) - 0.5), y: by + 0.3 * (hash(c, r, 33) - 0.5), scale: 0.6 + 0.3 * hash(c, r, 34), shade: Math.floor(3 * hash(c, r, 35)) });
+    }
+  }
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
+      if (backs.has(`${c},${r}`)) continue;
       if (facts.enclosed(c, r) && town.tile(c, r).kind === "open") {
         gardens.push([c, r]);
         // One tree on most tiles of a garden, somewhere off the middle.
@@ -133,7 +146,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...port.ramps],
+    gardens, trees, hedges: hedges(backs), cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...port.ramps],
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
@@ -249,6 +262,57 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[] } {
     }
   }
   return { strips, cars, mouths };
+}
+
+/**
+ * Back gardens: open ground straight behind a house, on the side away
+ * from its street, is its garden, a tile deep. Two rows of houses back to
+ * back with two tiles between them have a garden each, as a grid town's
+ * blocks do. By the tile it lies on, the house it is behind.
+ */
+function backGardens(town: Town): Map<string, [number, number]> {
+  const out = new Map<string, [number, number]>();
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (town.tile(c, r).kind !== "open") continue;
+      for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+        const [hx, hy] = [c + dx, r + dy];
+        if (town.tile(hx, hy).kind !== "House" || town.tile(hx + dx, hy + dy).kind !== "road") continue;
+        out.set(`${c},${r}`, [hx, hy]);
+        break;
+      }
+    }
+  }
+  // An empty plot in the row beside a garden, with no house before it,
+  // the neighbour takes in: a bigger garden, not a gap. One step only.
+  for (const [key, [hx, hy]] of [...out]) {
+    const [c, r] = key.split(",").map(Number);
+    const [bx, by] = [c - hx, r - hy];
+    for (const s of [-1, 1]) {
+      const [x, y] = [c + by * s, r + bx * s];
+      if (out.has(`${x},${y}`) || town.tile(x, y).kind !== "open" || town.tile(x - bx, y - by).kind === "road") continue;
+      out.set(`${x},${y}`, [hx, hy]);
+    }
+  }
+  return out;
+}
+
+/** Where two houses' back gardens meet, a hedge along the edge between
+ *  them: each tile of a terrace is a home, and keeps its own garden. */
+function hedges(backs: Map<string, [number, number]>): Pt[][] {
+  const out: Pt[][] = [];
+  const W = 0.035;
+  for (const [key, a] of backs) {
+    const [c, r] = key.split(",").map(Number);
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const b = backs.get(`${c + dx},${r + dy}`);
+      if (!b || (a[0] === b[0] && a[1] === b[1])) continue;
+      // The shared edge, a hair short of either end.
+      const [x, y] = [c + dx, r + dy];
+      out.push(dx ? [[x - W, y + 0.04], [x + W, y + 0.04], [x + W, y + 0.96], [x - W, y + 0.96]] : [[x + 0.04, y - W], [x + 0.96, y - W], [x + 0.96, y + W], [x + 0.04, y + W]]);
+    }
+  }
+  return out;
 }
 
 /** A ferry port: its yard in queue lanes running down to the water, four

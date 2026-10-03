@@ -1,0 +1,15 @@
+# A grid of blocks, as American towns are laid: houses back to back with yards between, a corner shop, a supermarket
+# The block to make nice by hand, one change at a time.
+........................
+.======================.
+.=HH.H.HHH.=SHHH.H.MMM=.
+.=.........=.......MMM=.
+.=.........=.......MMM=.
+.=HHH.HH.HH=HH.HHH.MMM=.
+.======================.
+.=HH.HHHH..=S.HH.H.HH.=.
+.=.........=..........=.
+.=.........=..........=.
+.=H.HH.HHH.=HHHH.H.HH.=.
+.======================.
+........................
