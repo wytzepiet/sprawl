@@ -446,7 +446,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The free ground, dressed, and the asphalt: the roads, and the lanes and
   // drives leading off them, one surface.
-  const { gardens, hedges, trees, cars, lanes, docks, yardLines, ships } = dress(town, facts(town));
+  const { gardens, trees, cars, lanes, docks, yardLines, ships } = dress(town, facts(town));
   const { street, through } = asphalt(town, lanes);
   add("street", flatPolygons(street, ROAD_Z + PAVED_Z), theme.road);
   add("through", flatPolygons(through, ROAD_Z + PAVED_Z), theme.highway);
@@ -465,8 +465,8 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     return g;
   };
   add("yard_lines", flat(yardLines, 0.025), theme.road);
-  add("garden", quadsAt(gardens, 0.005), theme.garden);
-  add("hedges", flat(hedges, 0.03), theme.crowns[1]);
+  // Lawns over the pavement: a house stands in its own.
+  add("garden", quadsAt(gardens, PAVED_Z + 0.003), theme.garden);
   // Trees as the forest draws them: a smooth top over a coarse body.
   for (const [name, geo] of [["tree_tops", TREE_TOP], ["tree_bodies", TREE_BODY]] as const) {
     const out: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };

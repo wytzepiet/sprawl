@@ -61,8 +61,6 @@ export interface Dressing {
    *  ramps. */
   lanes: Pt[][];
   docks: Dock[];
-  /** Low hedges between neighbours' back gardens. */
-  hedges: Pt[][];
   /** The lines between the bays of yards: docks, car parks and a ferry
    *  port's queue lanes. */
   yardLines: Pt[][];
@@ -113,8 +111,8 @@ export function dress(town: Town, facts: Facts): Dressing {
   for (const [key, house] of backs) {
     const [c, r] = key.split(",").map(Number);
     gardens.push([c, r]);
-    // A tree in some, toward the back fence.
-    if (hash(c, r, 31) < 0.45) {
+    // Now and then a tree, toward the back.
+    if (hash(c, r, 31) < 0.2) {
       const [bx, by] = [c + 0.5 - (house[0] - c) * 0.22, r + 0.5 - (house[1] - r) * 0.22];
       trees.push({ x: bx + 0.3 * (hash(c, r, 32) - 0.5), y: by + 0.3 * (hash(c, r, 33) - 0.5), scale: 0.6 + 0.3 * hash(c, r, 34), shade: Math.floor(3 * hash(c, r, 35)) });
     }
@@ -135,13 +133,13 @@ export function dress(town: Town, facts: Facts): Dressing {
       const [ew, ns] = [town.linked(c, r, c - 1, r) || town.linked(c, r, c + 1, r), town.linked(c, r, c, r - 1) || town.linked(c, r, c, r + 1)];
       const diagonal = [[1, 1], [1, -1], [-1, 1], [-1, -1]].some(([dc, dr]) => town.linked(c, r, c + dc, r + dr));
       if (ew === ns || diagonal) continue;
-      if ((ew ? c : r) % 2 !== 1) continue;
+      if ((ew ? c : r) % 3 !== 1) continue;
       for (const side of [-1, 1]) {
         const [x, y] = ew ? [c, r + side] : [c + side, r];
         const t = town.tile(x, y);
         if (t.kind !== "open" && !(isBuilt(t) && formOf(t).family === "street")) continue;
         const [ox, oy] = ew ? [0, side * 0.55] : [side * 0.55, 0];
-        trees.push({ x: c + 0.5 + ox, y: r + 0.5 + oy, scale: 0.8, shade: Math.floor(3 * hash(c, r, side + 7)) });
+        trees.push({ x: c + 0.5 + ox, y: r + 0.5 + oy, scale: 0.5, shade: Math.floor(3 * hash(c, r, side + 7)) });
       }
     }
   }
@@ -155,7 +153,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, hedges: hedges(backs), cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...port.ramps],
+    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: [...drives.strips, ...port.ramps],
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
@@ -301,24 +299,6 @@ function backGardens(town: Town): Map<string, [number, number]> {
       const [x, y] = [c + by * s, r + bx * s];
       if (out.has(`${x},${y}`) || town.tile(x, y).kind !== "open" || town.tile(x - bx, y - by).kind === "road") continue;
       out.set(`${x},${y}`, [hx, hy]);
-    }
-  }
-  return out;
-}
-
-/** Where two houses' back gardens meet, a hedge along the edge between
- *  them: each tile of a terrace is a home, and keeps its own garden. */
-function hedges(backs: Map<string, [number, number]>): Pt[][] {
-  const out: Pt[][] = [];
-  const W = 0.035;
-  for (const [key, a] of backs) {
-    const [c, r] = key.split(",").map(Number);
-    for (const [dx, dy] of [[1, 0], [0, 1]]) {
-      const b = backs.get(`${c + dx},${r + dy}`);
-      if (!b || (a[0] === b[0] && a[1] === b[1])) continue;
-      // The shared edge, a hair short of either end.
-      const [x, y] = [c + dx, r + dy];
-      out.push(dx ? [[x - W, y + 0.04], [x + W, y + 0.04], [x + W, y + 0.96], [x - W, y + 0.96]] : [[x + 0.04, y - W], [x + 0.96, y - W], [x + 0.96, y + W], [x + 0.04, y + W]]);
     }
   }
   return out;
