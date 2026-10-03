@@ -298,8 +298,8 @@ dragging, and a building is the tiles it was painted on.
 
 - **One toolbar, drag for everything.** Select, each kind of road, each
   kind of building the tree has opened, demolish. Pick one and drag on
-  the map; the brush's ghost (`town/brush.ts`) is what letting go builds.
-  The card shelf's drag-to-place, its ghost and `/site` go.
+  the map, or tap: it is built as the drag goes. The card shelf's
+  drag-to-place, its ghost and `/site` go.
 - **A building is its tiles.** A stroke of houses is a house a tile, each
   with its two homes, its drive and its two cars, drawn as one row
   because the grid joins kin (`01-terrace`). A kind that works as one
