@@ -50,6 +50,7 @@ async fn main() {
         .route("/inspect/{id}", axum::routing::get(health::card))
         .route("/town", axum::routing::get(health::town))
         .route("/map", axum::routing::get(health::map))
+        .route("/may", axum::routing::get(health::may))
         .route("/fixtures", axum::routing::get(|| async { axum::Json(fixtures::PLACED.get().cloned().unwrap_or_default()) }))
         .layer(CorsLayer::permissive())
         .with_state(AppState { command_tx })

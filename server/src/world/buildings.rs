@@ -360,22 +360,12 @@ impl World {
     /// onto another of its kind joins the two, the older kept. The building
     /// laid on, if a tile was.
     pub fn paint(&mut self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> Option<EntityId> {
-        let beside = (from.x - to.x).abs() <= 1 && (from.y - to.y).abs() <= 1 && from != to;
-        let grows = crate::blueprint::plot(kind, 0).size != (1, 1);
-        let of_kind = |w: &World, t: GridCoord| {
-            let id = *w.occupied.get(&(t.x, t.y))?;
-            matches!(w.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.kind == kind).then_some(id)
-        };
-        let joined = (beside && grows).then(|| of_kind(self, from)).flatten();
-        if self.occupied.contains_key(&(to.x, to.y)) {
-            if let (Some(a), Some(b)) = (joined, of_kind(self, to))
-                && a != b
-            {
-                self.join(a.min(b), a.max(b));
-            }
+        if !self.may_paint(kind, from, to) {
             return None;
         }
-        if !(self.is_buildable(to) || self.is_driveway_stub(to)) {
+        let joined = self.painted_from(kind, from, to);
+        if let (Some(a), Some(&b)) = (joined, self.occupied.get(&(to.x, to.y))) {
+            self.join(a.min(b), a.max(b));
             return None;
         }
         let id = match joined {
@@ -390,6 +380,33 @@ impl World {
         self.occupy(id, to);
         self.attach_driveway(id);
         Some(id)
+    }
+
+    /// May a step of the brush paint `to` with a kind, from `from`: open
+    /// ground, or another building of the kind to join to the one the step
+    /// came from. The one rule, which the brush is refused by and the map
+    /// of where it may go is drawn from.
+    pub fn may_paint(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> bool {
+        match self.occupied.get(&(to.x, to.y)) {
+            Some(&there) => self.painted_from(kind, from, to).is_some_and(|here| here != there && self.kind_at(there) == Some(kind)),
+            None => self.is_buildable(to) || self.is_driveway_stub(to),
+        }
+    }
+
+    /// The building of the kind a step to `to` grows: the one on `from`
+    /// beside it, if the kind is one that grows.
+    fn painted_from(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> Option<EntityId> {
+        let beside = (from.x - to.x).abs() <= 1 && (from.y - to.y).abs() <= 1 && from != to;
+        let grows = crate::blueprint::plot(kind, 0).size != (1, 1);
+        let id = *self.occupied.get(&(from.x, from.y))?;
+        (beside && grows && self.kind_at(id) == Some(kind)).then_some(id)
+    }
+
+    fn kind_at(&self, id: EntityId) -> Option<BuildingKind> {
+        match self.objects.get(id)?.object {
+            GameObject::Building(ref b) => Some(b.kind),
+            _ => None,
+        }
     }
 
     /// One building of a kind takes in another beside it: its tiles, and

@@ -47,6 +47,8 @@ pub enum Ask {
     Town,
     /// The tiles round a point as a fixture's text.
     Map { x: i32, y: i32, r: i32 },
+    /// Where the hand may go with a tool, over a box of tiles.
+    May { tool: crate::protocol::Tool, x0: i32, y0: i32, x1: i32, y1: i32 },
 }
 
 static NEXT_CLIENT_ID: AtomicU64 = AtomicU64::new(1);

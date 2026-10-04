@@ -159,8 +159,17 @@ export function setTerrainListener(fn: TerrainListener | null) {
  * upsert and a delete touching one tile cannot tread on each other whichever
  * way round they land.
  */
+/** Bumped whenever a road or a building lands, changes or goes: what the
+ *  map of where the hand may go is asked again on. */
+const [builtVersion, setBuiltVersion] = createSignal(0);
+export { builtVersion };
+
 function applyOps(ops: Operation[]) {
+  let built = false;
   for (const op of ops) {
+    const was = entities.get(String(op.op === "Upsert" ? op.data.id : op.data))?.object.kind;
+    const is = op.op === "Upsert" ? op.data.object.kind : undefined;
+    if ([was, is].some((k) => k === "RoadNode" || k === "Building")) built = true;
     switch (op.op) {
       case "Upsert": {
         const key = String(op.data.id);
@@ -212,6 +221,7 @@ function applyOps(ops: Operation[]) {
       }
     }
   }
+  if (built) setBuiltVersion((v) => v + 1);
   opsListener?.(ops);
 }
 

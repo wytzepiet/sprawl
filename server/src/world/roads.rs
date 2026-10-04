@@ -85,42 +85,44 @@ impl World {
 
     /// Place road nodes at `from` and `to`, and connect them as outgoing.
     /// The mayor's own hand: what it lays is counted against the build.
-    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
-        let dx = to.x - from.x;
-        let dy = to.y - from.y;
-
+    /// May a road be laid from one tile to the next: the one rule, which the
+    /// mayor's hand is refused by and the map of where a road may go is
+    /// drawn from.
+    pub fn may_lay(&self, from: GridCoord, to: GridCoord, one_way: bool) -> bool {
+        let (dx, dy) = (to.x - from.x, to.y - from.y);
+        if (dx, dy) == (0, 0) || dx.abs() > 1 || dy.abs() > 1 {
+            return false;
+        }
         // A road may end on a plot — that is all a driveway is — but never start
         // on one, or it would run in one side and out the other.
         if self.claimed_plot_at(from).is_some() {
+            return false;
+        }
+        let into_building = self.claimed_plot_at(to).is_some();
+        // A building is entered where its entry rule allows, whatever the angle.
+        if into_building && !self.may_enter_plot(from, to) {
+            return false;
+        }
+        if self.are_connected(from, to) {
+            return false;
+        }
+        if dx.abs() == 1 && dy.abs() == 1 && self.are_connected(GridCoord { x: from.x + dx, y: from.y }, GridCoord { x: from.x, y: from.y + dy }) {
+            return false;
+        }
+        if one_way {
+            !self.would_be_too_sharp(from, dx, dy, true)
+        } else {
+            // Whatever driveway stands here is about to be replaced, so its arm
+            // is not something the new one has to turn away from.
+            !self.would_be_too_sharp(from, dx, dy, false) && (into_building || !self.would_be_too_sharp(to, -dx, -dy, false))
+        }
+    }
+
+    pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
+        if !self.may_lay(from, to, one_way) {
             return;
         }
         let into_building = self.claimed_plot_at(to).is_some();
-        // A plot with a lot is entered through the lot, never through the
-        // building: a road drawn at the building is refused, whatever its angle.
-        if into_building && !self.may_enter_plot(from, to) {
-            return;
-        }
-        if self.are_connected(from, to) {
-            return;
-        }
-        if dx.abs() == 1 && dy.abs() == 1 {
-            let cross_a = GridCoord { x: from.x + dx, y: from.y };
-            let cross_b = GridCoord { x: from.x, y: from.y + dy };
-            if self.are_connected(cross_a, cross_b) {
-                return;
-            }
-        }
-        if one_way {
-            if self.would_be_too_sharp(from, dx, dy, true) {
-                return;
-            }
-        } else if self.would_be_too_sharp(from, dx, dy, false)
-            // Whatever driveway stands here is about to be replaced, so its arm
-            // is not something the new one has to turn away from.
-            || (!into_building && self.would_be_too_sharp(to, -dx, -dy, false))
-        {
-            return;
-        }
 
         // A building takes exactly one driveway, and it is the newest: drawing
         // a road into it is how you move the old one.
