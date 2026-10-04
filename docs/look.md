@@ -298,10 +298,18 @@ dragging, and a building is the tiles it was painted on.
 
 Built 2026-10-04, steps 1 to 4: one command and a toolbar, a building
 its tiles, the rings gone, and the game drawn by the town grid, a road
-an instance a tile and the town round what is built drawn whole. Still
-to come: the car park as aisles (5), a building's own mesh redrawn
-alone, the selected building's outline, one-way arrows and the red of a
-road that reaches nothing, on the new asphalt.
+an instance a tile and the town round what is built drawn whole. The
+same day: the hand builds only what can work, and shows where with dots
+it works out itself (`engine/may.ts`, the server's rule mirrored), on a
+canvas of their own that runs together like liquid as it drags
+(`engine/dots.ts`), the grid gone; houses drawn in a row are linked, a
+row (`Building::joined`); a drive is the building's door, not a road
+(`Building::door`, `parking.md`); a tap of the demolisher takes a point
+and a drag cuts only what it crosses. Still to come: the car park as
+aisles (5), a building's own mesh redrawn alone, the selected
+building's outline, one-way arrows and the red of a road that reaches
+nothing, on the new asphalt, and a drive drawn to a door on the
+diagonal.
 
 - **One toolbar, drag for everything.** Select, each kind of road, each
   kind of building the tree has opened, demolish. Pick one and drag on
