@@ -89,10 +89,10 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         world.rebuild_edges();
         world.rebuild_node_cars();
         world.rebuild_occupied();
-        world.doors_from_drives();
         world.restore_spots();
         world.rebuild_roads_generated();
         world.rebuild_laid();
+        world.doors_from_drives();
         // A saved world may have been revealed further than its roads reach,
         // if it was saved before this existed.
         let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
