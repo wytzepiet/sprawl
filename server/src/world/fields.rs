@@ -275,8 +275,8 @@ impl World {
     /// gets from the yard at the street to the field behind the barn.
     fn lane(&self, farm: EntityId) -> HashSet<(i32, i32)> {
         let Some(e) = self.objects.get(farm) else { return HashSet::new() };
-        let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return HashSet::new() };
-        Self::footprint(pos, plot(b.kind, b.facing).size)
+        let GameObject::Building(b) = &e.object else { return HashSet::new() };
+        b.tiles.iter()
             .flat_map(|t| AROUND.iter().map(move |(dx, dy)| GridCoord { x: t.x + dx, y: t.y + dy }))
             .filter(|&n| self.is_open(n))
             .map(|n| (n.x, n.y))
@@ -290,7 +290,7 @@ impl World {
         let p = plot(b.kind, b.facing);
         let ((bx, by), (bw, bh)) = p.building;
         let barn = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
-        Self::footprint(pos, p.size).filter(|t| !(t.x >= barn.x && t.y >= barn.y && t.x < barn.x + bw as i32 && t.y < barn.y + bh as i32)).collect()
+        b.tiles.iter().copied().filter(|t| !(t.x >= barn.x && t.y >= barn.y && t.x < barn.x + bw as i32 && t.y < barn.y + bh as i32)).collect()
     }
 
     /// Where a run leaves the yard and comes back to it: the yard tile

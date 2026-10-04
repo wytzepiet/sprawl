@@ -51,25 +51,17 @@ export default function World() {
   /**
    * Every tile under a building and whose it is, mirroring the server's
    * occupancy index. The store only knows a building at its origin tile, so
-   * without this a footprint would clear the trees from one corner of itself,
+   * without this a building would clear the trees from one corner of itself,
    * and a road landing on its far side would not be seen to reach it.
    */
   const builtTiles = new Map<string, number>();
-
-  function footprint(pos: { x: number; y: number }, [w, h]: [number, number]) {
-    const tiles: { x: number; y: number }[] = [];
-    for (let dy = 0; dy < h; dy++) {
-      for (let dx = 0; dx < w; dx++) tiles.push({ x: pos.x + dx, y: pos.y + dy });
-    }
-    return tiles;
-  }
 
   /** Claim a building's tiles, returning the keys so they can be
    *  released. */
   function cover(entry: GameObjectEntry): string[] {
     if (entry.object.kind !== "Building" || !entry.position) return [];
     const b = entry.object.data as Building;
-    const keys = footprint(entry.position, b.size).map((t) => {
+    const keys = b.tiles.map((t) => {
       const key = `${t.x},${t.y}`;
       builtTiles.set(key, entry.id);
       terrain.markBuilt(t.x, t.y);
@@ -128,8 +120,9 @@ export default function World() {
     };
     const plotTouched = (entry: GameObjectEntry | undefined) => {
       if (!entry?.position || entry.object.kind !== "Building") return;
-      const [w, h] = (entry.object.data as Building).size;
-      touched(entry.position.x, entry.position.y, entry.position.x + w - 1, entry.position.y + h - 1, entry.id);
+      const tiles = (entry.object.data as Building).tiles;
+      const [xs, ys] = [tiles.map((t) => t.x), tiles.map((t) => t.y)];
+      touched(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys), entry.id);
     };
 
     for (const op of ops) {

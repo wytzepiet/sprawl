@@ -106,9 +106,15 @@ impl BuildingKind {
 #[ts(export)]
 pub struct Building {
     pub kind: BuildingKind,
-    /// The plot's footprint in tiles, as it lies on the grid: the building
-    /// and its lot together.
-    pub size: (u8, u8),
+    /// The tiles it stands on, its lot's among them; the first is where it
+    /// is, the tile it is known by.
+    #[serde(default)]
+    pub tiles: Vec<GridCoord>,
+    /// A save's plot from before a building was its tiles, read once at
+    /// load into `tiles` (`World::rebuild_occupied`) and never written.
+    #[serde(default, skip_serializing)]
+    #[ts(skip)]
+    pub size: Option<(u8, u8)>,
     /// Which side of the building the lot and the street are on; see
     /// `blueprint::FACINGS`. The client lays the building and the lot out
     /// within the footprint from this.
@@ -191,11 +197,12 @@ impl Building {
     /// One of a kind, founded: what it buys in full, what it makes not
     /// yet made, and its prices the edge's — what the outside charges is
     /// the one price a shop that has sold nothing yet can know.
-    pub fn new(kind: BuildingKind, size: (u8, u8), facing: u8) -> Building {
+    pub fn new(kind: BuildingKind, tiles: Vec<GridCoord>, facing: u8) -> Building {
         use crate::economy::{edge_price_of, makes, sells, stocks};
         Building {
             kind,
-            size,
+            tiles,
+            size: None,
             facing,
             stocks: stocks(kind).into_iter().map(|(need, cap)| (need, if makes(kind, need) { crate::needs::Stock { level: 0.0, cap } } else { crate::needs::Stock::full(cap) })).collect(),
             prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),

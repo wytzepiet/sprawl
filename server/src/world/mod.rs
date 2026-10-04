@@ -374,7 +374,7 @@ impl World {
             // the tile is the road's, and the building is only what stands
             // for what lies past it.
             let id = self.insert_at(
-                GameObject::Building(crate::protocol::Building::new(crate::protocol::BuildingKind::Edge, (1, 1), 2)),
+                GameObject::Building(crate::protocol::Building::new(crate::protocol::BuildingKind::Edge, vec![pos], 2)),
                 Some(pos),
             );
             self.edge.insert(id);

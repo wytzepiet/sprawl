@@ -7,10 +7,10 @@ import type { Tile } from "./Tile";
 
 export type Building = { kind: BuildingKind, 
 /**
- * The plot's footprint in tiles, as it lies on the grid: the building
- * and its lot together.
+ * The tiles it stands on, its lot's among them; the first is where it
+ * is, the tile it is known by.
  */
-size: [number, number], 
+tiles: Array<GridCoord>, 
 /**
  * Which side of the building the lot and the street are on; see
  * `blueprint::FACINGS`. The client lays the building and the lot out

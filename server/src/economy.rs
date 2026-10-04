@@ -409,7 +409,7 @@ pub fn price(world: &World, kind: BuildingKind) -> f64 {
 /// placed one does; one whose row changed a stock gets the new one, full.
 pub fn open(world: &mut World, id: EntityId) {
     let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { return };
-    let fresh = crate::protocol::Building::new(b.kind, b.size, b.facing);
+    let fresh = crate::protocol::Building::new(b.kind, b.tiles.clone(), b.facing);
     b.stocks.retain(|need, stock| fresh.stocks.get(need).is_some_and(|f| f.cap == stock.cap));
     for (need, stock) in fresh.stocks {
         b.stocks.entry(need).or_insert(stock);
@@ -1026,7 +1026,7 @@ mod tests {
     #[test]
     fn every_opening_price_covers_its_delivery() {
         for kind in BuildingKind::ALL {
-            let b = crate::protocol::Building::new(kind, (1, 1), 2);
+            let b = crate::protocol::Building::new(kind, Vec::new(), 2);
             for need in sells(kind) {
                 let floor = unit_cost(kind, need);
                 let price = b.prices[&need];

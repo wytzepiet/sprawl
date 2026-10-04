@@ -77,21 +77,17 @@ function trackPin(entry: GameObjectEntry | undefined, id: number) {
   const was = pinnedEntries.has(id);
   const before = pinnedEntries.get(id);
   if (before?.position && before.object.kind === "Building") {
-    for (const t of footprint(before.position, (before.object.data as Building).size)) occupiedBy.delete(t);
+    for (const t of keys(before.object.data as Building)) occupiedBy.delete(t);
   }
   if (entry && entry.object.kind === "Building" && entry.position) {
     pinnedEntries.set(id, entry);
-    for (const t of footprint(entry.position, (entry.object.data as Building).size)) occupiedBy.set(t, id);
+    for (const t of keys(entry.object.data as Building)) occupiedBy.set(t, id);
   } else {
     pinnedEntries.delete(id);
   }
   if (was || pinnedEntries.has(id)) setPinsVersion((v) => v + 1);
 }
-function footprint(pos: { x: number; y: number }, [w, h]: [number, number]): string[] {
-  const keys: string[] = [];
-  for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) keys.push(posKey(pos.x + dx, pos.y + dy));
-  return keys;
-}
+const keys = (b: Building) => b.tiles.map((t) => posKey(t.x, t.y));
 /**
  * Is a road joined to the world standing on one of this building's own tiles?
  * A driveway onto an island is no way in. Reactive on the pins' version,
@@ -100,7 +96,7 @@ function footprint(pos: { x: number; y: number }, [w, h]: [number, number]): str
 export function reached(entry: GameObjectEntry): boolean {
   pinsVersion();
   if (entry.object.kind !== "Building" || !entry.position) return false;
-  return footprint(entry.position, (entry.object.data as Building).size).some((k) =>
+  return keys(entry.object.data as Building).some((k) =>
     (spatial.get(k) ?? []).some((id) => {
       const o = entities.get(String(id))?.object;
       return o?.kind === "RoadNode" && o.data.joined;

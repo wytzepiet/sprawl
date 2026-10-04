@@ -136,30 +136,20 @@ impl World {
     /// The one rule for where a driveway may run onto a plot: from a tile
     /// off the plot onto one of its entrance tiles — the lot's, or the
     /// building's own where there is no lot — either beside it, or, on the
-    /// diagonal, only outward from a corner of the plot. A diagonal into the
+    /// diagonal, only outward from a corner of the plot: both tiles beside
+    /// the entrance on `from`'s side off the plot. A diagonal into the
     /// middle of an edge would cut the neighbouring tile at a sharp angle.
     /// Pure geometry, so the brush, the search and the preview all ask it.
-    pub fn may_enter(pos: GridCoord, size: (u8, u8), lot: Option<(GridCoord, (u8, u8))>, from: GridCoord, to: GridCoord) -> bool {
-        if !Self::building_covers(pos, size, to) || Self::building_covers(pos, size, from) {
-            return false;
-        }
-        if let Some((l, ls)) = lot
-            && !Self::building_covers(l, ls, to)
-        {
+    pub fn may_enter(tiles: &[GridCoord], entrances: &[GridCoord], from: GridCoord, to: GridCoord) -> bool {
+        let on = |x: i32, y: i32| tiles.contains(&GridCoord { x, y });
+        if !entrances.contains(&to) || !on(to.x, to.y) || on(from.x, from.y) {
             return false;
         }
         let (dx, dy) = (from.x - to.x, from.y - to.y);
         if dx.abs() > 1 || dy.abs() > 1 {
             return false;
         }
-        if dx == 0 || dy == 0 {
-            return true;
-        }
-        // Outward: `to` is on the plot's edge on the side `from` lies, both ways.
-        let (w, h) = (size.0 as i32, size.1 as i32);
-        let out_x = (dx == -1 && to.x == pos.x) || (dx == 1 && to.x == pos.x + w - 1);
-        let out_y = (dy == -1 && to.y == pos.y) || (dy == 1 && to.y == pos.y + h - 1);
-        out_x && out_y
+        dx == 0 || dy == 0 || (!on(to.x + dx, to.y) && !on(to.x, to.y + dy))
     }
 
     /// May the mayor's road run from `from` onto the plot standing at `to`?
@@ -167,8 +157,8 @@ impl World {
         let Some(&b) = self.occupied.get(&(to.x, to.y)) else { return false };
         let Some(entry) = self.objects.get(b) else { return false };
         let (Some(pos), GameObject::Building(bd)) = (entry.position, &entry.object) else { return false };
-        let lot = crate::blueprint::plot(bd.kind, bd.facing).lot.map(|((lx, ly), ls)| (GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, ls));
-        Self::may_enter(pos, bd.size, lot, from, to)
+        let lot = Self::lot_tiles(pos, bd.kind, bd.facing);
+        Self::may_enter(&bd.tiles, lot.as_deref().unwrap_or(&bd.tiles), from, to)
     }
 
     /// The driveway a plot finds for itself: the best street tile a driveway
@@ -178,25 +168,28 @@ impl World {
     /// out of one; straight before diagonal. A plot with no lot is entered
     /// from any side, facing whichever street it finds.
     pub fn driveway_for(&self, pos: GridCoord, kind: BuildingKind, facing: u8, sides_too: bool) -> Option<(EntityId, GridCoord)> {
-        let p = crate::blueprint::plot(kind, facing);
-        let lot = p.lot.map(|((lx, ly), ls)| (GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, ls));
-        self.driveway_between(pos, p.size, lot, lot.map(|_| facing), sides_too)
+        let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, facing).size).collect();
+        let lot = Self::lot_tiles(pos, kind, facing);
+        self.driveway_between(&tiles, lot.as_deref(), lot.as_ref().map(|_| facing), sides_too)
     }
 
-    /// `driveway_for` on bare geometry: the plot, its lot, and the way it
-    /// faces if a lot decides that.
-    pub fn driveway_between(&self, pos: GridCoord, size: (u8, u8), lot: Option<(GridCoord, (u8, u8))>, facing: Option<u8>, sides_too: bool) -> Option<(EntityId, GridCoord)> {
+    /// A kind's lot tiles, lying this way from `pos`, if it has a lot.
+    pub fn lot_tiles(pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<Vec<GridCoord>> {
+        let ((lx, ly), ls) = crate::blueprint::plot(kind, facing).lot?;
+        Some(Self::footprint(GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 }, ls).collect())
+    }
+
+    /// `driveway_for` on bare geometry: the building's tiles, its lot's,
+    /// and the way it faces if a lot decides that.
+    pub fn driveway_between(&self, tiles: &[GridCoord], lot: Option<&[GridCoord]>, facing: Option<u8>, sides_too: bool) -> Option<(EntityId, GridCoord)> {
         let (fx, fy) = facing.map_or((0, 0), |f| crate::blueprint::FACINGS[f as usize % 4]);
-        let entrances: Vec<GridCoord> = match lot {
-            Some((l, ls)) => Self::footprint(l, ls).collect(),
-            None => Self::footprint(pos, size).collect(),
-        };
+        let entrances = lot.unwrap_or(tiles);
         let mut candidates: Vec<(u8, GridCoord, GridCoord)> = Vec::new();
-        for t in entrances {
+        for &t in entrances {
             for dy in -1..=1 {
                 for dx in -1..=1 {
                     let n = GridCoord { x: t.x + dx, y: t.y + dy };
-                    if !Self::may_enter(pos, size, lot, n, t) {
+                    if !Self::may_enter(tiles, entrances, n, t) {
                         continue;
                     }
                     let ahead = dx * fx + dy * fy;
@@ -246,10 +239,6 @@ impl World {
             && (!crate::economy::ships(kind) || self.quay_at(pos, kind, facing).is_some())
     }
 
-    fn building_covers(pos: GridCoord, size: (u8, u8), t: GridCoord) -> bool {
-        t.x >= pos.x && t.y >= pos.y && t.x < pos.x + size.0 as i32 && t.y < pos.y + size.1 as i32
-    }
-
     /// The building's own driveway node — the road that runs into it.
     ///
     /// Derived rather than stored: it is simply the road node standing on one
@@ -263,9 +252,8 @@ impl World {
     /// Every driveway of a building: the road nodes standing on its tiles,
     /// in tile order. A lot may have several; anything else has one.
     pub fn driveways_of(&self, building_id: EntityId) -> Vec<EntityId> {
-        let Some(entry) = self.objects.get(building_id) else { return Vec::new() };
-        let (Some(pos), GameObject::Building(b)) = (entry.position, &entry.object) else { return Vec::new() };
-        Self::footprint(pos, b.size).filter_map(|t| self.road_node_at(t)).collect()
+        let Some(GameObject::Building(b)) = self.objects.get(building_id).map(|e| &e.object) else { return Vec::new() };
+        b.tiles.iter().filter_map(|&t| self.road_node_at(t)).collect()
     }
 
     /// Is this tile one of a lot's tiles, where a road drawn in is one
@@ -308,9 +296,8 @@ impl World {
         if !self.fits(pos, kind, facing) {
             return None;
         }
-        let size = crate::blueprint::plot(kind, facing).size;
-        let tiles: Vec<GridCoord> = Self::footprint(pos, size).collect();
-        let id = self.insert_at(GameObject::Building(Building::new(kind, size, facing)), Some(pos));
+        let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, facing).size).collect();
+        let id = self.insert_at(GameObject::Building(Building::new(kind, tiles.clone(), facing)), Some(pos));
         for tile in &tiles {
             self.occupied.insert((tile.x, tile.y), id);
             // A footprint can straddle a chunk border, and clients subscribe by
@@ -329,22 +316,13 @@ impl World {
     /// into it *move* the driveway rather than give it a second.
     pub(super) fn clear_driveway(&mut self, tile: GridCoord) {
         let Some(claimed) = self.claimed_plot_at(tile) else { return };
-        let Some((pos, size)) = self.plot_of(claimed) else { return };
-        let doomed: Vec<EntityId> =
-            Self::footprint(pos, size).filter_map(|t| self.road_node_at(t)).collect();
+        let doomed = self.driveways_of(claimed);
         for id in doomed {
             for edge in self.edges_involving(id) {
                 self.remove_edge(edge.0, edge.1);
             }
             self.demolish_node(id);
         }
-    }
-
-    /// Where something stands and how much room it takes.
-    fn plot_of(&self, id: EntityId) -> Option<(GridCoord, (u8, u8))> {
-        let e = self.objects.get(id)?;
-        let GameObject::Building(ref b) = e.object else { return None };
-        Some((e.position?, b.size))
     }
 
     /// The building on this tile, if any.
@@ -407,9 +385,8 @@ impl World {
     pub fn remove_building(&mut self, id: EntityId) {
         self.drop_lot(id);
         let Some(entry) = self.objects.get(id) else { return };
-        let Some(pos) = entry.position else { return };
         let GameObject::Building(ref b) = entry.object else { return };
-        let tiles: Vec<GridCoord> = Self::footprint(pos, b.size).collect();
+        let tiles = b.tiles.clone();
 
         for tile in &tiles {
             if let Some(node) = self.road_node_at(*tile) {
@@ -426,20 +403,19 @@ impl World {
         self.attach_driveways_along(&tiles);
     }
 
-    /// Rebuild the tile→building index from the stored buildings.
+    /// Rebuild the tile→building index from the stored buildings, reading
+    /// a save's plot into its tiles on the way.
     pub fn rebuild_occupied(&mut self) {
         self.occupied.clear();
-        let placed: Vec<(EntityId, GridCoord, (u8, u8))> = self
-            .objects
-            .all_entries()
-            .iter()
-            .filter_map(|e| match &e.object {
-                GameObject::Building(b) => e.position.map(|p| (e.id, p, b.size)),
-                _ => None,
-            })
-            .collect();
-        for (id, pos, size) in placed {
-            for tile in Self::footprint(pos, size) {
+        let ids: Vec<EntityId> = self.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
+        for id in ids {
+            let Some(entry) = self.objects.get_mut_silent(id) else { continue };
+            let pos = entry.position;
+            let GameObject::Building(ref mut b) = entry.object else { continue };
+            if let (Some(size), Some(pos)) = (b.size.take(), pos) {
+                b.tiles = Self::footprint(pos, size).collect();
+            }
+            for tile in b.tiles.clone() {
                 self.occupied.insert((tile.x, tile.y), id);
                 self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(id);
             }
@@ -527,7 +503,7 @@ mod tests {
     #[test]
     fn takes_a_road_straight_on() {
         let world = world_with_road(&[(0, 1), (1, 1)]);
-        assert!(world.driveway_between(GridCoord { x: 0, y: 0 }, (1, 1), None, None, false).is_some());
+        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_some());
     }
 
     /// The case the corner rule exists for: no perimeter tile is orthogonally
@@ -535,27 +511,27 @@ mod tests {
     #[test]
     fn takes_a_road_off_its_corner() {
         let world = world_with_road(&[(1, 1), (2, 2)]);
-        assert!(world.driveway_between(GridCoord { x: 0, y: 0 }, (1, 1), None, None, false).is_some());
+        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_some());
     }
 
     #[test]
     fn corner_rule_reaches_past_a_wide_footprint() {
         // Footprint covers (0,0) and (1,0); the road only meets its far corner.
         let world = world_with_road(&[(2, 1), (3, 2)]);
-        assert!(world.driveway_between(GridCoord { x: 0, y: 0 }, (2, 1), None, None, false).is_some());
+        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (2, 1)).collect::<Vec<_>>(), None, None, false).is_some());
     }
 
     #[test]
     fn no_road_in_reach_is_no_access() {
         let world = world_with_road(&[(5, 5), (6, 5)]);
-        assert!(world.driveway_between(GridCoord { x: 0, y: 0 }, (1, 1), None, None, false).is_none());
+        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_none());
     }
 
     /// A road two tiles out is not access, diagonally or otherwise.
     #[test]
     fn diagonals_do_not_reach_two_tiles() {
         let world = world_with_road(&[(2, 2), (3, 3)]);
-        assert!(world.driveway_between(GridCoord { x: 0, y: 0 }, (1, 1), None, None, false).is_none());
+        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_none());
     }
 
     fn diagonal_world() -> World {
@@ -568,14 +544,14 @@ mod tests {
     #[test]
     fn plot_in_the_elbow_of_a_diagonal_cannot_connect() {
         let world = diagonal_world();
-        assert!(world.driveway_between(GridCoord { x: 1, y: 0 }, (1, 1), None, None, false).is_none());
+        assert!(world.driveway_between(&World::footprint(GridCoord { x: 1, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_none());
     }
 
     /// The perpendicular of a diagonal is diagonal, so this one connects.
     #[test]
     fn plot_offset_diagonally_from_a_diagonal_connects() {
         let world = diagonal_world();
-        assert!(world.driveway_between(GridCoord { x: 2, y: 0 }, (1, 1), None, None, false).is_some());
+        assert!(world.driveway_between(&World::footprint(GridCoord { x: 2, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_some());
     }
 
     /// The reachability index is maintained edit by edit rather than rebuilt,
