@@ -37,7 +37,7 @@ const light = {
   paved: hex3("#E8ECDF"),
   /** The hand's dots: where it may build. */
   hand: hex3("#2F3B4C"),
-  road: hex3("#F8F6F0"),
+  road: hex3("#F1F2EB"),
   // A road, as against a street: the map's yellow for a through route.
   highway: hex3("#F6CF6A"),
 };
