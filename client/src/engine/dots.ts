@@ -3,13 +3,16 @@ import { snap, STEPS } from "./may";
 import { projector } from "./view";
 
 /**
- * The hand's dots, drawn flat over the scene on a canvas of their own: a
+ * The hand's dots, drawn flat over the scene on canvases of their own: a
  * small faint one on every tile a drag may start from, and while dragging
  * a full one on every step the tile underfoot allows, the tile itself
  * held by a bigger one, and a drop drawn out of it along the step the
- * pointer points, on a neck that thins as it stretches, reaching for the
- * dot of that step. When the step lands the drop is already there, and
- * that dot pops. A step refused, it strains half as far and no further.
+ * pointer points. The drag's shapes are drawn on a canvas seen through a
+ * blur and a hard edge (the "goo" filter), so what comes near runs
+ * together like liquid: the drop hangs off its tile on a stream that
+ * thins as it stretches, and the dot of the step it points leans toward
+ * it and swells until the two meet. When the step lands that dot pops. A
+ * step refused, the drop strains half as far and no further.
  *
  * Every dot is a spring: its size eases toward shown or gone and a
  * little past, so dots grow and shrink in and out rather than blink,
@@ -34,9 +37,12 @@ const DROP_STIFF = 420;
 const DROP_DAMP = 2 * Math.sqrt(DROP_STIFF) * 0.7;
 /** A pop's kick to a dot's size, per second. */
 const POP = 9;
-/** The starts faint; the rest opaque, a drop being one body whose circles
- *  and necks overlap where they meet. */
-const ALPHA: Record<Kind, number> = { start: 0.5, next: 1, here: 1 };
+/** The starts faint; the drag's shapes are opaque, run together. */
+const START_ALPHA = 0.5;
+/** The goo's blur, in tiles: how near shapes run together. */
+const GOO = 0.07;
+/** Beads in the stream between the drop and its tile. */
+const BEADS = 6;
 /** Just over the roads, under anything standing: where the dots lie. */
 const Z = 0.08;
 
@@ -56,7 +62,11 @@ interface Dot {
 const RADIUS: Record<Kind, number> = { start: START_R, next: NEXT_R, here: HERE_R };
 
 export class Dots {
-  private ctx: CanvasRenderingContext2D;
+  /** What Brush puts on the page: the two canvases and the filter. */
+  readonly el: HTMLDivElement;
+  private plain: CanvasRenderingContext2D;
+  private goo: CanvasRenderingContext2D;
+  private blur: SVGFEGaussianBlurElement;
   private dots = new Map<string, Dot>();
   /** The drop: where it is and how fast it goes, in tiles; its size;
    *  the tile it hangs off; and where it is pulled. */
@@ -70,8 +80,22 @@ export class Dots {
   /** Was anything drawn last frame: one clear is owed when it all goes. */
   private drawn = false;
 
-  constructor(private scene: Scene, private view: HTMLCanvasElement, private canvas: HTMLCanvasElement, private ink: () => Color3) {
-    this.ctx = canvas.getContext("2d")!;
+  constructor(private scene: Scene, private view: HTMLCanvasElement, private ink: () => Color3) {
+    this.el = document.createElement("div");
+    this.el.className = "fixed inset-0 pointer-events-none";
+    // A blur, then alpha pushed hard to opaque or nothing: shapes near
+    // enough that their blurs overlap come out as one.
+    this.el.innerHTML = `<svg width="0" height="0" style="position:absolute"><filter id="hand-goo" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="4"/><feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -11"/></filter></svg>`;
+    this.blur = this.el.querySelector("feGaussianBlur")!;
+    const layer = (filter: string) => {
+      const c = document.createElement("canvas");
+      c.style.cssText = `position:absolute;inset:0;width:100vw;height:100vh;${filter}`;
+      this.el.appendChild(c);
+      return c.getContext("2d")!;
+    };
+    this.plain = layer("");
+    this.goo = layer("filter:url(#hand-goo)");
   }
 
   /** What should show: dots on these tiles, the others go. Those that
@@ -162,12 +186,13 @@ export class Dots {
   }
 
   private draw() {
-    const { canvas, ctx } = this;
     const dpr = window.devicePixelRatio || 1;
     const [w, h] = [Math.round(innerWidth * dpr), Math.round(innerHeight * dpr)];
-    if (canvas.width !== w || canvas.height !== h) [canvas.width, canvas.height] = [w, h];
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for (const ctx of [this.plain, this.goo]) {
+      if (ctx.canvas.width !== w || ctx.canvas.height !== h) [ctx.canvas.width, ctx.canvas.height] = [w, h];
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+    }
     if (!this.dots.size && this.drop.s <= 0.01) return;
 
     // Looking straight down the map lands on the screen by one affine
@@ -177,59 +202,77 @@ export class Dots {
     const [ux, uy, vx, vy] = [ex.sx - o.sx, ex.sy - o.sy, ey.sx - o.sx, ey.sy - o.sy];
     const scale = Math.hypot(ux, uy);
     const at = (x: number, y: number): [number, number] => [o.sx + x * ux + y * vx, o.sy + x * uy + y * vy];
+    // The goo's blur in pixels, and what it eats off a shape's edge.
+    const sigma = Math.min(14, Math.max(1, GOO * scale));
+    if (Math.abs(Number(this.blur.getAttribute("stdDeviation")) - sigma) > 0.25) this.blur.setAttribute("stdDeviation", sigma.toFixed(1));
     const px = (r: number) => Math.max(1.5, r * scale);
-
-    // The dots at rest in one path a colour, the moving ones each their own.
     const ink = this.ink();
     const colour = `${Math.round(ink.r * 255)}, ${Math.round(ink.g * 255)}, ${Math.round(ink.b * 255)}`;
-    for (const kind of ["start", "next", "here"] as const) {
+    const disc = (ctx: CanvasRenderingContext2D, [cx, cy]: [number, number], r: number) => {
+      ctx.moveTo(cx + r, cy);
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    };
+
+    // The starts: crisp, faint, the ones at rest in one path.
+    {
+      const ctx = this.plain;
       const rest = new Path2D();
-      const alpha = ALPHA[kind];
       for (const d of this.dots.values()) {
-        if (d.kind !== kind || d.s <= 0) continue;
-        const [cx, cy] = at(d.x + 0.5, d.y + 0.5);
-        const r = px(RADIUS[kind]) * d.s;
+        if (d.kind !== "start" || d.s <= 0) continue;
+        const c = at(d.x + 0.5, d.y + 0.5);
+        const r = px(START_R) * d.s;
         if (d.s === 1) {
-          rest.moveTo(cx + r, cy);
-          rest.arc(cx, cy, r, 0, Math.PI * 2);
+          rest.moveTo(c[0] + r, c[1]);
+          rest.arc(c[0], c[1], r, 0, Math.PI * 2);
         } else {
-          ctx.fillStyle = `rgba(${colour}, ${alpha * Math.min(1, d.s * 1.4)})`;
+          ctx.fillStyle = `rgba(${colour}, ${START_ALPHA * Math.min(1, d.s * 1.4)})`;
           ctx.beginPath();
-          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          disc(ctx, c, r);
           ctx.fill();
         }
       }
-      ctx.fillStyle = `rgba(${colour}, ${alpha})`;
+      ctx.fillStyle = `rgba(${colour}, ${START_ALPHA})`;
       ctx.fill(rest);
     }
 
-    // The drop, and the necks that tie it to its tile and reach for the
-    // dot of the step it points.
-    const p = this.drop;
-    if (p.s <= 0.01) return;
-    const stretch = this.anchor ? Math.min(1, Math.hypot(p.x - this.anchor.x - 0.5, p.y - this.anchor.y - 0.5)) : 0;
-    const drop = { c: at(p.x, p.y), r: px(DROP_R) * p.s * (1 - 0.35 * stretch) };
-    const blobs = [drop];
-    if (this.anchor) {
-      const here = this.dots.get(`here${this.anchor.x},${this.anchor.y}`);
-      blobs.push({ c: at(this.anchor.x + 0.5, this.anchor.y + 0.5), r: px(HERE_R) * Math.min(here?.s ?? 0, p.s) });
-    }
-    const t = this.toward && this.dots.get(`next${this.toward.x},${this.toward.y}`);
-    const reaching = t ? { c: at(t.x + 0.5, t.y + 0.5), r: px(NEXT_R) * t.s } : null;
-    // Each shape filled alone: their windings differ, and filled as one
-    // path the overlaps would cancel into holes.
+    // The drag: every shape one colour, run together by the filter.
+    const ctx = this.goo;
     ctx.fillStyle = `rgb(${colour})`;
-    for (const b of blobs) {
-      ctx.beginPath();
-      ctx.arc(b.c[0], b.c[1], b.r, 0, Math.PI * 2);
-      ctx.fill();
+    ctx.beginPath();
+    const p = this.drop;
+    const dropAt: [number, number] = [p.x, p.y];
+    const lean = (x: number, y: number, by: number): [number, number] => [x + (dropAt[0] - x) * by, y + (dropAt[1] - y) * by];
+    const live = p.s > 0.01;
+    for (const d of this.dots.values()) {
+      if (d.kind === "start" || d.s <= 0) continue;
+      const [cx, cy] = [d.x + 0.5, d.y + 0.5];
+      let [c, r] = [[cx, cy] as [number, number], RADIUS[d.kind] * d.s];
+      if (live && d.kind === "here") c = lean(cx, cy, 0.08 * p.s);
+      // The step pointed at leans toward the drop and swells as it nears.
+      if (live && this.toward && d.x === this.toward.x && d.y === this.toward.y) {
+        const near = Math.max(0, 1 - Math.hypot(cx - p.x, cy - p.y) / Math.SQRT2);
+        c = lean(cx, cy, 0.35 * near);
+        r *= 1 + 0.4 * near;
+      }
+      disc(ctx, at(...c), px(r) + sigma * 0.6);
     }
-    for (const other of [blobs[1], reaching]) {
-      if (!other) continue;
-      ctx.beginPath();
-      neck(ctx, drop, other);
-      ctx.fill();
+    if (live && this.anchor) {
+      // The drop, smaller as it is drawn out, and the stream it hangs on:
+      // beads from the tile to it, thinnest midway, thinner the further.
+      const [ax, ay] = [this.anchor.x + 0.5, this.anchor.y + 0.5];
+      const stretch = Math.min(1, Math.hypot(p.x - ax, p.y - ay));
+      const rd = DROP_R * p.s * (1 - 0.3 * stretch);
+      disc(ctx, at(p.x, p.y), px(rd) + sigma * 0.6);
+      const here = this.dots.get(`here${this.anchor.x},${this.anchor.y}`);
+      const ra = HERE_R * Math.min(here?.s ?? 0, p.s);
+      for (let i = 1; i <= BEADS; i++) {
+        const t = i / (BEADS + 1);
+        const pinch = 1 - 0.75 * Math.sin(Math.PI * t) * stretch;
+        const r = (ra + (rd - ra) * t) * 0.55 * pinch;
+        if (r > 0.01) disc(ctx, at(ax + (p.x - ax) * t, ay + (p.y - ay) * t), px(r));
+      }
     }
+    ctx.fill();
   }
 }
 
@@ -239,36 +282,4 @@ function spring(d: { s: number; v: number }, to: number, stiff: number, damp: nu
   d.s = Math.max(0, d.s + d.v * dt);
   // At rest, exactly: a dot at rest is drawn with the others.
   if (Math.abs(to - d.s) < 0.002 && Math.abs(d.v) < 0.01) [d.s, d.v] = [to, 0];
-}
-
-/**
- * The neck between two drops, as liquid draws one: two curves from one
- * circle's edge to the other's, pinched in the middle, gone once they are
- * too far apart. After the metaball of Hiroyuki Sato's Paper.js example.
- */
-function neck(ctx: CanvasRenderingContext2D, a: { c: [number, number]; r: number }, b: { c: [number, number]; r: number }, v = 0.5, handle = 2.4) {
-  const [r1, r2] = [a.r, b.r];
-  const d = Math.hypot(b.c[0] - a.c[0], b.c[1] - a.c[1]);
-  const reach = (r1 + r2) * 2.6;
-  if (r1 <= 0 || r2 <= 0 || d > reach || d <= Math.abs(r1 - r2)) return;
-  const [u1, u2] =
-    d < r1 + r2
-      ? [Math.acos((r1 * r1 + d * d - r2 * r2) / (2 * r1 * d)), Math.acos((r2 * r2 + d * d - r1 * r1) / (2 * r2 * d))]
-      : [0, 0];
-  const between = Math.atan2(b.c[1] - a.c[1], b.c[0] - a.c[0]);
-  const spread = Math.acos((r1 - r2) / d);
-  const a1 = between + u1 + (spread - u1) * v;
-  const a2 = between - u1 - (spread - u1) * v;
-  const a3 = between + Math.PI - u2 - (Math.PI - u2 - spread) * v;
-  const a4 = between - Math.PI + u2 + (Math.PI - u2 - spread) * v;
-  const on = (c: [number, number], ang: number, r: number): [number, number] => [c[0] + Math.cos(ang) * r, c[1] + Math.sin(ang) * r];
-  const [p1, p2, p3, p4] = [on(a.c, a1, r1), on(a.c, a2, r1), on(b.c, a3, r2), on(b.c, a4, r2)];
-  // Thinner as it stretches: the handles shorten with the distance.
-  const h = Math.min(v * handle, Math.hypot(p1[0] - p3[0], p1[1] - p3[1]) / (r1 + r2)) * Math.min(1, (d * 2) / (r1 + r2)) * (1 - d / reach);
-  const [h1, h2, h3, h4] = [on(p1, a1 - Math.PI / 2, r1 * h), on(p2, a2 + Math.PI / 2, r1 * h), on(p3, a3 + Math.PI / 2, r2 * h), on(p4, a4 - Math.PI / 2, r2 * h)];
-  ctx.moveTo(...p1);
-  ctx.bezierCurveTo(...h1, ...h3, ...p3);
-  ctx.lineTo(...p4);
-  ctx.bezierCurveTo(...h4, ...h2, ...p2);
-  ctx.closePath();
 }

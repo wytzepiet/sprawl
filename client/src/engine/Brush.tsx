@@ -23,9 +23,8 @@ import type { GridCoord, TerrainType } from "../generated";
  */
 export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
   const { scene, canvas } = useEngine();
-  const overlay = (<canvas class="fixed inset-0 pointer-events-none" style={{ width: "100vw", height: "100vh" }} />) as HTMLCanvasElement;
   const theme = useTheme();
-  const dots = new Dots(scene, canvas, overlay, () => theme().hand);
+  const dots = new Dots(scene, canvas, () => theme().hand);
   const tick = scene.onAfterRenderObservable.add(() => dots.frame());
   const { send, growth } = useGame();
   let current: GridCoord | null = null;
@@ -163,5 +162,5 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     scene.onAfterRenderObservable.remove(tick);
   });
 
-  return overlay;
+  return dots.el;
 }
