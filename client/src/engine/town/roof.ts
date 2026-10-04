@@ -1,7 +1,6 @@
 import earcut from "earcut";
 import type { MeshGeometry } from "../Mesh";
-import type { BuildingKind } from "../../generated";
-import type { Town } from "./grid";
+import type { Tile, Town } from "./grid";
 import { capped, eaves, slope, type RGB } from "./mass";
 import { facts } from "./facts";
 import { blunt, convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
@@ -53,7 +52,7 @@ export function* plans(painted: Town) {
   }
 }
 
-export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
+export function townMesh(painted: Town, colour: (t: Tile) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */
@@ -92,7 +91,7 @@ export function townMesh(painted: Town, colour: (k: BuildingKind) => RGB, only?:
     const { pitch, height } = slope(mass.tile);
     const reach = height / pitch;
     const tint = (part: (typeof mass.parts)[number]): RGB =>
-      colour(part.tile.kind as BuildingKind).map((v) => (part.head ? v + (1 - v) * 0.45 : v)) as RGB;
+      colour(part.tile).map((v) => (part.head ? v + (1 - v) * 0.45 : v)) as RGB;
     /** A region, coloured by the parts it lies in. */
     const paint = (region: Polygon[], z: (p: Pt) => number, dim = 1) => {
       for (const part of mass.parts) {

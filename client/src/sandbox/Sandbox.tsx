@@ -8,17 +8,16 @@ import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
 import { BLUEPRINTS } from "../blueprints";
 import type { RGB } from "../engine/town/mass";
-import { CAB, CAR, ROAD_Z, TRAILER } from "../engine/objects/roadGeometry";
+import { CAB, CAR, TRAILER } from "../engine/objects/roadGeometry";
 import type { MeshGeometry } from "../engine/Mesh";
 import { LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
 import { townMesh as mesh } from "../engine/town/roof";
-import { defaultJoins, type Polygon } from "../engine/town/footprint";
-import earcut from "earcut";
-import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TREE_BODY, TREE_TOP, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
-import { facts } from "../engine/town/facts";
-import { asphalt, dress, FERRY, pavement } from "../engine/town/dressing";
+import { defaultJoins } from "../engine/town/footprint";
+import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
+import { FERRY } from "../engine/town/dressing";
+import { drawTown, quadsAt } from "../engine/town/draw";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -313,21 +312,11 @@ function Board() {
   );
 }
 
-const colourOf = (k: BuildingKind): [number, number, number] => {
-  const c = Color3.FromHexString(BLUEPRINTS[k].color);
+const colourOf = (t: Tile): [number, number, number] => {
+  const c = Color3.FromHexString(BLUEPRINTS[t.kind as BuildingKind].color);
   return [c.r, c.g, c.b];
 };
 
-/** Flat squares on some tiles, a little over the ground. */
-function quadsAt(cells: Cell[], z: number): MeshGeometry {
-  const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-  for (const [c, r] of cells) {
-    const b = g.positions.length / 3;
-    for (const [dx, dy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) g.positions.push(-(c + dx), -(r + dy), z), g.normals.push(0, 0, 1);
-    g.indices.push(b, b + 2, b + 1, b, b + 3, b + 2);
-  }
-  return g;
-}
 
 /** A see-through mesh, for what is not built yet. */
 function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: number[] }, colour: Color3, alpha: number): Mesh {
@@ -425,67 +414,12 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   // The ground: grass, water, woods and paving, as terrain.
   meshes.push(...terrain(scene, town, theme, rows));
 
-  // A kerb's height over the grass, under the roads.
-  const PAVED_Z = 0.02;
-  /** Polygons laid flat at a height. */
-  const flatPolygons = (polys: Polygon[], z: number): MeshGeometry => {
-    const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-    for (const poly of polys) {
-      const flat = poly.flat();
-      const holes: number[] = [];
-      let at = 0;
-      for (const ring of poly.slice(0, -1)) holes.push((at += ring.length));
-      const ids = earcut(flat.flat(), holes);
-      const b0 = g.positions.length / 3;
-      for (const [x, y] of flat) g.positions.push(-x, -y, z), g.normals.push(0, 0, 1);
-      for (let i = 0; i < ids.length; i += 3) g.indices.push(b0 + ids[i], b0 + ids[i + 2], b0 + ids[i + 1]);
-    }
-    return g;
-  };
-  add("pavement", flatPolygons(pavement(town), PAVED_Z), theme.paved);
+  // The town grid, drawn; and on it what the dressing parks.
+  const { pieces, dressing } = drawTown(town, theme, colourOf);
+  for (const p of pieces) add(p.name, p.geo, p.colour ?? Color3.White());
+  const { cars, docks, ships } = dressing;
 
-  // The free ground, dressed, and the asphalt: the roads, and the lanes and
-  // drives leading off them, one surface.
-  const { gardens, trees, cars, lanes, docks, yardLines, ships } = dress(town, facts(town));
-  const { street, through } = asphalt(town, lanes);
-  add("street", flatPolygons(street, ROAD_Z + PAVED_Z), theme.road);
-  add("through", flatPolygons(through, ROAD_Z + PAVED_Z), theme.highway);
-
-  add("mass", mesh(town, colourOf), Color3.White());
-
-  // Yard lines and courtyard lawns over the pavement; trees in the lawns
-  // and along the streets, as crowns like the forest's.
-  const flat = (polys: [number, number][][], z: number): MeshGeometry => {
-    const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-    for (const poly of polys) {
-      const b0 = g.positions.length / 3;
-      for (const [x, y] of poly) g.positions.push(-x, -y, z), g.normals.push(0, 0, 1);
-      for (let i = 1; i + 1 < poly.length; i++) g.indices.push(b0, b0 + i + 1, b0 + i, b0, b0 + i, b0 + i + 1);
-    }
-    return g;
-  };
-  add("yard_lines", flat(yardLines, 0.025), theme.road);
-  // Lawns over the pavement: a house stands in its own.
-  add("garden", quadsAt(gardens, PAVED_Z + 0.003), theme.garden);
-  // Trees as the forest draws them: a smooth top over a coarse body.
-  for (const [name, geo] of [["tree_tops", TREE_TOP], ["tree_bodies", TREE_BODY]] as const) {
-    const out: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
-    for (const t of trees) {
-      const base = out.positions.length / 3;
-      const [w, zs] = [0.35 * t.scale, 0.35 * t.scale];
-      const rgb = theme.crowns[t.shade];
-      for (let i = 0; i < geo.positions.length; i += 3) {
-        out.positions.push(-(t.x + geo.positions[i] * w), -(t.y + geo.positions[i + 1] * w), geo.positions[i + 2] * zs);
-        out.normals.push(-geo.normals[i], -geo.normals[i + 1], geo.normals[i + 2]);
-        out.colors.push(rgb.r, rgb.g, rgb.b, 1);
-      }
-      for (const k of geo.indices) out.indices.push(base + k);
-    }
-    add(name, out, Color3.White());
-  }
-
-  // Parked cars and lorries at the docks, boxes as the game draws them,
-  // and a door in the wall behind every dock.
+  // Parked cars and lorries at the docks, boxes as the game draws them.
   const CAR_COLOURS: RGB[] = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];
   const parked: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
   const quad = (pts: [number, number, number][], n: [number, number, number], rgb: RGB) => {
@@ -516,9 +450,6 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   for (const car of cars) box(car.x, car.y, car.angle, [CAR.w, CAR.l, CAR.h], CAR_COLOURS[car.colour]);
   for (const dock of docks) {
     const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];
-    // The door, just proud of the wall.
-    const [dx, dy, half] = [dock.x + ux * 0.004, dock.y + uy * 0.004, 0.11];
-    quad([[dx - uy * half, dy + ux * half, 0.03], [dx + uy * half, dy - ux * half, 0.03], [dx + uy * half, dy - ux * half, 0.22], [dx - uy * half, dy + ux * half, 0.22]], [ux, uy, 0], [0.22, 0.24, 0.3]);
     if (!dock.lorry) continue;
     const trailer = 0.01 + TRAILER.l / 2, cab = 0.01 + TRAILER.l + 0.02 + CAB.l / 2;
     box(dock.x + ux * trailer, dock.y + uy * trailer, dock.angle, [TRAILER.w, TRAILER.l, TRAILER.h], [0.9, 0.9, 0.88]);
