@@ -405,6 +405,13 @@ pub fn price(world: &World, kind: BuildingKind) -> f64 {
     b.price / world.build.weight(b.class)
 }
 
+/// How many tiles the smallest of a kind is: its price is shared over
+/// them, a tile paid for as it is painted.
+pub fn tiles(kind: BuildingKind) -> f64 {
+    let (w, h) = crate::blueprint::plot(kind, 0).size;
+    (w as u32 * h as u32) as f64
+}
+
 /// A building saved before it had a stock or prices gets them the way a
 /// placed one does; one whose row changed a stock gets the new one, full.
 pub fn open(world: &mut World, id: EntityId) {

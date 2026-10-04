@@ -8,8 +8,8 @@
 //!
 //! Two shapes, each a building's own. A building parks two cars on its
 //! driveway, side by side: a car drives in nose first and backs out onto
-//! the street. A kind with vehicles of its own keeps a yard: docks against
-//! its wall that a lorry backs into. A car that finds no spot, and staff,
+//! the street. A depot, a farm and a port keep a yard: docks against its
+//! wall that a lorry backs into. A car that finds no spot, and staff,
 //! stop at the door, unseen, until the kerb has bays. See
 //! `docs/parking.md`.
 
@@ -17,7 +17,7 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
 use std::collections::HashMap;
 
-use crate::blueprint::{plot, FACINGS};
+use crate::blueprint::FACINGS;
 use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, GridCoord, Pose};
 use serde_json::{json, Value};
@@ -106,9 +106,11 @@ const BAY_MARGIN: f64 = 0.4;
 const WALL: f64 = 0.14;
 
 pub struct Lot {
-    /// Its driveways and the street each joins, in tile order: the lot is
-    /// rebuilt when these no longer match the map.
+    /// Its driveways and the street each joins, in tile order, and the
+    /// building's tiles and facing: the lot is rebuilt when these no
+    /// longer match the map.
     gates: Vec<(EntityId, EntityId)>,
+    shape: (Vec<GridCoord>, u8),
     pub spots: Vec<Spot>,
     way: Way,
     /// Every node and edge this lot owns, for taking it down.
@@ -124,13 +126,16 @@ impl World {
     /// no road reaches it.
     pub fn lot_mut(&mut self, building: EntityId) -> Option<&mut Lot> {
         let gates = self.gates_of(building)?;
-        if self.lots.get(&building).is_none_or(|l| l.gates != gates) {
+        let (tiles, _, facing) = self.building_of(building)?;
+        let shape = (tiles, facing);
+        if self.lots.get(&building).is_none_or(|l| l.gates != gates || l.shape != shape) {
             // Whatever it had goes; everyone who held something in it
             // holds it again in the new one.
             let stats = self.lots.get(&building).map_or_else(Stats::default, |l| l.stats);
             let held = self.drop_run(building);
             let mut lot = self.build_lot(building, &gates)?;
             lot.stats = stats;
+            lot.shape = shape;
             self.lots.insert(building, lot);
             self.reseat(building, held);
         }
@@ -153,10 +158,9 @@ impl World {
         (!gates.is_empty() && kind != crate::protocol::BuildingKind::Edge).then_some(gates)
     }
 
-    fn building_of(&self, id: EntityId) -> Option<(GridCoord, crate::protocol::BuildingKind, u8)> {
-        let e = self.objects.get(id)?;
-        match e.object {
-            GameObject::Building(ref b) => Some((e.position?, b.kind, b.facing)),
+    fn building_of(&self, id: EntityId) -> Option<(Vec<GridCoord>, crate::protocol::BuildingKind, u8)> {
+        match self.objects.get(id)?.object {
+            GameObject::Building(ref b) => Some((b.tiles.clone(), b.kind, b.facing)),
             _ => None,
         }
     }
@@ -177,9 +181,9 @@ impl World {
             world.edges.insert((a, b), EdgeSegment::new(len));
             edges.push((a, b));
         };
-        let (pos, kind, facing) = self.building_of(building)?;
+        let (tiles, kind, facing) = self.building_of(building)?;
         if is_yard(kind) {
-            let mut lot = self.build_yard(gates, pos, kind, facing, node, edge)?;
+            let mut lot = self.build_yard(gates, &tiles, kind, facing, node, edge)?;
             lot.nodes = nodes;
             lot.edges = edges;
             return Some(lot);
@@ -199,7 +203,7 @@ impl World {
             edge(self, id, street);
             spots.push(Spot { node: id, pose: Pose { at, heading }, windows: Vec::new() });
         }
-        Some(Lot { gates: gates.to_vec(), spots, way: Way::Driveway { driveway, street }, nodes, edges, doorway: Vec::new(), stats: Stats::default() })
+        Some(Lot { gates: gates.to_vec(), shape: Default::default(), spots, way: Way::Driveway { driveway, street }, nodes, edges, doorway: Vec::new(), stats: Stats::default() })
     }
 
     /// A depot's yard, in its own frame: u along the frontage from the
@@ -211,14 +215,15 @@ impl World {
     fn build_yard(
         &mut self,
         gates: &[(EntityId, EntityId)],
-        pos: GridCoord,
+        tiles: &[GridCoord],
         kind: crate::protocol::BuildingKind,
         facing: u8,
         mut node: impl FnMut(&mut World, [f64; 2]) -> EntityId,
         mut edge: impl FnMut(&mut World, EntityId, EntityId),
     ) -> Option<Lot> {
         let (driveway, street) = gates[0];
-        let ((lx, ly), (gw, gh)) = plot(kind, facing).lot?;
+        let (pos, p) = World::lie(tiles, kind, facing);
+        let ((lx, ly), (gw, gh)) = p.lot?;
         let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
         let (dx, dy) = FACINGS[facing as usize % 4];
         let along_x = dx == 0;
@@ -277,7 +282,7 @@ impl World {
             edge(self, id, lane[bays[i].0]);
             spots.push(Spot { node: id, pose: Pose { at, heading: (out[1] - at[1]).atan2(out[0] - at[0]) }, windows: Vec::new() });
         }
-        Some(Lot { gates: gates.to_vec(), spots, way: Way::Yard { lane, bays, street }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), stats: Stats::default() })
+        Some(Lot { gates: gates.to_vec(), shape: Default::default(), spots, way: Way::Yard { lane, bays, street }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), stats: Stats::default() })
     }
 
     /// Take a building's lot out of the world; whoever was parked in it is
@@ -674,9 +679,9 @@ impl World {
     }
 }
 
-/// A kind with vehicles of its own keeps a yard.
+/// A kind with a yard (`Blueprint::lot`): its lorries' docks.
 fn is_yard(kind: crate::protocol::BuildingKind) -> bool {
-    !crate::blueprint::blueprint(kind).vehicles.is_empty()
+    crate::blueprint::blueprint(kind).lot.1 > 0
 }
 
 fn dist(a: Pose, b: Option<Pose>) -> f64 {

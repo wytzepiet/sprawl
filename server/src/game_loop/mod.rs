@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Sale, ServerMessage, StateUpdate};
+use crate::protocol::{Build, BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Sale, ServerMessage, StateUpdate, Tool};
 use crate::world::chunk_of;
 use crate::world::World;
 use crate::world::pathfinding;
@@ -121,7 +121,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         while let Ok(cmd) = commands.try_recv() {
             match cmd {
                 Command::PlayerAction { client_id, message } => {
-                    roads_laid |= matches!(message, ClientMessage::PlaceRoad(_));
+                    roads_laid |= matches!(message, ClientMessage::Build(Build { tool: Tool::Street | Tool::OneWay | Tool::Road, .. }));
                     if let ClientMessage::Ping = &message {
                         if let Some(cs) = clients.get(&client_id) {
                             let _ = cs.sender.send(ServerMessage::Pong(now));
@@ -200,7 +200,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Lot(id) => world.inspect_lot(id, now),
                         Ask::Card(id) => crate::card::card(&world, id, now),
                         Ask::Town => crate::economy::town(&world, now),
-                        Ask::Site { kind, x, y } => serde_json::to_value(world.site_under(x, y, kind)).unwrap_or_default(),
                         Ask::Map { x, y, r } => crate::fixtures::draw(&world, x, y, r).into(),
                         Ask::Call(id) => {
                             // Its shelf, emptied: a depot fetches, a maker
@@ -355,63 +354,60 @@ fn handle_player_action(
     now: GameTime,
 ) {
     match message {
-        ClientMessage::PlaceRoad(place) => {
-            let from_id = world.road_node_at(place.from);
-            let to_id = world.road_node_at(place.to);
+        ClientMessage::Build(Build { tool, from, to }) => match tool {
+            Tool::Street | Tool::OneWay | Tool::Road => {
+                let (one_way, road) = (tool == Tool::OneWay, tool == Tool::Road);
+                let from_id = world.road_node_at(from);
+                let to_id = world.road_node_at(to);
 
-            // The build is the gate: what kinds of road, and how much of it.
-            // Each end that is not standing yet is a tile laid.
-            let new_tiles = from_id.is_none() as u32 + to_id.is_none() as u32;
-            if !world.build.may_draw(place.one_way, place.road) || world.laid + new_tiles > world.build.road_tiles() {
-                return;
-            }
-            world.handle_place_road(place.from, place.to, place.one_way, place.road);
+                // The build is the gate: what kinds of road, and how much of it.
+                // Each end that is not standing yet is a tile laid.
+                let new_tiles = from_id.is_none() as u32 + to_id.is_none() as u32;
+                if from == to || !world.build.may_draw(one_way, road) || world.laid + new_tiles > world.build.road_tiles() {
+                    return;
+                }
+                world.handle_place_road(from, to, one_way, road);
 
-            // Insert edges for newly created connections
-            let new_from = world.road_node_at(place.from);
-            let new_to = world.road_node_at(place.to);
-            if let (Some(f), Some(t)) = (new_from, new_to) {
-                // Only insert if the road was actually placed (nodes exist now)
-                if from_id.is_none() || to_id.is_none() || !world.edges.contains_key(&(f, t)) {
-                    world.insert_edge(f, t);
-                    if !place.one_way {
-                        world.insert_edge(t, f);
+                // Insert edges for newly created connections
+                let new_from = world.road_node_at(from);
+                let new_to = world.road_node_at(to);
+                if let (Some(f), Some(t)) = (new_from, new_to) {
+                    // Only insert if the road was actually placed (nodes exist now)
+                    if from_id.is_none() || to_id.is_none() || !world.edges.contains_key(&(f, t)) {
+                        world.insert_edge(f, t);
+                        if !one_way {
+                            world.insert_edge(t, f);
+                        }
                     }
                 }
             }
-        }
-        ClientMessage::PlaceBuilding(place) => {
-            // Exactly what the ghost showed: the site is decided once, by the
-            // same call, from the point the building was held over. The
-            // mayor pays for it from what the city has earned.
-            let site = world.site_under(place.at[0], place.at[1], place.kind);
-            let price = crate::economy::price(world, place.kind);
-            let allowed = world.build.may_place(place.kind) && world.treasury >= price;
-            let placed = allowed.then(|| world.place_site(site, place.kind)).flatten();
-            match placed {
-                Some(_) => {
-                    crate::economy::built(world, price, now);
-                    settle_and_wake(world, events);
+            Tool::Building(kind) => {
+                // A tile is paid for as it is laid, from what the city has
+                // earned: a kind's price shared over the smallest of it.
+                let price = crate::economy::price(world, kind) / crate::economy::tiles(kind);
+                if !world.build.may_place(kind) || world.treasury < price {
+                    // Said out loud: a click that does nothing is the kind
+                    // of bug that otherwise takes an afternoon to find.
+                    println!("paint refused: {kind:?} at {to:?}: {:.1} in the treasury, {price:.1} a tile", world.treasury);
+                    return;
                 }
-                // Said out loud: a click that does nothing is the kind of
-                // bug that otherwise takes an afternoon to find.
-                None => println!("place refused: {:?} at {:?}: allowed {}, site {:?}", place.kind, place.at, allowed, site),
+                if world.paint(kind, from, to).is_some() {
+                    crate::economy::built(world, price, now);
+                }
+                settle_and_wake(world, events);
             }
-        }
-        ClientMessage::DemolishRoad(demolish) => {
-            // What goes follows from what was clicked: a road, or the building
-            // standing there. Either way the population is settled against
-            // what is left.
-            let pos = demolish.pos;
-            if let Some(id) = world.road_node_at(pos) {
-                handle_road_demolish(world, events, intersections, id, now);
-            } else if let Some(id) = world.occupied.get(&(pos.x, pos.y)).copied() {
-                world.remove_building(id);
-            } else {
-                return;
+            Tool::Demolish => {
+                // What goes follows from what is there: a road, or a tile
+                // of the building standing there. Either way the population
+                // is settled against what is left.
+                if let Some(id) = world.road_node_at(to) {
+                    handle_road_demolish(world, events, intersections, id, now);
+                } else if !world.unpaint(to) {
+                    return;
+                }
+                settle_and_wake(world, events);
             }
-            settle_and_wake(world, events);
-        }
+        },
         ClientMessage::DespawnAllCars => {
             let car_ids: Vec<EntityId> = world.objects.all_entries()
                 .iter()
@@ -1670,8 +1666,7 @@ mod tests {
             // Onto the plot: a road that ends on one is a driveway.
             (GridCoord { x: 10, y: 2 }, GridCoord { x: 10, y: 3 }),
         ] {
-            let place = crate::protocol::PlaceRoad { from, to, one_way: false, road: false };
-            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::PlaceRoad(place), 0);
+            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from, to }), 0);
         }
         assert!(world.road_node_for_building(home).is_some(), "the driveway formed itself");
 

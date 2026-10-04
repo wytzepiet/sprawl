@@ -23,7 +23,7 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::blueprint::plot;
+
 use crate::economy;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
@@ -72,14 +72,15 @@ impl World {
     /// first claim wins, and the field grows the other way.
     pub fn claim_land(&mut self, farm: EntityId) {
         let Some(e) = self.objects.get(farm) else { return };
-        let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return };
+        let GameObject::Building(b) = &e.object else { return };
         let (kind, facing) = (b.kind, b.facing);
         let wanted = capacity(kind) as usize;
         if !economy::farm(kind) || !b.land.is_empty() {
             return;
         }
-        let p = plot(kind, facing);
-        let (w, h) = (p.size.0 as i32, p.size.1 as i32);
+        let _ = facing;
+        let (pos, (w, h)) = Self::bounds(&b.tiles);
+        let (w, h) = (w as i32, h as i32);
         let taken: HashSet<(i32, i32)> = self.objects.iter().filter(|e| e.id != farm).flat_map(|e| match e.object {
             GameObject::Building(ref b) => b.land.iter().map(|t| (t.at.x, t.at.y)).collect(),
             _ => Vec::new(),
@@ -286,8 +287,8 @@ impl World {
     /// The farm's yard: its plot less the barn.
     fn yard_tiles(&self, farm: EntityId) -> Vec<GridCoord> {
         let Some(e) = self.objects.get(farm) else { return Vec::new() };
-        let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return Vec::new() };
-        let p = plot(b.kind, b.facing);
+        let GameObject::Building(b) = &e.object else { return Vec::new() };
+        let (pos, p) = Self::lie(&b.tiles, b.kind, b.facing);
         let ((bx, by), (bw, bh)) = p.building;
         let barn = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
         b.tiles.iter().copied().filter(|t| !(t.x >= barn.x && t.y >= barn.y && t.x < barn.x + bw as i32 && t.y < barn.y + bh as i32)).collect()

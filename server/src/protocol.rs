@@ -11,15 +11,31 @@ pub struct GridCoord {
     pub y: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+/// A step of the mayor's hand: one tile to the next, or a tap, from and
+/// to the same tile. A drag is its steps, each built as it is sent.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct PlaceRoad {
+pub struct Build {
+    pub tool: Tool,
     pub from: GridCoord,
     pub to: GridCoord,
-    pub one_way: bool,
-    /// A road rather than a street: a through route nothing fronts onto.
-    #[serde(default)]
-    pub road: bool,
+}
+
+/// What the mayor's hand holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Tool {
+    /// A street, both ways: what buildings front.
+    Street,
+    /// A street one way, `from` to `to`.
+    OneWay,
+    /// A road: a through route nothing fronts onto.
+    Road,
+    /// A kind of building: `to` painted, and joined to whatever of the
+    /// kind `from` is part of.
+    Building(BuildingKind),
+    /// Whatever stands on `to`.
+    Demolish,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -239,29 +255,6 @@ pub enum CarRole {
     /// A port's: from the quay behind it over the water to the horizon,
     /// and back with every shelf's worth at once. Never on a road.
     Ship,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct PlaceBuilding {
-    /// The point on the ground the building is held over: the server
-    /// decides where the plot lands from it, the same way it showed the
-    /// mayor while dragging.
-    pub at: [f64; 2],
-    pub kind: BuildingKind,
-}
-
-/// Where a kind would land with its building held over a point: the plot's
-/// origin and facing, whether it can land at all, and the driveway it would
-/// get. What the dragged ghost draws, and what placing lays — one answer.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Site {
-    pub pos: GridCoord,
-    pub facing: u8,
-    pub fits: bool,
-    pub door: Option<GridCoord>,
-    pub street: Option<GridCoord>,
 }
 
 /// Someone's car. It outlives its journeys: between trips it sits parked at a
@@ -497,12 +490,6 @@ pub struct ErrorMessage {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct DemolishRoad {
-    pub pos: GridCoord,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ChunkBounds {
@@ -530,11 +517,9 @@ impl ChunkBounds {
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
-    PlaceRoad(PlaceRoad),
+    Build(Build),
     /// Spend a point on a node of the tree.
     Take(crate::tree::Cell),
-    PlaceBuilding(PlaceBuilding),
-    DemolishRoad(DemolishRoad),
     DespawnAllCars,
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),

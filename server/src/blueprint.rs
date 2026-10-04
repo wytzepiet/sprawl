@@ -38,8 +38,9 @@ pub struct Blueprint {
     pub jobs: u32,
     /// The building's own footprint in tiles, wide along its frontage.
     pub size: (u8, u8),
-    /// Its lot, in tiles along the frontage and deep, on the street side.
-    /// (0, 0) is none: a driveway, or nothing.
+    /// Its yard, in tiles along the frontage and deep, on the street side:
+    /// a kind with vehicles of its own keeps one. (0, 0) is none: it parks
+    /// on its drive.
     pub lot: (u8, u8),
     /// What the mayor pays the outside for one, in hours of the edge's
     /// wage: materials from beyond the edge, so a placement is an import
@@ -106,26 +107,38 @@ pub fn plot(kind: BuildingKind, facing: u8) -> Plot {
     let b = blueprint(kind);
     let (bw, bh) = b.size;
     let (lw, ld) = b.lot;
-    let lot = lw > 0 && ld > 0;
-    // In the building's own frame the lot lies beyond its frontage, along
-    // +y; the frame turns with the facing.
-    // As wide as the wider of building and lot: a small building with a
-    // two-car lot beside its front stands in the corner of its plot.
+    // As wide as the wider of building and yard.
     let w = bw.max(lw);
+    let size = if facing % 2 == 0 { (w, bh + ld) } else { (bh + ld, w) };
+    lie(kind, facing, size)
+}
+
+/// How a building `size` across lies facing this way: its yard, if its
+/// kind keeps one, the rows on its street side as deep as the kind's, the
+/// whole width; the rest the building. A painted building is laid out by
+/// its bounds, the smallest that works by `plot`.
+pub fn lie(kind: BuildingKind, facing: u8, (w, h): (u8, u8)) -> Plot {
+    let ld = blueprint(kind).lot.1;
+    let lot = ld > 0;
+    let d = if lot { ld } else { 0 };
+    // In the building's own frame the yard lies beyond its frontage, along
+    // +y; the frame turns with the facing.
     match facing % 4 {
-        2 => Plot { size: (w, bh + ld), building: ((0, 0), (bw, bh)), lot: lot.then_some(((0, bh), (lw, ld))) },
-        0 => Plot { size: (w, bh + ld), building: ((0, ld), (bw, bh)), lot: lot.then_some(((0, 0), (lw, ld))) },
-        1 => Plot { size: (bh + ld, w), building: ((0, 0), (bh, bw)), lot: lot.then_some(((bh, 0), (ld, lw))) },
-        _ => Plot { size: (bh + ld, w), building: ((ld, 0), (bh, bw)), lot: lot.then_some(((0, 0), (ld, lw))) },
+        2 => Plot { size: (w, h), building: ((0, 0), (w, h - d)), lot: lot.then_some(((0, h - d), (w, d))) },
+        0 => Plot { size: (w, h), building: ((0, d), (w, h - d)), lot: lot.then_some(((0, 0), (w, d))) },
+        1 => Plot { size: (w, h), building: ((0, 0), (w - d, h)), lot: lot.then_some(((w - d, 0), (d, h))) },
+        _ => Plot { size: (w, h), building: ((d, 0), (w - d, h)), lot: lot.then_some(((0, 0), (d, h))) },
     }
 }
 
-/// How many a tap serves at once. A visitor's tap at a kind that kept a
-/// car park seats seven, what its lot parked, until the kerb's bays say
-/// how many can come; staff, homes and yards seat the row's number.
+/// How many a tap serves at once. A visitor's tap seats seven, what a
+/// building's lot parked when it had one, until the kerb's bays say how
+/// many can come; staff, a house's two homes, a yard and the edge seat
+/// the row's number.
 pub fn seats(kind: BuildingKind, tap: &Tap) -> u32 {
     let b = blueprint(kind);
-    if tap.need != Need::Work && b.lot.0 > 0 && b.vehicles.is_empty() { 7 } else { tap.slots }
+    let parked = b.vehicles.is_empty() && !matches!(kind, BuildingKind::House | BuildingKind::Edge);
+    if tap.need != Need::Work && parked { 7 } else { tap.slots }
 }
 
 /// Every tap of every kind — what a need can be served by, anywhere.
@@ -191,14 +204,14 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             taps: household(2),
         }),
         (Apartment, Blueprint {
-            class: Living, homes: 7, jobs: 0, size: (2, 1), lot: (2, 1), price: 15.0,
+            class: Living, homes: 7, jobs: 0, size: (2, 1), lot: (0, 0), price: 15.0,
             stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
             taps: household(7),
         }),
         // A shop seats as many as it staffs, and the high street is somewhere
         // to be until late.
         (Shop, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 18.0,
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (0, 0), price: 18.0,
             stock: 40, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(9, 18, 2),
@@ -213,7 +226,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // town, or the edge when nobody in town does. Its shelf is a day's
         // make: twelve desks, nine hours.
         (Office, Blueprint {
-            class: Commerce, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 15.0,
+            class: Commerce, homes: 0, jobs: 12, size: (2, 1), lot: (0, 0), price: 15.0,
             stock: 108, makes: Some(Make { good: Services, per_hour: 1.0 }), vehicles: &[CarRole::Company], farm: false, handles: None,
             taps: vec![shift(8, 17, 12)],
         }),
@@ -225,7 +238,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // service's worth each, brought in from beyond the edge like a
         // pump's tanks.
         (Workshop, Blueprint {
-            class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (2, 1), price: 8.0,
+            class: Industry, homes: 0, jobs: 4, size: (1, 1), lot: (0, 0), price: 8.0,
             stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(7, 16, 4),
@@ -233,14 +246,14 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             ],
         }),
         (Factory, Blueprint {
-            class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (2, 1), price: 25.0,
+            class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (0, 0), price: 25.0,
             stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![shift(6, 15, 12)],
         }),
         // A restaurant seats a dozen, from lunch until late, and is an evening
         // out in itself. The first kind the mayor can place by hand.
         (Restaurant, Blueprint {
-            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (2, 1), price: 16.0,
+            class: Commerce, homes: 0, jobs: 3, size: (1, 1), lot: (0, 0), price: 16.0,
             stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(11, 23, 3),
@@ -251,7 +264,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // A bar opens as the shops shut and is the last place open. Small
         // staff, an evening's crowd, a kitchen until eleven.
         (Bar, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (2, 1), price: 16.0,
+            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (0, 0), price: 16.0,
             stock: 30, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(18, 2, 2),
@@ -265,7 +278,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // four pumps could sell in the two hours a tanker is away with the
         // lot full, or it would never stop ordering.
         (GasStation, Blueprint {
-            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (2, 1), price: 14.0,
+            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (0, 0), price: 14.0,
             stock: 40, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(6, 22, 1),
@@ -276,7 +289,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // corner shop and a warehouse's truck to keep them full. The first
         // placeable with something to run out of.
         (Supermarket, Blueprint {
-            class: Commerce, homes: 0, jobs: 6, size: (2, 2), lot: (2, 1), price: 47.0,
+            class: Commerce, homes: 0, jobs: 6, size: (2, 2), lot: (0, 0), price: 47.0,
             stock: 150, makes: None, vehicles: &[], farm: false, handles: None,
             taps: vec![
                 shift(8, 21, 6),
