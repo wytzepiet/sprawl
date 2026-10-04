@@ -393,6 +393,14 @@ impl World {
         }
     }
 
+    /// Would a building painted from `from` to `to` be reached: grown on
+    /// to one of its kind, or, new, on a tile a street may run a drive to.
+    /// The mayor paints only what can work; a town written as a fixture
+    /// stands as written.
+    pub fn would_be_reached(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> bool {
+        self.painted_from(kind, from, to).is_some() || self.road_node_at(to).is_some() || self.driveway_between(&[to], None, None, true).is_some()
+    }
+
     /// The building of the kind a step to `to` grows: the one on `from`
     /// beside it, if the kind is one that grows.
     fn painted_from(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> Option<EntityId> {

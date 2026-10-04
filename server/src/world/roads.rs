@@ -93,6 +93,15 @@ impl World {
         if (dx, dy) == (0, 0) || dx.abs() > 1 || dy.abs() > 1 {
             return false;
         }
+        // Not over water or up a mountain: a road already there, a bridge
+        // the survey laid, may be carried on from.
+        let wet = |t: GridCoord| {
+            self.road_node_at(t).is_none()
+                && matches!(self.terrain.get(&(t.x, t.y)), Some(crate::protocol::TerrainType::Water | crate::protocol::TerrainType::Sea | crate::protocol::TerrainType::Mountain))
+        };
+        if wet(from) || wet(to) {
+            return false;
+        }
         // A road may end on a plot — that is all a driveway is — but never start
         // on one, or it would run in one side and out the other.
         if self.claimed_plot_at(from).is_some() {

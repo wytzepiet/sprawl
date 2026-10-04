@@ -433,7 +433,10 @@ pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
         // A tile is paid for as it is laid, from what the city has earned:
         // a kind's price shared over the smallest of it.
         Tool::Building(kind) => {
-            world.build.may_place(kind) && world.treasury >= crate::economy::price(world, kind) / crate::economy::tiles(kind) && world.may_paint(kind, from, to)
+            world.build.may_place(kind)
+                && world.treasury >= crate::economy::price(world, kind) / crate::economy::tiles(kind)
+                && world.may_paint(kind, from, to)
+                && world.would_be_reached(kind, from, to)
         }
         Tool::Demolish => world.road_node_at(to).is_some() || world.occupied.contains_key(&(to.x, to.y)),
     }
@@ -977,6 +980,10 @@ mod tests {
         let start = 1 << 8;
         assert_ne!(cell(&world, Tool::Building(BuildingKind::House), 5, 1) & start, 0, "beside the street");
         assert_eq!(cell(&world, Tool::Building(BuildingKind::House), 5, 0) & start, 0, "not on it");
+        assert_eq!(cell(&world, Tool::Building(BuildingKind::House), 5, 3) & start, 0, "nor where no street reaches");
+        world.terrain.insert((5, 1), TerrainType::Water);
+        assert_eq!(cell(&world, Tool::Street, 5, 0) & (1 << 2), 0, "nor a street onto water");
+        world.terrain.insert((5, 1), TerrainType::Grass);
         let off = cell(&world, Tool::Street, 5, 0);
         assert_ne!(off & (1 << 2), 0, "off the street toward +y");
         assert_eq!(off & 1, 0, "not along it again");
