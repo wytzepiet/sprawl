@@ -104,11 +104,13 @@ The code is `client/src/engine/town/`:
   these facts.
 - **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
   courtyard is a lawn with a tree on most tiles; paved ground closed in
-  stays a square. A house stands in its lawn, the plot beside it on its
-  street too, and the open tile behind it, on the side away from its
-  street, is its back garden, now and then with a tree: houses back to
-  back with two tiles between them make a block of lots, as a grid town's
-  do (`20-block`). An empty plot beside a garden is taken into it. A straight street before homes, shops or open ground has
+  stays a square. A house stands on the land itself, no lawn of its own:
+  a lawn drawn tile by tile round a house read as a plot pasted under
+  it (the mayor, 2026-10-04). The open tile behind it, on the side away
+  from its street, is its back garden, now and then with a tree: houses
+  back to back with two tiles between them make a block of lots, as a
+  grid town's do (`20-block`). An empty plot beside a garden is taken
+  into it. A straight street before homes, shops or open ground has
   a tree on its verge every third tile; through roads, junctions, bends,
   diagonals and industrial streets stay bare. A street before homes and
   shops is parked along both kerbs (fileparkeren), straight or diagonal,

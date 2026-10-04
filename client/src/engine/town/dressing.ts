@@ -99,18 +99,8 @@ export function dress(town: Town, facts: Facts): Dressing {
   const trees: Tree[] = [];
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   const backs = backGardens(town);
-  // A house stands in its lawn, and so does the plot beside it on the
-  // street: the pavement is the road's, not the house's.
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      const t = town.tile(c, r);
-      const beside = t.kind === "open" && !backs.has(`${c},${r}`) && [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => town.tile(c + dx, r + dy).kind === "House") && [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => road(c + dx, r + dy));
-      if (t.kind === "House" || beside) gardens.push([c, r]);
-    }
-  }
   for (const [key, house] of backs) {
     const [c, r] = key.split(",").map(Number);
-    gardens.push([c, r]);
     // Now and then a tree, toward the back.
     if (hash(c, r, 31) < 0.2) {
       const [bx, by] = [c + 0.5 - (house[0] - c) * 0.22, r + 0.5 - (house[1] - r) * 0.22];
@@ -119,11 +109,11 @@ export function dress(town: Town, facts: Facts): Dressing {
   }
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      if (backs.has(`${c},${r}`)) continue;
       if (facts.enclosed(c, r) && town.tile(c, r).kind === "open") {
         gardens.push([c, r]);
-        // One tree on most tiles of a garden, somewhere off the middle.
-        if (hash(c, r, 1) < 0.6) {
+        // One tree on most tiles of a garden, somewhere off the middle;
+        // a back garden has its own.
+        if (!backs.has(`${c},${r}`) && hash(c, r, 1) < 0.6) {
           trees.push({ x: c + 0.25 + 0.5 * hash(c, r, 2), y: r + 0.25 + 0.5 * hash(c, r, 3), scale: 0.7 + 0.3 * hash(c, r, 4), shade: Math.floor(3 * hash(c, r, 5)) });
         }
         continue;
