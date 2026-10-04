@@ -53,6 +53,23 @@ const MAX_SPEED: u32 = 50;
 /// drive to and from before the mayor has placed anything.
 const STARTING_MIX: [BuildingKind; 3] = [BuildingKind::House, BuildingKind::Shop, BuildingKind::Workshop];
 
+/// What a save does not keep, rebuilt from what it does, as the game
+/// opens it.
+fn restore(world: &mut World) {
+    world.rebuild_revealed();
+    world.rebuild_edges();
+    world.rebuild_node_cars();
+    world.rebuild_occupied();
+    world.restore_spots();
+    world.rebuild_roads_generated();
+    world.rebuild_laid();
+    world.doors_from_drives();
+    // A saved world may have been revealed further than its roads reach,
+    // if it was saved before this existed.
+    let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
+    crate::road_gen::extend_to(world, seed, bounds);
+}
+
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
@@ -85,18 +102,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 
     // Rebuild edges/indices and schedule car spawns for loaded buildings
     if !world.objects.all_entries().is_empty() && fixtures.is_none() {
-        world.rebuild_revealed();
-        world.rebuild_edges();
-        world.rebuild_node_cars();
-        world.rebuild_occupied();
-        world.restore_spots();
-        world.rebuild_roads_generated();
-        world.rebuild_laid();
-        world.doors_from_drives();
-        // A saved world may have been revealed further than its roads reach,
-        // if it was saved before this existed.
-        let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-        crate::road_gen::extend_to(&mut world, seed, bounds);
+        restore(&mut world);
         println!("loaded {} objects from db", world.objects.all_entries().len());
     }
     // Whatever is standing gets its people, whether it was just laid out or
@@ -1005,6 +1011,34 @@ mod tests {
             .unwrap_or_else(|| panic!("the street should give a {kind:?} at x={x} its driveway"))
     }
 
+    /// A save from when a drive was a road the mayor laid opens with it
+    /// as the house's door, and the tile back. The drive used to go
+    /// before the mayor's tiles were counted, and took one from nought.
+    #[test]
+    fn a_saved_drive_opens_as_a_door() {
+        let mut world = World::new();
+        for y in -8..8 {
+            for x in -8..8 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        world.place_road_path(&[GridCoord { x: 0, y: 2 }, GridCoord { x: 4, y: 2 }]);
+        let house = world.place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2).unwrap();
+        world.place_road_path(&[GridCoord { x: 2, y: 2 }, GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }]);
+        let drive = world.road_node_at(GridCoord { x: 2, y: 0 }).unwrap();
+        if let Some(GameObject::RoadNode(n)) = world.objects.get_mut(drive).map(|e| &mut e.object) {
+            n.laid = true;
+        }
+        world.laid = 0;
+
+        restore(&mut world);
+
+        assert!(world.objects.get(drive).is_none(), "the drive went");
+        let street = world.road_node_at(GridCoord { x: 2, y: 1 }).unwrap();
+        assert_eq!(world.door_of(house), Some((GridCoord { x: 2, y: 0 }, street)));
+        assert_eq!(world.laid, 0);
+    }
+
     /// A fresh world fills: every household of the starting town has a way
     /// in from beyond the map. Seed 7's nearest door as the crow flies is on
     /// a road that never joins the town, and its people waited there for
@@ -1018,15 +1052,7 @@ mod tests {
         crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
         // As the game opens it: the survey extended to what is revealed,
         // which lays roads that never join the town, doors and all.
-        world.rebuild_revealed();
-        world.rebuild_edges();
-        world.rebuild_node_cars();
-        world.rebuild_occupied();
-        world.restore_spots();
-        world.rebuild_roads_generated();
-        world.rebuild_laid();
-        let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-        crate::road_gen::extend_to(&mut world, seed, bounds);
+        restore(&mut world);
         world.stand_edges();
         world.settle();
         let ids = world.resident_ids();
