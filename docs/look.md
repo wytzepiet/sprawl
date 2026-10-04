@@ -300,13 +300,27 @@ dragging, and a building is the tiles it was painted on.
   kind of building the tree has opened, demolish. Pick one and drag on
   the map, or tap: it is built as the drag goes. The card shelf's
   drag-to-place, its ghost and `/site` go.
-- **A building is its tiles.** A stroke of houses is a house a tile, each
-  with its two homes, its drive and its two cars, drawn as one row
-  because the grid joins kin (`01-terrace`). A kind that works as one
-  building (the depot, the supermarket, the factory, the port) is one
-  building a stroke, as big as it was painted. The economy is untouched:
-  it counts buildings as it does now. The plot, its facing and its fixed
-  size go.
+- **The world is tiles and links, and buildings are worked out from
+  them** (the mayor, 2026-10-04). A tile is a kind (a building's, road,
+  open ground) and its storeys; a link joins two tiles beside or
+  diagonal: a road's link is a street running between them, a building's
+  is a join, the two tiles one building. That is the town grid's own
+  model (`Town.linked`, `Town.joins`), and it is what the server keeps.
+  A building is a group of tiles its joins hold together: its shape, its
+  yard, its drive and whether it works follow from the group, as its
+  look does. Painting a step joins the two tiles; demolishing a tile cuts
+  its links, and a building cut in two is two. A building is known by its
+  first tile: cut in two, the part with it keeps the building's
+  residents, stock and money and the other starts empty; two joined, the
+  older is kept. Houses never join for the simulation, each a house with
+  its two homes, its drive and its two cars, and are drawn joined all the
+  same (`01-terrace`); a kind that works as one building (the depot, the
+  supermarket, the factory, the port) is one building as far as it is
+  painted. A building smaller than its kind needs (`brush.ts`'s
+  programs) stands and does not work, as one no road reaches; nothing is
+  filled in for the mayor, who paints it out to size. The economy is
+  untouched: it counts buildings as it does now. The plot, its facing
+  and its fixed size go.
 - **The rings go.** A house parks on its drive pair, as now. A building
   whose kind keeps a yard has the yard read off its shape (`facts.ts`):
   the depot's docks, the port's lanes, the supermarket's car park, laid
@@ -320,18 +334,13 @@ What changes, in the order it can be built and seen:
    building, or demolish, replaces `PlaceRoad`, `PlaceBuilding` and
    `DemolishRoad`. A drag is its steps, from one tile to the next, each
    built as it is sent, as a road is drawn now; a tap is from and to the
-   same tile. A tile painted beside its own kind joins it: houses make a
-   row. A building keeps the tiles the mayor painted apart from those it
-   was completed with, and every step completes it again from what was
-   painted (`town/brush.ts`'s programs, ported): the first step of a
-   depot builds the smallest that works, a step sideways turns it to
-   follow, as the brush's ghost does, and steps past it grow it; tiles
-   no longer needed go back to open ground. Each step is checked alone;
-   a new building is paid for when it is first laid, its reshaping is
-   not (a price by the tile, if big buildings prove too cheap), and a
-   drag that runs out of money stops there. Nothing is held while the mayor drags: no draft,
-   no ghost to agree with the build, no `Site`; what is seen is what was
-   built. `Building` carries its tiles in place of `size` and `facing`.
+   same tile. Each step is checked alone and paid for by the tile, and a
+   drag that runs out of money stops there. Nothing is held while the
+   mayor drags: no draft, no ghost to agree with the build, no `Site`;
+   what is seen is what was built. A tile costs its kind's price shared
+   over the smallest building that works, so a depot painted to size
+   costs what one did. `Building` carries its tiles in place of `size`
+   and `facing`.
    The rule lives only on the server: the sandbox draws fixtures and
    paints no more.
 2. **The server.** A building is its tiles: `blueprint::plot`, facings
