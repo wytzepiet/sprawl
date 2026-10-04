@@ -21,6 +21,11 @@
 >   answer is a car park round the corner.
 > - **What goes**: the driveway as a kind of road (a road ending on a
 >   plot, one per building, the newest), lots, rings and their slabs.
+>   The driveway went 2026-10-04: a building keeps its **door**, its tile
+>   and the street tile beside it (`Building::door`); the street node is
+>   where trips to it end, and the drive from there to the tile is its
+>   lot's, drawn as road and gone with it. Drawing a road into a building
+>   moves its door; painting over a road's dead end makes that its door.
 >   A car park's layout is packed from its shape when it is built.
 > - **Driveways stay where a house leaves room** (2026-10-02, the
 >   mayor): a house with open ground beside it parks its cars on a drive
@@ -68,7 +73,8 @@ spots; this is how.
 Four rules carry the whole thing.
 
 1. **A lot is road.** The spots and aisles of a plot are nodes and edges
-   of the same network cars already drive, hung off the driveway node.
+   of the same network cars already drive, hung off the street node the
+   building's door opens onto.
    Nothing new moves; the queues, the following and the giving way that
    work on the street work in the lot.
 2. **A spot is a node.** Parking is a trip whose destination is a spot.
@@ -106,7 +112,7 @@ this document can say only what changes.
   short of the node. Its claim lasts until its tail is through the node,
   and lapses if it holds it standing still for ten seconds (§9)
   (`intersection/mod.rs`, `simulation.rs`).
-- **Trips.** A trip is born at a driveway node with a route, a free-flow
+- **Trips.** A trip is born at a lot's node with a route, a free-flow
   ETA fixed at departure, and the physics to extrapolate from; it dies on
   arrival, when the car is placed on the building and the driver steps out
   (`spawn.rs`, `park_car`). The client draws every car from its trip,
@@ -235,14 +241,14 @@ Lot nodes are server-only, made when a run is (re)computed and dropped
 when it goes. A lot node is an entry in a side table on the world with
 an id from the entity counter, so a route is one `Vec<EntityId>`
 throughout, and edges into the lot are ordinary `world.edges` entries.
-They are not in the run network: a route search ends at the driveway
-node and the lot path is appended (§3.6). The client holds the same
+They are not in the run network: a route search ends at the street node
+the door opens onto and the lot path is appended (§3.6). The client holds the same
 generator in TypeScript and draws the slab, ring and spot markings from
 a building's lot rectangle; nothing about a lot is streamed.
 
 ### 3.6 Routing
 
-A route to a spot is the street route to the driveway node with the ring
+A route to a spot is the street route to the door's street node with the
 path to the spot appended: along the lane to the spot's entry, through
 the spot. A route from a spot is the spot's exit lane round to the
 driveway and the street route on. The trip's length and free-flow ETA

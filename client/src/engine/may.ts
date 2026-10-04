@@ -53,8 +53,12 @@ export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolea
   if (tool === "Demolish") return h.roads.has(key(to.x, to.y)) || h.occupied.has(key(to.x, to.y));
   const want = tool === "OneWay" ? "OneWay" : tool === "Road" ? "Road" : null;
   if (want && !h.opened((e) => e.kind === want)) return false;
+  // Into a building is its door: nothing laid on its tile, and a through
+  // road is no door.
+  const door = h.occupied.has(key(to.x, to.y));
+  if (door && tool === "Road") return false;
   // Each end not standing yet is a tile laid.
-  const fresh = +!h.roads.has(key(from.x, from.y)) + +!h.roads.has(key(to.x, to.y));
+  const fresh = +!h.roads.has(key(from.x, from.y)) + +(!door && !h.roads.has(key(to.x, to.y)));
   return fresh <= h.growth.road_tiles_left && mayLay(h, from, to, tool === "OneWay");
 }
 

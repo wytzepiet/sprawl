@@ -243,6 +243,12 @@ const SIDES: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
  *  its front. */
 export function front(town: Town, c: number, r: number): [number, number] | undefined {
   if (town.tile(c, r).kind !== "House") return undefined;
+  // The game's door where it says, beside its street: one on a
+  // diagonal is no drive drawn yet.
+  if (town.door) {
+    const d = town.door(c, r);
+    return d && SIDES.find(([fx, fy]) => fx === d[0] && fy === d[1]);
+  }
   return SIDES.find(([fx, fy]) => {
     const [x, y] = [c + fx, r + fy];
     return town.tile(x, y).kind === "road" && !town.through(x, y) && (town.linked(x, y, x - fy, y + fx) || town.linked(x, y, x + fy, y - fx));

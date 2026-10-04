@@ -320,10 +320,10 @@ impl World {
     /// though it stand next door, is no way in. By id at a tie, so a world
     /// answers the same way however its sets iterate.
     pub fn nearest_edge(&self, pos: GridCoord) -> Option<EntityId> {
-        let from = self.occupied.get(&(pos.x, pos.y)).and_then(|&b| self.road_node_for_building(b))?;
+        let from = self.occupied.get(&(pos.x, pos.y)).and_then(|&b| self.street_of(b))?;
         self.edge
             .iter()
-            .filter(|&&b| self.road_node_for_building(b).is_some_and(|n| self.network.connected(from, n)))
+            .filter(|&&b| self.street_of(b).is_some_and(|n| self.network.connected(from, n)))
             .filter_map(|&b| Some((b, self.objects.get(b)?.position?)))
             .min_by_key(|&(b, p)| ((p.x - pos.x).abs().max((p.y - pos.y).abs()), b))
             .map(|(b, _)| b)
@@ -332,7 +332,7 @@ impl World {
     /// The road that door stands on: where a car appears from off the map,
     /// and where one drives off it.
     pub fn entry_node_near(&self, pos: GridCoord) -> Option<EntityId> {
-        self.road_node_for_building(self.nearest_edge(pos)?)
+        self.street_of(self.nearest_edge(pos)?)
     }
 
     /// Stand a building at every road exit — every stretch of the survey's
@@ -354,7 +354,7 @@ impl World {
         let standing: HashMap<EntityId, EntityId> = self
             .edge
             .iter()
-            .filter_map(|&b| Some((self.road_node_for_building(b)?, b)))
+            .filter_map(|&b| Some((self.street_of(b)?, b)))
             .collect();
         for (node, building) in &standing {
             if !doors.contains(node) {
@@ -658,7 +658,7 @@ mod tests {
         let (world, _) = frontier();
         assert_eq!(world.edge.len(), 1, "one road out, one door");
         let door = *world.edge.iter().next().unwrap();
-        let node = world.road_node_for_building(door).expect("the door stands on the road");
+        let node = world.street_of(door).expect("the door stands on the road");
         assert!(world.network.is_exit(node), "the door is beyond the survey");
         let pos = world.objects.get(door).unwrap().position.unwrap();
         assert!(!world.revealed.contains(&chunk_of(pos)), "the door is past the frontier");

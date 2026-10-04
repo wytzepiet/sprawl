@@ -89,6 +89,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         world.rebuild_edges();
         world.rebuild_node_cars();
         world.rebuild_occupied();
+        world.doors_from_drives();
         world.restore_spots();
         world.rebuild_roads_generated();
         world.rebuild_laid();
@@ -424,9 +425,15 @@ pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
     match tool {
         Tool::Street | Tool::OneWay | Tool::Road => {
             let one_way = tool == Tool::OneWay;
+            // Into a building is its door: nothing is laid on its tile, and
+            // a through road is no door, nothing fronting onto one.
+            let door = world.occupied.contains_key(&(to.x, to.y));
             // Each end that is not standing yet is a tile laid.
-            let new_tiles = world.road_node_at(from).is_none() as u32 + world.road_node_at(to).is_none() as u32;
-            world.build.may_draw(one_way, tool == Tool::Road) && world.laid + new_tiles <= world.build.road_tiles() && world.may_lay(from, to, one_way)
+            let new_tiles = world.road_node_at(from).is_none() as u32 + (!door && world.road_node_at(to).is_none()) as u32;
+            !(door && tool == Tool::Road)
+                && world.build.may_draw(one_way, tool == Tool::Road)
+                && world.laid + new_tiles <= world.build.road_tiles()
+                && world.may_lay(from, to, one_way)
         }
         // A tile is paid for as it is laid, from what the city has earned:
         // a kind's price shared over the smallest of it.
@@ -973,10 +980,10 @@ mod tests {
         }
     }
 
-    /// One tap of the demolisher takes a house: its drive, which ends on
-    /// its tile, goes with it.
+    /// One tap of the demolisher takes a house, its drive with it: the
+    /// drive is the house's, not a road on its tile.
     #[test]
-    fn one_tap_takes_a_house_and_its_drive() {
+    fn one_tap_takes_a_house_and_its_drive_with_it() {
         let mut world = street();
         world.build = crate::tree::Build::all();
         world.treasury = 1e9;
@@ -985,10 +992,11 @@ mod tests {
         let at = GridCoord { x: 5, y: 1 };
         let mut hand = |world: &mut World, tool| handle_player_action(world, &mut events, &mut intersections, ClientMessage::Build(Build { tool, from: at, to: at }), 0);
         hand(&mut world, Tool::Building(BuildingKind::House));
-        assert!(world.occupied.contains_key(&(5, 1)) && world.road_node_at(at).is_some(), "a house with its drive");
+        let house = world.occupied[&(5, 1)];
+        assert!(world.door_of(house).is_some() && world.road_node_at(at).is_none(), "a house with its door, and no road on its tile");
         hand(&mut world, Tool::Demolish);
         assert!(!world.occupied.contains_key(&(5, 1)), "the house is gone");
-        assert!(world.road_node_at(at).is_none(), "and its drive");
+        assert!(world.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "and the street stands");
     }
 
     fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
@@ -1734,7 +1742,7 @@ mod tests {
         ] {
             handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from, to }), 0);
         }
-        assert!(world.road_node_for_building(home).is_some(), "the driveway formed itself");
+        assert!(world.street_of(home).is_some(), "the driveway formed itself");
 
         // Which is what the tick settles for, once, after the batch.
         settle_and_wake(&mut world, &mut events);

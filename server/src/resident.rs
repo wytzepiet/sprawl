@@ -218,7 +218,7 @@ fn fit(buckets: &[Bucket]) -> bool {
 /// The ways out from where a resident stands, searched once for the whole
 /// decision. `None` where no road reaches the building.
 fn routes_from(world: &World, at: EntityId) -> Option<Routes<'_>> {
-    world.road_node_for_building(at).map(|node| Routes::from(world, node))
+    world.street_of(at).map(|node| Routes::from(world, node))
 }
 
 /// The best one place offers a bucket, through any of its taps for the need.
@@ -308,7 +308,7 @@ fn search(world: &World, r: &Resident, earning: f64, at: EntityId, b: &Bucket, n
         // is scored on the crow-flies estimate — which, having no route to
         // lengthen it, comes out *cheaper* than anywhere real — so it wins,
         // the drive is refused, and the search picks it again every retry.
-        .filter(|&id| world.road_node_for_building(id).is_some())
+        .filter(|&id| world.street_of(id).is_some())
         .filter(|&id| taps_of(world, id).iter().any(|t| t.need == need))
         .filter_map(|id| Candidate::new(id, false, verdict_at(world, r, earning, at, b, id, now, crowd, routes, false)))
         .collect();
@@ -602,7 +602,7 @@ fn drive(
     now: GameTime,
     until: GameTime,
 ) -> bool {
-    match world.road_node_for_building(from_building) {
+    match world.street_of(from_building) {
         Some(node) => start_trip(world, events, car, node, dest_building, now, until),
         None => false,
     }
@@ -877,7 +877,7 @@ fn taps_of(world: &World, building: EntityId) -> &'static [Tap] {
 /// at either end. Where no road joins them, as the crow flies with the
 /// detour factor.
 fn travel_ms(world: &World, routes: &mut Option<Routes>, from: EntityId, to: EntityId) -> GameTime {
-    if let (Some(routes), Some(b)) = (routes.as_mut(), world.road_node_for_building(to))
+    if let (Some(routes), Some(b)) = (routes.as_mut(), world.street_of(to))
         && let Some(ms) = routes.cost_to(b)
     {
         return (ms + LOT_MS) as GameTime;

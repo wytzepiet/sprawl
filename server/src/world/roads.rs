@@ -102,7 +102,7 @@ impl World {
         if wet(from) || wet(to) {
             return false;
         }
-        // A road may end on a plot — that is all a driveway is — but never start
+        // A road may end on a building — that is its door — but never start
         // on one, or it would run in one side and out the other.
         if self.claimed_plot_at(from).is_some() {
             return false;
@@ -121,8 +121,7 @@ impl World {
         if one_way {
             !self.would_be_too_sharp(from, dx, dy, true)
         } else {
-            // Whatever driveway stands here is about to be replaced, so its arm
-            // is not something the new one has to turn away from.
+            // Into a building, nothing stands on its tile to turn from.
             !self.would_be_too_sharp(from, dx, dy, false) && (into_building || !self.would_be_too_sharp(to, -dx, -dy, false))
         }
     }
@@ -131,12 +130,15 @@ impl World {
         if !self.may_lay(from, to, one_way) {
             return;
         }
-        let into_building = self.claimed_plot_at(to).is_some();
-
-        // A building takes exactly one driveway, and it is the newest: drawing
-        // a road into it is how you move the old one.
-        if into_building {
-            self.clear_driveway(to);
+        // Into a building is its door, moved here: the street it runs
+        // from is laid, and nothing on the building's tile.
+        if let Some(id) = self.claimed_plot_at(to) {
+            self.place_road_of(from, road, true);
+            self.set_door(id, Some(crate::protocol::Door { tile: to, street: from }));
+            // Reached, as by a survey road: a depot's fleet and a farm's
+            // land come with the door, not with the first call.
+            self.open_door(id);
+            return;
         }
 
         let from_id = self.place_road_of(from, road, true);
@@ -160,15 +162,10 @@ impl World {
                 node.outgoing.push(from_id);
             }
 
-        // Reached, as by a survey road: a depot's fleet and a farm's land
-        // come with the driveway, not with the first call.
-        if into_building && let Some(id) = self.claimed_plot_at(to) {
-            self.attach_driveway(id);
-        }
     }
 
     /// Lay a street along a path, both ways, with no player-input checks:
-    /// driveways and test worlds.
+    /// the survey's streets and test worlds.
     pub fn place_road_path(&mut self, path: &[GridCoord]) {
         self.place_road_path_of(path, false);
     }
@@ -216,15 +213,8 @@ impl World {
         }
         // A street reaches whatever dormant building stands beside it — once
         // the nodes are joined, since a building reached stables its fleet
-        // in a lot read off its driveway and the street it joins.
-        self.attach_driveways_along(&expanded);
-    }
-
-    /// Remove the road node standing at `pos`.
-    pub fn handle_demolish_road(&mut self, pos: GridCoord) {
-        if let Some(id) = self.road_node_at(pos) {
-            self.demolish_node(id);
-        }
+        // in a lot read off its door and the street it joins.
+        self.open_doors_along(&expanded);
     }
 
     /// Remove a road node by id and clean up every reference to it. A tile

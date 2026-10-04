@@ -799,12 +799,13 @@ mod tests {
             Some(e) => (e.position.unwrap(), match e.object { GameObject::Building(ref b) => b.facing, _ => unreachable!() }),
             None => unreachable!(),
         };
-        let door = world.road_node_for_building(first).and_then(|n| world.objects.get(n)).and_then(|e| e.position).expect("a driveway");
+        let door = world.door_of(first).expect("a door").0;
         world.remove_building(first);
         world.place_road_path(&[GridCoord { x: door.x, y: 0 }, door]);
         let farm = world.place_building(pos, BuildingKind::Farm, facing).expect("a farm over the stub");
-        assert!(world.road_node_for_building(farm).is_some(), "the stub is not the farm's driveway");
-        world.attach_driveway(farm);
+        assert_eq!(world.door_of(farm).map(|d| d.0), Some(door), "the stub is the farm's door");
+        assert!(world.road_node_at(door).is_none(), "and no road on its tile");
+        world.open_door(farm);
         tractor(&world, farm);
         assert!(!tiles(&world, farm).is_empty(), "the farm claimed no land");
     }
@@ -815,17 +816,17 @@ mod tests {
     fn a_farm_reached_later_gets_its_tractor() {
         let mut world = land();
         let farm = world.place_building(GridCoord { x: 10, y: 4 }, BuildingKind::Farm, 0).expect("a farm off the street");
-        assert!(world.road_node_for_building(farm).is_none());
+        assert!(world.street_of(farm).is_none());
         assert!(world.objects.iter().all(|e| !matches!(e.object, GameObject::Car(ref c) if c.owner == farm)), "a tractor before any road");
         world.place_road_path(&(0..=3).map(|y| GridCoord { x: 11, y }).collect::<Vec<_>>());
-        println!("node {:?} land {}", world.road_node_for_building(farm), tiles(&world, farm).len());
+        println!("node {:?} land {}", world.street_of(farm), tiles(&world, farm).len());
         tractor(&world, farm);
         assert!(!tiles(&world, farm).is_empty(), "the farm claimed no land");
     }
 
     /// The farm from the save of 2026-09-15: seed 7, a diagonal highway on
     /// both flanks a tile off the plot, the farm placed beside it and
-    /// reached by a driveway drawn later. Its tractor stands in a dock,
+    /// reached by a door drawn later. Its tractor stands in a dock,
     /// and its land, though both flanks are lane and not field, lies
     /// behind the barn across the lane.
     #[test]
@@ -835,8 +836,9 @@ mod tests {
         world.place_road_path_of(&[(57, 46), (58, 45), (59, 44), (60, 43), (61, 42)].map(|(x, y)| GridCoord { x, y }), true);
         world.place_road_path_of(&[(61, 42), (62, 43), (62, 44), (63, 45), (64, 46), (65, 47)].map(|(x, y)| GridCoord { x, y }), true);
         let farm = world.place_building(GridCoord { x: 60, y: 45 }, BuildingKind::Farm, 0).expect("the farm");
-        assert!(world.road_node_for_building(farm).is_none(), "served before any driveway");
-        world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }, GridCoord { x: 61, y: 45 }]);
+        assert!(world.street_of(farm).is_none(), "served before any door");
+        world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }]);
+        world.handle_place_road(GridCoord { x: 61, y: 44 }, GridCoord { x: 61, y: 45 }, false, false);
         let t = tractor(&world, farm);
         assert!(matches!(world.objects.get(t).map(|e| &e.object), Some(GameObject::Car(c)) if c.spot.is_some()), "the tractor has no spot");
         let land = tiles(&world, farm);

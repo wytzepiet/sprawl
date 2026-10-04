@@ -31,6 +31,10 @@ export interface Town {
    *  brush stroke that painted them ran; unset, the look joins tiles of a
    *  kind by its own rule (`footprint.ts`). */
   joins?(c0: number, r0: number, c1: number, r1: number): boolean;
+  /** The way from a built tile to the street its door opens onto, if
+   *  that tile is its door; unset, a house's door is on the first side
+   *  with a street (`front` in `dressing.ts`). */
+  door?(c: number, r: number): [number, number] | undefined;
 }
 
 export const LETTERS: Record<string, BuildingKind> = {

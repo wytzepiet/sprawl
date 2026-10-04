@@ -73,6 +73,7 @@ export class TownLayer {
   private draw() {
     const started = performance.now();
     const buildings = new Map<string, { entry: GameObjectEntry; kind: BuildingKind }>();
+    const doors = doorsOf(this.entities);
     const roads = new Map<string, { entry: GameObjectEntry; node: RoadNode }>();
     const byId = new Map<number, GameObjectEntry>();
     // The bounds of the buildings.
@@ -135,6 +136,8 @@ export class TownLayer {
           const [x, y] = [x1 - c1, y1 - r1];
           return a === b || !!(byId.get(a)?.object.data as Building | undefined)?.joined.some((t) => t.x === x && t.y === y);
         },
+        // Turned half round, so the way to the street is too.
+        door: (c, r) => turned(doors.get(`${x1 - c},${y1 - r}`)),
       };
       return town;
     };
@@ -191,6 +194,7 @@ export class TownLayer {
   private world(): Town {
     const nodes = new Map<string, RoadNode & { id: number }>();
     const kinds = new Map<string, BuildingKind>();
+    const doors = doorsOf(this.entities);
     this.entities((e) => {
       if (e.object.kind === "RoadNode" && e.position) nodes.set(`${e.position.x},${e.position.y}`, { ...e.object.data, id: e.id });
       else if (e.object.kind === "Building") for (const t of (e.object.data as Building).tiles) kinds.set(`${t.x},${t.y}`, e.object.data.kind);
@@ -209,6 +213,7 @@ export class TownLayer {
         return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
       },
       through: (c, r) => !!road(c, r)?.road,
+      door: (c, r) => turned(doors.get(key(c, r))),
     };
   }
 
@@ -249,6 +254,19 @@ export class TownLayer {
     this.roads.clear();
   }
 }
+
+/** Every building's door, by its tile: the way on the map to its street. */
+function doorsOf(each: (f: (e: GameObjectEntry) => void) => void): Map<string, [number, number]> {
+  const doors = new Map<string, [number, number]>();
+  each((e) => {
+    const door = e.object.kind === "Building" ? (e.object.data as Building).door : null;
+    if (door) doors.set(`${door.tile.x},${door.tile.y}`, [door.street.x - door.tile.x, door.street.y - door.tile.y]);
+  });
+  return doors;
+}
+
+/** A way on the map as the town grid's frame has it, turned half round. */
+const turned = (d: [number, number] | undefined): [number, number] | undefined => d && [-d[0], -d[1]];
 
 /** A box of tiles: x0, y0, x1, y1. */
 type Bounds = [number, number, number, number];

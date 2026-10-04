@@ -187,7 +187,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             continue;
         }
         // Nothing can be delivered to a door no road reaches.
-        if world.road_node_for_building(at).is_none() {
+        if world.street_of(at).is_none() {
             continue;
         }
         let Some((here, row, order)) = world.objects.get(at).and_then(|e| match e.object {
@@ -277,7 +277,7 @@ fn cheapest_source(world: &mut World, at: EntityId, good: Need, now: GameTime) -
         },
         None => return None,
     };
-    let door = world.road_node_for_building(at)?;
+    let door = world.street_of(at)?;
     let mut makers: Vec<EntityId> = world
         .objects
         .iter()
@@ -295,7 +295,7 @@ fn cheapest_source(world: &mut World, at: EntityId, good: Need, now: GameTime) -
         best = Some((2.0 * drive + AWAY_MS as f64 + order * economy::import(economy::wholesale(good)) * dear, Source::Edge(entry)));
     }
     for seller in makers {
-        let Some(their) = world.road_node_for_building(seller) else { continue };
+        let Some(their) = world.street_of(seller) else { continue };
         let Some(drive) = routes.cost_to(their) else { continue };
         let cost = 2.0 * drive + SERVICE_MS as f64 + order * economy::price_of(world, seller, good) * dear;
         if best.as_ref().is_none_or(|(b, _)| cost < *b) {
@@ -339,7 +339,7 @@ fn cheapest_seller(world: &mut World, at: EntityId, good: Need, now: GameTime) -
         .collect();
     depots.sort_unstable();
     let vans: Vec<(EntityId, EntityId, EntityId)> = depots.into_iter().filter_map(|d| free_vehicle(world, d, van(good)).map(|(van, door)| (d, van, door))).collect();
-    let door = world.road_node_for_building(at)?;
+    let door = world.street_of(at)?;
     let mut routes = Routes::from(world, door);
     // Milliseconds of the building's own time per hour of money.
     let dear = economy::HOUR / economy::earns(world, at, now);
@@ -350,7 +350,7 @@ fn cheapest_seller(world: &mut World, at: EntityId, good: Need, now: GameTime) -
     let mut best: Option<(f64, Seller)> = None;
     if world.treasury > 0.0
         && let Some(edge) = world.nearest_edge(here)
-        && let Some(entry) = world.road_node_for_building(edge)
+        && let Some(entry) = world.street_of(edge)
         && let Some(cost) = delivered(entry, economy::import(economy::wholesale(good)))
     {
         best = Some((cost, Seller::Edge(entry)));
@@ -387,7 +387,7 @@ pub fn stable(world: &mut World, facility: EntityId) {
 /// A facility's vehicle of a role standing free in its yard, and the
 /// driveway it leaves from. None where no road reaches the yard.
 fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole) -> Option<(EntityId, EntityId)> {
-    let door = world.road_node_for_building(facility)?;
+    let door = world.street_of(facility)?;
     stable(world, facility);
     let car = fleet_of(world, facility).into_iter().find(|&car| {
         matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.run.is_none() && c.away == 0)
@@ -478,7 +478,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         let gone = if at_pickup {
             world.calls[i].load = economy::shipped(world, call.at, call.good);
             let exit = world.objects.get(call.at).and_then(|e| e.position).and_then(|p| world.entry_node_near(p));
-            match (world.road_node_for_building(call.at), exit) {
+            match (world.street_of(call.at), exit) {
                 (Some(door), Some(exit)) => crate::car::spawn::leave_for_edge(world, events, car, door, exit, now),
                 _ => false,
             }
@@ -490,7 +490,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
             };
             world.calls[i].load = economy::loaded(world, seller, call.good, order, now);
             turn(world, events, seller, now);
-            world.road_node_for_building(seller).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX))
+            world.street_of(seller).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX))
         };
         if !gone {
             events.wake(SERVICE_MS, car);
@@ -542,7 +542,7 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         economy::refilled(world, car, now);
     } else if facility {
         let back = world
-            .road_node_for_building(call.at)
+            .street_of(call.at)
             .is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX));
         if !back {
             events.wake(SERVICE_MS, car);

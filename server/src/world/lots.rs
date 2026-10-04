@@ -7,8 +7,9 @@
 //! one its route.
 //!
 //! Two shapes, each a building's own. A building parks two cars on its
-//! driveway, side by side: a car drives in nose first and backs out onto
-//! the street. A depot, a farm and a port keep a yard: docks against its
+//! drive, side by side: a car drives in nose first and backs out onto
+//! the street. The drive is the lot's, not a road: from the street node
+//! the building's door opens onto (`Building::door`) to its tile. A depot, a farm and a port keep a yard: docks against its
 //! wall that a lorry backs into. A car that finds no spot, and staff,
 //! stop at the door, unseen, until the kerb has bays. See
 //! `docs/parking.md`.
@@ -87,13 +88,14 @@ pub enum Claim {
 
 /// The way in and out of a lot, as node sequences the routes are made of.
 enum Way {
-    /// A driveway pair: in from the street to the spot nose first, out
-    /// backing straight to the street; the door is the driveway node.
-    Driveway { driveway: EntityId, street: EntityId },
-    /// A depot's yard: a two-way lane from the driveway along the front,
+    /// A drive's pair: in from the street to the spot nose first, out
+    /// backing straight to the street; the door is the lot's node on the
+    /// door's tile.
+    Driveway { door: EntityId, street: EntityId },
+    /// A depot's yard: a two-way lane from the door along the front,
     /// and docks against the building's wall, each a spot, entered by
     /// backing in from the stop point beyond its mouth and left forward.
-    /// `lane` runs from the driveway outward; a bay is (mouth, stop) as
+    /// `lane` runs from the door outward; a bay is (mouth, stop) as
     /// indices on it.
     Yard { lane: Vec<EntityId>, bays: Vec<(usize, usize)>, street: EntityId },
 }
@@ -106,10 +108,10 @@ const BAY_MARGIN: f64 = 0.4;
 const WALL: f64 = 0.14;
 
 pub struct Lot {
-    /// Its driveways and the street each joins, in tile order, and the
+    /// Its door's tile and the street node it opens onto, and the
     /// building's tiles and facing: the lot is rebuilt when these no
     /// longer match the map.
-    gates: Vec<(EntityId, EntityId)>,
+    gate: (GridCoord, EntityId),
     shape: (Vec<GridCoord>, u8),
     pub spots: Vec<Spot>,
     way: Way,
@@ -125,37 +127,24 @@ impl World {
     /// The building's lot, built or rebuilt to match the map. `None` where
     /// no road reaches it.
     pub fn lot_mut(&mut self, building: EntityId) -> Option<&mut Lot> {
-        let gates = self.gates_of(building)?;
+        // Its door, and the street it opens onto: none for one no road
+        // reaches, and none at the edge, a road running off the map, where
+        // a car that gets there is gone, so nobody parks.
+        let gate = self.door_of(building)?;
         let (tiles, _, facing) = self.building_of(building)?;
         let shape = (tiles, facing);
-        if self.lots.get(&building).is_none_or(|l| l.gates != gates || l.shape != shape) {
+        if self.lots.get(&building).is_none_or(|l| l.gate != gate || l.shape != shape) {
             // Whatever it had goes; everyone who held something in it
             // holds it again in the new one.
             let stats = self.lots.get(&building).map_or_else(Stats::default, |l| l.stats);
             let held = self.drop_run(building);
-            let mut lot = self.build_lot(building, &gates)?;
+            let mut lot = self.build_lot(building, gate)?;
             lot.stats = stats;
             lot.shape = shape;
             self.lots.insert(building, lot);
             self.reseat(building, held);
         }
         self.lots.get_mut(&building)
-    }
-
-    /// This building's driveways, each with the street it joins. `None`
-    /// for one no road reaches, and for the edge: a road running off the
-    /// map, where a car that gets there is gone, so nobody parks.
-    fn gates_of(&self, building: EntityId) -> Option<Vec<(EntityId, EntityId)>> {
-        let gates: Vec<(EntityId, EntityId)> = self
-            .driveways_of(building)
-            .into_iter()
-            .filter_map(|d| match self.objects.get(d).map(|e| &e.object) {
-                Some(GameObject::RoadNode(n)) => n.outgoing.iter().chain(&n.incoming).copied().find(|&s| s != d).map(|s| (d, s)),
-                _ => None,
-            })
-            .collect();
-        let (_, kind, _) = self.building_of(building)?;
-        (!gates.is_empty() && kind != crate::protocol::BuildingKind::Edge).then_some(gates)
     }
 
     fn building_of(&self, id: EntityId) -> Option<(Vec<GridCoord>, crate::protocol::BuildingKind, u8)> {
@@ -165,7 +154,7 @@ impl World {
         }
     }
 
-    fn build_lot(&mut self, building: EntityId, gates: &[(EntityId, EntityId)]) -> Option<Lot> {
+    fn build_lot(&mut self, building: EntityId, gate: (GridCoord, EntityId)) -> Option<Lot> {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
         let mut spots = Vec::new();
@@ -182,16 +171,22 @@ impl World {
             edges.push((a, b));
         };
         let (tiles, kind, facing) = self.building_of(building)?;
+        // The door: the lot's own node on the door's tile, where a car with
+        // no spot stops, and a yard's lane begins; the drive to it from the
+        // street.
+        let (tile, street) = gate;
+        let door = node(self, [tile.x as f64 + 0.5, tile.y as f64 + 0.5]);
+        edge(self, street, door);
+        edge(self, door, street);
         if is_yard(kind) {
-            let mut lot = self.build_yard(gates, &tiles, kind, facing, node, edge)?;
+            let mut lot = self.build_yard(gate, door, &tiles, kind, facing, node, edge)?;
             lot.nodes = nodes;
             lot.edges = edges;
             return Some(lot);
         }
         // A driveway pair, driven into nose first and backed out of.
         // Spot 0 is on the lane a car leaves by.
-        let (driveway, street) = gates[0];
-        let d = self.node_pos(driveway)?;
+        let d = self.node_pos(door)?;
         let s = self.node_pos(street)?;
         let len = ((s[0] - d[0]).powi(2) + (s[1] - d[1]).powi(2)).sqrt();
         let out = [(s[0] - d[0]) / len, (s[1] - d[1]) / len];
@@ -203,25 +198,26 @@ impl World {
             edge(self, id, street);
             spots.push(Spot { node: id, pose: Pose { at, heading }, windows: Vec::new() });
         }
-        Some(Lot { gates: gates.to_vec(), shape: Default::default(), spots, way: Way::Driveway { driveway, street }, nodes, edges, doorway: Vec::new(), stats: Stats::default() })
+        Some(Lot { gate, shape: Default::default(), spots, way: Way::Driveway { door, street }, nodes, edges, doorway: Vec::new(), stats: Stats::default() })
     }
 
     /// A depot's yard, in its own frame: u along the frontage from the
-    /// left end, v in from the street. The driveway's tile centre is on
-    /// the lane; the lane runs from it past every dock's mouth and stop
+    /// left end, v in from the street. The door's tile centre is on the
+    /// lane; the lane runs from it past every dock's mouth and stop
     /// point; each dock is a node at the wall where a docked lorry's cab
-    /// stands. The frame is mirrored when the driveway is at the right end,
+    /// stands. The frame is mirrored when the door is at the right end,
     /// so a lorry always drives past its bay and backs in from beyond it.
     fn build_yard(
         &mut self,
-        gates: &[(EntityId, EntityId)],
+        gate: (GridCoord, EntityId),
+        door: EntityId,
         tiles: &[GridCoord],
         kind: crate::protocol::BuildingKind,
         facing: u8,
         mut node: impl FnMut(&mut World, [f64; 2]) -> EntityId,
         mut edge: impl FnMut(&mut World, EntityId, EntityId),
     ) -> Option<Lot> {
-        let (driveway, street) = gates[0];
+        let street = gate.1;
         let (pos, p) = World::lie(tiles, kind, facing);
         let ((lx, ly), (gw, gh)) = p.lot?;
         let lot = GridCoord { x: pos.x + lx as i32, y: pos.y + ly as i32 };
@@ -237,7 +233,7 @@ impl World {
                 _ => [lot.x as f64 + v, lot.y as f64 + u],
             }
         };
-        let dpos = self.node_pos(driveway)?;
+        let dpos = self.node_pos(door)?;
         let u_gate = if along_x { dpos[0] - lot.x as f64 } else { dpos[1] - lot.y as f64 };
         let mirrored = u_gate > w / 2.0;
         let world_at = move |u: f64, v: f64| grid_at(if mirrored { w - u } else { u }, v);
@@ -247,7 +243,7 @@ impl World {
         let us: Vec<f64> = (0..n).map(|i| BAY_MARGIN + BAY_W / 2.0 + i as f64 * BAY_W).collect();
         let lane_v = 0.5;
         let dock_v = d + WALL - crate::car::tail(crate::protocol::CarRole::Truck);
-        // Stations along the lane, in order from the driveway: each dock's
+        // Stations along the lane, in order from the door: each dock's
         // mouth, and its stop point half a lorry beyond.
         let mut stations: Vec<(f64, usize, bool)> = Vec::new();
         for (i, &u) in us.iter().enumerate() {
@@ -255,7 +251,7 @@ impl World {
             stations.push((u + 0.5, i, false));
         }
         stations.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-        let mut lane = vec![driveway];
+        let mut lane = vec![door];
         let mut bays = vec![(0usize, 0usize); n];
         for &(u, i, mouth) in &stations {
             let id = node(self, world_at(u, lane_v));
@@ -271,8 +267,6 @@ impl World {
             edge(self, pair[0], pair[1]);
             edge(self, pair[1], pair[0]);
         }
-        edge(self, street, driveway);
-        edge(self, driveway, street);
         let mut spots = Vec::new();
         for (i, &u) in us.iter().enumerate() {
             let at = world_at(u, dock_v);
@@ -282,7 +276,7 @@ impl World {
             edge(self, id, lane[bays[i].0]);
             spots.push(Spot { node: id, pose: Pose { at, heading: (out[1] - at[1]).atan2(out[0] - at[0]) }, windows: Vec::new() });
         }
-        Some(Lot { gates: gates.to_vec(), shape: Default::default(), spots, way: Way::Yard { lane, bays, street }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), stats: Stats::default() })
+        Some(Lot { gate, shape: Default::default(), spots, way: Way::Yard { lane, bays, street }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), stats: Stats::default() })
     }
 
     /// Take a building's lot out of the world; whoever was parked in it is
@@ -420,7 +414,7 @@ impl World {
         // The spot in front of the door is the one wanted, but not by
         // everyone: each free spot's distance to the door is stretched by
         // up to a spot's worth, drawn per visit.
-        let door = self.node_pos(lot.gates[0].0);
+        let door = Some([lot.gate.0.x as f64 + 0.5, lot.gate.0.y as f64 + 0.5]);
         let mut rng = SmallRng::seed_from_u64(self.terrain_seed as u64 ^ car.rotate_left(32) ^ from);
         let mut appeal = |i: usize| -> f64 {
             let at = lot.spots[i].pose.at;
@@ -544,7 +538,7 @@ impl World {
         let parked = lot.spots.iter().filter(|s| s.windows.iter().any(|w| w.from <= now && now < w.to)).count();
         json!({
             "now": hhmm(now),
-            "entrances": lot.gates.len(),
+            "door": [lot.gate.0.x, lot.gate.0.y],
             "spots": spots.len(),
             "held_now": parked,
             "at_doors": lot.doorway.len(),
@@ -563,8 +557,8 @@ impl World {
         let claim = self.claim_of(building, car)?;
         Some(match (&lot.way, claim) {
             (Way::Driveway { street, .. }, Claim::Spot(i)) => vec![lot.spots[i].node, *street],
-            (Way::Driveway { driveway, street }, Claim::Door) => vec![*driveway, *street],
-            // Out of the dock forward, back along the lane to the driveway.
+            (Way::Driveway { door, street }, Claim::Door) => vec![*door, *street],
+            // Out of the dock forward, back along the lane to the door.
             (Way::Yard { lane, bays, street }, Claim::Spot(i)) => {
                 let mut v = vec![lot.spots[i].node];
                 v.extend(lane[..=bays[i].0].iter().rev());
@@ -583,13 +577,13 @@ impl World {
         // edge; for anything the road never reached it is no way in at all,
         // and the trip is refused as before.
         if self.lot_mut(building).is_none() {
-            return Some(vec![self.road_node_for_building(building)?]);
+            return Some(vec![self.street_of(building)?]);
         }
         let claim = self.claim_spot(building, car, from, to)?;
         let lot = self.lots.get(&building)?;
         Some(match (&lot.way, claim) {
             (Way::Driveway { street, .. }, Claim::Spot(i)) => vec![*street, lot.spots[i].node],
-            (Way::Driveway { driveway, street }, Claim::Door) => vec![*street, *driveway],
+            (Way::Driveway { door, street }, Claim::Door) => vec![*street, *door],
             // Along the lane past the mouth to the stop point, then back
             // to the mouth and into the dock: the last two edges in reverse.
             (Way::Yard { lane, bays, street }, Claim::Spot(i)) => {
@@ -605,17 +599,17 @@ impl World {
     }
 
     /// The node a street route to this building ends at: the street node
-    /// its driveway joins — and for something with no lot at all, the road
-    /// it stands on.
+    /// its door opens onto — and for something with no lot at all, the
+    /// road it stands on.
     pub fn approach(&mut self, building: EntityId) -> Option<EntityId> {
         match self.lot_mut(building) {
             Some(Lot { way: Way::Driveway { street, .. } | Way::Yard { street, .. }, .. }) => Some(*street),
-            None => self.road_node_for_building(building),
+            None => self.street_of(building),
         }
     }
 
     /// How many edges at the start of the car's way out are driven
-    /// backwards: one off a driveway, onto the street; none anywhere else.
+    /// backwards: one off a drive, onto the street; none anywhere else.
     pub fn backs_out(&self, car: EntityId) -> usize {
         let Some(&building) = self.claims.get(&car) else { return 0 };
         match (self.lots.get(&building).map(|l| &l.way), self.claim_of(building, car)) {
@@ -776,7 +770,8 @@ mod tests {
         let depot = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Warehouse).unwrap();
         let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
         let way = world.way_in(house, car, 0, GameTime::MAX).unwrap();
-        let driveway = world.node_pos(world.road_node_for_building(house).unwrap()).unwrap();
+        let door = world.door_of(house).unwrap().0;
+        let driveway = [door.x as f64 + 0.5, door.y as f64 + 0.5];
         let spot = world.node_pos(way[1]).unwrap();
         world.park_in_lot(house, car, 0);
         let pose = match world.objects.get(car).map(|e| &e.object) {

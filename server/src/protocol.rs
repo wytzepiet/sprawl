@@ -163,6 +163,21 @@ pub struct Building {
     /// its own. Only a kind that never grows into one building keeps any.
     #[serde(default)]
     pub joined: Vec<GridCoord>,
+    /// Where it is driven into: one of its tiles, and the street tile
+    /// beside it the drive runs from. The drive is the building's, not a
+    /// road: drawn as one, driven by the cars of its lot, and gone with it.
+    /// Kept when the street goes, and good again if it comes back.
+    #[serde(default)]
+    pub door: Option<Door>,
+}
+
+/// A building's door: its tile a drive runs onto, and the street tile the
+/// drive runs from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Door {
+    pub tile: GridCoord,
+    pub street: GridCoord,
 }
 
 /// A tile of a farm's land, and where it is in the cycle: grass until the
@@ -230,6 +245,7 @@ impl Building {
             land: Vec::new(),
             ruts: Vec::new(),
             joined: Vec::new(),
+            door: None,
         }
     }
 }
