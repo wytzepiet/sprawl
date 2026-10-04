@@ -39,6 +39,11 @@ export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Ha
 /** The steps out of a tile, as the brush numbers them: east and on round toward +y. */
 export const STEPS: [number, number][] = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
 
+/** The step a way points, as its index in `STEPS`. */
+export function snap(dx: number, dy: number): number {
+  return ((Math.round((Math.atan2(dy, dx) * 4) / Math.PI) % 8) + 8) % 8;
+}
+
 /** May the hand take this step with this tool: the build's gate, then the world's rule. */
 export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolean {
   if (typeof tool !== "string") {

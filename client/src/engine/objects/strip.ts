@@ -1,6 +1,5 @@
 import { Mesh, VertexBuffer, VertexData, type StandardMaterial } from "@babylonjs/core";
 import type { DrawnPath } from "./drawnPath";
-import { GRID_LINE } from "./terrainGeometry";
 
 /**
  * The field: a ribbon a tile wide along the path the tractor is drawn
@@ -27,11 +26,11 @@ export type RGB = [number, number, number];
  *  how much of the tone each is painted in. */
 type Lane = { from: number; to: number; shade: number };
 /** The ground, then the furrows over it: a quarter tile apart, as wide
- *  as the map's grid lines, one centred on each edge of the tile; the
+ *  a sixteenth of a tile wide, one centred on each edge of the tile; the
  *  ground is that half a line wider than the tile each side, so rows
  *  side by side overlap on the line they share and the field's outer
  *  edge carries a full one. */
-const FURROW = GRID_LINE;
+const FURROW = 1 / 16;
 const FURROW_SHADE = 0.88;
 const LANES: Lane[] = [{ from: -0.5 - FURROW / 2, to: 0.5 + FURROW / 2, shade: 1 }, ...[-0.5, -0.25, 0, 0.25, 0.5].map((at) => ({ from: at - FURROW / 2, to: at + FURROW / 2, shade: FURROW_SHADE }))];
 

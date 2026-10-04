@@ -4,7 +4,6 @@ import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
 import { useTheme } from "./theme";
 import { TerrainChunks } from "./TerrainChunks";
-import { tool } from "../ui/buildMode";
 import { FogOfWar } from "./FogOfWar";
 import {
   eachEntity,
@@ -87,9 +86,6 @@ export default function World() {
   const town = new TownLayer(scene, pool, shadowGenerator()!, theme, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
 
   createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
-  // The grid is for building: drawn while a tool is in hand, and the map
-  // is left whole otherwise.
-  createEffect(() => terrain.setGrid(tool() !== null));
   createEffect(on(theme, () => (terrain.markAllDirty(), town.repaint()), { defer: true }));
 
   function mount(entry: GameObjectEntry): (() => void) | null {

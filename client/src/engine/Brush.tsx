@@ -1,36 +1,13 @@
 import { createEffect, createMemo, on, onCleanup } from "solid-js";
-import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
-import { useInstancePool } from "./InstancePool";
+import { Dots } from "./dots";
 import { screenToWorld, viewExtent } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { tree, unlocked } from "../state/tree";
 import { isRoad, tool } from "../ui/buildMode";
-import { affords, hand, may, mayStart, STEPS, type Hand } from "./may";
-import type { MeshGeometry } from "./Mesh";
+import { affords, hand, may, mayStart, snap, STEPS, type Hand } from "./may";
+import { useTheme } from "./theme";
 import type { GridCoord, TerrainType } from "../generated";
-
-/** Snap an angle to one of 8 directions, returning the sector index (`STEPS`). */
-function snapDirection(dx: number, dy: number): number {
-  const angle = Math.atan2(dy, dx);
-  return ((Math.round(angle * 4 / Math.PI) % 8) + 8) % 8;
-}
-
-/** Just over the roads and the lawns, under anything standing. */
-const DOT_Z = 0.08;
-
-/** A flat disc, `r` across from its middle. */
-function disc(r: number): MeshGeometry {
-  const g: MeshGeometry = { positions: [0, 0, 0], normals: [0, 0, 1], indices: [] };
-  const n = 16;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    g.positions.push(Math.cos(a) * r, Math.sin(a) * r, 0);
-    g.normals.push(0, 0, 1);
-    g.indices.push(0, 1 + ((i + 1) % n), 1 + i);
-  }
-  return g;
-}
 
 /**
  * The mayor's hand on the map: whatever is held is laid as the drag goes,
@@ -39,14 +16,17 @@ function disc(r: number): MeshGeometry {
  * A tap, or the first tile of a drag, paints or clears that tile alone;
  * a road needs two.
  *
- * And where it may go, worked out here (`may.ts`): a dot on every tile in
- * view a drag may start from while nothing is pressed, and while dragging
- * the steps the tile it is on allows, lit. A step refused is not taken:
- * the drag waits there.
+ * And where it may go, worked out here (`may.ts`) and shown by the dots
+ * (`dots.ts`): one on every tile in view a drag may start from while
+ * nothing is pressed, and while dragging the steps the tile it is on
+ * allows. A step refused is not taken: the drag waits there, straining.
  */
 export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
   const { scene, canvas } = useEngine();
-  const pool = useInstancePool();
+  const overlay = (<canvas class="fixed inset-0 pointer-events-none" style={{ width: "100vw", height: "100vh" }} />) as HTMLCanvasElement;
+  const theme = useTheme();
+  const dots = new Dots(scene, canvas, overlay, () => theme().hand);
+  const tick = scene.onAfterRenderObservable.add(() => dots.frame());
   const { send, growth } = useGame();
   let current: GridCoord | null = null;
   let prevWorld: { wx: number; wy: number } | null = null;
@@ -94,31 +74,23 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     if (viewBox().join() !== drawnOver) draw();
   });
 
-  // The dots: a small one on every start, a bigger one on every step the
-  // tile being dragged from allows.
-  const dots: { key: string; id: number }[] = [];
+  /** Tell the dots what to show: the starts in view while nothing is
+   *  pressed, the steps out of the tile underfoot while dragging. */
   function draw() {
-    for (const { key, id } of dots.splice(0)) pool.removeInstance(key, id);
     const held = tool();
-    if (!world || held === null) return;
-    world.growth = growth();
-    if (current) {
-      pool.ensureBucket("may_next", disc(0.14), Color3.White(), false, false);
-      for (const [i, [dx, dy]] of STEPS.entries()) {
-        if (!allowed(current, i)) continue;
-        dots.push({ key: "may_next", id: pool.addInstance("may_next", [current.x + dx + 0.5, current.y + dy + 0.5, DOT_Z]) });
-      }
-      return;
-    }
-    pool.ensureBucket("may_start", disc(0.07), new Color3(0.25, 0.27, 0.32), false, false);
-    const box = viewBox();
-    drawnOver = box.join();
-    const [x0, y0, x1, y1] = box;
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        if (mayStart(world, held, { x, y })) dots.push({ key: "may_start", id: pool.addInstance("may_start", [x + 0.5, y + 0.5, DOT_Z]) });
+    const starts: [number, number][] = [];
+    const nexts: [number, number][] = [];
+    const [x0, y0, x1, y1] = viewBox();
+    if (world && held !== null) {
+      world.growth = growth();
+      if (current) {
+        for (const [i, [dx, dy]] of STEPS.entries()) if (allowed(current, i)) nexts.push([current.x + dx, current.y + dy]);
+      } else {
+        drawnOver = [x0, y0, x1, y1].join();
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (mayStart(world, held, { x, y })) starts.push([x, y]);
       }
     }
+    dots.aim(starts, nexts, current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
   }
 
   const onPointerDown = (e: PointerEvent) => {
@@ -129,12 +101,14 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     accDx = 0;
     accDy = 0;
     if (!isRoad(tool())) step(current, current);
+    dots.grab(current, { x: w.wx, y: w.wy });
     draw();
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (!current || !prevWorld) return;
     const w = pick(e);
+    dots.pull({ x: w.wx, y: w.wy });
     accDx += w.wx - prevWorld.wx;
     accDy += w.wy - prevWorld.wy;
     prevWorld = w;
@@ -142,7 +116,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     // Need enough accumulated movement to determine direction
     if (Math.max(Math.abs(accDx), Math.abs(accDy)) < 0.1) return;
 
-    const sector = snapDirection(accDx, accDy);
+    const sector = snap(accDx, accDy);
     const [sx, sy] = STEPS[sector];
     let cur = current!;
 
@@ -158,6 +132,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
       if (!allowed(cur, sector)) break; // refused: wait here
 
       step(cur, next);
+      dots.step(next);
       cur = next;
     }
     if (cur !== current) {
@@ -170,6 +145,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   };
 
   const onPointerUp = () => {
+    if (current) dots.release();
     current = null;
     prevWorld = null;
     draw();
@@ -184,8 +160,8 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
     scene.onAfterRenderObservable.remove(watch);
-    for (const { key, id } of dots.splice(0)) pool.removeInstance(key, id);
+    scene.onAfterRenderObservable.remove(tick);
   });
 
-  return <></>;
+  return overlay;
 }

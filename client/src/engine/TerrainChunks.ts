@@ -1,7 +1,6 @@
 import {
   Color3,
   Mesh,
-  RawTexture,
   StandardMaterial,
   VertexData,
   type Nullable,
@@ -16,7 +15,6 @@ import {
   CHUNK_SIZE,
   CHUNK_SKIRT,
   CHUNK_STRIDE,
-  GRID_LINE,
   TREE_BODY,
   TREE_TOP,
   TYPE_BY_BYTE,
@@ -39,41 +37,6 @@ const APPLIES_PER_FRAME = 2;
 
 /** Sun frustum half-extent beyond which per-chunk detail is dropped. */
 const DETAIL_MAX_ORTHO = 30;
-
-const TEX_SIZE = 32;
-/** Each tile draws half of every boundary it shares, hence the halving. */
-const BORDER = Math.round((GRID_LINE / 2) * TEX_SIZE);
-
-/** How long the grid takes to come and go, in seconds. */
-const GRID_FADE = 0.2;
-
-/** The tile's grid line, as a texture every tile wears and the ground's
- *  colour is multiplied by: `border` texels of it along each edge, at
- *  `strength` of a full line (none at 0). The map's zoom sets how wide
- *  that comes out. */
-function borderData(border: number, strength: number): Uint8Array {
-  const data = new Uint8Array(TEX_SIZE * TEX_SIZE * 4);
-  for (let y = 0; y < TEX_SIZE; y++) {
-    for (let x = 0; x < TEX_SIZE; x++) {
-      const i = (y * TEX_SIZE + x) * 4;
-      const edge =
-        x < border ||
-        x >= TEX_SIZE - border ||
-        y < border ||
-        y >= TEX_SIZE - border;
-      const v = edge ? Math.round(255 - 25 * strength) : 255;
-      data[i] = v;
-      data[i + 1] = v;
-      data[i + 2] = v;
-      data[i + 3] = 255;
-    }
-  }
-  return data;
-}
-
-export function createBorderTexture(scene: Scene, border = BORDER, strength = 1): RawTexture {
-  return RawTexture.CreateRGBATexture(borderData(border, strength), TEX_SIZE, TEX_SIZE, scene, false, false);
-}
 
 interface ChunkMeshes {
   ground: Mesh;
@@ -119,13 +82,8 @@ export class TerrainChunks {
   private groundMat: StandardMaterial;
   private cliffMat: StandardMaterial;
   private treeMat: StandardMaterial;
-  private borderTex: RawTexture;
   private observer: Nullable<Observer<Scene>>;
   private detailVisible = true;
-  /** The grid, shown while building and faded out otherwise: how much of
-   *  it shows, and how much should. */
-  private grid = 0;
-  private gridTarget = 0;
 
   constructor(
     private scene: Scene,
@@ -133,8 +91,6 @@ export class TerrainChunks {
     private theme: () => Theme,
     private isBuilt: (x: number, y: number) => boolean,
   ) {
-    this.borderTex = createBorderTexture(scene, BORDER, 0);
-
     // One material per pass, shared by every chunk — colour lives in the
     // vertex buffer, so terrain type costs nothing at the material level.
     this.groundMat = new StandardMaterial("terrain_ground", scene);
@@ -142,7 +98,6 @@ export class TerrainChunks {
     // ground covers every pixel -- shading it twice cost half the framerate.
     // Culling is Babylon's default; all geometry winds to match it.
     this.groundMat.specularColor = Color3.Black();
-    this.groundMat.diffuseTexture = this.borderTex;
 
     this.cliffMat = new StandardMaterial("terrain_cliff", scene);
     // The one material that genuinely wants both sides. Cliff walls exist only
@@ -154,9 +109,6 @@ export class TerrainChunks {
     this.cliffMat.specularColor = Color3.Black();
     this.cliffMat.disableLighting = true;
 
-    // Plot boundaries are their own geometry because the shared border texture
-    // can only darken the ground, never recolour it.
-
     this.treeMat = new StandardMaterial("terrain_tree", scene);
     this.treeMat.specularColor = Color3.Black();
 
@@ -164,21 +116,8 @@ export class TerrainChunks {
 
     this.observer = scene.onBeforeRenderObservable.add(() => {
       this.updateDetail();
-      this.fadeGrid();
       this.flush();
     });
-  }
-
-  /** Show the grid, as while building, or let it fade from the map. */
-  setGrid(shown: boolean): void {
-    this.gridTarget = shown ? 1 : 0;
-  }
-
-  private fadeGrid(): void {
-    if (this.grid === this.gridTarget) return;
-    const step = this.scene.getEngine().getDeltaTime() / 1000 / GRID_FADE;
-    this.grid = this.gridTarget > this.grid ? Math.min(this.gridTarget, this.grid + step) : Math.max(this.gridTarget, this.grid - step);
-    this.borderTex.update(borderData(BORDER, this.grid));
   }
 
   /** The worker has no Babylon, so the theme crosses as plain floats. */
@@ -382,7 +321,6 @@ export class TerrainChunks {
     data.positions = buf.positions;
     data.indices = buf.indices;
     data.normals = buf.normals;
-    if (buf.uvs) data.uvs = buf.uvs;
     if (buf.colors) data.colors = buf.colors;
     data.applyToMesh(mesh);
     // Vertex colours are opaque; without this Babylon routes the mesh through
@@ -437,7 +375,6 @@ export class TerrainChunks {
     this.groundMat.dispose();
     this.cliffMat.dispose();
     this.treeMat.dispose();
-    this.borderTex.dispose();
     this.worker.terminate();
     this.tiles.clear();
     this.dirtyGeometry.clear();

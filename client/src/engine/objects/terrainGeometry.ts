@@ -24,7 +24,6 @@ export interface MeshBuffers {
   normals: Float32Array;
   indices: Uint32Array;
   /** Absent on geometry the camera never sees. */
-  uvs?: Float32Array;
   colors?: Float32Array;
 }
 
@@ -34,18 +33,9 @@ export interface ChunkGeometry {
 }
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
-/**
- * Width of a line drawn along a tile boundary, in tiles.
- *
- * The ordinary grid comes from a border texture where each tile contributes
- * half of a shared edge, so this is what both must agree on — the plot outlines
- * are meant to read as the same grid, recoloured.
- */
-export const GRID_LINE = 1 / 16;
-
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
   return [g.ground, g.cliffs].flatMap((m) =>
-    [m.positions, m.normals, m.indices, m.uvs, m.colors]
+    [m.positions, m.normals, m.indices, m.colors]
       .filter((a) => a !== undefined)
       .map((a) => a.buffer as ArrayBuffer),
   );
@@ -167,7 +157,6 @@ const FULL_SQUARE: MeshGeometry = {
   positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0],
   indices: [0, 2, 1, 0, 3, 2],
   normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
-  uvs: [0, 0, 1, 0, 1, 1, 0, 1],
 };
 
 const S = 0.5;
@@ -282,20 +271,18 @@ function buildCornerGeo(defIdx: number, variant: number): MeshGeometry {
 
   const positions: number[] = [def.cv[0], def.cv[1], 0];
   const normals: number[] = [0, 0, 1];
-  const uvs: number[] = [def.cv[0], def.cv[1]];
   const indices: number[] = [];
 
   for (const [px, py] of pts) {
     positions.push(px, py, 0);
     normals.push(0, 0, 1);
-    uvs.push(px, py);
   }
 
   for (let i = 0; i < pts.length - 1; i++) {
     indices.push(0, i + 2, i + 1);
   }
 
-  return { positions, indices, normals, uvs };
+  return { positions, indices, normals };
 }
 
 // Precompute: CORNER_GEOS[cornerIndex][variant] — 16 variants per corner
@@ -334,13 +321,11 @@ function buildCutoutBaseGeo(
 
   const positions: number[] = [0.5, 0.5, 0];
   const normals: number[] = [0, 0, 1];
-  const uvs: number[] = [0.5, 0.5];
   const indices: number[] = [];
 
   for (const [bx, by] of boundary) {
     positions.push(bx, by, 0);
     normals.push(0, 0, 1);
-    uvs.push(bx, by);
   }
 
   const n = boundary.length;
@@ -348,7 +333,7 @@ function buildCutoutBaseGeo(
     indices.push(0, ((i + 1) % n) + 1, i + 1);
   }
 
-  return { positions, indices, normals, uvs };
+  return { positions, indices, normals };
 }
 
 // Edge cliff wall along a straight tile edge.
@@ -445,14 +430,12 @@ export class TerrainBuffers {
   normals = new Float32Array(0);
   indices = new Uint32Array(0);
   /** Absent on geometry the camera never sees. */
-  uvs: Float32Array<ArrayBuffer> | null;
   colors: Float32Array<ArrayBuffer> | null;
 
   vertices = 0;
   indexCount = 0;
 
   constructor(shaded: boolean) {
-    this.uvs = shaded ? new Float32Array(0) : null;
     this.colors = shaded ? new Float32Array(0) : null;
   }
 
@@ -468,7 +451,6 @@ export class TerrainBuffers {
       positions: this.positions.slice(0, v * 3),
       normals: this.normals.slice(0, v * 3),
       indices: this.indices.slice(0, this.indexCount),
-      uvs: this.uvs?.slice(0, v * 2),
       colors: this.colors?.slice(0, v * 4),
     };
   }
@@ -479,7 +461,6 @@ export class TerrainBuffers {
       const n = Math.max(1024, (this.vertices + verts) * 2);
       this.positions = grow(this.positions, n * 3);
       this.normals = grow(this.normals, n * 3);
-      if (this.uvs) this.uvs = grow(this.uvs, n * 2);
       if (this.colors) this.colors = grow(this.colors, n * 4);
     }
     if (this.indexCount + indices > this.indices.length) {
@@ -630,7 +611,6 @@ const baseGeoCache = new Map<string, MeshGeometry>();
 /**
  * Copy a unit-space geometry into a chunk buffer, translated to (ox, oy, oz).
  * Colour goes into the vertex buffer so a whole chunk shares one material.
- * Unbordered geometry samples the texture interior, which is flat white.
  */
 function append(
   buf: TerrainBuffers,
@@ -639,7 +619,6 @@ function append(
   oy: number,
   oz: number,
   color: RGB,
-  bordered: boolean,
 ): void {
   const p = geo.positions;
   const vertexCount = p.length / 3;
@@ -667,15 +646,6 @@ function append(
       colors[c + 3] = 1;
     }
   }
-  if (buf.uvs) {
-    const uvs = buf.uvs;
-    const src = bordered ? geo.uvs : undefined;
-    for (let i = 0, u = base * 2; i < vertexCount; i++, u += 2) {
-      uvs[u] = src ? src[i * 2] : 0.5;
-      uvs[u + 1] = src ? src[i * 2 + 1] : 0.5;
-    }
-  }
-
   const indices = buf.indices;
   for (let i = 0, n = buf.indexCount; i < geo.indices.length; i++, n++) {
     indices[n] = base + geo.indices[i];
@@ -747,7 +717,7 @@ function appendTile(
     }
     baseGeo = cached;
   }
-  append(sink.ground, baseGeo, lx, ly, be, palette[tt], be === 0);
+  append(sink.ground, baseGeo, lx, ly, be, palette[tt]);
 
   // Same-elevation corner overlays
   for (const c of corners) {
@@ -759,7 +729,6 @@ function appendTile(
       ly,
       be + 0.01,
       palette[c.type],
-      ELEVATION[c.type] === 0,
     );
   }
 
@@ -776,7 +745,6 @@ function appendTile(
       ly,
       c.cornerElev,
       palette[c.type],
-      c.cornerElev === 0,
     );
     append(
       sink.cliffs,
@@ -785,7 +753,6 @@ function appendTile(
       ly,
       lowerZ,
       shade(palette[higherType], 0.7),
-      false,
     );
   }
 
@@ -810,7 +777,6 @@ function appendTile(
       ly,
       neighborElev,
       shade(palette[tt], 0.7),
-      false,
     );
   }
 

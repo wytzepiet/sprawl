@@ -35,7 +35,8 @@ const light = {
   // A yard, a car park or a pavement: a pale plot, a shade under the
   // road's white.
   paved: hex3("#E8ECDF"),
-  grid: hex3("#BBD29E"),
+  /** The hand's dots: where it may build. */
+  hand: hex3("#2F3B4C"),
   road: hex3("#F8F6F0"),
   // A road, as against a street: the map's yellow for a through route.
   highway: hex3("#F6CF6A"),
@@ -54,7 +55,7 @@ const dark = {
   mountain: hex3("#4D4D47"),
   garden: hex3("#1F4030"),
   paved: hex3("#30333B"),
-  grid: hex3("#3A4A34"),
+  hand: hex3("#E6EBF2"),
   road: hex3("#2A2D35"),
   highway: hex3("#5A4C22"),
 };
