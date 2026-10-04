@@ -1,30 +1,21 @@
 import type { MeshGeometry } from "../Mesh";
 import { slabGeometry } from "./buildings";
-import { CAR, ROAD_Z } from "./roadGeometry";
+import { ROAD_Z } from "./roadGeometry";
 import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
 import type { Building, GameObjectEntry } from "../../generated";
 
 /**
- * A ring lot, drawn: the slab is the lot, white like a street, and what is
- * painted on it is the dividers between the spots in the island. Mirrors the server's `lots.rs` so a
- * car sits between its dividers: the numbers here are the numbers there.
+ * A depot's yard, drawn: the slab, white like a street, and its docks
+ * painted on it. Mirrors the server's `lots.rs` so a lorry stands in its
+ * bay: the numbers here are the numbers there.
  *
- * Built in the lot's own frame, u along the frontage and v in from the
+ * Built in the yard's own frame, u along the frontage and v in from the
  * street, and turned into place per facing. That frame is chosen so the
  * turn is a rotation, never a mirror: a mirrored instance is inside out.
  */
-const PITCH = 0.2;
-const ISLAND_END = 0.3;
 /** Painted above the road surface, so a driveway's arm cannot cover it. */
 const MARK_Z = ROAD_Z + 0.002;
-const MARK = 0.035;
 
-/** Where the spots' centres lie along a lot w wide. */
-export function spotsAcross(w: number): number[] {
-  const n = Math.max(0, Math.floor((w - 2 * ISLAND_END) / PITCH + 1e-9));
-  const start = ISLAND_END + ((w - 2 * ISLAND_END) - n * PITCH) / 2 + PITCH / 2;
-  return Array.from({ length: n }, (_, i) => start + i * PITCH);
-}
 
 /** A building's lot, as drawn: the rectangle of lot tiles on the grid, its
  *  width along the frontage, how deep the plot is, and whether it is a
@@ -145,14 +136,3 @@ function flat() {
   };
 }
 
-/** The dividers between neighbouring spots in a lot w wide. */
-export function markingGeometry(w: number): MeshGeometry {
-  const g = flat();
-  const cl = CAR.l / 2 + 0.03;
-  const us = spotsAcross(w);
-  for (let i = 0; i + 1 < us.length; i++) {
-    const u = (us[i] + us[i + 1]) / 2;
-    g.rect(u - MARK / 2, 0.5 - cl, u + MARK / 2, 0.5 + cl, MARK_Z);
-  }
-  return g.done();
-}

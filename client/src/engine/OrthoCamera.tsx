@@ -2,7 +2,7 @@ import { onCleanup, createEffect, on } from "solid-js";
 import { FreeCamera, Vector3, Camera } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
-import { buildMode, placingBuilding } from "../ui/buildMode";
+import { tool } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 import { viewExtent } from "./view";
 import { following, setFollowing, positionOf } from "../state/selection";
@@ -249,11 +249,11 @@ export function OrthoCamera() {
     camera.setTarget(new Vector3(x, y, 0));
   }
 
-  // React to build mode changes
+  // Something taken in hand locks the camera and closes in to build.
   createEffect(on(
-    () => ({ mode: buildMode(), placing: placingBuilding() }),
-    ({ mode, placing }) => {
-      if (mode === "select" && !placing) {
+    () => tool() !== null,
+    (held) => {
+      if (!held) {
         locked = false;
       } else {
         locked = true;

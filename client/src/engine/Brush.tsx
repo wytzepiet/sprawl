@@ -2,7 +2,7 @@ import { onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { screenToWorld } from "./view";
 import { useGame } from "../state/gameObjects";
-import { buildMode, roadKind } from "../ui/buildMode";
+import { isRoad, tool } from "../ui/buildMode";
 import type { GridCoord } from "../generated";
 
 // 8-directional step offsets, indexed by sector (0 = right, going counter-clockwise)
@@ -16,7 +16,14 @@ function snapDirection(dx: number, dy: number): number {
   return ((Math.round(angle * 4 / Math.PI) % 8) + 8) % 8;
 }
 
-export function RoadDrawer() {
+/**
+ * The mayor's hand on the map: whatever is held is laid as the drag goes,
+ * a step from one tile to the next, each sent as it is taken
+ * (`Build { tool, from, to }`), straight or diagonal toward the pointer.
+ * A tap, or the first tile of a drag, paints or clears that tile alone;
+ * a road needs two.
+ */
+export function Brush() {
   const { scene, canvas } = useEngine();
   const { send } = useGame();
   let current: GridCoord | null = null;
@@ -25,62 +32,24 @@ export function RoadDrawer() {
   let accDy = 0;
 
   const pick = (e: { clientX: number; clientY: number }) => screenToWorld(scene, canvas, e);
-
-  function demolishAt(pos: GridCoord) {
-    send({ type: "DemolishRoad", data: { pos } });
-  }
-
-  /**
-   * Demolish every tile between where the drag was and where it now is. A
-   * pointer event lands wherever the mouse got to, which on a fast drag is
-   * several tiles on from the last one, so walking the line is what makes the
-   * drag a path rather than a row of samples.
-   */
-  function demolishTo(w: { wx: number; wy: number }) {
-    if (!current) return;
-    const cell: GridCoord = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
-    const dx = cell.x - current.x;
-    const dy = cell.y - current.y;
-    const steps = Math.max(Math.abs(dx), Math.abs(dy));
-    for (let i = 1; i <= steps; i++) {
-      demolishAt({
-        x: current.x + Math.round((dx * i) / steps),
-        y: current.y + Math.round((dy * i) / steps),
-      });
-    }
-    current = cell;
-  }
+  const step = (from: GridCoord, to: GridCoord) => {
+    const held = tool();
+    if (held !== null) send({ type: "Build", data: { tool: held, from, to } });
+  };
 
   const onPointerDown = (e: PointerEvent) => {
-    if (e.button !== 0) return;
-    const mode = buildMode();
-    if (mode !== "road" && mode !== "demolish") return;
+    if (e.button !== 0 || tool() === null) return;
     const w = pick(e);
     current = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
     prevWorld = w;
     accDx = 0;
     accDy = 0;
-
-    if (mode === "demolish") {
-      demolishAt(current);
-    }
+    if (!isRoad(tool())) step(current, current);
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (!current || !prevWorld) return;
-    const mode = buildMode();
     const w = pick(e);
-
-    if (mode === "demolish") {
-      // The browser merges every sample it took since the last frame into one
-      // event. Walking them keeps a curved flick on the path the mouse took,
-      // rather than the chord across it, which cuts corners off the arc.
-      const merged = e.getCoalescedEvents?.() ?? [];
-      for (const ce of merged.length ? merged : [e]) demolishTo(pick(ce));
-      prevWorld = w;
-      return;
-    }
-
     accDx += w.wx - prevWorld.wx;
     accDy += w.wy - prevWorld.wy;
     prevWorld = w;
@@ -102,7 +71,7 @@ export function RoadDrawer() {
       const newDist = Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5)));
       if (newDist >= dist) break; // would move away from pointer
 
-      send({ type: "PlaceRoad", data: { from: cur, to: next, one_way: roadKind() === "oneway", road: roadKind() === "road" } });
+      step(cur, next);
       cur = next;
     }
     current = cur;
@@ -111,10 +80,7 @@ export function RoadDrawer() {
     accDy = 0;
   };
 
-  const onPointerUp = (e: PointerEvent) => {
-    // A flick releases the button past the last pointermove, so without this
-    // the tail of every fast drag survives.
-    if (current && buildMode() === "demolish") demolishTo(pick(e));
+  const onPointerUp = () => {
     current = null;
     prevWorld = null;
   };

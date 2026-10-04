@@ -1,7 +1,7 @@
 import { onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { screenToWorld } from "./view";
-import { buildMode, placingBuilding } from "../ui/buildMode";
+import { tool } from "../ui/buildMode";
 import { buildingAt } from "../state/gameObjects";
 import { carNear, select, setHovered } from "../state/selection";
 
@@ -27,10 +27,10 @@ export function Picker() {
     return carNear(w.wx, w.wy, CAR_REACH) ?? buildingAt(Math.floor(w.wx), Math.floor(w.wy))?.id ?? null;
   };
   const onPointerMove = (e: PointerEvent) => {
-    setHovered(buildMode() === "select" && !placingBuilding() && e.buttons === 0 ? under(e) : null);
+    setHovered(tool() === null && e.buttons === 0 ? under(e) : null);
   };
   const onPointerDown = (e: PointerEvent) => {
-    down = e.button === 0 && buildMode() === "select" && !placingBuilding() ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
+    down = e.button === 0 && tool() === null ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
   };
   const onPointerUp = (e: PointerEvent) => {
     if (!down) return;

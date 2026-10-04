@@ -32,7 +32,7 @@ export interface Blueprint {
   tab: Tab;
   /** The building's own footprint in tiles, wide along its frontage. */
   size: [number, number];
-  /** Its lot in tiles along the frontage and deep, on the street side; [0, 0] is none. */
+  /** Its yard in tiles along the frontage and deep, on the street side; [0, 0] is none: it parks on its drive. */
   lot: [number, number];
   /** A depot: its lot is a yard of docks, not a ring, and fuses with nobody. */
   yard?: boolean;
@@ -49,17 +49,23 @@ export interface Plot {
   lot: [[number, number], [number, number]] | null;
 }
 
-/** A plot on the grid for a facing: its size, and where building and lot lie in it. Mirrors `blueprint::plot`. */
+/** The smallest of a kind, lying this way: its size, and where building and yard lie in it. Mirrors `blueprint::plot`. */
 export function plot(kind: BuildingKind, facing: number): Plot {
   const { size: [bw, bh], lot: [lw, ld] } = BLUEPRINTS[kind];
-  const has = lw > 0 && ld > 0;
-  // As wide as the wider of building and lot, as the server lays it.
+  // As wide as the wider of building and yard, as the server lays it.
   const w = Math.max(bw, lw);
+  return lie(kind, facing, facing % 2 === 0 ? [w, bh + ld] : [bh + ld, w]);
+}
+
+/** A building `size` across, lying this way: its yard the rows on its street side as deep as its kind's, its whole width; the rest the building. Mirrors `blueprint::lie`. */
+export function lie(kind: BuildingKind, facing: number, [w, h]: [number, number]): Plot {
+  const d = BLUEPRINTS[kind].lot[1];
+  const yard = d > 0;
   switch (facing % 4) {
-    case 2: return { size: [w, bh + ld], building: [[0, 0], [bw, bh]], lot: has ? [[0, bh], [lw, ld]] : null };
-    case 0: return { size: [w, bh + ld], building: [[0, ld], [bw, bh]], lot: has ? [[0, 0], [lw, ld]] : null };
-    case 1: return { size: [bh + ld, w], building: [[0, 0], [bh, bw]], lot: has ? [[bh, 0], [ld, lw]] : null };
-    default: return { size: [bh + ld, w], building: [[ld, 0], [bh, bw]], lot: has ? [[0, 0], [ld, lw]] : null };
+    case 2: return { size: [w, h], building: [[0, 0], [w, h - d]], lot: yard ? [[0, h - d], [w, d]] : null };
+    case 0: return { size: [w, h], building: [[0, d], [w, h - d]], lot: yard ? [[0, 0], [w, d]] : null };
+    case 1: return { size: [w, h], building: [[0, 0], [w - d, h]], lot: yard ? [[w - d, 0], [d, h]] : null };
+    default: return { size: [w, h], building: [[d, 0], [w - d, h]], lot: yard ? [[0, 0], [d, h]] : null };
   }
 }
 
@@ -93,7 +99,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.85, 1.15, 1.5],
     price: 15, tab: "homes",
     size: [2, 1],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   Shop: {
     label: "Shop",
@@ -106,7 +112,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.45, 0.55],
     price: 18, tab: "shops",
     size: [1, 1],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   Office: {
     label: "Office",
@@ -121,7 +127,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [1.0, 1.45, 2.3],
     price: 15, tab: "work",
     size: [2, 1],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   Workshop: {
     label: "Workshop",
@@ -134,7 +140,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.42, 0.5],
     price: 8, tab: "work",
     size: [1, 1],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   Factory: {
     label: "Factory",
@@ -146,7 +152,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0],
     price: 25, tab: "work",
     size: [2, 1],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   Restaurant: {
     label: "Restaurant",
@@ -159,7 +165,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.5, 0.62],
     price: 16, tab: "shops",
     size: [1, 1],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   Bar: {
     label: "Bar",
@@ -171,7 +177,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.45, 0.55],
     price: 16, tab: "shops",
     size: [1, 1],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   GasStation: {
     label: "Gas station",
@@ -183,7 +189,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.3],
     price: 14, tab: "services",
     size: [1, 1],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   Supermarket: {
     label: "Supermarket",
@@ -195,7 +201,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.5],
     price: 47, tab: "services",
     size: [2, 2],
-    lot: [2, 1],
+    lot: [0, 0],
   },
   Warehouse: {
     label: "Warehouse",

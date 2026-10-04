@@ -6,8 +6,11 @@
  *   bun run act road 10,4 20,4 20,9     a street through these tiles, stepping
  *                                       as the brush does, diagonals and all
  *       --road | --one-way              a through road, or one way
- *   bun run act build House 12,5        a building held over this tile
- *   bun run act demolish 12,5           whatever stands on the tile
+ *   bun run act build House 12,5        a building painted on this tile; more
+ *       12,5 14,5 14,6                  tiles paint on through them, stepping
+ *                                       as the brush does: one building as far
+ *                                       as a kind that grows is painted
+ *   bun run act demolish 12,5 14,5      whatever stands on the tiles, through
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
@@ -23,8 +26,8 @@
  * Tiles are the game's own (x, y), as `bun run plan --live` numbers them;
  * on the map +x is to the left and +y up. Each command answers with what it
  * made and took away, and a command that changed nothing says so, since
- * the server refuses quietly (the build's gate, the purse, a plot that does
- * not fit; refusals of buildings are in `.dev/server.log`). The game is the
+ * the server refuses quietly (the build's gate, the purse, a tile already
+ * taken; refusals of buildings are in `.dev/server.log`). The game is the
  * one `bun run dev` runs, or SPRAWL_PORT's.
  */
 import { decode, encode } from "@msgpack/msgpack";
@@ -149,31 +152,38 @@ const hhmm = (t: number) => `${String(Math.floor(t * 24)).padStart(2, "0")}:${St
 send("SetChunks", bounds);
 changes(await settled());
 
+/** A drag through these tiles with this in hand, a step at a time as the
+ *  brush takes them, straight or diagonal; a road starts from its first
+ *  tile, anything else paints or clears it first. */
+function stroke(tool: unknown, pts: Pt[]) {
+  if (!pts.length) return;
+  if (tool !== "Street" && tool !== "OneWay" && tool !== "Road") send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
+  for (let i = 1; i < pts.length; i++) {
+    let [x, y] = pts[i - 1];
+    const [tx, ty] = pts[i];
+    while (x !== tx || y !== ty) {
+      const [nx, ny] = [x + Math.sign(tx - x), y + Math.sign(ty - y)];
+      send("Build", { tool, from: { x, y }, to: { x: nx, y: ny } });
+      [x, y] = [nx, ny];
+    }
+  }
+}
+const at = ([x, y]: Pt) => ({ x, y });
+
 /** What a command has to say beyond what it changed. */
 let report: string[] = [];
 for (const [verb, ...rest] of lines) {
   const flags = rest.filter((a) => a.startsWith("--"));
   const args = rest.filter((a) => !a.startsWith("--"));
   switch (verb) {
-    case "road": {
-      const pts = args.map(tile);
-      for (let i = 1; i < pts.length; i++) {
-        let [x, y] = pts[i - 1];
-        const [tx, ty] = pts[i];
-        // A tile at a time, as the brush lays it: straight or diagonal.
-        while (x !== tx || y !== ty) {
-          const [nx, ny] = [x + Math.sign(tx - x), y + Math.sign(ty - y)];
-          send("PlaceRoad", { from: { x, y }, to: { x: nx, y: ny }, one_way: flags.includes("--one-way"), road: flags.includes("--road") });
-          [x, y] = [nx, ny];
-        }
-      }
+    case "road":
+      stroke(flags.includes("--road") ? "Road" : flags.includes("--one-way") ? "OneWay" : "Street", args.map(tile));
       break;
-    }
     case "build":
-      send("PlaceBuilding", { at: [tile(args[1])[0] + 0.5, tile(args[1])[1] + 0.5], kind: args[0] });
+      stroke({ Building: args[0] }, args.slice(1).map(tile));
       break;
     case "demolish":
-      send("DemolishRoad", { pos: { x: tile(args[0])[0], y: tile(args[0])[1] } });
+      stroke("Demolish", args.map(tile));
       break;
     case "speed":
       send("SetSpeed", Number(args[0]));
@@ -207,10 +217,5 @@ for (const [verb, ...rest] of lines) {
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
   for (const s of said.length ? said : ["time", "speed", "run", "watch"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
-  // A building refused: where the ghost would have put it, and whether it fit.
-  if (verb === "build" && !said.length) {
-    const [x, y] = tile(args[1]);
-    console.log(`    site: ${(await (await fetch(`http://localhost:${PORT}/site/${args[0]}?x=${x + 0.5}&y=${y + 0.5}`)).text()).replace(/\s+/g, " ")}`);
-  }
 }
 ws.close();
