@@ -81,7 +81,9 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
 
     let (mut sink, mut stream) = socket.split();
 
-    // Write task: batch ServerMessages over a 50ms window before sending
+    // Write task: send what is queued as soon as it is, the updates among it
+    // merged into one. Waiting for more would only delay the first; a socket
+    // that cannot keep up lets a queue grow, and that is what gets merged.
     let write_task = tokio::spawn(async move {
         let mut buf: Vec<ServerMessage> = Vec::new();
         loop {
@@ -90,9 +92,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                 None => return,
             };
             buf.push(first);
-
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
             while let Ok(msg) = msg_rx.try_recv() {
                 buf.push(msg);
             }

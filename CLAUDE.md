@@ -51,7 +51,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   behind the wall clock and every command lags with it. Every now and then,
   `cargo test town -- --ignored --nocapture` runs a day of town
   life and asserts how often residents wake (a storm is ten times the
-  budget) and prints simulated days per second, to see whether it drifted.
+  budget) and prints simulated days per second, to see whether it drifted;
+  and it times a house, a shop, their demolition and a road in a town and
+  in one twice the size, and asserts the bigger town costs about the same.
+  A build costs what it changed: `World::settle` reads only the buildings
+  marked `unsettled`, and `resettle`, the whole world, runs at startup.
 - **Does the economy still balance?** `cargo test season -- --ignored
   --nocapture` runs the same town for thirty days and asserts the
   equilibria `docs/economy.md` §11 names that take weeks to show — the

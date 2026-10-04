@@ -697,7 +697,8 @@ struct Want {
 fn wants(world: &World) -> impl Iterator<Item = Want> + '_ {
     world.resident_ids().into_iter().filter_map(|id| resident(world, id)).flat_map(|r| {
         let home = world.objects.get(r.home).and_then(|e| e.position);
-        let jobless = r.work.is_none();
+        // No job in town is the job beyond the edge, where there is one.
+        let jobless = r.work.is_none() && home.and_then(|p| world.nearest_edge(p)).is_none();
         r.at.and(home).into_iter().flat_map(move |home| {
             r.buckets.iter().filter_map(move |b| {
                 let (shortfall, weight) = if b.need.drain() > 0.0 {

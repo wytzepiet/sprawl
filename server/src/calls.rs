@@ -153,12 +153,13 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
 }
 
 /// Midnight: every building takes its turn, so a row nobody visits still
-/// draws.
+/// draws, and every line reads the labour market at the next settle.
 pub fn turns(world: &mut World, events: &mut EventQueue, now: GameTime) {
     let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
     ids.sort_unstable();
     for id in ids {
         turn(world, events, id, now);
+        world.unsettled.insert(id);
     }
 }
 
@@ -372,9 +373,13 @@ pub fn stable(world: &mut World, facility: EntityId) {
         Some(GameObject::Building(b)) => b.kind,
         _ => return,
     };
+    let vehicles = &blueprint(kind).vehicles;
+    if vehicles.is_empty() {
+        return;
+    }
     let tile = world.objects.get(facility).and_then(|e| e.position);
     let have = fleet_of(world, facility).len();
-    for &role in blueprint(kind).vehicles.iter().skip(have) {
+    for &role in vehicles.iter().skip(have) {
         let car = world.insert_at(GameObject::Car(Car::new(facility, role)), tile);
         if role == CarRole::Ship {
             world.moor(car);

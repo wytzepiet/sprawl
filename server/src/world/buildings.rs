@@ -240,6 +240,19 @@ impl World {
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
             b.door = door;
         }
+        self.unsettled.insert(id);
+    }
+
+    /// A street node laid or taken up on this tile: whatever has its door
+    /// onto it is reached or cut off by it.
+    pub(super) fn unsettle_round(&mut self, tile: GridCoord) {
+        for (dx, dy) in (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy))) {
+            if let Some(&b) = self.occupied.get(&(tile.x + dx, tile.y + dy))
+                && matches!(self.objects.get(b).map(|e| &e.object), Some(GameObject::Building(bd)) if bd.door.is_some_and(|d| d.street == tile))
+            {
+                self.unsettled.insert(b);
+            }
+        }
     }
 
     /// What joins two tiles beside each other, for the demolisher to cut:
@@ -345,6 +358,7 @@ impl World {
             // anyone looking at the other half.
             self.spatial.entry(crate::world::chunk_of(*tile)).or_default().insert(id);
         }
+        self.unsettled.insert(id);
         self.reveal_around(pos);
         Some(id)
     }
@@ -569,6 +583,7 @@ impl World {
     /// The tile is the building's: occupancy, and every chunk it stands in
     /// indexed, so it is seen from any of them.
     fn occupy(&mut self, id: EntityId, t: GridCoord) {
+        self.unsettled.insert(id);
         self.occupied.insert((t.x, t.y), id);
         self.spatial.entry(crate::world::chunk_of(t)).or_default().insert(id);
         self.reveal_around(t);
@@ -593,6 +608,20 @@ impl World {
         let Some(entry) = self.objects.get(id) else { return };
         let GameObject::Building(ref b) = entry.object else { return };
         let tiles = b.tiles.clone();
+        // Its fleet goes with it: what stands in the yard now, and what is
+        // out when it gets back (`park_car`). Its people go at `settle`.
+        let chunks: std::collections::HashSet<_> = tiles.iter().map(|&t| crate::world::chunk_of(t)).collect();
+        let yard: Vec<EntityId> = chunks
+            .iter()
+            .flat_map(|c| self.spatial.get(c))
+            .flatten()
+            .copied()
+            .filter(|&car| matches!(self.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.owner == id && c.trip.is_none()))
+            .collect();
+        for car in yard {
+            self.despawn_car(car);
+        }
+        self.unsettled.insert(id);
 
         for tile in &tiles {
             self.occupied.remove(&(tile.x, tile.y));

@@ -263,9 +263,14 @@ town's sell for no less than the edge would pay them net of the crossing
 and their drive out, since below that they sell there instead. Between
 those is the band for wages, the same shape as the band for crates.
 
-Employment is a standing relation, derived in the settlement pass. A
-building with a full line still reads the market on its turn, and swaps
-a worker only for one cheaper delivered by a **hiring threshold**: firms
+Employment is a standing relation, and a line reads the market on its
+turn: when it is built or reached, when it loses a worker, and at
+midnight. Its sellers are searched nearest first, and the search stops
+where nobody farther could undercut what it has, so a build costs what
+it changed and not the size of the town (`World::settle`). A building
+with a full line swaps a worker only for one cheaper delivered by a
+**hiring threshold**, and a household at another line moves only for
+as much, so it moves for a shorter drive and never for a penny: firms
 replace people for a saving of a tenth to a fifth, not for a penny, and
 about one in forty jobs turns over in a month. Tenure is then emergent,
 and a household whose ask has drifted above its neighbours' is the one
