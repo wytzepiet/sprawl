@@ -1,4 +1,4 @@
-import { onCleanup, createEffect, on } from "solid-js";
+import { onCleanup } from "solid-js";
 import { FreeCamera, Vector3, Camera } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
@@ -7,7 +7,6 @@ import { CHUNK_SIZE } from "./TerrainChunks";
 import { viewExtent } from "./view";
 import { following, setFollowing, positionOf } from "../state/selection";
 
-const BUILD_ZOOM = 8;
 
 /**
  * How wide the lens is, in radians. Small enough that the view still reads as a
@@ -27,14 +26,9 @@ const TILT = (25 * Math.PI) / 180;
 
 /** Which projection the map opens in. F8 swaps it, to see the two side by side. */
 const OPENS_IN_PERSPECTIVE = false;
-/**
- * Fraction of the remaining distance covered each frame. Zooming is a direct
- * response to the wheel and wants to arrive under the cursor at once; dropping
- * into build mode is a move the camera makes on its own, and reads better with
- * some travel to it.
- */
+/** Fraction of the remaining distance covered each frame: a zoom is a direct
+ *  response to the wheel and wants to arrive under the cursor at once. */
 const ZOOM_LERP_SPEED = 0.35;
-const BUILD_LERP_SPEED = 0.15;
 
 /** Chunks of unsurveyed ground the camera is allowed to see past the frontier. */
 const PAN_MARGIN_CHUNKS = 1;
@@ -65,16 +59,9 @@ export function OrthoCamera() {
   // it is.
   let viewHalf = 15;
   let targetViewHalf = viewHalf;
-  let lerpSpeed = ZOOM_LERP_SPEED;
   let targetCamX = camera.position.x;
   let targetCamY = camera.position.y;
-  let locked = false;
   let debugMode = false;
-  // Where a zoom with no pointer of its own aims. Build mode is entered from a
-  // key or a toolbar button, so it borrows the last place the mouse was over
-  // the map; before that has happened, the middle of the view.
-  let cursorX = innerWidth / 2;
-  let cursorY = innerHeight / 2;
   let lastMinCx = NaN, lastMinCy = NaN, lastMaxCx = NaN, lastMaxCy = NaN;
 
   /**
@@ -227,9 +214,9 @@ export function OrthoCamera() {
     const dX = targetCamX - camera.position.x;
     const dY = targetCamY - camera.position.y;
     if (Math.abs(dSize) > 0.01 || Math.abs(dX) > 0.001 || Math.abs(dY) > 0.001) {
-      viewHalf += dSize * lerpSpeed;
-      camera.position.x += dX * lerpSpeed;
-      camera.position.y += dY * lerpSpeed;
+      viewHalf += dSize * ZOOM_LERP_SPEED;
+      camera.position.x += dX * ZOOM_LERP_SPEED;
+      camera.position.y += dY * ZOOM_LERP_SPEED;
       camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
       updateProjection();
     }
@@ -248,20 +235,6 @@ export function OrthoCamera() {
     camera.position.y = y - (dir === 1 ? camera.position.z * Math.tan(TILT) : 0);
     camera.setTarget(new Vector3(x, y, 0));
   }
-
-  // Something taken in hand locks the camera and closes in to build.
-  createEffect(on(
-    () => tool() !== null,
-    (held) => {
-      if (!held) {
-        locked = false;
-      } else {
-        locked = true;
-        zoomToward(BUILD_ZOOM, cursorX, cursorY);
-        lerpSpeed = BUILD_LERP_SPEED;
-      }
-    },
-  ));
 
   // Panning & pinch-to-zoom
   let panning = false;
@@ -287,7 +260,7 @@ export function OrthoCamera() {
   const onPointerDown = (e: PointerEvent) => {
     // A tool has the left button, so the right one always pans. Without it a
     // build mode is one you cannot move around in.
-    if (locked && e.button !== 2) return;
+    if (tool() !== null && e.button !== 2) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     canvas.setPointerCapture(e.pointerId);
 
@@ -305,12 +278,10 @@ export function OrthoCamera() {
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    cursorX = e.clientX;
-    cursorY = e.clientY;
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    if (pointers.size === 2 && !debugMode && !locked) {
+    if (pointers.size === 2 && !debugMode) {
       const dist = pinchDistance();
       const center = pinchCenter();
       const rect = canvas.getBoundingClientRect();
@@ -330,7 +301,6 @@ export function OrthoCamera() {
 
       // Zoom toward pinch center
       zoomToward(targetViewHalf * (lastPinchDist / Math.max(dist, 1)), center.x, center.y);
-      lerpSpeed = ZOOM_LERP_SPEED;
       lastPinchDist = dist;
       return;
     }
@@ -372,11 +342,10 @@ export function OrthoCamera() {
   const preventContextMenu = (e: Event) => e.preventDefault();
 
   const onWheel = (e: WheelEvent) => {
-    if (locked || debugMode) return;
+    if (debugMode) return;
     e.preventDefault();
 
     zoomToward(targetViewHalf * (1 + e.deltaY * 0.001), e.clientX, e.clientY);
-    lerpSpeed = ZOOM_LERP_SPEED;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
