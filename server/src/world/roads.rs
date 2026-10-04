@@ -67,7 +67,7 @@ impl World {
     }
 
     /// Check if two nodes at the given coords are connected as outgoing.
-    pub(super) fn are_connected(&self, a: GridCoord, b: GridCoord) -> bool {
+    pub fn are_connected(&self, a: GridCoord, b: GridCoord) -> bool {
         let a_id = match self.road_node_at(a) {
             Some(id) => id,
             None => return false,
@@ -215,6 +215,22 @@ impl World {
         // the nodes are joined, since a building reached stables its fleet
         // in a lot read off its door and the street it joins.
         self.open_doors_along(&expanded);
+    }
+
+    /// Two road nodes let go of each other, both ways: the link and the
+    /// edges along it.
+    pub fn unlink_roads(&mut self, a: EntityId, b: EntityId) {
+        for (x, y) in [(a, b), (b, a)] {
+            if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(x).map(|e| &mut e.object) {
+                n.outgoing.retain(|&o| o != y);
+                n.incoming.retain(|&i| i != y);
+            }
+        }
+        for (x, y) in [(a, b), (b, a)] {
+            if self.edges.contains_key(&(x, y)) {
+                self.remove_edge(x, y);
+            }
+        }
     }
 
     /// Remove a road node by id and clean up every reference to it. A tile

@@ -18,8 +18,9 @@ const NIGHT_INK = new Color3(0.9, 0.92, 0.95);
  * The mayor's hand on the map: whatever is held is laid as the drag goes,
  * a step from one tile to the next, each sent as it is taken
  * (`Build { tool, from, to }`), straight or diagonal toward the pointer.
- * A tap, or the first tile of a drag, paints or clears that tile alone;
- * a road needs two.
+ * A tap, or the first tile of a drag, paints that tile alone, and a road
+ * needs two; the demolisher's tap clears everything at its tile, and its
+ * drag cuts only what joins the tiles it crosses.
  *
  * And where it may go, worked out here (`may.ts`) and shown by the dots
  * (`dots.ts`): one on every tile in view a drag may start from, and
@@ -36,6 +37,8 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   const tick = scene.onAfterRenderObservable.add(() => dots.frame());
   const { send, growth } = useGame();
   let current: GridCoord | null = null;
+  /** The tile pressed on, while the hand is down. */
+  let pressed: GridCoord | null = null;
   let prevWorld: { wx: number; wy: number } | null = null;
   let accDx = 0;
   let accDy = 0;
@@ -104,7 +107,11 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     prevWorld = w;
     accDx = 0;
     accDy = 0;
-    if (!isRoad(tool())) step(current, current);
+    // A tap paints or clears its tile at once, but the demolisher's waits
+    // for the hand to come up where it went down: a drag cuts only what
+    // it crosses, not the point it starts from.
+    pressed = current;
+    if (!isRoad(tool()) && tool() !== "Demolish") step(current, current);
     dots.grab(current, { x: w.wx, y: w.wy });
     draw();
   };
@@ -149,6 +156,8 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   };
 
   const onPointerUp = () => {
+    if (pressed && current === pressed && tool() === "Demolish") step(pressed, pressed);
+    pressed = null;
     if (current) dots.release();
     current = null;
     prevWorld = null;

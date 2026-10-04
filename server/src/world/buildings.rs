@@ -242,6 +242,50 @@ impl World {
         }
     }
 
+    /// What joins two tiles beside each other, for the demolisher to cut:
+    /// a road between them, a building's door onto its street, or a row of
+    /// houses drawn as one.
+    pub fn link_between(&self, a: GridCoord, b: GridCoord) -> Option<Link> {
+        if (a.x - b.x).abs() > 1 || (a.y - b.y).abs() > 1 || a == b {
+            return None;
+        }
+        if self.are_connected(a, b) {
+            return Some(Link::Road(self.road_node_at(a)?, self.road_node_at(b)?));
+        }
+        let (on_a, on_b) = (self.occupied.get(&(a.x, a.y)).copied(), self.occupied.get(&(b.x, b.y)).copied());
+        let door = |id: Option<EntityId>, tile: GridCoord, street: GridCoord| {
+            id.filter(|&id| matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(bd)) if bd.door == Some(crate::protocol::Door { tile, street })))
+        };
+        if let Some(id) = door(on_a, a, b).or(door(on_b, b, a)) {
+            return Some(Link::Door(id));
+        }
+        match (on_a, on_b) {
+            (Some(x), Some(y)) if x != y && self.joined_of(x).contains(&b) => Some(Link::Row(x, y)),
+            _ => None,
+        }
+    }
+
+    /// A door shut: the building is cut off from its street until one is
+    /// drawn to it again, and its lot goes.
+    pub fn close_door(&mut self, id: EntityId) {
+        self.drop_lot(id);
+        self.set_door(id, None);
+    }
+
+    /// Two houses of a row let go of each other where they meet.
+    pub fn unlink(&mut self, a: EntityId, b: EntityId) {
+        let tiles = |w: &World, id| match w.objects.get(id).map(|e| &e.object) {
+            Some(GameObject::Building(bd)) => bd.tiles.clone(),
+            _ => Vec::new(),
+        };
+        let (ta, tb) = (tiles(self, a), tiles(self, b));
+        for (id, other) in [(a, tb), (b, ta)] {
+            if let Some(GameObject::Building(bd)) = self.objects.get_mut(id).map(|e| &mut e.object) {
+                bd.joined.retain(|t| !other.contains(t));
+            }
+        }
+    }
+
     /// A road's dead end under a building painted over it: the road goes,
     /// and the street it ended off becomes the building's door, if it
     /// may be one. That is how the mayor says where a door goes before
@@ -637,6 +681,16 @@ fn pieces(tiles: &[GridCoord]) -> Vec<Vec<GridCoord>> {
         out.push(piece);
     }
     out
+}
+
+/// What joins two tiles beside each other (`World::link_between`).
+pub enum Link {
+    /// A road, between these two nodes, either way.
+    Road(EntityId, EntityId),
+    /// This building's door onto its street.
+    Door(EntityId),
+    /// Two houses of a row.
+    Row(EntityId, EntityId),
 }
 
 /// Does a kind grow into one building as it is painted, or stand a

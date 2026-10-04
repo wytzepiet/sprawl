@@ -42,9 +42,11 @@ describe("the hand's rule, as the server's", () => {
     h.wet.add("5,1");
     expect(may(h, "Street", at(5, 0), at(5, 1))).toBe(false);
   });
-  test("demolishing finds what stands", () => {
+  test("demolishing finds what stands, and a drag what joins", () => {
     const h = street();
     expect(may(h, "Demolish", at(5, 3), at(5, 3))).toBe(false);
     expect(may(h, "Demolish", at(5, 0), at(5, 0))).toBe(true);
+    expect(may(h, "Demolish", at(5, 0), at(6, 0))).toBe(true);
+    expect(may(h, "Demolish", at(5, 0), at(5, 1))).toBe(false);
   });
 });

@@ -50,7 +50,10 @@ export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolea
     const kind = tool.Building;
     return h.opened((e) => e.kind === "Building" && e.building === kind) && affords(h.growth, kind) && mayPaint(h, kind, from, to) && wouldBeReached(h, kind, from, to);
   }
-  if (tool === "Demolish") return h.roads.has(key(to.x, to.y)) || h.occupied.has(key(to.x, to.y));
+  if (tool === "Demolish") {
+    if (from.x === to.x && from.y === to.y) return h.roads.has(key(to.x, to.y)) || h.occupied.has(key(to.x, to.y));
+    return linked(h, from, to);
+  }
   const want = tool === "OneWay" ? "OneWay" : tool === "Road" ? "Road" : null;
   if (want && !h.opened((e) => e.kind === want)) return false;
   // Into a building is its door: nothing laid on its tile, and a through
@@ -97,6 +100,18 @@ function tooSharp(h: Hand, at: GridCoord, dx: number, dy: number, outgoingOnly: 
 function connected(h: Hand, a: GridCoord, b: GridCoord): boolean {
   const [na, nb] = [nodeAt(h, a), nodeAt(h, b)];
   return !!na && !!nb && (na.node.outgoing.includes(nb.id) || na.node.incoming.includes(nb.id));
+}
+
+/** `World::link_between`: is anything joining two tiles beside each
+ *  other for the demolisher to cut: a road, a door, a row of houses. */
+function linked(h: Hand, a: GridCoord, b: GridCoord): boolean {
+  if (Math.abs(a.x - b.x) > 1 || Math.abs(a.y - b.y) > 1) return false;
+  if (connected(h, a, b)) return true;
+  const [on_a, on_b] = [h.occupied.get(key(a.x, a.y)), h.occupied.get(key(b.x, b.y))];
+  const same = (p: GridCoord, q: GridCoord) => p.x === q.x && p.y === q.y;
+  const door = (bd: Building | undefined, tile: GridCoord, street: GridCoord) => !!bd?.door && same(bd.door.tile, tile) && same(bd.door.street, street);
+  if (door(on_a, a, b) || door(on_b, b, a)) return true;
+  return !!on_a && !!on_b && on_a !== on_b && on_a.joined.some((t) => same(t, b));
 }
 
 /** `World::may_lay`. */

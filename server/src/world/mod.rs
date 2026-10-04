@@ -1,5 +1,6 @@
 pub mod bezier;
 mod buildings;
+pub use buildings::Link;
 pub mod fields;
 mod geometry;
 pub mod lots;

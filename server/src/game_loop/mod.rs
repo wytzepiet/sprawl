@@ -14,7 +14,7 @@ use crate::network::{ClientId, Command};
 use crate::persistence;
 use crate::protocol::{Build, BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Sale, ServerMessage, StateUpdate, Tool, GridCoord};
 use crate::world::chunk_of;
-use crate::world::World;
+use crate::world::{Link, World};
 use crate::world::pathfinding;
 
 struct ClientState {
@@ -390,13 +390,24 @@ fn handle_player_action(
                     settle_and_wake(world, events);
                 }
                 Tool::Demolish => {
-                    // Everything on the tile goes: its road, the cars on it
-                    // rerouted, and the building's tile, which a drive ends
-                    // on. Then the population is settled against what is left.
-                    if let Some(id) = world.road_node_at(to) {
-                        handle_road_demolish(world, events, intersections, id, now);
+                    // A tap takes everything on the tile: its road and all
+                    // its links, the cars on it rerouted, or the building's
+                    // tile. A step cuts only what joins the two tiles: the
+                    // road between them, a door, a row. Then the population
+                    // is settled against what is left.
+                    if from == to {
+                        if let Some(id) = world.road_node_at(to) {
+                            handle_road_demolish(world, events, intersections, id, now);
+                        }
+                        world.unpaint(to);
+                    } else {
+                        match world.link_between(from, to) {
+                            Some(Link::Road(a, b)) => handle_link_demolish(world, events, intersections, a, b, now),
+                            Some(Link::Door(id)) => world.close_door(id),
+                            Some(Link::Row(a, b)) => world.unlink(a, b),
+                            None => {}
+                        }
                     }
-                    world.unpaint(to);
                     settle_and_wake(world, events);
                 }
             }
@@ -449,7 +460,8 @@ pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
                 && world.may_paint(kind, from, to)
                 && world.would_be_reached(kind, from, to)
         }
-        Tool::Demolish => world.road_node_at(to).is_some() || world.occupied.contains_key(&(to.x, to.y)),
+        Tool::Demolish if from == to => world.road_node_at(to).is_some() || world.occupied.contains_key(&(to.x, to.y)),
+        Tool::Demolish => world.link_between(from, to).is_some(),
     }
 }
 
@@ -513,8 +525,51 @@ fn handle_road_demolish(
         park_at_home(world, intersections, events, car_id);
     }
 
-    // Clean up neighbors left with 0 connections
-    for nid in neighbor_ids {
+    drop_orphans(world, intersections, events, &neighbor_ids);
+}
+
+/// Cut the road between two nodes, both ways, rerouting whatever was to
+/// drive it; a node left with no road goes.
+fn handle_link_demolish(
+    world: &mut World,
+    events: &mut EventQueue,
+    intersections: &mut IntersectionRegistry,
+    a: EntityId,
+    b: EntityId,
+    now: GameTime,
+) {
+    let cut = |x: EntityId, y: EntityId| (x == a && y == b) || (x == b && y == a);
+    let cars: Vec<(EntityId, EntityId, EntityId)> = world
+        .node_cars
+        .get(&a)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|car_id| {
+            let GameObject::Car(ref car) = world.objects.get(car_id)?.object else { return None };
+            let trip = car.trip.as_ref()?;
+            let (route, ri) = (&trip.route, trip.route_index);
+            if !route[ri.saturating_sub(1)..].windows(2).any(|w| cut(w[0], w[1])) {
+                return None;
+            }
+            // On the link itself, it turns back from where it came onto it.
+            let from = if ri > 0 && cut(route[ri - 1], route[ri]) { route[ri - 1] } else { route[ri] };
+            Some((car_id, from, trip.destination))
+        })
+        .collect();
+    world.unlink_roads(a, b);
+    for (car_id, from, dest) in cars {
+        if !try_reroute(world, intersections, events, car_id, from, dest, now) {
+            park_at_home(world, intersections, events, car_id);
+        }
+    }
+    drop_orphans(world, intersections, events, &[a, b]);
+}
+
+/// Road nodes among these left with no road: gone, and anything routed
+/// over one sent home.
+fn drop_orphans(world: &mut World, intersections: &mut IntersectionRegistry, events: &mut EventQueue, nodes: &[EntityId]) {
+    for &nid in nodes {
         let is_orphan = match world.objects.get(nid) {
             Some(entry) => if let GameObject::RoadNode(ref node) = entry.object {
                 node.outgoing.is_empty() && node.incoming.is_empty()
@@ -1003,6 +1058,45 @@ mod tests {
         hand(&mut world, Tool::Demolish);
         assert!(!world.occupied.contains_key(&(5, 1)), "the house is gone");
         assert!(world.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "and the street stands");
+    }
+
+    /// A drag of the demolisher cuts only what it crosses: the road
+    /// between two tiles, a door, a row of houses. A tap takes everything
+    /// at the point.
+    #[test]
+    fn a_drag_cuts_a_link_and_a_tap_takes_the_point() {
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let at = |x, y| GridCoord { x, y };
+        let mut hand = |world: &mut World, tool, from, to| handle_player_action(world, &mut events, &mut intersections, ClientMessage::Build(Build { tool, from, to }), 0);
+        // A side street, two tiles long, off the main one.
+        hand(&mut world, Tool::Street, at(5, 0), at(5, 1));
+        hand(&mut world, Tool::Street, at(5, 1), at(5, 2));
+        hand(&mut world, Tool::Demolish, at(5, 1), at(5, 2));
+        assert!(!world.are_connected(at(5, 1), at(5, 2)), "the link is cut");
+        assert!(world.road_node_at(at(5, 2)).is_none(), "and the end left with no road goes");
+        assert!(world.are_connected(at(5, 0), at(5, 1)), "the rest stands");
+        // A house's door, cut: the house stands, cut off.
+        hand(&mut world, Tool::Building(BuildingKind::House), at(8, 1), at(8, 1));
+        let house = world.occupied[&(8, 1)];
+        let door = world.door_of(house).expect("a door").1;
+        let street = world.objects.get(door).and_then(|e| e.position).unwrap();
+        hand(&mut world, Tool::Demolish, street, at(8, 1));
+        assert!(world.door_of(house).is_none() && world.occupied.contains_key(&(8, 1)), "the door shut, the house standing");
+        // Two houses of a row let go of each other.
+        hand(&mut world, Tool::Building(BuildingKind::House), at(11, 1), at(11, 1));
+        hand(&mut world, Tool::Building(BuildingKind::House), at(11, 1), at(12, 1));
+        assert!(may(&world, Tool::Demolish, at(11, 1), at(12, 1)), "a row to cut");
+        hand(&mut world, Tool::Demolish, at(11, 1), at(12, 1));
+        assert!(!may(&world, Tool::Demolish, at(11, 1), at(12, 1)), "and cut");
+        assert!(world.occupied.contains_key(&(11, 1)) && world.occupied.contains_key(&(12, 1)), "both houses standing");
+        // A tap takes the point and every link at it.
+        hand(&mut world, Tool::Demolish, at(5, 0), at(5, 0));
+        assert!(world.road_node_at(at(5, 0)).is_none());
+        assert!(world.road_node_at(at(5, 1)).is_none(), "the side street left with no road goes too");
     }
 
     fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
