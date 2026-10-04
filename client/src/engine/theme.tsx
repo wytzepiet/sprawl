@@ -32,9 +32,9 @@ const light = {
   mountain: hex3("#F8F7F6"),
   // A courtyard's lawn, a shade greener than the land round it.
   garden: hex3("#AED08F"),
-  // A yard, a car park or a pavement: a pale plot, a shade under the
-  // road's white.
-  paved: hex3("#E8ECDF"),
+  // A yard, a car park or a pavement: stone grey, the land's sage gone
+  // grey, a clear step under the road's white.
+  paved: hex3("#D9DBCE"),
   /** The hand's dots: where it may build. */
   hand: hex3("#2F3B4C"),
   road: hex3("#F1F2EB"),
