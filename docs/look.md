@@ -296,6 +296,13 @@ building's tiles, a street, a junction, or a free tile):
 Plan, 2026-10-03. Decided by the mayor the same day: building is
 dragging, and a building is the tiles it was painted on.
 
+Built 2026-10-04, steps 1 to 4: one command and a toolbar, a building
+its tiles, the rings gone, and the game drawn by the town grid, a road
+an instance a tile and the town round what is built drawn whole. Still
+to come: the car park as aisles (5), a building's own mesh redrawn
+alone, the selected building's outline, one-way arrows and the red of a
+road that reaches nothing, on the new asphalt.
+
 - **One toolbar, drag for everything.** Select, each kind of road, each
   kind of building the tree has opened, demolish. Pick one and drag on
   the map, or tap: it is built as the drag goes. The card shelf's
