@@ -85,28 +85,6 @@ pub async fn town(State(state): State<AppState>) -> String {
     ask(&state, Ask::Town).await
 }
 
-/// Where the hand may go with a tool over a box of tiles, a number a tile
-/// (`game_loop::may_map`): what the brush shows before and as it drags.
-/// `/may?tool=Street&x0=0&y0=0&x1=40&y1=30`; a building's tool is its kind.
-pub async fn may(Query(q): Query<HashMap<String, String>>, State(state): State<AppState>) -> String {
-    let tool = q.get("tool").map(String::as_str).unwrap_or("");
-    let tool = match tool {
-        "Street" => crate::protocol::Tool::Street,
-        "OneWay" => crate::protocol::Tool::OneWay,
-        "Road" => crate::protocol::Tool::Road,
-        "Demolish" => crate::protocol::Tool::Demolish,
-        kind => match serde_json::from_value(serde_json::Value::String(kind.into())) {
-            Ok(kind) => crate::protocol::Tool::Building(kind),
-            Err(_) => return "{\"error\":\"no such tool\"}\n".into(),
-        },
-    };
-    let at = |k: &str| q.get(k).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
-    let (x0, y0) = (at("x0"), at("y0"));
-    // A view's worth at most: the map is asked for as the camera moves.
-    let (x1, y1) = (at("x1").clamp(x0, x0 + 160), at("y1").clamp(y0, y0 + 160));
-    ask(&state, Ask::May { tool, x0, y0, x1, y1 }).await
-}
-
 /// The tiles round a point as a fixture's text, drawn as the map is seen:
 /// what `bun run plan` draws of the running game. `/map?x=0&y=0&r=20`.
 pub async fn map(Query(q): Query<HashMap<String, String>>, State(state): State<AppState>) -> String {

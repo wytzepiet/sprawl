@@ -3,7 +3,6 @@ import { OrthoCamera } from "./OrthoCamera";
 import DayNightLights, { DayNightProvider } from "./DayNightCycle";
 import { InstancePoolProvider } from "./InstancePool";
 import Headlights from "./Headlights";
-import { Brush } from "./Brush";
 import { Picker } from "./Picker";
 import { Highlight } from "./Highlight";
 import World from "./World";
@@ -29,7 +28,6 @@ function SceneInner() {
         <DayNightLights>
           <Headlights>
             <InstancePoolProvider>
-              <Brush />
               <Picker />
               <Highlight />
               <World />

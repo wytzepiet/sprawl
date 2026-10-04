@@ -201,7 +201,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Card(id) => crate::card::card(&world, id, now),
                         Ask::Town => crate::economy::town(&world, now),
                         Ask::Map { x, y, r } => crate::fixtures::draw(&world, x, y, r).into(),
-                        Ask::May { tool, x0, y0, x1, y1 } => serde_json::json!({ "x0": x0, "y0": y0, "w": x1 - x0 + 1, "cells": may_map(&world, tool, x0, y0, x1, y1) }),
                         Ask::Call(id) => {
                             // Its shelf, emptied: a depot fetches, a maker
                             // is full again by tomorrow, anything else
@@ -420,8 +419,9 @@ fn handle_player_action(
 
 /// May the mayor's hand take this step with this tool: the build's gate
 /// (what it has opened, how much road is left to lay, what a tile costs),
-/// and the world's own rule for the step. The one rule: a step refused is
-/// refused by it, and the map of where the hand may go is drawn from it.
+/// and the world's own rule for the step. The one rule a step is refused
+/// by. The client works out the same where it draws the hand's dots
+/// (`client/src/engine/may.ts`): a change here is a change there.
 pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
     match tool {
         Tool::Street | Tool::OneWay | Tool::Road => {
@@ -440,35 +440,6 @@ pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
         }
         Tool::Demolish => world.road_node_at(to).is_some() || world.occupied.contains_key(&(to.x, to.y)),
     }
-}
-
-/// The steps out of each tile, in this order, as the map of where the hand
-/// may go numbers them: east and on round toward +y.
-pub const STEPS: [(i32, i32); 8] = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)];
-
-/// Where the hand may go with a tool, over a box of tiles: for each tile,
-/// bit i if a step from it to its neighbour `STEPS[i]` may be taken, and
-/// bit 8 if a drag may start there (a tap that builds, or for a road any
-/// step out). Row by row from (x0, y0).
-pub fn may_map(world: &World, tool: Tool, x0: i32, y0: i32, x1: i32, y1: i32) -> Vec<u16> {
-    let road = matches!(tool, Tool::Street | Tool::OneWay | Tool::Road);
-    let mut out = Vec::with_capacity(((x1 - x0 + 1) * (y1 - y0 + 1)).max(0) as usize);
-    for y in y0..=y1 {
-        for x in x0..=x1 {
-            let at = GridCoord { x, y };
-            let mut bits = 0u16;
-            for (i, (dx, dy)) in STEPS.iter().enumerate() {
-                if may(world, tool, at, GridCoord { x: x + dx, y: y + dy }) {
-                    bits |= 1 << i;
-                }
-            }
-            if if road { bits != 0 } else { may(world, tool, at, at) } {
-                bits |= 1 << 8;
-            }
-            out.push(bits);
-        }
-    }
-    out
 }
 
 /// Take a road out of the world, rerouting or despawning whatever was on it.
@@ -967,39 +938,40 @@ mod tests {
         world
     }
 
-    /// The map of where the hand may go says what the hand will do: a
-    /// house may be tapped down beside the street and not on it; a street
-    /// may be drawn off the street and not along it again, nor into a
-    /// house's middle from its back; demolishing finds what stands.
+    /// The rule says what the hand will do: a house may be tapped down
+    /// beside the street and not on it; a street may be drawn off the
+    /// street and not along it again, nor onto water; demolishing finds
+    /// what stands. The client's dots (`may.ts`) answer the same.
     #[test]
-    fn the_map_of_where_the_hand_may_go_is_the_rule() {
+    fn the_rule_of_where_the_hand_may_go_is_what_it_does() {
         let mut world = street();
         world.build = crate::tree::Build::all();
         world.treasury = 1e9;
-        let cell = |world: &World, tool, x, y| may_map(world, tool, x, y, x, y)[0];
-        let start = 1 << 8;
-        assert_ne!(cell(&world, Tool::Building(BuildingKind::House), 5, 1) & start, 0, "beside the street");
-        assert_eq!(cell(&world, Tool::Building(BuildingKind::House), 5, 0) & start, 0, "not on it");
-        assert_eq!(cell(&world, Tool::Building(BuildingKind::House), 5, 3) & start, 0, "nor where no street reaches");
+        let at = |x, y| GridCoord { x, y };
+        let house = Tool::Building(BuildingKind::House);
+        assert!(may(&world, house, at(5, 1), at(5, 1)), "beside the street");
+        assert!(!may(&world, house, at(5, 0), at(5, 0)), "not on it");
+        assert!(!may(&world, house, at(5, 3), at(5, 3)), "nor where no street reaches");
         world.terrain.insert((5, 1), TerrainType::Water);
-        assert_eq!(cell(&world, Tool::Street, 5, 0) & (1 << 2), 0, "nor a street onto water");
+        assert!(!may(&world, Tool::Street, at(5, 0), at(5, 1)), "nor a street onto water");
         world.terrain.insert((5, 1), TerrainType::Grass);
-        let off = cell(&world, Tool::Street, 5, 0);
-        assert_ne!(off & (1 << 2), 0, "off the street toward +y");
-        assert_eq!(off & 1, 0, "not along it again");
-        assert_eq!(cell(&world, Tool::Demolish, 5, 3) & start, 0, "nothing to take");
-        assert_ne!(cell(&world, Tool::Demolish, 5, 0) & start, 0, "a road to take");
-        // And a step the map refuses, the hand is refused.
-        for (dx, dy) in STEPS {
-            let (from, to) = (GridCoord { x: 5, y: 0 }, GridCoord { x: 5 + dx, y: dy });
-            let allowed = may(&world, Tool::Street, from, to);
-            let mut events = EventQueue::new();
-            let mut intersections = IntersectionRegistry::new();
-            let mut probe = street();
-            probe.build = crate::tree::Build::all();
-            let edges = probe.edges.len();
-            handle_player_action(&mut probe, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from, to }), 0);
-            assert_eq!(probe.edges.len() != edges, allowed, "step {dx},{dy}");
+        assert!(may(&world, Tool::Street, at(5, 0), at(5, 1)), "off the street toward +y");
+        assert!(!may(&world, Tool::Street, at(5, 0), at(6, 0)), "not along it again");
+        assert!(!may(&world, Tool::Demolish, at(5, 3), at(5, 3)), "nothing to take");
+        assert!(may(&world, Tool::Demolish, at(5, 0), at(5, 0)), "a road to take");
+        // And a step the rule refuses, the hand is refused.
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let (from, to) = (at(5, 0), at(5 + dx, dy));
+                let allowed = may(&world, Tool::Street, from, to);
+                let mut events = EventQueue::new();
+                let mut intersections = IntersectionRegistry::new();
+                let mut probe = street();
+                probe.build = crate::tree::Build::all();
+                let edges = probe.edges.len();
+                handle_player_action(&mut probe, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from, to }), 0);
+                assert_eq!(probe.edges.len() != edges, allowed, "step {dx},{dy}");
+            }
         }
     }
 

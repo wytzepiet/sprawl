@@ -1,37 +1,21 @@
-import { createEffect, on, onCleanup } from "solid-js";
+import { createEffect, createMemo, on, onCleanup } from "solid-js";
 import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useInstancePool } from "./InstancePool";
 import { screenToWorld, viewExtent } from "./view";
-import { builtVersion, useGame } from "../state/gameObjects";
+import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
+import { tree, unlocked } from "../state/tree";
 import { isRoad, tool } from "../ui/buildMode";
+import { affords, hand, may, mayStart, STEPS, type Hand } from "./may";
 import type { MeshGeometry } from "./Mesh";
-import type { GridCoord, Tool } from "../generated";
+import type { GridCoord, TerrainType } from "../generated";
 
-// 8-directional step offsets, indexed by sector (0 = right, going counter-clockwise)
-// — the server's order too (`STEPS` in `game_loop`), as the map numbers them.
-const STEP_DIRS: [number, number][] = [
-  [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1],
-];
-
-/** Snap an angle to one of 8 directions, returning the sector index. */
+/** Snap an angle to one of 8 directions, returning the sector index (`STEPS`). */
 function snapDirection(dx: number, dy: number): number {
   const angle = Math.atan2(dy, dx);
   return ((Math.round(angle * 4 / Math.PI) % 8) + 8) % 8;
 }
 
-/** Where the hand may go with what it holds, over a box of tiles, a number
- *  a tile (`/may`): bit i a step to the i-th neighbour, bit 8 a start. */
-interface May {
-  x0: number;
-  y0: number;
-  w: number;
-  cells: number[];
-}
-const START = 1 << 8;
-/** Ground round the view the map is asked for, so a pan does not ask again
- *  at once. */
-const AHEAD = 8;
 /** Just over the roads and the lawns, under anything standing. */
 const DOT_Z = 0.08;
 
@@ -55,15 +39,15 @@ function disc(r: number): MeshGeometry {
  * A tap, or the first tile of a drag, paints or clears that tile alone;
  * a road needs two.
  *
- * And where it may go, asked of the server for the view (`/may`): a dot on
- * every tile a drag may start from while nothing is pressed, and while
- * dragging the steps the tile it is on allows, lit. A step the map
- * refuses is not taken: the drag waits there.
+ * And where it may go, worked out here (`may.ts`): a dot on every tile in
+ * view a drag may start from while nothing is pressed, and while dragging
+ * the steps the tile it is on allows, lit. A step refused is not taken:
+ * the drag waits there.
  */
-export function Brush() {
+export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
   const { scene, canvas } = useEngine();
   const pool = useInstancePool();
-  const { send } = useGame();
+  const { send, growth } = useGame();
   let current: GridCoord | null = null;
   let prevWorld: { wx: number; wy: number } | null = null;
   let accDx = 0;
@@ -75,22 +59,26 @@ export function Brush() {
     if (held !== null) send({ type: "Build", data: { tool: held, from, to } });
   };
 
-  // The map, the box it covers, and which ask is the latest.
-  let map: May | null = null;
-  let asked = 0;
-  const cell = (x: number, y: number) => {
-    if (!map) return null;
-    const [c, r] = [x - map.x0, y - map.y0];
-    return c >= 0 && c < map.w && r >= 0 && c + r * map.w < map.cells.length ? map.cells[c + r * map.w] : 0;
-  };
-  /** May the hand step from here to the neighbour this way? Yes, until
-   *  the map has come. */
+  // The world as the hand sees it, read again when something is built.
+  let world: Hand | null = null;
+  createEffect(on(builtVersion, () => {
+    world = hand(eachEntity, props.ground, growth(), (want) => unlocked(tree(), growth().taken, want));
+    draw();
+  }));
+  // And drawn again when what the build allows changes: what is taken,
+  // road left to lay, a tile of the held kind come within the purse.
+  const gate = createMemo(() => {
+    const [g, held] = [growth(), tool()];
+    const purse = held !== null && typeof held !== "string" && affords(g, held.Building);
+    return `${g.road_tiles_left},${g.taken.length},${tree() ? 1 : 0},${purse}`;
+  });
+  createEffect(on([gate, tool], () => draw(), { defer: true }));
   const allowed = (at: GridCoord, i: number) => {
-    const bits = cell(at.x, at.y);
-    return bits === null || (bits & (1 << i)) !== 0;
+    const held = tool();
+    return !!world && held !== null && may(world, held, at, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] });
   };
 
-  /** The tiles the view covers, and the ground round it. */
+  /** The tiles the view covers. */
   const viewBox = () => {
     const rect = canvas.getBoundingClientRect();
     const mid = screenToWorld(scene, canvas, { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
@@ -98,30 +86,12 @@ export function Brush() {
     const half = Math.max(halfW, halfH);
     return [Math.floor(mid.wx - half), Math.floor(mid.wy - half), Math.ceil(mid.wx + half), Math.ceil(mid.wy + half)];
   };
-  const name = (held: Tool) => (typeof held === "string" ? held : held.Building);
-  async function ask() {
-    const held = tool();
-    const n = ++asked;
-    if (held === null) {
-      map = null;
-      draw();
-      return;
-    }
-    const [x0, y0, x1, y1] = viewBox();
-    const r = await fetch(`/may?tool=${name(held)}&x0=${x0 - AHEAD}&y0=${y0 - AHEAD}&x1=${x1 + AHEAD}&y1=${y1 + AHEAD}`).catch(() => null);
-    const answer = r?.ok ? ((await r.json()) as May) : null;
-    if (n !== asked || !answer?.cells) return;
-    map = answer;
-    draw();
-  }
-  createEffect(on([tool, builtVersion], () => void ask()));
-  // Asked again when the view leaves what was asked for.
+  // Drawn again when the view moves on a tile.
+  let drawnOver = "";
   let frames = 0;
   const watch = scene.onAfterRenderObservable.add(() => {
-    if (!map || ++frames % 15) return;
-    const [x0, y0, x1, y1] = viewBox();
-    const h = map.cells.length / map.w;
-    if (x0 < map.x0 || y0 < map.y0 || x1 >= map.x0 + map.w || y1 >= map.y0 + h) void ask();
+    if (tool() === null || current || ++frames % 15) return;
+    if (viewBox().join() !== drawnOver) draw();
   });
 
   // The dots: a small one on every start, a bigger one on every step the
@@ -129,20 +99,24 @@ export function Brush() {
   const dots: { key: string; id: number }[] = [];
   function draw() {
     for (const { key, id } of dots.splice(0)) pool.removeInstance(key, id);
-    if (!map || tool() === null) return;
+    const held = tool();
+    if (!world || held === null) return;
+    world.growth = growth();
     if (current) {
       pool.ensureBucket("may_next", disc(0.14), Color3.White(), false, false);
-      for (const [i, [dx, dy]] of STEP_DIRS.entries()) {
+      for (const [i, [dx, dy]] of STEPS.entries()) {
         if (!allowed(current, i)) continue;
         dots.push({ key: "may_next", id: pool.addInstance("may_next", [current.x + dx + 0.5, current.y + dy + 0.5, DOT_Z]) });
       }
       return;
     }
     pool.ensureBucket("may_start", disc(0.07), new Color3(0.25, 0.27, 0.32), false, false);
-    const h = map.cells.length / map.w;
-    for (let r = 0; r < h; r++) {
-      for (let c = 0; c < map.w; c++) {
-        if (map.cells[c + r * map.w] & START) dots.push({ key: "may_start", id: pool.addInstance("may_start", [map.x0 + c + 0.5, map.y0 + r + 0.5, DOT_Z]) });
+    const box = viewBox();
+    drawnOver = box.join();
+    const [x0, y0, x1, y1] = box;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (mayStart(world, held, { x, y })) dots.push({ key: "may_start", id: pool.addInstance("may_start", [x + 0.5, y + 0.5, DOT_Z]) });
       }
     }
   }
@@ -169,7 +143,7 @@ export function Brush() {
     if (Math.max(Math.abs(accDx), Math.abs(accDy)) < 0.1) return;
 
     const sector = snapDirection(accDx, accDy);
-    const [sx, sy] = STEP_DIRS[sector];
+    const [sx, sy] = STEPS[sector];
     let cur = current!;
 
     for (let i = 0; i < 50; i++) {
@@ -181,7 +155,7 @@ export function Brush() {
       const next: GridCoord = { x: cur.x + sx, y: cur.y + sy };
       const newDist = Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5)));
       if (newDist >= dist) break; // would move away from pointer
-      if (!allowed(cur, sector)) break; // the map says no: wait here
+      if (!allowed(cur, sector)) break; // refused: wait here
 
       step(cur, next);
       cur = next;

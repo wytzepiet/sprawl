@@ -23,6 +23,7 @@ import type { Building } from "../generated";
 import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
+import { Brush } from "./Brush";
 
 interface MountedEntry {
   kind: string;
@@ -156,5 +157,5 @@ export default function World() {
     fog.dispose();
   });
 
-  return <></>;
+  return <Brush ground={(x, y) => terrain.typeAt(x, y)} />;
 }
