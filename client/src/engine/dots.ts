@@ -5,7 +5,8 @@ import { projector } from "./view";
 /**
  * The hand's dots, drawn flat over the scene on canvases of their own: a
  * small faint one on every tile a drag may start from, and while dragging
- * a full one on every step the tile underfoot allows, and a bigger one on
+ * a full one on every step the tile underfoot allows, grown out of the
+ * small one there and shrunk back into it, and a bigger one on
  * the tile itself, drawn out toward the pointer along the step it points,
  * thinner the further it is pulled. The drag's shapes are drawn on a
  * canvas seen through a blur and a hard edge (the "goo" filter), so what
@@ -112,8 +113,12 @@ export class Dots {
       const key = `${kind}${x},${y}`;
       const d = this.dots.get(key);
       if (d) return void ((d.to = 1), (d.wait = 0));
-      const wait = Math.min(0.3, Math.hypot(x + 0.5 - from.x, y + 0.5 - from.y) * 0.012);
-      this.dots.set(key, { x, y, kind, s: 0, v: 0, to: 1, wait, lean: 0, lv: 0 });
+      // The starts come in a ripple; a step's dot at once, and out of the
+      // start's dot on its tile, if there is one, rather than from nothing.
+      const start = kind !== "start" && this.dots.get(`start${x},${y}`);
+      const s = start && start.to > 0 ? (START_R * start.s) / RADIUS[kind] : 0;
+      const wait = kind === "start" ? Math.min(0.3, Math.hypot(x + 0.5 - from.x, y + 0.5 - from.y) * 0.012) : 0;
+      this.dots.set(key, { x, y, kind, s, v: 0, to: 1, wait, lean: 0, lv: 0 });
     };
     for (const [x, y] of starts) show("start", x, y);
     for (const [x, y] of nexts) show("next", x, y);

@@ -66,10 +66,12 @@ export function affords(growth: Growth, kind: BuildingKind): boolean {
   return growth.treasury >= BLUEPRINTS[kind].price / (w * d);
 }
 
-/** May a drag start here: a tap that builds, or for a road any step out. */
+/** May a drag start here: a tap that builds, or a step out that may be taken. */
 export function mayStart(h: Hand, tool: Tool, at: GridCoord): boolean {
-  if (typeof tool === "string" && tool !== "Demolish") return STEPS.some(([dx, dy]) => may(h, tool, at, { x: at.x + dx, y: at.y + dy }));
-  return may(h, tool, at, at);
+  if (may(h, tool, at, at)) return true;
+  // Or any step out of it: a road's first, or painting on from a building
+  // of the kind. What is taken away is taken where it stands.
+  return tool !== "Demolish" && STEPS.some(([dx, dy]) => may(h, tool, at, { x: at.x + dx, y: at.y + dy }));
 }
 
 const nodeAt = (h: Hand, t: GridCoord) => h.roads.get(key(t.x, t.y));

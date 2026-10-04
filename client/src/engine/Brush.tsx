@@ -22,9 +22,8 @@ const NIGHT_INK = new Color3(0.9, 0.92, 0.95);
  * a road needs two.
  *
  * And where it may go, worked out here (`may.ts`) and shown by the dots
- * (`dots.ts`): one on every tile in view a drag may start from while
- * nothing is pressed, and while dragging the steps the tile it is on
- * allows. A step refused is not taken: the drag waits there, straining.
+ * (`dots.ts`): one on every tile in view a drag may start from, and
+ * while dragging the steps the tile it is on allows. A step refused is not taken: the drag waits there, straining.
  */
 export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
   const { scene, canvas } = useEngine();
@@ -91,12 +90,9 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     const [x0, y0, x1, y1] = viewBox();
     if (world && held !== null) {
       world.growth = growth();
-      if (current) {
-        for (const [i, [dx, dy]] of STEPS.entries()) if (allowed(current, i)) nexts.push([current.x + dx, current.y + dy]);
-      } else {
-        drawnOver = [x0, y0, x1, y1].join();
-        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (mayStart(world, held, { x, y })) starts.push([x, y]);
-      }
+      if (current) for (const [i, [dx, dy]] of STEPS.entries()) if (allowed(current, i)) nexts.push([current.x + dx, current.y + dy]);
+      drawnOver = [x0, y0, x1, y1].join();
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (mayStart(world, held, { x, y })) starts.push([x, y]);
     }
     dots.aim(starts, nexts, current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
   }
