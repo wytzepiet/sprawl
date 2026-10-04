@@ -23,7 +23,7 @@ import { projector } from "./view";
 
 /** How big each dot is, in tiles. */
 const START_R = 0.07;
-const NEXT_R = 0.13;
+const NEXT_R = 0.1;
 const HERE_R = 0.24;
 /** How far along a step the dot may be drawn out, of the way to the next
  *  tile: there, or refused. */
