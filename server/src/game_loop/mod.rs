@@ -109,6 +109,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     // loaded from a save written before anyone lived here, and the day is
     // due to turn. Then everyone thinks once — trips do not survive a save,
     // so a loaded world is entirely people standing still until they do.
+    world.resettle();
     settle_and_wake(&mut world, &mut events);
     for id in world.resident_ids() {
         wake_resident(&world, &mut events, id);
@@ -122,13 +123,9 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         tick_interval.tick().await;
         let mut now: GameTime = sim_time;
 
-        // The road brush sends a command per tile, so what a road changed is
-        // settled once for the whole batch rather than once per tile.
-        let mut roads_laid = false;
         while let Ok(cmd) = commands.try_recv() {
             match cmd {
                 Command::PlayerAction { client_id, message } => {
-                    roads_laid |= matches!(message, ClientMessage::Build(Build { tool: Tool::Street | Tool::OneWay | Tool::Road, .. }));
                     if let ClientMessage::Ping = &message {
                         if let Some(cs) = clients.get(&client_id) {
                             let _ = cs.sender.send(ServerMessage::Pong(now));
@@ -172,6 +169,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         if let Some(anchor) = crate::road_gen::generate(&mut world, seed) {
                             crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
                         }
+                        world.resettle();
                         settle_and_wake(&mut world, &mut events);
                         world.newly_revealed.clear();
                         // Re-send subscribed chunks for all connected clients
@@ -230,13 +228,9 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                 }
             }
         }
-        // A road laid is a road that may have reached a building standing
-        // dormant, or run off the map and made a new way in. Placing and
-        // demolishing settle for themselves; drawing road did not, so a
-        // street to a finished house left nobody living in it.
-        if roads_laid {
-            settle_and_wake(&mut world, &mut events);
-        }
+        // Whatever the commands built, reached, cut off or took away
+        // settles once for the batch: the road brush sends a command a tile.
+        settle_and_wake(&mut world, &mut events);
 
         // One step per unit of speed, each the same length as at speed 1, so a
         // fast-forwarded hour is the same hour — just less wall time spent on it.
@@ -387,14 +381,12 @@ fn handle_player_action(
                     if world.paint(kind, from, to).is_some() {
                         crate::economy::built(world, crate::economy::price(world, kind) / crate::economy::tiles(kind), now);
                     }
-                    settle_and_wake(world, events);
                 }
                 Tool::Demolish => {
                     // A tap takes everything on the tile: its road and all
                     // its links, the cars on it rerouted, or the building's
                     // tile. A step cuts only what joins the two tiles: the
-                    // road between them, a door, a row. Then the population
-                    // is settled against what is left.
+                    // road between them, a door, a row.
                     if from == to {
                         if let Some(id) = world.road_node_at(to) {
                             handle_road_demolish(world, events, intersections, id, now);
@@ -408,7 +400,6 @@ fn handle_player_action(
                             None => {}
                         }
                     }
-                    settle_and_wake(world, events);
                 }
             }
         }
@@ -688,8 +679,8 @@ fn handle_wake(
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
         // A building's wake is its turn: a farm whose crop has ripened.
         Some(GameObject::Building(_)) => crate::calls::turn(world, events, id, now),
-        // Midnight: every till is counted, every price steps, and everyone
-        // looks at the openings again.
+        // Midnight: every till is counted, every price steps, and every
+        // line reads the labour market again.
         None if id == MIDNIGHT => {
             crate::economy::day(world, now);
             crate::calls::turns(world, events, now);
@@ -704,8 +695,8 @@ fn handle_wake(
 /// The wake that is nobody's: the day turning. No entity has this id.
 const MIDNIGHT: EntityId = EntityId::MAX;
 
-/// Population follows what is standing, and whoever's situation changed gets
-/// to think about it. And the day is always due to turn.
+/// Population follows what changed, and whoever's situation changed gets to
+/// think about it. And the day is always due to turn.
 fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     for id in world.settle() {
         wake_resident(world, events, id);
@@ -1837,10 +1828,9 @@ mod tests {
 
     /// A street drawn to a house that was standing dormant moves people in.
     ///
-    /// Placing and demolishing settle for themselves; drawing road did not,
-    /// so the house stayed empty until the mayor happened to place something
-    /// else. Everything here but the one line in the tick loop that decides
-    /// to settle after a batch of road.
+    /// Drawing road once settled nothing, so the house stayed empty until
+    /// the mayor happened to place something else. A driveway laid on a
+    /// plot marks it unsettled, and the tick settles once after the batch.
     #[test]
     fn a_street_drawn_to_a_dormant_house_fills_it() {
         let mut world = street();
@@ -1914,6 +1904,8 @@ mod tests {
         world.place_road_path(&(167..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
+        // Started as the game starts one.
+        world.resettle();
         settle_and_wake(&mut world, &mut events);
         assert!(!world.edge.is_empty(), "the street has to run off the map, or nobody can arrive at all");
         // Forty buildings placed at once are a town that grew; give it the
@@ -1967,39 +1959,6 @@ mod tests {
         }
     }
 
-    /// What a build costs the loop, in a lived-in town: road steps, house
-    /// taps, and the settle that follows them. Printed, not asserted: the
-    /// yardstick for making a build cost what it changes and no more.
-    /// `cargo test probe_build_cost -- --ignored --nocapture`.
-    #[test]
-    #[ignore]
-    fn probe_build_cost() {
-        let (mut world, _) = live(&placeable(), 1);
-        world.build = crate::tree::Build::all();
-        world.treasury = 1e9;
-        let mut events = EventQueue::new();
-        events.set_now(DAY_MS as u64);
-        let mut intersections = IntersectionRegistry::new();
-        println!("{} residents, {} objects", world.resident_ids().len(), world.objects.iter().count());
-        let at = |x, y| GridCoord { x, y };
-        let t = Instant::now();
-        for y in 0..6 {
-            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from: at(300, y), to: at(300, y + 1) }), 0);
-        }
-        println!("6 road steps: {:?}", t.elapsed());
-        let t = Instant::now();
-        settle_and_wake(&mut world, &mut events);
-        println!("settle after roads: {:?}", t.elapsed());
-        for y in 1..6 {
-            let t = Instant::now();
-            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Building(BuildingKind::House), from: at(301, y), to: at(301, y) }), 0);
-            println!("house tap: {:?}", t.elapsed());
-        }
-        let t = Instant::now();
-        let n = world.settle().len();
-        println!("settle alone: {:?} ({n} woken)", t.elapsed());
-    }
-
     /// How fast the same town runs, in simulated days per wall second. Not
     /// asserted: wall time is the laptop's, not the code's. Printed for the
     /// same occasional look as the budget, to see whether it has drifted.
@@ -2014,6 +1973,183 @@ mod tests {
             world.resident_ids().len(),
             3.0 / secs
         );
+    }
+
+    /// `copies` of the season's town, a hundred tiles apart, each on its
+    /// own street running off the map: a town twice the size, with the
+    /// same neighbourhoods in it.
+    fn towns(copies: i32) -> World {
+        let mut world = World::new();
+        let mix = town_mix();
+        for k in 0..copies {
+            let dy = 100 * k;
+            for y in -6..14 {
+                for x in -4..400 {
+                    world.terrain.insert((x, y + dy), TerrainType::Grass);
+                }
+            }
+            world.place_road_path(&(-2..400).map(|x| GridCoord { x, y: dy }).collect::<Vec<_>>());
+            let mut x = 0;
+            for kind in &mix {
+                world.place_on_street(GridCoord { x, y: dy + 1 }, *kind).expect("the street gives it a driveway");
+                x += crate::blueprint::plot(*kind, 0).size.0 as i32 + 1;
+            }
+        }
+        world
+    }
+
+    /// What builds cost the loop in a town of `copies`, in microseconds,
+    /// each the median of a row of them: a house painted across the
+    /// street and demolished again, a shop the same, and a side street
+    /// drawn four tiles — each a batch of the brush's steps, with the
+    /// settle the tick runs after it.
+    fn build_cost(copies: i32) -> Vec<(&'static str, f64)> {
+        let mut world = towns(copies);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        world.resettle();
+        settle_and_wake(&mut world, &mut events);
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        // A command batch as the tick takes it: every step, then one settle.
+        let mut timed = |world: &mut World, steps: Vec<(Tool, GridCoord, GridCoord)>| {
+            let started = Instant::now();
+            for (tool, from, to) in steps {
+                handle_player_action(world, &mut events, &mut intersections, ClientMessage::Build(Build { tool, from, to }), 0);
+            }
+            settle_and_wake(world, &mut events);
+            started.elapsed().as_secs_f64() * 1e6
+        };
+        let at = |x, y| GridCoord { x, y };
+        let mut costs: Vec<(&'static str, Vec<f64>)> = ["a house", "its demolition", "a shop", "its demolition", "a road"].map(|n| (n, Vec::new())).into();
+        for i in 0..20 {
+            let x = 4 + 8 * i;
+            for (k, kind) in [BuildingKind::House, BuildingKind::Shop].into_iter().enumerate() {
+                // Painted across the street a row at a time, back and forth.
+                let (w, h) = crate::blueprint::plot(kind, 0).size;
+                let tiles: Vec<GridCoord> = (0..h as i32).flat_map(|r| (0..w as i32).map(move |c| at(x + if r % 2 == 0 { c } else { w as i32 - 1 - c }, -1 - r))).collect();
+                let steps = tiles.iter().enumerate().map(|(n, &t)| (Tool::Building(kind), tiles[n.saturating_sub(1)], t)).collect();
+                costs[2 * k].1.push(timed(&mut world, steps));
+                let id = *world.occupied.get(&(x, -1)).unwrap_or_else(|| panic!("the {kind:?} went down"));
+                let bp = crate::blueprint::blueprint(kind);
+                assert_eq!((world.household(id).len(), world.staff(id).len()), (bp.homes as usize, bp.jobs as usize), "the {kind:?} filled");
+                // Every tile taken out, a drive on one taken first.
+                let steps = tiles.iter().flat_map(|&t| [(Tool::Demolish, t, t), (Tool::Demolish, t, t)]).collect();
+                costs[2 * k + 1].1.push(timed(&mut world, steps));
+                assert!(world.objects.get(id).is_none(), "the {kind:?} came down");
+            }
+            let steps = (0..4).map(|y| (Tool::Street, at(x + 6, -y), at(x + 6, -y - 1))).collect();
+            costs[4].1.push(timed(&mut world, steps));
+        }
+        let costs: Vec<(&'static str, f64)> = costs
+            .into_iter()
+            .map(|(what, mut v)| {
+                v.sort_by(f64::total_cmp);
+                (what, v[v.len() / 2])
+            })
+            .collect();
+        println!("{copies} town(s), {} residents: {}", world.resident_ids().len(), costs.iter().map(|(what, c)| format!("{what} {c:.0} µs")).collect::<Vec<_>>().join(", "));
+        costs
+    }
+
+    /// A build costs the loop what it changes, not what the town holds:
+    /// the same tap in a town twice the size costs about the same. Every
+    /// player building at once shares the one loop, so a build that grew
+    /// with the world would stall all of them. Settling the whole town
+    /// after every build cost 2 ms a house here, and 6 ms in two towns.
+    /// Timed, so `#[ignore]`d with the other town benchmarks.
+    #[test]
+    #[ignore]
+    fn a_build_costs_the_same_in_a_town_twice_the_size() {
+        for ((what, one), (_, two)) in build_cost(1).into_iter().zip(build_cost(2)) {
+            assert!(two < 1.5 * one + 100.0, "{what} cost {one:.0} µs in one town and {two:.0} µs in two");
+        }
+    }
+
+    /// What settling must leave true, whatever was built: every home a
+    /// road reaches full and every line staffed, nobody living or working
+    /// where no road goes, the index of who is where agreeing with the
+    /// residents, and everyone with a car.
+    fn assert_settled(world: &World, after: &str) {
+        for e in world.objects.iter() {
+            let GameObject::Building(ref b) = e.object else { continue };
+            if world.edge.contains(&e.id) {
+                continue;
+            }
+            let bp = crate::blueprint::blueprint(b.kind);
+            let reached = world.street_of(e.id).is_some();
+            let want = |n: u32| if reached { n as usize } else { 0 };
+            assert_eq!(world.household(e.id).len(), want(bp.homes), "after {after}: {:?} {} (reached {reached}) houses the wrong number", b.kind, e.id);
+            assert_eq!(world.staff(e.id).len(), want(bp.jobs), "after {after}: {:?} {} (reached {reached}) staffs the wrong number", b.kind, e.id);
+        }
+        for id in world.resident_ids() {
+            let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| &e.object) else { continue };
+            for b in std::iter::once(r.home).chain(r.work) {
+                assert!(world.street_of(b).is_some(), "after {after}: resident {id} is tied to {b}, which no road reaches");
+                assert!(world.people.get(&b).is_some_and(|p| p.contains(&id)), "after {after}: the index lost resident {id} at {b}");
+            }
+            assert!(matches!(world.objects.get(r.car).map(|e| &e.object), Some(GameObject::Car(_))), "after {after}: resident {id} has no car");
+        }
+        for (&b, people) in &world.people {
+            for &id in people {
+                assert!(matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(r)) if r.home == b || r.work == Some(b)), "after {after}: the index ties {id} to {b}");
+            }
+        }
+    }
+
+    /// Settling reads only the buildings marked unsettled, so a change
+    /// that forgets to mark one leaves a house empty or a cut-off shop
+    /// staffed, and nothing else would say so until midnight put it
+    /// right. A town is built and changed by the mayor's own commands —
+    /// painted, a tile taken out, demolished, a door closed, the street
+    /// before one taken up and laid again — and after every one, the town
+    /// is settled.
+    #[test]
+    fn every_build_leaves_the_town_settled() {
+        let mut world = street();
+        for (x, kind) in [(0, BuildingKind::House), (3, BuildingKind::House), (6, BuildingKind::Apartment), (12, BuildingKind::Shop), (30, BuildingKind::Office)] {
+            build(&mut world, x, kind, 1);
+        }
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        world.resettle();
+        settle_and_wake(&mut world, &mut events);
+        assert!(!world.edge.is_empty(), "a way out, or a desk could stay empty");
+        assert_settled(&world, "the start");
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let at = |x, y| GridCoord { x, y };
+        let mut act = |world: &mut World, tool: Tool, from: GridCoord, to: GridCoord| {
+            handle_player_action(world, &mut events, &mut intersections, ClientMessage::Build(Build { tool, from, to }), 0);
+            settle_and_wake(world, &mut events);
+            assert_settled(world, &format!("{tool:?} from {from:?} to {to:?}"));
+        };
+        // Painted across the street: two houses and an office, two tiles.
+        act(&mut world, Tool::Building(BuildingKind::House), at(20, -1), at(20, -1));
+        act(&mut world, Tool::Building(BuildingKind::House), at(24, -1), at(24, -1));
+        act(&mut world, Tool::Building(BuildingKind::Office), at(40, -1), at(40, -1));
+        act(&mut world, Tool::Building(BuildingKind::Office), at(40, -1), at(41, -1));
+        // The office's door tile taken out of it, which leaves too little of
+        // it to work; a house taken down, a door closed, and the street
+        // before a third taken up and laid again.
+        let office = *world.occupied.get(&(40, -1)).unwrap();
+        let (door, _) = world.door_of(office).expect("the office has a door");
+        act(&mut world, Tool::Demolish, door, door);
+        assert!(world.objects.get(office).is_some() || world.occupied.contains_key(&(81 - door.x, -1)), "a tile of it stands");
+        act(&mut world, Tool::Demolish, at(0, 1), at(0, 1));
+        let door_of = |world: &World, x, y| {
+            let (door, street) = world.door_of(*world.occupied.get(&(x, y)).unwrap()).expect("painted with a door");
+            (door, world.objects.get(street).unwrap().position.unwrap())
+        };
+        let (door, street) = door_of(&world, 20, -1);
+        act(&mut world, Tool::Demolish, door, street);
+        assert!(world.street_of(*world.occupied.get(&(20, -1)).unwrap()).is_none(), "the door closed");
+        let (_, street) = door_of(&world, 24, -1);
+        act(&mut world, Tool::Demolish, street, street);
+        assert!(world.street_of(*world.occupied.get(&(24, -1)).unwrap()).is_none(), "the street went");
+        act(&mut world, Tool::Street, at(street.x - 1, street.y), street);
+        act(&mut world, Tool::Street, street, at(street.x + 1, street.y));
+        assert!(world.street_of(*world.occupied.get(&(24, -1)).unwrap()).is_some(), "the street came back");
     }
 
     /// The equilibria docs/economy.md §11 asserts rather than codes, the
@@ -2341,15 +2477,11 @@ mod tests {
         settle_and_wake(&mut world, &mut events);
         let people = world.resident_ids();
         assert_eq!(people.len(), 2);
-        let work: Vec<EntityId> = people
-            .iter()
-            .filter_map(|&id| match world.objects.get(id).unwrap().object {
-                GameObject::Resident(ref r) => r.work,
-                _ => None,
-            })
-            .collect();
-        assert_eq!(work.len(), 2, "both took a job");
-        assert!(work.iter().all(|w| world.edge.contains(w)), "both work beyond the edge");
+        assert!(
+            people.iter().all(|&id| matches!(world.objects.get(id).unwrap().object, GameObject::Resident(ref r) if r.work.is_none())),
+            "nobody in town hired them",
+        );
+        let edge = world.nearest_edge(world.objects.get(home).unwrap().position.unwrap()).expect("a way out");
 
         // And they drive there: a day of it puts them at the edge, on the
         // clock, and back home again.
@@ -2358,7 +2490,7 @@ mod tests {
         let mut now = 0;
         while step(&mut world, &mut events, &mut intersections, &mut now, day) {
             seen_at_work |= people.iter().any(|&id| {
-                at_of(&world, id) == Some(work[0]) && doing(&world, id) == Some(crate::needs::Need::Work)
+                at_of(&world, id) == Some(edge) && doing(&world, id) == Some(crate::needs::Need::Work)
             });
         }
         assert!(seen_at_work, "nobody ever got to the job beyond the edge");

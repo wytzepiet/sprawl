@@ -14,8 +14,9 @@ use crate::world::{World, chunk_of};
 /// If the driver is still aboard they step out here and think again — which
 /// on arrival is the plan, and on an interrupted trip is the recovery.
 ///
-/// A car with nowhere to park (the building is gone) is scrapped; settle
-/// re-issues cars, so nothing is lost but the paint.
+/// A car whose building is gone parks at home instead, where its driver
+/// would think themselves anyway; one whose owner is gone — a household
+/// moved out, a facility demolished — is scrap.
 pub fn park_car(
     world: &mut World,
     intersections: &mut IntersectionRegistry,
@@ -50,7 +51,15 @@ pub fn park_car(
     events.clear_dedup(car_id);
     world.remove_car_from_edges(car_id);
 
-    match world.objects.get(at_building).and_then(|e| e.position) {
+    // Its building gone, it goes home: its owner's, or a fleet's own yard.
+    // Nobody's any more, it is scrap.
+    let owner = owner.filter(|&o| world.owns(o, car_id));
+    let at_building = match (world.objects.get(at_building), owner.and_then(|o| world.objects.get(o)).map(|e| &e.object)) {
+        (Some(_), _) => at_building,
+        (None, Some(GameObject::Resident(r))) => r.home,
+        (None, _) => owner.unwrap_or(at_building),
+    };
+    match world.objects.get(at_building).and_then(|e| e.position).filter(|_| owner.is_some()) {
         Some(tile) => {
             world.update_position(car_id, tile);
             if let Some(entry) = world.objects.get_mut(car_id)

@@ -455,7 +455,7 @@ pub fn passed(world: &mut World, building: EntityId, now: GameTime) {
     let Some(since) = world.books.entry(building).or_default().looked.replace(now) else { return };
     let days = now.saturating_sub(since) as f64 / DAY_MS as f64;
     let rate = if bp.homes > 0 {
-        let heads = world.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(ref r) if r.home == building)).count() as f64;
+        let heads = world.household(building).len() as f64;
         heads * services() / edge_price(Need::Services)
     } else {
         draw(kind)

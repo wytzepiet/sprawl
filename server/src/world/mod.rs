@@ -106,6 +106,12 @@ pub struct World {
     /// one for each road that runs off it. Derived from the road graph by
     /// `stand_edges`, never placed and never saved.
     pub edge: BTreeSet<EntityId>,
+    /// Who lives or works at each building. Derived from the residents at
+    /// startup (`resettle`), and kept by the only code that moves anyone.
+    pub people: HashMap<EntityId, BTreeSet<EntityId>>,
+    /// Buildings placed, reached, cut off or taken away since the last
+    /// `settle`: everything a build changed, and all `settle` reads.
+    pub unsettled: BTreeSet<EntityId>,
 }
 
 /// Marks an empty box: max below min, so the first reveal replaces it outright.
@@ -160,6 +166,8 @@ impl World {
             calls: Vec::new(),
             roads_generated: HashSet::new(),
             edge: BTreeSet::new(),
+            people: HashMap::new(),
+            unsettled: BTreeSet::new(),
         }
     }
 
@@ -191,6 +199,8 @@ impl World {
             calls: Vec::new(),
             roads_generated: HashSet::new(),
             edge: BTreeSet::new(),
+            people: HashMap::new(),
+            unsettled: BTreeSet::new(),
             objects,
         };
         // Rebuild the spatial index and the road index from loaded objects.
@@ -394,6 +404,7 @@ impl World {
         }
         self.objects.remove(building);
         self.edge.remove(&building);
+        self.unsettled.insert(building);
     }
 
     /// Update the spatial position of an entity.

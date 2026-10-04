@@ -10,9 +10,6 @@ import { storeysOf, type Tile, type Town } from "./town/grid";
 import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType } from "../generated";
 
-/** How long the town waits after a change before it is drawn again: a
- *  drag's steps land one after another, and are drawn once. */
-const SETTLE_MS = 120;
 /** Ground round what is built the town is drawn over: its pavement, its
  *  lawns and its trees. */
 const TOWN_MARGIN = 4;
@@ -26,7 +23,8 @@ const SLOW_MS = 50;
  * A road is drawn a tile at a time, each tile an instance of the shape its
  * arms make, and redrawn when something round it changes. The town round
  * what is built, its pavement, buildings, lawns and trees, is made into a
- * `Town` and drawn whole a moment after anything built changes. Cars
+ * `Town` and drawn whole on the next frame after anything built changes,
+ * however many changes landed before it. Cars
  * moving are not a change. The grid runs in the fixture's frame, turned
  * half round onto the map, as the sandbox draws a fixture.
  */
@@ -36,7 +34,7 @@ export class TownLayer {
   /** Each road tile's instance, by tile, and the tiles to draw again. */
   private roads = new Map<string, { key: string; id: number }>();
   private dirty = new Set<string>();
-  private timer: ReturnType<typeof setTimeout> | null = null;
+  private frame: number | null = null;
 
   constructor(
     private scene: Scene,
@@ -49,7 +47,7 @@ export class TownLayer {
   ) {}
 
   /** Something built changed on this tile: the road there and round it
-   *  is drawn again, and the town once it settles. */
+   *  is drawn again, and the town, on the next frame. */
   touch(x: number, y: number) {
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) this.dirty.add(`${x + dx},${y + dy}`);
     this.settle();
@@ -62,12 +60,11 @@ export class TownLayer {
   }
 
   private settle() {
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => {
-      this.timer = null;
+    this.frame ??= requestAnimationFrame(() => {
+      this.frame = null;
       this.draw();
       this.retile();
-    }, SETTLE_MS);
+    });
   }
 
   private draw() {
@@ -248,7 +245,7 @@ export class TownLayer {
   }
 
   dispose() {
-    if (this.timer) clearTimeout(this.timer);
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.clear();
     for (const { key, id } of this.roads.values()) this.pool.removeInstance(key, id);
     this.roads.clear();

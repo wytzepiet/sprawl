@@ -30,6 +30,7 @@ impl World {
         );
         self.roads.insert((coord.x, coord.y), id);
         self.laid += laid as u32;
+        self.unsettle_round(coord);
         let beyond = !self.revealed.contains(&crate::world::chunk_of(coord));
         self.network.set_exit(id, beyond);
         id
@@ -260,6 +261,7 @@ impl World {
         self.objects.remove(id);
         self.unindex(id, pos);
         self.roads.remove(&(pos.x, pos.y));
+        self.unsettle_round(pos);
     }
 
     /// Check if a node is an intersection (>2 unique connections).
