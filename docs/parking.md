@@ -311,6 +311,12 @@ the building either way.
 
 ### 3.9 The car park: aisles, not a ring (2026-10-03)
 
+The ring was deleted on 2026-10-04, with the plot it stood in front of
+(`look.md` §Into the game). Until a car park is laid as aisles, every
+building parks two on its drive, a depot keeps its yard, and a car that
+finds no spot stops at the door, unseen; a visitor's tap at a kind that
+had a lot seats seven at once, what its lot held (`blueprint::seats`).
+
 The ring is replaced. One tile deep it cannot be driven: its corners turn
 at 0.2 and a car turns no tighter than 0.45, and every lot that turns a
 car round inside one tile is the same. Drawn out at the game's scale in

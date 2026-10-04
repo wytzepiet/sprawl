@@ -170,7 +170,6 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "reached": world.road_node_for_building(id).is_some(),
         "stocks": b.stocks.iter().map(|(need, s)| json!({ "need": need, "full": s.level / s.cap })).collect::<Vec<_>>(),
         "money": (!world.edge.contains(&id)).then(|| crate::economy::inspect(world, id, now)),
-        "spots": world.spots_at(id),
         "here": here,
         "household": household,
         "staff": staff,

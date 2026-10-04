@@ -120,6 +120,14 @@ pub fn plot(kind: BuildingKind, facing: u8) -> Plot {
     }
 }
 
+/// How many a tap serves at once. A visitor's tap at a kind that kept a
+/// car park seats seven, what its lot parked, until the kerb's bays say
+/// how many can come; staff, homes and yards seat the row's number.
+pub fn seats(kind: BuildingKind, tap: &Tap) -> u32 {
+    let b = blueprint(kind);
+    if tap.need != Need::Work && b.lot.0 > 0 && b.vehicles.is_empty() { 7 } else { tap.slots }
+}
+
 /// Every tap of every kind — what a need can be served by, anywhere.
 pub fn all_taps() -> impl Iterator<Item = &'static Tap> {
     BLUEPRINTS.iter().flat_map(|(_, b)| b.taps.iter())
@@ -154,11 +162,9 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     // puts it: an outing pulls nobody from a shift under seven tenths, and
     // someone out to lunch goes back to work rather than staying on.
     let outing = |need, curve, slots| Tap { need, curve, rate: 0.8, overhead: 0, slots };
-    // Staff are sized to the lot, since everyone parks in it: a one-wide lot
-    // parks seven hemmed in and twelve in the open, a two-wide one seven to
-    // seventeen, and staff take a third at most. A visitor tap's slots are
-    // its lot's spots whatever the row says; the row's number is what a
-    // one-wide lot holds hemmed in.
+    // Staff are sized to what parks at the door, a third at most. A
+    // visitor tap at a kind that kept a lot seats seven at once whatever
+    // the row says (`seats`); the row's number is its rate.
     let hours = Curve::hours;
     let always = Curve::always;
     // A tap of the edge: open always, and with room for everyone who ever

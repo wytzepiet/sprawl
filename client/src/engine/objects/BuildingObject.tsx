@@ -2,7 +2,7 @@ import { Color3, Vector3, type Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { shapeFor, SLAB, PLOT_MARGIN, variantOf, facingOf, boxGeometry } from "./buildings";
 import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
-import { frameOf, markingGeometry, runOf, runSlabGeometry, yardGeometry } from "./lots";
+import { frameOf, runOf, runSlabGeometry, yardGeometry } from "./lots";
 import { Strip, type RGB } from "./strip";
 import { drawnPath } from "./drawnPath";
 import type { Look } from "./look";
@@ -101,8 +101,8 @@ export function mountBuilding(
   });
   parts.set(entry.id, [placed[0]]);
 
-  // Its lot: a slab with a kerb, and the dividers between its spots, or a
-  // depot's docks.
+  // Its lot: a slab with a kerb, and a depot's docks. Cars park on the
+  // drive, and the rest at the door, until the kerb has bays.
   const run = lie.lot && pos ? runOf(entry) : null;
   if (run) {
     const { rot, origin } = frameOf(data.facing, run.rect);
@@ -116,8 +116,6 @@ export function mountBuilding(
     if (run.yard !== null) {
       const wall = run.yard;
       put(`yard_${run.w}x${wall}${look.key}`, () => yardGeometry(run.w, wall), KERB, [0, 0], 0, true);
-    } else {
-      put(`marks_${run.w}${look.key}`, () => markingGeometry(run.w), KERB, [0, 0], 0, true);
     }
   }
 

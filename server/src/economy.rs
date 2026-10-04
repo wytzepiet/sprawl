@@ -429,14 +429,9 @@ pub fn open(world: &mut World, id: EntityId) {
 pub fn reorder(world: &World, building: EntityId, need: Need) -> f64 {
     let Some(kind) = kind_of(world, building) else { return 0.0 };
     let lead = world.books.get(&building).and_then(|k| k.lead).unwrap_or(crate::calls::AWAY_MS);
-    // A full house is everyone who can be there at once, which for a
-    // visitor tap is the lot's spots, as the crowd is counted
-    // (`resident::slots_at`): two bays with seven cars queued in the lot
-    // is a rush of seven.
-    let seats: u32 = match world.spots_at(building) {
-        Some(n) if blueprint(kind).taps.iter().any(|t| t.need == need) => n,
-        _ => blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| t.slots).sum(),
-    };
+    // A full house is everyone the taps seat at once: two bays with seven
+    // cars at the door is a rush of seven.
+    let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| crate::blueprint::seats(kind, t)).sum();
     let draw = if need == Need::Services { draw(kind) } else { 0.0 };
     (rated(kind, need) + draw) * lead as f64 / DAY_MS as f64 + seats as f64
 }

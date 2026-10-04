@@ -267,7 +267,7 @@ fn verdict_at(
     taps_of(world, building)
         .iter()
         .filter(|t| t.need == b.need)
-        .map(|t| evaluate(world, r.car, at, building, t, b, now, company, tau, exact, cost))
+        .map(|t| evaluate(world, building, t, b, now, company, tau, exact, cost))
         .fold(Verdict::Nothing, Verdict::better)
 }
 
@@ -403,8 +403,6 @@ impl Verdict {
 /// wage is added to the visit (docs/economy.md §6.1, Becker 1965).
 fn evaluate(
     world: &World,
-    car: EntityId,
-    at: EntityId,
     building: EntityId,
     tap: &Tap,
     bucket: &Bucket,
@@ -416,7 +414,7 @@ fn evaluate(
 ) -> Verdict {
     let h = tap.overhead;
     // An estimate has room for everyone; the real lot decides otherwise.
-    let rate = tap.serving(if exact { slots_at(world, building, tap) } else { u32::MAX }, company);
+    let rate = tap.serving(if exact { seats_at(world, building, tap) } else { u32::MAX }, company);
     // The visit as the tap allows it; then, going there for it, as the lot
     // allows it: if no spot is clear for the whole visit from when the car
     // would arrive, the earliest gap is when to arrive instead, and the
@@ -443,24 +441,7 @@ fn evaluate(
         };
         Some((departure, (leave.ceil() as GameTime).min(dry), drained, entry))
     };
-    let Some(mut planned) = plan(now + tau) else { return Verdict::Nothing };
-    if exact && at != building && tap.need != Need::Work {
-        let (_, leave, _, entry) = planned;
-        if let Some(t) = world.spot_window(building, car, entry - h, leave.saturating_add(crate::world::lots::SLACK))
-            && t > entry - h
-        {
-            // A lot held by cars that have not said when they leave frees
-            // never, as far as anyone can plan: no visit, not a visit at
-            // the end of time.
-            if t == GameTime::MAX {
-                return Verdict::Nothing;
-            }
-            planned = match plan(t) {
-                Some(p) => p,
-                None => return Verdict::Nothing,
-            };
-        }
-    }
+    let Some(planned) = plan(now + tau) else { return Verdict::Nothing };
     let (departure, leave, drained, entry) = planned;
     // The visit's price, in the resident's own hours, in milliseconds.
     // What would cross the door is no option when the town cannot pay it.
@@ -537,7 +518,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
         taps_of(world, at)
             .iter()
             .find(|t| t.need == need)
-            .map(|t| (t.serving(slots_at(world, at, t), company), t.curve.integral(last, now)))
+            .map(|t| (t.serving(seats_at(world, at, t), company), t.curve.integral(last, now)))
     });
     // What the building put out is what it put out, whether or not the
     // stock had room for it: a shift worked is labour received.
@@ -603,12 +584,10 @@ impl Tap {
     }
 }
 
-/// What a tap serves at once. At a building with a lot, a visitor's tap
-/// serves as many as can park: the lot decides. Anywhere else, and for
-/// the staff, the row's number.
-fn slots_at(world: &World, building: EntityId, tap: &Tap) -> u32 {
-    match world.spots_at(building) {
-        Some(n) if tap.need != Need::Work => n,
+/// What a tap serves at once at this building (`blueprint::seats`).
+fn seats_at(world: &World, building: EntityId, tap: &Tap) -> u32 {
+    match world.objects.get(building).map(|e| &e.object) {
+        Some(GameObject::Building(b)) => crate::blueprint::seats(b.kind, tap),
         _ => tap.slots,
     }
 }
@@ -951,7 +930,7 @@ mod bench {
             }
         }
         world.place_road_path(&(-2..38).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
-        let home = world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
+        world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).unwrap();
         let shop = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Shop).unwrap();
         world.settle();
         let id = world.resident_ids()[0];
@@ -966,7 +945,7 @@ mod bench {
             let mut bucket = b.clone();
             bucket.stock.take((i % 100) as f64 * 1000.0);
             let cost = Cost { price: 0.5, earning: 1.0, crossing: 0.0 };
-            if let Verdict::Go { .. } = evaluate(&world, r.car, home, shop, tap, &bucket, now, 1, 60_000, false, cost) {
+            if let Verdict::Go { .. } = evaluate(&world, shop, tap, &bucket, now, 1, 60_000, false, cost) {
                 hits += 1;
             }
         }
