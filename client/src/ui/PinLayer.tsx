@@ -3,9 +3,9 @@ import { useEngine } from "../engine/Canvas";
 import { projector, viewExtent } from "../engine/view";
 import { pinned, reached } from "../state/gameObjects";
 import { subject } from "../state/selection";
-import { BLUEPRINTS, plot } from "../blueprints";
+import { BLUEPRINTS, middle } from "../blueprints";
 import { PinBody } from "./Pin";
-import type { BuildingKind, GameObjectEntry } from "../generated";
+import type { Building, BuildingKind, GameObjectEntry } from "../generated";
 
 /**
  * How far you may zoom out and still get a full pin, as half the view height
@@ -53,10 +53,8 @@ export default function PinLayer() {
     for (const e of entries()) {
       const el = els.get(e.id);
       if (!el || !e.position) continue;
-      // Over the building, not its lot.
-      const b = e.object.data as { kind: BuildingKind; facing: number };
-      const [[bx, by], [bw, bh]] = plot(b.kind, b.facing).building;
-      const { sx, sy } = project.at(e.position.x + bx + bw / 2, e.position.y + by + bh / 2);
+      // Over the building, not its yard.
+      const { sx, sy } = project.at(...middle(e.object.data as Building));
       const off = sx < -40 || sy < -40 || sx > rect.right + 40 || sy > rect.bottom + 40;
       el.style.transform = `translate(${sx}px, ${sy}px)`;
       el.style.display = off ? "none" : "";

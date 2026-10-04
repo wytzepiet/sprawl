@@ -17,7 +17,7 @@ import { townMesh as mesh } from "../engine/town/roof";
 import { defaultJoins } from "../engine/town/footprint";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { FERRY } from "../engine/town/dressing";
-import { drawTown, quadsAt } from "../engine/town/draw";
+import { drawRoads, drawTown, quadsAt } from "../engine/town/draw";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -416,7 +416,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The town grid, drawn; and on it what the dressing parks.
   const { pieces, dressing } = drawTown(town, theme, colourOf);
-  for (const p of pieces) add(p.name, p.geo, p.colour ?? Color3.White());
+  for (const p of [...drawRoads(town, theme), ...pieces]) add(p.name, p.geo, p.colour ?? Color3.White());
   const { cars, docks, ships } = dressing;
 
   // Parked cars and lorries at the docks, boxes as the game draws them.

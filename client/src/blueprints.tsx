@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import type { BuildingKind } from "./generated";
+import type { Building, BuildingKind } from "./generated";
 
 /**
  * Every kind of building, one row each, as the client draws it: its colour,
@@ -67,6 +67,15 @@ export function lie(kind: BuildingKind, facing: number, [w, h]: [number, number]
     case 1: return { size: [w, h], building: [[0, 0], [w - d, h]], lot: yard ? [[w - d, 0], [d, h]] : null };
     default: return { size: [w, h], building: [[d, 0], [w - d, h]], lot: yard ? [[0, 0], [d, h]] : null };
   }
+}
+
+/** Where a building stands, for a pin over it: the middle of its bounds,
+ *  its yard left out. */
+export function middle(b: Building): [number, number] {
+  const xs = b.tiles.map((t) => t.x), ys = b.tiles.map((t) => t.y);
+  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
+  const [[bx, by], [bw, bh]] = lie(b.kind, b.facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]).building;
+  return [x0 + bx + bw / 2, y0 + by + bh / 2];
 }
 
 /** The bulk of a city: somewhere people live or work, and there are hundreds. */

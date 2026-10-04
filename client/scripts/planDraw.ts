@@ -53,8 +53,8 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
 
   // The asphalt: roads, and the drives and ramps leading off them, one
   // surface.
-  const { street, through } = asphalt(town, dressing.lanes);
-  fill(street, hex(T.road));
+  const { street, through } = asphalt(town);
+  fill([...street, ...dressing.lanes.map((l): Polygon => [l])], hex(T.road));
   fill(through, hex(T.highway));
 
   // What stands on the ground: yard lines, lorries at docks, parked
@@ -77,7 +77,7 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
 
   // The buildings: each part its kind's colour, a head lighter; the roof's
   // faces' edges, ridges and hips, thin and light; an office's cap.
-  for (const { mass, polygon, outline } of plans(town)) {
+  for (const { mass, polygon, outline } of plans(fs)) {
     for (const part of mass.parts) {
       const base = BLUEPRINTS[part.tile.kind as BuildingKind]?.color ?? "#888888";
       const rgb = [1, 3, 5].map((k) => parseInt(base.slice(k, k + 2), 16) / 255).map((v) => (part.head ? v + (1 - v) * 0.45 : v));

@@ -15,6 +15,8 @@ export interface Tile {
   /** A building's kind, or the ground's. */
   kind: BuildingKind | Ground;
   storeys: number;
+  /** In the game, which building it is. */
+  id?: number;
 }
 
 export interface Town {
@@ -45,9 +47,12 @@ const STOREYS: Partial<Record<BuildingKind, number>> = {
 
 export const isBuilt = (t: Tile) => !["open", "paved", "road", "water", "wood"].includes(t.kind);
 
+/** How many storeys a kind is built. */
+export const storeysOf = (kind: BuildingKind) => STOREYS[kind] ?? 1;
+
 export function tileOf(ch: string): Tile {
   const kind = LETTERS[ch];
-  if (kind) return { kind, storeys: STOREYS[kind] ?? 1 };
+  if (kind) return { kind, storeys: storeysOf(kind) };
   const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
   return { kind: ground, storeys: 0 };
 }

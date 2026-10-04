@@ -5,6 +5,7 @@ import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
 import { TREE_BODY, TREE_TOP } from "../objects/terrainGeometry";
 import { asphalt, dress, pavement, type Dressing } from "./dressing";
+import { soften } from "./footprint";
 import { facts } from "./facts";
 import type { Polygon } from "./footprint";
 import type { Tile, Town } from "./grid";
@@ -22,17 +23,35 @@ export interface Piece {
 /** A dock's door: dark, in any light. */
 const DOOR = new Color3(0.22, 0.24, 0.3);
 
+/** How round a port lane's corners are, as the asphalt's. */
+const LANE_ROUND = 0.05;
+
 /** A kerb's height over the grass, under the roads. */
 export const PAVED_Z = 0.02;
 
 /**
- * The town grid, drawn: the pavement, the asphalt of the roads and what
- * leads off them, the buildings, the yards' lines, the lawns and their
- * trees, and a door behind every dock. Geometry alone, in the fixture's
- * frame turned into the world's (+x to the screen's left, +y up, as
- * `townMesh` lays it); whoever shows it places it. What stands on it that
- * moves, the cars, lorries and ferries the dressing would put there, is
- * the caller's: the game draws its own, the sandbox the dressing's.
+ * The town grid's roads, drawn: the asphalt of the streets and the drives
+ * that lead off them, and the through roads over them. Geometry alone, in
+ * the fixture's frame turned into the world's (+x to the screen's left, +y
+ * up, as `townMesh` lays it); whoever shows it places it. Each tile's road
+ * is its own piece, so this is cheap over a whole map.
+ */
+export function drawRoads(town: Town, theme: Theme): Piece[] {
+  const { street, through } = asphalt(town);
+  return [
+    { name: "street", geo: flatPolygons(street, ROAD_Z + PAVED_Z), colour: theme.road },
+    // Over the streets that meet it: a street's end runs on under it.
+    { name: "through", geo: flatPolygons(through, ROAD_Z + PAVED_Z + 0.001), colour: theme.highway },
+  ].filter((p) => p.geo.indices.length);
+}
+
+/**
+ * The town grid's town, drawn: the pavement, a port's lanes, the
+ * buildings, the yards' lines, the lawns and their trees, and a door
+ * behind every dock; the roads are `drawRoads`. Geometry alone, in the
+ * same frame. What stands on it that moves, the cars, lorries and ferries
+ * the dressing would put there, is the caller's: the game draws its own,
+ * the sandbox the dressing's.
  */
 export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB): { pieces: Piece[]; dressing: Dressing } {
   const pieces: Piece[] = [];
@@ -40,11 +59,10 @@ export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB): { 
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
   add("pavement", flatPolygons(pavement(town), PAVED_Z), theme.paved);
-  const dressing = dress(town, facts(town));
-  const { street, through } = asphalt(town, dressing.lanes);
-  add("street", flatPolygons(street, ROAD_Z + PAVED_Z), theme.road);
-  add("through", flatPolygons(through, ROAD_Z + PAVED_Z), theme.highway);
-  add("mass", townMesh(town, colour), null);
+  const known = facts(town);
+  const dressing = dress(town, known);
+  add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
+  add("mass", townMesh(town, colour, undefined, known), null);
   add("yard_lines", flat(dressing.yardLines, 0.025), theme.road);
   // Lawns over the pavement: a house stands in its own.
   add("garden", quadsAt(dressing.gardens, PAVED_Z + 0.003), theme.garden);

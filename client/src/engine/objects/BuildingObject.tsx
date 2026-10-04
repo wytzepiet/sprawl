@@ -1,8 +1,7 @@
 import { Color3, Vector3, type Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
-import { shapeFor, SLAB, PLOT_MARGIN, variantOf, facingOf, boxGeometry } from "./buildings";
-import { BLUEPRINTS, FACINGS, plot } from "../../blueprints";
-import { frameOf, runOf, runSlabGeometry, yardGeometry } from "./lots";
+import { boxGeometry } from "./buildings";
+import { BLUEPRINTS, FACINGS, lie } from "../../blueprints";
 import { Strip, type RGB } from "./strip";
 import { drawnPath } from "./drawnPath";
 import type { Look } from "./look";
@@ -11,12 +10,9 @@ import { simNow } from "../../network/clock";
 import type { Building, GameObjectEntry } from "../../generated";
 import type { Job } from "../../generated/Job";
 import type { Tile } from "../../generated/Tile";
-import { parts } from "../../state/selection";
 
-/** The slab is white like a street, with the street's kerb round it, and
- *  the dividers between spots are painted in the kerb's colour. */
-export const ASPHALT = Color3.FromHexString("#F8F6F0");
-export const KERB = Color3.FromHexString("#E6E2D6");
+/** A quay's stone, the kerb's colour. */
+const KERB = Color3.FromHexString("#E6E2D6");
 
 /** A farm's field is the ground the tractor last drove, a strip a tile
  *  wide along its path, painted flat like a map's farmland in one tone
@@ -59,6 +55,11 @@ export function fieldTone(theme: Theme, land: Tile[]): RGB | null {
 export const field = (pool: InstancePool, drawn: NonNullable<ReturnType<typeof drawnPath>>, land: Set<string>, z: number, tone: RGB) =>
   new Strip(pool.material("field", Color3.White()), drawn, (x, y) => land.has(`${x},${y}`), z, tone);
 
+/**
+ * What a building lays on the ground past its own walls, which the town
+ * grid does not draw: a port's quay out over the water, and a farm's field.
+ * The building itself is the town grid's (`TownLayer`).
+ */
 export function mountBuilding(
   entry: GameObjectEntry,
   pool: InstancePool,
@@ -67,67 +68,18 @@ export function mountBuilding(
   look: Look,
 ): () => void {
   const data = entry.object.data as Building;
-  const pos = entry.position;
-  const color = look.tint(Color3.FromHexString(BLUEPRINTS[data.kind].color));
-  const lie = plot(data.kind, data.facing);
-  const [[bx, by], [w, h]] = lie.building;
-  // Size and height are part of the key: a shape is built for the plot it
-  // stands on and the height it was given, rather than stretched to either, so
-  // each is a solid of its own.
-  const variant = variantOf(data.kind, entry.id);
-  const poolKey = `building_${data.kind}_${w}x${h}_${variant}${look.key}`;
-
-  // One bucket per kind, which the pool key already gave us — so each kind
-  // brings its own solid at no cost. Height is the instance's own, so a street
-  // of houses is not a row of identical blocks.
-  //
-  // Lit, and taking shadows as well as throwing them: an unlit building is one
-  // flat colour whatever shape it is, so the two faces of a roof would never
-  // separate, and a tower would cast onto the ground but not onto its
-  // neighbours.
-  // Placed and turned, never scaled. Scaling one axis of an instance skews its
-  // normals, and a building lit by skewed normals shades as though it were a
-  // different shape than it is.
-  const shape = shapeFor(data.kind, w, h, variant);
-  pool.ensureBucket(poolKey, shape, color, look.castShadow, true);
   const placed: { key: string; id: number }[] = [];
-  placed.push({
-    key: poolKey,
-    id: pool.addInstance(
-      poolKey,
-      pos ? [pos.x + bx + w / 2, pos.y + by + h / 2, 0] : undefined,
-      [0, 0, facingOf(entry.id, w, h)],
-    ),
-  });
-  parts.set(entry.id, [placed[0]]);
-
-  // Its lot: a slab with a kerb, and a depot's docks. Cars park on the
-  // drive, and the rest at the door, until the kerb has bays.
-  const run = lie.lot && pos ? runOf(entry) : null;
-  if (run) {
-    const { rot, origin } = frameOf(data.facing, run.rect);
-    const put = (key: string, geo: () => Parameters<typeof pool.ensureBucket>[1], tint: Color3, at: [number, number], z: number, lit: boolean) => {
-      pool.ensureBucket(key, geo(), look.tint(tint), false, lit);
-      const c = Math.cos(rot), s = Math.sin(rot);
-      placed.push({ key, id: pool.addInstance(key, [origin[0] + at[0] * c - at[1] * s, origin[1] + at[0] * s + at[1] * c, z], [0, 0, rot]) });
-    };
-    put(`run_kerb_${run.w}x${run.depth}${look.key}`, () => runSlabGeometry(run.w, run.depth, true), KERB, [0, 0], SLAB.kerbZ, true);
-    put(`run_${run.w}x${run.depth}${look.key}`, () => runSlabGeometry(run.w, run.depth, false), ASPHALT, [0, 0], SLAB.z, true);
-    if (run.yard !== null) {
-      const wall = run.yard;
-      put(`yard_${run.w}x${wall}${look.key}`, () => yardGeometry(run.w, wall), KERB, [0, 0], 0, true);
-    }
-  }
 
   // A port's quay: a pier at the land's height, the building's width,
   // standing out one tile over the water along its back wall, where the
   // ship lies when it is home. The water is half a unit under the land.
-  if (BLUEPRINTS[data.kind].quay && pos) {
+  if (BLUEPRINTS[data.kind].quay && data.tiles.length) {
+    const xs = data.tiles.map((t) => t.x), ys = data.tiles.map((t) => t.y);
+    const pos = { x: Math.min(...xs), y: Math.min(...ys) };
+    const [[bx, by], [w, h]] = lie(data.kind, data.facing, [Math.max(...xs) - pos.x + 1, Math.max(...ys) - pos.y + 1]).building;
     const [dx, dy] = FACINGS[data.facing % 4];
     const alongX = dx === 0;
-    // From the back wall, which stands the plot's margin in from the
-    // tile's edge, out over the water.
-    const out = (QUAY.deck - PLOT_MARGIN) / 2 - PLOT_MARGIN / 2;
+    const out = QUAY.deck / 2;
     const centre: [number, number] = alongX
       ? [pos.x + bx + w / 2, (dy < 0 ? pos.y + by + h : pos.y + by) - dy * out]
       : [(dx < 0 ? pos.x + bx + w : pos.x + bx) - dx * out, pos.y + by + h / 2];
@@ -156,6 +108,5 @@ export function mountBuilding(
     for (const { key, id } of placed) pool.removeInstance(key, id);
     if (observer) scene.onBeforeRenderObservable.remove(observer);
     strip?.dispose();
-    parts.delete(entry.id);
   };
 }

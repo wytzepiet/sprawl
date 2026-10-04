@@ -19,11 +19,13 @@ import {
   GRID_LINE,
   TREE_BODY,
   TREE_TOP,
+  TYPE_BY_BYTE,
   type ChunkGeometry,
   type MeshBuffers,
   type TerrainPalette,
 } from "./objects/terrainGeometry";
 import type { TerrainApi } from "./terrainWorker";
+import type { TerrainType } from "../generated";
 
 import { viewExtent } from "./view";
 
@@ -206,6 +208,15 @@ export class TerrainChunks {
     this.invalidate(key);
   }
 
+
+  /** The ground on a tile, if its chunk has arrived. */
+  typeAt(x: number, y: number): TerrainType | undefined {
+    const [cx, cy] = [floorDiv(x, CHUNK_SIZE), floorDiv(y, CHUNK_SIZE)];
+    const tiles = this.tiles.get(`${cx},${cy}`);
+    if (!tiles) return undefined;
+    const [ix, iy] = [x - cx * CHUNK_SIZE + CHUNK_SKIRT, y - cy * CHUNK_SIZE + CHUNK_SKIRT];
+    return TYPE_BY_BYTE[tiles[iy * CHUNK_STRIDE + ix]];
+  }
 
   unloadChunk(cx: number, cy: number): void {
     const key = `${cx},${cy}`;

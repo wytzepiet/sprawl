@@ -2,7 +2,7 @@ import earcut from "earcut";
 import type { MeshGeometry } from "../Mesh";
 import type { Tile, Town } from "./grid";
 import { capped, eaves, slope, type RGB } from "./mass";
-import { facts } from "./facts";
+import { facts, type Facts } from "./facts";
 import { blunt, convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
 
 /**
@@ -44,15 +44,14 @@ type Line = [number, number, number];
 
 /** Every building's plan as it stands: its masses, the loading bay cut from
  *  each, each piece's outline rounded from above. */
-export function* plans(painted: Town) {
-  const { town, head, services } = facts(painted);
+export function* plans({ town, head, services }: Facts) {
   const cuts = services.map((s): Polygon => [s.cut]);
   for (const mass of footprints(town, head)) {
     for (const polygon of subtract(mass.polygons, cuts)) yield { mass, polygon, outline: blunt([polygon], CORNER) };
   }
 }
 
-export function townMesh(painted: Town, colour: (t: Tile) => RGB, only?: Set<string>): MeshGeometry & { colors: number[] } {
+export function townMesh(painted: Town, colour: (t: Tile) => RGB, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[] } {
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */
@@ -85,7 +84,7 @@ export function townMesh(painted: Town, colour: (t: Tile) => RGB, only?: Set<str
     }
   };
 
-  for (const { mass, polygon, outline } of plans(painted)) {
+  for (const { mass, polygon, outline } of plans(known)) {
     if (only && !mass.parts.some((part) => part.polygons.flat(2).some(([x, y]) => only.has(`${Math.floor(x)},${Math.floor(y)}`)))) continue;
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);

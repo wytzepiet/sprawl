@@ -195,49 +195,95 @@ const ROUND = 0.05;
  * so a drive reads as the road carried on. Through roads keep their own
  * colour, cut from it straight.
  */
-export function asphalt(town: Town, lanes: Pt[][]): { street: Polygon[]; through: Polygon[] } {
-  // A drive is an arm of its street, toward the house, and the house's
-  // tile an arm back to the street, which ends under the house.
-  const drives = new Map<string, [number, number][]>();
-  const toward = (c: number, r: number, dc: number, dr: number) => {
-    const k = `${c},${r}`;
-    drives.set(k, [...(drives.get(k) ?? []), [dc, dr]]);
-  };
-  for (const [c, r, fx, fy] of driveways(town).arms) {
-    toward(c + fx, r + fy, -fx, -fy);
-    toward(c, r, fx, fy);
+/** A road tile's asphalt, its corners rounded in and out, in the tile's
+ *  own frame, for the ways its arms go: the road's triangles as one
+ *  outline, and each arm to a road of its own kind carried on over the
+ *  seam, so the rounding leaves the run across it straight (the next
+ *  tile's own road covers what it carries on over). The same
+ *  arms are the same shape, so each is worked out once; the tiles are
+ *  drawn one over another, never united: the union and the rounding are
+ *  what cost, and done for a whole town at once they cost seconds. */
+const shapes = new Map<string, Polygon[]>();
+export function roadShape(ways: [number, number, boolean][]): Polygon[] {
+  const key = ways.map(([dc, dr, on]) => `${dc}${dr}${on ? "+" : ""}`).sort().join(",");
+  const known = shapes.get(key);
+  if (known) return known;
+  const arms: ArmInfo[] = ways.map(([dc, dr]) => {
+    const a = Math.atan2(-dr, -dc);
+    return { angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" };
+  });
+  const geo = buildRoadGeometry(arms, HALF_W, 0);
+  const tris: Polygon[] = [];
+  if (geo) {
+    // The geometry is the world's (x and y the other way); flat only.
+    const p = geo.positions;
+    const at = (i: number): Pt => [0.5 - p[3 * i], 0.5 - p[3 * i + 1]];
+    for (let i = 0; i < geo.indices.length; i += 3) tris.push([[at(geo.indices[i]), at(geo.indices[i + 1]), at(geo.indices[i + 2])]]);
   }
-  const tiles = (through: boolean) => {
-    const tris: Polygon[] = [];
-    for (let r = 0; r < town.h; r++) {
-      for (let c = 0; c < town.w; c++) {
-        const drive = drives.get(`${c},${r}`) ?? [];
-        if ((town.tile(c, r).kind !== "road" && !drive.length) || town.through(c, r) !== through) continue;
-        const arms: ArmInfo[] = [];
-        const arm = (dc: number, dr: number) => {
-          const a = Math.atan2(-dr, -dc);
-          arms.push({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" });
-        };
-        for (let dr = -1; dr <= 1; dr++) {
-          for (let dc = -1; dc <= 1; dc++) {
-            if ((dc || dr) && town.linked(c, r, c + dc, r + dr)) arm(dc, dr);
-          }
-        }
-        for (const [dc, dr] of drive) arm(dc, dr);
-        const geo = buildRoadGeometry(arms, HALF_W, 0);
-        if (!geo) continue;
-        // The geometry is the world's (x and y the other way); flat only.
-        const p = geo.positions;
-        const at = (i: number): Pt => [c + 0.5 - p[3 * i], r + 0.5 - p[3 * i + 1]];
-        for (let i = 0; i < geo.indices.length; i += 3) tris.push([[at(geo.indices[i]), at(geo.indices[i + 1]), at(geo.indices[i + 2])]]);
-      }
+  for (const [dc, dr] of ways.filter(([, , on]) => on)) {
+    const len = Math.hypot(dc, dr);
+    const [ux, uy, nx, ny] = [dc / len, dr / len, -dr / len * HALF_W, dc / len * HALF_W];
+    // Past the seam (half way to the next tile's middle) by a little more
+    // than the rounding, and no further: on, it would stand proud of the
+    // next tile's own corners where that one turns.
+    const [a, b] = [0.3, len / 2 + 0.1];
+    tris.push([[[0.5 + ux * a + nx, 0.5 + uy * a + ny], [0.5 + ux * b + nx, 0.5 + uy * b + ny], [0.5 + ux * b - nx, 0.5 + uy * b - ny], [0.5 + ux * a - nx, 0.5 + uy * a - ny]]]);
+  }
+  // Grown a hair and drawn back, so no seam is left between triangles.
+  const out = soften(shrink(shrink(tris, -1e-3), 1e-3), ROUND);
+  shapes.set(key, out);
+  return out;
+}
+
+/** The four sides, in the order a house looks for its street. */
+const SIDES: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+
+/** Which way a house's drive goes to its street (fx, fy), if it has one:
+ *  a side with a street running straight past it, beside the house along
+ *  its front. */
+export function front(town: Town, c: number, r: number): [number, number] | undefined {
+  if (town.tile(c, r).kind !== "House") return undefined;
+  return SIDES.find(([fx, fy]) => {
+    const [x, y] = [c + fx, r + fy];
+    return town.tile(x, y).kind === "road" && !town.through(x, y) && (town.linked(x, y, x - fy, y + fx) || town.linked(x, y, x + fy, y - fx));
+  });
+}
+
+/** A tile's asphalt: whether it is a through road, and the ways its arms
+ *  go, each carried on into a tile of its own kind or not (`roadShape`).
+ *  A road's arms are its links and the drives to the houses whose front
+ *  it is; a house's, its drive back to the street, which ends under it.
+ *  None for a tile with no asphalt. A function of the tile and those
+ *  round it, so a tile is drawn on its own. */
+export function waysAt(town: Town, c: number, r: number): { through: boolean; ways: [number, number, boolean][] } | null {
+  const toward = front(town, c, r);
+  if (toward) return { through: false, ways: [[toward[0], toward[1], true]] };
+  if (town.tile(c, r).kind !== "road") return null;
+  const through = town.through(c, r);
+  const ways: [number, number, boolean][] = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if ((dc || dr) && town.linked(c, r, c + dc, r + dr)) ways.push([dc, dr, town.through(c + dc, r + dr) === through]);
     }
-    // Grown a hair and drawn back, so no seam is left between triangles.
-    return shrink(shrink(tris, -1e-3), 1e-3);
-  };
-  const through = tiles(true);
-  const all = soften(unite([...tiles(false), ...through, ...lanes.map((l): Polygon => [l])]), ROUND);
-  return { street: subtract(all, through), through: intersect(through, all) };
+  }
+  for (const [dc, dr] of SIDES) {
+    const back = front(town, c + dc, r + dr);
+    if (back && back[0] === -dc && back[1] === -dr) ways.push([dc, dr, !through]);
+  }
+  return { through, ways };
+}
+
+/** The asphalt of a whole town, a piece a tile, the through roads apart. */
+export function asphalt(town: Town): { street: Polygon[]; through: Polygon[] } {
+  const street: Polygon[] = [], through: Polygon[] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      const at = waysAt(town, c, r);
+      if (!at) continue;
+      for (const poly of roadShape(at.ways)) (at.through ? through : street).push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
+    }
+  }
+  return { street, through };
 }
 
 /** A driveway: as wide as two cars side by side with a little room, the
@@ -258,18 +304,11 @@ const DRIVE_OUT = 0.47;
  */
 function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[]; arms: [number, number, number, number][] } {
   const strips: Pt[][] = [], cars: Car[] = [], mouths: Pt[] = [], arms: [number, number, number, number][] = [];
-  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      if (town.tile(c, r).kind !== "House") continue;
-      // Toward its street (fx, fy): a side with a street running straight
-      // past it, beside the house along its front.
-      const front = [[0, 1], [0, -1], [1, 0], [-1, 0]].find(([fx, fy]) => {
-        const [x, y] = [c + fx, r + fy];
-        return road(x, y) && !town.through(x, y) && (town.linked(x, y, x - fy, y + fx) || town.linked(x, y, x + fy, y - fx));
-      });
-      if (!front) continue;
-      const [fx, fy] = front;
+      const toward = front(town, c, r);
+      if (!toward) continue;
+      const [fx, fy] = toward;
       const [x0, y0] = [c + 0.5, r + 0.5];
       arms.push([c, r, fx, fy]);
       // From the front wall out across the pavement to the road's edge.
