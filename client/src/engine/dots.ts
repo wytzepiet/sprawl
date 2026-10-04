@@ -5,14 +5,14 @@ import { projector } from "./view";
 /**
  * The hand's dots, drawn flat over the scene on canvases of their own: a
  * small faint one on every tile a drag may start from, and while dragging
- * a full one on every step the tile underfoot allows, the tile itself
- * held by a bigger one, and a drop drawn out of it along the step the
- * pointer points. The drag's shapes are drawn on a canvas seen through a
- * blur and a hard edge (the "goo" filter), so what comes near runs
- * together like liquid: the drop hangs off its tile on a stream that
- * thins as it stretches, and the dot of the step it points leans toward
- * it and swells until the two meet. When the step lands that dot pops. A
- * step refused, the drop strains half as far and no further.
+ * a full one on every step the tile underfoot allows, and a bigger one on
+ * the tile itself, drawn out toward the pointer along the step it points,
+ * thinner the further it is pulled. The drag's shapes are drawn on a
+ * canvas seen through a blur and a hard edge (the "goo" filter), so what
+ * comes near runs together like liquid: the dot of the step pointed at
+ * eases over toward the pulled tip and swells until the two meet, and
+ * when the step lands it pops. A step refused, the dot strains half as
+ * far and no further.
  *
  * Every dot is a spring: its size eases toward shown or gone and a
  * little past, so dots grow and shrink in and out rather than blink,
@@ -24,25 +24,27 @@ import { projector } from "./view";
 const START_R = 0.07;
 const NEXT_R = 0.13;
 const HERE_R = 0.24;
-const DROP_R = 0.19;
-/** How far along a step the drop may be drawn, of the way to the next
+/** How far along a step the dot may be drawn out, of the way to the next
  *  tile: there, or refused. */
 const REACH = 0.85;
 const STRAIN = 0.4;
 /** The size spring: stiff, and a little under-damped, so it overshoots. */
 const STIFF = 260;
 const DAMP = 2 * Math.sqrt(STIFF) * 0.55;
-/** The drop follows the pointer on a looser one. */
-const DROP_STIFF = 420;
-const DROP_DAMP = 2 * Math.sqrt(DROP_STIFF) * 0.7;
+/** Its tip follows the pointer on a looser one. */
+const TIP_STIFF = 420;
+const TIP_DAMP = 2 * Math.sqrt(TIP_STIFF) * 0.7;
 /** A pop's kick to a dot's size, per second. */
 const POP = 9;
 /** The starts faint; the drag's shapes are opaque, run together. */
 const START_ALPHA = 0.5;
 /** The goo's blur, in tiles: how near shapes run together. */
 const GOO = 0.07;
-/** Beads in the stream between the drop and its tile. */
-const BEADS = 6;
+/** Discs the drawn-out dot is made of, tile to tip. */
+const BODY = 10;
+/** The lean's spring: slower than the sizes, so it is seen to come. */
+const LEAN_STIFF = 90;
+const LEAN_DAMP = 2 * Math.sqrt(LEAN_STIFF) * 0.8;
 /** Just over the roads, under anything standing: where the dots lie. */
 const Z = 0.08;
 
@@ -57,6 +59,10 @@ interface Dot {
   /** Where its size is going, and how long before it sets off. */
   to: number;
   wait: number;
+  /** How far it leans toward the drag reaching for it, 0 to 1, and how
+   *  fast that moves: a spring too, so it eases over rather than jumps. */
+  lean: number;
+  lv: number;
 }
 
 const RADIUS: Record<Kind, number> = { start: START_R, next: NEXT_R, here: HERE_R };
@@ -68,14 +74,14 @@ export class Dots {
   private goo: CanvasRenderingContext2D;
   private blur: SVGFEGaussianBlurElement;
   private dots = new Map<string, Dot>();
-  /** The drop: where it is and how fast it goes, in tiles; its size;
-   *  the tile it hangs off; and where it is pulled. */
-  private drop = { x: 0, y: 0, vx: 0, vy: 0, s: 0, v: 0, to: 0 };
+  /** The tip the held dot is drawn out to: where it is and how fast it
+   *  goes, in tiles, and how much there is of it. */
+  private tip = { x: 0, y: 0, vx: 0, vy: 0, s: 0, v: 0, to: 0 };
   private anchor: { x: number; y: number } | null = null;
-  /** Is the drag still holding on, or has the drop been let go. */
+  /** Is the drag still holding on, or has it let go. */
   private held = false;
   private pointer = { x: 0, y: 0 };
-  /** The tile of the step the drop reaches for, if that step may be taken. */
+  /** The tile of the step the tip reaches for, if that step may be taken. */
   private toward: { x: number; y: number } | null = null;
   /** Was anything drawn last frame: one clear is owed when it all goes. */
   private drawn = false;
@@ -107,37 +113,37 @@ export class Dots {
       const d = this.dots.get(key);
       if (d) return void ((d.to = 1), (d.wait = 0));
       const wait = Math.min(0.3, Math.hypot(x + 0.5 - from.x, y + 0.5 - from.y) * 0.012);
-      this.dots.set(key, { x, y, kind, s: 0, v: 0, to: 1, wait });
+      this.dots.set(key, { x, y, kind, s: 0, v: 0, to: 1, wait, lean: 0, lv: 0 });
     };
     for (const [x, y] of starts) show("start", x, y);
     for (const [x, y] of nexts) show("next", x, y);
     if (this.anchor && this.held) show("here", this.anchor.x, this.anchor.y);
   }
 
-  /** The drag takes hold of a tile: the drop wells up out of it. */
+  /** The drag takes hold of a tile: its dot swells under it. */
   grab(at: { x: number; y: number }, pointer: { x: number; y: number }) {
     this.anchor = at;
     this.held = true;
     this.pointer = pointer;
-    Object.assign(this.drop, { x: at.x + 0.5, y: at.y + 0.5, vx: 0, vy: 0, to: 1 });
+    Object.assign(this.tip, { x: at.x + 0.5, y: at.y + 0.5, vx: 0, vy: 0, to: 1 });
   }
 
   pull(pointer: { x: number; y: number }) {
     this.pointer = pointer;
   }
 
-  /** A step landed on this tile: it holds the drop now, and pops. */
+  /** A step landed on this tile: it is held now, and pops. */
   step(to: { x: number; y: number }) {
     this.anchor = to;
     const key = `here${to.x},${to.y}`;
-    const d = this.dots.get(key) ?? { x: to.x, y: to.y, kind: "here" as const, s: 1, v: 0, to: 1, wait: 0 };
+    const d = this.dots.get(key) ?? { x: to.x, y: to.y, kind: "here" as const, s: 1, v: 0, to: 1, wait: 0, lean: 0, lv: 0 };
     d.v += POP;
     this.dots.set(key, d);
   }
 
-  /** Let go: the drop runs back into its tile and both go. */
+  /** Let go: the dot springs back into its tile and goes. */
   release() {
-    this.drop.to = 0;
+    this.tip.to = 0;
     this.held = false;
   }
 
@@ -155,7 +161,7 @@ export class Dots {
       if (d.to === 0 && d.s <= 0.01) this.dots.delete(key);
       else alive = true;
     }
-    const p = this.drop;
+    const p = this.tip;
     spring(p, p.to, STIFF, DAMP, dt);
     if (p.to > 0 || p.s > 0.01) {
       alive = true;
@@ -174,12 +180,22 @@ export class Dots {
         const along = Math.min(Math.max(0, (ox * dx + oy * dy) / len), (open ? REACH : STRAIN) * len);
         [tx, ty] = [(dx / len) * along, (dy / len) * along];
       }
-      const ax = DROP_STIFF * (a.x + tx - p.x) - DROP_DAMP * p.vx;
-      const ay = DROP_STIFF * (a.y + ty - p.y) - DROP_DAMP * p.vy;
+      const ax = TIP_STIFF * (a.x + tx - p.x) - TIP_DAMP * p.vx;
+      const ay = TIP_STIFF * (a.y + ty - p.y) - TIP_DAMP * p.vy;
       p.vx += ax * dt;
       p.vy += ay * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+    }
+    // The step reached for leans toward the tip as it nears; the rest
+    // straighten up.
+    for (const d of this.dots.values()) {
+      if (d.kind !== "next") continue;
+      const reached = this.toward && d.x === this.toward.x && d.y === this.toward.y && p.s > 0.01;
+      const near = reached ? Math.max(0, 1 - Math.hypot(d.x + 0.5 - p.x, d.y + 0.5 - p.y) / Math.SQRT2) : 0;
+      const l = { s: d.lean, v: d.lv };
+      spring(l, near, LEAN_STIFF, LEAN_DAMP, dt);
+      [d.lean, d.lv] = [l.s, l.v];
     }
     if (alive || this.drawn) this.draw();
     this.drawn = alive;
@@ -193,7 +209,7 @@ export class Dots {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, innerWidth, innerHeight);
     }
-    if (!this.dots.size && this.drop.s <= 0.01) return;
+    if (!this.dots.size && this.tip.s <= 0.01) return void (this.goo.canvas.style.display = "none");
 
     // Looking straight down the map lands on the screen by one affine
     // map: where a tile's corner and its two edges go says where all go.
@@ -235,41 +251,40 @@ export class Dots {
       ctx.fill(rest);
     }
 
-    // The drag: every shape one colour, run together by the filter.
+    // The drag: every shape one colour, run together by the filter. With
+    // none, the canvas is hidden: the filter costs a pass over the whole
+    // screen, and a filtered canvas left showing has been seen to show a
+    // frame it was cleared of.
     const ctx = this.goo;
+    const p = this.tip;
+    const shown = p.s > 0.01 || [...this.dots.values()].some((d) => d.kind !== "start");
+    ctx.canvas.style.display = shown ? "" : "none";
+    if (!shown) return;
     ctx.fillStyle = `rgb(${colour})`;
     ctx.beginPath();
-    const p = this.drop;
-    const dropAt: [number, number] = [p.x, p.y];
-    const lean = (x: number, y: number, by: number): [number, number] => [x + (dropAt[0] - x) * by, y + (dropAt[1] - y) * by];
-    const live = p.s > 0.01;
+    const held = p.s > 0.01 && this.anchor;
     for (const d of this.dots.values()) {
       if (d.kind === "start" || d.s <= 0) continue;
+      // The held tile is drawn below, drawn out.
+      if (held && d.kind === "here" && d.x === this.anchor!.x && d.y === this.anchor!.y) continue;
       const [cx, cy] = [d.x + 0.5, d.y + 0.5];
-      let [c, r] = [[cx, cy] as [number, number], RADIUS[d.kind] * d.s];
-      if (live && d.kind === "here") c = lean(cx, cy, 0.08 * p.s);
-      // The step pointed at leans toward the drop and swells as it nears.
-      if (live && this.toward && d.x === this.toward.x && d.y === this.toward.y) {
-        const near = Math.max(0, 1 - Math.hypot(cx - p.x, cy - p.y) / Math.SQRT2);
-        c = lean(cx, cy, 0.35 * near);
-        r *= 1 + 0.4 * near;
-      }
-      disc(ctx, at(...c), px(r) + sigma * 0.6);
+      // A step reached for leans toward the tip and swells as it nears.
+      const c = at(cx + (p.x - cx) * 0.35 * d.lean, cy + (p.y - cy) * 0.35 * d.lean);
+      disc(ctx, c, px(RADIUS[d.kind] * d.s * (1 + 0.4 * d.lean)) + sigma * 0.6);
     }
-    if (live && this.anchor) {
-      // The drop, smaller as it is drawn out, and the stream it hangs on:
-      // beads from the tile to it, thinnest midway, thinner the further.
-      const [ax, ay] = [this.anchor.x + 0.5, this.anchor.y + 0.5];
+    if (held) {
+      // The held dot drawn out toward the tip: a body tapering from its
+      // tile, thinner the further it is drawn, as if the dot itself were
+      // pulled; the filter smooths the discs it is drawn with into one.
+      const [ax, ay] = [this.anchor!.x + 0.5, this.anchor!.y + 0.5];
+      const here = this.dots.get(`here${this.anchor!.x},${this.anchor!.y}`);
+      const r0 = HERE_R * Math.min(here?.s ?? 0, p.s);
       const stretch = Math.min(1, Math.hypot(p.x - ax, p.y - ay));
-      const rd = DROP_R * p.s * (1 - 0.3 * stretch);
-      disc(ctx, at(p.x, p.y), px(rd) + sigma * 0.6);
-      const here = this.dots.get(`here${this.anchor.x},${this.anchor.y}`);
-      const ra = HERE_R * Math.min(here?.s ?? 0, p.s);
-      for (let i = 1; i <= BEADS; i++) {
-        const t = i / (BEADS + 1);
-        const pinch = 1 - 0.75 * Math.sin(Math.PI * t) * stretch;
-        const r = (ra + (rd - ra) * t) * 0.55 * pinch;
-        if (r > 0.01) disc(ctx, at(ax + (p.x - ax) * t, ay + (p.y - ay) * t), px(r));
+      const [base, tip] = [r0 * (1 - 0.3 * stretch), r0 * (1 - 0.55 * stretch)];
+      for (let i = 0; i <= BODY; i++) {
+        const t = i / BODY;
+        const waist = 1 - 0.45 * Math.sin(Math.PI * t) * stretch;
+        disc(ctx, at(ax + (p.x - ax) * t, ay + (p.y - ay) * t), px((base + (tip - base) * t) * waist) + sigma * 0.6);
       }
     }
     ctx.fill();
