@@ -127,11 +127,13 @@ export class TownLayer {
           return !!a && !!b && (a.node.outgoing.includes(b.entry.id) || a.node.incoming.includes(b.entry.id));
         },
         through: (c, r) => !!road(c, r)?.node.road,
-        // A building is joined in itself and to nothing else: tiles the
-        // hand painted apart stand apart.
+        // A building is joined in itself, and to the row the hand drew it
+        // in (`Building::joined`); tiles painted apart stand apart.
         joins: (c0, r0, c1, r1) => {
           const [a, b] = [tile(c0, r0).id, tile(c1, r1).id];
-          return a !== undefined && a === b;
+          if (a === undefined || b === undefined) return false;
+          const [x, y] = [x1 - c1, y1 - r1];
+          return a === b || !!(byId.get(a)?.object.data as Building | undefined)?.joined.some((t) => t.x === x && t.y === y);
         },
       };
       return town;

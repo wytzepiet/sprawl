@@ -158,6 +158,11 @@ pub struct Building {
     /// ground, so the last run's path is the field. Redrawn by the next.
     #[serde(default)]
     pub ruts: Vec<GridCoord>,
+    /// The tiles beside it, of other buildings of its kind, the hand drew
+    /// it on from or onto: a row of houses drawn as a row, each a home of
+    /// its own. Only a kind that never grows into one building keeps any.
+    #[serde(default)]
+    pub joined: Vec<GridCoord>,
 }
 
 /// A tile of a farm's land, and where it is in the cycle: grass until the
@@ -224,6 +229,7 @@ impl Building {
             prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
             land: Vec::new(),
             ruts: Vec::new(),
+            joined: Vec::new(),
         }
     }
 }

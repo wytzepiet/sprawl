@@ -42,4 +42,10 @@ land: Array<Tile>,
  * draws the field along, corners and all. Every run works the same
  * ground, so the last run's path is the field. Redrawn by the next.
  */
-ruts: Array<GridCoord>, };
+ruts: Array<GridCoord>, 
+/**
+ * The tiles beside it, of other buildings of its kind, the hand drew
+ * it on from or onto: a row of houses drawn as a row, each a home of
+ * its own. Only a kind that never grows into one building keeps any.
+ */
+joined: Array<GridCoord>, };

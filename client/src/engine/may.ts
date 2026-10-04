@@ -135,23 +135,24 @@ function yardOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoo
 
 const land = (g: TerrainType | undefined) => g === "Grass" || g === "Beach" || g === "Forest";
 
-/** `World::may_paint`: open ground, or another of the kind to join to the
- *  one the step came from. */
+/** `World::may_paint`: open ground, or another of the kind to join or
+ *  link to the one the step came from. */
 function mayPaint(h: Hand, kind: BuildingKind, from: GridCoord, to: GridCoord): boolean {
   const there = h.occupied.get(key(to.x, to.y));
   if (there) {
-    const here = paintedFrom(h, kind, from, to);
-    return !!here && here !== there && there.kind === kind;
+    const here = drawnFrom(h, kind, from, to);
+    return !!here && here !== there && there.kind === kind && (grows(kind) || !here.joined.some((t) => t.x === to.x && t.y === to.y));
   }
   const node = nodeAt(h, to);
   // Open land, or a road's dead end: a driveway the building stands over.
   return land(h.ground(to.x, to.y)) && (!node || new Set(arms(node.node, false)).size <= 1);
 }
 
-/** `World::would_be_reached`: grown on to one of its kind, or, new, on a
- *  tile a street may run a drive to. */
+/** `World::would_be_reached`: one standing there, joined or linked to;
+ *  grown on to one of its kind; or, new, on a tile a street may run a
+ *  drive to. */
 function wouldBeReached(h: Hand, kind: BuildingKind, from: GridCoord, to: GridCoord): boolean {
-  if (paintedFrom(h, kind, from, to) || nodeAt(h, to)) return true;
+  if (h.occupied.has(key(to.x, to.y)) || (grows(kind) && drawnFrom(h, kind, from, to)) || nodeAt(h, to)) return true;
   for (const [dx, dy] of STEPS) {
     const n = { x: to.x + dx, y: to.y + dy };
     const street = nodeAt(h, n);
@@ -161,10 +162,15 @@ function wouldBeReached(h: Hand, kind: BuildingKind, from: GridCoord, to: GridCo
   return false;
 }
 
-/** The building a step to `to` grows: the one on `from` beside it, if the kind grows. */
-function paintedFrom(h: Hand, kind: BuildingKind, from: GridCoord, to: GridCoord): Building | undefined {
+/** The building of the kind on `from` beside `to`: what a step to `to` carries on from. */
+function drawnFrom(h: Hand, kind: BuildingKind, from: GridCoord, to: GridCoord): Building | undefined {
   const beside = Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1 && (from.x !== to.x || from.y !== to.y);
-  const [w, d] = plot(kind, 0).size;
   const b = h.occupied.get(key(from.x, from.y));
-  return beside && w * d !== 1 && b?.kind === kind ? b : undefined;
+  return beside && b?.kind === kind ? b : undefined;
+}
+
+/** Does a kind grow into one building, or stand one a tile, linked to its row. */
+function grows(kind: BuildingKind): boolean {
+  const [w, d] = plot(kind, 0).size;
+  return w * d !== 1;
 }

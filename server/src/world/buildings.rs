@@ -354,21 +354,27 @@ impl World {
     }
 
     /// A step of the mayor's brush: `to` painted with a kind, and joined to
-    /// the building of the kind on `from` beside it, if there is one and
-    /// the kind is one that grows; a tap, a step from anything else, or a
-    /// kind a tile big, is a building of its own. A step from one building
-    /// onto another of its kind joins the two, the older kept. The building
-    /// laid on, if a tile was.
+    /// the building of the kind on `from` beside it, if there is one: a
+    /// kind that grows takes the tile in, one a tile big stands a building
+    /// of its own linked to it (`Building::joined`), a row of houses. A tap,
+    /// or a step from anything else, is a building of its own. A step from
+    /// one building onto another of its kind joins the two, the older kept,
+    /// or links them. The building laid, if a tile was.
     pub fn paint(&mut self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> Option<EntityId> {
         if !self.may_paint(kind, from, to) {
             return None;
         }
-        let joined = self.painted_from(kind, from, to);
-        if let (Some(a), Some(&b)) = (joined, self.occupied.get(&(to.x, to.y))) {
-            self.join(a.min(b), a.max(b));
+        let here = self.drawn_from(kind, from, to);
+        let grows = grows(kind);
+        if let (Some(a), Some(&b)) = (here, self.occupied.get(&(to.x, to.y))) {
+            if grows {
+                self.join(a.min(b), a.max(b));
+            } else {
+                self.link(a, from, b, to);
+            }
             return None;
         }
-        let id = match joined {
+        let id = match here.filter(|_| grows) {
             Some(id) => {
                 if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
                     b.tiles.push(to);
@@ -379,35 +385,61 @@ impl World {
         };
         self.occupy(id, to);
         self.attach_driveway(id);
+        if let Some(a) = here.filter(|_| !grows) {
+            self.link(a, from, id, to);
+        }
         Some(id)
     }
 
     /// May a step of the brush paint `to` with a kind, from `from`: open
-    /// ground, or another building of the kind to join to the one the step
-    /// came from. The one rule, which the brush is refused by and the map
-    /// of where it may go is drawn from.
+    /// ground, or another building of the kind to join or link to the one
+    /// the step came from. The one rule, which the brush is refused by and
+    /// the client's dots mirror (`client/src/engine/may.ts`).
     pub fn may_paint(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> bool {
         match self.occupied.get(&(to.x, to.y)) {
-            Some(&there) => self.painted_from(kind, from, to).is_some_and(|here| here != there && self.kind_at(there) == Some(kind)),
+            Some(&there) => {
+                self.kind_at(there) == Some(kind)
+                    && self.drawn_from(kind, from, to).is_some_and(|here| here != there && (grows(kind) || !self.joined_of(here).contains(&to)))
+            }
             None => self.is_buildable(to) || self.is_driveway_stub(to),
         }
     }
 
-    /// Would a building painted from `from` to `to` be reached: grown on
-    /// to one of its kind, or, new, on a tile a street may run a drive to.
-    /// The mayor paints only what can work; a town written as a fixture
-    /// stands as written.
+    /// Would a building painted from `from` to `to` be reached: one already
+    /// standing there, joined or linked to; grown on to one of its kind;
+    /// or, new, on a tile a street may run a drive to. The mayor paints
+    /// only what can work; a town written as a fixture stands as written.
     pub fn would_be_reached(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> bool {
-        self.painted_from(kind, from, to).is_some() || self.road_node_at(to).is_some() || self.driveway_between(&[to], None, None, true).is_some()
+        self.occupied.contains_key(&(to.x, to.y))
+            || (grows(kind) && self.drawn_from(kind, from, to).is_some())
+            || self.road_node_at(to).is_some()
+            || self.driveway_between(&[to], None, None, true).is_some()
     }
 
-    /// The building of the kind a step to `to` grows: the one on `from`
-    /// beside it, if the kind is one that grows.
-    fn painted_from(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> Option<EntityId> {
+    /// The building of the kind on `from` beside `to`: what a step to `to`
+    /// carries on from.
+    fn drawn_from(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> Option<EntityId> {
         let beside = (from.x - to.x).abs() <= 1 && (from.y - to.y).abs() <= 1 && from != to;
-        let grows = crate::blueprint::plot(kind, 0).size != (1, 1);
         let id = *self.occupied.get(&(from.x, from.y))?;
-        (beside && grows && self.kind_at(id) == Some(kind)).then_some(id)
+        (beside && self.kind_at(id) == Some(kind)).then_some(id)
+    }
+
+    fn joined_of(&self, id: EntityId) -> &[GridCoord] {
+        match self.objects.get(id).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => &b.joined,
+            _ => &[],
+        }
+    }
+
+    /// Two buildings linked where they meet: each keeps the other's tile.
+    fn link(&mut self, a: EntityId, at_a: GridCoord, b: EntityId, at_b: GridCoord) {
+        for (id, other) in [(a, at_b), (b, at_a)] {
+            if let Some(GameObject::Building(bd)) = self.objects.get_mut(id).map(|e| &mut e.object)
+                && !bd.joined.contains(&other)
+            {
+                bd.joined.push(other);
+            }
+        }
     }
 
     fn kind_at(&self, id: EntityId) -> Option<BuildingKind> {
@@ -443,6 +475,14 @@ impl World {
         let (kind, facing) = (b.kind, b.facing);
         let rest: Vec<GridCoord> = b.tiles.iter().copied().filter(|&t| t != tile).collect();
         if rest.is_empty() {
+            // Its row lets go of it.
+            for t in b.joined.clone() {
+                if let Some(&other) = self.occupied.get(&(t.x, t.y))
+                    && let Some(GameObject::Building(o)) = self.objects.get_mut(other).map(|e| &mut e.object)
+                {
+                    o.joined.retain(|&j| j != tile);
+                }
+            }
             self.remove_building(id);
             return true;
         }
@@ -560,6 +600,13 @@ fn pieces(tiles: &[GridCoord]) -> Vec<Vec<GridCoord>> {
         out.push(piece);
     }
     out
+}
+
+/// Does a kind grow into one building as it is painted, or stand a
+/// building a tile, linked to its row: a kind a tile big, a home or a
+/// shop of its own on each.
+fn grows(kind: BuildingKind) -> bool {
+    crate::blueprint::plot(kind, 0).size != (1, 1)
 }
 
 #[cfg(test)]
@@ -977,5 +1024,31 @@ mod tests {
         world.paint(BuildingKind::Factory, GridCoord { x: 0, y: 1 }, GridCoord { x: -1, y: 1 });
         assert!(world.objects.get(b).is_none(), "the younger is taken in");
         assert_eq!(tiles_of(&world, a).len(), 4);
+    }
+
+    fn joined(world: &World, x: i32) -> Vec<GridCoord> {
+        match world.objects.get(world.occupied[&(x, 1)]).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.joined.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Houses drawn in a row are linked, each a house of its own; one
+    /// tapped beside them is not, until the hand draws from one onto it;
+    /// one taken away lets go of its row.
+    #[test]
+    fn houses_drawn_in_a_row_are_linked_and_tapped_ones_are_not() {
+        let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
+        stroke(&mut world, BuildingKind::House, &[(1, 1), (2, 1)]);
+        let at = |x| GridCoord { x, y: 1 };
+        assert_eq!(joined(&world, 1), vec![at(2)]);
+        assert_eq!(joined(&world, 2), vec![at(1)]);
+        stroke(&mut world, BuildingKind::House, &[(3, 1)]);
+        assert!(joined(&world, 3).is_empty(), "a tap beside a house is a house apart");
+        assert_eq!(world.paint(BuildingKind::House, at(2), at(3)), None, "a link lays no house");
+        assert_eq!(joined(&world, 3), vec![at(2)]);
+        assert!(!world.may_paint(BuildingKind::House, at(2), at(3)), "nor links twice");
+        world.unpaint(at(2));
+        assert!(joined(&world, 1).is_empty() && joined(&world, 3).is_empty(), "a house gone lets go of its row");
     }
 }
