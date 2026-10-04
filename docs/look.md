@@ -25,7 +25,7 @@ they are the same form:
 
 - **Parking along the kerb** (fileparkeren), not on driveways and lots.
 - **Rows that follow the street**, straight or diagonal.
-- **A garden in the middle of the block.**
+- **A garden in the middle of the block.** Taken out 2026-10-04, undecided.
 
 It gives every street a face and hides nothing behind it, which is what a
 game about streets wants.
@@ -102,15 +102,10 @@ The code is `client/src/engine/town/`:
   mayor, 2026-10-02). The lorry stands in the shop's own tiles, never on
   a road. Everything drawn is a function of a tile, its neighbours and
   these facts.
-- **The free ground is dressed** (`town/dressing.ts`) by the same rule. A
-  courtyard is a lawn with a tree on most tiles; paved ground closed in
-  stays a square. A house stands on the land itself, no lawn of its own:
-  a lawn drawn tile by tile round a house read as a plot pasted under
-  it (the mayor, 2026-10-04). The open tile behind it, on the side away
-  from its street, is its back garden, now and then with a tree: houses
-  back to back with two tiles between them make a block of lots, as a
-  grid town's do (`20-block`). An empty plot beside a garden is taken
-  into it. A straight street before homes, shops or open ground has
+- **The free ground is dressed** (`town/dressing.ts`) by the same rule.
+  No gardens, for now: lawns under and behind houses and in courtyards
+  read as plots pasted on, and whether the town wants gardens at all is
+  open (the mayor, 2026-10-04); open ground is the land. A straight street before homes, shops or open ground has
   a tree on its verge every third tile; through roads, junctions, bends,
   diagonals and industrial streets stay bare. A street before homes and
   shops is parked along both kerbs (fileparkeren), straight or diagonal,

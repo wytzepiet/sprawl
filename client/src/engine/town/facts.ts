@@ -10,8 +10,6 @@ import { CAB, TRAILER } from "../objects/roadGeometry";
  *
  * - **Heads**: the tiles of a shed that are its office, a couple of storeys
  *   taller (in `town`, the town as drawn).
- * - **Enclosed**: open ground closed in by buildings, a courtyard, which
- *   no street and no edge of the map reaches.
  * - **Yards**: a building whose kind keeps a yard (`mass.ts`) gives up as
  *   much of its ground as the yard must hold: tiles beside a street, in
  *   one run from its quiet end or its busy one, until there is room
@@ -55,7 +53,6 @@ export interface Facts {
   /** The town as drawn: the painted one with the heads raised. */
   town: Town;
   head(c: number, r: number): boolean;
-  enclosed(c: number, r: number): boolean;
   /** What stands in a tile of yard, if it is one. */
   yard(c: number, r: number): Yard["fill"] | undefined;
   /** A yard tile's docks: the ways to the hall walls it faces, straight
@@ -86,11 +83,9 @@ export function facts(painted: Town): Facts {
     tile: (c, r) => (yard.has(`${c},${r}`) ? { kind: "paved", storeys: 0 } : painted.tile(c, r)),
   };
   const { lifted, heads } = sheds(open);
-  const closed = courtyards(open);
   return {
     town: lifted,
     head: (c, r) => heads.has(`${c},${r}`),
-    enclosed: (c, r) => closed.has(`${c},${r}`),
     yard: (c, r) => yard.get(`${c},${r}`),
     docks: (c, r) => (yard.get(`${c},${r}`) === "docks" ? walls(c, r) : []),
     services: services(painted, yard),
@@ -258,33 +253,6 @@ function yards(town: Town): Map<string, Yard["fill"]> {
     }
     for (const k of yard) out.set(k, fill);
     for (const k of exit) out.set(k, "exit");
-  }
-  return out;
-}
-
-/** Open ground in regions (joined side by side) that touch neither a road
- *  nor the map's edge. */
-function courtyards(town: Town): Set<string> {
-  const open = (c: number, r: number) => ["open", "paved"].includes(town.tile(c, r).kind);
-  const out = new Set<string>();
-  const seen = new Set<string>();
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      if (!open(c, r) || seen.has(`${c},${r}`)) continue;
-      const region: [number, number][] = [[c, r]];
-      seen.add(`${c},${r}`);
-      let reached = false;
-      for (let i = 0; i < region.length; i++) {
-        const [x, y] = region[i];
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const [nx, ny] = [x + dx, y + dy];
-          if (nx < 0 || ny < 0 || nx >= town.w || ny >= town.h) reached = true;
-          else if (town.tile(nx, ny).kind === "road") reached = true;
-          else if (open(nx, ny) && !seen.has(`${nx},${ny}`)) seen.add(`${nx},${ny}`), region.push([nx, ny]);
-        }
-      }
-      if (!reached) for (const [x, y] of region) out.add(`${x},${y}`);
-    }
   }
   return out;
 }

@@ -64,8 +64,6 @@ export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB): { 
   add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
   add("mass", townMesh(town, colour, undefined, known), null);
   add("yard_lines", flat(dressing.yardLines, 0.025), theme.road);
-  // Lawns over the pavement: a house stands in its own.
-  add("garden", quadsAt(dressing.gardens, PAVED_Z + 0.003), theme.garden);
   // Trees as the forest draws them: a smooth top over a coarse body.
   for (const [name, geo] of [["tree_tops", TREE_TOP], ["tree_bodies", TREE_BODY]] as const) {
     const out: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };

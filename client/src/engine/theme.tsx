@@ -30,8 +30,6 @@ const light = {
   ripe: hex3("#F2D680"),
   stubble: hex3("#ECE3C4"),
   mountain: hex3("#F8F7F6"),
-  // A courtyard's lawn, a shade greener than the land round it.
-  garden: hex3("#AED08F"),
   // A yard, a car park or a pavement: stone grey, the land's sage gone
   // grey, a clear step under the road's white.
   paved: hex3("#D9DBCE"),
@@ -53,7 +51,6 @@ const dark = {
   ripe: hex3("#7A6428"),
   stubble: hex3("#5E5A40"),
   mountain: hex3("#4D4D47"),
-  garden: hex3("#1F4030"),
   paved: hex3("#30333B"),
   hand: hex3("#E6EBF2"),
   road: hex3("#2A2D35"),

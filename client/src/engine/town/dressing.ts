@@ -8,8 +8,6 @@ import { footprints, INSET, intersect, shrink, soften, subtract, unite, type Pol
  * The free ground, dressed: what stands on a tile that is no building's,
  * decided like everything else by the tile, its neighbours and the facts.
  *
- * - A courtyard (`enclosed`) is a garden: lawn, and a tree or two. Paved
- *   ground closed in stays paved: a square.
  * - A street running straight has a tree on its verge every third tile,
  *   on each side that fronts homes, shops or open ground; a through road,
  *   a junction, a bend, a diagonal and an industrial street stay bare.
@@ -53,8 +51,6 @@ export interface Car {
 type Pt = [number, number];
 
 export interface Dressing {
-  /** Tiles laid to lawn. */
-  gardens: [number, number][];
   trees: Tree[];
   cars: Car[];
   /** What is driven on off the road and joins it (`asphalt`): drives,
@@ -95,29 +91,10 @@ function hash(c: number, r: number, salt: number) {
 }
 
 export function dress(town: Town, facts: Facts): Dressing {
-  const gardens: [number, number][] = [];
   const trees: Tree[] = [];
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
-  const backs = backGardens(town);
-  for (const [key, house] of backs) {
-    const [c, r] = key.split(",").map(Number);
-    // Now and then a tree, toward the back.
-    if (hash(c, r, 31) < 0.2) {
-      const [bx, by] = [c + 0.5 - (house[0] - c) * 0.22, r + 0.5 - (house[1] - r) * 0.22];
-      trees.push({ x: bx + 0.3 * (hash(c, r, 32) - 0.5), y: by + 0.3 * (hash(c, r, 33) - 0.5), scale: 0.6 + 0.3 * hash(c, r, 34), shade: Math.floor(3 * hash(c, r, 35)) });
-    }
-  }
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      if (facts.enclosed(c, r) && town.tile(c, r).kind === "open") {
-        gardens.push([c, r]);
-        // One tree on most tiles of a garden, somewhere off the middle;
-        // a back garden has its own.
-        if (!backs.has(`${c},${r}`) && hash(c, r, 1) < 0.6) {
-          trees.push({ x: c + 0.25 + 0.5 * hash(c, r, 2), y: r + 0.25 + 0.5 * hash(c, r, 3), scale: 0.7 + 0.3 * hash(c, r, 4), shade: Math.floor(3 * hash(c, r, 5)) });
-        }
-        continue;
-      }
       if (!road(c, r) || town.through(c, r)) continue;
       // A straight street: joined along one axis only, both ways or at an end.
       const [ew, ns] = [town.linked(c, r, c - 1, r) || town.linked(c, r, c + 1, r), town.linked(c, r, c, r - 1) || town.linked(c, r, c, r + 1)];
@@ -150,7 +127,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   const service = facts.services;
   const port = ferries(town, facts);
   return {
-    gardens, trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: port.ramps,
+    trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: port.ramps,
     docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
     ships: port.ships,
   };
@@ -318,39 +295,6 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[]; arm
     }
   }
   return { strips, cars, mouths, arms };
-}
-
-/**
- * Back gardens: open ground straight behind a house, on the side away
- * from its street, is its garden, a tile deep. Two rows of houses back to
- * back with two tiles between them have a garden each, as a grid town's
- * blocks do. By the tile it lies on, the house it is behind.
- */
-function backGardens(town: Town): Map<string, [number, number]> {
-  const out = new Map<string, [number, number]>();
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      if (town.tile(c, r).kind !== "open") continue;
-      for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
-        const [hx, hy] = [c + dx, r + dy];
-        if (town.tile(hx, hy).kind !== "House" || town.tile(hx + dx, hy + dy).kind !== "road") continue;
-        out.set(`${c},${r}`, [hx, hy]);
-        break;
-      }
-    }
-  }
-  // An empty plot in the row beside a garden, with no house before it,
-  // the neighbour takes in: a bigger garden, not a gap. One step only.
-  for (const [key, [hx, hy]] of [...out]) {
-    const [c, r] = key.split(",").map(Number);
-    const [bx, by] = [c - hx, r - hy];
-    for (const s of [-1, 1]) {
-      const [x, y] = [c + by * s, r + bx * s];
-      if (out.has(`${x},${y}`) || town.tile(x, y).kind !== "open" || town.tile(x - bx, y - by).kind === "road") continue;
-      out.set(`${x},${y}`, [hx, hy]);
-    }
-  }
-  return out;
 }
 
 /** A ferry port: its yard in queue lanes running down to the water, four

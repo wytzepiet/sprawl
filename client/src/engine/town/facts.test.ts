@@ -7,19 +7,6 @@ import { CAR, HALF_W } from "../objects/roadGeometry";
 const town = (map: string[]) => parseTown(map.join("\n"));
 
 describe("facts and dressing", () => {
-  test("open ground closed in by buildings is a courtyard, and a garden", () => {
-    const t = town(["=======", "=HHHHH=", "=H...H=", "=HHHHH=", "======="]);
-    const f = facts(t);
-    expect(f.enclosed(3, 2)).toBe(true);
-    const lawn = dress(t, f).gardens.map(([c, r]) => `${c},${r}`);
-    expect(["2,2", "3,2", "4,2"].every((k) => lawn.includes(k))).toBe(true);
-  });
-
-  test("open ground a street reaches is not", () => {
-    const t = town(["=======", "=HH.HH=", "=H...H=", "=HHHHH=", "======="]);
-    expect(facts(t).enclosed(3, 2)).toBe(false);
-  });
-
   test("a shed's end nearest the street is its office", () => {
     const t = town(["======", "=FFF..", "=FFF..", "......"]);
     const f = facts(t);

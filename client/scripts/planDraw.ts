@@ -49,7 +49,6 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
 
   const fs = facts(town);
   const dressing = dress(town, fs);
-  fill(dressing.gardens.map(([c, r]): Polygon => [[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]]), hex(T.garden));
 
   // The asphalt: roads, and the drives and ramps leading off them, one
   // surface.
