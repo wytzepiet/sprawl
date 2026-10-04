@@ -6,7 +6,6 @@ import { BLUEPRINTS } from "../blueprints";
 import { drawTown, flatPolygons, PAVED_Z, type Piece } from "./town/draw";
 import { roadShape, waysAt } from "./town/dressing";
 import { ROAD_Z } from "./objects/roadGeometry";
-import { defaultJoins } from "./town/footprint";
 import { storeysOf, type Tile, type Town } from "./town/grid";
 import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType } from "../generated";
@@ -128,18 +127,13 @@ export class TownLayer {
           return !!a && !!b && (a.node.outgoing.includes(b.entry.id) || a.node.incoming.includes(b.entry.id));
         },
         through: (c, r) => !!road(c, r)?.node.road,
-        // One building is joined in itself; a kind a tile big, which the
-        // game keeps a building a tile, is joined to its kin as the look
-        // joins them, so a row of houses is drawn as a row.
+        // A building is joined in itself and to nothing else: tiles the
+        // hand painted apart stand apart.
         joins: (c0, r0, c1, r1) => {
-          const [a, b] = [tile(c0, r0), tile(c1, r1)];
-          if (a.id === undefined || b.id === undefined) return false;
-          if (a.id === b.id) return true;
-          const [w, d] = BLUEPRINTS[a.kind as BuildingKind].size;
-          return a.kind === b.kind && w * d === 1 && kin(c0, r0, c1, r1);
+          const [a, b] = [tile(c0, r0).id, tile(c1, r1).id];
+          return a !== undefined && a === b;
         },
       };
-      const kin = defaultJoins(town);
       return town;
     };
 
