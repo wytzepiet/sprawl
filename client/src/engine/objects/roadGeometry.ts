@@ -223,21 +223,3 @@ function roadBoundary(arms: ArmInfo[], hw: number): Point[] | null {
   return boundary;
 }
 
-export function buildChevronGeometry(a: number): MeshGeometry {
-  const fwd = { x: Math.cos(a), y: Math.sin(a) };
-  const side = { x: -Math.sin(a), y: Math.cos(a) };
-  const armLen = 0.5 / Math.max(Math.abs(fwd.x), Math.abs(fwd.y));
-
-  const tip = armLen;
-  const back = armLen - 2 * CHEVRON_DEPTH;
-
-  const along = (d: number, s: number): Point => ({
-    x: d * fwd.x + s * side.x,
-    y: d * fwd.y + s * side.y,
-  });
-
-  const pts = [along(tip, 0), along(back, HALF_W), along(back, -HALF_W)];
-  const cx = (pts[0].x + pts[1].x + pts[2].x) / 3;
-  const cy = (pts[0].y + pts[1].y + pts[2].y) / 3;
-  return fanGeometry(pts, CHEVRON_Z, { x: cx, y: cy });
-}

@@ -77,35 +77,32 @@ function trackPin(entry: GameObjectEntry | undefined, id: number) {
   const was = pinnedEntries.has(id);
   const before = pinnedEntries.get(id);
   if (before?.position && before.object.kind === "Building") {
-    for (const t of footprint(before.position, (before.object.data as Building).size)) occupiedBy.delete(t);
+    for (const t of keys(before.object.data as Building)) occupiedBy.delete(t);
   }
   if (entry && entry.object.kind === "Building" && entry.position) {
     pinnedEntries.set(id, entry);
-    for (const t of footprint(entry.position, (entry.object.data as Building).size)) occupiedBy.set(t, id);
+    for (const t of keys(entry.object.data as Building)) occupiedBy.set(t, id);
   } else {
     pinnedEntries.delete(id);
   }
   if (was || pinnedEntries.has(id)) setPinsVersion((v) => v + 1);
 }
-function footprint(pos: { x: number; y: number }, [w, h]: [number, number]): string[] {
-  const keys: string[] = [];
-  for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) keys.push(posKey(pos.x + dx, pos.y + dy));
-  return keys;
-}
+const keys = (b: Building) => b.tiles.map((t) => posKey(t.x, t.y));
 /**
- * Is a road joined to the world standing on one of this building's own tiles?
- * A driveway onto an island is no way in. Reactive on the pins' version,
- * which moves when a road on a building's tile lands, leaves or changes.
+ * Does this building's door open onto a street joined to the world? A door
+ * onto an island is no way in. Reactive on the pins' version, which moves
+ * when a road lands, leaves or changes.
  */
 export function reached(entry: GameObjectEntry): boolean {
   pinsVersion();
-  if (entry.object.kind !== "Building" || !entry.position) return false;
-  return footprint(entry.position, (entry.object.data as Building).size).some((k) =>
-    (spatial.get(k) ?? []).some((id) => {
-      const o = entities.get(String(id))?.object;
-      return o?.kind === "RoadNode" && o.data.joined;
-    }),
-  );
+  if (entry.object.kind !== "Building") return false;
+  const b = entry.object.data as Building;
+  const door = b.door;
+  if (!door || !b.tiles.some((t) => t.x === door.tile.x && t.y === door.tile.y)) return false;
+  return (spatial.get(posKey(door.street.x, door.street.y)) ?? []).some((id) => {
+    const o = entities.get(String(id))?.object;
+    return o?.kind === "RoadNode" && o.data.joined && !o.data.road;
+  });
 }
 
 /** The building standing on this tile, any tile of its plot. */
@@ -163,18 +160,17 @@ export function setTerrainListener(fn: TerrainListener | null) {
  * upsert and a delete touching one tile cannot tread on each other whichever
  * way round they land.
  */
-/**
- * Ops of the client's own making, applied exactly as the server's are: a
- * preview — the driveway a dragged building would get — is a road in every
- * respect but the server's memory, and is drawn, joined and undone through
- * the same path as a road that was laid.
- */
-export function preview(ops: Operation[]) {
-  applyOps(ops);
-}
+/** Bumped whenever a road or a building lands, changes or goes: what the
+ *  map of where the hand may go is asked again on. */
+const [builtVersion, setBuiltVersion] = createSignal(0);
+export { builtVersion };
 
 function applyOps(ops: Operation[]) {
+  let built = false;
   for (const op of ops) {
+    const was = entities.get(String(op.op === "Upsert" ? op.data.id : op.data))?.object.kind;
+    const is = op.op === "Upsert" ? op.data.object.kind : undefined;
+    if ([was, is].some((k) => k === "RoadNode" || k === "Building")) built = true;
     switch (op.op) {
       case "Upsert": {
         const key = String(op.data.id);
@@ -196,10 +192,7 @@ function applyOps(ops: Operation[]) {
         }
         entities.set(key, op.data);
         trackPin(op.data, op.data.id);
-        if (op.data.object.kind === "RoadNode" && op.data.position) {
-          const under = occupiedBy.get(posKey(op.data.position.x, op.data.position.y));
-          if (under !== undefined) setPinsVersion((v) => v + 1);
-        }
+        if (op.data.object.kind === "RoadNode") setPinsVersion((v) => v + 1);
         break;
       }
       case "Delete": {
@@ -216,16 +209,14 @@ function applyOps(ops: Operation[]) {
             }
           }
           entities.delete(key);
-          if (existing.object.kind === "RoadNode" && existing.position) {
-            const under = occupiedBy.get(posKey(existing.position.x, existing.position.y));
-            if (under !== undefined) setPinsVersion((v) => v + 1);
-          }
+          if (existing.object.kind === "RoadNode") setPinsVersion((v) => v + 1);
         }
         trackPin(undefined, Number(key));
         break;
       }
     }
   }
+  if (built) setBuiltVersion((v) => v + 1);
   opsListener?.(ops);
 }
 

@@ -14,12 +14,13 @@
 //! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  W workshop  F factory
-//! R restaurant  B bar  G gas station  M supermarket  D warehouse
+//! R restaurant  B bar  G gas station  M supermarket  D warehouse  P port
 //! ```
 //!
-//! A building's letter is where the mayor would hold it: its plot lands
-//! beside the nearest street the way the ghost would put it. Lines starting
-//! with `#` are the fixture's description; the first is its title.
+//! A building's letters are its tiles, painted in one stroke as the mayor
+//! would: a kind that grows is one building as far as its letter runs, a
+//! house a house a tile. Lines starting with `#` are the fixture's
+//! description; the first is its title.
 
 use std::path::Path;
 use std::sync::OnceLock;
@@ -61,12 +62,13 @@ fn building(c: char) -> Option<BuildingKind> {
         'G' => GasStation,
         'M' => Supermarket,
         'D' => Warehouse,
+        'P' => Port,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOWFRBGMD".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASOWFRBGMDP".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
@@ -133,13 +135,30 @@ pub fn build(world: &mut World, dir: &Path) {
             }
         }
 
+        // Painted as the mayor would: each run of a letter in one stroke,
+        // from tile to tile beside or diagonal, so a kind that grows is one
+        // building as far as its letter runs, and a house is a house a tile.
+        let mut painted = std::collections::HashSet::new();
         for row in 0..h {
             for col in 0..w {
                 let Some(kind) = building(char_at(col, row)) else { continue };
-                let p = at(col, row);
-                let site = world.site_under(p.x as f64 + 0.5, p.y as f64 + 0.5, kind);
-                if world.place_site(site, kind).is_none() {
-                    println!("fixtures: {}: no room for {kind:?} at column {col}, row {row}", path.display());
+                if !painted.insert((col, row)) {
+                    continue;
+                }
+                let mut stroke = vec![((col, row), (col, row))];
+                let mut i = 0;
+                while i < stroke.len() {
+                    let ((c, r), from) = stroke[i];
+                    if world.paint(kind, at(from.0, from.1), at(c, r)).is_none() {
+                        println!("fixtures: {}: no room for {kind:?} at column {c}, row {r}", path.display());
+                    }
+                    for (dc, dr) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
+                        let n = (c + dc, r + dr);
+                        if building(char_at(n.0, n.1)) == Some(kind) && painted.insert(n) {
+                            stroke.push((n, (c, r)));
+                        }
+                    }
+                    i += 1;
                 }
             }
         }
@@ -180,16 +199,10 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
             let road = world.road_node_at(GridCoord { x: tx, y: ty }).and_then(|id| world.objects.get(id));
             let built = world.occupied.get(&(tx, ty)).and_then(|&id| world.objects.get(id));
             out.push(match (road.map(|e| &e.object), built.map(|e| &e.object)) {
-                // A plot's lot or yard is paved; the rest is the building,
-                // its driveway included, which is road on its own tile.
-                (_, Some(GameObject::Building(b))) => {
-                    let at = built.and_then(|e| e.position).unwrap_or(GridCoord { x: tx, y: ty });
-                    let in_lot = crate::blueprint::plot(b.kind, b.facing).lot.is_some_and(|((lx, ly), (w, h))| {
-                        let (x, y) = (tx - at.x - lx as i32, ty - at.y - ly as i32);
-                        (0..w as i32).contains(&x) && (0..h as i32).contains(&y)
-                    });
-                    if in_lot { ':' } else { letter(b.kind) }
-                }
+                // A building is its letter on every tile, its driveway
+                // included, which is road on its own tile; its yard is
+                // worked out from its shape, as the town grid does.
+                (_, Some(GameObject::Building(b))) => letter(b.kind),
                 (Some(GameObject::RoadNode(n)), _) => if n.road { '#' } else { '=' },
                 _ => match world.terrain.get(&(tx, ty)) {
                     Some(TerrainType::Sea | TerrainType::Water) => '~',
@@ -203,4 +216,36 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
         out.push('\n');
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every fixture builds as it is written: each letter a tile of the
+    /// building it names, and `/map` gives the letters back where they
+    /// were, so what the sandbox paints is what the server stands up.
+    #[test]
+    fn every_fixture_builds_letter_for_letter() {
+        let mut world = World::new();
+        build(&mut world, Path::new("fixtures"));
+        let mut wrong = Vec::new();
+        for (p, path) in PLACED.get().unwrap().iter().zip(std::fs::read_dir("fixtures").unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect::<std::collections::BTreeSet<_>>()) {
+            let text = std::fs::read_to_string(&path).unwrap();
+            let rows: Vec<Vec<char>> = text.lines().filter(|l| !l.starts_with('#')).map(|r| r.chars().filter(|c| !c.is_whitespace()).collect()).filter(|r: &Vec<char>| !r.is_empty()).collect();
+            for (row, line) in rows.iter().enumerate() {
+                for (col, &c) in line.iter().enumerate() {
+                    let at = GridCoord { x: p.x + p.w - 1 - col as i32, y: -(row as i32) };
+                    let built = world.occupied.get(&(at.x, at.y)).and_then(|&id| match world.objects.get(id).map(|e| &e.object) {
+                        Some(GameObject::Building(b)) => Some(letter(b.kind)),
+                        _ => None,
+                    });
+                    if building(c).map(|_| c) != built {
+                        wrong.push(format!("{} col {col} row {row}: {c} built {built:?}", p.name));
+                    }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{} tiles not as written:\n{}", wrong.len(), wrong.join("\n"));
+    }
 }

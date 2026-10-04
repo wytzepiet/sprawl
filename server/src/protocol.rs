@@ -11,15 +11,31 @@ pub struct GridCoord {
     pub y: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+/// A step of the mayor's hand: one tile to the next, or a tap, from and
+/// to the same tile. A drag is its steps, each built as it is sent.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct PlaceRoad {
+pub struct Build {
+    pub tool: Tool,
     pub from: GridCoord,
     pub to: GridCoord,
-    pub one_way: bool,
-    /// A road rather than a street: a through route nothing fronts onto.
-    #[serde(default)]
-    pub road: bool,
+}
+
+/// What the mayor's hand holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Tool {
+    /// A street, both ways: what buildings front.
+    Street,
+    /// A street one way, `from` to `to`.
+    OneWay,
+    /// A road: a through route nothing fronts onto.
+    Road,
+    /// A kind of building: `to` painted, and joined to whatever of the
+    /// kind `from` is part of.
+    Building(BuildingKind),
+    /// Whatever stands on `to`.
+    Demolish,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -106,9 +122,15 @@ impl BuildingKind {
 #[ts(export)]
 pub struct Building {
     pub kind: BuildingKind,
-    /// The plot's footprint in tiles, as it lies on the grid: the building
-    /// and its lot together.
-    pub size: (u8, u8),
+    /// The tiles it stands on, its lot's among them; the first is where it
+    /// is, the tile it is known by.
+    #[serde(default)]
+    pub tiles: Vec<GridCoord>,
+    /// A save's plot from before a building was its tiles, read once at
+    /// load into `tiles` (`World::rebuild_occupied`) and never written.
+    #[serde(default, skip_serializing)]
+    #[ts(skip)]
+    pub size: Option<(u8, u8)>,
     /// Which side of the building the lot and the street are on; see
     /// `blueprint::FACINGS`. The client lays the building and the lot out
     /// within the footprint from this.
@@ -136,6 +158,26 @@ pub struct Building {
     /// ground, so the last run's path is the field. Redrawn by the next.
     #[serde(default)]
     pub ruts: Vec<GridCoord>,
+    /// The tiles beside it, of other buildings of its kind, the hand drew
+    /// it on from or onto: a row of houses drawn as a row, each a home of
+    /// its own. Only a kind that never grows into one building keeps any.
+    #[serde(default)]
+    pub joined: Vec<GridCoord>,
+    /// Where it is driven into: one of its tiles, and the street tile
+    /// beside it the drive runs from. The drive is the building's, not a
+    /// road: drawn as one, driven by the cars of its lot, and gone with it.
+    /// Kept when the street goes, and good again if it comes back.
+    #[serde(default)]
+    pub door: Option<Door>,
+}
+
+/// A building's door: its tile a drive runs onto, and the street tile the
+/// drive runs from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Door {
+    pub tile: GridCoord,
+    pub street: GridCoord,
 }
 
 /// A tile of a farm's land, and where it is in the cycle: grass until the
@@ -191,16 +233,19 @@ impl Building {
     /// One of a kind, founded: what it buys in full, what it makes not
     /// yet made, and its prices the edge's — what the outside charges is
     /// the one price a shop that has sold nothing yet can know.
-    pub fn new(kind: BuildingKind, size: (u8, u8), facing: u8) -> Building {
+    pub fn new(kind: BuildingKind, tiles: Vec<GridCoord>, facing: u8) -> Building {
         use crate::economy::{edge_price_of, makes, sells, stocks};
         Building {
             kind,
-            size,
+            tiles,
+            size: None,
             facing,
             stocks: stocks(kind).into_iter().map(|(need, cap)| (need, if makes(kind, need) { crate::needs::Stock { level: 0.0, cap } } else { crate::needs::Stock::full(cap) })).collect(),
             prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
             land: Vec::new(),
             ruts: Vec::new(),
+            joined: Vec::new(),
+            door: None,
         }
     }
 }
@@ -232,29 +277,6 @@ pub enum CarRole {
     /// A port's: from the quay behind it over the water to the horizon,
     /// and back with every shelf's worth at once. Never on a road.
     Ship,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct PlaceBuilding {
-    /// The point on the ground the building is held over: the server
-    /// decides where the plot lands from it, the same way it showed the
-    /// mayor while dragging.
-    pub at: [f64; 2],
-    pub kind: BuildingKind,
-}
-
-/// Where a kind would land with its building held over a point: the plot's
-/// origin and facing, whether it can land at all, and the driveway it would
-/// get. What the dragged ghost draws, and what placing lays — one answer.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Site {
-    pub pos: GridCoord,
-    pub facing: u8,
-    pub fits: bool,
-    pub door: Option<GridCoord>,
-    pub street: Option<GridCoord>,
 }
 
 /// Someone's car. It outlives its journeys: between trips it sits parked at a
@@ -490,12 +512,6 @@ pub struct ErrorMessage {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct DemolishRoad {
-    pub pos: GridCoord,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ChunkBounds {
@@ -523,11 +539,9 @@ impl ChunkBounds {
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
-    PlaceRoad(PlaceRoad),
+    Build(Build),
     /// Spend a point on a node of the tree.
     Take(crate::tree::Cell),
-    PlaceBuilding(PlaceBuilding),
-    DemolishRoad(DemolishRoad),
     DespawnAllCars,
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),

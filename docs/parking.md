@@ -21,6 +21,11 @@
 >   answer is a car park round the corner.
 > - **What goes**: the driveway as a kind of road (a road ending on a
 >   plot, one per building, the newest), lots, rings and their slabs.
+>   The driveway went 2026-10-04: a building keeps its **door**, its tile
+>   and the street tile beside it (`Building::door`); the street node is
+>   where trips to it end, and the drive from there to the tile is its
+>   lot's, drawn as road and gone with it. Drawing a road into a building
+>   moves its door; painting over a road's dead end makes that its door.
 >   A car park's layout is packed from its shape when it is built.
 > - **Driveways stay where a house leaves room** (2026-10-02, the
 >   mayor): a house with open ground beside it parks its cars on a drive
@@ -68,7 +73,8 @@ spots; this is how.
 Four rules carry the whole thing.
 
 1. **A lot is road.** The spots and aisles of a plot are nodes and edges
-   of the same network cars already drive, hung off the driveway node.
+   of the same network cars already drive, hung off the street node the
+   building's door opens onto.
    Nothing new moves; the queues, the following and the giving way that
    work on the street work in the lot.
 2. **A spot is a node.** Parking is a trip whose destination is a spot.
@@ -106,7 +112,7 @@ this document can say only what changes.
   short of the node. Its claim lasts until its tail is through the node,
   and lapses if it holds it standing still for ten seconds (§9)
   (`intersection/mod.rs`, `simulation.rs`).
-- **Trips.** A trip is born at a driveway node with a route, a free-flow
+- **Trips.** A trip is born at a lot's node with a route, a free-flow
   ETA fixed at departure, and the physics to extrapolate from; it dies on
   arrival, when the car is placed on the building and the driver steps out
   (`spawn.rs`, `park_car`). The client draws every car from its trip,
@@ -127,7 +133,7 @@ Decided 2026-09-07 over drawings at the game's scale (a tile is 12 m, a
 car 4.2 by 2.2, a one-way lane 2.4). The ring lot won; what follows is
 its geometry and the rules around it.
 
-### 3.1 The ring
+### 3.1 The ring (replaced by §3.9, 2026-10-03)
 
 A lot tile carries a one-way ring of lane hugging its edge, cars in the
 island inside it, each spot a pull-through: in from the lane on the
@@ -235,14 +241,14 @@ Lot nodes are server-only, made when a run is (re)computed and dropped
 when it goes. A lot node is an entry in a side table on the world with
 an id from the entity counter, so a route is one `Vec<EntityId>`
 throughout, and edges into the lot are ordinary `world.edges` entries.
-They are not in the run network: a route search ends at the driveway
-node and the lot path is appended (§3.6). The client holds the same
+They are not in the run network: a route search ends at the street node
+the door opens onto and the lot path is appended (§3.6). The client holds the same
 generator in TypeScript and draws the slab, ring and spot markings from
 a building's lot rectangle; nothing about a lot is streamed.
 
 ### 3.6 Routing
 
-A route to a spot is the street route to the driveway node with the ring
+A route to a spot is the street route to the door's street node with the
 path to the spot appended: along the lane to the spot's entry, through
 the spot. A route from a spot is the spot's exit lane round to the
 driveway and the street route on. The trip's length and free-flow ETA
@@ -308,6 +314,35 @@ row, the lot is its own thing: a run with its own frontage, the
 building just the building. Until then the plot is building plus lot
 and the client draws the building on the back of it; the pin sits over
 the building either way.
+
+### 3.9 The car park: aisles, not a ring (2026-10-03)
+
+The ring was deleted on 2026-10-04, with the plot it stood in front of
+(`look.md` §Into the game). Until a car park is laid as aisles, every
+building parks two on its drive, a depot keeps its yard, and a car that
+finds no spot stops at the door, unseen; a visitor's tap at a kind that
+had a lot seats seven at once, what its lot held (`blueprint::seats`).
+
+The ring is replaced. One tile deep it cannot be driven: its corners turn
+at 0.2 and a car turns no tighter than 0.45, and every lot that turns a
+car round inside one tile is the same. Drawn out at the game's scale in
+`sketches/car-park*.png` (`bun sketches/car-park.ts`), bays placed by
+test:
+
+- **An aisle** is a straight one-way lane 0.22 wide with bays at 60° on
+  both sides, 0.2 across: a car drives in nose first and backs out the
+  way it was going. Aisles run along the lot's long side, the bays along
+  them the whole length of the lot; a lane that only leads to aisles has
+  none.
+- **Two ways out, or no lot.** In at one end and out at the other, on
+  its street, a side street or a back street. A lot that cannot have two
+  (one tile, a street that stops short) is not laid; a building that
+  small parks on the kerb.
+- **Bigger lots branch and gather**: one way in, a feeder branching into
+  an aisle a row, the aisles gathering into one way out. A gathering is
+  a junction (`intersection/`), and gives way as one.
+- About 7 cars a tile, against the ring's 3.5: two tiles hold 12, three
+  21, and a lot through to a back street 8 a tile with no turn at all.
 
 ## 4. Driving in the lot
 

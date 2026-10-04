@@ -405,11 +405,18 @@ pub fn price(world: &World, kind: BuildingKind) -> f64 {
     b.price / world.build.weight(b.class)
 }
 
+/// How many tiles the smallest of a kind is: its price is shared over
+/// them, a tile paid for as it is painted.
+pub fn tiles(kind: BuildingKind) -> f64 {
+    let (w, h) = crate::blueprint::plot(kind, 0).size;
+    (w as u32 * h as u32) as f64
+}
+
 /// A building saved before it had a stock or prices gets them the way a
 /// placed one does; one whose row changed a stock gets the new one, full.
 pub fn open(world: &mut World, id: EntityId) {
     let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { return };
-    let fresh = crate::protocol::Building::new(b.kind, b.size, b.facing);
+    let fresh = crate::protocol::Building::new(b.kind, b.tiles.clone(), b.facing);
     b.stocks.retain(|need, stock| fresh.stocks.get(need).is_some_and(|f| f.cap == stock.cap));
     for (need, stock) in fresh.stocks {
         b.stocks.entry(need).or_insert(stock);
@@ -429,14 +436,9 @@ pub fn open(world: &mut World, id: EntityId) {
 pub fn reorder(world: &World, building: EntityId, need: Need) -> f64 {
     let Some(kind) = kind_of(world, building) else { return 0.0 };
     let lead = world.books.get(&building).and_then(|k| k.lead).unwrap_or(crate::calls::AWAY_MS);
-    // A full house is everyone who can be there at once, which for a
-    // visitor tap is the lot's spots, as the crowd is counted
-    // (`resident::slots_at`): two bays with seven cars queued in the lot
-    // is a rush of seven.
-    let seats: u32 = match world.spots_at(building) {
-        Some(n) if blueprint(kind).taps.iter().any(|t| t.need == need) => n,
-        _ => blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| t.slots).sum(),
-    };
+    // A full house is everyone the taps seat at once: two bays with seven
+    // cars at the door is a rush of seven.
+    let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| crate::blueprint::seats(kind, t)).sum();
     let draw = if need == Need::Services { draw(kind) } else { 0.0 };
     (rated(kind, need) + draw) * lead as f64 / DAY_MS as f64 + seats as f64
 }
@@ -1026,7 +1028,7 @@ mod tests {
     #[test]
     fn every_opening_price_covers_its_delivery() {
         for kind in BuildingKind::ALL {
-            let b = crate::protocol::Building::new(kind, (1, 1), 2);
+            let b = crate::protocol::Building::new(kind, Vec::new(), 2);
             for need in sells(kind) {
                 let floor = unit_cost(kind, need);
                 let price = b.prices[&need];

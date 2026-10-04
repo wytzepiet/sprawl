@@ -12,9 +12,9 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Sale, ServerMessage, StateUpdate};
+use crate::protocol::{Build, BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Sale, ServerMessage, StateUpdate, Tool, GridCoord};
 use crate::world::chunk_of;
-use crate::world::World;
+use crate::world::{Link, World};
 use crate::world::pathfinding;
 
 struct ClientState {
@@ -53,6 +53,23 @@ const MAX_SPEED: u32 = 50;
 /// drive to and from before the mayor has placed anything.
 const STARTING_MIX: [BuildingKind; 3] = [BuildingKind::House, BuildingKind::Shop, BuildingKind::Workshop];
 
+/// What a save does not keep, rebuilt from what it does, as the game
+/// opens it.
+fn restore(world: &mut World) {
+    world.rebuild_revealed();
+    world.rebuild_edges();
+    world.rebuild_node_cars();
+    world.rebuild_occupied();
+    world.restore_spots();
+    world.rebuild_roads_generated();
+    world.rebuild_laid();
+    world.doors_from_drives();
+    // A saved world may have been revealed further than its roads reach,
+    // if it was saved before this existed.
+    let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
+    crate::road_gen::extend_to(world, seed, bounds);
+}
+
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let db_path = db_path();
     let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
@@ -85,17 +102,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 
     // Rebuild edges/indices and schedule car spawns for loaded buildings
     if !world.objects.all_entries().is_empty() && fixtures.is_none() {
-        world.rebuild_revealed();
-        world.rebuild_edges();
-        world.rebuild_node_cars();
-        world.rebuild_occupied();
-        world.restore_spots();
-        world.rebuild_roads_generated();
-        world.rebuild_laid();
-        // A saved world may have been revealed further than its roads reach,
-        // if it was saved before this existed.
-        let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-        crate::road_gen::extend_to(&mut world, seed, bounds);
+        restore(&mut world);
         println!("loaded {} objects from db", world.objects.all_entries().len());
     }
     // Whatever is standing gets its people, whether it was just laid out or
@@ -121,7 +128,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         while let Ok(cmd) = commands.try_recv() {
             match cmd {
                 Command::PlayerAction { client_id, message } => {
-                    roads_laid |= matches!(message, ClientMessage::PlaceRoad(_));
+                    roads_laid |= matches!(message, ClientMessage::Build(Build { tool: Tool::Street | Tool::OneWay | Tool::Road, .. }));
                     if let ClientMessage::Ping = &message {
                         if let Some(cs) = clients.get(&client_id) {
                             let _ = cs.sender.send(ServerMessage::Pong(now));
@@ -200,7 +207,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Lot(id) => world.inspect_lot(id, now),
                         Ask::Card(id) => crate::card::card(&world, id, now),
                         Ask::Town => crate::economy::town(&world, now),
-                        Ask::Site { kind, x, y } => serde_json::to_value(world.site_under(x, y, kind)).unwrap_or_default(),
                         Ask::Map { x, y, r } => crate::fixtures::draw(&world, x, y, r).into(),
                         Ask::Call(id) => {
                             // Its shelf, emptied: a depot fetches, a maker
@@ -355,62 +361,56 @@ fn handle_player_action(
     now: GameTime,
 ) {
     match message {
-        ClientMessage::PlaceRoad(place) => {
-            let from_id = world.road_node_at(place.from);
-            let to_id = world.road_node_at(place.to);
-
-            // The build is the gate: what kinds of road, and how much of it.
-            // Each end that is not standing yet is a tile laid.
-            let new_tiles = from_id.is_none() as u32 + to_id.is_none() as u32;
-            if !world.build.may_draw(place.one_way, place.road) || world.laid + new_tiles > world.build.road_tiles() {
+        ClientMessage::Build(Build { tool, from, to }) => {
+            // Said out loud: a click that does nothing is the kind of bug
+            // that otherwise takes an afternoon to find.
+            if !may(world, tool, from, to) {
+                println!("refused: {tool:?} from {from:?} to {to:?}");
                 return;
             }
-            world.handle_place_road(place.from, place.to, place.one_way, place.road);
-
-            // Insert edges for newly created connections
-            let new_from = world.road_node_at(place.from);
-            let new_to = world.road_node_at(place.to);
-            if let (Some(f), Some(t)) = (new_from, new_to) {
-                // Only insert if the road was actually placed (nodes exist now)
-                if from_id.is_none() || to_id.is_none() || !world.edges.contains_key(&(f, t)) {
-                    world.insert_edge(f, t);
-                    if !place.one_way {
-                        world.insert_edge(t, f);
+            match tool {
+                Tool::Street | Tool::OneWay | Tool::Road => {
+                    let one_way = tool == Tool::OneWay;
+                    let (from_id, to_id) = (world.road_node_at(from), world.road_node_at(to));
+                    world.handle_place_road(from, to, one_way, tool == Tool::Road);
+                    // Insert edges for newly created connections
+                    if let (Some(f), Some(t)) = (world.road_node_at(from), world.road_node_at(to))
+                        && (from_id.is_none() || to_id.is_none() || !world.edges.contains_key(&(f, t)))
+                    {
+                        world.insert_edge(f, t);
+                        if !one_way {
+                            world.insert_edge(t, f);
+                        }
                     }
                 }
-            }
-        }
-        ClientMessage::PlaceBuilding(place) => {
-            // Exactly what the ghost showed: the site is decided once, by the
-            // same call, from the point the building was held over. The
-            // mayor pays for it from what the city has earned.
-            let site = world.site_under(place.at[0], place.at[1], place.kind);
-            let price = crate::economy::price(world, place.kind);
-            let allowed = world.build.may_place(place.kind) && world.treasury >= price;
-            let placed = allowed.then(|| world.place_site(site, place.kind)).flatten();
-            match placed {
-                Some(_) => {
-                    crate::economy::built(world, price, now);
+                Tool::Building(kind) => {
+                    if world.paint(kind, from, to).is_some() {
+                        crate::economy::built(world, crate::economy::price(world, kind) / crate::economy::tiles(kind), now);
+                    }
                     settle_and_wake(world, events);
                 }
-                // Said out loud: a click that does nothing is the kind of
-                // bug that otherwise takes an afternoon to find.
-                None => println!("place refused: {:?} at {:?}: allowed {}, site {:?}", place.kind, place.at, allowed, site),
+                Tool::Demolish => {
+                    // A tap takes everything on the tile: its road and all
+                    // its links, the cars on it rerouted, or the building's
+                    // tile. A step cuts only what joins the two tiles: the
+                    // road between them, a door, a row. Then the population
+                    // is settled against what is left.
+                    if from == to {
+                        if let Some(id) = world.road_node_at(to) {
+                            handle_road_demolish(world, events, intersections, id, now);
+                        }
+                        world.unpaint(to);
+                    } else {
+                        match world.link_between(from, to) {
+                            Some(Link::Road(a, b)) => handle_link_demolish(world, events, intersections, a, b, now),
+                            Some(Link::Door(id)) => world.close_door(id),
+                            Some(Link::Row(a, b)) => world.unlink(a, b),
+                            None => {}
+                        }
+                    }
+                    settle_and_wake(world, events);
+                }
             }
-        }
-        ClientMessage::DemolishRoad(demolish) => {
-            // What goes follows from what was clicked: a road, or the building
-            // standing there. Either way the population is settled against
-            // what is left.
-            let pos = demolish.pos;
-            if let Some(id) = world.road_node_at(pos) {
-                handle_road_demolish(world, events, intersections, id, now);
-            } else if let Some(id) = world.occupied.get(&(pos.x, pos.y)).copied() {
-                world.remove_building(id);
-            } else {
-                return;
-            }
-            settle_and_wake(world, events);
         }
         ClientMessage::DespawnAllCars => {
             let car_ids: Vec<EntityId> = world.objects.all_entries()
@@ -430,6 +430,38 @@ fn handle_player_action(
         ClientMessage::ResetWorld => unreachable!("handled in run()"),
         ClientMessage::SetChunks(_) => unreachable!("handled in run()"),
         ClientMessage::Ping => {}
+    }
+}
+
+/// May the mayor's hand take this step with this tool: the build's gate
+/// (what it has opened, how much road is left to lay, what a tile costs),
+/// and the world's own rule for the step. The one rule a step is refused
+/// by. The client works out the same where it draws the hand's dots
+/// (`client/src/engine/may.ts`): a change here is a change there.
+pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
+    match tool {
+        Tool::Street | Tool::OneWay | Tool::Road => {
+            let one_way = tool == Tool::OneWay;
+            // Into a building is its door: nothing is laid on its tile, and
+            // a through road is no door, nothing fronting onto one.
+            let door = world.occupied.contains_key(&(to.x, to.y));
+            // Each end that is not standing yet is a tile laid.
+            let new_tiles = world.road_node_at(from).is_none() as u32 + (!door && world.road_node_at(to).is_none()) as u32;
+            !(door && tool == Tool::Road)
+                && world.build.may_draw(one_way, tool == Tool::Road)
+                && world.laid + new_tiles <= world.build.road_tiles()
+                && world.may_lay(from, to, one_way)
+        }
+        // A tile is paid for as it is laid, from what the city has earned:
+        // a kind's price shared over the smallest of it.
+        Tool::Building(kind) => {
+            world.build.may_place(kind)
+                && world.treasury >= crate::economy::price(world, kind) / crate::economy::tiles(kind)
+                && world.may_paint(kind, from, to)
+                && world.would_be_reached(kind, from, to)
+        }
+        Tool::Demolish if from == to => world.road_node_at(to).is_some() || world.occupied.contains_key(&(to.x, to.y)),
+        Tool::Demolish => world.link_between(from, to).is_some(),
     }
 }
 
@@ -493,8 +525,51 @@ fn handle_road_demolish(
         park_at_home(world, intersections, events, car_id);
     }
 
-    // Clean up neighbors left with 0 connections
-    for nid in neighbor_ids {
+    drop_orphans(world, intersections, events, &neighbor_ids);
+}
+
+/// Cut the road between two nodes, both ways, rerouting whatever was to
+/// drive it; a node left with no road goes.
+fn handle_link_demolish(
+    world: &mut World,
+    events: &mut EventQueue,
+    intersections: &mut IntersectionRegistry,
+    a: EntityId,
+    b: EntityId,
+    now: GameTime,
+) {
+    let cut = |x: EntityId, y: EntityId| (x == a && y == b) || (x == b && y == a);
+    let cars: Vec<(EntityId, EntityId, EntityId)> = world
+        .node_cars
+        .get(&a)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|car_id| {
+            let GameObject::Car(ref car) = world.objects.get(car_id)?.object else { return None };
+            let trip = car.trip.as_ref()?;
+            let (route, ri) = (&trip.route, trip.route_index);
+            if !route[ri.saturating_sub(1)..].windows(2).any(|w| cut(w[0], w[1])) {
+                return None;
+            }
+            // On the link itself, it turns back from where it came onto it.
+            let from = if ri > 0 && cut(route[ri - 1], route[ri]) { route[ri - 1] } else { route[ri] };
+            Some((car_id, from, trip.destination))
+        })
+        .collect();
+    world.unlink_roads(a, b);
+    for (car_id, from, dest) in cars {
+        if !try_reroute(world, intersections, events, car_id, from, dest, now) {
+            park_at_home(world, intersections, events, car_id);
+        }
+    }
+    drop_orphans(world, intersections, events, &[a, b]);
+}
+
+/// Road nodes among these left with no road: gone, and anything routed
+/// over one sent home.
+fn drop_orphans(world: &mut World, intersections: &mut IntersectionRegistry, events: &mut EventQueue, nodes: &[EntityId]) {
+    for &nid in nodes {
         let is_orphan = match world.objects.get(nid) {
             Some(entry) => if let GameObject::RoadNode(ref node) = entry.object {
                 node.outgoing.is_empty() && node.incoming.is_empty()
@@ -929,10 +1004,133 @@ mod tests {
         world
     }
 
+    /// The rule says what the hand will do: a house may be tapped down
+    /// beside the street and not on it; a street may be drawn off the
+    /// street and not along it again, nor onto water; demolishing finds
+    /// what stands. The client's dots (`may.ts`) answer the same.
+    #[test]
+    fn the_rule_of_where_the_hand_may_go_is_what_it_does() {
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let at = |x, y| GridCoord { x, y };
+        let house = Tool::Building(BuildingKind::House);
+        assert!(may(&world, house, at(5, 1), at(5, 1)), "beside the street");
+        assert!(!may(&world, house, at(5, 0), at(5, 0)), "not on it");
+        assert!(!may(&world, house, at(5, 3), at(5, 3)), "nor where no street reaches");
+        world.terrain.insert((5, 1), TerrainType::Water);
+        assert!(!may(&world, Tool::Street, at(5, 0), at(5, 1)), "nor a street onto water");
+        world.terrain.insert((5, 1), TerrainType::Grass);
+        assert!(may(&world, Tool::Street, at(5, 0), at(5, 1)), "off the street toward +y");
+        assert!(!may(&world, Tool::Street, at(5, 0), at(6, 0)), "not along it again");
+        assert!(!may(&world, Tool::Demolish, at(5, 3), at(5, 3)), "nothing to take");
+        assert!(may(&world, Tool::Demolish, at(5, 0), at(5, 0)), "a road to take");
+        // And a step the rule refuses, the hand is refused.
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let (from, to) = (at(5, 0), at(5 + dx, dy));
+                let allowed = may(&world, Tool::Street, from, to);
+                let mut events = EventQueue::new();
+                let mut intersections = IntersectionRegistry::new();
+                let mut probe = street();
+                probe.build = crate::tree::Build::all();
+                let edges = probe.edges.len();
+                handle_player_action(&mut probe, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from, to }), 0);
+                assert_eq!(probe.edges.len() != edges, allowed, "step {dx},{dy}");
+            }
+        }
+    }
+
+    /// One tap of the demolisher takes a house, its drive with it: the
+    /// drive is the house's, not a road on its tile.
+    #[test]
+    fn one_tap_takes_a_house_and_its_drive_with_it() {
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let at = GridCoord { x: 5, y: 1 };
+        let mut hand = |world: &mut World, tool| handle_player_action(world, &mut events, &mut intersections, ClientMessage::Build(Build { tool, from: at, to: at }), 0);
+        hand(&mut world, Tool::Building(BuildingKind::House));
+        let house = world.occupied[&(5, 1)];
+        assert!(world.door_of(house).is_some() && world.road_node_at(at).is_none(), "a house with its door, and no road on its tile");
+        hand(&mut world, Tool::Demolish);
+        assert!(!world.occupied.contains_key(&(5, 1)), "the house is gone");
+        assert!(world.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "and the street stands");
+    }
+
+    /// A drag of the demolisher cuts only what it crosses: the road
+    /// between two tiles, a door, a row of houses. A tap takes everything
+    /// at the point.
+    #[test]
+    fn a_drag_cuts_a_link_and_a_tap_takes_the_point() {
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let at = |x, y| GridCoord { x, y };
+        let mut hand = |world: &mut World, tool, from, to| handle_player_action(world, &mut events, &mut intersections, ClientMessage::Build(Build { tool, from, to }), 0);
+        // A side street, two tiles long, off the main one.
+        hand(&mut world, Tool::Street, at(5, 0), at(5, 1));
+        hand(&mut world, Tool::Street, at(5, 1), at(5, 2));
+        hand(&mut world, Tool::Demolish, at(5, 1), at(5, 2));
+        assert!(!world.are_connected(at(5, 1), at(5, 2)), "the link is cut");
+        assert!(world.road_node_at(at(5, 2)).is_none(), "and the end left with no road goes");
+        assert!(world.are_connected(at(5, 0), at(5, 1)), "the rest stands");
+        // A house's door, cut: the house stands, cut off.
+        hand(&mut world, Tool::Building(BuildingKind::House), at(8, 1), at(8, 1));
+        let house = world.occupied[&(8, 1)];
+        let door = world.door_of(house).expect("a door").1;
+        let street = world.objects.get(door).and_then(|e| e.position).unwrap();
+        hand(&mut world, Tool::Demolish, street, at(8, 1));
+        assert!(world.door_of(house).is_none() && world.occupied.contains_key(&(8, 1)), "the door shut, the house standing");
+        // Two houses of a row let go of each other.
+        hand(&mut world, Tool::Building(BuildingKind::House), at(11, 1), at(11, 1));
+        hand(&mut world, Tool::Building(BuildingKind::House), at(11, 1), at(12, 1));
+        assert!(may(&world, Tool::Demolish, at(11, 1), at(12, 1)), "a row to cut");
+        hand(&mut world, Tool::Demolish, at(11, 1), at(12, 1));
+        assert!(!may(&world, Tool::Demolish, at(11, 1), at(12, 1)), "and cut");
+        assert!(world.occupied.contains_key(&(11, 1)) && world.occupied.contains_key(&(12, 1)), "both houses standing");
+        // A tap takes the point and every link at it.
+        hand(&mut world, Tool::Demolish, at(5, 0), at(5, 0));
+        assert!(world.road_node_at(at(5, 0)).is_none());
+        assert!(world.road_node_at(at(5, 1)).is_none(), "the side street left with no road goes too");
+    }
+
     fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
         world
             .place_on_street(GridCoord { x, y: 1 }, kind)
             .unwrap_or_else(|| panic!("the street should give a {kind:?} at x={x} its driveway"))
+    }
+
+    /// A save from when a drive was a road the mayor laid opens with it
+    /// as the house's door, and the tile back. The drive used to go
+    /// before the mayor's tiles were counted, and took one from nought.
+    #[test]
+    fn a_saved_drive_opens_as_a_door() {
+        let mut world = World::new();
+        for y in -8..8 {
+            for x in -8..8 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        world.place_road_path(&[GridCoord { x: 0, y: 2 }, GridCoord { x: 4, y: 2 }]);
+        let house = world.place_building(GridCoord { x: 2, y: 0 }, BuildingKind::House, 2).unwrap();
+        world.place_road_path(&[GridCoord { x: 2, y: 2 }, GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }]);
+        let drive = world.road_node_at(GridCoord { x: 2, y: 0 }).unwrap();
+        if let Some(GameObject::RoadNode(n)) = world.objects.get_mut(drive).map(|e| &mut e.object) {
+            n.laid = true;
+        }
+        world.laid = 0;
+
+        restore(&mut world);
+
+        assert!(world.objects.get(drive).is_none(), "the drive went");
+        let street = world.road_node_at(GridCoord { x: 2, y: 1 }).unwrap();
+        assert_eq!(world.door_of(house), Some((GridCoord { x: 2, y: 0 }, street)));
+        assert_eq!(world.laid, 0);
     }
 
     /// A fresh world fills: every household of the starting town has a way
@@ -948,15 +1146,7 @@ mod tests {
         crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
         // As the game opens it: the survey extended to what is revealed,
         // which lays roads that never join the town, doors and all.
-        world.rebuild_revealed();
-        world.rebuild_edges();
-        world.rebuild_node_cars();
-        world.rebuild_occupied();
-        world.restore_spots();
-        world.rebuild_roads_generated();
-        world.rebuild_laid();
-        let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-        crate::road_gen::extend_to(&mut world, seed, bounds);
+        restore(&mut world);
         world.stand_edges();
         world.settle();
         let ids = world.resident_ids();
@@ -1670,10 +1860,9 @@ mod tests {
             // Onto the plot: a road that ends on one is a driveway.
             (GridCoord { x: 10, y: 2 }, GridCoord { x: 10, y: 3 }),
         ] {
-            let place = crate::protocol::PlaceRoad { from, to, one_way: false, road: false };
-            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::PlaceRoad(place), 0);
+            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from, to }), 0);
         }
-        assert!(world.road_node_for_building(home).is_some(), "the driveway formed itself");
+        assert!(world.street_of(home).is_some(), "the driveway formed itself");
 
         // Which is what the tick settles for, once, after the batch.
         settle_and_wake(&mut world, &mut events);
@@ -1776,6 +1965,39 @@ mod tests {
             println!("{name}: {wakes} wakes for {residents} residents: {per_resident_day} per resident-day");
             assert!(per_resident_day <= WAKE_BUDGET, "{name}: {per_resident_day} wakes per resident-day, budget {WAKE_BUDGET}");
         }
+    }
+
+    /// What a build costs the loop, in a lived-in town: road steps, house
+    /// taps, and the settle that follows them. Printed, not asserted: the
+    /// yardstick for making a build cost what it changes and no more.
+    /// `cargo test probe_build_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn probe_build_cost() {
+        let (mut world, _) = live(&placeable(), 1);
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let mut events = EventQueue::new();
+        events.set_now(DAY_MS as u64);
+        let mut intersections = IntersectionRegistry::new();
+        println!("{} residents, {} objects", world.resident_ids().len(), world.objects.iter().count());
+        let at = |x, y| GridCoord { x, y };
+        let t = Instant::now();
+        for y in 0..6 {
+            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from: at(300, y), to: at(300, y + 1) }), 0);
+        }
+        println!("6 road steps: {:?}", t.elapsed());
+        let t = Instant::now();
+        settle_and_wake(&mut world, &mut events);
+        println!("settle after roads: {:?}", t.elapsed());
+        for y in 1..6 {
+            let t = Instant::now();
+            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Building(BuildingKind::House), from: at(301, y), to: at(301, y) }), 0);
+            println!("house tap: {:?}", t.elapsed());
+        }
+        let t = Instant::now();
+        let n = world.settle().len();
+        println!("settle alone: {:?} ({n} woken)", t.elapsed());
     }
 
     /// How fast the same town runs, in simulated days per wall second. Not

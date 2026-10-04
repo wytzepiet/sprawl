@@ -62,7 +62,7 @@ impl World {
             let GameObject::Building(ref b) = e.object else { continue };
             let Some(pos) = e.position else { continue };
             // Built but not reached: nobody lives or works where no road goes.
-            if self.road_node_for_building(e.id).is_none() {
+            if self.street_of(e.id).is_none() {
                 continue;
             }
             where_is.insert(e.id, pos);
@@ -503,7 +503,7 @@ mod tests {
         let orphan = world
             .place_building(GridCoord { x: 4, y: 3 }, BuildingKind::Shop, 2)
             .expect("land is land");
-        assert!(world.road_node_for_building(orphan).is_none(), "the point of the test");
+        assert!(world.street_of(orphan).is_none(), "the point of the test");
         world.settle();
 
         let who = world.resident_ids()[0];
@@ -542,12 +542,12 @@ mod tests {
         let home = world
             .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, 2)
             .expect("land is land");
-        assert!(world.road_node_for_building(home).is_none(), "dormant");
+        assert!(world.street_of(home).is_none(), "dormant");
         assert!(world.settle().is_empty(), "nobody moves in off the road");
 
         // A side street beside it reaches the house, and the household arrives.
         world.place_road_path(&[GridCoord { x: 10, y: 0 }, GridCoord { x: 10, y: 2 }]);
-        assert!(world.road_node_for_building(home).is_some(), "the driveway formed itself");
+        assert!(world.street_of(home).is_some(), "the driveway formed itself");
         assert_eq!(world.settle().len(), 2);
         assert!(residents(&world).iter().all(|r| r.home == home));
     }

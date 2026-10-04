@@ -2,8 +2,8 @@ import { For, onCleanup } from "solid-js";
 import { useEngine } from "../engine/Canvas";
 import { projector } from "../engine/view";
 import { getEntity, recentLumps } from "../state/gameObjects";
-import { plot } from "../blueprints";
-import type { BuildingKind } from "../generated";
+import { middle } from "../blueprints";
+import type { Building } from "../generated";
 
 /**
  * Money landing on the map: a visit paid for, a day's takings swept, a
@@ -22,9 +22,7 @@ export default function LumpLayer() {
       const el = els.get(lump.key);
       const e = getEntity(lump.building);
       if (!el || !e?.position || e.object.kind !== "Building") continue;
-      const b = e.object.data as { kind: BuildingKind; facing: number };
-      const [[bx, by], [bw, bh]] = plot(b.kind, b.facing).building;
-      const { sx, sy } = project.at(e.position.x + bx + bw / 2, e.position.y + by + bh / 2);
+      const { sx, sy } = project.at(...middle(e.object.data as Building));
       el.style.transform = `translate(${sx}px, ${sy}px)`;
     }
   };

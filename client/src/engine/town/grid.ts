@@ -15,6 +15,8 @@ export interface Tile {
   /** A building's kind, or the ground's. */
   kind: BuildingKind | Ground;
   storeys: number;
+  /** In the game, which building it is. */
+  id?: number;
 }
 
 export interface Town {
@@ -29,6 +31,10 @@ export interface Town {
    *  brush stroke that painted them ran; unset, the look joins tiles of a
    *  kind by its own rule (`footprint.ts`). */
   joins?(c0: number, r0: number, c1: number, r1: number): boolean;
+  /** The way from a built tile to the street its door opens onto, if
+   *  that tile is its door; unset, a house's door is on the first side
+   *  with a street (`front` in `dressing.ts`). */
+  door?(c: number, r: number): [number, number] | undefined;
 }
 
 export const LETTERS: Record<string, BuildingKind> = {
@@ -45,9 +51,12 @@ const STOREYS: Partial<Record<BuildingKind, number>> = {
 
 export const isBuilt = (t: Tile) => !["open", "paved", "road", "water", "wood"].includes(t.kind);
 
+/** How many storeys a kind is built. */
+export const storeysOf = (kind: BuildingKind) => STOREYS[kind] ?? 1;
+
 export function tileOf(ch: string): Tile {
   const kind = LETTERS[ch];
-  if (kind) return { kind, storeys: STOREYS[kind] ?? 1 };
+  if (kind) return { kind, storeys: storeysOf(kind) };
   const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
   return { kind: ground, storeys: 0 };
 }

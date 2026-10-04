@@ -23,7 +23,6 @@ export default defineConfig({
       "/tree": { target: `http://${server}` },
       "/inspect": { target: `http://${server}` },
       "/town": { target: `http://${server}` },
-      "/site": { target: `http://${server}` },
     },
   },
   build: {

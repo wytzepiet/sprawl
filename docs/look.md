@@ -280,10 +280,102 @@ building's tiles, a street, a junction, or a free tile):
 
 ## Order
 
-1. Parking belongs to streets (`parking.md`, direction of 2026-09-28): the
-   biggest change to the picture, and a deletion. The town grid goes into
-   the game with it.
-2. More dressing: kerb parking with step 1, front yards, lamps before shops.
+1. **The town grid in the game** (§Into the game, below): painted
+   buildings, one toolbar, the grid drawing the live world, and the
+   rings gone. Parking belongs to streets (`parking.md`, direction of
+   2026-09-28) follows it; until kerb bays come, a house parks on its
+   drive and a shop's visitors on its row's slots.
+2. More dressing: kerb parking with its bays, front yards, lamps before
+   shops.
 3. New fixtures and concepts: a shopping parade, a port, an industrial
    row, an airport.
 4. The ladders, as the growth loop arrives.
+
+## Into the game
+
+Plan, 2026-10-03. Decided by the mayor the same day: building is
+dragging, and a building is the tiles it was painted on.
+
+Built 2026-10-04, steps 1 to 4: one command and a toolbar, a building
+its tiles, the rings gone, and the game drawn by the town grid, a road
+an instance a tile and the town round what is built drawn whole. The
+same day: the hand builds only what can work, and shows where with dots
+it works out itself (`engine/may.ts`, the server's rule mirrored), on a
+canvas of their own that runs together like liquid as it drags
+(`engine/dots.ts`), the grid gone; houses drawn in a row are linked, a
+row (`Building::joined`); a drive is the building's door, not a road
+(`Building::door`, `parking.md`); a tap of the demolisher takes a point
+and a drag cuts only what it crosses. Still to come: the car park as
+aisles (5), a building's own mesh redrawn alone, the selected
+building's outline, one-way arrows and the red of a road that reaches
+nothing, on the new asphalt, and a drive drawn to a door on the
+diagonal.
+
+- **One toolbar, drag for everything.** Select, each kind of road, each
+  kind of building the tree has opened, demolish. Pick one and drag on
+  the map, or tap: it is built as the drag goes. The card shelf's
+  drag-to-place, its ghost and `/site` go.
+- **The world is tiles and links, and buildings are worked out from
+  them** (the mayor, 2026-10-04). A tile is a kind (a building's, road,
+  open ground) and its storeys; a link joins two tiles beside or
+  diagonal: a road's link is a street running between them, a building's
+  is a join, the two tiles one building. That is the town grid's own
+  model (`Town.linked`, `Town.joins`), and it is what the server keeps.
+  A building is a group of tiles its joins hold together: its shape, its
+  yard, its drive and whether it works follow from the group, as its
+  look does. Painting a step joins the two tiles; demolishing a tile cuts
+  its links, and a building cut in two is two. A building is known by its
+  first tile: cut in two, the part with it keeps the building's
+  residents, stock and money and the other starts empty; two joined, the
+  older is kept. Houses never join for the simulation, each a house with
+  its two homes, its drive and its two cars, and are drawn joined all the
+  same (`01-terrace`); a kind that works as one building (the depot, the
+  supermarket, the factory, the port) is one building as far as it is
+  painted. A building smaller than its kind needs (`brush.ts`'s
+  programs) stands and does not work, as one no road reaches; nothing is
+  filled in for the mayor, who paints it out to size. The economy is
+  untouched: it counts buildings as it does now. The plot, its facing
+  and its fixed size go.
+- **The rings go.** A house parks on its drive pair, as now. A building
+  whose kind keeps a yard has the yard read off its shape (`facts.ts`):
+  the depot's docks, the port's lanes, the supermarket's car park, laid
+  out as aisles (`parking.md` §3.9). Everyone else parks on the row's
+  slots until kerb bays come.
+
+What changes, in the order it can be built and seen:
+
+1. **The wire: one command, a step at a time.** `Build { tool, from,
+   to }`, the tool a street (one way or not), a road, a kind of
+   building, or demolish, replaces `PlaceRoad`, `PlaceBuilding` and
+   `DemolishRoad`. A drag is its steps, from one tile to the next, each
+   built as it is sent, as a road is drawn now; a tap is from and to the
+   same tile. Each step is checked alone and paid for by the tile, and a
+   drag that runs out of money stops there. Nothing is held while the
+   mayor drags: no draft, no ghost to agree with the build, no `Site`;
+   what is seen is what was built. A tile costs its kind's price shared
+   over the smallest building that works, so a depot painted to size
+   costs what one did. `Building` carries its tiles in place of `size`
+   and `facing`.
+   The rule lives only on the server: the sandbox draws fixtures and
+   paints no more.
+2. **The server.** A building is its tiles: `blueprint::plot`, facings
+   and the ring in `world/lots.rs` are deleted, its drive pairs and yards
+   kept; the yard is read off the building's shape by the rule `facts.ts`
+   draws it with, ported (a yard must be what the grid draws, or the cars
+   stand on the lawn).
+3. **The drawing.** The grid draws the live world: a `Town` made from the
+   game's own objects (buildings' tiles, roads' links, the terrain), as
+   `/map` already does for `bun run plan --live`, in chunks the way
+   `TerrainChunks` draws the land, each rebuilt when an operation touches
+   it or its neighbours. In the game the dressing draws no cars: every
+   car is the simulation's. A building no road reaches, or with nothing
+   on its shelves, is tinted in its roof (`objects/look.ts`); a farm's
+   fields grow as they do. `BuildingObject`, `objects/buildings.ts` and
+   `objects/lots.ts` are deleted.
+4. **The toolbar.** The build menu becomes the way to pick a tool; the
+   shelf goes.
+5. **The car park** (`parking.md` §3.9): the supermarket's yard laid out
+   as aisles, on the server as lot nodes and in the drawing as asphalt
+   and bays, one layout for both.
+
+Then kerb bays, which make the dressing's kerb cars real.

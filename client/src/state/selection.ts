@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { getEntity } from "./gameObjects";
-import { plot } from "../blueprints";
+import { middle } from "../blueprints";
 import type { Building } from "../generated";
 
 /** The thing whose card is open, if any. */
@@ -52,9 +52,7 @@ export function positionOf(id: number): [number, number] | null {
   if (car) return car;
   const e = getEntity(id);
   if (e?.object.kind === "Building" && e.position) {
-    const b = e.object.data as Building;
-    const [[bx, by], [bw, bh]] = plot(b.kind, b.facing).building;
-    return [e.position.x + bx + bw / 2, e.position.y + by + bh / 2];
+    return middle(e.object.data as Building);
   }
   return null;
 }

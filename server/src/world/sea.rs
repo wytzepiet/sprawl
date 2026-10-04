@@ -16,7 +16,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::blueprint::{plot, FACINGS};
+use crate::blueprint::FACINGS;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::protocol::{BuildingKind, EntityId, GameObject, GridCoord, Job, Pose, Run, TerrainType, DAY_MS};
@@ -36,10 +36,11 @@ impl World {
     /// The quay a kind's plot would have here this way round: a tile of
     /// the sea behind its building's back face, the middle one first. None
     /// where the back is on land, or on a lake.
-    pub fn quay_at(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<GridCoord> {
+    pub fn quay_at(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<GridCoord> {
         // The building as it lies on the grid, its size already turned
         // with the facing.
-        let ((bx, by), (gw, gh)) = plot(kind, facing).building;
+        let (pos, p) = World::lie(tiles, kind, facing);
+        let ((bx, by), (gw, gh)) = p.building;
         let (dx, dy) = FACINGS[facing as usize % 4];
         let building = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
         // The back face is the row of the building furthest from the lot,
@@ -58,9 +59,8 @@ impl World {
 
     /// A standing port's quay.
     pub fn quay(&self, port: EntityId) -> Option<GridCoord> {
-        let e = self.objects.get(port)?;
-        let GameObject::Building(ref b) = e.object else { return None };
-        self.quay_at(e.position?, b.kind, b.facing)
+        let GameObject::Building(ref b) = self.objects.get(port)?.object else { return None };
+        self.quay_at(&b.tiles, b.kind, b.facing)
     }
 
     /// The ship stands at its port's quay, nose along the coast.
@@ -211,13 +211,15 @@ mod tests {
             }
         }
         // Facing west, the back wall stands on x = 19 and the sea begins at 20.
-        let ((bx, _), (gw, _)) = plot(BuildingKind::Port, 3).building;
-        let pos = GridCoord { x: 20 - (bx + gw) as i32, y: 0 };
-        assert_eq!(world.quay_at(pos, BuildingKind::Port, 3), Some(GridCoord { x: 20, y: 1 }));
+        let p = crate::blueprint::plot(BuildingKind::Port, 3);
+        let ((bx, _), (gw, _)) = p.building;
+        let tiles: Vec<GridCoord> = World::footprint(GridCoord { x: 20 - (bx + gw) as i32, y: 0 }, p.size).collect();
+        assert_eq!(world.quay_at(&tiles, BuildingKind::Port, 3), Some(GridCoord { x: 20, y: 1 }));
         // Facing east, the back wall stands on x = -19.
-        let ((bx, _), _) = plot(BuildingKind::Port, 1).building;
-        let pos = GridCoord { x: -19 - bx as i32, y: 0 };
-        assert_eq!(world.quay_at(pos, BuildingKind::Port, 1), Some(GridCoord { x: -20, y: 1 }));
+        let p = crate::blueprint::plot(BuildingKind::Port, 1);
+        let ((bx, _), _) = p.building;
+        let tiles: Vec<GridCoord> = World::footprint(GridCoord { x: -19 - bx as i32, y: 0 }, p.size).collect();
+        assert_eq!(world.quay_at(&tiles, BuildingKind::Port, 1), Some(GridCoord { x: -20, y: 1 }));
     }
 
     #[test]

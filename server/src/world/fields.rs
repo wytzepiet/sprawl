@@ -23,7 +23,7 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::blueprint::plot;
+
 use crate::economy;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
@@ -72,14 +72,15 @@ impl World {
     /// first claim wins, and the field grows the other way.
     pub fn claim_land(&mut self, farm: EntityId) {
         let Some(e) = self.objects.get(farm) else { return };
-        let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return };
+        let GameObject::Building(b) = &e.object else { return };
         let (kind, facing) = (b.kind, b.facing);
         let wanted = capacity(kind) as usize;
         if !economy::farm(kind) || !b.land.is_empty() {
             return;
         }
-        let p = plot(kind, facing);
-        let (w, h) = (p.size.0 as i32, p.size.1 as i32);
+        let _ = facing;
+        let (pos, (w, h)) = Self::bounds(&b.tiles);
+        let (w, h) = (w as i32, h as i32);
         let taken: HashSet<(i32, i32)> = self.objects.iter().filter(|e| e.id != farm).flat_map(|e| match e.object {
             GameObject::Building(ref b) => b.land.iter().map(|t| (t.at.x, t.at.y)).collect(),
             _ => Vec::new(),
@@ -275,8 +276,8 @@ impl World {
     /// gets from the yard at the street to the field behind the barn.
     fn lane(&self, farm: EntityId) -> HashSet<(i32, i32)> {
         let Some(e) = self.objects.get(farm) else { return HashSet::new() };
-        let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return HashSet::new() };
-        Self::footprint(pos, plot(b.kind, b.facing).size)
+        let GameObject::Building(b) = &e.object else { return HashSet::new() };
+        b.tiles.iter()
             .flat_map(|t| AROUND.iter().map(move |(dx, dy)| GridCoord { x: t.x + dx, y: t.y + dy }))
             .filter(|&n| self.is_open(n))
             .map(|n| (n.x, n.y))
@@ -286,11 +287,11 @@ impl World {
     /// The farm's yard: its plot less the barn.
     fn yard_tiles(&self, farm: EntityId) -> Vec<GridCoord> {
         let Some(e) = self.objects.get(farm) else { return Vec::new() };
-        let (Some(pos), GameObject::Building(b)) = (e.position, &e.object) else { return Vec::new() };
-        let p = plot(b.kind, b.facing);
+        let GameObject::Building(b) = &e.object else { return Vec::new() };
+        let (pos, p) = Self::lie(&b.tiles, b.kind, b.facing);
         let ((bx, by), (bw, bh)) = p.building;
         let barn = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
-        Self::footprint(pos, p.size).filter(|t| !(t.x >= barn.x && t.y >= barn.y && t.x < barn.x + bw as i32 && t.y < barn.y + bh as i32)).collect()
+        b.tiles.iter().copied().filter(|t| !(t.x >= barn.x && t.y >= barn.y && t.x < barn.x + bw as i32 && t.y < barn.y + bh as i32)).collect()
     }
 
     /// Where a run leaves the yard and comes back to it: the yard tile
@@ -798,12 +799,13 @@ mod tests {
             Some(e) => (e.position.unwrap(), match e.object { GameObject::Building(ref b) => b.facing, _ => unreachable!() }),
             None => unreachable!(),
         };
-        let door = world.road_node_for_building(first).and_then(|n| world.objects.get(n)).and_then(|e| e.position).expect("a driveway");
+        let door = world.door_of(first).expect("a door").0;
         world.remove_building(first);
         world.place_road_path(&[GridCoord { x: door.x, y: 0 }, door]);
         let farm = world.place_building(pos, BuildingKind::Farm, facing).expect("a farm over the stub");
-        assert!(world.road_node_for_building(farm).is_some(), "the stub is not the farm's driveway");
-        world.attach_driveway(farm);
+        assert_eq!(world.door_of(farm).map(|d| d.0), Some(door), "the stub is the farm's door");
+        assert!(world.road_node_at(door).is_none(), "and no road on its tile");
+        world.open_door(farm);
         tractor(&world, farm);
         assert!(!tiles(&world, farm).is_empty(), "the farm claimed no land");
     }
@@ -814,17 +816,17 @@ mod tests {
     fn a_farm_reached_later_gets_its_tractor() {
         let mut world = land();
         let farm = world.place_building(GridCoord { x: 10, y: 4 }, BuildingKind::Farm, 0).expect("a farm off the street");
-        assert!(world.road_node_for_building(farm).is_none());
+        assert!(world.street_of(farm).is_none());
         assert!(world.objects.iter().all(|e| !matches!(e.object, GameObject::Car(ref c) if c.owner == farm)), "a tractor before any road");
         world.place_road_path(&(0..=3).map(|y| GridCoord { x: 11, y }).collect::<Vec<_>>());
-        println!("node {:?} land {}", world.road_node_for_building(farm), tiles(&world, farm).len());
+        println!("node {:?} land {}", world.street_of(farm), tiles(&world, farm).len());
         tractor(&world, farm);
         assert!(!tiles(&world, farm).is_empty(), "the farm claimed no land");
     }
 
     /// The farm from the save of 2026-09-15: seed 7, a diagonal highway on
     /// both flanks a tile off the plot, the farm placed beside it and
-    /// reached by a driveway drawn later. Its tractor stands in a dock,
+    /// reached by a door drawn later. Its tractor stands in a dock,
     /// and its land, though both flanks are lane and not field, lies
     /// behind the barn across the lane.
     #[test]
@@ -834,8 +836,9 @@ mod tests {
         world.place_road_path_of(&[(57, 46), (58, 45), (59, 44), (60, 43), (61, 42)].map(|(x, y)| GridCoord { x, y }), true);
         world.place_road_path_of(&[(61, 42), (62, 43), (62, 44), (63, 45), (64, 46), (65, 47)].map(|(x, y)| GridCoord { x, y }), true);
         let farm = world.place_building(GridCoord { x: 60, y: 45 }, BuildingKind::Farm, 0).expect("the farm");
-        assert!(world.road_node_for_building(farm).is_none(), "served before any driveway");
-        world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }, GridCoord { x: 61, y: 45 }]);
+        assert!(world.street_of(farm).is_none(), "served before any door");
+        world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }]);
+        world.handle_place_road(GridCoord { x: 61, y: 44 }, GridCoord { x: 61, y: 45 }, false, false);
         let t = tractor(&world, farm);
         assert!(matches!(world.objects.get(t).map(|e| &e.object), Some(GameObject::Car(c)) if c.spot.is_some()), "the tractor has no spot");
         let land = tiles(&world, farm);
