@@ -1823,6 +1823,39 @@ mod tests {
         }
     }
 
+    /// What a build costs the loop, in a lived-in town: road steps, house
+    /// taps, and the settle that follows them. Printed, not asserted: the
+    /// yardstick for making a build cost what it changes and no more.
+    /// `cargo test probe_build_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn probe_build_cost() {
+        let (mut world, _) = live(&placeable(), 1);
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let mut events = EventQueue::new();
+        events.set_now(DAY_MS as u64);
+        let mut intersections = IntersectionRegistry::new();
+        println!("{} residents, {} objects", world.resident_ids().len(), world.objects.iter().count());
+        let at = |x, y| GridCoord { x, y };
+        let t = Instant::now();
+        for y in 0..6 {
+            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Street, from: at(300, y), to: at(300, y + 1) }), 0);
+        }
+        println!("6 road steps: {:?}", t.elapsed());
+        let t = Instant::now();
+        settle_and_wake(&mut world, &mut events);
+        println!("settle after roads: {:?}", t.elapsed());
+        for y in 1..6 {
+            let t = Instant::now();
+            handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Building(BuildingKind::House), from: at(301, y), to: at(301, y) }), 0);
+            println!("house tap: {:?}", t.elapsed());
+        }
+        let t = Instant::now();
+        let n = world.settle().len();
+        println!("settle alone: {:?} ({n} woken)", t.elapsed());
+    }
+
     /// How fast the same town runs, in simulated days per wall second. Not
     /// asserted: wall time is the laptop's, not the code's. Printed for the
     /// same occasional look as the budget, to see whether it has drifted.
