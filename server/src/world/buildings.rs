@@ -358,7 +358,6 @@ impl World {
             // anyone looking at the other half.
             self.spatial.entry(crate::world::chunk_of(*tile)).or_default().insert(id);
         }
-        self.unsettled.insert(id);
         self.reveal_around(pos);
         Some(id)
     }
@@ -556,6 +555,8 @@ impl World {
         }
         self.drop_lot(id);
         self.occupied.remove(&(tile.x, tile.y));
+        // What is left may be too little of it to work.
+        self.unsettled.insert(id);
         let mut parts = pieces(&rest);
         let anchor = self.objects.get(id).and_then(|e| e.position).unwrap_or(tile);
         let first = parts.iter().position(|p| p.contains(&anchor)).unwrap_or(0);
@@ -583,7 +584,6 @@ impl World {
     /// The tile is the building's: occupancy, and every chunk it stands in
     /// indexed, so it is seen from any of them.
     fn occupy(&mut self, id: EntityId, t: GridCoord) {
-        self.unsettled.insert(id);
         self.occupied.insert((t.x, t.y), id);
         self.spatial.entry(crate::world::chunk_of(t)).or_default().insert(id);
         self.reveal_around(t);

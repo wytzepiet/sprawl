@@ -385,7 +385,6 @@ impl World {
                 Some(pos),
             );
             self.edge.insert(id);
-            self.unsettled.insert(id);
         }
     }
 

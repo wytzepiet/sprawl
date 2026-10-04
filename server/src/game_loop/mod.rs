@@ -2066,6 +2066,92 @@ mod tests {
         }
     }
 
+    /// What settling must leave true, whatever was built: every home a
+    /// road reaches full and every line staffed, nobody living or working
+    /// where no road goes, the index of who is where agreeing with the
+    /// residents, and everyone with a car.
+    fn assert_settled(world: &World, after: &str) {
+        for e in world.objects.iter() {
+            let GameObject::Building(ref b) = e.object else { continue };
+            if world.edge.contains(&e.id) {
+                continue;
+            }
+            let bp = crate::blueprint::blueprint(b.kind);
+            let reached = world.street_of(e.id).is_some();
+            let want = |n: u32| if reached { n as usize } else { 0 };
+            assert_eq!(world.household(e.id).len(), want(bp.homes), "after {after}: {:?} {} (reached {reached}) houses the wrong number", b.kind, e.id);
+            assert_eq!(world.staff(e.id).len(), want(bp.jobs), "after {after}: {:?} {} (reached {reached}) staffs the wrong number", b.kind, e.id);
+        }
+        for id in world.resident_ids() {
+            let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| &e.object) else { continue };
+            for b in std::iter::once(r.home).chain(r.work) {
+                assert!(world.street_of(b).is_some(), "after {after}: resident {id} is tied to {b}, which no road reaches");
+                assert!(world.people.get(&b).is_some_and(|p| p.contains(&id)), "after {after}: the index lost resident {id} at {b}");
+            }
+            assert!(matches!(world.objects.get(r.car).map(|e| &e.object), Some(GameObject::Car(_))), "after {after}: resident {id} has no car");
+        }
+        for (&b, people) in &world.people {
+            for &id in people {
+                assert!(matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(r)) if r.home == b || r.work == Some(b)), "after {after}: the index ties {id} to {b}");
+            }
+        }
+    }
+
+    /// Settling reads only the buildings marked unsettled, so a change
+    /// that forgets to mark one leaves a house empty or a cut-off shop
+    /// staffed, and nothing else would say so until midnight put it
+    /// right. A town is built and changed by the mayor's own commands —
+    /// painted, a tile taken out, demolished, a door closed, the street
+    /// before one taken up and laid again — and after every one, the town
+    /// is settled.
+    #[test]
+    fn every_build_leaves_the_town_settled() {
+        let mut world = street();
+        for (x, kind) in [(0, BuildingKind::House), (3, BuildingKind::House), (6, BuildingKind::Apartment), (12, BuildingKind::Shop), (30, BuildingKind::Office)] {
+            build(&mut world, x, kind, 1);
+        }
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        world.resettle();
+        settle_and_wake(&mut world, &mut events);
+        assert!(!world.edge.is_empty(), "a way out, or a desk could stay empty");
+        assert_settled(&world, "the start");
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let at = |x, y| GridCoord { x, y };
+        let mut act = |world: &mut World, tool: Tool, from: GridCoord, to: GridCoord| {
+            handle_player_action(world, &mut events, &mut intersections, ClientMessage::Build(Build { tool, from, to }), 0);
+            settle_and_wake(world, &mut events);
+            assert_settled(world, &format!("{tool:?} from {from:?} to {to:?}"));
+        };
+        // Painted across the street: two houses and an office, two tiles.
+        act(&mut world, Tool::Building(BuildingKind::House), at(20, -1), at(20, -1));
+        act(&mut world, Tool::Building(BuildingKind::House), at(24, -1), at(24, -1));
+        act(&mut world, Tool::Building(BuildingKind::Office), at(40, -1), at(40, -1));
+        act(&mut world, Tool::Building(BuildingKind::Office), at(40, -1), at(41, -1));
+        // The office's door tile taken out of it, which leaves too little of
+        // it to work; a house taken down, a door closed, and the street
+        // before a third taken up and laid again.
+        let office = *world.occupied.get(&(40, -1)).unwrap();
+        let (door, _) = world.door_of(office).expect("the office has a door");
+        act(&mut world, Tool::Demolish, door, door);
+        assert!(world.objects.get(office).is_some() || world.occupied.contains_key(&(81 - door.x, -1)), "a tile of it stands");
+        act(&mut world, Tool::Demolish, at(0, 1), at(0, 1));
+        let door_of = |world: &World, x, y| {
+            let (door, street) = world.door_of(*world.occupied.get(&(x, y)).unwrap()).expect("painted with a door");
+            (door, world.objects.get(street).unwrap().position.unwrap())
+        };
+        let (door, street) = door_of(&world, 20, -1);
+        act(&mut world, Tool::Demolish, door, street);
+        assert!(world.street_of(*world.occupied.get(&(20, -1)).unwrap()).is_none(), "the door closed");
+        let (_, street) = door_of(&world, 24, -1);
+        act(&mut world, Tool::Demolish, street, street);
+        assert!(world.street_of(*world.occupied.get(&(24, -1)).unwrap()).is_none(), "the street went");
+        act(&mut world, Tool::Street, at(street.x - 1, street.y), street);
+        act(&mut world, Tool::Street, street, at(street.x + 1, street.y));
+        assert!(world.street_of(*world.occupied.get(&(24, -1)).unwrap()).is_some(), "the street came back");
+    }
+
     /// The equilibria docs/economy.md §11 asserts rather than codes, the
     /// ones that need weeks to show: prices nudged for a month, a purse
     /// run down, jobs changed. Each runs a season of the same town as
