@@ -383,15 +383,13 @@ fn handle_player_action(
                     settle_and_wake(world, events);
                 }
                 Tool::Demolish => {
-                    // What goes follows from what is there: a road, or a tile
-                    // of the building standing there. Either way the
-                    // population is settled against what is left.
-                    match world.road_node_at(to) {
-                        Some(id) => handle_road_demolish(world, events, intersections, id, now),
-                        None => {
-                            world.unpaint(to);
-                        }
+                    // Everything on the tile goes: its road, the cars on it
+                    // rerouted, and the building's tile, which a drive ends
+                    // on. Then the population is settled against what is left.
+                    if let Some(id) = world.road_node_at(to) {
+                        handle_road_demolish(world, events, intersections, id, now);
                     }
+                    world.unpaint(to);
                     settle_and_wake(world, events);
                 }
             }
@@ -973,6 +971,24 @@ mod tests {
                 assert_eq!(probe.edges.len() != edges, allowed, "step {dx},{dy}");
             }
         }
+    }
+
+    /// One tap of the demolisher takes a house: its drive, which ends on
+    /// its tile, goes with it.
+    #[test]
+    fn one_tap_takes_a_house_and_its_drive() {
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        world.treasury = 1e9;
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let at = GridCoord { x: 5, y: 1 };
+        let mut hand = |world: &mut World, tool| handle_player_action(world, &mut events, &mut intersections, ClientMessage::Build(Build { tool, from: at, to: at }), 0);
+        hand(&mut world, Tool::Building(BuildingKind::House));
+        assert!(world.occupied.contains_key(&(5, 1)) && world.road_node_at(at).is_some(), "a house with its drive");
+        hand(&mut world, Tool::Demolish);
+        assert!(!world.occupied.contains_key(&(5, 1)), "the house is gone");
+        assert!(world.road_node_at(at).is_none(), "and its drive");
     }
 
     fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
