@@ -30,9 +30,9 @@ const light = {
   ripe: hex3("#F2D680"),
   stubble: hex3("#ECE3C4"),
   mountain: hex3("#F8F7F6"),
-  // A yard, a car park or a pavement: stone grey, the land's sage gone
-  // grey, a clear step under the road's white.
-  paved: hex3("#D9DBCE"),
+  // A yard, a car park or a pavement: a sandy green-grey, a clear step
+  // under the road's white.
+  paved: hex3("#D6D8C2"),
   /** The hand's dots: where it may build. */
   hand: hex3("#2F3B4C"),
   road: hex3("#F1F2EB"),
