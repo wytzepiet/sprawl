@@ -23,16 +23,16 @@ serde_bytes = "0.11.19"
 [profile.test]
 opt-level = 3
 
-# The dev binary regenerates a million tiles of terrain on every start: six
-# seconds at opt-level 0, of which the noise is nearly half. Optimised, the
-# noise is nothing and the rest is our own loop.
-[profile.dev.package.noise]
-opt-level = 3
-
 # The game loop is a spawned task, and tokio survives a task's panic: the
 # process kept its port and answered sockets with nothing, which in the
 # browser is an empty world with no error anywhere. A panic ends the server.
+#
+# Optimised, as the suite is, so the server played is the one measured: at
+# opt-level 0 a wake ran thirty times slower than in the tests, and stalled
+# the clock for seconds that `cargo test town` never saw. Incremental, a
+# rebuild after an edit costs the same two or three seconds either way.
 [profile.dev]
+opt-level = 3
 panic = "abort"
 
 [profile.release]

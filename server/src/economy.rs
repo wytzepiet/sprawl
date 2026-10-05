@@ -782,8 +782,7 @@ pub fn delivered(world: &mut World, buyer: EntityId, seller: Option<EntityId>, n
 /// stock, and the books turn a page. §5.
 pub fn day(world: &mut World, now: GameTime) {
     world.town.today(now);
-    let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
-    ids.sort_unstable();
+    let ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
     for id in ids {
         if world.edge.contains(&id) {
             continue;

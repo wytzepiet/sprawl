@@ -333,7 +333,6 @@ impl World {
     #[cfg(test)]
     pub fn all_buildings(&self) -> Vec<(EntityId, GridCoord)> {
         self.objects
-            .all_entries()
             .iter()
             .filter(|e| matches!(e.object, GameObject::Building(_)) && !self.edge.contains(&e.id))
             .filter_map(|e| e.position.map(|p| (e.id, p)))

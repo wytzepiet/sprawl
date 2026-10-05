@@ -354,14 +354,7 @@ impl World {
     }
 
     pub fn resident_ids(&self) -> Vec<EntityId> {
-        let mut ids: Vec<EntityId> = self
-            .objects
-            .iter()
-            .filter(|e| matches!(e.object, GameObject::Resident(_)))
-            .map(|e| e.id)
-            .collect();
-        ids.sort_unstable();
-        ids
+        self.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(_))).map(|e| e.id).collect()
     }
 }
 
@@ -405,7 +398,6 @@ mod tests {
     fn residents(world: &World) -> Vec<Resident> {
         world
             .objects
-            .all_entries()
             .iter()
             .filter_map(|e| match e.object {
                 GameObject::Resident(ref r) => Some(r.clone()),
@@ -503,8 +495,7 @@ mod tests {
 
         let cars: Vec<_> = world
             .objects
-            .all_entries()
-            .into_iter()
+            .iter()
             .filter(|e| matches!(e.object, GameObject::Car(_)))
             .collect();
         assert_eq!(cars.len(), residents(&world).len());
@@ -517,7 +508,6 @@ mod tests {
         world.settle();
         let leftover = world
             .objects
-            .all_entries()
             .iter()
             .filter(|e| matches!(e.object, GameObject::Car(_)))
             .count();

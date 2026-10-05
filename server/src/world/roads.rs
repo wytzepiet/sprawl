@@ -273,8 +273,7 @@ impl World {
     pub fn rebuild_laid(&mut self) {
         self.laid = self
             .objects
-            .all_entries()
-            .iter()
+            .roads()
             .filter(|e| matches!(e.object, GameObject::RoadNode(ref n) if n.laid))
             .count() as u32;
     }

@@ -357,14 +357,12 @@ mod tests {
     #[test]
     fn it_finds_what_the_tile_search_finds() {
         let world = seed_seven();
-        let mut nodes: Vec<EntityId> = world
+        let nodes: Vec<EntityId> = world
             .objects
-            .all_entries()
-            .iter()
+            .roads()
             .filter(|e| matches!(e.object, GameObject::RoadNode(_)))
             .map(|e| e.id)
             .collect();
-        nodes.sort_unstable();
         assert!(nodes.len() > 500);
 
         // Spread across the map rather than clustered, and the same pairs every

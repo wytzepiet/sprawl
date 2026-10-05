@@ -204,7 +204,7 @@ impl World {
             objects,
         };
         // Rebuild the spatial index and the road index from loaded objects.
-        for entry in world.objects.all_entries() {
+        for entry in world.objects.iter().chain(world.objects.roads()) {
             if let Some(pos) = entry.position {
                 world.spatial.entry(chunk_of(pos)).or_default().insert(entry.id);
                 if matches!(entry.object, GameObject::RoadNode(_)) {
@@ -219,7 +219,7 @@ impl World {
     pub fn rebuild_edges(&mut self) {
         self.edges.clear();
         self.network = RoadNetwork::default();
-        let entries: Vec<_> = self.objects.all_entries().iter()
+        let entries: Vec<_> = self.objects.roads()
             .filter_map(|e| {
                 if let GameObject::RoadNode(ref node) = e.object {
                     Some((e.id, node.outgoing.clone()))
@@ -556,8 +556,7 @@ impl World {
     pub fn rebuild_roads_generated(&mut self) {
         let chunks: Vec<ChunkCoord> = self
             .objects
-            .all_entries()
-            .iter()
+            .roads()
             .filter(|e| matches!(e.object, GameObject::RoadNode(_)))
             .filter_map(|e| e.position.map(chunk_of))
             .collect();
@@ -567,7 +566,7 @@ impl World {
     /// Every road link in the world, as the path search reads them.
     pub fn road_edge_set(&self) -> HashSet<((i32, i32), (i32, i32))> {
         let mut out = HashSet::new();
-        for entry in self.objects.all_entries() {
+        for entry in self.objects.roads() {
             let GameObject::RoadNode(ref node) = entry.object else { continue };
             let Some(a) = entry.position else { continue };
             for id in node.outgoing.iter().chain(node.incoming.iter()) {
@@ -582,7 +581,6 @@ impl World {
     pub fn rebuild_revealed(&mut self) {
         let positions: Vec<GridCoord> = self
             .objects
-            .all_entries()
             .iter()
             .filter(|e| matches!(e.object, GameObject::Building(_)))
             .filter_map(|e| e.position)
@@ -626,8 +624,7 @@ impl World {
     /// Rebuild node_cars index from all existing cars.
     pub fn rebuild_node_cars(&mut self) {
         self.node_cars.clear();
-        let routes: Vec<(EntityId, Vec<EntityId>)> = self.objects.all_entries()
-            .iter()
+        let routes: Vec<(EntityId, Vec<EntityId>)> = self.objects.iter()
             .filter_map(|e| {
                 if let GameObject::Car(ref car) = e.object {
                     car.trip.as_ref().map(|t| (e.id, t.route.clone()))

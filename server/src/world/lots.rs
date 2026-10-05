@@ -742,7 +742,7 @@ mod tests {
         assert_eq!(world.lot_mut(depot).unwrap().spots.len(), 4, "four docks across two tiles");
         world.lot_mut(shop).unwrap();
         // One of the depot's own lorries, in its dock since the depot was reached.
-        let lorry = world.objects.all_entries().iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).unwrap();
+        let lorry = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).unwrap();
         world.release_spot(lorry);
         let way = world.way_in(depot, lorry, 0, GameTime::MAX).unwrap();
         assert_eq!(world.reverse_tail(lorry), 2, "the last two edges are driven backwards");

@@ -439,8 +439,7 @@ mod tests {
         // The starting network covers chunks -1..=1. Road must exist beyond it.
         let beyond = world
             .objects
-            .all_entries()
-            .iter()
+            .roads()
             .filter(|e| matches!(e.object, crate::protocol::GameObject::RoadNode(_)))
             .filter_map(|e| e.position)
             .any(|p| {
@@ -505,14 +504,14 @@ mod tests {
         let mut world = World::new();
         world.terrain = terrain.clone();
         generate(&mut world, 7);
-        let before = world.objects.all_entries().len();
+        let before = world.objects.len();
 
         let bounds = crate::protocol::ChunkBounds {
             min_cx: START_MIN, min_cy: START_MIN,
             max_cx: START_MAX - 1, max_cy: START_MAX - 1,
         };
         extend_to(&mut world, 7, bounds);
-        assert_eq!(world.objects.all_entries().len(), before);
+        assert_eq!(world.objects.len(), before);
     }
 
     /// What a network over the whole map costs, in time and in entities.
@@ -529,7 +528,7 @@ mod tests {
             "chunks={} anchor={:?} nodes={} in {:?}",
             (crate::terrain::CHUNKS_MAX - crate::terrain::CHUNKS_MIN + 1).pow(2),
             anchor,
-            world.objects.all_entries().len(),
+            world.objects.len(),
             t.elapsed(),
         );
     }

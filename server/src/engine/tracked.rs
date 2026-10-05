@@ -1,9 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::protocol::{EntityId, GameObjectEntry, GameObject, GridCoord};
 
 pub struct Tracked {
     data: HashMap<EntityId, GameObjectEntry>,
+    /// The ids, by id, in two piles: the road nodes, and everything else.
+    /// A played world is mostly road the survey laid ahead of the frontier,
+    /// and what looks for a depot, a van or a resident has no business
+    /// walking it.
+    roads: BTreeSet<EntityId>,
+    things: BTreeSet<EntityId>,
     dirty: HashSet<EntityId>,
     removed: Vec<EntityId>,
     persist_dirty: HashSet<EntityId>,
@@ -15,6 +21,8 @@ impl Tracked {
     pub fn new() -> Self {
         Self {
             data: HashMap::new(),
+            roads: BTreeSet::new(),
+            things: BTreeSet::new(),
             dirty: HashSet::new(),
             removed: Vec::new(),
             persist_dirty: HashSet::new(),
@@ -24,16 +32,17 @@ impl Tracked {
     }
 
     pub fn load(entries: Vec<GameObjectEntry>, next_id: u64) -> Self {
-        let data: HashMap<EntityId, GameObjectEntry> =
-            entries.into_iter().map(|e| (e.id, e)).collect();
-        Self {
-            data,
-            dirty: HashSet::new(),
-            removed: Vec::new(),
-            persist_dirty: HashSet::new(),
-            persist_removed: Vec::new(),
-            next_id,
+        let mut tracked = Self { next_id, ..Self::new() };
+        for e in entries {
+            tracked.file(e);
         }
+        tracked
+    }
+
+    fn file(&mut self, entry: GameObjectEntry) {
+        let pile = if matches!(entry.object, GameObject::RoadNode(_)) { &mut self.roads } else { &mut self.things };
+        pile.insert(entry.id);
+        self.data.insert(entry.id, entry);
     }
 
     pub fn next_id(&self) -> u64 {
@@ -54,7 +63,7 @@ impl Tracked {
     ) -> EntityId {
         let id = self.next_id;
         self.next_id += 1;
-        self.data.insert(id, GameObjectEntry { id, object, position });
+        self.file(GameObjectEntry { id, object, position });
         self.dirty.insert(id);
         self.persist_dirty.insert(id);
         id
@@ -79,6 +88,8 @@ impl Tracked {
 
     pub fn remove(&mut self, id: EntityId) {
         if self.data.remove(&id).is_some() {
+            self.roads.remove(&id);
+            self.things.remove(&id);
             self.dirty.remove(&id);
             self.removed.push(id);
             self.persist_dirty.remove(&id);
@@ -100,24 +111,28 @@ impl Tracked {
         (changed, removed)
     }
 
-    /// Everything in the world, in a fixed order.
+    /// Everything but the road, by id.
     ///
-    /// By id, and that is load-bearing rather than tidy. A hash map hands its
-    /// values back in an order that is seeded afresh for every process, so
-    /// anything built by walking this — the road network, above all — came out
-    /// arranged differently each run. Different arrangement, different
-    /// tie-breaks between equally good routes, different traffic. Two runs of
-    /// the same seed disagreed about which residents drove where, which makes
-    /// any before-and-after measurement meaningless.
-    pub fn all_entries(&self) -> Vec<GameObjectEntry> {
-        let mut entries: Vec<GameObjectEntry> = self.iter().cloned().collect();
-        entries.sort_unstable_by_key(|e| e.id);
-        entries
+    /// The order is load-bearing rather than tidy. A hash map hands its
+    /// values back in an order seeded afresh for every process, so anything
+    /// built by walking it came out arranged differently each run: different
+    /// tie-breaks between equally good routes, different traffic, and two
+    /// runs of the same seed that disagree, which makes any before-and-after
+    /// measurement meaningless.
+    pub fn iter(&self) -> impl Iterator<Item = &GameObjectEntry> {
+        self.things.iter().map(|id| &self.data[id])
     }
 
-    /// Everything, in no order — for counting and filtering, which is most
-    /// of what asks. Order is `all_entries`' business, and it pays for it.
-    pub fn iter(&self) -> impl Iterator<Item = &GameObjectEntry> {
-        self.data.values()
+    /// The road nodes, by id.
+    pub fn roads(&self) -> impl Iterator<Item = &GameObjectEntry> {
+        self.roads.iter().map(|id| &self.data[id])
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
     }
 }

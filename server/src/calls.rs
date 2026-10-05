@@ -155,8 +155,7 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
 /// Midnight: every building takes its turn, so a row nobody visits still
 /// draws, and every line reads the labour market at the next settle.
 pub fn turns(world: &mut World, events: &mut EventQueue, now: GameTime) {
-    let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
-    ids.sort_unstable();
+    let ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).collect();
     for id in ids {
         turn(world, events, id, now);
         world.unsettled.insert(id);
@@ -279,13 +278,12 @@ fn cheapest_source(world: &mut World, at: EntityId, good: Need, now: GameTime) -
         None => return None,
     };
     let door = world.street_of(at)?;
-    let mut makers: Vec<EntityId> = world
+    let makers: Vec<EntityId> = world
         .objects
         .iter()
         .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::source(b.kind, good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
         .map(|e| e.id)
         .collect();
-    makers.sort_unstable();
     let mut routes = Routes::from(world, door);
     let dear = economy::HOUR / economy::earns(world, at, now);
     let mut best: Option<(f64, Source)> = None;
@@ -332,13 +330,12 @@ fn cheapest_seller(world: &mut World, at: EntityId, good: Need, now: GameTime) -
     };
     // Every depot with the good on its shelf, in id order, so two runs of
     // the same town make the same choice.
-    let mut depots: Vec<EntityId> = world
+    let depots: Vec<EntityId> = world
         .objects
         .iter()
         .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::depot(b.kind) && economy::shelves(b.kind).contains(&good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
         .map(|e| e.id)
         .collect();
-    depots.sort_unstable();
     let vans: Vec<(EntityId, EntityId, EntityId)> = depots.into_iter().filter_map(|d| free_vehicle(world, d, van(good)).map(|(van, door)| (d, van, door))).collect();
     let door = world.street_of(at)?;
     let mut routes = Routes::from(world, door);
@@ -402,13 +399,12 @@ fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole) -> Option<
 
 /// The vehicles a facility owns, in id order.
 fn fleet_of(world: &World, facility: EntityId) -> Vec<EntityId> {
-    let mut fleet: Vec<EntityId> = world
+    let fleet: Vec<EntityId> = world
         .objects
         .iter()
         .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == facility))
         .map(|e| e.id)
         .collect();
-    fleet.sort_unstable();
     fleet
 }
 

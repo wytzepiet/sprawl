@@ -82,7 +82,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
 
     // Terrain is derived from the seed, so it is regenerated on every start
     // rather than persisted. A fresh world also gets its roads laid out.
-    let fresh = world.objects.all_entries().is_empty();
+    let fresh = world.objects.is_empty();
     if let Some(dir) = &fixtures {
         crate::fixtures::build(&mut world, std::path::Path::new(dir));
     } else {
@@ -101,9 +101,9 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     }
 
     // Rebuild edges/indices and schedule car spawns for loaded buildings
-    if !world.objects.all_entries().is_empty() && fixtures.is_none() {
+    if !world.objects.is_empty() && fixtures.is_none() {
         restore(&mut world);
-        println!("loaded {} objects from db", world.objects.all_entries().len());
+        println!("loaded {} objects from db", world.objects.len());
     }
     // Whatever is standing gets its people, whether it was just laid out or
     // loaded from a save written before anyone lived here, and the day is
@@ -404,8 +404,7 @@ fn handle_player_action(
             }
         }
         ClientMessage::DespawnAllCars => {
-            let car_ids: Vec<EntityId> = world.objects.all_entries()
-                .iter()
+            let car_ids: Vec<EntityId> = world.objects.iter()
                 .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.is_some()))
                 .map(|e| e.id)
                 .collect();
@@ -1193,7 +1192,7 @@ mod tests {
         }
         // Every junction is one the mayor could have drawn: no two arms at
         // an acute angle.
-        for e in world.objects.all_entries() {
+        for e in world.objects.roads() {
             let (GameObject::RoadNode(n), Some(p)) = (&e.object, e.position) else { continue };
             let arms: Vec<(i32, i32)> = n.outgoing.iter().chain(&n.incoming).filter_map(|&a| world.objects.get(a)?.position).map(|q| (q.x - p.x, q.y - p.y)).collect();
             for (i, a) in arms.iter().enumerate() {
@@ -1430,7 +1429,7 @@ mod tests {
         let depot = build(&mut world, 60, BuildingKind::Warehouse, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
-        let lorries = |w: &World| w.objects.all_entries().iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).collect::<Vec<_>>();
+        let lorries = |w: &World| w.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).collect::<Vec<_>>();
         let fleet = lorries(&world);
         assert_eq!(fleet.len(), 2, "two lorries from the day it is reached");
         // The fetch can be raised, answered and finished inside one stretch
@@ -1882,13 +1881,13 @@ mod tests {
     /// `live`, with a look at the town at the end of every day: after the
     /// midnight wake, so the tills are counted and the prices stepped.
     fn season(mix: &[BuildingKind], days: u64, each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
-        season_with(mix, days, true, each_day)
+        season_with(street(), mix, days, true, each_day)
     }
 
-    /// `season`, founded with the working capital a grown town would have,
-    /// or broke: nothing in the treasury on the first morning.
-    fn season_with(mix: &[BuildingKind], days: u64, capital: bool, mut each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
-        let mut world = street();
+    /// `season` on a street of the caller's, founded with the working
+    /// capital a grown town would have, or broke: nothing in the treasury
+    /// on the first morning.
+    fn season_with(mut world: World, mix: &[BuildingKind], days: u64, capital: bool, mut each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
         // Forty plots in a row, a tile apart: a lot claims the tile beside
         // it for its ring, and a house may not stand on it.
         let mut x = 0;
@@ -1961,6 +1960,34 @@ mod tests {
             println!("{name}: {wakes} wakes for {residents} residents: {per_resident_day} per resident-day");
             assert!(per_resident_day <= WAKE_BUDGET, "{name}: {per_resident_day} wakes per resident-day, budget {WAKE_BUDGET}");
         }
+    }
+
+    /// A town thinks as fast in a wide world as in a narrow one. The
+    /// survey lays road out ahead of the frontier, so a played world is
+    /// mostly road nodes nobody drives: 29,000 of them beside 47 buildings
+    /// on 2026-10-05, when every call and every choice still walked them
+    /// all to find a depot, a van or a resident, and the clock stalled for
+    /// seconds at a time. The same day of the same town, with that much
+    /// road laid out of reach, costs about the same.
+    #[test]
+    #[ignore]
+    fn a_town_thinks_as_fast_in_a_wide_world() {
+        let timed = |world: World| {
+            let started = Instant::now();
+            season_with(world, &town_mix(), 1, true, |_, _, _| {});
+            started.elapsed().as_secs_f64()
+        };
+        let narrow = timed(street());
+        let mut wide = street();
+        for y in 1000..1100 {
+            for x in 0..300 {
+                wide.terrain.insert((x, y), TerrainType::Grass);
+            }
+            wide.place_road_path(&(0..300).map(|x| GridCoord { x, y }).collect::<Vec<_>>());
+        }
+        let wide = timed(wide);
+        println!("a day of town: {narrow:.2} s, and {wide:.2} s among 30,000 road nodes");
+        assert!(wide < 1.5 * narrow, "a day of town took {narrow:.2} s, and {wide:.2} s among 30,000 road nodes");
     }
 
     /// How fast the same town runs, in simulated days per wall second. Not
@@ -2277,8 +2304,7 @@ mod tests {
                 }
             }
         });
-        let mut ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_)) && !world.edge.contains(&e.id)).map(|e| e.id).collect();
-        ids.sort_unstable();
+        let ids: Vec<EntityId> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_)) && !world.edge.contains(&e.id)).map(|e| e.id).collect();
         for id in ids {
             let GameObject::Building(ref b) = world.objects.get(id).unwrap().object else { unreachable!() };
             let page = world.books.get(&id).map(|k| k.before(days * DAY_MS as u64).clone()).unwrap_or_default();
@@ -2350,7 +2376,7 @@ mod tests {
         let days = season_days();
         let mut last_gdp = 0.0;
         let mut daily = Vec::new();
-        let (world, _) = season_with(&town_mix(), days, false, |world, day, _| {
+        let (world, _) = season_with(street(), &town_mix(), days, false, |world, day, _| {
             let door = world.town.before(day * DAY_MS as u64);
             println!("slump day {day}: treasury {:.1}, GDP {:.1}, at the door in {:.1} out {:.1}; {}", world.treasury, world.gdp - last_gdp, door.revenue(), door.purchases(), services_report(world));
             daily.push(world.gdp - last_gdp);
