@@ -67,6 +67,10 @@ const sunStops: [number, Color3][] = [
   [1, new Color3(1.15, 1.02, 0.75)],
 ];
 
+/** How strong the sky's fill on what faces away from the sun, of the sky's
+ *  own light. */
+const FILL = 0.3;
+
 /** A shadow is drawn no longer than the sun this high would cast it. */
 const LOWEST = 0.1;
 
@@ -301,6 +305,14 @@ export default function DayNightLights(props: ParentProps) {
   sunLight.specular = Color3.Black();
   sunLight.autoUpdateExtends = false;
 
+  // The sky's light on what faces away from the sun: shone level from the
+  // side opposite it, so a roof's far slope, a crown's far side or a
+  // kerb's shaded lip is lifted, while ground, facing up, gets none of it
+  // and a shadow cast on it stays as dark. It casts none of its own.
+  const fillLight = new DirectionalLight("fill", new Vector3(1, 0, 0), scene);
+  fillLight.specular = Color3.Black();
+  fillLight.intensity = FILL;
+
   // --- Shadow generator ---
   const engine = scene.getEngine();
   const shadowGen = new ShadowGenerator(shadowMapSize(engine), sunLight);
@@ -337,6 +349,7 @@ export default function DayNightLights(props: ParentProps) {
       const amb = ramp(ambientStops, qt, lerp3);
       setAmbient(amb);
       hemiLight.diffuse = amb.multiply(SKY_LIGHT);
+      fillLight.diffuse = hemiLight.diffuse;
 
       const sky = ramp(skyStops, qt, lerp4);
       scene.clearColor.r = sky.r;
@@ -347,6 +360,9 @@ export default function DayNightLights(props: ParentProps) {
 
     const elev = sunElevation(t);
     sunLight.direction = sunDirection(t);
+    // Level, toward the sun: it lights what the sun's light leaves.
+    const away = new Vector3(sunLight.direction.x, sunLight.direction.y, 0);
+    if (away.lengthSquared() > 1e-6) fillLight.direction = away.normalize().scale(-1);
     const sun = sunLightAt(elev);
     sunLight.intensity = sun.strength;
     sunLight.diffuse = sun.colour;
@@ -382,6 +398,7 @@ export default function DayNightLights(props: ParentProps) {
     scene.onBeforeRenderObservable.remove(obs);
     engine.onResizeObservable.remove(resizeObs);
     hemiLight.dispose();
+    fillLight.dispose();
     shadowGen.dispose();
     sunLight.dispose();
   });

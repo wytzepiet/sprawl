@@ -126,7 +126,7 @@ export class TerrainChunks {
 
     this.treeMat = new StandardMaterial("terrain_tree", scene);
     // Glossy, as a toy's trees are; a little less than the buildings.
-    this.treeMat.specularColor = new Color3(0.28, 0.28, 0.28);
+    this.treeMat.specularColor = new Color3(0.07, 0.07, 0.07);
     this.treeMat.specularPower = 40;
     new BevelPlugin(this.treeMat);
 

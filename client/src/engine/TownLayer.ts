@@ -3,7 +3,7 @@ import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
-import { drawTown, flatPolygons, PAVED_Z, pastTile, RIM, rimmed, type Piece } from "./town/draw";
+import { drawTown, flatPolygons, PAVED_Z, pastSeam, RIM, rimmed, type Piece } from "./town/draw";
 import { BevelPlugin, bevelled, giveBevel } from "./bevel";
 import { roadShape, waysAt } from "./town/dressing";
 import { ROAD_Z } from "./objects/roadGeometry";
@@ -181,7 +181,7 @@ export class TownLayer {
       const shape = `road_${colour.toHexString()}_${at.ways.map(([dc, dr, on]) => `${dc}${dr}${on ? "+" : ""}`).sort().join(",")}`;
       // Through roads over the streets that meet them: a street's end runs
       // on under one.
-      this.pool.ensureBucket(shape, rimmed(flatPolygons(roadShape(at.ways), ROAD_Z + PAVED_Z + (at.through ? 0.001 : 0)), RIM, pastTile), colour, false, true);
+      this.pool.ensureBucket(shape, rimmed(flatPolygons(roadShape(at.ways), ROAD_Z + PAVED_Z + (at.through ? 0.001 : 0)), RIM, pastSeam(at.ways)), colour, false, true);
       this.roads.set(key, { key: shape, id: this.pool.addInstance(shape, [x + 1, y + 1, 0]) });
     }
     this.dirty.clear();

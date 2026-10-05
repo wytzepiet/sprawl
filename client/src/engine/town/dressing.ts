@@ -190,10 +190,12 @@ export function roadShape(ways: [number, number, boolean][]): Polygon[] {
   for (const [dc, dr] of ways.filter(([, , on]) => on)) {
     const len = Math.hypot(dc, dr);
     const [ux, uy, nx, ny] = [dc / len, dr / len, -dr / len * HALF_W, dc / len * HALF_W];
-    // Past the seam (half way to the next tile's middle) by a little more
-    // than the rounding, and no further: on, it would stand proud of the
-    // next tile's own corners where that one turns.
-    const [a, b] = [0.3, len / 2 + 0.1];
+    // Across the seam (half way to the next tile's middle): from just
+    // short of it, where this tile's own road already runs straight along
+    // the arm, so on a bend it does not stand proud of the curve; to a
+    // little more than the rounding past it, and no further, where it
+    // would stand proud of the next tile's own corners where that one turns.
+    const [a, b] = [len / 2 - 0.05, len / 2 + 0.1];
     tris.push([[[0.5 + ux * a + nx, 0.5 + uy * a + ny], [0.5 + ux * b + nx, 0.5 + uy * b + ny], [0.5 + ux * b - nx, 0.5 + uy * b - ny], [0.5 + ux * a - nx, 0.5 + uy * a - ny]]]);
   }
   // Grown a hair and drawn back, so no seam is left between triangles.

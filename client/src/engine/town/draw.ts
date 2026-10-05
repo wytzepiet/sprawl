@@ -112,7 +112,7 @@ export function flatPolygons(polys: Polygon[], z: number): MeshGeometry {
 }
 
 /** How wide a sheet's rounded rim is, in tiles. */
-export const RIM = 0.05;
+export const RIM = 0.03;
 
 /** An edge the sheet runs on past: a point just outside it is still
  *  covered, as where one tile's road overlaps the next. */
@@ -131,12 +131,19 @@ export function runsOn(g: MeshGeometry) {
   return (a: number[], b: number[], out: number[]) => inside((a[0] + b[0]) / 2 + out[0] * 1e-3, (a[1] + b[1]) / 2 + out[1] * 1e-3);
 }
 
-/** An edge outside a road tile's own square, as drawn for its instance
- *  (x and y the other way, -1 to 0): where it runs on into the next. */
-export const pastTile = (a: number[], b: number[]) => {
-  const [mx, my] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  return mx <= -1 + 1e-3 || mx >= -1e-3 || my <= -1 + 1e-3 || my >= -1e-3;
-};
+/** An edge wholly past the seam along one of a road tile's arms that
+ *  runs on into the next tile, as drawn for its instance (x and y the
+ *  other way, its middle at -0.5, -0.5): the end of the overlap, which the
+ *  next tile covers. An edge that only reaches past it keeps its rim, and
+ *  the two tiles' rims meet over the seam; where a bend bulges out past
+ *  its square, between its arms, it keeps its rim too. */
+export const pastSeam = (ways: [number, number, boolean][]) => (a: number[], b: number[]) =>
+  ways.some(([dc, dr, on]) => {
+    if (!on) return false;
+    const len = Math.hypot(dc, dr);
+    const along = (p: number[]) => ((p[0] + 0.5) * -dc + (p[1] + 0.5) * -dr) / len;
+    return Math.min(along(a), along(b)) > len / 2 - 0.01;
+  });
 
 /** Road, rimmed only where it ends, not where its tiles overlap. */
 const kerbed = (g: MeshGeometry) => rimmed(g, RIM, runsOn(g));
