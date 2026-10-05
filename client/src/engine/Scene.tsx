@@ -18,6 +18,7 @@ import GrowthMeter from "../ui/GrowthMeter";
 import SkillTree from "../ui/SkillTree";
 import Card from "../ui/Card";
 import Board from "../ui/Board";
+import Glass from "../ui/Glass";
 
 function SceneInner() {
   return (
@@ -41,6 +42,7 @@ function SceneInner() {
         <Board />
         <SkillTree />
       </Canvas>
+      <Glass />
       <BuildModeToolbar />
       <TimeControls />
       {/* <DebugOverlay /> */}

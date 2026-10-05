@@ -176,6 +176,38 @@ function sunDirection(t: number): Vector3 {
   return new Vector3(-horiz, -NORTH, -elev).normalize();
 }
 
+/** Where the sun is as the screen sees it: which way across the screen
+ *  (degrees, clockwise from the right, as SVG's lights take it), how
+ *  high (0 to 1), and its light. Up the screen is north, where its path
+ *  lies; it rises on the left and sets on the right, as the shadows show. */
+export function sunOnScreen(t: number): { azimuth: number; elevation: number; colour: [number, number, number]; strength: number } {
+  const horiz = Math.cos(sunAngle(t));
+  const elevation = sunElevation(t);
+  const sun = sunLightAt(elevation);
+  return {
+    azimuth: (Math.atan2(-NORTH, -horiz) * 180) / Math.PI,
+    elevation,
+    colour: [sun.colour.r, sun.colour.g, sun.colour.b],
+    strength: sun.strength,
+  };
+}
+
+/** The sky's light alone, without the sun's: pale by day, lavender at a
+ *  low sun, blue at night. What a glass edge reflects all the way round. */
+export function skyLight(t: number): [number, number, number] {
+  const sky = ramp(ambientStops, t, lerp3).multiply(SKY_LIGHT);
+  return [sky.r, sky.g, sky.b];
+}
+
+/** The light on a pane held up to the sun at this time of day: the sky's
+ *  and the whole of the sun's, so white at noon, rose and gold as it sets,
+ *  the sky's blue alone at night. What the UI's glass is lit by. */
+export function lightOnPane(t: number): [number, number, number] {
+  const sky = ramp(ambientStops, t, lerp3).multiply(SKY_LIGHT);
+  const sun = sunLightAt(sunElevation(t));
+  return [sky.r + sun.colour.r * sun.strength, sky.g + sun.colour.g * sun.strength, sky.b + sun.colour.b * sun.strength];
+}
+
 // ---------------------------------------------------------------------------
 // Context — time signals (no Babylon dependency)
 // ---------------------------------------------------------------------------

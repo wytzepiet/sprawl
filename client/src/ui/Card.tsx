@@ -139,7 +139,7 @@ export default function Card() {
   return (
     <Show when={card()}>
       {(c) => (
-        <div class="card fixed top-4 left-4 z-40 w-72 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.08)] text-stone-800 text-sm select-none">
+        <div class="card fixed top-24 left-6 z-40 w-72 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-xl bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.08)] text-stone-800 text-sm select-none">
           <Show when={c().kind === "resident"}>{ResidentCard(c() as Extract<Card, { kind: "resident" }>)}</Show>
           <Show when={c().kind === "car"}>{CarCard(c() as Extract<Card, { kind: "car" }>)}</Show>
           <Show when={c().kind === "building"}>{BuildingCard(c() as Extract<Card, { kind: "building" }>)}</Show>

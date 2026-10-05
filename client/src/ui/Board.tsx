@@ -69,7 +69,7 @@ export default function Board() {
   return (
     <Show when={open() && town()}>
       {(t) => (
-        <div class="fixed top-4 right-4 z-40 w-72 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.08)] text-stone-800 text-sm select-none">
+        <div class="fixed top-28 right-6 z-40 w-72 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-xl bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.08)] text-stone-800 text-sm select-none">
           <div class="flex items-center gap-2 px-3 pt-3 pb-2">
             <div class="min-w-0 flex-1">
               <div class="font-semibold">The town</div>

@@ -1,27 +1,25 @@
-import type { JSX } from "solid-js";
+import { createEffect, createSignal, For, on } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { setTreeOpen } from "./SkillTree";
 import { setBoardOpen } from "./Board";
 
-/** Ring geometry, in the dial's own 60-unit box. */
-const R = 25;
+/** The level's ring, in its own 56-unit box. */
+const R = 24;
 const CIRCUMFERENCE = 2 * Math.PI * R;
+/** How long a lump takes to drip up out of the purse (`app.css` `.drip`). */
+const DRIP_MS = 1600;
 
 /**
- * The city's two dials, one in each bottom corner.
+ * The city's two dials, run together into one shape in the top right
+ * corner: the level, a ring closing on the next, and the purse.
  *
- * The level on the left is the town's GDP to date: value served in town at
- * the world's prices, banked as each visit ends, with today's beneath it.
- * The treasury on the right is the town's one purse, stepped at the door:
- * a shift worked beyond the edge, a lorry in from it, a placement. Both
- * move in lumps, and the lumps are on the map first — a number floating
- * over the building — so a dial that steps is an event you could have
- * watched, never a rate.
- *
- * Each is a ring around the thing it is earning: the city's level on the left,
- * the building it is saving toward on the right. Nothing is labelled — a ring
- * closing around a picture of a shop needs no caption — and putting them in
- * opposite corners keeps the middle of the screen, which is the game, clear.
+ * The level is the town's GDP to date: value served in town at the
+ * world's prices, banked as each visit ends. A tap opens the tree, where
+ * its points are spent. The purse is the town's one purse, stepped at
+ * the door: a shift worked beyond the edge, a lorry in from it, a
+ * placement; a tap opens the town's books. Both move in lumps, and the
+ * lumps are on the map first, so what comes into the purse drips up out
+ * of it as it lands: an event you could have watched, never a rate.
  */
 export default function GrowthMeter() {
   const { growth } = useGame();
@@ -29,66 +27,53 @@ export default function GrowthMeter() {
   /** Days the treasury covers at today's imports; nothing crosses the door at zero. */
   const cover = () => (growth().imports > 0 ? treasury() / growth().imports : Infinity);
   const low = () => cover() < 3;
+  const fill = () => (growth().needed > 0 ? Math.min(1, Math.max(0, growth().toward / growth().needed)) : 0);
+
+  const [drips, setDrips] = createSignal<{ id: number; n: number }[]>([]);
+  let next = 0;
+  createEffect(on(treasury, (now, before) => {
+    if (before === undefined || now - before < 1) return;
+    const drip = { id: next++, n: Math.floor(now - before) };
+    setDrips((d) => [...d, drip]);
+    setTimeout(() => setDrips((d) => d.filter((x) => x !== drip)), DRIP_MS);
+  }));
 
   return (
-    <>
-      <span class="fixed bottom-4 left-4 select-none cursor-pointer" onClick={() => setTreeOpen(true)} title="The skill tree (L)">
-        <Dial color="#5B57C8" now={growth().toward} max={growth().needed} caption={`GDP ${Math.floor(growth().gdp)} today`}>
-          <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
-            <span class="text-[7px] font-bold uppercase tracking-widest text-white/50">Lvl</span>
-            <span class="text-[15px] font-bold tabular-nums">{growth().level}</span>
-          </span>
-        </Dial>
-      </span>
+    <div class="fixed top-6 right-6 z-30 h-[120px] w-[260px] select-none">
+      {/* Frost behind both shapes. */}
+      <div class="glass absolute right-0 top-0 h-[52px] w-[190px] rounded-full" style={{ background: "transparent" }} />
+      <div class="glass absolute right-[168px] top-[-2px] h-14 w-14 rounded-full" style={{ background: "transparent" }} />
+      {/* The glass, one shape, the drips running out of it. */}
+      <div class="glass-goo absolute inset-0 pointer-events-none">
+        <div class="glass-solid absolute right-0 top-0 h-[52px] w-[190px] rounded-full" />
+        <div class="glass-solid absolute right-[168px] top-[-2px] h-14 w-14 rounded-full" />
+        <For each={drips()}>
+          {() => <div class="drip absolute right-[70px] top-3 h-7 w-[38px] rounded-[14px]" style={{ background: "#57A773" }} />}
+        </For>
+      </div>
 
-      {/* What the town has to spend, in hours of the edge's wage, and what
-          the door netted today. No ring: there is no goal but the one the
-          mayor is saving for. A tap opens the town's page, the two dials
-          read back by need and by good. */}
-      <span class="fixed bottom-4 right-4 flex select-none flex-col items-center gap-1.5 cursor-pointer" onClick={() => setBoardOpen((o) => !o)} title="The town's books">
-        <Dial color={low() ? "#D9483B" : "#57A773"} now={treasury()} max={0} caption={low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : ""}${Math.floor(growth().income)} today`}>
-          <span class="grid h-full w-full place-items-center rounded-full bg-stone-800 leading-none text-white">
-            <span class="text-[13px] font-bold tabular-nums">{Math.floor(treasury())}</span>
-            <span class="text-[7px] font-bold uppercase tracking-widest text-white/50">hours</span>
-          </span>
-        </Dial>
-      </span>
-    </>
-  );
-}
-
-/**
- * A ring closing around whatever it is earning, with the count beneath.
- *
- * The ring starts at twelve o'clock and runs clockwise, which is the direction
- * everything that measures a wait runs in. Its track is drawn in full behind
- * it, so an empty dial still reads as a dial rather than as a missing one.
- */
-function Dial(props: { color: string; now: number; max: number; caption?: string; children: JSX.Element }) {
-  const fill = () => (props.max > 0 ? Math.min(1, Math.max(0, props.now / props.max)) : 0);
-  return (
-    <span class="flex flex-col items-center gap-1">
-      <span class="relative grid h-14 w-14 place-items-center drop-shadow-[0_2px_6px_rgba(0,0,0,0.18)]">
-        <svg class="absolute inset-0 -rotate-90" viewBox="0 0 60 60" aria-hidden="true">
-          <circle cx="30" cy="30" r={`${R}`} fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="6" />
+      <button onClick={() => setTreeOpen(true)} class="press ink absolute right-[168px] top-[-2px] grid h-14 w-14 place-items-center rounded-full cursor-pointer" title={`Level ${growth().level}: the skill tree (L)`}>
+        <svg class="absolute inset-0 -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
+          <circle cx="28" cy="28" r={R} fill="none" stroke="rgb(var(--ink) / 0.12)" stroke-width="3" />
           <circle
-            cx="30"
-            cy="30"
-            r={`${R}`}
-            fill="none"
-            stroke={props.color}
-            stroke-width="6"
-            stroke-linecap="round"
-            stroke-dasharray={`${CIRCUMFERENCE}`}
-            stroke-dashoffset={`${CIRCUMFERENCE * (1 - fill())}`}
+            cx="28" cy="28" r={R} fill="none" stroke="#7B77E0" stroke-width="3" stroke-linecap="round"
+            stroke-dasharray={`${CIRCUMFERENCE}`} stroke-dashoffset={`${CIRCUMFERENCE * (1 - fill())}`}
             class="transition-[stroke-dashoffset] duration-500 ease-out"
           />
         </svg>
-        <span class="relative h-9 w-9">{props.children}</span>
-      </span>
-      <span class="rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-bold leading-none tabular-nums text-stone-600 backdrop-blur-xl">
-        {props.caption ?? `${Math.floor(props.now).toLocaleString()} / ${Math.round(props.max).toLocaleString()}`}
-      </span>
-    </span>
+        <span class="serif text-[21px]">{growth().level}</span>
+      </button>
+      <button onClick={() => setBoardOpen((o) => !o)} class="ink absolute right-0 top-0 flex h-[52px] w-[166px] items-baseline justify-end gap-1.5 pr-5 pt-[9px] cursor-pointer" title="The town's books">
+        <span class="serif text-[28px] font-light tabular-nums" classList={{ "!text-red-500": low() }}>{Math.floor(treasury()).toLocaleString()}</span>
+        <span class="soft text-xs font-semibold">hours</span>
+      </button>
+      <For each={drips()}>
+        {(d) => <span class="drip pointer-events-none absolute right-[70px] top-3 grid h-7 w-[38px] place-items-center text-xs font-bold text-white">+{d.n}</span>}
+      </For>
+      {/* What the day has done, beneath. */}
+      <div class="soft serif italic absolute right-5 top-[58px] text-[13px] whitespace-nowrap">
+        {low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today`} · GDP {Math.floor(growth().gdp)}
+      </div>
+    </div>
   );
 }

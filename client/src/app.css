@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 html, body {
+  font-family: Quicksand, system-ui, sans-serif;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -107,3 +108,54 @@ html, body {
   70% { opacity: 1; margin-top: -14px; }
   100% { opacity: 0; margin-top: -26px; }
 }
+
+/* The glass the UI is made of: it takes the light (`ui/Glass.tsx` sets
+   these as the day turns), and its colour is only ever what is built. */
+:root {
+  --glass: 255 255 255;
+  --ink: 47 61 56;
+  --shade: 40 60 50 / 0.16;
+  --dye: multiply;
+}
+.glass {
+  background: rgb(var(--glass) / 0.6);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  border: 1px solid rgb(var(--ink) / 0.07);
+  box-shadow: 0 10px 30px rgb(var(--shade));
+  color: rgb(var(--ink));
+}
+/* Frost alone, under glass that is drawn on its own (the goo's shapes
+   cannot frost: a filtered layer blurs only what is inside it). */
+.frost {
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+/* The glass's shapes when they run together: solid, under one opacity. */
+.glass-solid { background: rgb(var(--glass)); }
+.ink { color: rgb(var(--ink)); }
+.soft { color: rgb(var(--ink) / 0.6); }
+.serif { font-family: Fraunces, Georgia, serif; }
+.goo { filter: url(#goo); }
+/* Glass that runs together: the same, its body thinned to show the frost. */
+.glass-goo { filter: url(#glass-goo); }
+/* Colour laid into the glass: dye on light glass, a lantern on dark
+   (`--dye`, set with the light). */
+.dye { mix-blend-mode: var(--dye, multiply); opacity: 0.92; }
+
+.press { transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.3s ease; }
+.press:hover { transform: translateY(-2px) scale(1.08); }
+.press:active { transform: scale(0.9); }
+
+/* A lump into the purse: it drips up out of it and is gone. */
+@keyframes drip {
+  0% { transform: translateY(0) scale(0.2); opacity: 0; }
+  12% { transform: translateY(0) scale(1); opacity: 1; }
+  70% { transform: translateY(-40px) scale(0.85); opacity: 1; }
+  100% { transform: translateY(-52px) scale(0.3); opacity: 0; }
+}
+.drip { animation: drip 1.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* What a growing shape holds comes in once the shape has room for it. */
+@keyframes appear { from { opacity: 0; transform: translateY(4px); } }
+.appear { animation: appear 0.3s ease-out 0.15s both; }

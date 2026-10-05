@@ -1,6 +1,7 @@
 import type { Scene } from "@babylonjs/core";
 import { snap, STEPS } from "./may";
 import { projector } from "./view";
+import { step, type Sprung } from "./spring";
 
 /**
  * The hand's dots, drawn flat over the scene on canvases of their own: a
@@ -408,9 +409,9 @@ export class Dots {
 }
 
 /** A size spring: on toward `to` and past it a little. */
-function spring(d: { s: number; v: number }, to: number, stiff: number, damp: number, dt: number) {
-  d.v += (stiff * (to - d.s) - damp * d.v) * dt;
-  d.s = Math.max(0, d.s + d.v * dt);
+function spring(d: Sprung, to: number, stiff: number, damp: number, dt: number) {
+  step(d, to, stiff, damp, dt);
+  d.s = Math.max(0, d.s);
   // At rest, exactly: a dot at rest is drawn with the others.
   if (Math.abs(to - d.s) < 0.002 && Math.abs(d.v) < 0.01) [d.s, d.v] = [to, 0];
 }

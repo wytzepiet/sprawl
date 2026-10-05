@@ -4,9 +4,9 @@ import { Dots } from "./dots";
 import { screenToWorld, viewExtent } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { tree, unlocked } from "../state/tree";
-import { isRoad, tool } from "../ui/buildMode";
+import { isRoad, setTool, tool } from "../ui/buildMode";
 import { affords, hand, may, mayStart, snap, STEPS, type Hand } from "./may";
-import type { GridCoord, TerrainType } from "../generated";
+import type { GridCoord, TerrainType, Tool } from "../generated";
 
 /**
  * The mayor's hand on the map: whatever is held is laid as the drag goes,
@@ -19,6 +19,9 @@ import type { GridCoord, TerrainType } from "../generated";
  * And where it may go, worked out here (`may.ts`) and shown by the dots
  * (`dots.ts`): one on every tile in view a drag may start from, and
  * while dragging the steps the tile it is on allows. A step refused is not taken: the drag waits there, straining.
+ *
+ * Alt with the bare hand is the eyedropper: it picks up what stands
+ * where it presses, and a drag from there lays more of it.
  */
 export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
   const { scene, canvas } = useEngine();
@@ -89,6 +92,27 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     dots.aim(starts, nexts, current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
   }
 
+  /** What stands at a tile, as the tool that lays it. */
+  const toolAt = (at: GridCoord): Tool | null => {
+    const k = `${at.x},${at.y}`;
+    const b = world?.occupied.get(k);
+    if (b) return { Building: b.kind };
+    const n = world?.roads.get(k)?.node;
+    if (!n) return null;
+    if (n.road) return "Road";
+    const oneWay = n.outgoing.some((o) => !n.incoming.includes(o)) || n.incoming.some((i) => !n.outgoing.includes(i));
+    return oneWay ? "OneWay" : "Street";
+  };
+  // The eyedropper: with the bare hand, Alt on a thing picks up what laid
+  // it, before the camera or the picker see the press, so the same drag
+  // carries it on.
+  const onEyedrop = (e: PointerEvent) => {
+    if (e.button !== 0 || !e.altKey || tool() !== null) return;
+    const w = pick(e);
+    const t = toolAt({ x: Math.floor(w.wx), y: Math.floor(w.wy) });
+    if (t) setTool(t);
+  };
+
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0 || tool() === null) return;
     const w = pick(e);
@@ -153,11 +177,13 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     draw();
   };
 
+  canvas.addEventListener("pointerdown", onEyedrop, { capture: true });
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
 
   onCleanup(() => {
+    canvas.removeEventListener("pointerdown", onEyedrop, { capture: true });
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
