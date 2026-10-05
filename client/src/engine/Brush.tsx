@@ -1,18 +1,12 @@
 import { createEffect, createMemo, on, onCleanup } from "solid-js";
-import { Color3 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
-import { useDayNight } from "./DayNightCycle";
 import { Dots } from "./dots";
 import { screenToWorld, viewExtent } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { tree, unlocked } from "../state/tree";
 import { isRoad, tool } from "../ui/buildMode";
 import { affords, hand, may, mayStart, snap, STEPS, type Hand } from "./may";
-import { useTheme } from "./theme";
 import type { GridCoord, TerrainType } from "../generated";
-
-/** The dots' ink in the dark. */
-const NIGHT_INK = new Color3(0.9, 0.92, 0.95);
 
 /**
  * The mayor's hand on the map: whatever is held is laid as the drag goes,
@@ -28,12 +22,7 @@ const NIGHT_INK = new Color3(0.9, 0.92, 0.95);
  */
 export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
   const { scene, canvas } = useEngine();
-  const theme = useTheme();
-  // The dots lie over the scene, not in its light: their ink pales as the
-  // ground darkens, from the theme's by day to the night's by dusk.
-  const { ambientColor } = useDayNight();
-  const ink = () => Color3.Lerp(theme().hand, NIGHT_INK, Math.min(1, Math.max(0, (0.7 - ambientColor().g) / 0.25)));
-  const dots = new Dots(scene, canvas, ink);
+  const dots = new Dots(scene, canvas);
   const tick = scene.onAfterRenderObservable.add(() => dots.frame());
   const { send, growth } = useGame();
   let current: GridCoord | null = null;
