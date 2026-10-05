@@ -3,6 +3,7 @@ import { Color3, Mesh, MeshBuilder, StandardMaterial, Vector3, VertexData, type 
 import Canvas, { useEngine } from "../engine/Canvas";
 import { OrthoCamera } from "../engine/OrthoCamera";
 import DayNightLights, { DayNightProvider, useDayNight } from "../engine/DayNightCycle";
+import { BevelPlugin, bevelled, giveBevel } from "../engine/bevel";
 import { ThemeProvider, useTheme, type Theme } from "../engine/theme";
 import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
@@ -388,8 +389,9 @@ let showGrid = true;
 
 function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   const meshes: Mesh[] = [];
-  const add = (name: string, geo: MeshGeometry & { colors?: number[] }, colour: Color3) => {
-    if (!geo.indices.length) return;
+  const add = (name: string, plain: MeshGeometry & { colors?: number[] }, colour: Color3) => {
+    if (!plain.indices.length) return;
+    const geo = bevelled(plain);
     const mesh = new Mesh(name, scene);
     const vd = new VertexData();
     Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
@@ -397,6 +399,14 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     const mat = new StandardMaterial(`${name}_mat`, scene);
     mat.diffuseColor = colour;
     mat.specularColor = Color3.Black();
+    // Its creases rounded, as the game's town; buildings and cars
+    // lacquered, asphalt and paving matte.
+    giveBevel(mesh, geo);
+    new BevelPlugin(mat);
+    if (name === "mass" || name === "parked") {
+      mat.specularColor = new Color3(0.5, 0.5, 0.5);
+      mat.specularPower = 48;
+    }
     mesh.material = mat;
     meshes.push(mesh);
   };
@@ -416,7 +426,9 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
 
   // The town grid, drawn; and on it what the dressing parks.
   const { pieces, dressing } = drawTown(town, theme, colourOf);
-  for (const p of [...drawRoads(town, theme), ...pieces]) add(p.name, p.geo, p.colour ?? Color3.White());
+  for (const p of [...drawRoads(town, theme), ...pieces]) {
+    add(p.name, p.geo, p.colour ?? Color3.White());
+  }
   const { cars, docks, ships } = dressing;
 
   // Parked cars and lorries at the docks, boxes as the game draws them.

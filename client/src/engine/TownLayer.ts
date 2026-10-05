@@ -1,9 +1,10 @@
-import { Color3, Mesh, TransformNode, VertexData, type Scene, type ShadowGenerator } from "@babylonjs/core";
+import { Color3, Mesh, TransformNode, VertexData, type Scene, type ShadowGenerator, type StandardMaterial } from "@babylonjs/core";
 import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
-import { drawTown, flatPolygons, PAVED_Z, type Piece } from "./town/draw";
+import { drawTown, flatPolygons, PAVED_Z, pastTile, RIM, rimmed, type Piece } from "./town/draw";
+import { BevelPlugin, bevelled, giveBevel } from "./bevel";
 import { roadShape, waysAt } from "./town/dressing";
 import { ROAD_Z } from "./objects/roadGeometry";
 import { storeysOf, type Tile, type Town } from "./town/grid";
@@ -180,7 +181,7 @@ export class TownLayer {
       const shape = `road_${colour.toHexString()}_${at.ways.map(([dc, dr, on]) => `${dc}${dr}${on ? "+" : ""}`).sort().join(",")}`;
       // Through roads over the streets that meet them: a street's end runs
       // on under one.
-      this.pool.ensureBucket(shape, flatPolygons(roadShape(at.ways), ROAD_Z + PAVED_Z + (at.through ? 0.001 : 0)), colour, false, true);
+      this.pool.ensureBucket(shape, rimmed(flatPolygons(roadShape(at.ways), ROAD_Z + PAVED_Z + (at.through ? 0.001 : 0)), RIM, pastTile), colour, false, true);
       this.roads.set(key, { key: shape, id: this.pool.addInstance(shape, [x + 1, y + 1, 0]) });
     }
     this.dirty.clear();
@@ -221,10 +222,12 @@ export class TownLayer {
     this.roots.push(root);
     for (const p of pieces) {
       const mesh = new Mesh(`town_${p.name}`, this.scene);
+      const geo = bevelled(p.geo);
       const vd = new VertexData();
-      Object.assign(vd, { positions: p.geo.positions, indices: p.geo.indices, normals: p.geo.normals, colors: p.geo.colors ?? null });
+      Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
       vd.applyToMesh(mesh);
-      mesh.material = this.pool.material(`town_${p.name}`, p.colour ?? Color3.White());
+      giveBevel(mesh, geo);
+      mesh.material = bevelOn(this.pool.material(`town_${p.name}`, p.colour ?? Color3.White()), p.name);
       mesh.parent = root;
       mesh.isPickable = false;
       // A tree's body casts its shadow and its top takes the others'.
@@ -273,3 +276,15 @@ function grow(b: Bounds, x: number, y: number) {
 }
 
 const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - by, x1 + by, y1 + by];
+
+/** A town material, its creases rounded (`bevel.ts`), once; the buildings
+ *  lacquered, so the sun glints on their rounds. */
+function bevelOn(mat: StandardMaterial, name: string): StandardMaterial {
+  if (mat.pluginManager?.getPlugin("Bevel")) return mat;
+  new BevelPlugin(mat);
+  if (name === "mass") {
+    mat.specularColor = new Color3(0.5, 0.5, 0.5);
+    mat.specularPower = 48;
+  }
+  return mat;
+}

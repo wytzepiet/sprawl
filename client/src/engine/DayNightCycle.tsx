@@ -192,6 +192,37 @@ export function sunOnScreen(t: number): { azimuth: number; elevation: number; co
   };
 }
 
+/** Light as an eye takes it: a little shows its colour, a lot goes white. */
+const EXPOSURE = 3;
+const expose = (light: number[]) => light.map((v) => 1 - Math.exp(-v * EXPOSURE));
+/** A glint's core is whiter than the light that makes it. */
+const CORE = 0.35;
+
+/**
+ * The sun's glint on a glassy edge, the UI's and the world's alike: its
+ * colour (0..1), how strong, and which way the sun lies on the screen (a
+ * unit step, y down). As bright as the sun truly is on glass, the ground's
+ * low-sun boost left off, and seen as an eye sees it: white when strong,
+ * its colour only when faint; nothing at night.
+ */
+export function sunGlint(t: number): { colour: [number, number, number]; strength: number; toward: [number, number] } {
+  const sun = sunOnScreen(t);
+  const glint = expose(sun.colour.map((v) => v * sun.strength * Math.max(sun.elevation, 0.42)));
+  const peak = Math.max(...glint, 1e-6);
+  const a = (sun.azimuth * Math.PI) / 180;
+  return {
+    colour: glint.map((v) => v / peak + (1 - v / peak) * CORE) as [number, number, number],
+    strength: Math.min(0.85, peak),
+    toward: [Math.cos(a), Math.sin(a)],
+  };
+}
+
+/** The sky's light on an edge, as an eye takes it, at full brightness. */
+export function skyGlint(t: number): [number, number, number] {
+  const sky = expose(skyLight(t));
+  return sky.map((v) => v / Math.max(...sky)) as [number, number, number];
+}
+
 /** The sky's light alone, without the sun's: pale by day, lavender at a
  *  low sun, blue at night. What a glass edge reflects all the way round. */
 export function skyLight(t: number): [number, number, number] {
@@ -319,6 +350,8 @@ export default function DayNightLights(props: ParentProps) {
     const sun = sunLightAt(elev);
     sunLight.intensity = sun.strength;
     sunLight.diffuse = sun.colour;
+    // And glints off what is lacquered: the bevelled town (`bevel.ts`).
+    sunLight.specular = sun.colour;
 
     // Round the ground in view, not round the camera: leaning back, the
     // camera stands well behind what it looks at.

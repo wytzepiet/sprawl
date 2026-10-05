@@ -41,6 +41,17 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
   );
 }
 
+/** How shiny each ground is, of the ground's most (`ShinePlugin`): water
+ *  gleams; land, sand most of all, keeps a little, as the rest of the toy. */
+const SHINE: Record<TerrainType, number> = {
+  Sea: 1,
+  Water: 1,
+  Beach: 0.12,
+  Grass: 0.12,
+  Forest: 0.12,
+  Mountain: 0.15,
+};
+
 const ELEVATION: Record<TerrainType, number> = {
   Sea: -0.5,
   Water: -0.5,
@@ -397,6 +408,57 @@ function buildCliffGeo(
   return { positions, indices, normals };
 }
 
+/** How wide a cliff's rounded top is, in tiles: wider than the town's
+ *  kerbs, so the land rolls over its edges as the trees' crowns do. */
+const RIM = 0.15;
+/** Over the ground and its corner patches (0.01), under nothing. */
+const RIM_LIFT = 0.012;
+const TILE_CORNERS: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 1]];
+
+/**
+ * A cliff's top, rounded: a strip along the line where the ground drops,
+ * lying on the higher side, facing up at its inner edge and halfway out
+ * over the drop at the line, so the light rolls over the edge as over the
+ * town's kerbs. `high` is a point on the higher side.
+ */
+function cliffRim(pts: [number, number][], high: [number, number]): MeshGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  // Each segment's way out, over the drop.
+  const outs = pts.slice(1).map((b, i) => {
+    const a = pts[i];
+    const [ex, ey] = [b[0] - a[0], b[1] - a[1]];
+    const len = Math.hypot(ex, ey) || 1;
+    let o: [number, number] = [ey / len, -ex / len];
+    const [mx, my] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if ((high[0] - mx) * o[0] + (high[1] - my) * o[1] > 0) o = [-o[0], -o[1]];
+    return o;
+  });
+  // Mitred at each point between two segments.
+  const at = pts.map((p, i) => {
+    const [o0, o1] = [outs[Math.max(0, i - 1)], outs[Math.min(outs.length - 1, i)]];
+    let m: [number, number] = [o0[0] + o1[0], o0[1] + o1[1]];
+    const ml = Math.hypot(m[0], m[1]) || 1;
+    m = [m[0] / ml, m[1] / ml];
+    const d = RIM / Math.max(m[0] * o1[0] + m[1] * o1[1], 0.35);
+    return { edge: p, inner: [p[0] - m[0] * d, p[1] - m[1] * d], m };
+  });
+  for (const { edge, inner, m } of at) {
+    positions.push(edge[0], edge[1], 0, inner[0], inner[1], 0);
+    normals.push(m[0] * Math.SQRT1_2, m[1] * Math.SQRT1_2, Math.SQRT1_2, 0, 0, 1);
+  }
+  for (let i = 0; i + 1 < at.length; i++) {
+    const [e0, i0, e1, i1] = [2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3];
+    // Wound as the ground is (clockwise seen from above).
+    for (const [a, b, c] of [[e0, e1, i1], [e0, i1, i0]]) {
+      const cz = (positions[b * 3] - positions[a * 3]) * (positions[c * 3 + 1] - positions[a * 3 + 1]) - (positions[b * 3 + 1] - positions[a * 3 + 1]) * (positions[c * 3] - positions[a * 3]);
+      indices.push(...(cz < 0 ? [a, b, c] : [a, c, b]));
+    }
+  }
+  return { positions, normals, indices };
+}
+
 /**
  * Cliff walls are the terrain colour darkened. Reused scratch: `append` reads
  * the floats out immediately and never retains the object.
@@ -619,6 +681,7 @@ function append(
   oy: number,
   oz: number,
   color: RGB,
+  shine = 1,
 ): void {
   const p = geo.positions;
   const vertexCount = p.length / 3;
@@ -643,7 +706,7 @@ function append(
       colors[c] = color.r;
       colors[c + 1] = color.g;
       colors[c + 2] = color.b;
-      colors[c + 3] = 1;
+      colors[c + 3] = shine;
     }
   }
   const indices = buf.indices;
@@ -717,7 +780,7 @@ function appendTile(
     }
     baseGeo = cached;
   }
-  append(sink.ground, baseGeo, lx, ly, be, palette[tt]);
+  append(sink.ground, baseGeo, lx, ly, be, palette[tt], SHINE[tt]);
 
   // Same-elevation corner overlays
   for (const c of corners) {
@@ -729,6 +792,7 @@ function appendTile(
       ly,
       be + 0.01,
       palette[c.type],
+      SHINE[c.type],
     );
   }
 
@@ -745,6 +809,7 @@ function appendTile(
       ly,
       c.cornerElev,
       palette[c.type],
+      SHINE[c.type],
     );
     append(
       sink.cliffs,
@@ -753,6 +818,16 @@ function appendTile(
       ly,
       lowerZ,
       shade(palette[higherType], 0.7),
+    );
+    // Its top rounded, on whichever side is higher: the corner, or the tile.
+    append(
+      sink.ground,
+      cliffRim(getCornerCurvePoints(c.index, c.variant), c.cornerElev > be ? TILE_CORNERS[c.index] : [0.5, 0.5]),
+      lx,
+      ly,
+      upperZ + RIM_LIFT,
+      palette[higherType],
+      SHINE[higherType],
     );
   }
 
@@ -778,6 +853,7 @@ function appendTile(
       neighborElev,
       shade(palette[tt], 0.7),
     );
+    append(sink.ground, cliffRim(EDGE_ENDPOINTS[i], [0.5, 0.5]), lx, ly, be + RIM_LIFT, palette[tt], SHINE[tt]);
   }
 
 }

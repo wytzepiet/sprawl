@@ -22,6 +22,17 @@ import {
   type MeshBuffers,
   type TerrainPalette,
 } from "./objects/terrainGeometry";
+import { BevelPlugin, bevelled, giveBevel } from "./bevel";
+import { ShinePlugin } from "./shine";
+import { rimmed } from "./town/draw";
+
+/** How far in a crown's top rolls over, of its radius (crowns are drawn at
+ *  radius 1 and scaled): wide, so it reads as a dome, not a disc's lip. */
+const CROWN_ROUND = 0.45;
+
+/** A tree's crown, as every tree shares it: its body rounded at its
+ *  creases, and the top it is seen by rolling over toward its edge. */
+const CROWN = [bevelled(TREE_BODY), bevelled(rimmed(TREE_TOP, CROWN_ROUND))];
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
@@ -97,7 +108,11 @@ export class TerrainChunks {
     // Back faces are never visible from a fixed top-down camera, and the
     // ground covers every pixel -- shading it twice cost half the framerate.
     // Culling is Babylon's default; all geometry winds to match it.
-    this.groundMat.specularColor = Color3.Black();
+    // Lacquered as the rest of the toy, the glint tight, and as much of it
+    // as each ground has (`SHINE`): water gleams, the land keeps a little.
+    this.groundMat.specularColor = new Color3(0.45, 0.45, 0.45);
+    this.groundMat.specularPower = 64;
+    new ShinePlugin(this.groundMat);
 
     this.cliffMat = new StandardMaterial("terrain_cliff", scene);
     // The one material that genuinely wants both sides. Cliff walls exist only
@@ -110,7 +125,10 @@ export class TerrainChunks {
     this.cliffMat.disableLighting = true;
 
     this.treeMat = new StandardMaterial("terrain_tree", scene);
-    this.treeMat.specularColor = Color3.Black();
+    // Glossy, as a toy's trees are; a little less than the buildings.
+    this.treeMat.specularColor = new Color3(0.28, 0.28, 0.28);
+    this.treeMat.specularPower = 40;
+    new BevelPlugin(this.treeMat);
 
     this.updateMaterials(new Color3(1, 1, 1));
 
@@ -282,7 +300,7 @@ export class TerrainChunks {
     const cliffs = new Mesh(`chunk_${key}_cliffs`, this.scene);
     cliffs.material = this.cliffMat;
 
-    const [trees, treeTops] = [TREE_BODY, TREE_TOP].map((geo, i) => {
+    const [trees, treeTops] = CROWN.map((geo, i) => {
       const mesh = new Mesh(`chunk_${key}_tree${i ? "_tops" : "s"}`, this.scene);
       mesh.material = this.treeMat;
       const data = new VertexData();
@@ -290,6 +308,7 @@ export class TerrainChunks {
       data.indices = geo.indices;
       data.normals = geo.normals;
       data.applyToMesh(mesh);
+      giveBevel(mesh, geo);
       return mesh;
     });
     treeTops.receiveShadows = true;

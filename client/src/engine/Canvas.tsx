@@ -31,12 +31,17 @@ export function useEngine() {
 const MAX_DEVICE_RATIO = 2;
 
 /**
- * Frames per second, at most. Cars move at the server's pace and the map pans
- * at the pointer's, neither of which a 120Hz display can show more of than a
- * 60Hz one; it only shades every pixel twice as often.
+ * Frames per second, at most, while the mayor's hand is on the map: it pans
+ * at the pointer's pace, which a 120Hz display can show no more of than a
+ * 60Hz one. Left alone, the town moves at its own pace, cars and the light,
+ * which half that shows as well, for half the shading: a fanless laptop
+ * runs cool on it.
  */
-const MAX_FPS = 60;
-const FRAME_MS = 1000 / MAX_FPS;
+const HANDLED_FPS = 60;
+const ALONE_FPS = 30;
+/** How long after the last touch the map stays at the faster rate: long
+ *  enough for the camera to glide to rest. */
+const HANDLED_FOR_MS = 1200;
 
 async function createEngine(el: HTMLCanvasElement): Promise<AbstractEngine> {
   const options = { adaptToDeviceRatio: true, limitDeviceRatio: MAX_DEVICE_RATIO };
@@ -74,11 +79,16 @@ export default function Canvas(props: ParentProps) {
       // carried, so a 60Hz display whose ticks land a fraction early settles
       // on rendering every one of them rather than every other.
       let lastFrame = 0;
+      let handledUntil = 0;
+      const handled = () => (handledUntil = performance.now() + HANDLED_FOR_MS);
+      for (const kind of ["pointerdown", "pointermove", "wheel"] as const) el.addEventListener(kind, handled, { passive: true });
+      window.addEventListener("keydown", handled);
       engine.runRenderLoop(() => {
         const now = performance.now();
+        const frameMs = 1000 / (now < handledUntil ? HANDLED_FPS : ALONE_FPS);
         const elapsed = now - lastFrame;
-        if (elapsed < FRAME_MS) return;
-        lastFrame = now - (elapsed % FRAME_MS);
+        if (elapsed < frameMs) return;
+        lastFrame = now - (elapsed % frameMs);
         scene.render();
       });
 
@@ -89,6 +99,7 @@ export default function Canvas(props: ParentProps) {
 
       onCleanup(() => {
         window.removeEventListener("resize", onResize);
+        window.removeEventListener("keydown", handled);
         engine.dispose();
       });
     });

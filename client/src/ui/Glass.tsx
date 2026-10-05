@@ -1,17 +1,11 @@
 import { createEffect } from "solid-js";
-import { lightOnPane, skyLight, sunOnScreen, useDayNight } from "../engine/DayNightCycle";
+import { lightOnPane, skyGlint, sunGlint, useDayNight } from "../engine/DayNightCycle";
 
 type Rgb = [number, number, number];
 
 /** The rim the sun lights, and the shade on the far side, in pixels. */
 const RIM = 1.6;
 const SHADE = 2.2;
-/** Light as an eye takes it: a little of it shows its colour, a lot of it
- *  goes white. Per channel, light in, 0..1 out. */
-const EXPOSURE = 3;
-const expose = (light: number[]) => light.map((v) => 1 - Math.exp(-v * EXPOSURE));
-/** A glint's core is whiter than the light that makes it. */
-const CORE = 0.35;
 /** The sky round every edge: faint. */
 const SKY_RIM = 0.32;
 /** How much of the body the glass shows: the rest is the frost beneath. */
@@ -38,21 +32,15 @@ export default function Glass() {
   let last = "";
   let lastSun = "";
   let defs!: SVGSVGElement;
-  // The rims: the sky's light round every edge, and the sun's on the edge
-  // that faces it, as it stands on the screen. The sun's as bright as it
-  // truly is on glass (the ground's low-sun boost left off), seen as an eye
-  // sees it: white when strong, its colour only when faint; none at night.
+  // The rims: the sky's light round every edge, and the sun's glint on the
+  // edge that faces it (`sunGlint`, as the world's edges catch it too).
   createEffect(() => {
     const t = timeOfDay();
-    const sun = sunOnScreen(t);
-    const glint = expose(sun.colour.map((v) => v * sun.strength * Math.max(sun.elevation, 0.42)));
-    const peak = Math.max(...glint, 1e-6);
-    const hue = glint.map((v) => Math.round(255 * (v / peak + (1 - v / peak) * CORE)));
-    const sky = expose(skyLight(t));
-    const skyHue = sky.map((v) => Math.round((255 * v) / Math.max(...sky)));
-    const a = (sun.azimuth * Math.PI) / 180;
-    const [dx, dy] = [Math.cos(a), Math.sin(a)].map((v) => Math.round(v * 10) / 10);
-    const strength = Math.min(0.85, peak).toFixed(2);
+    const sun = sunGlint(t);
+    const hue = sun.colour.map((v) => Math.round(255 * v));
+    const skyHue = skyGlint(t).map((v) => Math.round(255 * v));
+    const [dx, dy] = sun.toward.map((v) => Math.round(v * 10) / 10);
+    const strength = sun.strength.toFixed(2);
     const key = `${hue} ${skyHue} ${dx} ${dy} ${strength}`;
     if (key === lastSun) return;
     lastSun = key;
