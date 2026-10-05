@@ -22,17 +22,11 @@ import {
   type MeshBuffers,
   type TerrainPalette,
 } from "./objects/terrainGeometry";
-import { BevelPlugin, bevelled, giveBevel } from "./bevel";
+import { BevelPlugin, bevelled, giveBevel, lacquer } from "./bevel";
 import { ShinePlugin } from "./shine";
-import { rimmed } from "./town/draw";
+import { CROWN_TOP } from "./town/draw";
 
-/** How far in a crown's top rolls over, of its radius (crowns are drawn at
- *  radius 1 and scaled): wide, so it reads as a dome, not a disc's lip. */
-const CROWN_ROUND = 0.45;
-
-/** A tree's crown, as every tree shares it: its body rounded at its
- *  creases, and the top it is seen by rolling over toward its edge. */
-const CROWN = [bevelled(TREE_BODY), bevelled(rimmed(TREE_TOP, CROWN_ROUND))];
+const CROWN = [bevelled(TREE_BODY), bevelled(CROWN_TOP)];
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
@@ -125,9 +119,7 @@ export class TerrainChunks {
     this.cliffMat.disableLighting = true;
 
     this.treeMat = new StandardMaterial("terrain_tree", scene);
-    // Glossy, as a toy's trees are; a little less than the buildings.
-    this.treeMat.specularColor = new Color3(0.07, 0.07, 0.07);
-    this.treeMat.specularPower = 40;
+    lacquer(this.treeMat, "tree");
     new BevelPlugin(this.treeMat);
 
     this.updateMaterials(new Color3(1, 1, 1));

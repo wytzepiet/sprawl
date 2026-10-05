@@ -1,4 +1,4 @@
-import { MaterialDefines, MaterialPluginBase, type Material, type Mesh } from "@babylonjs/core";
+import { Color3, MaterialDefines, MaterialPluginBase, type Material, type Mesh, type StandardMaterial } from "@babylonjs/core";
 import type { MeshGeometry } from "./Mesh";
 
 /**
@@ -50,7 +50,7 @@ export function bevelled(geo: MeshGeometry & { colors?: number[] }): MeshGeometr
   }
 
   const cosMin = Math.cos((MIN_ANGLE * Math.PI) / 180);
-  const out = { positions: [] as number[], normals: [] as number[], indices: [] as number[], colors: geo.colors ? ([] as number[]) : undefined, across: [[], [], []] as number[][], reach: [] as number[] };
+  const out = { positions: [] as number[], normals: [] as number[], indices: [] as number[], colors: geo.colors ? ([] as number[]) : undefined, uvs: geo.uvs ? ([] as number[]) : undefined, across: [[], [], []] as number[][], reach: [] as number[] };
   tris.forEach((tri, ti) => {
     const across: V3[] = [tri.n, tri.n, tri.n];
     const reach: V3 = [0, 0, 0];
@@ -77,6 +77,7 @@ export function bevelled(geo: MeshGeometry & { colors?: number[] }): MeshGeometr
       out.positions.push(...tri.v[k]);
       // The mesh's own facing, which a rim already turns.
       out.normals.push(...(geo.normals.length ? [geo.normals[s * 3], geo.normals[s * 3 + 1], geo.normals[s * 3 + 2]] : tri.n));
+      if (out.uvs) out.uvs.push(geo.uvs![s * 2], geo.uvs![s * 2 + 1]);
       if (out.colors) out.colors.push(geo.colors![s * 4], geo.colors![s * 4 + 1], geo.colors![s * 4 + 2], geo.colors![s * 4 + 3]);
       out.indices.push(ti * 3 + k);
       for (let j = 0; j < 3; j++) out.across[j].push(...across[j]);
@@ -197,4 +198,20 @@ export class BevelPlugin extends MaterialPluginBase {
     const wgsl = shaderLanguage === 1;
     return shaderType === "vertex" ? (wgsl ? VERTEX_WGSL : VERTEX_GLSL) : wgsl ? FRAGMENT_WGSL : FRAGMENT_GLSL;
   }
+}
+
+/** How lacquered each kind of thing is, its glint's strength and its
+ *  tightness: cars glossiest, buildings next, trees a sheen. */
+const LACQUER = {
+  car: [0.7, 72],
+  building: [0.5, 48],
+  tree: [0.07, 40],
+} as const;
+
+/** A material lacquered as its kind is. */
+export function lacquer(mat: StandardMaterial, kind: keyof typeof LACQUER): StandardMaterial {
+  const [strength, power] = LACQUER[kind];
+  mat.specularColor = new Color3(strength, strength, strength);
+  mat.specularPower = power;
+  return mat;
 }

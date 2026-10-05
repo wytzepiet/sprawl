@@ -4,7 +4,7 @@ import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
 import { drawTown, flatPolygons, PAVED_Z, pastSeam, RIM, rimmed, type Piece } from "./town/draw";
-import { BevelPlugin, bevelled, giveBevel } from "./bevel";
+import { bevelled, giveBevel, lacquer } from "./bevel";
 import { roadShape, waysAt } from "./town/dressing";
 import { ROAD_Z } from "./objects/roadGeometry";
 import { storeysOf, type Tile, type Town } from "./town/grid";
@@ -277,14 +277,11 @@ function grow(b: Bounds, x: number, y: number) {
 
 const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - by, x1 + by, y1 + by];
 
-/** A town material, its creases rounded (`bevel.ts`), once; the buildings
- *  lacquered, so the sun glints on their rounds. */
+/** A town material lacquered as what it draws is: buildings and trees;
+ *  paving, lawns and roads stay matte. Its creases are rounded already, as
+ *  every pool material's are. */
 function bevelOn(mat: StandardMaterial, name: string): StandardMaterial {
-  if (mat.pluginManager?.getPlugin("Bevel")) return mat;
-  new BevelPlugin(mat);
-  if (name === "mass") {
-    mat.specularColor = new Color3(0.5, 0.5, 0.5);
-    mat.specularPower = 48;
-  }
+  if (name === "mass") return lacquer(mat, "building");
+  if (name.startsWith("tree_")) return lacquer(mat, "tree");
   return mat;
 }

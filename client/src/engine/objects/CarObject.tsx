@@ -2,6 +2,7 @@ import { Color3, Vector3 } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
+import { lacquer } from "../bevel";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
 import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
@@ -71,7 +72,7 @@ export function mountCar(
   const ship = car.role === "Ship";
   const color = ship ? SHIP : car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
   const bucket = ship ? `ship${look.key}` : car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
-  pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
+  lacquer(pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true).material, "car");
   const z = ship ? SHIP_Z : CAR_Z;
 
   if (!car.trip) driving.delete(entry.id);
@@ -132,8 +133,8 @@ export function mountCar(
 function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look: Look): () => void {
   const cab = `lorry_cab${look.key}`;
   const trailer = `lorry_trailer${look.key}`;
-  pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true);
-  pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true);
+  lacquer(pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true).material, "car");
+  lacquer(pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true).material, "car");
   const cabZ = GROUND + CAB.h / 2;
   const trailerZ = GROUND + TRAILER.h / 2;
   const placed = (p: Pose, z: number) => ({ pos: [p.x, p.y, z] as [number, number, number], rot: [0, 0, p.heading - Math.PI / 2] as [number, number, number] });

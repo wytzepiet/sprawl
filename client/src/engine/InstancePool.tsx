@@ -18,6 +18,7 @@ import {
 import type { BaseTexture } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
+import { BevelPlugin, bevelled, giveBevel } from "./bevel";
 import type { MeshGeometry } from "./Mesh";
 
 export interface InstanceHandle {
@@ -112,6 +113,10 @@ export class InstancePool {
 
     const mat = new StandardMaterial(`mat_${key}`, this.scene);
     mat.specularColor = Color3.Black();
+    // Every shape held here has its creases rounded (`bevel.ts`): a car's
+    // box, a building's; a road's flat rim has none to round.
+    new BevelPlugin(mat);
+    const shape = bevelled(geometry);
 
     if (!receiveShadow) {
       mat.disableLighting = true;
@@ -123,11 +128,12 @@ export class InstancePool {
 
     const mesh = new Mesh(`inst_${key}`, this.scene);
     const vd = new VertexData();
-    vd.positions = geometry.positions;
-    vd.indices = geometry.indices;
-    vd.normals = geometry.normals;
-    if (geometry.uvs) vd.uvs = geometry.uvs;
+    vd.positions = shape.positions;
+    vd.indices = shape.indices;
+    vd.normals = shape.normals;
+    if (shape.uvs) vd.uvs = shape.uvs;
     vd.applyToMesh(mesh);
+    giveBevel(mesh, shape);
     mesh.material = mat;
     mesh.isPickable = false;
     mesh.freezeWorldMatrix();
@@ -146,7 +152,6 @@ export class InstancePool {
     }
 
     bucket = {
-      geometry,
       mesh,
       material: mat,
       matrices: new Float32Array(0),
@@ -159,6 +164,7 @@ export class InstancePool {
       baseColor: color,
       castShadow,
       receiveShadow,
+      geometry: shape,
     };
     // Painted with the ambient in force now, not the noon default: a bucket
     // born at dusk beside buckets already tinted for dusk would otherwise be

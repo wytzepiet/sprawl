@@ -3,7 +3,7 @@ import { Color3, Mesh, MeshBuilder, StandardMaterial, Vector3, VertexData, type 
 import Canvas, { useEngine } from "../engine/Canvas";
 import { OrthoCamera } from "../engine/OrthoCamera";
 import DayNightLights, { DayNightProvider, useDayNight } from "../engine/DayNightCycle";
-import { BevelPlugin, bevelled, giveBevel } from "../engine/bevel";
+import { BevelPlugin, bevelled, giveBevel, lacquer } from "../engine/bevel";
 import { ThemeProvider, useTheme, type Theme } from "../engine/theme";
 import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
@@ -399,14 +399,13 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     const mat = new StandardMaterial(`${name}_mat`, scene);
     mat.diffuseColor = colour;
     mat.specularColor = Color3.Black();
-    // Its creases rounded, as the game's town; buildings and cars
-    // lacquered, asphalt and paving matte.
+    // Its creases rounded, as the game's town; lacquered as the game's
+    // are, asphalt and paving matte.
     giveBevel(mesh, geo);
     new BevelPlugin(mat);
-    if (name === "mass" || name === "parked") {
-      mat.specularColor = new Color3(0.5, 0.5, 0.5);
-      mat.specularPower = 48;
-    }
+    if (name === "mass") lacquer(mat, "building");
+    else if (name === "parked") lacquer(mat, "car");
+    else if (name.startsWith("tree_")) lacquer(mat, "tree");
     mesh.material = mat;
     meshes.push(mesh);
   };
@@ -437,7 +436,18 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   const quad = (pts: [number, number, number][], n: [number, number, number], rgb: RGB) => {
     const b0 = parked.positions.length / 3;
     for (const [x, y, z] of pts) parked.positions.push(-x, -y, z), parked.normals.push(-n[0], -n[1], n[2]), parked.colors.push(rgb[0], rgb[1], rgb[2], 1);
-    parked.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
+    // One side, the one facing out, as the game's boxes are: so each edge is
+    // two faces' and the bevel finds it.
+    const p = parked.positions;
+    const [ux, uy, uz] = [p[(b0 + 1) * 3] - p[b0 * 3], p[(b0 + 1) * 3 + 1] - p[b0 * 3 + 1], p[(b0 + 1) * 3 + 2] - p[b0 * 3 + 2]];
+    const [vx, vy, vz] = [p[(b0 + 2) * 3] - p[b0 * 3], p[(b0 + 2) * 3 + 1] - p[b0 * 3 + 1], p[(b0 + 2) * 3 + 2] - p[b0 * 3 + 2]];
+    const out = (uy * vz - uz * vy) * -n[0] + (uz * vx - ux * vz) * -n[1] + (ux * vy - uy * vx) * n[2] > 0;
+    // A fan round its middle, as `boxGeometry`'s faces are, wound as its
+    // (Babylon's front face is the clockwise one).
+    const c = b0 + 4;
+    const [mx, my, mz] = [0, 1, 2].map((k) => (p[b0 * 3 + k] + p[(b0 + 1) * 3 + k] + p[(b0 + 2) * 3 + k] + p[(b0 + 3) * 3 + k]) / 4);
+    parked.positions.push(mx, my, mz), parked.normals.push(-n[0], -n[1], n[2]), parked.colors.push(rgb[0], rgb[1], rgb[2], 1);
+    for (let i = 0; i < 4; i++) parked.indices.push(...(out ? [c, b0 + ((i + 1) % 4), b0 + i] : [c, b0 + i, b0 + ((i + 1) % 4)]));
   };
   /** A box `l` long along `angle`, `w` wide and `h` tall, its middle at (x, y). */
   const box = (x: number, y: number, angle: number, [w, l, h]: number[], rgb: RGB, z0 = 0.03) => {

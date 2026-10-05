@@ -65,7 +65,7 @@ export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB): { 
   add("mass", townMesh(town, colour, undefined, known), null);
   add("yard_lines", flat(dressing.yardLines, 0.025), theme.road);
   // Trees as the forest draws them: a smooth top over a coarse body.
-  for (const [name, geo] of [["tree_tops", TREE_TOP], ["tree_bodies", TREE_BODY]] as const) {
+  for (const [name, geo] of [["tree_tops", CROWN_TOP], ["tree_bodies", TREE_BODY]] as const) {
     const out: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
     for (const t of dressing.trees) {
       const base = out.positions.length / 3;
@@ -231,6 +231,12 @@ function crossZ(p: number[], a: number, b: number, c: number) {
 function cross0(g: MeshGeometry) {
   return g.indices.length ? crossZ(g.positions, g.indices[0], g.indices[1], g.indices[2]) : 1;
 }
+
+/** How far in a crown's top rolls over, of its radius (crowns are drawn at
+ *  radius 1 and scaled): wide, so it reads as a dome, not a disc's lip. */
+const CROWN_ROUND = 0.45;
+/** A tree's crown top, as every tree draws it, forest or street: a dome. */
+export const CROWN_TOP = rimmed(TREE_TOP, CROWN_ROUND);
 
 /** Convex strips laid flat at a height, seen from both sides. */
 function flat(polys: [number, number][][], z: number): MeshGeometry {
