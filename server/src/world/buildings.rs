@@ -285,7 +285,9 @@ impl World {
         self.set_door(id, None);
     }
 
-    /// Two houses of a row let go of each other where they meet.
+    /// Two houses of a row let go of each other where they meet. One left
+    /// joined to nothing was the row's end, and goes, as a road's end
+    /// does when its last link is cut.
     pub fn unlink(&mut self, a: EntityId, b: EntityId) {
         let tiles = |w: &World, id| match w.objects.get(id).map(|e| &e.object) {
             Some(GameObject::Building(bd)) => bd.tiles.clone(),
@@ -295,6 +297,11 @@ impl World {
         for (id, other) in [(a, tb), (b, ta)] {
             if let Some(GameObject::Building(bd)) = self.objects.get_mut(id).map(|e| &mut e.object) {
                 bd.joined.retain(|t| !other.contains(t));
+            }
+        }
+        for id in [a, b] {
+            if self.joined_of(id).is_empty() {
+                self.remove_building(id);
             }
         }
     }

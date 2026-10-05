@@ -1077,13 +1077,17 @@ mod tests {
         let street = world.objects.get(door).and_then(|e| e.position).unwrap();
         hand(&mut world, Tool::Demolish, street, at(8, 1));
         assert!(world.door_of(house).is_none() && world.occupied.contains_key(&(8, 1)), "the door shut, the house standing");
-        // Two houses of a row let go of each other.
+        // A row of three cut in the middle of it: the house at the end,
+        // joined to nothing now, goes; cut again, so do the last two.
         hand(&mut world, Tool::Building(BuildingKind::House), at(11, 1), at(11, 1));
         hand(&mut world, Tool::Building(BuildingKind::House), at(11, 1), at(12, 1));
-        assert!(may(&world, Tool::Demolish, at(11, 1), at(12, 1)), "a row to cut");
+        hand(&mut world, Tool::Building(BuildingKind::House), at(12, 1), at(13, 1));
+        assert!(may(&world, Tool::Demolish, at(12, 1), at(13, 1)), "a row to cut");
+        hand(&mut world, Tool::Demolish, at(12, 1), at(13, 1));
+        assert!(!world.occupied.contains_key(&(13, 1)), "the end goes");
+        assert!(world.occupied.contains_key(&(11, 1)) && world.occupied.contains_key(&(12, 1)), "the rest stands");
         hand(&mut world, Tool::Demolish, at(11, 1), at(12, 1));
-        assert!(!may(&world, Tool::Demolish, at(11, 1), at(12, 1)), "and cut");
-        assert!(world.occupied.contains_key(&(11, 1)) && world.occupied.contains_key(&(12, 1)), "both houses standing");
+        assert!(!world.occupied.contains_key(&(11, 1)) && !world.occupied.contains_key(&(12, 1)), "two cut apart are two ends");
         // A tap takes the point and every link at it.
         hand(&mut world, Tool::Demolish, at(5, 0), at(5, 0));
         assert!(world.road_node_at(at(5, 0)).is_none());
