@@ -36,6 +36,8 @@ export class TownLayer {
   private roads = new Map<string, { key: string; id: number }>();
   private dirty = new Set<string>();
   private frame: number | null = null;
+  /** The tiles the town was last drawn over. */
+  private drawn: Bounds | null = null;
 
   constructor(
     private scene: Scene,
@@ -63,9 +65,25 @@ export class TownLayer {
   private settle() {
     this.frame ??= requestAnimationFrame(() => {
       this.frame = null;
-      this.draw();
+      if (this.reaches()) this.draw();
       this.retile();
     });
+  }
+
+  /** Did anything change within the town, as it was drawn or as it now
+   *  stands? The survey's road out in the country comes and goes as the
+   *  view pans, and the town is a tenth of a second to draw. */
+  private reaches(): boolean {
+    const built: Bounds = [Infinity, Infinity, -Infinity, -Infinity];
+    this.entities((e) => {
+      if (e.object.kind === "Building" && e.object.data.kind !== "Edge") for (const t of (e.object.data as Building).tiles) grow(built, t.x, t.y);
+    });
+    const boxes = [this.drawn, built[0] <= built[2] ? widen(built, TOWN_MARGIN) : null];
+    for (const key of this.dirty) {
+      const [x, y] = key.split(",").map(Number);
+      if (boxes.some((b) => b && x >= b[0] && y >= b[1] && x <= b[2] && y <= b[3])) return true;
+    }
+    return false;
   }
 
   private draw() {
@@ -154,8 +172,9 @@ export class TownLayer {
     // The town, paved and dressed, only round what is built: a road
     // across open country is asphalt, and the town is what is paved.
     const sizes: string[] = [];
+    this.drawn = null;
     if (built[0] <= built[2]) {
-      const bounds = widen(built, TOWN_MARGIN);
+      const bounds = (this.drawn = widen(built, TOWN_MARGIN));
       const town = townOver(bounds);
       this.show(drawTown(town, this.theme(), colour).pieces, bounds);
       sizes.push(`${town.w}x${town.h}`);

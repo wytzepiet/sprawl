@@ -30,6 +30,9 @@ interface MountedEntry {
   /** Tile keys this building covers, kept because the store has already
    *  dropped the entity by the time a Delete reaches us. */
   covers?: string[];
+  /** What of a building the town draws, to tell a change it must be
+   *  drawn again for from a shelf filling or a purse changing. */
+  drawn?: string;
 }
 
 export default function World() {
@@ -108,27 +111,41 @@ export default function World() {
     for (const op of ops) {
       const key = String(op.op === "Upsert" ? op.data.id : op.data);
       const existing = mounted.get(key);
-      if (existing) {
-        uncover(existing.covers);
-        existing.cleanup();
-        mounted.delete(key);
-      }
       // The store already holds the batch's end state, so an entity
       // upserted and then deleted in one batch is gone from it by now.
       const entry = op.op === "Upsert" ? (getEntity(op.data.id) ?? op.data) : undefined;
-      // Trees make way for a road, and come back where one went; the
-      // town is drawn again round anything built, as it was and as it is.
-      const pos = entry?.object.kind === "RoadNode" ? entry.position : roadAt.get(key);
-      if (pos) terrain.markTile(pos.x, pos.y);
-      for (const p of [roadAt.get(key), pos]) if (p) town.touch(p.x, p.y);
-      for (const k of existing?.covers ?? []) town.touch(...(k.split(",").map(Number) as [number, number]));
-      if (entry?.object.kind === "Building") for (const t of (entry.object.data as Building).tiles) town.touch(t.x, t.y);
-      if (entry?.object.kind === "RoadNode" && entry.position) roadAt.set(key, entry.position);
-      else roadAt.delete(key);
+      const drawn = entry && drawnOf(entry);
+      // The town is drawn whole, a tenth of a second on a grown town: a
+      // building that only traded leaves it standing as it was.
+      const same = drawn !== undefined && existing?.drawn === drawn;
+      if (existing) {
+        if (!same) uncover(existing.covers);
+        existing.cleanup();
+        mounted.delete(key);
+      }
+      if (!same) {
+        // Trees make way for a road, and come back where one went; the
+        // town is drawn again round anything built, as it was and as it is.
+        const pos = entry?.object.kind === "RoadNode" ? entry.position : roadAt.get(key);
+        if (pos) terrain.markTile(pos.x, pos.y);
+        for (const p of [roadAt.get(key), pos]) if (p) town.touch(p.x, p.y);
+        for (const k of existing?.covers ?? []) town.touch(...(k.split(",").map(Number) as [number, number]));
+        if (entry?.object.kind === "Building") for (const t of (entry.object.data as Building).tiles) town.touch(t.x, t.y);
+        if (entry?.object.kind === "RoadNode" && entry.position) roadAt.set(key, entry.position);
+        else roadAt.delete(key);
+      }
       if (!entry) continue;
       const cleanup = mount(entry);
-      if (cleanup) mounted.set(key, { kind: entry.object.kind, cleanup, covers: entry.object.kind === "Building" ? cover(entry) : undefined });
+      if (cleanup) mounted.set(key, { kind: entry.object.kind, cleanup, covers: same ? existing!.covers : entry.object.kind === "Building" ? cover(entry) : undefined, drawn });
     }
+  }
+
+  /** What the town draws of a building: its plot, its door, the streets
+   *  it joins and its treatment. */
+  function drawnOf(entry: GameObjectEntry): string | undefined {
+    if (entry.object.kind !== "Building") return undefined;
+    const b = entry.object.data as Building;
+    return JSON.stringify([b.kind, b.tiles, b.door, b.joined, lookOf(entry).key]);
   }
 
   setOpsListener(processOps);
