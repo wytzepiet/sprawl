@@ -39,9 +39,9 @@ export const PAVED_Z = 0.02;
 export function drawRoads(town: Town, theme: Theme): Piece[] {
   const { street, through } = asphalt(town);
   return [
-    { name: "street", geo: kerbed(flatPolygons(street, ROAD_Z + PAVED_Z)), colour: theme.road },
+    { name: "street", geo: flatPolygons(street, ROAD_Z + PAVED_Z), colour: theme.road },
     // Over the streets that meet it: a street's end runs on under it.
-    { name: "through", geo: kerbed(flatPolygons(through, ROAD_Z + PAVED_Z + 0.001)), colour: theme.highway },
+    { name: "through", geo: flatPolygons(through, ROAD_Z + PAVED_Z + 0.001), colour: theme.highway },
   ].filter((p) => p.geo.indices.length);
 }
 
@@ -53,33 +53,17 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
  * the dressing would put there, is the caller's: the game draws its own,
  * the sandbox the dressing's.
  */
-export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB): { pieces: Piece[]; dressing: Dressing } {
+export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB, known = facts(town)): { pieces: Piece[]; dressing: Dressing } {
   const pieces: Piece[] = [];
   const add = (name: string, geo: Piece["geo"], c: Color3 | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
-  add("pavement", rimmed(flatPolygons(pavement(town), PAVED_Z)), theme.paved);
-  const known = facts(town);
+  add("pavement", flatPolygons(pavement(town), PAVED_Z), theme.paved);
   const dressing = dress(town, known);
   add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
   add("mass", townMesh(town, colour, undefined, known), null);
   add("yard_lines", flat(dressing.yardLines, 0.025), theme.road);
-  // Trees as the forest draws them: a smooth top over a coarse body.
-  for (const [name, geo] of [["tree_tops", CROWN_TOP], ["tree_bodies", TREE_BODY]] as const) {
-    const out: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
-    for (const t of dressing.trees) {
-      const base = out.positions.length / 3;
-      const w = 0.35 * t.scale;
-      const rgb = theme.crowns[t.shade];
-      for (let i = 0; i < geo.positions.length; i += 3) {
-        out.positions.push(-(t.x + geo.positions[i] * w), -(t.y + geo.positions[i + 1] * w), geo.positions[i + 2] * w);
-        out.normals.push(-geo.normals[i], -geo.normals[i + 1], geo.normals[i + 2]);
-        out.colors.push(rgb.r, rgb.g, rgb.b, 1);
-      }
-      for (const k of geo.indices) out.indices.push(base + k);
-    }
-    add(name, out, null);
-  }
+  for (const p of treePieces(dressing.trees, theme)) add(p.name, p.geo, p.colour);
   // A door in the wall behind every dock, just proud of it.
   const doors: MeshGeometry = { positions: [], normals: [], indices: [] };
   for (const dock of dressing.docks) {
@@ -93,6 +77,25 @@ export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB): { 
   }
   add("doors", doors, DOOR);
   return { pieces, dressing };
+}
+
+/** Trees as the forest draws them: a smooth top over a coarse body. */
+export function treePieces(trees: Dressing["trees"], theme: Theme): Piece[] {
+  return ([["tree_tops", CROWN_TOP], ["tree_bodies", TREE_BODY]] as const).map(([name, geo]) => {
+    const out: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
+    for (const t of trees) {
+      const base = out.positions.length / 3;
+      const w = 0.35 * t.scale;
+      const rgb = theme.crowns[t.shade];
+      for (let i = 0; i < geo.positions.length; i += 3) {
+        out.positions.push(-(t.x + geo.positions[i] * w), -(t.y + geo.positions[i + 1] * w), geo.positions[i + 2] * w);
+        out.normals.push(-geo.normals[i], -geo.normals[i + 1], geo.normals[i + 2]);
+        out.colors.push(rgb.r, rgb.g, rgb.b, 1);
+      }
+      for (const k of geo.indices) out.indices.push(base + k);
+    }
+    return { name, geo: out, colour: null };
+  });
 }
 
 /** Polygons laid flat at a height. */
@@ -118,8 +121,20 @@ export const RIM = 0.03;
  *  covered, as where one tile's road overlaps the next. */
 export function runsOn(g: MeshGeometry) {
   const p = g.positions;
+  // Triangles filed by the rows of a tenth of a tile they cross: a point
+  // asks only those crossing its row, and of those only the ones whose
+  // breadth holds it.
+  const ROW = 0.1;
+  const rows = new Map<number, number[]>();
+  const box: number[] = [];
+  for (let t = 0; t < g.indices.length; t += 3) {
+    const xs = [0, 1, 2].map((k) => p[g.indices[t + k] * 3]), ys = [0, 1, 2].map((k) => p[g.indices[t + k] * 3 + 1]);
+    box.push(Math.min(...xs), Math.max(...xs));
+    for (let r = Math.floor(Math.min(...ys) / ROW); r <= Math.floor(Math.max(...ys) / ROW); r++) (rows.get(r) ?? rows.set(r, []).get(r)!).push(t);
+  }
   const inside = (x: number, y: number) => {
-    for (let t = 0; t < g.indices.length; t += 3) {
+    for (const t of rows.get(Math.floor(y / ROW)) ?? []) {
+      if (x < box[(t / 3) * 2] || x > box[(t / 3) * 2 + 1]) continue;
       const [a, b, c] = [g.indices[t], g.indices[t + 1], g.indices[t + 2]].map((i) => [p[i * 3], p[i * 3 + 1]]);
       const s1 = (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]);
       const s2 = (c[0] - b[0]) * (y - b[1]) - (c[1] - b[1]) * (x - b[0]);
@@ -145,8 +160,6 @@ export const pastSeam = (ways: [number, number, boolean][]) => (a: number[], b: 
     return Math.min(along(a), along(b)) > len / 2 - 0.01;
   });
 
-/** Road, rimmed only where it ends, not where its tiles overlap. */
-const kerbed = (g: MeshGeometry) => rimmed(g, RIM, runsOn(g));
 
 /**
  * A flat sheet with its outline rounded down, as a kerb's top is: a strip

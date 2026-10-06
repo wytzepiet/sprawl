@@ -92,6 +92,7 @@ function hash(c: number, r: number, salt: number) {
 
 export function dress(town: Town, facts: Facts): Dressing {
   const trees: Tree[] = [];
+  const at = (c: number, r: number) => (town.at ? town.at(c, r) : [c, r]);
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
@@ -100,14 +101,15 @@ export function dress(town: Town, facts: Facts): Dressing {
       const [ew, ns] = [town.linked(c, r, c - 1, r) || town.linked(c, r, c + 1, r), town.linked(c, r, c, r - 1) || town.linked(c, r, c, r + 1)];
       const diagonal = [[1, 1], [1, -1], [-1, 1], [-1, -1]].some(([dc, dr]) => town.linked(c, r, c + dc, r + dr));
       if (ew === ns || diagonal) continue;
-      if ((ew ? c : r) % 3 !== 1) continue;
+      const [mc, mr] = at(c, r);
+      if (((((ew ? mc : mr) % 3) + 3) % 3) !== 1) continue;
       for (const side of [-1, 1]) {
         const [x, y] = ew ? [c, r + side] : [c + side, r];
         const t = town.tile(x, y);
         if (t.kind !== "open" && !(isBuilt(t) && formOf(t).family === "street")) continue;
         // Between two plots, where no drive comes out.
         const [tx, ty] = ew ? [c, r + 0.5 + side * 0.55] : [c + 0.5 + side * 0.55, r];
-        trees.push({ x: tx, y: ty, scale: 0.5, shade: Math.floor(3 * hash(c, r, side + 7)) });
+        trees.push({ x: tx, y: ty, scale: 0.5, shade: Math.floor(3 * hash(mc, mr, side + 7)) });
       }
     }
   }
@@ -141,11 +143,13 @@ export function dress(town: Town, facts: Facts): Dressing {
  * house stands in its lawn. A diagonal street is as wide as a straight one.
  */
 export function pavement(town: Town): Polygon[] {
+  // Paving drawn as a stand-in building: every road, paved tile and
+  // building's plot, a house's too, which its lawn and path then cover.
   const PAVING: Tile = { kind: "House", storeys: 1 };
   const paved = townOf(
     Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
       const t = town.tile(c, r);
-      return t.kind === "road" || t.kind === "paved" || (isBuilt(t) && t.kind !== "House") ? PAVING : t;
+      return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
     })),
     () => false,
   );

@@ -18,7 +18,8 @@ import { townMesh as mesh } from "../engine/town/roof";
 import { defaultJoins } from "../engine/town/footprint";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { FERRY } from "../engine/town/dressing";
-import { drawRoads, drawTown, quadsAt } from "../engine/town/draw";
+import { drawRoads, drawTown, quadsAt, runsOn } from "../engine/town/draw";
+import { extentOf, kerbed, kerbField, kerbsOf } from "../engine/kerbs";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -427,6 +428,14 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   const { pieces, dressing } = drawTown(town, theme, colourOf);
   for (const p of [...drawRoads(town, theme), ...pieces]) {
     add(p.name, p.geo, p.colour ?? Color3.White());
+    // A sheet's kerbs rounded from its own kerb texture (`engine/kerbs.ts`):
+    // the paving's every edge, a road's where it does not run on.
+    const material = meshes[meshes.length - 1].material;
+    if (material && p.name === "pavement") kerbed(material, kerbField(scene, kerbsOf(p.geo), extentOf(p.geo)));
+    if (material && (p.name === "street" || p.name === "through")) {
+      const on = runsOn(p.geo);
+      kerbed(material, kerbField(scene, kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo)));
+    }
   }
   const { cars, docks, ships } = dressing;
 

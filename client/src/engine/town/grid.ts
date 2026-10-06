@@ -35,6 +35,10 @@ export interface Town {
    *  that tile is its door; unset, a house's door is on the first side
    *  with a street (`front` in `dressing.ts`). */
   door?(c: number, r: number): [number, number] | undefined;
+  /** Where a tile is on the map, for what is placed by where it is — every
+   *  third street tile's tree, a tree's shade — so it stays put however
+   *  the town is framed; unset, where it is in this town. */
+  at?(c: number, r: number): [number, number];
 }
 
 export const LETTERS: Record<string, BuildingKind> = {
@@ -91,5 +95,21 @@ export function townOf(
       if (!road(c0, r0) || !road(c1, r1) || Math.max(Math.abs(dc), Math.abs(dr)) !== 1) return false;
       return dc === 0 || dr === 0 || (!road(c0 + dc, r0) && !road(c0, r0 + dr));
     },
+  };
+}
+
+/** A town seen through a window from column x0, row y0: its tiles within,
+ *  open ground beyond, and nothing joined or linked across the frame. */
+export function windowOf(town: Town, x0: number, y0: number, w: number, h: number): Town {
+  const inside = (c: number, r: number) => c >= 0 && r >= 0 && c < w && r < h;
+  return {
+    w,
+    h,
+    tile: (c, r) => (inside(c, r) ? town.tile(c + x0, r + y0) : OPEN),
+    linked: (a, b, c, d) => inside(a, b) && inside(c, d) && town.linked(a + x0, b + y0, c + x0, d + y0),
+    through: (c, r) => inside(c, r) && town.through(c + x0, r + y0),
+    joins: town.joins && ((a, b, c, d) => inside(a, b) && inside(c, d) && town.joins!(a + x0, b + y0, c + x0, d + y0)),
+    door: town.door && ((c, r) => (inside(c, r) ? town.door!(c + x0, r + y0) : undefined)),
+    at: (c, r) => (town.at ? town.at(c + x0, r + y0) : [c + x0, r + y0]),
   };
 }

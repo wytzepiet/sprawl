@@ -1,4 +1,4 @@
-import { isBuilt, type Town } from "./grid";
+import { isBuilt, windowOf, type Town } from "./grid";
 import { formOf, type Yard } from "./mass";
 import { defaultJoins, INSET, type Pt } from "./footprint";
 import { CAB, TRAILER } from "../objects/roadGeometry";
@@ -293,3 +293,21 @@ function sheds(town: Town) {
   return { lifted, heads };
 }
 
+
+/** A town's facts seen through a window from column x0, row y0, as
+ *  `windowOf` sees the town: worked out over the whole town, not the
+ *  window, so a building cut by the frame keeps its head and its bay. */
+export function windowFacts(known: Facts, x0: number, y0: number, w: number, h: number): Facts {
+  const inside = (c: number, r: number) => c >= 0 && r >= 0 && c < w && r < h;
+  const near = (pts: number[][]) => pts.some(([x, y]) => x >= x0 - 1 && y >= y0 - 1 && x <= x0 + w + 1 && y <= y0 + h + 1);
+  return {
+    town: windowOf(known.town, x0, y0, w, h),
+    head: (c, r) => inside(c, r) && known.head(c + x0, r + y0),
+    yard: (c, r) => (inside(c, r) ? known.yard(c + x0, r + y0) : undefined),
+    docks: (c, r) => (inside(c, r) ? known.docks(c + x0, r + y0) : []),
+    services: known.services
+      .filter((s) => near(s.cut))
+      .map((s) => ({ cut: s.cut.map(([x, y]): Pt => [x - x0, y - y0]), dock: { ...s.dock, x: s.dock.x - x0, y: s.dock.y - y0 } })),
+    ferries: known.ferries.filter((f) => near([[f.x, f.y]])).map((f) => ({ ...f, x: f.x - x0, y: f.y - y0 })),
+  };
+}
