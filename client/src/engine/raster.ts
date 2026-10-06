@@ -1,11 +1,11 @@
 /**
  * Triangles filled into a grid of `w` by `h` cells, `density` to a unit,
- * from (x0, y0): each cell whose middle a triangle covers set to `value`. A row
+ * from (x0, y0): each cell whose middle a triangle covers set to 1. A row
  * of cells at a time, across the row's middle from where it enters the
  * triangle to where it leaves. No runtime imports: the terrain worker
  * uses it too.
  */
-export function fillTriangles(positions: ArrayLike<number>, indices: ArrayLike<number>, x0: number, y0: number, density: number, w: number, h: number, out: Uint8Array, value = 1): Uint8Array {
+export function fillTriangles(positions: ArrayLike<number>, indices: ArrayLike<number>, x0: number, y0: number, density: number, w: number, h: number, out: Uint8Array): Uint8Array {
   for (let t = 0; t < indices.length; t += 3) {
     const v = [0, 1, 2].map((k) => [positions[indices[t + k] * 3], positions[indices[t + k] * 3 + 1]]);
     const j0 = Math.max(0, Math.ceil((Math.min(v[0][1], v[1][1], v[2][1]) - y0) * density - 0.5));
@@ -21,7 +21,7 @@ export function fillTriangles(positions: ArrayLike<number>, indices: ArrayLike<n
       }
       const i0 = Math.max(0, Math.ceil((lo - x0) * density - 0.5));
       const i1 = Math.min(w - 1, Math.floor((hi - x0) * density - 0.5));
-      if (i0 <= i1) out.fill(value, j * w + i0, j * w + i1 + 1);
+      if (i0 <= i1) out.fill(1, j * w + i0, j * w + i1 + 1);
     }
   }
   return out;

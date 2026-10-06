@@ -28,19 +28,23 @@ export interface MeshBuffers {
   colors?: Float32Array;
 }
 
+/** Which tiles of a chunk hold some of one layer of the land, and each
+ *  one's share of it (`TileShape`'s key). */
+export interface LayerTiles {
+  /** x and y of each, from the chunk's low corner. */
+  at: Float32Array;
+  shapes: string[];
+}
+
 export interface ChunkGeometry {
-  ground: MeshBuffers;
+  /** Each of LAYERS, bottom up. */
+  layers: LayerTiles[];
   /** The sea's and lakes' surface, apart, to be drawn as water. */
   water: MeshBuffers;
   /** How far each point of the chunk lies from land, if it has water: a
    *  byte each, 0 at the shore to 255 at SHORE_REACH or more, SHORE_DENSITY
    *  to a tile, rows up from its low corner. */
   shore: Uint8Array | null;
-  /** Which way and how far the ground's facing turns as it rounds over its
-   *  edge onto lower ground (`bevelField`): two bytes each, about 128, at
-   *  SHORE_DENSITY to a tile, rows up from the chunk's low corner. Null
-   *  where no edge comes near. */
-  bevel: Uint8Array | null;
   cliffs: MeshBuffers;
 }
 
@@ -50,34 +54,9 @@ export const SHORE_REACH = 2;
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  const arrays: (ArrayBufferView | undefined)[] = [g.ground, g.water, g.cliffs].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
-  return [...arrays, g.shore ?? undefined, g.bevel ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
+  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliffs].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
+  return [...arrays, ...g.layers.map((l) => l.at), g.shore ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
-
-/** How shiny each ground is, of the ground's most (`ShinePlugin`): sand
- *  and rock keep a little, as the rest of the toy; grass is matte, its
- *  grain (`ground.ts`) its texture. Water is drawn as water (`water.ts`)
- *  and gleams as it does there. */
-const SHINE: Record<TerrainType, number> = {
-  Sea: 1,
-  Water: 1,
-  Beach: 0.12,
-  Grass: 0,
-  Forest: 0,
-  Mountain: 0.15,
-};
-
-/** Which ground lies on which, for the bevel each rounds over its edge
- *  with (`bevelField`): rock on grass and wood, they on sand, sand on the
- *  water, which is drawn apart and lies under all. */
-const LAYER: Record<TerrainType, number> = {
-  Sea: 0,
-  Water: 0,
-  Beach: 1,
-  Grass: 2,
-  Forest: 2,
-  Mountain: 3,
-};
 
 const ELEVATION: Record<TerrainType, number> = {
   Sea: -0.5,
@@ -87,6 +66,21 @@ const ELEVATION: Record<TerrainType, number> = {
   Forest: 0,
   Mountain: 2.0,
 };
+
+/**
+ * The land in layers, bottom up, each a sheet of tiles lying on the one
+ * below (`ground.ts`), at its height: the sand under all the land, the
+ * grass on it under the wood and the rock, the wood floor, the rock on top.
+ * Each tile of a layer holds its share of the grounds the layer is; where
+ * its edge meets ground lying lower it rounds over onto it, but not where
+ * it meets ground `level` with it, as the wood floor meets the grass.
+ */
+export const LAYERS: { grounds: TerrainType[]; level: TerrainType[]; z: number }[] = [
+  { grounds: ["Beach", "Grass", "Forest", "Mountain"], level: [], z: 0 },
+  { grounds: ["Grass", "Forest", "Mountain"], level: [], z: 0.002 },
+  { grounds: ["Forest"], level: ["Grass", "Mountain"], z: 0.004 },
+  { grounds: ["Mountain"], level: [], z: ELEVATION.Mountain },
+];
 
 // Seeded PRNG (xorshift32)
 function seed(x: number, y: number): number {
@@ -354,51 +348,13 @@ const EDGE_ENDPOINTS: [[number, number], [number, number]][] = [
 // one ridge, cast as panels in and out of line. Up, for all of them.
 const UP4 = [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1];
 
-function buildEdgeCliffGeo(edgeIdx: number, height: number): MeshGeometry {
-  const [[x0, y0], [x1, y1]] = EDGE_ENDPOINTS[edgeIdx];
-  return {
-    positions: [x0, y0, 0, x1, y1, 0, x1, y1, height, x0, y0, height],
-    normals: UP4,
-    indices: [0, 1, 2, 0, 2, 3],
-  };
-}
+/** A wall `height` tall standing on the line from a to b. */
+const wall = (a: number[], b: number[], height: number): MeshGeometry => ({
+  positions: [a[0], a[1], 0, b[0], b[1], 0, b[0], b[1], height, a[0], a[1], height],
+  normals: UP4,
+  indices: [0, 1, 2, 0, 2, 3],
+});
 
-// Vertical quad strip along the bezier curve between two elevation levels.
-// Geometry in local space: Z from 0 to height. Position at lowerZ.
-function buildCliffGeo(
-  defIdx: number,
-  variant: number,
-  height: number,
-): MeshGeometry {
-  const pts = getCornerCurvePoints(defIdx, variant);
-
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const indices: number[] = [];
-
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [x0, y0] = pts[i];
-    const [x1, y1] = pts[i + 1];
-    const base = positions.length / 3;
-    positions.push(x0, y0, 0, x1, y1, 0, x1, y1, height, x0, y0, height);
-    normals.push(...UP4);
-    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-
-  return { positions, indices, normals };
-}
-
-/**
- * Cliff walls are the terrain colour darkened. Reused scratch: `append` reads
- * the floats out immediately and never retains the object.
- */
-const SHADED: RGB = { r: 0, g: 0, b: 0 };
-function shade(c: RGB, f: number): RGB {
-  SHADED.r = c.r * f;
-  SHADED.g = c.g * f;
-  SHADED.b = c.b * f;
-  return SHADED;
-}
 
 const EDGE_DIRS: [number, number][] = [
   [0, -1],
@@ -422,9 +378,6 @@ export class TerrainBuffers {
   indices = new Uint32Array(0);
   /** Absent on geometry the camera never sees. */
   colors: Float32Array<ArrayBuffer> | null;
-  /** Each vertex's ground's LAYER; the worker's alone, never uploaded. */
-  layers = new Uint8Array(0);
-
   vertices = 0;
   indexCount = 0;
 
@@ -455,9 +408,6 @@ export class TerrainBuffers {
       this.positions = grow(this.positions, n * 3);
       this.normals = grow(this.normals, n * 3);
       if (this.colors) this.colors = grow(this.colors, n * 4);
-      const layers = new Uint8Array(n);
-      layers.set(this.layers);
-      this.layers = layers;
     }
     if (this.indexCount + indices > this.indices.length) {
       const next = new Uint32Array(Math.max(2048, (this.indexCount + indices) * 2));
@@ -608,16 +558,7 @@ const baseGeoCache = new Map<string, MeshGeometry>();
  * Copy a unit-space geometry into a chunk buffer, translated to (ox, oy, oz).
  * Colour goes into the vertex buffer so a whole chunk shares one material.
  */
-function append(
-  buf: TerrainBuffers,
-  geo: MeshGeometry,
-  ox: number,
-  oy: number,
-  oz: number,
-  color: RGB,
-  shine = 1,
-  layer = 0,
-): void {
+function append(buf: TerrainBuffers, geo: MeshGeometry, ox: number, oy: number, oz: number, color: RGB): void {
   const p = geo.positions;
   const vertexCount = p.length / 3;
   buf.reserve(vertexCount, geo.indices.length);
@@ -641,10 +582,9 @@ function append(
       colors[c] = color.r;
       colors[c + 1] = color.g;
       colors[c + 2] = color.b;
-      colors[c + 3] = shine;
+      colors[c + 3] = 1;
     }
   }
-  buf.layers.fill(layer, base, base + vertexCount);
   const indices = buf.indices;
   for (let i = 0, n = buf.indexCount; i < geo.indices.length; i++, n++) {
     indices[n] = base + geo.indices[i];
@@ -655,8 +595,10 @@ function append(
 }
 
 class ChunkSink {
-  ground = new TerrainBuffers(true);
+  layers = LAYERS.map(() => ({ at: [] as number[], shapes: [] as string[] }));
   water = new TerrainBuffers(true);
+  /** The land as drawn, for the water to know how far it lies from it. */
+  land = new TerrainBuffers(false);
   /**
    * Cliffs only ever cast shadows. The camera looks straight down, so cliff
    * walls are edge-on and never rasterised — only the shadow pass reads them,
@@ -665,129 +607,283 @@ class ChunkSink {
   cliffs = new TerrainBuffers(false);
 
   reset(): void {
-    this.ground.reset();
+    for (const layer of this.layers) [layer.at.length, layer.shapes.length] = [0, 0];
     this.water.reset();
+    this.land.reset();
     this.cliffs.reset();
   }
 }
 
-/** Where a piece of ground of this type goes: the water's surface apart. */
-const sheet = (sink: ChunkSink, type: TerrainType) => (type === "Sea" || type === "Water" ? sink.water : sink.ground);
+const isWater = (type: TerrainType) => type === "Sea" || type === "Water";
+
+/** A tile's rounded corners, each its ground and its curve's variant. */
+interface Curved {
+  index: number;
+  type: TerrainType;
+  variant: number;
+}
+function curvedCorners(x: number, y: number, sampler: TerrainSampler): (Curved | null)[] {
+  const types = sampler.cornersOf(x, y);
+  const mask = cornerMask(x, y, types, sampler);
+  return types.map((type, index) => {
+    if (!type) return null;
+    let variant = (mask >> (index * 2)) & 3;
+    if (!(variant & 1) && !types[(index + 1) % 4]) variant |= 4;
+    if (!(variant & 2) && !types[(index + 3) % 4]) variant |= 8;
+    return { index, type, variant };
+  });
+}
+
+/** The tile less every rounded corner of it: what its own ground covers. */
+function cutBase(corners: ({ index: number; variant: number } | null)[]): MeshGeometry {
+  const cut = corners.filter((c) => c !== null);
+  if (!cut.length) return FULL_SQUARE;
+  const key = cut.map((c) => `${c.index}v${c.variant}`).join("_");
+  let geo = baseGeoCache.get(key);
+  if (!geo) baseGeoCache.set(key, (geo = buildCutoutBaseGeo(cut)));
+  return geo;
+}
+
+/** The ground along either half of a tile's edge `i`, from its start: a
+ *  corner's where its curve reaches along the edge, else the tile's own.
+ *  A corner's curve meets its first edge (A) at the edge's start corner,
+ *  its second (B) at the end's, halfway along or, extended, all the way. */
+function edgeGround(type: TerrainType, corners: (Curved | null)[], i: number): [TerrainType, TerrainType] {
+  const [start, end] = [corners[i], corners[(i + 1) % 4]];
+  const whole = (c: Curved | null, extended: number, continues: number) => !!c && !!(c.variant & extended) && !(c.variant & continues);
+  return [start?.type ?? (whole(end, 8, 2) ? end!.type : type), end?.type ?? (whole(start, 4, 1) ? start!.type : type)];
+}
+
+/** A ground, to a layer: of it, level with it, or lying lower. */
+export type Lies = "+" | "=" | "-";
 
 /**
- * Append one tile's geometry into a chunk. Coordinates are emitted relative to
- * (originX, originY) so the chunk mesh can sit at its own origin.
+ * A tile's share of one layer of the land: how its own ground lies to the
+ * layer, and each rounded corner's curve and how its ground lies; and,
+ * along each half of each edge (`edgeGround`) where the tile's share
+ * reaches it, how the ground across lies, so the edge there is a seam, an
+ * edge, or an edge rounded over. And, for each edge the share reaches,
+ * the curves of the two corners of the tile across it on that edge where
+ * one is the layer's edge (`Near`), which start on the edge and pull away
+ * from it, so the share rounds over onto the ground beyond them where they
+ * come near, as the tile across does. Its key is what the shape is baked
+ * under, once (`ground.ts`).
  */
-function appendTile(
-  sink: ChunkSink,
-  x: number,
-  y: number,
-  originX: number,
-  originY: number,
-  tt: TerrainType,
-  palette: TerrainPalette,
-  sampler: TerrainSampler,
-): void {
-  const lx = x - originX;
-  const ly = y - originY;
-  const be = ELEVATION[tt];
+export interface TileShape {
+  base: Lies;
+  corners: ({ variant: number; lies: Lies } | null)[];
+  across: Lies[];
+  near: (Near | null)[];
+}
 
-  const tileCorners = sampler.cornersOf(x, y);
-  const mask = cornerMask(x, y, tileCorners, sampler);
+/** A corner's curve of the tile across an edge: its variant, how the
+ *  ground beyond it lies, and whether the corner is the layer's side of it. */
+export interface Near {
+  variant: number;
+  lies: Lies;
+  inside: boolean;
+}
 
-  const corners = tileCorners
-    .map((c, i) => {
-      if (!c) return null;
-      let variant = (mask >> (i * 2)) & 3;
-      if (!(variant & 1) && !tileCorners[(i + 1) % 4]) variant |= 4;
-      if (!(variant & 2) && !tileCorners[(i + 3) % 4]) variant |= 8;
-      const cornerElev = ELEVATION[c];
-      return { index: i, type: c, variant, sameElev: cornerElev === be, cornerElev };
-    })
-    .filter((c): c is NonNullable<typeof c> => c !== null);
+export const shapeKey = (s: TileShape) =>
+  s.base +
+  s.corners.map((c) => (c ? c.variant.toString(16) + c.lies : "..")).join("") +
+  s.across.join("") +
+  s.near.map((c) => (c ? c.variant.toString(16) + c.lies + (c.inside ? "+" : "o") : "...")).join("");
 
-  const diff = corners.filter((c) => !c.sameElev);
+export function parseShape(key: string): TileShape {
+  const corners = [0, 1, 2, 3].map((i) => {
+    const c = key.slice(1 + i * 2, 3 + i * 2);
+    return c === ".." ? null : { variant: parseInt(c[0], 16), lies: c[1] as Lies };
+  });
+  const near = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+    const c = key.slice(17 + i * 3, 20 + i * 3);
+    return c === "..." ? null : { variant: parseInt(c[0], 16), lies: c[1] as Lies, inside: c[2] === "+" };
+  });
+  return { base: key[0] as Lies, corners, across: [...key.slice(9, 17)] as Lies[], near };
+}
 
-  // Base
-  let baseGeo: MeshGeometry;
-  if (diff.length === 0) {
-    baseGeo = FULL_SQUARE;
-  } else {
-    const key = diff.map((c) => `${c.index}v${c.variant}`).join("_");
-    let cached = baseGeoCache.get(key);
-    if (!cached) {
-      cached = buildCutoutBaseGeo(diff);
-      baseGeoCache.set(key, cached);
-    }
-    baseGeo = cached;
+/** A shape's ground, in the tile's own square. */
+export function shapeGeometry(s: TileShape): MeshGeometry {
+  const parts = [
+    ...(s.base === "+" ? [cutBase(s.corners.map((c, index) => c && { index, variant: c.variant }))] : []),
+    ...s.corners.flatMap((c, i) => (c?.lies === "+" ? [CORNER_GEOS[i][c.variant]] : [])),
+  ];
+  const out: MeshGeometry = { positions: [], normals: [], indices: [] };
+  for (const part of parts) {
+    const base = out.positions.length / 3;
+    out.positions.push(...part.positions);
+    out.normals.push(...part.normals);
+    out.indices.push(...part.indices.map((i) => i + base));
   }
-  append(sheet(sink, tt), baseGeo, lx, ly, be, palette[tt], SHINE[tt], LAYER[tt]);
+  return out;
+}
 
-  // Same-elevation corner overlays
-  for (const c of corners) {
-    if (!c.sameElev) continue;
-    append(
-      sheet(sink, c.type),
-      CORNER_GEOS[c.index][c.variant],
-      lx,
-      ly,
-      be + 0.01,
-      palette[c.type],
-      SHINE[c.type],
-      LAYER[c.type],
-    );
-  }
+/** The corners of the tile across edge `i` that lie on it, as `near`
+ *  holds them, two to an edge. */
+const NEAR_CORNERS = (i: number) => [(i + 2) % 4, (i + 3) % 4];
 
-  // Differing-elevation corners: overlay at its own height plus a cliff wall
-  for (const c of diff) {
-    const upperZ = Math.max(be, c.cornerElev);
-    const lowerZ = Math.min(be, c.cornerElev);
-    const higherType = c.cornerElev > be ? c.type : tt;
-
-    append(
-      sheet(sink, c.type),
-      CORNER_GEOS[c.index][c.variant],
-      lx,
-      ly,
-      c.cornerElev,
-      palette[c.type],
-      SHINE[c.type],
-      LAYER[c.type],
-    );
-    append(
-      sink.cliffs,
-      buildCliffGeo(c.index, c.variant, upperZ - lowerZ),
-      lx,
-      ly,
-      lowerZ,
-      shade(palette[higherType], 0.7),
-    );
-  }
-
-  // Cardinal edge cliffs, where no corner already covers that edge — on
-  // either side of it. A neighbour that rounds a corner onto this edge has
-  // drawn the shore itself; a straight wall here would stand buried under
-  // that corner, and still cast its shadow past the real one.
-  const diffSet = new Set(diff.map((c) => c.index));
-  for (let i = 0; i < 4; i++) {
-    if (diffSet.has(i) || diffSet.has((i + 1) % 4)) continue;
+/** The curves near a shape across its edges (`Near`), in its own square,
+ *  each line facing the layer's side of it. */
+export function nearLines(s: TileShape): (OutlineLine & { lies: Lies })[] {
+  return s.near.flatMap((c, n) => {
+    if (!c) return [];
+    const i = Math.floor(n / 2);
+    const corner = NEAR_CORNERS(i)[n % 2];
     const [dx, dy] = EDGE_DIRS[i];
-    const neighbor = sampler.typeAt(x + dx, y + dy);
-    if (neighbor === undefined) continue;
-    const neighborElev = ELEVATION[neighbor];
-    if (neighborElev >= be) continue;
-    const across = sampler.cornersOf(x + dx, y + dy);
-    if (across[(i + 2) % 4] || across[(i + 3) % 4]) continue;
-    append(
-      sink.cliffs,
-      buildEdgeCliffGeo(i, be - neighborElev),
-      lx,
-      ly,
-      neighborElev,
-      shade(palette[tt], 0.7),
-    );
-  }
+    const pts = getCornerCurvePoints(corner, c.variant).map(([px, py]) => [px + dx, py + dy]);
+    const [vx, vy] = [CORNER_DEFS[corner].cv[0] + dx, CORNER_DEFS[corner].cv[1] + dy];
+    return pts.slice(1).map((b, k) => {
+      const a = pts[k];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      const out = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
+      // Towards the corner, if the corner is the layer's side.
+      const towards = (vx - (a[0] + b[0]) / 2) * out[0] + (vy - (a[1] + b[1]) / 2) * out[1] > 0;
+      return { a, b, inward: towards === c.inside ? out : [-out[0], -out[1]], lies: c.lies };
+    });
+  });
+}
 
+/** How the ground beyond a line along a shape's outline lies, the line
+ *  from a to b and `inward` the way into the shape: across the tile's
+ *  edge, if the line is on it, else the corner's or the tile's own that
+ *  the line parts it from. */
+export function beyond(s: TileShape, a: number[], b: number[], inward: number[]): Lies {
+  const near = (v: number, w: number) => Math.abs(v - w) < 1e-4;
+  const edge = [near(a[1], 0) && near(b[1], 0), near(a[0], 1) && near(b[0], 1), near(a[1], 1) && near(b[1], 1), near(a[0], 0) && near(b[0], 0)].indexOf(true);
+  const [mx, my] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  if (edge >= 0) {
+    const [[ax, ay], [bx, by]] = EDGE_ENDPOINTS[edge];
+    return s.across[edge * 2 + ((mx - ax) * (bx - ax) + (my - ay) * (by - ay) < 0.5 ? 0 : 1)];
+  }
+  const [px, py] = [mx - inward[0] * 1e-3, my - inward[1] * 1e-3];
+  for (const [i, c] of s.corners.entries()) {
+    if (!c) continue;
+    const { positions: p, indices } = CORNER_GEOS[i][c.variant];
+    for (let t = 0; t < indices.length; t += 3) {
+      const [u, v, w] = [indices[t] * 3, indices[t + 1] * 3, indices[t + 2] * 3];
+      const side = (q: number, r: number) => (p[r] - p[q]) * (py - p[q + 1]) - (p[r + 1] - p[q + 1]) * (px - p[q]);
+      const [d0, d1, d2] = [side(u, v), side(v, w), side(w, u)];
+      if ((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0)) return c.lies;
+    }
+  }
+  return s.base;
+}
+
+/** A line of a shape's outline: from a to b, the way into the shape, and
+ *  how the ground beyond it lies (`beyond`). Seams are not of it. */
+export interface OutlineLine {
+  a: number[];
+  b: number[];
+  inward: number[];
+  lies: Lies;
+}
+
+/** A shape's outline: the lines only one of its triangles has, but not on
+ *  a seam. Worked out once a shape. */
+const OUTLINES = new Map<string, OutlineLine[]>();
+export function outlineOf(key: string): OutlineLine[] {
+  const known = OUTLINES.get(key);
+  if (known) return known;
+  const shape = parseShape(key);
+  const { positions: p, indices } = shapeGeometry(shape);
+  const spot = (i: number) => `${Math.round(p[i * 3] * 1e4)},${Math.round(p[i * 3 + 1] * 1e4)}`;
+  const line = (i: number, j: number) => (spot(i) < spot(j) ? `${spot(i)}|${spot(j)}` : `${spot(j)}|${spot(i)}`);
+  const count = new Map<string, number>();
+  for (let t = 0; t < indices.length; t += 3) for (let k = 0; k < 3; k++) count.set(line(indices[t + k], indices[t + ((k + 1) % 3)]), (count.get(line(indices[t + k], indices[t + ((k + 1) % 3)])) ?? 0) + 1);
+  const out: OutlineLine[] = [];
+  for (let t = 0; t < indices.length; t += 3) {
+    const v = [0, 1, 2].map((k) => [p[indices[t + k] * 3], p[indices[t + k] * 3 + 1]]);
+    const [cx, cy] = [(v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3];
+    for (let k = 0; k < 3; k++) {
+      if (count.get(line(indices[t + k], indices[t + ((k + 1) % 3)])) !== 1) continue;
+      const [a, b] = [v[k], v[(k + 1) % 3]];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      let inward = [-(b[1] - a[1]) / len, (b[0] - a[0]) / len];
+      if ((cx - a[0]) * inward[0] + (cy - a[1]) * inward[1] < 0) inward = [-inward[0], -inward[1]];
+      const lies = beyond(shape, a, b, inward);
+      if (lies !== "+") out.push({ a, b, inward, lies });
+    }
+  }
+  OUTLINES.set(key, out);
+  return out;
+}
+
+/** A layer's map: each tile in the layer or not, as two kinds of ground
+ *  the corner rules know, the one in it winning where they meet across a
+ *  diagonal, so the layer joins there. */
+const [IN, OUT] = [TYPE_BY_BYTE.indexOf("Beach"), TYPE_BY_BYTE.indexOf("Grass")];
+const isIn = (type: TerrainType | null | undefined) => type === "Beach";
+
+/** Where each layer stands a wall along its edge onto lower ground, down
+ *  to what height: the land into the water, the rock onto the grass. */
+const WALLS: [number, number][] = [
+  [0, ELEVATION.Sea],
+  [LAYERS.length - 1, 0],
+];
+
+/**
+ * One tile's share of each layer of the land, top down, none of a layer
+ * hidden whole under one above it. Each layer is rounded from its own map
+ * alone, as the paving is: in it or not, whatever ground lies beyond; what
+ * lies beyond decides only whether its edge there rounds over.
+ */
+function layTile(sink: ChunkSink, x: number, y: number, lx: number, ly: number, real: TerrainSampler, maps: TerrainSampler[]): void {
+  const at = (dx: number, dy: number) => real.typeAt(x + dx, y + dy);
+  let hidden = false;
+  for (let l = LAYERS.length - 1; l >= 0 && !hidden; l--) {
+    const { grounds, level } = LAYERS[l];
+    const map = maps[l];
+    // How ground out of the layer lies to it.
+    const outside = (type: TerrainType | undefined): Lies => (type && level.includes(type) ? "=" : "-");
+    const curved = curvedCorners(x, y, map);
+    const mine = [0, 1, 2, 3].map((i) => edgeGround(map.typeAt(x, y)!, curved, i));
+    const theirs = EDGE_DIRS.map(([dx, dy], i) => {
+      const type = map.typeAt(x + dx, y + dy);
+      if (!type) return null;
+      const corners = curvedCorners(x + dx, y + dy, map);
+      const [a, b] = edgeGround(type, corners, (i + 2) % 4);
+      // Its corners on the edge whose curves are the layer's edge.
+      const near = NEAR_CORNERS(i).map((k): Near | null => {
+        const c = corners[k];
+        if (!c || isIn(c.type) === isIn(type)) return null;
+        const [ox, oy] = isIn(c.type) ? [0, 0] : CORNER_NEIGHBORS[k][0];
+        return { variant: c.variant, lies: outside(at(dx + ox, dy + oy)), inside: isIn(c.type) };
+      });
+      return { halves: [b, a], near, lies: outside(at(dx, dy)) };
+    });
+    const shape: TileShape = {
+      base: grounds.includes(at(0, 0)!) ? "+" : outside(at(0, 0)),
+      corners: curved.map((c, i) => c && { variant: c.variant, lies: isIn(c.type) ? "+" : outside(at(...CORNER_NEIGHBORS[i][0])) }),
+      // Only where the tile's share reaches the edge: elsewhere it matters not.
+      across: mine.flatMap((halves, i) => halves.map((type, h) => (isIn(type) && theirs[i] ? (isIn(theirs[i]!.halves[h]) ? "+" : theirs[i]!.lies) : "-"))),
+      near: theirs.flatMap((t, i) => (t && mine[i].some(isIn) ? t.near : [null, null])),
+    };
+    if (shape.base !== "+" && !shape.corners.some((c) => c?.lies === "+")) continue;
+    const key = shapeKey(shape);
+    sink.layers[l].at.push(lx, ly);
+    sink.layers[l].shapes.push(key);
+    hidden = shape.base === "+" && shape.corners.every((c) => !c || c.lies === "+");
+    for (const [w, foot] of WALLS) {
+      if (w !== l) continue;
+      for (const { a, b, lies } of outlineOf(key)) if (lies === "-") append(sink.cliffs, wall(a, b, LAYERS[l].z - foot), lx, ly, foot, NO_COLOUR);
+    }
+    // The land as drawn, for the water to know how far it lies from it.
+    if (l === 0) append(sink.land, shapeGeometry(shape), lx, ly, 0, NO_COLOUR);
+  }
+}
+const NO_COLOUR: RGB = { r: 0, g: 0, b: 0 };
+
+/** The water: a square under every tile with water at or beside it, the
+ *  land's own outline drawn over it (`LAYERS`), the sea's a shade deeper. */
+function layWater(sink: ChunkSink, x: number, y: number, lx: number, ly: number, real: TerrainSampler, palette: TerrainPalette): void {
+  let water: TerrainType | null = null;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const type = real.typeAt(x + dx, y + dy);
+      if (type && isWater(type) && water !== "Sea") water = type;
+    }
+  }
+  if (water) append(sink.water, FULL_SQUARE, lx, ly, ELEVATION[water], palette[water]);
 }
 
 /**
@@ -835,95 +931,11 @@ function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: numb
   return out;
 }
 
-/** How far in from its edge ground rounds over it, in tiles. */
-const BEVEL = 0.15;
-/** The bevel's cells to each of its texels, each way: the finer the grid
- *  the ground is filled into, the less its edges step. */
-const FINE = 2;
-
-/**
- * The ground's bevel, as `ChunkGeometry.bevel` holds it. The chunk's ground
- * and a ring of tiles round it are filled into a grid in the order they are
- * drawn, so each cell holds the LAYER of the ground seen there; each texel
- * then finds the nearest cell lying lower, within BEVEL, and turns to face
- * it, the more the nearer. Whatever is drawn is bevelled where it is drawn:
- * cutouts, corners and saddles need no rules of their own.
- */
-function bevelField(chunk: TerrainBuffers, ring: TerrainBuffers): Uint8Array | null {
-  const d = SHORE_DENSITY;
-  const fd = d * FINE;
-  // Laid half a cell over, so every texel's middle is a cell's middle:
-  // texel k is cell fd + FINE * k + FINE / 2.
-  const side = (CHUNK_SIZE + 2) * fd;
-  const seen = new Uint8Array(side * side);
-  for (const buf of [ring, chunk]) {
-    const indices = buf.indices.subarray(0, buf.indexCount);
-    // Runs of one layer at a time, in order: later ground lies on earlier.
-    for (let t = 0; t < indices.length; ) {
-      const layer = buf.layers[indices[t]];
-      let end = t + 3;
-      while (end < indices.length && buf.layers[indices[end]] === layer) end += 3;
-      fillTriangles(buf.positions, indices.subarray(t, end), -1 - 0.5 / fd, -1 - 0.5 / fd, fd, side, side, seen, layer);
-      t = end;
-    }
-  }
-  // In cells, to the line between two cells, not to the lower one's middle.
-  const reach = BEVEL * fd;
-  const r = Math.ceil(reach + 0.5);
-  const inner = CHUNK_SIZE * d;
-  const cell = (k: number) => fd + FINE * k + FINE / 2;
-  const near = new Float32Array(inner * inner).fill(reach);
-  const out = new Float32Array(inner * inner * 2);
-  let any = false;
-  // From each cell with higher ground beside it, out to every higher texel
-  // within reach: the nearest lower cell to any cell has such a neighbour.
-  for (let j = 0; j < side; j++) {
-    for (let i = 0; i < side; i++) {
-      const low = seen[j * side + i];
-      let edge = false;
-      for (let dj = -1; dj <= 1 && !edge; dj++) {
-        for (let di = -1; di <= 1 && !edge; di++) {
-          const [ni, nj] = [i + di, j + dj];
-          edge = ni >= 0 && nj >= 0 && ni < side && nj < side && seen[nj * side + ni] > low;
-        }
-      }
-      if (!edge) continue;
-      const k0 = (c: number) => Math.max(0, Math.ceil((c - r - fd - FINE / 2) / FINE));
-      const k1 = (c: number) => Math.min(inner - 1, Math.floor((c + r - fd - FINE / 2) / FINE));
-      for (let kj = k0(j); kj <= k1(j); kj++) {
-        for (let ki = k0(i); ki <= k1(i); ki++) {
-          const [qi, qj] = [cell(ki), cell(kj)];
-          if (seen[qj * side + qi] <= low) continue;
-          const [ox, oy] = [i - qi, j - qj];
-          const length = Math.hypot(ox, oy);
-          const far = length - 0.5;
-          const k = kj * inner + ki;
-          if (far >= near[k]) continue;
-          near[k] = far;
-          out[k * 2] = ox / length;
-          out[k * 2 + 1] = oy / length;
-          any = true;
-        }
-      }
-    }
-  }
-  if (!any) return null;
-  const bytes = new Uint8Array(inner * inner * 2);
-  for (let k = 0; k < inner * inner; k++) {
-    const turn = 1 - near[k] / reach;
-    bytes[k * 2] = Math.round(127.5 + 127.5 * out[k * 2] * turn);
-    bytes[k * 2 + 1] = Math.round(127.5 + 127.5 * out[k * 2 + 1] * turn);
-  }
-  return bytes;
-}
-
 /** Scratch, reused across builds — see TerrainBuffers. */
 const SINK = new ChunkSink();
-/** The tiles round a chunk, drawn only to be bevelled against. */
-const RING = new ChunkSink();
 
 /**
- * Ground and cliff geometry for one chunk. A pure function of the tiles and
+ * The land's layers, the water and the cliffs of one chunk. A pure function of the tiles and
  * the palette: no scene, no game state, no DOM. This is what the worker runs.
  *
  * `tiles` carries CHUNK_SKIRT tiles of margin on every side, so a chunk meshes
@@ -946,31 +958,30 @@ export function buildChunk(
     originY - CHUNK_SKIRT,
   );
 
+  const maps = LAYERS.map(({ grounds }) =>
+    createSampler(
+      tiles.map((b) => (grounds.includes(TYPE_BY_BYTE[b]) ? IN : OUT)),
+      CHUNK_STRIDE,
+      originX - CHUNK_SKIRT,
+      originY - CHUNK_SKIRT,
+    ),
+  );
+
   let tileCount = 0;
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-      const type = sampler.typeAt(x, y);
-      if (!type) continue;
+      if (!sampler.typeAt(x, y)) continue;
       tileCount++;
-      appendTile(SINK, x, y, originX, originY, type, palette, sampler);
+      layTile(SINK, x, y, x - originX, y - originY, sampler, maps);
+      layWater(SINK, x, y, x - originX, y - originY, sampler, palette);
     }
   }
   if (tileCount === 0) return null;
 
-  RING.reset();
-  for (let y = originY - 1; y <= originY + CHUNK_SIZE; y++) {
-    for (let x = originX - 1; x <= originX + CHUNK_SIZE; x++) {
-      if (x >= originX && y >= originY && x < originX + CHUNK_SIZE && y < originY + CHUNK_SIZE) continue;
-      const type = sampler.typeAt(x, y);
-      if (type) appendTile(RING, x, y, originX, originY, type, palette, sampler);
-    }
-  }
-
   return {
-    ground: SINK.ground.take(),
+    layers: SINK.layers.map((l) => ({ at: Float32Array.from(l.at), shapes: [...l.shapes] })),
     water: SINK.water.take(),
-    shore: SINK.water.vertices ? shoreField(SINK.ground, sampler, originX, originY) : null,
-    bevel: bevelField(SINK.ground, RING.ground),
+    shore: SINK.water.vertices ? shoreField(SINK.land, sampler, originX, originY) : null,
     cliffs: SINK.cliffs.take(),
   };
 }

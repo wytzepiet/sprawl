@@ -20,7 +20,7 @@ import {
   type MeshBuffers,
   type TerrainPalette,
 } from "./objects/terrainGeometry";
-import { groundMaterial } from "./ground";
+import { GroundTiles } from "./ground";
 import { waterMaterial } from "./water";
 import { grove, plant, treeMaterials, uproot, type Grove } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
@@ -40,7 +40,6 @@ const APPLIES_PER_FRAME = 2;
 const DETAIL_MAX_ORTHO = 30;
 
 interface ChunkMeshes {
-  ground: Mesh;
   water: Mesh;
   cliffs: Mesh;
   trees: Grove;
@@ -53,10 +52,11 @@ const floorDiv = (a: number, b: number) => Math.floor(a / b);
 const parseKey = (key: string) => key.split(",").map(Number) as [number, number];
 
 /**
- * Terrain rendered as one merged mesh per chunk rather than per-tile instances.
+ * Terrain: the land's layers as tiles (`GroundTiles`), and per chunk one
+ * merged mesh of its water and one of its cliffs.
  *
- * Ground and cliff geometry is a pure function of the chunk's tiles, so it is
- * built on a worker. Trees are not: they yield to what is built, which is live game
+ * Which shape each tile of the land takes, and the water and cliff geometry,
+ * are a pure function of the chunk's tiles, so they are built on a worker. Trees are not: they yield to what is built, which is live game
  * state, so they stay here and are cheap enough to rebuild on demand.
  */
 export class TerrainChunks {
@@ -78,7 +78,8 @@ export class TerrainChunks {
   });
   private builder = Comlink.wrap<TerrainApi>(this.worker);
 
-  /** The light the ground's and water's materials, one a chunk, are lit with. */
+  private ground: GroundTiles;
+  /** The light the water's materials, one a chunk, are lit with. */
   private ambient = new Color3(1, 1, 1);
   private cliffMat: StandardMaterial;
   private observer: Nullable<Observer<Scene>>;
@@ -100,12 +101,20 @@ export class TerrainChunks {
     this.cliffMat.specularColor = Color3.Black();
     this.cliffMat.disableLighting = true;
 
+    this.ground = new GroundTiles(scene);
+    this.paintGround();
     this.updateMaterials(new Color3(1, 1, 1));
 
     this.observer = scene.onBeforeRenderObservable.add(() => {
       this.updateDetail();
       this.flush();
     });
+  }
+
+  /** Each layer of the land its colour, bottom up (`LAYERS`). */
+  private paintGround(): void {
+    const t = this.theme();
+    this.ground.paint([t.beach, t.land, t.forest, t.mountain].map((c) => new Color3(c.r, c.g, c.b)));
   }
 
   /** The worker has no Babylon, so the theme crosses as plain floats. */
@@ -176,6 +185,7 @@ export class TerrainChunks {
 
   /** Rebuild every chunk — used when the theme changes all terrain colours. */
   markAllDirty(): void {
+    this.paintGround();
     for (const key of this.chunks.keys()) this.invalidate(key);
   }
 
@@ -200,6 +210,7 @@ export class TerrainChunks {
       const { key, geometry } = this.ready.shift()!;
       this.applyGeometry(key, geometry);
     }
+    this.ground.flush();
   }
 
   private async requestBuild(key: string): Promise<void> {
@@ -236,14 +247,11 @@ export class TerrainChunks {
     const meshes =
       this.chunks.get(key) ?? this.createChunk(key, cx * CHUNK_SIZE, cy * CHUNK_SIZE);
 
-    // Each its own material, for its own bevel and its own shore. Colour
-    // lives in the vertex buffer, so terrain type costs nothing there.
-    meshes.ground.material?.dispose();
-    meshes.ground.material = groundMaterial(this.scene, geometry.bevel);
-    meshes.ground.setEnabled(this.applyBuffers(meshes.ground, geometry.ground));
+    this.ground.set(key, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], geometry.layers);
+    // Its own material, for its own shore.
     meshes.water.material?.dispose();
     meshes.water.material = waterMaterial(this.scene, geometry.shore, this.theme().beach);
-    for (const mesh of [meshes.ground, meshes.water]) (mesh.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
+    (meshes.water.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
     meshes.water.setEnabled(this.applyBuffers(meshes.water, geometry.water));
     meshes.hasCliffs = this.applyBuffers(meshes.cliffs, geometry.cliffs);
     this.applyDetail(meshes);
@@ -264,9 +272,6 @@ export class TerrainChunks {
   }
 
   private createChunk(key: string, originX: number, originY: number): ChunkMeshes {
-    const ground = new Mesh(`chunk_${key}_ground`, this.scene);
-    ground.receiveShadows = true;
-
     const water = new Mesh(`chunk_${key}_water`, this.scene);
     water.receiveShadows = true;
 
@@ -275,8 +280,8 @@ export class TerrainChunks {
 
     const trees = grove(this.scene, `chunk_${key}`, this.shadowGenerator);
 
-    const meshes: ChunkMeshes = { ground, water, cliffs, trees, hasCliffs: false, hasTrees: false };
-    for (const mesh of [ground, water, cliffs, trees.bodies, trees.tops]) {
+    const meshes: ChunkMeshes = { water, cliffs, trees, hasCliffs: false, hasTrees: false };
+    for (const mesh of [water, cliffs, trees.bodies, trees.tops]) {
       mesh.isPickable = false;
       mesh.position.x = originX;
       mesh.position.y = originY;
@@ -314,8 +319,7 @@ export class TerrainChunks {
     if (!meshes) return;
     this.shadowGenerator.removeShadowCaster(meshes.cliffs);
     uproot(meshes.trees, this.shadowGenerator);
-    meshes.ground.material?.dispose();
-    meshes.ground.dispose();
+    this.ground.delete(key);
     meshes.water.material?.dispose();
     meshes.water.dispose();
     meshes.cliffs.dispose();
@@ -339,12 +343,11 @@ export class TerrainChunks {
   }
 
   updateMaterials(ambient: Color3): void {
-    // Vertex colours carry terrain colour; these scalars carry the lighting,
-    // and the shader multiplies the two.
+    // Vertex colours carry the water's colour; these scalars carry the
+    // lighting, and the shader multiplies the two.
     this.ambient = ambient;
-    for (const { ground, water } of this.chunks.values()) {
-      for (const mesh of [ground, water]) if (mesh.material) (mesh.material as StandardMaterial).emissiveColor = ambient.scale(0.15);
-    }
+    this.ground.light(ambient);
+    for (const { water } of this.chunks.values()) if (water.material) (water.material as StandardMaterial).emissiveColor = ambient.scale(0.15);
     this.cliffMat.emissiveColor = ambient.scale(0.7);
 
     // Each tree carries its own crown colour, as the ground carries its;
@@ -356,6 +359,7 @@ export class TerrainChunks {
     this.scene.onBeforeRenderObservable.remove(this.observer);
     for (const key of [...this.chunks.keys()]) this.disposeChunk(key);
     this.cliffMat.dispose();
+    this.ground.dispose();
     this.worker.terminate();
     this.tiles.clear();
     this.dirtyGeometry.clear();

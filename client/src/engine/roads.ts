@@ -1,6 +1,7 @@
-import { Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, VertexData, type Material, type Scene, type StandardMaterial } from "@babylonjs/core";
+import { MaterialDefines, MaterialPluginBase, Mesh, VertexData, type Material, type RawTexture, type Scene, type StandardMaterial } from "@babylonjs/core";
+import { Atlas } from "./atlas";
 import { bevelled, giveBevel } from "./bevel";
-import { coverage, kerbDistances, kerbsOf, toHalf } from "./kerbs";
+import { coverage, kerbDistances, kerbsOf } from "./kerbs";
 import { flatPolygons, PAVED_Z, pastSeam, RIM } from "./town/draw";
 import { roadShape } from "./town/dressing";
 import { ROAD_Z } from "./objects/roadGeometry";
@@ -24,87 +25,30 @@ const ORIGIN = -1.25;
 const SPAN = 1.5;
 /** How far a kerb running on into the next tile is carried past its end. */
 const RUN_ON = 0.5;
-/** Slots to a row of the texture; it gains rows as shapes come. */
-const COLS = 16;
-
 type Ways = [number, number, boolean][];
 
-/** Every shape met, each in its slot. */
-class Atlas {
-  private slots = new Map<string, number>();
-  private rows = 0;
-  private data = new Uint16Array(0);
-  private stale = false;
-  texture: RawTexture | null = null;
+/** The key a road shape is baked under. */
+const keyOf = (ways: Ways) => ways.map(([dc, dr, on]) => `${dc}${dr}${on ? "+" : ""}`).sort().join(",");
 
-  constructor(private scene: Scene) {}
-
-  get grid(): [number, number] {
-    return [COLS, this.rows];
-  }
-
-  /** The slot of the shape these arms make, baked if it is new. */
-  slotOf(ways: Ways): number {
-    const key = ways.map(([dc, dr, on]) => `${dc}${dr}${on ? "+" : ""}`).sort().join(",");
-    const known = this.slots.get(key);
-    if (known !== undefined) return known;
-    const slot = this.slots.size;
-    if (slot >= this.rows * COLS) this.grow();
-    this.bake(ways, slot);
-    this.slots.set(key, slot);
-    return slot;
-  }
-
-  /** The texture, with every shape baked so far. */
-  upload(): RawTexture | null {
-    if (!this.stale) return this.texture;
-    this.stale = false;
-    const [w, h] = [COLS * SLOT, this.rows * SLOT];
-    if (this.texture && this.texture.getSize().height === h) this.texture.update(this.data);
-    else {
-      this.texture?.dispose();
-      this.texture = new RawTexture(this.data, w, h, Constants.TEXTUREFORMAT_RG, this.scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
-      this.texture.wrapU = this.texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
-    }
-    return this.texture;
-  }
-
-  private grow() {
-    this.rows = Math.max(4, this.rows * 2);
-    const data = new Uint16Array(COLS * SLOT * this.rows * SLOT * 2);
-    data.set(this.data);
-    this.data = data;
-  }
-
-  private bake(ways: Ways, slot: number) {
-    const flat = flatPolygons(roadShape(ways), 0);
-    const density = SLOT / SPAN;
-    // How far inside the road's outline, and its kerbs.
-    const outline = coverage(flat, kerbDistances(kerbsOf(flat), ORIGIN, ORIGIN, density, SLOT, SLOT), ORIGIN, ORIGIN, density, SLOT, SLOT);
-    // Its kerbs where it ends, not where it runs on into the next tile;
-    // and one running on into it runs on past the road's end, so it rounds
-    // over straight across the seam, as the next tile's own kerb does there,
-    // not round its end.
-    const past = pastSeam(ways);
-    const kerbs = kerbsOf(flat, (a, b) => !past(a, b)).map(({ a, b, inward }) => {
-      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-      const [ux, uy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
-      const on = (p: number[], sign: number) => (past(p, p) ? [p[0] + sign * ux * RUN_ON, p[1] + sign * uy * RUN_ON] : p);
-      return { a: on(a, -1), b: on(b, 1), inward };
-    });
-    const kerbed = kerbDistances(kerbs, ORIGIN, ORIGIN, density, SLOT, SLOT);
-    const [col, row] = [slot % COLS, Math.floor(slot / COLS)];
-    const stride = COLS * SLOT;
-    for (let j = 0; j < SLOT; j++) {
-      for (let i = 0; i < SLOT; i++) {
-        const k = j * SLOT + i;
-        const at = ((row * SLOT + j) * stride + col * SLOT + i) * 2;
-        this.data[at] = toHalf(outline[k]);
-        this.data[at + 1] = toHalf(kerbed[k]);
-      }
-    }
-    this.stale = true;
-  }
+/** A road shape's two channels: how far inside its outline, and its kerbs. */
+function bake(ways: Ways): [Float32Array, Float32Array] {
+  const flat = flatPolygons(roadShape(ways), 0);
+  const density = SLOT / SPAN;
+  // How far inside the road's outline, and its kerbs.
+  const outline = coverage(flat, kerbDistances(kerbsOf(flat), ORIGIN, ORIGIN, density, SLOT, SLOT), ORIGIN, ORIGIN, density, SLOT, SLOT);
+  // Its kerbs where it ends, not where it runs on into the next tile;
+  // and one running on into it runs on past the road's end, so it rounds
+  // over straight across the seam, as the next tile's own kerb does there,
+  // not round its end.
+  const past = pastSeam(ways);
+  const kerbs = kerbsOf(flat, (a, b) => !past(a, b)).map(({ a, b, inward }) => {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const [ux, uy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+    const on = (p: number[], sign: number) => (past(p, p) ? [p[0] + sign * ux * RUN_ON, p[1] + sign * uy * RUN_ON] : p);
+    return { a: on(a, -1), b: on(b, 1), inward };
+  });
+  const kerbed = kerbDistances(kerbs, ORIGIN, ORIGIN, density, SLOT, SLOT);
+  return [outline, kerbed];
 }
 
 class RoadDefines extends MaterialDefines {
@@ -123,7 +67,7 @@ const GLSL = {
   fragment: {
     CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vRoad; varying float vRoadSlot; uniform sampler2D roadAtlas;`,
     CUSTOM_FRAGMENT_MAIN_BEGIN: `float roadSlotN = floor(vRoadSlot + 0.5);
-vec2 roadUv = (vec2(mod(roadSlotN, ${n(COLS)}), floor(roadSlotN / ${n(COLS)})) + (vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / roadGrid;
+vec2 roadUv = (vec2(mod(roadSlotN, roadGrid.x), floor(roadSlotN / roadGrid.x)) + (vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / roadGrid;
 vec2 roadTexel = 1. / (roadGrid * ${n(SLOT)});
 vec2 roadD = texture2D(roadAtlas, roadUv).rg;
 if (roadD.r < 0.) discard;`,
@@ -143,7 +87,7 @@ const WGSL = {
   fragment: {
     CUSTOM_FRAGMENT_DEFINITIONS: `varying vRoad: vec2f; varying vRoadSlot: f32; var roadAtlasSampler: sampler; var roadAtlas: texture_2d<f32>;`,
     CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadSlotN = floor(fragmentInputs.vRoadSlot + 0.5);
-let roadUv = (vec2f(roadSlotN - ${n(COLS)} * floor(roadSlotN / ${n(COLS)}), floor(roadSlotN / ${n(COLS)})) + (fragmentInputs.vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / uniforms.roadGrid;
+let roadUv = (vec2f(roadSlotN - uniforms.roadGrid.x * floor(roadSlotN / uniforms.roadGrid.x), floor(roadSlotN / uniforms.roadGrid.x)) + (fragmentInputs.vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / uniforms.roadGrid;
 let roadTexel = 1. / (uniforms.roadGrid * ${n(SLOT)});
 let roadD = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv, 0.).rg;
 if (roadD.r < 0.) { discard; }`,
@@ -227,7 +171,7 @@ export class RoadTiles {
     private scene: Scene,
     private material: (through: boolean) => StandardMaterial,
   ) {
-    this.atlas = new Atlas(scene);
+    this.atlas = new Atlas(scene, SLOT);
     this.kinds = [false, true].map((through): Kind => {
       const mesh = new Mesh(`roads_${through ? "through" : "street"}`, scene);
       // The square over the slot's span, at the road's height: through
@@ -265,7 +209,7 @@ export class RoadTiles {
       [kind.matrices, kind.slots] = [m, s];
     }
     kind.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x + 1, y + 1, 0, 1], index * 16);
-    kind.slots[index] = this.atlas.slotOf(ways);
+    kind.slots[index] = this.atlas.slotOf(keyOf(ways), () => bake(ways));
     kind.keys.push(key);
     kind.dirty = true;
     this.at.set(key, { through, index });
@@ -315,7 +259,7 @@ export class RoadTiles {
 
   dispose() {
     for (const kind of this.kinds) kind.mesh.dispose();
-    this.atlas.texture?.dispose();
+    this.atlas.dispose();
     this.at.clear();
   }
 }

@@ -20,7 +20,7 @@ import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type T
 import { FERRY } from "../engine/town/dressing";
 import { carShape, ROUNDING } from "../engine/objects/carShape";
 import { waterMaterial } from "../engine/water";
-import { groundMaterial } from "../engine/ground";
+import { GroundTiles } from "../engine/ground";
 import { drawRoads, drawTown, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
 import { grove, plant } from "../engine/trees";
 import { extentOf, kerbed, kerbField, kerbsOf, stripLines } from "../engine/kerbs";
@@ -340,11 +340,19 @@ function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: 
 
 /** Everything a town is drawn with: the ground, water and woods, the
  *  roads, and the buildings. */
+/** The land's tiles, drawn anew with each town. */
+let ground: GroundTiles | null = null;
+
 /**
  * The ground as the game draws it, from the fixture's letters: chunk by
  * chunk, each with its skirt, through the builder the terrain worker runs.
  */
 function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
+  ground?.dispose();
+  ground = new GroundTiles(scene);
+  // The map runs +x to the screen's left and +y up: turned about.
+  for (const mesh of ground.meshes) mesh.scaling.set(-1, -1, 1);
+  ground.paint([theme.beach, theme.land, theme.forest, theme.mountain].map((c) => new Color3(c.r, c.g, c.b)));
   const type = (c: number, r: number): TerrainType => {
     const ch = rows[r]?.[c];
     if (ch === "^") return "Mountain";
@@ -366,7 +374,8 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
       }
       const geo = buildChunk(tiles, cx, cy, palette);
       if (!geo) continue;
-      for (const [name, g] of [["ground", geo.ground], ["water", geo.water], ["cliffs", geo.cliffs]] as const) {
+      ground.set(`${cx},${cy}`, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], geo.layers);
+      for (const [name, g] of [["water", geo.water], ["cliffs", geo.cliffs]] as const) {
         if (!g.indices.length) continue;
         const mesh = new Mesh(`terrain_${name}`, scene);
         const vd = new VertexData();
@@ -375,12 +384,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
         // The map runs +x to the screen's left and +y up: turned about.
         mesh.scaling.set(-1, -1, 1);
         mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
-        const mat =
-          name === "water"
-            ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b))
-            : name === "ground"
-              ? groundMaterial(scene, geo.bevel)
-              : new StandardMaterial(`terrain_${name}_mat`, scene);
+        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : new StandardMaterial(`terrain_${name}_mat`, scene);
         if (name === "cliffs") {
           mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
           mat.specularColor = Color3.Black();
@@ -392,6 +396,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
       }
     }
   }
+  ground.flush();
   return out;
 }
 

@@ -26,7 +26,7 @@ const DENSITY = 32;
 /** The longest side a kerb texture may have, in texels. */
 const MOST = 2048;
 /** Beyond reach of every kerb. */
-const FAR = 1;
+export const FAR = 1;
 
 export interface KerbField {
   texture: RawTexture;
@@ -104,11 +104,10 @@ export function kerbData(kerbs: Kerb[], extent: Extent) {
  * Signed distances to kerbs over a grid of `w` by `h` texels, `density`
  * to a tile, from (x0, y0): at each texel within reach of a kerb, the
  * distance to the nearest, inside or out read off that kerb; beyond reach
- * of all, FAR. Each kerb visits only the band of texels within reach of
- * it, a row's stretch at a time.
+ * of all (the town's rim, unless said), FAR. Each kerb visits only the
+ * band of texels within reach of it, a row's stretch at a time.
  */
-export function kerbDistances(kerbs: Kerb[], x0: number, y0: number, density: number, w: number, h: number): Float32Array {
-  const reach = RIM + 2 / density;
+export function kerbDistances(kerbs: Kerb[], x0: number, y0: number, density: number, w: number, h: number, reach = RIM + 2 / density): Float32Array {
   const [x1, y1] = [x0 + w / density, y0 + h / density];
   const data = new Float32Array(w * h).fill(FAR);
   const best = new Float32Array(w * h).fill(Infinity);
