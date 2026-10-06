@@ -158,11 +158,15 @@ fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f
         }
         let edge = (trip.route[k - 1], trip.route[k]);
         if world.edges.get(&edge).is_some_and(|seg| !seg.cars.contains(&car_id)) {
+            // Only a car out of a lot joins partway along; from a junction,
+            // everyone on the run is ahead. It joins at the street node,
+            // wherever along its way out it is: the way from a door is a
+            // tile long, and measured along it the car would queue behind
+            // one standing at the node, waiting for it.
+            let out_of_lot = trip.from_lot > 0 && trip.route_index <= trip.from_lot + 1;
+            let at = if out_of_lot { at.max(trip.segment_lengths[1..=trip.from_lot].iter().sum()) } else { at };
             let mine = at - trip.segment_lengths[1..k].iter().sum::<f64>();
             let behind = |o: EntityId| position_on(world, o, edge, now).is_some_and(|p| p < mine);
-            // Only a car out of a lot joins partway along; from a junction,
-            // everyone on the run is ahead.
-            let out_of_lot = trip.from_lot > 0 && trip.route_index <= trip.from_lot + 1;
             let cars = &world.edges[&edge].cars;
             let i = match cars.back() {
                 Some(&last) if out_of_lot && behind(last) => cars.iter().position(|&o| behind(o)).unwrap(),
@@ -227,7 +231,7 @@ fn pulling_out_at(world: &World, car_id: EntityId, street: EntityId) -> bool {
 /// queue beside a drive keeps it shut; one waiting to pull out of a lot of
 /// its own is not on the street yet.
 fn gap_at(world: &World, car_id: EntityId, street: EntityId, now: GameTime) -> bool {
-    if world.pulling_out.get(&street).is_some_and(|&o| o != car_id && pulling_out_at(world, o, street)) {
+    if world.pulling_out.get(&street).is_some_and(|&(o, _)| o != car_id && pulling_out_at(world, o, street)) {
         return false;
     }
     on_street(world, street).into_iter().all(|o| {
@@ -490,9 +494,22 @@ pub fn handle_car_wake_up(
     // for it until its tail is clear.
     let street = trip.route[trip.from_lot];
     let line: f64 = trip.segment_lengths[1..trip.from_lot.max(1)].iter().sum();
-    let mut waiting = trip.from_lot > 0 && ri <= trip.from_lot && world.pulling_out.get(&street) != Some(&car_id);
+    // A hold kept standing still is let go after a while, as a claim on a
+    // junction is: whatever it waits for may be waiting for it.
+    if let Some(&(o, since)) = world.pulling_out.get(&street)
+        && o == car_id
+    {
+        if cur_speed > 0.01 {
+            world.pulling_out.insert(street, (car_id, now));
+        } else if now >= since + crate::intersection::PATIENCE {
+            world.pulling_out.remove(&street);
+            intersections.lapses += 1;
+            wake_round(world, events, street, car_id);
+        }
+    }
+    let mut waiting = trip.from_lot > 0 && ri <= trip.from_lot && world.pulling_out.get(&street).is_none_or(|&(o, _)| o != car_id);
     if waiting && line - cur_progress <= physics::braking_distance(cur_speed, 0.0) + 0.05 && gap_at(world, car_id, street, now) {
-        world.pulling_out.insert(street, car_id);
+        world.pulling_out.insert(street, (car_id, now));
         waiting = false;
         // Whoever is coming sees it now, not at their next look ahead.
         wake_round(world, events, street, car_id);
@@ -510,7 +527,7 @@ pub fn handle_car_wake_up(
             for woken_id in intersections.clear_car(trip.route[k], car_id, now) {
                 events.wake(0, woken_id);
             }
-            if world.pulling_out.get(&trip.route[k]) == Some(&car_id) {
+            if world.pulling_out.get(&trip.route[k]).is_some_and(|&(c, _)| c == car_id) {
                 world.pulling_out.remove(&trip.route[k]);
                 wake_round(world, events, trip.route[k], car_id);
             }
@@ -643,7 +660,7 @@ pub fn handle_car_wake_up(
             distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0),
         });
     }
-    if world.pulling_out.get(&trip.route[ri]).is_some_and(|&o| o != car_id && pulling_out_at(world, o, trip.route[ri])) {
+    if world.pulling_out.get(&trip.route[ri]).is_some_and(|&(o, _)| o != car_id && pulling_out_at(world, o, trip.route[ri])) {
         obstacles.push(Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) });
         pull_out_ahead = true;
     }
@@ -665,7 +682,7 @@ pub fn handle_car_wake_up(
             break;
         }
 
-        if !pull_out_ahead && world.pulling_out.get(&node).is_some_and(|&o| o != car_id && pulling_out_at(world, o, node)) {
+        if !pull_out_ahead && world.pulling_out.get(&node).is_some_and(|&(o, _)| o != car_id && pulling_out_at(world, o, node)) {
             obstacles.push(Obstacle::MustStop { distance: (entry_k - INTERSECTION_STOP_MARGIN).max(0.0) });
             pull_out_ahead = true;
         }

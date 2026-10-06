@@ -50,9 +50,10 @@ pub struct World {
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
     /// The car pulling out of a lot onto each street node, from the moment
-    /// it found a gap until its tail is clear of the node: the street
-    /// waits for it (`car::simulation`, `gap_at`).
-    pub pulling_out: HashMap<EntityId, EntityId>,
+    /// it found a gap until its tail is clear of the node, and when it was
+    /// last seen moving: the street waits for it (`car::simulation`,
+    /// `gap_at`), unless it stands still too long.
+    pub pulling_out: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
     pub terrain_seed: u32,
     /// Every building's books: what came in, what went out, what its taps
     /// served, today and yesterday. Learned, not saved — a loaded world
@@ -268,7 +269,7 @@ impl World {
                 }
             }
             let street = trip.route[trip.from_lot];
-            if self.pulling_out.get(&street) == Some(&car_id) {
+            if self.pulling_out.get(&street).is_some_and(|&(c, _)| c == car_id) {
                 self.pulling_out.remove(&street);
             }
         }
