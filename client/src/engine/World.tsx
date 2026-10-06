@@ -68,7 +68,7 @@ export default function World() {
     const keys = b.tiles.map((t) => {
       const key = `${t.x},${t.y}`;
       builtTiles.set(key, entry.id);
-      terrain.markBuilt(t.x, t.y);
+      terrain.markTile(t.x, t.y);
       return key;
     });
     return keys;
@@ -78,7 +78,7 @@ export default function World() {
     for (const key of keys ?? []) {
       builtTiles.delete(key);
       const [x, y] = key.split(",").map(Number);
-      terrain.markBuilt(x, y);
+      terrain.markTile(x, y);
     }
   }
 

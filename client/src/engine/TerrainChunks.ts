@@ -161,26 +161,10 @@ export class TerrainChunks {
     this.disposeChunk(key);
   }
 
-  /** Something built appearing or vanishing changes tree placement there. */
+  /** Something built appearing or vanishing, a road or a building, moves
+   *  the trees there, and nothing else of the land. */
   markTile(x: number, y: number): void {
     this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
-  }
-
-  /**
-   * A building appearing or vanishing changes the tint and the boundary lines,
-   * which live in the meshed geometry — so this needs a full rebuild, not the
-   * cheap tree pass. The skirt means a tile near an edge shows up in its
-   * neighbour's mesh too.
-   */
-  markBuilt(x: number, y: number): void {
-    const cx = floorDiv(x, CHUNK_SIZE);
-    const cy = floorDiv(y, CHUNK_SIZE);
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const key = `${cx + dx},${cy + dy}`;
-        if (this.tiles.has(key)) this.invalidate(key);
-      }
-    }
   }
 
   /** Rebuild every chunk — used when the theme changes all terrain colours. */
