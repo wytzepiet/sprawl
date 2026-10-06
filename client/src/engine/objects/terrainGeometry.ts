@@ -1,3 +1,4 @@
+import { PEAK, peakCrest, peakShape } from "./peakShape";
 import type { TerrainType } from "../../generated";
 import type { MeshGeometry } from "../Mesh";
 import { fillTriangles } from "../raster";
@@ -26,6 +27,9 @@ export interface MeshBuffers {
   indices: Uint32Array;
   /** Absent on geometry the camera never sees. */
   colors?: Float32Array;
+  /** The mountains' only: how far up its climb each point is, and which
+   *  way that rises (`layPeaks`). */
+  climb?: Float32Array;
 }
 
 /** Which tiles of a chunk hold some of one layer of the land, and each
@@ -46,6 +50,8 @@ export interface ChunkGeometry {
    *  to a tile, rows up from its low corner. */
   shore: Uint8Array | null;
   cliffs: MeshBuffers;
+  /** The mountains' peaks (`layPeaks`). */
+  peaks: MeshBuffers;
 }
 
 /** The shore field's texels to a tile, and how far from land it reaches. */
@@ -54,7 +60,7 @@ export const SHORE_REACH = 2;
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliffs].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
+  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliffs, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors, m.climb]);
   return [...arrays, ...g.layers.map((l) => l.at), g.shore ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
@@ -64,22 +70,23 @@ const ELEVATION: Record<TerrainType, number> = {
   Beach: 0,
   Grass: 0,
   Forest: 0,
-  Mountain: 2.0,
+  // Its rock rises out of the ground (`layPeaks`).
+  Mountain: 0,
 };
 
 /**
  * The land in layers, bottom up, each a sheet of tiles lying on the one
  * below (`ground.ts`), at its height: the sand under all the land, the
- * grass on it under the wood and the rock, the wood floor, the rock on top.
+ * grass on it, up to the mountains, which stand on the ground under it
+ * (`layPeaks`), and the wood floor.
  * Each tile of a layer holds its share of the grounds the layer is; where
  * its edge meets ground lying lower it rounds over onto it, but not where
  * it meets ground `level` with it, as the wood floor meets the grass.
  */
 export const LAYERS: { grounds: TerrainType[]; level: TerrainType[]; z: number }[] = [
   { grounds: ["Beach", "Grass", "Forest", "Mountain"], level: [], z: 0 },
-  { grounds: ["Grass", "Forest", "Mountain"], level: [], z: 0.002 },
+  { grounds: ["Grass", "Forest"], level: [], z: 0.002 },
   { grounds: ["Forest"], level: ["Grass", "Mountain"], z: 0.004 },
-  { grounds: ["Mountain"], level: [], z: ELEVATION.Mountain },
 ];
 
 // Seeded PRNG (xorshift32)
@@ -818,11 +825,8 @@ const isIn = (type: TerrainType | null | undefined) => type === "Beach";
 const AROUND = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const;
 
 /** Where each layer stands a wall along its edge onto lower ground, down
- *  to what height: the land into the water, the rock onto the grass. */
-const WALLS: [number, number][] = [
-  [0, ELEVATION.Sea],
-  [LAYERS.length - 1, 0],
-];
+ *  to what height: the land into the water. */
+const WALLS: [number, number][] = [[0, ELEVATION.Sea]];
 
 /**
  * One tile's share of each layer of the land, top down, none of a layer
@@ -949,6 +953,133 @@ function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: numb
   return out;
 }
 
+/**
+ * The mountains, a ground of their own: a surface on the ground at the
+ * rock's edge, under the grass there, which stops at it as at the sand,
+ * its fray showing the rock's foot; climbing the further in it is, over
+ * `SPINE`, to `PEAK` over the ground at a wide range's spine, its shape
+ * there `peakShape`. How far into its range a point is comes with the
+ * tiles, read off the whole map (`TerrainChunk::depths`), so chunks meet
+ * and a wide range rises higher than a narrow one. The surface is coarse, `PEAK_STEPS` points to a
+ * tile's side, for its height and its shadow: each point carries how far
+ * up its climb it is and which way that rises, and its pixels are lit by
+ * the shape itself (`peaks.ts`). Unlike the rest of a chunk, laid where it
+ * is on the map, not from the chunk's corner, for the shader to read.
+ */
+/** Over the sand, under the grass (`LAYERS`); and how far out under the
+ *  grass beside it the rock's foot reaches, of a tile, the sand having the
+ *  rest, so the grass's fray shows whichever is nearer. */
+const FOOT_Z = 0.001;
+const FOOT = 0.5;
+/** How far into a range, in tiles, its climb has come most of the way:
+ *  past it a range goes on rising, slowly, to its spine. */
+const SPINE = 2.5;
+const PEAK_STEPS = 3;
+
+function layPeaks(sampler: TerrainSampler, depths: Uint8Array, originX: number, originY: number): MeshBuffers {
+  const rock = (x: number, y: number) => sampler.typeAt(x, y) === "Mountain";
+  // How far into its range a point is, in tiles: the depths of the four
+  // by four tiles round it, at their middles, blended by a smooth curve
+  // (a cubic B-spline), so the edge rounds past the tiles, from the edge.
+  const depthOf = (tx: number, ty: number) => depths[(ty - originY + CHUNK_SKIRT) * CHUNK_STRIDE + (tx - originX + CHUNK_SKIRT)] / 16;
+  const spline = (t: number) => [(1 - t) ** 3 / 6, (3 * t ** 3 - 6 * t ** 2 + 4) / 6, (-3 * t ** 3 + 3 * t ** 2 + 3 * t + 1) / 6, t ** 3 / 6];
+  const depth = (px: number, py: number) => {
+    const [u, v] = [px - 0.5, py - 0.5];
+    const [tx, ty] = [Math.floor(u), Math.floor(v)];
+    const [wx, wy] = [spline(u - tx), spline(v - ty)];
+    let d = 0;
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) d += wx[i] * wy[j] * depthOf(tx - 1 + i, ty - 1 + j);
+    return Math.max(0, d - 0.5);
+  };
+  // How far up its climb a point is: steep out of the ground, easing
+  // towards a range's spine.
+  const climb = (px: number, py: number) => 1 - Math.exp(-depth(px, py) / SPINE);
+  const height = (px: number, py: number) => PEAK * climb(px, py) * peakShape(px, py);
+  const positions: number[] = [], normals: number[] = [], climbs: number[] = [], indices: number[] = [];
+  const at = new Map<number, number>();
+  const step = 1 / PEAK_STEPS;
+  const side = CHUNK_SIZE * PEAK_STEPS + 1;
+  // A point of the surface, made once: by its key, a grid point's or a
+  // crossing's on a grid edge.
+  const point = (key: number, px: number, py: number) => {
+    let v = at.get(key);
+    if (v !== undefined) return v;
+    const e = step / 2;
+    const [hx, hy] = [(height(px + e, py) - height(px - e, py)) / (2 * e), (height(px, py + e) - height(px, py - e)) / (2 * e)];
+    const len = Math.hypot(hx, hy, 1);
+    positions.push(px, py, FOOT_Z + height(px, py));
+    normals.push(-hx / len, -hy / len, 1 / len);
+    climbs.push(climb(px, py), (climb(px + e, py) - climb(px - e, py)) / (2 * e), (climb(px, py + e) - climb(px, py - e)) / (2 * e));
+    v = positions.length / 3 - 1;
+    at.set(key, v);
+    return v;
+  };
+  const vertex = (i: number, j: number) => point(j * side + i, originX + i * step, originY + j * step);
+  // Where a ridge's crest crosses the grid edge from one grid point to the
+  // next (its key past the grid points'), if it does.
+  const crossing = (i0: number, j0: number, i1: number, j1: number, c0: number, c1: number) => {
+    const t = c0 / (c0 - c1);
+    const key = side * side + 2 * (Math.min(j0, j1) * side + Math.min(i0, i1)) + (j0 === j1 ? 0 : 1);
+    return point(key, originX + (i0 + (i1 - i0) * t) * step, originY + (j0 + (j1 - j0) * t) * step);
+  };
+  // A grid cell, split along a ridge's crest where it crosses it once, so
+  // the surface has an edge there and the crest's shadow runs straight;
+  // else in two triangles. Its corners and crossings go round it in order,
+  // and each side of the crest is a fan.
+  const cell = (i: number, j: number) => {
+    const corners: [number, number][] = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]];
+    const crest = corners.map(([ci, cj]) => peakCrest(originX + ci * step, originY + cj * step));
+    const ring: { v: number; cut: boolean }[] = [];
+    for (let k = 0; k < 4; k++) {
+      const n = (k + 1) % 4;
+      ring.push({ v: vertex(...corners[k]), cut: false });
+      if ((crest[k] < 0) !== (crest[n] < 0)) ring.push({ v: crossing(...corners[k], ...corners[n], crest[k], crest[n]), cut: true });
+    }
+    const cuts = ring.flatMap((r, k) => (r.cut ? [k] : []));
+    const fan = (vs: number[]) => {
+      for (let k = 1; k + 1 < vs.length; k++) indices.push(vs[0], vs[k + 1], vs[k]);
+    };
+    if (cuts.length !== 2) return fan(ring.filter((r) => !r.cut).map((r) => r.v));
+    const [a, b] = cuts;
+    fan(ring.slice(a, b + 1).map((r) => r.v));
+    fan([...ring.slice(b), ...ring.slice(0, a + 1)].map((r) => r.v));
+  };
+  for (let y = originY; y < originY + CHUNK_SIZE; y++) {
+    for (let x = originX; x < originX + CHUNK_SIZE; x++) {
+      if (!rock(x, y)) continue;
+      const [i0, j0] = [(x - originX) * PEAK_STEPS, (y - originY) * PEAK_STEPS];
+      for (let j = j0; j < j0 + PEAK_STEPS; j++) {
+        for (let i = i0; i < i0 + PEAK_STEPS; i++) {
+          cell(i, j);
+        }
+      }
+    }
+  }
+  // Its foot under the grass beside it: half a tile out along a side of
+  // rock, a quarter-tile triangle into a corner it only touches across.
+  const flat = (...corners: [number, number][]) => {
+    const base = positions.length / 3;
+    for (const [cx, cy] of corners) positions.push(cx, cy, FOOT_Z), normals.push(0, 0, 1), climbs.push(0, 0, 0);
+    for (let k = 1; k + 1 < corners.length; k++) indices.push(base, base + k, base + k + 1);
+  };
+  for (let y = originY; y < originY + CHUNK_SIZE; y++) {
+    for (let x = originX; x < originX + CHUNK_SIZE; x++) {
+      const t = sampler.typeAt(x, y);
+      if (t !== "Grass" && t !== "Forest") continue;
+      if (rock(x - 1, y)) flat([x, y], [x + FOOT, y], [x + FOOT, y + 1], [x, y + 1]);
+      if (rock(x + 1, y)) flat([x + 1 - FOOT, y], [x + 1, y], [x + 1, y + 1], [x + 1 - FOOT, y + 1]);
+      if (rock(x, y - 1)) flat([x, y], [x + 1, y], [x + 1, y + FOOT], [x, y + FOOT]);
+      if (rock(x, y + 1)) flat([x, y + 1 - FOOT], [x + 1, y + 1 - FOOT], [x + 1, y + 1], [x, y + 1]);
+      for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        if (!rock(x + dx, y + dy) || rock(x + dx, y) || rock(x, y + dy)) continue;
+        const [cx, cy] = [x + (dx > 0 ? 1 : 0), y + (dy > 0 ? 1 : 0)];
+        flat([cx, cy], [cx - dx * FOOT, cy], [cx, cy - dy * FOOT]);
+      }
+    }
+  }
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint32Array(indices), climb: new Float32Array(climbs) };
+}
+
 /** Scratch, reused across builds — see TerrainBuffers. */
 const SINK = new ChunkSink();
 
@@ -962,6 +1093,7 @@ const SINK = new ChunkSink();
  */
 export function buildChunk(
   tiles: Uint8Array,
+  depths: Uint8Array,
   chunkX: number,
   chunkY: number,
   palette: TerrainPalette,
@@ -1001,6 +1133,7 @@ export function buildChunk(
     water: SINK.water.take(),
     shore: SINK.water.vertices ? shoreField(SINK.land, sampler, originX, originY) : null,
     cliffs: SINK.cliffs.take(),
+    peaks: layPeaks(sampler, depths, originX, originY),
   };
 }
 

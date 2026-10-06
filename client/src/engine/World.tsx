@@ -158,7 +158,7 @@ export default function World() {
   setOpsListener(processOps);
   setTerrainListener({
     setChunk: (chunk) => {
-      terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles);
+      terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles, chunk.depths);
       fog.setChunk(chunk.coord.cx, chunk.coord.cy);
     },
     unloadChunk: (coord) => {

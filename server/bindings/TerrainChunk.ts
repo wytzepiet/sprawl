@@ -11,4 +11,11 @@ export type TerrainChunk = { coord: ChunkCoord,
 /**
  * CHUNK_STRIDE^2 bytes, row-major from the chunk origin minus the skirt.
  */
-tiles: Uint8Array, };
+tiles: Uint8Array, 
+/**
+ * How far into its range each of those tiles is, from its middle to
+ * the nearest tile that is not mountain, in sixteenths of a tile, up
+ * to MOUNTAIN_REACH: nought off the mountains. Read over the whole
+ * map, so a range rises to its spine however wide it is.
+ */
+depths: Uint8Array, };

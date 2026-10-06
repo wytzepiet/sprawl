@@ -57,7 +57,6 @@ const LOOKS = [
   // Grass rounds over onto the sand more tightly, half as far.
   { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1 },
   { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 0 },
-  { shine: 0.15, bevel: BEVEL, bump: 1, glint: 0, fray: 0 },
 ];
 
 /** A slot's side in texels, the texels to a tile, and its low corner in

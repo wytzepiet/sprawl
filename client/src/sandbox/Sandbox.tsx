@@ -21,6 +21,7 @@ import { FERRY } from "../engine/town/dressing";
 import { carShape, ROUNDING } from "../engine/objects/carShape";
 import { waterMaterial } from "../engine/water";
 import { GroundTiles } from "../engine/ground";
+import { giveClimb, peakMaterial } from "../engine/peaks";
 import { drawRoads, drawTown, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
 import { grove, plant } from "../engine/trees";
 import { kerbed, kerbField } from "../engine/kerbs";
@@ -353,7 +354,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
   ground = new GroundTiles(scene);
   // The map runs +x to the screen's left and +y up: turned about.
   ground.frame.scaling.set(-1, -1, 1);
-  ground.paint([theme.beach, theme.land, theme.forest, theme.mountain].map((c) => new Color3(c.r, c.g, c.b)));
+  ground.paint([theme.beach, theme.land, theme.forest].map((c) => new Color3(c.r, c.g, c.b)));
   const type = (c: number, r: number): TerrainType => {
     const ch = rows[r]?.[c];
     if (ch === "^") return "Mountain";
@@ -364,6 +365,26 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
   const palette: TerrainPalette = {
     Water: theme.water, Sea: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.mountain,
   };
+  // How far into its range each tile is, as the server tells it
+  // (`TerrainChunk::depths`): a distance sweep over the fixture, forward
+  // and back, in sixteenths of a tile.
+  const depthAt = (() => {
+    const [w, h] = [town.w, town.h];
+    const d = Float32Array.from({ length: w * h }, (_, k) => (type(k % w, Math.floor(k / w)) === "Mountain" ? 12 : 0));
+    const steps: [number, number, number][] = [[-1, 0, 1], [0, -1, 1], [-1, -1, Math.SQRT2], [1, -1, Math.SQRT2]];
+    for (const back of [false, true]) {
+      for (let i = 0; i < w * h; i++) {
+        const k = back ? w * h - 1 - i : i;
+        const [x, y] = [k % w, Math.floor(k / w)];
+        for (const [sx, sy, cost] of steps) {
+          const [nx, ny] = back ? [x - sx, y - sy] : [x + sx, y + sy];
+          const through = nx < 0 || ny < 0 || nx >= w || ny >= h ? cost : d[ny * w + nx] + cost;
+          d[k] = Math.min(d[k], through);
+        }
+      }
+    }
+    return (c: number, r: number) => (c < 0 || r < 0 || c >= w || r >= h ? 0 : Math.round(Math.min(d[r * w + c], 12) * 16));
+  })();
   const out: Mesh[] = [];
   for (let cy = 0; cy * CHUNK_SIZE < town.h; cy++) {
     for (let cx = 0; cx * CHUNK_SIZE < town.w; cx++) {
@@ -373,10 +394,14 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
           tiles[iy * CHUNK_STRIDE + ix] = TYPE_BY_BYTE.indexOf(type(cx * CHUNK_SIZE + ix - CHUNK_SKIRT, cy * CHUNK_SIZE + iy - CHUNK_SKIRT));
         }
       }
-      const geo = buildChunk(tiles, cx, cy, palette);
+      const depths = new Uint8Array(CHUNK_STRIDE * CHUNK_STRIDE);
+      for (let iy = 0; iy < CHUNK_STRIDE; iy++) {
+        for (let ix = 0; ix < CHUNK_STRIDE; ix++) depths[iy * CHUNK_STRIDE + ix] = depthAt(cx * CHUNK_SIZE + ix - CHUNK_SKIRT, cy * CHUNK_SIZE + iy - CHUNK_SKIRT);
+      }
+      const geo = buildChunk(tiles, depths, cx, cy, palette);
       if (!geo) continue;
       ground.set(`${cx},${cy}`, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], geo.layers);
-      for (const [name, g] of [["water", geo.water], ["cliffs", geo.cliffs]] as const) {
+      for (const [name, g] of [["water", geo.water], ["cliffs", geo.cliffs], ["peaks", geo.peaks]] as const) {
         if (!g.indices.length) continue;
         const mesh = new Mesh(`terrain_${name}`, scene);
         const vd = new VertexData();
@@ -384,12 +409,15 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
         vd.applyToMesh(mesh);
         // The map runs +x to the screen's left and +y up: turned about.
         mesh.scaling.set(-1, -1, 1);
-        mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
-        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : new StandardMaterial(`terrain_${name}_mat`, scene);
+        // The peaks are laid where they are on the map.
+        if (name !== "peaks") mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
+        else giveClimb(mesh, g);
+        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : name === "peaks" ? peakMaterial(scene, "terrain_peaks_mat") : new StandardMaterial(`terrain_${name}_mat`, scene);
         if (name === "cliffs") {
           mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
           mat.specularColor = Color3.Black();
         }
+        if (name === "peaks") mat.diffuseColor = new Color3(theme.mountain.r, theme.mountain.g, theme.mountain.b);
         mat.backFaceCulling = false;
         mesh.material = mat;
         mesh.isPickable = false;
