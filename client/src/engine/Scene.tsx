@@ -12,6 +12,7 @@ import { GameProvider } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
 import FrameStats from "../ui/FrameStats";
+import PerfReport from "./PerfReport";
 import PinLayer from "../ui/PinLayer";
 import LumpLayer from "../ui/LumpLayer";
 import GrowthMeter from "../ui/GrowthMeter";
@@ -26,6 +27,7 @@ function SceneInner() {
       <Canvas>
         <OrthoCamera />
         {/* <FrameStats /> */}
+        {import.meta.env.DEV && <PerfReport />}
         <DayNightLights>
           <Headlights>
             <InstancePoolProvider>
