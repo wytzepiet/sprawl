@@ -905,22 +905,35 @@ function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: numb
       for (let j = 0; j < d; j++) isLand.fill(1, ((ty + reach) * d + j) * side + (tx + reach) * d, ((ty + reach) * d + j) * side + (tx + reach + 1) * d);
     }
   }
+  // Far beyond reach stands for none: nothing reads past it.
+  const none = 1e9;
   const far = new Float32Array(side * side);
-  for (let k = 0; k < far.length; k++) far[k] = isLand[k] ? 0 : Infinity;
-  const step = (k: number, i: number, j: number, di: number, dj: number, cost: number) => {
-    const [ni, nj] = [i + di, j + dj];
-    if (ni >= 0 && nj >= 0 && ni < side && nj < side) far[k] = Math.min(far[k], far[nj * side + ni] + cost);
-  };
+  for (let k = 0; k < far.length; k++) far[k] = isLand[k] ? 0 : none;
+  const D = Math.SQRT2;
   for (let j = 0; j < side; j++) {
-    for (let i = 0; i < side; i++) {
-      const k = j * side + i;
-      step(k, i, j, -1, 0, 1), step(k, i, j, 0, -1, 1), step(k, i, j, -1, -1, Math.SQRT2), step(k, i, j, 1, -1, Math.SQRT2);
+    for (let i = 0, k = j * side; i < side; i++, k++) {
+      let f = far[k];
+      if (f === 0) continue;
+      if (i > 0) f = Math.min(f, far[k - 1] + 1);
+      if (j > 0) {
+        f = Math.min(f, far[k - side] + 1);
+        if (i > 0) f = Math.min(f, far[k - side - 1] + D);
+        if (i < side - 1) f = Math.min(f, far[k - side + 1] + D);
+      }
+      far[k] = f;
     }
   }
   for (let j = side - 1; j >= 0; j--) {
-    for (let i = side - 1; i >= 0; i--) {
-      const k = j * side + i;
-      step(k, i, j, 1, 0, 1), step(k, i, j, 0, 1, 1), step(k, i, j, 1, 1, Math.SQRT2), step(k, i, j, -1, 1, Math.SQRT2);
+    for (let i = side - 1, k = j * side + side - 1; i >= 0; i--, k--) {
+      let f = far[k];
+      if (f === 0) continue;
+      if (i < side - 1) f = Math.min(f, far[k + 1] + 1);
+      if (j < side - 1) {
+        f = Math.min(f, far[k + side] + 1);
+        if (i < side - 1) f = Math.min(f, far[k + side + 1] + D);
+        if (i > 0) f = Math.min(f, far[k + side - 1] + D);
+      }
+      far[k] = f;
     }
   }
   const inner = CHUNK_SIZE * d;

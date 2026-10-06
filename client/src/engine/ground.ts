@@ -1,7 +1,7 @@
-import { Color3, Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, StandardMaterial, VertexData, type Material, type Scene } from "@babylonjs/core";
+import { BoundingInfo, Color3, Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, StandardMaterial, TransformNode, Vector3, VertexData, type Material, type Scene } from "@babylonjs/core";
 import { Atlas } from "./atlas";
 import { FAR, kerbDistances } from "./kerbs";
-import { LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
 import { fillTriangles } from "./raster";
 
 /**
@@ -12,8 +12,8 @@ import { fillTriangles } from "./raster";
  * in its first channel how far each point lies inside the share's
  * outline, negative beyond it, so a pixel off it is dropped; in its
  * second, how far inside the edges where the layer rounds over onto ground
- * lying lower, so it turns its facing out as it nears them. Each layer is
- * one draw for the whole world.
+ * lying lower, so it turns its facing out as it nears them. Each chunk's
+ * land is one draw.
  *
  * And a fine grain, so the land reads as a surface rather than one sheet
  * of plastic: one tiling texture of noise, read by where on the map a pixel
@@ -31,7 +31,7 @@ const GRAIN = 0.06;
  *  the edge itself, level by here. */
 const BEVEL = 0.1;
 /** Each layer's shine, of the toy's lacquer: sand and rock keep a little,
- *  grass and wood are matte, the grain their texture. And whether it
+ *  grass and wood are matte, the grain their texture. And how far it
  *  rounds over its edges: the wood floor lies on the grass, and only its
  *  edges onto the sand round over, which the grass under it does. */
 const LOOKS = [
@@ -130,49 +130,59 @@ const [inner0, inner1] = [n(0.5 / DENSITY), n(1 - 0.5 / DENSITY)];
 // pixel); whether the pixel is on the share; and how near its edges.
 const GLSL = {
   vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute float groundSlot; varying vec2 vGroundAt; varying float vGroundSlot; varying vec2 vGroundX; varying vec2 vGroundY;`,
-    CUSTOM_VERTEX_MAIN_END: `vGroundAt = positionUpdated.xy; vGroundSlot = groundSlot; vGroundX = (finalWorld * vec4(1., 0., 0., 0.)).xy; vGroundY = (finalWorld * vec4(0., 1., 0., 0.)).xy;`,
+    CUSTOM_VERTEX_DEFINITIONS: `attribute vec2 groundSlot; attribute vec4 groundLook; varying vec2 vGroundAt; varying vec2 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY;`,
+    CUSTOM_VERTEX_MAIN_END: `vGroundAt = positionUpdated.xy; vGroundSlot = groundSlot; vGroundLook = groundLook; vGroundX = (finalWorld * vec4(1., 0., 0., 0.)).xy; vGroundY = (finalWorld * vec4(0., 1., 0., 0.)).xy;`,
   },
   fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vGroundAt; varying float vGroundSlot; varying vec2 vGroundX; varying vec2 vGroundY; uniform sampler2D groundGrain; uniform sampler2D groundAtlas;`,
+    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vGroundAt; varying vec2 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY; uniform sampler2D groundGrain; uniform sampler2D groundAtlas;`,
     CUSTOM_FRAGMENT_MAIN_BEGIN: `float groundGrainAt = texture2D(groundGrain, vPositionW.xy / ${span}).r;
-float groundSlotN = floor(vGroundSlot + 0.5);
+float groundSlotN = floor(vGroundSlot.x + 0.5);
+float groundBevel = vGroundSlot.y;
 vec2 groundCell = vec2(mod(groundSlotN, groundGrid.x), floor(groundSlotN / groundGrid.x));
 vec2 groundUv = (groundCell + (vGroundAt - ${origin}) / ${slotSpan}) / groundGrid;
 vec2 groundTexel = 1. / (groundGrid * ${n(SLOT)});
 vec2 groundD = texture2D(groundAtlas, groundUv).rg;
 if (texture2D(groundAtlas, (groundCell + (clamp(vGroundAt, ${inner0}, ${inner1}) - ${origin}) / ${slotSpan}) / groundGrid).r < 0.) discard;`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor.rgb *= 1. + (groundGrainAt - 0.5) * ${strength};
-float groundDx = texture2D(groundAtlas, groundUv + vec2(groundTexel.x, 0.)).g - texture2D(groundAtlas, groundUv - vec2(groundTexel.x, 0.)).g;
-float groundDy = texture2D(groundAtlas, groundUv + vec2(0., groundTexel.y)).g - texture2D(groundAtlas, groundUv - vec2(0., groundTexel.y)).g;
-if (groundD.g >= 0. && groundD.g < groundBevel && groundDx * groundDx + groundDy * groundDy > 0.) {
-  vec3 groundOut = normalize(vec3(-(groundDx * vGroundX + groundDy * vGroundY), 0.));
-  normalW = normalize(mix(normalW, normalize(normalW + groundOut), 1. - groundD.g / groundBevel));
+    "!vec3 finalSpecular=specularBase\\*specularColor;": "vec3 finalSpecular=specularBase*specularColor*vGroundLook.a;",
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor.rgb *= vGroundLook.rgb * (1. + (groundGrainAt - 0.5) * ${strength});
+// Its slope read only near an edge, where it rounds over.
+if (groundD.g >= 0. && groundD.g < groundBevel) {
+  float groundDx = texture2D(groundAtlas, groundUv + vec2(groundTexel.x, 0.)).g - texture2D(groundAtlas, groundUv - vec2(groundTexel.x, 0.)).g;
+  float groundDy = texture2D(groundAtlas, groundUv + vec2(0., groundTexel.y)).g - texture2D(groundAtlas, groundUv - vec2(0., groundTexel.y)).g;
+  if (groundDx * groundDx + groundDy * groundDy > 0.) {
+    vec3 groundOut = normalize(vec3(-(groundDx * vGroundX + groundDy * vGroundY), 0.));
+    normalW = normalize(mix(normalW, normalize(normalW + groundOut), 1. - groundD.g / groundBevel));
+  }
 }`,
   },
 };
 const WGSL = {
   vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute groundSlot: f32; varying vGroundAt: vec2f; varying vGroundSlot: f32; varying vGroundX: vec2f; varying vGroundY: vec2f;`,
-    CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vGroundAt = positionUpdated.xy; vertexOutputs.vGroundSlot = vertexInputs.groundSlot; vertexOutputs.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; vertexOutputs.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;`,
+    CUSTOM_VERTEX_DEFINITIONS: `attribute groundSlot: vec2f; attribute groundLook: vec4f; varying vGroundAt: vec2f; varying vGroundSlot: vec2f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f;`,
+    CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vGroundAt = positionUpdated.xy; vertexOutputs.vGroundSlot = vertexInputs.groundSlot; vertexOutputs.vGroundLook = vertexInputs.groundLook; vertexOutputs.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; vertexOutputs.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;`,
   },
   fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vGroundAt: vec2f; varying vGroundSlot: f32; varying vGroundX: vec2f; varying vGroundY: vec2f; var groundGrainSampler: sampler; var groundGrain: texture_2d<f32>; var groundAtlasSampler: sampler; var groundAtlas: texture_2d<f32>;`,
+    CUSTOM_FRAGMENT_DEFINITIONS: `varying vGroundAt: vec2f; varying vGroundSlot: vec2f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f; var groundGrainSampler: sampler; var groundGrain: texture_2d<f32>; var groundAtlasSampler: sampler; var groundAtlas: texture_2d<f32>;`,
     CUSTOM_FRAGMENT_MAIN_BEGIN: `let groundGrainAt = textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${span}).r;
-let groundSlotN = floor(fragmentInputs.vGroundSlot + 0.5);
+let groundSlotN = floor(fragmentInputs.vGroundSlot.x + 0.5);
+let groundBevel = fragmentInputs.vGroundSlot.y;
 let groundCell = vec2f(groundSlotN - uniforms.groundGrid.x * floor(groundSlotN / uniforms.groundGrid.x), floor(groundSlotN / uniforms.groundGrid.x));
 let groundUv = (groundCell + (fragmentInputs.vGroundAt - ${origin}) / ${slotSpan}) / uniforms.groundGrid;
 let groundTexel = 1. / (uniforms.groundGrid * ${n(SLOT)});
 let groundD = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv, 0.).rg;
 if (textureSampleLevel(groundAtlas, groundAtlasSampler, (groundCell + (clamp(fragmentInputs.vGroundAt, vec2f(${inner0}), vec2f(${inner1})) - ${origin}) / ${slotSpan}) / uniforms.groundGrid, 0.).r < 0.) { discard; }`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor = vec4f(baseColor.rgb * (1. + (groundGrainAt - 0.5) * ${strength}), baseColor.a);
-let groundTx = vec2f(groundTexel.x, 0.);
-let groundTy = vec2f(0., groundTexel.y);
-let groundDx = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv + groundTx, 0.).g - textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv - groundTx, 0.).g;
-let groundDy = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv + groundTy, 0.).g - textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv - groundTy, 0.).g;
-if (groundD.g >= 0. && groundD.g < uniforms.groundBevel && groundDx * groundDx + groundDy * groundDy > 0.) {
-  let groundOut = normalize(vec3f(-(groundDx * fragmentInputs.vGroundX + groundDy * fragmentInputs.vGroundY), 0.));
-  normalW = normalize(mix(normalW, normalize(normalW + groundOut), 1. - groundD.g / uniforms.groundBevel));
+    "!var finalSpecular: vec3f=specularBase\\*specularColor;": "var finalSpecular: vec3f=specularBase*specularColor*fragmentInputs.vGroundLook.a;",
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb * (1. + (groundGrainAt - 0.5) * ${strength}), baseColor.a);
+// Its slope read only near an edge, where it rounds over.
+if (groundD.g >= 0. && groundD.g < groundBevel) {
+  let groundTx = vec2f(groundTexel.x, 0.);
+  let groundTy = vec2f(0., groundTexel.y);
+  let groundDx = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv + groundTx, 0.).g - textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv - groundTx, 0.).g;
+  let groundDy = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv + groundTy, 0.).g - textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv - groundTy, 0.).g;
+  if (groundDx * groundDx + groundDy * groundDy > 0.) {
+    let groundOut = normalize(vec3f(-(groundDx * fragmentInputs.vGroundX + groundDy * fragmentInputs.vGroundY), 0.));
+    normalW = normalize(mix(normalW, normalize(normalW + groundOut), 1. - groundD.g / groundBevel));
+  }
 }`,
   },
 };
@@ -181,7 +191,6 @@ class GroundPlugin extends MaterialPluginBase {
   constructor(
     material: Material,
     private atlas: Atlas,
-    private bevel: number,
   ) {
     super(material, "Ground", 210, new GroundDefines());
     this._enable(true);
@@ -196,7 +205,7 @@ class GroundPlugin extends MaterialPluginBase {
   }
 
   getAttributes(attributes: string[]) {
-    attributes.push("groundSlot");
+    attributes.push("groundSlot", "groundLook");
   }
 
   getSamplers(samplers: string[]) {
@@ -205,19 +214,15 @@ class GroundPlugin extends MaterialPluginBase {
 
   getUniforms(shaderLanguage = 0) {
     return {
-      ubo: [
-        { name: "groundGrid", size: 2, type: "vec2" },
-        { name: "groundBevel", size: 1, type: "float" },
-      ],
-      fragment: shaderLanguage === 1 ? "uniform groundGrid: vec2f; uniform groundBevel: f32;" : "uniform vec2 groundGrid; uniform float groundBevel;",
+      ubo: [{ name: "groundGrid", size: 2, type: "vec2" }],
+      fragment: shaderLanguage === 1 ? "uniform groundGrid: vec2f;" : "uniform vec2 groundGrid;",
     };
   }
 
-  bindForSubMesh(ubo: { updateFloat2(n: string, x: number, y: number): void; updateFloat(n: string, v: number): void; setTexture(n: string, t: RawTexture): void }) {
+  bindForSubMesh(ubo: { updateFloat2(n: string, x: number, y: number): void; setTexture(n: string, t: RawTexture): void }) {
     const texture = this.atlas.upload();
     if (!texture) return;
     ubo.updateFloat2("groundGrid", ...this.atlas.grid);
-    ubo.updateFloat("groundBevel", this.bevel);
     ubo.setTexture("groundGrain", grain(this._material.getScene()));
     ubo.setTexture("groundAtlas", texture);
   }
@@ -232,96 +237,85 @@ class GroundPlugin extends MaterialPluginBase {
   }
 }
 
-/** One chunk's tiles of each layer: where, and in which slot. */
-interface Chunk {
-  origin: [number, number];
-  layers: { at: Float32Array; slots: Float32Array }[];
-}
-
-/** The land's layers, chunk by chunk, each layer one draw. */
+/** The land's layers, chunk by chunk: each chunk's tiles one draw, each
+ *  tile told its layer's height, colour, shine and round, the top layer's
+ *  drawn first, so what lies under it is not shaded. A chunk drawn anew
+ *  touches its own tiles alone, and a chunk out of view is not drawn. */
 export class GroundTiles {
   private atlas: Atlas;
-  private chunks = new Map<string, Chunk>();
-  private dirty = false;
-  private materials: StandardMaterial[];
-  readonly meshes: Mesh[];
+  private chunks = new Map<string, Mesh>();
+  private material: StandardMaterial;
+  private colours: Color3[] = LAYERS.map(() => Color3.White());
+  /** How the land is placed in the world, every chunk's tiles with it: a
+   *  turn given to it is given to all. */
+  readonly frame: TransformNode;
 
   constructor(scene: Scene) {
     this.atlas = new Atlas(scene, SLOT);
-    this.materials = LOOKS.map(({ shine, bevel }, l) => {
-      const mat = new StandardMaterial(`ground_${l}`, scene);
-      mat.specularColor = new Color3(0.45, 0.45, 0.45).scale(shine);
-      mat.specularPower = 64;
-      // Which way the square is wound matters not, flat on the ground.
-      mat.backFaceCulling = false;
-      new GroundPlugin(mat, this.atlas, bevel);
-      return mat;
-    });
-    this.meshes = LAYERS.map(({ z }, l) => {
-      const mesh = new Mesh(`ground_${l}`, scene);
-      const square = new VertexData();
-      Object.assign(square, { positions: [0, 0, z, 1, 0, z, 1, 1, z, 0, 1, z], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
-      square.applyToMesh(mesh);
-      mesh.material = this.materials[l];
-      mesh.isPickable = false;
-      mesh.receiveShadows = true;
-      // The land runs over the whole world: culled square by square it
-      // cannot be, and testing its bounds would walk every tile.
-      mesh.alwaysSelectAsActiveMesh = true;
-      mesh.setEnabled(false);
-      return mesh;
-    });
+    this.material = new StandardMaterial("ground", scene);
+    this.material.specularColor = new Color3(0.45, 0.45, 0.45);
+    this.material.specularPower = 64;
+    // Which way the square is wound matters not, flat on the ground.
+    this.material.backFaceCulling = false;
+    new GroundPlugin(this.material, this.atlas);
+    this.frame = new TransformNode("ground", scene);
   }
 
   /** A chunk's tiles, from its low corner, in place of whatever it had. */
-  set(key: string, origin: [number, number], layers: LayerTiles[]) {
-    const slotOf = (shape: string) => this.atlas.slotOf(shape, () => bake(shape));
-    this.chunks.set(key, { origin, layers: layers.map(({ at, shapes }) => ({ at, slots: Float32Array.from(shapes, slotOf) })) });
-    this.dirty = true;
+  set(key: string, [ox, oy]: [number, number], layers: LayerTiles[]) {
+    this.delete(key);
+    const count = layers.reduce((sum, l) => sum + l.shapes.length, 0);
+    // An empty draw is one WebGPU rejects, frame and all.
+    if (!count) return;
+    const [matrices, slots, looks] = [new Float32Array(count * 16), new Float32Array(count * 2), new Float32Array(count * 4)];
+    let n = 0;
+    for (let l = layers.length - 1; l >= 0; l--) {
+      const { at, shapes } = layers[l];
+      const [{ z }, { shine, bevel }, colour] = [LAYERS[l], LOOKS[l], this.colours[l]];
+      for (let i = 0; i < shapes.length; i++, n++) {
+        const m = n * 16;
+        [matrices[m], matrices[m + 5], matrices[m + 10], matrices[m + 15]] = [1, 1, 1, 1];
+        [matrices[m + 12], matrices[m + 13], matrices[m + 14]] = [ox + at[i * 2], oy + at[i * 2 + 1], z];
+        [slots[n * 2], slots[n * 2 + 1]] = [this.atlas.slotOf(shapes[i], () => bake(shapes[i])), bevel];
+        looks.set([colour.r, colour.g, colour.b, shine], n * 4);
+      }
+    }
+    // A square of its own: a mesh's tiles are kept on its geometry, which
+    // a clone would share.
+    const mesh = new Mesh(`ground_${key}`, this.material.getScene());
+    const square = new VertexData();
+    Object.assign(square, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
+    square.applyToMesh(mesh);
+    Object.assign(mesh, { material: this.material, parent: this.frame, isPickable: false, receiveShadows: true });
+    // Its bounds the chunk's, known: worked out, they would walk every tile.
+    mesh.doNotSyncBoundingInfo = true;
+    mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
+    mesh.thinInstanceSetBuffer("groundSlot", slots, 2, true);
+    mesh.thinInstanceSetBuffer("groundLook", looks, 4, true);
+    const top = Math.max(...LAYERS.map((l) => l.z));
+    mesh.setBoundingInfo(new BoundingInfo(new Vector3(ox, oy, -0.01), new Vector3(ox + CHUNK_SIZE, oy + CHUNK_SIZE, top + 0.01)));
+    this.chunks.set(key, mesh);
   }
 
   delete(key: string) {
-    if (this.chunks.delete(key)) this.dirty = true;
+    this.chunks.get(key)?.dispose();
+    this.chunks.delete(key);
   }
 
-  /** Every tile drawn as it now is. */
-  flush() {
-    if (!this.dirty) return;
-    this.dirty = false;
-    const chunks = [...this.chunks.values()];
-    this.meshes.forEach((mesh, l) => {
-      const count = chunks.reduce((sum, c) => sum + c.layers[l].slots.length, 0);
-      // An empty draw is one WebGPU rejects, frame and all.
-      mesh.setEnabled(count > 0);
-      if (!count) return;
-      const [matrices, slots] = [new Float32Array(count * 16), new Float32Array(count)];
-      let at = 0;
-      for (const { origin, layers } of chunks) {
-        const layer = layers[l];
-        for (let i = 0; i < layer.slots.length; i++, at++) {
-          matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, origin[0] + layer.at[i * 2], origin[1] + layer.at[i * 2 + 1], 0, 1], at * 16);
-          slots[at] = layer.slots[i];
-        }
-      }
-      mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
-      mesh.thinInstanceSetBuffer("groundSlot", slots, 1, true);
-    });
-  }
-
-  /** Each layer's colour, bottom up. */
+  /** Each layer's colour, bottom up, for the chunks drawn from now on. */
   paint(colours: Color3[]) {
-    this.materials.forEach((mat, l) => (mat.diffuseColor = colours[l]));
+    this.colours = colours;
   }
 
   /** The light's colour, as the rest of the ground glows with it. */
   light(ambient: Color3) {
-    for (const mat of this.materials) mat.emissiveColor = ambient.scale(0.15);
+    this.material.emissiveColor = ambient.scale(0.15);
   }
 
   dispose() {
-    for (const mesh of this.meshes) mesh.dispose();
-    for (const mat of this.materials) mat.dispose();
+    for (const key of [...this.chunks.keys()]) this.delete(key);
+    this.frame.dispose();
+    this.material.dispose();
     this.atlas.dispose();
-    this.chunks.clear();
   }
 }

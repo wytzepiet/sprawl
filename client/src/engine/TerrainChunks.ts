@@ -210,7 +210,6 @@ export class TerrainChunks {
       const { key, geometry } = this.ready.shift()!;
       this.applyGeometry(key, geometry);
     }
-    this.ground.flush();
   }
 
   private async requestBuild(key: string): Promise<void> {

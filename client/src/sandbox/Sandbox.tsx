@@ -351,7 +351,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
   ground?.dispose();
   ground = new GroundTiles(scene);
   // The map runs +x to the screen's left and +y up: turned about.
-  for (const mesh of ground.meshes) mesh.scaling.set(-1, -1, 1);
+  ground.frame.scaling.set(-1, -1, 1);
   ground.paint([theme.beach, theme.land, theme.forest, theme.mountain].map((c) => new Color3(c.r, c.g, c.b)));
   const type = (c: number, r: number): TerrainType => {
     const ch = rows[r]?.[c];
@@ -396,7 +396,6 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
       }
     }
   }
-  ground.flush();
   return out;
 }
 
