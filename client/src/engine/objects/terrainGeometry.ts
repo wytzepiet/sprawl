@@ -814,6 +814,9 @@ export function outlineOf(key: string): OutlineLine[] {
 const [IN, OUT] = [TYPE_BY_BYTE.indexOf("Beach"), TYPE_BY_BYTE.indexOf("Grass")];
 const isIn = (type: TerrainType | null | undefined) => type === "Beach";
 
+/** A tile's eight neighbours. */
+const AROUND = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const;
+
 /** Where each layer stands a wall along its edge onto lower ground, down
  *  to what height: the land into the water, the rock onto the grass. */
 const WALLS: [number, number][] = [
@@ -862,7 +865,9 @@ function layTile(sink: ChunkSink, x: number, y: number, lx: number, ly: number, 
     const key = shapeKey(shape);
     sink.layers[l].at.push(lx, ly);
     sink.layers[l].shapes.push(key);
-    hidden = shape.base === "+" && shape.corners.every((c) => !c || c.lies === "+");
+    // What lies under it is hidden only a tile in from its edge, where the
+    // edge's fraying (`ground.ts`) cannot reach.
+    hidden = shape.base === "+" && shape.corners.every((c) => !c || c.lies === "+") && AROUND.every(([dx, dy]) => isIn(map.typeAt(x + dx, y + dy)));
     for (const [w, foot] of WALLS) {
       if (w !== l) continue;
       for (const { a, b, lies } of outlineOf(key)) if (lies === "-") append(sink.cliffs, wall(a, b, LAYERS[l].z - foot), lx, ly, foot, NO_COLOUR);

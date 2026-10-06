@@ -14,7 +14,7 @@ const light = {
   // After a Scottish coast from the air, made light: cool pasture, a
   // slate-teal sea, pale taupe sand, off-white roads, and the trees the one
   // dark note on the ground, so the buildings carry the colour.
-  land: hex4("#7DAB84"),
+  land: hex4("#6E9674"),
   water: hex3("#76AAB2"),
   beach: hex3("#D4CAB9"),
   // The floor between the crowns: a shade under the land, as the map's
