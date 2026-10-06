@@ -44,7 +44,8 @@ const ALONE_FPS = 30;
 const HANDLED_FOR_MS = 1200;
 
 async function createEngine(el: HTMLCanvasElement): Promise<AbstractEngine> {
-  const options = { adaptToDeviceRatio: true, limitDeviceRatio: MAX_DEVICE_RATIO };
+  const antialias = devicePixelRatio < 2;
+  const options = { adaptToDeviceRatio: true, limitDeviceRatio: MAX_DEVICE_RATIO, antialias };
   if (navigator.gpu) {
     // Not CreateAsync: it wraps this in a promise that never settles when no
     // adapter is granted, so a browser that has WebGPU but withholds the GPU
@@ -61,7 +62,7 @@ async function createEngine(el: HTMLCanvasElement): Promise<AbstractEngine> {
       // fall through to WebGL
     }
   }
-  return new Engine(el, true, options, true);
+  return new Engine(el, antialias, options, true);
 }
 
 export default function Canvas(props: ParentProps) {
