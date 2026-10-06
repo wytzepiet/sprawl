@@ -18,7 +18,8 @@ import { townMesh as mesh } from "../engine/town/roof";
 import { defaultJoins } from "../engine/town/footprint";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { FERRY } from "../engine/town/dressing";
-import { drawRoads, drawTown, quadsAt, runsOn } from "../engine/town/draw";
+import { drawRoads, drawTown, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
+import { grove, plant } from "../engine/trees";
 import { extentOf, kerbed, kerbField, kerbsOf } from "../engine/kerbs";
 
 /**
@@ -132,9 +133,9 @@ function Board() {
     for (const m of drawn) m.dispose();
     drawn = build(scene, town(), theme(), rows);
     for (const m of drawn) {
-      // A tree's body casts its shadow and its top takes the others'.
-      m.receiveShadows = m.name !== "tree_bodies";
-      if (m.name === "mass" || m.name === "tree_bodies") shadowGenerator()?.addShadowCaster(m);
+      // A tree casts its shadow from body and top; its top takes the others'.
+      m.receiveShadows = !m.name.endsWith("tree_bodies");
+      if (m.name === "mass" || /tree_(bodies|tops)$/.test(m.name)) shadowGenerator()?.addShadowCaster(m);
     }
   }
 
@@ -406,7 +407,6 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     new BevelPlugin(mat);
     if (name === "mass") lacquer(mat, "building");
     else if (name === "parked") lacquer(mat, "car");
-    else if (name.startsWith("tree_")) lacquer(mat, "tree");
     mesh.material = mat;
     meshes.push(mesh);
   };
@@ -438,6 +438,10 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     }
   }
   const { cars, docks, ships } = dressing;
+  const trees = grove(scene, "sandbox", undefined);
+  const { matrices, colors } = treeInstances(dressing.trees, theme);
+  plant(trees, matrices, colors);
+  meshes.push(trees.bodies, trees.tops);
 
   // Parked cars and lorries at the docks, boxes as the game draws them.
   const CAR_COLOURS: RGB[] = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];

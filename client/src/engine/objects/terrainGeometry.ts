@@ -74,56 +74,9 @@ function nextRand(s: number): [number, number] {
   return [s, (s >>> 0) / 4294967296];
 }
 
-/**
- * A tree is a round crown on a cylinder, drawn twice over the same place: a
- * smooth top that takes the shadows falling on it, and a coarse body under
- * it, eight-sided, that casts the tree's shadow and takes none. There are
- * tens of thousands of trees in view, drawn again for shadow, so only the
- * top, which is what the eye sees, is smooth.
- */
-const TOP_AROUND = 32;
-const BODY_AROUND = 8;
-/** The tallest crown's top, in tiles at full size; the shortest is 45% of it. */
+/** The tallest crown's top, in tiles at full size; the shortest is 45% of it.
+ *  A tree is drawn in `trees.ts`. */
 const CROWN_HEIGHT = 0.45;
-
-/** The top: a disc of radius 1 at height 1. */
-function buildTreeTop(): MeshGeometry {
-  const positions = [0, 0, 1], normals = [0, 0, 1], indices: number[] = [];
-  for (let j = 0; j < TOP_AROUND; j++) {
-    const a = (j / TOP_AROUND) * Math.PI * 2;
-    positions.push(Math.cos(a), Math.sin(a), 1);
-    normals.push(0, 0, 1);
-    indices.push(0, 1 + ((j + 1) % TOP_AROUND), 1 + j);
-  }
-  return { positions, indices, normals };
-}
-
-/** The body: a cylinder of radius 1 from the ground to a little under the
- *  top, far enough that the top is not in its body's shadow, and capped so
- *  its shadow is whole from any sun. */
-function buildTreeBody(): MeshGeometry {
-  const h = 0.9;
-  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
-  for (let j = 0; j < BODY_AROUND; j++) {
-    const a = (j / BODY_AROUND) * Math.PI * 2;
-    const [cx, cy] = [Math.cos(a), Math.sin(a)];
-    positions.push(cx, cy, 0, cx, cy, h);
-    normals.push(cx, cy, 0, cx, cy, 0);
-    const [b, n] = [2 * j, 2 * ((j + 1) % BODY_AROUND)];
-    indices.push(b, b + 1, n, b + 1, n + 1, n);
-  }
-  const cap = positions.length / 3;
-  for (let j = 0; j < BODY_AROUND; j++) {
-    const a = (j / BODY_AROUND) * Math.PI * 2;
-    positions.push(Math.cos(a), Math.sin(a), h);
-    normals.push(0, 0, 1);
-  }
-  for (let j = 1; j + 1 < BODY_AROUND; j++) indices.push(cap, cap + j + 1, cap + j);
-  return { positions, indices, normals };
-}
-
-export const TREE_TOP = buildTreeTop();
-export const TREE_BODY = buildTreeBody();
 /** A crown's radius in tiles at full size; smaller trees are down to half. */
 const TREE_RADIUS = 0.35;
 interface TreeInfo {

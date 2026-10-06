@@ -3,7 +3,7 @@ import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
-import { drawTown, flatPolygons, PAVED_Z, pastSeam, treePieces, type Piece } from "./town/draw";
+import { drawTown, flatPolygons, PAVED_Z, pastSeam, treeInstances, type Piece } from "./town/draw";
 import { bevelled, giveBevel, lacquer } from "./bevel";
 import { roadShape, waysAt } from "./town/dressing";
 import { ROAD_Z } from "./objects/roadGeometry";
@@ -11,6 +11,8 @@ import { storeysOf, windowOf, type Tile, type Town } from "./town/grid";
 import { facts, windowFacts } from "./town/facts";
 import { clipTo, fileBy, type Box } from "./town/clip";
 import { extentOf, kerbed, kerbField, kerbsOf, type Kerb } from "./kerbs";
+import { grove, plant, uproot, type Grove } from "./trees";
+import type { Dressing } from "./town/dressing";
 import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType } from "../generated";
 
@@ -41,7 +43,7 @@ const MARGIN = 2;
  */
 export class TownLayer {
   /** Each chunk's meshes, by chunk, and the chunks to draw again. */
-  private chunks = new Map<string, { root: TransformNode; meshes: Mesh[] }>();
+  private chunks = new Map<string, { root: TransformNode; meshes: Mesh[]; trees: Grove }>();
   private stale = new Set<string>();
   /** Each road tile's instance, by tile, and the tiles to draw again. */
   private roads = new Map<string, { key: string; id: number }>();
@@ -199,7 +201,7 @@ export class TownLayer {
     // chunk cuts only its own; the paving's kerbs found once, from the
     // window's whole paving, so a kerb is never where a chunk was cut.
     const chunkAt = (gx: number, gy: number): [number, number] => [Math.floor((gx + wx1 + 1) / CHUNK), Math.floor((gy + wy1 + 1) / CHUNK)];
-    const filed = new Map(pieces.filter((p) => !p.name.startsWith("tree_")).map((p) => [p, fileBy(p.geo, chunkAt, (cx, cy) => `${cx},${cy}`)]));
+    const filed = new Map(pieces.map((p) => [p, fileBy(p.geo, chunkAt, (cx, cy) => `${cx},${cy}`)]));
     const pavement = pieces.find((p) => p.name === "pavement");
     const kerbs = pavement ? kerbsOf(pavement.geo) : [];
     for (const key of todo) {
@@ -213,9 +215,8 @@ export class TownLayer {
         const [x, y] = [-t.x, -t.y];
         return x >= cut[0] && x < cut[2] && y >= cut[1] && y < cut[3];
       });
-      own.push(...treePieces(inChunk, this.theme()));
       this.drop(key);
-      this.show(key, own.filter((p) => p.geo.indices.length), [wx0, wy0, wx1, wy1], kerbs, cut);
+      this.show(key, own.filter((p) => p.geo.indices.length), inChunk, [wx0, wy0, wx1, wy1], kerbs, cut);
     }
     const took = performance.now() - started;
     if (import.meta.env.DEV && took > SLOW_MS) console.warn(`[town] ${todo.length} chunks drawn in ${took.toFixed(0)} ms over ${w}x${h} tiles`);
@@ -279,8 +280,9 @@ export class TownLayer {
 
   /** A chunk's pieces, drawn in the frame of the window they were drawn
    *  in, placed on the map: its paving rounded at its kerbs, read off the
-   *  window's whole paving so a kerb is never where the chunk was cut. */
-  private show(key: string, pieces: Piece[], [, , x1, y1]: Bounds, kerbs: Kerb[], cut: Box) {
+   *  window's whole paving so a kerb is never where the chunk was cut;
+   *  and its trees. */
+  private show(key: string, pieces: Piece[], trees: Dressing["trees"], [, , x1, y1]: Bounds, kerbs: Kerb[], cut: Box) {
     const root = new TransformNode(`town_${key}`, this.scene);
     root.position.set(x1 + 1, y1 + 1, 0);
     const meshes: Mesh[] = [];
@@ -296,12 +298,15 @@ export class TownLayer {
       if (paving) kerbed(mesh.material, kerbField(this.scene, kerbs, cut));
       mesh.parent = root;
       mesh.isPickable = false;
-      // A tree's body casts its shadow and its top takes the others'.
-      mesh.receiveShadows = p.name !== "tree_bodies";
-      if (p.name === "mass" || p.name === "tree_bodies") this.shadows.addShadowCaster(mesh);
+      mesh.receiveShadows = true;
+      if (p.name === "mass") this.shadows.addShadowCaster(mesh);
       meshes.push(mesh);
     }
-    this.chunks.set(key, { root, meshes });
+    const { matrices, colors } = treeInstances(trees, this.theme());
+    const g = grove(this.scene, `town_${key}`, this.shadows);
+    g.bodies.parent = g.tops.parent = root;
+    if (!plant(g, matrices, colors)) g.bodies.setEnabled(false), g.tops.setEnabled(false);
+    this.chunks.set(key, { root, meshes, trees: g });
   }
 
   /** A chunk's meshes gone. */
@@ -312,6 +317,7 @@ export class TownLayer {
       this.shadows.removeShadowCaster(m);
       m.dispose();
     }
+    uproot(chunk.trees, this.shadows);
     chunk.root.dispose();
     this.chunks.delete(key);
   }
@@ -349,11 +355,10 @@ function grow(b: Bounds, x: number, y: number) {
 
 const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - by, x1 + by, y1 + by];
 
-/** A town material lacquered as what it draws is: buildings and trees;
+/** A town material lacquered as what it draws is: buildings;
  *  paving, lawns and roads stay matte. Its creases are rounded already, as
  *  every pool material's are. */
 function bevelOn(mat: StandardMaterial, name: string): StandardMaterial {
   if (name === "mass") return lacquer(mat, "building");
-  if (name.startsWith("tree_")) return lacquer(mat, "tree");
   return mat;
 }

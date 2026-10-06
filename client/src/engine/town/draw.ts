@@ -3,7 +3,6 @@ import earcut from "earcut";
 import type { MeshGeometry } from "../Mesh";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
-import { TREE_BODY, TREE_TOP } from "../objects/terrainGeometry";
 import { asphalt, dress, pavement, type Dressing } from "./dressing";
 import { soften } from "./footprint";
 import { facts } from "./facts";
@@ -47,11 +46,11 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
 
 /**
  * The town grid's town, drawn: the pavement, a port's lanes, the
- * buildings, the yards' lines, the lawns and their trees, and a door
- * behind every dock; the roads are `drawRoads`. Geometry alone, in the
- * same frame. What stands on it that moves, the cars, lorries and ferries
- * the dressing would put there, is the caller's: the game draws its own,
- * the sandbox the dressing's.
+ * buildings, the yards' lines, and a door behind every dock; the roads
+ * are `drawRoads`. Geometry alone, in the same frame. The trees the
+ * dressing plants are the caller's to plant (`treeInstances`), as is what
+ * stands on it that moves, the cars, lorries and ferries the dressing
+ * would put there: the game draws its own, the sandbox the dressing's.
  */
 export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB, known = facts(town)): { pieces: Piece[]; dressing: Dressing } {
   const pieces: Piece[] = [];
@@ -63,7 +62,6 @@ export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB, kno
   add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
   add("mass", townMesh(town, colour, undefined, known), null);
   add("yard_lines", flat(dressing.yardLines, 0.025), theme.road);
-  for (const p of treePieces(dressing.trees, theme)) add(p.name, p.geo, p.colour);
   // A door in the wall behind every dock, just proud of it.
   const doors: MeshGeometry = { positions: [], normals: [], indices: [] };
   for (const dock of dressing.docks) {
@@ -79,23 +77,19 @@ export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB, kno
   return { pieces, dressing };
 }
 
-/** Trees as the forest draws them: a smooth top over a coarse body. */
-export function treePieces(trees: Dressing["trees"], theme: Theme): Piece[] {
-  return ([["tree_tops", CROWN_TOP], ["tree_bodies", TREE_BODY]] as const).map(([name, geo]) => {
-    const out: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
-    for (const t of trees) {
-      const base = out.positions.length / 3;
-      const w = 0.35 * t.scale;
-      const rgb = theme.crowns[t.shade];
-      for (let i = 0; i < geo.positions.length; i += 3) {
-        out.positions.push(-(t.x + geo.positions[i] * w), -(t.y + geo.positions[i + 1] * w), geo.positions[i + 2] * w);
-        out.normals.push(-geo.normals[i], -geo.normals[i + 1], geo.normals[i + 2]);
-        out.colors.push(rgb.r, rgb.g, rgb.b, 1);
-      }
-      for (const k of geo.indices) out.indices.push(base + k);
-    }
-    return { name, geo: out, colour: null };
+/** Trees as instances of the forest's: a matrix and a colour each, in the
+ *  town's frame, x and y the other way. */
+export function treeInstances(trees: Dressing["trees"], theme: Theme): { matrices: Float32Array; colors: Float32Array } {
+  const matrices = new Float32Array(trees.length * 16);
+  const colors = new Float32Array(trees.length * 4);
+  trees.forEach((t, i) => {
+    const w = 0.35 * t.scale;
+    const rgb = theme.crowns[t.shade];
+    // Turned about: column-major, translation in the last row.
+    matrices.set([-w, 0, 0, 0, 0, -w, 0, 0, 0, 0, w, 0, -t.x, -t.y, 0, 1], i * 16);
+    colors.set([rgb.r, rgb.g, rgb.b, 1], i * 4);
   });
+  return { matrices, colors };
 }
 
 /** Polygons laid flat at a height. */
@@ -160,96 +154,6 @@ export const pastSeam = (ways: [number, number, boolean][]) => (a: number[], b: 
     return Math.min(along(a), along(b)) > len / 2 - 0.01;
   });
 
-
-/**
- * A flat sheet with its outline rounded down, as a kerb's top is: a strip
- * just inside every edge only one of its triangles has, facing up at its
- * inner side and halfway out at the edge, so the light rolls over it (laid a hair
- * over the sheet). Its corners mitred, so the strip turns them whole; none
- * where `skip` says the sheet runs on into another.
- */
-export function rimmed(g: MeshGeometry, width = RIM, skip: (a: number[], b: number[], out: number[]) => boolean = () => false): MeshGeometry {
-  const p = g.positions;
-  const at = (i: number) => [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
-  const key = (v: number[]) => `${Math.round(v[0] * 1e4)},${Math.round(v[1] * 1e4)}`;
-  const count = new Map<string, number>();
-  const tris: number[][] = [];
-  for (let t = 0; t < g.indices.length; t += 3) {
-    const tri = [g.indices[t], g.indices[t + 1], g.indices[t + 2]];
-    tris.push(tri);
-    for (let k = 0; k < 3; k++) {
-      const [ka, kb] = [key(at(tri[k])), key(at(tri[(k + 1) % 3]))];
-      const e = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-      count.set(e, (count.get(e) ?? 0) + 1);
-    }
-  }
-  // The outline: each edge one triangle has, facing away from it.
-  const edges: { a: number[]; b: number[]; out: number[]; z: number }[] = [];
-  const outAt = new Map<string, number[]>();
-  for (const tri of tris) {
-    const v = tri.map(at);
-    const c = [(v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3];
-    for (let k = 0; k < 3; k++) {
-      const [a, b] = [v[k], v[(k + 1) % 3]];
-      const [ka, kb] = [key(a), key(b)];
-      if (count.get(ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`) !== 1) continue;
-      const [ex, ey] = [b[0] - a[0], b[1] - a[1]];
-      const len = Math.hypot(ex, ey) || 1;
-      let out = [ey / len, -ex / len];
-      if ((a[0] - c[0]) * out[0] + (a[1] - c[1]) * out[1] < 0) out = [-out[0], -out[1]];
-      if (skip(a, b, out)) continue;
-      edges.push({ a, b, out, z: a[2] });
-      for (const [kv] of [[ka], [kb]]) {
-        const o = outAt.get(kv) ?? [0, 0];
-        outAt.set(kv, [o[0] + out[0], o[1] + out[1]]);
-      }
-    }
-  }
-  if (!edges.length) return g;
-  const up = Math.sign(cross0(g)) || 1;
-  const out = { positions: [...g.positions], normals: [...g.normals], indices: [...g.indices] };
-  const LIFT = 0.0005;
-  for (const e of edges) {
-    // Each end pulled in along its corner's mitre, as far as makes the
-    // strip `width` wide along the edge.
-    const inner = [e.a, e.b].map((v) => {
-      const m = outAt.get(key(v))!;
-      const ml = Math.hypot(m[0], m[1]) || 1;
-      const mu = [m[0] / ml, m[1] / ml];
-      const d = width / Math.max(mu[0] * e.out[0] + mu[1] * e.out[1], 0.35);
-      return { pos: [v[0] - mu[0] * d, v[1] - mu[1] * d, e.z + LIFT], out: mu };
-    });
-    const b0 = out.positions.length / 3;
-    out.positions.push(e.a[0], e.a[1], e.z + LIFT, e.b[0], e.b[1], e.z + LIFT, ...inner[0].pos, ...inner[1].pos);
-    // At the edge, halfway between up and out, as a bevel turns to the
-    // halfway between its two faces: rounded, and still in the light.
-    const half = (o: number[]) => [o[0] * Math.SQRT1_2, o[1] * Math.SQRT1_2, Math.SQRT1_2];
-    out.normals.push(...half(inner[0].out), ...half(inner[1].out), 0, 0, 1, 0, 0, 1);
-    const [i0, i1, i2, i3] = [b0, b0 + 1, b0 + 2, b0 + 3];
-    // Wound as the sheet is, so it faces the same way.
-    const tri = (a: number, b: number, c: number) => {
-      const s = Math.sign(crossZ(out.positions, a, b, c));
-      out.indices.push(...(s === up ? [a, b, c] : [a, c, b]));
-    };
-    tri(i0, i1, i3);
-    tri(i0, i3, i2);
-  }
-  return out;
-}
-
-function crossZ(p: number[], a: number, b: number, c: number) {
-  return (p[b * 3] - p[a * 3]) * (p[c * 3 + 1] - p[a * 3 + 1]) - (p[b * 3 + 1] - p[a * 3 + 1]) * (p[c * 3] - p[a * 3]);
-}
-/** Which way a sheet's triangles wind, seen from above. */
-function cross0(g: MeshGeometry) {
-  return g.indices.length ? crossZ(g.positions, g.indices[0], g.indices[1], g.indices[2]) : 1;
-}
-
-/** How far in a crown's top rolls over, of its radius (crowns are drawn at
- *  radius 1 and scaled): wide, so it reads as a dome, not a disc's lip. */
-const CROWN_ROUND = 0.45;
-/** A tree's crown top, as every tree draws it, forest or street: a dome. */
-export const CROWN_TOP = rimmed(TREE_TOP, CROWN_ROUND);
 
 /** Convex strips laid flat at a height, seen from both sides. */
 function flat(polys: [number, number][][], z: number): MeshGeometry {
