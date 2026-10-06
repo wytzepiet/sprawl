@@ -1,5 +1,6 @@
 import type { TerrainType } from "../../generated";
 import type { MeshGeometry } from "../Mesh";
+import { fillTriangles } from "../raster";
 
 // This module has no runtime imports, and must keep it that way: it is the
 // unit of work handed to the terrain worker, where Babylon and the DOM do not
@@ -29,20 +30,28 @@ export interface MeshBuffers {
 
 export interface ChunkGeometry {
   ground: MeshBuffers;
+  /** The sea's and lakes' surface, apart, to be drawn as water. */
+  water: MeshBuffers;
+  /** How far each point of the chunk lies from land, if it has water: a
+   *  byte each, 0 at the shore to 255 at SHORE_REACH or more, SHORE_DENSITY
+   *  to a tile, rows up from its low corner. */
+  shore: Uint8Array | null;
   cliffs: MeshBuffers;
 }
 
+/** The shore field's texels to a tile, and how far from land it reaches. */
+export const SHORE_DENSITY = 12;
+export const SHORE_REACH = 2;
+
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  return [g.ground, g.cliffs].flatMap((m) =>
-    [m.positions, m.normals, m.indices, m.colors]
-      .filter((a) => a !== undefined)
-      .map((a) => a.buffer as ArrayBuffer),
-  );
+  const arrays: (ArrayBufferView | undefined)[] = [g.ground, g.water, g.cliffs].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
+  return [...arrays, g.shore ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
-/** How shiny each ground is, of the ground's most (`ShinePlugin`): water
- *  gleams; land, sand most of all, keeps a little, as the rest of the toy. */
+/** How shiny each ground is, of the ground's most (`ShinePlugin`): land,
+ *  sand most of all, keeps a little, as the rest of the toy. Water is drawn
+ *  as water (`water.ts`) and gleams as it does there. */
 const SHINE: Record<TerrainType, number> = {
   Sea: 1,
   Water: 1,
@@ -673,6 +682,7 @@ function append(
 
 class ChunkSink {
   ground = new TerrainBuffers(true);
+  water = new TerrainBuffers(true);
   /**
    * Cliffs only ever cast shadows. The camera looks straight down, so cliff
    * walls are edge-on and never rasterised — only the shadow pass reads them,
@@ -682,9 +692,13 @@ class ChunkSink {
 
   reset(): void {
     this.ground.reset();
+    this.water.reset();
     this.cliffs.reset();
   }
 }
+
+/** Where a piece of ground of this type goes: the water's surface apart. */
+const sheet = (sink: ChunkSink, type: TerrainType) => (type === "Sea" || type === "Water" ? sink.water : sink.ground);
 
 /**
  * Append one tile's geometry into a chunk. Coordinates are emitted relative to
@@ -733,13 +747,13 @@ function appendTile(
     }
     baseGeo = cached;
   }
-  append(sink.ground, baseGeo, lx, ly, be, palette[tt], SHINE[tt]);
+  append(sheet(sink, tt), baseGeo, lx, ly, be, palette[tt], SHINE[tt]);
 
   // Same-elevation corner overlays
   for (const c of corners) {
     if (!c.sameElev) continue;
     append(
-      sink.ground,
+      sheet(sink, c.type),
       CORNER_GEOS[c.index][c.variant],
       lx,
       ly,
@@ -756,7 +770,7 @@ function appendTile(
     const higherType = c.cornerElev > be ? c.type : tt;
 
     append(
-      sink.ground,
+      sheet(sink, c.type),
       CORNER_GEOS[c.index][c.variant],
       lx,
       ly,
@@ -774,7 +788,7 @@ function appendTile(
     );
     // Its top rounded, on whichever side is higher: the corner, or the tile.
     append(
-      sink.ground,
+      sheet(sink, higherType),
       cliffRim(getCornerCurvePoints(c.index, c.variant), c.cornerElev > be ? TILE_CORNERS[c.index] : [0.5, 0.5]),
       lx,
       ly,
@@ -806,9 +820,54 @@ function appendTile(
       neighborElev,
       shade(palette[tt], 0.7),
     );
-    append(sink.ground, cliffRim(EDGE_ENDPOINTS[i], [0.5, 0.5]), lx, ly, be + RIM_LIFT, palette[tt], SHINE[tt]);
+    append(sheet(sink, tt), cliffRim(EDGE_ENDPOINTS[i], [0.5, 0.5]), lx, ly, be + RIM_LIFT, palette[tt], SHINE[tt]);
   }
 
+}
+
+/**
+ * How far each point of a chunk lies from land, as `ChunkGeometry.shore`
+ * holds it. Land is the chunk's own ground, as drawn, and round it every
+ * tile within reach that is not water, whole; the distance spreads out
+ * from it in two sweeps across the grid, each cell taking its neighbours'
+ * plus the step to them.
+ */
+function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: number, originY: number): Uint8Array {
+  const [d, reach] = [SHORE_DENSITY, SHORE_REACH];
+  const side = (CHUNK_SIZE + 2 * reach) * d;
+  const isLand = fillTriangles(land.positions, land.indices.subarray(0, land.indexCount), -reach, -reach, d, side, side, new Uint8Array(side * side));
+  for (let ty = -reach; ty < CHUNK_SIZE + reach; ty++) {
+    for (let tx = -reach; tx < CHUNK_SIZE + reach; tx++) {
+      if (tx >= 0 && ty >= 0 && tx < CHUNK_SIZE && ty < CHUNK_SIZE) continue;
+      const t = sampler.typeAt(originX + tx, originY + ty);
+      if (!t || t === "Sea" || t === "Water") continue;
+      for (let j = 0; j < d; j++) isLand.fill(1, ((ty + reach) * d + j) * side + (tx + reach) * d, ((ty + reach) * d + j) * side + (tx + reach + 1) * d);
+    }
+  }
+  const far = new Float32Array(side * side);
+  for (let k = 0; k < far.length; k++) far[k] = isLand[k] ? 0 : Infinity;
+  const step = (k: number, i: number, j: number, di: number, dj: number, cost: number) => {
+    const [ni, nj] = [i + di, j + dj];
+    if (ni >= 0 && nj >= 0 && ni < side && nj < side) far[k] = Math.min(far[k], far[nj * side + ni] + cost);
+  };
+  for (let j = 0; j < side; j++) {
+    for (let i = 0; i < side; i++) {
+      const k = j * side + i;
+      step(k, i, j, -1, 0, 1), step(k, i, j, 0, -1, 1), step(k, i, j, -1, -1, Math.SQRT2), step(k, i, j, 1, -1, Math.SQRT2);
+    }
+  }
+  for (let j = side - 1; j >= 0; j--) {
+    for (let i = side - 1; i >= 0; i--) {
+      const k = j * side + i;
+      step(k, i, j, 1, 0, 1), step(k, i, j, 0, 1, 1), step(k, i, j, 1, 1, Math.SQRT2), step(k, i, j, -1, 1, Math.SQRT2);
+    }
+  }
+  const inner = CHUNK_SIZE * d;
+  const out = new Uint8Array(inner * inner);
+  for (let j = 0; j < inner; j++) {
+    for (let i = 0; i < inner; i++) out[j * inner + i] = Math.min(255, Math.round((far[(j + reach * d) * side + i + reach * d] / (reach * d)) * 255));
+  }
+  return out;
 }
 
 /** Scratch, reused across builds — see TerrainBuffers. */
@@ -851,6 +910,8 @@ export function buildChunk(
 
   return {
     ground: SINK.ground.take(),
+    water: SINK.water.take(),
+    shore: SINK.water.vertices ? shoreField(SINK.ground, sampler, originX, originY) : null,
     cliffs: SINK.cliffs.take(),
   };
 }

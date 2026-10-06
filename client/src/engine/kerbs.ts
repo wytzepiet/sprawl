@@ -1,5 +1,6 @@
 import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type Scene, type StandardMaterial } from "@babylonjs/core";
 import type { MeshGeometry } from "./Mesh";
+import { fillTriangles } from "./raster";
 import { RIM } from "./town/draw";
 
 /**
@@ -151,28 +152,7 @@ export function kerbDistances(kerbs: Kerb[], x0: number, y0: number, density: nu
  * sheet, negative off it.
  */
 export function coverage(g: MeshGeometry, outline: Float32Array, x0: number, y0: number, density: number, w: number, h: number): Float32Array {
-  const covered = new Uint8Array(w * h);
-  const p = g.positions;
-  // Each triangle filled a row of texels at a time: across the row's
-  // middle, from where it enters the triangle to where it leaves.
-  for (let t = 0; t < g.indices.length; t += 3) {
-    const v = [0, 1, 2].map((k) => [p[g.indices[t + k] * 3], p[g.indices[t + k] * 3 + 1]]);
-    const j0 = Math.max(0, Math.ceil((Math.min(v[0][1], v[1][1], v[2][1]) - y0) * density - 0.5));
-    const j1 = Math.min(h - 1, Math.floor((Math.max(v[0][1], v[1][1], v[2][1]) - y0) * density - 0.5));
-    for (let j = j0; j <= j1; j++) {
-      const y = y0 + (j + 0.5) / density;
-      let [lo, hi] = [Infinity, -Infinity];
-      for (let k = 0; k < 3; k++) {
-        const [a, b] = [v[k], v[(k + 1) % 3]];
-        if ((a[1] > y) === (b[1] > y)) continue;
-        const x = a[0] + ((y - a[1]) / (b[1] - a[1])) * (b[0] - a[0]);
-        [lo, hi] = [Math.min(lo, x), Math.max(hi, x)];
-      }
-      const i0 = Math.max(0, Math.ceil((lo - x0) * density - 0.5));
-      const i1 = Math.min(w - 1, Math.floor((hi - x0) * density - 0.5));
-      if (i0 <= i1) covered.fill(1, j * w + i0, j * w + i1 + 1);
-    }
-  }
+  const covered = fillTriangles(g.positions, g.indices, x0, y0, density, w, h, new Uint8Array(w * h));
   return outline.map((d, k) => (covered[k] ? Math.abs(d) : -Math.abs(d)));
 }
 
