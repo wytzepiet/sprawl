@@ -10,15 +10,15 @@ import { waysAt } from "./town/dressing";
 import { storeysOf, windowOf, type Tile, type Town } from "./town/grid";
 import { facts, windowFacts } from "./town/facts";
 import { clipTo, fileBy, type Box } from "./town/clip";
-import { kerbed, kerbField, kerbsOf, type Kerb } from "./kerbs";
+import { kerbed, kerbField, kerbsOf, stripLines, type Kerb, type Line } from "./kerbs";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import type { Dressing } from "./town/dressing";
 import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType } from "../generated";
 
-/** Ground round what is built the town is drawn over: its pavement, its
- *  lawns and its trees. */
+/** Ground round what is built the town is drawn over: its pavement and
+ *  its trees. */
 const TOWN_MARGIN = 4;
 /** A drawing slower than this is said so in the console, in development. */
 const SLOW_MS = 50;
@@ -38,7 +38,7 @@ const MARGIN = 2;
  * A road is drawn a tile at a time, each tile a square with the shape its
  * arms make drawn on it (`roads.ts`), and redrawn when something round it
  * changes. The town round
- * what is built, its pavement, buildings, lawns and trees, is kept in
+ * what is built, its pavement, buildings and trees, is kept in
  * chunks: on the next frame after anything built changes, however many
  * changes landed before it, the chunks near it are drawn again, together,
  * from a window of the town a little wider, and cut to their chunks. Cars
@@ -214,6 +214,7 @@ export class TownLayer {
     const filed = new Map(pieces.map((p) => [p, fileBy(p.geo, chunkAt, (cx, cy) => `${cx},${cy}`, p.name === "pavement" ? PAVING_PAD : 0)]));
     const pavement = pieces.find((p) => p.name === "pavement");
     const kerbs = pavement ? kerbsOf(pavement.geo) : [];
+    const lines = stripLines(dressing.yardLines);
     for (const key of todo) {
       const [cx, cy] = key.split(",").map(Number);
       // The chunk, as far as the town reaches into it.
@@ -232,7 +233,7 @@ export class TownLayer {
         return x >= cut[0] && x < cut[2] && y >= cut[1] && y < cut[3];
       });
       this.drop(key);
-      this.show(key, own.filter((p) => p.geo.indices.length), inChunk, [wx0, wy0, wx1, wy1], kerbs, cut);
+      this.show(key, own.filter((p) => p.geo.indices.length), inChunk, [wx0, wy0, wx1, wy1], { kerbs, lines }, cut);
     }
     const took = performance.now() - started;
     if (import.meta.env.DEV && took > SLOW_MS) console.warn(`[town] ${todo.length} chunks drawn in ${took.toFixed(0)} ms over ${w}x${h} tiles`);
@@ -283,10 +284,10 @@ export class TownLayer {
 
   /** A chunk's pieces, drawn in the frame of the window they were drawn
    *  in, placed on the map: its paving a square over the chunk, cut to
-   *  the paving and rounded at its kerbs by a texture, the kerbs read off
-   *  the window's whole paving so a kerb is never where the chunk was cut;
-   *  and its trees. */
-  private show(key: string, pieces: Piece[], trees: Dressing["trees"], [, , x1, y1]: Bounds, kerbs: Kerb[], cut: Box) {
+   *  the paving, rounded at its kerbs and its yards' lines painted on by a
+   *  texture, the kerbs read off the window's whole paving so a kerb is
+   *  never where the chunk was cut; and its trees. */
+  private show(key: string, pieces: Piece[], trees: Dressing["trees"], [, , x1, y1]: Bounds, paving: { kerbs: Kerb[]; lines: Line[] }, cut: Box) {
     const root = new TransformNode(`town_${key}`, this.scene);
     root.position.set(x1 + 1, y1 + 1, 0);
     const meshes: Mesh[] = [];
@@ -299,7 +300,7 @@ export class TownLayer {
       vd.applyToMesh(mesh);
       giveBevel(mesh, geo);
       mesh.material = bevelOn(this.pool.material(paved ? `town_pavement_${key}` : `town_${p.name}`, p.colour ?? Color3.White()), p.name);
-      if (paved) kerbed(mesh.material, kerbField(this.scene, kerbs, cut, p.geo));
+      if (paved) kerbed(mesh.material, kerbField(this.scene, paving.kerbs, cut, { cover: p.geo, lines: paving.lines }), this.theme().road);
       mesh.parent = root;
       mesh.isPickable = false;
       mesh.receiveShadows = true;
@@ -366,7 +367,7 @@ const square = ([x0, y0, x1, y1]: Box, z: number): MeshGeometry => ({
 });
 
 /** A town material lacquered as what it draws is: buildings;
- *  paving, lawns and roads stay matte. Its creases are rounded already, as
+ *  paving and roads stay matte. Its creases are rounded already, as
  *  every pool material's are. */
 function bevelOn(mat: StandardMaterial, name: string): StandardMaterial {
   if (name === "mass") return lacquer(mat, "building");

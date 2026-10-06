@@ -136,15 +136,15 @@ export function dress(town: Town, facts: Facts): Dressing {
 }
 
 /**
- * The pavement: every road, building and yard but a house makes paved
- * ground, shaped by the buildings' own rule (the terrain's corners, a
- * diagonal as far out as a straight edge) at full size, then its corners
- * rounded as the terrain's are. A street's pavement is its sidewalk; a
- * house stands in its lawn. A diagonal street is as wide as a straight one.
+ * The pavement: every road, building and yard makes paved ground, shaped
+ * by the buildings' own rule (the terrain's corners, a diagonal as far out
+ * as a straight edge) at full size, then its corners rounded as the
+ * terrain's are. A street's pavement is its sidewalk. A diagonal street is
+ * as wide as a straight one.
  */
 export function pavement(town: Town): Polygon[] {
   // Paving drawn as a stand-in building: every road, paved tile and
-  // building's plot, a house's too, which its lawn and path then cover.
+  // building's plot, a house's too.
   const PAVING: Tile = { kind: "House", storeys: 1 };
   const paved = townOf(
     Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {

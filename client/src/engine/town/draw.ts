@@ -46,11 +46,12 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
 
 /**
  * The town grid's town, drawn: the pavement, a port's lanes, the
- * buildings, the yards' lines, and a door behind every dock; the roads
- * are `drawRoads`. Geometry alone, in the same frame. The trees the
- * dressing plants are the caller's to plant (`treeInstances`), as is what
- * stands on it that moves, the cars, lorries and ferries the dressing
- * would put there: the game draws its own, the sandbox the dressing's.
+ * buildings, and a door behind every dock; the roads are `drawRoads`.
+ * Geometry alone, in the same frame. The yards' lines are the caller's to
+ * paint on the pavement (`stripLines`), and the trees the dressing plants
+ * its to plant (`treeInstances`), as is what stands on it that moves, the
+ * cars, lorries and ferries the dressing would put there: the game draws
+ * its own, the sandbox the dressing's.
  */
 export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB, known = facts(town)): { pieces: Piece[]; dressing: Dressing } {
   const pieces: Piece[] = [];
@@ -61,7 +62,6 @@ export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB, kno
   const dressing = dress(town, known);
   add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
   add("mass", townMesh(town, colour, undefined, known), null);
-  add("yard_lines", flat(dressing.yardLines, 0.025), theme.road);
   // A door in the wall behind every dock, just proud of it.
   const doors: MeshGeometry = { positions: [], normals: [], indices: [] };
   for (const dock of dressing.docks) {
@@ -154,17 +154,6 @@ export const pastSeam = (ways: [number, number, boolean][]) => (a: number[], b: 
     return Math.min(along(a), along(b)) > len / 2 - 0.01;
   });
 
-
-/** Convex strips laid flat at a height, seen from both sides. */
-function flat(polys: [number, number][][], z: number): MeshGeometry {
-  const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-  for (const poly of polys) {
-    const b0 = g.positions.length / 3;
-    for (const [x, y] of poly) g.positions.push(-x, -y, z), g.normals.push(0, 0, 1);
-    for (let i = 1; i + 1 < poly.length; i++) g.indices.push(b0, b0 + i + 1, b0 + i, b0, b0 + i, b0 + i + 1);
-  }
-  return g;
-}
 
 /** Flat squares on some tiles, a little over the ground. */
 export function quadsAt(cells: [number, number][], z: number): MeshGeometry {

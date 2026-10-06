@@ -1,4 +1,4 @@
-import { Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type Scene } from "@babylonjs/core";
+import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type Scene, type StandardMaterial } from "@babylonjs/core";
 import type { MeshGeometry } from "./Mesh";
 import { RIM } from "./town/draw";
 
@@ -176,16 +176,70 @@ export function coverage(g: MeshGeometry, outline: Float32Array, x0: number, y0:
   return outline.map((d, k) => (covered[k] ? Math.abs(d) : -Math.abs(d)));
 }
 
+/** A line painted on a sheet: from a to b, half as wide as it is. */
+export type Line = { a: number[]; b: number[]; half: number };
+
+/** Lines given as thin rectangles, four corners each in the town's frame,
+ *  as each runs down its middle, in a sheet's (x and y the other way). */
+export function stripLines(strips: number[][][]): Line[] {
+  return strips.map(([p0, p1, p2, p3]) => {
+    const mid = (u: number[], v: number[]) => [-(u[0] + v[0]) / 2, -(u[1] + v[1]) / 2];
+    const [across, along] = [Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), Math.hypot(p3[0] - p0[0], p3[1] - p0[1])];
+    return along >= across ? { a: mid(p0, p1), b: mid(p3, p2), half: across / 2 } : { a: mid(p0, p3), b: mid(p1, p2), half: along / 2 };
+  });
+}
+
+/** Off every line: beyond reach of all. */
+const OFF_LINE = 64;
+
+/**
+ * Where each texel of a grid lies across the nearest line it is beside,
+ * from one edge (-1) to the other (1); OFF_LINE beside none. Across a
+ * line that changes evenly, and the texture is read between texels
+ * evenly, so a line however much thinner than a texel comes out whole and
+ * sharp, as a distance to its middle, which dips between texels, would not.
+ */
+function lineDistances(lines: Line[], x0: number, y0: number, density: number, w: number, h: number): Float32Array {
+  const data = new Float32Array(w * h).fill(OFF_LINE);
+  const best = new Float32Array(w * h).fill(Infinity);
+  for (const { a, b, half } of lines) {
+    const reach = half + 2 / density;
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const [ux, uy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+    const i0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - reach - x0) * density));
+    const i1 = Math.min(w - 1, Math.ceil((Math.max(a[0], b[0]) + reach - x0) * density));
+    const j0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - reach - y0) * density));
+    const j1 = Math.min(h - 1, Math.ceil((Math.max(a[1], b[1]) + reach - y0) * density));
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const [dx, dy] = [x0 + (i + 0.5) / density - a[0], y0 + (j + 0.5) / density - a[1]];
+        const along = dx * ux + dy * uy;
+        const across = dx * -uy + dy * ux;
+        const k = j * w + i;
+        if (along < 0 || along > len || Math.abs(across) > reach || Math.abs(across) >= best[k]) continue;
+        best[k] = Math.abs(across);
+        data[k] = across / half;
+      }
+    }
+  }
+  return data;
+}
+
 /** A sheet's kerb texture over a box of it, from its kerbs, half floats
- *  read smoothly: how far inside its kerbs, and, of a sheet `cover` whose
- *  every edge is a kerb, how far inside the sheet, so a square drawn over
- *  the box is cut to it. */
-export function kerbField(scene: Scene, kerbs: Kerb[], extent: Extent, cover?: MeshGeometry): KerbField {
+ *  read smoothly: how far inside its kerbs; of a sheet `cover` whose every
+ *  edge is a kerb, how far inside the sheet, so a square drawn over the box
+ *  is cut to it; and where across the `lines` painted on it. */
+export function kerbField(scene: Scene, kerbs: Kerb[], extent: Extent, { cover, lines = [] }: { cover?: MeshGeometry; lines?: Line[] } = {}): KerbField {
   const { data, origin, size, texels, density } = kerbData(kerbs, extent);
   const on = cover ? coverage(cover, data, origin[0], origin[1], density, texels[0], texels[1]) : null;
-  const half = new Uint16Array(data.length * 2);
-  for (let i = 0; i < data.length; i++) [half[i * 2], half[i * 2 + 1]] = [toHalf(data[i]), toHalf(on ? on[i] : FAR)];
-  const texture = new RawTexture(half, texels[0], texels[1], Constants.TEXTUREFORMAT_RG, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
+  const painted = lineDistances(lines, origin[0], origin[1], density, texels[0], texels[1]);
+  const half = new Uint16Array(data.length * 4);
+  for (let i = 0; i < data.length; i++) {
+    half[i * 4] = toHalf(data[i]);
+    half[i * 4 + 1] = toHalf(on ? on[i] : FAR);
+    half[i * 4 + 2] = toHalf(painted[i]);
+  }
+  const texture = new RawTexture(half, texels[0], texels[1], Constants.TEXTUREFORMAT_RGBA, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
   texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
   return { texture, origin, size, texels };
 }
@@ -225,8 +279,9 @@ uniform sampler2D kerbField;
 #endif`,
   CUSTOM_FRAGMENT_BEFORE_LIGHTS: `#ifdef KERB
 vec2 kerbUv = (vKerbAt - kerbOrigin) / kerbSize;
-vec2 kerbAt = texture2D(kerbField, kerbUv).rg;
+vec4 kerbAt = texture2D(kerbField, kerbUv);
 if (kerbAt.g < 0.) discard;
+if (abs(kerbAt.b) < 1.) baseColor.rgb *= kerbLine;
 float kerbD = kerbAt.r;
 float kerbDx = texture2D(kerbField, kerbUv + vec2(kerbTexel.x, 0.)).r - texture2D(kerbField, kerbUv - vec2(kerbTexel.x, 0.)).r;
 float kerbDy = texture2D(kerbField, kerbUv + vec2(0., kerbTexel.y)).r - texture2D(kerbField, kerbUv - vec2(0., kerbTexel.y)).r;
@@ -254,8 +309,9 @@ var kerbField: texture_2d<f32>;
 let kerbUv = (fragmentInputs.vKerbAt - uniforms.kerbOrigin) / uniforms.kerbSize;
 let kerbTx = vec2f(uniforms.kerbTexel.x, 0.);
 let kerbTy = vec2f(0., uniforms.kerbTexel.y);
-let kerbAt = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv, 0.).rg;
+let kerbAt = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv, 0.);
 if (kerbAt.g < 0.) { discard; }
+if (abs(kerbAt.b) < 1.) { baseColor = vec4f(baseColor.rgb * uniforms.kerbLine, baseColor.a); }
 let kerbD = kerbAt.r;
 let kerbDx = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.).r;
 let kerbDy = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.).r;
@@ -270,6 +326,8 @@ if (kerbD >= 0. && kerbD < uniforms.kerbWidth && kerbDx * kerbDx + kerbDy * kerb
  *  the round reaches is the material's. */
 export class KerbPlugin extends MaterialPluginBase {
   width = RIM;
+  /** The colour lines are painted in. */
+  line = new Color3(0, 0, 0);
 
   constructor(material: Material, public field: KerbField) {
     super(material, "Kerb", 210, new KerbDefines());
@@ -295,15 +353,20 @@ export class KerbPlugin extends MaterialPluginBase {
         { name: "kerbSize", size: 2, type: "vec2" },
         { name: "kerbTexel", size: 2, type: "vec2" },
         { name: "kerbWidth", size: 1, type: "float" },
+        { name: "kerbLine", size: 3, type: "vec3" },
       ],
       fragment: shaderLanguage === 1
-        ? "uniform kerbOrigin: vec2f; uniform kerbSize: vec2f; uniform kerbTexel: vec2f; uniform kerbWidth: f32;"
-        : "uniform vec2 kerbOrigin; uniform vec2 kerbSize; uniform vec2 kerbTexel; uniform float kerbWidth;",
+        ? "uniform kerbOrigin: vec2f; uniform kerbSize: vec2f; uniform kerbTexel: vec2f; uniform kerbWidth: f32; uniform kerbLine: vec3f;"
+        : "uniform vec2 kerbOrigin; uniform vec2 kerbSize; uniform vec2 kerbTexel; uniform float kerbWidth; uniform vec3 kerbLine;",
     };
   }
 
-  bindForSubMesh(ubo: { updateFloat2(n: string, x: number, y: number): void; updateFloat(n: string, v: number): void; setTexture(n: string, t: RawTexture): void }) {
+  bindForSubMesh(ubo: { updateFloat2(n: string, x: number, y: number): void; updateFloat(n: string, v: number): void; updateFloat3(n: string, x: number, y: number, z: number): void; setTexture(n: string, t: RawTexture): void }) {
     const f = this.field;
+    // The line's colour over the sheet's, so the sheet's light and glow
+    // come out the line's own.
+    const [line, sheet] = [this.line, (this._material as StandardMaterial).diffuseColor];
+    ubo.updateFloat3("kerbLine", line.r / Math.max(sheet.r, 1e-3), line.g / Math.max(sheet.g, 1e-3), line.b / Math.max(sheet.b, 1e-3));
     ubo.updateFloat2("kerbOrigin", f.origin[0], f.origin[1]);
     ubo.updateFloat2("kerbSize", f.size[0], f.size[1]);
     ubo.updateFloat2("kerbTexel", 1 / f.texels[0], 1 / f.texels[1]);
@@ -321,12 +384,14 @@ export class KerbPlugin extends MaterialPluginBase {
   }
 }
 
-/** A sheet's material rounded at its kerbs from this kerb texture: the
- *  texture swapped in, if it already is, and the old one let go. */
-export function kerbed(material: Material, field: KerbField) {
-  const plugin = material.pluginManager?.getPlugin<KerbPlugin>("Kerb");
-  if (!plugin) return new KerbPlugin(material, field);
-  if (plugin.field.texture !== field.texture) plugin.field.texture.dispose();
+/** A sheet's material rounded at its kerbs from this kerb texture, its
+ *  lines painted in `line`: the texture swapped in, if it already is, and
+ *  the old one let go. */
+export function kerbed(material: Material, field: KerbField, line = new Color3(0, 0, 0)) {
+  let plugin = material.pluginManager?.getPlugin<KerbPlugin>("Kerb");
+  if (!plugin) plugin = new KerbPlugin(material, field);
+  else if (plugin.field.texture !== field.texture) plugin.field.texture.dispose();
   plugin.field = field;
+  plugin.line = line;
   return plugin;
 }
