@@ -3,14 +3,14 @@ import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
-import { drawTown, flatPolygons, PAVED_Z, pastSeam, treeInstances, type Piece } from "./town/draw";
+import { drawTown, treeInstances, type Piece } from "./town/draw";
 import { bevelled, giveBevel, lacquer } from "./bevel";
-import { roadShape, waysAt } from "./town/dressing";
-import { ROAD_Z } from "./objects/roadGeometry";
+import { waysAt } from "./town/dressing";
 import { storeysOf, windowOf, type Tile, type Town } from "./town/grid";
 import { facts, windowFacts } from "./town/facts";
 import { clipTo, fileBy, type Box } from "./town/clip";
-import { extentOf, kerbed, kerbField, kerbsOf, type Kerb } from "./kerbs";
+import { kerbed, kerbField, kerbsOf, type Kerb } from "./kerbs";
+import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import type { Dressing } from "./town/dressing";
 import type { RGB } from "./town/mass";
@@ -31,8 +31,9 @@ const MARGIN = 2;
 
 /**
  * The town as the town grid draws it (`engine/town/`), from the live world.
- * A road is drawn a tile at a time, each tile an instance of the shape its
- * arms make, and redrawn when something round it changes. The town round
+ * A road is drawn a tile at a time, each tile a square with the shape its
+ * arms make drawn on it (`roads.ts`), and redrawn when something round it
+ * changes. The town round
  * what is built, its pavement, buildings, lawns and trees, is kept in
  * chunks: on the next frame after anything built changes, however many
  * changes landed before it, the chunks near it are drawn again, together,
@@ -45,8 +46,8 @@ export class TownLayer {
   /** Each chunk's meshes, by chunk, and the chunks to draw again. */
   private chunks = new Map<string, { root: TransformNode; meshes: Mesh[]; trees: Grove }>();
   private stale = new Set<string>();
-  /** Each road tile's instance, by tile, and the tiles to draw again. */
-  private roads = new Map<string, { key: string; id: number }>();
+  /** The road tiles, and the tiles to draw again. */
+  private roads: RoadTiles;
   private dirty = new Set<string>();
   private frame: number | null = null;
 
@@ -58,7 +59,12 @@ export class TownLayer {
     private entities: (f: (e: GameObjectEntry) => void) => void,
     private ground: (x: number, y: number) => TerrainType | undefined,
     private look: (e: GameObjectEntry) => Look,
-  ) {}
+  ) {
+    this.roads = new RoadTiles(scene, (through) => {
+      const colour = through ? this.theme().highway : this.theme().road;
+      return this.pool.material(`town_road_${colour.toHexString()}`, colour);
+    });
+  }
 
   /** Something built changed on this tile: the road there and round it
    *  is drawn again, and the town, on the next frame. */
@@ -70,7 +76,7 @@ export class TownLayer {
 
   /** Everything drawn again: the theme changed. */
   repaint() {
-    for (const key of this.roads.keys()) this.dirty.add(key);
+    for (const key of this.roads.tiles()) this.dirty.add(key);
     for (const key of this.chunks.keys()) this.stale.add(key);
     this.settle();
   }
@@ -222,32 +228,19 @@ export class TownLayer {
     if (import.meta.env.DEV && took > SLOW_MS) console.warn(`[town] ${todo.length} chunks drawn in ${took.toFixed(0)} ms over ${w}x${h} tiles`);
   }
 
-  /** The road on each tile that changed, an instance of its arms' shape:
+  /** The road on each tile that changed, the shape its arms make:
    *  the world as a town in the fixture's frame round the map's origin,
    *  asked about those tiles alone. */
   private retile() {
     const world = this.world();
-    const theme = this.theme();
     for (const key of this.dirty) {
       const [x, y] = key.split(",").map(Number);
-      const was = this.roads.get(key);
-      if (was) this.pool.removeInstance(was.key, was.id);
-      this.roads.delete(key);
       const at = waysAt(world, -x, -y);
-      if (!at) continue;
-      const colour = at.through ? theme.highway : theme.road;
-      const shape = `road_${colour.toHexString()}_${at.ways.map(([dc, dr, on]) => `${dc}${dr}${on ? "+" : ""}`).sort().join(",")}`;
-      // Through roads over the streets that meet them: a street's end runs
-      // on under one.
-      const fresh = !this.pool.geometryOf(shape);
-      const flat = flatPolygons(roadShape(at.ways), ROAD_Z + PAVED_Z + (at.through ? 0.001 : 0));
-      const bucket = this.pool.ensureBucket(shape, flat, colour, false, true);
-      // Its kerbs where it ends, not where it runs on into the next tile.
-      const past = pastSeam(at.ways);
-      if (fresh) kerbed(bucket.material, kerbField(this.scene, kerbsOf(flat, (a, b) => !past(a, b)), extentOf(flat)));
-      this.roads.set(key, { key: shape, id: this.pool.addInstance(shape, [x + 1, y + 1, 0]) });
+      if (at) this.roads.set(key, x, y, at.through, at.ways);
+      else this.roads.delete(key);
     }
     this.dirty.clear();
+    this.roads.flush();
   }
 
   /** The whole world as a town, unbounded, in the fixture's frame turned
@@ -325,8 +318,7 @@ export class TownLayer {
   dispose() {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     for (const key of [...this.chunks.keys()]) this.drop(key);
-    for (const { key, id } of this.roads.values()) this.pool.removeInstance(key, id);
-    this.roads.clear();
+    this.roads.dispose();
   }
 }
 
