@@ -160,9 +160,12 @@ fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f
         if world.edges.get(&edge).is_some_and(|seg| !seg.cars.contains(&car_id)) {
             let mine = at - trip.segment_lengths[1..k].iter().sum::<f64>();
             let behind = |o: EntityId| position_on(world, o, edge, now).is_some_and(|p| p < mine);
+            // Only a car out of a lot joins partway along; from a junction,
+            // everyone on the run is ahead.
+            let out_of_lot = trip.from_lot > 0 && trip.route_index <= trip.from_lot + 1;
             let cars = &world.edges[&edge].cars;
             let i = match cars.back() {
-                Some(&last) if behind(last) => cars.iter().position(|&o| behind(o)).unwrap(),
+                Some(&last) if out_of_lot && behind(last) => cars.iter().position(|&o| behind(o)).unwrap(),
                 _ => cars.len(),
             };
             world.edges.get_mut(&edge).unwrap().cars.insert(i, car_id);
@@ -182,13 +185,29 @@ fn position_on(world: &World, car_id: EntityId, edge: EdgeKey, now: GameTime) ->
     Some(p - edge_start_dist(t, edge)?)
 }
 
-/// Wake every car whose route passes a node but this one, in order of id:
-/// a set's own order differs from one run to the next.
-fn wake_round(world: &World, events: &mut EventQueue, node: EntityId, car_id: EntityId) {
-    let mut cars: Vec<EntityId> = world.node_cars.get(&node).into_iter().flatten().copied().filter(|&o| o != car_id).collect();
+/// The cars on the street at a node: everyone queued on an edge into or
+/// out of it. A car queues for the whole run it is on, so that is everyone
+/// on the run who could reach the node before a junction; anyone else
+/// wakes at that junction and looks ahead from there.
+fn on_street(world: &World, node: EntityId) -> Vec<EntityId> {
+    let mut cars: Vec<EntityId> = world
+        .arms_of(node, false)
+        .into_iter()
+        .flat_map(|n| [(n, node), (node, n)])
+        .filter_map(|e| world.edges.get(&e))
+        .flat_map(|seg| seg.cars.iter().copied())
+        .collect();
     cars.sort_unstable();
-    for o in cars {
-        events.wake(0, o);
+    cars.dedup();
+    cars
+}
+
+/// Wake the cars on the street at a node, but this one.
+fn wake_round(world: &World, events: &mut EventQueue, node: EntityId, car_id: EntityId) {
+    for o in on_street(world, node) {
+        if o != car_id {
+            events.wake(0, o);
+        }
     }
 }
 
@@ -203,16 +222,15 @@ fn pulling_out_at(world: &World, car_id: EntityId, street: EntityId) -> bool {
 }
 
 /// Is the street clear for a car to pull out onto it here? Nobody else
-/// pulling out, and everyone coming either past the node or far enough
-/// off to see the car and stop short of it. A car standing in the queue
-/// beside a drive keeps it shut; one waiting to pull out of a lot of its
-/// own is not on the street yet.
+/// pulling out, and everyone on the street either past the node or far
+/// enough off to see the car and stop short of it. A car standing in the
+/// queue beside a drive keeps it shut; one waiting to pull out of a lot of
+/// its own is not on the street yet.
 fn gap_at(world: &World, car_id: EntityId, street: EntityId, now: GameTime) -> bool {
     if world.pulling_out.get(&street).is_some_and(|&o| o != car_id && pulling_out_at(world, o, street)) {
         return false;
     }
-    let Some(cars) = world.node_cars.get(&street) else { return true };
-    cars.iter().all(|&o| {
+    on_street(world, street).into_iter().all(|o| {
         let Some(GameObject::Car(c)) = world.objects.get(o).map(|e| &e.object) else { return true };
         let Some(t) = c.trip.as_ref().filter(|_| o != car_id) else { return true };
         if t.from_lot > 0 && t.route[t.from_lot] == street && t.route_index <= t.from_lot {
@@ -612,8 +630,7 @@ pub fn handle_car_wake_up(
     if waiting {
         obstacles.push(Obstacle::MustStop { distance: (line - cur_progress).max(0.0) });
     }
-    // A car pulling out across the road ahead: stop short of it. Asleep
-    // behind it, a car would never see it go, so it looks again.
+    // A car pulling out across the road ahead: stop short of it.
     let mut pull_out_ahead = false;
     if let Some(limit) = bend(world, &trip.route, ri) {
         obstacles.push(Obstacle::SpeedLimit { distance: entry_ri.max(0.0), speed: limit });
@@ -677,8 +694,9 @@ pub fn handle_car_wake_up(
         .map(|o| o.wake_time(cur_speed, new_accel))
         .fold(5000u64, u64::min);
 
-    // Waiting for a gap, or for someone else to pull out: look again soon.
-    if waiting || pull_out_ahead {
+    // Waiting for a gap: look again soon. Waiting for someone else to pull
+    // out needs no looking: they wake whoever is coming once they are clear.
+    if waiting {
         wake_ms = wake_ms.min(500);
     }
 
