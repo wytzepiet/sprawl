@@ -1,5 +1,6 @@
 import {
   Color3,
+  Constants,
   Mesh,
   MeshBuilder,
   RawTexture,
@@ -95,9 +96,13 @@ export class FogOfWar {
     this.mesh.position.z = FOG_Z;
     this.mesh.isPickable = false;
     this.mesh.receiveShadows = false;
-    // Drawn after everything else so it closes over roads and cars too, and
-    // writes no depth so it never occludes itself.
-    this.mesh.renderingGroupId = 1;
+    // Drawn after everything else, whatever stands nearer, so it closes over
+    // roads and cars too, and writing no depth. Last of the see-through, not
+    // a rendering group of its own: a new group clears the depth, which on a
+    // tiled GPU writes the whole frame out and reads it back, half a frame's
+    // time at full resolution.
+    this.mesh.alphaIndex = Number.MAX_SAFE_INTEGER;
+    this.material.depthFunction = Constants.ALWAYS;
     this.material.disableDepthWrite = true;
 
     this.observer = scene.onBeforeRenderObservable.add(() => this.update());
