@@ -14,7 +14,7 @@ import type { MeshGeometry } from "../engine/Mesh";
 import { LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
-import { townMesh as mesh } from "../engine/town/roof";
+import { shaded, townMesh as mesh } from "../engine/town/roof";
 import { defaultJoins } from "../engine/town/footprint";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { FERRY } from "../engine/town/dressing";
@@ -194,7 +194,7 @@ function Board() {
       const ghostTiles = tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? tileOf(brush()) : tile)));
       const all = joins ?? fixed(t);
       const shown = townOf(ghostTiles, (c, r) => t.through(c, r), [], joinsOf(new Set([...all, ...strokeJoins(t, ghost)])));
-      const geo = mesh(shown, colourOf, new Set(ghost.map(([c, r]) => `${c},${r}`)));
+      const geo = mesh(shown, shaded(colourOf), new Set(ghost.map(([c, r]) => `${c},${r}`)));
       if (geo.indices.length) overlay.push(translucent(scene, "ghost", geo, Color3.White(), 0.75));
     } else if (hover && program()) {
       overlay.push(translucent(scene, "nope", quadsAt([hover], 0.014), new Color3(0.85, 0.25, 0.2), 0.5));
@@ -442,7 +442,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   meshes.push(...terrain(scene, town, theme, rows));
 
   // The town grid, drawn; and on it what the dressing parks.
-  const { pieces, dressing } = drawTown(town, theme, colourOf);
+  const { pieces, dressing } = drawTown(town, theme, shaded(colourOf));
   for (const p of [...drawRoads(town, theme), ...pieces]) {
     add(p.name, p.geo, p.colour ?? Color3.White());
     // A sheet's kerbs rounded from its own kerb texture (`engine/kerbs.ts`):

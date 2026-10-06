@@ -9,7 +9,7 @@ import { facts } from "./facts";
 import type { Polygon } from "./footprint";
 import type { Tile, Town } from "./grid";
 import type { RGB } from "./mass";
-import { townMesh } from "./roof";
+import { townMesh, type Paint } from "./roof";
 
 /** A piece of the town to draw: one mesh, one material. */
 export interface Piece {
@@ -53,7 +53,7 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
  * cars, lorries and ferries the dressing would put there: the game draws
  * its own, the sandbox the dressing's.
  */
-export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB, known = facts(town)): { pieces: Piece[]; dressing: Dressing } {
+export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town)): { pieces: Piece[]; dressing: Dressing } {
   const pieces: Piece[] = [];
   const add = (name: string, geo: Piece["geo"], c: Color3 | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
@@ -61,7 +61,7 @@ export function drawTown(town: Town, theme: Theme, colour: (t: Tile) => RGB, kno
   add("pavement", flatPolygons(pavement(town), PAVED_Z), theme.paved);
   const dressing = dress(town, known);
   add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
-  add("mass", townMesh(town, colour, undefined, known), null);
+  add("mass", townMesh(town, paint, undefined, known), null);
   // A door in the wall behind every dock, just proud of it.
   const doors: MeshGeometry = { positions: [], normals: [], indices: [] };
   for (const dock of dressing.docks) {

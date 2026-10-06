@@ -1,4 +1,7 @@
 import { Color3, Mesh, TransformNode, VertexData, type Scene, type ShadowGenerator, type StandardMaterial } from "@babylonjs/core";
+import { perfCount } from "./PerfReport";
+import { Tints, TintPlugin } from "./tints";
+import type { Paint } from "./town/roof";
 import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
@@ -54,6 +57,7 @@ export class TownLayer {
   private roads: RoadTiles;
   private dirty = new Set<string>();
   private frame: number | null = null;
+  private tints: Tints;
 
   constructor(
     private scene: Scene,
@@ -64,10 +68,23 @@ export class TownLayer {
     private ground: (x: number, y: number) => TerrainType | undefined,
     private look: (e: GameObjectEntry) => Look,
   ) {
+    this.tints = new Tints(scene);
     this.roads = new RoadTiles(scene, (through) => {
       const colour = through ? this.theme().highway : this.theme().road;
       return this.pool.material(`town_road_${colour.toHexString()}`, colour);
     });
+  }
+
+  /** A building's colour as it looks now. */
+  private colourOf(e: GameObjectEntry): RGB {
+    const c = this.look(e).tint(Color3.FromHexString(BLUEPRINTS[(e.object.data as Building).kind as BuildingKind].color));
+    return [c.r, c.g, c.b];
+  }
+
+  /** A building that only changed how it looks: its colour, and nothing
+   *  drawn again. */
+  recolour(e: GameObjectEntry) {
+    if (this.tints.has(e.id)) this.tints.set(e.id, this.colourOf(e));
   }
 
   /** Something built changed on this tile: the road there and round it
@@ -165,15 +182,11 @@ export class TownLayer {
       return town;
     };
 
-    const looks = new Map<number, Look>();
-    const colour = (t: Tile): RGB => {
-      const base = Color3.FromHexString(BLUEPRINTS[t.kind as BuildingKind].color);
-      if (t.id === undefined) return [base.r, base.g, base.b];
-      const e = byId.get(t.id);
-      let look = looks.get(t.id);
-      if (!look && e) looks.set(t.id, (look = this.look(e)));
-      const c = look ? look.tint(base) : base;
-      return [c.r, c.g, c.b];
+    // Each building painted as the shade a surface takes of its colour
+    // and which building it is; its colour set apart (`Tints`).
+    const paint: Paint = (t, a, b) => {
+      const e = t.id === undefined ? undefined : byId.get(t.id);
+      return [a, b, e ? this.tints.set(e.id, this.colourOf(e)) : 0];
     };
 
     // The town, paved and dressed, only round what is built: a road
@@ -203,7 +216,7 @@ export class TownLayer {
     // The window in the whole town's frame: column box[2] - x, row box[3] - y.
     const [c0, r0] = [box[2] - wx1, box[3] - wy1];
     const [w, h] = [wx1 - wx0 + 1, wy1 - wy0 + 1];
-    const { pieces, dressing } = drawTown(windowOf(whole, c0, r0, w, h), this.theme(), colour, windowFacts(known, c0, r0, w, h));
+    const { pieces, dressing } = drawTown(windowOf(whole, c0, r0, w, h), this.theme(), paint, windowFacts(known, c0, r0, w, h));
     // A tile's place in the window's drawing: tile x runs over x - wx1 - 1
     // to x - wx1, and so for y.
     const frame = ([x0, y0, x1, y1]: Bounds): Box => [x0 - wx1 - 1, y0 - wy1 - 1, x1 - wx1, y1 - wy1];
@@ -236,6 +249,8 @@ export class TownLayer {
       this.show(key, own.filter((p) => p.geo.indices.length), inChunk, [wx0, wy0, wx1, wy1], { kerbs, lines }, cut);
     }
     const took = performance.now() - started;
+    perfCount("town.draws");
+    perfCount("town.drawMs", took);
     if (import.meta.env.DEV && took > SLOW_MS) console.warn(`[town] ${todo.length} chunks drawn in ${took.toFixed(0)} ms over ${w}x${h} tiles`);
   }
 
@@ -300,6 +315,7 @@ export class TownLayer {
       vd.applyToMesh(mesh);
       giveBevel(mesh, geo);
       mesh.material = bevelOn(this.pool.material(paved ? `town_pavement_${key}` : `town_${p.name}`, p.colour ?? Color3.White()), p.name);
+      if (p.name === "mass" && !mesh.material.pluginManager?.getPlugin("Tint")) new TintPlugin(mesh.material, this.tints);
       if (paved) kerbed(mesh.material, kerbField(this.scene, paving.kerbs, cut, { cover: p.geo, lines: paving.lines }), this.theme().road);
       mesh.parent = root;
       mesh.isPickable = false;
@@ -331,6 +347,7 @@ export class TownLayer {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     for (const key of [...this.chunks.keys()]) this.drop(key);
     this.roads.dispose();
+    this.tints.dispose();
   }
 }
 

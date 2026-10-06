@@ -51,7 +51,17 @@ export function* plans({ town, head, services }: Facts) {
   }
 }
 
-export function townMesh(painted: Town, colour: (t: Tile) => RGB, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[] } {
+/** How a building's surface is painted, given its tile and the shade it
+ *  takes of the building's colour: that colour × a + b, a channel at a
+ *  time. The sandbox paints the colour itself (`shaded`); the game paints
+ *  the shade and which building, and finds the colour as it draws, so a
+ *  building's colour changes without its mesh (`tints.ts`). */
+export type Paint = (t: Tile, a: number, b: number) => RGB;
+
+/** Each tile its colour, shaded. */
+export const shaded = (colour: (t: Tile) => RGB): Paint => (t, a, b) => colour(t).map((v) => v * a + b) as RGB;
+
+export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[] } {
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */
@@ -89,13 +99,18 @@ export function townMesh(painted: Town, colour: (t: Tile) => RGB, only?: Set<str
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);
     const reach = height / pitch;
-    const tint = (part: (typeof mass.parts)[number]): RGB =>
-      colour(part.tile).map((v) => (part.head ? v + (1 - v) * 0.45 : v)) as RGB;
+    /** A part's colour, a shade toward white at a row's head, and below
+     *  `dim` one a shade darker, above it a shade toward white. */
+    const tint = (part: (typeof mass.parts)[number], dim = 1): RGB => {
+      let [a, b] = part.head ? [0.55, 0.45] : [1, 0];
+      if (dim < 1) [a, b] = [a * dim, b * dim];
+      else [a, b] = [a * (2 - dim), b * (2 - dim) + dim - 1];
+      return paint(part.tile, a, b);
+    };
     /** A region, coloured by the parts it lies in. */
-    const paint = (region: Polygon[], z: (p: Pt) => number, dim = 1) => {
+    const cover = (region: Polygon[], z: (p: Pt) => number, dim = 1) => {
       for (const part of mass.parts) {
-        // Below one a shade darker, above it a shade toward white.
-        const rgb = tint(part).map((v) => (dim < 1 ? v * dim : v + (1 - v) * (dim - 1))) as RGB;
+        const rgb = tint(part, dim);
         for (const piece of mass.parts.length === 1 ? region : intersect(region, part.polygons)) fill(piece, z, rgb);
       }
     };
@@ -114,7 +129,7 @@ export function townMesh(painted: Town, colour: (t: Tile) => RGB, only?: Set<str
           tri([p[0], p[1], z0], [q[0], q[1], z1(q)], [p[0], p[1], z1(p)], n, c);
         });
       }
-      paint(region, z1, dim);
+      cover(region, z1, dim);
     };
 
     // The roof over a point of the plan: as high as it is far in from
@@ -132,10 +147,10 @@ export function townMesh(painted: Town, colour: (t: Tile) => RGB, only?: Set<str
     prism(outline, 0, roofAt);
     const faces = reach > 0 ? roofFaces(polygon, reach) : [];
     for (const { line, region } of faces) {
-      paint(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
+      cover(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
     }
     const flat = subtract(outline, unite(faces.flatMap((f) => f.region)));
-    paint(flat, () => top + height);
+    cover(flat, () => top + height);
   }
   return { positions, normals, colors, indices };
 }

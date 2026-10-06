@@ -1,4 +1,5 @@
 import { onCleanup, createEffect, on } from "solid-js";
+import { perfCount } from "./PerfReport";
 import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
@@ -116,8 +117,14 @@ export default function World() {
       const entry = op.op === "Upsert" ? (getEntity(op.data.id) ?? op.data) : undefined;
       const drawn = entry && drawnOf(entry);
       // The town is drawn whole, a tenth of a second on a grown town: a
-      // building that only traded leaves it standing as it was.
+      // building that only traded, or only looks otherwise, leaves it
+      // standing as it was.
       const same = drawn !== undefined && existing?.drawn === drawn;
+      perfCount(`ops.${entry?.object.kind ?? "deleted"}`);
+      // One that stands as it stood may still look otherwise, its shelves
+      // bare or stocked: its colour, and the town not drawn again.
+      if (same && entry) town.recolour(entry);
+      else if (existing && entry?.object.kind !== "Car") perfCount(`redraw.${entry?.object.kind ?? "deleted"}`);
       if (existing) {
         if (!same) uncover(existing.covers);
         existing.cleanup();
@@ -145,7 +152,7 @@ export default function World() {
   function drawnOf(entry: GameObjectEntry): string | undefined {
     if (entry.object.kind !== "Building") return undefined;
     const b = entry.object.data as Building;
-    return JSON.stringify([b.kind, b.tiles, b.door, b.joined, lookOf(entry).key]);
+    return JSON.stringify([b.kind, b.tiles, b.door, b.joined]);
   }
 
   setOpsListener(processOps);
