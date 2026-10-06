@@ -80,9 +80,34 @@ turning off the street holds the node it left it at until it is parked,
 as one pulling out does, and the street waits for it, both ways. Staff
 park in bays too, now that a workplace has some: an office of twelve
 fills its four by nine and leaves the rest at its door, which is what
-the next step is for. Not yet: bays perpendicular to the kerb where a
-frontage needs more; visitors spilling to the neighbours' bays; and
-cruising when every bay near is taken. A house's drive is already a
+the next step is for. Not yet: visitors spilling to the neighbours'
+bays; and cruising when every bay near is taken.
+
+Square bays, 2026-10-06 (the mayor: perpendicular for everything but
+housing, and set back so they sit astride the street's tile and the
+building's). Flats keep the bays along the kerb; everything else parks
+nose in, square to the street, four bays a tile, each 0.55 from the
+street's middle, in the building's setback (`SQUARE`). A car turns
+square at the tightest a car turns (0.45) only by starting from the
+road's middle, so it swings out there, turns in round the arc and goes
+straight in at the last, from either way along the street; and backs
+out round the same arc into its lane and drives on, through the
+give-way line (`kerb_bays`, tested against `driver.ts`: in at about
+84°, a few degrees off square, no snap). An office of twelve parks
+seven to eight at its own frontage and the rest at its door.
+
+Turning in gives way too: a car turns off the street when nobody is
+moving toward it from the other way (`clear_to_turn_in`), and from the
+moment it leaves the lane holds its turn until it is parked; a car
+pulling out holds its until it is back in its lane. A kerb bay's turn
+holds every street node of the stretch it is turned across
+(`Trip::stretches`), and only the car at the head of its queue into the
+lot may take it. Every hold lapses after `PATIENCE` standing still, and
+is not taken again on the wake it lapsed. A car waiting to pull out is
+let out by a car standing in a queue short of the node, as drivers do;
+only one on the node, or moving and too near to stop, keeps it waiting.
+The season's lapses are one or two a month. Cost: the town simulates
+about a sixth slower (`how_fast_a_town_runs`), mostly the holds. A house's drive is already a
 perpendicular bay with a drive to it, and may become one of them.
 
 Status: specification, drafted 2026-09-06. §8 step 1 built the same day

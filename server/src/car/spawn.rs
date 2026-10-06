@@ -29,6 +29,7 @@ pub fn start_trip(
     };
     let out = world.way_out(car_id).unwrap_or_default();
     let backs_out = world.backs_out(car_id);
+    let leaving = world.kerb_stretch(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
     let Some(ways) = world.ways_to(dest_building, from_node) else { return false };
     let from_lot = out.len().saturating_sub(1);
@@ -65,7 +66,8 @@ pub fn start_trip(
     let backs_in = world.reverse_tail(car_id);
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
-    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, now);
+    let stretches = [leaving, world.kerb_stretch(car_id)];
+    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, stretches, now);
     true
 }
 
@@ -79,6 +81,7 @@ pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: Entity
     };
     let out = world.way_out(car_id).unwrap_or_default();
     let backs_out = world.backs_out(car_id);
+    let leaving = world.kerb_stretch(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
     let path = match pathfinding::Routes::from(world, from_node).route_to(exit) {
         Some(r) if r.len() >= 2 => r,
@@ -88,7 +91,7 @@ pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: Entity
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     world.release_spot(car_id);
     let backing = backing(backs_out, 0, route.len());
-    launch(world, events, car_id, owner, owner, route, from_lot, 0, backing, now);
+    launch(world, events, car_id, owner, owner, route, from_lot, 0, backing, [leaving, Vec::new()], now);
     true
 }
 
@@ -102,6 +105,7 @@ fn launch(
     from_lot: usize,
     to_lot: usize,
     backing: Vec<[usize; 2]>,
+    stretches: [Vec<EntityId>; 2],
     now: GameTime,
 ) {
     let first_edge = (route[0], route[1]);
@@ -140,6 +144,7 @@ fn launch(
             seg_length: segment_lengths[1],
             seg_start_dist: 0.0,
             segment_lengths,
+            stretches,
         });
     }
 

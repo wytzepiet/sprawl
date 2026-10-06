@@ -269,11 +269,7 @@ impl World {
                     seg.cars.retain(|&id| id != car_id);
                 }
             }
-            for node in [trip.route[trip.from_lot], trip.route[trip.route.len() - 1 - trip.to_lot]] {
-                if self.manoeuvres.get(&node).is_some_and(|&(c, _)| c == car_id) {
-                    self.manoeuvres.remove(&node);
-                }
-            }
+            self.manoeuvres.retain(|_, (c, _)| *c != car_id);
         }
     }
 
