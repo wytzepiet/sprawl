@@ -18,6 +18,7 @@ import { townMesh as mesh } from "../engine/town/roof";
 import { defaultJoins } from "../engine/town/footprint";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
 import { FERRY } from "../engine/town/dressing";
+import { carShape, ROUNDING } from "../engine/objects/carShape";
 import { drawRoads, drawTown, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
 import { grove, plant } from "../engine/trees";
 import { extentOf, kerbed, kerbField, kerbsOf, stripLines } from "../engine/kerbs";
@@ -404,9 +405,12 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     // Its creases rounded, as the game's town; lacquered as the game's
     // are, asphalt and paving matte.
     giveBevel(mesh, geo);
-    new BevelPlugin(mat);
+    const bevel = new BevelPlugin(mat);
     if (name === "mass") lacquer(mat, "building");
-    else if (name === "parked") lacquer(mat, "car");
+    else if (name === "parked") {
+      lacquer(mat, "car");
+      bevel.width = ROUNDING;
+    }
     mesh.material = mat;
     meshes.push(mesh);
   };
@@ -443,7 +447,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   plant(trees, matrices, colors);
   meshes.push(trees.bodies, trees.tops);
 
-  // Parked cars and lorries at the docks, boxes as the game draws them.
+  // Parked cars and lorries at the docks, as the game draws them.
   const CAR_COLOURS: RGB[] = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];
   const parked: MeshGeometry & { colors: number[] } = { positions: [], normals: [], indices: [], colors: [] };
   const quad = (pts: [number, number, number][], n: [number, number, number], rgb: RGB) => {
@@ -482,7 +486,23 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     box(ship.x, ship.y, ship.angle, [FERRY.w, FERRY.l, 0.16], [0.96, 0.96, 0.95], -0.02);
     box(ship.x + ux * 0.4, ship.y + uy * 0.4, ship.angle, [FERRY.w * 0.75, FERRY.l * 0.5, 0.14], [0.17, 0.42, 0.64], 0.14);
   }
-  for (const car of cars) box(car.x, car.y, car.angle, [CAR.w, CAR.l, CAR.h], CAR_COLOURS[car.colour]);
+  // A car the game's shape, along `angle`, its front ahead.
+  const SHAPE = carShape(CAR.w, CAR.l, CAR.h);
+  for (const car of cars) {
+    const [ca, sa] = [Math.cos(car.angle), Math.sin(car.angle)];
+    // The shape's +y ahead and +x to the right of it: (a, b) = (y, -x).
+    const turn = (lx: number, ly: number): [number, number] => [ca * ly + sa * lx, sa * ly - ca * lx];
+    const b0 = parked.positions.length / 3;
+    const rgb = CAR_COLOURS[car.colour];
+    for (let i = 0; i < SHAPE.positions.length / 3; i++) {
+      const [x, y] = turn(SHAPE.positions[i * 3], SHAPE.positions[i * 3 + 1]);
+      const [nx, ny] = turn(SHAPE.normals[i * 3], SHAPE.normals[i * 3 + 1]);
+      parked.positions.push(-(car.x + x), -(car.y + y), 0.03 + CAR.h / 2 + SHAPE.positions[i * 3 + 2]);
+      parked.normals.push(-nx, -ny, SHAPE.normals[i * 3 + 2]);
+      parked.colors.push(rgb[0] * SHAPE.colors[i * 4], rgb[1] * SHAPE.colors[i * 4 + 1], rgb[2] * SHAPE.colors[i * 4 + 2], 1);
+    }
+    for (const k of SHAPE.indices) parked.indices.push(b0 + k);
+  }
   for (const dock of docks) {
     const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];
     if (!dock.lorry) continue;

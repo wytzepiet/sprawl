@@ -102,7 +102,7 @@ export class InstancePool {
 
   ensureBucket(
     key: string,
-    geometry: MeshGeometry,
+    geometry: MeshGeometry & { colors?: number[] },
     color: Color3,
     castShadow: boolean,
     receiveShadow: boolean,
@@ -132,7 +132,10 @@ export class InstancePool {
     vd.indices = shape.indices;
     vd.normals = shape.normals;
     if (shape.uvs) vd.uvs = shape.uvs;
+    // A shape's own colours scale its bucket's: a car's glass darker.
+    if (shape.colors) vd.colors = shape.colors;
     vd.applyToMesh(mesh);
+    mesh.hasVertexAlpha = false;
     giveBevel(mesh, shape);
     mesh.material = mat;
     mesh.isPickable = false;

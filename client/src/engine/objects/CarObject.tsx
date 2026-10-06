@@ -1,8 +1,9 @@
-import { Color3, Vector3 } from "@babylonjs/core";
+import { Color3, Vector3, type StandardMaterial } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
-import { lacquer } from "../bevel";
+import { carShape, ROUNDING } from "./carShape";
+import { lacquer, type BevelPlugin } from "../bevel";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
 import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
@@ -27,7 +28,7 @@ const PALETTE = [
   new Color3(0.2, 0.5, 0.4),
   new Color3(0.8, 0.65, 0.25),
 ];
-const carGeo = boxGeometry(CAR.w, CAR.l, CAR.h);
+const carGeo = carShape(CAR.w, CAR.l, CAR.h);
 /** A van: a box a car and a bit long, tall, and always the same white. */
 const vanGeo = boxGeometry(0.17, 0.37, 0.18);
 const VAN = new Color3(0.92, 0.92, 0.9);
@@ -48,6 +49,13 @@ const HULL = { w: 0.45, l: 1.6, h: 0.2 };
 const shipGeo = boxGeometry(HULL.w, HULL.l, HULL.h);
 const SHIP = new Color3(0.2, 0.24, 0.3);
 const SHIP_Z = -0.5 + HULL.h / 2;
+
+/** A vehicle's material: lacquered, and its edges rounded tight. */
+function glossy(material: StandardMaterial) {
+  lacquer(material, "car");
+  const bevel = material.pluginManager?.getPlugin<BevelPlugin>("Bevel");
+  if (bevel) bevel.width = ROUNDING;
+}
 
 /// Small deterministic hash so a car's colour is a fact about the car, not
 /// a roll of the dice.
@@ -72,7 +80,7 @@ export function mountCar(
   const ship = car.role === "Ship";
   const color = ship ? SHIP : car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
   const bucket = ship ? `ship${look.key}` : car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
-  lacquer(pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true).material, "car");
+  glossy(pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true).material);
   const z = ship ? SHIP_Z : CAR_Z;
 
   if (!car.trip) driving.delete(entry.id);
@@ -133,8 +141,8 @@ export function mountCar(
 function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look: Look): () => void {
   const cab = `lorry_cab${look.key}`;
   const trailer = `lorry_trailer${look.key}`;
-  lacquer(pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true).material, "car");
-  lacquer(pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true).material, "car");
+  glossy(pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true).material);
+  glossy(pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true).material);
   const cabZ = GROUND + CAB.h / 2;
   const trailerZ = GROUND + TRAILER.h / 2;
   const placed = (p: Pose, z: number) => ({ pos: [p.x, p.y, z] as [number, number, number], rot: [0, 0, p.heading - Math.PI / 2] as [number, number, number] });
