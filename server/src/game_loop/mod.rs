@@ -15,7 +15,6 @@ use crate::persistence;
 use crate::protocol::{Build, BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Sale, ServerMessage, StateUpdate, Tool, GridCoord};
 use crate::world::chunk_of;
 use crate::world::{Link, World};
-use crate::world::pathfinding;
 
 struct ClientState {
     /// Who is playing. Several sockets can share one.
@@ -589,15 +588,9 @@ fn try_reroute(
     dest: EntityId,
     now: GameTime,
 ) -> bool {
-    let Some(to_node) = world.approach(dest) else { return false };
-    let path = match pathfinding::Routes::from(world, from_node).route_to(to_node) {
-        Some(r) if r.len() >= 2 => r,
-        _ => return false,
-    };
+    let Some(ways) = world.ways_to(dest, from_node) else { return false };
     // The spot it was heading for is still its own.
-    let Some(way_in) = world.way_in(dest, car_id, now, GameTime::MAX) else { return false };
-    let to_lot = way_in.len() - 1;
-    let new_route: Vec<EntityId> = path.into_iter().chain(way_in[1..].iter().copied()).collect();
+    let Some((new_route, to_lot)) = world.way_in(dest, car_id, &ways, now, GameTime::MAX) else { return false };
 
     let old_route = match world.objects.get(car_id) {
         Some(e) => match &e.object {

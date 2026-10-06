@@ -60,6 +60,25 @@ still coming, not behind everyone on the run (`join_run`). Before, a car
 backed out blind, queued behind cars that were still behind it, and
 cars drove through each other at drives.
 
+Kerb bays, 2026-10-06. Everything but a house (its drive) and a depot,
+farm or port (its yard) parks at the kerb before it: on a street, not a
+through road, running straight past one of its tiles and straight on to
+the next node, two bays a tile, a quarter tile either side of the street
+node, where the dressing draws kerb cars (`KERB`). A bay is the
+building's it fronts, so they share out with no rule. A bay is driven
+along the lane on its side: the one three quarters past its entry node
+is pulled into, straightening on the kerb's line; the one a quarter
+past is parked in as a driver would, past it on the lane and backed in.
+Both leave forward for the node ahead, through the give-way line. A car
+turning off the street holds the node it left it at until it is parked,
+as one pulling out does, and the street waits for it. Staff park in
+bays too, now that a workplace has some. Not yet: a car coming the
+other way, with the bays across the road, stops at the door, unseen
+(`Lots::way_in`, `usable`); bays perpendicular to the kerb where a
+frontage needs more; visitors spilling to the neighbours' bays; and
+cruising when every bay near is taken. A house's drive is already a
+perpendicular bay with a drive to it, and may become one of them.
+
 Status: specification, drafted 2026-09-06. §8 step 1 built the same day
 in its generic form: every building has a two-spot lot on its driveway
 (`world/lots.rs`), trips end in a spot and start from one, a parked car

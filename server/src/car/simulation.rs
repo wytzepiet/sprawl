@@ -50,7 +50,12 @@ pub fn park_car(
         events.wake(0, woken_id);
     }
     events.clear_dedup(car_id);
+    let mut holding: Vec<EntityId> = world.manoeuvres.iter().filter(|(_, (c, _))| *c == car_id).map(|(&n, _)| n).collect();
+    holding.sort_unstable();
     world.remove_car_from_edges(car_id);
+    for node in holding {
+        wake_round(world, events, node, car_id);
+    }
 
     // Its building gone, it goes home: its owner's, or a fleet's own yard.
     // Nobody's any more, it is scrap.
@@ -218,20 +223,35 @@ fn wake_round(world: &World, events: &mut EventQueue, node: EntityId, car_id: En
 /// How long a driver allows for seeing a car pull out and braking for it.
 const REACTION: f64 = 0.5;
 
-/// Is this car still pulling out onto `street`: on its way out of a lot
-/// there, and not yet clear of it?
-fn pulling_out_at(world: &World, car_id: EntityId, street: EntityId) -> bool {
+/// Is this car still turning between the street and a lot at `street`:
+/// pulling out of a lot there and not yet clear of it, or turned off the
+/// street there into one and not yet parked?
+fn manoeuvring_at(world: &World, car_id: EntityId, street: EntityId) -> bool {
     matches!(world.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c))
-        if c.trip.as_ref().is_some_and(|t| t.from_lot > 0 && t.route[t.from_lot] == street && t.route_index <= t.from_lot + 1))
+        if c.trip.as_ref().is_some_and(|t| {
+            let turn_in = t.route.len() - 1 - t.to_lot;
+            (t.from_lot > 0 && t.route[t.from_lot] == street && t.route_index <= t.from_lot + 1)
+                || (t.to_lot > 0 && t.route[turn_in] == street && t.route_index > turn_in)
+        }))
 }
 
-/// Is the street clear for a car to pull out onto it here? Nobody else
-/// pulling out, and everyone on the street either past the node or far
-/// enough off to see the car and stop short of it. A car standing in the
+/// Is someone other than this car turning off or onto the street here?
+fn held(world: &World, car_id: EntityId, node: EntityId) -> bool {
+    world.manoeuvres.get(&node).is_some_and(|&(o, _)| o != car_id && manoeuvring_at(world, o, node))
+}
+
+/// Is the street clear for a car to pull out of its lot onto it? Everyone
+/// on the street either past the node or far enough off to see the car and
+/// stop short of it. A car standing in the
 /// queue beside a drive keeps it shut; one waiting to pull out of a lot of
 /// its own is not on the street yet.
-fn gap_at(world: &World, car_id: EntityId, street: EntityId, now: GameTime) -> bool {
-    if world.pulling_out.get(&street).is_some_and(|&(o, _)| o != car_id && pulling_out_at(world, o, street)) {
+fn gap_at(world: &World, car_id: EntityId, trip: &Trip, now: GameTime) -> bool {
+    // Nobody else pulling out here, nor just ahead on its way: two cars
+    // pulling out of doors side by side, each across the other's way,
+    // would each stop for the other.
+    let street = trip.route[trip.from_lot];
+    let ahead = &trip.route[trip.from_lot..trip.route.len().min(trip.from_lot + 3)];
+    if ahead.iter().any(|&n| held(world, car_id, n)) {
         return false;
     }
     on_street(world, street).into_iter().all(|o| {
@@ -496,25 +516,33 @@ pub fn handle_car_wake_up(
     let line: f64 = trip.segment_lengths[1..trip.from_lot.max(1)].iter().sum();
     // A hold kept standing still is let go after a while, as a claim on a
     // junction is: whatever it waits for may be waiting for it.
-    if let Some(&(o, since)) = world.pulling_out.get(&street)
+    if let Some(&(o, since)) = world.manoeuvres.get(&street)
         && o == car_id
     {
         if cur_speed > 0.01 {
-            world.pulling_out.insert(street, (car_id, now));
+            world.manoeuvres.insert(street, (car_id, now));
         } else if now >= since + crate::intersection::PATIENCE {
-            world.pulling_out.remove(&street);
+            world.manoeuvres.remove(&street);
             intersections.lapses += 1;
             wake_round(world, events, street, car_id);
         }
     }
-    let mut waiting = trip.from_lot > 0 && ri <= trip.from_lot && world.pulling_out.get(&street).is_none_or(|&(o, _)| o != car_id);
-    if waiting && line - cur_progress <= physics::braking_distance(cur_speed, 0.0) + 0.05 && gap_at(world, car_id, street, now) {
-        world.pulling_out.insert(street, (car_id, now));
+    let mut waiting = trip.from_lot > 0 && ri <= trip.from_lot && world.manoeuvres.get(&street).is_none_or(|&(o, _)| o != car_id);
+    if waiting && line - cur_progress <= physics::braking_distance(cur_speed, 0.0) + 0.05 && gap_at(world, car_id, &trip, now) {
+        world.manoeuvres.insert(street, (car_id, now));
         waiting = false;
         // Whoever is coming sees it now, not at their next look ahead.
         wake_round(world, events, street, car_id);
     }
     join_run(world, car_id, &trip, ri, cur_progress, now, !waiting);
+
+    // Into a lot: off the street there, it holds the node until it is
+    // parked, so whoever comes along behind waits while it is still half
+    // in the lane, or backing into its bay from it.
+    let turn_in = trip.route.len() - 1 - trip.to_lot;
+    if trip.to_lot > 0 && ri > turn_in && !held(world, car_id, trip.route[turn_in]) {
+        world.manoeuvres.insert(trip.route[turn_in], (car_id, now));
+    }
 
     // A car holds a junction until its tail is through it, not until its
     // nose is: the car behind is let into the node only once this one has
@@ -527,8 +555,8 @@ pub fn handle_car_wake_up(
             for woken_id in intersections.clear_car(trip.route[k], car_id, now) {
                 events.wake(0, woken_id);
             }
-            if world.pulling_out.get(&trip.route[k]).is_some_and(|&(c, _)| c == car_id) {
-                world.pulling_out.remove(&trip.route[k]);
+            if k == trip.from_lot && world.manoeuvres.get(&trip.route[k]).is_some_and(|&(c, _)| c == car_id) {
+                world.manoeuvres.remove(&trip.route[k]);
                 wake_round(world, events, trip.route[k], car_id);
             }
         } else {
@@ -647,8 +675,8 @@ pub fn handle_car_wake_up(
     if waiting {
         obstacles.push(Obstacle::MustStop { distance: (line - cur_progress).max(0.0) });
     }
-    // A car pulling out across the road ahead: stop short of it.
-    let mut pull_out_ahead = false;
+    // A car turning off or onto the street ahead: stop short of it.
+    let mut turn_ahead = false;
     if let Some(limit) = bend(world, &trip.route, ri) {
         obstacles.push(Obstacle::SpeedLimit { distance: entry_ri.max(0.0), speed: limit });
     }
@@ -660,9 +688,9 @@ pub fn handle_car_wake_up(
             distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0),
         });
     }
-    if world.pulling_out.get(&trip.route[ri]).is_some_and(|&(o, _)| o != car_id && pulling_out_at(world, o, trip.route[ri])) {
+    if held(world, car_id, trip.route[ri]) {
         obstacles.push(Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) });
-        pull_out_ahead = true;
+        turn_ahead = true;
     }
 
     // Scan forward nodes
@@ -682,9 +710,9 @@ pub fn handle_car_wake_up(
             break;
         }
 
-        if !pull_out_ahead && world.pulling_out.get(&node).is_some_and(|&(o, _)| o != car_id && pulling_out_at(world, o, node)) {
+        if !turn_ahead && held(world, car_id, node) {
             obstacles.push(Obstacle::MustStop { distance: (entry_k - INTERSECTION_STOP_MARGIN).max(0.0) });
-            pull_out_ahead = true;
+            turn_ahead = true;
         }
         if world.lot_nodes.contains_key(&node) {
             obstacles.push(Obstacle::SpeedLimit {
@@ -711,8 +739,8 @@ pub fn handle_car_wake_up(
         .map(|o| o.wake_time(cur_speed, new_accel))
         .fold(5000u64, u64::min);
 
-    // Waiting for a gap: look again soon. Waiting for someone else to pull
-    // out needs no looking: they wake whoever is coming once they are clear.
+    // Waiting for a gap: look again soon. Waiting for someone else to turn
+    // needs no looking: they wake whoever is coming once they are clear.
     if waiting {
         wake_ms = wake_ms.min(500);
     }
