@@ -13,8 +13,11 @@ import { RIM } from "./town/draw";
  * out at the edge, up again at the round's inner side. However the sheet is
  * cut into triangles, and however many kerbs come near one.
  *
- * In the sheet's own frame, so a road tile's shape, placed many times, is
- * one texture: a sheet is moved, never turned.
+ * Of a sheet whose every edge is a kerb, as the paving's, the texture can
+ * hold the sheet itself too, how far inside it each point is, and the
+ * sheet is then drawn as a square over its box, cut to it (as road tiles
+ * are, `roads.ts`). In the sheet's own frame: a sheet is moved, never
+ * turned.
  */
 
 /** Texels to a tile, at most; a big sheet takes fewer. */
@@ -93,7 +96,7 @@ export function kerbData(kerbs: Kerb[], extent: Extent) {
   [x0, y0] = [x0 - reach, y0 - reach];
   const [w, h] = [Math.max(2, Math.ceil((x1 + reach - x0) * density)), Math.max(2, Math.ceil((y1 + reach - y0) * density))];
   const data = kerbDistances(kerbs, x0, y0, density, w, h);
-  return { data, origin: [x0, y0] as [number, number], size: [w / density, h / density] as [number, number], texels: [w, h] as [number, number] };
+  return { data, density, origin: [x0, y0] as [number, number], size: [w / density, h / density] as [number, number], texels: [w, h] as [number, number] };
 }
 
 /**
@@ -141,13 +144,48 @@ export function kerbDistances(kerbs: Kerb[], x0: number, y0: number, density: nu
   return data;
 }
 
-/** A sheet's kerb texture over a box of it, from its kerbs: one channel of
- *  half floats, read smoothly. */
-export function kerbField(scene: Scene, kerbs: Kerb[], extent: Extent): KerbField {
-  const { data, origin, size, texels } = kerbData(kerbs, extent);
-  const half = new Uint16Array(data.length);
-  for (let i = 0; i < data.length; i++) half[i] = toHalf(data[i]);
-  const texture = new RawTexture(half, texels[0], texels[1], Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
+/**
+ * Distances to a sheet's outline over a grid (`kerbDistances` to its
+ * every edge), signed by which side of it each texel is, read off the
+ * sheet's own triangles, near the outline or far from it: positive on the
+ * sheet, negative off it.
+ */
+export function coverage(g: MeshGeometry, outline: Float32Array, x0: number, y0: number, density: number, w: number, h: number): Float32Array {
+  const covered = new Uint8Array(w * h);
+  const p = g.positions;
+  // Each triangle filled a row of texels at a time: across the row's
+  // middle, from where it enters the triangle to where it leaves.
+  for (let t = 0; t < g.indices.length; t += 3) {
+    const v = [0, 1, 2].map((k) => [p[g.indices[t + k] * 3], p[g.indices[t + k] * 3 + 1]]);
+    const j0 = Math.max(0, Math.ceil((Math.min(v[0][1], v[1][1], v[2][1]) - y0) * density - 0.5));
+    const j1 = Math.min(h - 1, Math.floor((Math.max(v[0][1], v[1][1], v[2][1]) - y0) * density - 0.5));
+    for (let j = j0; j <= j1; j++) {
+      const y = y0 + (j + 0.5) / density;
+      let [lo, hi] = [Infinity, -Infinity];
+      for (let k = 0; k < 3; k++) {
+        const [a, b] = [v[k], v[(k + 1) % 3]];
+        if ((a[1] > y) === (b[1] > y)) continue;
+        const x = a[0] + ((y - a[1]) / (b[1] - a[1])) * (b[0] - a[0]);
+        [lo, hi] = [Math.min(lo, x), Math.max(hi, x)];
+      }
+      const i0 = Math.max(0, Math.ceil((lo - x0) * density - 0.5));
+      const i1 = Math.min(w - 1, Math.floor((hi - x0) * density - 0.5));
+      if (i0 <= i1) covered.fill(1, j * w + i0, j * w + i1 + 1);
+    }
+  }
+  return outline.map((d, k) => (covered[k] ? Math.abs(d) : -Math.abs(d)));
+}
+
+/** A sheet's kerb texture over a box of it, from its kerbs, half floats
+ *  read smoothly: how far inside its kerbs, and, of a sheet `cover` whose
+ *  every edge is a kerb, how far inside the sheet, so a square drawn over
+ *  the box is cut to it. */
+export function kerbField(scene: Scene, kerbs: Kerb[], extent: Extent, cover?: MeshGeometry): KerbField {
+  const { data, origin, size, texels, density } = kerbData(kerbs, extent);
+  const on = cover ? coverage(cover, data, origin[0], origin[1], density, texels[0], texels[1]) : null;
+  const half = new Uint16Array(data.length * 2);
+  for (let i = 0; i < data.length; i++) [half[i * 2], half[i * 2 + 1]] = [toHalf(data[i]), toHalf(on ? on[i] : FAR)];
+  const texture = new RawTexture(half, texels[0], texels[1], Constants.TEXTUREFORMAT_RG, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
   texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
   return { texture, origin, size, texels };
 }
@@ -187,7 +225,9 @@ uniform sampler2D kerbField;
 #endif`,
   CUSTOM_FRAGMENT_BEFORE_LIGHTS: `#ifdef KERB
 vec2 kerbUv = (vKerbAt - kerbOrigin) / kerbSize;
-float kerbD = texture2D(kerbField, kerbUv).r;
+vec2 kerbAt = texture2D(kerbField, kerbUv).rg;
+if (kerbAt.g < 0.) discard;
+float kerbD = kerbAt.r;
 float kerbDx = texture2D(kerbField, kerbUv + vec2(kerbTexel.x, 0.)).r - texture2D(kerbField, kerbUv - vec2(kerbTexel.x, 0.)).r;
 float kerbDy = texture2D(kerbField, kerbUv + vec2(0., kerbTexel.y)).r - texture2D(kerbField, kerbUv - vec2(0., kerbTexel.y)).r;
 if (kerbD >= 0. && kerbD < kerbWidth && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {
@@ -214,7 +254,9 @@ var kerbField: texture_2d<f32>;
 let kerbUv = (fragmentInputs.vKerbAt - uniforms.kerbOrigin) / uniforms.kerbSize;
 let kerbTx = vec2f(uniforms.kerbTexel.x, 0.);
 let kerbTy = vec2f(0., uniforms.kerbTexel.y);
-let kerbD = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv, 0.).r;
+let kerbAt = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv, 0.).rg;
+if (kerbAt.g < 0.) { discard; }
+let kerbD = kerbAt.r;
 let kerbDx = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.).r;
 let kerbDy = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.).r;
 if (kerbD >= 0. && kerbD < uniforms.kerbWidth && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {

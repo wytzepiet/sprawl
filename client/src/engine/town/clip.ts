@@ -48,13 +48,13 @@ export function clipTo(g: MeshGeometry & { colors?: number[] }, [x0, y0, x1, y1]
 }
 
 /** A mesh's triangles filed by the cells of a grid they reach into: each
- *  triangle's first index, under every cell its box touches. */
-export function fileBy(g: MeshGeometry, cell: (x: number, y: number) => [number, number], key: (cx: number, cy: number) => string): Map<string, number[]> {
+ *  triangle's first index, under every cell its box, `pad` wider, touches. */
+export function fileBy(g: MeshGeometry, cell: (x: number, y: number) => [number, number], key: (cx: number, cy: number) => string, pad = 0): Map<string, number[]> {
   const out = new Map<string, number[]>();
   const P = g.positions;
   for (let t = 0; t < g.indices.length; t += 3) {
     const xs = [0, 1, 2].map((k) => P[g.indices[t + k] * 3]), ys = [0, 1, 2].map((k) => P[g.indices[t + k] * 3 + 1]);
-    const [lo, hi] = [cell(Math.min(...xs), Math.min(...ys)), cell(Math.max(...xs), Math.max(...ys))];
+    const [lo, hi] = [cell(Math.min(...xs) - pad, Math.min(...ys) - pad), cell(Math.max(...xs) + pad, Math.max(...ys) + pad)];
     for (let cy = Math.min(lo[1], hi[1]); cy <= Math.max(lo[1], hi[1]); cy++)
       for (let cx = Math.min(lo[0], hi[0]); cx <= Math.max(lo[0], hi[0]); cx++) {
         const k = key(cx, cy);

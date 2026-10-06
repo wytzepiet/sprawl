@@ -3,7 +3,8 @@ import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
-import { drawTown, treeInstances, type Piece } from "./town/draw";
+import { drawTown, PAVED_Z, treeInstances, type Piece } from "./town/draw";
+import type { MeshGeometry } from "./Mesh";
 import { bevelled, giveBevel, lacquer } from "./bevel";
 import { waysAt } from "./town/dressing";
 import { storeysOf, windowOf, type Tile, type Town } from "./town/grid";
@@ -24,6 +25,9 @@ const SLOW_MS = 50;
 /** The town is kept in chunks this many tiles square, each drawn again
  *  only when something on it or near it changes. */
 const CHUNK = 8;
+/** How far past its chunk a paving triangle is taken for it, in tiles:
+ *  past the texels the chunk's square reads at its edge. */
+const PAVING_PAD = 0.1;
 /** Tiles of town drawn round the chunks being drawn: a tile's look reads
  *  its neighbours, and what a tile cannot see from them (`facts.ts`) is
  *  worked out over the whole town. */
@@ -207,7 +211,7 @@ export class TownLayer {
     // chunk cuts only its own; the paving's kerbs found once, from the
     // window's whole paving, so a kerb is never where a chunk was cut.
     const chunkAt = (gx: number, gy: number): [number, number] => [Math.floor((gx + wx1 + 1) / CHUNK), Math.floor((gy + wy1 + 1) / CHUNK)];
-    const filed = new Map(pieces.map((p) => [p, fileBy(p.geo, chunkAt, (cx, cy) => `${cx},${cy}`)]));
+    const filed = new Map(pieces.map((p) => [p, fileBy(p.geo, chunkAt, (cx, cy) => `${cx},${cy}`, p.name === "pavement" ? PAVING_PAD : 0)]));
     const pavement = pieces.find((p) => p.name === "pavement");
     const kerbs = pavement ? kerbsOf(pavement.geo) : [];
     for (const key of todo) {
@@ -215,7 +219,13 @@ export class TownLayer {
       // The chunk, as far as the town reaches into it.
       const tiles: Bounds = [Math.max(cx * CHUNK, box[0]), Math.max(cy * CHUNK, box[1]), Math.min(cx * CHUNK + CHUNK - 1, box[2]), Math.min(cy * CHUNK + CHUNK - 1, box[3])];
       const cut = frame(tiles);
-      const own: Piece[] = [...filed].map(([p, byChunk]) => ({ ...p, geo: clipTo(p.geo, cut, byChunk.get(key) ?? []) }));
+      // The paving as its own triangles, uncut, those at or near the chunk:
+      // drawn as a square over it, cut to them by its texture.
+      const own: Piece[] = [...filed].map(([p, byChunk]) => {
+        const mine = byChunk.get(key) ?? [];
+        if (p !== pavement) return { ...p, geo: clipTo(p.geo, cut, mine) };
+        return { ...p, geo: { ...p.geo, indices: mine.flatMap((t) => [p.geo.indices[t], p.geo.indices[t + 1], p.geo.indices[t + 2]]) } };
+      });
       // A tree stands on the chunk its middle is on; it is not cut.
       const inChunk = dressing.trees.filter((t) => {
         const [x, y] = [-t.x, -t.y];
@@ -272,8 +282,9 @@ export class TownLayer {
   }
 
   /** A chunk's pieces, drawn in the frame of the window they were drawn
-   *  in, placed on the map: its paving rounded at its kerbs, read off the
-   *  window's whole paving so a kerb is never where the chunk was cut;
+   *  in, placed on the map: its paving a square over the chunk, cut to
+   *  the paving and rounded at its kerbs by a texture, the kerbs read off
+   *  the window's whole paving so a kerb is never where the chunk was cut;
    *  and its trees. */
   private show(key: string, pieces: Piece[], trees: Dressing["trees"], [, , x1, y1]: Bounds, kerbs: Kerb[], cut: Box) {
     const root = new TransformNode(`town_${key}`, this.scene);
@@ -281,14 +292,14 @@ export class TownLayer {
     const meshes: Mesh[] = [];
     for (const p of pieces) {
       const mesh = new Mesh(`town_${p.name}_${key}`, this.scene);
-      const geo = bevelled(p.geo);
+      const paved = p.name === "pavement";
+      const geo = bevelled(paved ? square(cut, PAVED_Z) : p.geo);
       const vd = new VertexData();
       Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
       vd.applyToMesh(mesh);
       giveBevel(mesh, geo);
-      const paving = p.name === "pavement";
-      mesh.material = bevelOn(this.pool.material(paving ? `town_pavement_${key}` : `town_${p.name}`, p.colour ?? Color3.White()), p.name);
-      if (paving) kerbed(mesh.material, kerbField(this.scene, kerbs, cut));
+      mesh.material = bevelOn(this.pool.material(paved ? `town_pavement_${key}` : `town_${p.name}`, p.colour ?? Color3.White()), p.name);
+      if (paved) kerbed(mesh.material, kerbField(this.scene, kerbs, cut, p.geo));
       mesh.parent = root;
       mesh.isPickable = false;
       mesh.receiveShadows = true;
@@ -346,6 +357,13 @@ function grow(b: Bounds, x: number, y: number) {
 }
 
 const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - by, x1 + by, y1 + by];
+
+/** A square over a box, facing up, at a height. */
+const square = ([x0, y0, x1, y1]: Box, z: number): MeshGeometry => ({
+  positions: [x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z],
+  normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+  indices: [0, 2, 1, 0, 3, 2],
+});
 
 /** A town material lacquered as what it draws is: buildings;
  *  paving, lawns and roads stay matte. Its creases are rounded already, as

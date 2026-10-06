@@ -1,6 +1,6 @@
 import { Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, VertexData, type Material, type Scene, type StandardMaterial } from "@babylonjs/core";
 import { bevelled, giveBevel } from "./bevel";
-import { kerbDistances, kerbsOf, toHalf } from "./kerbs";
+import { coverage, kerbDistances, kerbsOf, toHalf } from "./kerbs";
 import { flatPolygons, PAVED_Z, pastSeam, RIM } from "./town/draw";
 import { roadShape } from "./town/dressing";
 import { ROAD_Z } from "./objects/roadGeometry";
@@ -79,26 +79,8 @@ class Atlas {
   private bake(ways: Ways, slot: number) {
     const flat = flatPolygons(roadShape(ways), 0);
     const density = SLOT / SPAN;
-    // Which texels the road covers, triangle by triangle; how far from its
-    // outline, near it, and so which side of it each is.
-    const covered = new Uint8Array(SLOT * SLOT);
-    const p = flat.positions;
-    for (let t = 0; t < flat.indices.length; t += 3) {
-      const [a, b, c] = [0, 1, 2].map((k) => [p[flat.indices[t + k] * 3], p[flat.indices[t + k] * 3 + 1]]);
-      const side = (u: number[], v: number[], x: number, y: number) => (v[0] - u[0]) * (y - u[1]) - (v[1] - u[1]) * (x - u[0]);
-      const i0 = Math.max(0, Math.floor((Math.min(a[0], b[0], c[0]) - ORIGIN) * density));
-      const i1 = Math.min(SLOT - 1, Math.ceil((Math.max(a[0], b[0], c[0]) - ORIGIN) * density));
-      const j0 = Math.max(0, Math.floor((Math.min(a[1], b[1], c[1]) - ORIGIN) * density));
-      const j1 = Math.min(SLOT - 1, Math.ceil((Math.max(a[1], b[1], c[1]) - ORIGIN) * density));
-      for (let j = j0; j <= j1; j++) {
-        for (let i = i0; i <= i1; i++) {
-          const [x, y] = [ORIGIN + (i + 0.5) / density, ORIGIN + (j + 0.5) / density];
-          const [s1, s2, s3] = [side(a, b, x, y), side(b, c, x, y), side(c, a, x, y)];
-          if ((s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0)) covered[j * SLOT + i] = 1;
-        }
-      }
-    }
-    const outline = kerbDistances(kerbsOf(flat), ORIGIN, ORIGIN, density, SLOT, SLOT);
+    // How far inside the road's outline, and its kerbs.
+    const outline = coverage(flat, kerbDistances(kerbsOf(flat), ORIGIN, ORIGIN, density, SLOT, SLOT), ORIGIN, ORIGIN, density, SLOT, SLOT);
     // Its kerbs where it ends, not where it runs on into the next tile;
     // and one running on into it runs on past the road's end, so it rounds
     // over straight across the seam, as the next tile's own kerb does there,
@@ -117,8 +99,7 @@ class Atlas {
       for (let i = 0; i < SLOT; i++) {
         const k = j * SLOT + i;
         const at = ((row * SLOT + j) * stride + col * SLOT + i) * 2;
-        const d = Math.abs(outline[k]);
-        this.data[at] = toHalf(covered[k] ? d : -d);
+        this.data[at] = toHalf(outline[k]);
         this.data[at + 1] = toHalf(kerbed[k]);
       }
     }
