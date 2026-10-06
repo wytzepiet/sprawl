@@ -70,11 +70,17 @@ along the lane on its side: the one three quarters past its entry node
 is pulled into, straightening on the kerb's line; the one a quarter
 past is parked in as a driver would, past it on the lane and backed in.
 Both leave forward for the node ahead, through the give-way line. A car
+coming the other way parks on the far kerb as a driver does on a quiet
+street: across the road into the bay, facing against the traffic on
+that side, by the same two manoeuvres from the other end of the stretch
+(the near one backed in from 0.7 past it, through 0.15 along the kerb,
+placed by test against `driver.ts`), and out forward the way it faces.
+A bay's booking says which way it was taken (`Window::side`). A car
 turning off the street holds the node it left it at until it is parked,
-as one pulling out does, and the street waits for it. Staff park in
-bays too, now that a workplace has some. Not yet: a car coming the
-other way, with the bays across the road, stops at the door, unseen
-(`Lots::way_in`, `usable`); bays perpendicular to the kerb where a
+as one pulling out does, and the street waits for it, both ways. Staff
+park in bays too, now that a workplace has some: an office of twelve
+fills its four by nine and leaves the rest at its door, which is what
+the next step is for. Not yet: bays perpendicular to the kerb where a
 frontage needs more; visitors spilling to the neighbours' bays; and
 cruising when every bay near is taken. A house's drive is already a
 perpendicular bay with a drive to it, and may become one of them.
