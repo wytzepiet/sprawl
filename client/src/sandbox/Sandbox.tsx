@@ -15,17 +15,19 @@ import { LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../eng
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
 import { shaded, townMesh as mesh } from "../engine/town/roof";
-import { defaultJoins } from "../engine/town/footprint";
-import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
-import { FERRY } from "../engine/town/dressing";
+import { defaultJoins, type Polygon } from "../engine/town/footprint";
+import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
+import { asphalt, FERRY } from "../engine/town/dressing";
 import { carShape, ROUNDING } from "../engine/objects/carShape";
 import { waterMaterial } from "../engine/water";
 import { GroundTiles } from "../engine/ground";
-import { giveClimb, peakMaterial } from "../engine/peaks";
-import { drawRoads, drawTown, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
+import { peakMaterial } from "../engine/peaks";
+import { drawRoads, drawTown, flatPolygons, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
 import { grove, plant } from "../engine/trees";
 import { kerbed, kerbField } from "../engine/kerbs";
-import { extentOf, kerbsOf, kerbTexels, stripLines } from "../engine/kerbLines";
+import { pave } from "../engine/paving";
+import { tiled } from "../engine/roofs";
+import { extentOf, kerbsOf, kerbTexels, roadsOf, stripLines } from "../engine/kerbLines";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -321,7 +323,7 @@ function Board() {
 }
 
 const colourOf = (t: Tile): [number, number, number] => {
-  const c = Color3.FromHexString(BLUEPRINTS[t.kind as BuildingKind].color);
+  const c = Color3.FromHexString(BLUEPRINTS[t.kind as BuildingKind].material);
   return [c.r, c.g, c.b];
 };
 
@@ -365,9 +367,10 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
   const palette: TerrainPalette = {
     Water: theme.water, Sea: theme.water, Beach: theme.beach, Grass: theme.land, Forest: theme.forest, Mountain: theme.mountain,
   };
-  // How far into its range each tile is, as the server tells it
-  // (`TerrainChunk::depths`): a distance sweep over the fixture, forward
-  // and back, in sixteenths of a tile.
+  // The mountains' heights, as the server sends them
+  // (`TerrainChunk::heights`) but not worn: how far into its range each
+  // tile is, a distance sweep over the fixture, forward and back; at each
+  // point blended between the tiles' middles and climbed.
   const depthAt = (() => {
     const [w, h] = [town.w, town.h];
     const d = Float32Array.from({ length: w * h }, (_, k) => (type(k % w, Math.floor(k / w)) === "Mountain" ? 12 : 0));
@@ -383,8 +386,28 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
         }
       }
     }
-    return (c: number, r: number) => (c < 0 || r < 0 || c >= w || r >= h ? 0 : Math.round(Math.min(d[r * w + c], 12) * 16));
+    const tile = (c: number, r: number) => (c < 0 || r < 0 || c >= w || r >= h ? 0 : d[r * w + c]);
+    return (px: number, py: number) => {
+      const [u, v] = [px - 0.5, py - 0.5];
+      const [c, r] = [Math.floor(u), Math.floor(v)];
+      const [fx, fy] = [u - c, v - r];
+      const a = tile(c, r) + (tile(c + 1, r) - tile(c, r)) * fx;
+      const b = tile(c, r + 1) + (tile(c + 1, r + 1) - tile(c, r + 1)) * fx;
+      return Math.max(0, a + (b - a) * fy - 0.5);
+    };
   })();
+  const heightsOf = (cx: number, cy: number) => {
+    const out = new Uint8Array(PEAK_SIDE * PEAK_SIDE * 2);
+    for (let j = 0; j < PEAK_SIDE; j++) {
+      for (let i = 0; i < PEAK_SIDE; i++) {
+        const [px, py] = [cx * CHUNK_SIZE - PEAK_APRON + i / PEAK_SAMPLES, cy * CHUNK_SIZE - PEAK_APRON + j / PEAK_SAMPLES];
+        const v = Math.round(6 * (1 - Math.exp(-depthAt(px, py) / 2.5)) * 1024);
+        out[(j * PEAK_SIDE + i) * 2] = v & 255;
+        out[(j * PEAK_SIDE + i) * 2 + 1] = v >> 8;
+      }
+    }
+    return out;
+  };
   const out: Mesh[] = [];
   for (let cy = 0; cy * CHUNK_SIZE < town.h; cy++) {
     for (let cx = 0; cx * CHUNK_SIZE < town.w; cx++) {
@@ -394,11 +417,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
           tiles[iy * CHUNK_STRIDE + ix] = TYPE_BY_BYTE.indexOf(type(cx * CHUNK_SIZE + ix - CHUNK_SKIRT, cy * CHUNK_SIZE + iy - CHUNK_SKIRT));
         }
       }
-      const depths = new Uint8Array(CHUNK_STRIDE * CHUNK_STRIDE);
-      for (let iy = 0; iy < CHUNK_STRIDE; iy++) {
-        for (let ix = 0; ix < CHUNK_STRIDE; ix++) depths[iy * CHUNK_STRIDE + ix] = depthAt(cx * CHUNK_SIZE + ix - CHUNK_SKIRT, cy * CHUNK_SIZE + iy - CHUNK_SKIRT);
-      }
-      const geo = buildChunk(tiles, depths, cx, cy, palette);
+      const geo = buildChunk(tiles, heightsOf(cx, cy), cx, cy, palette);
       if (!geo) continue;
       ground.set(`${cx},${cy}`, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], geo.layers);
       for (const [name, g] of [["water", geo.water], ["cliffs", geo.cliffs], ["peaks", geo.peaks]] as const) {
@@ -411,13 +430,11 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
         mesh.scaling.set(-1, -1, 1);
         // The peaks are laid where they are on the map.
         if (name !== "peaks") mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
-        else giveClimb(mesh, g);
-        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : name === "peaks" ? peakMaterial(scene, "terrain_peaks_mat") : new StandardMaterial(`terrain_${name}_mat`, scene);
+        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : name === "peaks" && geo.peakLight ? peakMaterial(scene, "terrain_peaks_mat", geo.peakLight, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], [theme.rock, theme.land, theme.mountain].map((k) => new Color3(k.r, k.g, k.b)) as [Color3, Color3, Color3]) : new StandardMaterial(`terrain_${name}_mat`, scene);
         if (name === "cliffs") {
           mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
           mat.specularColor = Color3.Black();
         }
-        if (name === "peaks") mat.diffuseColor = new Color3(theme.mountain.r, theme.mountain.g, theme.mountain.b);
         mat.backFaceCulling = false;
         mesh.material = mat;
         mesh.isPickable = false;
@@ -448,7 +465,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     // are, asphalt and paving matte.
     giveBevel(mesh, geo);
     const bevel = new BevelPlugin(mat);
-    if (name === "mass") lacquer(mat, "building");
+    if (name === "mass") lacquer(mat, "building"), tiled(mat);
     else if (name === "parked") {
       lacquer(mat, "car");
       bevel.width = ROUNDING;
@@ -477,7 +494,8 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     // A sheet's kerbs rounded from its own kerb texture (`engine/kerbs.ts`):
     // the paving's every edge, a road's where it does not run on.
     const material = meshes[meshes.length - 1].material;
-    if (material && p.name === "pavement") kerbed(material, kerbField(scene, kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines) })), theme.road);
+    if (material && p.name === "pavement") pave(material);
+    if (material && p.name === "pavement") kerbed(material, kerbField(scene, kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines), roads: roadsOf(flatPolygons([...asphalt(town).street, ...asphalt(town).through, ...dressing.lanes.map((l): Polygon => [l])], 0)) })), theme.road);
     if (material && (p.name === "street" || p.name === "through")) {
       const on = runsOn(p.geo);
       kerbed(material, kerbField(scene, kerbTexels(kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo))));

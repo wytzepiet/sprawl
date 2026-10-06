@@ -8,6 +8,7 @@ mod fixtures;
 mod game_loop;
 mod health;
 mod intersection;
+mod mountains;
 mod needs;
 mod road_gen;
 mod network;

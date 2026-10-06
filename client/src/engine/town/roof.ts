@@ -3,7 +3,7 @@ import type { MeshGeometry } from "../Mesh";
 import type { Tile, Town } from "./grid";
 import { capped, eaves, slope, type RGB } from "./mass";
 import { facts, type Facts } from "./facts";
-import { blunt, convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
+import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
 
 /**
  * The buildings of a town as one mesh: every plan (`footprint.ts`) walled
@@ -23,10 +23,6 @@ import { blunt, convex, footprints, intersect, shrink, subtract, unite, type Hal
  * is straight lines, cut exactly (`footprint.ts`), so nothing is sampled
  * and nothing can fail to meet.
  *
- * Then the outside corners are rounded off from above, roof and all, as a
- * cutter would: the roof keeps its sharp ridges and hips, and a rounded
- * wall rises to wherever the roof is over it.
- *
  * An office tower is capped instead: a flat roof a shade darker, and on
  * it a slab a shade lighter drawn in from the edge, the way a model
  * town's towers are. Big lines only: nothing smaller.
@@ -35,19 +31,16 @@ import { blunt, convex, footprints, intersect, shrink, subtract, unite, type Hal
 /** A cap's slab: how far in from the edge, and how high. */
 const CAP_IN = 0.15, CAP_H = 0.05;
 
-/** How round a building's outside corners are, from above. */
-const CORNER = 0.06;
-
 type V = [number, number, number];
 /** A wall's line: how far in from it a point is, a·x + b·y + c. */
 type Line = [number, number, number];
 
-/** Every building's plan as it stands: its masses, the loading bay cut from
- *  each, each piece's outline rounded from above. */
+/** Every building's plan as it stands: its masses, and the loading bay cut
+ *  from each, its corners square. */
 export function* plans({ town, head, services }: Facts) {
   const cuts = services.map((s): Polygon => [s.cut]);
   for (const mass of footprints(town, head)) {
-    for (const polygon of subtract(mass.polygons, cuts)) yield { mass, polygon, outline: blunt([polygon], CORNER) };
+    for (const polygon of subtract(mass.polygons, cuts)) yield { mass, polygon, outline: [polygon] };
   }
 }
 

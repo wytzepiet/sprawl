@@ -72,10 +72,10 @@ impl Layers {
         Layers { elevation: Simplex::new(seed), moisture: Simplex::new(seed.wrapping_add(1)), rugged: Simplex::new(seed.wrapping_add(2)), ocean: Simplex::new(seed.wrapping_add(3)) }
     }
 
-    /// One tile's type from the layers alone, before smoothing.
-    fn tile(&self, x: i32, y: i32) -> TerrainType {
+    /// The height at a point of the map, and what the tile there is made
+    /// of: the moisture, how far into range country, and the ocean's step.
+    fn sample(&self, fx: f64, fy: f64) -> (f64, f64, f64, f64) {
         let span = |(lo, hi): (f64, f64), t: f64| lo + (hi - lo) * t;
-        let (fx, fy) = (x as f64, y as f64);
         let r = 0.5 + 0.5 * self.rugged.get([fx * RUGGED, fy * RUGGED]);
         let detail = span(DETAIL, r);
         // Averaging two independent noises crowds the result toward zero,
@@ -83,7 +83,7 @@ impl Layers {
         // back so the blend is spread as widely as either layer alone.
         let spread = ((1.0 - detail).powi(2) + detail.powi(2)).sqrt();
         let blend = |n: &Simplex| ((1.0 - detail) * n.get([fx * COARSE, fy * COARSE]) + detail * n.get([fx * FINE, fy * FINE])) / spread;
-        let inland = 1.0 - ((((x * x + y * y) as f64).sqrt() - START_LAND) / START_LAND).clamp(0.0, 1.0);
+        let inland = 1.0 - (((fx * fx + fy * fy).sqrt() - START_LAND) / START_LAND).clamp(0.0, 1.0);
         let step = (OCEAN_GAIN * self.ocean.get([fx * OCEAN, fy * OCEAN])).tanh();
         let deep = step * if step < 0.0 { SEA_FLOOR } else { SHELF };
         let e = blend(&self.elevation) * span(RELIEF, r) + START_RAISE * inland + deep + inland * (-deep).max(0.0);
@@ -94,7 +94,12 @@ impl Layers {
         // moisture says whether it has forest. Neither makes a peak by
         // itself, so ranges are contiguous and stand on high ground.
         let range = self.elevation.get([fx * COARSE, fy * COARSE]) * span(RELIEF, r);
+        (e, m, range, step)
+    }
 
+    /// One tile's type from the layers alone, before smoothing.
+    fn tile(&self, x: i32, y: i32) -> TerrainType {
+        let (e, m, range, step) = self.sample(x as f64, y as f64);
         if e < -0.05 {
             // Water on the ocean's side of the step is the sea; water on
             // the shelf is a lake, whatever its size.
@@ -108,6 +113,26 @@ impl Layers {
         } else {
             TerrainType::Grass
         }
+    }
+}
+
+/// The height of the map at any point of it, between tiles too, as the
+/// land is generated from: what the mountains are raised from
+/// (`mountains.rs`).
+pub struct Ground(Layers);
+
+impl Ground {
+    pub fn new(seed: u32) -> Self {
+        Ground(Layers::new(seed))
+    }
+
+    pub fn height(&self, x: f64, y: f64) -> f64 {
+        self.0.sample(x, y).0
+    }
+
+    /// The fine layer alone, -1 to 1: for detail.
+    pub fn fine(&self, x: f64, y: f64) -> f64 {
+        self.0.elevation.get([x * FINE * 3.0, y * FINE * 3.0])
     }
 }
 

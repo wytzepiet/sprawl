@@ -1,6 +1,7 @@
 import { Color3, Mesh, TransformNode, VertexData, type Scene, type ShadowGenerator, type StandardMaterial } from "@babylonjs/core";
 import { perfCount } from "./PerfReport";
 import { Tints, TintPlugin } from "./tints";
+import { tiled } from "./roofs";
 import * as Comlink from "comlink";
 import { CHUNK, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
 import type { TownApi } from "./townWorker";
@@ -8,13 +9,14 @@ import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
-import { PAVED_Z } from "./town/draw";
+import { KERB_Z } from "./town/draw";
 import type { MeshGeometry } from "./Mesh";
 import { bevelled, giveBevel, lacquer } from "./bevel";
 import { waysAt } from "./town/dressing";
 import { storeysOf, type Town } from "./town/grid";
 import type { Box } from "./town/clip";
 import { kerbed, kerbField } from "./kerbs";
+import { pave } from "./paving";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import type { RGB } from "./town/mass";
@@ -82,7 +84,7 @@ export class TownLayer {
 
   /** A building's colour as it looks now. */
   private colourOf(e: GameObjectEntry): RGB {
-    const c = this.look(e).tint(Color3.FromHexString(BLUEPRINTS[(e.object.data as Building).kind as BuildingKind].color));
+    const c = this.look(e).tint(Color3.FromHexString(BLUEPRINTS[(e.object.data as Building).kind as BuildingKind].material));
     return [c.r, c.g, c.b];
   }
 
@@ -251,14 +253,16 @@ export class TownLayer {
       if (p.name === "mass" && p.geo.colors) for (let k = 2; k < p.geo.colors.length; k += 4) p.geo.colors[k] = this.slotOf(p.geo.colors[k], byId);
       const mesh = new Mesh(`town_${p.name}_${key}`, this.scene);
       const paved = p.name === "pavement";
-      const geo = bevelled(paved ? square(cut, PAVED_Z) : p.geo);
+      const geo = bevelled(paved ? square(cut, KERB_Z) : p.geo);
       const vd = new VertexData();
       Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
       vd.applyToMesh(mesh);
       giveBevel(mesh, geo);
       mesh.material = bevelOn(this.pool.material(paved ? `town_pavement_${key}` : `town_${p.name}`, p.colour ? new Color3(p.colour.r, p.colour.g, p.colour.b) : Color3.White()), p.name);
       if (p.name === "mass" && !mesh.material.pluginManager?.getPlugin("Tint")) new TintPlugin(mesh.material, this.tints);
+      if (p.name === "mass") tiled(mesh.material);
       if (paved && paving) kerbed(mesh.material, kerbField(this.scene, paving), this.theme().road);
+      if (paved) pave(mesh.material);
       mesh.parent = root;
       mesh.isPickable = false;
       mesh.receiveShadows = true;

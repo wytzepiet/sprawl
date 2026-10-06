@@ -13,9 +13,9 @@ export type TerrainChunk = { coord: ChunkCoord,
  */
 tiles: Uint8Array, 
 /**
- * How far into its range each of those tiles is, from its middle to
- * the nearest tile that is not mountain, in sixteenths of a tile, up
- * to MOUNTAIN_REACH: nought off the mountains. Read over the whole
- * map, so a range rises to its spine however wide it is.
+ * The mountains' heights over the chunk and a tile round it, eroded
+ * (`mountains.rs`): `mountains::SIDE` by `SIDE` points, `SAMPLES` to
+ * a tile, a row of x at a time from a tile short of its corner, each
+ * two bytes, low first, in `UNIT`s of a tile. Empty off the mountains.
  */
-depths: Uint8Array, };
+heights: Uint8Array, };

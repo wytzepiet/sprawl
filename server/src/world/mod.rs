@@ -16,7 +16,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use crate::engine::GameTime;
 
 use crate::protocol::{
-    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, MOUNTAIN_REACH, ChunkBounds, ChunkCoord, EdgeKey, EntityId,
+    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkBounds, ChunkCoord, EdgeKey, EntityId,
     GameObject, TILE_ABSENT, TerrainChunk, TerrainType,
 };
 use crate::engine::tracked::Tracked;
@@ -73,6 +73,9 @@ pub struct World {
     pub laid: u32,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
+    /// The mountains' heights, eroded, made from the terrain the first time
+    /// a chunk of it is sent (`mountains.rs`).
+    pub peaks: std::sync::OnceLock<crate::mountains::Peaks>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
@@ -157,6 +160,7 @@ impl World {
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
+            peaks: Default::default(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
             newly_revealed: Vec::new(),
@@ -190,6 +194,7 @@ impl World {
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
+            peaks: Default::default(),
             chunk_crossings: Vec::new(),
             revealed: HashSet::new(),
             newly_revealed: Vec::new(),
@@ -607,50 +612,21 @@ impl World {
                 });
             }
         }
-        TerrainChunk { coord, tiles, depths: self.mountain_depths(origin_x, origin_y) }
+        let peaks = self.raise_mountains();
+        let heights = peaks.chunk(coord).iter().flat_map(|h| h.to_le_bytes()).collect();
+        TerrainChunk { coord, tiles, heights }
     }
 
-    /// How far into its range each tile of a chunk's payload is
-    /// (`TerrainChunk::depths`): a distance sweep, forward and back, over
-    /// the payload and MOUNTAIN_REACH tiles round it, so a tile's nearest
-    /// edge is always in the window.
-    fn mountain_depths(&self, origin_x: i32, origin_y: i32) -> Vec<u8> {
-        let side = CHUNK_STRIDE + MOUNTAIN_REACH * 2;
-        let (wx, wy) = (origin_x - MOUNTAIN_REACH, origin_y - MOUNTAIN_REACH);
-        let far = MOUNTAIN_REACH as f32;
-        let mut d: Vec<f32> = (0..side * side)
-            .map(|k| match self.terrain.get(&(wx + k % side, wy + k / side)) {
-                Some(TerrainType::Mountain) => far,
-                _ => 0.0,
-            })
-            .collect();
-        let diagonal = std::f32::consts::SQRT_2;
-        let steps = [(-1, 0, 1.0), (0, -1, 1.0), (-1, -1, diagonal), (1, -1, diagonal)];
-        for pass in 0..2 {
-            for i in 0..side * side {
-                let k = if pass == 0 { i } else { side * side - 1 - i };
-                let (x, y) = (k % side, k / side);
-                for &(dx, dy, cost) in &steps {
-                    let (dx, dy) = if pass == 0 { (dx, dy) } else { (-dx, -dy) };
-                    let (nx, ny) = (x + dx, y + dy);
-                    if nx < 0 || ny < 0 || nx >= side || ny >= side {
-                        continue;
-                    }
-                    let through = d[(ny * side + nx) as usize] + cost;
-                    if through < d[k as usize] {
-                        d[k as usize] = through;
-                    }
-                }
-            }
-        }
-        let mut depths = Vec::with_capacity((CHUNK_STRIDE * CHUNK_STRIDE) as usize);
-        for y in 0..CHUNK_STRIDE {
-            for x in 0..CHUNK_STRIDE {
-                let k = (y + MOUNTAIN_REACH) * side + x + MOUNTAIN_REACH;
-                depths.push((d[k as usize].min(far) * 16.0).round() as u8);
-            }
-        }
-        depths
+    /// The mountains' heights, eroded from the terrain the first time they
+    /// are asked for: at startup, after the terrain is made, so no player
+    /// waits on them.
+    pub fn raise_mountains(&self) -> &crate::mountains::Peaks {
+        self.peaks.get_or_init(|| {
+            let started = std::time::Instant::now();
+            let peaks = crate::mountains::Peaks::new(&self.terrain, self.terrain_seed);
+            println!("mountains: worn in {:.1}s", started.elapsed().as_secs_f32());
+            peaks
+        })
     }
 
     /// Every entity in the given chunks.

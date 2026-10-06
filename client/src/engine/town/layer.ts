@@ -1,8 +1,10 @@
 import type { TerrainType } from "../../generated";
-import { kerbsOf, kerbTexels, stripLines, type KerbTexels } from "../kerbLines";
+import { kerbsOf, kerbTexels, roadsOf, stripLines, type KerbTexels } from "../kerbLines";
 import type { Theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
-import { drawTown, treeInstances, type Piece } from "./draw";
+import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
+import { asphalt } from "./dressing";
+import type { Polygon } from "./footprint";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type Tile, type Town } from "./grid";
 import type { Paint } from "./roof";
@@ -111,6 +113,11 @@ export function drawChunks(s: Snapshot): Drawing {
   const inside = (c: number, r: number) => c >= 0 && r >= 0 && c < w && r < h;
   const tile = (c: number, r: number): Tile => (inside(c, r) ? grid[r * w + c] : OPEN);
   const road = (c: number, r: number) => (inside(c, r) ? nodes[r * w + c] : undefined);
+  // And past the box, what is built there still: so a road running out of
+  // the town runs on through its paving's rounded end, not ending at it.
+  const beyond = (c: number, r: number) => tiles.get(`${x1 - c},${y1 - r}`);
+  const tileOn = (c: number, r: number): Tile => (inside(c, r) ? grid[r * w + c] : (beyond(c, r) ?? OPEN));
+  const roadOn = (c: number, r: number) => (inside(c, r) ? nodes[r * w + c] : beyond(c, r) === ROAD ? roads.get(`${x1 - c},${y1 - r}`) : undefined);
   const whole: Town = {
     w,
     h,
@@ -133,6 +140,16 @@ export function drawChunks(s: Snapshot): Drawing {
     at: (c, r) => [x1 - c, y1 - r],
   };
 
+  const on: Town = {
+    ...whole,
+    tile: tileOn,
+    linked: (c0, r0, c1, r1) => {
+      const [a, b] = [roadOn(c0, r0), roadOn(c1, r1)];
+      return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
+    },
+    through: (c, r) => !!roadOn(c, r)?.road,
+  };
+
   // Each building painted as the shade a surface takes of its colour and
   // which building it is; its colour is the main thread's (`Tints`).
   const paint: Paint = (t, a, b) => [a, b, t.id ?? -1];
@@ -151,7 +168,13 @@ export function drawChunks(s: Snapshot): Drawing {
   // The window in the whole town's frame: column box[2] - x, row box[3] - y.
   const [c0, r0] = [x1 - wx1, y1 - wy1];
   const [ww, wh] = [wx1 - wx0 + 1, wy1 - wy0 + 1];
-  const { pieces, dressing } = drawTown(windowOf(whole, c0, r0, ww, wh), s.theme, paint, windowFacts(known, c0, r0, ww, wh));
+  const inWindow = windowOf(whole, c0, r0, ww, wh);
+  const { pieces, dressing } = drawTown(inWindow, s.theme, paint, windowFacts(known, c0, r0, ww, wh));
+  // The roads, as the paving is cut for them: every tile's asphalt and the
+  // lanes off it, overlapping as they are drawn.
+  const { street, through } = asphalt(windowOf(on, c0, r0, ww, wh));
+  const roadSheet = flatPolygons([...street, ...through, ...dressing.lanes.map((l): Polygon => [l])], 0);
+  const roadEdges = roadsOf(roadSheet).edges;
   // A tile's place in the window's drawing: tile x runs over x - wx1 - 1
   // to x - wx1, and so for y.
   const frame = ([fx0, fy0, fx1, fy1]: Bounds): Box => [fx0 - wx1 - 1, fy0 - wy1 - 1, fx1 - wx1, fy1 - wy1];
@@ -161,6 +184,9 @@ export function drawChunks(s: Snapshot): Drawing {
   // lines on it.
   const chunkAt = (gx: number, gy: number): [number, number] => [Math.floor((gx + wx1 + 1) / CHUNK), Math.floor((gy + wy1 + 1) / CHUNK)];
   const filed = new Map(pieces.map((p) => [p, fileBy(p.geo, chunkAt, (cx, cy) => `${cx},${cy}`, p.name === "pavement" ? PAVING_PAD : 0)]));
+  // And the roads', so a chunk's paving asks only those near it whether a
+  // point is on a road.
+  const roadsBy = fileBy(roadSheet, chunkAt, (cx, cy) => `${cx},${cy}`, PAVING_PAD);
   const pavement = pieces.find((p) => p.name === "pavement");
   const [kerbs, lines] = [pavement ? kerbsOf(pavement.geo) : [], stripLines(dressing.yardLines)];
   const chunks = s.todo.map((key): ChunkDrawing => {
@@ -182,7 +208,8 @@ export function drawChunks(s: Snapshot): Drawing {
     // Its paving's kerb texture, cut to it by its own triangles, its
     // kerbs and lines the window's.
     const sheet = own.find((p) => p.name === "pavement" && p.geo.indices.length);
-    const paving = sheet ? kerbTexels(kerbs, cut, { cover: sheet.geo, lines }) : null;
+    const near = (roadsBy.get(key) ?? []).flatMap((t) => [roadSheet.indices[t], roadSheet.indices[t + 1], roadSheet.indices[t + 2]]);
+    const paving = sheet ? kerbTexels(kerbs, cut, { cover: sheet.geo, lines, roads: { sheet: { ...roadSheet, indices: near }, edges: roadEdges } }) : null;
     return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, s.theme), cut, paving };
   });
   return { chunks, window };

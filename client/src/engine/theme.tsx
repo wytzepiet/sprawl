@@ -30,13 +30,17 @@ const light = {
   growing: hex3("#B5D594"),
   ripe: hex3("#F2D680"),
   stubble: hex3("#ECE3C4"),
-  mountain: hex3("#F8F7F6"),
-  // A yard, a car park or a pavement: a sandy green-grey, a clear step
-  // under the road's white.
+  // A mountain: its snow, its bare rock.
+  mountain: hex3("#F4F3F0"),
+  rock: hex3("#83857F"),
+  // A yard, a car park or a pavement: a sandy green-grey, light beside
+  // the asphalt.
   paved: hex3("#D6D8C2"),
-  road: hex3("#F1F2EB"),
-  // A road, as against a street: the map's yellow for a through route.
-  highway: hex3("#F6CF6A"),
+  // Asphalt: a dark, matte grey.
+  road: hex3("#585C61"),
+  // A road, as against a street: the map's yellow for a through route,
+  // muted.
+  highway: hex3("#D6B55E"),
 };
 
 const dark = {
@@ -50,6 +54,7 @@ const dark = {
   ripe: hex3("#7A6428"),
   stubble: hex3("#5E5A40"),
   mountain: hex3("#4D4D47"),
+  rock: hex3("#3A3833"),
   paved: hex3("#30333B"),
   road: hex3("#2A2D35"),
   highway: hex3("#5A4C22"),

@@ -1,5 +1,6 @@
 import { MaterialDefines, MaterialPluginBase, Mesh, VertexData, type Material, type RawTexture, type Scene, type StandardMaterial } from "@babylonjs/core";
 import { Atlas } from "./atlas";
+import { grain } from "./ground";
 import { bevelled, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, PAVED_Z, pastSeam, RIM } from "./town/draw";
@@ -47,9 +48,26 @@ function bake(ways: Ways): [Float32Array, Float32Array] {
     const on = (p: number[], sign: number) => (past(p, p) ? [p[0] + sign * ux * RUN_ON, p[1] + sign * uy * RUN_ON] : p);
     return { a: on(a, -1), b: on(b, 1), inward };
   });
-  const kerbed = kerbDistances(kerbs, ORIGIN, ORIGIN, density, SLOT, SLOT);
+  // As far in as the kerb rounds over or the edge crumbles.
+  const kerbed = kerbDistances(kerbs, ORIGIN, ORIGIN, density, SLOT, SLOT, Math.max(RIM, CRUMBLE) + 2 / density);
   return [outline, kerbed];
 }
+
+/** Asphalt: its grain over this many tiles, tilting its facing this far;
+ *  and of its stones, this share each tilted its own way as far as this
+ *  and lacquered this much, glinting as the sun moves. */
+const GRAIN_SPAN = 2.5;
+const BUMP = 0.15;
+const GLINTS = 0.08;
+const GLINT_TILT = 0.4;
+const GLINT = 2;
+/** Its edges crumble: within this far of them, in tiles, a pixel is
+ *  dropped where the grain, specks and chips this many times bigger,
+ *  beats how far in it is, so the edge breaks up as asphalt's does. */
+const CRUMBLE = 0.035;
+const CHIPS = 4;
+/** Two more random bytes of the same texel, a whole number of texels on. */
+const [other1, other2] = ["0.3789, 0.1602", "0.0898, 0.5898"];
 
 class RoadDefines extends MaterialDefines {
   ROAD = false;
@@ -65,13 +83,22 @@ const GLSL = {
     CUSTOM_VERTEX_MAIN_END: `vRoad = positionUpdated.xy; vRoadSlot = roadSlot;`,
   },
   fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vRoad; varying float vRoadSlot; uniform sampler2D roadAtlas;`,
-    CUSTOM_FRAGMENT_MAIN_BEGIN: `float roadSlotN = floor(vRoadSlot + 0.5);
+    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vRoad; varying float vRoadSlot; uniform sampler2D roadAtlas; uniform sampler2D roadGrain;`,
+    CUSTOM_FRAGMENT_MAIN_BEGIN: `vec2 roadGrainUv = vPositionW.xy / ${n(GRAIN_SPAN)};
+float roadGrainAt = texture2D(roadGrain, roadGrainUv).r;
+vec2 roadBump = vec2(texture2D(roadGrain, roadGrainUv + vec2(${n(1 / 256)}, 0.)).r - texture2D(roadGrain, roadGrainUv - vec2(${n(1 / 256)}, 0.)).r, texture2D(roadGrain, roadGrainUv + vec2(0., ${n(1 / 256)})).r - texture2D(roadGrain, roadGrainUv - vec2(0., ${n(1 / 256)})).r);
+vec2 roadGlintWay = vec2(texture2D(roadGrain, roadGrainUv + vec2(${other1})).r, texture2D(roadGrain, roadGrainUv + vec2(${other2})).r);
+float roadGlinting = step(${n(1 - GLINTS)}, roadGrainAt);
+float roadCrumbleBy = 0.5 * roadGrainAt + 0.5 * texture2D(roadGrain, roadGrainUv / ${n(CHIPS)}).r;
+float roadSlotN = floor(vRoadSlot + 0.5);
 vec2 roadUv = (vec2(mod(roadSlotN, roadGrid.x), floor(roadSlotN / roadGrid.x)) + (vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / roadGrid;
 vec2 roadTexel = 1. / (roadGrid * ${n(SLOT)});
 vec2 roadD = texture2D(roadAtlas, roadUv).rg;
-if (roadD.r < 0.) discard;`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `float roadDx = texture2D(roadAtlas, roadUv + vec2(roadTexel.x, 0.)).g - texture2D(roadAtlas, roadUv - vec2(roadTexel.x, 0.)).g;
+if (roadD.r < 0.) discard;
+if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) discard;`,
+    "!vec3 finalSpecular=specularBase\\*specularColor;": `vec3 finalSpecular=specularBase*(specularColor + vec3(roadGlinting * ${n(GLINT)}));`,
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `normalW = normalize(normalW - vec3(roadBump * ${n(BUMP)}, 0.) + vec3((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
+float roadDx = texture2D(roadAtlas, roadUv + vec2(roadTexel.x, 0.)).g - texture2D(roadAtlas, roadUv - vec2(roadTexel.x, 0.)).g;
 float roadDy = texture2D(roadAtlas, roadUv + vec2(0., roadTexel.y)).g - texture2D(roadAtlas, roadUv - vec2(0., roadTexel.y)).g;
 if (roadD.g >= 0. && roadD.g < ${n(RIM)} && roadDx * roadDx + roadDy * roadDy > 0.) {
   vec3 roadOut = normalize(vec3(-roadDx, -roadDy, 0.));
@@ -85,13 +112,22 @@ const WGSL = {
     CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vRoad = positionUpdated.xy; vertexOutputs.vRoadSlot = vertexInputs.roadSlot;`,
   },
   fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vRoad: vec2f; varying vRoadSlot: f32; var roadAtlasSampler: sampler; var roadAtlas: texture_2d<f32>;`,
-    CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadSlotN = floor(fragmentInputs.vRoadSlot + 0.5);
+    CUSTOM_FRAGMENT_DEFINITIONS: `varying vRoad: vec2f; varying vRoadSlot: f32; var roadAtlasSampler: sampler; var roadAtlas: texture_2d<f32>; var roadGrainSampler: sampler; var roadGrain: texture_2d<f32>;`,
+    CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadGrainUv = fragmentInputs.vPositionW.xy / ${n(GRAIN_SPAN)};
+let roadGrainAt = textureSample(roadGrain, roadGrainSampler, roadGrainUv).r;
+let roadBump = vec2f(textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${n(1 / 256)}, 0.)).r - textureSample(roadGrain, roadGrainSampler, roadGrainUv - vec2f(${n(1 / 256)}, 0.)).r, textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(0., ${n(1 / 256)})).r - textureSample(roadGrain, roadGrainSampler, roadGrainUv - vec2f(0., ${n(1 / 256)})).r);
+let roadGlintWay = vec2f(textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${other1})).r, textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${other2})).r);
+let roadGlinting = step(${n(1 - GLINTS)}, roadGrainAt);
+let roadCrumbleBy = 0.5 * roadGrainAt + 0.5 * textureSample(roadGrain, roadGrainSampler, roadGrainUv / ${n(CHIPS)}).r;
+let roadSlotN = floor(fragmentInputs.vRoadSlot + 0.5);
 let roadUv = (vec2f(roadSlotN - uniforms.roadGrid.x * floor(roadSlotN / uniforms.roadGrid.x), floor(roadSlotN / uniforms.roadGrid.x)) + (fragmentInputs.vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / uniforms.roadGrid;
 let roadTexel = 1. / (uniforms.roadGrid * ${n(SLOT)});
 let roadD = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv, 0.).rg;
-if (roadD.r < 0.) { discard; }`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `let roadTx = vec2f(roadTexel.x, 0.);
+if (roadD.r < 0.) { discard; }
+if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
+    "!var finalSpecular: vec3f=specularBase\\*specularColor;": `var finalSpecular: vec3f=specularBase*(specularColor + vec3f(roadGlinting * ${n(GLINT)}));`,
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `normalW = normalize(normalW - vec3f(roadBump * ${n(BUMP)}, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
+let roadTx = vec2f(roadTexel.x, 0.);
 let roadTy = vec2f(0., roadTexel.y);
 let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
 let roadDy = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTy, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTy, 0.).g;
@@ -124,7 +160,7 @@ class RoadPlugin extends MaterialPluginBase {
   }
 
   getSamplers(samplers: string[]) {
-    samplers.push("roadAtlas");
+    samplers.push("roadAtlas", "roadGrain");
   }
 
   getUniforms(shaderLanguage = 0) {
@@ -139,6 +175,7 @@ class RoadPlugin extends MaterialPluginBase {
     if (!texture) return;
     ubo.updateFloat2("roadGrid", ...this.atlas.grid);
     ubo.setTexture("roadAtlas", texture);
+    ubo.setTexture("roadGrain", grain(this._material.getScene()));
   }
 
   getClassName() {
@@ -246,6 +283,10 @@ export class RoadTiles {
       const material = (kind.mesh.material = this.material(!!through));
       if (!material.pluginManager?.getPlugin("Road")) {
         new RoadPlugin(material, this.atlas);
+        // Matte, but for the stones that glint: a hint of shine, so the
+        // material lights them at all.
+        material.specularColor.set(0.01, 0.01, 0.01);
+        material.specularPower = 64;
         // Which way the square is wound matters not, flat on the ground.
         material.backFaceCulling = false;
       }

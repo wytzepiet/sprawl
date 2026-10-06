@@ -27,8 +27,11 @@ const DOOR: Colour = { r: 0.22, g: 0.24, b: 0.3 };
 /** How round a port lane's corners are, as the asphalt's. */
 const LANE_ROUND = 0.05;
 
-/** A kerb's height over the grass, under the roads. */
+/** How far over the grass the roads lie. */
 export const PAVED_Z = 0.02;
+/** The paving's height: over the roads, which are cut into it, a kerb's
+ *  step down to them (`kerbs.ts`). */
+export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
 
 /**
  * The town grid's roads, drawn: the asphalt of the streets and the drives
@@ -60,7 +63,7 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   const add = (name: string, geo: Piece["geo"], c: Colour | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
-  add("pavement", flatPolygons(pavement(town), PAVED_Z), theme.paved);
+  add("pavement", flatPolygons(pavement(town), KERB_Z), theme.paved);
   const dressing = dress(town, known);
   add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
   add("mass", townMesh(town, paint, undefined, known), null);

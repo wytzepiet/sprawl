@@ -21,7 +21,7 @@ import {
   type TerrainPalette,
 } from "./objects/terrainGeometry";
 import { GroundTiles } from "./ground";
-import { giveClimb, peakMaterial } from "./peaks";
+import { peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
 import { grove, plant, treeMaterials, uproot, type Grove } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
@@ -63,8 +63,8 @@ const parseKey = (key: string) => key.split(",").map(Number) as [number, number]
  */
 export class TerrainChunks {
   private tiles = new Map<string, Uint8Array>();
-  /** How far into its range each tile is (`TerrainChunk::depths`). */
-  private depths = new Map<string, Uint8Array>();
+  /** The mountains' heights, eroded (`TerrainChunk::heights`). */
+  private heights = new Map<string, Uint8Array>();
   private chunks = new Map<string, ChunkMeshes>();
 
   private dirtyGeometry = new Set<string>();
@@ -86,8 +86,6 @@ export class TerrainChunks {
   /** The light the water's materials, one a chunk, are lit with. */
   private ambient = new Color3(1, 1, 1);
   private cliffMat: StandardMaterial;
-  /** The mountains' peaks, lit as the rock is. */
-  private peakMat: StandardMaterial;
   private observer: Nullable<Observer<Scene>>;
   private detailVisible = true;
 
@@ -107,7 +105,6 @@ export class TerrainChunks {
     this.cliffMat.specularColor = Color3.Black();
     this.cliffMat.disableLighting = true;
 
-    this.peakMat = peakMaterial(scene, "terrain_peaks");
 
     this.ground = new GroundTiles(scene);
     this.paintGround();
@@ -123,7 +120,6 @@ export class TerrainChunks {
   private paintGround(): void {
     const t = this.theme();
     this.ground.paint([t.beach, t.land, t.forest].map((c) => new Color3(c.r, c.g, c.b)));
-    this.peakMat.diffuseColor = new Color3(t.mountain.r, t.mountain.g, t.mountain.b);
   }
 
   /** The worker has no Babylon, so the theme crosses as plain floats. */
@@ -147,10 +143,10 @@ export class TerrainChunks {
    * without consulting its neighbours -- no cross-chunk dependency, and the
    * shared skirt keeps the seams consistent.
    */
-  setChunk(cx: number, cy: number, tiles: Uint8Array, depths: Uint8Array): void {
+  setChunk(cx: number, cy: number, tiles: Uint8Array, heights: Uint8Array): void {
     const key = `${cx},${cy}`;
     this.tiles.set(key, tiles);
-    this.depths.set(key, depths);
+    this.heights.set(key, heights);
     this.invalidate(key);
   }
 
@@ -167,7 +163,7 @@ export class TerrainChunks {
   unloadChunk(cx: number, cy: number): void {
     const key = `${cx},${cy}`;
     this.tiles.delete(key);
-    this.depths.delete(key);
+    this.heights.delete(key);
     this.invalidate(key);
     this.disposeChunk(key);
   }
@@ -219,7 +215,7 @@ export class TerrainChunks {
     let geometry: ChunkGeometry | null;
     try {
       // tiles is cloned, not transferred — we keep it for tree rebuilds.
-      geometry = await this.builder.build(tiles, this.depths.get(key)!, cx, cy, this.palette());
+      geometry = await this.builder.build(tiles, this.heights.get(key)!, cx, cy, this.palette());
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
       // leaves a permanent hole that now reads as fog. Queue it again instead.
@@ -248,8 +244,17 @@ export class TerrainChunks {
     (meshes.water.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
     meshes.water.setEnabled(this.applyBuffers(meshes.water, geometry.water));
     meshes.hasCliffs = this.applyBuffers(meshes.cliffs, geometry.cliffs);
-    meshes.peaks.setEnabled(this.applyBuffers(meshes.peaks, geometry.peaks));
-    giveClimb(meshes.peaks, geometry.peaks);
+    // Its own material too, lit by its own mountains' facing.
+    meshes.peaks.material?.dispose();
+    meshes.peaks.material = null;
+    if (geometry.peakLight) {
+      const m = this.theme().mountain;
+      const t = this.theme();
+      const c = (k: { r: number; g: number; b: number }) => new Color3(k.r, k.g, k.b);
+      meshes.peaks.material = peakMaterial(this.scene, `chunk_${key}_peaks`, geometry.peakLight, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], [c(t.rock), c(t.land), c(m)]);
+      (meshes.peaks.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
+    }
+    meshes.peaks.setEnabled(!!geometry.peakLight && this.applyBuffers(meshes.peaks, geometry.peaks));
     this.applyDetail(meshes);
 
     this.rebuildTrees(key);
@@ -275,7 +280,6 @@ export class TerrainChunks {
     cliffs.material = this.cliffMat;
 
     const peaks = new Mesh(`chunk_${key}_peaks`, this.scene);
-    peaks.material = this.peakMat;
     peaks.receiveShadows = true;
     peaks.setEnabled(false);
 
@@ -324,6 +328,7 @@ export class TerrainChunks {
     if (!meshes) return;
     this.shadowGenerator.removeShadowCaster(meshes.cliffs);
     this.shadowGenerator.removeShadowCaster(meshes.peaks);
+    meshes.peaks.material?.dispose();
     meshes.peaks.dispose();
     uproot(meshes.trees, this.shadowGenerator);
     this.ground.delete(key);
@@ -356,7 +361,7 @@ export class TerrainChunks {
     this.ground.light(ambient);
     for (const { water } of this.chunks.values()) if (water.material) (water.material as StandardMaterial).emissiveColor = ambient.scale(0.15);
     this.cliffMat.emissiveColor = ambient.scale(0.7);
-    this.peakMat.emissiveColor = ambient.scale(0.15);
+    for (const { peaks } of this.chunks.values()) if (peaks.material) (peaks.material as StandardMaterial).emissiveColor = ambient.scale(0.15);
 
     // Each tree carries its own crown colour, as the ground carries its;
     // the street trees share these.
@@ -367,11 +372,10 @@ export class TerrainChunks {
     this.scene.onBeforeRenderObservable.remove(this.observer);
     for (const key of [...this.chunks.keys()]) this.disposeChunk(key);
     this.cliffMat.dispose();
-    this.peakMat.dispose();
     this.ground.dispose();
     this.worker.terminate();
     this.tiles.clear();
-    this.depths.clear();
+    this.heights.clear();
     this.dirtyGeometry.clear();
     this.dirtyTrees.clear();
     this.ready.length = 0;

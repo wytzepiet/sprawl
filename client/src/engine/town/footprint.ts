@@ -295,10 +295,6 @@ export function soften(region: Polygon[], r: number): Polygon[] {
   return polygons(round(round(round(round(paths(region.flat()), -r), r), r), -r));
 }
 
-/** A region with its outside corners rounded to `r` from above; its inside
- *  corners stay sharp, so it lies wholly within what it was. */
-export const blunt = (region: Polygon[], r: number): Polygon[] => polygons(round(round(paths(region.flat()), -r), r));
-
 function round(ps: Paths, by: number) {
   const o = new ClipperLib.ClipperOffset(2, 0.002 * S);
   o.AddPaths(ps, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);

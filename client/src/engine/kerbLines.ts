@@ -1,6 +1,6 @@
 import type { MeshGeometry } from "./Mesh";
 import { fillTriangles } from "./raster";
-import { RIM } from "./town/draw";
+import { RIM, runsOn } from "./town/draw";
 
 /**
  * A sheet's kerbs and the lines painted on it, and how far each point of a
@@ -188,8 +188,9 @@ function lineDistances(lines: Line[], x0: number, y0: number, density: number, w
 /** A sheet's kerb texture over a box of it, as the texels it holds, half
  *  floats, read smoothly: how far inside its kerbs; of a sheet `cover`
  *  whose every edge is a kerb, how far inside the sheet, so a square drawn
- *  over the box is cut to it; and where across the `lines` painted on it.
- *  Numbers alone, worked out where the town is drawn (`townWorker.ts`). */
+ *  over the box is cut to it; where across the `lines` painted on it; and
+ *  how far inside the `roads` cut into it. Numbers alone, worked out where
+ *  the town is drawn (`townWorker.ts`). */
 export interface KerbTexels {
   half: Uint16Array;
   /** The texture's low corner in the sheet's frame, and its extent. */
@@ -198,17 +199,38 @@ export interface KerbTexels {
   texels: [number, number];
 }
 
-export function kerbTexels(kerbs: Kerb[], extent: Extent, { cover, lines = [] }: { cover?: MeshGeometry; lines?: Line[] } = {}): KerbTexels {
+export function kerbTexels(kerbs: Kerb[], extent: Extent, { cover, lines = [], roads }: { cover?: MeshGeometry; lines?: Line[]; roads?: Roads } = {}): KerbTexels {
   const { data, origin, size, texels, density } = kerbData(kerbs, extent);
   const on = cover ? coverage(cover, data, origin[0], origin[1], density, texels[0], texels[1]) : null;
+  // How far inside the roads, negative off them, for a sheet the roads are
+  // cut into, as far as its kerbs along them reach (`kerbs.ts`).
+  const road = roads ? coverage(roads.sheet, kerbDistances(roads.edges, origin[0], origin[1], density, texels[0], texels[1], ROAD_REACH), origin[0], origin[1], density, texels[0], texels[1]) : null;
   const painted = lineDistances(lines, origin[0], origin[1], density, texels[0], texels[1]);
   const half = new Uint16Array(data.length * 4);
   for (let i = 0; i < data.length; i++) {
     half[i * 4] = toHalf(data[i]);
     half[i * 4 + 1] = toHalf(on ? on[i] : FAR);
     half[i * 4 + 2] = toHalf(painted[i]);
+    half[i * 4 + 3] = toHalf(road ? road[i] : -FAR);
   }
   return { half, origin, size, texels };
+}
+
+/** How far either side of a road's edge its distance is told: past the
+ *  pavement's cut and its kerb along it. */
+const ROAD_REACH = 0.15;
+
+/** Roads cut into a sheet: their triangles near it, and their edges, those
+ *  with no road past them, not where one tile's runs on over the next's;
+ *  found once for every sheet the roads are cut into (`roadsOf`). */
+export interface Roads {
+  sheet: MeshGeometry;
+  edges: Kerb[];
+}
+
+export function roadsOf(sheet: MeshGeometry): Roads {
+  const on = runsOn(sheet);
+  return { sheet, edges: kerbsOf(sheet, (a, b, out) => !on(a, b, out)) };
 }
 
 /** A float as a half float's bits, through one shared word. */

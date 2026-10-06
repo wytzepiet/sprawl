@@ -17,7 +17,11 @@ export type Tab = (typeof TABS)[number];
 
 export interface Blueprint {
   label: string;
+  /** Its colour on the map's pins and the toolbar. */
   color: string;
+  /** Its colour as it stands in the town: the same family, as a material
+   *  is, terracotta, slate, brick, timber, zinc. */
+  material: string;
   /** SVG path of the glyph, on a 24-unit grid. */
   glyph: string;
   /** Half-height of view, in tiles, beyond which the pin becomes a dot. */
@@ -89,6 +93,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   House: {
     label: "House",
     color: "#E8566F",
+    material: "#B85A44",
     // A gabled roof over a body, the door cut out.
     glyph: "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z",
     pinUntil: COMMON,
@@ -101,6 +106,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Apartment: {
     label: "Apartment",
     color: "#C73E5E",
+    material: "#8E4A40",
     // A tall block, three floors of windows and a door.
     glyph: "M5 2h14v20H5zM8 5h3v3H8zM13 5h3v3h-3zM8 10h3v3H8zM13 10h3v3h-3zM8 15h3v3H8zM13 15h3v3h-3zM10.5 19h3v3h-3z",
     pinUntil: COMMON,
@@ -113,6 +119,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Shop: {
     label: "Shop",
     color: "#3B78B8",
+    material: "#56708A",
     // A storefront: scalloped awning, window and door beneath.
     glyph:
       "M3 3h18l2 5.5a2.5 2.5 0 0 1-4.7 1.2A2.5 2.5 0 0 1 14.2 9.7a2.5 2.5 0 0 1-4.4 0 2.5 2.5 0 0 1-4.1 0A2.5 2.5 0 0 1 1 8.5zM4 12h16v10H4zM6 14h6v4H6zM14 14h4v8h-4z",
@@ -126,6 +133,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Office: {
     label: "Office",
     color: "#2D4E7E",
+    material: "#3F4D5E",
     // A briefcase, the handle cut out.
     glyph:
       "M9 3h6a1.5 1.5 0 0 1 1.5 1.5V7H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3.5V4.5A1.5 1.5 0 0 1 9 3zm.5 2v2h5V5zM2 12h20v1.5H2z",
@@ -141,6 +149,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Workshop: {
     label: "Workshop",
     color: "#F29E38",
+    material: "#B88A4E",
     // A wrench.
     glyph:
       "M21.5 6.2a6.3 6.3 0 0 1-8.1 8.1l-7.3 7.3a2.3 2.3 0 0 1-3.2-3.2l7.3-7.3a6.3 6.3 0 0 1 8.1-8.1l-3.7 3.7 1.1 3.2 3.2 1.1z",
@@ -154,6 +163,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Factory: {
     label: "Factory",
     color: "#5C6470",
+    material: "#7A7F86",
     // Sawtooth roofs and a chimney.
     glyph: "M17 2h4v8.5l-4 0zM2 22V10.5l6 3v-3l6 3v-3l6 3V22zM5 16h3v3H5zM10 16h3v3h-3zM15 16h3v3h-3z",
     pinUntil: COMMON,
@@ -166,6 +176,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Restaurant: {
     label: "Restaurant",
     color: "#E8503F",
+    material: "#A84E3C",
     // Fork and knife.
     glyph:
       "M5.5 2h1.6v6h1.2V2h1.4v6h1.2V2h1.6v7a3.5 3.5 0 0 1-2.2 3.3V22H7.7v-9.7A3.5 3.5 0 0 1 5.5 9zM15.5 2c2.2 1.6 3.3 4.6 3.3 8 0 1.8-.8 3-1.9 3.6V22h-2.3V2z",
@@ -179,6 +190,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Bar: {
     label: "Bar",
     color: "#8E4FA3",
+    material: "#6E5168",
     // A pint glass, tapered, with a head of foam cut across it.
     glyph: "M5 2h14l-1.6 20H6.6zM6.3 5.5h11.4l-.2 2H6.5z",
     pinUntil: NOTABLE,
@@ -191,6 +203,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   GasStation: {
     label: "Gas station",
     color: "#F2C230",
+    material: "#C7A24E",
     // A pump: the body with its display, and the hose hooked to the side.
     glyph: "M3 2h11v20H3zM5.5 4.5h6v5h-6zM15.5 7h2.2l3.3 3.3V19a2.5 2.5 0 0 1-5 0v-1h2v1a.5.5 0 0 0 1 0v-7.9L17 9.2h-1.5z",
     pinUntil: NOTABLE,
@@ -203,6 +216,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Supermarket: {
     label: "Supermarket",
     color: "#6EC1E4",
+    material: "#8FA7B3",
     // A basket: handle arcs over, three slats cut out.
     glyph: "M12 2.5c3 0 5.5 2.4 6.3 5.5H21l-2 13H5L3 8h2.7C6.5 4.9 9 2.5 12 2.5zm0 2c-1.9 0-3.5 1.5-4.2 3.5h8.4C15.5 6 13.9 4.5 12 4.5zM7.5 11h1.6v6H7.5zm3.7 0h1.6v6h-1.6zm3.7 0h1.6v6h-1.6z",
     pinUntil: SPECIAL,
@@ -215,6 +229,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Warehouse: {
     label: "Warehouse",
     color: "#A0714A",
+    material: "#7E6248",
     // A wide shed: the roof, a loading door and two bays.
     glyph: "M2 9.5 12 3l10 6.5V22H2zM5 12h14v2.5H5zM5 16h5v6H5zM14 16h5v6h-5z",
     pinUntil: NOTABLE,
@@ -228,6 +243,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Farm: {
     label: "Farm",
     color: "#D9A23B",
+    material: "#B79A62",
     // A barn: the gambrel roof, the big door, and a hayloft window.
     glyph: "M12 2 21 8.5V22H3V8.5zM10.5 6.5h3v3h-3zM8 13h8v9H8zm1.6 1.6v5.8h4.8v-5.8z",
     pinUntil: NOTABLE,
@@ -241,6 +257,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Port: {
     label: "Port",
     color: "#2B6CA3",
+    material: "#4E6A84",
     // A quay with a crane over it: the mast, the jib, and the hook.
     glyph: "M2 19h20v3H2zM6 3h3v16H6zM9 5h12v2.5H9zM17.5 7.5h2.5v5h-2.5zM16 12.5h5.5v2.5H16z",
     pinUntil: NOTABLE,
@@ -255,6 +272,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
   Edge: {
     label: "Beyond the edge",
     color: "#6B7280",
+    material: "#6B7280",
     // A road running off the map: a lane, and an arrow away down it.
     glyph: "M3 3h3v18H3zm15 0h3v18h-3zM11 3h2v10h3l-4 5-4-5h3z",
     pinUntil: 0,

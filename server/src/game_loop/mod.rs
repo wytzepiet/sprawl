@@ -91,6 +91,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         }
         world.terrain = crate::terrain::generate(world.terrain_seed);
         println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
+        world.raise_mountains();
     }
 
     if fresh && fixtures.is_none() {
@@ -166,6 +167,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         let seed = new_seed();
                         world.terrain_seed = seed;
                         world.terrain = crate::terrain::generate(seed);
+                        world.raise_mountains();
                         if let Some(anchor) = crate::road_gen::generate(&mut world, seed) {
                             crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
                         }

@@ -115,7 +115,10 @@ const FRAGMENT_GLSL = {
 varying vec3 vBevelAt; varying vec3 vBevelAcross0; varying vec3 vBevelAcross1; varying vec3 vBevelAcross2; varying vec3 vBevelReach;
 vec3 bevelTurn(vec3 n, vec3 face, vec3 across, float reach, float at) {
   if (reach <= 0.) return n;
-  float w = 1. - clamp(at * reach / bevelWidth, 0., 1.);
+  // A crease rising from a sloping face, a hip or a ridge, rounds as the
+  // rest; a corner or an eave as softly as its material says.
+  float width = across.z > 0.05 && face.z > 0.15 && face.z < 0.97 ? bevelWidth : bevelSoft;
+  float w = 1. - clamp(at * reach / width, 0., 1.);
   return normalize(mix(n, normalize(face + across), w));
 }
 #endif`,
@@ -146,7 +149,10 @@ const FRAGMENT_WGSL = {
 varying vBevelAt: vec3f; varying vBevelAcross0: vec3f; varying vBevelAcross1: vec3f; varying vBevelAcross2: vec3f; varying vBevelReach: vec3f;
 fn bevelTurn(n: vec3f, face: vec3f, across: vec3f, reach: f32, at: f32) -> vec3f {
   if (reach <= 0.) { return n; }
-  let w = 1. - clamp(at * reach / uniforms.bevelWidth, 0., 1.);
+  // A crease rising from a sloping face, a hip or a ridge, rounds as the
+  // rest; a corner or an eave as softly as its material says.
+  let width = select(uniforms.bevelSoft, uniforms.bevelWidth, across.z > 0.05 && face.z > 0.15 && face.z < 0.97);
+  let w = 1. - clamp(at * reach / width, 0., 1.);
   return normalize(mix(n, normalize(face + across), w));
 }
 #endif`,
@@ -161,6 +167,8 @@ normalW = bevelTurn(normalW, bevelFace, fragmentInputs.vBevelAcross2, fragmentIn
 /** The bevel, on a standard material whose meshes carry `giveBevel`'s data. */
 export class BevelPlugin extends MaterialPluginBase {
   width = BEVEL;
+  /** How far its corners and eaves round, if softer than the rest. */
+  soft: number | null = null;
 
   constructor(material: Material) {
     super(material, "Bevel", 200, new BevelDefines());
@@ -181,13 +189,17 @@ export class BevelPlugin extends MaterialPluginBase {
 
   getUniforms(shaderLanguage = 0) {
     return {
-      ubo: [{ name: "bevelWidth", size: 1, type: "float" }],
-      fragment: shaderLanguage === 1 ? "uniform bevelWidth: f32;" : "uniform float bevelWidth;",
+      ubo: [
+        { name: "bevelWidth", size: 1, type: "float" },
+        { name: "bevelSoft", size: 1, type: "float" },
+      ],
+      fragment: shaderLanguage === 1 ? "uniform bevelWidth: f32; uniform bevelSoft: f32;" : "uniform float bevelWidth; uniform float bevelSoft;",
     };
   }
 
   bindForSubMesh(ubo: { updateFloat(name: string, v: number): void }) {
     ubo.updateFloat("bevelWidth", this.width);
+    ubo.updateFloat("bevelSoft", this.soft ?? this.width);
   }
 
   getClassName() {
@@ -201,17 +213,23 @@ export class BevelPlugin extends MaterialPluginBase {
 }
 
 /** How lacquered each kind of thing is, its glint's strength and its
- *  tightness: cars glossiest, buildings next, trees a sheen. */
-const LACQUER = {
+ *  tightness: cars glossy, buildings and trees a sheen, as fired tile
+ *  and plaster have; and how round its creases are, if not as the rest,
+ *  and its corners and eaves: a building's hips crisp under their capping
+ *  tiles (`roofs.ts`), its square corners softened by the light alone. */
+const LACQUER: Record<string, readonly [number, number, number?, number?]> = {
   car: [0.7, 72],
-  building: [0.5, 48],
+  building: [0.12, 32, 0.015, 0.06],
   tree: [0.07, 40],
-} as const;
+};
 
 /** A material lacquered as its kind is. */
-export function lacquer(mat: StandardMaterial, kind: keyof typeof LACQUER): StandardMaterial {
-  const [strength, power] = LACQUER[kind];
+export function lacquer(mat: StandardMaterial, kind: "car" | "building" | "tree"): StandardMaterial {
+  const [strength, power, round, soft] = LACQUER[kind];
   mat.specularColor = new Color3(strength, strength, strength);
   mat.specularPower = power;
+  const bevel = mat.pluginManager?.getPlugin<BevelPlugin>("Bevel");
+  if (bevel && round !== undefined) bevel.width = round;
+  if (bevel && soft !== undefined) bevel.soft = soft;
   return mat;
 }

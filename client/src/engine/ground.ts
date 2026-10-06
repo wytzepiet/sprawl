@@ -29,6 +29,13 @@ const SPAN = 4;
 const BUMP = 0.25;
 /** The bumps are finer than the glints: the grain over this many tiles. */
 const BUMP_SPAN = 6;
+/** Grass is mottled, as a field is from the air: its colour lighter and a
+ *  touch yellower in places, darker and a touch bluer in others, in broad
+ *  patches this many tiles across and small ones this many, by up to this
+ *  much. The rest of the land is its colour alone. */
+const PATCHES = 3;
+const SPECKS = 0.5;
+const MOTTLE = 0.12;
 /** Grass frays where it meets lower ground: within this far of its edge,
  *  in tiles, a pixel is dropped where the grain, specks and tufts, beats
  *  how far in it is, so it thins to its edge instead of stopping clean. */
@@ -53,10 +60,10 @@ const BEVEL = 0.1;
  *  edges onto the sand round over, which the grass under it does. */
 const LOOKS = [
   // Sand glints, where the rest is bumped.
-  { shine: 0.12, bevel: BEVEL, bump: 0, glint: 1, fray: 0 },
+  { shine: 0.12, bevel: BEVEL, bump: 0, glint: 1, fray: 0, mottle: 0 },
   // Grass rounds over onto the sand more tightly, half as far.
-  { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1 },
-  { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 0 },
+  { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1 },
+  { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 0, mottle: 0 },
 ];
 
 /** A slot's side in texels, the texels to a tile, and its low corner in
@@ -75,8 +82,10 @@ function grainData(): Uint8Array {
   return Uint8Array.from({ length: SIDE * SIDE }, () => (seed = (seed * 16807) % 2147483647) % 256);
 }
 
+/** The land's grain, a texture a scene: random bytes, tiling. Roads read
+ *  it too (`roads.ts`). */
 const GRAINS = new WeakMap<Scene, RawTexture>();
-function grain(scene: Scene): RawTexture {
+export function grain(scene: Scene): RawTexture {
   let texture = GRAINS.get(scene);
   if (!texture) {
     texture = new RawTexture(grainData(), SIDE, SIDE, Constants.TEXTUREFORMAT_R, scene, true, false, Constants.TEXTURE_TRILINEAR_SAMPLINGMODE);
@@ -137,6 +146,9 @@ class GroundDefines extends MaterialDefines {
 }
 
 const n = (x: number) => x.toFixed(4);
+// A mottle's texel this many tiles across, either scale; lighter patches
+// warmer: more red and green, less blue, darker ones the other way.
+const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.15, 1, 0.6].map((k) => n(k * MOTTLE * 2)).join(", ")];
 const [fray, fraySpan, tuftSpan] = [n(FRAY), n(FRAY_SPAN), n(FRAY_SPAN * TUFT)];
 const [span, origin, slotSpan, bump, bumpSpan, step] = [n(SPAN), n(ORIGIN), n(SLOT / DENSITY), n(BUMP), n(BUMP_SPAN), n(BUMP_SPAN / SIDE)];
 // Two more random bytes of the same texel, a whole number of texels on.
@@ -151,16 +163,17 @@ const [inner0, inner1] = [n(0.5 / DENSITY), n(1 - 0.5 / DENSITY)];
 // pixel); whether the pixel is on the share; and how near its edges.
 const GLSL = {
   vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute float groundFray; varying float vGroundFray; attribute vec4 groundSlot; attribute vec4 groundLook; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY;`,
-    CUSTOM_VERTEX_MAIN_END: `vGroundFray = groundFray; vGroundAt = positionUpdated.xy; vGroundSlot = groundSlot; vGroundLook = groundLook; vGroundX = (finalWorld * vec4(1., 0., 0., 0.)).xy; vGroundY = (finalWorld * vec4(0., 1., 0., 0.)).xy;`,
+    CUSTOM_VERTEX_DEFINITIONS: `attribute vec2 groundGrass; varying vec2 vGroundGrass; attribute vec4 groundSlot; attribute vec4 groundLook; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY;`,
+    CUSTOM_VERTEX_MAIN_END: `vGroundGrass = groundGrass; vGroundAt = positionUpdated.xy; vGroundSlot = groundSlot; vGroundLook = groundLook; vGroundX = (finalWorld * vec4(1., 0., 0., 0.)).xy; vGroundY = (finalWorld * vec4(0., 1., 0., 0.)).xy;`,
   },
   fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying float vGroundFray; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY; uniform sampler2D groundGrain; uniform sampler2D groundAtlas;`,
+    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vGroundGrass; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY; uniform sampler2D groundGrain; uniform sampler2D groundAtlas;`,
     CUSTOM_FRAGMENT_MAIN_BEGIN: `vec2 groundBump = vec2(texture2D(groundGrain, (vPositionW.xy + vec2(${step}, 0.)) / ${bumpSpan}).r - texture2D(groundGrain, (vPositionW.xy - vec2(${step}, 0.)) / ${bumpSpan}).r,
   texture2D(groundGrain, (vPositionW.xy + vec2(0., ${step})) / ${bumpSpan}).r - texture2D(groundGrain, (vPositionW.xy - vec2(0., ${step})) / ${bumpSpan}).r);
 vec2 groundGrainUv = vPositionW.xy / ${span};
 vec3 groundGlint = vec3(texture2D(groundGrain, groundGrainUv).r, texture2D(groundGrain, groundGrainUv + vec2(${other1})).r, texture2D(groundGrain, groundGrainUv + vec2(${other2})).r);
 float groundGlinting = vGroundSlot.w * step(${glints}, groundGlint.x);
+float groundMottle = 0.6 * texture2D(groundGrain, vPositionW.xy / ${patches}).r + 0.4 * texture2D(groundGrain, vPositionW.xy / ${specks}).r - 0.5;
 float groundFrayBy = 0.5 * texture2D(groundGrain, vPositionW.xy / ${fraySpan}).r + 0.5 * texture2D(groundGrain, vPositionW.xy / ${tuftSpan}).r;
 float groundSlotN = floor(vGroundSlot.x + 0.5);
 float groundBevel = vGroundSlot.y;
@@ -169,9 +182,9 @@ vec2 groundUv = (groundCell + (vGroundAt - ${origin}) / ${slotSpan}) / groundGri
 vec2 groundTexel = 1. / (groundGrid * ${n(SLOT)});
 vec2 groundD = texture2D(groundAtlas, groundUv).rg;
 if (texture2D(groundAtlas, (groundCell + (clamp(vGroundAt, ${inner0}, ${inner1}) - ${origin}) / ${slotSpan}) / groundGrid).r < 0.) discard;
-if (groundD.g >= 0. && groundD.g < groundFrayBy * vGroundFray * ${fray}) discard;`,
+if (groundD.g >= 0. && groundD.g < groundFrayBy * vGroundGrass.x * ${fray}) discard;`,
     "!vec3 finalSpecular=specularBase\\*specularColor;": `vec3 finalSpecular=specularBase*specularColor*(vGroundLook.a + groundGlinting * ${glint});`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor.rgb *= vGroundLook.rgb;
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor.rgb *= vGroundLook.rgb * (1. + vGroundGrass.y * groundMottle * vec3(${mottleWarm}));
 normalW = normalize(normalW - vec3(groundBump * ${bump} * vGroundSlot.z, 0.) + vec3((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
@@ -186,16 +199,17 @@ if (groundD.g >= 0. && groundD.g < groundBevel) {
 };
 const WGSL = {
   vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute groundFray: f32; varying vGroundFray: f32; attribute groundSlot: vec4f; attribute groundLook: vec4f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f;`,
-    CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vGroundFray = vertexInputs.groundFray; vertexOutputs.vGroundAt = positionUpdated.xy; vertexOutputs.vGroundSlot = vertexInputs.groundSlot; vertexOutputs.vGroundLook = vertexInputs.groundLook; vertexOutputs.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; vertexOutputs.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;`,
+    CUSTOM_VERTEX_DEFINITIONS: `attribute groundGrass: vec2f; varying vGroundGrass: vec2f; attribute groundSlot: vec4f; attribute groundLook: vec4f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f;`,
+    CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vGroundGrass = vertexInputs.groundGrass; vertexOutputs.vGroundAt = positionUpdated.xy; vertexOutputs.vGroundSlot = vertexInputs.groundSlot; vertexOutputs.vGroundLook = vertexInputs.groundLook; vertexOutputs.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; vertexOutputs.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;`,
   },
   fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vGroundFray: f32; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f; var groundGrainSampler: sampler; var groundGrain: texture_2d<f32>; var groundAtlasSampler: sampler; var groundAtlas: texture_2d<f32>;`,
+    CUSTOM_FRAGMENT_DEFINITIONS: `varying vGroundGrass: vec2f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f; var groundGrainSampler: sampler; var groundGrain: texture_2d<f32>; var groundAtlasSampler: sampler; var groundAtlas: texture_2d<f32>;`,
     CUSTOM_FRAGMENT_MAIN_BEGIN: `let groundBump = vec2f(textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy + vec2f(${step}, 0.)) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy - vec2f(${step}, 0.)) / ${bumpSpan}).r,
   textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy + vec2f(0., ${step})) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy - vec2f(0., ${step})) / ${bumpSpan}).r);
 let groundGrainUv = fragmentInputs.vPositionW.xy / ${span};
 let groundGlint = vec3f(textureSample(groundGrain, groundGrainSampler, groundGrainUv).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other1})).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other2})).r);
 let groundGlinting = fragmentInputs.vGroundSlot.w * step(${glints}, groundGlint.x);
+let groundMottle = 0.6 * textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${patches}).r + 0.4 * textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${specks}).r - 0.5;
 let groundFrayBy = 0.5 * textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${fraySpan}).r + 0.5 * textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${tuftSpan}).r;
 let groundSlotN = floor(fragmentInputs.vGroundSlot.x + 0.5);
 let groundBevel = fragmentInputs.vGroundSlot.y;
@@ -204,9 +218,9 @@ let groundUv = (groundCell + (fragmentInputs.vGroundAt - ${origin}) / ${slotSpan
 let groundTexel = 1. / (uniforms.groundGrid * ${n(SLOT)});
 let groundD = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv, 0.).rg;
 if (textureSampleLevel(groundAtlas, groundAtlasSampler, (groundCell + (clamp(fragmentInputs.vGroundAt, vec2f(${inner0}), vec2f(${inner1})) - ${origin}) / ${slotSpan}) / uniforms.groundGrid, 0.).r < 0.) { discard; }
-if (groundD.g >= 0. && groundD.g < groundFrayBy * fragmentInputs.vGroundFray * ${fray}) { discard; }`,
+if (groundD.g >= 0. && groundD.g < groundFrayBy * fragmentInputs.vGroundGrass.x * ${fray}) { discard; }`,
     "!var finalSpecular: vec3f=specularBase\\*specularColor;": `var finalSpecular: vec3f=specularBase*specularColor*(fragmentInputs.vGroundLook.a + groundGlinting * ${glint});`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb, baseColor.a);
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb * (1. + fragmentInputs.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})), baseColor.a);
 normalW = normalize(normalW - vec3f(groundBump * ${bump} * fragmentInputs.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
@@ -240,7 +254,7 @@ class GroundPlugin extends MaterialPluginBase {
   }
 
   getAttributes(attributes: string[]) {
-    attributes.push("groundSlot", "groundLook", "groundFray");
+    attributes.push("groundSlot", "groundLook", "groundGrass");
   }
 
   getSamplers(samplers: string[]) {
@@ -303,18 +317,18 @@ export class GroundTiles {
     // An empty draw is one WebGPU rejects, frame and all.
     if (!count) return;
     const [matrices, slots, looks] = [new Float32Array(count * 16), new Float32Array(count * 4), new Float32Array(count * 4)];
-    const frays = new Float32Array(count);
+    const grasses = new Float32Array(count * 2);
     let n = 0;
     for (let l = layers.length - 1; l >= 0; l--) {
       const { at, shapes } = layers[l];
-      const [{ z }, { shine, bevel, bump, glint, fray }, colour] = [LAYERS[l], LOOKS[l], this.colours[l]];
+      const [{ z }, { shine, bevel, bump, glint, fray, mottle }, colour] = [LAYERS[l], LOOKS[l], this.colours[l]];
       for (let i = 0; i < shapes.length; i++, n++) {
         const m = n * 16;
         [matrices[m], matrices[m + 5], matrices[m + 10], matrices[m + 15]] = [1, 1, 1, 1];
         [matrices[m + 12], matrices[m + 13], matrices[m + 14]] = [ox + at[i * 2], oy + at[i * 2 + 1], z];
         slots.set([this.atlas.slotOf(shapes[i], () => bake(shapes[i])), bevel, bump, glint], n * 4);
         looks.set([colour.r, colour.g, colour.b, shine], n * 4);
-        frays[n] = fray;
+        grasses.set([fray, mottle], n * 2);
       }
     }
     // A square of its own: a mesh's tiles are kept on its geometry, which
@@ -329,7 +343,7 @@ export class GroundTiles {
     mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
     mesh.thinInstanceSetBuffer("groundSlot", slots, 4, true);
     mesh.thinInstanceSetBuffer("groundLook", looks, 4, true);
-    mesh.thinInstanceSetBuffer("groundFray", frays, 1, true);
+    mesh.thinInstanceSetBuffer("groundGrass", grasses, 2, true);
     const top = Math.max(...LAYERS.map((l) => l.z));
     mesh.setBoundingInfo(new BoundingInfo(new Vector3(ox, oy, -0.01), new Vector3(ox + CHUNK_SIZE, oy + CHUNK_SIZE, top + 0.01)));
     this.chunks.set(key, mesh);
