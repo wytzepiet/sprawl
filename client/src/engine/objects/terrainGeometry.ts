@@ -36,6 +36,11 @@ export interface ChunkGeometry {
    *  byte each, 0 at the shore to 255 at SHORE_REACH or more, SHORE_DENSITY
    *  to a tile, rows up from its low corner. */
   shore: Uint8Array | null;
+  /** Which way and how far the ground's facing turns as it rounds over its
+   *  edge onto lower ground (`bevelField`): two bytes each, about 128, at
+   *  SHORE_DENSITY to a tile, rows up from the chunk's low corner. Null
+   *  where no edge comes near. */
+  bevel: Uint8Array | null;
   cliffs: MeshBuffers;
 }
 
@@ -46,19 +51,32 @@ export const SHORE_REACH = 2;
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
   const arrays: (ArrayBufferView | undefined)[] = [g.ground, g.water, g.cliffs].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
-  return [...arrays, g.shore ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
+  return [...arrays, g.shore ?? undefined, g.bevel ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
-/** How shiny each ground is, of the ground's most (`ShinePlugin`): land,
- *  sand most of all, keeps a little, as the rest of the toy. Water is drawn
- *  as water (`water.ts`) and gleams as it does there. */
+/** How shiny each ground is, of the ground's most (`ShinePlugin`): sand
+ *  and rock keep a little, as the rest of the toy; grass is matte, its
+ *  grain (`ground.ts`) its texture. Water is drawn as water (`water.ts`)
+ *  and gleams as it does there. */
 const SHINE: Record<TerrainType, number> = {
   Sea: 1,
   Water: 1,
   Beach: 0.12,
-  Grass: 0.12,
-  Forest: 0.12,
+  Grass: 0,
+  Forest: 0,
   Mountain: 0.15,
+};
+
+/** Which ground lies on which, for the bevel each rounds over its edge
+ *  with (`bevelField`): rock on grass and wood, they on sand, sand on the
+ *  water, which is drawn apart and lies under all. */
+const LAYER: Record<TerrainType, number> = {
+  Sea: 0,
+  Water: 0,
+  Beach: 1,
+  Grass: 2,
+  Forest: 2,
+  Mountain: 3,
 };
 
 const ELEVATION: Record<TerrainType, number> = {
@@ -370,57 +388,6 @@ function buildCliffGeo(
   return { positions, indices, normals };
 }
 
-/** How wide a cliff's rounded top is, in tiles: wider than the town's
- *  kerbs, so the land rolls over its edges as the trees' crowns do. */
-const RIM = 0.15;
-/** Over the ground and its corner patches (0.01), under nothing. */
-const RIM_LIFT = 0.012;
-const TILE_CORNERS: [number, number][] = [[0, 0], [1, 0], [1, 1], [0, 1]];
-
-/**
- * A cliff's top, rounded: a strip along the line where the ground drops,
- * lying on the higher side, facing up at its inner edge and halfway out
- * over the drop at the line, so the light rolls over the edge as over the
- * town's kerbs. `high` is a point on the higher side.
- */
-function cliffRim(pts: [number, number][], high: [number, number]): MeshGeometry {
-  const positions: number[] = [];
-  const normals: number[] = [];
-  const indices: number[] = [];
-  // Each segment's way out, over the drop.
-  const outs = pts.slice(1).map((b, i) => {
-    const a = pts[i];
-    const [ex, ey] = [b[0] - a[0], b[1] - a[1]];
-    const len = Math.hypot(ex, ey) || 1;
-    let o: [number, number] = [ey / len, -ex / len];
-    const [mx, my] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    if ((high[0] - mx) * o[0] + (high[1] - my) * o[1] > 0) o = [-o[0], -o[1]];
-    return o;
-  });
-  // Mitred at each point between two segments.
-  const at = pts.map((p, i) => {
-    const [o0, o1] = [outs[Math.max(0, i - 1)], outs[Math.min(outs.length - 1, i)]];
-    let m: [number, number] = [o0[0] + o1[0], o0[1] + o1[1]];
-    const ml = Math.hypot(m[0], m[1]) || 1;
-    m = [m[0] / ml, m[1] / ml];
-    const d = RIM / Math.max(m[0] * o1[0] + m[1] * o1[1], 0.35);
-    return { edge: p, inner: [p[0] - m[0] * d, p[1] - m[1] * d], m };
-  });
-  for (const { edge, inner, m } of at) {
-    positions.push(edge[0], edge[1], 0, inner[0], inner[1], 0);
-    normals.push(m[0] * Math.SQRT1_2, m[1] * Math.SQRT1_2, Math.SQRT1_2, 0, 0, 1);
-  }
-  for (let i = 0; i + 1 < at.length; i++) {
-    const [e0, i0, e1, i1] = [2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3];
-    // Wound as the ground is (clockwise seen from above).
-    for (const [a, b, c] of [[e0, e1, i1], [e0, i1, i0]]) {
-      const cz = (positions[b * 3] - positions[a * 3]) * (positions[c * 3 + 1] - positions[a * 3 + 1]) - (positions[b * 3 + 1] - positions[a * 3 + 1]) * (positions[c * 3] - positions[a * 3]);
-      indices.push(...(cz < 0 ? [a, b, c] : [a, c, b]));
-    }
-  }
-  return { positions, normals, indices };
-}
-
 /**
  * Cliff walls are the terrain colour darkened. Reused scratch: `append` reads
  * the floats out immediately and never retains the object.
@@ -455,6 +422,8 @@ export class TerrainBuffers {
   indices = new Uint32Array(0);
   /** Absent on geometry the camera never sees. */
   colors: Float32Array<ArrayBuffer> | null;
+  /** Each vertex's ground's LAYER; the worker's alone, never uploaded. */
+  layers = new Uint8Array(0);
 
   vertices = 0;
   indexCount = 0;
@@ -486,6 +455,9 @@ export class TerrainBuffers {
       this.positions = grow(this.positions, n * 3);
       this.normals = grow(this.normals, n * 3);
       if (this.colors) this.colors = grow(this.colors, n * 4);
+      const layers = new Uint8Array(n);
+      layers.set(this.layers);
+      this.layers = layers;
     }
     if (this.indexCount + indices > this.indices.length) {
       const next = new Uint32Array(Math.max(2048, (this.indexCount + indices) * 2));
@@ -644,6 +616,7 @@ function append(
   oz: number,
   color: RGB,
   shine = 1,
+  layer = 0,
 ): void {
   const p = geo.positions;
   const vertexCount = p.length / 3;
@@ -671,6 +644,7 @@ function append(
       colors[c + 3] = shine;
     }
   }
+  buf.layers.fill(layer, base, base + vertexCount);
   const indices = buf.indices;
   for (let i = 0, n = buf.indexCount; i < geo.indices.length; i++, n++) {
     indices[n] = base + geo.indices[i];
@@ -747,7 +721,7 @@ function appendTile(
     }
     baseGeo = cached;
   }
-  append(sheet(sink, tt), baseGeo, lx, ly, be, palette[tt], SHINE[tt]);
+  append(sheet(sink, tt), baseGeo, lx, ly, be, palette[tt], SHINE[tt], LAYER[tt]);
 
   // Same-elevation corner overlays
   for (const c of corners) {
@@ -760,6 +734,7 @@ function appendTile(
       be + 0.01,
       palette[c.type],
       SHINE[c.type],
+      LAYER[c.type],
     );
   }
 
@@ -777,6 +752,7 @@ function appendTile(
       c.cornerElev,
       palette[c.type],
       SHINE[c.type],
+      LAYER[c.type],
     );
     append(
       sink.cliffs,
@@ -785,16 +761,6 @@ function appendTile(
       ly,
       lowerZ,
       shade(palette[higherType], 0.7),
-    );
-    // Its top rounded, on whichever side is higher: the corner, or the tile.
-    append(
-      sheet(sink, higherType),
-      cliffRim(getCornerCurvePoints(c.index, c.variant), c.cornerElev > be ? TILE_CORNERS[c.index] : [0.5, 0.5]),
-      lx,
-      ly,
-      upperZ + RIM_LIFT,
-      palette[higherType],
-      SHINE[higherType],
     );
   }
 
@@ -820,7 +786,6 @@ function appendTile(
       neighborElev,
       shade(palette[tt], 0.7),
     );
-    append(sheet(sink, tt), cliffRim(EDGE_ENDPOINTS[i], [0.5, 0.5]), lx, ly, be + RIM_LIFT, palette[tt], SHINE[tt]);
   }
 
 }
@@ -870,8 +835,92 @@ function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: numb
   return out;
 }
 
+/** How far in from its edge ground rounds over it, in tiles. */
+const BEVEL = 0.15;
+/** The bevel's cells to each of its texels, each way: the finer the grid
+ *  the ground is filled into, the less its edges step. */
+const FINE = 2;
+
+/**
+ * The ground's bevel, as `ChunkGeometry.bevel` holds it. The chunk's ground
+ * and a ring of tiles round it are filled into a grid in the order they are
+ * drawn, so each cell holds the LAYER of the ground seen there; each texel
+ * then finds the nearest cell lying lower, within BEVEL, and turns to face
+ * it, the more the nearer. Whatever is drawn is bevelled where it is drawn:
+ * cutouts, corners and saddles need no rules of their own.
+ */
+function bevelField(chunk: TerrainBuffers, ring: TerrainBuffers): Uint8Array | null {
+  const d = SHORE_DENSITY;
+  const fd = d * FINE;
+  // Laid half a cell over, so every texel's middle is a cell's middle:
+  // texel k is cell fd + FINE * k + FINE / 2.
+  const side = (CHUNK_SIZE + 2) * fd;
+  const seen = new Uint8Array(side * side);
+  for (const buf of [ring, chunk]) {
+    const indices = buf.indices.subarray(0, buf.indexCount);
+    // Runs of one layer at a time, in order: later ground lies on earlier.
+    for (let t = 0; t < indices.length; ) {
+      const layer = buf.layers[indices[t]];
+      let end = t + 3;
+      while (end < indices.length && buf.layers[indices[end]] === layer) end += 3;
+      fillTriangles(buf.positions, indices.subarray(t, end), -1 - 0.5 / fd, -1 - 0.5 / fd, fd, side, side, seen, layer);
+      t = end;
+    }
+  }
+  // In cells, to the line between two cells, not to the lower one's middle.
+  const reach = BEVEL * fd;
+  const r = Math.ceil(reach + 0.5);
+  const inner = CHUNK_SIZE * d;
+  const cell = (k: number) => fd + FINE * k + FINE / 2;
+  const near = new Float32Array(inner * inner).fill(reach);
+  const out = new Float32Array(inner * inner * 2);
+  let any = false;
+  // From each cell with higher ground beside it, out to every higher texel
+  // within reach: the nearest lower cell to any cell has such a neighbour.
+  for (let j = 0; j < side; j++) {
+    for (let i = 0; i < side; i++) {
+      const low = seen[j * side + i];
+      let edge = false;
+      for (let dj = -1; dj <= 1 && !edge; dj++) {
+        for (let di = -1; di <= 1 && !edge; di++) {
+          const [ni, nj] = [i + di, j + dj];
+          edge = ni >= 0 && nj >= 0 && ni < side && nj < side && seen[nj * side + ni] > low;
+        }
+      }
+      if (!edge) continue;
+      const k0 = (c: number) => Math.max(0, Math.ceil((c - r - fd - FINE / 2) / FINE));
+      const k1 = (c: number) => Math.min(inner - 1, Math.floor((c + r - fd - FINE / 2) / FINE));
+      for (let kj = k0(j); kj <= k1(j); kj++) {
+        for (let ki = k0(i); ki <= k1(i); ki++) {
+          const [qi, qj] = [cell(ki), cell(kj)];
+          if (seen[qj * side + qi] <= low) continue;
+          const [ox, oy] = [i - qi, j - qj];
+          const length = Math.hypot(ox, oy);
+          const far = length - 0.5;
+          const k = kj * inner + ki;
+          if (far >= near[k]) continue;
+          near[k] = far;
+          out[k * 2] = ox / length;
+          out[k * 2 + 1] = oy / length;
+          any = true;
+        }
+      }
+    }
+  }
+  if (!any) return null;
+  const bytes = new Uint8Array(inner * inner * 2);
+  for (let k = 0; k < inner * inner; k++) {
+    const turn = 1 - near[k] / reach;
+    bytes[k * 2] = Math.round(127.5 + 127.5 * out[k * 2] * turn);
+    bytes[k * 2 + 1] = Math.round(127.5 + 127.5 * out[k * 2 + 1] * turn);
+  }
+  return bytes;
+}
+
 /** Scratch, reused across builds — see TerrainBuffers. */
 const SINK = new ChunkSink();
+/** The tiles round a chunk, drawn only to be bevelled against. */
+const RING = new ChunkSink();
 
 /**
  * Ground and cliff geometry for one chunk. A pure function of the tiles and
@@ -908,10 +957,20 @@ export function buildChunk(
   }
   if (tileCount === 0) return null;
 
+  RING.reset();
+  for (let y = originY - 1; y <= originY + CHUNK_SIZE; y++) {
+    for (let x = originX - 1; x <= originX + CHUNK_SIZE; x++) {
+      if (x >= originX && y >= originY && x < originX + CHUNK_SIZE && y < originY + CHUNK_SIZE) continue;
+      const type = sampler.typeAt(x, y);
+      if (type) appendTile(RING, x, y, originX, originY, type, palette, sampler);
+    }
+  }
+
   return {
     ground: SINK.ground.take(),
     water: SINK.water.take(),
     shore: SINK.water.vertices ? shoreField(SINK.ground, sampler, originX, originY) : null,
+    bevel: bevelField(SINK.ground, RING.ground),
     cliffs: SINK.cliffs.take(),
   };
 }

@@ -20,6 +20,7 @@ import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE, type T
 import { FERRY } from "../engine/town/dressing";
 import { carShape, ROUNDING } from "../engine/objects/carShape";
 import { waterMaterial } from "../engine/water";
+import { groundMaterial } from "../engine/ground";
 import { drawRoads, drawTown, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
 import { grove, plant } from "../engine/trees";
 import { extentOf, kerbed, kerbField, kerbsOf, stripLines } from "../engine/kerbs";
@@ -374,9 +375,14 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
         // The map runs +x to the screen's left and +y up: turned about.
         mesh.scaling.set(-1, -1, 1);
         mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
-        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : new StandardMaterial(`terrain_${name}_mat`, scene);
-        if (name !== "water") {
-          mat.diffuseColor = name === "cliffs" ? new Color3(0.5, 0.5, 0.5) : Color3.White();
+        const mat =
+          name === "water"
+            ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b))
+            : name === "ground"
+              ? groundMaterial(scene, geo.bevel)
+              : new StandardMaterial(`terrain_${name}_mat`, scene);
+        if (name === "cliffs") {
+          mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
           mat.specularColor = Color3.Black();
         }
         mat.backFaceCulling = false;

@@ -11,17 +11,18 @@ const hex3 = (h: string) => Color3.FromHexString(h);
 const hex4 = (h: string) => new Color4(...hex3(h).asArray(), 1);
 
 const light = {
-  // After Mini Motorways: sage land, mint water, off-white roads, and the
-  // trees the one dark note on the ground, so the buildings carry the colour.
-  land: hex4("#C6DBAB"),
-  water: hex3("#A6E1D6"),
-  beach: hex3("#F2E4C4"),
+  // After a Scottish coast from the air, made light: cool pasture, a
+  // slate-teal sea, pale taupe sand, off-white roads, and the trees the one
+  // dark note on the ground, so the buildings carry the colour.
+  land: hex4("#7DAB84"),
+  water: hex3("#76AAB2"),
+  beach: hex3("#D4CAB9"),
   // The floor between the crowns: a shade under the land, as the map's
   // darker meadows are.
-  forest: hex3("#A3C68F"),
+  forest: hex3("#62926F"),
   // Tree crowns, dark to light: deep teal-greens, the dark note, light
   // enough that a forest reads as a wood and not a hole.
-  crowns: [hex3("#3C635D"), hex3("#4B7767"), hex3("#628F78")],
+  crowns: [hex3("#2C5650"), hex3("#386756"), hex3("#4B7B62")],
   // A field through its season: ploughed earth beside the beach, the
   // growing crop beside the grass, the ripe crop beside the highway's
   // yellow, the stubble between.
