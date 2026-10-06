@@ -1,6 +1,6 @@
 import { BoundingInfo, Color3, Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, StandardMaterial, TransformNode, Vector3, VertexData, type Material, type Scene } from "@babylonjs/core";
 import { Atlas } from "./atlas";
-import { FAR, kerbDistances } from "./kerbs";
+import { FAR, kerbDistances } from "./kerbLines";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
 import { fillTriangles } from "./raster";
 

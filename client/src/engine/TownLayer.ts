@@ -8,14 +8,13 @@ import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
-import { PAVED_Z, type Piece } from "./town/draw";
+import { PAVED_Z } from "./town/draw";
 import type { MeshGeometry } from "./Mesh";
 import { bevelled, giveBevel, lacquer } from "./bevel";
 import { waysAt } from "./town/dressing";
 import { storeysOf, type Town } from "./town/grid";
 import type { Box } from "./town/clip";
 import { kerbed, kerbField } from "./kerbs";
-import type { Kerb, Line } from "./kerbLines";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import type { RGB } from "./town/mass";
@@ -171,11 +170,11 @@ export class TownLayer {
     this.builder
       .draw(snapshot)
       .then(
-        ({ chunks, window, kerbs, lines }) => {
+        ({ chunks, window }) => {
           const shown = performance.now();
           for (const c of chunks) {
             this.drop(c.key);
-            this.show(c.key, c.pieces, c.trees, window, { kerbs, lines }, c.cut, byId);
+            this.show(c, window, byId);
           }
           perfCount("town.mainMs", gathered + performance.now() - shown);
         },
@@ -242,9 +241,8 @@ export class TownLayer {
   /** A chunk's pieces, drawn in the frame of the window they were drawn
    *  in, placed on the map: its paving a square over the chunk, cut to
    *  the paving, rounded at its kerbs and its yards' lines painted on by a
-   *  texture, the kerbs read off the window's whole paving so a kerb is
-   *  never where the chunk was cut; and its trees. */
-  private show(key: string, pieces: Piece[], trees: ChunkDrawing["trees"], [, , x1, y1]: Bounds, paving: { kerbs: Kerb[]; lines: Line[] }, cut: Box, byId: Map<number, GameObjectEntry>) {
+   *  texture, its texels worked out with the drawing; and its trees. */
+  private show({ key, pieces, trees, cut, paving }: ChunkDrawing, [, , x1, y1]: Bounds, byId: Map<number, GameObjectEntry>) {
     const root = new TransformNode(`town_${key}`, this.scene);
     root.position.set(x1 + 1, y1 + 1, 0);
     const meshes: Mesh[] = [];
@@ -260,7 +258,7 @@ export class TownLayer {
       giveBevel(mesh, geo);
       mesh.material = bevelOn(this.pool.material(paved ? `town_pavement_${key}` : `town_${p.name}`, p.colour ? new Color3(p.colour.r, p.colour.g, p.colour.b) : Color3.White()), p.name);
       if (p.name === "mass" && !mesh.material.pluginManager?.getPlugin("Tint")) new TintPlugin(mesh.material, this.tints);
-      if (paved) kerbed(mesh.material, kerbField(this.scene, paving.kerbs, cut, { cover: p.geo, lines: paving.lines }), this.theme().road);
+      if (paved && paving) kerbed(mesh.material, kerbField(this.scene, paving), this.theme().road);
       mesh.parent = root;
       mesh.isPickable = false;
       mesh.receiveShadows = true;

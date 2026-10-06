@@ -1,5 +1,5 @@
 import { Constants, RawTexture, type Scene } from "@babylonjs/core";
-import { toHalf } from "./kerbs";
+import { toHalf } from "./kerbLines";
 
 /** Slots to a row of the texture; it gains rows as shapes come. */
 const COLS = 16;

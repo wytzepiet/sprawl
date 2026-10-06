@@ -23,8 +23,8 @@ import { waterMaterial } from "../engine/water";
 import { GroundTiles } from "../engine/ground";
 import { drawRoads, drawTown, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
 import { grove, plant } from "../engine/trees";
-import { extentOf, kerbed, kerbField } from "../engine/kerbs";
-import { kerbsOf, stripLines } from "../engine/kerbLines";
+import { kerbed, kerbField } from "../engine/kerbs";
+import { extentOf, kerbsOf, kerbTexels, stripLines } from "../engine/kerbLines";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -449,10 +449,10 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     // A sheet's kerbs rounded from its own kerb texture (`engine/kerbs.ts`):
     // the paving's every edge, a road's where it does not run on.
     const material = meshes[meshes.length - 1].material;
-    if (material && p.name === "pavement") kerbed(material, kerbField(scene, kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines) }), theme.road);
+    if (material && p.name === "pavement") kerbed(material, kerbField(scene, kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines) })), theme.road);
     if (material && (p.name === "street" || p.name === "through")) {
       const on = runsOn(p.geo);
-      kerbed(material, kerbField(scene, kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo)));
+      kerbed(material, kerbField(scene, kerbTexels(kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo))));
     }
   }
   const { cars, docks, ships } = dressing;

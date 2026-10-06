@@ -4,7 +4,9 @@ import { drawChunks, type Snapshot } from "./town/layer";
 /** The town drawn off the main thread (`town/layer.ts`). */
 const api = {
   draw(snapshot: Snapshot) {
-    return drawChunks(snapshot);
+    const drawing = drawChunks(snapshot);
+    // The kerb texels handed over, not copied: half a megabyte a chunk.
+    return Comlink.transfer(drawing, drawing.chunks.flatMap((c) => (c.paving ? [c.paving.half.buffer] : [])));
   },
 };
 

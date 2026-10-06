@@ -1,5 +1,5 @@
 import type { TerrainType } from "../../generated";
-import { kerbsOf, stripLines, type Kerb, type Line } from "../kerbLines";
+import { kerbsOf, kerbTexels, stripLines, type KerbTexels } from "../kerbLines";
 import type { Theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, treeInstances, type Piece } from "./draw";
@@ -48,22 +48,21 @@ export interface Snapshot {
 }
 
 /** One chunk drawn: its pieces in the frame of the window they were drawn
- *  in, its trees, and the tiles it covers in that frame. The masses' vertex
- *  colours carry each surface's shade and its building (`Paint`). */
+ *  in, its trees, the tiles it covers in that frame, and its paving's kerb
+ *  texels over them. The masses' vertex colours carry each surface's shade
+ *  and its building (`Paint`). */
 export interface ChunkDrawing {
   key: string;
   pieces: Piece[];
   trees: { matrices: Float32Array; colors: Float32Array };
   cut: Box;
+  paving: KerbTexels | null;
 }
 
 export interface Drawing {
   chunks: ChunkDrawing[];
   /** The window the chunks were drawn in, round them a margin wider. */
   window: Bounds;
-  /** The window's paving's kerbs, and the yards' lines on it. */
-  kerbs: Kerb[];
-  lines: Line[];
 }
 
 const grow = (b: Bounds, x: number, y: number) => {
@@ -158,10 +157,12 @@ export function drawChunks(s: Snapshot): Drawing {
   const frame = ([fx0, fy0, fx1, fy1]: Bounds): Box => [fx0 - wx1 - 1, fy0 - wy1 - 1, fx1 - wx1, fy1 - wy1];
   // Each piece's triangles filed by the chunks they reach into, so a chunk
   // cuts only its own; the paving's kerbs found once, from the window's
-  // whole paving, so a kerb is never where a chunk was cut.
+  // whole paving, so a kerb is never where a chunk was cut, and the yards'
+  // lines on it.
   const chunkAt = (gx: number, gy: number): [number, number] => [Math.floor((gx + wx1 + 1) / CHUNK), Math.floor((gy + wy1 + 1) / CHUNK)];
   const filed = new Map(pieces.map((p) => [p, fileBy(p.geo, chunkAt, (cx, cy) => `${cx},${cy}`, p.name === "pavement" ? PAVING_PAD : 0)]));
   const pavement = pieces.find((p) => p.name === "pavement");
+  const [kerbs, lines] = [pavement ? kerbsOf(pavement.geo) : [], stripLines(dressing.yardLines)];
   const chunks = s.todo.map((key): ChunkDrawing => {
     const [cx, cy] = key.split(",").map(Number);
     // The chunk, as far as the town reaches into it.
@@ -178,7 +179,11 @@ export function drawChunks(s: Snapshot): Drawing {
       const [x, y] = [-t.x, -t.y];
       return x >= cut[0] && x < cut[2] && y >= cut[1] && y < cut[3];
     });
-    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, s.theme), cut };
+    // Its paving's kerb texture, cut to it by its own triangles, its
+    // kerbs and lines the window's.
+    const sheet = own.find((p) => p.name === "pavement" && p.geo.indices.length);
+    const paving = sheet ? kerbTexels(kerbs, cut, { cover: sheet.geo, lines }) : null;
+    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, s.theme), cut, paving };
   });
-  return { chunks, window, kerbs: pavement ? kerbsOf(pavement.geo) : [], lines: stripLines(dressing.yardLines) };
+  return { chunks, window };
 }

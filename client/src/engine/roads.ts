@@ -1,8 +1,7 @@
 import { MaterialDefines, MaterialPluginBase, Mesh, VertexData, type Material, type RawTexture, type Scene, type StandardMaterial } from "@babylonjs/core";
 import { Atlas } from "./atlas";
 import { bevelled, giveBevel } from "./bevel";
-import { coverage, kerbDistances } from "./kerbs";
-import { kerbsOf } from "./kerbLines";
+import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, PAVED_Z, pastSeam, RIM } from "./town/draw";
 import { roadShape } from "./town/dressing";
 import { ROAD_Z } from "./objects/roadGeometry";
