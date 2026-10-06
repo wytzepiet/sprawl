@@ -50,35 +50,82 @@ const BODY = {
 
 const f = (x: number) => x.toFixed(4);
 
-/** Where the pixel is on its crown, in the world's turn, a radius out at 1;
- *  facing up, for the shadow map's bias. */
+/** A crown is clumps of leaves: cells this wide, of its radius, each with
+ *  a clump somewhere in it. Between clumps its outline is pulled in this
+ *  far, so it is lumpy, not round, and frayed by its leaves; each clump
+ *  rolls over as a dome of its own, this much; and the leaves on it face
+ *  every way, this much, a leaf this small, each turning smoothly into the
+ *  next. Only its facing, never its colour: the light makes the leaves.
+ *  Every tree's clumps are its own, by where it stands. */
+const CLUMP = 0.85;
+const LUMP = 0.15;
+const FRINGE = 0.12;
+const CLUMP_TILT = 0.35;
+const LEAF = 1 / 20;
+const LEAF_TILT = 0.5;
+
+/** Where the pixel is on its crown, in the world's turn, a radius out at 1,
+ *  and where the tree stands; facing up, for the shadow map's bias. Then
+ *  the crown: the clump nearest the pixel, the outline pulled in away from
+ *  clumps and frayed by the leaves, and the facing rolled over the dome,
+ *  over the clump, and turned by the leaf. */
 const CROWN = {
   glsl: {
     vertex: {
-      CUSTOM_VERTEX_DEFINITIONS: `varying vec2 vCrown;`,
+      CUSTOM_VERTEX_DEFINITIONS: `varying vec2 vCrown; varying vec2 vTreeAt;`,
       CUSTOM_VERTEX_UPDATE_WORLDPOS: `vec3 treeNormal = vec3(0., 0., 1.);`,
-      CUSTOM_VERTEX_MAIN_END: `vCrown = (finalWorld * vec4(positionUpdated.xy, 0., 0.)).xy / length(finalWorld[0].xyz);`,
+      CUSTOM_VERTEX_MAIN_END: `vCrown = (finalWorld * vec4(positionUpdated.xy, 0., 0.)).xy / length(finalWorld[0].xyz); vTreeAt = finalWorld[3].xy;`,
     },
     fragment: {
-      CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vCrown;`,
-      CUSTOM_FRAGMENT_BEFORE_LIGHTS: `float crownR = length(vCrown);
+      CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vCrown; varying vec2 vTreeAt;
+vec2 treeHash(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
+vec2 treeNoise(vec2 p) { vec2 i = floor(p); vec2 t = smoothstep(0., 1., fract(p)); return mix(mix(treeHash(i), treeHash(i + vec2(1., 0.)), t.x), mix(treeHash(i + vec2(0., 1.)), treeHash(i + vec2(1., 1.)), t.x), t.y); }`,
+      CUSTOM_FRAGMENT_BEFORE_LIGHTS: `vec2 treeSeed = treeHash(floor(vTreeAt * 13.));
+vec2 clumpAt = vCrown / ${f(CLUMP)} + treeSeed * 17.;
+float clumpD = 9.;
+vec2 clumpTo = vec2(0.);
+for (int j = -1; j <= 1; j++) {
+  for (int i = -1; i <= 1; i++) {
+    vec2 c = floor(clumpAt) + vec2(float(i), float(j));
+    vec2 d = clumpAt - (c + 0.15 + 0.7 * treeHash(c));
+    if (length(d) < clumpD) { clumpD = length(d); clumpTo = d; }
+  }
+}
+vec2 crownLeaf = treeNoise(vCrown / ${f(LEAF)} + treeSeed * 31.);
+float crownR = length(vCrown) + ${f(LUMP)} * (clumpD - 0.25) + (crownLeaf.x - 0.5) * ${f(FRINGE)};
 if (crownR > 1.) discard;
 float crownT = clamp((crownR - ${f(1 - CROWN_ROUND)}) / ${f(CROWN_ROUND)}, 0., 1.);
-normalW = normalize(mix(vec3(0., 0., 1.), vec3(vCrown / max(crownR, 1e-4), 1.) * 0.70710678, crownT));`,
+vec2 crownOut = vCrown / max(length(vCrown), 1e-4);
+normalW = normalize(mix(vec3(0., 0., 1.), vec3(crownOut, 1.) * 0.70710678, crownT) + vec3(clumpTo * ${f(CLUMP_TILT)} + (crownLeaf - 0.5) * ${f(LEAF_TILT)}, 0.));`,
     },
   },
   wgsl: {
     vertex: {
-      CUSTOM_VERTEX_DEFINITIONS: `varying vCrown: vec2f;`,
+      CUSTOM_VERTEX_DEFINITIONS: `varying vCrown: vec2f; varying vTreeAt: vec2f;`,
       CUSTOM_VERTEX_UPDATE_WORLDPOS: `let treeNormal = vec3f(0., 0., 1.);`,
-      CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vCrown = (finalWorld * vec4f(positionUpdated.xy, 0., 0.)).xy / length(finalWorld[0].xyz);`,
+      CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vCrown = (finalWorld * vec4f(positionUpdated.xy, 0., 0.)).xy / length(finalWorld[0].xyz); vertexOutputs.vTreeAt = finalWorld[3].xy;`,
     },
     fragment: {
-      CUSTOM_FRAGMENT_DEFINITIONS: `varying vCrown: vec2f;`,
-      CUSTOM_FRAGMENT_BEFORE_LIGHTS: `let crownR = length(fragmentInputs.vCrown);
+      CUSTOM_FRAGMENT_DEFINITIONS: `varying vCrown: vec2f; varying vTreeAt: vec2f;
+fn treeHash(p: vec2f) -> vec2f { return fract(sin(vec2f(dot(p, vec2f(127.1, 311.7)), dot(p, vec2f(269.5, 183.3)))) * 43758.5453); }
+fn treeNoise(p: vec2f) -> vec2f { let i = floor(p); let t = smoothstep(vec2f(0.), vec2f(1.), fract(p)); return mix(mix(treeHash(i), treeHash(i + vec2f(1., 0.)), t.x), mix(treeHash(i + vec2f(0., 1.)), treeHash(i + vec2f(1., 1.)), t.x), t.y); }`,
+      CUSTOM_FRAGMENT_BEFORE_LIGHTS: `let treeSeed = treeHash(floor(fragmentInputs.vTreeAt * 13.));
+let clumpAt = fragmentInputs.vCrown / ${f(CLUMP)} + treeSeed * 17.;
+var clumpD = 9.;
+var clumpTo = vec2f(0.);
+for (var j = -1; j <= 1; j++) {
+  for (var i = -1; i <= 1; i++) {
+    let c = floor(clumpAt) + vec2f(f32(i), f32(j));
+    let d = clumpAt - (c + 0.15 + 0.7 * treeHash(c));
+    if (length(d) < clumpD) { clumpD = length(d); clumpTo = d; }
+  }
+}
+let crownLeaf = treeNoise(fragmentInputs.vCrown / ${f(LEAF)} + treeSeed * 31.);
+let crownR = length(fragmentInputs.vCrown) + ${f(LUMP)} * (clumpD - 0.25) + (crownLeaf.x - 0.5) * ${f(FRINGE)};
 if (crownR > 1.) { discard; }
 let crownT = clamp((crownR - ${f(1 - CROWN_ROUND)}) / ${f(CROWN_ROUND)}, 0., 1.);
-normalW = normalize(mix(vec3f(0., 0., 1.), vec3f(fragmentInputs.vCrown / max(crownR, 1e-4), 1.) * 0.70710678, crownT));`,
+let crownOut = fragmentInputs.vCrown / max(length(fragmentInputs.vCrown), 1e-4);
+normalW = normalize(mix(vec3f(0., 0., 1.), vec3f(crownOut, 1.) * 0.70710678, crownT) + vec3f(clumpTo * ${f(CLUMP_TILT)} + (crownLeaf - 0.5) * ${f(LEAF_TILT)}, 0.));`,
     },
   },
 };
