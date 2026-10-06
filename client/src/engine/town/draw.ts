@@ -1,4 +1,3 @@
-import { Color3 } from "@babylonjs/core";
 import earcut from "earcut";
 import type { MeshGeometry } from "../Mesh";
 import type { Theme } from "../theme";
@@ -16,11 +15,14 @@ export interface Piece {
   name: string;
   geo: MeshGeometry & { colors?: number[] };
   /** The material's colour; white where the vertices carry theirs. */
-  colour: Color3 | null;
+  colour: Colour | null;
 }
 
+/** A colour as plain numbers: a theme's, or one of the town's own. */
+export type Colour = { r: number; g: number; b: number };
+
 /** A dock's door: dark, in any light. */
-const DOOR = new Color3(0.22, 0.24, 0.3);
+const DOOR: Colour = { r: 0.22, g: 0.24, b: 0.3 };
 
 /** How round a port lane's corners are, as the asphalt's. */
 const LANE_ROUND = 0.05;
@@ -55,7 +57,7 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
  */
 export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town)): { pieces: Piece[]; dressing: Dressing } {
   const pieces: Piece[] = [];
-  const add = (name: string, geo: Piece["geo"], c: Color3 | null) => {
+  const add = (name: string, geo: Piece["geo"], c: Colour | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
   add("pavement", flatPolygons(pavement(town), PAVED_Z), theme.paved);

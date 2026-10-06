@@ -23,7 +23,8 @@ import { waterMaterial } from "../engine/water";
 import { GroundTiles } from "../engine/ground";
 import { drawRoads, drawTown, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
 import { grove, plant } from "../engine/trees";
-import { extentOf, kerbed, kerbField, kerbsOf, stripLines } from "../engine/kerbs";
+import { extentOf, kerbed, kerbField } from "../engine/kerbs";
+import { kerbsOf, stripLines } from "../engine/kerbLines";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -444,7 +445,7 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   // The town grid, drawn; and on it what the dressing parks.
   const { pieces, dressing } = drawTown(town, theme, shaded(colourOf));
   for (const p of [...drawRoads(town, theme), ...pieces]) {
-    add(p.name, p.geo, p.colour ?? Color3.White());
+    add(p.name, p.geo, p.colour ? new Color3(p.colour.r, p.colour.g, p.colour.b) : Color3.White());
     // A sheet's kerbs rounded from its own kerb texture (`engine/kerbs.ts`):
     // the paving's every edge, a road's where it does not run on.
     const material = meshes[meshes.length - 1].material;

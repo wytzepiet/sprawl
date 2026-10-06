@@ -53,7 +53,8 @@ const STOREYS: Partial<Record<BuildingKind, number>> = {
   House: 2, Apartment: 5, Shop: 2, Restaurant: 2, Bar: 2, Office: 6, Workshop: 1, Factory: 1, Warehouse: 1, Supermarket: 1, GasStation: 1,
 };
 
-export const isBuilt = (t: Tile) => !["open", "paved", "road", "water", "wood"].includes(t.kind);
+const GROUND = new Set(["open", "paved", "road", "water", "wood"]);
+export const isBuilt = (t: Tile) => !GROUND.has(t.kind);
 
 /** How many storeys a kind is built. */
 export const storeysOf = (kind: BuildingKind) => STOREYS[kind] ?? 1;
