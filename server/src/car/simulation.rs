@@ -1,6 +1,7 @@
 use crate::car::physics;
 use crate::car::{
-    nose, tail, ACCELERATION, CRUISE_SPEED, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle,
+    nose, tail, ACCELERATION, CRUISE_SPEED, GEAR_SPEED, INTERSECTION_STOP_MARGIN, LOT_SPEED, MIN_GAP, Obstacle,
+    REVERSE_SPEED,
 };
 use crate::engine::GameTime;
 use crate::engine::event_queue::EventQueue;
@@ -141,21 +142,87 @@ fn leave_crossed(
 }
 
 /// Stand in the queue of every edge from route[from - 1] to the end of the
-/// run. A run has no way on or off, so whoever joins it later is behind, and
-/// standing in all of its queues at once is what lets the car behind see this
-/// one wherever on the run it has got to. Queued for the one tile it was on,
-/// it was out of sight for the rest of the run.
-fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize) {
+/// run. Standing in all of its queues at once is what lets the car behind
+/// see this one wherever on the run it has got to. Queued for the one tile it
+/// was on, it was out of sight for the rest of the run.
+///
+/// A queue is in the order the cars stand in: whoever joins a run from a
+/// junction is behind everyone on it, but a car pulling out of a lot halfway
+/// along is ahead of whoever is still coming. Out of a lot, the street is
+/// joined only once the car has its gap (`gap_at`): until then it is not
+/// on it.
+fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f64, now: GameTime, street: bool) {
     for k in from..trip.route.len() {
-        if let Some(seg) = world.edges.get_mut(&(trip.route[k - 1], trip.route[k]))
-            && !seg.cars.contains(&car_id)
-        {
-            seg.cars.push_back(car_id);
+        if !street && trip.from_lot > 0 && k - 1 == trip.from_lot {
+            break;
+        }
+        let edge = (trip.route[k - 1], trip.route[k]);
+        if world.edges.get(&edge).is_some_and(|seg| !seg.cars.contains(&car_id)) {
+            let mine = at - trip.segment_lengths[1..k].iter().sum::<f64>();
+            let behind = |o: EntityId| position_on(world, o, edge, now).is_some_and(|p| p < mine);
+            let cars = &world.edges[&edge].cars;
+            let i = match cars.back() {
+                Some(&last) if behind(last) => cars.iter().position(|&o| behind(o)).unwrap(),
+                _ => cars.len(),
+            };
+            world.edges.get_mut(&edge).unwrap().cars.insert(i, car_id);
         }
         if world.network.is_junction(trip.route[k]) {
             break;
         }
     }
+}
+
+/// Where a car is on its route, measured from the start of one of its
+/// edges: short of it is negative.
+fn position_on(world: &World, car_id: EntityId, edge: EdgeKey, now: GameTime) -> Option<f64> {
+    let GameObject::Car(ref c) = world.objects.get(car_id)?.object else { return None };
+    let t = c.trip.as_ref()?;
+    let (p, _) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+    Some(p - edge_start_dist(t, edge)?)
+}
+
+/// Wake every car whose route passes a node but this one, in order of id:
+/// a set's own order differs from one run to the next.
+fn wake_round(world: &World, events: &mut EventQueue, node: EntityId, car_id: EntityId) {
+    let mut cars: Vec<EntityId> = world.node_cars.get(&node).into_iter().flatten().copied().filter(|&o| o != car_id).collect();
+    cars.sort_unstable();
+    for o in cars {
+        events.wake(0, o);
+    }
+}
+
+/// How long a driver allows for seeing a car pull out and braking for it.
+const REACTION: f64 = 0.5;
+
+/// Is this car still pulling out onto `street`: on its way out of a lot
+/// there, and not yet clear of it?
+fn pulling_out_at(world: &World, car_id: EntityId, street: EntityId) -> bool {
+    matches!(world.objects.get(car_id).map(|e| &e.object), Some(GameObject::Car(c))
+        if c.trip.as_ref().is_some_and(|t| t.from_lot > 0 && t.route[t.from_lot] == street && t.route_index <= t.from_lot + 1))
+}
+
+/// Is the street clear for a car to pull out onto it here? Nobody else
+/// pulling out, and everyone coming either past the node or far enough
+/// off to see the car and stop short of it. A car standing in the queue
+/// beside a drive keeps it shut; one waiting to pull out of a lot of its
+/// own is not on the street yet.
+fn gap_at(world: &World, car_id: EntityId, street: EntityId, now: GameTime) -> bool {
+    if world.pulling_out.get(&street).is_some_and(|&o| o != car_id && pulling_out_at(world, o, street)) {
+        return false;
+    }
+    let Some(cars) = world.node_cars.get(&street) else { return true };
+    cars.iter().all(|&o| {
+        let Some(GameObject::Car(c)) = world.objects.get(o).map(|e| &e.object) else { return true };
+        let Some(t) = c.trip.as_ref().filter(|_| o != car_id) else { return true };
+        if t.from_lot > 0 && t.route[t.from_lot] == street && t.route_index <= t.from_lot {
+            return true;
+        }
+        let Some(k) = (t.route_index - 1..t.route.len()).find(|&k| t.route[k] == street) else { return true };
+        let (p, v) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+        let d = t.segment_lengths[1..=k].iter().sum::<f64>() - p;
+        d < -(tail(c.role) + MIN_GAP) || d - nose(c.role) > MIN_GAP + v * REACTION + physics::braking_distance(v, 0.0)
+    })
 }
 
 /// The speed the bend at route[k] allows, if that is less than cruising. A
@@ -399,7 +466,20 @@ pub fn handle_car_wake_up(
     }
 
     leave_crossed(world, events, car_id, &trip, old_ri, ri);
-    join_run(world, car_id, &trip, ri);
+
+    // Out of a lot: a give-way line where it meets the street. Short of it
+    // the car waits for a gap; with one it pulls out, and the street waits
+    // for it until its tail is clear.
+    let street = trip.route[trip.from_lot];
+    let line: f64 = trip.segment_lengths[1..trip.from_lot.max(1)].iter().sum();
+    let mut waiting = trip.from_lot > 0 && ri <= trip.from_lot && world.pulling_out.get(&street) != Some(&car_id);
+    if waiting && line - cur_progress <= physics::braking_distance(cur_speed, 0.0) + 0.05 && gap_at(world, car_id, street, now) {
+        world.pulling_out.insert(street, car_id);
+        waiting = false;
+        // Whoever is coming sees it now, not at their next look ahead.
+        wake_round(world, events, street, car_id);
+    }
+    join_run(world, car_id, &trip, ri, cur_progress, now, !waiting);
 
     // A car holds a junction until its tail is through it, not until its
     // nose is: the car behind is let into the node only once this one has
@@ -411,6 +491,10 @@ pub fn handle_car_wake_up(
         if cur_progress - node_dist >= tail(role) {
             for woken_id in intersections.clear_car(trip.route[k], car_id, now) {
                 events.wake(0, woken_id);
+            }
+            if world.pulling_out.get(&trip.route[k]) == Some(&car_id) {
+                world.pulling_out.remove(&trip.route[k]);
+                wake_round(world, events, trip.route[k], car_id);
             }
         } else {
             tail_clears = Some(node_dist + tail(role));
@@ -471,7 +555,7 @@ pub fn handle_car_wake_up(
     if ri + 1 < trip.route.len() {
         let end_node = trip.route[ri];
         if !world.is_intersection(end_node) || intersections.has_passage(end_node, car_id) {
-            join_run(world, car_id, &trip, ri + 1);
+            join_run(world, car_id, &trip, ri + 1, cur_progress, now, !waiting);
         }
     }
 
@@ -512,12 +596,25 @@ pub fn handle_car_wake_up(
     // what the corner allows. Held to zero instead, so it carries the speed it
     // slowed to through the turn rather than only up to it.
     let entry_ri = remaining - 0.5 * trip.segment_lengths[ri] - nose(role);
-    // In a lot, a crawl: on any edge that ends at a lot node, from its start.
-    // Backing in, half that.
-    if world.lot_nodes.contains_key(&trip.route[ri]) {
-        let reversing = trip.backing.iter().any(|&[a, b]| a < ri && ri <= b);
-        obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: if reversing { LOT_SPEED / 2.0 } else { LOT_SPEED } });
+    // Backing, a walking pace; in a lot, a crawl, on any edge that ends at a
+    // lot node, from its start. Where the gear changes, all but a stop.
+    let backing = |k: usize| trip.backing.iter().any(|&[a, b]| a < k && k <= b);
+    let gear = |k: usize| k + 1 < trip.route.len() && trip.backing.iter().any(|&[a, b]| (a == k && k > 0) || b == k);
+    if backing(ri) {
+        obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: REVERSE_SPEED });
+    } else if world.lot_nodes.contains_key(&trip.route[ri]) {
+        obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: LOT_SPEED });
     }
+    if gear(ri) {
+        obstacles.push(Obstacle::SpeedLimit { distance: remaining, speed: GEAR_SPEED });
+    }
+    // At its own give-way line, with no gap yet.
+    if waiting {
+        obstacles.push(Obstacle::MustStop { distance: (line - cur_progress).max(0.0) });
+    }
+    // A car pulling out across the road ahead: stop short of it. Asleep
+    // behind it, a car would never see it go, so it looks again.
+    let mut pull_out_ahead = false;
     if let Some(limit) = bend(world, &trip.route, ri) {
         obstacles.push(Obstacle::SpeedLimit { distance: entry_ri.max(0.0), speed: limit });
     }
@@ -528,6 +625,10 @@ pub fn handle_car_wake_up(
         obstacles.push(Obstacle::MustStop {
             distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0),
         });
+    }
+    if world.pulling_out.get(&trip.route[ri]).is_some_and(|&o| o != car_id && pulling_out_at(world, o, trip.route[ri])) {
+        obstacles.push(Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) });
+        pull_out_ahead = true;
     }
 
     // Scan forward nodes
@@ -547,11 +648,18 @@ pub fn handle_car_wake_up(
             break;
         }
 
+        if !pull_out_ahead && world.pulling_out.get(&node).is_some_and(|&o| o != car_id && pulling_out_at(world, o, node)) {
+            obstacles.push(Obstacle::MustStop { distance: (entry_k - INTERSECTION_STOP_MARGIN).max(0.0) });
+            pull_out_ahead = true;
+        }
         if world.lot_nodes.contains_key(&node) {
             obstacles.push(Obstacle::SpeedLimit {
                 distance: (node_dist - trip.segment_lengths[k] - nose(role)).max(0.0),
                 speed: LOT_SPEED,
             });
+        }
+        if gear(k) {
+            obstacles.push(Obstacle::SpeedLimit { distance: node_dist, speed: GEAR_SPEED });
         }
         if let Some(limit) = bend(world, &trip.route, k) {
             obstacles.push(Obstacle::SpeedLimit { distance: entry_k, speed: limit });
@@ -568,6 +676,11 @@ pub fn handle_car_wake_up(
         .iter()
         .map(|o| o.wake_time(cur_speed, new_accel))
         .fold(5000u64, u64::min);
+
+    // Waiting for a gap, or for someone else to pull out: look again soon.
+    if waiting || pull_out_ahead {
+        wake_ms = wake_ms.min(500);
+    }
 
     // Be awake when this stretch ends, because crossing is when the car has to
     // change queues, clear the junction behind it and shed the limit of the

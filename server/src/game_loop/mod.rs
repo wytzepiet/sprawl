@@ -1207,6 +1207,71 @@ mod tests {
         assert!(!world.resident_ids().is_empty(), "nobody moved into the starting town");
     }
 
+    /// Where a car stands on the map, and how fast it goes along its route.
+    fn whereabouts(world: &World, car: EntityId, now: GameTime) -> Option<([f64; 2], f64, usize)> {
+        let GameObject::Car(ref c) = world.objects.get(car)?.object else { return None };
+        let t = c.trip.as_ref()?;
+        let (p, v) = crate::car::physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+        let mut s = 0.0;
+        for k in 1..t.route.len() {
+            let len = t.segment_lengths[k];
+            if p <= s + len || k == t.route.len() - 1 {
+                let f = ((p - s) / len).clamp(0.0, 1.0);
+                let (a, b) = (t.route_positions[k - 1], t.route_positions[k]);
+                return Some(([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f], v, k));
+            }
+            s += len;
+        }
+        None
+    }
+
+    /// A car backing out of its drive waits for a gap in the street, backs
+    /// out at a walking pace, all but stops where it changes gear, and the
+    /// street waits for it once it has gone: whenever it sets out, with a
+    /// car coming either way, the two never meet.
+    #[test]
+    fn a_car_backs_out_into_a_gap_and_the_street_waits_for_it() {
+        for (dest_x, from_x) in [(40, 2), (0, 30)] {
+            for start in (0..14_000).step_by(400) {
+                let mut world = street();
+                let home = build(&mut world, 10, BuildingKind::House, 1);
+                let from = build(&mut world, from_x, BuildingKind::House, 1);
+                let shop = build(&mut world, dest_x, BuildingKind::Shop, 1);
+                let mut events = EventQueue::new();
+                let mut intersections = IntersectionRegistry::new();
+                let car = |world: &mut World, at: EntityId| {
+                    let c = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), world.objects.get(at).unwrap().position);
+                    world.park_in_lot(at, c, 0);
+                    c
+                };
+                let (backer, through) = (car(&mut world, home), car(&mut world, from));
+                let s = world.approach(from).unwrap();
+                assert!(crate::car::spawn::start_trip(&mut world, &mut events, through, s, shop, 0, GameTime::MAX));
+                let mut now = 0;
+                let mut out = false;
+                while now < 60_000 {
+                    if !out && now >= start {
+                        let s = world.approach(home).unwrap();
+                        out = crate::car::spawn::start_trip(&mut world, &mut events, backer, s, shop, now, GameTime::MAX);
+                    }
+                    let to = now + 50;
+                    step(&mut world, &mut events, &mut intersections, &mut now, to);
+                    let (a, b) = (whereabouts(&world, backer, now), whereabouts(&world, through, now));
+                    if let Some((_, v, k)) = a {
+                        if k == 1 {
+                            assert!(v <= crate::car::REVERSE_SPEED + 0.06, "backing at {v:.2} (start {start})");
+                        }
+                    }
+                    if let (Some(a), Some(b)) = (a, b) {
+                        let d = ((a.0[0] - b.0[0]).powi(2) + (a.0[1] - b.0[1]).powi(2)).sqrt();
+                        assert!(d > 0.45, "the backing car and the passing one met, {d:.2} apart at {now} (start {start}, from {from_x})");
+                    }
+                }
+                assert!(whereabouts(&world, backer, now).is_none() && whereabouts(&world, through, now).is_none(), "both arrived (start {start}, from {from_x})");
+            }
+        }
+    }
+
     #[test]
     fn residents_commute_and_come_home() {
         let mut world = street();

@@ -47,6 +47,19 @@ car drives onto its driveway nose first, from the street, and backs out
 onto it; a lorry still backs into its dock. A kerb bay will be the same:
 a few nodes and a change of gear.
 
+Pulling out, 2026-10-06. Backing is a walking pace (`REVERSE_SPEED`,
+a fifth of a tile a second) and a car all but stops where its gear
+changes (`GEAR_SPEED`); it used to back out at lot speed and drive off
+at once, the turn of the wheel and the change of direction in one
+instant. Where a lot's way out meets the street is a **give-way line**:
+the car waits at it until nobody is coming who could not stop for it
+(`gap_at`), then holds the street node (`World::pulling_out`) until its
+tail is clear, and anyone coming either way, or turning in, stops short
+of it. It joins the street's queues where it stands, ahead of whoever is
+still coming, not behind everyone on the run (`join_run`). Before, a car
+backed out blind, queued behind cars that were still behind it, and
+cars drove through each other at drives.
+
 Status: specification, drafted 2026-09-06. §8 step 1 built the same day
 in its generic form: every building has a two-spot lot on its driveway
 (`world/lots.rs`), trips end in a spot and start from one, a parked car
@@ -584,3 +597,7 @@ Roughly: 3, 2, 2, 2, 1, 2 and 2 days. Steps 1, 3 and 4 are built.
   yields to what is coming — which would also let runs span whole
   streets for the search and for `stretch_end`. The season guard
   (`game_loop`, `season`: nobody a day late) judges all of it.
+  Built 2026-10-06 of this: a lot's way out is a give-way line, and a
+  car joins a queue where it stands (top of this document). A car
+  turning *in* does not yet give way to oncoming traffic; it only stops
+  for one pulling out.
