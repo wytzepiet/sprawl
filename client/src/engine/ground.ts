@@ -1,4 +1,5 @@
-import { BoundingInfo, Color3, Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, StandardMaterial, TransformNode, Vector3, VertexData, type Material, type Scene } from "@babylonjs/core";
+import { BoundingInfo, Color3, Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, TransformNode, Vector3, VertexData, type Material, type PBRMaterial, type Scene } from "@babylonjs/core";
+import { townMaterial } from "./material";
 import { Atlas } from "./atlas";
 import { FAR, kerbDistances } from "./kerbLines";
 import { CALM, slate } from "./peaks";
@@ -57,8 +58,9 @@ const PATCH_SCALE = 0.4;
 const FRAY_SPAN = 2;
 const TUFT = 8;
 /** Sand glints instead: of its grains, this share each tilted its own way
- *  as far as this, and lacquered this much more, so as the sun moves one
- *  and then another catches it. */
+ *  as far as this, and polished (`townShine`), so as the sun moves one and
+ *  then another catches it; and a tile's own shine counts this many times
+ *  toward its polish. */
 const GLINTS = 0.25;
 const GLINT_TILT = 0.35;
 const GLINT = 4;
@@ -216,8 +218,8 @@ if (vGroundGrass.x > 0. && groundD.g >= 0. && texture2D(groundSlate, vPositionW.
 // A beach draws back from each wave as it breaks, and is wet where they reach.
 float groundSwash = vGroundSlot.w * ${swash} * groundWash(groundTime, vPositionW.xy) * (0.6 + 0.8 * groundFrayBy);
 if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * vGroundGrass.x * ${fray})) discard;`,
-    "!vec3 finalSpecular=specularBase\\*specularColor;": `vec3 finalSpecular=specularBase*specularColor*(vGroundLook.a + groundGlinting * ${glint});`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor.rgb *= vGroundLook.rgb * (1. + vGroundGrass.y * groundMottle * vec3(${mottleWarm})) * (1. - ${wet} * vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = min(1., vGroundLook.a * ${glint} + groundGlinting);
+baseColor.rgb *= vGroundLook.rgb * (1. + vGroundGrass.y * groundMottle * vec3(${mottleWarm})) * (1. - ${wet} * vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
 normalW = normalize(normalW - vec3(groundBump * ${bump} * vGroundSlot.z, 0.) + vec3((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3(groundSlateTilt * vGroundGrass.z, 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
@@ -258,8 +260,8 @@ if (fragmentInputs.vGroundGrass.x > 0. && groundD.g >= 0. && textureSampleLevel(
 // A beach draws back from each wave as it breaks, and is wet where they reach.
 let groundSwash = fragmentInputs.vGroundSlot.w * ${swash} * groundWash(uniforms.groundTime, fragmentInputs.vPositionW.xy) * (0.6 + 0.8 * groundFrayBy);
 if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * fragmentInputs.vGroundGrass.x * ${fray})) { discard; }`,
-    "!var finalSpecular: vec3f=specularBase\\*specularColor;": `var finalSpecular: vec3f=specularBase*specularColor*(fragmentInputs.vGroundLook.a + groundGlinting * ${glint});`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb * (1. + fragmentInputs.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * fragmentInputs.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g)), baseColor.a);
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = min(1., fragmentInputs.vGroundLook.a * ${glint} + groundGlinting);
+baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb * (1. + fragmentInputs.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * fragmentInputs.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g)), baseColor.a);
 normalW = normalize(normalW - vec3f(groundBump * ${bump} * fragmentInputs.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * fragmentInputs.vGroundGrass.z, 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
@@ -339,7 +341,7 @@ class GroundPlugin extends MaterialPluginBase {
 export class GroundTiles {
   private atlas: Atlas;
   private chunks = new Map<string, Mesh>();
-  private material: StandardMaterial;
+  private material: PBRMaterial;
   private colours: Color3[] = LAYERS.map(() => Color3.White());
   /** How the land is placed in the world, every chunk's tiles with it: a
    *  turn given to it is given to all. */
@@ -347,9 +349,7 @@ export class GroundTiles {
 
   constructor(scene: Scene) {
     this.atlas = new Atlas(scene, SLOT);
-    this.material = new StandardMaterial("ground", scene);
-    this.material.specularColor = new Color3(0.45, 0.45, 0.45);
-    this.material.specularPower = 64;
+    this.material = townMaterial("ground", scene);
     // Which way the square is wound matters not, flat on the ground.
     this.material.backFaceCulling = false;
     new GroundPlugin(this.material, this.atlas);
@@ -403,11 +403,6 @@ export class GroundTiles {
   /** Each layer's colour, bottom up, for the chunks drawn from now on. */
   paint(colours: Color3[]) {
     this.colours = colours;
-  }
-
-  /** The light's colour, as the rest of the ground glows with it. */
-  light(ambient: Color3) {
-    this.material.emissiveColor = ambient.scale(0.15);
   }
 
   dispose() {

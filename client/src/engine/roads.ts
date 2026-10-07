@@ -1,4 +1,4 @@
-import { MaterialDefines, MaterialPluginBase, Mesh, VertexData, type Material, type RawTexture, type Scene, type StandardMaterial } from "@babylonjs/core";
+import { MaterialDefines, MaterialPluginBase, Mesh, VertexData, type Material, type RawTexture, type Scene, type PBRMaterial } from "@babylonjs/core";
 import { Atlas } from "./atlas";
 import { grain } from "./ground";
 import { bevelled, giveBevel } from "./bevel";
@@ -55,12 +55,11 @@ function bake(ways: Ways): [Float32Array, Float32Array] {
 
 /** Asphalt: its grain over this many tiles, tilting its facing this far;
  *  and of its stones, this share each tilted its own way as far as this
- *  and lacquered this much, glinting as the sun moves. */
+ *  and polished (`townShine`), glinting as the sun moves. */
 const GRAIN_SPAN = 2.5;
 const BUMP = 0.15;
 const GLINTS = 0.08;
 const GLINT_TILT = 0.4;
-const GLINT = 2;
 /** Its edges crumble: within this far of them, in tiles, a pixel is
  *  dropped where the grain, specks and chips this many times bigger,
  *  beats how far in it is, so the edge breaks up as asphalt's does. */
@@ -96,8 +95,8 @@ vec2 roadTexel = 1. / (roadGrid * ${n(SLOT)});
 vec2 roadD = texture2D(roadAtlas, roadUv).rg;
 if (roadD.r < 0.) discard;
 if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) discard;`,
-    "!vec3 finalSpecular=specularBase\\*specularColor;": `vec3 finalSpecular=specularBase*(specularColor + vec3(roadGlinting * ${n(GLINT)}));`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `normalW = normalize(normalW - vec3(roadBump * ${n(BUMP)}, 0.) + vec3((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = roadGlinting;
+normalW = normalize(normalW - vec3(roadBump * ${n(BUMP)}, 0.) + vec3((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
 float roadDx = texture2D(roadAtlas, roadUv + vec2(roadTexel.x, 0.)).g - texture2D(roadAtlas, roadUv - vec2(roadTexel.x, 0.)).g;
 float roadDy = texture2D(roadAtlas, roadUv + vec2(0., roadTexel.y)).g - texture2D(roadAtlas, roadUv - vec2(0., roadTexel.y)).g;
 if (roadD.g >= 0. && roadD.g < ${n(RIM)} && roadDx * roadDx + roadDy * roadDy > 0.) {
@@ -125,8 +124,8 @@ let roadTexel = 1. / (uniforms.roadGrid * ${n(SLOT)});
 let roadD = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv, 0.).rg;
 if (roadD.r < 0.) { discard; }
 if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
-    "!var finalSpecular: vec3f=specularBase\\*specularColor;": `var finalSpecular: vec3f=specularBase*(specularColor + vec3f(roadGlinting * ${n(GLINT)}));`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `normalW = normalize(normalW - vec3f(roadBump * ${n(BUMP)}, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = roadGlinting;
+normalW = normalize(normalW - vec3f(roadBump * ${n(BUMP)}, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
 let roadTx = vec2f(roadTexel.x, 0.);
 let roadTy = vec2f(0., roadTexel.y);
 let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
@@ -206,7 +205,7 @@ export class RoadTiles {
   /** `material` paints a street's road, or a through road's. */
   constructor(
     private scene: Scene,
-    private material: (through: boolean) => StandardMaterial,
+    private material: (through: boolean) => PBRMaterial,
   ) {
     this.atlas = new Atlas(scene, SLOT);
     this.kinds = [false, true].map((through): Kind => {
@@ -283,10 +282,8 @@ export class RoadTiles {
       const material = (kind.mesh.material = this.material(!!through));
       if (!material.pluginManager?.getPlugin("Road")) {
         new RoadPlugin(material, this.atlas);
-        // Matte, but for the stones that glint: a hint of shine, so the
-        // material lights them at all.
-        material.specularColor.set(0.01, 0.01, 0.01);
-        material.specularPower = 64;
+        // Matte, but for the stones that glint (`townShine`).
+        material.roughness = 0.85;
         // Which way the square is wound matters not, flat on the ground.
         material.backFaceCulling = false;
       }

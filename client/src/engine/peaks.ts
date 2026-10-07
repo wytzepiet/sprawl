@@ -1,4 +1,5 @@
-import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, ShadowDepthWrapper, StandardMaterial, type Material, type Scene } from "@babylonjs/core";
+import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, ShadowDepthWrapper, type Material, type PBRMaterial, type Scene } from "@babylonjs/core";
+import { townMaterial } from "./material";
 import { lacquer } from "./bevel";
 import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_WANDER, CLIFF_RUN, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, REACH, SHORE_DENSITY } from "./objects/terrainGeometry";
 import { SECOND, SPAN } from "./slate";
@@ -38,6 +39,9 @@ export const CALM = 2;
  *  lip or cliff, which keep the stone's own colour and shine. */
 const HOLLOW = 0.12;
 const DULL = 0.85;
+/** How far the slate's faces are glossed from the rock's roughness, where
+ *  the hollows leave them: worn smooth, as a crag catches the sun. */
+const ROCK_SHINE = 0.4;
 /** How far, in tiles, a step's edge wanders with the slate, the slate's
  *  height added scaled by how steep the rock is; the steepness counted at
  *  most this; fading out over this much height at the foot, so the rock
@@ -122,6 +126,7 @@ ${decl} peakCliff = 1. - smoothstep(${f(CLIFF * 0.6)}, ${f(CLIFF)}, peakBelow);
 ${decl} peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
 baseColor = vec4${wgsl ? "f" : ""}(${v3}(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow), baseColor.a);
 ${decl} peakShine = 1. - ${f(DULL)} * peakHollow;
+townShine = ${f(ROCK_SHINE)} * peakShine;
 normalW = normalize(${v3}(peakDown * (peakLip * ${f(ROLL)} + peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
 };
 
@@ -200,14 +205,12 @@ class BasaltPlugin extends MaterialPluginBase {
 ${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
 ${heightFn((c) => `textureLoad(peakHeights, ${c}, 0).r`, "vec2f", "vec3f", "vec2i", "fn peakHeightAt(p: vec2f, corner: vec2f) -> vec3f", "let")}`,
           CUSTOM_FRAGMENT_BEFORE_LIGHTS: peak("vec2f", "vec3f", "let", "fragmentInputs.vPeakAt"),
-          "!var finalSpecular: vec3f=specularBase\\*specularColor;": `var finalSpecular: vec3f=specularBase*specularColor*peakShine;`,
         }
       : {
           CUSTOM_FRAGMENT_DEFINITIONS: `uniform sampler2D slate; uniform sampler2D peakHeights; varying vec3 vPeakAt;
 ${read((uv) => `texture2D(slate, ${uv}, ${f(CALM)})`, "vec2", "vec3 slateRead(vec2 p)", "vec4")}
 ${heightFn((c) => `texelFetch(peakHeights, ${c}, 0).r`, "vec2", "vec3", "ivec2", "vec3 peakHeightAt(vec2 p, vec2 corner)", "float")}`,
           CUSTOM_FRAGMENT_BEFORE_LIGHTS: peak("vec2", "vec3", "float", "vPeakAt"),
-          "!vec3 finalSpecular=specularBase\\*specularColor;": `vec3 finalSpecular=specularBase*specularColor*peakShine;`,
         };
   }
 }
@@ -217,12 +220,12 @@ ${heightFn((c) => `texelFetch(peakHeights, ${c}, 0).r`, "vec2", "vec3", "ivec2",
  *  the slate and the heights are read by where a pixel is. Drawn into the
  *  shadow map by its own shader, so a layer's shadow is cut to its broken
  *  edge. */
-export function peakMaterial(scene: Scene, name: string, heights: Uint16Array): StandardMaterial {
+export function peakMaterial(scene: Scene, name: string, heights: Uint16Array): PBRMaterial {
   const texture = new RawTexture(heights, PEAK_SIDE, PEAK_SIDE, Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
   texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
-  const material = new StandardMaterial(name, scene);
+  const material = townMaterial(name, scene);
   material.onDisposeObservable.addOnce(() => texture.dispose());
-  material.diffuseColor = Color3.White();
+  material.albedoColor = Color3.White();
   lacquer(material, "rock");
   material.backFaceCulling = false;
   new BasaltPlugin(material, texture);
@@ -322,13 +325,13 @@ float cliffSlateTop(vec2 p) { return texture2D(slate, p / ${f(SPAN)}, ${f(CALM)}
 }
 
 /** A chunk's land's cliff's material, with its field (`cliffField`). */
-export function cliffMaterial(scene: Scene, name: string, field: Uint8Array): StandardMaterial {
+export function cliffMaterial(scene: Scene, name: string, field: Uint8Array): PBRMaterial {
   const side = CHUNK_SIZE * SHORE_DENSITY;
   const texture = new RawTexture(field, side, side, Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE);
   texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
-  const material = new StandardMaterial(name, scene);
+  const material = townMaterial(name, scene);
   material.onDisposeObservable.addOnce(() => texture.dispose());
-  material.diffuseColor = Color3.White();
+  material.albedoColor = Color3.White();
   material.backFaceCulling = false;
   new LandCliffPlugin(material, texture);
   return lacquer(material, "rock");

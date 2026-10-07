@@ -9,12 +9,14 @@ import {
 import {
   Mesh,
   VertexData,
-  StandardMaterial,
   Color3,
   Matrix,
   Quaternion,
   Vector3,
+  StandardMaterial,
+  type PBRMaterial,
 } from "@babylonjs/core";
+import { townMaterial } from "./material";
 import type { BaseTexture } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
@@ -37,7 +39,9 @@ function tint(color: Color3, amb: Color3): Color3 {
  */
 interface Bucket {
   mesh: Mesh;
-  material: StandardMaterial;
+  /** The town's material where it is lit; flat colour, tinted by the
+   *  hour, where it is not (a chevron, a marker). */
+  material: PBRMaterial | StandardMaterial;
   /** 16 floats per instance. Capacity may exceed count. */
   matrices: Float32Array;
   /** pos(3) + rot(3) + scale(3), so a partial update can recompose. */
@@ -111,19 +115,20 @@ export class InstancePool {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
 
-    const mat = new StandardMaterial(`mat_${key}`, this.scene);
-    mat.specularColor = Color3.Black();
+    const mat = receiveShadow ? townMaterial(`mat_${key}`, this.scene) : new StandardMaterial(`mat_${key}`, this.scene);
     // Every shape held here has its creases rounded (`bevel.ts`): a car's
     // box, a building's; a road's flat rim has none to round.
     new BevelPlugin(mat);
     const shape = bevelled(geometry);
 
-    if (!receiveShadow) {
+    if (mat instanceof StandardMaterial) {
       mat.disableLighting = true;
-    }
-
-    if (texture) {
-      mat.diffuseTexture = texture;
+      if (texture) mat.diffuseTexture = texture;
+    } else if (texture) {
+      // Its colours as an eye sees them: the town's material makes them
+      // linear itself (`material.ts`).
+      texture.gammaSpace = false;
+      mat.albedoTexture = texture;
     }
 
     const mesh = new Mesh(`inst_${key}`, this.scene);
@@ -294,8 +299,8 @@ export class InstancePool {
   }
 
   /** A material painted as a bucket's is, for a mesh of its own. */
-  material(key: string, color: Color3): StandardMaterial {
-    return this.ensureBucket(key, WARM_TRIANGLE, color, false, true).material;
+  material(key: string, color: Color3): PBRMaterial {
+    return this.ensureBucket(key, WARM_TRIANGLE, color, false, true).material as PBRMaterial;
   }
 
   updateMaterials(ambientColor: Color3): void {
@@ -306,17 +311,8 @@ export class InstancePool {
   }
 
   private paint(bucket: Bucket): void {
-    const a = this.ambient;
-    if (bucket.receiveShadow) {
-      bucket.material.diffuseColor = bucket.baseColor;
-      bucket.material.emissiveColor = new Color3(
-        bucket.baseColor.r * a.r * 0.15,
-        bucket.baseColor.g * a.g * 0.15,
-        bucket.baseColor.b * a.b * 0.15,
-      );
-    } else {
-      bucket.material.emissiveColor = tint(bucket.baseColor, a);
-    }
+    if (bucket.material instanceof StandardMaterial) bucket.material.emissiveColor = tint(bucket.baseColor, this.ambient);
+    else bucket.material.albedoColor = bucket.baseColor;
   }
 
   dispose(): void {

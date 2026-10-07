@@ -1,4 +1,5 @@
-import { MaterialDefines, MaterialPluginBase, Mesh, ShadowDepthWrapper, StandardMaterial, VertexData, type Material, type Scene, type ShadowGenerator } from "@babylonjs/core";
+import { MaterialDefines, MaterialPluginBase, Mesh, ShadowDepthWrapper, VertexData, type Material, type PBRMaterial, type Scene, type ShadowGenerator } from "@babylonjs/core";
+import { townMaterial } from "./material";
 import { lacquer } from "./bevel";
 
 /**
@@ -222,14 +223,14 @@ class TreePlugin extends MaterialPluginBase {
 }
 
 /** The scene's two tree materials, bodies' and tops', made once. */
-const MATERIALS = new WeakMap<Scene, { body: StandardMaterial; top: StandardMaterial }>();
-export function treeMaterials(scene: Scene) {
+const MATERIALS = new WeakMap<Scene, { body: PBRMaterial; top: PBRMaterial }>();
+function treeMaterials(scene: Scene) {
   let m = MATERIALS.get(scene);
   if (!m) {
-    const body = new StandardMaterial("tree_bodies", scene);
+    const body = townMaterial("tree_bodies", scene);
     body.backFaceCulling = false;
     new TreePlugin(body, "Card");
-    const top = lacquer(new StandardMaterial("tree_tops", scene), "tree");
+    const top = lacquer(townMaterial("tree_tops", scene), "tree");
     new TreePlugin(top, "Crown");
     // Drawn into the shadow map by their own shaders, so the card stands
     // and the crown is cut round there too; each says which way it faces.

@@ -1,4 +1,4 @@
-import { Color3, Vector3, type StandardMaterial } from "@babylonjs/core";
+import { Color3, Vector3, type PBRMaterial, type StandardMaterial } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
@@ -50,9 +50,10 @@ const shipGeo = boxGeometry(HULL.w, HULL.l, HULL.h);
 const SHIP = new Color3(0.2, 0.24, 0.3);
 const SHIP_Z = -0.5 + HULL.h / 2;
 
-/** A vehicle's material: lacquered, and its edges rounded tight. */
-function glossy(material: StandardMaterial) {
-  lacquer(material, "car");
+/** A vehicle's material: lacquered, and its edges rounded tight. A lit
+ *  bucket's is the town's (`InstancePool`). */
+function glossy(material: PBRMaterial | StandardMaterial) {
+  lacquer(material as PBRMaterial, "car");
   const bevel = material.pluginManager?.getPlugin<BevelPlugin>("Bevel");
   if (bevel) bevel.width = ROUNDING;
 }

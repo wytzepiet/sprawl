@@ -1,5 +1,6 @@
 import { createSignal, For, onCleanup, onMount } from "solid-js";
-import { Color3, Mesh, MeshBuilder, StandardMaterial, Vector3, VertexData, type Scene } from "@babylonjs/core";
+import { Color3, Mesh, MeshBuilder, Vector3, VertexData, type Scene } from "@babylonjs/core";
+import { townMaterial } from "../engine/material";
 import Canvas, { useEngine } from "../engine/Canvas";
 import { OrthoCamera } from "../engine/OrthoCamera";
 import DayNightLights, { DayNightProvider, useDayNight } from "../engine/DayNightCycle";
@@ -334,9 +335,8 @@ function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: 
   const vd = new VertexData();
   Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
   vd.applyToMesh(mesh);
-  const mat = new StandardMaterial(`${name}_mat`, scene);
-  mat.diffuseColor = colour;
-  mat.specularColor = Color3.Black();
+  const mat = townMaterial(`${name}_mat`, scene);
+  mat.albedoColor = colour;
   mat.alpha = alpha;
   mesh.material = mat;
   return mesh;
@@ -430,11 +430,8 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
         mesh.scaling.set(-1, -1, 1);
         // The peaks are laid where they are on the map.
         if (name !== "peaks") mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
-        const mat = name === "water" ? waterMaterial(scene, geo.shore, geo.cliffField) : name === "peaks" && geo.peakHeights ? peakMaterial(scene, "terrain_peaks_mat", geo.peakHeights) : new StandardMaterial(`terrain_${name}_mat`, scene);
-        if (name === "cliffs") {
-          mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
-          mat.specularColor = Color3.Black();
-        }
+        const mat = name === "water" ? waterMaterial(scene, geo.shore, geo.cliffField) : name === "peaks" && geo.peakHeights ? peakMaterial(scene, "terrain_peaks_mat", geo.peakHeights) : townMaterial(`terrain_${name}_mat`, scene);
+        if (name === "cliffs") mat.albedoColor = new Color3(0.5, 0.5, 0.5);
         mat.backFaceCulling = false;
         mesh.material = mat;
         mesh.isPickable = false;
@@ -458,9 +455,8 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     const vd = new VertexData();
     Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
     vd.applyToMesh(mesh);
-    const mat = new StandardMaterial(`${name}_mat`, scene);
-    mat.diffuseColor = colour;
-    mat.specularColor = Color3.Black();
+    const mat = townMaterial(`${name}_mat`, scene);
+    mat.albedoColor = colour;
     // Its creases rounded, as the game's town; lacquered as the game's
     // are, asphalt and paving matte.
     giveBevel(mesh, geo);
@@ -478,9 +474,8 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
   const ground = MeshBuilder.CreateGround("ground", { width: town.w + 40, height: town.h + 40 }, scene);
   ground.rotation.x = Math.PI / 2;
   ground.position.set(-town.w / 2, -town.h / 2, -0.6);
-  const gm = new StandardMaterial("ground_mat", scene);
-  gm.diffuseColor = new Color3(theme.land.r, theme.land.g, theme.land.b);
-  gm.specularColor = Color3.Black();
+  const gm = townMaterial("ground_mat", scene);
+  gm.albedoColor = new Color3(theme.land.r, theme.land.g, theme.land.b);
   ground.material = gm;
   meshes.push(ground);
 

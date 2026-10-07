@@ -1,4 +1,4 @@
-import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type Scene, type StandardMaterial } from "@babylonjs/core";
+import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type Scene, type PBRMaterial } from "@babylonjs/core";
 import { RIM } from "./town/draw";
 import type { KerbTexels } from "./kerbLines";
 
@@ -192,7 +192,7 @@ export class KerbPlugin extends MaterialPluginBase {
     const f = this.field;
     // The line's colour over the sheet's, so the sheet's light and glow
     // come out the line's own.
-    const [line, sheet] = [this.line, (this._material as StandardMaterial).diffuseColor];
+    const [line, sheet] = [this.line, (this._material as PBRMaterial).albedoColor];
     ubo.updateFloat3("kerbLine", line.r / Math.max(sheet.r, 1e-3), line.g / Math.max(sheet.g, 1e-3), line.b / Math.max(sheet.b, 1e-3));
     ubo.updateFloat2("kerbOrigin", f.origin[0], f.origin[1]);
     ubo.updateFloat2("kerbSize", f.size[0], f.size[1]);

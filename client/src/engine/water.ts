@@ -1,4 +1,5 @@
-import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, StandardMaterial, type Material, type Scene } from "@babylonjs/core";
+import { Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type PBRMaterial, type Scene } from "@babylonjs/core";
+import { townMaterial } from "./material";
 import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
 import { CALM, slate } from "./peaks";
 import { SPAN as SLATE_SPAN } from "./slate";
@@ -37,6 +38,9 @@ const LAYERS: [number, number, number, number, number, number][] = [
  *  through it, in tiles: the bottom shows less by e the further out. How
  *  much the water tints the bottom seen through it. */
 const DEEP = 0.55;
+/** The surface, near enough smooth: the sun's glint broken up only by the
+ *  ripple's facing. */
+const WATER_ROUGHNESS = 0.17;
 const CLARITY = 0.6;
 /** Pale sand under clear water, the red drunk out of the light: turquoise,
  *  as off a Hebridean beach; and right at the sand, barely any water over
@@ -234,10 +238,8 @@ class WaterPlugin extends MaterialPluginBase {
  *  vertex, its shore as `shoreField` gives it, if it has one, its land's
  *  cliff as `cliffField` does. Their textures go
  *  with it. */
-export function waterMaterial(scene: Scene, shore: Uint8Array | null, cliff: Uint8Array | null): StandardMaterial {
-  const mat = new StandardMaterial("water", scene);
-  mat.specularColor = new Color3(0.45, 0.45, 0.45);
-  mat.specularPower = 64;
+export function waterMaterial(scene: Scene, shore: Uint8Array | null, cliff: Uint8Array | null): PBRMaterial {
+  const mat = townMaterial("water", scene, WATER_ROUGHNESS);
   const side = shore ? CHUNK_SIZE * SHORE_DENSITY : 1;
   const texture = new RawTexture(shore ?? new Uint8Array([255]), side, side, Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE);
   texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;

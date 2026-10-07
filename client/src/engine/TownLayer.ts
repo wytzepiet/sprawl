@@ -1,4 +1,4 @@
-import { Color3, Mesh, TransformNode, VertexData, type Scene, type ShadowGenerator, type StandardMaterial } from "@babylonjs/core";
+import { Color3, Mesh, TransformNode, VertexData, type Scene, type ShadowGenerator, type PBRMaterial } from "@babylonjs/core";
 import { perfCount } from "./PerfReport";
 import { Tints, TintPlugin } from "./tints";
 import { tiled } from "./roofs";
@@ -329,7 +329,7 @@ const square = ([x0, y0, x1, y1]: Box, z: number): MeshGeometry => ({
 /** A town material lacquered as what it draws is: buildings;
  *  paving and roads stay matte. Its creases are rounded already, as
  *  every pool material's are. */
-function bevelOn(mat: StandardMaterial, name: string): StandardMaterial {
+function bevelOn(mat: PBRMaterial, name: string): PBRMaterial {
   if (name === "mass") return lacquer(mat, "building");
   return mat;
 }

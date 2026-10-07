@@ -1,4 +1,4 @@
-import { Mesh, VertexBuffer, VertexData, type StandardMaterial } from "@babylonjs/core";
+import { Mesh, VertexBuffer, VertexData, type PBRMaterial } from "@babylonjs/core";
 import type { DrawnPath } from "./drawnPath";
 
 /**
@@ -44,7 +44,7 @@ export class Strip {
   /** Sections drawn whole: the frontier is the next. */
   private shown: number;
 
-  constructor(material: StandardMaterial, private drawn: DrawnPath, land: (x: number, y: number) => boolean, private z: number, tone: RGB) {
+  constructor(material: PBRMaterial, private drawn: DrawnPath, land: (x: number, y: number) => boolean, private z: number, tone: RGB) {
     const lanes = LANES;
     const { points } = drawn;
     const n = points.length;

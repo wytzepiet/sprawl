@@ -2,9 +2,10 @@ import { onCleanup, createEffect, on, untrack } from "solid-js";
 import {
   Mesh as BabylonMesh,
   VertexData,
-  StandardMaterial,
   Color3,
+  StandardMaterial,
 } from "@babylonjs/core";
+import { townMaterial } from "./material";
 import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
 
@@ -43,19 +44,14 @@ export default function Mesh(props: MeshProps) {
   const shadowGenerator = dayNight.shadowGenerator()!;
 
   const mesh = new BabylonMesh(props.name, scene);
-  const material = new StandardMaterial(`${props.name}_mat`, scene);
-  material.specularColor = Color3.Black();
-
-  if (props.receiveShadow) {
-    // Lit material: uses diffuse so shadows from the light pipeline are visible.
-    // Emissive adds a baseline so the mesh is never fully dark.
-    material.diffuseColor = props.color;
-    material.emissiveColor = tint(props.color, new Color3(0.15, 0.15, 0.15));
-    mesh.receiveShadows = true;
-  } else {
-    // Unlit material: emissive with ambient tinting (reliable, no lighting issues)
+  // Lit, it is the town's material; unlit, a flat colour tinted by the hour.
+  const material = props.receiveShadow ? townMaterial(`${props.name}_mat`, scene) : new StandardMaterial(`${props.name}_mat`, scene);
+  if (material instanceof StandardMaterial) {
     material.disableLighting = true;
     material.emissiveColor = tint(props.color, untrack(ambientColor));
+  } else {
+    material.albedoColor = props.color;
+    mesh.receiveShadows = true;
   }
 
   mesh.material = material;
@@ -153,11 +149,8 @@ export default function Mesh(props: MeshProps) {
   createDeferredEffect(
     () => [props.color, ambientColor()] as const,
     ([color, amb]) => {
-      if (props.receiveShadow) {
-        material.diffuseColor = color;
-      } else {
-        material.emissiveColor = tint(color, amb);
-      }
+      if (material instanceof StandardMaterial) material.emissiveColor = tint(color, amb);
+      else material.albedoColor = color;
     },
   );
   createDeferredEffect(

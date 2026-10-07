@@ -1,4 +1,4 @@
-import { Color3, MaterialDefines, MaterialPluginBase, type Material, type Mesh, type StandardMaterial } from "@babylonjs/core";
+import { MaterialDefines, MaterialPluginBase, type Material, type Mesh, type PBRMaterial } from "@babylonjs/core";
 import type { MeshGeometry } from "./Mesh";
 
 /**
@@ -212,23 +212,22 @@ export class BevelPlugin extends MaterialPluginBase {
   }
 }
 
-/** How lacquered each kind of thing is, its glint's strength and its
- *  tightness: cars glossy, buildings and trees a sheen, as fired tile
- *  and plaster have; and how round its creases are, if not as the rest,
+/** How lacquered each kind of thing is, as its roughness: cars glossy,
+ *  buildings and rock a sheen, as fired tile and plaster and worn stone
+ *  have, trees duller; and how round its creases are, if not as the rest,
  *  and its corners and eaves: a building's hips crisp under their capping
  *  tiles (`roofs.ts`), its square corners softened by the light alone. */
-const LACQUER: Record<string, readonly [number, number, number?, number?]> = {
-  car: [0.7, 72],
-  building: [0.12, 32, 0.015, 0.06],
-  tree: [0.07, 40],
-  rock: [0.12, 28],
+const LACQUER: Record<string, readonly [number, number?, number?]> = {
+  car: [0.3],
+  building: [0.55, 0.015, 0.06],
+  tree: [0.65],
+  rock: [0.6],
 };
 
 /** A material lacquered as its kind is. */
-export function lacquer(mat: StandardMaterial, kind: "car" | "building" | "tree" | "rock"): StandardMaterial {
-  const [strength, power, round, soft] = LACQUER[kind];
-  mat.specularColor = new Color3(strength, strength, strength);
-  mat.specularPower = power;
+export function lacquer(mat: PBRMaterial, kind: "car" | "building" | "tree" | "rock"): PBRMaterial {
+  const [roughness, round, soft] = LACQUER[kind];
+  mat.roughness = roughness;
   const bevel = mat.pluginManager?.getPlugin<BevelPlugin>("Bevel");
   if (bevel && round !== undefined) bevel.width = round;
   if (bevel && soft !== undefined) bevel.soft = soft;

@@ -11,16 +11,36 @@ import {
   Color4,
   Vector3,
   DirectionalLight,
-  HemisphericLight,
+  ImageProcessingConfiguration,
   ShadowGenerator,
   type AbstractEngine,
 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
 import { groundCover } from "./view";
+import { skyEnvironment } from "./sky";
 
 // ---------------------------------------------------------------------------
 // Time config
 // ---------------------------------------------------------------------------
+
+const pinned = import.meta.env.DEV ? new URLSearchParams(location.search).get("t") : null;
+const PINNED = pinned === null ? null : Number(pinned);
+/** How open the eye is to the scene's light, and how strong
+ *  the sky's light is beside the sun's. A low sky gives deep shadows and
+ *  sunlit surfaces that glow; the eye opened wide brings the whole back up. */
+const EYE = 2.7;
+const SKY = 0.21;
+
+/**
+ * A light as PBR takes it. The palette is written as an eye sees it, and a
+ * stop may run past 1 where a light is brighter than white: so its hue is
+ * the colour over its brightest channel, made linear, and its strength the
+ * rest. Converted here once, where the light is handed over.
+ */
+function linearLight(colour: Color3, strength: number): Color3 {
+  const peak = Math.max(colour.r, colour.g, colour.b, 1e-6);
+  return colour.scale(1 / peak).toLinearSpace().scale(strength * peak);
+}
 
 /** Half-extent of the sun's ortho frustum beyond which shadows stop rendering. */
 const SHADOW_MAX_RADIUS = 50;
@@ -66,10 +86,6 @@ const sunStops: [number, Color3][] = [
   [0.7, new Color3(1.15, 1.02, 0.75)],
   [1, new Color3(1.15, 1.02, 0.75)],
 ];
-
-/** How strong the sky's fill on what faces away from the sun, of the sky's
- *  own light. */
-const FILL = 0.3;
 
 /** A shadow is drawn no longer than the sun this high would cast it. */
 const LOWEST = 0.1;
@@ -155,6 +171,43 @@ const skyStops: [number, Color4][] = [
   [1.0, SKY_MIDNIGHT],
 ];
 
+// The sky's horizon, for PBR's environment (`sky.ts`): toward the sun the
+// glow, and away from it the belt. By day both are haze. As the sun nears
+// the horizon the glow turns gold, then orange, and after it has gone rose
+// and mauve, while the far side takes the Belt of Venus, pink over the blue
+// of the earth's own shadow rising; the same backwards at dawn.
+const HAZE = new Color3(0.85, 0.9, 1.0);
+const GLOW_NIGHT = new Color3(0.28, 0.3, 0.55);
+const BELT_NIGHT = new Color3(0.2, 0.22, 0.45);
+const glowStops: [number, Color3][] = [
+  [0.0, GLOW_NIGHT],
+  [SUNRISE - 0.05, GLOW_NIGHT],
+  [SUNRISE - 0.015, new Color3(0.85, 0.4, 0.45)],
+  [SUNRISE + 0.01, new Color3(1.0, 0.55, 0.3)],
+  [SUNRISE + 0.06, new Color3(1.0, 0.8, 0.55)],
+  [SUNRISE + 0.14, HAZE],
+  [SUNSET - 0.14, HAZE],
+  [SUNSET - 0.06, new Color3(1.0, 0.78, 0.5)],
+  [SUNSET - 0.015, new Color3(1.0, 0.5, 0.25)],
+  [SUNSET + 0.015, new Color3(0.9, 0.38, 0.35)],
+  [SUNSET + 0.05, new Color3(0.45, 0.3, 0.5)],
+  [SUNSET + 0.08, GLOW_NIGHT],
+  [1.0, GLOW_NIGHT],
+];
+const beltStops: [number, Color3][] = [
+  [0.0, BELT_NIGHT],
+  [SUNRISE - 0.04, BELT_NIGHT],
+  [SUNRISE, new Color3(0.8, 0.55, 0.7)],
+  [SUNRISE + 0.06, new Color3(0.85, 0.75, 0.8)],
+  [SUNRISE + 0.14, HAZE],
+  [SUNSET - 0.14, HAZE],
+  [SUNSET - 0.06, new Color3(0.85, 0.72, 0.78)],
+  [SUNSET, new Color3(0.85, 0.55, 0.7)],
+  [SUNSET + 0.03, new Color3(0.4, 0.38, 0.62)],
+  [SUNSET + 0.06, BELT_NIGHT],
+  [1.0, BELT_NIGHT],
+];
+
 /** How far the sun has come across the sky, 0 at sunrise to π at sunset. */
 const sunAngle = (t: number) => ((t - SUNRISE) / (SUNSET - SUNRISE)) * Math.PI;
 
@@ -178,6 +231,37 @@ function sunDirection(t: number): Vector3 {
   const elev = Math.max(PEAK * Math.sin(angle), LOWEST);
   const horiz = Math.cos(angle);
   return new Vector3(-horiz, -NORTH, -elev).normalize();
+}
+
+/**
+ * The moon, full, as the night's light: up when the sun is down, crossing
+ * the same way along a lower path, its light the sun's own thrown back, pale
+ * and a little blue to an eye at night. It shines through the sun's light
+ * and casts with its shadows; the two hand over below the horizon, where
+ * both have faded to nothing.
+ */
+const MOON_PEAK = 0.55;
+const MOON_COLOUR = new Color3(0.72, 0.82, 1.0);
+const MOON = 0.16;
+
+/** How far the moon has come across the night, 0 at sunset to π at sunrise. */
+const moonAngle = (t: number) => ((((t - SUNSET) % 1) + 1) % 1 / (1 - (SUNSET - SUNRISE))) * Math.PI;
+
+function isNight(t: number): boolean {
+  return t < SUNRISE || t > SUNSET;
+}
+
+function moonElevation(t: number): number {
+  return isNight(t) ? MOON_PEAK * Math.sin(moonAngle(t)) : 0;
+}
+
+function moonDirection(t: number): Vector3 {
+  const angle = moonAngle(t);
+  return new Vector3(-Math.cos(angle), -NORTH, -Math.max(MOON_PEAK * Math.sin(angle), LOWEST)).normalize();
+}
+
+function moonLightAt(elev: number): { colour: Color3; strength: number } {
+  return { colour: MOON_COLOUR, strength: MOON * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15)) };
 }
 
 /** Where the sun is as the screen sees it: which way across the screen
@@ -297,21 +381,11 @@ export default function DayNightLights(props: ParentProps) {
   const { timeOfDay, _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setShadowGen: setShadowGen } = useDayNight();
 
   // --- Lights ---
-  const hemiLight = new HemisphericLight("hemi", new Vector3(0, 0, 1), scene);
-  hemiLight.intensity = 0.65;
-  hemiLight.specular = Color3.Black();
-
+  // The sun by day and the moon by night, one light that casts; the sky's
+  // light from all round is the environment (`sky.ts`).
   const sunLight = new DirectionalLight("sun", sunDirection(0.35), scene);
   sunLight.specular = Color3.Black();
   sunLight.autoUpdateExtends = false;
-
-  // The sky's light on what faces away from the sun: shone level from the
-  // side opposite it, so a roof's far slope, a crown's far side or a
-  // kerb's shaded lip is lifted, while ground, facing up, gets none of it
-  // and a shadow cast on it stays as dark. It casts none of its own.
-  const fillLight = new DirectionalLight("fill", new Vector3(1, 0, 0), scene);
-  fillLight.specular = Color3.Black();
-  fillLight.intensity = FILL;
 
   // --- Shadow generator ---
   const engine = scene.getEngine();
@@ -325,6 +399,14 @@ export default function DayNightLights(props: ParentProps) {
   shadowGen.normalBias = 0.02;
   setShadowGen(shadowGen);
 
+  const sky = skyEnvironment(scene);
+  // Bright light is drawn in, not cut off, its hue kept: a low sun stays
+  // deep orange where it is strongest, rather than clipping to yellow.
+  const look = scene.imageProcessingConfiguration;
+  look.toneMappingEnabled = true;
+  look.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_KHR_PBR_NEUTRAL;
+  look.exposure = EYE;
+
   const resizeObs = engine.onResizeObservable.add(() => {
     const size = shadowMapSize(engine);
     if (size !== shadowGen.mapSize) shadowGen.mapSize = size;
@@ -335,12 +417,20 @@ export default function DayNightLights(props: ParentProps) {
   const obs = scene.onBeforeRenderObservable.add(() => {
     // The sun follows the simulation, not the render loop — so fast-forwarding
     // moves the light with the traffic, and a reconnect resumes the same hour.
-    const t = simTimeOfDay();
+    // In development `?t=` holds the light at a time of day (0 midnight,
+    // 0.5 noon), to judge a look at an hour without moving the world's clock.
+    const t = PINNED ?? simTimeOfDay();
     setTimeOfDay(t);
 
-    // Ambient drives a material walk over every bucket, so only recompute it
-    // when the quantized time actually moves. 1/1024 of a day is below the
-    // 8-bit color step — invisible, and ~8 updates/sec instead of 60.
+    const night = isNight(t);
+    const elev = night ? moonElevation(t) : sunElevation(t);
+    sunLight.direction = night ? moonDirection(t) : sunDirection(t);
+    const sun = night ? moonLightAt(elev) : sunLightAt(elev);
+    sunLight.diffuse = sunLight.specular = linearLight(sun.colour, sun.strength);
+
+    // The sky is redrawn, and the flat things' tint walked over every
+    // bucket, only when the quantized time moves: 1/1024 of a day is below
+    // the 8-bit colour step, invisible, and ~8 times a second, not 60.
     const colorStep = Math.floor(t * 1024);
     if (colorStep !== lastColorStep) {
       lastColorStep = colorStep;
@@ -348,26 +438,24 @@ export default function DayNightLights(props: ParentProps) {
 
       const amb = ramp(ambientStops, qt, lerp3);
       setAmbient(amb);
-      hemiLight.diffuse = amb.multiply(SKY_LIGHT);
-      fillLight.diffuse = hemiLight.diffuse;
 
-      const sky = ramp(skyStops, qt, lerp4);
-      scene.clearColor.r = sky.r;
-      scene.clearColor.g = sky.g;
-      scene.clearColor.b = sky.b;
-      scene.clearColor.a = sky.a;
+      const clear = ramp(skyStops, qt, lerp4);
+      scene.clearColor.r = clear.r;
+      scene.clearColor.g = clear.g;
+      scene.clearColor.b = clear.b;
+      scene.clearColor.a = clear.a;
+
+      // Where the sun is, or last was, or will rise: the glow stays on its
+      // side of the sky after it has set.
+      const a = Math.min(Math.PI, Math.max(0, sunAngle(t)));
+      sky.draw({
+        zenith: linearLight(amb.multiply(SKY_LIGHT), SKY),
+        glow: linearLight(ramp(glowStops, qt, lerp3), SKY),
+        belt: linearLight(ramp(beltStops, qt, lerp3), SKY),
+        sun: sunLight.diffuse,
+        sunward: new Vector3(Math.cos(a), NORTH, 0).normalize(),
+      });
     }
-
-    const elev = sunElevation(t);
-    sunLight.direction = sunDirection(t);
-    // Level, toward the sun: it lights what the sun's light leaves.
-    const away = new Vector3(sunLight.direction.x, sunLight.direction.y, 0);
-    if (away.lengthSquared() > 1e-6) fillLight.direction = away.normalize().scale(-1);
-    const sun = sunLightAt(elev);
-    sunLight.intensity = sun.strength;
-    sunLight.diffuse = sun.colour;
-    // And glints off what is lacquered: the bevelled town (`bevel.ts`).
-    sunLight.specular = sun.colour;
 
     // Round the ground in view, not round the camera: leaning back, the
     // camera stands well behind what it looks at.
@@ -397,8 +485,7 @@ export default function DayNightLights(props: ParentProps) {
   onCleanup(() => {
     scene.onBeforeRenderObservable.remove(obs);
     engine.onResizeObservable.remove(resizeObs);
-    hemiLight.dispose();
-    fillLight.dispose();
+    sky.dispose();
     shadowGen.dispose();
     sunLight.dispose();
   });

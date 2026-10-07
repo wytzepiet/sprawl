@@ -1,13 +1,15 @@
 import {
   Color3,
   Mesh,
-  StandardMaterial,
   VertexData,
   type Nullable,
   type Observer,
   type Scene,
   type ShadowGenerator,
+  type PBRMaterial,
+  StandardMaterial,
 } from "@babylonjs/core";
+import { townMaterial } from "./material";
 import * as Comlink from "comlink";
 import type { Theme } from "./theme";
 import {
@@ -23,7 +25,7 @@ import {
 import { GroundTiles } from "./ground";
 import { cliffMaterial, peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
-import { grove, plant, SHADOW_ONLY, treeMaterials, uproot, type Grove } from "./trees";
+import { grove, plant, SHADOW_ONLY, uproot, type Grove } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
@@ -87,10 +89,8 @@ export class TerrainChunks {
   private builder = Comlink.wrap<TerrainApi>(this.worker);
 
   private ground: GroundTiles;
-  /** The light the water's materials, one a chunk, are lit with. */
-  private ambient = new Color3(1, 1, 1);
   private cliffMat: StandardMaterial;
-  private wallMat: StandardMaterial;
+  private wallMat: PBRMaterial;
   private observer: Nullable<Observer<Scene>>;
   private detailVisible = true;
 
@@ -113,7 +113,7 @@ export class TerrainChunks {
     // faces turned to it, whose shadow falls on the layer they hold up, are
     // culled. Which side that is, wound as `layWalls` winds them and seen
     // from the sun, was found by the shadow a lee side throws on the ground.
-    this.wallMat = new StandardMaterial("terrain_walls", scene);
+    this.wallMat = townMaterial("terrain_walls", scene);
     this.wallMat.backFaceCulling = true;
     this.wallMat.cullBackFaces = true;
 
@@ -266,18 +266,15 @@ export class TerrainChunks {
     // Its own material, for its own shore.
     meshes.water.material?.dispose();
     meshes.water.material = waterMaterial(this.scene, geometry.shore, geometry.cliffField);
-    (meshes.water.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
     meshes.water.setEnabled(this.applyBuffers(meshes.water, geometry.water));
     meshes.hasCliffs = this.applyBuffers(meshes.cliffs, geometry.cliffs);
     // Its own material, for its own field.
     meshes.cliff.material?.dispose();
     meshes.cliff.material = geometry.cliffField ? cliffMaterial(this.scene, `chunk_${key}_cliff`, geometry.cliffField) : null;
-    if (meshes.cliff.material) (meshes.cliff.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
     meshes.cliff.setEnabled(!!geometry.cliffField && this.applyBuffers(meshes.cliff, geometry.cliff));
     // Its own material, for its own heights.
     meshes.peaks.material?.dispose();
     meshes.peaks.material = geometry.peakHeights ? peakMaterial(this.scene, `chunk_${key}_peaks`, geometry.peakHeights) : null;
-    if (meshes.peaks.material) (meshes.peaks.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
     meshes.peaks.setEnabled(!!geometry.peakHeights && this.applyBuffers(meshes.peaks, geometry.peaks));
     meshes.walls.setEnabled(this.applyBuffers(meshes.walls, geometry.peakWalls));
     this.applyDetail(meshes);
@@ -395,19 +392,10 @@ export class TerrainChunks {
     meshes.trees.tops.setEnabled(this.detailVisible && meshes.hasTrees);
   }
 
+  /** The hour's light on the cliff walls, which are drawn flat: everything
+   *  else is lit by the sky itself (`sky.ts`). */
   updateMaterials(ambient: Color3): void {
-    // Vertex colours carry the water's colour; these scalars carry the
-    // lighting, and the shader multiplies the two.
-    this.ambient = ambient;
-    this.ground.light(ambient);
-    for (const { water } of this.chunks.values()) if (water.material) (water.material as StandardMaterial).emissiveColor = ambient.scale(0.15);
     this.cliffMat.emissiveColor = ambient.scale(0.7);
-    for (const { cliff } of this.chunks.values()) if (cliff.material) (cliff.material as StandardMaterial).emissiveColor = ambient.scale(0.15);
-    for (const { peaks } of this.chunks.values()) if (peaks.material) (peaks.material as StandardMaterial).emissiveColor = ambient.scale(0.15);
-
-    // Each tree carries its own crown colour, as the ground carries its;
-    // the street trees share these.
-    for (const mat of Object.values(treeMaterials(this.scene))) mat.emissiveColor = ambient.scale(0.15);
   }
 
   dispose(): void {
