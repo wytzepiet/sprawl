@@ -430,7 +430,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
         mesh.scaling.set(-1, -1, 1);
         // The peaks are laid where they are on the map.
         if (name !== "peaks") mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
-        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : name === "peaks" && geo.peakLight ? peakMaterial(scene, "terrain_peaks_mat", geo.peakLight, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], [theme.rock, theme.land, theme.mountain].map((k) => new Color3(k.r, k.g, k.b)) as [Color3, Color3, Color3]) : new StandardMaterial(`terrain_${name}_mat`, scene);
+        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : name === "peaks" && geo.peakHeights ? peakMaterial(scene, "terrain_peaks_mat", geo.peakHeights) : new StandardMaterial(`terrain_${name}_mat`, scene);
         if (name === "cliffs") {
           mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
           mat.specularColor = Color3.Black();

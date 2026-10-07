@@ -23,7 +23,7 @@ import {
 import { GroundTiles } from "./ground";
 import { peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
-import { grove, plant, treeMaterials, uproot, type Grove } from "./trees";
+import { grove, plant, SHADOW_ONLY, treeMaterials, uproot, type Grove } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
@@ -44,6 +44,8 @@ interface ChunkMeshes {
   water: Mesh;
   cliffs: Mesh;
   peaks: Mesh;
+  /** The walls under the mountains' layers: in the shadow map alone. */
+  walls: Mesh;
   trees: Grove;
   /** Empty meshes must stay disabled — see applyBuffers. */
   hasCliffs: boolean;
@@ -86,6 +88,7 @@ export class TerrainChunks {
   /** The light the water's materials, one a chunk, are lit with. */
   private ambient = new Color3(1, 1, 1);
   private cliffMat: StandardMaterial;
+  private wallMat: StandardMaterial;
   private observer: Nullable<Observer<Scene>>;
   private detailVisible = true;
 
@@ -104,6 +107,13 @@ export class TerrainChunks {
     this.cliffMat.backFaceCulling = false;
     this.cliffMat.specularColor = Color3.Black();
     this.cliffMat.disableLighting = true;
+    // The mountains' walls cast only from the side away from the sun; the
+    // faces turned to it, whose shadow falls on the layer they hold up, are
+    // culled. Which side that is, wound as `layWalls` winds them and seen
+    // from the sun, was found by the shadow a lee side throws on the ground.
+    this.wallMat = new StandardMaterial("terrain_walls", scene);
+    this.wallMat.backFaceCulling = true;
+    this.wallMat.cullBackFaces = true;
 
 
     this.ground = new GroundTiles(scene);
@@ -244,17 +254,12 @@ export class TerrainChunks {
     (meshes.water.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
     meshes.water.setEnabled(this.applyBuffers(meshes.water, geometry.water));
     meshes.hasCliffs = this.applyBuffers(meshes.cliffs, geometry.cliffs);
-    // Its own material too, lit by its own mountains' facing.
+    // Its own material, for its own heights.
     meshes.peaks.material?.dispose();
-    meshes.peaks.material = null;
-    if (geometry.peakLight) {
-      const m = this.theme().mountain;
-      const t = this.theme();
-      const c = (k: { r: number; g: number; b: number }) => new Color3(k.r, k.g, k.b);
-      meshes.peaks.material = peakMaterial(this.scene, `chunk_${key}_peaks`, geometry.peakLight, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], [c(t.rock), c(t.land), c(m)]);
-      (meshes.peaks.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
-    }
-    meshes.peaks.setEnabled(!!geometry.peakLight && this.applyBuffers(meshes.peaks, geometry.peaks));
+    meshes.peaks.material = geometry.peakHeights ? peakMaterial(this.scene, `chunk_${key}_peaks`, geometry.peakHeights) : null;
+    if (meshes.peaks.material) (meshes.peaks.material as StandardMaterial).emissiveColor = this.ambient.scale(0.15);
+    meshes.peaks.setEnabled(!!geometry.peakHeights && this.applyBuffers(meshes.peaks, geometry.peaks));
+    meshes.walls.setEnabled(this.applyBuffers(meshes.walls, geometry.peakWalls));
     this.applyDetail(meshes);
 
     this.rebuildTrees(key);
@@ -283,12 +288,19 @@ export class TerrainChunks {
     peaks.receiveShadows = true;
     peaks.setEnabled(false);
 
+    // Drawn into the shadow map, never by the camera: no layer of its.
+    const walls = new Mesh(`chunk_${key}_walls`, this.scene);
+    walls.material = this.wallMat;
+    walls.layerMask = SHADOW_ONLY;
+    walls.isPickable = false;
+    walls.setEnabled(false);
+
     const trees = grove(this.scene, `chunk_${key}`, this.shadowGenerator);
 
     // Laid where they are on the map, not from the chunk's corner.
     peaks.isPickable = false;
 
-    const meshes: ChunkMeshes = { water, cliffs, peaks, trees, hasCliffs: false, hasTrees: false };
+    const meshes: ChunkMeshes = { water, cliffs, peaks, walls, trees, hasCliffs: false, hasTrees: false };
     for (const mesh of [water, cliffs, trees.bodies, trees.tops]) {
       mesh.isPickable = false;
       mesh.position.x = originX;
@@ -296,6 +308,7 @@ export class TerrainChunks {
     }
     this.shadowGenerator.addShadowCaster(cliffs);
     this.shadowGenerator.addShadowCaster(peaks);
+    this.shadowGenerator.addShadowCaster(walls);
     this.applyDetail(meshes);
 
     this.chunks.set(key, meshes);
@@ -328,6 +341,8 @@ export class TerrainChunks {
     if (!meshes) return;
     this.shadowGenerator.removeShadowCaster(meshes.cliffs);
     this.shadowGenerator.removeShadowCaster(meshes.peaks);
+    this.shadowGenerator.removeShadowCaster(meshes.walls);
+    meshes.walls.dispose();
     meshes.peaks.material?.dispose();
     meshes.peaks.dispose();
     uproot(meshes.trees, this.shadowGenerator);
@@ -372,6 +387,7 @@ export class TerrainChunks {
     this.scene.onBeforeRenderObservable.remove(this.observer);
     for (const key of [...this.chunks.keys()]) this.disposeChunk(key);
     this.cliffMat.dispose();
+    this.wallMat.dispose();
     this.ground.dispose();
     this.worker.terminate();
     this.tiles.clear();

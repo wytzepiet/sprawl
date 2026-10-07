@@ -31,7 +31,7 @@ const FLARE = 0.45;
  *  draws a line of shadow across it. */
 const CARD_HEIGHT = 0.95;
 /** A layer no camera draws, only the shadow map. */
-const SHADOW_ONLY = 0x10000000;
+export const SHADOW_ONLY = 0x10000000;
 
 /** The top: a square of radius 1 at height 1, facing up. */
 const CROWN_TOP = {

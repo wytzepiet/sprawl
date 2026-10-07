@@ -46,10 +46,12 @@ export interface ChunkGeometry {
    *  to a tile, rows up from its low corner. */
   shore: Uint8Array | null;
   cliffs: MeshBuffers;
-  /** The mountains' surface, and its facing at every point of their
-   *  heights, if the chunk has any (`layPeaks`). */
+  /** The mountains: a square a tile a layer (`layPeaks`); their heights,
+   *  half floats, for the shader to cut and light them by; and the walls
+   *  under their layers, for their shadows alone (`layWalls`). */
   peaks: MeshBuffers;
-  peakLight: Uint8Array | null;
+  peakHeights: Uint16Array | null;
+  peakWalls: MeshBuffers;
 }
 
 /** The shore field's texels to a tile, and how far from land it reaches. */
@@ -58,8 +60,8 @@ export const SHORE_REACH = 2;
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliffs, g.peaks].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
-  return [...arrays, ...g.layers.map((l) => l.at), g.shore ?? undefined, g.peakLight ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
+  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliffs, g.peaks, g.peakWalls].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
+  return [...arrays, ...g.layers.map((l) => l.at), g.shore ?? undefined, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
 const ELEVATION: Record<TerrainType, number> = {
@@ -955,11 +957,12 @@ function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: numb
  * The mountains, a ground of their own: a surface on the ground at the
  * rock's edge, under the grass there, which stops at it as at the sand,
  * its fray showing the rock's foot; rising over the range as the server
- * eroded it (`mountains.rs`), which sends its heights with the chunk.
- * Laid from them at `PEAK_STEPS` points to a tile's side, for its height
- * and its shadow; lit at every pixel by `light`, their facing at every
- * one of them, finer. Unlike the rest of a chunk, laid where it is on the
- * map, not from the chunk's corner, for the shader to read the light by.
+ * eroded it (`mountains.rs`), which sends its heights with the chunk,
+ * in layers: a square a tile for each layer that could show there, the
+ * shader cutting each layer's edge and lighting it from the heights, sent
+ * on as a texture (`peaks.ts`), as a tree's crown is cut from its square.
+ * Unlike the rest of a chunk, laid where it is on the map, not from the
+ * chunk's corner, for the shader to find the chunk and its heights by.
  */
 /** As the server sends them (`mountains.rs`): points to a tile's side, a
  *  tile's height, and how far past the chunk they reach, in tiles. */
@@ -972,56 +975,141 @@ export const PEAK_SIDE = (CHUNK_SIZE + PEAK_APRON * 2) * PEAK_SAMPLES + 1;
  *  rest, so the grass's fray shows whichever is nearer. */
 const FOOT_Z = 0.001;
 const FOOT = 0.5;
-const PEAK_STEPS = 4;
+/** The rock is laid in layers this many tiles high, each a flat plane;
+ *  the first standing where the heights reach this far above the ground,
+ *  so its foot follows them round, not the grid they are on. A plane
+ *  reaches this far past its edge, in height, down the slope, for the
+ *  shader to cut its edge anywhere in that (`peaks.ts`), and on up under
+ *  every plane above it: drawn, the shader drops what is under the next;
+ *  in the shadow map it is kept, so the stack casts a solid's shadow, not
+ *  one plate's outline after another with the sun showing between. */
+export const LAYER = 0.9;
+export const EDGE = 0.05;
+export const REACH = 0.45;
+/** Where layer `k` begins, of the rock's height: the ground is layer 0. */
+const begins = (k: number) => EDGE + (k - 1) * LAYER;
 
-function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number, originY: number): { mesh: MeshBuffers; light: Uint8Array | null } {
+/** A layer's wall is traced on cells of the heights this many points to a
+ *  side: half a tile. */
+const WALL_CELL = 4;
+
+/**
+ * The walls under the mountains' layers, for their shadows alone: the
+ * planes have none, and a stack of plates casts one plate's outline after
+ * another. Each layer's edge traced where the rock's height crosses where
+ * the layer begins (marching squares), a strip standing on it from the
+ * layer below to this one, facing down the slope. It follows the height,
+ * not the slate's breaks, which only the shader knows. Laid where it is on
+ * the map, as the planes are.
+ */
+function layWalls(heights: Uint8Array, originX: number, originY: number): MeshBuffers {
+  const positions: number[] = [], normals: number[] = [], indices: number[] = [];
+  if (!heights.length) return { positions: new Float32Array(), normals: new Float32Array(), indices: new Uint32Array() };
+  const at = (i: number, j: number) => (heights[2 * (j * PEAK_SIDE + i)] | (heights[2 * (j * PEAK_SIDE + i) + 1] << 8)) / PEAK_UNIT;
+  const place = (i: number, j: number): [number, number] => [originX - PEAK_APRON + i / PEAK_SAMPLES, originY - PEAK_APRON + j / PEAK_SAMPLES];
+  const wall = ([px, py]: [number, number], [qx, qy]: [number, number], k: number, [gx, gy]: [number, number]) => {
+    // Facing down the slope: from p to q, the low side on the right.
+    let [nx, ny] = [qy - py, px - qx];
+    if (nx * gx + ny * gy > 0) {
+      [px, py, qx, qy] = [qx, qy, px, py];
+      [nx, ny] = [-nx, -ny];
+    }
+    const len = Math.hypot(nx, ny);
+    if (len < 1e-6) return;
+    const [lo, hi] = [FOOT_Z + (k - 1) * LAYER, FOOT_Z + k * LAYER];
+    const base = positions.length / 3;
+    positions.push(px, py, lo, qx, qy, lo, qx, qy, hi, px, py, hi);
+    for (let n = 0; n < 4; n++) normals.push(nx / len, ny / len, 0);
+    indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  };
+  const [i0, j0] = [PEAK_APRON * PEAK_SAMPLES, PEAK_APRON * PEAK_SAMPLES];
+  const end = (PEAK_APRON + CHUNK_SIZE) * PEAK_SAMPLES;
+  for (let j = j0; j < end; j += WALL_CELL) {
+    for (let i = i0; i < end; i += WALL_CELL) {
+      // The cell's corners, round it: a, b along, c, d back.
+      const corners: [number, number][] = [[i, j], [i + WALL_CELL, j], [i + WALL_CELL, j + WALL_CELL], [i, j + WALL_CELL]];
+      const h = corners.map(([ci, cj]) => at(ci, cj));
+      const [lo, hi] = [Math.min(...h), Math.max(...h)];
+      if (hi <= 0) continue;
+      // Uphill, across the cell.
+      const g: [number, number] = [h[1] + h[2] - h[0] - h[3], h[2] + h[3] - h[0] - h[1]];
+      for (let k = Math.max(1, Math.ceil((lo - EDGE) / LAYER) + 1); begins(k) <= hi; k++) {
+        const v = begins(k);
+        if (v <= lo) continue;
+        // Where the level crosses the cell's sides, in order round it.
+        const cross: [number, number][] = [];
+        for (let e = 0; e < 4; e++) {
+          const [a, b] = [e, (e + 1) % 4];
+          if ((h[a] < v) === (h[b] < v)) continue;
+          const t = (v - h[a]) / (h[b] - h[a]);
+          const [pa, pb] = [place(...corners[a]), place(...corners[b])];
+          cross.push([pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t]);
+        }
+        for (let n = 0; n + 1 < cross.length; n += 2) wall(cross[n], cross[n + 1], k, g);
+      }
+    }
+  }
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint32Array(indices) };
+}
+
+/** A number as a half float's bits, for a texture of them. */
+const F32 = new Float32Array(1);
+const U32 = new Uint32Array(F32.buffer);
+function half(v: number): number {
+  F32[0] = v;
+  const x = U32[0];
+  const sign = (x >>> 16) & 0x8000;
+  const e = ((x >>> 23) & 0xff) - 112;
+  if (e <= 0) return sign;
+  if (e >= 31) return sign | 0x7c00;
+  return sign | (e << 10) | ((x & 0x7fffff) >>> 13);
+}
+
+function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number, originY: number): { mesh: MeshBuffers; heights: Uint16Array | null } {
   const rock = (x: number, y: number) => sampler.typeAt(x, y) === "Mountain";
   // The height at a point of the heights' grid, in tiles.
-  const at = (i: number, j: number) => {
-    const k = 2 * (Math.min(PEAK_SIDE - 1, Math.max(0, j)) * PEAK_SIDE + Math.min(PEAK_SIDE - 1, Math.max(0, i)));
-    return heights.length ? (heights[k] | (heights[k + 1] << 8)) / PEAK_UNIT : 0;
-  };
-  // Its facing there, from its neighbours either way.
-  const spacing = 2 / PEAK_SAMPLES;
-  const facing = (i: number, j: number): [number, number, number] => {
-    const [sx, sy] = [(at(i + 1, j) - at(i - 1, j)) / spacing, (at(i, j + 1) - at(i, j - 1)) / spacing];
-    const len = Math.hypot(sx, sy, 1);
-    return [-sx / len, -sy / len, 1 / len];
-  };
+  const at = (i: number, j: number) => (heights[2 * (j * PEAK_SIDE + i)] | (heights[2 * (j * PEAK_SIDE + i) + 1] << 8)) / PEAK_UNIT;
   const positions: number[] = [], normals: number[] = [], indices: number[] = [];
-  // The surface's points, on the heights' own, every other one or so.
-  const every = PEAK_SAMPLES / PEAK_STEPS;
-  const grid = new Map<number, number>();
-  const vertex = (i: number, j: number) => {
-    const key = j * PEAK_SIDE + i;
-    let v = grid.get(key);
-    if (v !== undefined) return v;
-    positions.push(originX - PEAK_APRON + i / PEAK_SAMPLES, originY - PEAK_APRON + j / PEAK_SAMPLES, FOOT_Z + at(i, j));
-    normals.push(...facing(i, j));
-    v = positions.length / 3 - 1;
-    grid.set(key, v);
+  // A tile's square of layer k, its corners shared with its neighbours'.
+  const corners = new Map<number, number>();
+  const corner = (x: number, y: number, k: number) => {
+    const key = ((k * (CHUNK_SIZE + 1) + (y - originY)) * (CHUNK_SIZE + 1) + (x - originX));
+    let v = corners.get(key);
+    if (v === undefined) {
+      v = positions.length / 3;
+      positions.push(x, y, FOOT_Z + k * LAYER), normals.push(0, 0, 1);
+      corners.set(key, v);
+    }
     return v;
+  };
+  const square = (x: number, y: number, k: number) => {
+    const [a, b, c, d] = [corner(x, y, k), corner(x + 1, y, k), corner(x + 1, y + 1, k), corner(x, y + 1, k)];
+    indices.push(a, c, b, a, d, c);
   };
   if (heights.length) {
     for (let y = originY; y < originY + CHUNK_SIZE; y++) {
       for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-        if (!rock(x, y)) continue;
+        // The rock's tiles and those beside them: its heights come down to
+        // the ground in a curve across the tiles, not along their edges.
+        if (![-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => rock(x + dx, y + dy)))) continue;
+        // On the rock's own tiles its ground is laid too; beside them, it
+        // is the grass's.
+        if (rock(x, y)) square(x, y, 0);
+        // Every layer the tile's heights could show, at their highest.
         const [i0, j0] = [(x - originX + PEAK_APRON) * PEAK_SAMPLES, (y - originY + PEAK_APRON) * PEAK_SAMPLES];
-        for (let j = j0; j < j0 + PEAK_SAMPLES; j += every) {
-          for (let i = i0; i < i0 + PEAK_SAMPLES; i += every) {
-            const [a, b, c, d] = [vertex(i, j), vertex(i + every, j), vertex(i + every, j + every), vertex(i, j + every)];
-            indices.push(a, c, b, a, d, c);
-          }
-        }
+        let top = 0;
+        for (let j = j0; j <= j0 + PEAK_SAMPLES; j++) for (let i = i0; i <= i0 + PEAK_SAMPLES; i++) top = Math.max(top, at(i, j));
+        if (top <= 0) continue;
+        for (let k = 1; begins(k) - REACH <= top; k++) square(x, y, k);
       }
     }
   }
   // Its foot under the grass beside it: half a tile out along a side of
   // rock, a quarter-tile triangle into a corner it only touches across.
-  const flat = (...corners: [number, number][]) => {
+  const flat = (...points: [number, number][]) => {
     const base = positions.length / 3;
-    for (const [cx, cy] of corners) positions.push(cx, cy, FOOT_Z), normals.push(0, 0, 1);
-    for (let k = 1; k + 1 < corners.length; k++) indices.push(base, base + k, base + k + 1);
+    for (const [cx, cy] of points) positions.push(cx, cy, FOOT_Z), normals.push(0, 0, 1);
+    for (let k = 1; k + 1 < points.length; k++) indices.push(base, base + k, base + k + 1);
   };
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
@@ -1038,19 +1126,10 @@ function layPeaks(sampler: TerrainSampler, heights: Uint8Array, originX: number,
       }
     }
   }
-  // The facing at every point of the heights, the light reads it by: its
-  // x and y, half-way at level, in a texel each.
-  let light: Uint8Array | null = null;
-  if (heights.length) {
-    light = new Uint8Array(PEAK_SIDE * PEAK_SIDE * 4);
-    for (let j = 0; j < PEAK_SIDE; j++) {
-      for (let i = 0; i < PEAK_SIDE; i++) {
-        const [nx, ny] = facing(i, j);
-        light.set([Math.round((nx * 0.5 + 0.5) * 255), Math.round((ny * 0.5 + 0.5) * 255), 255, 255], (j * PEAK_SIDE + i) * 4);
-      }
-    }
-  }
-  return { mesh: { positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint32Array(indices) }, light };
+  // And the heights, for the shader to cut and light the layers by.
+  const out = heights.length ? new Uint16Array(PEAK_SIDE * PEAK_SIDE) : null;
+  if (out) for (let k = 0; k < out.length; k++) out[k] = half((heights[2 * k] | (heights[2 * k + 1] << 8)) / PEAK_UNIT);
+  return { mesh: { positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint32Array(indices) }, heights: out };
 }
 
 /** Scratch, reused across builds — see TerrainBuffers. */
@@ -1106,7 +1185,8 @@ export function buildChunk(
     water: SINK.water.take(),
     shore: SINK.water.vertices ? shoreField(SINK.land, sampler, originX, originY) : null,
     cliffs: SINK.cliffs.take(),
-    ...(({ mesh, light }) => ({ peaks: mesh, peakLight: light }))(layPeaks(sampler, heights, originX, originY)),
+    ...(({ mesh, heights: h }) => ({ peaks: mesh, peakHeights: h }))(layPeaks(sampler, heights, originX, originY)),
+    peakWalls: layWalls(heights, originX, originY),
   };
 }
 
