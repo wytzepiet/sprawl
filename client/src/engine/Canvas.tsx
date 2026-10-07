@@ -30,9 +30,12 @@ export function useEngine() {
  */
 const MAX_DEVICE_RATIO = 2;
 
-/** Frames a second, at most: a 120Hz display shows the town no better
- *  than a 60Hz one, for twice the shading. */
-const FPS = 60;
+/** Frames a second while the view moves: a 120Hz display shows the town no
+ *  better than a 60Hz one, for twice the shading. */
+const MOVING_FPS = 60;
+/** Frames a second while it stands still. Cars and water move a few pixels a
+ *  frame, smooth enough at 30; a pan moves every pixel, and wants 60. */
+const STILL_FPS = 30;
 
 async function createEngine(el: HTMLCanvasElement): Promise<AbstractEngine> {
   const antialias = devicePixelRatio < 2;
@@ -71,12 +74,25 @@ export default function Canvas(props: ParentProps) {
       // a fraction early or late: one counts if three quarters of a frame
       // has passed, so a 60Hz display renders every one of them, a 120Hz
       // one every other, and none is dropped for landing a hair early.
+      // The view is moving if the camera stands elsewhere than after the last
+      // frame (a drag moves it between frames), or that frame moved it (a
+      // zoom glides on inside them).
       let lastFrame = 0;
+      let seen = "";
+      let moved = false;
+      const where = () => {
+        const c = scene.activeCamera;
+        return c ? `${c.position.x},${c.position.y},${c.position.z},${c.orthoTop}` : "";
+      };
       engine.runRenderLoop(() => {
         const now = performance.now();
-        if (now - lastFrame < (1000 / FPS) * 0.75) return;
+        const fps = moved || where() !== seen ? MOVING_FPS : STILL_FPS;
+        if (now - lastFrame < (1000 / fps) * 0.75) return;
         lastFrame = now;
+        const before = where();
         scene.render();
+        seen = where();
+        moved = seen !== before;
       });
 
       const onResize = () => engine.resize();
