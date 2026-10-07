@@ -11,15 +11,15 @@ const hex3 = (h: string) => Color3.FromHexString(h);
 const hex4 = (h: string) => new Color4(...hex3(h).asArray(), 1);
 
 const light = {
-  // After a Scottish coast from the air, made light: cool pasture, a
+  // After a Scottish coast from the air, made light: sage pasture, a
   // slate-teal sea, pale taupe sand, off-white roads, and the trees the one
   // dark note on the ground, so the buildings carry the colour.
-  land: hex4("#6E9674"),
+  land: hex4("#7A8F66"),
   water: hex3("#76AAB2"),
-  beach: hex3("#D4CAB9"),
-  // The floor between the crowns: a shade under the land, as the map's
-  // darker meadows are.
-  forest: hex3("#62926F"),
+  beach: hex3("#E2DCCF"),
+  // The floor between the crowns: the wood's shade, of the crowns' teal
+  // greens, so a forest reads as one even zoomed out past its trees.
+  forest: hex3("#426A58"),
   // Tree crowns, dark to light: deep teal-greens, the dark note, light
   // enough that a forest reads as a wood and not a hole.
   crowns: [hex3("#2C5650"), hex3("#386756"), hex3("#4B7B62")],
@@ -30,9 +30,9 @@ const light = {
   growing: hex3("#B5D594"),
   ripe: hex3("#F2D680"),
   stubble: hex3("#ECE3C4"),
-  // A mountain: its snow, its bare rock.
+  // A mountain: its snow, its bare rock; the cliffs the land stands on.
   mountain: hex3("#F4F3F0"),
-  rock: hex3("#83857F"),
+  rock: hex3("#A89C8A"),
   // A yard, a car park or a pavement: a sandy green-grey, light beside
   // the asphalt.
   paved: hex3("#D6D8C2"),

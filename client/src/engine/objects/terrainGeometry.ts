@@ -46,6 +46,10 @@ export interface ChunkGeometry {
    *  to a tile, rows up from its low corner. */
   shore: Uint8Array | null;
   cliffs: MeshBuffers;
+  /** The land's cliff: the plane under its edge it is painted on, and how
+   *  far out from the edge each point is (`cliffField`), if it has one. */
+  cliff: MeshBuffers;
+  cliffField: Uint8Array | null;
   /** The mountains: a square a tile a layer (`layPeaks`); their heights,
    *  half floats, for the shader to cut and light them by; and the walls
    *  under their layers, for their shadows alone (`layWalls`). */
@@ -60,13 +64,18 @@ export const SHORE_REACH = 2;
 
 /** Every ArrayBuffer in a result, for postMessage's transfer list. */
 export function transferables(g: ChunkGeometry): ArrayBuffer[] {
-  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliffs, g.peaks, g.peakWalls].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
-  return [...arrays, ...g.layers.map((l) => l.at), g.shore ?? undefined, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
+  const arrays: (ArrayBufferView | undefined)[] = [g.water, g.cliffs, g.cliff, g.peaks, g.peakWalls].flatMap((m) => [m.positions, m.normals, m.indices, m.colors]);
+  return [...arrays, ...g.layers.map((l) => l.at), g.shore ?? undefined, g.cliffField ?? undefined, g.peakHeights ?? undefined].filter((a) => a !== undefined).map((a) => a.buffer as ArrayBuffer);
 }
 
+/** The land stands on a cliff this high over the water; a beach lies
+ *  down it, this high, at the water's edge. */
+const WATER_Z = -0.7;
+const BEACH_Z = -0.55;
+
 const ELEVATION: Record<TerrainType, number> = {
-  Sea: -0.5,
-  Water: -0.5,
+  Sea: WATER_Z,
+  Water: WATER_Z,
   Beach: 0,
   Grass: 0,
   Forest: 0,
@@ -76,17 +85,25 @@ const ELEVATION: Record<TerrainType, number> = {
 
 /**
  * The land in layers, bottom up, each a sheet of tiles lying on the one
- * below (`ground.ts`), at its height: the sand under all the land, the
- * grass on it, up to the mountains, which stand on the ground under it
- * (`layPeaks`), and the wood floor.
- * Each tile of a layer holds its share of the grounds the layer is; where
+ * below (`ground.ts`), at its height: the beaches, down the cliff at the
+ * water's edge; the rock all the land stands on, its edge the cliff; the
+ * grass on it, up to the mountains, which stand on the rock (`layPeaks`);
+ * and the wood floor.
+ * Each tile of a layer holds its share of the grounds the layer is (and of
+ * those `beside` them, if they touch one); where
  * its edge meets ground lying lower it rounds over onto it, but not where
  * it meets ground `level` with it, as the wood floor meets the grass.
  */
-export const LAYERS: { grounds: TerrainType[]; level: TerrainType[]; z: number }[] = [
-  { grounds: ["Beach", "Grass", "Forest", "Mountain"], level: [], z: 0 },
+export const LAYERS: { grounds: TerrainType[]; beside?: TerrainType[]; level: TerrainType[]; parts?: boolean; z: number }[] = [
+  // And under the land beside a beach, so the beach runs on under the
+  // cliff and shows only where the land stops short of the water: one
+  // shore, not a blob. Not under the rest of the land, where a cliff falls
+  // straight into the water.
+  { grounds: ["Beach"], beside: ["Grass", "Forest", "Mountain"], level: ["Grass", "Forest", "Mountain"], z: BEACH_Z },
+  { grounds: ["Grass", "Forest", "Mountain"], level: [], z: 0 },
   { grounds: ["Grass", "Forest"], level: [], z: 0.002 },
-  { grounds: ["Forest"], level: ["Grass", "Mountain"], z: 0.004 },
+  // Its edge onto the grass frays into it, as the grass's does.
+  { grounds: ["Forest"], level: ["Mountain"], parts: true, z: 0.004 },
 ];
 
 // Seeded PRNG (xorshift32)
@@ -121,6 +138,9 @@ interface TreeInfo {
 
 const CELLS: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
 const CELL_W = 0.5;
+/** How far from a tile's corner the wood's diagonal edge cuts across it, of
+ *  a tile, measured along both sides. */
+const CORNER_CUT = 0.5;
 
 function treesForTile(tx: number, ty: number): TreeInfo[] {
   let s = seed(tx, ty);
@@ -354,6 +374,24 @@ const EDGE_ENDPOINTS: [[number, number], [number, number]][] = [
 // depending on which tile drew them, and the bias pushed neighbours apart:
 // one ridge, cast as panels in and out of line. Up, for all of them.
 const UP4 = [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1];
+
+/** The cliff the land stands on, its lip and face, seen from above,
+ *  painted on one plane round the land's edge, between its rock and its
+ *  grass, as a mountain's are (`peaks.ts`): the face reaching this far out
+ *  from the edge. */
+export const CLIFF_RUN = 0.32;
+/** The land stands out past its tiles this far, on its cliff, on the
+ *  whole: its edge there, wandering either way along the slate; its tiles'
+ *  grass whole to their edge, room for what is built on them. */
+export const CLIFF_OUT = 0.3;
+/** And its edge wanders along the slate, as a mountain step's does, this
+ *  far either way at most, in tiles. Read alike wherever the edge is
+ *  wanted (`peaks.ts`, `water.ts`), at one size. */
+export const CLIFF_WANDER = 0.2;
+/** How far either side of the land's edge its cliff's field reaches, in
+ *  tiles, and where its plane lies: over the land's rock, under its grass. */
+export const CLIFF_REACH = 2;
+const CLIFF_Z = 0.0012;
 
 /** A wall `height` tall standing on the line from a to b. */
 const wall = (a: number[], b: number[], height: number): MeshGeometry => ({
@@ -612,12 +650,18 @@ class ChunkSink {
    * and that reads depth alone.
    */
   cliffs = new TerrainBuffers(false);
+  /** The land at its own height, as drawn; and the plane its cliff is
+   *  painted on, under its edge. */
+  landTop = new TerrainBuffers(false);
+  cliffPlane = new TerrainBuffers(false);
 
   reset(): void {
     for (const layer of this.layers) [layer.at.length, layer.shapes.length] = [0, 0];
     this.water.reset();
     this.land.reset();
     this.cliffs.reset();
+    this.landTop.reset();
+    this.cliffPlane.reset();
   }
 }
 
@@ -817,16 +861,19 @@ export function outlineOf(key: string): OutlineLine[] {
 
 /** A layer's map: each tile in the layer or not, as two kinds of ground
  *  the corner rules know, the one in it winning where they meet across a
- *  diagonal, so the layer joins there. */
-const [IN, OUT] = [TYPE_BY_BYTE.indexOf("Beach"), TYPE_BY_BYTE.indexOf("Grass")];
-const isIn = (type: TerrainType | null | undefined) => type === "Beach";
+ *  diagonal, so the layer joins there; or, for a layer that `parts`,
+ *  losing, so it parts there, as a wood does either side of a road cut
+ *  through it on the diagonal. */
+const [IN, PARTS, OUT] = [TYPE_BY_BYTE.indexOf("Beach"), TYPE_BY_BYTE.indexOf("Forest"), TYPE_BY_BYTE.indexOf("Grass")];
+const isIn = (type: TerrainType | null | undefined) => type === "Beach" || type === "Forest";
 
 /** A tile's eight neighbours. */
 const AROUND = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const;
 
 /** Where each layer stands a wall along its edge onto lower ground, down
- *  to what height: the land into the water. */
-const WALLS: [number, number][] = [[0, ELEVATION.Sea]];
+ *  to what height, for its shadow: the land, into the water. A beach runs
+ *  flat into it. */
+const WALLS: [number, number][] = [[1, WATER_Z]];
 
 /**
  * One tile's share of each layer of the land, top down, none of a layer
@@ -876,8 +923,11 @@ function layTile(sink: ChunkSink, x: number, y: number, lx: number, ly: number, 
       if (w !== l) continue;
       for (const { a, b, lies } of outlineOf(key)) if (lies === "-") append(sink.cliffs, wall(a, b, LAYERS[l].z - foot), lx, ly, foot, NO_COLOUR);
     }
-    // The land as drawn, for the water to know how far it lies from it.
-    if (l === 0) append(sink.land, shapeGeometry(shape), lx, ly, 0, NO_COLOUR);
+    // The land at its own height, for its cliff to know how far it lies.
+    if (l === 1) append(sink.landTop, shapeGeometry(shape), lx, ly, 0, NO_COLOUR);
+    // The land as drawn, beaches and all, for the water to know how far it
+    // lies from it.
+    if (l <= 1) append(sink.land, shapeGeometry(shape), lx, ly, 0, NO_COLOUR);
   }
 }
 const NO_COLOUR: RGB = { r: 0, g: 0, b: 0 };
@@ -902,22 +952,13 @@ function layWater(sink: ChunkSink, x: number, y: number, lx: number, ly: number,
  * from it in two sweeps across the grid, each cell taking its neighbours'
  * plus the step to them.
  */
-function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: number, originY: number): Uint8Array {
-  const [d, reach] = [SHORE_DENSITY, SHORE_REACH];
-  const side = (CHUNK_SIZE + 2 * reach) * d;
-  const isLand = fillTriangles(land.positions, land.indices.subarray(0, land.indexCount), -reach, -reach, d, side, side, new Uint8Array(side * side));
-  for (let ty = -reach; ty < CHUNK_SIZE + reach; ty++) {
-    for (let tx = -reach; tx < CHUNK_SIZE + reach; tx++) {
-      if (tx >= 0 && ty >= 0 && tx < CHUNK_SIZE && ty < CHUNK_SIZE) continue;
-      const t = sampler.typeAt(originX + tx, originY + ty);
-      if (!t || t === "Sea" || t === "Water") continue;
-      for (let j = 0; j < d; j++) isLand.fill(1, ((ty + reach) * d + j) * side + (tx + reach) * d, ((ty + reach) * d + j) * side + (tx + reach + 1) * d);
-    }
-  }
+/** How far each texel of a grid `side` square lies from the nearest one
+ *  `inside`, in texels: a chamfer sweep, forward and back. */
+function distances(inside: Uint8Array, side: number): Float32Array {
   // Far beyond reach stands for none: nothing reads past it.
   const none = 1e9;
   const far = new Float32Array(side * side);
-  for (let k = 0; k < far.length; k++) far[k] = isLand[k] ? 0 : none;
+  for (let k = 0; k < far.length; k++) far[k] = inside[k] ? 0 : none;
   const D = Math.SQRT2;
   for (let j = 0; j < side; j++) {
     for (let i = 0, k = j * side; i < side; i++, k++) {
@@ -945,12 +986,71 @@ function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: numb
       far[k] = f;
     }
   }
-  const inner = CHUNK_SIZE * d;
-  const out = new Uint8Array(inner * inner);
-  for (let j = 0; j < inner; j++) {
-    for (let i = 0; i < inner; i++) out[j * inner + i] = Math.min(255, Math.round((far[(j + reach * d) * side + i + reach * d] / (reach * d)) * 255));
+  return far;
+}
+
+/** Which texels of a chunk and `reach` round it, `SHORE_DENSITY` to a tile,
+ *  are `land` as drawn, or past the chunk's edge of a kind that is. */
+function landMask(land: TerrainBuffers, sampler: TerrainSampler, originX: number, originY: number, reach: number, is: (t: TerrainType) => boolean): Uint8Array {
+  const d = SHORE_DENSITY;
+  const side = (CHUNK_SIZE + 2 * reach) * d;
+  const mask = fillTriangles(land.positions, land.indices.subarray(0, land.indexCount), -reach, -reach, d, side, side, new Uint8Array(side * side));
+  for (let ty = -reach; ty < CHUNK_SIZE + reach; ty++) {
+    for (let tx = -reach; tx < CHUNK_SIZE + reach; tx++) {
+      const t = sampler.typeAt(originX + tx, originY + ty);
+      // Past the chunk, or a tile its kind's on every side of, hidden under
+      // the layer above and so not drawn: whole.
+      const whole = tx < 0 || ty < 0 || tx >= CHUNK_SIZE || ty >= CHUNK_SIZE ? !!t && is(t) : AROUND.every(([dx, dy]) => { const n = sampler.typeAt(originX + tx + dx, originY + ty + dy); return !!n && is(n); }) && !!t && is(t);
+      if (!whole) continue;
+      for (let j = 0; j < d; j++) mask.fill(1, ((ty + reach) * d + j) * side + (tx + reach) * d, ((ty + reach) * d + j) * side + (tx + reach + 1) * d);
+    }
   }
+  return mask;
+}
+
+/** The chunk's part of a field `reach` wide round it, as bytes. */
+function inner(field: (k: number) => number, reach: number): Uint8Array {
+  const d = SHORE_DENSITY;
+  const side = (CHUNK_SIZE + 2 * reach) * d;
+  const n = CHUNK_SIZE * d;
+  const out = new Uint8Array(n * n);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) out[j * n + i] = Math.max(0, Math.min(255, Math.round(field((j + reach * d) * side + i + reach * d) * 255)));
   return out;
+}
+
+function shoreField(land: TerrainBuffers, sampler: TerrainSampler, originX: number, originY: number): Uint8Array {
+  const far = distances(landMask(land, sampler, originX, originY, SHORE_REACH, (t) => t !== "Sea" && t !== "Water"), (CHUNK_SIZE + 2 * SHORE_REACH) * SHORE_DENSITY);
+  return inner((k) => far[k] / (SHORE_REACH * SHORE_DENSITY), SHORE_REACH);
+}
+
+const isLandTop = (t: TerrainType) => t === "Grass" || t === "Forest" || t === "Mountain";
+
+/** How far each point of a chunk lies out from the land's edge at its own
+ *  height, `SHORE_DENSITY` to a tile, inside negative, `CLIFF_REACH` either
+ *  way from half-way; for its cliff to be painted by (`peaks.ts`). */
+function cliffField(sampler: TerrainSampler, originX: number, originY: number): Uint8Array {
+  const mask = landMask(SINK.landTop, sampler, originX, originY, CLIFF_REACH, isLandTop);
+  const side = (CHUNK_SIZE + 2 * CLIFF_REACH) * SHORE_DENSITY;
+  const out = distances(mask, side);
+  const into = distances(mask.map((v) => 1 - v), side);
+  return inner((k) => 0.5 + (out[k] - into[k]) / (2 * CLIFF_REACH * SHORE_DENSITY), CLIFF_REACH);
+}
+
+/** The plane the land's cliff is painted on: a square under every tile
+ *  within a tile of the land's edge. */
+function layCliffPlane(sink: ChunkSink, sampler: TerrainSampler, originX: number, originY: number): boolean {
+  let any = false;
+  for (let y = originY; y < originY + CHUNK_SIZE; y++) {
+    for (let x = originX; x < originX + CHUNK_SIZE; x++) {
+      const t = sampler.typeAt(x, y);
+      if (!t) continue;
+      const mine = isLandTop(t);
+      if (!AROUND.some(([dx, dy]) => { const n = sampler.typeAt(x + dx, y + dy); return !!n && isLandTop(n) !== mine; })) continue;
+      append(sink.cliffPlane, FULL_SQUARE, x - originX, y - originY, CLIFF_Z, NO_COLOUR);
+      any = true;
+    }
+  }
+  return any;
 }
 
 /**
@@ -1160,9 +1260,16 @@ export function buildChunk(
     originY - CHUNK_SKIRT,
   );
 
-  const maps = LAYERS.map(({ grounds }) =>
+  const touches = (k: number, kinds: TerrainType[]) => {
+    const [x, y] = [k % CHUNK_STRIDE, Math.floor(k / CHUNK_STRIDE)];
+    return AROUND.some(([dx, dy]) => {
+      const [nx, ny] = [x + dx, y + dy];
+      return nx >= 0 && ny >= 0 && nx < CHUNK_STRIDE && ny < CHUNK_STRIDE && kinds.includes(TYPE_BY_BYTE[tiles[ny * CHUNK_STRIDE + nx]]);
+    });
+  };
+  const maps = LAYERS.map(({ grounds, beside, parts }) =>
     createSampler(
-      tiles.map((b) => (grounds.includes(TYPE_BY_BYTE[b]) ? IN : OUT)),
+      tiles.map((b, k) => (grounds.includes(TYPE_BY_BYTE[b]) || (beside?.includes(TYPE_BY_BYTE[b]) && touches(k, grounds)) ? (parts ? PARTS : IN) : OUT)),
       CHUNK_STRIDE,
       originX - CHUNK_SKIRT,
       originY - CHUNK_SKIRT,
@@ -1179,12 +1286,15 @@ export function buildChunk(
     }
   }
   if (tileCount === 0) return null;
+  const cliffed = layCliffPlane(SINK, sampler, originX, originY);
 
   return {
     layers: SINK.layers.map((l) => ({ at: Float32Array.from(l.at), shapes: [...l.shapes] })),
     water: SINK.water.take(),
     shore: SINK.water.vertices ? shoreField(SINK.land, sampler, originX, originY) : null,
     cliffs: SINK.cliffs.take(),
+    cliff: SINK.cliffPlane.take(),
+    cliffField: cliffed ? cliffField(sampler, originX, originY) : null,
     ...(({ mesh, heights: h }) => ({ peaks: mesh, peakHeights: h }))(layPeaks(sampler, heights, originX, originY)),
     peakWalls: layWalls(heights, originX, originY),
   };
@@ -1213,14 +1323,32 @@ export function buildTrees(
   const matrices: number[] = [];
   const colors: number[] = [];
 
+  // A tile of wood, as its floor is drawn: not built on.
+  const wood = (x: number, y: number) => TYPE_BY_BYTE[tiles[(y - originY + CHUNK_SKIRT) * CHUNK_STRIDE + x - originX + CHUNK_SKIRT]] === "Forest" && !isBuilt(x, y);
   for (let y = originY; y < originY + CHUNK_SIZE; y++) {
     for (let x = originX; x < originX + CHUNK_SIZE; x++) {
-      const ix = x - originX + CHUNK_SKIRT;
-      const iy = y - originY + CHUNK_SKIRT;
-      if (TYPE_BY_BYTE[tiles[iy * CHUNK_STRIDE + ix]] !== "Forest") continue;
-      if (isBuilt(x, y)) continue;
+      const mine = wood(x, y);
+      // The wood's edge cut across a tile's corners on the diagonal, as
+      // marching squares cut it: a corner of a wood tile whose two sides
+      // meet no wood has none; a corner of an open tile whose two sides
+      // meet wood, and not across it too, where the wood parts as its floor
+      // does, has some, if it may be.
+      const corners = ([[0, 0], [1, 0], [0, 1], [1, 1]] as const).map(([cx, cy]) => {
+        const [sx, sy] = [cx ? 1 : -1, cy ? 1 : -1];
+        const [a, b] = [wood(x + sx, y), wood(x, y + sy)];
+        return mine ? !a && !b : a && b && !wood(x + sx, y + sy) && TYPE_BY_BYTE[tiles[(y - originY + CHUNK_SKIRT) * CHUNK_STRIDE + x - originX + CHUNK_SKIRT]] !== "Mountain" && !isBuilt(x, y);
+      });
+      if (!mine && !corners.some((c) => c)) continue;
+      const cornerOf = (px: number, py: number) => (px < 0.5 ? 0 : 1) + (py < 0.5 ? 0 : 2);
+      const inCorner = (px: number, py: number) => {
+        const k = cornerOf(px, py);
+        const [cx, cy] = [k & 1, k >> 1];
+        return Math.abs(px - cx) + Math.abs(py - cy) < CORNER_CUT;
+      };
 
       for (const tree of treesForTile(x, y)) {
+        const flipped = corners[cornerOf(tree.x, tree.y)] && inCorner(tree.x, tree.y);
+        if (mine === flipped) continue;
         const w = tree.scale * TREE_RADIUS;
         const c = Math.cos(tree.turn) * w, s = Math.sin(tree.turn) * w;
         // Column-major 4x4: a turn and a scale, translation in the last row.

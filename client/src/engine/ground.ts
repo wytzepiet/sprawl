@@ -1,12 +1,15 @@
 import { BoundingInfo, Color3, Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, StandardMaterial, TransformNode, Vector3, VertexData, type Material, type Scene } from "@babylonjs/core";
 import { Atlas } from "./atlas";
 import { FAR, kerbDistances } from "./kerbLines";
+import { CALM, slate } from "./peaks";
+import { ripples, SWASH, WAVE_LEAD, wavePhase, wavePiece } from "./water";
+import { SPAN as SLATE_SPAN } from "./slate";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
 import { fillTriangles } from "./raster";
 
 /**
- * The land, layer on layer (`LAYERS`): the sand, the grass on it, the wood
- * floor, the rock. Every tile of a layer is the same square, its share of
+ * The land, layer on layer (`LAYERS`): the beaches, the rock the land
+ * stands on, the grass on it, the wood floor. Every tile of a layer is the same square, its share of
  * the layer drawn on it, as road tiles are (`roads.ts`): each shape a
  * tile's share can take is baked once into a slot of one shared texture,
  * in its first channel how far each point lies inside the share's
@@ -40,6 +43,15 @@ const MOTTLE = 0.12;
  *  in tiles, a pixel is dropped where the grain, specks and tufts, beats
  *  how far in it is, so it thins to its edge instead of stopping clean. */
 const FRAY = 0.3;
+/** And near its edge the rock under it breaks through in patches, the
+ *  slate's plates (`slate.ts`) standing out of it: within this far of the
+ *  edge, in tiles, where a plate is higher than this at the edge, rising to
+ *  past the highest at this far in, so the grass thins to the edge. */
+const PATCHES_IN = 0.6;
+const PATCHED = 0.35;
+/** The slate read for them this many times smaller than it lies on the
+ *  rock, sharp: patches the size of the photos' outcrops. */
+const PATCH_SCALE = 0.4;
 /** The fray's specks, the grain over this many tiles, and how many times
  *  coarser its tufts are. */
 const FRAY_SPAN = 2;
@@ -54,16 +66,24 @@ const GLINT = 4;
 /** How far in from its edge ground rounds over it, in tiles: 45 degrees at
  *  the edge itself, level by here. */
 const BEVEL = 0.1;
+/** The rock the land stands on takes the slate's grain, as the cliff's
+ *  face does (`peaks.ts`), this much. */
+const SLATE_GRAIN = 0.5;
 /** Each layer's shine, of the toy's lacquer: sand and rock keep a little,
  *  grass a little, its bumps catching it, and wood is matte. And how far it
  *  rounds over its edges: the wood floor lies on the grass, and only its
- *  edges onto the sand round over, which the grass under it does. */
+ *  edges onto lower ground round over, which the grass under it does. */
 const LOOKS = [
-  // Sand glints, where the rest is bumped.
-  { shine: 0.12, bevel: BEVEL, bump: 0, glint: 1, fray: 0, mottle: 0 },
-  // Grass rounds over onto the sand more tightly, half as far.
-  { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1 },
-  { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 0, mottle: 0 },
+  // Sand glints, where the rest is bumped; and goes flat into the water.
+  { shine: 0.12, bevel: 0, bump: 0, glint: 1, fray: 0, mottle: 0, slate: 0 },
+  // The rock the land stands on: its edge is the cliff's top, of slate,
+  // rounding over a little further than the grass does.
+  { shine: 0.06, bevel: BEVEL * 1.5, bump: 0, glint: 0, fray: 0, mottle: 0, slate: SLATE_GRAIN },
+  // Grass rounds over onto the rock more tightly, half as far, and stops
+  // short of the cliff, as the wood floor does.
+  { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1, slate: 0 },
+  // The wood floor frays into the grass, thinning plate by plate.
+  { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 1, mottle: 0, slate: 0 },
 ];
 
 /** A slot's side in texels, the texels to a tile, and its low corner in
@@ -115,8 +135,8 @@ function bake(key: string): [Float32Array, Float32Array] {
   });
   // The curves across the edges that come near.
   edges.push(...nearLines(shape));
-  // As far in as a layer rounds over or frays.
-  const reach = Math.max(BEVEL, FRAY) + 2 / DENSITY;
+  // As far in as a layer rounds over, frays or stops short of a cliff.
+  const reach = Math.max(BEVEL * 1.5, FRAY, PATCHES_IN) + 2 / DENSITY;
   const inside = kerbDistances(edges, ORIGIN, ORIGIN, DENSITY, SLOT, SLOT, reach);
   const rounded = kerbDistances(
     edges.filter((e) => e.lies === "-"),
@@ -150,6 +170,13 @@ const n = (x: number) => x.toFixed(4);
 // warmer: more red and green, less blue, darker ones the other way.
 const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.15, 1, 0.6].map((k) => n(k * MOTTLE * 2)).join(", ")];
 const [fray, fraySpan, tuftSpan] = [n(FRAY), n(FRAY_SPAN), n(FRAY_SPAN * TUFT)];
+const [slateSpan, calm, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(CALM), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
+// How far up a beach the water is, of `SWASH`, this far through a wave,
+// from when its crest reaches the foam: running up for this share of it,
+// back down for the rest; and wet sand, this much darker.
+const [swash, wet, rise] = [n(SWASH), n(0.18), n(0.3)];
+const washFn = (R: (uv: string) => string, v2: string, head: string) =>
+  `${head} { let_ w = ${wavePhase(R, "p", "t", n(WAVE_LEAD))}; let_ s = fract(w); return min(smoothstep(0., ${rise}, s), 1. - smoothstep(${rise}, 1., s)) * mix(0.25, 1., ${wavePiece(R, "p", "w", v2)}); }`;
 const [span, origin, slotSpan, bump, bumpSpan, step] = [n(SPAN), n(ORIGIN), n(SLOT / DENSITY), n(BUMP), n(BUMP_SPAN), n(BUMP_SPAN / SIDE)];
 // Two more random bytes of the same texel, a whole number of texels on.
 const [glints, glintTilt, glint, other1, other2] = [n(1 - GLINTS), n(GLINT_TILT), n(GLINT), `${n(97 / SIDE)}, ${n(41 / SIDE)}`, `${n(23 / SIDE)}, ${n(151 / SIDE)}`];
@@ -163,11 +190,12 @@ const [inner0, inner1] = [n(0.5 / DENSITY), n(1 - 0.5 / DENSITY)];
 // pixel); whether the pixel is on the share; and how near its edges.
 const GLSL = {
   vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute vec2 groundGrass; varying vec2 vGroundGrass; attribute vec4 groundSlot; attribute vec4 groundLook; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY;`,
+    CUSTOM_VERTEX_DEFINITIONS: `attribute vec3 groundGrass; varying vec3 vGroundGrass; attribute vec4 groundSlot; attribute vec4 groundLook; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY;`,
     CUSTOM_VERTEX_MAIN_END: `vGroundGrass = groundGrass; vGroundAt = positionUpdated.xy; vGroundSlot = groundSlot; vGroundLook = groundLook; vGroundX = (finalWorld * vec4(1., 0., 0., 0.)).xy; vGroundY = (finalWorld * vec4(0., 1., 0., 0.)).xy;`,
   },
   fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vGroundGrass; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY; uniform sampler2D groundGrain; uniform sampler2D groundAtlas;`,
+    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec3 vGroundGrass; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY; uniform sampler2D groundGrain; uniform sampler2D groundAtlas; uniform sampler2D groundSlate; uniform sampler2D groundRipple;
+${washFn((uv) => `texture2D(groundRipple, ${uv}).b`, "vec2", "float groundWash(float t, vec2 p)").replaceAll("let_", "float")}`,
     CUSTOM_FRAGMENT_MAIN_BEGIN: `vec2 groundBump = vec2(texture2D(groundGrain, (vPositionW.xy + vec2(${step}, 0.)) / ${bumpSpan}).r - texture2D(groundGrain, (vPositionW.xy - vec2(${step}, 0.)) / ${bumpSpan}).r,
   texture2D(groundGrain, (vPositionW.xy + vec2(0., ${step})) / ${bumpSpan}).r - texture2D(groundGrain, (vPositionW.xy - vec2(0., ${step})) / ${bumpSpan}).r);
 vec2 groundGrainUv = vPositionW.xy / ${span};
@@ -182,10 +210,15 @@ vec2 groundUv = (groundCell + (vGroundAt - ${origin}) / ${slotSpan}) / groundGri
 vec2 groundTexel = 1. / (groundGrid * ${n(SLOT)});
 vec2 groundD = texture2D(groundAtlas, groundUv).rg;
 if (texture2D(groundAtlas, (groundCell + (clamp(vGroundAt, ${inner0}, ${inner1}) - ${origin}) / ${slotSpan}) / groundGrid).r < 0.) discard;
-if (groundD.g >= 0. && groundD.g < groundFrayBy * vGroundGrass.x * ${fray}) discard;`,
+vec2 groundSlateTilt = texture2D(groundSlate, vPositionW.xy / ${slateSpan}, ${calm}).rg * 2. - 1.;
+// The rock breaking through the grass near its edge, plate by plate.
+if (vGroundGrass.x > 0. && groundD.g >= 0. && texture2D(groundSlate, vPositionW.xy / ${patchSpan}).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) discard;
+// A beach draws back from each wave as it breaks, and is wet where they reach.
+float groundSwash = vGroundSlot.w * ${swash} * groundWash(groundTime, vPositionW.xy) * (0.6 + 0.8 * groundFrayBy);
+if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * vGroundGrass.x * ${fray})) discard;`,
     "!vec3 finalSpecular=specularBase\\*specularColor;": `vec3 finalSpecular=specularBase*specularColor*(vGroundLook.a + groundGlinting * ${glint});`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor.rgb *= vGroundLook.rgb * (1. + vGroundGrass.y * groundMottle * vec3(${mottleWarm}));
-normalW = normalize(normalW - vec3(groundBump * ${bump} * vGroundSlot.z, 0.) + vec3((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.));
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor.rgb *= vGroundLook.rgb * (1. + vGroundGrass.y * groundMottle * vec3(${mottleWarm})) * (1. - ${wet} * vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
+normalW = normalize(normalW - vec3(groundBump * ${bump} * vGroundSlot.z, 0.) + vec3((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3(groundSlateTilt * vGroundGrass.z, 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
   float groundDx = texture2D(groundAtlas, groundUv + vec2(groundTexel.x, 0.)).g - texture2D(groundAtlas, groundUv - vec2(groundTexel.x, 0.)).g;
@@ -199,11 +232,12 @@ if (groundD.g >= 0. && groundD.g < groundBevel) {
 };
 const WGSL = {
   vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute groundGrass: vec2f; varying vGroundGrass: vec2f; attribute groundSlot: vec4f; attribute groundLook: vec4f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f;`,
+    CUSTOM_VERTEX_DEFINITIONS: `attribute groundGrass: vec3f; varying vGroundGrass: vec3f; attribute groundSlot: vec4f; attribute groundLook: vec4f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f;`,
     CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vGroundGrass = vertexInputs.groundGrass; vertexOutputs.vGroundAt = positionUpdated.xy; vertexOutputs.vGroundSlot = vertexInputs.groundSlot; vertexOutputs.vGroundLook = vertexInputs.groundLook; vertexOutputs.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; vertexOutputs.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;`,
   },
   fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vGroundGrass: vec2f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f; var groundGrainSampler: sampler; var groundGrain: texture_2d<f32>; var groundAtlasSampler: sampler; var groundAtlas: texture_2d<f32>;`,
+    CUSTOM_FRAGMENT_DEFINITIONS: `varying vGroundGrass: vec3f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f; var groundGrainSampler: sampler; var groundGrain: texture_2d<f32>; var groundAtlasSampler: sampler; var groundAtlas: texture_2d<f32>; var groundSlateSampler: sampler; var groundSlate: texture_2d<f32>; var groundRippleSampler: sampler; var groundRipple: texture_2d<f32>;
+${washFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "vec2f", "fn groundWash(t: f32, p: vec2f) -> f32").replaceAll("let_", "let")}`,
     CUSTOM_FRAGMENT_MAIN_BEGIN: `let groundBump = vec2f(textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy + vec2f(${step}, 0.)) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy - vec2f(${step}, 0.)) / ${bumpSpan}).r,
   textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy + vec2f(0., ${step})) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy - vec2f(0., ${step})) / ${bumpSpan}).r);
 let groundGrainUv = fragmentInputs.vPositionW.xy / ${span};
@@ -218,10 +252,15 @@ let groundUv = (groundCell + (fragmentInputs.vGroundAt - ${origin}) / ${slotSpan
 let groundTexel = 1. / (uniforms.groundGrid * ${n(SLOT)});
 let groundD = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv, 0.).rg;
 if (textureSampleLevel(groundAtlas, groundAtlasSampler, (groundCell + (clamp(fragmentInputs.vGroundAt, vec2f(${inner0}), vec2f(${inner1})) - ${origin}) / ${slotSpan}) / uniforms.groundGrid, 0.).r < 0.) { discard; }
-if (groundD.g >= 0. && groundD.g < groundFrayBy * fragmentInputs.vGroundGrass.x * ${fray}) { discard; }`,
+let groundSlateTilt = textureSampleBias(groundSlate, groundSlateSampler, fragmentInputs.vPositionW.xy / ${slateSpan}, ${calm}).rg * 2. - 1.;
+// The rock breaking through the grass near its edge, plate by plate.
+if (fragmentInputs.vGroundGrass.x > 0. && groundD.g >= 0. && textureSampleLevel(groundSlate, groundSlateSampler, fragmentInputs.vPositionW.xy / ${patchSpan}, 0.).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) { discard; }
+// A beach draws back from each wave as it breaks, and is wet where they reach.
+let groundSwash = fragmentInputs.vGroundSlot.w * ${swash} * groundWash(uniforms.groundTime, fragmentInputs.vPositionW.xy) * (0.6 + 0.8 * groundFrayBy);
+if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * fragmentInputs.vGroundGrass.x * ${fray})) { discard; }`,
     "!var finalSpecular: vec3f=specularBase\\*specularColor;": `var finalSpecular: vec3f=specularBase*specularColor*(fragmentInputs.vGroundLook.a + groundGlinting * ${glint});`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb * (1. + fragmentInputs.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})), baseColor.a);
-normalW = normalize(normalW - vec3f(groundBump * ${bump} * fragmentInputs.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.));
+    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb * (1. + fragmentInputs.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * fragmentInputs.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g)), baseColor.a);
+normalW = normalize(normalW - vec3f(groundBump * ${bump} * fragmentInputs.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * fragmentInputs.vGroundGrass.z, 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
   let groundTx = vec2f(groundTexel.x, 0.);
@@ -258,22 +297,29 @@ class GroundPlugin extends MaterialPluginBase {
   }
 
   getSamplers(samplers: string[]) {
-    samplers.push("groundGrain", "groundAtlas");
+    samplers.push("groundGrain", "groundAtlas", "groundSlate", "groundRipple");
   }
 
   getUniforms(shaderLanguage = 0) {
     return {
-      ubo: [{ name: "groundGrid", size: 2, type: "vec2" }],
-      fragment: shaderLanguage === 1 ? "uniform groundGrid: vec2f;" : "uniform vec2 groundGrid;",
+      ubo: [
+        { name: "groundGrid", size: 2, type: "vec2" },
+        { name: "groundTime", size: 1, type: "float" },
+      ],
+      fragment: shaderLanguage === 1 ? "uniform groundGrid: vec2f; uniform groundTime: f32;" : "uniform vec2 groundGrid; uniform float groundTime;",
     };
   }
 
-  bindForSubMesh(ubo: { updateFloat2(n: string, x: number, y: number): void; setTexture(n: string, t: RawTexture): void }) {
+  bindForSubMesh(ubo: { updateFloat(n: string, v: number): void; updateFloat2(n: string, x: number, y: number): void; setTexture(n: string, t: RawTexture): void }) {
     const texture = this.atlas.upload();
     if (!texture) return;
     ubo.updateFloat2("groundGrid", ...this.atlas.grid);
+    // The water's clock (`water.ts`), so the beach's swash keeps its waves.
+    ubo.updateFloat("groundTime", (performance.now() / 1000) % 3600);
     ubo.setTexture("groundGrain", grain(this._material.getScene()));
     ubo.setTexture("groundAtlas", texture);
+    ubo.setTexture("groundSlate", slate(this._material.getScene()));
+    ubo.setTexture("groundRipple", ripples(this._material.getScene()));
   }
 
   getClassName() {
@@ -317,18 +363,18 @@ export class GroundTiles {
     // An empty draw is one WebGPU rejects, frame and all.
     if (!count) return;
     const [matrices, slots, looks] = [new Float32Array(count * 16), new Float32Array(count * 4), new Float32Array(count * 4)];
-    const grasses = new Float32Array(count * 2);
+    const grasses = new Float32Array(count * 3);
     let n = 0;
     for (let l = layers.length - 1; l >= 0; l--) {
       const { at, shapes } = layers[l];
-      const [{ z }, { shine, bevel, bump, glint, fray, mottle }, colour] = [LAYERS[l], LOOKS[l], this.colours[l]];
+      const [{ z }, { shine, bevel, bump, glint, fray, mottle, slate: grain }, colour] = [LAYERS[l], LOOKS[l], this.colours[l]];
       for (let i = 0; i < shapes.length; i++, n++) {
         const m = n * 16;
         [matrices[m], matrices[m + 5], matrices[m + 10], matrices[m + 15]] = [1, 1, 1, 1];
         [matrices[m + 12], matrices[m + 13], matrices[m + 14]] = [ox + at[i * 2], oy + at[i * 2 + 1], z];
         slots.set([this.atlas.slotOf(shapes[i], () => bake(shapes[i])), bevel, bump, glint], n * 4);
         looks.set([colour.r, colour.g, colour.b, shine], n * 4);
-        grasses.set([fray, mottle], n * 2);
+        grasses.set([fray, mottle, grain], n * 3);
       }
     }
     // A square of its own: a mesh's tiles are kept on its geometry, which
@@ -343,9 +389,9 @@ export class GroundTiles {
     mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
     mesh.thinInstanceSetBuffer("groundSlot", slots, 4, true);
     mesh.thinInstanceSetBuffer("groundLook", looks, 4, true);
-    mesh.thinInstanceSetBuffer("groundGrass", grasses, 2, true);
-    const top = Math.max(...LAYERS.map((l) => l.z));
-    mesh.setBoundingInfo(new BoundingInfo(new Vector3(ox, oy, -0.01), new Vector3(ox + CHUNK_SIZE, oy + CHUNK_SIZE, top + 0.01)));
+    mesh.thinInstanceSetBuffer("groundGrass", grasses, 3, true);
+    const [low, top] = [Math.min(...LAYERS.map((l) => l.z)), Math.max(...LAYERS.map((l) => l.z))];
+    mesh.setBoundingInfo(new BoundingInfo(new Vector3(ox, oy, low - 0.01), new Vector3(ox + CHUNK_SIZE, oy + CHUNK_SIZE, top + 0.01)));
     this.chunks.set(key, mesh);
   }
 

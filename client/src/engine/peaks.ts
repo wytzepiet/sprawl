@@ -1,6 +1,6 @@
 import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, ShadowDepthWrapper, StandardMaterial, type Material, type Scene } from "@babylonjs/core";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, REACH } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_WANDER, CLIFF_RUN, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, REACH, SHORE_DENSITY } from "./objects/terrainGeometry";
 import { SECOND, SPAN } from "./slate";
 
 /**
@@ -32,7 +32,7 @@ import { SECOND, SPAN } from "./slate";
  *  its plates kept and its grit gone, so the cliffs' shapes show. */
 const STONE = new Color3(0.66, 0.61, 0.54);
 const RELIEF = 0.5;
-const CALM = 2;
+export const CALM = 2;
 /** On the flats the slate's hollows, between its plates, are darker than
  *  its highest plates by this much, and shine this much less; never on a
  *  lip or cliff, which keep the stone's own colour and shine. */
@@ -42,7 +42,7 @@ const DULL = 0.85;
  *  height added scaled by how steep the rock is; the steepness counted at
  *  most this; fading out over this much height at the foot, so the rock
  *  keeps to its own ground. */
-const WANDER = 0.6;
+const WANDER = 0.4;
 const STEEPEST = 4;
 const JAG_FOOT = 0.25;
 /** A lip rolls over this far in from its edge, in tiles, tilting this far
@@ -125,9 +125,10 @@ ${decl} peakShine = 1. - ${f(DULL)} * peakHollow;
 normalW = normalize(${v3}(peakDown * (peakLip * ${f(ROLL)} + peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
 };
 
-/** Each scene's slate: flat until the worker has baked it. */
+/** Each scene's slate: flat until the worker has baked it. The cliffs the
+ *  land stands on break along it too (`ground.ts`). */
 const SLATES = new Map<Scene, RawTexture>();
-function slate(scene: Scene): RawTexture {
+export function slate(scene: Scene): RawTexture {
   let texture = SLATES.get(scene);
   if (!texture) {
     const make = (data: Uint8Array, side: number) => {
@@ -227,4 +228,108 @@ export function peakMaterial(scene: Scene, name: string, heights: Uint16Array): 
   new BasaltPlugin(material, texture);
   material.shadowDepthWrapper = new ShadowDepthWrapper(material, scene, { remappedVariables: ["worldPos", "worldPos", "vNormalW", "peakNormal"] });
   return material;
+}
+
+/** How far in from the land's edge its cliff's plane is drawn, in tiles:
+ *  past its lip, under where the grass stops (`ground.ts`). */
+const CLIFF_INNER = 0.9;
+
+class CliffDefines extends MaterialDefines {
+  LANDCLIFF = false;
+}
+
+/** The land's cliff, painted as a mountain's is on the plane under its
+ *  edge (`layCliffPlane`): how far out from the land's edge a pixel is
+ *  (`cliffField`). Inside the edge, the lip, rolling over as a mountain
+ *  layer's does; outside, within `CLIFF_RUN` of it, the face, both facing
+ *  out, turned by the slate, the slate's grain over them; past that
+ *  nothing, the beach or the water showing; far inside, the grass. Only the facing: the
+ *  colour is the stone's own. */
+const landCliff = (T: (uv: string) => string, v2: string, v3: string, decl: string, at: string, local: string, ax: string, ay: string) => {
+  const vec = decl === "let" ? "let" : v2;
+  const e = f(1 / (CHUNK_SIZE * SHORE_DENSITY));
+  const field = (uv: string) => `((${T(uv)}.r - 0.5) * ${f(2 * CLIFF_REACH)})`;
+  const choose = (no: string, yes: string, when: string) => (v3 === "vec3f" ? `select(${no}, ${yes}, ${when})` : `(${when} ? ${yes} : ${no})`);
+  return `${vec} cliffUv = ${local}.xy / ${f(CHUNK_SIZE)};
+${decl} cliffFar = ${field("cliffUv")} - ${f(CLIFF_OUT)} - (cliffSlateTop(${at}.xy) * 2. - 1.) * ${f(CLIFF_WANDER)};
+${vec} cliffGrad = ${v2}(${field(`cliffUv + ${v2}(${e}, 0.)`)} - ${field(`cliffUv - ${v2}(${e}, 0.)`)}, ${field(`cliffUv + ${v2}(0., ${e})`)} - ${field(`cliffUv - ${v2}(0., ${e})`)});
+${decl === "let" ? "let" : "vec3"} cliffSlate = slateRead(${at}.xy);
+if (cliffFar > ${f(CLIFF_RUN)} || cliffFar < ${f(-CLIFF_INNER)}) { discard; }
+${decl} cliffTilt = ${choose("1. - smoothstep(0., " + f(LIP) + ", -cliffFar)", f(CLIFF_TILT), "cliffFar > 0.")} * ${choose(f(ROLL), "1.", "cliffFar > 0.")};
+${vec} cliffOut = normalize(normalize(cliffGrad.x * ${ax} + cliffGrad.y * ${ay} + 1e-6) + cliffSlate.xy * ${f(TURN)});
+baseColor = vec4${v3 === "vec3f" ? "f" : ""}(${v3}(${rgb(STONE)}), baseColor.a);
+normalW = normalize(${v3}(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
+};
+
+class LandCliffPlugin extends MaterialPluginBase {
+  constructor(
+    material: Material,
+    /** Its chunk's field. */
+    private field: RawTexture,
+  ) {
+    super(material, "LandCliff", 200, new CliffDefines());
+    this._enable(true);
+  }
+
+  isCompatible() {
+    return true;
+  }
+
+  prepareDefines(defines: CliffDefines) {
+    defines.LANDCLIFF = true;
+  }
+
+  getSamplers(samplers: string[]) {
+    samplers.push("slate", "cliffField");
+  }
+
+  bindForSubMesh(ubo: { setTexture(n: string, t: unknown): void }) {
+    ubo.setTexture("slate", slate(this._material.getScene()));
+    ubo.setTexture("cliffField", this.field);
+  }
+
+  getClassName() {
+    return "LandCliffPlugin";
+  }
+
+  getCustomCode(shaderType: string, shaderLanguage = 0): Record<string, string> | null {
+    const wgsl = shaderLanguage === 1;
+    if (shaderType === "vertex") {
+      return wgsl
+        ? {
+            CUSTOM_VERTEX_DEFINITIONS: `varying vCliffAt: vec2f; varying vCliffX: vec2f; varying vCliffY: vec2f;`,
+            CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vCliffAt = vertexInputs.position.xy; vertexOutputs.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; vertexOutputs.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;`,
+          }
+        : {
+            CUSTOM_VERTEX_DEFINITIONS: `varying vec2 vCliffAt; varying vec2 vCliffX; varying vec2 vCliffY;`,
+            CUSTOM_VERTEX_MAIN_END: `vCliffAt = position.xy; vCliffX = (finalWorld * vec4(1., 0., 0., 0.)).xy; vCliffY = (finalWorld * vec4(0., 1., 0., 0.)).xy;`,
+          };
+    }
+    return wgsl
+      ? {
+          CUSTOM_FRAGMENT_DEFINITIONS: `var slateSampler: sampler; var slate: texture_2d<f32>; var cliffFieldSampler: sampler; var cliffField: texture_2d<f32>; varying vCliffAt: vec2f; varying vCliffX: vec2f; varying vCliffY: vec2f;
+${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
+fn cliffSlateTop(p: vec2f) -> f32 { return textureSampleBias(slate, slateSampler, p / ${f(SPAN)}, ${f(CALM)}).b; }`,
+          CUSTOM_FRAGMENT_BEFORE_LIGHTS: landCliff((uv) => `textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.)`, "vec2f", "vec3f", "let", "fragmentInputs.vPositionW", "fragmentInputs.vCliffAt", "fragmentInputs.vCliffX", "fragmentInputs.vCliffY"),
+        }
+      : {
+          CUSTOM_FRAGMENT_DEFINITIONS: `uniform sampler2D slate; uniform sampler2D cliffField; varying vec2 vCliffAt; varying vec2 vCliffX; varying vec2 vCliffY;
+${read((uv) => `texture2D(slate, ${uv}, ${f(CALM)})`, "vec2", "vec3 slateRead(vec2 p)", "vec4")}
+float cliffSlateTop(vec2 p) { return texture2D(slate, p / ${f(SPAN)}, ${f(CALM)}).b; }`,
+          CUSTOM_FRAGMENT_BEFORE_LIGHTS: landCliff((uv) => `texture2D(cliffField, ${uv})`, "vec2", "vec3", "float", "vPositionW", "vCliffAt", "vCliffX", "vCliffY"),
+        };
+  }
+}
+
+/** A chunk's land's cliff's material, with its field (`cliffField`). */
+export function cliffMaterial(scene: Scene, name: string, field: Uint8Array): StandardMaterial {
+  const side = CHUNK_SIZE * SHORE_DENSITY;
+  const texture = new RawTexture(field, side, side, Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE);
+  texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
+  const material = new StandardMaterial(name, scene);
+  material.onDisposeObservable.addOnce(() => texture.dispose());
+  material.diffuseColor = Color3.White();
+  material.backFaceCulling = false;
+  new LandCliffPlugin(material, texture);
+  return lacquer(material, "rock");
 }

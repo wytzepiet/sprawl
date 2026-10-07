@@ -356,7 +356,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
   ground = new GroundTiles(scene);
   // The map runs +x to the screen's left and +y up: turned about.
   ground.frame.scaling.set(-1, -1, 1);
-  ground.paint([theme.beach, theme.land, theme.forest].map((c) => new Color3(c.r, c.g, c.b)));
+  ground.paint([theme.beach, theme.rock, theme.land, theme.forest].map((c) => new Color3(c.r, c.g, c.b)));
   const type = (c: number, r: number): TerrainType => {
     const ch = rows[r]?.[c];
     if (ch === "^") return "Mountain";
@@ -430,7 +430,7 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
         mesh.scaling.set(-1, -1, 1);
         // The peaks are laid where they are on the map.
         if (name !== "peaks") mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
-        const mat = name === "water" ? waterMaterial(scene, geo.shore, new Color3(theme.beach.r, theme.beach.g, theme.beach.b)) : name === "peaks" && geo.peakHeights ? peakMaterial(scene, "terrain_peaks_mat", geo.peakHeights) : new StandardMaterial(`terrain_${name}_mat`, scene);
+        const mat = name === "water" ? waterMaterial(scene, geo.shore, geo.cliffField) : name === "peaks" && geo.peakHeights ? peakMaterial(scene, "terrain_peaks_mat", geo.peakHeights) : new StandardMaterial(`terrain_${name}_mat`, scene);
         if (name === "cliffs") {
           mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
           mat.specularColor = Color3.Black();
