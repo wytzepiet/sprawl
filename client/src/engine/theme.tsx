@@ -33,9 +33,9 @@ const light = {
   // A mountain: its snow, its bare rock; the cliffs the land stands on.
   mountain: hex3("#F4F3F0"),
   rock: hex3("#A89C8A"),
-  // A yard, a car park or a pavement: a sandy green-grey, light beside
-  // the asphalt.
-  paved: hex3("#D6D8C2"),
+  // A yard, a car park or a pavement: a worn, warm stone grey, light
+  // beside the asphalt.
+  paved: hex3("#ADA596"),
   // Asphalt: a dark, matte grey.
   road: hex3("#585C61"),
   // A road, as against a street: the map's yellow for a through route,

@@ -4,20 +4,25 @@ import { grain } from "./ground";
 /**
  * Paving laid, as the light finds it: slabs in courses, each course half a
  * slab on from the last, each slab's edges rounding down into its joint
- * and each slab sitting a hair askew; and a faint grain over all. Only its
- * facing, never its colour. Further out than a slab is a few pixels it
- * fades, so it does not shimmer.
+ * and each slab sitting a hair askew, and a shade of its own, lighter or
+ * darker, warmer or cooler, as laid stone is; and a faint grain over all.
+ * Further out than a slab is a few pixels it fades, so it does not
+ * shimmer.
  */
 
 /** A slab's side, in tiles; how far in from its edge it rounds down into
  *  the joint; how steeply; how far askew a slab sits; and the grain over
  *  this many tiles, tilting this far. */
 const SLAB = 0.12;
-const JOINT = 0.012;
-const DEPTH = 0.6;
-const ASKEW = 0.06;
+const JOINT = 0.014;
+const DEPTH = 0.8;
+const ASKEW = 0.075;
 const GRAIN_SPAN = 2;
 const BUMP = 0.1;
+/** How much a slab's shade varies, either way, and how much of that is
+ *  warmth: lighter slabs a touch browner, darker a touch greyer. */
+const SHADE = 0.03;
+const WARM = [1.1, 1, 0.8];
 
 const n = (x: number) => x.toFixed(4);
 
@@ -42,6 +47,8 @@ pavingTilt += (vec2(texture2D(pavingGrain, (mod(pavingSlab, 256.) + 0.5) / 256.)
 // No slabs in the kerb's row of stones.
 pavingNear *= 1. - kerbBand;
 #endif
+float pavingShade = (texture2D(pavingGrain, (mod(pavingSlab + 41., 256.) + 0.5) / 256.).r - 0.5) * 2. * ${n(SHADE)} * pavingNear;
+baseColor.rgb *= 1. + pavingShade * vec3(${WARM.map(n).join(", ")});
 normalW = normalize(normalW + vec3(pavingTilt * pavingNear - pavingBump * ${n(BUMP)}, 0.));`,
 };
 
@@ -64,6 +71,9 @@ var pavingSlabs = pavingNear;
 // No slabs in the kerb's row of stones.
 pavingSlabs *= 1. - kerbBand;
 #endif
+let pavingSlabUv3 = (pavingSlab + 41. - 256. * floor((pavingSlab + 41.) / 256.) + 0.5) / 256.;
+let pavingShade = (textureSampleLevel(pavingGrain, pavingGrainSampler, pavingSlabUv3, 0.).r - 0.5) * 2. * ${n(SHADE)} * pavingSlabs;
+baseColor = vec4f(baseColor.rgb * (1. + pavingShade * vec3f(${WARM.map(n).join(", ")})), baseColor.a);
 normalW = normalize(normalW + vec3f(pavingTilt * pavingSlabs - pavingBump * ${n(BUMP)}, 0.));`,
 };
 
