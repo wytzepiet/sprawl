@@ -41,6 +41,8 @@ export interface Rig {
 export interface Drive {
   /** The distance along the route the table runs to. */
   length: number;
+  /** How far along it each node of the route is passed. */
+  nodes: number[];
   at(s: number): { body: Pose; trailer?: Pose };
 }
 
@@ -124,7 +126,7 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
  * The drive along a route in parts, each driven forward or backing, one
  * after the other: each starts as the one before left the vehicle.
  */
-export function drive(parts: { points: Pt[]; backing: boolean }[], rig: Rig): Drive {
+export function drive(parts: { points: Pt[]; backing: boolean }[], rig: Rig, nodes: number[] = []): Drive {
   const table: { s: number; body: Pose; trailer?: Pose }[] = [];
 
   // The state: the cab's rear axle and heading, the trailer's axle; at the
@@ -221,6 +223,7 @@ export function drive(parts: { points: Pt[]; backing: boolean }[], rig: Rig): Dr
   const length = table.length ? table[table.length - 1].s : 0;
   return {
     length,
+    nodes,
     at(s) {
       if (!table.length) return { body: { x: p0[0], y: p0[1], heading: h0 } };
       let lo = 0, hi = table.length - 1;
@@ -251,12 +254,20 @@ export function driveTrip(route: Pt[], fromLot: number, toLot: number, backing: 
   const n = route.length;
   const cuts = [...new Set([0, ...backing.flat(), n - 1])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
   const parts: { points: Pt[]; backing: boolean }[] = [];
+  // Where each node is passed along the parts laid end to end: the server's
+  // progress is placed by them, a stretch at a time, since it measures the
+  // route its own way.
+  const at = new Array<number>(n).fill(0);
+  let offset = 0;
   for (let c = 1; c < cuts.length; c++) {
     const [i, j] = [cuts[c - 1], cuts[c]];
     const nodes = route.slice(i, j + 1).map(([x, y]) => new Vector3(x, y, 0));
     const fl = Math.max(fromLot - i, i > 0 ? 1 : 0), tl = Math.max(j + 1 - (n - toLot), j < n - 1 ? 1 : 0);
     const drawn = drawnPath(nodes, LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
-    if (drawn) parts.push({ points: drawn.points.map((p): Pt => [p.x, p.y]), backing: backing.some(([a, b]) => a <= i && i < b) });
+    if (!drawn) return null;
+    drawn.atNode.forEach((d, k) => (at[i + k] = offset + d));
+    parts.push({ points: drawn.points.map((p): Pt => [p.x, p.y]), backing: backing.some(([a, b]) => a <= i && i < b) });
+    offset += drawn.length;
   }
-  return parts.length ? drive(parts, rig) : null;
+  return parts.length ? drive(parts, rig, at) : null;
 }
