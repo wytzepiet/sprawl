@@ -49,6 +49,12 @@ pub struct World {
     pub car_segment: HashMap<EntityId, (EntityId, EntityId, crate::engine::GameTime)>,
     /// Maps node_id → set of car_ids whose route passes through that node.
     pub node_cars: HashMap<EntityId, HashSet<EntityId>>,
+    /// The car turning between the street and a lot at each street node,
+    /// and when it was last seen moving: pulling out, from the moment it
+    /// found a gap until its tail is clear of the node; turning in, from
+    /// leaving the street there until it is parked. The street waits for it
+    /// (`car::simulation`, `gap_at`), unless it stands still too long.
+    pub manoeuvres: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
     pub terrain_seed: u32,
     /// Every building's books: what came in, what went out, what its taps
     /// served, today and yesterday. Learned, not saved — a loaded world
@@ -151,6 +157,7 @@ impl World {
             network: RoadNetwork::default(),
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
+            manoeuvres: HashMap::new(),
             terrain_seed: 0,
             books: HashMap::new(),
             town: Default::default(),
@@ -185,6 +192,7 @@ impl World {
             network: RoadNetwork::default(),
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
+            manoeuvres: HashMap::new(),
             terrain_seed,
             books: HashMap::new(),
             town: Default::default(),
@@ -261,6 +269,7 @@ impl World {
                     seg.cars.retain(|&id| id != car_id);
                 }
             }
+            self.manoeuvres.retain(|_, (c, _)| *c != car_id);
         }
     }
 

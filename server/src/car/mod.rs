@@ -5,6 +5,11 @@ pub mod spawn;
 pub const CRUISE_SPEED: f64 = 1.5;
 /// What a car drives in a lot: a crawl, a third of cruise.
 pub const LOT_SPEED: f64 = 0.5;
+/// Backing, a walking pace: two and a half metres a second.
+pub const REVERSE_SPEED: f64 = 0.2;
+/// Where the gear changes the car all but stops. Not quite: a limit of
+/// nought is a line it would never cross.
+pub const GEAR_SPEED: f64 = 0.1;
 pub const MIN_GAP: f64 = 0.5;
 pub const MIN_TURN_SPEED: f64 = 0.5;
 pub const ACCELERATION: f64 = 0.45;

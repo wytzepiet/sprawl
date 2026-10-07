@@ -376,6 +376,12 @@ pub struct Trip {
     #[serde(skip)]
     #[ts(skip)]
     pub segment_lengths: Vec<f64>,
+    /// The street nodes either side of the stretch a kerb bay is turned
+    /// across, at the trip's start and its end: the street waits at both
+    /// while the car turns (`car::simulation`).
+    #[serde(skip)]
+    #[ts(skip)]
+    pub stretches: [Vec<EntityId>; 2],
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]

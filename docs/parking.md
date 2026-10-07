@@ -47,6 +47,69 @@ car drives onto its driveway nose first, from the street, and backs out
 onto it; a lorry still backs into its dock. A kerb bay will be the same:
 a few nodes and a change of gear.
 
+Pulling out, 2026-10-06. Backing is a walking pace (`REVERSE_SPEED`,
+a fifth of a tile a second) and a car all but stops where its gear
+changes (`GEAR_SPEED`); it used to back out at lot speed and drive off
+at once, the turn of the wheel and the change of direction in one
+instant. Where a lot's way out meets the street is a **give-way line**:
+the car waits at it until nobody is coming who could not stop for it
+(`gap_at`), then holds the street node (`World::pulling_out`) until its
+tail is clear, and anyone coming either way, or turning in, stops short
+of it. It joins the street's queues where it stands, ahead of whoever is
+still coming, not behind everyone on the run (`join_run`). Before, a car
+backed out blind, queued behind cars that were still behind it, and
+cars drove through each other at drives.
+
+Kerb bays, 2026-10-06. Everything but a house (its drive) and a depot,
+farm or port (its yard) parks at the kerb before it: on a street, not a
+through road, running straight past one of its tiles and straight on to
+the next node, two bays a tile, a quarter tile either side of the street
+node, where the dressing draws kerb cars (`KERB`). A bay is the
+building's it fronts, so they share out with no rule. A bay is driven
+along the lane on its side: the one three quarters past its entry node
+is pulled into, straightening on the kerb's line; the one a quarter
+past is parked in as a driver would, past it on the lane and backed in.
+Both leave forward for the node ahead, through the give-way line. A car
+coming the other way parks on the far kerb as a driver does on a quiet
+street: across the road into the bay, facing against the traffic on
+that side, by the same two manoeuvres from the other end of the stretch
+(the near one backed in from 0.7 past it, through 0.15 along the kerb,
+placed by test against `driver.ts`), and out forward the way it faces.
+A bay's booking says which way it was taken (`Window::side`). A car
+turning off the street holds the node it left it at until it is parked,
+as one pulling out does, and the street waits for it, both ways. Staff
+park in bays too, now that a workplace has some: an office of twelve
+fills its four by nine and leaves the rest at its door, which is what
+the next step is for. Not yet: visitors spilling to the neighbours'
+bays; and cruising when every bay near is taken.
+
+Square bays, 2026-10-06 (the mayor: perpendicular for everything but
+housing, and set back so they sit astride the street's tile and the
+building's). Flats keep the bays along the kerb; everything else parks
+nose in, square to the street, four bays a tile, each 0.55 from the
+street's middle, in the building's setback (`SQUARE`). A car turns
+square at the tightest a car turns (0.45) only by starting from the
+road's middle, so it swings out there, turns in round the arc and goes
+straight in at the last, from either way along the street; and backs
+out round the same arc into its lane and drives on, through the
+give-way line (`kerb_bays`, tested against `driver.ts`: in at about
+84°, a few degrees off square, no snap). An office of twelve parks
+seven to eight at its own frontage and the rest at its door.
+
+Turning in gives way too: a car turns off the street when nobody is
+moving toward it from the other way (`clear_to_turn_in`), and from the
+moment it leaves the lane holds its turn until it is parked; a car
+pulling out holds its until it is back in its lane. A kerb bay's turn
+holds every street node of the stretch it is turned across
+(`Trip::stretches`), and only the car at the head of its queue into the
+lot may take it. Every hold lapses after `PATIENCE` standing still, and
+is not taken again on the wake it lapsed. A car waiting to pull out is
+let out by a car standing in a queue short of the node, as drivers do;
+only one on the node, or moving and too near to stop, keeps it waiting.
+The season's lapses are one or two a month. Cost: the town simulates
+about a sixth slower (`how_fast_a_town_runs`), mostly the holds. A house's drive is already a
+perpendicular bay with a drive to it, and may become one of them.
+
 Status: specification, drafted 2026-09-06. §8 step 1 built the same day
 in its generic form: every building has a two-spot lot on its driveway
 (`world/lots.rs`), trips end in a spot and start from one, a parked car
@@ -584,3 +647,7 @@ Roughly: 3, 2, 2, 2, 1, 2 and 2 days. Steps 1, 3 and 4 are built.
   yields to what is coming — which would also let runs span whole
   streets for the search and for `stretch_end`. The season guard
   (`game_loop`, `season`: nobody a day late) judges all of it.
+  Built 2026-10-06 of this: a lot's way out is a give-way line, and a
+  car joins a queue where it stands (top of this document). A car
+  turning *in* does not yet give way to oncoming traffic; it only stops
+  for one pulling out.

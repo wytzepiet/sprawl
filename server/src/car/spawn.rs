@@ -27,23 +27,18 @@ pub fn start_trip(
         Some(GameObject::Car(c)) if c.trip.is_none() => (c.owner, c.role),
         _ => return false,
     };
-    let Some(to_node) = world.approach(dest_building) else {
-        return false;
-    };
     let out = world.way_out(car_id).unwrap_or_default();
     let backs_out = world.backs_out(car_id);
+    let leaving = world.kerb_stretch(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
-
-    let path = match pathfinding::Routes::from(world, from_node).route_to(to_node) {
-        Some(r) if r.len() >= 2 => r,
-        _ => return false,
-    };
+    let Some(ways) = world.ways_to(dest_building, from_node) else { return false };
     let from_lot = out.len().saturating_sub(1);
-    let path_len = path.len();
-    let head: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
 
     // Don't pull out under a car blocking the start of the road.
-    let first_edge = (head[0], head[1]);
+    let first_edge = match out.len() {
+        0 | 1 => (ways.street[0], ways.street[1]),
+        _ => (out[0], out[1]),
+    };
     if let Some(seg) = world.edges.get(&first_edge)
         && let Some(&last_id) = seg.cars.back()
         && let Some(entry) = world.objects.get(last_id)
@@ -66,13 +61,13 @@ pub fn start_trip(
     // Nothing else can refuse the trip now, so the place at the far end is
     // claimed, and the one here let go of: booked from the earliest the car
     // could be there, on empty roads, to when the driver plans to leave.
-    let free_ms = ((path_len - 1) as f64 / CRUISE_SPEED * 1000.0) as GameTime;
-    let Some(way_in) = world.way_in(dest_building, car_id, now + free_ms, until.saturating_add(crate::world::lots::SLACK)) else { return false };
-    let to_lot = way_in.len() - 1;
+    let free_ms = ((ways.street.len() - 1) as f64 / CRUISE_SPEED * 1000.0) as GameTime;
+    let Some((path, to_lot)) = world.way_in(dest_building, car_id, &ways, now + free_ms, until.saturating_add(crate::world::lots::SLACK)) else { return false };
     let backs_in = world.reverse_tail(car_id);
-    let route: Vec<EntityId> = head.into_iter().chain(way_in[1..].iter().copied()).collect();
+    let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
-    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, now);
+    let stretches = [leaving, world.kerb_stretch(car_id)];
+    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, stretches, now);
     true
 }
 
@@ -86,6 +81,7 @@ pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: Entity
     };
     let out = world.way_out(car_id).unwrap_or_default();
     let backs_out = world.backs_out(car_id);
+    let leaving = world.kerb_stretch(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
     let path = match pathfinding::Routes::from(world, from_node).route_to(exit) {
         Some(r) if r.len() >= 2 => r,
@@ -95,7 +91,7 @@ pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: Entity
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     world.release_spot(car_id);
     let backing = backing(backs_out, 0, route.len());
-    launch(world, events, car_id, owner, owner, route, from_lot, 0, backing, now);
+    launch(world, events, car_id, owner, owner, route, from_lot, 0, backing, [leaving, Vec::new()], now);
     true
 }
 
@@ -109,6 +105,7 @@ fn launch(
     from_lot: usize,
     to_lot: usize,
     backing: Vec<[usize; 2]>,
+    stretches: [Vec<EntityId>; 2],
     now: GameTime,
 ) {
     let first_edge = (route[0], route[1]);
@@ -147,6 +144,7 @@ fn launch(
             seg_length: segment_lengths[1],
             seg_start_dist: 0.0,
             segment_lengths,
+            stretches,
         });
     }
 
