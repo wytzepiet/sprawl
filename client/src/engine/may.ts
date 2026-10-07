@@ -118,10 +118,11 @@ function linked(h: Hand, a: GridCoord, b: GridCoord): boolean {
 function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boolean {
   const [dx, dy] = [to.x - from.x, to.y - from.y];
   if ((dx === 0 && dy === 0) || Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
-  // Not over water or up a mountain, unless a road already stands there.
+  // Not over water, down onto a beach or up a mountain, unless a road
+  // already stands there.
   const wet = (t: GridCoord) => {
     const g = h.ground(t.x, t.y);
-    return !nodeAt(h, t) && (g === "Water" || g === "Sea" || g === "Mountain");
+    return !nodeAt(h, t) && (g === "Water" || g === "Sea" || g === "Beach" || g === "Mountain");
   };
   if (wet(from) || wet(to)) return false;
   // A road may end on a plot, never start on one.
@@ -154,7 +155,7 @@ function yardOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoo
   return tiles.filter((t) => t.x >= x0 + lx && t.x < x0 + lx + lw && t.y >= y0 + ly && t.y < y0 + ly + ld);
 }
 
-const land = (g: TerrainType | undefined) => g === "Grass" || g === "Beach" || g === "Forest";
+const land = (g: TerrainType | undefined) => g === "Grass" || g === "Forest";
 
 /** `World::may_paint`: open ground, or another of the kind to join or
  *  link to the one the step came from. */
