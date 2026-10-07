@@ -27,7 +27,7 @@ impl World {
         }
         matches!(
             self.terrain.get(&(coord.x, coord.y)),
-            Some(TerrainType::Grass | TerrainType::Beach | TerrainType::Forest)
+            Some(TerrainType::Grass | TerrainType::Forest)
         )
     }
 
@@ -64,7 +64,7 @@ impl World {
         }
         matches!(
             self.terrain.get(&(coord.x, coord.y)),
-            Some(TerrainType::Grass | TerrainType::Beach | TerrainType::Forest)
+            Some(TerrainType::Grass | TerrainType::Forest)
         )
     }
 

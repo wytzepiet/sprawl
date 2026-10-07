@@ -41,6 +41,11 @@ const RELIEF: (f64, f64) = (0.35, 2.2);
 /// layer, stretched, is over the range line.
 const HILL: f64 = 0.4;
 const RANGE: f64 = 0.6;
+/// The land stands on a cliff over the water; only in some stretches of
+/// its shore, coves, has the sea left a beach at the cliff's foot: where
+/// the ocean layer, read this much finer, is over this.
+const COVES: f64 = 20.0;
+const COVE: f64 = 0.25;
 /// The ground is raised a little around the origin and the ocean is held
 /// back from it: flat out to the survey's edge, then fading over as far
 /// again. Simplex noise is exactly zero at the origin, which put every
@@ -104,7 +109,7 @@ impl Layers {
             // Water on the ocean's side of the step is the sea; water on
             // the shelf is a lake, whatever its size.
             if step < 0.0 { TerrainType::Sea } else { TerrainType::Water }
-        } else if e < 0.05 {
+        } else if e < 0.05 && self.ocean.get([x as f64 * OCEAN * COVES, y as f64 * OCEAN * COVES]) > COVE {
             TerrainType::Beach
         } else if e > HILL && range > RANGE {
             TerrainType::Mountain

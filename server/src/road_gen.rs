@@ -68,7 +68,7 @@ fn anchor_for(
         let y = base_y + rng.random_range(0..CHUNK_SIZE);
         if matches!(
             terrain.get(&(x, y)),
-            Some(TerrainType::Grass | TerrainType::Beach | TerrainType::Forest)
+            Some(TerrainType::Grass | TerrainType::Forest)
         ) {
             return Some((x, y));
         }
@@ -147,7 +147,7 @@ pub fn generate(world: &mut World, seed: u32) -> Option<GridCoord> {
     extend_to(world, seed, start);
     const NEAR_MIDDLE: [(i32, i32); 9] = [(0, 0), (1, 1), (-1, -1), (1, -1), (-1, 1), (2, 0), (0, 2), (-2, 0), (0, -2)];
     let terrain = &world.terrain;
-    let open = |t: (i32, i32)| matches!(terrain.get(&t), Some(TerrainType::Grass | TerrainType::Beach | TerrainType::Forest));
+    let open = |t: (i32, i32)| matches!(terrain.get(&t), Some(TerrainType::Grass | TerrainType::Forest));
     let room = |(x, y): (i32, i32)| (-START_REACH..=START_REACH).flat_map(|dx| (-START_REACH..=START_REACH).map(move |dy| (x + dx, y + dy))).filter(|&t| open(t)).count();
     NEAR_MIDDLE
         .iter()
@@ -301,7 +301,9 @@ fn tile_cost(
     }
     match terrain.get(&to)? {
         TerrainType::Mountain => None,
-        TerrainType::Sea | TerrainType::Water => Some(20.0),
+        // A beach lies down the cliff, at the water's edge: crossed as the
+        // water is, by a bridge.
+        TerrainType::Sea | TerrainType::Water | TerrainType::Beach => Some(20.0),
         _ => Some(LAND_COST),
     }
 }
