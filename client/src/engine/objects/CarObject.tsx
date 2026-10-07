@@ -207,6 +207,19 @@ function follow(id: number, car: Car, rig: Rig) {
     driving.set(id, me);
   }
   const state = me;
+  // The server's progress, a distance along the route as it measures it,
+  // placed on the drive by the stretch it is on: between the same two
+  // nodes, as far between them.
+  const seg = t.segment_lengths;
+  const ends = seg.reduce<number[]>((acc, l, k) => (acc.push(k ? acc[k - 1] + l : 0), acc), []);
+  const nodes = state.drive.nodes;
+  const drawnAt = (x: number) => {
+    let k = 1;
+    while (k < ends.length - 1 && ends[k] < x) k++;
+    if (k >= ends.length || k >= nodes.length) return x;
+    const f = Math.max(0, Math.min(1, (x - ends[k - 1]) / (ends[k] - ends[k - 1] || 1)));
+    return nodes[k - 1] + f * (nodes[k] - nodes[k - 1]);
+  };
   const target = (now: number): [number, number] => {
     let dt = Math.max(0, (now - t.updated_at) / 1000);
     if (t.acceleration < 0) dt = Math.min(dt, -t.speed / t.acceleration);
@@ -226,7 +239,7 @@ function follow(id: number, car: Car, rig: Rig) {
         state.v = Math.max(0, state.v + (EASE * EASE * (goal - state.x) + 2 * EASE * (speed - state.v)) * dt);
         state.x += state.v * dt;
       }
-      return state.drive.at(Math.min(state.x, state.drive.length));
+      return state.drive.at(Math.min(drawnAt(state.x), state.drive.length));
     },
   };
 }
