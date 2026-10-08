@@ -11,11 +11,11 @@ import {
   Color4,
   Vector3,
   DirectionalLight,
-  ImageProcessingConfiguration,
   ShadowGenerator,
   type AbstractEngine,
 } from "@babylonjs/core";
 import { useEngine } from "./Canvas";
+import "./toneMap";
 import { groundCover } from "./view";
 import { skyEnvironment } from "./sky";
 
@@ -400,11 +400,11 @@ export default function DayNightLights(props: ParentProps) {
   setShadowGen(shadowGen);
 
   const sky = skyEnvironment(scene);
-  // Bright light is drawn in, not cut off, its hue kept: a low sun stays
-  // deep orange where it is strongest, rather than clipping to yellow.
+  // The light brought onto the screen by our own curve (`toneMap.ts`),
+  // after the eye's exposure: Babylon runs neither unless the exposure is
+  // other than 1, which the eye's is.
   const look = scene.imageProcessingConfiguration;
-  look.toneMappingEnabled = true;
-  look.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_KHR_PBR_NEUTRAL;
+  look.toneMappingEnabled = false;
   look.exposure = EYE;
 
   const resizeObs = engine.onResizeObservable.add(() => {
