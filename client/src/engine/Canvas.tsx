@@ -22,6 +22,7 @@ import {
 } from "@babylonjs/lite";
 import { useTheme } from "./theme";
 import { Culler } from "./cull";
+import { createOutline, type Outline } from "./outline";
 
 export type EngineContext = {
   engine: Engine;
@@ -33,6 +34,8 @@ export type EngineContext = {
   afterRender(fn: () => void): () => void;
   /** What of the world is drawn: what lies in view (`cull.ts`). */
   cull: Culler;
+  /** The outline round what is picked and under the pointer (`outline.ts`). */
+  outline: Outline;
   /** Whether the scene is registered: what is drawn is added from then on,
    *  the light, its shadows and the sky before (`Scene.tsx`). */
   registered: () => boolean;
@@ -107,7 +110,8 @@ export default function Canvas(props: ParentProps) {
     // the scene holds then. What is drawn is added once it is, and built as
     // it comes: added while it is being registered, it would be built for
     // what the scene held before.
-    setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, registered });
+    const outline = createOutline(engine, scene);
+    setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, registered });
     await registerSceneWithShadowSupport(scene);
     setRegistered(true);
 

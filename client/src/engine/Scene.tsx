@@ -36,7 +36,7 @@ function SceneInner() {
           <Registered>
             <InstancePoolProvider>
               <Picker />
-              {/* <Highlight /> — the outline, to come back on Lite */}
+              <Highlight />
               <World />
             </InstancePoolProvider>
           </Registered>
