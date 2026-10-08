@@ -108,6 +108,14 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container it draws in software
   and takes most of a minute.
+- **What a frame costs, by kind:** `bun run cost 6,80,15` (a tile and how
+  many tiles each way up and down, `--t 0.95` a time of day) hides each kind
+  of mesh in view in turn (a mesh's name with its chunk taken out:
+  `ground_`, `chunk_tree_tops`, `inst_…`), then keeps it out of the shadow
+  map, then the shadow map and the other lights as a whole, and prints what
+  each saved a frame, with its meshes, instances, triangles and draw calls,
+  in `.dev/cost/`. Under a minute; agrees with itself to a tenth of a ms.
+  The frame is the GPU's when it is well over the CPU's.
 - **The look alone:** `/sandbox?f=<fixture>` on the dev client draws a
   fixture with no server, through the town grid (`client/src/engine/town/`,
   `docs/look.md`), and paints it by hand. `bun run shots --sandbox` is the

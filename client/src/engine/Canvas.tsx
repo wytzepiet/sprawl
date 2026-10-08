@@ -80,12 +80,15 @@ export default function Canvas(props: ParentProps) {
       let lastFrame = 0;
       let seen = "";
       let moved = false;
+      // Held while something outside draws the frames itself (`cost.ts`).
+      let held = false;
       const where = () => {
         const c = scene.activeCamera;
         return c ? `${c.position.x},${c.position.y},${c.position.z},${c.orthoTop}` : "";
       };
       engine.runRenderLoop(() => {
         const now = performance.now();
+        if (held) return;
         const fps = moved || where() !== seen ? MOVING_FPS : STILL_FPS;
         if (now - lastFrame < (1000 / fps) * 0.75) return;
         lastFrame = now;
@@ -99,6 +102,11 @@ export default function Canvas(props: ParentProps) {
       window.addEventListener("resize", onResize);
 
       setCtx({ engine, scene, canvas: el });
+      if (import.meta.env.DEV) {
+        void import("./cost").then(({ costMeter }) => {
+          (window as unknown as { sprawlCost: unknown }).sprawlCost = costMeter(engine, scene, (h) => (held = h));
+        });
+      }
 
       onCleanup(() => {
         window.removeEventListener("resize", onResize);
