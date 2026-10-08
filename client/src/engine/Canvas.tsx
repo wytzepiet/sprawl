@@ -37,6 +37,8 @@ export type EngineContext = {
   cull: Culler;
   /** The outline round what is picked and under the pointer (`outline.ts`). */
   outline: Outline;
+  /** Work the scene waits for before it is registered. */
+  prepare(work: Promise<unknown>): void;
   /** Whether the scene is registered: what is drawn is added from then on,
    *  the light, its shadows and the sky before (`Scene.tsx`). */
   registered: () => boolean;
@@ -118,7 +120,9 @@ export default function Canvas(props: ParentProps) {
     // it comes: added while it is being registered, it would be built for
     // what the scene held before.
     const outline = createOutline(engine, scene);
-    setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, registered });
+    const preparing: Promise<unknown>[] = [];
+    setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, registered, prepare: (work) => preparing.push(work) });
+    await Promise.all(preparing);
     await registerSceneWithShadowSupport(scene);
     setRegistered(true);
 

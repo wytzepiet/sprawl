@@ -80,7 +80,10 @@ export function mountCar(
   const van = car.role === "Van" || car.role === "Tractor";
   const ship = car.role === "Ship";
   const color = ship ? SHIP : car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
-  const bucket = ship ? `ship${look.key}` : car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
+  // Parked cars in buckets of their own: a bucket where one car moves is
+  // drawn into the shadow map every frame, and one that stands still is not.
+  const parked = !car.trip && !car.run;
+  const bucket = (ship ? `ship${look.key}` : car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`) + (parked ? "p" : "");
   pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
   glossy(pool, bucket);
   const z = ship ? SHIP_Z : CAR_Z;
@@ -88,7 +91,7 @@ export function mountCar(
   if (!car.trip) driving.delete(entry.id);
   // Parked: in its spot, as the server placed it. No spot is a full lot,
   // and the car is out of sight until it moves.
-  if (!car.trip && !car.run) {
+  if (parked) {
     if (!car.spot) return () => {};
     const { at, heading } = car.spot;
     const instanceId = pool.addInstance(bucket, [at[0], at[1], van ? GROUND + 0.11 : z], [0, 0, heading - Math.PI / 2]);

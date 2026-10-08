@@ -8,8 +8,9 @@ import {
 import { timeOfDay as simTimeOfDay } from "../network/clock";
 import {
   addToScene,
+  createCsmDirectionalShadowGenerator,
   createDirectionalLight,
-  createPcfDirectionalShadowGenerator,
+  enableCsmStaticCache,
   setLightDiffuseColor,
   setShadowGeneratorBounds,
   setShadowGeneratorEnabled,
@@ -52,13 +53,8 @@ const SHADOW_MAX_RADIUS = 50;
  * Shadow map resolution: the power of two under the longer side of the screen,
  * so the map holds at most a texel per pixel. It is bilinearly compared, so a
  * texel short of a pixel only softens the edge, which is the look anyway. The
- * map is cleared and written every frame, and its size is the bandwidth —
+ * map is copied every frame a car moves, and its size is the bandwidth —
  * 4096 once cost 67MB a frame for detail a top-down view cannot show.
- *
- * Whenever the view or the sun or a caster has moved, not every other such
- * frame: a map drawn at half rate shimmers. Its texel
- * grid is laid down afresh wherever the sun and the view have moved to, and
- * skipping frames doubles the jump between one grid and the next.
  */
 function shadowMapSize(canvas: HTMLCanvasElement): number {
   const longest = Math.max(canvas.clientWidth, canvas.clientHeight) * Math.min(devicePixelRatio, 2);
@@ -378,7 +374,7 @@ export function DayNightProvider(props: ParentProps) {
 // ---------------------------------------------------------------------------
 
 export default function DayNightLights(props: ParentProps) {
-  const { engine, scene, canvas, beforeRender } = useEngine();
+  const { engine, scene, canvas, beforeRender, prepare } = useEngine();
   const { _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setCasters: setCasters } = useDayNight();
 
   // --- Lights ---
@@ -393,8 +389,14 @@ export default function DayNightLights(props: ParentProps) {
   // Tree trunks are cylinders, so most of their surface sits at a grazing angle
   // to a low sun — the case a constant bias cannot cover without detaching the
   // shadows from the flat ground. Slope-scaled bias handles it per-fragment.
-  const shadows = createPcfDirectionalShadowGenerator(engine, sunLight, { mapSize: shadowMapSize(canvas), bias: 0.001, normalBias: 0.02 });
+  //
+  // What stands still is drawn into the map only when the sun has turned a
+  // little, some six times a second in a two-minute day; what moves, the
+  // cars, is drawn over a copy of that every frame (Lite's static cache).
+  // One cascade: a view from above has no distance to grade.
+  const shadows = createCsmDirectionalShadowGenerator(engine, sunLight, { mapSize: shadowMapSize(canvas), numCascades: 1, bias: 0.001, cascadeBlendPercentage: 0 });
   sunLight.shadowGenerator = shadows;
+  prepare(enableCsmStaticCache(engine, shadows, { refitAngle: 0.008 }));
   const casting = new Set<Mesh>();
   let castersChanged = false;
   setCasters({
@@ -469,9 +471,16 @@ export default function DayNightLights(props: ParentProps) {
 
     // Round the ground in view, not round the camera: leaning back, the
     // camera stands well behind what it looks at. Up to as high as the view
-    // is wide, so nothing tall casts in from outside the box.
+    // is wide, so nothing tall casts in from outside the box. The box is a
+    // size in quarter octaves, a quarter again the view at least, laid on a
+    // grid of its own eighths: a pan or a zoom inside it leaves it, and the
+    // static shadows drawn into it, where they are.
     const { cx, cy, radius } = groundCover(scene, canvas);
-    setShadowGeneratorBounds(shadows, [cx - radius, cy - radius, -1], [cx + radius, cy + radius, radius]);
+    const half = 2 ** (Math.ceil(Math.log2(radius * 1.25) * 4) / 4);
+    const step = half / 4;
+    const bx = Math.round(cx / step) * step;
+    const by = Math.round(cy / step) * step;
+    setShadowGeneratorBounds(shadows, [bx - half, by - half, -1], [bx + half, by + half, half]);
 
     // Zoomed out far enough that shadows are sub-pixel, or the sun down and
     // its light at zero: skip the whole shadow pass rather than draw every
