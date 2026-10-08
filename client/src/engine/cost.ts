@@ -1,11 +1,11 @@
-import type { AbstractEngine, AbstractMesh, Scene, WebGPUEngine } from "@babylonjs/core";
+import { renderFrame, setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCasterMeshes, waitForGpuIdle, type EngineContext, type Mesh, type SceneContext, type ShadowGenerator } from "@babylonjs/lite";
 
 /**
  * Development only: what each kind of thing in view costs a frame, found by
  * taking it away. The render loop is held while it measures, and frames are
  * drawn by hand, a run of them back to back and then waited on: a frame's
  * time, whichever of the CPU and the GPU is slower, and the CPU's alone.
- * (Babylon's own GPU timer cannot keep up with a run, and a frame waited on
+ * (A GPU timer read frame by frame cannot keep up with a run, and a frame waited on
  * alone lets the GPU drop its clock between frames, so neither is used.) Each kind is then hidden, and
  * then kept out of the shadow map alone, and what the frame lost is its cost.
  * Conditions alternate round by round and the medians are taken, as the
@@ -45,23 +45,16 @@ export interface CostReport {
   kinds: Kind[];
 }
 
-const kindOf = (m: AbstractMesh) => m.name.replace(/-?\d+(\.\d+)?/g, "").replace(/[,#]+/g, "").replace(/_+/g, "_");
+const kindOf = (m: Mesh) => m.name.replace(/-?\d+(\.\d+)?/g, "").replace(/[,#]+/g, "").replace(/_+/g, "_");
 const median = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
 
-export function costMeter(engine: AbstractEngine, scene: Scene, hold: (held: boolean) => void) {
-  const gpu = engine as WebGPUEngine & {
-    _device?: { queue: { onSubmittedWorkDone(): Promise<void> } };
-    _drawCalls?: { current: number; fetchNewFrame(): void };
-  };
-
+export function costMeter(engine: EngineContext, scene: SceneContext, after: () => void, hold: (held: boolean) => void) {
   /** One frame drawn and handed to the GPU, not waited on. */
   function frame() {
-    gpu._drawCalls?.fetchNewFrame();
     const t0 = performance.now();
-    engine.beginFrame();
-    scene.render();
-    engine.endFrame();
-    return { cpu: performance.now() - t0, draws: gpu._drawCalls?.current ?? 0 };
+    renderFrame(engine, 16);
+    after();
+    return { cpu: performance.now() - t0, draws: engine.drawCallCount };
   }
 
   const FIELDS = ["cpu", "frame", "draws"] as const;
@@ -72,11 +65,11 @@ export function costMeter(engine: AbstractEngine, scene: Scene, hold: (held: boo
    *  its length: whichever of the CPU and the GPU is the slower. */
   async function measure(): Promise<Sample> {
     for (let i = 0; i < WARM; i++) frame();
-    await gpu._device?.queue.onSubmittedWorkDone();
+    await waitForGpuIdle(engine);
     const got: ReturnType<typeof frame>[] = [];
     const t0 = performance.now();
     for (let i = 0; i < FRAMES; i++) got.push(frame());
-    await gpu._device?.queue.onSubmittedWorkDone();
+    await waitForGpuIdle(engine);
     const each = (performance.now() - t0) / FRAMES;
     return { cpu: median(got.map((g) => g.cpu)), draws: median(got.map((g) => g.draws)), frame: each };
   }
@@ -85,11 +78,14 @@ export function costMeter(engine: AbstractEngine, scene: Scene, hold: (held: boo
     hold(true);
     try {
       await measure();
-      const shadowMap = scene.lights.map((l) => l.getShadowGenerator()?.getShadowMap()).find((m) => m);
-      const casters = new Set(shadowMap?.renderList ?? []);
-      const active = new Set(scene.getActiveMeshes().data.slice(0, scene.getActiveMeshes().length));
-      const kinds = new Map<string, AbstractMesh[]>();
-      for (const m of scene.meshes) if (m.isEnabled() && (m.isVisible || casters.has(m))) kinds.set(kindOf(m), [...(kinds.get(kindOf(m)) ?? []), m]);
+      const sun = scene.lights.map((l) => l.shadowGenerator).find((g): g is ShadowGenerator => !!g);
+      // The casters, as the shadow task holds them (development only, so its insides will do).
+      const castList = (): Mesh[] => [...((sun as { _shadowTaskState?: { _casterMeshes: Mesh[] } } | undefined)?._shadowTaskState?._casterMeshes ?? [])];
+      const casters = new Set(castList());
+      // Lite draws every mesh it holds: none is culled.
+      const active = new Set(scene.meshes);
+      const kinds = new Map<string, Mesh[]>();
+      for (const m of scene.meshes) kinds.set(kindOf(m), [...(kinds.get(kindOf(m)) ?? []), m]);
 
       // Each condition measured right after the scene as it is, round by
       // round, and what it saved over that: the laptop's drift between the
@@ -108,44 +104,37 @@ export function costMeter(engine: AbstractEngine, scene: Scene, hold: (held: boo
       for (let r = 0; r < rounds; r++) {
         for (const [kind, meshes] of shown) {
           await against(`hide ${kind}`, () => {
-            const was = meshes.map((m) => m.isEnabled(false));
-            meshes.forEach((m) => m.setEnabled(false));
-            return () => meshes.forEach((m, i) => m.setEnabled(was[i]));
+            meshes.forEach((m) => setMeshVisible(m, false));
+            return () => meshes.forEach((m) => setMeshVisible(m, true));
           });
-          if (shadowMap?.renderList && meshes.some((m) => casters.has(m))) {
+          if (sun && meshes.some((m) => casters.has(m))) {
             await against(`noshadow ${kind}`, () => {
-              const list = shadowMap.renderList!;
-              shadowMap.renderList = list.filter((m) => !meshes.includes(m as AbstractMesh));
-              return () => (shadowMap.renderList = list);
+              const list = castList();
+              setShadowTaskCasterMeshes(sun, list.filter((m) => !meshes.includes(m)));
+              return () => setShadowTaskCasterMeshes(sun, list);
             });
           }
         }
       }
-      // What belongs to no one mesh: the shadow map's pass as a whole, and
-      // the lights other than the one that casts (the cars' headlights).
-      const whole: Record<string, () => () => void> = {
-        "(shadow map)": () => ((scene.shadowsEnabled = false), () => (scene.shadowsEnabled = true)),
-        "(other lights)": () => {
-          const lights = scene.lights.filter((l) => !l.getShadowGenerator() && l.isEnabled());
-          lights.forEach((l) => l.setEnabled(false));
-          return () => lights.forEach((l) => l.setEnabled(true));
-        },
-      };
+      // What belongs to no one mesh: the shadow map's pass as a whole.
+      const whole: Record<string, () => () => void> = sun
+        ? { "(shadow map)": () => (setShadowGeneratorEnabled(sun, false), () => setShadowGeneratorEnabled(sun, true)) }
+        : {};
       if (!only) for (let r = 0; r < rounds; r++) for (const [name, change] of Object.entries(whole)) await against(`hide ${name}`, change);
       const round = (x: number) => +x.toFixed(2);
       const of = (name: string, f: (typeof FIELDS)[number]) => round(median((saved.get(name) ?? []).map((s) => s[f])));
       const base = (f: (typeof FIELDS)[number]) => round(median(bases.map((b) => b[f])));
       return {
         base: { frame: base("frame"), cpu: base("cpu"), drawCalls: base("draws"), meshes: scene.meshes.length },
-        kinds: [...[...kinds], ...Object.keys(whole).map((name) => [name, [] as AbstractMesh[]] as const)]
+        kinds: [...[...kinds], ...Object.keys(whole).map((name) => [name, [] as Mesh[]] as const)]
           .map(([kind, meshes]) => {
-            const instances = (m: AbstractMesh) => (m as { thinInstanceCount?: number }).thinInstanceCount || 1;
+            const instances = (m: Mesh) => m.thinInstances?.count ?? 1;
             return {
               kind,
               meshes: meshes.length,
               inView: meshes.filter((m) => active.has(m)).length,
               instances: meshes.reduce((n, m) => n + instances(m), 0),
-              triangles: meshes.reduce((n, m) => n + (m.getTotalIndices() / 3) * instances(m), 0),
+              triangles: meshes.reduce((n, m) => n + (m._gpu.indexCount / 3) * instances(m), 0),
               casters: meshes.filter((m) => casters.has(m)).length,
               draws: of(`hide ${kind}`, "draws"),
               frame: of(`hide ${kind}`, "frame"),

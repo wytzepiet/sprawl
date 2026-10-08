@@ -1,5 +1,5 @@
 import earcut from "earcut";
-import type { MeshGeometry } from "../Mesh";
+import type { MeshGeometry } from "../geometry";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
 import { asphalt, dress, pavement, type Dressing } from "./dressing";

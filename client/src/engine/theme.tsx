@@ -1,4 +1,4 @@
-import { Color3, Color4 } from "@babylonjs/core";
+import { hex } from "./rgb";
 import {
   createContext,
   createMemo,
@@ -7,8 +7,8 @@ import {
   type ParentProps,
 } from "solid-js";
 
-const hex3 = (h: string) => Color3.FromHexString(h);
-const hex4 = (h: string) => new Color4(...hex3(h).asArray(), 1);
+const hex3 = hex;
+const hex4 = hex;
 
 const light = {
   // After a Scottish coast from the air, made light: sage pasture, a

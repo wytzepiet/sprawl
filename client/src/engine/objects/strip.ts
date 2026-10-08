@@ -1,4 +1,7 @@
-import { Mesh, VertexBuffer, VertexData, type PBRMaterial } from "@babylonjs/core";
+import { updateMeshColors, updateMeshPositions, type Mesh } from "@babylonjs/lite";
+import type { EngineContext } from "../Canvas";
+import { drop, meshOf, show } from "../geometry";
+import { townMaterial } from "../material";
 import type { DrawnPath } from "./drawnPath";
 
 /**
@@ -41,10 +44,8 @@ export class Strip {
   /** The sections' centres and left-hand normals, as built. */
   private centres: [number, number][] = [];
   private normals: [number, number][] = [];
-  /** Sections drawn whole: the frontier is the next. */
-  private shown: number;
 
-  constructor(material: PBRMaterial, private drawn: DrawnPath, land: (x: number, y: number) => boolean, private z: number, tone: RGB) {
+  constructor(private ctx: EngineContext, private drawn: DrawnPath, land: (x: number, y: number) => boolean, private z: number, tone: RGB) {
     const lanes = LANES;
     const { points } = drawn;
     const n = points.length;
@@ -94,17 +95,11 @@ export class Strip {
         else indices.push(l0, l0, l0, l0, l0, l0);
       }
     }
-    this.mesh = new Mesh("strip", material.getScene());
-    const vd = new VertexData();
-    vd.positions = this.positions;
-    vd.normals = normals;
-    vd.colors = this.colors;
-    vd.indices = indices;
-    vd.applyToMesh(this.mesh, true);
-    this.mesh.material = material;
-    this.mesh.isPickable = false;
-    this.shown = n - 1;
+    this.mesh = meshOf(ctx.engine, "strip", { positions: this.positions, normals, colors: this.colors, indices });
+    this.mesh.material = STRIP_MATERIAL;
+    this.mesh.receiveShadows = true;
     this.paint(tone);
+    show(ctx.scene, this.mesh);
   }
 
   /** The two vertex indices of section `i`, lane `l`: left and right. */
@@ -113,9 +108,10 @@ export class Strip {
     return [v, v + 1];
   }
 
-  private section(i: number, [cx, cy]: [number, number], [nx, ny]: [number, number]): void {
+  /** Section `i` across the path at a centre, its lanes as wide as they are, or, `width` 0, none. */
+  private section(i: number, [cx, cy]: [number, number], [nx, ny]: [number, number], width = 1): void {
     for (let l = 0; l < LANES.length; l++) {
-      const { from, to } = LANES[l];
+      const [from, to] = [LANES[l].from * width, LANES[l].to * width];
       const [left, right] = this.vertex(i, l);
       this.positions.set([cx + nx * from, cy + ny * from, this.z], left * 3);
       this.positions.set([cx + nx * to, cy + ny * to, this.z], right * 3);
@@ -128,32 +124,35 @@ export class Strip {
       const { shade } = LANES[Math.floor(v / 2) % LANES.length];
       this.colors.set([r * shade, g * shade, b * shade, 1], v * 4);
     }
-    this.mesh.updateVerticesData(VertexBuffer.ColorKind, this.colors);
+    updateMeshColors(this.ctx.engine, this.mesh, this.colors);
   }
 
-  /** Show the strip as far as `dist` along the path. */
+  /** Show the strip as far as `dist` along the path: the sections behind
+   *  the tractor whole, the one at its frontier pulled back to where it is,
+   *  and every one past it folded onto it, so the draw stays the same draw
+   *  and only the vertices move. */
   reach(dist: number): void {
     const { distances, path, length } = this.drawn;
     const last = distances.length - 1;
-    // The sections behind the tractor, whole; the section at its frontier
-    // pulled back to where it is; the one that was the frontier before,
-    // put back where it belongs.
-    let n = Math.min(this.shown, last - 1);
+    let n = 0;
     while (n < last && distances[n + 1] <= dist) n++;
-    while (n > 0 && distances[n] > dist) n--;
-    this.section(this.shown, this.centres[this.shown], this.normals[this.shown]);
+    for (let k = 0; k <= n; k++) this.section(k, this.centres[k], this.normals[k]);
+    let frontier = this.centres[last];
     if (n < last) {
-      const p = path.getPointAt(dist / length);
-      const t = path.getTangentAt(dist / length);
+      const p = path.pointAt(dist / length);
+      const t = path.wayAt(dist / length);
       const len = Math.hypot(t.x, t.y) || 1;
-      this.section(n + 1, [p.x, p.y], [-t.y / len, t.x / len]);
+      frontier = [p.x, p.y];
+      this.section(n + 1, frontier, [-t.y / len, t.x / len]);
     }
-    this.shown = Math.min(n + 1, last);
-    this.mesh.updateVerticesData(VertexBuffer.PositionKind, this.positions);
-    this.mesh.subMeshes[0].indexCount = this.shown * LANES.length * 6;
+    for (let k = n + 2; k <= last; k++) this.section(k, frontier, this.normals[k], 0);
+    updateMeshPositions(this.ctx.engine, this.mesh, this.positions);
   }
 
   dispose(): void {
-    this.mesh.dispose();
+    drop(this.ctx.scene, this.mesh);
   }
 }
+
+/** The fields' material: their colour the strip's own, by vertex. */
+const STRIP_MATERIAL = townMaterial();

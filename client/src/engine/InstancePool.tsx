@@ -6,30 +6,18 @@ import {
   on,
   type ParentProps,
 } from "solid-js";
-import {
-  Mesh,
-  VertexData,
-  Color3,
-  Matrix,
-  Quaternion,
-  Vector3,
-  StandardMaterial,
-  type PBRMaterial,
-} from "@babylonjs/core";
-import { townMaterial } from "./material";
-import type { BaseTexture } from "@babylonjs/core";
+import { composeMat4IntoBuffer, setThinInstanceCount, setThinInstances, type EngineContext, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { FLAT, setTint, townMaterial, type TownMaterial } from "./material";
 import { useEngine } from "./Canvas";
-import { useDayNight } from "./DayNightCycle";
-import { BevelPlugin, bevelled, giveBevel } from "./bevel";
-import type { MeshGeometry } from "./Mesh";
+import { useDayNight, type Casters } from "./DayNightCycle";
+import { bevelPlugin, bevelled, giveBevel, type Bevel } from "./bevel";
+import { drop, meshOf, show, type MeshGeometry } from "./geometry";
+import { BLACK, mul, WHITE, type Rgb } from "./rgb";
 
 export interface InstanceHandle {
   setMatrix(pos: [number, number, number], rot: [number, number, number]): void;
 }
 
-function tint(color: Color3, amb: Color3): Color3 {
-  return new Color3(color.r * amb.r, color.g * amb.g, color.b * amb.b);
-}
 
 /**
  * One draw call per bucket, however many instances it holds. Thin instances
@@ -41,7 +29,9 @@ interface Bucket {
   mesh: Mesh;
   /** The town's material where it is lit; flat colour, tinted by the
    *  hour, where it is not (a chevron, a marker). */
-  material: PBRMaterial | StandardMaterial;
+  material: TownMaterial;
+  /** Its creases' roundness, which a lacquer may change. */
+  bevel: Bevel;
   /** 16 floats per instance. Capacity may exceed count. */
   matrices: Float32Array;
   /** pos(3) + rot(3) + scale(3), so a partial update can recompose. */
@@ -51,29 +41,40 @@ interface Bucket {
   indexToId: number[];
   /** Contents changed; re-upload before the next render. */
   dirty: boolean;
-  /** Buffer was reallocated, so Babylon needs the new reference. */
+  /** Buffer was reallocated, so Lite needs the new reference. */
   resized: boolean;
-  baseColor: Color3;
+  baseColor: Rgb;
   castShadow: boolean;
   receiveShadow: boolean;
   geometry: MeshGeometry;
 }
 
 const STRIDE = 9;
-const _scale = new Vector3();
-const _rot = new Quaternion();
-const _pos = new Vector3();
-const _mat = new Matrix();
+/** A rotation by Euler angles, as Babylon's `FromEulerAngles` turns them
+ *  (yaw y, pitch x, roll z), into a matrix slot with a position and scale. */
+function compose(out: Float32Array, at: number, tr: Float32Array, t: number) {
+  const [cx, sx] = [Math.cos(tr[t + 3] / 2), Math.sin(tr[t + 3] / 2)];
+  const [cy, sy] = [Math.cos(tr[t + 4] / 2), Math.sin(tr[t + 4] / 2)];
+  const [cz, sz] = [Math.cos(tr[t + 5] / 2), Math.sin(tr[t + 5] / 2)];
+  composeMat4IntoBuffer(
+    out,
+    at,
+    tr[t],
+    tr[t + 1],
+    tr[t + 2],
+    cz * sx * cy + sz * cx * sy,
+    cz * cx * sy - sz * sx * cy,
+    sz * cx * cy - cz * sx * sy,
+    cz * cx * cy + sz * sx * sy,
+    tr[t + 6],
+    tr[t + 7],
+    tr[t + 8],
+  );
+}
 
 /** Compose one instance's stored transform into its slot in the matrix buffer. */
 function composeMatrix(bucket: Bucket, index: number): void {
-  const t = index * STRIDE;
-  const tr = bucket.transforms;
-  _pos.set(tr[t], tr[t + 1], tr[t + 2]);
-  Quaternion.FromEulerAnglesToRef(tr[t + 3], tr[t + 4], tr[t + 5], _rot);
-  _scale.set(tr[t + 6], tr[t + 7], tr[t + 8]);
-  Matrix.ComposeToRef(_scale, _rot, _pos, _mat);
-  _mat.copyToArray(bucket.matrices, index * 16);
+  compose(bucket.matrices, index * 16, bucket.transforms, index * STRIDE);
   bucket.dirty = true;
 }
 
@@ -94,81 +95,57 @@ let nextId = 0;
 
 export class InstancePool {
   private buckets = new Map<string, Bucket>();
-  private scene: any;
-  private shadowGenerator: any;
   /** The ambient light in force, so a bucket made mid-day is painted for it. */
-  private ambient = new Color3(1, 1, 1);
+  private ambient: Rgb = WHITE;
 
-  constructor(scene: any, shadowGenerator: any) {
-    this.scene = scene;
-    this.shadowGenerator = shadowGenerator;
-  }
+  constructor(
+    private engine: EngineContext,
+    private scene: SceneContext,
+    private casters: Casters,
+  ) {}
 
   ensureBucket(
     key: string,
     geometry: MeshGeometry & { colors?: number[] },
-    color: Color3,
+    color: Rgb,
     castShadow: boolean,
     receiveShadow: boolean,
-    texture?: BaseTexture,
+    texture?: Texture2D,
   ): Bucket {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
 
-    const mat = receiveShadow ? townMaterial(`mat_${key}`, this.scene) : new StandardMaterial(`mat_${key}`, this.scene);
     // Every shape held here has its creases rounded (`bevel.ts`): a car's
-    // box, a building's; a road's flat rim has none to round.
-    new BevelPlugin(mat);
+    // box, a building's; a road's flat rim has none to round. A texture's
+    // colours are as an eye sees them: the town's material makes them
+    // linear itself (`material.ts`).
+    const bevel: Bevel = { width: 0.05, soft: null };
+    const mat = townMaterial(receiveShadow ? [bevelPlugin(bevel)] : [bevelPlugin(bevel), FLAT], 0.9, texture);
     const shape = bevelled(geometry);
 
-    if (mat instanceof StandardMaterial) {
-      mat.disableLighting = true;
-      if (texture) mat.diffuseTexture = texture;
-    } else if (texture) {
-      // Its colours as an eye sees them: the town's material makes them
-      // linear itself (`material.ts`).
-      texture.gammaSpace = false;
-      mat.albedoTexture = texture;
-    }
-
-    const mesh = new Mesh(`inst_${key}`, this.scene);
-    const vd = new VertexData();
-    vd.positions = shape.positions;
-    vd.indices = shape.indices;
-    vd.normals = shape.normals;
-    if (shape.uvs) vd.uvs = shape.uvs;
     // A shape's own colours scale its bucket's: a car's glass darker.
-    if (shape.colors) vd.colors = shape.colors;
-    vd.applyToMesh(mesh);
-    mesh.hasVertexAlpha = false;
-    giveBevel(mesh, shape);
+    const mesh = meshOf(this.engine, `inst_${key}`, shape);
+    giveBevel(this.engine, mesh, shape);
     mesh.material = mat;
-    mesh.isPickable = false;
-    mesh.freezeWorldMatrix();
-    mesh.doNotSyncBoundingInfo = true;
-    // Instances span the whole world, so the base mesh's own bounds say
-    // nothing useful -- skip the frustum test rather than rebuild bounds each
-    // frame, which would walk every instance.
-    mesh.alwaysSelectAsActiveMesh = true;
-    mesh.setEnabled(false);
-
-    if (receiveShadow) {
-      mesh.receiveShadows = true;
-    }
-    if (castShadow) {
-      this.shadowGenerator.addShadowCaster(mesh, true);
-    }
+    mesh.receiveShadows = receiveShadow;
+    // Room for some from the start: a buffer of none is no buffer at all.
+    const matrices = new Float32Array(64 * 16);
+    setThinInstances(mesh, matrices, 64);
+    setThinInstanceCount(mesh, 0);
+    show(this.scene, mesh);
+    if (castShadow) this.casters.add(mesh);
 
     bucket = {
       mesh,
       material: mat,
-      matrices: new Float32Array(0),
-      transforms: new Float32Array(0),
+      bevel,
+      matrices,
+      transforms: new Float32Array(64 * STRIDE),
       count: 0,
       idToIndex: new Map(),
       indexToId: [],
       dirty: false,
-      resized: true,
+      resized: false,
       baseColor: color,
       castShadow,
       receiveShadow,
@@ -184,11 +161,11 @@ export class InstancePool {
   }
 
   /** One instance's world matrix, as last composed; null once it is gone. */
-  matrixOf(key: string, id: number, out: Matrix): Matrix | null {
+  matrixOf(key: string, id: number, out: Float32Array): Float32Array | null {
     const bucket = this.buckets.get(key);
     const index = bucket?.idToIndex.get(id);
     if (!bucket || index === undefined) return null;
-    Matrix.FromArrayToRef(bucket.matrices, index * 16, out);
+    out.set(bucket.matrices.subarray(index * 16, index * 16 + 16));
     return out;
   }
 
@@ -265,11 +242,8 @@ export class InstancePool {
     bucket.dirty = true;
 
     if (bucket.count === 0) {
-      if (bucket.castShadow) {
-        this.shadowGenerator.removeShadowCaster(bucket.mesh);
-      }
-      bucket.mesh.dispose();
-      bucket.material.dispose();
+      if (bucket.castShadow) this.casters.remove(bucket.mesh);
+      drop(this.scene, bucket.mesh);
       this.buckets.delete(key);
     }
   }
@@ -281,29 +255,23 @@ export class InstancePool {
   flush(): void {
     for (const bucket of this.buckets.values()) {
       if (!bucket.dirty) continue;
+      // A new buffer at its whole capacity, then the count: what is drawn,
+      // and uploaded, is the instances there are.
       if (bucket.resized) {
-        bucket.mesh.thinInstanceSetBuffer("matrix", bucket.matrices, 16, false);
+        setThinInstances(bucket.mesh, bucket.matrices, bucket.matrices.length / 16);
         bucket.resized = false;
       }
-      // Count first, then upload: an upload only pushes as many instances as
-      // the mesh currently claims, so a slot filled since the last flush would
-      // otherwise be drawn from whatever the GPU still held there.
-      bucket.mesh.thinInstanceCount = bucket.count;
-      bucket.mesh.thinInstanceBufferUpdated("matrix");
-      // An empty thin-instance buffer leaves a zero-sized draw behind a call
-      // that still carries the old count -- WebGPU rejects it and drops the
-      // frame. Same reason TerrainChunks disables empty chunk meshes.
-      bucket.mesh.setEnabled(bucket.count > 0);
+      setThinInstanceCount(bucket.mesh, bucket.count);
       bucket.dirty = false;
     }
   }
 
-  /** A material painted as a bucket's is, for a mesh of its own. */
-  material(key: string, color: Color3): PBRMaterial {
-    return this.ensureBucket(key, WARM_TRIANGLE, color, false, true).material as PBRMaterial;
+  /** A bucket's material and bevel, as a lacquer takes them. */
+  finish(key: string): { material: TownMaterial; bevel: Bevel } | undefined {
+    return this.buckets.get(key);
   }
 
-  updateMaterials(ambientColor: Color3): void {
+  updateMaterials(ambientColor: Rgb): void {
     this.ambient = ambientColor;
     for (const bucket of this.buckets.values()) {
       this.paint(bucket);
@@ -311,17 +279,13 @@ export class InstancePool {
   }
 
   private paint(bucket: Bucket): void {
-    if (bucket.material instanceof StandardMaterial) bucket.material.emissiveColor = tint(bucket.baseColor, this.ambient);
-    else bucket.material.albedoColor = bucket.baseColor;
+    setTint(bucket.material, bucket.receiveShadow ? bucket.baseColor : mul(bucket.baseColor, this.ambient));
   }
 
   dispose(): void {
     for (const bucket of this.buckets.values()) {
-      if (bucket.castShadow) {
-        this.shadowGenerator.removeShadowCaster(bucket.mesh);
-      }
-      bucket.mesh.dispose();
-      bucket.material.dispose();
+      if (bucket.castShadow) this.casters.remove(bucket.mesh);
+      drop(this.scene, bucket.mesh);
     }
     this.buckets.clear();
   }
@@ -347,29 +311,29 @@ export function useInstancePool(): InstancePool {
 }
 
 export function InstancePoolProvider(props: ParentProps) {
-  const { scene } = useEngine();
-  const { ambientColor, shadowGenerator } = useDayNight();
+  const { engine, scene, beforeRender } = useEngine();
+  const { ambientColor, casters } = useDayNight();
 
-  const pool = new InstancePool(scene, shadowGenerator()!);
+  const pool = new InstancePool(engine, scene, casters()!);
 
   // WebGPU compiles a shader variant the first time something is drawn with
-  // it, and Chrome does that synchronously in the GPU process: a few hundred
-  // milliseconds with no frames at all. There are two — lit and unlit — so
-  // each is drawn once now, off the map in the loading frame, rather than
-  // the first time a one-way road puts a chevron under the pointer.
+  // it: a few hundred milliseconds with no frames at all. There are two —
+  // lit and unlit — so each is drawn once now, off the map in the loading
+  // frames, rather than the first time a one-way road puts a chevron under
+  // the pointer. Kept a second: Lite builds what is added as it comes.
   const warm: { key: string; id: number }[] = [];
   for (const lit of [true, false]) {
     const key = `warm_${lit}`;
-    pool.ensureBucket(key, WARM_TRIANGLE, Color3.Black(), false, lit);
+    pool.ensureBucket(key, WARM_TRIANGLE, BLACK, false, lit);
     warm.push({ key, id: pool.addInstance(key, [0, 0, -100]) });
   }
-  scene.onAfterRenderObservable.addOnce(() => {
+  const cool = setTimeout(() => {
     for (const { key, id } of warm) pool.removeInstance(key, id);
-  });
+  }, 1000);
+  onCleanup(() => clearTimeout(cool));
 
   // Instances are written during the frame; this pushes them to the GPU once.
-  const obs = scene.onBeforeRenderObservable.add(() => pool.flush());
-  onCleanup(() => scene.onBeforeRenderObservable.remove(obs));
+  onCleanup(beforeRender(() => pool.flush()));
 
   createEffect(on(ambientColor, (amb) => {
     pool.updateMaterials(amb);
@@ -390,10 +354,10 @@ interface InstancedMeshProps {
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: number | [number, number, number];
-  color: Color3;
+  color: Rgb;
   castShadow?: boolean;
   receiveShadow?: boolean;
-  texture?: BaseTexture;
+  texture?: Texture2D;
   enabled?: boolean;
 
   ref?: (handle: InstanceHandle) => void;

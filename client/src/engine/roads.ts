@@ -1,7 +1,10 @@
-import { MaterialDefines, MaterialPluginBase, Mesh, VertexData, type Material, type RawTexture, type Scene, type PBRMaterial } from "@babylonjs/core";
+import { markMeshRenderableDirty, setMeshAttribute, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { setTint, townMaterial, type TownMaterial } from "./material";
+import { drop, meshOf, show } from "./geometry";
+import type { Rgb } from "./rgb";
 import { Atlas } from "./atlas";
 import { grain } from "./ground";
-import { bevelled, giveBevel } from "./bevel";
+import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, PAVED_Z, pastSeam, RIM } from "./town/draw";
 import { roadShape } from "./town/dressing";
@@ -68,128 +71,60 @@ const CHIPS = 4;
 /** Two more random bytes of the same texel, a whole number of texels on. */
 const [other1, other2] = ["0.3789, 0.1602", "0.0898, 0.5898"];
 
-class RoadDefines extends MaterialDefines {
-  ROAD = false;
-}
-
 const n = (x: number) => x.toFixed(4);
 
 // A pixel's place on its tile's road frame, and its tile's slot; then, in
 // the slot, whether it is on the road and how far inside the kerbs.
-const GLSL = {
-  vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute float roadSlot; varying vec2 vRoad; varying float vRoadSlot;`,
-    CUSTOM_VERTEX_MAIN_END: `vRoad = positionUpdated.xy; vRoadSlot = roadSlot;`,
-  },
-  fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec2 vRoad; varying float vRoadSlot; uniform sampler2D roadAtlas; uniform sampler2D roadGrain;`,
-    CUSTOM_FRAGMENT_MAIN_BEGIN: `vec2 roadGrainUv = vPositionW.xy / ${n(GRAIN_SPAN)};
-float roadGrainAt = texture2D(roadGrain, roadGrainUv).r;
-vec2 roadBump = vec2(texture2D(roadGrain, roadGrainUv + vec2(${n(1 / 256)}, 0.)).r - texture2D(roadGrain, roadGrainUv - vec2(${n(1 / 256)}, 0.)).r, texture2D(roadGrain, roadGrainUv + vec2(0., ${n(1 / 256)})).r - texture2D(roadGrain, roadGrainUv - vec2(0., ${n(1 / 256)})).r);
-vec2 roadGlintWay = vec2(texture2D(roadGrain, roadGrainUv + vec2(${other1})).r, texture2D(roadGrain, roadGrainUv + vec2(${other2})).r);
-float roadGlinting = step(${n(1 - GLINTS)}, roadGrainAt);
-float roadCrumbleBy = 0.5 * roadGrainAt + 0.5 * texture2D(roadGrain, roadGrainUv / ${n(CHIPS)}).r;
-float roadSlotN = floor(vRoadSlot + 0.5);
-vec2 roadUv = (vec2(mod(roadSlotN, roadGrid.x), floor(roadSlotN / roadGrid.x)) + (vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / roadGrid;
-vec2 roadTexel = 1. / (roadGrid * ${n(SLOT)});
-vec2 roadD = texture2D(roadAtlas, roadUv).rg;
-if (roadD.r < 0.) discard;
-if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) discard;`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = roadGlinting;
-normalW = normalize(normalW - vec3(roadBump * ${n(BUMP)}, 0.) + vec3((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
-float roadDx = texture2D(roadAtlas, roadUv + vec2(roadTexel.x, 0.)).g - texture2D(roadAtlas, roadUv - vec2(roadTexel.x, 0.)).g;
-float roadDy = texture2D(roadAtlas, roadUv + vec2(0., roadTexel.y)).g - texture2D(roadAtlas, roadUv - vec2(0., roadTexel.y)).g;
-if (roadD.g >= 0. && roadD.g < ${n(RIM)} && roadDx * roadDx + roadDy * roadDy > 0.) {
-  vec3 roadOut = normalize(vec3(-roadDx, -roadDy, 0.));
-  normalW = normalize(mix(normalW, normalize(normalW + roadOut), 1. - roadD.g / ${n(RIM)}));
-}`,
-  },
-};
-const WGSL = {
-  vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute roadSlot: f32; varying vRoad: vec2f; varying vRoadSlot: f32;`,
-    CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vRoad = positionUpdated.xy; vertexOutputs.vRoadSlot = vertexInputs.roadSlot;`,
-  },
-  fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vRoad: vec2f; varying vRoadSlot: f32; var roadAtlasSampler: sampler; var roadAtlas: texture_2d<f32>; var roadGrainSampler: sampler; var roadGrain: texture_2d<f32>;`,
-    CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadGrainUv = fragmentInputs.vPositionW.xy / ${n(GRAIN_SPAN)};
+function roadPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
+  return {
+    name: "Road",
+    priority: 210,
+    getAttributes: () => [{ name: "roadSlot", type: "f32", perInstance: true }],
+    getVaryings: () => [
+      { name: "vRoad", type: "vec2f" },
+      { name: "vRoadSlot", type: "f32" },
+    ],
+    getSamplers: () => [
+      { texture: "roadAtlas", sampler: "roadAtlasSampler" },
+      { texture: "roadGrain", sampler: "roadGrainSampler" },
+    ],
+    bindTextures: (out) => out.push({ texture: atlas.upload() }, { texture: grain(engine) }),
+    getUniforms: () => ({ ubo: [{ name: "roadGrid", type: "vec2<f32>" }] }),
+    writeUbo: (data, offsets) => data.set(atlas.grid, offsets.get("roadGrid")! / 4),
+    getCustomCode: (stage) =>
+      stage === "vertex"
+        ? { CUSTOM_VERTEX_MAIN_END: `out.vRoad = position.xy; out.vRoadSlot = roadSlot;` }
+        : {
+            CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadGrainUv = input.worldPos.xy / ${n(GRAIN_SPAN)};
 let roadGrainAt = textureSample(roadGrain, roadGrainSampler, roadGrainUv).r;
 let roadBump = vec2f(textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${n(1 / 256)}, 0.)).r - textureSample(roadGrain, roadGrainSampler, roadGrainUv - vec2f(${n(1 / 256)}, 0.)).r, textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(0., ${n(1 / 256)})).r - textureSample(roadGrain, roadGrainSampler, roadGrainUv - vec2f(0., ${n(1 / 256)})).r);
 let roadGlintWay = vec2f(textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${other1})).r, textureSample(roadGrain, roadGrainSampler, roadGrainUv + vec2f(${other2})).r);
 let roadGlinting = step(${n(1 - GLINTS)}, roadGrainAt);
 let roadCrumbleBy = 0.5 * roadGrainAt + 0.5 * textureSample(roadGrain, roadGrainSampler, roadGrainUv / ${n(CHIPS)}).r;
-let roadSlotN = floor(fragmentInputs.vRoadSlot + 0.5);
-let roadUv = (vec2f(roadSlotN - uniforms.roadGrid.x * floor(roadSlotN / uniforms.roadGrid.x), floor(roadSlotN / uniforms.roadGrid.x)) + (fragmentInputs.vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / uniforms.roadGrid;
-let roadTexel = 1. / (uniforms.roadGrid * ${n(SLOT)});
+let roadSlotN = floor(input.vRoadSlot + 0.5);
+let roadUv = (vec2f(roadSlotN - material.roadGrid.x * floor(roadSlotN / material.roadGrid.x), floor(roadSlotN / material.roadGrid.x)) + (input.vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / material.roadGrid;
+let roadTexel = 1. / (material.roadGrid * ${n(SLOT)});
 let roadD = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv, 0.).rg;
 if (roadD.r < 0.) { discard; }
 if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = roadGlinting;
-normalW = normalize(normalW - vec3f(roadBump * ${n(BUMP)}, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = roadGlinting;
+N = normalize(N - vec3f(roadBump * ${n(BUMP)}, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
 let roadTx = vec2f(roadTexel.x, 0.);
 let roadTy = vec2f(0., roadTexel.y);
 let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
 let roadDy = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTy, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTy, 0.).g;
 if (roadD.g >= 0. && roadD.g < ${n(RIM)} && roadDx * roadDx + roadDy * roadDy > 0.) {
   let roadOut = normalize(vec3f(-roadDx, -roadDy, 0.));
-  normalW = normalize(mix(normalW, normalize(normalW + roadOut), 1. - roadD.g / ${n(RIM)}));
+  N = normalize(mix(N, normalize(N + roadOut), 1. - roadD.g / ${n(RIM)}));
 }`,
-  },
-};
-
-class RoadPlugin extends MaterialPluginBase {
-  constructor(
-    material: Material,
-    private atlas: Atlas,
-  ) {
-    super(material, "Road", 210, new RoadDefines());
-    this._enable(true);
-  }
-
-  isCompatible() {
-    return true;
-  }
-
-  prepareDefines(defines: RoadDefines) {
-    defines.ROAD = true;
-  }
-
-  getAttributes(attributes: string[]) {
-    attributes.push("roadSlot");
-  }
-
-  getSamplers(samplers: string[]) {
-    samplers.push("roadAtlas", "roadGrain");
-  }
-
-  getUniforms(shaderLanguage = 0) {
-    return {
-      ubo: [{ name: "roadGrid", size: 2, type: "vec2" }],
-      fragment: shaderLanguage === 1 ? "uniform roadGrid: vec2f;" : "uniform vec2 roadGrid;",
-    };
-  }
-
-  bindForSubMesh(ubo: { updateFloat2(n: string, x: number, y: number): void; setTexture(n: string, t: RawTexture): void }) {
-    const texture = this.atlas.upload();
-    if (!texture) return;
-    ubo.updateFloat2("roadGrid", ...this.atlas.grid);
-    ubo.setTexture("roadAtlas", texture);
-    ubo.setTexture("roadGrain", grain(this._material.getScene()));
-  }
-
-  getClassName() {
-    return "RoadPlugin";
-  }
-
-  getCustomCode(shaderType: string, shaderLanguage = 0) {
-    const code = shaderLanguage === 1 ? WGSL : GLSL;
-    return shaderType === "vertex" ? code.vertex : code.fragment;
-  }
+          },
+  };
 }
 
 /** One kind of road's tiles: a square each, where and in which slot. */
 interface Kind {
   mesh: Mesh;
+  material: TownMaterial;
   matrices: Float32Array;
   slots: Float32Array;
   keys: string[];
@@ -202,14 +137,14 @@ export class RoadTiles {
   private kinds: [Kind, Kind];
   private at = new Map<string, { through: boolean; index: number }>();
 
-  /** `material` paints a street's road, or a through road's. */
+  /** `colour` paints a street's road, or a through road's. */
   constructor(
-    private scene: Scene,
-    private material: (through: boolean) => PBRMaterial,
+    private engine: EngineContext,
+    private scene: SceneContext,
+    private colour: (through: boolean) => Rgb,
   ) {
-    this.atlas = new Atlas(scene, SLOT);
+    this.atlas = new Atlas(engine, SLOT, () => this.kinds.forEach((kind) => markMeshRenderableDirty(kind.mesh)));
     this.kinds = [false, true].map((through): Kind => {
-      const mesh = new Mesh(`roads_${through ? "through" : "street"}`, scene);
       // The square over the slot's span, at the road's height: through
       // roads over the streets that meet them, a street's end running on
       // under one.
@@ -217,19 +152,21 @@ export class RoadTiles {
       const [a, b] = [ORIGIN, ORIGIN + SPAN];
       // With the bevel's data, as every town material rounds creases; a
       // square has none.
-      const square = bevelled({ positions: [a, a, z, b, a, z, b, b, z, a, b, z], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 1, 2, 0, 2, 3] });
-      const data = new VertexData();
-      Object.assign(data, { positions: square.positions, normals: square.normals, indices: square.indices });
-      data.applyToMesh(mesh);
-      giveBevel(mesh, square);
-      mesh.isPickable = false;
+      const square = bevelled({ positions: [a, a, z, b, a, z, b, b, z, a, b, z], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
+      const mesh = meshOf(engine, `roads_${through ? "through" : "street"}`, square);
+      giveBevel(engine, mesh, square);
+      // Worn to a sheen by traffic, and the stones in it glint (`townShine`).
+      const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas)], 0.7);
+      mesh.material = material;
       mesh.receiveShadows = true;
-      // Roads run over the whole world: culled square by square they
-      // cannot be, and testing their bounds would walk every tile.
-      mesh.alwaysSelectAsActiveMesh = true;
-      mesh.setEnabled(false);
-      return { mesh, matrices: new Float32Array(0), slots: new Float32Array(0), keys: [], dirty: false };
+      const [matrices, slots] = [new Float32Array(64 * 16), new Float32Array(64)];
+      setThinInstances(mesh, matrices, 64);
+      setMeshAttribute(engine, mesh, "roadSlot", slots);
+      setThinInstanceCount(mesh, 0);
+      return { mesh, material, matrices, slots, keys: [], dirty: false };
     }) as [Kind, Kind];
+    this.atlas.upload();
+    for (const kind of this.kinds) show(scene, kind.mesh);
   }
 
   /** The tile at (x, y) a road of these arms, in place of whatever was. */
@@ -243,6 +180,7 @@ export class RoadTiles {
       m.set(kind.matrices);
       s.set(kind.slots);
       [kind.matrices, kind.slots] = [m, s];
+      setThinInstances(kind.mesh, kind.matrices, capacity);
     }
     kind.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x + 1, y + 1, 0, 1], index * 16);
     kind.slots[index] = this.atlas.slotOf(keyOf(ways), () => bake(ways));
@@ -273,30 +211,20 @@ export class RoadTiles {
     kind.dirty = true;
   }
 
-  /** Every tile drawn as it now is. */
+  /** Every tile drawn as it now is, in the colours of now. */
   flush() {
+    this.atlas.upload();
     this.kinds.forEach((kind, through) => {
       if (!kind.dirty) return;
       kind.dirty = false;
-      const count = kind.keys.length;
-      const material = (kind.mesh.material = this.material(!!through));
-      if (!material.pluginManager?.getPlugin("Road")) {
-        new RoadPlugin(material, this.atlas);
-        // Worn to a sheen by traffic, and the stones in it glint (`townShine`).
-        material.roughness = 0.7;
-        // Which way the square is wound matters not, flat on the ground.
-        material.backFaceCulling = false;
-      }
-      // An empty draw is one WebGPU rejects, frame and all.
-      kind.mesh.setEnabled(count > 0);
-      if (!count) return;
-      kind.mesh.thinInstanceSetBuffer("matrix", kind.matrices.slice(0, count * 16), 16, true);
-      kind.mesh.thinInstanceSetBuffer("roadSlot", kind.slots.slice(0, count), 1, true);
+      setTint(kind.material, this.colour(!!through));
+      setMeshAttribute(this.engine, kind.mesh, "roadSlot", kind.slots);
+      setThinInstanceCount(kind.mesh, kind.keys.length);
     });
   }
 
   dispose() {
-    for (const kind of this.kinds) kind.mesh.dispose();
+    for (const kind of this.kinds) drop(this.scene, kind.mesh);
     this.atlas.dispose();
     this.at.clear();
   }

@@ -1,4 +1,5 @@
-import { Constants, RawTexture, type Scene } from "@babylonjs/core";
+import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type Texture2D } from "@babylonjs/lite";
+import { retire } from "./geometry";
 import { toHalf } from "./kerbLines";
 
 /** Slots to a row of the texture; it gains rows as shapes come. */
@@ -8,20 +9,31 @@ const COLS = 16;
  * Shapes drawn on squares: each baked once, the first time it is met, into
  * a slot of one shared texture of half floats, two to a texel, read
  * smoothly. A square drawn says which slot is its shape, so every square of
- * a kind is one draw (`roads.ts`, `ground.ts`).
+ * a kind is one draw (`roads.ts`, `ground.ts`). When it gains rows its
+ * texture is a new one, and `regrown` is told, so what reads it is bound
+ * to the new one.
  */
 export class Atlas {
   private slots = new Map<string, number>();
   private rows = 0;
   private data = new Uint16Array(0);
   private stale = false;
-  texture: RawTexture | null = null;
+  texture: Texture2D;
 
-  /** `side`: a slot's side, in texels. */
+  /** `side`: a slot's side, in texels. A texture from the start, empty: a
+   *  material binds it before any shape is baked. */
   constructor(
-    private scene: Scene,
+    private engine: EngineContext,
     readonly side: number,
-  ) {}
+    private regrown: () => void,
+  ) {
+    this.grow();
+    this.texture = this.make();
+  }
+
+  private make() {
+    return createTexture2DFromPixels(this.engine, this.data, COLS * this.side, this.rows * this.side, { format: "rg16float", minFilter: "linear", magFilter: "linear" });
+  }
 
   /** Slots across the texture, and down. */
   get grid(): [number, number] {
@@ -50,21 +62,21 @@ export class Atlas {
   }
 
   /** The texture, with every shape baked so far. */
-  upload(): RawTexture | null {
+  upload(): Texture2D {
     if (!this.stale) return this.texture;
     this.stale = false;
-    const [w, h] = [COLS * this.side, this.rows * this.side];
-    if (this.texture && this.texture.getSize().height === h) this.texture.update(this.data);
+    if (this.texture.height === this.rows * this.side) updateTexture2DFromPixels(this.engine, this.texture, this.data);
     else {
-      this.texture?.dispose();
-      this.texture = new RawTexture(this.data, w, h, Constants.TEXTUREFORMAT_RG, this.scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
-      this.texture.wrapU = this.texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
+      // Let go once nothing is drawn with it: the rebound draws come a frame or two on.
+      retire(this.texture);
+      this.texture = this.make();
+      this.regrown();
     }
     return this.texture;
   }
 
   dispose() {
-    this.texture?.dispose();
+    retire(this.texture);
   }
 
   private grow() {

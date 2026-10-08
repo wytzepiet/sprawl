@@ -1,4 +1,4 @@
-import type { MeshGeometry } from "../Mesh";
+import type { MeshGeometry } from "../geometry";
 
 /** A box in x and y: x0, y0, x1, y1. */
 export type Box = [number, number, number, number];

@@ -1,8 +1,10 @@
-import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, ShadowDepthWrapper, type Material, type PBRMaterial, type Scene } from "@babylonjs/core";
+import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { retire } from "./geometry";
 import { townMaterial } from "./material";
+import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
 import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_WANDER, CLIFF_RUN, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, REACH, SHORE_DENSITY } from "./objects/terrainGeometry";
-import { SECOND, SPAN } from "./slate";
+import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 
 /**
  * The mountains as dark slate, drawn as trees' crowns are: the mesh is
@@ -31,7 +33,7 @@ import { SECOND, SPAN } from "./slate";
 
 /** The stone's colour; how far the slate tilts the facing; and how many mipmap levels coarser the slate is read,
  *  its plates kept and its grit gone, so the cliffs' shapes show. */
-const STONE = new Color3(0.66, 0.61, 0.54);
+const STONE = colour(0.66, 0.61, 0.54);
 const RELIEF = 0.5;
 export const CALM = 2;
 /** On the flats the slate's hollows, between its plates, are darker than
@@ -65,12 +67,8 @@ const HIDDEN = 0.02;
  *  pixel to the next, which is grainy. */
 const TURN = 1.5;
 
-class BasaltDefines extends MaterialDefines {
-  BASALT = false;
-}
-
 const f = (x: number) => x.toFixed(4);
-const rgb = (c: Color3) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
+const rgb = (c: Rgb) => `${f(c.r)}, ${f(c.g)}, ${f(c.b)}`;
 const [c2, s2] = [Math.cos(SECOND[1]), Math.sin(SECOND[1])];
 
 /** The slate at a point of the map, both sizes of it: its facing's x and y
@@ -102,10 +100,8 @@ const heightFn = (L: (c: string) => string, v2: string, v3: string, vi: string, 
 /** A pixel's layer cut and lit, in a shader's own words: `at` its place on
  *  the map (the mesh is laid there). Every texture read comes before the
  *  discard, as WGSL asks. */
-const peak = (v2: string, v3: string, decl: string, at: string) => {
-  const vec = decl === "let" ? "let" : v2;
-  const wgsl = v3 === "vec3f";
-  const choose = (no: string, yes: string, when: string) => (wgsl ? `select(${no}, ${yes}, ${when})` : `(${when} ? ${yes} : ${no})`);
+const peakCut = (at: string) => {
+  const [v2, v3, decl, vec, wgsl] = ["vec2f", "vec3f", "let", "let", true];
   return `${vec} peakCorner = floor(${at}.xy / ${f(CHUNK_SIZE)}) * ${f(CHUNK_SIZE)} - ${f(PEAK_APRON)};
 ${wgsl ? "let" : "vec3"} peakRock = peakHeightAt(${at}.xy, peakCorner);
 ${decl} peakOwn = peakRock.x;
@@ -117,129 +113,82 @@ ${decl} peakS = peakOwn + clamp(${f(WANDER)} * min(peakSteep, ${f(STEEPEST)}) * 
 ${vec} peakDown = normalize(peakFall / peakSteep + peakSlate.xy * ${f(TURN)});
 ${decl} peakIn = (peakS - (${f(EDGE)} + (peakLayer - 1.) * ${f(LAYER)})) / peakSteep;
 ${decl} peakBelow = (${f(EDGE)} + peakLayer * ${f(LAYER)} - peakS) / peakSteep;
-if (peakLayer > 0.5 && peakIn < 0.) { discard; }
-#ifndef SM_FLOAT
-if (peakBelow < ${f(-HIDDEN)}) { discard; }
-#endif
+if (peakLayer > 0.5 && peakIn < 0.) { discard; }`;
+};
+/** And, where it is seen rather than casting: the rock under the layer
+ *  above hidden, and its colour, shine and facing. */
+const peakLook = () => {
+  const [v3, decl] = ["vec3f", "let"];
+  const choose = (no: string, yes: string, when: string) => `select(${no}, ${yes}, ${when})`;
+  return `if (peakBelow < ${f(-HIDDEN)}) { discard; }
 ${decl} peakLip = ${choose("0.", `1. - smoothstep(0., ${f(LIP)}, peakIn)`, "peakLayer > 0.5")};
 ${decl} peakCliff = 1. - smoothstep(${f(CLIFF * 0.6)}, ${f(CLIFF)}, peakBelow);
 ${decl} peakHollow = (0.5 - 0.5 * peakSlate.z) * (1. - max(peakLip, peakCliff));
-baseColor = vec4${wgsl ? "f" : ""}(${v3}(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow), baseColor.a);
+baseColor = ${v3}(${rgb(STONE)}) * (1. - ${f(HOLLOW)} * peakHollow);
 ${decl} peakShine = 1. - ${f(DULL)} * peakHollow;
 townShine = ${f(ROCK_SHINE)} * peakShine;
-normalW = normalize(${v3}(peakDown * (peakLip * ${f(ROLL)} + peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
+N = normalize(${v3}(peakDown * (peakLip * ${f(ROLL)} + peakCliff * ${f(CLIFF_TILT)}) + peakSlate.xy * ${f(RELIEF)}, 1.));`;
 };
 
 /** Each scene's slate: flat until the worker has baked it. The cliffs the
  *  land stands on break along it too (`ground.ts`). */
-const SLATES = new Map<Scene, RawTexture>();
-export function slate(scene: Scene): RawTexture {
-  let texture = SLATES.get(scene);
+const SLATES = new Map<EngineContext, Texture2D>();
+export function slate(engine: EngineContext): Texture2D {
+  let texture = SLATES.get(engine);
   if (!texture) {
-    const make = (data: Uint8Array, side: number) => {
-      const t = new RawTexture(data, side, side, Constants.TEXTUREFORMAT_RGBA, scene, true, false, Constants.TEXTURE_TRILINEAR_SAMPLINGMODE);
-      t.wrapU = t.wrapV = Constants.TEXTURE_WRAP_ADDRESSMODE;
-      return t;
-    };
-    texture = make(new Uint8Array([128, 128, 255, 255]), 1);
-    SLATES.set(scene, texture);
+    const flat = new Uint8Array(SLATE_SIDE * SLATE_SIDE * 4);
+    for (let k = 0; k < flat.length; k += 4) flat.set([128, 128, 255, 255], k);
+    const made = createTexture2DFromPixels(engine, flat, SLATE_SIDE, SLATE_SIDE, {
+      mipmaps: true,
+      minFilter: "linear",
+      magFilter: "linear",
+      addressModeU: "repeat",
+      addressModeV: "repeat",
+    });
+    SLATES.set(engine, (texture = made));
     const worker = new Worker(new URL("./slateWorker.ts", import.meta.url), { type: "module" });
     worker.onmessage = ({ data }: MessageEvent<Uint8Array>) => {
       worker.terminate();
-      SLATES.get(scene)?.dispose();
-      SLATES.set(scene, make(data, Math.sqrt(data.length / 4)));
+      updateTexture2DFromPixels(engine, made, data);
     };
   }
   return texture;
 }
 
-class BasaltPlugin extends MaterialPluginBase {
-  constructor(
-    material: Material,
-    /** Its chunk's heights. */
-    private heights: RawTexture,
-  ) {
-    super(material, "Basalt", 200, new BasaltDefines());
-    this._enable(true);
-  }
-
-  isCompatible() {
-    return true;
-  }
-
-  prepareDefines(defines: BasaltDefines) {
-    defines.BASALT = true;
-  }
-
-  getSamplers(samplers: string[]) {
-    samplers.push("slate", "peakHeights");
-  }
-
-  bindForSubMesh(ubo: { setTexture(n: string, t: unknown): void }) {
-    ubo.setTexture("slate", slate(this._material.getScene()));
-    ubo.setTexture("peakHeights", this.heights);
-  }
-
-  getClassName() {
-    return "BasaltPlugin";
-  }
-
-  getCustomCode(shaderType: string, shaderLanguage = 0): Record<string, string> | null {
-    const wgsl = shaderLanguage === 1;
-    if (shaderType === "vertex") {
-      return wgsl
-        ? {
-            CUSTOM_VERTEX_DEFINITIONS: `varying vPeakAt: vec3f;`,
-            CUSTOM_VERTEX_UPDATE_WORLDPOS: `let peakNormal = vec3f(0., 0., 1.);`,
-            CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vPeakAt = vertexInputs.position;`,
-          }
-        : {
-            CUSTOM_VERTEX_DEFINITIONS: `varying vec3 vPeakAt;`,
-            CUSTOM_VERTEX_UPDATE_WORLDPOS: `vec3 peakNormal = vec3(0., 0., 1.);`,
-            CUSTOM_VERTEX_MAIN_END: `vPeakAt = position;`,
-          };
-    }
-    return wgsl
-      ? {
-          CUSTOM_FRAGMENT_DEFINITIONS: `var slateSampler: sampler; var slate: texture_2d<f32>; var peakHeightsSampler: sampler; var peakHeights: texture_2d<f32>; varying vPeakAt: vec3f;
-${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
-${heightFn((c) => `textureLoad(peakHeights, ${c}, 0).r`, "vec2f", "vec3f", "vec2i", "fn peakHeightAt(p: vec2f, corner: vec2f) -> vec3f", "let")}`,
-          CUSTOM_FRAGMENT_BEFORE_LIGHTS: peak("vec2f", "vec3f", "let", "fragmentInputs.vPeakAt"),
-        }
-      : {
-          CUSTOM_FRAGMENT_DEFINITIONS: `uniform sampler2D slate; uniform sampler2D peakHeights; varying vec3 vPeakAt;
-${read((uv) => `texture2D(slate, ${uv}, ${f(CALM)})`, "vec2", "vec3 slateRead(vec2 p)", "vec4")}
-${heightFn((c) => `texelFetch(peakHeights, ${c}, 0).r`, "vec2", "vec3", "ivec2", "vec3 peakHeightAt(vec2 p, vec2 corner)", "float")}`,
-          CUSTOM_FRAGMENT_BEFORE_LIGHTS: peak("vec2", "vec3", "float", "vPeakAt"),
-        };
-  }
-}
-
 /** A chunk's mountains' material, with the chunk's heights (half floats,
  *  `PEAK_SIDE` to a side): their surface is laid where it is on the map, so
- *  the slate and the heights are read by where a pixel is. Drawn into the
- *  shadow map by its own shader, so a layer's shadow is cut to its broken
- *  edge. */
-export function peakMaterial(scene: Scene, name: string, heights: Uint16Array): PBRMaterial {
-  const texture = new RawTexture(heights, PEAK_SIDE, PEAK_SIDE, Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
-  texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
-  const material = townMaterial(name, scene);
-  material.onDisposeObservable.addOnce(() => texture.dispose());
-  material.albedoColor = Color3.White();
-  lacquer(material, "rock");
-  material.backFaceCulling = false;
-  new BasaltPlugin(material, texture);
-  material.shadowDepthWrapper = new ShadowDepthWrapper(material, scene, { remappedVariables: ["worldPos", "worldPos", "vNormalW", "peakNormal"] });
-  return material;
+ *  the slate and the heights are read by where a pixel is. A layer is cut
+ *  to its broken edge where its shadow is drawn too. Its texture is let go
+ *  with `dispose`. */
+export function peakMaterial(engine: EngineContext, heights: Uint16Array) {
+  const texture = createTexture2DFromPixels(engine, heights, PEAK_SIDE, PEAK_SIDE, { format: "r16float" });
+  const plugin: MaterialPlugin = {
+    name: "Basalt",
+    priority: 200,
+    getVaryings: () => [{ name: "vPeakAt", type: "vec3f" }],
+    getSamplers: () => [
+      { texture: "slate", sampler: "slateSampler" },
+      { texture: "peakHeights", sampler: "peakHeightsSampler" },
+    ],
+    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }),
+    getCustomCode: (stage) =>
+      stage === "vertex"
+        ? { CUSTOM_VERTEX_MAIN_END: "out.vPeakAt = position;" }
+        : {
+            CUSTOM_FRAGMENT_DEFINITIONS: `${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
+${heightFn((c) => `textureLoad(peakHeights, ${c}, 0).r`, "vec2f", "vec3f", "vec2i", "fn peakHeightAt(p: vec2f, corner: vec2f) -> vec3f", "let")}`,
+            CUSTOM_FRAGMENT_UPDATE_ALPHA: peakCut("input.vPeakAt"),
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: peakLook(),
+          },
+  };
+  const material = lacquer(townMaterial([plugin]), "rock");
+  material.doubleSided = true;
+  return { material, dispose: () => retire(texture) };
 }
 
 /** How far in from the land's edge its cliff's plane is drawn, in tiles:
  *  past its lip, under where the grass stops (`ground.ts`). */
 const CLIFF_INNER = 0.9;
-
-class CliffDefines extends MaterialDefines {
-  LANDCLIFF = false;
-}
 
 /** The land's cliff, painted as a mountain's is on the plane under its
  *  edge (`layCliffPlane`): how far out from the land's edge a pixel is
@@ -260,79 +209,38 @@ ${decl === "let" ? "let" : "vec3"} cliffSlate = slateRead(${at}.xy);
 if (cliffFar > ${f(CLIFF_RUN)} || cliffFar < ${f(-CLIFF_INNER)}) { discard; }
 ${decl} cliffTilt = ${choose("1. - smoothstep(0., " + f(LIP) + ", -cliffFar)", f(CLIFF_TILT), "cliffFar > 0.")} * ${choose(f(ROLL), "1.", "cliffFar > 0.")};
 ${vec} cliffOut = normalize(normalize(cliffGrad.x * ${ax} + cliffGrad.y * ${ay} + 1e-6) + cliffSlate.xy * ${f(TURN)});
-baseColor = vec4${v3 === "vec3f" ? "f" : ""}(${v3}(${rgb(STONE)}), baseColor.a);
-normalW = normalize(${v3}(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
+baseColor = ${v3}(${rgb(STONE)});
+N = normalize(${v3}(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
 };
 
-class LandCliffPlugin extends MaterialPluginBase {
-  constructor(
-    material: Material,
-    /** Its chunk's field. */
-    private field: RawTexture,
-  ) {
-    super(material, "LandCliff", 200, new CliffDefines());
-    this._enable(true);
-  }
-
-  isCompatible() {
-    return true;
-  }
-
-  prepareDefines(defines: CliffDefines) {
-    defines.LANDCLIFF = true;
-  }
-
-  getSamplers(samplers: string[]) {
-    samplers.push("slate", "cliffField");
-  }
-
-  bindForSubMesh(ubo: { setTexture(n: string, t: unknown): void }) {
-    ubo.setTexture("slate", slate(this._material.getScene()));
-    ubo.setTexture("cliffField", this.field);
-  }
-
-  getClassName() {
-    return "LandCliffPlugin";
-  }
-
-  getCustomCode(shaderType: string, shaderLanguage = 0): Record<string, string> | null {
-    const wgsl = shaderLanguage === 1;
-    if (shaderType === "vertex") {
-      return wgsl
-        ? {
-            CUSTOM_VERTEX_DEFINITIONS: `varying vCliffAt: vec2f; varying vCliffX: vec2f; varying vCliffY: vec2f;`,
-            CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vCliffAt = vertexInputs.position.xy; vertexOutputs.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; vertexOutputs.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;`,
-          }
-        : {
-            CUSTOM_VERTEX_DEFINITIONS: `varying vec2 vCliffAt; varying vec2 vCliffX; varying vec2 vCliffY;`,
-            CUSTOM_VERTEX_MAIN_END: `vCliffAt = position.xy; vCliffX = (finalWorld * vec4(1., 0., 0., 0.)).xy; vCliffY = (finalWorld * vec4(0., 1., 0., 0.)).xy;`,
-          };
-    }
-    return wgsl
-      ? {
-          CUSTOM_FRAGMENT_DEFINITIONS: `var slateSampler: sampler; var slate: texture_2d<f32>; var cliffFieldSampler: sampler; var cliffField: texture_2d<f32>; varying vCliffAt: vec2f; varying vCliffX: vec2f; varying vCliffY: vec2f;
-${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
-fn cliffSlateTop(p: vec2f) -> f32 { return textureSampleBias(slate, slateSampler, p / ${f(SPAN)}, ${f(CALM)}).b; }`,
-          CUSTOM_FRAGMENT_BEFORE_LIGHTS: landCliff((uv) => `textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.)`, "vec2f", "vec3f", "let", "fragmentInputs.vPositionW", "fragmentInputs.vCliffAt", "fragmentInputs.vCliffX", "fragmentInputs.vCliffY"),
-        }
-      : {
-          CUSTOM_FRAGMENT_DEFINITIONS: `uniform sampler2D slate; uniform sampler2D cliffField; varying vec2 vCliffAt; varying vec2 vCliffX; varying vec2 vCliffY;
-${read((uv) => `texture2D(slate, ${uv}, ${f(CALM)})`, "vec2", "vec3 slateRead(vec2 p)", "vec4")}
-float cliffSlateTop(vec2 p) { return texture2D(slate, p / ${f(SPAN)}, ${f(CALM)}).b; }`,
-          CUSTOM_FRAGMENT_BEFORE_LIGHTS: landCliff((uv) => `texture2D(cliffField, ${uv})`, "vec2", "vec3", "float", "vPositionW", "vCliffAt", "vCliffX", "vCliffY"),
-        };
-  }
-}
-
-/** A chunk's land's cliff's material, with its field (`cliffField`). */
-export function cliffMaterial(scene: Scene, name: string, field: Uint8Array): PBRMaterial {
+/** A chunk's land's cliff's material, with its field (`cliffField`); its
+ *  texture let go with `dispose`. */
+export function cliffMaterial(engine: EngineContext, field: Uint8Array) {
   const side = CHUNK_SIZE * SHORE_DENSITY;
-  const texture = new RawTexture(field, side, side, Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE);
-  texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
-  const material = townMaterial(name, scene);
-  material.onDisposeObservable.addOnce(() => texture.dispose());
-  material.albedoColor = Color3.White();
-  material.backFaceCulling = false;
-  new LandCliffPlugin(material, texture);
-  return lacquer(material, "rock");
+  const texture = createTexture2DFromPixels(engine, field, side, side, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
+  const plugin: MaterialPlugin = {
+    name: "LandCliff",
+    priority: 200,
+    getVaryings: () => [
+      { name: "vCliffAt", type: "vec2f" },
+      { name: "vCliffX", type: "vec2f" },
+      { name: "vCliffY", type: "vec2f" },
+    ],
+    getSamplers: () => [
+      { texture: "slate", sampler: "slateSampler" },
+      { texture: "cliffField", sampler: "cliffFieldSampler" },
+    ],
+    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }),
+    getCustomCode: (stage) =>
+      stage === "vertex"
+        ? { CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
+        : {
+            CUSTOM_FRAGMENT_DEFINITIONS: `${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
+fn cliffSlateTop(p: vec2f) -> f32 { return textureSampleBias(slate, slateSampler, p / ${f(SPAN)}, ${f(CALM)}).b; }`,
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: landCliff((uv) => `textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.)`, "vec2f", "vec3f", "let", "input.worldPos", "input.vCliffAt", "input.vCliffX", "input.vCliffY"),
+          },
+  };
+  const material = lacquer(townMaterial([plugin]), "rock");
+  material.doubleSided = true;
+  return { material, dispose: () => retire(texture) };
 }

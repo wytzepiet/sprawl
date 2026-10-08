@@ -1,5 +1,5 @@
 import type { TerrainType } from "../../generated";
-import type { MeshGeometry } from "../Mesh";
+import type { MeshGeometry } from "../geometry";
 import { fillTriangles } from "../raster";
 
 // This module has no runtime imports, and must keep it that way: it is the

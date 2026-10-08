@@ -16,7 +16,6 @@
  * has the vehicle.
  */
 
-import { Vector3 } from "@babylonjs/core";
 import { drawnPath } from "./drawnPath";
 import { CAB, CAR, LANE_OFFSET, TRAILER } from "./roadGeometry";
 
@@ -253,7 +252,7 @@ export function driveTrip(route: Pt[], fromLot: number, toLot: number, backing: 
   const parts: { points: Pt[]; backing: boolean }[] = [];
   for (let c = 1; c < cuts.length; c++) {
     const [i, j] = [cuts[c - 1], cuts[c]];
-    const nodes = route.slice(i, j + 1).map(([x, y]) => new Vector3(x, y, 0));
+    const nodes = route.slice(i, j + 1).map(([x, y]) => ({ x, y }));
     const fl = Math.max(fromLot - i, i > 0 ? 1 : 0), tl = Math.max(j + 1 - (n - toLot), j < n - 1 ? 1 : 0);
     const drawn = drawnPath(nodes, LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
     if (drawn) parts.push({ points: drawn.points.map((p): Pt => [p.x, p.y]), backing: backing.some(([a, b]) => a <= i && i < b) });

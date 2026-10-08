@@ -35,8 +35,8 @@ interface MountedEntry {
 
 export default function World() {
   const pool = useInstancePool();
-  const { scene } = useEngine();
-  const { ambientColor, shadowGenerator } = useDayNight();
+  const ctx = useEngine();
+  const { casters } = useDayNight();
   const theme = useTheme();
 
   const mounted = new Map<string, MountedEntry>();
@@ -83,22 +83,21 @@ export default function World() {
     }
   }
 
-  const terrain = new TerrainChunks(scene, shadowGenerator()!, theme, isBuilt);
-  const fog = new FogOfWar(scene);
+  const terrain = new TerrainChunks(ctx, casters()!, theme, isBuilt);
+  const fog = new FogOfWar(ctx);
   // Red where no joined road reaches it; grey where any stock is bare.
   const lookOf = (entry: GameObjectEntry) =>
     !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY;
-  const town = new TownLayer(scene, pool, shadowGenerator()!, theme, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
+  const town = new TownLayer(ctx, casters()!, theme, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
 
-  createEffect(on(ambientColor, (amb) => terrain.updateMaterials(amb)));
   createEffect(on(theme, () => (terrain.markAllDirty(), town.repaint()), { defer: true }));
 
   function mount(entry: GameObjectEntry): (() => void) | null {
     switch (entry.object.kind) {
       case "Building":
-        return mountBuilding(entry, pool, scene, theme(), lookOf(entry));
+        return mountBuilding(entry, pool, ctx, theme(), lookOf(entry));
       case "Car":
-        return mountCar(entry, pool, scene, theme(), SOLID);
+        return mountCar(entry, pool, ctx, theme(), SOLID);
       default:
         return null;
     }

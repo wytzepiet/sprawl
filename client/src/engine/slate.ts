@@ -139,7 +139,10 @@ function blur(field: Float32Array, size: number, r: number): Float32Array {
 export const SPAN = 3;
 export const SECOND = [2.7, 1.1, 0.35];
 
-export function bakeSlate(size = 512): Slate {
+/** The slate's texture's side, in texels. */
+export const SIDE = 512;
+
+export function bakeSlate(size = SIDE): Slate {
   const height = new Float32Array(size * size);
   let [lo, hi] = [Infinity, -Infinity];
   for (let j = 0; j < size; j++) {

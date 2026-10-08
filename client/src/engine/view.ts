@@ -1,5 +1,4 @@
-import { Matrix, Vector3, Viewport } from "@babylonjs/core";
-import type { Scene } from "@babylonjs/core";
+import { createPickingRay, getViewProjectionMatrix, type SceneContext } from "@babylonjs/lite";
 
 /**
  * Everything that needs to know how the world lands on the screen.
@@ -8,39 +7,36 @@ import type { Scene } from "@babylonjs/core";
  * places reached into the camera's orthographic extents and did their own
  * arithmetic on them, which meant the projection was not really the camera's
  * to choose. Nothing here knows which projection is in use — a ray is cast to
- * go from pixels to ground, the scene's own matrix goes the other way, and the
+ * go from pixels to ground, the camera's own matrix goes the other way, and the
  * size of the view is measured by asking where two pixels land.
  */
 
-const _origin = new Vector3();
-const _dir = new Vector3();
-const _point = new Vector3();
-const _out = new Vector3();
-const _identity = Matrix.Identity();
-const _viewport = new Viewport(0, 0, 0, 0);
+/** The camera's view and projection, for a canvas this many CSS pixels across. */
+function viewProjection(scene: SceneContext, width: number, height: number) {
+  return getViewProjectionMatrix(scene.camera!, width / height);
+}
 
 /** Where a ray through this canvas pixel meets the ground plane, z = 0. */
-function groundAt(scene: Scene, x: number, y: number): { wx: number; wy: number } {
-  const ray = scene.createPickingRay(x, y, _identity, scene.activeCamera);
-  _origin.copyFrom(ray.origin);
-  _dir.copyFrom(ray.direction);
+function groundAt(scene: SceneContext, width: number, height: number, x: number, y: number): { wx: number; wy: number } {
+  const ray = createPickingRay(x, y, viewProjection(scene, width, height), width, height);
+  if (!ray) return { wx: 0, wy: 0 };
+  const [ox, oy, oz] = ray.origin;
+  const [dx, dy, dz] = ray.direction;
   // Looking down at a flat world, so the ground is always ahead and this never
   // divides by zero — but a camera turned to the horizon would, so say so.
-  if (Math.abs(_dir.z) < 1e-6) {
-    return { wx: _origin.x, wy: _origin.y };
-  }
-  const t = -_origin.z / _dir.z;
-  return { wx: _origin.x + _dir.x * t, wy: _origin.y + _dir.y * t };
+  if (Math.abs(dz) < 1e-6) return { wx: ox, wy: oy };
+  const t = -oz / dz;
+  return { wx: ox + dx * t, wy: oy + dy * t };
 }
 
 /** Where a pointer event lands on the ground. */
 export function screenToWorld(
-  scene: Scene,
+  scene: SceneContext,
   canvas: HTMLCanvasElement,
   e: { clientX: number; clientY: number },
 ): { wx: number; wy: number } {
   const rect = canvas.getBoundingClientRect();
-  return groundAt(scene, e.clientX - rect.left, e.clientY - rect.top);
+  return groundAt(scene, rect.width, rect.height, e.clientX - rect.left, e.clientY - rect.top);
 }
 
 /**
@@ -49,12 +45,12 @@ export function screenToWorld(
  * down that is half the diagonal; leaning back, the far corners run away and
  * the circle grows toward them.
  */
-export function groundCover(scene: Scene, canvas: HTMLCanvasElement): { cx: number; cy: number; radius: number } {
+export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { cx: number; cy: number; radius: number } {
   const { width, height } = canvas.getBoundingClientRect();
-  const mid = groundAt(scene, width / 2, height / 2);
+  const mid = groundAt(scene, width, height, width / 2, height / 2);
   let radius = 0;
   for (const [x, y] of [[0, 0], [width, 0], [0, height], [width, height]]) {
-    const c = groundAt(scene, x, y);
+    const c = groundAt(scene, width, height, x, y);
     radius = Math.max(radius, Math.hypot(c.wx - mid.wx, c.wy - mid.wy));
   }
   return { cx: mid.wx, cy: mid.wy, radius };
@@ -67,11 +63,11 @@ export function groundCover(scene: Scene, canvas: HTMLCanvasElement): { cx: numb
  * where its edges land. Under perspective those distances depend on how high
  * the camera is and how wide its lens; measuring gets the answer either way.
  */
-export function viewExtent(scene: Scene, canvas: HTMLCanvasElement): { halfW: number; halfH: number } {
-  const rect = canvas.getBoundingClientRect();
-  const mid = groundAt(scene, rect.width / 2, rect.height / 2);
-  const top = groundAt(scene, rect.width / 2, 0);
-  const side = groundAt(scene, 0, rect.height / 2);
+export function viewExtent(scene: SceneContext, canvas: HTMLCanvasElement): { halfW: number; halfH: number } {
+  const { width, height } = canvas.getBoundingClientRect();
+  const mid = groundAt(scene, width, height, width / 2, height / 2);
+  const top = groundAt(scene, width, height, width / 2, 0);
+  const side = groundAt(scene, width, height, 0, height / 2);
   return {
     halfW: Math.hypot(side.wx - mid.wx, side.wy - mid.wy),
     halfH: Math.hypot(top.wx - mid.wx, top.wy - mid.wy),
@@ -84,18 +80,17 @@ export function viewExtent(scene: Scene, canvas: HTMLCanvasElement): { halfW: nu
  * Kept as a closure over the frame's transform so a few hundred pins cost a few
  * hundred matrix multiplies and no allocation at all.
  */
-export function projector(scene: Scene, canvas: HTMLCanvasElement) {
+export function projector(scene: SceneContext, canvas: HTMLCanvasElement) {
   const rect = canvas.getBoundingClientRect();
-  const transform = scene.getTransformMatrix();
-  _viewport.width = rect.width;
-  _viewport.height = rect.height;
+  const m = viewProjection(scene, rect.width, rect.height);
   return {
     rect,
     /** Where a world point lands, in client coordinates. */
     at(wx: number, wy: number, wz = 0): { sx: number; sy: number } {
-      _point.set(wx, wy, wz);
-      Vector3.ProjectToRef(_point, _identity, transform, _viewport, _out);
-      return { sx: rect.left + _out.x, sy: rect.top + _out.y };
+      const x = m[0] * wx + m[4] * wy + m[8] * wz + m[12];
+      const y = m[1] * wx + m[5] * wy + m[9] * wz + m[13];
+      const w = m[3] * wx + m[7] * wy + m[11] * wz + m[15];
+      return { sx: rect.left + ((x / w + 1) / 2) * rect.width, sy: rect.top + ((1 - y / w) / 2) * rect.height };
     },
   };
 }

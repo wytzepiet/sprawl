@@ -1,9 +1,9 @@
-import { Color3, Vector3, type PBRMaterial, type StandardMaterial } from "@babylonjs/core";
-import type { Scene } from "@babylonjs/core";
+import type { EngineContext } from "../Canvas";
+import { rgb } from "../rgb";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { carShape, ROUNDING } from "./carShape";
-import { lacquer, type BevelPlugin } from "../bevel";
+import { lacquer } from "../bevel";
 import { simNow } from "../../network/clock";
 import type { Look } from "./look";
 import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
@@ -19,26 +19,26 @@ import { carPoses, parts } from "../../state/selection";
 /// Everyone keeps their car for life, and its id never changes — so neither
 /// does its colour.
 const PALETTE = [
-  new Color3(0.9, 0.25, 0.2),
-  new Color3(0.85, 0.85, 0.88),
-  new Color3(0.2, 0.22, 0.28),
-  new Color3(0.25, 0.4, 0.75),
-  new Color3(0.65, 0.65, 0.68),
-  new Color3(0.55, 0.15, 0.15),
-  new Color3(0.2, 0.5, 0.4),
-  new Color3(0.8, 0.65, 0.25),
+  rgb(0.9, 0.25, 0.2),
+  rgb(0.85, 0.85, 0.88),
+  rgb(0.2, 0.22, 0.28),
+  rgb(0.25, 0.4, 0.75),
+  rgb(0.65, 0.65, 0.68),
+  rgb(0.55, 0.15, 0.15),
+  rgb(0.2, 0.5, 0.4),
+  rgb(0.8, 0.65, 0.25),
 ];
 const carGeo = carShape(CAR.w, CAR.l, CAR.h);
 /** A van: a box a car and a bit long, tall, and always the same white. */
 const vanGeo = boxGeometry(0.17, 0.37, 0.18);
-const VAN = new Color3(0.92, 0.92, 0.9);
-const TRACTOR = new Color3(0.36, 0.55, 0.16);
+const VAN = rgb(0.92, 0.92, 0.9);
+const TRACTOR = rgb(0.36, 0.55, 0.16);
 /** A lorry: a cab-over tractor, the vehicle the server moves, and a
  *  semi-trailer on its hitch (`driver.ts`), two boxes. */
 const cabGeo = boxGeometry(CAB.w, CAB.l, CAB.h);
 const trailerGeo = boxGeometry(TRAILER.w, TRAILER.l, TRAILER.h);
-const CAB_COLOR = new Color3(0.28, 0.36, 0.58);
-const TRAILER_COLOR = new Color3(0.9, 0.9, 0.88);
+const CAB_COLOR = rgb(0.28, 0.36, 0.58);
+const TRAILER_COLOR = rgb(0.9, 0.9, 0.88);
 
 /** A box sits on the road: its centre is half its height up. */
 const CAR_Z = ROAD_Z + CAR.h / 2;
@@ -47,15 +47,15 @@ const GROUND = ROAD_Z;
  *  a unit under the land. */
 const HULL = { w: 0.45, l: 1.6, h: 0.2 };
 const shipGeo = boxGeometry(HULL.w, HULL.l, HULL.h);
-const SHIP = new Color3(0.2, 0.24, 0.3);
+const SHIP = rgb(0.2, 0.24, 0.3);
 const SHIP_Z = -0.5 + HULL.h / 2;
 
 /** A vehicle's material: lacquered, and its edges rounded tight. A lit
  *  bucket's is the town's (`InstancePool`). */
-function glossy(material: PBRMaterial | StandardMaterial) {
-  lacquer(material as PBRMaterial, "car");
-  const bevel = material.pluginManager?.getPlugin<BevelPlugin>("Bevel");
-  if (bevel) bevel.width = ROUNDING;
+function glossy(pool: InstancePool, key: string) {
+  const bucket = pool.finish(key)!;
+  bucket.bevel.width = ROUNDING;
+  lacquer(bucket.material, "car");
 }
 
 /// Small deterministic hash so a car's colour is a fact about the car, not
@@ -70,18 +70,19 @@ function hash(id: number, salt: number): number {
 export function mountCar(
   entry: GameObjectEntry,
   pool: InstancePool,
-  scene: Scene,
+  ctx: EngineContext,
   theme: Theme,
   look: Look,
 ): () => void {
   const car = entry.object.data as Car;
-  if (car.role === "Truck") return mountLorry(entry.id, car, pool, scene, look);
+  if (car.role === "Truck") return mountLorry(entry.id, car, pool, ctx, look);
   // A tractor is drawn as a van in the farm's green until it has a shape of its own.
   const van = car.role === "Van" || car.role === "Tractor";
   const ship = car.role === "Ship";
   const color = ship ? SHIP : car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
   const bucket = ship ? `ship${look.key}` : car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`;
-  glossy(pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true).material);
+  pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
+  glossy(pool, bucket);
   const z = ship ? SHIP_Z : CAR_Z;
 
   if (!car.trip) driving.delete(entry.id);
@@ -120,16 +121,16 @@ export function mountCar(
   if (tone) {
     const farm = getEntity(car.owner);
     const land = new Set(farm?.object.kind === "Building" ? (farm.object.data as Building).land.map((t) => `${t.at.x},${t.at.y}`) : []);
-    strip = field(pool, run!.drawn, land, FIELD_Z + 0.002, tone);
+    strip = field(ctx, run!.drawn, land, FIELD_Z + 0.002, tone);
   }
-  const observer = scene.onBeforeRenderObservable.add(() => {
+  const stop = ctx.beforeRender(() => {
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
     carPoses.set(entry.id, [result.pos[0], result.pos[1]]);
     strip?.reach(result.dist);
   });
   return () => {
-    scene.onBeforeRenderObservable.remove(observer);
+    stop();
     pool.removeInstance(bucket, instanceId);
     strip?.dispose();
     carPoses.delete(entry.id);
@@ -139,11 +140,13 @@ export function mountCar(
 
 /** The two boxes of a lorry, parked or on the move: the cab, and the
  *  trailer on its hitch, as `driver.ts` steers them. */
-function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look: Look): () => void {
+function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext, look: Look): () => void {
   const cab = `lorry_cab${look.key}`;
   const trailer = `lorry_trailer${look.key}`;
-  glossy(pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true).material);
-  glossy(pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true).material);
+  pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true);
+  pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true);
+  glossy(pool, cab);
+  glossy(pool, trailer);
   const cabZ = GROUND + CAB.h / 2;
   const trailerZ = GROUND + TRAILER.h / 2;
   const placed = (p: Pose, z: number) => ({ pos: [p.x, p.y, z] as [number, number, number], rot: [0, 0, p.heading - Math.PI / 2] as [number, number, number] });
@@ -164,7 +167,7 @@ function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look
   const b = pool.addInstance(trailer, placed(first.trailer, trailerZ).pos, placed(first.trailer, trailerZ).rot);
   carPoses.set(id, [first.body.x, first.body.y]);
   parts.set(id, [{ key: cab, id: a }, { key: trailer, id: b }]);
-  const observer = drive && scene.onBeforeRenderObservable.add(() => {
+  const stop = drive && ctx.beforeRender(() => {
     const p = pose();
     carPoses.set(id, [p.body.x, p.body.y]);
     const [c, t] = [placed(p.body, cabZ), placed(p.trailer, trailerZ)];
@@ -172,7 +175,7 @@ function mountLorry(id: number, car: Car, pool: InstancePool, scene: Scene, look
     pool.updateInstance(trailer, b, t.pos, t.rot);
   });
   return () => {
-    if (observer) scene.onBeforeRenderObservable.remove(observer);
+    if (stop) stop();
     pool.removeInstance(cab, a);
     pool.removeInstance(trailer, b);
     carPoses.delete(id);
@@ -246,7 +249,7 @@ const EASE_STEP = 0.05;
  *  when the job is done there. */
 function followRun(car: Car, z: number): Follower | null {
   const run = car.run!;
-  const drawn = drawnPath(run.path.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0)), 0, 0, 0);
+  const drawn = drawnPath(run.path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 })), 0, 0, 0);
   if (!drawn) return null;
   const { atNode } = drawn;
   const at = (dist: number) => drawn.at(dist, z);

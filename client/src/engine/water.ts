@@ -1,4 +1,5 @@
-import { Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type PBRMaterial, type Scene } from "@babylonjs/core";
+import { createTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { retire } from "./geometry";
 import { townMaterial } from "./material";
 import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_RUN, CLIFF_WANDER, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
 import { CALM, slate } from "./peaks";
@@ -115,23 +116,27 @@ function rippleData(): Float32Array {
   return data;
 }
 
-const RIPPLES = new WeakMap<Scene, RawTexture>();
-export function ripples(scene: Scene): RawTexture {
-  let texture = RIPPLES.get(scene);
+const RIPPLES = new WeakMap<EngineContext, Texture2D>();
+export function ripples(engine: EngineContext): Texture2D {
+  let texture = RIPPLES.get(engine);
   if (!texture) {
-    texture = new RawTexture(rippleData(), SIDE, SIDE, Constants.TEXTUREFORMAT_RGBA, scene, true, false, Constants.TEXTURE_TRILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_FLOAT);
-    texture.wrapU = texture.wrapV = Constants.TEXTURE_WRAP_ADDRESSMODE;
-    RIPPLES.set(scene, texture);
+    texture = createTexture2DFromPixels(engine, rippleData(), SIDE, SIDE, {
+      format: "rgba32float",
+      mipmaps: true,
+      minFilter: "linear",
+      magFilter: "linear",
+      addressModeU: "repeat",
+      addressModeV: "repeat",
+    });
+    RIPPLES.set(engine, texture);
   }
   return texture;
 }
 
 const f = (x: number) => x.toFixed(4);
-const water = (wgsl: boolean) => {
-  const [at, here, time, v2, v3] = wgsl
-    ? ["fragmentInputs.vPositionW.xy", "fragmentInputs.vWaterAt", "uniforms.waterTime", "vec2f", "vec3f"]
-    : ["vPositionW.xy", "vWaterAt", "waterTime", "vec2", "vec3"];
-  const read = (tex: string, uv: string) => (wgsl ? `textureSample(${tex}, ${tex}Sampler, ${uv})` : `texture2D(${tex}, ${uv})`);
+const water = () => {
+  const [at, here, time, v2, v3] = ["input.worldPos.xy", "input.vWaterAt", "material.waterTime", "vec2f", "vec3f"];
+  const read = (tex: string, uv: string) => `textureSample(${tex}, ${tex}Sampler, ${uv})`;
   // Where a reading is on the texture: drifting, then turned.
   const drift = ([span, dx, dy, speed, , turn]: number[]) => {
     const [c, s] = [Math.cos(turn), Math.sin(turn)];
@@ -145,16 +150,13 @@ const water = (wgsl: boolean) => {
     return `${v2}(${g}.x * ${f(c)} + ${g}.y * ${f(s)}, ${g}.y * ${f(c)} - ${g}.x * ${f(s)}) * ${f(l[4])}`;
   }).join(" + ");
   // The slate at the pixel, as the cliff's shader reads it for its edge.
-  const slateTop = wgsl
-    ? `textureSampleBias(waterSlate, waterSlateSampler, ${at} / ${f(SLATE_SPAN)}, ${f(CALM)})`
-    : `texture2D(waterSlate, ${at} / ${f(SLATE_SPAN)}, ${f(CALM)})`;
+  const slateTop = `textureSampleBias(waterSlate, waterSlateSampler, ${at} / ${f(SLATE_SPAN)}, ${f(CALM)})`;
   // The ripple's height, for the waves' timing.
   const height = (uv: string) => `${read("waterRipple", uv)}.b`;
-  const let_ = (name: string, type: string) => (wgsl ? `let ${name} = ` : `${type} ${name} = `);
-  const colour = wgsl ? "baseColor = vec4f(" : "baseColor.rgb = (";
-  const end = wgsl ? ", baseColor.a);" : ");";
+  const let_ = (name: string, _type: string) => `let ${name} = `;
+  const [colour, end] = ["baseColor = (", ");"];
   return [
-    `normalW = normalize(normalW + ${v3}(-(${slope}), 0.));`,
+    `N = normalize(N + ${v3}(-(${slope}), 0.));`,
     `${let_("shore", "float")}${read("waterShore", `${here} / ${f(CHUNK_SIZE)}`)}.r * ${f(SHORE_REACH)};`,
     `${let_("swell", "float")}${read("waterRipple", drift(LAYERS[0]))}.b;`,
     `${let_("foamEdge", "float")}${f(FOAM)} * (0.5 + 0.5 * swell) * (0.85 + 0.15 * sin(1.3 * ${time}));`,
@@ -164,89 +166,42 @@ const water = (wgsl: boolean) => {
     `${let_("ashore", "float")}min(shore, max(cliffFoot, 0.));`,
     `${let_("wave", "float")}${wavePhase(height, at, time, `ashore / ${f(WAVE_FROM)}`)};`,
     `${let_("foam", "float")}max(1. - smoothstep(foamEdge * 0.7, foamEdge, ashore), smoothstep(${f(1 - CREST / WAVE_FROM)}, 1., fract(wave)) * ${wavePiece(height, at, "wave", v2)} * (1. - smoothstep(${f(WAVE_FROM * 0.6)}, ${f(WAVE_FROM)}, ashore)) * (0.5 + 0.5 * swell));`,
-    `${colour}mix(baseColor.rgb * ${f(DEEP)}, mix(${v3}(${TURQUOISE.map(f).join(", ")}), ${v3}(${PALE.map(f).join(", ")}), exp(-shore / ${f(NEAR)})), exp(-shore / ${f(CLARITY)}))${end}`,
-    `${colour}mix(baseColor.rgb, ${v3}(${f(FOAM_WHITE)}), foam)${end}`,
+    `${colour}mix(baseColor * ${f(DEEP)}, mix(${v3}(${TURQUOISE.map(f).join(", ")}), ${v3}(${PALE.map(f).join(", ")}), exp(-shore / ${f(NEAR)})), exp(-shore / ${f(CLARITY)}))${end}`,
+    `${colour}mix(baseColor, ${v3}(${f(FOAM_WHITE)}), foam)${end}`,
   ].join("\n");
 };
 
-class WaterDefines extends MaterialDefines {
-  WATER = false;
-}
-
-class WaterPlugin extends MaterialPluginBase {
-  constructor(
-    material: Material,
-    private shore: RawTexture,
-    private cliff: RawTexture,
-  ) {
-    super(material, "Water", 210, new WaterDefines());
-    this._enable(true);
-  }
-
-  isCompatible() {
-    return true;
-  }
-
-  prepareDefines(defines: WaterDefines) {
-    defines.WATER = true;
-  }
-
-  getSamplers(samplers: string[]) {
-    samplers.push("waterRipple", "waterShore", "waterCliff", "waterSlate");
-  }
-
-  getUniforms(shaderLanguage = 0) {
-    return {
-      ubo: [
-        { name: "waterTime", size: 1, type: "float" },
-      ],
-      fragment: shaderLanguage === 1 ? "uniform waterTime: f32;" : "uniform float waterTime;",
-    };
-  }
-
-  bindForSubMesh(ubo: { updateFloat(name: string, v: number): void; setTexture(name: string, t: RawTexture): void }) {
-    // Seconds, wrapped so a long session keeps the drift's precision.
-    ubo.updateFloat("waterTime", (performance.now() / 1000) % 3600);
-    ubo.setTexture("waterRipple", ripples(this._material.getScene()));
-    ubo.setTexture("waterShore", this.shore);
-    ubo.setTexture("waterCliff", this.cliff);
-    ubo.setTexture("waterSlate", slate(this._material.getScene()));
-  }
-
-  getClassName() {
-    return "WaterPlugin";
-  }
-
-  getCustomCode(shaderType: string, shaderLanguage = 0): Record<string, string> {
-    const wgsl = shaderLanguage === 1;
-    // Where on its chunk a pixel is: the mesh's own frame, however placed.
-    if (shaderType === "vertex") {
-      return wgsl
-        ? { CUSTOM_VERTEX_DEFINITIONS: "varying vWaterAt: vec2f;", CUSTOM_VERTEX_MAIN_END: "vertexOutputs.vWaterAt = positionUpdated.xy;" }
-        : { CUSTOM_VERTEX_DEFINITIONS: "varying vec2 vWaterAt;", CUSTOM_VERTEX_MAIN_END: "vWaterAt = positionUpdated.xy;" };
-    }
-    return {
-      CUSTOM_FRAGMENT_DEFINITIONS: wgsl
-        ? "varying vWaterAt: vec2f; var waterRippleSampler: sampler; var waterRipple: texture_2d<f32>; var waterShoreSampler: sampler; var waterShore: texture_2d<f32>; var waterCliffSampler: sampler; var waterCliff: texture_2d<f32>; var waterSlateSampler: sampler; var waterSlate: texture_2d<f32>;"
-        : "varying vec2 vWaterAt; uniform sampler2D waterRipple; uniform sampler2D waterShore; uniform sampler2D waterCliff; uniform sampler2D waterSlate;",
-      CUSTOM_FRAGMENT_BEFORE_LIGHTS: water(wgsl),
-    };
-  }
-}
-
 /** A material for one chunk's water, its colour the mesh's own, by
  *  vertex, its shore as `shoreField` gives it, if it has one, its land's
- *  cliff as `cliffField` does. Their textures go
- *  with it. */
-export function waterMaterial(scene: Scene, shore: Uint8Array | null, cliff: Uint8Array | null): PBRMaterial {
-  const mat = townMaterial("water", scene, WATER_ROUGHNESS);
-  const side = shore ? CHUNK_SIZE * SHORE_DENSITY : 1;
-  const texture = new RawTexture(shore ?? new Uint8Array([255]), side, side, Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE);
-  texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
-  const cliffSide = cliff ? CHUNK_SIZE * SHORE_DENSITY : 1;
-  const cliffs = new RawTexture(cliff ?? new Uint8Array([255]), cliffSide, cliffSide, Constants.TEXTUREFORMAT_R, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE);
-  cliffs.wrapU = cliffs.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
-  new WaterPlugin(mat, texture, cliffs);
-  mat.onDisposeObservable.addOnce(() => (texture.dispose(), cliffs.dispose()));
-  return mat;
+ *  cliff as `cliffField` does. Its clock ticks before each frame
+ *  (`tick`); its textures are let go with `dispose`. Where on its chunk a
+ *  pixel is: the mesh's own frame, however placed. */
+export function waterMaterial(engine: EngineContext, shore: Uint8Array | null, cliff: Uint8Array | null) {
+  const field = (data: Uint8Array | null) =>
+    createTexture2DFromPixels(engine, data ?? new Uint8Array([255]), data ? CHUNK_SIZE * SHORE_DENSITY : 1, data ? CHUNK_SIZE * SHORE_DENSITY : 1, {
+      format: "r8unorm",
+      minFilter: "linear",
+      magFilter: "linear",
+    });
+  const [shores, cliffs] = [field(shore), field(cliff)];
+  const plugin: MaterialPlugin = {
+    name: "Water",
+    priority: 210,
+    getVaryings: () => [{ name: "vWaterAt", type: "vec2f" }],
+    getSamplers: () => ["waterRipple", "waterShore", "waterCliff", "waterSlate"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: ripples(engine) }, { texture: shores }, { texture: cliffs }, { texture: slate(engine) }),
+    getUniforms: () => ({ ubo: [{ name: "waterTime", type: "f32" }] }),
+    // Seconds, wrapped so a long session keeps the drift's precision.
+    writeUbo: (data, offsets) => void (data[offsets.get("waterTime")! / 4] = (performance.now() / 1000) % 3600),
+    getCustomCode: (stage) => (stage === "vertex" ? { CUSTOM_VERTEX_MAIN_END: "out.vWaterAt = position.xy;" } : { CUSTOM_FRAGMENT_UPDATE_DIFFUSE: water() }),
+  };
+  const material = townMaterial([plugin], WATER_ROUGHNESS);
+  return {
+    material,
+    tick: () => markMaterialUboDirty(material),
+    dispose() {
+      retire(shores);
+      retire(cliffs);
+    },
+  };
 }

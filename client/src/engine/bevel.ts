@@ -1,5 +1,5 @@
-import { MaterialDefines, MaterialPluginBase, type Material, type Mesh, type PBRMaterial } from "@babylonjs/core";
-import type { MeshGeometry } from "./Mesh";
+import { markMaterialUboDirty, setMeshAttribute, type EngineContext, type MaterialPlugin, type Mesh, type PbrMaterialProps } from "@babylonjs/lite";
+import type { MeshGeometry } from "./geometry";
 
 /**
  * Rounded edges, in the shading alone. Every triangle is told which of its
@@ -87,129 +87,67 @@ export function bevelled(geo: MeshGeometry & { colors?: number[] }): MeshGeometr
   return out;
 }
 
-/** Hands a mesh the bevel's data, from `bevelled`. */
-export function giveBevel(mesh: Mesh, geo: ReturnType<typeof bevelled>) {
-  geo.across.forEach((a, j) => mesh.setVerticesData(`bevelAcross${j}`, a, false, 3));
-  mesh.setVerticesData("bevelReach", geo.reach, false, 3);
+/** Hands a mesh the bevel's data, from `bevelled`: per vertex, the three
+ *  facings across, the reaches, and which corner of its triangle it is. */
+export function giveBevel(engine: EngineContext, mesh: Mesh, geo: ReturnType<typeof bevelled>) {
+  const n = geo.reach.length / 3;
+  const data = new Float32Array(n * 15);
+  for (let v = 0; v < n; v++) {
+    for (let j = 0; j < 3; j++) data.set(geo.across[j].slice(v * 3, v * 3 + 3), v * 15 + j * 3);
+    data.set(geo.reach.slice(v * 3, v * 3 + 3), v * 15 + 9);
+    data[v * 15 + 12 + (v % 3)] = 1;
+  }
+  setMeshAttribute(engine, mesh, "bevel", data);
 }
 
-class BevelDefines extends MaterialDefines {
-  BEVEL = false;
-}
+const ATTRIBUTES = ["bevelAcross0", "bevelAcross1", "bevelAcross2", "bevelReach", "bevelAt"];
+const VARYINGS = ["vBevelAcross0", "vBevelAcross1", "vBevelAcross2", "vBevelReach", "vBevelAt"];
 
-const VERTEX_GLSL = {
-  CUSTOM_VERTEX_DEFINITIONS: `#ifdef BEVEL
-attribute vec3 bevelAcross0; attribute vec3 bevelAcross1; attribute vec3 bevelAcross2; attribute vec3 bevelReach;
-varying vec3 vBevelAt; varying vec3 vBevelAcross0; varying vec3 vBevelAcross1; varying vec3 vBevelAcross2; varying vec3 vBevelReach;
-#endif`,
-  CUSTOM_VERTEX_MAIN_END: `#ifdef BEVEL
-float bevelCorner = mod(float(gl_VertexID), 3.);
-vBevelAt = bevelCorner == 0. ? vec3(1., 0., 0.) : bevelCorner == 1. ? vec3(0., 1., 0.) : vec3(0., 0., 1.);
-mat3 bevelWorld = mat3(finalWorld);
-vBevelAcross0 = normalize(bevelWorld * bevelAcross0); vBevelAcross1 = normalize(bevelWorld * bevelAcross1); vBevelAcross2 = normalize(bevelWorld * bevelAcross2);
-vBevelReach = bevelReach;
-#endif`,
-};
-const FRAGMENT_GLSL = {
-  CUSTOM_FRAGMENT_DEFINITIONS: `#ifdef BEVEL
-varying vec3 vBevelAt; varying vec3 vBevelAcross0; varying vec3 vBevelAcross1; varying vec3 vBevelAcross2; varying vec3 vBevelReach;
-vec3 bevelTurn(vec3 n, vec3 face, vec3 across, float reach, float at) {
-  if (reach <= 0.) return n;
-  // A crease rising from a sloping face, a hip or a ridge, rounds as the
-  // rest; a corner or an eave as softly as its material says.
-  float width = across.z > 0.05 && face.z > 0.15 && face.z < 0.97 ? bevelWidth : bevelSoft;
-  float w = 1. - clamp(at * reach / width, 0., 1.);
-  return normalize(mix(n, normalize(face + across), w));
-}
-#endif`,
-  CUSTOM_FRAGMENT_BEFORE_LIGHTS: `#ifdef BEVEL
-vec3 bevelFace = normalW;
-normalW = bevelTurn(normalW, bevelFace, vBevelAcross0, vBevelReach.x, vBevelAt.x);
-normalW = bevelTurn(normalW, bevelFace, vBevelAcross1, vBevelReach.y, vBevelAt.y);
-normalW = bevelTurn(normalW, bevelFace, vBevelAcross2, vBevelReach.z, vBevelAt.z);
-#endif`,
-};
-const VERTEX_WGSL = {
-  CUSTOM_VERTEX_DEFINITIONS: `#ifdef BEVEL
-attribute bevelAcross0: vec3f; attribute bevelAcross1: vec3f; attribute bevelAcross2: vec3f; attribute bevelReach: vec3f;
-varying vBevelAt: vec3f; varying vBevelAcross0: vec3f; varying vBevelAcross1: vec3f; varying vBevelAcross2: vec3f; varying vBevelReach: vec3f;
-#endif`,
-  CUSTOM_VERTEX_MAIN_END: `#ifdef BEVEL
-var bevelCorner = f32(input.vertexIndex) % 3.;
-vertexOutputs.vBevelAt = select(select(vec3f(0., 0., 1.), vec3f(0., 1., 0.), bevelCorner == 1.), vec3f(1., 0., 0.), bevelCorner == 0.);
-var bevelWorld = mat3x3f(finalWorld[0].xyz, finalWorld[1].xyz, finalWorld[2].xyz);
-vertexOutputs.vBevelAcross0 = normalize(bevelWorld * vertexInputs.bevelAcross0);
-vertexOutputs.vBevelAcross1 = normalize(bevelWorld * vertexInputs.bevelAcross1);
-vertexOutputs.vBevelAcross2 = normalize(bevelWorld * vertexInputs.bevelAcross2);
-vertexOutputs.vBevelReach = vertexInputs.bevelReach;
-#endif`,
-};
-const FRAGMENT_WGSL = {
-  CUSTOM_FRAGMENT_DEFINITIONS: `#ifdef BEVEL
-varying vBevelAt: vec3f; varying vBevelAcross0: vec3f; varying vBevelAcross1: vec3f; varying vBevelAcross2: vec3f; varying vBevelReach: vec3f;
-fn bevelTurn(n: vec3f, face: vec3f, across: vec3f, reach: f32, at: f32) -> vec3f {
+/** How round a material's creases are, in tiles, and its corners and eaves
+ *  if softer than the rest. */
+export type Bevel = { width: number; soft: number | null };
+
+/** The bevel, on a town material whose meshes carry `giveBevel`'s data. */
+export function bevelPlugin(bevel: Bevel = { width: BEVEL, soft: null }): MaterialPlugin {
+  return {
+    name: "Bevel",
+    priority: 200,
+    getAttributes: () => ATTRIBUTES.map((name) => ({ name, type: "vec3<f32>" as const, buffer: "bevel" })),
+    getVaryings: () => VARYINGS.map((name) => ({ name, type: "vec3f" as const })),
+    getUniforms: () => ({
+      ubo: [
+        { name: "bevelWidth", type: "f32" },
+        { name: "bevelSoft", type: "f32" },
+      ],
+    }),
+    writeUbo: (data, offsets) => {
+      data[offsets.get("bevelWidth")! / 4] = bevel.width;
+      data[offsets.get("bevelSoft")! / 4] = bevel.soft ?? bevel.width;
+    },
+    getCustomCode: (stage) =>
+      stage === "vertex"
+        ? {
+            CUSTOM_VERTEX_MAIN_END: `let bevelWorld = mat3x3f(finalWorld[0].xyz, finalWorld[1].xyz, finalWorld[2].xyz);
+out.vBevelAcross0 = normalize(bevelWorld * bevelAcross0);
+out.vBevelAcross1 = normalize(bevelWorld * bevelAcross1);
+out.vBevelAcross2 = normalize(bevelWorld * bevelAcross2);
+out.vBevelReach = bevelReach;
+out.vBevelAt = bevelAt;`,
+          }
+        : {
+            CUSTOM_FRAGMENT_DEFINITIONS: `fn bevelTurn(n: vec3f, face: vec3f, across: vec3f, reach: f32, at: f32, width: f32, soft: f32) -> vec3f {
   if (reach <= 0.) { return n; }
   // A crease rising from a sloping face, a hip or a ridge, rounds as the
   // rest; a corner or an eave as softly as its material says.
-  let width = select(uniforms.bevelSoft, uniforms.bevelWidth, across.z > 0.05 && face.z > 0.15 && face.z < 0.97);
-  let w = 1. - clamp(at * reach / width, 0., 1.);
+  let w = 1. - clamp(at * reach / select(soft, width, across.z > 0.05 && face.z > 0.15 && face.z < 0.97), 0., 1.);
   return normalize(mix(n, normalize(face + across), w));
-}
-#endif`,
-  CUSTOM_FRAGMENT_BEFORE_LIGHTS: `#ifdef BEVEL
-let bevelFace = normalW;
-normalW = bevelTurn(normalW, bevelFace, fragmentInputs.vBevelAcross0, fragmentInputs.vBevelReach.x, fragmentInputs.vBevelAt.x);
-normalW = bevelTurn(normalW, bevelFace, fragmentInputs.vBevelAcross1, fragmentInputs.vBevelReach.y, fragmentInputs.vBevelAt.y);
-normalW = bevelTurn(normalW, bevelFace, fragmentInputs.vBevelAcross2, fragmentInputs.vBevelReach.z, fragmentInputs.vBevelAt.z);
-#endif`,
-};
-
-/** The bevel, on a standard material whose meshes carry `giveBevel`'s data. */
-export class BevelPlugin extends MaterialPluginBase {
-  width = BEVEL;
-  /** How far its corners and eaves round, if softer than the rest. */
-  soft: number | null = null;
-
-  constructor(material: Material) {
-    super(material, "Bevel", 200, new BevelDefines());
-    this._enable(true);
-  }
-
-  isCompatible() {
-    return true;
-  }
-
-  prepareDefines(defines: BevelDefines) {
-    defines.BEVEL = true;
-  }
-
-  getAttributes(attributes: string[]) {
-    attributes.push("bevelAcross0", "bevelAcross1", "bevelAcross2", "bevelReach");
-  }
-
-  getUniforms(shaderLanguage = 0) {
-    return {
-      ubo: [
-        { name: "bevelWidth", size: 1, type: "float" },
-        { name: "bevelSoft", size: 1, type: "float" },
-      ],
-      fragment: shaderLanguage === 1 ? "uniform bevelWidth: f32; uniform bevelSoft: f32;" : "uniform float bevelWidth; uniform float bevelSoft;",
-    };
-  }
-
-  bindForSubMesh(ubo: { updateFloat(name: string, v: number): void }) {
-    ubo.updateFloat("bevelWidth", this.width);
-    ubo.updateFloat("bevelSoft", this.soft ?? this.width);
-  }
-
-  getClassName() {
-    return "BevelPlugin";
-  }
-
-  getCustomCode(shaderType: string, shaderLanguage = 0) {
-    const wgsl = shaderLanguage === 1;
-    return shaderType === "vertex" ? (wgsl ? VERTEX_WGSL : VERTEX_GLSL) : wgsl ? FRAGMENT_WGSL : FRAGMENT_GLSL;
-  }
+}`,
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `let bevelFace = N;
+N = bevelTurn(N, bevelFace, input.vBevelAcross0, input.vBevelReach.x, input.vBevelAt.x, material.bevelWidth, material.bevelSoft);
+N = bevelTurn(N, bevelFace, input.vBevelAcross1, input.vBevelReach.y, input.vBevelAt.y, material.bevelWidth, material.bevelSoft);
+N = bevelTurn(N, bevelFace, input.vBevelAcross2, input.vBevelReach.z, input.vBevelAt.z, material.bevelWidth, material.bevelSoft);`,
+          },
+  };
 }
 
 /** How lacquered each kind of thing is, as its roughness: cars glossy,
@@ -224,12 +162,12 @@ const LACQUER: Record<string, readonly [number, number?, number?]> = {
   rock: [0.6],
 };
 
-/** A material lacquered as its kind is. */
-export function lacquer(mat: PBRMaterial, kind: "car" | "building" | "tree" | "rock"): PBRMaterial {
+/** A material lacquered as its kind is: its roughness, and its bevel's. */
+export function lacquer<M extends PbrMaterialProps>(mat: M, kind: "car" | "building" | "tree" | "rock", bevel?: Bevel): M {
   const [roughness, round, soft] = LACQUER[kind];
-  mat.roughness = roughness;
-  const bevel = mat.pluginManager?.getPlugin<BevelPlugin>("Bevel");
+  mat.roughnessFactor = roughness;
   if (bevel && round !== undefined) bevel.width = round;
   if (bevel && soft !== undefined) bevel.soft = soft;
+  markMaterialUboDirty(mat);
   return mat;
 }

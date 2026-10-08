@@ -12,11 +12,14 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "noEmit": true,
+    // The renderer is our fork of Babylon Lite beside this repo; its types are built there
+    // (`tsc -p . --emitDeclarationOnly --outDir build/types` in packages/babylon-lite).
+    "paths": { "@babylonjs/lite": ["../../Babylon-Lite/packages/babylon-lite/build/types/index.d.ts"] },
 
     // Type Checking & Safety
     "strict": true,
     // bun-types and vite/client disagree about import.meta; that is theirs.
     "skipLibCheck": true,
-    "types": ["vite/client", "bun-types"]
+    "types": ["vite/client", "bun-types", "@webgpu/types"]
   }
 }

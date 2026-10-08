@@ -1,4 +1,4 @@
-import type { MeshGeometry } from "../Mesh";
+import type { MeshGeometry } from "../geometry";
 
 /**
  * Road surface geometry: pure maths over a set of arm angles, with no Babylon

@@ -1,4 +1,4 @@
-import type { Scene } from "@babylonjs/core";
+import type { SceneContext } from "@babylonjs/lite";
 import { snap, STEPS } from "./may";
 import { projector } from "./view";
 import { step, type Sprung } from "./spring";
@@ -128,7 +128,9 @@ export class Dots {
   private ink = 0;
   private sinceRead = READ;
 
-  constructor(private scene: Scene, private view: HTMLCanvasElement) {
+  private last = performance.now();
+
+  constructor(private scene: SceneContext, private view: HTMLCanvasElement) {
     this.el = document.createElement("div");
     this.el.className = "fixed inset-0 pointer-events-none";
     // A blur, then alpha pushed hard to opaque or nothing: shapes near
@@ -206,7 +208,9 @@ export class Dots {
 
   /** One frame: everything moves on, and is drawn. */
   frame() {
-    const dt = Math.min(0.05, this.scene.getEngine().getDeltaTime() / 1000);
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - this.last) / 1000);
+    this.last = now;
     let alive = false;
     for (const [key, d] of this.dots) {
       if (d.wait > 0) {
@@ -269,25 +273,18 @@ export class Dots {
     this.drawn = alive;
   }
 
-  /** Read how light the ground is now and then, from a patch at each of
-   *  nine points of the frame, and ease the ink to stand a step from it.
-   *  Called after the scene is drawn, so the frame is still there to read. */
+  /** Judge how light the ground is now and then, by the sky's colour, and
+   *  ease the ink to stand a step from it. */
   private sense(dt: number) {
     if ((this.sinceRead += dt) >= READ) {
       this.sinceRead = 0;
-      const engine = this.scene.getEngine();
-      const [w, h, n] = [engine.getRenderWidth(), engine.getRenderHeight(), 4];
-      const reads = [0.2, 0.5, 0.8].flatMap((fx) => [0.2, 0.5, 0.8].map((fy) => engine.readPixels(Math.round(fx * w), Math.round(fy * h), n, n)));
-      void Promise.all(reads).then((patches) => {
-        const read: number[][] = [];
-        for (const px of patches as Uint8Array[]) for (let i = 0; i < px.length; i += 4) read.push([px[i], px[i + 1], px[i + 2]]);
-        read.sort((a, b) => lum(a) - lum(b));
-        this.groundRGB = read[read.length >> 1];
-        this.ground = lum(this.groundRGB);
-        // Which way to stand turns only past the middle, so ground near
-        // it does not flicker the ink between the two.
-        this.darker = this.ground > (this.darker ? 0.45 : 0.55);
-      });
+      // The sky's colour, which goes with the day's light on the ground.
+      const c = this.scene.clearColor;
+      this.groundRGB = [c.r * 255, c.g * 255, c.b * 255];
+      this.ground = lum(this.groundRGB);
+      // Which way to stand turns only past the middle, so ground near
+      // it does not flicker the ink between the two.
+      this.darker = this.ground > (this.darker ? 0.45 : 0.55);
     }
     const [l0, l1] = [lum(DARK), lum(LIGHT)];
     const want = Math.min(1, Math.max(0, (this.ground + (this.darker ? -STEP : STEP) - l0) / (l1 - l0)));

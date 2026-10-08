@@ -1,8 +1,8 @@
-import Canvas from "./Canvas";
+import Canvas, { useEngine } from "./Canvas";
+import { Show, type ParentProps } from "solid-js";
 import { OrthoCamera } from "./OrthoCamera";
 import DayNightLights, { DayNightProvider } from "./DayNightCycle";
 import { InstancePoolProvider } from "./InstancePool";
-import Headlights from "./Headlights";
 import { Picker } from "./Picker";
 import { Highlight } from "./Highlight";
 import World from "./World";
@@ -11,7 +11,6 @@ import TimeControls from "../ui/TimeControls";
 import { GameProvider } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
-import FrameStats from "../ui/FrameStats";
 import PerfReport from "./PerfReport";
 import PinLayer from "../ui/PinLayer";
 import LumpLayer from "../ui/LumpLayer";
@@ -21,21 +20,26 @@ import Card from "../ui/Card";
 import Board from "../ui/Board";
 import Glass from "../ui/Glass";
 
+/** What is drawn, once the scene is registered (`Canvas.tsx`). */
+function Registered(props: ParentProps) {
+  const { registered } = useEngine();
+  return <Show when={registered()}>{props.children}</Show>;
+}
+
 function SceneInner() {
   return (
     <DayNightProvider>
       <Canvas>
         <OrthoCamera />
-        {/* <FrameStats /> */}
         {import.meta.env.DEV && <PerfReport />}
         <DayNightLights>
-          <Headlights>
+          <Registered>
             <InstancePoolProvider>
               <Picker />
-              <Highlight />
+              {/* <Highlight /> — the outline, to come back on Lite */}
               <World />
             </InstancePoolProvider>
-          </Headlights>
+          </Registered>
         </DayNightLights>
         <PinLayer />
         <LumpLayer />

@@ -1,4 +1,4 @@
-import type { MeshGeometry } from "./Mesh";
+import type { MeshGeometry } from "./geometry";
 import { fillTriangles } from "./raster";
 import { RIM, runsOn } from "./town/draw";
 

@@ -1,5 +1,5 @@
 import earcut from "earcut";
-import type { MeshGeometry } from "../Mesh";
+import type { MeshGeometry } from "../geometry";
 import type { Tile, Town } from "./grid";
 import { capped, eaves, slope, type RGB } from "./mass";
 import { facts, type Facts } from "./facts";

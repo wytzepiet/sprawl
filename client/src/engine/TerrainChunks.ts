@@ -1,15 +1,8 @@
-import {
-  Color3,
-  Mesh,
-  VertexData,
-  type Nullable,
-  type Observer,
-  type Scene,
-  type ShadowGenerator,
-  type PBRMaterial,
-  StandardMaterial,
-} from "@babylonjs/core";
-import { townMaterial } from "./material";
+import { setMeshVisible, type Mesh } from "@babylonjs/lite";
+import { CAST_ONLY, FLAT, townMaterial, type TownMaterial } from "./material";
+import type { EngineContext } from "./Canvas";
+import type { Casters } from "./DayNightCycle";
+import { drop, meshOf, show } from "./geometry";
 import * as Comlink from "comlink";
 import type { Theme } from "./theme";
 import {
@@ -25,7 +18,7 @@ import {
 import { GroundTiles } from "./ground";
 import { cliffMaterial, peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
-import { grove, plant, SHADOW_ONLY, uproot, type Grove } from "./trees";
+import { grove, plant, uproot, type Grove } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
@@ -42,18 +35,18 @@ const APPLIES_PER_FRAME = 2;
 /** Sun frustum half-extent beyond which per-chunk detail is dropped. */
 const DETAIL_MAX_ORTHO = 30;
 
+/** A chunk's meshes, as last drawn: its water; its cliffs' walls, flat; the
+ *  plane under the land's edge its cliff is painted on; its mountains; the
+ *  walls under their layers, in the shadow map alone. None where it has none.
+ *  And its trees, kept as it is drawn again; what goes with its materials;
+ *  and its water's clock. */
 interface ChunkMeshes {
-  water: Mesh;
-  cliffs: Mesh;
-  peaks: Mesh;
-  /** The plane under the land's edge its cliff is painted on. */
-  cliff: Mesh;
-  /** The walls under the mountains' layers: in the shadow map alone. */
-  walls: Mesh;
+  meshes: Mesh[];
+  cliffs: Mesh | null;
   trees: Grove;
-  /** Empty meshes must stay disabled — see applyBuffers. */
-  hasCliffs: boolean;
   hasTrees: boolean;
+  dispose: (() => void)[];
+  tick: (() => void) | null;
 }
 
 const floorDiv = (a: number, b: number) => Math.floor(a / b);
@@ -89,49 +82,45 @@ export class TerrainChunks {
   private builder = Comlink.wrap<TerrainApi>(this.worker);
 
   private ground: GroundTiles;
-  private cliffMat: StandardMaterial;
-  private wallMat: PBRMaterial;
-  private observer: Nullable<Observer<Scene>>;
+  /** The cliffs' walls, drawn flat; the mountains' walls, cast only. The
+   *  walls cast only from the side away from the sun; the faces turned to
+   *  it, whose shadow falls on the layer they hold up, are culled. Which
+   *  side that is, wound as `layWalls` winds them and seen from the sun, was
+   *  found by the shadow a lee side throws on the ground. */
+  private cliffMat: TownMaterial;
+  private wallMat: TownMaterial;
+  private stop: () => void;
   private detailVisible = true;
 
   constructor(
-    private scene: Scene,
-    private shadowGenerator: ShadowGenerator,
+    private ctx: EngineContext,
+    private casters: Casters,
     private theme: () => Theme,
     private isBuilt: (x: number, y: number) => boolean,
   ) {
-    this.cliffMat = new StandardMaterial("terrain_cliff", scene);
     // The one material that genuinely wants both sides. Cliff walls exist only
     // to cast shadows, and the sun swings through 360 degrees while a wall's
     // facing is fixed -- culled, a wall pointing away from the sun writes no
     // depth into the shadow map and its cliff stops casting for half the day.
     // They are edge-on to the camera, so the second side costs no fill.
-    this.cliffMat.backFaceCulling = false;
-    this.cliffMat.specularColor = Color3.Black();
-    this.cliffMat.disableLighting = true;
-    // The mountains' walls cast only from the side away from the sun; the
-    // faces turned to it, whose shadow falls on the layer they hold up, are
-    // culled. Which side that is, wound as `layWalls` winds them and seen
-    // from the sun, was found by the shadow a lee side throws on the ground.
-    this.wallMat = townMaterial("terrain_walls", scene);
-    this.wallMat.backFaceCulling = true;
-    this.wallMat.cullBackFaces = true;
+    this.cliffMat = townMaterial([FLAT]);
+    this.cliffMat.doubleSided = true;
+    this.wallMat = townMaterial([CAST_ONLY]);
 
-
-    this.ground = new GroundTiles(scene);
+    this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender);
     this.paintGround();
-    this.updateMaterials(new Color3(1, 1, 1));
 
-    this.observer = scene.onBeforeRenderObservable.add(() => {
+    this.stop = ctx.beforeRender(() => {
       this.updateDetail();
       this.flush();
+      for (const chunk of this.chunks.values()) chunk.tick?.();
     });
   }
 
   /** Each layer of the land its colour, bottom up (`LAYERS`). */
   private paintGround(): void {
     const t = this.theme();
-    this.ground.paint([t.beach, t.rock, t.land, t.forest].map((c) => new Color3(c.r, c.g, c.b)));
+    this.ground.paint([t.beach, t.rock, t.land, t.forest]);
   }
 
   /** The worker has no Babylon, so the theme crosses as plain floats. */
@@ -259,150 +248,102 @@ export class TerrainChunks {
 
   private applyGeometry(key: string, geometry: ChunkGeometry): void {
     const [cx, cy] = parseKey(key);
-    const meshes =
-      this.chunks.get(key) ?? this.createChunk(key, cx * CHUNK_SIZE, cy * CHUNK_SIZE);
+    const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
+    const { engine, scene } = this.ctx;
+    const old = this.chunks.get(key);
+    const chunk: ChunkMeshes = { meshes: [], cliffs: null, trees: old?.trees ?? grove(this.ctx, `chunk_${key}`), hasTrees: old?.hasTrees ?? false, dispose: [], tick: null };
+    if (old) this.dropMeshes(old);
 
-    this.ground.set(key, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], geometry.layers);
-    // Its own material, for its own shore.
-    meshes.water.material?.dispose();
-    meshes.water.material = waterMaterial(this.scene, geometry.shore, geometry.cliffField);
-    meshes.water.setEnabled(this.applyBuffers(meshes.water, geometry.water));
-    meshes.hasCliffs = this.applyBuffers(meshes.cliffs, geometry.cliffs);
-    // Its own material, for its own field.
-    meshes.cliff.material?.dispose();
-    meshes.cliff.material = geometry.cliffField ? cliffMaterial(this.scene, `chunk_${key}_cliff`, geometry.cliffField) : null;
-    meshes.cliff.setEnabled(!!geometry.cliffField && this.applyBuffers(meshes.cliff, geometry.cliff));
-    // Its own material, for its own heights.
-    meshes.peaks.material?.dispose();
-    meshes.peaks.material = geometry.peakHeights ? peakMaterial(this.scene, `chunk_${key}_peaks`, geometry.peakHeights) : null;
-    meshes.peaks.setEnabled(!!geometry.peakHeights && this.applyBuffers(meshes.peaks, geometry.peaks));
-    meshes.walls.setEnabled(this.applyBuffers(meshes.walls, geometry.peakWalls));
-    this.applyDetail(meshes);
+    this.ground.set(key, [ox, oy], geometry.layers);
+    // A mesh of what there is, if anything, placed from the chunk's corner
+    // or, the mountains' laid where they are on the map, not.
+    const add = (name: string, buf: MeshBuffers, material: TownMaterial, at: [number, number], shadows: { cast: boolean; receive: boolean }) => {
+      if (!buf.indices.length) return null;
+      const mesh = meshOf(engine, `chunk_${key}_${name}`, { positions: buf.positions, normals: buf.normals, indices: buf.indices, colors: buf.colors });
+      mesh.material = material;
+      mesh.receiveShadows = shadows.receive;
+      mesh.position.x = at[0];
+      mesh.position.y = at[1];
+      show(scene, mesh);
+      if (shadows.cast) this.casters.add(mesh);
+      chunk.meshes.push(mesh);
+      return mesh;
+    };
+    // Its own materials: for its own shore, its own field, its own heights.
+    const water = waterMaterial(engine, geometry.shore, geometry.cliffField);
+    chunk.dispose.push(water.dispose);
+    chunk.tick = water.tick;
+    add("water", geometry.water, water.material, [ox, oy], { cast: false, receive: true });
+    chunk.cliffs = add("cliffs", geometry.cliffs, this.cliffMat, [ox, oy], { cast: true, receive: false });
+    if (geometry.cliffField) {
+      const cliff = cliffMaterial(engine, geometry.cliffField);
+      chunk.dispose.push(cliff.dispose);
+      add("cliff", geometry.cliff, cliff.material, [ox, oy], { cast: false, receive: true });
+    }
+    if (geometry.peakHeights) {
+      const peaks = peakMaterial(engine, geometry.peakHeights);
+      chunk.dispose.push(peaks.dispose);
+      add("peaks", geometry.peaks, peaks.material, [0, 0], { cast: true, receive: true });
+    }
+    add("walls", geometry.peakWalls, this.wallMat, [0, 0], { cast: true, receive: false });
+    this.chunks.set(key, chunk);
+    this.applyDetail(chunk);
 
     this.rebuildTrees(key);
   }
 
   /** Cheap enough to run on demand: placement is seeded off the tile coords. */
   private rebuildTrees(key: string): void {
-    const meshes = this.chunks.get(key);
+    const chunk = this.chunks.get(key);
     const tiles = this.tiles.get(key);
-    if (!meshes || !tiles) return;
+    if (!chunk || !tiles) return;
 
     const [cx, cy] = parseKey(key);
     const { matrices, colors } = buildTrees(tiles, cx, cy, this.isBuilt, this.theme().crowns);
-    meshes.hasTrees = plant(meshes.trees, matrices, colors);
-    this.applyDetail(meshes);
-  }
-
-  private createChunk(key: string, originX: number, originY: number): ChunkMeshes {
-    const water = new Mesh(`chunk_${key}_water`, this.scene);
-    water.receiveShadows = true;
-
-    const cliffs = new Mesh(`chunk_${key}_cliffs`, this.scene);
-    cliffs.material = this.cliffMat;
-
-    const cliff = new Mesh(`chunk_${key}_cliff`, this.scene);
-    cliff.receiveShadows = true;
-    cliff.setEnabled(false);
-
-    const peaks = new Mesh(`chunk_${key}_peaks`, this.scene);
-    peaks.receiveShadows = true;
-    peaks.setEnabled(false);
-
-    // Drawn into the shadow map, never by the camera: no layer of its.
-    const walls = new Mesh(`chunk_${key}_walls`, this.scene);
-    walls.material = this.wallMat;
-    walls.layerMask = SHADOW_ONLY;
-    walls.isPickable = false;
-    walls.setEnabled(false);
-
-    const trees = grove(this.scene, `chunk_${key}`, this.shadowGenerator);
-
-    // Laid where they are on the map, not from the chunk's corner.
-    peaks.isPickable = false;
-
-    const meshes: ChunkMeshes = { water, cliffs, cliff, peaks, walls, trees, hasCliffs: false, hasTrees: false };
-    for (const mesh of [water, cliffs, cliff, trees.bodies, trees.tops]) {
-      mesh.isPickable = false;
-      mesh.position.x = originX;
-      mesh.position.y = originY;
+    // Grown from the chunk's corner.
+    for (const mesh of [chunk.trees.bodies, chunk.trees.tops]) {
+      mesh.position.x = cx * CHUNK_SIZE;
+      mesh.position.y = cy * CHUNK_SIZE;
     }
-    this.shadowGenerator.addShadowCaster(cliffs);
-    this.shadowGenerator.addShadowCaster(peaks);
-    this.shadowGenerator.addShadowCaster(walls);
-    this.applyDetail(meshes);
-
-    this.chunks.set(key, meshes);
-    return meshes;
+    chunk.hasTrees = plant(this.ctx, chunk.trees, matrices, colors, this.casters);
+    this.applyDetail(chunk);
   }
 
-  /**
-   * Returns false when there is nothing to draw. Applying empty VertexData
-   * leaves a zero-sized index buffer behind a draw call that still carries the
-   * old index count — WebGPU rejects it and drops the entire frame — so an
-   * empty chunk mesh is left alone and disabled instead.
-   */
-  private applyBuffers(mesh: Mesh, buf: MeshBuffers): boolean {
-    if (buf.indices.length === 0) return false;
-
-    const data = new VertexData();
-    data.positions = buf.positions;
-    data.indices = buf.indices;
-    data.normals = buf.normals;
-    if (buf.colors) data.colors = buf.colors;
-    data.applyToMesh(mesh);
-    // Vertex colours are opaque; without this Babylon routes the mesh through
-    // the alpha-blended pass and it sorts against the rest of the terrain.
-    mesh.hasVertexAlpha = false;
-    return true;
+  /** A chunk's meshes and their materials' textures gone; its trees kept. */
+  private dropMeshes(chunk: ChunkMeshes): void {
+    for (const mesh of chunk.meshes) {
+      this.casters.remove(mesh);
+      drop(this.ctx.scene, mesh);
+    }
+    for (const dispose of chunk.dispose) dispose();
   }
 
   private disposeChunk(key: string): void {
-    const meshes = this.chunks.get(key);
-    if (!meshes) return;
-    this.shadowGenerator.removeShadowCaster(meshes.cliffs);
-    this.shadowGenerator.removeShadowCaster(meshes.peaks);
-    this.shadowGenerator.removeShadowCaster(meshes.walls);
-    meshes.walls.dispose();
-    meshes.peaks.material?.dispose();
-    meshes.peaks.dispose();
-    uproot(meshes.trees, this.shadowGenerator);
+    const chunk = this.chunks.get(key);
+    if (!chunk) return;
+    this.dropMeshes(chunk);
+    uproot(this.ctx, chunk.trees, this.casters);
     this.ground.delete(key);
-    meshes.water.material?.dispose();
-    meshes.water.dispose();
-    meshes.cliff.material?.dispose();
-    meshes.cliff.dispose();
-    meshes.cliffs.dispose();
     this.chunks.delete(key);
   }
 
   /** Cliffs and trees are illegible when zoomed far out — skip them entirely. */
   private updateDetail(): void {
-    const canvas = this.scene.getEngine().getRenderingCanvas();
-    if (!this.scene.activeCamera || !canvas) return;
-    const visible = viewExtent(this.scene, canvas).halfH < DETAIL_MAX_ORTHO;
+    if (!this.ctx.scene.camera) return;
+    const visible = viewExtent(this.ctx.scene, this.ctx.canvas).halfH < DETAIL_MAX_ORTHO;
     if (visible === this.detailVisible) return;
     this.detailVisible = visible;
-    for (const meshes of this.chunks.values()) this.applyDetail(meshes);
+    for (const chunk of this.chunks.values()) this.applyDetail(chunk);
   }
 
-  private applyDetail(meshes: ChunkMeshes): void {
-    meshes.cliffs.setEnabled(this.detailVisible && meshes.hasCliffs);
-    meshes.trees.bodies.setEnabled(this.detailVisible && meshes.hasTrees);
-    meshes.trees.tops.setEnabled(this.detailVisible && meshes.hasTrees);
-  }
-
-  /** The hour's light on the cliff walls, which are drawn flat: everything
-   *  else is lit by the sky itself (`sky.ts`). */
-  updateMaterials(ambient: Color3): void {
-    this.cliffMat.emissiveColor = ambient.scale(0.7);
+  private applyDetail(chunk: ChunkMeshes): void {
+    if (chunk.cliffs) setMeshVisible(chunk.cliffs, this.detailVisible);
+    if (chunk.hasTrees) for (const mesh of [chunk.trees.bodies, chunk.trees.tops]) setMeshVisible(mesh, this.detailVisible);
   }
 
   dispose(): void {
-    this.scene.onBeforeRenderObservable.remove(this.observer);
+    this.stop();
     for (const key of [...this.chunks.keys()]) this.disposeChunk(key);
-    this.cliffMat.dispose();
-    this.wallMat.dispose();
     this.ground.dispose();
     this.worker.terminate();
     this.tiles.clear();

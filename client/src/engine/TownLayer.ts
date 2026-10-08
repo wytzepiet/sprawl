@@ -1,22 +1,26 @@
-import { Color3, Mesh, TransformNode, VertexData, type Scene, type ShadowGenerator, type PBRMaterial } from "@babylonjs/core";
+import type { Mesh } from "@babylonjs/lite";
 import { perfCount } from "./PerfReport";
-import { Tints, TintPlugin } from "./tints";
-import { tiled } from "./roofs";
+import { Tints, tintPlugin } from "./tints";
+import { ROOF } from "./roofs";
+import type { EngineContext } from "./Canvas";
+import type { Casters } from "./DayNightCycle";
+import { setTint, townMaterial, type TownMaterial } from "./material";
+import { drop, meshOf, show } from "./geometry";
+import { hex, rgb, WHITE, type Rgb } from "./rgb";
 import * as Comlink from "comlink";
 import { CHUNK, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
 import type { TownApi } from "./townWorker";
-import type { InstancePool } from "./InstancePool";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS } from "../blueprints";
 import { KERB_Z } from "./town/draw";
-import type { MeshGeometry } from "./Mesh";
-import { bevelled, giveBevel, lacquer } from "./bevel";
+import type { MeshGeometry } from "./geometry";
+import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
 import { waysAt } from "./town/dressing";
 import { storeysOf, type Town } from "./town/grid";
 import type { Box } from "./town/clip";
-import { kerbed, kerbField } from "./kerbs";
-import { pave } from "./paving";
+import { kerbField, kerbPlugin, unkerb, type KerbField } from "./kerbs";
+import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import type { RGB } from "./town/mass";
@@ -47,7 +51,7 @@ const KINDS: TerrainType[] = ["Water", "Sea", "Beach", "Grass", "Forest", "Mount
  */
 export class TownLayer {
   /** Each chunk's meshes, by chunk, and the chunks to draw again. */
-  private chunks = new Map<string, { root: TransformNode; meshes: Mesh[]; trees: Grove }>();
+  private chunks = new Map<string, { meshes: Mesh[]; trees: Grove; kerbs: KerbField | null }>();
   private stale = new Set<string>();
   /** The road tiles, and the tiles to draw again. */
   private roads: RoadTiles;
@@ -59,20 +63,38 @@ export class TownLayer {
   private builder = Comlink.wrap<TownApi>(this.worker);
   private drawing = false;
 
+  /** The masses' material, every chunk's: their buildings' colours read
+   *  off the tints, their roofs tiled, lacquered as a building is. And each
+   *  other piece's, by its name and colour. */
+  private masses: TownMaterial;
+  private pieces = new Map<string, TownMaterial>();
+  private stopTints: () => void;
+
   constructor(
-    private scene: Scene,
-    private pool: InstancePool,
-    private shadows: ShadowGenerator,
+    private ctx: EngineContext,
+    private casters: Casters,
     private theme: () => Theme,
     private entities: (f: (e: GameObjectEntry) => void) => void,
     private ground: (x: number, y: number) => TerrainType | undefined,
     private look: (e: GameObjectEntry) => Look,
   ) {
-    this.tints = new Tints(scene);
-    this.roads = new RoadTiles(scene, (through) => {
-      const colour = through ? this.theme().highway : this.theme().road;
-      return this.pool.material(`town_road_${colour.toHexString()}`, colour);
-    });
+    this.tints = new Tints(ctx.engine);
+    this.stopTints = ctx.beforeRender(() => this.tints.upload());
+    const bevel: Bevel = { width: 0.05, soft: null };
+    this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF]), "building", bevel);
+    this.roads = new RoadTiles(ctx.engine, ctx.scene, (through) => (through ? this.theme().highway : this.theme().road));
+  }
+
+  /** A piece's material, made once for its name and colour. */
+  private pieceMaterial(name: string, colour: Rgb): TownMaterial {
+    const key = `${name} ${colour.r} ${colour.g} ${colour.b}`;
+    let material = this.pieces.get(key);
+    if (!material) {
+      material = townMaterial([bevelPlugin()]);
+      setTint(material, colour);
+      this.pieces.set(key, material);
+    }
+    return material;
   }
 
   /** A building's slot of the tints, its colour as it looks now; none
@@ -84,7 +106,7 @@ export class TownLayer {
 
   /** A building's colour as it looks now. */
   private colourOf(e: GameObjectEntry): RGB {
-    const c = this.look(e).tint(Color3.FromHexString(BLUEPRINTS[(e.object.data as Building).kind as BuildingKind].material));
+    const c = this.look(e).tint(hex(BLUEPRINTS[(e.object.data as Building).kind as BuildingKind].material));
     return [c.r, c.g, c.b];
   }
 
@@ -245,35 +267,46 @@ export class TownLayer {
    *  the paving, rounded at its kerbs and its yards' lines painted on by a
    *  texture, its texels worked out with the drawing; and its trees. */
   private show({ key, pieces, trees, cut, paving }: ChunkDrawing, [, , x1, y1]: Bounds, byId: Map<number, GameObjectEntry>) {
-    const root = new TransformNode(`town_${key}`, this.scene);
-    root.position.set(x1 + 1, y1 + 1, 0);
+    const { engine, scene } = this.ctx;
+    const [ox, oy] = [x1 + 1, y1 + 1];
     const meshes: Mesh[] = [];
+    // The chunk's kerb texture, its pavement's own.
+    const kerbs = paving ? kerbField(engine, paving) : null;
     for (const p of pieces) {
       // The masses carry each surface's building: its slot, its colour set.
       if (p.name === "mass" && p.geo.colors) for (let k = 2; k < p.geo.colors.length; k += 4) p.geo.colors[k] = this.slotOf(p.geo.colors[k], byId);
-      const mesh = new Mesh(`town_${p.name}_${key}`, this.scene);
       const paved = p.name === "pavement";
       const geo = bevelled(paved ? square(cut, KERB_Z) : p.geo);
-      const vd = new VertexData();
-      Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
-      vd.applyToMesh(mesh);
-      giveBevel(mesh, geo);
-      mesh.material = bevelOn(this.pool.material(paved ? `town_pavement_${key}` : `town_${p.name}`, p.colour ? new Color3(p.colour.r, p.colour.g, p.colour.b) : Color3.White()), p.name);
-      if (p.name === "mass" && !mesh.material.pluginManager?.getPlugin("Tint")) new TintPlugin(mesh.material, this.tints);
-      if (p.name === "mass") tiled(mesh.material);
-      if (paved && paving) kerbed(mesh.material, kerbField(this.scene, paving), this.theme().road);
-      if (paved) pave(mesh.material);
-      mesh.parent = root;
-      mesh.isPickable = false;
+      const mesh = meshOf(engine, `town_${p.name}_${key}`, geo);
+      giveBevel(engine, mesh, geo);
+      const colour = p.colour ? rgb(p.colour.r, p.colour.g, p.colour.b) : WHITE;
+      mesh.material = p.name === "mass" ? this.masses : paved ? this.pavement(colour, kerbs) : this.pieceMaterial(p.name, colour);
+      mesh.position.x = ox;
+      mesh.position.y = oy;
       mesh.receiveShadows = true;
-      if (p.name === "mass") this.shadows.addShadowCaster(mesh);
+      show(scene, mesh);
+      if (p.name === "mass") this.casters.add(mesh);
       meshes.push(mesh);
     }
     const { matrices, colors } = trees;
-    const g = grove(this.scene, `town_${key}`, this.shadows);
-    g.bodies.parent = g.tops.parent = root;
-    if (!plant(g, matrices, colors)) g.bodies.setEnabled(false), g.tops.setEnabled(false);
-    this.chunks.set(key, { root, meshes, trees: g });
+    const g = grove(this.ctx, `town_${key}`);
+    for (const mesh of [g.bodies, g.tops]) {
+      mesh.position.x = ox;
+      mesh.position.y = oy;
+    }
+    plant(this.ctx, g, matrices, colors, this.casters);
+    this.chunks.set(key, { meshes, trees: g, kerbs });
+  }
+
+  /** A chunk's pavement's material: paving, rounded at its kerbs and its
+   *  yards' lines painted on from its kerb texture, if it has one. */
+  private pavement(colour: Rgb, kerbs: KerbField | null): TownMaterial {
+    const material = townMaterial(
+      kerbs ? [bevelPlugin(), kerbPlugin(kerbs, this.theme().road, colour), pavingPlugin(this.ctx.engine, true)] : [bevelPlugin(), pavingPlugin(this.ctx.engine, false)],
+      PAVING_ROUGHNESS,
+    );
+    setTint(material, colour);
+    return material;
   }
 
   /** A chunk's meshes gone. */
@@ -281,11 +314,11 @@ export class TownLayer {
     const chunk = this.chunks.get(key);
     if (!chunk) return;
     for (const m of chunk.meshes) {
-      this.shadows.removeShadowCaster(m);
-      m.dispose();
+      this.casters.remove(m);
+      drop(this.ctx.scene, m);
     }
-    uproot(chunk.trees, this.shadows);
-    chunk.root.dispose();
+    uproot(this.ctx, chunk.trees, this.casters);
+    if (chunk.kerbs) unkerb(chunk.kerbs);
     this.chunks.delete(key);
   }
 
@@ -293,7 +326,7 @@ export class TownLayer {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     for (const key of [...this.chunks.keys()]) this.drop(key);
     this.roads.dispose();
-    this.tints.dispose();
+    this.stopTints();
     this.worker.terminate();
   }
 }
@@ -325,11 +358,3 @@ const square = ([x0, y0, x1, y1]: Box, z: number): MeshGeometry => ({
   normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
   indices: [0, 2, 1, 0, 3, 2],
 });
-
-/** A town material lacquered as what it draws is: buildings;
- *  paving and roads stay matte. Its creases are rounded already, as
- *  every pool material's are. */
-function bevelOn(mat: PBRMaterial, name: string): PBRMaterial {
-  if (name === "mass") return lacquer(mat, "building");
-  return mat;
-}

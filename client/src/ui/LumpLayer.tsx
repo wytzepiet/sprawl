@@ -12,11 +12,11 @@ import type { Building } from "../generated";
  * arriving, red is money leaving. docs/economy.md §10.
  */
 export default function LumpLayer() {
-  const { scene, canvas } = useEngine();
+  const { scene, canvas, afterRender } = useEngine();
   const els = new Map<number, HTMLElement>();
 
   const place = () => {
-    if (!scene.activeCamera) return;
+    if (!scene.camera) return;
     const project = projector(scene, canvas);
     for (const lump of recentLumps()) {
       const el = els.get(lump.key);
@@ -26,8 +26,7 @@ export default function LumpLayer() {
       el.style.transform = `translate(${sx}px, ${sy}px)`;
     }
   };
-  const obs = scene.onAfterRenderObservable.add(place);
-  onCleanup(() => scene.onAfterRenderObservable.remove(obs));
+  onCleanup(afterRender(place));
 
   return (
     <div class="lumps fixed inset-0 pointer-events-none select-none">

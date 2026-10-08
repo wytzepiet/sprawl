@@ -1,5 +1,7 @@
-import { BoundingInfo, Color3, Constants, MaterialDefines, MaterialPluginBase, Mesh, RawTexture, TransformNode, Vector3, VertexData, type Material, type PBRMaterial, type Scene } from "@babylonjs/core";
-import { townMaterial } from "./material";
+import { createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { townMaterial, type TownMaterial } from "./material";
+import { drop, meshOf, show } from "./geometry";
+import { WHITE, type Rgb } from "./rgb";
 import { Atlas } from "./atlas";
 import { FAR, kerbDistances } from "./kerbLines";
 import { CALM, slate } from "./peaks";
@@ -104,15 +106,21 @@ function grainData(): Uint8Array {
   return Uint8Array.from({ length: SIDE * SIDE }, () => (seed = (seed * 16807) % 2147483647) % 256);
 }
 
-/** The land's grain, a texture a scene: random bytes, tiling. Roads read
+/** The land's grain, a texture an engine: random bytes, tiling. Roads read
  *  it too (`roads.ts`). */
-const GRAINS = new WeakMap<Scene, RawTexture>();
-export function grain(scene: Scene): RawTexture {
-  let texture = GRAINS.get(scene);
+const GRAINS = new WeakMap<EngineContext, Texture2D>();
+export function grain(engine: EngineContext): Texture2D {
+  let texture = GRAINS.get(engine);
   if (!texture) {
-    texture = new RawTexture(grainData(), SIDE, SIDE, Constants.TEXTUREFORMAT_R, scene, true, false, Constants.TEXTURE_TRILINEAR_SAMPLINGMODE);
-    texture.wrapU = texture.wrapV = Constants.TEXTURE_WRAP_ADDRESSMODE;
-    GRAINS.set(scene, texture);
+    texture = createTexture2DFromPixels(engine, grainData(), SIDE, SIDE, {
+      format: "r8unorm",
+      mipmaps: true,
+      minFilter: "linear",
+      magFilter: "linear",
+      addressModeU: "repeat",
+      addressModeV: "repeat",
+    });
+    GRAINS.set(engine, texture);
   }
   return texture;
 }
@@ -163,10 +171,6 @@ function bake(key: string): [Float32Array, Float32Array] {
   return [inside, rounded.map((d) => Math.min(d, FAR))];
 }
 
-class GroundDefines extends MaterialDefines {
-  GROUND = false;
-}
-
 const n = (x: number) => x.toFixed(4);
 // A mottle's texel this many tiles across, either scale; lighter patches
 // warmer: more red and green, less blue, darker ones the other way.
@@ -190,91 +194,75 @@ const [inner0, inner1] = [n(0.5 / DENSITY), n(1 - 0.5 / DENSITY)];
 // square's own x and y run in the world, however the sheet is placed.
 // Then the grain, before anything is dropped (its mipmaps need every
 // pixel); whether the pixel is on the share; and how near its edges.
-const GLSL = {
-  vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute vec3 groundGrass; varying vec3 vGroundGrass; attribute vec4 groundSlot; attribute vec4 groundLook; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY;`,
-    CUSTOM_VERTEX_MAIN_END: `vGroundGrass = groundGrass; vGroundAt = positionUpdated.xy; vGroundSlot = groundSlot; vGroundLook = groundLook; vGroundX = (finalWorld * vec4(1., 0., 0., 0.)).xy; vGroundY = (finalWorld * vec4(0., 1., 0., 0.)).xy;`,
-  },
-  fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vec3 vGroundGrass; varying vec2 vGroundAt; varying vec4 vGroundSlot; varying vec4 vGroundLook; varying vec2 vGroundX; varying vec2 vGroundY; uniform sampler2D groundGrain; uniform sampler2D groundAtlas; uniform sampler2D groundSlate; uniform sampler2D groundRipple;
-${washFn((uv) => `texture2D(groundRipple, ${uv}).b`, "vec2", "float groundWash(float t, vec2 p)").replaceAll("let_", "float")}`,
-    CUSTOM_FRAGMENT_MAIN_BEGIN: `vec2 groundBump = vec2(texture2D(groundGrain, (vPositionW.xy + vec2(${step}, 0.)) / ${bumpSpan}).r - texture2D(groundGrain, (vPositionW.xy - vec2(${step}, 0.)) / ${bumpSpan}).r,
-  texture2D(groundGrain, (vPositionW.xy + vec2(0., ${step})) / ${bumpSpan}).r - texture2D(groundGrain, (vPositionW.xy - vec2(0., ${step})) / ${bumpSpan}).r);
-vec2 groundGrainUv = vPositionW.xy / ${span};
-vec3 groundGlint = vec3(texture2D(groundGrain, groundGrainUv).r, texture2D(groundGrain, groundGrainUv + vec2(${other1})).r, texture2D(groundGrain, groundGrainUv + vec2(${other2})).r);
-float groundGlinting = vGroundSlot.w * step(${glints}, groundGlint.x);
-float groundMottle = 0.6 * texture2D(groundGrain, vPositionW.xy / ${patches}).r + 0.4 * texture2D(groundGrain, vPositionW.xy / ${specks}).r - 0.5;
-float groundFrayBy = 0.5 * texture2D(groundGrain, vPositionW.xy / ${fraySpan}).r + 0.5 * texture2D(groundGrain, vPositionW.xy / ${tuftSpan}).r;
-float groundSlotN = floor(vGroundSlot.x + 0.5);
-float groundBevel = vGroundSlot.y;
-vec2 groundCell = vec2(mod(groundSlotN, groundGrid.x), floor(groundSlotN / groundGrid.x));
-vec2 groundUv = (groundCell + (vGroundAt - ${origin}) / ${slotSpan}) / groundGrid;
-vec2 groundTexel = 1. / (groundGrid * ${n(SLOT)});
-vec2 groundD = texture2D(groundAtlas, groundUv).rg;
-if (texture2D(groundAtlas, (groundCell + (clamp(vGroundAt, ${inner0}, ${inner1}) - ${origin}) / ${slotSpan}) / groundGrid).r < 0.) discard;
-// The slate's tilt, and the beach's swash, read only where they show:
-// the rock, and the sand.
-vec2 groundSlateTilt = vec2(0.);
-if (vGroundGrass.z > 0.) groundSlateTilt = texture2D(groundSlate, vPositionW.xy / ${slateSpan}, ${calm}).rg * 2. - 1.;
-// The rock breaking through the grass near its edge, plate by plate.
-if (vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && texture2D(groundSlate, vPositionW.xy / ${patchSpan}).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) discard;
-// A beach draws back from each wave as it breaks, and is wet where they reach.
-float groundSwash = 0.;
-if (vGroundSlot.w > 0.) groundSwash = vGroundSlot.w * ${swash} * groundWash(groundTime, vPositionW.xy) * (0.6 + 0.8 * groundFrayBy);
-if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * vGroundGrass.x * ${fray})) discard;`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = min(1., vGroundLook.a * ${glint} + groundGlinting);
-baseColor.rgb *= vGroundLook.rgb * (1. + vGroundGrass.y * groundMottle * vec3(${mottleWarm})) * (1. - ${wet} * vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
-normalW = normalize(normalW - vec3(groundBump * ${bump} * vGroundSlot.z, 0.) + vec3((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3(groundSlateTilt * vGroundGrass.z, 0.));
-// Its slope read only near an edge, where it rounds over.
-if (groundD.g >= 0. && groundD.g < groundBevel) {
-  float groundDx = texture2D(groundAtlas, groundUv + vec2(groundTexel.x, 0.)).g - texture2D(groundAtlas, groundUv - vec2(groundTexel.x, 0.)).g;
-  float groundDy = texture2D(groundAtlas, groundUv + vec2(0., groundTexel.y)).g - texture2D(groundAtlas, groundUv - vec2(0., groundTexel.y)).g;
-  if (groundDx * groundDx + groundDy * groundDy > 0.) {
-    vec3 groundOut = normalize(vec3(-(groundDx * vGroundX + groundDy * vGroundY), 0.));
-    normalW = normalize(mix(normalW, normalize(normalW + groundOut), 1. - groundD.g / groundBevel));
-  }
-}`,
-  },
-};
-const WGSL = {
-  vertex: {
-    CUSTOM_VERTEX_DEFINITIONS: `attribute groundGrass: vec3f; varying vGroundGrass: vec3f; attribute groundSlot: vec4f; attribute groundLook: vec4f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f;`,
-    CUSTOM_VERTEX_MAIN_END: `vertexOutputs.vGroundGrass = vertexInputs.groundGrass; vertexOutputs.vGroundAt = positionUpdated.xy; vertexOutputs.vGroundSlot = vertexInputs.groundSlot; vertexOutputs.vGroundLook = vertexInputs.groundLook; vertexOutputs.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; vertexOutputs.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;`,
-  },
-  fragment: {
-    CUSTOM_FRAGMENT_DEFINITIONS: `varying vGroundGrass: vec3f; varying vGroundAt: vec2f; varying vGroundSlot: vec4f; varying vGroundLook: vec4f; varying vGroundX: vec2f; varying vGroundY: vec2f; var groundGrainSampler: sampler; var groundGrain: texture_2d<f32>; var groundAtlasSampler: sampler; var groundAtlas: texture_2d<f32>; var groundSlateSampler: sampler; var groundSlate: texture_2d<f32>; var groundRippleSampler: sampler; var groundRipple: texture_2d<f32>;
-${washFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "vec2f", "fn groundWash(t: f32, p: vec2f) -> f32").replaceAll("let_", "let")}`,
-    CUSTOM_FRAGMENT_MAIN_BEGIN: `let groundBump = vec2f(textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy + vec2f(${step}, 0.)) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy - vec2f(${step}, 0.)) / ${bumpSpan}).r,
-  textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy + vec2f(0., ${step})) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (fragmentInputs.vPositionW.xy - vec2f(0., ${step})) / ${bumpSpan}).r);
-let groundGrainUv = fragmentInputs.vPositionW.xy / ${span};
+/** The land's tiles: each told its slot, round, bump and glint, its colour
+ *  and shine, its fray, mottle and slate (`GroundTiles`), one buffer a
+ *  chunk; the grain, the atlas, the slate and the ripples, read. */
+function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
+  return {
+    name: "Ground",
+    priority: 210,
+    getAttributes: () => [
+      { name: "groundSlot", type: "vec4<f32>", perInstance: true, buffer: "ground" },
+      { name: "groundLook", type: "vec4<f32>", perInstance: true, buffer: "ground" },
+      { name: "groundGrass", type: "vec3<f32>", perInstance: true, buffer: "ground" },
+    ],
+    getVaryings: () => [
+      { name: "vGroundGrass", type: "vec3f" },
+      { name: "vGroundAt", type: "vec2f" },
+      { name: "vGroundSlot", type: "vec4f" },
+      { name: "vGroundLook", type: "vec4f" },
+      { name: "vGroundX", type: "vec2f" },
+      { name: "vGroundY", type: "vec2f" },
+    ],
+    getSamplers: () => ["groundGrain", "groundAtlas", "groundSlate", "groundRipple"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: grain(engine) }, { texture: atlas.upload() }, { texture: slate(engine) }, { texture: ripples(engine) }),
+    getUniforms: () => ({
+      ubo: [
+        { name: "groundGrid", type: "vec2<f32>" },
+        { name: "groundTime", type: "f32" },
+      ],
+    }),
+    writeUbo: (data, offsets) => {
+      data.set(atlas.grid, offsets.get("groundGrid")! / 4);
+      // The water's clock (`water.ts`), so the beach's swash keeps its waves.
+      data[offsets.get("groundTime")! / 4] = (performance.now() / 1000) % 3600;
+    },
+    getCustomCode: (stage) =>
+      stage === "vertex"
+        ? { CUSTOM_VERTEX_MAIN_END: `out.vGroundGrass = groundGrass; out.vGroundAt = position.xy; out.vGroundSlot = groundSlot; out.vGroundLook = groundLook; out.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
+        : {
+            CUSTOM_FRAGMENT_DEFINITIONS: `${washFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "vec2f", "fn groundWash(t: f32, p: vec2f) -> f32").replaceAll("let_", "let")}`,
+            CUSTOM_FRAGMENT_MAIN_BEGIN: `let groundBump = vec2f(textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy + vec2f(${step}, 0.)) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy - vec2f(${step}, 0.)) / ${bumpSpan}).r,
+  textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy + vec2f(0., ${step})) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy - vec2f(0., ${step})) / ${bumpSpan}).r);
+let groundGrainUv = input.worldPos.xy / ${span};
 let groundGlint = vec3f(textureSample(groundGrain, groundGrainSampler, groundGrainUv).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other1})).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other2})).r);
-let groundGlinting = fragmentInputs.vGroundSlot.w * step(${glints}, groundGlint.x);
-let groundMottle = 0.6 * textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${patches}).r + 0.4 * textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${specks}).r - 0.5;
-let groundFrayBy = 0.5 * textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${fraySpan}).r + 0.5 * textureSample(groundGrain, groundGrainSampler, fragmentInputs.vPositionW.xy / ${tuftSpan}).r;
-let groundSlotN = floor(fragmentInputs.vGroundSlot.x + 0.5);
-let groundBevel = fragmentInputs.vGroundSlot.y;
-let groundCell = vec2f(groundSlotN - uniforms.groundGrid.x * floor(groundSlotN / uniforms.groundGrid.x), floor(groundSlotN / uniforms.groundGrid.x));
-let groundUv = (groundCell + (fragmentInputs.vGroundAt - ${origin}) / ${slotSpan}) / uniforms.groundGrid;
-let groundTexel = 1. / (uniforms.groundGrid * ${n(SLOT)});
+let groundGlinting = input.vGroundSlot.w * step(${glints}, groundGlint.x);
+let groundMottle = 0.6 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${patches}).r + 0.4 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${specks}).r - 0.5;
+let groundFrayBy = 0.5 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${fraySpan}).r + 0.5 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${tuftSpan}).r;
+let groundSlotN = floor(input.vGroundSlot.x + 0.5);
+let groundBevel = input.vGroundSlot.y;
+let groundCell = vec2f(groundSlotN - material.groundGrid.x * floor(groundSlotN / material.groundGrid.x), floor(groundSlotN / material.groundGrid.x));
+let groundUv = (groundCell + (input.vGroundAt - ${origin}) / ${slotSpan}) / material.groundGrid;
+let groundTexel = 1. / (material.groundGrid * ${n(SLOT)});
 let groundD = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv, 0.).rg;
-if (textureSampleLevel(groundAtlas, groundAtlasSampler, (groundCell + (clamp(fragmentInputs.vGroundAt, vec2f(${inner0}), vec2f(${inner1})) - ${origin}) / ${slotSpan}) / uniforms.groundGrid, 0.).r < 0.) { discard; }
+if (textureSampleLevel(groundAtlas, groundAtlasSampler, (groundCell + (clamp(input.vGroundAt, vec2f(${inner0}), vec2f(${inner1})) - ${origin}) / ${slotSpan}) / material.groundGrid, 0.).r < 0.) { discard; }
 // The slate's tilt, and the beach's swash, read only where they show:
 // the rock, and the sand. Its slopes are taken outside the branch, which
 // WGSL wants, and widened as the bias would.
-let groundSlateUv = fragmentInputs.vPositionW.xy / ${slateSpan};
+let groundSlateUv = input.worldPos.xy / ${slateSpan};
 let groundSlateDx = dpdx(groundSlateUv) * ${n(2 ** CALM)};
 let groundSlateDy = dpdy(groundSlateUv) * ${n(2 ** CALM)};
 var groundSlateTilt = vec2f(0.);
-if (fragmentInputs.vGroundGrass.z > 0.) { groundSlateTilt = textureSampleGrad(groundSlate, groundSlateSampler, groundSlateUv, groundSlateDx, groundSlateDy).rg * 2. - 1.; }
+if (input.vGroundGrass.z > 0.) { groundSlateTilt = textureSampleGrad(groundSlate, groundSlateSampler, groundSlateUv, groundSlateDx, groundSlateDy).rg * 2. - 1.; }
 // The rock breaking through the grass near its edge, plate by plate.
-if (fragmentInputs.vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && textureSampleLevel(groundSlate, groundSlateSampler, fragmentInputs.vPositionW.xy / ${patchSpan}, 0.).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) { discard; }
+if (input.vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && textureSampleLevel(groundSlate, groundSlateSampler, input.worldPos.xy / ${patchSpan}, 0.).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) { discard; }
 // A beach draws back from each wave as it breaks, and is wet where they reach.
 var groundSwash = 0.;
-if (fragmentInputs.vGroundSlot.w > 0.) { groundSwash = fragmentInputs.vGroundSlot.w * ${swash} * groundWash(uniforms.groundTime, fragmentInputs.vPositionW.xy) * (0.6 + 0.8 * groundFrayBy); }
-if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * fragmentInputs.vGroundGrass.x * ${fray})) { discard; }`,
-    CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = min(1., fragmentInputs.vGroundLook.a * ${glint} + groundGlinting);
-baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb * (1. + fragmentInputs.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * fragmentInputs.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g)), baseColor.a);
-normalW = normalize(normalW - vec3f(groundBump * ${bump} * fragmentInputs.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * fragmentInputs.vGroundGrass.z, 0.));
+if (input.vGroundSlot.w > 0.) { groundSwash = input.vGroundSlot.w * ${swash} * groundWash(material.groundTime, input.worldPos.xy) * (0.6 + 0.8 * groundFrayBy); }
+if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * input.vGroundGrass.x * ${fray})) { discard; }`,
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., input.vGroundLook.a * ${glint} + groundGlinting);
+baseColor = baseColor * input.vGroundLook.rgb * (1. + input.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * input.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
+N = normalize(N - vec3f(groundBump * ${bump} * input.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * input.vGroundGrass.z, 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
   let groundTx = vec2f(groundTexel.x, 0.);
@@ -282,68 +270,12 @@ if (groundD.g >= 0. && groundD.g < groundBevel) {
   let groundDx = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv + groundTx, 0.).g - textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv - groundTx, 0.).g;
   let groundDy = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv + groundTy, 0.).g - textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv - groundTy, 0.).g;
   if (groundDx * groundDx + groundDy * groundDy > 0.) {
-    let groundOut = normalize(vec3f(-(groundDx * fragmentInputs.vGroundX + groundDy * fragmentInputs.vGroundY), 0.));
-    normalW = normalize(mix(normalW, normalize(normalW + groundOut), 1. - groundD.g / groundBevel));
+    let groundOut = normalize(vec3f(-(groundDx * input.vGroundX + groundDy * input.vGroundY), 0.));
+    N = normalize(mix(N, normalize(N + groundOut), 1. - groundD.g / groundBevel));
   }
 }`,
-  },
-};
-
-class GroundPlugin extends MaterialPluginBase {
-  constructor(
-    material: Material,
-    private atlas: Atlas,
-  ) {
-    super(material, "Ground", 210, new GroundDefines());
-    this._enable(true);
-  }
-
-  isCompatible() {
-    return true;
-  }
-
-  prepareDefines(defines: GroundDefines) {
-    defines.GROUND = true;
-  }
-
-  getAttributes(attributes: string[]) {
-    attributes.push("groundSlot", "groundLook", "groundGrass");
-  }
-
-  getSamplers(samplers: string[]) {
-    samplers.push("groundGrain", "groundAtlas", "groundSlate", "groundRipple");
-  }
-
-  getUniforms(shaderLanguage = 0) {
-    return {
-      ubo: [
-        { name: "groundGrid", size: 2, type: "vec2" },
-        { name: "groundTime", size: 1, type: "float" },
-      ],
-      fragment: shaderLanguage === 1 ? "uniform groundGrid: vec2f; uniform groundTime: f32;" : "uniform vec2 groundGrid; uniform float groundTime;",
-    };
-  }
-
-  bindForSubMesh(ubo: { updateFloat(n: string, v: number): void; updateFloat2(n: string, x: number, y: number): void; setTexture(n: string, t: RawTexture): void }) {
-    const texture = this.atlas.upload();
-    if (!texture) return;
-    ubo.updateFloat2("groundGrid", ...this.atlas.grid);
-    // The water's clock (`water.ts`), so the beach's swash keeps its waves.
-    ubo.updateFloat("groundTime", (performance.now() / 1000) % 3600);
-    ubo.setTexture("groundGrain", grain(this._material.getScene()));
-    ubo.setTexture("groundAtlas", texture);
-    ubo.setTexture("groundSlate", slate(this._material.getScene()));
-    ubo.setTexture("groundRipple", ripples(this._material.getScene()));
-  }
-
-  getClassName() {
-    return "GroundPlugin";
-  }
-
-  getCustomCode(shaderType: string, shaderLanguage = 0) {
-    const code = shaderLanguage === 1 ? WGSL : GLSL;
-    return shaderType === "vertex" ? code.vertex : code.fragment;
-  }
+          },
+  };
 }
 
 /** The land's layers, chunk by chunk: each chunk's tiles one draw, each
@@ -353,29 +285,35 @@ class GroundPlugin extends MaterialPluginBase {
 export class GroundTiles {
   private atlas: Atlas;
   private chunks = new Map<string, Mesh>();
-  private material: PBRMaterial;
-  private colours: Color3[] = LAYERS.map(() => Color3.White());
-  /** How the land is placed in the world, every chunk's tiles with it: a
-   *  turn given to it is given to all. */
-  readonly frame: TransformNode;
+  private material: TownMaterial;
+  private colours: Rgb[] = LAYERS.map(() => WHITE);
+  private stopClock: () => void;
 
-  constructor(scene: Scene) {
-    this.atlas = new Atlas(scene, SLOT);
-    this.material = townMaterial("ground", scene);
-    // Which way the square is wound matters not, flat on the ground.
-    this.material.backFaceCulling = false;
-    new GroundPlugin(this.material, this.atlas);
-    this.frame = new TransformNode("ground", scene);
+  constructor(
+    private engine: EngineContext,
+    private scene: SceneContext,
+    beforeRender: (fn: () => void) => () => void,
+  ) {
+    // Its chunks bound to the atlas's texture anew whenever that grows.
+    this.atlas = new Atlas(engine, SLOT, () => {
+      for (const mesh of this.chunks.values()) markMeshRenderableDirty(mesh);
+    });
+    this.material = townMaterial([groundPlugin(engine, this.atlas)]);
+    // The swash's clock, a frame at a time; and the atlas, as shapes come.
+    this.stopClock = beforeRender(() => {
+      this.atlas.upload();
+      markMaterialUboDirty(this.material);
+    });
   }
 
   /** A chunk's tiles, from its low corner, in place of whatever it had. */
   set(key: string, [ox, oy]: [number, number], layers: LayerTiles[]) {
     this.delete(key);
     const count = layers.reduce((sum, l) => sum + l.shapes.length, 0);
-    // An empty draw is one WebGPU rejects, frame and all.
     if (!count) return;
-    const [matrices, slots, looks] = [new Float32Array(count * 16), new Float32Array(count * 4), new Float32Array(count * 4)];
-    const grasses = new Float32Array(count * 3);
+    const matrices = new Float32Array(count * 16);
+    // A tile's slot, round, bump and glint; colour and shine; fray, mottle and slate.
+    const data = new Float32Array(count * 11);
     let n = 0;
     for (let l = layers.length - 1; l >= 0; l--) {
       const { at, shapes } = layers[l];
@@ -384,43 +322,34 @@ export class GroundTiles {
         const m = n * 16;
         [matrices[m], matrices[m + 5], matrices[m + 10], matrices[m + 15]] = [1, 1, 1, 1];
         [matrices[m + 12], matrices[m + 13], matrices[m + 14]] = [ox + at[i * 2], oy + at[i * 2 + 1], z];
-        slots.set([this.atlas.slotOf(shapes[i], () => bake(shapes[i])), bevel, bump, glint], n * 4);
-        looks.set([colour.r, colour.g, colour.b, shine], n * 4);
-        grasses.set([fray, mottle, grain], n * 3);
+        data.set([this.atlas.slotOf(shapes[i], () => bake(shapes[i])), bevel, bump, glint, colour.r, colour.g, colour.b, shine, fray, mottle, grain], n * 11);
       }
     }
-    // A square of its own: a mesh's tiles are kept on its geometry, which
-    // a clone would share.
-    const mesh = new Mesh(`ground_${key}`, this.material.getScene());
-    const square = new VertexData();
-    Object.assign(square, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
-    square.applyToMesh(mesh);
-    Object.assign(mesh, { material: this.material, parent: this.frame, isPickable: false, receiveShadows: true });
-    // Its bounds the chunk's, known: worked out, they would walk every tile.
-    mesh.doNotSyncBoundingInfo = true;
-    mesh.thinInstanceSetBuffer("matrix", matrices, 16, true);
-    mesh.thinInstanceSetBuffer("groundSlot", slots, 4, true);
-    mesh.thinInstanceSetBuffer("groundLook", looks, 4, true);
-    mesh.thinInstanceSetBuffer("groundGrass", grasses, 3, true);
-    const [low, top] = [Math.min(...LAYERS.map((l) => l.z)), Math.max(...LAYERS.map((l) => l.z))];
-    mesh.setBoundingInfo(new BoundingInfo(new Vector3(ox, oy, low - 0.01), new Vector3(ox + CHUNK_SIZE, oy + CHUNK_SIZE, top + 0.01)));
+    const mesh = meshOf(this.engine, `ground_${key}`, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
+    mesh.material = this.material;
+    mesh.receiveShadows = true;
+    setThinInstances(mesh, matrices, count);
+    setMeshAttribute(this.engine, mesh, "ground", data);
+    // Baked before it is shown, so the atlas holds its shapes when it is bound.
+    this.atlas.upload();
+    show(this.scene, mesh);
     this.chunks.set(key, mesh);
   }
 
   delete(key: string) {
-    this.chunks.get(key)?.dispose();
+    const mesh = this.chunks.get(key);
+    if (mesh) drop(this.scene, mesh);
     this.chunks.delete(key);
   }
 
   /** Each layer's colour, bottom up, for the chunks drawn from now on. */
-  paint(colours: Color3[]) {
+  paint(colours: Rgb[]) {
     this.colours = colours;
   }
 
   dispose() {
     for (const key of [...this.chunks.keys()]) this.delete(key);
-    this.frame.dispose();
-    this.material.dispose();
+    this.stopClock();
     this.atlas.dispose();
   }
 }

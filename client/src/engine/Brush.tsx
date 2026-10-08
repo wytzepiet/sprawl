@@ -24,9 +24,9 @@ import type { GridCoord, TerrainType, Tool } from "../generated";
  * where it presses, and a drag from there lays more of it.
  */
 export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
-  const { scene, canvas } = useEngine();
+  const { scene, canvas, afterRender } = useEngine();
   const dots = new Dots(scene, canvas);
-  const tick = scene.onAfterRenderObservable.add(() => dots.frame());
+  const stopTick = afterRender(() => dots.frame());
   const { send, growth } = useGame();
   let current: GridCoord | null = null;
   /** The tile pressed on, while the hand is down. */
@@ -71,7 +71,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   // Drawn again when the view moves on a tile.
   let drawnOver = "";
   let frames = 0;
-  const watch = scene.onAfterRenderObservable.add(() => {
+  const stopWatch = afterRender(() => {
     if (tool() === null || current || ++frames % 15) return;
     if (viewBox().join() !== drawnOver) draw();
   });
@@ -187,8 +187,8 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
-    scene.onAfterRenderObservable.remove(watch);
-    scene.onAfterRenderObservable.remove(tick);
+    stopWatch();
+    stopTick();
   });
 
   return dots.el;

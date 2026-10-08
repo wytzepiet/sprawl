@@ -11,7 +11,7 @@ import { syncClock } from "../network/clock";
 import { BLUEPRINTS } from "../blueprints";
 import type { RGB } from "../engine/town/mass";
 import { CAB, CAR, TRAILER } from "../engine/objects/roadGeometry";
-import type { MeshGeometry } from "../engine/Mesh";
+import type { MeshGeometry } from "../engine/geometry";
 import { LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../engine/town/grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";

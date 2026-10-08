@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { FreeCamera, Vector3, Camera } from "@babylonjs/core";
+import { attachFreeControl, createFreeCamera, disableOrthographicCamera, enableOrthographicCamera } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { tool } from "../ui/buildMode";
@@ -44,13 +44,16 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
 }
 
 export function OrthoCamera() {
-  const { engine, scene, canvas } = useEngine();
+  const { scene, canvas, beforeRender, afterRender } = useEngine();
   const { send, revealedBounds } = useGame();
 
-  const camera = new FreeCamera("map", new Vector3(0, 0, 10), scene);
-  camera.setTarget(Vector3.Zero());
-  camera.minZ = 1;
-  camera.maxZ = 4000;
+  const camera = createFreeCamera({ x: 0, y: 0, z: 10 }, { x: 0, y: 0, z: 0 });
+  camera.nearPlane = 1;
+  camera.farPlane = 4000;
+  scene.camera = camera;
+  /** Point the camera straight down at the ground under (x, y). */
+  const aim = (x: number, y: number) => camera.target.set(x, y, 0);
+  const aspect = () => canvas.clientWidth / Math.max(1, canvas.clientHeight);
   let perspective = OPENS_IN_PERSPECTIVE;
 
   // Zoom is measured in tiles of ground, not in camera height, so it means the
@@ -99,22 +102,17 @@ export function OrthoCamera() {
    */
   function updateProjection() {
     if (perspective) {
-      camera.mode = Camera.PERSPECTIVE_CAMERA;
+      if (camera.ortho) disableOrthographicCamera(camera);
       camera.fov = FOV;
       camera.position.z = viewHalf / Math.tan(FOV / 2);
       return;
     }
-    camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
     camera.position.z = 10;
-    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-    camera.orthoLeft = -viewHalf * aspect;
-    camera.orthoRight = viewHalf * aspect;
-    camera.orthoTop = viewHalf;
-    camera.orthoBottom = -viewHalf;
+    // Its sides follow the canvas's shape on their own.
+    (camera.ortho ?? enableOrthographicCamera(camera)).halfHeight = viewHalf;
   }
 
   updateProjection();
-  const resizeObs = engine.onResizeObservable.add(updateProjection);
 
   /**
    * Hold the view inside the surveyed world plus a chunk of margin. Panning off
@@ -125,21 +123,20 @@ export function OrthoCamera() {
     const b = revealedBounds();
     if (b.max_cx < b.min_cx) return; // nothing surveyed yet
 
-    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
     const m = PAN_MARGIN_CHUNKS;
     const minX = (b.min_cx - m) * CHUNK_SIZE;
     const maxX = (b.max_cx + 1 + m) * CHUNK_SIZE;
     const minY = (b.min_cy - m) * CHUNK_SIZE;
     const maxY = (b.max_cy + 1 + m) * CHUNK_SIZE;
 
-    targetCamX = clampAxis(targetCamX, minX, maxX, targetViewHalf * aspect);
+    targetCamX = clampAxis(targetCamX, minX, maxX, targetViewHalf * aspect());
     targetCamY = clampAxis(targetCamY, minY, maxY, targetViewHalf);
-    const x = clampAxis(camera.position.x, minX, maxX, viewHalf * aspect);
+    const x = clampAxis(camera.position.x, minX, maxX, viewHalf * aspect());
     const y = clampAxis(camera.position.y, minY, maxY, viewHalf);
     if (x !== camera.position.x || y !== camera.position.y) {
       camera.position.x = x;
       camera.position.y = y;
-      camera.setTarget(new Vector3(x, y, 0));
+      aim(x, y);
     }
   }
 
@@ -152,12 +149,11 @@ export function OrthoCamera() {
     const rect = canvas.getBoundingClientRect();
     const nx = -((clientX - rect.left) / rect.width * 2 - 1);
     const ny = 1 - (clientY - rect.top) / rect.height * 2;
-    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
-    const worldX = targetCamX + nx * targetViewHalf * aspect;
+    const worldX = targetCamX + nx * targetViewHalf * aspect();
     const worldY = targetCamY + ny * targetViewHalf;
 
     const newSize = Math.max(2, Math.min(100, size));
-    targetCamX = worldX - nx * newSize * aspect;
+    targetCamX = worldX - nx * newSize * aspect();
     targetCamY = worldY - ny * newSize;
     targetViewHalf = newSize;
   }
@@ -170,7 +166,7 @@ export function OrthoCamera() {
         targetCamX = camera.position.x = x;
         targetCamY = camera.position.y = y;
         targetViewHalf = viewHalf = half;
-        camera.setTarget(new Vector3(x, y, 0));
+        aim(x, y);
         updateProjection();
       },
     };
@@ -178,15 +174,14 @@ export function OrthoCamera() {
 
   // Subscription is chunk-granular, so panning within a chunk sends nothing.
   function sendViewportIfChanged() {
-    const aspect = engine.getRenderWidth() / engine.getRenderHeight();
     const chunk = (v: number) => Math.floor(v / CHUNK_SIZE);
 
     // A margin beyond the viewport: the fog fade is derived from which chunks
     // exist, so without it the client cannot tell "unrevealed" from "not asked
     // for yet" and paints a frontier along the edge of the screen.
     const PAD = 2;
-    const minCx = chunk(camera.position.x - viewHalf * aspect) - PAD;
-    const maxCx = chunk(camera.position.x + viewHalf * aspect) + PAD;
+    const minCx = chunk(camera.position.x - viewHalf * aspect()) - PAD;
+    const maxCx = chunk(camera.position.x + viewHalf * aspect()) + PAD;
     const minCy = chunk(camera.position.y - viewHalf) - PAD;
     const maxCy = chunk(camera.position.y + viewHalf) + PAD;
 
@@ -200,7 +195,7 @@ export function OrthoCamera() {
   }
 
   // Smooth zoom animation
-  const renderObs = scene.onBeforeRenderObservable.add(() => {
+  const stopBefore = beforeRender(() => {
     if (debugMode) return;
     const f = following();
     if (f !== null) {
@@ -217,14 +212,14 @@ export function OrthoCamera() {
       viewHalf += dSize * ZOOM_LERP_SPEED;
       camera.position.x += dX * ZOOM_LERP_SPEED;
       camera.position.y += dY * ZOOM_LERP_SPEED;
-      camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
+      aim(camera.position.x, camera.position.y);
       updateProjection();
     }
     clampToSurveyed();
     sendViewportIfChanged();
     if (perspective && !debugMode) lean(1);
   });
-  const leanBackObs = scene.onAfterRenderObservable.add(() => {
+  const stopAfter = afterRender(() => {
     if (perspective && !debugMode) lean(-1);
   });
 
@@ -233,7 +228,7 @@ export function OrthoCamera() {
     const x = camera.position.x;
     const y = camera.position.y + (dir === -1 ? camera.position.z * Math.tan(TILT) : 0);
     camera.position.y = y - (dir === 1 ? camera.position.z * Math.tan(TILT) : 0);
-    camera.setTarget(new Vector3(x, y, 0));
+    aim(x, y);
   }
 
   // Panning & pinch-to-zoom
@@ -295,7 +290,7 @@ export function OrthoCamera() {
       camera.position.y += panY;
       targetCamX += panX;
       targetCamY += panY;
-      camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
+      aim(camera.position.x, camera.position.y);
       lastPinchCenterX = center.x;
       lastPinchCenterY = center.y;
 
@@ -322,7 +317,7 @@ export function OrthoCamera() {
     camera.position.y += moveY;
     targetCamX += moveX;
     targetCamY += moveY;
-    camera.setTarget(new Vector3(camera.position.x, camera.position.y, 0));
+    aim(camera.position.x, camera.position.y);
   };
 
   const onPointerUp = (e: PointerEvent) => {
@@ -348,6 +343,7 @@ export function OrthoCamera() {
     zoomToward(targetViewHalf * (1 + e.deltaY * 0.001), e.clientX, e.clientY);
   };
 
+  let detachFlying = () => {};
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "F8") {
       perspective = !perspective;
@@ -359,14 +355,15 @@ export function OrthoCamera() {
     // Flying is a wide lens and the controls handed over, whichever projection
     // the map itself is using.
     if (debugMode) {
+      if (camera.ortho) disableOrthographicCamera(camera);
       camera.fov = 0.8;
-      camera.position = new Vector3(targetCamX, targetCamY - 10, 8);
-      camera.setTarget(new Vector3(targetCamX, targetCamY, 0));
-      camera.attachControl(canvas, true);
+      camera.position.set(targetCamX, targetCamY - 10, 8);
+      aim(targetCamX, targetCamY);
+      detachFlying = attachFreeControl(camera, canvas, scene);
     } else {
-      camera.detachControl();
-      camera.position = new Vector3(targetCamX, targetCamY, 10);
-      camera.setTarget(new Vector3(targetCamX, targetCamY, 0));
+      detachFlying();
+      camera.position.set(targetCamX, targetCamY, 10);
+      aim(targetCamX, targetCamY);
       updateProjection();
     }
   };
@@ -379,16 +376,16 @@ export function OrthoCamera() {
   window.addEventListener("keydown", onKeyDown);
 
   onCleanup(() => {
-    engine.onResizeObservable.remove(resizeObs);
-    scene.onBeforeRenderObservable.remove(renderObs);
-    scene.onAfterRenderObservable.remove(leanBackObs);
+    stopBefore();
+    stopAfter();
+    detachFlying();
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
     canvas.removeEventListener("wheel", onWheel);
     canvas.removeEventListener("contextmenu", preventContextMenu);
     window.removeEventListener("keydown", onKeyDown);
-    camera.dispose();
+    if (scene.camera === camera) scene.camera = null;
   });
 
   return <></>;

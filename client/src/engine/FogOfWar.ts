@@ -1,16 +1,8 @@
-import {
-  Color3,
-  Constants,
-  Mesh,
-  MeshBuilder,
-  RawTexture,
-  StandardMaterial,
-  Texture,
-  type Nullable,
-  type Observer,
-  type Scene,
-} from "@babylonjs/core";
+import { createShaderMaterial, createTexture2DFromPixels, wgsl, setShaderTexture, setShaderUniform, updateTexture2DFromPixels, type Mesh, type Texture2D } from "@babylonjs/lite";
 import { CHUNK_SIZE } from "./objects/terrainGeometry";
+import type { EngineContext } from "./Canvas";
+import { drop, meshOf, show } from "./geometry";
+import { toneMapWGSL } from "./toneMap";
 
 /** Chunks per axis covered by the mask, centred on the origin. */
 const FOG_CHUNKS = 64;
@@ -54,58 +46,71 @@ const smoothstep = (a: number, b: number, x: number) => {
  * The colour tracks the scene's clear colour, so the frontier dissolves into the
  * background at every hour of the day rather than sitting on top of it.
  */
+/** The fog: the mask's alpha over the sky's colour, brought onto the screen
+ *  as the lit world is (`toneMap.ts`), so it dissolves into what lies under. */
+const VERTEX = wgsl`struct VertexOutput { @builtin(position) position: vec4f, @location(0) uv: vec2f, };
+@vertex fn mainVertex(input: VertexInput) -> VertexOutput {
+  var out: VertexOutput;
+  out.position = shaderSystem.worldViewProjection * vec4f(input.position, 1.);
+  out.uv = input.uv;
+  return out;
+}`;
+const FRAGMENT = wgsl`struct VertexOutput { @builtin(position) position: vec4f, @location(0) uv: vec2f, };
+${toneMapWGSL}
+@fragment fn mainFragment(input: VertexOutput) -> @location(0) vec4f {
+  let c = toneMap(pow(shaderUniforms.colour.rgb, vec3f(2.2)) * shaderUniforms.colour.a);
+  return vec4f(pow(c, vec3f(1. / 2.2)), textureSample(mask, maskSampler, input.uv).a);
+}`;
+
 export class FogOfWar {
   private revealed = new Set<string>();
   private mesh: Mesh;
-  private material: StandardMaterial;
-  private texture: RawTexture;
+  private texture: Texture2D;
+  private material: ReturnType<typeof createShaderMaterial>;
   private data = new Uint8Array(TEX * TEX * 4);
   private dirty = true;
-  private observer: Nullable<Observer<Scene>>;
+  private stop: () => void;
 
   // Scratch buffers for the mask build, reused so a rebuild allocates nothing.
   private coverage = new Float32Array(TEX * TEX);
   private scratch = new Float32Array(TEX * TEX);
 
-  constructor(private scene: Scene) {
-    this.texture = RawTexture.CreateRGBATexture(
-      this.data,
-      TEX,
-      TEX,
-      scene,
-      false,
-      false,
-      Texture.BILINEAR_SAMPLINGMODE,
-    );
+  constructor(private ctx: EngineContext) {
     // Only the alpha channel carries the mask; the colour comes from the
     // material, so the rest of the buffer is written once and left alone.
     this.data.fill(255);
-    this.texture.wrapU = Texture.CLAMP_ADDRESSMODE;
-    this.texture.wrapV = Texture.CLAMP_ADDRESSMODE;
+    this.texture = createTexture2DFromPixels(ctx.engine, this.data, TEX, TEX, { minFilter: "linear", magFilter: "linear" });
 
-    this.material = new StandardMaterial("fog", scene);
-    this.material.disableLighting = true;
-    this.material.diffuseColor = Color3.Black();
-    this.material.specularColor = Color3.Black();
-    this.material.emissiveColor = Color3.White();
-    this.material.opacityTexture = this.texture;
-    this.material.backFaceCulling = false;
+    // Drawn after everything else, whatever stands nearer, so it closes over
+    // roads and cars too, and writing no depth: last of the see-through, in
+    // the same pass as the rest.
+    this.material = createShaderMaterial({
+      name: "fog",
+      vertexSource: VERTEX,
+      fragmentSource: FRAGMENT,
+      attributes: ["position", "uv"],
+      uniforms: ["worldViewProjection", { name: "colour", type: "vec4<f32>" }],
+      samplers: ["mask"],
+      needAlphaBlending: true,
+      backFaceCulling: false,
+      depthWrite: false,
+      depthCompare: "always",
+    });
+    setShaderTexture(this.material, "mask", this.texture);
 
-    this.mesh = MeshBuilder.CreatePlane("fog", { size: SPAN }, scene);
+    const h = SPAN / 2;
+    this.mesh = meshOf(ctx.engine, "fog", {
+      positions: [-h, -h, 0, h, -h, 0, h, h, 0, -h, h, 0],
+      normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+      uvs: [0, 0, 1, 0, 1, 1, 0, 1],
+      indices: [0, 2, 1, 0, 3, 2],
+    });
     this.mesh.material = this.material;
     this.mesh.position.z = FOG_Z;
-    this.mesh.isPickable = false;
-    this.mesh.receiveShadows = false;
-    // Drawn after everything else, whatever stands nearer, so it closes over
-    // roads and cars too, and writing no depth. Last of the see-through, not
-    // a rendering group of its own: a new group clears the depth, which on a
-    // tiled GPU writes the whole frame out and reads it back, half a frame's
-    // time at full resolution.
-    this.mesh.alphaIndex = Number.MAX_SAFE_INTEGER;
-    this.material.depthFunction = Constants.ALWAYS;
-    this.material.disableDepthWrite = true;
+    this.mesh.renderOrder = Number.MAX_SAFE_INTEGER;
+    show(ctx.scene, this.mesh);
 
-    this.observer = scene.onBeforeRenderObservable.add(() => this.update());
+    this.stop = ctx.beforeRender(() => this.update());
   }
 
   setChunk(cx: number, cy: number): void {
@@ -122,8 +127,8 @@ export class FogOfWar {
   private update(): void {
     // The frontier has to dissolve into whatever the sky currently is, or it
     // reads as a grey sheet laid over the map at dawn and dusk.
-    const clear = this.scene.clearColor;
-    this.material.emissiveColor.set(clear.r, clear.g, clear.b);
+    const clear = this.ctx.scene.clearColor;
+    setShaderUniform(this.material, "colour", [clear.r, clear.g, clear.b, this.ctx.scene.imageProcessing.exposure]);
 
     if (!this.dirty) return;
     this.dirty = false;
@@ -153,14 +158,12 @@ export class FogOfWar {
       const alpha = 1 - smoothstep(MARGIN, MARGIN + FADE, scratch[i]);
       data[i * 4 + 3] = (alpha * 255) | 0;
     }
-    this.texture.update(data);
+    updateTexture2DFromPixels(this.ctx.engine, this.texture, data);
   }
 
   dispose(): void {
-    this.scene.onBeforeRenderObservable.remove(this.observer);
-    this.mesh.dispose();
-    this.material.dispose();
-    this.texture.dispose();
+    this.stop();
+    drop(this.ctx.scene, this.mesh);
     this.revealed.clear();
   }
 }

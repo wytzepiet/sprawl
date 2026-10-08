@@ -1,4 +1,4 @@
-import type { MeshGeometry } from "../Mesh";
+import type { MeshGeometry } from "../geometry";
 
 /** A box `w` by `h` by `d`, its middle at the origin: a car, a lorry, a quay. */
 export function boxGeometry(w: number, h: number, d: number): MeshGeometry {

@@ -7,17 +7,20 @@ import {
 } from "solid-js";
 import { timeOfDay as simTimeOfDay } from "../network/clock";
 import {
-  Color3,
-  Color4,
-  Vector3,
-  DirectionalLight,
-  ShadowGenerator,
-  type AbstractEngine,
-} from "@babylonjs/core";
+  addToScene,
+  createDirectionalLight,
+  createPcfDirectionalShadowGenerator,
+  setLightDiffuseColor,
+  setShadowGeneratorBounds,
+  setShadowGeneratorEnabled,
+  setShadowTaskCasterMeshes,
+  type Mesh,
+} from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
-import "./toneMap";
+import { AGX_PUNCHY } from "./toneMap";
 import { groundCover } from "./view";
-import { skyEnvironment } from "./sky";
+import { skyEnvironment, type SkyLight } from "./sky";
+import { linear, lerp, mul, rgb, scale, tuple, type Rgb } from "./rgb";
 
 // ---------------------------------------------------------------------------
 // Time config
@@ -37,9 +40,9 @@ const SKY = 0.21;
  * the colour over its brightest channel, made linear, and its strength the
  * rest. Converted here once, where the light is handed over.
  */
-function linearLight(colour: Color3, strength: number): Color3 {
+function linearLight(colour: Rgb, strength: number): Rgb {
   const peak = Math.max(colour.r, colour.g, colour.b, 1e-6);
-  return colour.scale(1 / peak).toLinearSpace().scale(strength * peak);
+  return scale(linear(scale(colour, 1 / peak)), strength * peak);
 }
 
 /** Half-extent of the sun's ortho frustum beyond which shadows stop rendering. */
@@ -52,12 +55,13 @@ const SHADOW_MAX_RADIUS = 50;
  * map is cleared and written every frame, and its size is the bandwidth —
  * 4096 once cost 67MB a frame for detail a top-down view cannot show.
  *
- * Every frame, not every other: a map drawn at half rate shimmers. Its texel
+ * Whenever the view or the sun or a caster has moved, not every other such
+ * frame: a map drawn at half rate shimmers. Its texel
  * grid is laid down afresh wherever the sun and the view have moved to, and
  * skipping frames doubles the jump between one grid and the next.
  */
-function shadowMapSize(engine: AbstractEngine): number {
-  const longest = Math.max(engine.getRenderWidth(), engine.getRenderHeight());
+function shadowMapSize(canvas: HTMLCanvasElement): number {
+  const longest = Math.max(canvas.clientWidth, canvas.clientHeight) * Math.min(devicePixelRatio, 2);
   return Math.min(2048, Math.max(512, 2 ** Math.floor(Math.log2(longest))));
 }
 
@@ -65,26 +69,26 @@ function shadowMapSize(engine: AbstractEngine): number {
 // Color palette per time-of-day
 // ---------------------------------------------------------------------------
 
-const AMB_MIDNIGHT = new Color3(0.35, 0.35, 0.5);
+const AMB_MIDNIGHT = rgb(0.35, 0.35, 0.5);
 // The sky stays cool as the sun goes down, dimmer and a little lavender:
 // it is the sun that turns gold, so a golden hour is warm light and blue
 // shadows at once.
-const AMB_DAWN = new Color3(0.55, 0.52, 0.66);
-const AMB_NOON = new Color3(0.82, 0.82, 0.8);
-const AMB_DUSK = new Color3(0.5, 0.48, 0.62);
+const AMB_DAWN = rgb(0.55, 0.52, 0.66);
+const AMB_NOON = rgb(0.82, 0.82, 0.8);
+const AMB_DUSK = rgb(0.5, 0.48, 0.62);
 /** The sky's light is blue and the sun's warm, so where the sun is shut out
  *  a surface is its colour times the blue: grass goes teal, a red roof
  *  raspberry, white periwinkle. In the sun the two add to near white. */
-const SKY_LIGHT = new Color3(0.74, 0.86, 1.22);
+const SKY_LIGHT = rgb(0.74, 0.86, 1.22);
 /** The sun by its elevation: the lower, the more air its light has
  *  crossed and the more blue is scattered out of it, so near white high,
  *  gold low, and a deep orange red as it sets. */
-const sunStops: [number, Color3][] = [
-  [0, new Color3(1.8, 0.42, 0.16)],
-  [0.14, new Color3(1.8, 0.42, 0.16)],
-  [0.3, new Color3(1.65, 0.78, 0.3)],
-  [0.7, new Color3(1.15, 1.02, 0.75)],
-  [1, new Color3(1.15, 1.02, 0.75)],
+const sunStops: [number, Rgb][] = [
+  [0, rgb(1.8, 0.42, 0.16)],
+  [0.14, rgb(1.8, 0.42, 0.16)],
+  [0.3, rgb(1.65, 0.78, 0.3)],
+  [0.7, rgb(1.15, 1.02, 0.75)],
+  [1, rgb(1.15, 1.02, 0.75)],
 ];
 
 /** A shadow is drawn no longer than the sun this high would cast it. */
@@ -94,35 +98,20 @@ const LOWEST = 0.1;
  *  low sun lights the ground at a slant and its gold should still reach
  *  it; and it fades out just above the lowest sun, so the roofs it lights
  *  and the shadows it casts go together, before the shadows stop growing. */
-function sunLightAt(elev: number): { colour: Color3; strength: number } {
+function sunLightAt(elev: number): { colour: Rgb; strength: number } {
   return { colour: ramp(sunStops, elev, lerp3), strength: (0.5 * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
 }
 
-const SKY_MIDNIGHT = new Color4(0.15, 0.15, 0.25, 1);
-const SKY_DAWN = new Color4(0.58, 0.42, 0.3, 1);
-const SKY_NOON = new Color4(0.72, 0.8, 0.75, 1);
-const SKY_DUSK = new Color4(0.52, 0.32, 0.22, 1);
+const SKY_MIDNIGHT = rgb(0.15, 0.15, 0.25);
+const SKY_DAWN = rgb(0.58, 0.42, 0.3);
+const SKY_NOON = rgb(0.72, 0.8, 0.75);
+const SKY_DUSK = rgb(0.52, 0.32, 0.22);
 
 // ---------------------------------------------------------------------------
 // Interpolation helpers
 // ---------------------------------------------------------------------------
 
-function lerp3(a: Color3, b: Color3, t: number): Color3 {
-  return new Color3(
-    a.r + (b.r - a.r) * t,
-    a.g + (b.g - a.g) * t,
-    a.b + (b.b - a.b) * t,
-  );
-}
-
-function lerp4(a: Color4, b: Color4, t: number): Color4 {
-  return new Color4(
-    a.r + (b.r - a.r) * t,
-    a.g + (b.g - a.g) * t,
-    a.b + (b.b - a.b) * t,
-    a.a + (b.a - a.a) * t,
-  );
-}
+const lerp3 = lerp;
 
 function ramp<T>(
   stops: [number, T][],
@@ -149,7 +138,7 @@ function ramp<T>(
 export const SUNRISE = 5.33 / 24;
 export const SUNSET = 22 / 24;
 
-const ambientStops: [number, Color3][] = [
+const ambientStops: [number, Rgb][] = [
   [0.0, AMB_MIDNIGHT],
   [SUNRISE - 0.03, AMB_MIDNIGHT],
   [SUNRISE + 0.04, AMB_DAWN],
@@ -160,7 +149,7 @@ const ambientStops: [number, Color3][] = [
   [1.0, AMB_MIDNIGHT],
 ];
 
-const skyStops: [number, Color4][] = [
+const skyStops: [number, Rgb][] = [
   [0.0, SKY_MIDNIGHT],
   [SUNRISE - 0.03, SKY_MIDNIGHT],
   [SUNRISE + 0.04, SKY_DAWN],
@@ -176,34 +165,34 @@ const skyStops: [number, Color4][] = [
 // the horizon the glow turns gold, then orange, and after it has gone rose
 // and mauve, while the far side takes the Belt of Venus, pink over the blue
 // of the earth's own shadow rising; the same backwards at dawn.
-const HAZE = new Color3(0.85, 0.9, 1.0);
-const GLOW_NIGHT = new Color3(0.28, 0.3, 0.55);
-const BELT_NIGHT = new Color3(0.2, 0.22, 0.45);
-const glowStops: [number, Color3][] = [
+const HAZE = rgb(0.85, 0.9, 1.0);
+const GLOW_NIGHT = rgb(0.28, 0.3, 0.55);
+const BELT_NIGHT = rgb(0.2, 0.22, 0.45);
+const glowStops: [number, Rgb][] = [
   [0.0, GLOW_NIGHT],
   [SUNRISE - 0.05, GLOW_NIGHT],
-  [SUNRISE - 0.015, new Color3(0.85, 0.4, 0.45)],
-  [SUNRISE + 0.01, new Color3(1.0, 0.55, 0.3)],
-  [SUNRISE + 0.06, new Color3(1.0, 0.8, 0.55)],
+  [SUNRISE - 0.015, rgb(0.85, 0.4, 0.45)],
+  [SUNRISE + 0.01, rgb(1.0, 0.55, 0.3)],
+  [SUNRISE + 0.06, rgb(1.0, 0.8, 0.55)],
   [SUNRISE + 0.14, HAZE],
   [SUNSET - 0.14, HAZE],
-  [SUNSET - 0.06, new Color3(1.0, 0.78, 0.5)],
-  [SUNSET - 0.015, new Color3(1.0, 0.5, 0.25)],
-  [SUNSET + 0.015, new Color3(0.9, 0.38, 0.35)],
-  [SUNSET + 0.05, new Color3(0.45, 0.3, 0.5)],
+  [SUNSET - 0.06, rgb(1.0, 0.78, 0.5)],
+  [SUNSET - 0.015, rgb(1.0, 0.5, 0.25)],
+  [SUNSET + 0.015, rgb(0.9, 0.38, 0.35)],
+  [SUNSET + 0.05, rgb(0.45, 0.3, 0.5)],
   [SUNSET + 0.08, GLOW_NIGHT],
   [1.0, GLOW_NIGHT],
 ];
-const beltStops: [number, Color3][] = [
+const beltStops: [number, Rgb][] = [
   [0.0, BELT_NIGHT],
   [SUNRISE - 0.04, BELT_NIGHT],
-  [SUNRISE, new Color3(0.8, 0.55, 0.7)],
-  [SUNRISE + 0.06, new Color3(0.85, 0.75, 0.8)],
+  [SUNRISE, rgb(0.8, 0.55, 0.7)],
+  [SUNRISE + 0.06, rgb(0.85, 0.75, 0.8)],
   [SUNRISE + 0.14, HAZE],
   [SUNSET - 0.14, HAZE],
-  [SUNSET - 0.06, new Color3(0.85, 0.72, 0.78)],
-  [SUNSET, new Color3(0.85, 0.55, 0.7)],
-  [SUNSET + 0.03, new Color3(0.4, 0.38, 0.62)],
+  [SUNSET - 0.06, rgb(0.85, 0.72, 0.78)],
+  [SUNSET, rgb(0.85, 0.55, 0.7)],
+  [SUNSET + 0.03, rgb(0.4, 0.38, 0.62)],
   [SUNSET + 0.06, BELT_NIGHT],
   [1.0, BELT_NIGHT],
 ];
@@ -225,12 +214,18 @@ function sunElevation(t: number): number {
   return PEAK * Math.sin(sunAngle(t));
 }
 
-function sunDirection(t: number): Vector3 {
-  if (t < SUNRISE || t > SUNSET) return new Vector3(0, -NORTH, -1).normalize();
+type V3 = [number, number, number];
+const unit = ([x, y, z]: V3): V3 => {
+  const l = Math.hypot(x, y, z);
+  return [x / l, y / l, z / l];
+};
+
+function sunDirection(t: number): V3 {
+  if (t < SUNRISE || t > SUNSET) return unit([0, -NORTH, -1]);
   const angle = sunAngle(t); // 0=dawn, π/2=noon, π=dusk
   const elev = Math.max(PEAK * Math.sin(angle), LOWEST);
   const horiz = Math.cos(angle);
-  return new Vector3(-horiz, -NORTH, -elev).normalize();
+  return unit([-horiz, -NORTH, -elev]);
 }
 
 /**
@@ -241,7 +236,7 @@ function sunDirection(t: number): Vector3 {
  * both have faded to nothing.
  */
 const MOON_PEAK = 0.55;
-const MOON_COLOUR = new Color3(0.72, 0.82, 1.0);
+const MOON_COLOUR = rgb(0.72, 0.82, 1.0);
 const MOON = 0.16;
 
 /** How far the moon has come across the night, 0 at sunset to π at sunrise. */
@@ -255,12 +250,12 @@ function moonElevation(t: number): number {
   return isNight(t) ? MOON_PEAK * Math.sin(moonAngle(t)) : 0;
 }
 
-function moonDirection(t: number): Vector3 {
+function moonDirection(t: number): V3 {
   const angle = moonAngle(t);
-  return new Vector3(-Math.cos(angle), -NORTH, -Math.max(MOON_PEAK * Math.sin(angle), LOWEST)).normalize();
+  return unit([-Math.cos(angle), -NORTH, -Math.max(MOON_PEAK * Math.sin(angle), LOWEST)]);
 }
 
-function moonLightAt(elev: number): { colour: Color3; strength: number } {
+function moonLightAt(elev: number): { colour: Rgb; strength: number } {
   return { colour: MOON_COLOUR, strength: MOON * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15)) };
 }
 
@@ -314,7 +309,7 @@ export function skyGlint(t: number): [number, number, number] {
 /** The sky's light alone, without the sun's: pale by day, lavender at a
  *  low sun, blue at night. What a glass edge reflects all the way round. */
 export function skyLight(t: number): [number, number, number] {
-  const sky = ramp(ambientStops, t, lerp3).multiply(SKY_LIGHT);
+  const sky = mul(ramp(ambientStops, t, lerp3), SKY_LIGHT);
   return [sky.r, sky.g, sky.b];
 }
 
@@ -322,7 +317,7 @@ export function skyLight(t: number): [number, number, number] {
  *  and the whole of the sun's, so white at noon, rose and gold as it sets,
  *  the sky's blue alone at night. What the UI's glass is lit by. */
 export function lightOnPane(t: number): [number, number, number] {
-  const sky = ramp(ambientStops, t, lerp3).multiply(SKY_LIGHT);
+  const sky = mul(ramp(ambientStops, t, lerp3), SKY_LIGHT);
   const sun = sunLightAt(sunElevation(t));
   return [sky.r + sun.colour.r * sun.strength, sky.g + sun.colour.g * sun.strength, sky.b + sun.colour.b * sun.strength];
 }
@@ -333,14 +328,20 @@ export function lightOnPane(t: number): [number, number, number] {
 
 export interface DayNightState {
   timeOfDay: () => number;
-  ambientColor: () => Color3;
-  shadowGenerator: () => ShadowGenerator | undefined;
+  ambientColor: () => Rgb;
+  casters: () => Casters | undefined;
   /** @internal used by DayNightLights */
   _setTimeOfDay: (t: number) => void;
   /** @internal used by DayNightLights */
-  _setAmbient: (v: Color3) => void;
+  _setAmbient: (v: Rgb) => void;
   /** @internal used by DayNightLights */
-  _setShadowGen: (v: ShadowGenerator) => void;
+  _setCasters: (v: Casters) => void;
+}
+
+/** What casts a shadow in the sun's light. */
+export interface Casters {
+  add(mesh: Mesh): void;
+  remove(mesh: Mesh): void;
 }
 
 const DayNightCtx = createContext<DayNightState>();
@@ -358,15 +359,15 @@ export function useDayNight(): DayNightState {
 export function DayNightProvider(props: ParentProps) {
   const [timeOfDay, setTimeOfDay] = createSignal(0.35);
   const [ambient, setAmbient] = createSignal(ramp(ambientStops, 0.35, lerp3));
-  const [shadowGen, setShadowGen] = createSignal<ShadowGenerator>();
+  const [casters, setCasters] = createSignal<Casters>();
 
   const state: DayNightState = {
     timeOfDay,
     ambientColor: ambient,
     _setTimeOfDay: setTimeOfDay,
-    shadowGenerator: shadowGen,
+    casters,
     _setAmbient: setAmbient,
-    _setShadowGen: setShadowGen,
+    _setCasters: setCasters,
   };
 
   return <DayNightCtx.Provider value={state}>{props.children}</DayNightCtx.Provider>;
@@ -377,44 +378,66 @@ export function DayNightProvider(props: ParentProps) {
 // ---------------------------------------------------------------------------
 
 export default function DayNightLights(props: ParentProps) {
-  const { scene } = useEngine();
-  const { timeOfDay, _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setShadowGen: setShadowGen } = useDayNight();
+  const { engine, scene, canvas, beforeRender } = useEngine();
+  const { _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setCasters: setCasters } = useDayNight();
 
   // --- Lights ---
   // The sun by day and the moon by night, one light that casts; the sky's
-  // light from all round is the environment (`sky.ts`).
-  const sunLight = new DirectionalLight("sun", sunDirection(0.35), scene);
-  sunLight.specular = Color3.Black();
-  sunLight.autoUpdateExtends = false;
+  // light from all round is the environment (`sky.ts`). All made before the
+  // scene is registered (`Canvas.tsx`), as Lite builds its shaders for them then.
+  const sunLight = createDirectionalLight(sunDirection(0.35));
+  sunLight.specular = [0, 0, 0];
+  addToScene(scene, sunLight);
 
-  // --- Shadow generator ---
-  const engine = scene.getEngine();
-  const shadowGen = new ShadowGenerator(shadowMapSize(engine), sunLight);
-  shadowGen.usePercentageCloserFiltering = true;
-  shadowGen.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-  shadowGen.bias = 0.001;
+  // --- Shadows ---
   // Tree trunks are cylinders, so most of their surface sits at a grazing angle
   // to a low sun — the case a constant bias cannot cover without detaching the
   // shadows from the flat ground. Slope-scaled bias handles it per-fragment.
-  shadowGen.normalBias = 0.02;
-  setShadowGen(shadowGen);
-
-  const sky = skyEnvironment(scene);
-  // The light brought onto the screen by our own curve (`toneMap.ts`),
-  // after the eye's exposure: Babylon runs neither unless the exposure is
-  // other than 1, which the eye's is.
-  const look = scene.imageProcessingConfiguration;
-  look.toneMappingEnabled = false;
-  look.exposure = EYE;
-
-  const resizeObs = engine.onResizeObservable.add(() => {
-    const size = shadowMapSize(engine);
-    if (size !== shadowGen.mapSize) shadowGen.mapSize = size;
+  const shadows = createPcfDirectionalShadowGenerator(engine, sunLight, { mapSize: shadowMapSize(canvas), bias: 0.001, normalBias: 0.02 });
+  sunLight.shadowGenerator = shadows;
+  const casting = new Set<Mesh>();
+  let castersChanged = false;
+  setCasters({
+    add(mesh) {
+      if (casting.has(mesh)) return;
+      casting.add(mesh);
+      castersChanged = true;
+    },
+    remove(mesh) {
+      if (casting.delete(mesh)) castersChanged = true;
+    },
   });
+
+  const skyAt = (t: number, sun: Rgb): SkyLight => {
+    const amb = ramp(ambientStops, t, lerp3);
+    // Where the sun is, or last was, or will rise: the glow stays on its
+    // side of the sky after it has set.
+    const a = Math.min(Math.PI, Math.max(0, sunAngle(t)));
+    const level = Math.hypot(Math.cos(a), NORTH);
+    return {
+      zenith: linearLight(mul(amb, SKY_LIGHT), SKY),
+      glow: linearLight(ramp(glowStops, t, lerp3), SKY),
+      belt: linearLight(ramp(beltStops, t, lerp3), SKY),
+      sun,
+      sunward: [Math.cos(a) / level, NORTH / level],
+    };
+  };
+  const sky = skyEnvironment(scene, skyAt(0.35, rgb(0, 0, 0)));
+  // The light brought onto the screen by our own curve (`toneMap.ts`),
+  // after the eye's exposure.
+  scene.imageProcessing.toneMappingEnabled = true;
+  scene.imageProcessing.toneMapping = AGX_PUNCHY;
+  scene.imageProcessing.exposure = EYE;
 
   // --- Per-frame update ---
   let lastColorStep = -1;
-  const obs = scene.onBeforeRenderObservable.add(() => {
+  let shadowing = true;
+  const stop = beforeRender(() => {
+    if (castersChanged) {
+      castersChanged = false;
+      setShadowTaskCasterMeshes(shadows, [...casting]);
+    }
+
     // The sun follows the simulation, not the render loop — so fast-forwarding
     // moves the light with the traffic, and a reconnect resumes the same hour.
     // In development `?t=` holds the light at a time of day (0 midnight,
@@ -424,9 +447,12 @@ export default function DayNightLights(props: ParentProps) {
 
     const night = isNight(t);
     const elev = night ? moonElevation(t) : sunElevation(t);
-    sunLight.direction = night ? moonDirection(t) : sunDirection(t);
+    const [dx, dy, dz] = night ? moonDirection(t) : sunDirection(t);
+    sunLight.direction.set(dx, dy, dz);
     const sun = night ? moonLightAt(elev) : sunLightAt(elev);
-    sunLight.diffuse = sunLight.specular = linearLight(sun.colour, sun.strength);
+    const light = linearLight(sun.colour, sun.strength);
+    sunLight.specular = tuple(light);
+    setLightDiffuseColor(sunLight, tuple(light));
 
     // The sky is redrawn, and the flat things' tint walked over every
     // bucket, only when the quantized time moves: 1/1024 of a day is below
@@ -435,60 +461,26 @@ export default function DayNightLights(props: ParentProps) {
     if (colorStep !== lastColorStep) {
       lastColorStep = colorStep;
       const qt = colorStep / 1024;
-
-      const amb = ramp(ambientStops, qt, lerp3);
-      setAmbient(amb);
-
-      const clear = ramp(skyStops, qt, lerp4);
-      scene.clearColor.r = clear.r;
-      scene.clearColor.g = clear.g;
-      scene.clearColor.b = clear.b;
-      scene.clearColor.a = clear.a;
-
-      // Where the sun is, or last was, or will rise: the glow stays on its
-      // side of the sky after it has set.
-      const a = Math.min(Math.PI, Math.max(0, sunAngle(t)));
-      sky.draw({
-        zenith: linearLight(amb.multiply(SKY_LIGHT), SKY),
-        glow: linearLight(ramp(glowStops, qt, lerp3), SKY),
-        belt: linearLight(ramp(beltStops, qt, lerp3), SKY),
-        sun: sunLight.diffuse,
-        sunward: new Vector3(Math.cos(a), NORTH, 0).normalize(),
-      });
+      setAmbient(ramp(ambientStops, qt, lerp3));
+      const clear = ramp(skyStops, qt, lerp3);
+      scene.clearColor = { r: clear.r, g: clear.g, b: clear.b, a: 1 };
+      sky.draw(skyAt(qt, light));
     }
 
     // Round the ground in view, not round the camera: leaning back, the
-    // camera stands well behind what it looks at.
-    const { cx, cy, radius } = groundCover(scene, engine.getRenderingCanvas()!);
-    const dir = sunLight.direction;
-    sunLight.position.x = cx - dir.x * radius;
-    sunLight.position.y = cy - dir.y * radius;
-    sunLight.position.z = -dir.z * radius;
-    sunLight.shadowMinZ = 0;
-    sunLight.shadowMaxZ = radius * 2;
-    sunLight.orthoLeft = -radius;
-    sunLight.orthoRight = radius;
-    sunLight.orthoTop = radius;
-    sunLight.orthoBottom = -radius;
-    // The ortho extents are plain fields — writing them does not invalidate the
-    // cached projection. Babylon otherwise only rebuilds it when the light's
-    // position or direction moves, so a zoom (camera still, extents changed)
-    // would keep rendering the shadow map at the previous scale.
-    sunLight.forceProjectionMatrixCompute();
+    // camera stands well behind what it looks at. Up to as high as the view
+    // is wide, so nothing tall casts in from outside the box.
+    const { cx, cy, radius } = groundCover(scene, canvas);
+    setShadowGeneratorBounds(shadows, [cx - radius, cy - radius, -1], [cx + radius, cy + radius, radius]);
 
     // Zoomed out far enough that shadows are sub-pixel, or the sun down and
     // its light at zero: skip the whole shadow pass rather than draw every
     // caster into a map nobody can read.
-    sunLight.shadowEnabled = radius < SHADOW_MAX_RADIUS && elev > 0;
+    const shadow = radius < SHADOW_MAX_RADIUS && elev > 0;
+    if (shadow !== shadowing) setShadowGeneratorEnabled(shadows, (shadowing = shadow));
   });
 
-  onCleanup(() => {
-    scene.onBeforeRenderObservable.remove(obs);
-    engine.onResizeObservable.remove(resizeObs);
-    sky.dispose();
-    shadowGen.dispose();
-    sunLight.dispose();
-  });
+  onCleanup(stop);
 
   return <>{props.children}</>;
 }

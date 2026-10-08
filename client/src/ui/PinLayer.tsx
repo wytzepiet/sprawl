@@ -29,7 +29,7 @@ const STEPS = [...new Set(Object.values(BLUEPRINTS).map((b) => b.pinUntil))].sor
  * is for, and a class swap is all it takes to collapse them far out.
  */
 export default function PinLayer() {
-  const { scene, canvas } = useEngine();
+  const { scene, canvas, afterRender } = useEngine();
 
   const entries = createMemo(() => pinned());
   // How many of the thresholds the view has passed. A number rather than the
@@ -41,7 +41,7 @@ export default function PinLayer() {
   // Project every pin after each render, through the scene's own matrix — so a
   // pin lands where its plot is drawn whatever projection the camera uses.
   const place = () => {
-    if (!scene.activeCamera) return;
+    if (!scene.camera) return;
     const { halfH } = viewExtent(scene, canvas);
     const project = projector(scene, canvas);
     const rect = project.rect;
@@ -60,8 +60,7 @@ export default function PinLayer() {
       el.style.display = off ? "none" : "";
     }
   };
-  const obs = scene.onAfterRenderObservable.add(place);
-  onCleanup(() => scene.onAfterRenderObservable.remove(obs));
+  onCleanup(afterRender(place));
 
   // Pins have to take clicks, which means they also swallow the wheel — and the
   // layer is a sibling of the canvas, so nothing bubbles across on its own.

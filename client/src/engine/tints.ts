@@ -1,8 +1,10 @@
-import { Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type Scene } from "@babylonjs/core";
+import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import type { RGB } from "./town/mass";
 
-/** Slots a row of the texture; it gains rows as buildings come. */
+/** Slots a row of the texture, and its rows: room for this many buildings
+ *  ever coloured, a texture bound once and never replaced. */
 const ROW = 256;
+const ROWS = 64;
 
 /**
  * Each building's colour as it looks now, a texel a building, read by the
@@ -13,12 +15,13 @@ const ROW = 256;
  */
 export class Tints {
   private slots = new Map<number, number>();
-  private data = new Uint8Array(0);
-  private rows = 0;
+  private data = new Uint8Array(ROW * ROWS * 4);
   private stale = false;
-  private texture: RawTexture | null = null;
+  readonly texture: Texture2D;
 
-  constructor(private scene: Scene) {}
+  constructor(private engine: EngineContext) {
+    this.texture = createTexture2DFromPixels(engine, this.data, ROW, ROWS);
+  }
 
   /** Whether a building has a slot yet. */
   has(id: number): boolean {
@@ -29,9 +32,8 @@ export class Tints {
   set(id: number, [r, g, b]: RGB): number {
     let slot = this.slots.get(id);
     if (slot === undefined) {
-      slot = this.slots.size;
+      slot = Math.min(this.slots.size, ROW * ROWS - 1);
       this.slots.set(id, slot);
-      if (slot >= this.rows * ROW) this.grow();
     }
     const texel = [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255), 255];
     if (texel.some((v, i) => this.data[slot * 4 + i] !== v)) {
@@ -41,81 +43,32 @@ export class Tints {
     return slot;
   }
 
-  /** The texture, with every colour set so far. */
-  upload(): RawTexture | null {
-    if (!this.stale) return this.texture;
+  /** Every colour set so far, uploaded; before each frame. */
+  upload() {
+    if (!this.stale) return;
     this.stale = false;
-    if (this.texture && this.texture.getSize().height === this.rows) this.texture.update(this.data);
-    else {
-      this.texture?.dispose();
-      this.texture = new RawTexture(this.data, ROW, this.rows, Constants.TEXTUREFORMAT_RGBA, this.scene, false, false, Constants.TEXTURE_NEAREST_SAMPLINGMODE);
-    }
-    return this.texture;
+    updateTexture2DFromPixels(this.engine, this.texture, this.data);
   }
-
-  dispose() {
-    this.texture?.dispose();
-  }
-
-  private grow() {
-    this.rows = Math.max(4, this.rows * 2);
-    const data = new Uint8Array(ROW * this.rows * 4);
-    data.set(this.data);
-    this.data = data;
-  }
-}
-
-class TintDefines extends MaterialDefines {
-  TINT = false;
 }
 
 // The vertex colour, as the masses carry it: the shade's a and b, and the
 // slot. Turned into the building's colour × a + b.
-const GLSL = {
-  CUSTOM_FRAGMENT_DEFINITIONS: `uniform sampler2D tints;`,
-  CUSTOM_FRAGMENT_BEFORE_LIGHTS: `int tintSlot = int(vColor.b + 0.5);
-baseColor.rgb = texelFetch(tints, ivec2(tintSlot % ${ROW}, tintSlot / ${ROW}), 0).rgb * vColor.r + vColor.g;`,
-};
-const WGSL = {
-  CUSTOM_FRAGMENT_DEFINITIONS: `var tintsSampler: sampler; var tints: texture_2d<f32>;`,
-  CUSTOM_FRAGMENT_BEFORE_LIGHTS: `let tintSlot = floor(fragmentInputs.vColor.b + 0.5);
-let tintAt = (vec2f(tintSlot - ${ROW}. * floor(tintSlot / ${ROW}.), floor(tintSlot / ${ROW}.)) + 0.5) / vec2f(textureDimensions(tints, 0));
-baseColor = vec4f(textureSampleLevel(tints, tintsSampler, tintAt, 0.).rgb * fragmentInputs.vColor.r + fragmentInputs.vColor.g, baseColor.a);`,
-};
 
 /** A material whose meshes' vertices carry shades and slots (`Tints`). */
-export class TintPlugin extends MaterialPluginBase {
-  constructor(
-    material: Material,
-    private tints: Tints,
-  ) {
-    super(material, "Tint", 220, new TintDefines());
-    this._enable(true);
-  }
-
-  isCompatible() {
-    return true;
-  }
-
-  prepareDefines(defines: TintDefines) {
-    defines.TINT = true;
-  }
-
-  getSamplers(samplers: string[]) {
-    samplers.push("tints");
-  }
-
-  bindForSubMesh(ubo: { setTexture(n: string, t: RawTexture): void }) {
-    const texture = this.tints.upload();
-    if (texture) ubo.setTexture("tints", texture);
-  }
-
-  getClassName() {
-    return "TintPlugin";
-  }
-
-  getCustomCode(shaderType: string, shaderLanguage = 0) {
-    if (shaderType === "vertex") return null;
-    return shaderLanguage === 1 ? WGSL : GLSL;
-  }
+export function tintPlugin(tints: Tints): MaterialPlugin {
+  return {
+    name: "Tint",
+    priority: 220,
+    getSamplers: () => [{ texture: "tints", sampler: "tintsSampler" }],
+    bindTextures: (out) => out.push({ texture: tints.texture }),
+    getCustomCode: (stage) =>
+      stage === "fragment"
+        ? {
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `let tintSlot = floor(input.vColor.b + 0.5);
+let tintAt = (vec2f(tintSlot - ${ROW}. * floor(tintSlot / ${ROW}.), floor(tintSlot / ${ROW}.)) + 0.5) / vec2f(textureDimensions(tints, 0));
+baseColor = textureSampleLevel(tints, tintsSampler, tintAt, 0.).rgb * input.vColor.r + input.vColor.g;
+alpha = 1.0;`,
+          }
+        : null,
+  };
 }

@@ -33,9 +33,12 @@ function perfLog(): Plugin {
 // so both ports come from the environment, defaulting to the game's.
 const port = Number(process.env.SPRAWL_CLIENT_PORT ?? 4800);
 const server = `localhost:${process.env.SPRAWL_PORT ?? 4801}`;
+// The renderer is our fork of Babylon Lite, read from its source beside this repo.
+const lite = new URL("../../Babylon-Lite/packages/babylon-lite/", import.meta.url).pathname;
 
 export default defineConfig({
   plugins: [solidPlugin(), perfLog()],
+  resolve: { alias: { "@babylonjs/lite": `${lite}src/index.ts` } },
   server: {
     port,
     // Fail rather than wander. Vite's default is to take the next free port,
@@ -43,7 +46,7 @@ export default defineConfig({
     // that is not the one you think.
     strictPort: true,
     // The sandbox reads the fixtures from the server's side of the repo.
-    fs: { allow: [".."] },
+    fs: { allow: ["..", lite] },
     // The client derives its socket URL from location.host, so the dev server
     // has to forward /ws to the game server or it dials itself.
     proxy: {

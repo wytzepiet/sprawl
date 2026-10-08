@@ -1,4 +1,5 @@
-import { Color3, Vector3, type Scene } from "@babylonjs/core";
+import type { EngineContext } from "../Canvas";
+import { hex, lerp, type Rgb } from "../rgb";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { BLUEPRINTS, FACINGS, lie } from "../../blueprints";
@@ -12,7 +13,7 @@ import type { Job } from "../../generated/Job";
 import type { Tile } from "../../generated/Tile";
 
 /** A quay's stone, the kerb's colour. */
-const KERB = Color3.FromHexString("#E6E2D6");
+const KERB = hex("#E6E2D6");
 
 /** A farm's field is the ground the tractor last drove, a strip a tile
  *  wide along its path, painted flat like a map's farmland in one tone
@@ -26,7 +27,7 @@ export const FIELD_Z = 0.008;
 const QUAY = { deck: 0.7, top: 0.03, height: 0.53 };
 /** How long a sown crop takes to ripen, as the server has it. */
 const RIPEN = 600_000;
-const rgb = (c: Color3): RGB => [c.r, c.g, c.b];
+const rgb = (c: Rgb): RGB => [c.r, c.g, c.b];
 /** The tone a job leaves behind the tractor: the plough turns the
  *  ground to earth, the harvest leaves stubble, and the seed leaves the
  *  earth as it found it — the green comes with the clock. */
@@ -45,15 +46,15 @@ export function fieldTone(theme: Theme, land: Tile[]): RGB | null {
     case "Sown": {
       const since = Math.max(...land.filter((t) => t.stage === "Sown").map((t) => t.since));
       const k = Math.min(1, Math.max(0, (simNow() - since) / RIPEN));
-      const mix = (a: Color3, b: Color3, t: number): RGB => [a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t];
+      const mix = (a: Rgb, b: Rgb, t: number): RGB => rgb(lerp(a, b, t));
       return k < 0.6 ? mix(theme.earth, theme.growing, k / 0.6) : mix(theme.growing, theme.ripe, (k - 0.6) / 0.4);
     }
     default: return null;
   }
 }
 /** The field along a path over the land, in a tone. */
-export const field = (pool: InstancePool, drawn: NonNullable<ReturnType<typeof drawnPath>>, land: Set<string>, z: number, tone: RGB) =>
-  new Strip(pool.material("field", Color3.White()), drawn, (x, y) => land.has(`${x},${y}`), z, tone);
+export const field = (ctx: EngineContext, drawn: NonNullable<ReturnType<typeof drawnPath>>, land: Set<string>, z: number, tone: RGB) =>
+  new Strip(ctx, drawn, (x, y) => land.has(`${x},${y}`), z, tone);
 
 /**
  * What a building lays on the ground past its own walls, which the town
@@ -63,7 +64,7 @@ export const field = (pool: InstancePool, drawn: NonNullable<ReturnType<typeof d
 export function mountBuilding(
   entry: GameObjectEntry,
   pool: InstancePool,
-  scene: Scene,
+  ctx: EngineContext,
   theme: Theme,
   look: Look,
 ): () => void {
@@ -92,12 +93,12 @@ export function mountBuilding(
   // path it drove, in the tone the last run left. Every run works the
   // same ground, so the last run's path is the field. Repainted now and
   // then while the crop ripens, so it is seen to turn.
-  const drawn = data.ruts.length > 1 ? drawnPath(data.ruts.map(({ x, y }) => new Vector3(x + 0.5, y + 0.5, 0)), 0, 0, 0) : null;
+  const drawn = data.ruts.length > 1 ? drawnPath(data.ruts.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 })), 0, 0, 0) : null;
   const tone = fieldTone(theme, data.land);
-  const strip = drawn && tone ? field(pool, drawn, new Set(data.land.map((t) => `${t.at.x},${t.at.y}`)), FIELD_Z, tone) : null;
+  const strip = drawn && tone ? field(ctx, drawn, new Set(data.land.map((t) => `${t.at.x},${t.at.y}`)), FIELD_Z, tone) : null;
   let painted = performance.now();
-  const observer = strip && data.land.some((t) => t.stage === "Sown" && simNow() - t.since < RIPEN)
-    ? scene.onBeforeRenderObservable.add(() => {
+  const stop = strip && data.land.some((t) => t.stage === "Sown" && simNow() - t.since < RIPEN)
+    ? ctx.beforeRender(() => {
         if (performance.now() - painted < 500) return;
         painted = performance.now();
         strip.paint(fieldTone(theme, data.land)!);
@@ -106,7 +107,7 @@ export function mountBuilding(
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);
-    if (observer) scene.onBeforeRenderObservable.remove(observer);
+    stop?.();
     strip?.dispose();
   };
 }

@@ -1,4 +1,6 @@
-import { Color3, Constants, MaterialDefines, MaterialPluginBase, RawTexture, type Material, type Scene, type PBRMaterial } from "@babylonjs/core";
+import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { retire } from "./geometry";
+import type { Rgb } from "./rgb";
 import { RIM } from "./town/draw";
 import type { KerbTexels } from "./kerbLines";
 
@@ -22,14 +24,13 @@ import type { KerbTexels } from "./kerbLines";
  */
 
 /** A sheet's kerb texture, made of its texels (`kerbTexels`). */
-export function kerbField(scene: Scene, { half, origin, size, texels }: KerbTexels): KerbField {
-  const texture = new RawTexture(half, texels[0], texels[1], Constants.TEXTUREFORMAT_RGBA, scene, false, false, Constants.TEXTURE_BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_HALF_FLOAT);
-  texture.wrapU = texture.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
+export function kerbField(engine: EngineContext, { half, origin, size, texels }: KerbTexels): KerbField {
+  const texture = createTexture2DFromPixels(engine, half, texels[0], texels[1], { format: "rgba16float", minFilter: "linear", magFilter: "linear" });
   return { texture, origin, size, texels };
 }
 
 export interface KerbField {
-  texture: RawTexture;
+  texture: Texture2D;
   /** The texture's low corner in the sheet's frame, and its extent. */
   origin: [number, number];
   size: [number, number];
@@ -53,172 +54,74 @@ const JOINT = 0.008;
 const JOINT_DEPTH = 0.6;
 const n = (x: number) => x.toFixed(4);
 
-class KerbDefines extends MaterialDefines {
-  KERB = false;
-}
-
-// The sheet's own frame, carried to every pixel: a sheet is moved, never
-// turned, so its ways are the world's.
-const VERTEX_GLSL = {
-  CUSTOM_VERTEX_DEFINITIONS: `#ifdef KERB
-varying vec2 vKerbAt;
-#endif`,
-  CUSTOM_VERTEX_MAIN_END: `#ifdef KERB
-vKerbAt = positionUpdated.xy;
-#endif`,
-};
-const FRAGMENT_GLSL = {
-  CUSTOM_FRAGMENT_DEFINITIONS: `#ifdef KERB
-varying vec2 vKerbAt;
-uniform sampler2D kerbField;
-#endif`,
-  CUSTOM_FRAGMENT_BEFORE_LIGHTS: `#ifdef KERB
-vec2 kerbUv = (vKerbAt - kerbOrigin) / kerbSize;
-vec4 kerbAt = texture2D(kerbField, kerbUv);
-if (kerbAt.g < 0.) discard;
-if (kerbAt.a > ${n(CUT)}) discard;
-if (abs(kerbAt.b) < 1.) baseColor.rgb *= kerbLine;
-float kerbD = kerbAt.r;
-float kerbEdge = min(kerbD >= 0. ? kerbD : 9., ${n(CUT)} - kerbAt.a);
-float kerbBand = 1. - step(${n(BAND)}, kerbEdge);
-baseColor.rgb *= mix(1., ${n(BAND_LIGHT)}, kerbBand);
-float kerbDx = texture2D(kerbField, kerbUv + vec2(kerbTexel.x, 0.)).r - texture2D(kerbField, kerbUv - vec2(kerbTexel.x, 0.)).r;
-float kerbDy = texture2D(kerbField, kerbUv + vec2(0., kerbTexel.y)).r - texture2D(kerbField, kerbUv - vec2(0., kerbTexel.y)).r;
-if (kerbD >= 0. && kerbD < kerbWidth && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {
-  vec3 kerbOut = normalize(vec3(-kerbDx, -kerbDy, 0.));
-  normalW = normalize(mix(normalW, normalize(normalW + kerbOut), 1. - kerbD / kerbWidth));
-}
-float kerbStone = (${n(CUT)} - kerbAt.a) / ${n(STONE)};
-vec2 kerbToRoad = vec2(texture2D(kerbField, kerbUv + vec2(kerbTexel.x, 0.)).a - texture2D(kerbField, kerbUv - vec2(kerbTexel.x, 0.)).a, texture2D(kerbField, kerbUv + vec2(0., kerbTexel.y)).a - texture2D(kerbField, kerbUv - vec2(0., kerbTexel.y)).a);
-if (kerbStone < 1. && dot(kerbToRoad, kerbToRoad) > 0.) {
-  normalW = normalize(mix(normalW, normalize(normalW + vec3(normalize(kerbToRoad), 0.)), 1. - kerbStone));
-}
-// The joint behind the kerb stones: in from whichever edge is nearer, the
-// stone on its one side and the sheet on the other rounding down into it.
-vec2 kerbIn = ${n(CUT)} - kerbAt.a < (kerbD >= 0. ? kerbD : 9.) ? -kerbToRoad : vec2(kerbDx, kerbDy);
-float kerbJoint = kerbEdge - ${n(BAND)};
-if (abs(kerbJoint) < ${n(JOINT)} && dot(kerbIn, kerbIn) > 0.) {
-  normalW = normalize(normalW - vec3(normalize(kerbIn) * sign(kerbJoint) * (1. - abs(kerbJoint) / ${n(JOINT)}) * ${n(JOINT_DEPTH)}, 0.));
-}
-#endif`,
-};
-const VERTEX_WGSL = {
-  CUSTOM_VERTEX_DEFINITIONS: `#ifdef KERB
-varying vKerbAt: vec2f;
-#endif`,
-  CUSTOM_VERTEX_MAIN_END: `#ifdef KERB
-vertexOutputs.vKerbAt = positionUpdated.xy;
-#endif`,
-};
-const FRAGMENT_WGSL = {
-  CUSTOM_FRAGMENT_DEFINITIONS: `#ifdef KERB
-varying vKerbAt: vec2f;
-var kerbFieldSampler: sampler;
-var kerbField: texture_2d<f32>;
-#endif`,
-  CUSTOM_FRAGMENT_BEFORE_LIGHTS: `#ifdef KERB
-let kerbUv = (fragmentInputs.vKerbAt - uniforms.kerbOrigin) / uniforms.kerbSize;
-let kerbTx = vec2f(uniforms.kerbTexel.x, 0.);
-let kerbTy = vec2f(0., uniforms.kerbTexel.y);
+/** Kerbs rounded from a sheet's kerb texture, on its material, its lines
+ *  painted in `line` on a sheet of colour `sheet`. Its texture is let go
+ *  with `unkerb`. The sheet's own frame is carried to every pixel: a sheet is
+ *  moved, never turned, so its ways are the world's. */
+export function kerbPlugin(field: KerbField, line: Rgb, sheet: Rgb): MaterialPlugin {
+  return {
+    name: "Kerb",
+    priority: 210,
+    getVaryings: () => [{ name: "vKerbAt", type: "vec2f" }],
+    getSamplers: () => [{ texture: "kerbField", sampler: "kerbFieldSampler" }],
+    bindTextures: (out) => out.push({ texture: field.texture }),
+    getUniforms: () => ({
+      ubo: [
+        { name: "kerbOrigin", type: "vec2<f32>" },
+        { name: "kerbSize", type: "vec2<f32>" },
+        { name: "kerbTexel", type: "vec2<f32>" },
+        { name: "kerbWidth", type: "f32" },
+        { name: "kerbLine", type: "vec4<f32>" },
+      ],
+    }),
+    writeUbo: (data, offsets) => {
+      const at = (name: string) => offsets.get(name)! / 4;
+      data.set(field.origin, at("kerbOrigin"));
+      data.set(field.size, at("kerbSize"));
+      data.set([1 / field.texels[0], 1 / field.texels[1]], at("kerbTexel"));
+      data[at("kerbWidth")] = RIM;
+      // The line's colour over the sheet's, so the sheet's light and glow
+      // come out the line's own.
+      data.set([line.r / Math.max(sheet.r, 1e-3), line.g / Math.max(sheet.g, 1e-3), line.b / Math.max(sheet.b, 1e-3), 1], at("kerbLine"));
+    },
+    getCustomCode: (stage) =>
+      stage === "vertex"
+        ? { CUSTOM_VERTEX_MAIN_END: "out.vKerbAt = position.xy;" }
+        : {
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `let kerbUv = (input.vKerbAt - material.kerbOrigin) / material.kerbSize;
+let kerbTx = vec2f(material.kerbTexel.x, 0.);
+let kerbTy = vec2f(0., material.kerbTexel.y);
 let kerbAt = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv, 0.);
 if (kerbAt.g < 0.) { discard; }
 if (kerbAt.a > ${n(CUT)}) { discard; }
-if (abs(kerbAt.b) < 1.) { baseColor = vec4f(baseColor.rgb * uniforms.kerbLine, baseColor.a); }
+if (abs(kerbAt.b) < 1.) { baseColor *= material.kerbLine.rgb; }
 let kerbD = kerbAt.r;
 let kerbEdge = min(select(9., kerbD, kerbD >= 0.), ${n(CUT)} - kerbAt.a);
 let kerbBand = 1. - step(${n(BAND)}, kerbEdge);
-baseColor = vec4f(baseColor.rgb * mix(1., ${n(BAND_LIGHT)}, kerbBand), baseColor.a);
+baseColor *= mix(1., ${n(BAND_LIGHT)}, kerbBand);
 let kerbDx = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.).r;
 let kerbDy = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.).r;
-if (kerbD >= 0. && kerbD < uniforms.kerbWidth && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {
+if (kerbD >= 0. && kerbD < material.kerbWidth && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {
   let kerbOut = normalize(vec3f(-kerbDx, -kerbDy, 0.));
-  normalW = normalize(mix(normalW, normalize(normalW + kerbOut), 1. - kerbD / uniforms.kerbWidth));
+  N = normalize(mix(N, normalize(N + kerbOut), 1. - kerbD / material.kerbWidth));
 }
 let kerbStone = (${n(CUT)} - kerbAt.a) / ${n(STONE)};
 let kerbToRoad = vec2f(textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.).a - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.).a, textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.).a - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.).a);
 if (kerbStone < 1. && dot(kerbToRoad, kerbToRoad) > 0.) {
-  normalW = normalize(mix(normalW, normalize(normalW + vec3f(normalize(kerbToRoad), 0.)), 1. - kerbStone));
+  N = normalize(mix(N, normalize(N + vec3f(normalize(kerbToRoad), 0.)), 1. - kerbStone));
 }
 // The joint behind the kerb stones: in from whichever edge is nearer, the
 // stone on its one side and the sheet on the other rounding down into it.
 let kerbIn = select(vec2f(kerbDx, kerbDy), -kerbToRoad, ${n(CUT)} - kerbAt.a < select(9., kerbD, kerbD >= 0.));
 let kerbJoint = kerbEdge - ${n(BAND)};
 if (abs(kerbJoint) < ${n(JOINT)} && dot(kerbIn, kerbIn) > 0.) {
-  normalW = normalize(normalW - vec3f(normalize(kerbIn) * sign(kerbJoint) * (1. - abs(kerbJoint) / ${n(JOINT)}) * ${n(JOINT_DEPTH)}, 0.));
-}
-#endif`,
-};
-
-/** Kerbs rounded from a sheet's kerb texture, on its material; how far in
- *  the round reaches is the material's. */
-export class KerbPlugin extends MaterialPluginBase {
-  width = RIM;
-  /** The colour lines are painted in. */
-  line = new Color3(0, 0, 0);
-
-  constructor(material: Material, public field: KerbField) {
-    super(material, "Kerb", 210, new KerbDefines());
-    this._enable(true);
-  }
-
-  isCompatible() {
-    return true;
-  }
-
-  prepareDefines(defines: KerbDefines) {
-    defines.KERB = true;
-  }
-
-  getSamplers(samplers: string[]) {
-    samplers.push("kerbField");
-  }
-
-  getUniforms(shaderLanguage = 0) {
-    return {
-      ubo: [
-        { name: "kerbOrigin", size: 2, type: "vec2" },
-        { name: "kerbSize", size: 2, type: "vec2" },
-        { name: "kerbTexel", size: 2, type: "vec2" },
-        { name: "kerbWidth", size: 1, type: "float" },
-        { name: "kerbLine", size: 3, type: "vec3" },
-      ],
-      fragment: shaderLanguage === 1
-        ? "uniform kerbOrigin: vec2f; uniform kerbSize: vec2f; uniform kerbTexel: vec2f; uniform kerbWidth: f32; uniform kerbLine: vec3f;"
-        : "uniform vec2 kerbOrigin; uniform vec2 kerbSize; uniform vec2 kerbTexel; uniform float kerbWidth; uniform vec3 kerbLine;",
-    };
-  }
-
-  bindForSubMesh(ubo: { updateFloat2(n: string, x: number, y: number): void; updateFloat(n: string, v: number): void; updateFloat3(n: string, x: number, y: number, z: number): void; setTexture(n: string, t: RawTexture): void }) {
-    const f = this.field;
-    // The line's colour over the sheet's, so the sheet's light and glow
-    // come out the line's own.
-    const [line, sheet] = [this.line, (this._material as PBRMaterial).albedoColor];
-    ubo.updateFloat3("kerbLine", line.r / Math.max(sheet.r, 1e-3), line.g / Math.max(sheet.g, 1e-3), line.b / Math.max(sheet.b, 1e-3));
-    ubo.updateFloat2("kerbOrigin", f.origin[0], f.origin[1]);
-    ubo.updateFloat2("kerbSize", f.size[0], f.size[1]);
-    ubo.updateFloat2("kerbTexel", 1 / f.texels[0], 1 / f.texels[1]);
-    ubo.updateFloat("kerbWidth", this.width);
-    ubo.setTexture("kerbField", f.texture);
-  }
-
-  getClassName() {
-    return "KerbPlugin";
-  }
-
-  getCustomCode(shaderType: string, shaderLanguage = 0) {
-    const wgsl = shaderLanguage === 1;
-    return shaderType === "vertex" ? (wgsl ? VERTEX_WGSL : VERTEX_GLSL) : wgsl ? FRAGMENT_WGSL : FRAGMENT_GLSL;
-  }
+  N = normalize(N - vec3f(normalize(kerbIn) * sign(kerbJoint) * (1. - abs(kerbJoint) / ${n(JOINT)}) * ${n(JOINT_DEPTH)}, 0.));
+}`,
+          },
+  };
 }
 
-/** A sheet's material rounded at its kerbs from this kerb texture, its
- *  lines painted in `line`: the texture swapped in, if it already is, and
- *  the old one let go. */
-export function kerbed(material: Material, field: KerbField, line = new Color3(0, 0, 0)) {
-  let plugin = material.pluginManager?.getPlugin<KerbPlugin>("Kerb");
-  if (!plugin) plugin = new KerbPlugin(material, field);
-  else if (plugin.field.texture !== field.texture) plugin.field.texture.dispose();
-  plugin.field = field;
-  plugin.line = line;
-  return plugin;
+/** A kerb texture let go of. */
+export function unkerb(field: KerbField) {
+  retire(field.texture);
 }

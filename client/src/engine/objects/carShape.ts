@@ -1,4 +1,4 @@
-import type { MeshGeometry } from "../Mesh";
+import type { MeshGeometry } from "../geometry";
 
 /**
  * A car as a toy: a low body, its corners rounded seen from above as a
