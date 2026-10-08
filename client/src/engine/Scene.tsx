@@ -1,5 +1,4 @@
-import Canvas, { useEngine } from "./Canvas";
-import { Show, type ParentProps } from "solid-js";
+import Canvas, { Registered } from "./Canvas";
 import { OrthoCamera } from "./OrthoCamera";
 import DayNightLights, { DayNightProvider } from "./DayNightCycle";
 import { InstancePoolProvider } from "./InstancePool";
@@ -19,12 +18,6 @@ import SkillTree from "../ui/SkillTree";
 import Card from "../ui/Card";
 import Board from "../ui/Board";
 import Glass from "../ui/Glass";
-
-/** What is drawn, once the scene is registered (`Canvas.tsx`). */
-function Registered(props: ParentProps) {
-  const { registered } = useEngine();
-  return <Show when={registered()}>{props.children}</Show>;
-}
 
 function SceneInner() {
   return (

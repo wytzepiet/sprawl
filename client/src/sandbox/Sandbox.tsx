@@ -1,10 +1,13 @@
 import { createSignal, For, onCleanup, onMount } from "solid-js";
-import { Color3, Mesh, MeshBuilder, Vector3, VertexData, type Scene } from "@babylonjs/core";
-import { townMaterial } from "../engine/material";
-import Canvas, { useEngine } from "../engine/Canvas";
+import { createShaderMaterial, setMeshVisible, wgsl, type Mesh, type MaterialPlugin } from "@babylonjs/lite";
+import { FLAT, setTint, townMaterial, type TownMaterial } from "../engine/material";
+import Canvas, { Registered, useEngine, type EngineContext } from "../engine/Canvas";
 import { OrthoCamera } from "../engine/OrthoCamera";
-import DayNightLights, { DayNightProvider, useDayNight } from "../engine/DayNightCycle";
-import { BevelPlugin, bevelled, giveBevel, lacquer } from "../engine/bevel";
+import DayNightLights, { DayNightProvider, useDayNight, type Casters } from "../engine/DayNightCycle";
+import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "../engine/bevel";
+import { drop, meshOf, show } from "../engine/geometry";
+import { screenToWorld } from "../engine/view";
+import { hex, rgb, WHITE, type Rgb } from "../engine/rgb";
 import { ThemeProvider, useTheme, type Theme } from "../engine/theme";
 import { OfflineGame } from "../state/gameObjects";
 import { syncClock } from "../network/clock";
@@ -24,10 +27,10 @@ import { waterMaterial } from "../engine/water";
 import { GroundTiles } from "../engine/ground";
 import { peakMaterial } from "../engine/peaks";
 import { drawRoads, drawTown, flatPolygons, quadsAt, runsOn, treeInstances } from "../engine/town/draw";
-import { grove, plant } from "../engine/trees";
-import { kerbed, kerbField } from "../engine/kerbs";
-import { pave } from "../engine/paving";
-import { tiled } from "../engine/roofs";
+import { grove, plant, uproot } from "../engine/trees";
+import { kerbField, kerbPlugin, unkerb } from "../engine/kerbs";
+import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "../engine/paving";
+import { ROOF } from "../engine/roofs";
 import { extentOf, kerbsOf, kerbTexels, roadsOf, stripLines } from "../engine/kerbLines";
 
 /**
@@ -68,7 +71,9 @@ export default function Sandbox() {
           <Canvas>
             <OrthoCamera />
             <DayNightLights>
-              <Board />
+              <Registered>
+                <Board />
+              </Registered>
             </DayNightLights>
           </Canvas>
         </OfflineGame>
@@ -78,8 +83,9 @@ export default function Sandbox() {
 }
 
 function Board() {
-  const { scene, canvas } = useEngine();
-  const { shadowGenerator } = useDayNight();
+  const ctx = useEngine();
+  const { scene, canvas } = ctx;
+  const casters = useDayNight().casters()!;
   const theme = useTheme();
   const params = new URLSearchParams(location.search);
   const [name, setName] = createSignal(params.get("f") ?? Object.keys(FIXTURES)[0]);
@@ -88,7 +94,7 @@ function Board() {
   let rows: string[] = [];
   let tiles: Tile[][] = [];
   let through: boolean[][] = [];
-  let drawn: Mesh[] = [];
+  let drawn: Drawn = { meshes: [], dispose: [] };
 
   /** Which tiles are joined into one building, as the strokes ran; null
    *  until the first stroke, the look joining by kind till then. */
@@ -138,13 +144,8 @@ function Board() {
   }
 
   function draw() {
-    for (const m of drawn) m.dispose();
-    drawn = build(scene, town(), theme(), rows);
-    for (const m of drawn) {
-      // A tree casts its shadow from body and top; its top takes the others'.
-      m.receiveShadows = !m.name.endsWith("tree_bodies");
-      if (m.name === "mass" || /tree_(bodies|tops)$/.test(m.name)) shadowGenerator()?.addShadowCaster(m);
-    }
+    undraw(ctx, drawn, casters);
+    drawn = build(ctx, casters, town(), theme(), rows);
   }
 
   // Painting. A brush of a building kind paints strokes: what is painted is
@@ -159,6 +160,10 @@ function Board() {
   let stroking = false;
   let hover: Cell | null = null;
   let overlay: Mesh[] = [];
+  const clear = () => {
+    for (const m of overlay) drop(scene, m);
+    overlay = [];
+  };
   const program = () => PROGRAMS[LETTERS[brush()]];
   const has = (cells: Cell[], [c, r]: Cell) => cells.some(([x, y]) => x === c && y === r);
 
@@ -189,20 +194,19 @@ function Board() {
   }
 
   function drawOverlay() {
-    for (const m of overlay) m.dispose();
-    overlay = [];
+    clear();
     const { ghost, next } = plan();
     const t = town();
     const lit = quadsAt(next, 0.012);
-    if (lit.indices.length) overlay.push(translucent(scene, "next", lit, Color3.White(), 0.35));
+    if (lit.indices.length) overlay.push(translucent(ctx, "next", lit, WHITE, 0.35));
     if (ghost) {
       const ghostTiles = tiles.map((row, r) => row.map((tile, c) => (has(ghost, [c, r]) ? tileOf(brush()) : tile)));
       const all = joins ?? fixed(t);
       const shown = townOf(ghostTiles, (c, r) => t.through(c, r), [], joinsOf(new Set([...all, ...strokeJoins(t, ghost)])));
       const geo = mesh(shown, shaded(colourOf), new Set(ghost.map(([c, r]) => `${c},${r}`)));
-      if (geo.indices.length) overlay.push(translucent(scene, "ghost", geo, Color3.White(), 0.75));
+      if (geo.indices.length) overlay.push(translucent(ctx, "ghost", geo, WHITE, 0.75));
     } else if (hover && program()) {
-      overlay.push(translucent(scene, "nope", quadsAt([hover], 0.014), new Color3(0.85, 0.25, 0.2), 0.5));
+      overlay.push(translucent(ctx, "nope", quadsAt([hover], 0.014), rgb(0.85, 0.25, 0.2), 0.5));
     }
   }
 
@@ -210,9 +214,8 @@ function Board() {
    *  a drag on the diagonal steps corner to corner and never takes the
    *  tile beside it passes. */
   const tileAt = (e: PointerEvent): Cell | null => {
-    const hit = scene.pick(e.offsetX, e.offsetY, (m) => m.name === "ground");
-    if (!hit?.pickedPoint) return null;
-    const [x, y] = [-hit.pickedPoint.x, -hit.pickedPoint.y];
+    const { wx, wy } = screenToWorld(scene, canvas, e);
+    const [x, y] = [-wx, -wy];
     const cell: Cell = [Math.floor(x), Math.floor(y)];
     return !stroking || Math.hypot(x - cell[0] - 0.5, y - cell[1] - 0.5) < 0.45 ? cell : null;
   };
@@ -278,8 +281,8 @@ function Board() {
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "g") {
       showGrid = !showGrid;
-      const grid = scene.getMeshByName("grid");
-      if (grid) grid.isVisible = showGrid;
+      const grid = drawn.meshes.find((m) => m.name === "grid");
+      if (grid) setMeshVisible(grid, showGrid);
       return;
     }
     const b = BRUSHES.find((b) => b.key === e.key);
@@ -298,7 +301,8 @@ function Board() {
     canvas.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
     window.removeEventListener("keydown", onKey);
-    for (const m of [...drawn, ...overlay]) m.dispose();
+    undraw(ctx, drawn, casters);
+    clear();
   });
 
   const bar = "position:fixed;left:12px;top:12px;display:flex;gap:6px;flex-wrap:wrap;font:13px system-ui;z-index:10";
@@ -324,22 +328,36 @@ function Board() {
 }
 
 const colourOf = (t: Tile): [number, number, number] => {
-  const c = Color3.FromHexString(BLUEPRINTS[t.kind as BuildingKind].material);
+  const c = hex(BLUEPRINTS[t.kind as BuildingKind].material);
   return [c.r, c.g, c.b];
 };
 
 
 /** A see-through mesh, for what is not built yet. */
-function translucent(scene: Scene, name: string, geo: MeshGeometry & { colors?: number[] }, colour: Color3, alpha: number): Mesh {
-  const mesh = new Mesh(name, scene);
-  const vd = new VertexData();
-  Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
-  vd.applyToMesh(mesh);
-  const mat = townMaterial(`${name}_mat`, scene);
-  mat.albedoColor = colour;
+function translucent({ engine, scene }: EngineContext, name: string, geo: MeshGeometry & { colors?: number[] }, colour: Rgb, alpha: number): Mesh {
+  const mesh = meshOf(engine, name, geo);
+  const mat = townMaterial();
+  setTint(mat, colour);
   mat.alpha = alpha;
+  mat.alphaBlend = true;
   mesh.material = mat;
+  show(scene, mesh);
   return mesh;
+}
+
+/** What a town was drawn with, to take away again. */
+interface Drawn {
+  meshes: Mesh[];
+  /** Kept out of the scene's casters and let go of with it: its trees, its textures. */
+  dispose: (() => void)[];
+}
+
+function undraw(ctx: EngineContext, drawn: Drawn, casters: Casters) {
+  for (const m of drawn.meshes) {
+    casters.remove(m);
+    drop(ctx.scene, m);
+  }
+  for (const d of drawn.dispose) d();
 }
 
 /** Everything a town is drawn with: the ground, water and woods, the
@@ -351,12 +369,12 @@ let ground: GroundTiles | null = null;
  * The ground as the game draws it, from the fixture's letters: chunk by
  * chunk, each with its skirt, through the builder the terrain worker runs.
  */
-function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
+function terrain(ctx: EngineContext, drawn: Drawn, town: Town, theme: Theme, rows: string[]) {
+  const { engine, scene } = ctx;
   ground?.dispose();
-  ground = new GroundTiles(scene);
   // The map runs +x to the screen's left and +y up: turned about.
-  ground.frame.scaling.set(-1, -1, 1);
-  ground.paint([theme.beach, theme.rock, theme.land, theme.forest].map((c) => new Color3(c.r, c.g, c.b)));
+  ground = new GroundTiles(engine, scene, ctx.beforeRender, ctx.cull, true);
+  ground.paint([theme.beach, theme.rock, theme.land, theme.forest]);
   const type = (c: number, r: number): TerrainType => {
     const ch = rows[r]?.[c];
     if (ch === "^") return "Mountain";
@@ -408,7 +426,6 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
     }
     return out;
   };
-  const out: Mesh[] = [];
   for (let cy = 0; cy * CHUNK_SIZE < town.h; cy++) {
     for (let cx = 0; cx * CHUNK_SIZE < town.w; cx++) {
       const tiles = new Uint8Array(CHUNK_STRIDE * CHUNK_STRIDE);
@@ -422,85 +439,102 @@ function terrain(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[]
       ground.set(`${cx},${cy}`, [cx * CHUNK_SIZE, cy * CHUNK_SIZE], geo.layers);
       for (const [name, g] of [["water", geo.water], ["cliffs", geo.cliffs], ["peaks", geo.peaks]] as const) {
         if (!g.indices.length) continue;
-        const mesh = new Mesh(`terrain_${name}`, scene);
-        const vd = new VertexData();
-        Object.assign(vd, { positions: g.positions, indices: g.indices, normals: g.normals, colors: g.colors ?? null });
-        vd.applyToMesh(mesh);
+        const mesh = meshOf(engine, `terrain_${name}`, g);
         // The map runs +x to the screen's left and +y up: turned about.
         mesh.scaling.set(-1, -1, 1);
         // The peaks are laid where they are on the map.
         if (name !== "peaks") mesh.position.set(-cx * CHUNK_SIZE, -cy * CHUNK_SIZE, 0);
-        const mat = name === "water" ? waterMaterial(scene, geo.shore, geo.cliffField) : name === "peaks" && geo.peakHeights ? peakMaterial(scene, "terrain_peaks_mat", geo.peakHeights) : townMaterial(`terrain_${name}_mat`, scene);
-        if (name === "cliffs") mat.albedoColor = new Color3(0.5, 0.5, 0.5);
-        mat.backFaceCulling = false;
+        let mat: TownMaterial;
+        if (name === "water") {
+          const water = waterMaterial(engine, geo.shore, geo.cliffField);
+          drawn.dispose.push(water.dispose, ctx.beforeRender(water.tick));
+          mat = water.material;
+        } else if (name === "peaks" && geo.peakHeights) {
+          const peaks = peakMaterial(engine, geo.peakHeights);
+          drawn.dispose.push(peaks.dispose);
+          mat = peaks.material;
+        } else {
+          mat = townMaterial([FLAT]);
+          setTint(mat, rgb(0.5, 0.5, 0.5));
+        }
+        mat.doubleSided = true;
         mesh.material = mat;
-        mesh.isPickable = false;
-        out.push(mesh);
+        mesh.receiveShadows = true;
+        show(scene, mesh);
+        drawn.meshes.push(mesh);
       }
     }
   }
-  return out;
 }
 
 /** Just over the roads, under every building. */
 const GRID_Z = 0.03;
 let showGrid = true;
 
-function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
-  const meshes: Mesh[] = [];
-  const add = (name: string, plain: MeshGeometry & { colors?: number[] }, colour: Color3) => {
+function build(ctx: EngineContext, casters: Casters, town: Town, theme: Theme, rows: string[]): Drawn {
+  const { engine, scene } = ctx;
+  const drawn: Drawn = { meshes: [], dispose: [] };
+  const add = (name: string, plain: MeshGeometry & { colors?: number[] }, colour: Rgb, plugins: MaterialPlugin[] = [], roughness?: number) => {
     if (!plain.indices.length) return;
     const geo = bevelled(plain);
-    const mesh = new Mesh(name, scene);
-    const vd = new VertexData();
-    Object.assign(vd, { positions: geo.positions, indices: geo.indices, normals: geo.normals, colors: geo.colors ?? null });
-    vd.applyToMesh(mesh);
-    const mat = townMaterial(`${name}_mat`, scene);
-    mat.albedoColor = colour;
+    const mesh = meshOf(engine, name, geo);
     // Its creases rounded, as the game's town; lacquered as the game's
     // are, asphalt and paving matte.
-    giveBevel(mesh, geo);
-    const bevel = new BevelPlugin(mat);
-    if (name === "mass") lacquer(mat, "building"), tiled(mat);
+    giveBevel(engine, mesh, geo);
+    const bevel: Bevel = { width: 0.05, soft: null };
+    const mat = townMaterial([bevelPlugin(bevel), ...(name === "mass" ? [ROOF] : []), ...plugins], roughness);
+    setTint(mat, colour);
+    if (name === "mass") lacquer(mat, "building", bevel);
     else if (name === "parked") {
-      lacquer(mat, "car");
+      lacquer(mat, "car", bevel);
       bevel.width = ROUNDING;
     }
     mesh.material = mat;
-    meshes.push(mesh);
+    mesh.receiveShadows = true;
+    show(scene, mesh);
+    if (name === "mass") casters.add(mesh);
+    drawn.meshes.push(mesh);
+  };
+  /** A sheet's kerb texture, let go of with the town. */
+  const kerbs = (texels: Parameters<typeof kerbField>[1]) => {
+    const field = kerbField(engine, texels);
+    drawn.dispose.push(() => unkerb(field));
+    return field;
   };
 
-  // The ground: a sheet under it all to take the shadows and the clicks.
-  const ground = MeshBuilder.CreateGround("ground", { width: town.w + 40, height: town.h + 40 }, scene);
-  ground.rotation.x = Math.PI / 2;
-  ground.position.set(-town.w / 2, -town.h / 2, -0.6);
-  const gm = townMaterial("ground_mat", scene);
-  gm.albedoColor = new Color3(theme.land.r, theme.land.g, theme.land.b);
-  ground.material = gm;
-  meshes.push(ground);
+  // The ground: a sheet under it all to take the shadows.
+  const [gw, gh] = [town.w / 2 + 20, town.h / 2 + 20];
+  const sheet = meshOf(engine, "ground", { positions: [-gw, -gh, 0, gw, -gh, 0, gw, gh, 0, -gw, gh, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
+  sheet.position.set(-town.w / 2, -town.h / 2, -0.6);
+  const gm = townMaterial();
+  setTint(gm, theme.land);
+  sheet.material = gm;
+  sheet.receiveShadows = true;
+  show(scene, sheet);
+  drawn.meshes.push(sheet);
 
   // The ground: grass, water, woods and paving, as terrain.
-  meshes.push(...terrain(scene, town, theme, rows));
+  terrain(ctx, drawn, town, theme, rows);
 
-  // The town grid, drawn; and on it what the dressing parks.
+  // The town grid, drawn; and on it what the dressing parks. A sheet's
+  // kerbs rounded from its own kerb texture (`engine/kerbs.ts`): the
+  // paving's every edge, a road's where it does not run on.
   const { pieces, dressing } = drawTown(town, theme, shaded(colourOf));
   for (const p of [...drawRoads(town, theme), ...pieces]) {
-    add(p.name, p.geo, p.colour ? new Color3(p.colour.r, p.colour.g, p.colour.b) : Color3.White());
-    // A sheet's kerbs rounded from its own kerb texture (`engine/kerbs.ts`):
-    // the paving's every edge, a road's where it does not run on.
-    const material = meshes[meshes.length - 1].material;
-    if (material && p.name === "pavement") pave(material);
-    if (material && p.name === "pavement") kerbed(material, kerbField(scene, kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines), roads: roadsOf(flatPolygons([...asphalt(town).street, ...asphalt(town).through, ...dressing.lanes.map((l): Polygon => [l])], 0)) })), theme.road);
-    if (material && (p.name === "street" || p.name === "through")) {
+    const colour = p.colour ? rgb(p.colour.r, p.colour.g, p.colour.b) : WHITE;
+    if (p.name === "pavement") {
+      const field = kerbs(kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines), roads: roadsOf(flatPolygons([...asphalt(town).street, ...asphalt(town).through, ...dressing.lanes.map((l): Polygon => [l])], 0)) }));
+      add(p.name, p.geo, colour, [kerbPlugin(field, theme.road, colour), pavingPlugin(engine, true)], PAVING_ROUGHNESS);
+    } else if (p.name === "street" || p.name === "through") {
       const on = runsOn(p.geo);
-      kerbed(material, kerbField(scene, kerbTexels(kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo))));
-    }
+      add(p.name, p.geo, colour, [kerbPlugin(kerbs(kerbTexels(kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo))), rgb(0, 0, 0), colour)]);
+    } else add(p.name, p.geo, colour);
   }
   const { cars, docks, ships } = dressing;
-  const trees = grove(scene, "sandbox", undefined);
+  const trees = grove(ctx, "sandbox");
   const { matrices, colors } = treeInstances(dressing.trees, theme);
-  plant(trees, matrices, colors);
-  meshes.push(trees.bodies, trees.tops);
+  plant(ctx, trees, matrices, colors, casters, [-town.w - 1, -town.h - 1, 1, 1]);
+  drawn.dispose.push(() => uproot(ctx, trees, casters));
 
   // Parked cars and lorries at the docks, as the game draws them.
   const CAR_COLOURS: RGB[] = [[0.9, 0.25, 0.2], [0.85, 0.85, 0.88], [0.2, 0.22, 0.28], [0.25, 0.4, 0.75], [0.65, 0.65, 0.68], [0.55, 0.15, 0.15], [0.2, 0.5, 0.4], [0.8, 0.65, 0.25]];
@@ -565,19 +599,31 @@ function build(scene: Scene, town: Town, theme: Theme, rows: string[]): Mesh[] {
     box(dock.x + ux * trailer, dock.y + uy * trailer, dock.angle, [TRAILER.w, TRAILER.l, TRAILER.h], [0.9, 0.9, 0.88]);
     box(dock.x + ux * cab, dock.y + uy * cab, dock.angle, [CAB.w, CAB.l, CAB.h], [0.28, 0.36, 0.58]);
   }
-  add("parked", parked, Color3.White());
+  add("parked", parked, WHITE);
 
   // The tiles' grid, faint, over the ground and under the buildings: `g`
   // hides it.
-  const lines: Vector3[][] = [];
-  for (let c = 0; c <= town.w; c++) lines.push([new Vector3(-c, 0, GRID_Z), new Vector3(-c, -town.h, GRID_Z)]);
-  for (let r = 0; r <= town.h; r++) lines.push([new Vector3(0, -r, GRID_Z), new Vector3(-town.w, -r, GRID_Z)]);
-  const grid = MeshBuilder.CreateLineSystem("grid", { lines }, scene);
-  grid.color = Color3.Black();
-  grid.alpha = 0.18;
-  grid.isPickable = false;
-  grid.isVisible = showGrid;
-  meshes.push(grid);
-  return meshes;
+  const ends: number[] = [];
+  for (let c = 0; c <= town.w; c++) ends.push(-c, 0, GRID_Z, -c, -town.h, GRID_Z);
+  for (let r = 0; r <= town.h; r++) ends.push(0, -r, GRID_Z, -town.w, -r, GRID_Z);
+  const grid = meshOf(engine, "grid", { positions: ends, normals: ends.map(() => 0), indices: ends.slice(0, ends.length / 3).map((_, i) => i) });
+  grid.material = GRID_MATERIAL;
+  setMeshVisible(grid, showGrid);
+  show(scene, grid);
+  drawn.meshes.push(grid);
+  return drawn;
 }
+
+/** The grid's lines: pale, as they have always shown. */
+const GRID_MATERIAL = createShaderMaterial({
+  name: "grid",
+  vertexSource: wgsl`struct VertexOutput { @builtin(position) position: vec4f, };
+@vertex fn mainVertex(input: VertexInput) -> VertexOutput { var out: VertexOutput; out.position = shaderSystem.worldViewProjection * vec4f(input.position, 1.); return out; }`,
+  fragmentSource: wgsl`@fragment fn mainFragment() -> @location(0) vec4f { return vec4f(1., 1., 1., 0.45); }`,
+  attributes: ["position"],
+  uniforms: ["worldViewProjection"],
+  topology: "line-list",
+  needAlphaBlending: true,
+  depthWrite: false,
+});
 

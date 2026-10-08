@@ -32,7 +32,13 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 ## Structure
 
 - `server/` — Rust (DES, WebSocket, SQLite)
-- `client/` — SolidJS 1.x + Babylon.js (Vite)
+- `client/` — SolidJS 1.x + Babylon Lite (Vite), WebGPU only. Lite is our
+  fork, read from its source beside this repo: clone
+  `github.com/wytzepiet/Babylon-Lite` (branch `sprawl`) to `../Babylon-Lite`
+  and `pnpm install` there. After changing its API, build the types the client
+  checks against: `tsc -p . --emitDeclarationOnly --declarationMap false
+  --outDir build/types --composite false --incremental false` in
+  `packages/babylon-lite`. What the fork adds, and why, is in its commits.
 
 ## Tools
 
@@ -81,9 +87,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `server/fixtures/*.txt` (a map in text; the key is in
   `server/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
   photographs each: `.dev/shots/sheet.png` has them all on one page.
-  `--keep` leaves that stack up to look round by hand. Without desktop
-  Chrome (a cloud container), `CHROME=/opt/pw-browsers/chromium` draws
-  with WebGL in software instead. A new look gets a
+  `--keep` leaves that stack up to look round by hand. The renderer is
+  WebGPU only, so without desktop Chrome (a cloud container) it needs a
+  Chrome whose WebGPU runs in software (SwiftShader); not yet tried. A new look gets a
   fixture that shows it, so the next change can be seen not to break it.
 - **The plan:** `bun run plan [fixture…]` draws the town grid flat as SVG
   in `.dev/plan/`, from the sandbox's own code, in well under a second a
@@ -106,8 +112,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   bends red, and `--paths=<car,car>` those cars' trips alone.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
-  and a strip, in `.dev/look/`; in a cloud container it draws in software
-  and takes most of a minute.
+  and a strip, in `.dev/look/`; in a cloud container, as for `shots`.
 - **What a frame costs, by kind:** `bun run cost 6,80,15` (a tile and how
   many tiles each way up and down, `--t 0.95` a time of day) hides each kind
   of mesh in view in turn (a mesh's name with its chunk taken out:

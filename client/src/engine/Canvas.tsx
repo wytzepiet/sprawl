@@ -43,6 +43,12 @@ export type EngineContext = {
 
 export const BabylonContext = createContext<EngineContext>();
 
+/** What is drawn, once the scene is registered (`registered`). */
+export function Registered(props: ParentProps) {
+  const { registered } = useEngine();
+  return <Show when={registered()}>{props.children}</Show>;
+}
+
 export function useEngine() {
   const ctx = useContext(BabylonContext);
   if (!ctx) throw new Error("useEngine must be used within <Canvas>");

@@ -295,6 +295,8 @@ export class GroundTiles {
     private scene: SceneContext,
     beforeRender: (fn: () => void) => () => void,
     private cull: Culler,
+    /** Turned half round about the origin, as the sandbox draws a fixture. */
+    private turned = false,
   ) {
     // Its chunks bound to the atlas's texture anew whenever that grows.
     this.atlas = new Atlas(engine, SLOT, () => {
@@ -334,7 +336,8 @@ export class GroundTiles {
     setMeshAttribute(this.engine, mesh, "ground", data);
     // Baked before it is shown, so the atlas holds its shapes when it is bound.
     this.atlas.upload();
-    this.cull.keep(mesh, [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE]);
+    if (this.turned) mesh.scaling.set(-1, -1, 1);
+    this.cull.keep(mesh, this.turned ? [-ox - CHUNK_SIZE, -oy - CHUNK_SIZE, -ox, -oy] : [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE]);
     show(this.scene, mesh);
     this.chunks.set(key, mesh);
   }
