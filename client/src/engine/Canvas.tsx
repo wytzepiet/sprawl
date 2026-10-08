@@ -21,6 +21,7 @@ import {
   type SceneContext,
 } from "@babylonjs/lite";
 import { useTheme } from "./theme";
+import { Culler } from "./cull";
 
 export type EngineContext = {
   engine: Engine;
@@ -30,6 +31,8 @@ export type EngineContext = {
   beforeRender(fn: () => void): () => void;
   /** Run after every frame is drawn; returns how to stop. */
   afterRender(fn: () => void): () => void;
+  /** What of the world is drawn: what lies in view (`cull.ts`). */
+  cull: Culler;
   /** Whether the scene is registered: what is drawn is added from then on,
    *  the light, its shadows and the sky before (`Scene.tsx`). */
   registered: () => boolean;
@@ -93,14 +96,18 @@ export default function Canvas(props: ParentProps) {
 
     const before = hooks();
     const after = hooks();
-    onBeforeRender(scene, () => before.run());
+    const cull = new Culler(scene, el);
+    onBeforeRender(scene, () => {
+      before.run();
+      cull.update();
+    });
 
     // The children set the scene up — the camera, the sun and its shadows,
     // the sky — before it is registered: Lite builds its shaders for what
     // the scene holds then. What is drawn is added once it is, and built as
     // it comes: added while it is being registered, it would be built for
     // what the scene held before.
-    setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, registered });
+    setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, registered });
     await registerSceneWithShadowSupport(scene);
     setRegistered(true);
 
@@ -138,6 +145,7 @@ export default function Canvas(props: ParentProps) {
     requestAnimationFrame(frame);
 
     if (import.meta.env.DEV) {
+      (window as unknown as { sprawlLite: unknown }).sprawlLite = { engine, scene, cull };
       void import("./cost").then(({ costMeter }) => {
         (window as unknown as { sprawlCost: unknown }).sprawlCost = costMeter(engine, scene, after.run, (h) => (held = h));
       });

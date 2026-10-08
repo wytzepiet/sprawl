@@ -3,6 +3,7 @@ import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { drop, meshOf, show } from "./geometry";
+import type { Area } from "./cull";
 import { lacquer } from "./bevel";
 
 /**
@@ -170,14 +171,16 @@ export function grove(ctx: EngineContext, name: string): Grove {
 }
 
 /** Trees planted, 16 floats of matrix and 4 of colour each, in place of
- *  any before: shown, and casting. False when there are none. */
-export function plant({ scene }: EngineContext, g: Grove, matrices: Float32Array, colors: Float32Array, casters: Casters | undefined): boolean {
+ *  any before, over an area of the map: shown while it is in view, and
+ *  casting. False when there are none. */
+export function plant({ scene, cull }: EngineContext, g: Grove, matrices: Float32Array, colors: Float32Array, casters: Casters | undefined, area: Area): boolean {
   const count = matrices.length / 16;
   if (!count) return false;
   for (const mesh of [g.bodies, g.tops]) {
     setThinInstances(mesh, matrices, count);
     setThinInstanceColors(mesh, colors);
     if (g.planted) continue;
+    cull.keep(mesh, area);
     show(scene, mesh);
     casters?.add(mesh);
   }
@@ -185,10 +188,11 @@ export function plant({ scene }: EngineContext, g: Grove, matrices: Float32Array
   return true;
 }
 
-export function uproot({ scene }: EngineContext, g: Grove, casters: Casters | undefined) {
+export function uproot({ scene, cull }: EngineContext, g: Grove, casters: Casters | undefined) {
   if (!g.planted) return;
   for (const mesh of [g.bodies, g.tops]) {
     casters?.remove(mesh);
+    cull.forget(mesh);
     drop(scene, mesh);
   }
 }

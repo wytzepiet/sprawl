@@ -2,6 +2,7 @@ import { createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirt
 import { townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, show } from "./geometry";
 import { WHITE, type Rgb } from "./rgb";
+import type { Culler } from "./cull";
 import { Atlas } from "./atlas";
 import { FAR, kerbDistances } from "./kerbLines";
 import { CALM, slate } from "./peaks";
@@ -293,6 +294,7 @@ export class GroundTiles {
     private engine: EngineContext,
     private scene: SceneContext,
     beforeRender: (fn: () => void) => () => void,
+    private cull: Culler,
   ) {
     // Its chunks bound to the atlas's texture anew whenever that grows.
     this.atlas = new Atlas(engine, SLOT, () => {
@@ -332,13 +334,14 @@ export class GroundTiles {
     setMeshAttribute(this.engine, mesh, "ground", data);
     // Baked before it is shown, so the atlas holds its shapes when it is bound.
     this.atlas.upload();
+    this.cull.keep(mesh, [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE]);
     show(this.scene, mesh);
     this.chunks.set(key, mesh);
   }
 
   delete(key: string) {
     const mesh = this.chunks.get(key);
-    if (mesh) drop(this.scene, mesh);
+    if (mesh) this.cull.forget(mesh), drop(this.scene, mesh);
     this.chunks.delete(key);
   }
 

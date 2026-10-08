@@ -82,8 +82,8 @@ export function costMeter(engine: EngineContext, scene: SceneContext, after: () 
       // The casters, as the shadow task holds them (development only, so its insides will do).
       const castList = (): Mesh[] => [...((sun as { _shadowTaskState?: { _casterMeshes: Mesh[] } } | undefined)?._shadowTaskState?._casterMeshes ?? [])];
       const casters = new Set(castList());
-      // Lite draws every mesh it holds: none is culled.
-      const active = new Set(scene.meshes);
+      // What the culler shows (`cull.ts`).
+      const active = new Set(scene.meshes.filter((m) => m.visible !== false));
       const kinds = new Map<string, Mesh[]>();
       for (const m of scene.meshes) kinds.set(kindOf(m), [...(kinds.get(kindOf(m)) ?? []), m]);
 
@@ -104,8 +104,9 @@ export function costMeter(engine: EngineContext, scene: SceneContext, after: () 
       for (let r = 0; r < rounds; r++) {
         for (const [kind, meshes] of shown) {
           await against(`hide ${kind}`, () => {
+            const was = meshes.map((m) => m.visible !== false);
             meshes.forEach((m) => setMeshVisible(m, false));
-            return () => meshes.forEach((m) => setMeshVisible(m, true));
+            return () => meshes.forEach((m, i) => setMeshVisible(m, was[i]));
           });
           if (sun && meshes.some((m) => casters.has(m))) {
             await against(`noshadow ${kind}`, () => {

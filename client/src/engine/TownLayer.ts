@@ -269,6 +269,9 @@ export class TownLayer {
   private show({ key, pieces, trees, cut, paving }: ChunkDrawing, [, , x1, y1]: Bounds, byId: Map<number, GameObjectEntry>) {
     const { engine, scene } = this.ctx;
     const [ox, oy] = [x1 + 1, y1 + 1];
+    // The chunk on the map, and a tile round it for what stands over its edge.
+    const [cx, cy] = key.split(",").map(Number);
+    const area = [cx * CHUNK - 1, cy * CHUNK - 1, (cx + 1) * CHUNK + 1, (cy + 1) * CHUNK + 1] as const;
     const meshes: Mesh[] = [];
     // The chunk's kerb texture, its pavement's own.
     const kerbs = paving ? kerbField(engine, paving) : null;
@@ -284,6 +287,7 @@ export class TownLayer {
       mesh.position.x = ox;
       mesh.position.y = oy;
       mesh.receiveShadows = true;
+      this.ctx.cull.keep(mesh, area);
       show(scene, mesh);
       if (p.name === "mass") this.casters.add(mesh);
       meshes.push(mesh);
@@ -294,7 +298,7 @@ export class TownLayer {
       mesh.position.x = ox;
       mesh.position.y = oy;
     }
-    plant(this.ctx, g, matrices, colors, this.casters);
+    plant(this.ctx, g, matrices, colors, this.casters, area);
     this.chunks.set(key, { meshes, trees: g, kerbs });
   }
 
@@ -315,6 +319,7 @@ export class TownLayer {
     if (!chunk) return;
     for (const m of chunk.meshes) {
       this.casters.remove(m);
+      this.ctx.cull.forget(m);
       drop(this.ctx.scene, m);
     }
     uproot(this.ctx, chunk.trees, this.casters);

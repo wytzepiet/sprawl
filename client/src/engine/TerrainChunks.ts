@@ -1,4 +1,4 @@
-import { setMeshVisible, type Mesh } from "@babylonjs/lite";
+import type { Mesh } from "@babylonjs/lite";
 import { CAST_ONLY, FLAT, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
@@ -107,7 +107,7 @@ export class TerrainChunks {
     this.cliffMat.doubleSided = true;
     this.wallMat = townMaterial([CAST_ONLY]);
 
-    this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender);
+    this.ground = new GroundTiles(ctx.engine, ctx.scene, ctx.beforeRender, ctx.cull);
     this.paintGround();
 
     this.stop = ctx.beforeRender(() => {
@@ -264,6 +264,8 @@ export class TerrainChunks {
       mesh.receiveShadows = shadows.receive;
       mesh.position.x = at[0];
       mesh.position.y = at[1];
+      // A chunk's own, and its skirt's, over its area; a mountain stands no further out.
+      this.ctx.cull.keep(mesh, [ox - CHUNK_SKIRT, oy - CHUNK_SKIRT, ox + CHUNK_SIZE + CHUNK_SKIRT, oy + CHUNK_SIZE + CHUNK_SKIRT]);
       show(scene, mesh);
       if (shadows.cast) this.casters.add(mesh);
       chunk.meshes.push(mesh);
@@ -305,7 +307,8 @@ export class TerrainChunks {
       mesh.position.x = cx * CHUNK_SIZE;
       mesh.position.y = cy * CHUNK_SIZE;
     }
-    chunk.hasTrees = plant(this.ctx, chunk.trees, matrices, colors, this.casters);
+    const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
+    chunk.hasTrees = plant(this.ctx, chunk.trees, matrices, colors, this.casters, [ox - 1, oy - 1, ox + CHUNK_SIZE + 1, oy + CHUNK_SIZE + 1]);
     this.applyDetail(chunk);
   }
 
@@ -313,6 +316,7 @@ export class TerrainChunks {
   private dropMeshes(chunk: ChunkMeshes): void {
     for (const mesh of chunk.meshes) {
       this.casters.remove(mesh);
+      this.ctx.cull.forget(mesh);
       drop(this.ctx.scene, mesh);
     }
     for (const dispose of chunk.dispose) dispose();
@@ -337,8 +341,9 @@ export class TerrainChunks {
   }
 
   private applyDetail(chunk: ChunkMeshes): void {
-    if (chunk.cliffs) setMeshVisible(chunk.cliffs, this.detailVisible);
-    if (chunk.hasTrees) for (const mesh of [chunk.trees.bodies, chunk.trees.tops]) setMeshVisible(mesh, this.detailVisible);
+    const { cull } = this.ctx;
+    if (chunk.cliffs) cull.want(chunk.cliffs, this.detailVisible);
+    if (chunk.hasTrees) for (const mesh of [chunk.trees.bodies, chunk.trees.tops]) cull.want(mesh, this.detailVisible);
   }
 
   dispose(): void {
