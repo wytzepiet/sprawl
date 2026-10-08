@@ -78,7 +78,9 @@ export function costMeter(engine: EngineContext, scene: SceneContext, after: () 
     hold(true);
     try {
       await measure();
-      const sun = scene.lights.map((l) => l.shadowGenerator).find((g): g is ShadowGenerator => !!g);
+      // A shadow pass the game has switched off (zoomed out) is not measured,
+      // or switching it back on would add a pass the game never draws.
+      const sun = scene.lights.map((l) => l.shadowGenerator).find((g): g is ShadowGenerator => !!g && g._runtimeEnabledState?.enabled !== false);
       // The casters, as the shadow task holds them (development only, so its insides will do).
       const castList = (): Mesh[] => [...((sun as { _shadowTaskState?: { _casterMeshes: Mesh[] } } | undefined)?._shadowTaskState?._casterMeshes ?? [])];
       const casters = new Set(castList());
