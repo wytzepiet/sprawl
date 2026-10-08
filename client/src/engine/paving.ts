@@ -1,4 +1,4 @@
-import { MaterialDefines, MaterialPluginBase, type Material, type RawTexture } from "@babylonjs/core";
+import { MaterialDefines, MaterialPluginBase, type Material, type PBRMaterial, type RawTexture } from "@babylonjs/core";
 import { grain } from "./ground";
 
 /**
@@ -23,6 +23,8 @@ const BUMP = 0.1;
  *  warmth: lighter slabs a touch browner, darker a touch greyer. */
 const SHADE = 0.03;
 const WARM = [1.1, 1, 0.8];
+/** How rough the paving is: worn stone, smoothed underfoot, with a sheen. */
+const ROUGHNESS = 0.6;
 
 const n = (x: number) => x.toFixed(4);
 
@@ -112,5 +114,7 @@ class PavingPlugin extends MaterialPluginBase {
 
 /** A material laid as paving, once. */
 export function pave(material: Material) {
-  if (!material.pluginManager?.getPlugin("Paving")) new PavingPlugin(material);
+  if (material.pluginManager?.getPlugin("Paving")) return;
+  new PavingPlugin(material);
+  (material as PBRMaterial).roughness = ROUGHNESS;
 }

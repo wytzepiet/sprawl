@@ -282,8 +282,8 @@ export class RoadTiles {
       const material = (kind.mesh.material = this.material(!!through));
       if (!material.pluginManager?.getPlugin("Road")) {
         new RoadPlugin(material, this.atlas);
-        // Matte, but for the stones that glint (`townShine`).
-        material.roughness = 0.85;
+        // Worn to a sheen by traffic, and the stones in it glint (`townShine`).
+        material.roughness = 0.7;
         // Which way the square is wound matters not, flat on the ground.
         material.backFaceCulling = false;
       }
