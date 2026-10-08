@@ -40,7 +40,7 @@ const STILL_FPS = 30;
 async function createEngine(el: HTMLCanvasElement): Promise<AbstractEngine> {
   const antialias = devicePixelRatio < 2;
   const options = { adaptToDeviceRatio: true, limitDeviceRatio: MAX_DEVICE_RATIO, antialias };
-  if (navigator.gpu) {
+  if ("gpu" in navigator) {
     // Not CreateAsync: it wraps this in a promise that never settles when no
     // adapter is granted, so a browser that has WebGPU but withholds the GPU
     // — Chrome on a blocklisted phone — would hang here with no engine at all.
