@@ -17,6 +17,7 @@ import {
   onBeforeRender,
   registerSceneWithShadowSupport,
   renderFrame,
+  resizeEngine,
   type EngineContext as Engine,
   type SceneContext,
 } from "@babylonjs/lite";
@@ -147,6 +148,8 @@ export default function Canvas(props: ParentProps) {
       const delta = now - lastFrame;
       lastFrame = now;
       const was = where();
+      // Our own loop, not Lite's: the canvas follows the window only if asked to.
+      resizeEngine(engine);
       renderFrame(engine, delta);
       after.run();
       seen = where();
