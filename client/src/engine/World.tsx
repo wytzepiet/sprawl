@@ -18,7 +18,7 @@ import {
 import { SOLID, DORMANT, EMPTY } from "./objects/look";
 import type { Operation, GameObjectEntry } from "../generated";
 
-import type { Building } from "../generated";
+import type { Building, RoadNode } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
@@ -31,9 +31,6 @@ interface MountedEntry {
   /** Tile keys this building covers, kept because the store has already
    *  dropped the entity by the time a Delete reaches us. */
   covers?: string[];
-  /** What of a building the town draws, to tell a change it must be
-   *  drawn again for from a shelf filling or a purse changing. */
-  drawn?: string;
 }
 
 export default function World() {
@@ -45,6 +42,10 @@ export default function World() {
   const mounted = new Map<string, MountedEntry>();
   /** Where each road node stands, since a delete arrives without it. */
   const roadAt = new Map<string, { x: number; y: number }>();
+  /** What the town draws of each road and building, to tell a change it
+   *  must be drawn again for from a shelf filling, a purse changing or a
+   *  road joining the world. */
+  const drawn = new Map<string, string>();
 
   const hasRoad = (x: number, y: number) =>
     getObjectsAt(x, y).some((o) => o.object.kind === "RoadNode");
@@ -115,16 +116,20 @@ export default function World() {
       // The store already holds the batch's end state, so an entity
       // upserted and then deleted in one batch is gone from it by now.
       const entry = op.op === "Upsert" ? (getEntity(op.data.id) ?? op.data) : undefined;
-      const drawn = entry && drawnOf(entry);
-      // The town is drawn whole, a tenth of a second on a grown town: a
-      // building that only traded, or only looks otherwise, leaves it
-      // standing as it was.
-      const same = drawn !== undefined && existing?.drawn === drawn;
+      const was = drawn.get(key);
+      const now = entry && drawnOf(entry);
+      if (now === undefined) drawn.delete(key);
+      else drawn.set(key, now);
+      // The town is drawn in chunks, most of a second on a grown town: a
+      // building that only traded, or only looks otherwise, or a road
+      // only joined, leaves it standing as it was.
+      const same = now !== undefined && was === now;
       perfCount(`ops.${entry?.object.kind ?? "deleted"}`);
       // One that stands as it stood may still look otherwise, its shelves
-      // bare or stocked: its colour, and the town not drawn again.
-      if (same && entry) town.recolour(entry);
-      else if (existing && entry?.object.kind !== "Car") perfCount(`redraw.${entry?.object.kind ?? "deleted"}`);
+      // bare or stocked, or its street newly joined to the world: its
+      // colour, and the town not drawn again.
+      if (same && entry) for (const e of beside(entry)) town.recolour(e);
+      else if (was !== undefined) perfCount(`redraw.${entry?.object.kind ?? "deleted"}`);
       if (existing) {
         if (!same) uncover(existing.covers);
         existing.cleanup();
@@ -143,13 +148,32 @@ export default function World() {
       }
       if (!entry) continue;
       const cleanup = mount(entry);
-      if (cleanup) mounted.set(key, { kind: entry.object.kind, cleanup, covers: same ? existing!.covers : entry.object.kind === "Building" ? cover(entry) : undefined, drawn });
+      if (cleanup) mounted.set(key, { kind: entry.object.kind, cleanup, covers: same ? existing!.covers : entry.object.kind === "Building" ? cover(entry) : undefined });
     }
   }
 
-  /** What the town draws of a building: its plot, its door, the streets
-   *  it joins and its treatment. */
+  /** A building itself; a road, the buildings round it, whose doors
+   *  may open onto it. */
+  function beside(entry: GameObjectEntry): GameObjectEntry[] {
+    if (entry.object.kind === "Building") return [entry];
+    if (!entry.position) return [];
+    const { x, y } = entry.position;
+    const ids = new Set<number>();
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const id = builtTiles.get(`${x + dx},${y + dy}`);
+      if (id !== undefined) ids.add(id);
+    }
+    return [...ids].flatMap((id) => getEntity(id) ?? []);
+  }
+
+  /** What the town draws of a road, where it stands, its kind and its
+   *  links; and of a building, its plot, its door, the streets it joins
+   *  and its treatment. */
   function drawnOf(entry: GameObjectEntry): string | undefined {
+    if (entry.object.kind === "RoadNode") {
+      const n = entry.object.data as RoadNode;
+      return JSON.stringify([entry.position, n.road, n.outgoing, n.incoming]);
+    }
     if (entry.object.kind !== "Building") return undefined;
     const b = entry.object.data as Building;
     return JSON.stringify([b.kind, b.tiles, b.door, b.joined]);
