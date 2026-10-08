@@ -81,7 +81,7 @@ export function costMeter(engine: AbstractEngine, scene: Scene, hold: (held: boo
     return { cpu: median(got.map((g) => g.cpu)), draws: median(got.map((g) => g.draws)), frame: each };
   }
 
-  return async function report(rounds = 3): Promise<CostReport> {
+  return async function report(rounds = 3, only = ""): Promise<CostReport> {
     hold(true);
     try {
       await measure();
@@ -104,7 +104,7 @@ export function costMeter(engine: AbstractEngine, scene: Scene, hold: (held: boo
         undo();
         saved.set(name, [...(saved.get(name) ?? []), Object.fromEntries(FIELDS.map((f) => [f, base[f] - cut[f]])) as Sample]);
       };
-      const shown = [...kinds].filter(([, ms]) => ms.some((m) => active.has(m) || casters.has(m)));
+      const shown = [...kinds].filter(([kind, ms]) => kind.includes(only) && ms.some((m) => active.has(m) || casters.has(m)));
       for (let r = 0; r < rounds; r++) {
         for (const [kind, meshes] of shown) {
           await against(`hide ${kind}`, () => {
@@ -131,7 +131,7 @@ export function costMeter(engine: AbstractEngine, scene: Scene, hold: (held: boo
           return () => lights.forEach((l) => l.setEnabled(true));
         },
       };
-      for (let r = 0; r < rounds; r++) for (const [name, change] of Object.entries(whole)) await against(`hide ${name}`, change);
+      if (!only) for (let r = 0; r < rounds; r++) for (const [name, change] of Object.entries(whole)) await against(`hide ${name}`, change);
       const round = (x: number) => +x.toFixed(2);
       const of = (name: string, f: (typeof FIELDS)[number]) => round(median((saved.get(name) ?? []).map((s) => s[f])));
       const base = (f: (typeof FIELDS)[number]) => round(median(bases.map((b) => b[f])));

@@ -212,11 +212,15 @@ vec2 groundUv = (groundCell + (vGroundAt - ${origin}) / ${slotSpan}) / groundGri
 vec2 groundTexel = 1. / (groundGrid * ${n(SLOT)});
 vec2 groundD = texture2D(groundAtlas, groundUv).rg;
 if (texture2D(groundAtlas, (groundCell + (clamp(vGroundAt, ${inner0}, ${inner1}) - ${origin}) / ${slotSpan}) / groundGrid).r < 0.) discard;
-vec2 groundSlateTilt = texture2D(groundSlate, vPositionW.xy / ${slateSpan}, ${calm}).rg * 2. - 1.;
+// The slate's tilt, and the beach's swash, read only where they show:
+// the rock, and the sand.
+vec2 groundSlateTilt = vec2(0.);
+if (vGroundGrass.z > 0.) groundSlateTilt = texture2D(groundSlate, vPositionW.xy / ${slateSpan}, ${calm}).rg * 2. - 1.;
 // The rock breaking through the grass near its edge, plate by plate.
-if (vGroundGrass.x > 0. && groundD.g >= 0. && texture2D(groundSlate, vPositionW.xy / ${patchSpan}).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) discard;
+if (vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && texture2D(groundSlate, vPositionW.xy / ${patchSpan}).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) discard;
 // A beach draws back from each wave as it breaks, and is wet where they reach.
-float groundSwash = vGroundSlot.w * ${swash} * groundWash(groundTime, vPositionW.xy) * (0.6 + 0.8 * groundFrayBy);
+float groundSwash = 0.;
+if (vGroundSlot.w > 0.) groundSwash = vGroundSlot.w * ${swash} * groundWash(groundTime, vPositionW.xy) * (0.6 + 0.8 * groundFrayBy);
 if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * vGroundGrass.x * ${fray})) discard;`,
     CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = min(1., vGroundLook.a * ${glint} + groundGlinting);
 baseColor.rgb *= vGroundLook.rgb * (1. + vGroundGrass.y * groundMottle * vec3(${mottleWarm})) * (1. - ${wet} * vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
@@ -254,11 +258,19 @@ let groundUv = (groundCell + (fragmentInputs.vGroundAt - ${origin}) / ${slotSpan
 let groundTexel = 1. / (uniforms.groundGrid * ${n(SLOT)});
 let groundD = textureSampleLevel(groundAtlas, groundAtlasSampler, groundUv, 0.).rg;
 if (textureSampleLevel(groundAtlas, groundAtlasSampler, (groundCell + (clamp(fragmentInputs.vGroundAt, vec2f(${inner0}), vec2f(${inner1})) - ${origin}) / ${slotSpan}) / uniforms.groundGrid, 0.).r < 0.) { discard; }
-let groundSlateTilt = textureSampleBias(groundSlate, groundSlateSampler, fragmentInputs.vPositionW.xy / ${slateSpan}, ${calm}).rg * 2. - 1.;
+// The slate's tilt, and the beach's swash, read only where they show:
+// the rock, and the sand. Its slopes are taken outside the branch, which
+// WGSL wants, and widened as the bias would.
+let groundSlateUv = fragmentInputs.vPositionW.xy / ${slateSpan};
+let groundSlateDx = dpdx(groundSlateUv) * ${n(2 ** CALM)};
+let groundSlateDy = dpdy(groundSlateUv) * ${n(2 ** CALM)};
+var groundSlateTilt = vec2f(0.);
+if (fragmentInputs.vGroundGrass.z > 0.) { groundSlateTilt = textureSampleGrad(groundSlate, groundSlateSampler, groundSlateUv, groundSlateDx, groundSlateDy).rg * 2. - 1.; }
 // The rock breaking through the grass near its edge, plate by plate.
-if (fragmentInputs.vGroundGrass.x > 0. && groundD.g >= 0. && textureSampleLevel(groundSlate, groundSlateSampler, fragmentInputs.vPositionW.xy / ${patchSpan}, 0.).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) { discard; }
+if (fragmentInputs.vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && textureSampleLevel(groundSlate, groundSlateSampler, fragmentInputs.vPositionW.xy / ${patchSpan}, 0.).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) { discard; }
 // A beach draws back from each wave as it breaks, and is wet where they reach.
-let groundSwash = fragmentInputs.vGroundSlot.w * ${swash} * groundWash(uniforms.groundTime, fragmentInputs.vPositionW.xy) * (0.6 + 0.8 * groundFrayBy);
+var groundSwash = 0.;
+if (fragmentInputs.vGroundSlot.w > 0.) { groundSwash = fragmentInputs.vGroundSlot.w * ${swash} * groundWash(uniforms.groundTime, fragmentInputs.vPositionW.xy) * (0.6 + 0.8 * groundFrayBy); }
 if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * fragmentInputs.vGroundGrass.x * ${fray})) { discard; }`,
     CUSTOM_FRAGMENT_BEFORE_LIGHTS: `townShine = min(1., fragmentInputs.vGroundLook.a * ${glint} + groundGlinting);
 baseColor = vec4f(baseColor.rgb * fragmentInputs.vGroundLook.rgb * (1. + fragmentInputs.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * fragmentInputs.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g)), baseColor.a);

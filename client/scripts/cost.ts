@@ -5,6 +5,8 @@
  *   bun run cost 6,80,8        eight
  *   --t 0.95                   at this time of day (0 midnight, 0.5 noon; default noon)
  *   --rounds 3                 how many times each condition is measured
+ *   --only ground_             only the kinds whose name holds this (quicker)
+ *   --q pbr=1                  more for the page's address
  *
  * Tiles are the game's, as `bun run look` takes them. The page draws its
  * frames by hand while it measures (`client/src/engine/cost.ts`): every kind
@@ -30,16 +32,22 @@ const flag = (name: string, or: number) => {
 };
 const t = flag("--t", 0.5);
 const rounds = flag("--rounds", 3);
+const text = (name: string) => {
+  const i = args.indexOf(name);
+  return i < 0 ? "" : args.splice(i, 2)[1];
+};
+const only = text("--only");
+const q = text("--q");
 const [x, y, half = 15] = (args[0] ?? "0,0").split(",").map(Number);
 
 const browser = await chromium.launch({ channel: "chrome", args: ["--enable-unsafe-webgpu"] });
 const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, deviceScaleFactor: 2 });
 page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
-await page.goto(`${CLIENT}/?t=${t}`);
+await page.goto(`${CLIENT}/?t=${t}${q ? `&${q}` : ""}`);
 await page.waitForFunction(() => "sprawlCamera" in window && "sprawlCost" in window, null, { timeout: 60_000 });
 await page.evaluate(([x, y, h]) => (window as any).sprawlCamera.look(x + 0.5, y + 0.5, h), [x, y, half]);
 await page.waitForTimeout(SETTLE_MS);
-const report: CostReport = await page.evaluate((rounds) => (window as any).sprawlCost(rounds), rounds);
+const report: CostReport = await page.evaluate(([rounds, only]) => (window as any).sprawlCost(rounds, only), [rounds, only] as const);
 await browser.close();
 
 const pad = (s: string | number, n: number) => String(s).padStart(n);

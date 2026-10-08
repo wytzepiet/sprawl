@@ -6,6 +6,7 @@
  *   bun run look 6,80,4       four tiles each way
  *   --frames 8 --every 250    eight frames a quarter second apart, and a strip
  *                             of them side by side
+ *   T=0.7 bun run look ...    at this time of day (0 midnight, 0.5 noon)
  *
  * Tiles are the game's, as `bun run plan --live` numbers them. Writes
  * `.dev/look/frame-<n>.png` and `.dev/look/strip.png`. The game is the one
@@ -39,7 +40,7 @@ const browser = await chromium.launch({ executablePath: chrome, args: ["--use-an
   .catch(() => chromium.launch({ channel: "chrome", args: ["--enable-unsafe-webgpu"] }));
 const page = await browser.newPage({ viewport: VIEW });
 page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
-await page.goto(CLIENT);
+await page.goto(process.env.T ? `${CLIENT}/?t=${process.env.T}` : CLIENT);
 await page.waitForFunction(() => "sprawlCamera" in window, null, { timeout: 60_000 });
 // The map alone: no toolbar, dials or pins over it.
 await page.addStyleTag({ content: "#root * { visibility: hidden } #root canvas { visibility: visible }" });
