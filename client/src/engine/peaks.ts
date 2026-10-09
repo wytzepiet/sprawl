@@ -1,12 +1,13 @@
-import { createTexture2DFromPixels, updateTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, updateTexture2DFromPixels, markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import { retire } from "./geometry";
-import { townMaterial } from "./material";
+import { CAST_ONLY, townMaterial } from "./material";
 import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
-import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_WANDER, CLIFF_RUN, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, REACH, SHORE_DENSITY } from "./objects/terrainGeometry";
+import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_WANDER, CLIFF_RUN, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, REACH, SHORE_DENSITY, SHORE_REACH } from "./objects/terrainGeometry";
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
 import recipe from "./slate.ts?raw";
 import { baked } from "./bakeCache";
+import { ripples, swashFn } from "./water";
 
 /**
  * The mountains as dark slate, drawn as trees' crowns are: the mesh is
@@ -188,6 +189,16 @@ ${heightFn((c) => `textureLoad(peakHeights, ${c}, 0).r`, "vec2f", "vec3f", "vec2
  *  past its lip, under where the grass stops (`ground.ts`). */
 const CLIFF_INNER = 0.9;
 
+/** How far up the cliff's face a wave washes, at most, in tiles of it,
+ *  the rock showing wet behind, this much darker, this far again. */
+const ROCK_SWASH = 0.07;
+const ROCK_WET = 0.2;
+const ROCK_WET_REACH = 0.6;
+/** Only where the sea reaches it, the less the wider the beach between:
+ *  as much of this far out to sea from its foot as is water, in tiles
+ *  (`shore`, 0 on a beach). */
+const ROCK_REACHED = 0.5;
+
 /** The land's cliff, painted as a mountain's is on the plane under its
  *  edge (`layCliffPlane`): how far out from the land's edge a pixel is
  *  (`cliffField`). Inside the edge, the lip, rolling over as a mountain
@@ -211,11 +222,14 @@ baseColor = ${v3}(${rgb(STONE)});
 N = normalize(${v3}(cliffOut * cliffTilt + cliffSlate.xy * ${f(RELIEF)}, 1.));`;
 };
 
-/** A chunk's land's cliff's material, with its field (`cliffField`); its
- *  texture let go with `dispose`. */
-export function cliffMaterial(engine: EngineContext, field: Uint8Array) {
+/** A chunk's land's cliff's material, with its field (`cliffField`), the
+ *  waves washing up its foot where it stands in the sea, not on a beach
+ *  (the water's `shore`, if the chunk has water); its clock ticks before
+ *  each frame (`tick`); its textures let go with `dispose`. */
+export function cliffMaterial(engine: EngineContext, field: Uint8Array, shore: Uint8Array | null) {
   const side = CHUNK_SIZE * SHORE_DENSITY;
   const texture = createTexture2DFromPixels(engine, field, side, side, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
+  const shores = createTexture2DFromPixels(engine, shore ?? new Uint8Array([0]), shore ? side : 1, shore ? side : 1, { format: "r8unorm", minFilter: "linear", magFilter: "linear" });
   const plugin: MaterialPlugin = {
     name: "LandCliff",
     priority: 200,
@@ -224,21 +238,47 @@ export function cliffMaterial(engine: EngineContext, field: Uint8Array) {
       { name: "vCliffX", type: "vec2f" },
       { name: "vCliffY", type: "vec2f" },
     ],
-    getSamplers: () => [
-      { texture: "slate", sampler: "slateSampler" },
-      { texture: "cliffField", sampler: "cliffFieldSampler" },
-    ],
-    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }),
+    getSamplers: () => ["slate", "cliffField", "cliffRipple", "cliffShore"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }, { texture: ripples(engine) }, { texture: shores }),
+    getUniforms: () => ({ ubo: [{ name: "cliffTime", type: "f32" }] }),
+    // The water's clock (`water.ts`), so the waves at the foot keep time.
+    writeUbo: (data, offsets) => void (data[offsets.get("cliffTime")! / 4] = (performance.now() / 1000) % 3600),
     getCustomCode: (stage) =>
       stage === "vertex"
         ? { CUSTOM_VERTEX_MAIN_END: `out.vCliffAt = position.xy; out.vCliffX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vCliffY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
             CUSTOM_FRAGMENT_DEFINITIONS: `${read((uv) => `textureSampleBias(slate, slateSampler, ${uv}, ${f(CALM)})`, "vec2f", "fn slateRead(p: vec2f) -> vec3f", "let")}
-fn cliffSlateTop(p: vec2f) -> f32 { return textureSampleBias(slate, slateSampler, p / ${f(SPAN)}, ${f(CALM)}).b; }`,
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: landCliff((uv) => `textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.)`, "vec2f", "vec3f", "let", "input.worldPos", "input.vCliffAt", "input.vCliffX", "input.vCliffY"),
+fn cliffSlateTop(p: vec2f) -> f32 { return textureSampleBias(slate, slateSampler, p / ${f(SPAN)}, ${f(CALM)}).b; }
+${swashFn((uv) => `textureSampleLevel(cliffRipple, cliffRippleSampler, ${uv}, 0.).b`, "cliffWash")}`,
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `${landCliff((uv) => `textureSampleLevel(cliffField, cliffFieldSampler, ${uv}, 0.)`, "vec2f", "vec3f", "let", "input.worldPos", "input.vCliffAt", "input.vCliffX", "input.vCliffY")}
+// The sea washing up its foot and back, the rock wet behind it.
+let cliffSea = ${f(CLIFF_RUN)} - cliffFar;
+let cliffSeaward = cliffUv + normalize(cliffGrad + 1e-6) * (cliffSea + ${f(ROCK_REACHED)}) / ${f(CHUNK_SIZE)};
+let cliffAfloat = min(textureSampleLevel(cliffShore, cliffShoreSampler, cliffSeaward, 0.).r * ${f(SHORE_REACH / ROCK_REACHED)}, 1.);
+if (cliffSea < ${f(ROCK_SWASH)} * cliffWash(material.cliffTime, input.worldPos.xy) * cliffAfloat) { discard; }
+baseColor = baseColor * (1. - ${f(ROCK_WET)} * cliffAfloat * (1. - smoothstep(${f(ROCK_SWASH)}, ${f(ROCK_SWASH + ROCK_WET_REACH * ROCK_SWASH)}, cliffSea)));`,
           },
   };
   const material = lacquer(townMaterial([plugin]), "rock");
   material.doubleSided = true;
-  return { material, dispose: () => retire(texture) };
+  // Its shadow, as a mountain layer's: the land's height cast to its lip,
+  // as the lip is drawn, on a copy of the plane never seen; the cut runs
+  // where shadows are drawn, which the face drawn past the lip must not.
+  const lip: MaterialPlugin = {
+    name: "CliffLip",
+    priority: 200,
+    getVaryings: () => [{ name: "vCliffAt", type: "vec2f" }],
+    getSamplers: () => ["slate", "cliffField"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: slate(engine) }, { texture }),
+    getCustomCode: (stage) =>
+      stage === "vertex"
+        ? { CUSTOM_VERTEX_MAIN_END: "out.vCliffAt = position.xy;" }
+        : {
+            CUSTOM_FRAGMENT_UPDATE_ALPHA: `let lipFar = (textureSampleLevel(cliffField, cliffFieldSampler, input.vCliffAt / ${f(CHUNK_SIZE)}, 0.).r - 0.5) * ${f(2 * CLIFF_REACH)} - ${f(CLIFF_OUT)} - (textureSampleBias(slate, slateSampler, input.worldPos.xy / ${f(SPAN)}, ${f(CALM)}).b * 2. - 1.) * ${f(CLIFF_WANDER)};
+if (lipFar > 0. || lipFar < ${f(-CLIFF_INNER)}) { discard; }`,
+          },
+  };
+  const caster = townMaterial([lip, CAST_ONLY]);
+  caster.doubleSided = true;
+  return { material, caster, tick: () => markMaterialUboDirty(material), dispose: () => (retire(texture), retire(shores)) };
 }

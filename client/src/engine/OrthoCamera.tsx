@@ -104,10 +104,15 @@ export function OrthoCamera() {
     if (perspective) {
       if (camera.ortho) disableOrthographicCamera(camera);
       camera.fov = FOV;
+      camera.nearPlane = 1;
       camera.position.z = viewHalf / Math.tan(FOV / 2);
       return;
     }
+    // Low over the land, as the eye the light's shine is seen from (the sun
+    // slides over the water as the view pans); but clipping nothing however
+    // high a mountain stands: a flat view may see behind itself.
     camera.position.z = 10;
+    camera.nearPlane = -1000;
     // Its sides follow the canvas's shape on their own.
     (camera.ortho ?? enableOrthographicCamera(camera)).halfHeight = viewHalf;
   }

@@ -45,7 +45,7 @@ const RANGE: f64 = 0.6;
 /// its shore, coves, has the sea left a beach at the cliff's foot: where
 /// the ocean layer, read this much finer, is over this.
 const COVES: f64 = 20.0;
-const COVE: f64 = 0.25;
+const COVE: f64 = 0.05;
 /// The ground is raised a little around the origin and the ocean is held
 /// back from it: flat out to the survey's edge, then fading over as far
 /// again. Simplex noise is exactly zero at the origin, which put every
@@ -183,7 +183,7 @@ mod tests {
         let n = land.len() as f64;
         let share = |t: TerrainType| 100.0 * land.values().filter(|&&v| v == t).count() as f64 / n;
         eprintln!(
-            "seed {seed}: sea {:.0}%  lake {:.0}%  beach {:.0}%  grass {:.0}%  forest {:.0}%  mountain {:.0}%",
+            "seed {seed}: sea {:.1}%  lake {:.1}%  beach {:.1}%  grass {:.1}%  forest {:.1}%  mountain {:.1}%",
             share(TerrainType::Sea), share(TerrainType::Water), share(TerrainType::Beach), share(TerrainType::Grass), share(TerrainType::Forest), share(TerrainType::Mountain)
         );
     }

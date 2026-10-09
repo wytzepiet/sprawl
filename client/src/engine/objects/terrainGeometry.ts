@@ -71,7 +71,7 @@ export function transferables(g: ChunkGeometry): ArrayBuffer[] {
 /** The land stands on a cliff this high over the water; a beach lies
  *  down it, this high, at the water's edge. */
 const WATER_Z = -0.7;
-const BEACH_Z = -0.55;
+const BEACH_Z = -0.66;
 
 const ELEVATION: Record<TerrainType, number> = {
   Sea: WATER_Z,
@@ -102,8 +102,9 @@ export const LAYERS: { grounds: TerrainType[]; beside?: TerrainType[]; level: Te
   { grounds: ["Beach"], beside: ["Grass", "Forest", "Mountain"], level: ["Grass", "Forest", "Mountain"], z: BEACH_Z },
   { grounds: ["Grass", "Forest", "Mountain"], level: [], z: 0 },
   { grounds: ["Grass", "Forest"], level: [], z: 0.002 },
-  // Its edge onto the grass frays into it, as the grass's does.
-  { grounds: ["Forest"], level: ["Mountain"], parts: true, z: 0.004 },
+  // Its edge frays into the grass, as the grass's does: onto the open
+  // land and at a mountain's foot alike.
+  { grounds: ["Forest"], level: [], parts: true, z: 0.004 },
 ];
 
 // Seeded PRNG (xorshift32)
@@ -448,13 +449,24 @@ export const CLIFF_WANDER = 0.2;
 export const CLIFF_REACH = 2;
 const CLIFF_Z = 0.0012;
 
-/** A wall `height` tall standing on the line from a to b. */
-const wall = (a: number[], b: number[], height: number): MeshGeometry => ({
-  positions: [a[0], a[1], 0, b[0], b[1], 0, b[0], b[1], height, a[0], a[1], height],
-  normals: UP4,
-  indices: [0, 1, 2, 0, 2, 3],
-});
-
+/** The wall under a stretch of the land's edge, from a to b, `inward` the
+ *  way onto the land, `height` high, for its shadow, as a mountain step's
+ *  stands under its edge: its top under the cliff's lip (`CLIFF_OUT`)
+ *  where it wanders furthest in (`CLIFF_WANDER`), so the lip's outline,
+ *  cast by the plane it is drawn on (`peaks.ts`), is the shadow's; sloping
+ *  out this share of the way to the cliff's foot (`CLIFF_RUN` past the
+ *  lip), as its face is drawn; each end lengthened this much, so where
+ *  stretches meet at an angle no light shows between them. */
+const WALL_FOOT = 0.4;
+const WALL_JOIN = 0.1;
+function underLip(a: number[], b: number[], inward: number[], height: number): MeshGeometry {
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  const [ux, uy] = [((b[0] - a[0]) / len) * WALL_JOIN, ((b[1] - a[1]) / len) * WALL_JOIN];
+  const out = (p: number[], d: number, along: number) => [p[0] - inward[0] * d + ux * along, p[1] - inward[1] * d + uy * along];
+  const [top, foot] = [CLIFF_OUT - CLIFF_WANDER, CLIFF_OUT + CLIFF_RUN * WALL_FOOT];
+  const [fa, fb, ta, tb] = [out(a, foot, -1), out(b, foot, 1), out(a, top, -1), out(b, top, 1)];
+  return { positions: [fa[0], fa[1], 0, fb[0], fb[1], 0, tb[0], tb[1], height, ta[0], ta[1], height], normals: UP4, indices: [0, 1, 2, 0, 2, 3] };
+}
 
 const EDGE_DIRS: [number, number][] = [
   [0, -1],
@@ -976,7 +988,7 @@ function layTile(sink: ChunkSink, x: number, y: number, lx: number, ly: number, 
     hidden = shape.base === "+" && shape.corners.every((c) => !c || c.lies === "+") && AROUND.every(([dx, dy]) => isIn(map.typeAt(x + dx, y + dy)));
     for (const [w, foot] of WALLS) {
       if (w !== l) continue;
-      for (const { a, b, lies } of outlineOf(key)) if (lies === "-") append(sink.cliffs, wall(a, b, LAYERS[l].z - foot), lx, ly, foot, NO_COLOUR);
+      for (const { a, b, inward, lies } of outlineOf(key)) if (lies === "-") append(sink.cliffs, underLip(a, b, inward, LAYERS[l].z - foot), lx, ly, foot, NO_COLOUR);
     }
     // The land at its own height, for its cliff to know how far it lies.
     if (l === 1) append(sink.landTop, shapeGeometry(shape), lx, ly, 0, NO_COLOUR);

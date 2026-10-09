@@ -1,6 +1,6 @@
 import type { Mesh } from "@babylonjs/lite";
 import { spread } from "./budget";
-import { CAST_ONLY, FLAT, townMaterial, type TownMaterial } from "./material";
+import { CAST_ONLY, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
 import { drop, meshOf, show } from "./geometry";
@@ -76,7 +76,7 @@ export class TerrainChunks {
   private builder = Comlink.wrap<TerrainApi>(this.worker);
 
   private ground: GroundTiles;
-  /** The cliffs' walls, drawn flat; the mountains' walls, cast only. The
+  /** The cliffs' walls and the mountains', cast only. The mountains'
    *  walls cast only from the side away from the sun; the faces turned to
    *  it, whose shadow falls on the layer they hold up, are culled. Which
    *  side that is, wound as `layWalls` winds them and seen from the sun, was
@@ -97,7 +97,8 @@ export class TerrainChunks {
     // facing is fixed -- culled, a wall pointing away from the sun writes no
     // depth into the shadow map and its cliff stops casting for half the day.
     // They are edge-on to the camera, so the second side costs no fill.
-    this.cliffMat = townMaterial([FLAT]);
+    // Cast only: they stand out at the cliff's foot, in the water.
+    this.cliffMat = townMaterial([CAST_ONLY]);
     this.cliffMat.doubleSided = true;
     this.wallMat = townMaterial([CAST_ONLY]);
 
@@ -278,9 +279,11 @@ export class TerrainChunks {
     add("water", geometry.water, water.material, [ox, oy], { cast: false, receive: true });
     chunk.cliffs = add("cliffs", geometry.cliffs, this.cliffMat, [ox, oy], { cast: true, receive: false });
     if (geometry.cliffField) {
-      const cliff = cliffMaterial(engine, geometry.cliffField);
+      const cliff = cliffMaterial(engine, geometry.cliffField, geometry.shore);
       chunk.dispose.push(cliff.dispose);
+      chunk.tick = () => (water.tick(), cliff.tick());
       add("cliff", geometry.cliff, cliff.material, [ox, oy], { cast: false, receive: true });
+      add("lip", geometry.cliff, cliff.caster, [ox, oy], { cast: true, receive: false });
     }
     if (geometry.peakHeights) {
       const peaks = peakMaterial(engine, geometry.peakHeights);

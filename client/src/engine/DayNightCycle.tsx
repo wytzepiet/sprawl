@@ -87,6 +87,11 @@ const sunStops: [number, Rgb][] = [
   [1, rgb(1.15, 1.02, 0.75)],
 ];
 
+/** And stronger as it climbs, by this much more at its highest, so a
+ *  summer noon's sun outshines the sky, as a real one does, and its colours
+ *  glow rather than sit flat in the sky's fill. */
+const HIGH_SUN = 1;
+
 /** A shadow is drawn no longer than the sun this high would cast it. */
 const LOWEST = 0.1;
 
@@ -95,7 +100,9 @@ const LOWEST = 0.1;
  *  it; and it fades out just above the lowest sun, so the roofs it lights
  *  and the shadows it casts go together, before the shadows stop growing. */
 function sunLightAt(elev: number): { colour: Rgb; strength: number } {
-  return { colour: ramp(sunStops, elev, lerp3), strength: (0.5 * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
+  const climbed = Math.min(1, Math.max(0, (elev - 0.42) / (1 - 0.42)));
+  const high = 1 + HIGH_SUN * climbed * climbed * (3 - 2 * climbed);
+  return { colour: ramp(sunStops, elev, lerp3), strength: (high * 0.5 * Math.min(1, Math.max(0, (elev - LOWEST) / 0.15))) / Math.max(elev, 0.42) };
 }
 
 const SKY_MIDNIGHT = rgb(0.15, 0.15, 0.25);

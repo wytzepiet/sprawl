@@ -1,4 +1,4 @@
-import { createTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { createTexture2DFromPixels, updateTexture2DFromPixels, markMaterialUboDirty, markMeshRenderableDirty, setMeshAttribute, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
 import { townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, show } from "./geometry";
 import { WHITE, type Rgb } from "./rgb";
@@ -6,8 +6,11 @@ import type { Culler } from "./cull";
 import { Atlas } from "./atlas";
 import { FAR, kerbDistances } from "./kerbLines";
 import { CALM, slate } from "./peaks";
-import { ripples, SWASH, WAVE_LEAD, wavePhase, wavePiece } from "./water";
+import { ripples, SWASH, swashFn } from "./water";
 import { SPAN as SLATE_SPAN } from "./slate";
+import { RIPPLE_SIDE, RIPPLE_TILES } from "./ripples";
+import recipe from "./ripples.ts?raw";
+import { baked } from "./bakeCache";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
 import { fillTriangles } from "./raster";
 
@@ -67,6 +70,13 @@ const TUFT = 8;
 const GLINTS = 0.25;
 const GLINT_TILT = 0.35;
 const GLINT = 4;
+/** And it lies in ripples, as the wind leaves them (`ripples.ts`, baked),
+ *  tilting the sand this much; flat where the waves wet it, which wash them
+ *  out, back as the sand dries (its darkening's own band). */
+const RIPPLE_TILT = 0.35;
+/** And not everywhere alike: their strength comes and goes over this many
+ *  tiles, smooth sand between. */
+const RIPPLE_PATCH = 2.5;
 
 /** How far in from its edge ground rounds over it, in tiles: 45 degrees at
  *  the edge itself, level by here. */
@@ -90,7 +100,7 @@ const LOOKS = [
   // The wood floor frays into the grass, thinning plate by plate, and
   // further in than the grass does: it lies under the trees, not past them.
   // Needle litter in shade: fully matte.
-  { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 2.5, mottle: 0, slate: 0, matte: 1 },
+  { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 1.6, mottle: 0, slate: 0, matte: 1 },
 ];
 
 /** A slot's side in texels, the texels to a tile, and its low corner in
@@ -124,6 +134,27 @@ export function grain(engine: EngineContext): Texture2D {
       addressModeV: "repeat",
     });
     GRAINS.set(engine, texture);
+  }
+  return texture;
+}
+
+/** The sand's ripples, an engine's: level until the worker has baked them,
+ *  or read back from the last bake (`bakeCache.ts`). */
+const SANDS = new WeakMap<EngineContext, Texture2D>();
+function sand(engine: EngineContext): Texture2D {
+  let texture = SANDS.get(engine);
+  if (!texture) {
+    const level = new Uint8Array(RIPPLE_SIDE * RIPPLE_SIDE * 4);
+    for (let k = 0; k < level.length; k += 4) level.set([128, 128, 128, 255], k);
+    const made = createTexture2DFromPixels(engine, level, RIPPLE_SIDE, RIPPLE_SIDE, {
+      mipmaps: true,
+      minFilter: "linear",
+      magFilter: "linear",
+      addressModeU: "repeat",
+      addressModeV: "repeat",
+    });
+    SANDS.set(engine, (texture = made));
+    void baked("ripples", recipe, () => new Worker(new URL("./rippleWorker.ts", import.meta.url), { type: "module" })).then((data) => updateTexture2DFromPixels(engine, made, data));
   }
   return texture;
 }
@@ -180,12 +211,9 @@ const n = (x: number) => x.toFixed(4);
 const [patches, specks, mottleWarm] = [n(PATCHES * SIDE), n(SPECKS * SIDE), [1.15, 1, 0.6].map((k) => n(k * MOTTLE * 2)).join(", ")];
 const [fray, fraySpan, tuftSpan] = [n(FRAY), n(FRAY_SPAN), n(FRAY_SPAN * TUFT)];
 const [slateSpan, calm, patchesIn, patched, patchSpan] = [n(SLATE_SPAN), n(CALM), n(PATCHES_IN), n(PATCHED), n(SLATE_SPAN * PATCH_SCALE)];
-// How far up a beach the water is, of `SWASH`, this far through a wave,
-// from when its crest reaches the foam: running up for this share of it,
-// back down for the rest; and wet sand, this much darker.
-const [swash, wet, rise] = [n(SWASH), n(0.18), n(0.3)];
-const washFn = (R: (uv: string) => string, v2: string, head: string) =>
-  `${head} { let_ w = ${wavePhase(R, "p", "t", n(WAVE_LEAD))}; let_ s = fract(w); return min(smoothstep(0., ${rise}, s), 1. - smoothstep(${rise}, 1., s)) * mix(0.25, 1., ${wavePiece(R, "p", "w", v2)}); }`;
+// How far up a beach the water runs, at most (`swashFn`); and wet sand,
+// this much darker.
+const [swash, wet] = [n(SWASH), n(0.18)];
 const [span, origin, slotSpan, bump, bumpSpan, step] = [n(SPAN), n(ORIGIN), n(SLOT / DENSITY), n(BUMP), n(BUMP_SPAN), n(BUMP_SPAN / SIDE)];
 // Two more random bytes of the same texel, a whole number of texels on.
 const [glints, glintTilt, glint, other1, other2] = [n(1 - GLINTS), n(GLINT_TILT), n(GLINT), `${n(97 / SIDE)}, ${n(41 / SIDE)}`, `${n(23 / SIDE)}, ${n(151 / SIDE)}`];
@@ -217,8 +245,8 @@ function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
       { name: "vGroundX", type: "vec2f" },
       { name: "vGroundY", type: "vec2f" },
     ],
-    getSamplers: () => ["groundGrain", "groundAtlas", "groundSlate", "groundRipple"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
-    bindTextures: (out) => out.push({ texture: grain(engine) }, { texture: atlas.upload() }, { texture: slate(engine) }, { texture: ripples(engine) }),
+    getSamplers: () => ["groundGrain", "groundAtlas", "groundSlate", "groundRipple", "sandRipples"].map((name) => ({ texture: name, sampler: `${name}Sampler` })),
+    bindTextures: (out) => out.push({ texture: grain(engine) }, { texture: atlas.upload() }, { texture: slate(engine) }, { texture: ripples(engine) }, { texture: sand(engine) }),
     getUniforms: () => ({
       ubo: [
         { name: "groundGrid", type: "vec2<f32>" },
@@ -234,12 +262,15 @@ function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
       stage === "vertex"
         ? { CUSTOM_VERTEX_MAIN_END: `out.vGroundGrass = groundGrass; out.vGroundAt = position.xy; out.vGroundSlot = groundSlot; out.vGroundLook = groundLook; out.vGroundX = (finalWorld * vec4f(1., 0., 0., 0.)).xy; out.vGroundY = (finalWorld * vec4f(0., 1., 0., 0.)).xy;` }
         : {
-            CUSTOM_FRAGMENT_DEFINITIONS: `${washFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "vec2f", "fn groundWash(t: f32, p: vec2f) -> f32").replaceAll("let_", "let")}`,
+            CUSTOM_FRAGMENT_DEFINITIONS: swashFn((uv) => `textureSampleLevel(groundRipple, groundRippleSampler, ${uv}, 0.).b`, "groundWash"),
             CUSTOM_FRAGMENT_MAIN_BEGIN: `let groundBump = vec2f(textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy + vec2f(${step}, 0.)) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy - vec2f(${step}, 0.)) / ${bumpSpan}).r,
   textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy + vec2f(0., ${step})) / ${bumpSpan}).r - textureSample(groundGrain, groundGrainSampler, (input.worldPos.xy - vec2f(0., ${step})) / ${bumpSpan}).r);
 let groundGrainUv = input.worldPos.xy / ${span};
 let groundGlint = vec3f(textureSample(groundGrain, groundGrainSampler, groundGrainUv).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other1})).r, textureSample(groundGrain, groundGrainSampler, groundGrainUv + vec2f(${other2})).r);
 let groundGlinting = input.vGroundSlot.w * step(${glints}, groundGlint.x);
+// The sand's ripples (ripples.ts), their slope read at the size they are drawn.
+let groundRipple = (textureSample(sandRipples, sandRipplesSampler, input.worldPos.xy / ${n(RIPPLE_TILES)}).rg * 2. - 1.) * ${n(RIPPLE_TILT)} * input.vGroundSlot.w
+  * smoothstep(0.15, 0.35, textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${n(RIPPLE_PATCH * SIDE)} + vec2f(0.37, 0.71)).r);
 let groundMottle = 0.6 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${patches}).r + 0.4 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${specks}).r - 0.5;
 let groundFrayBy = 0.5 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${fraySpan}).r + 0.5 * textureSample(groundGrain, groundGrainSampler, input.worldPos.xy / ${tuftSpan}).r;
 let groundSlotN = floor(input.vGroundSlot.x + 0.5);
@@ -270,7 +301,7 @@ if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * input.vGround
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., input.vGroundLook.a * ${glint} + groundGlinting);
 baseColor = baseColor * input.vGroundLook.rgb * (1. + input.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * input.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
 roughness = mix(roughness, 1., input.vGroundGrass.w);
-N = normalize(N - vec3f(groundBump * ${bump} * input.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * input.vGroundGrass.z, 0.));
+N = normalize(N - vec3f(groundBump * ${bump} * input.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * input.vGroundGrass.z, 0.) - vec3f(groundRipple * smoothstep(${swash}, ${swash} * 1.6, groundD.g), 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
   let groundTx = vec2f(groundTexel.x, 0.);
