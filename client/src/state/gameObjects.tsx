@@ -6,6 +6,7 @@ import {
   type ParentProps,
 } from "solid-js";
 import { createConnection } from "../network/connection";
+import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
 import type { Building,
   GameObjectEntry,
@@ -220,6 +221,16 @@ function applyOps(ops: Operation[]) {
   opsListener?.(ops);
 }
 
+/** A message's ops, so many at a time, then its sales. */
+const OPS_A_PART = 64;
+function* applying(ops: Operation[], sales: Sale[]) {
+  for (let i = 0; i < ops.length; i += OPS_A_PART) {
+    applyOps(ops.slice(i, i + OPS_A_PART));
+    yield;
+  }
+  land(sales);
+}
+
 // --- Context (thin — just what UI needs) ---
 
 interface GameContext {
@@ -264,8 +275,8 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
         setRevealedBounds(msg.data.revealed_bounds);
         setGrowth(msg.data.growth);
-        applyOps(msg.data.ops);
-        land(msg.data.sales);
+        // Many at once when the view travels: spread over frames, in order.
+        void spread(applying(msg.data.ops, msg.data.sales));
         break;
       case "Error":
         console.error("[ws] server error:", msg.data.message);

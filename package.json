@@ -10,6 +10,7 @@
     "plan": "bun client/scripts/plan.ts",
     "act": "bun client/scripts/act.ts",
     "look": "bun client/scripts/look.ts",
-    "cost": "bun client/scripts/cost.ts"
+    "cost": "bun client/scripts/cost.ts",
+    "pan": "bun client/scripts/pan.ts"
   }
 }

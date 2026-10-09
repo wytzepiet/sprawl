@@ -4,7 +4,7 @@ import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
 import { tool } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
-import { viewExtent } from "./view";
+import { viewExtent, rectOf } from "./view";
 import { following, setFollowing, positionOf } from "../state/selection";
 
 
@@ -146,7 +146,7 @@ export function OrthoCamera() {
    * carries this one.
    */
   function zoomToward(size: number, clientX: number, clientY: number) {
-    const rect = canvas.getBoundingClientRect();
+    const rect = rectOf(canvas);
     const nx = -((clientX - rect.left) / rect.width * 2 - 1);
     const ny = 1 - (clientY - rect.top) / rect.height * 2;
     const worldX = targetCamX + nx * targetViewHalf * aspect();
@@ -279,7 +279,7 @@ export function OrthoCamera() {
     if (pointers.size === 2 && !debugMode) {
       const dist = pinchDistance();
       const center = pinchCenter();
-      const rect = canvas.getBoundingClientRect();
+      const rect = rectOf(canvas);
 
       // Pan by pinch center movement
       const { worldPerPxX, worldPerPxY } = groundScale(rect);
@@ -308,7 +308,7 @@ export function OrthoCamera() {
 
     if (debugMode) return;
 
-    const rect = canvas.getBoundingClientRect();
+    const rect = rectOf(canvas);
     const { worldPerPxX: worldPerPixelX, worldPerPxY: worldPerPixelY } = groundScale(rect);
     const moveX = dx * worldPerPixelX;
     const moveY = dy * worldPerPixelY;

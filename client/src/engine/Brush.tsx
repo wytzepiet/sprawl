@@ -1,7 +1,7 @@
 import { createEffect, createMemo, on, onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
-import { screenToWorld, viewExtent } from "./view";
+import { screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { tree, unlocked } from "../state/tree";
 import { isRoad, setTool, tool } from "../ui/buildMode";
@@ -62,7 +62,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
 
   /** The tiles the view covers. */
   const viewBox = () => {
-    const rect = canvas.getBoundingClientRect();
+    const rect = rectOf(canvas);
     const mid = screenToWorld(scene, canvas, { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
     const { halfW, halfH } = viewExtent(scene, canvas);
     const half = Math.max(halfW, halfH);

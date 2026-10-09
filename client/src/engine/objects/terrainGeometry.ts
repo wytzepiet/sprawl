@@ -136,33 +136,88 @@ interface TreeInfo {
   tall: number;
 }
 
-const CELLS: [number, number][] = [[0, 0], [1, 0], [0, 1], [1, 1]];
-const CELL_W = 0.5;
 /** How far from a tile's corner the wood's diagonal edge cuts across it, of
  *  a tile, measured along both sides. */
 const CORNER_CUT = 0.5;
 
-function treesForTile(tx: number, ty: number): TreeInfo[] {
-  let s = seed(tx, ty);
-  const trees: TreeInfo[] = [];
-  for (const [cx, cy] of CELLS) {
-    let v: number, x: number, y: number;
-    do {
-      [s, v] = nextRand(s);
-      x = cx * CELL_W + v * CELL_W;
-      [s, v] = nextRand(s);
-      y = cy * CELL_W + v * CELL_W;
-    } while ((x - 0.5) ** 2 + (y - 0.5) ** 2 > 0.25);
+/** A tree at (x, y) of its tile, its size, turn, shade and height drawn
+ *  from s; and s after. */
+function grown(x: number, y: number, s: number): [TreeInfo, number] {
+  let v: number;
+  [s, v] = nextRand(s);
+  const scale = 0.5 + v * 0.5;
+  [s, v] = nextRand(s);
+  const turn = v * Math.PI * 2;
+  [s, v] = nextRand(s);
+  const shade = v;
+  [s, v] = nextRand(s);
+  return [{ x, y, scale, turn, shade, tall: v }, s];
+}
+
+/** Trees stand where darts land, once, over a patch this many tiles a
+ *  side that wraps round on itself: thrown one at a time, each a tree of
+ *  its size, kept if it has room from every tree yet kept, so much of their
+ *  two crowns' reach (`SPACING`), a big tree more and small ones filling in
+ *  between, until so many in a row find none: the patch is full. Random,
+ *  never crowded, never in rows; the map takes its trees from the patch
+ *  tile by tile, each turned and shaded its own way, so where it repeats
+ *  no two trees are alike. */
+const PATCH = 16;
+const MISSES = 2000;
+
+const PATCHES = new Map<Kind, { x: number; y: number; scale: number }[][]>();
+function patch(kind: Kind): { x: number; y: number; scale: number }[][] {
+  let tiles = PATCHES.get(kind);
+  if (tiles) return tiles;
+  const reach = TREE_RADIUS * SPACING[kind].wide * SPACING[kind].room;
+  // Kept trees bucketed by cells as wide as the most room two can keep.
+  const cell = 2 * reach;
+  const side = Math.floor(PATCH / cell);
+  const buckets: { x: number; y: number; scale: number }[][] = Array.from({ length: side * side }, () => []);
+  const wrap = (d: number) => d - PATCH * Math.round(d / PATCH);
+  let s = seed(SPACING[kind].salt, 0);
+  for (let misses = 0; misses < MISSES; ) {
+    let x: number, y: number, v: number;
+    [s, x] = nextRand(s);
+    [s, y] = nextRand(s);
     [s, v] = nextRand(s);
-    const scale = 0.5 + v * 0.5;
-    [s, v] = nextRand(s);
-    const turn = v * Math.PI * 2;
-    [s, v] = nextRand(s);
-    const shade = v;
-    [s, v] = nextRand(s);
-    trees.push({ x, y, scale, turn, shade, tall: v });
+    const t = { x: x * PATCH, y: y * PATCH, scale: 0.5 + v * 0.5 };
+    const [cx, cy] = [Math.floor(t.x / (PATCH / side)), Math.floor(t.y / (PATCH / side))];
+    let room = true;
+    for (let dy = -1; dy <= 1 && room; dy++) {
+      for (let dx = -1; dx <= 1 && room; dx++) {
+        for (const o of buckets[((cy + dy + side) % side) * side + ((cx + dx + side) % side)]) {
+          const [ox, oy, r] = [wrap(o.x - t.x), wrap(o.y - t.y), reach * (o.scale + t.scale)];
+          if (ox * ox + oy * oy < r * r) {
+            room = false;
+            break;
+          }
+        }
+      }
+    }
+    if (!room) {
+      misses++;
+      continue;
+    }
+    buckets[cy * side + cx].push(t);
+    misses = 0;
   }
-  return trees;
+  tiles = Array.from({ length: PATCH * PATCH }, () => []);
+  for (const t of buckets.flat()) tiles[Math.floor(t.y) * PATCH + Math.floor(t.x)].push({ x: t.x % 1, y: t.y % 1, scale: t.scale });
+  PATCHES.set(kind, tiles);
+  return tiles;
+}
+
+/** A tile's trees of a kind: where the patch has them, turned, shaded and
+ *  grown to their height by the tile's own numbers. */
+function treesForTile(tx: number, ty: number, kind: Kind): TreeInfo[] {
+  const mod = (n: number) => ((n % PATCH) + PATCH) % PATCH;
+  let s = seed(tx, ty) ^ SPACING[kind].salt;
+  return patch(kind)[mod(ty) * PATCH + mod(tx)].map(({ x, y, scale }) => {
+    let tree: TreeInfo;
+    [tree, s] = grown(x, y, s);
+    return { ...tree, scale };
+  });
 }
 
 const FULL_SQUARE: MeshGeometry = {
@@ -1310,18 +1365,98 @@ export function buildChunk(
  * town plan the colours were sampled from: most crowns dark, fewest light.
  */
 const CROWN_SHARES = [0.44, 0.37, 0.19];
+/** Conifers grow in stands: where a slow noise over the map, cells this
+ *  many tiles across, passes this; its edge a line, wandering by a quicker
+ *  noise, cells this many tiles across, this far, and broken into islands
+ *  a tree or two across by a quicker one still, this much, so near it the
+ *  kinds mix; each grows full up to it, so they meet mixed, not thinned
+ *  out. A conifer is this much narrower than a broadleaf, and this much
+ *  taller. */
+const STAND = 9;
+const STANDS = 0.58;
+const STAND_WANDER = 1.5;
+const STAND_EDGE = 0.16;
+const STAND_SPECK = 0.45;
+const STAND_MIX = 0.09;
+const CONIFER_WIDE = 0.8;
+const CONIFER_TALL = 1.6;
+/** The smallest a conifer squeezed between broadleaves grows, of its size. */
+const SQUEEZED = 0.4;
+/** How many times a conifer is pushed off broadleaves before it shrinks. */
+const PUSHES = 2;
+
+type Kind = "broad" | "conifer";
+/** The room each kind's trees keep, of their two crowns' reach: conifers
+ *  closer, broadleaves sprawling. */
+const SPACING: Record<Kind, { room: number; wide: number; salt: number }> = {
+  broad: { room: 0.72, wide: 1, salt: 0x27d4eb2d },
+  conifer: { room: 0.6, wide: CONIFER_WIDE, salt: 0x5bd1e995 },
+};
+
+/** A slow noise at a point of the map, cells this many tiles across, 0 to 1. */
+function noiseAt(x: number, y: number, span: number, salt: number): number {
+  const [gx, gy] = [x / span, y / span];
+  const [ix, iy] = [Math.floor(gx), Math.floor(gy)];
+  const ease = (t: number) => t * t * (3 - 2 * t);
+  const [tx, ty] = [ease(gx - ix), ease(gy - iy)];
+  const at = (cx: number, cy: number) => nextRand(seed(cx + 7919 + salt, cy - 104729))[1];
+  const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+  return mix(mix(at(ix, iy), at(ix + 1, iy), tx), mix(at(ix, iy + 1), at(ix + 1, iy + 1), tx), ty);
+}
 
 export function buildTrees(
   tiles: Uint8Array,
   chunkX: number,
   chunkY: number,
   isBuilt: (x: number, y: number) => boolean,
-  crowns: RGB[],
-): { matrices: Float32Array; colors: Float32Array } {
+  palette: { crowns: RGB[]; conifers: RGB[] },
+): Record<Kind, { matrices: Float32Array; colors: Float32Array }> {
   const originX = chunkX * CHUNK_SIZE;
   const originY = chunkY * CHUNK_SIZE;
-  const matrices: number[] = [];
-  const colors: number[] = [];
+  const sets = { broad: { matrices: [] as number[], colors: [] as number[] }, conifer: { matrices: [] as number[], colors: [] as number[] } };
+
+  // Which kind a stand grows at a point of the map, by the side of its edge it is on.
+  const kindAt = (wx: number, wy: number): Kind => {
+    const edge = (noiseAt(wx, wy, STAND_WANDER, 31337) - 0.5) * 2 * STAND_EDGE + (noiseAt(wx, wy, STAND_SPECK, 7331) - 0.5) * 2 * STAND_MIX;
+    return noiseAt(wx, wy, STAND, 0) + edge > STANDS ? "conifer" : "broad";
+  };
+  // Where the kinds meet, a conifer makes way for a broadleaf it would
+  // stand in: the broadleaves a tile grows, kept for the tiles round it.
+  const broadleaves = new Map<number, TreeInfo[]>();
+  const broadAt = (tx: number, ty: number) => {
+    const key = (tx - originX + 2) * 4096 + (ty - originY + 2);
+    let trees = broadleaves.get(key);
+    if (!trees) broadleaves.set(key, (trees = treesForTile(tx, ty, "broad").filter((t) => kindAt(tx + t.x, ty + t.y) === "broad")));
+    return trees;
+  };
+  // Pushed off a broadleaf it stands in, out a little past where their
+  // crowns keep their room; so many times, for one wedged between several;
+  // still crowded, it grows smaller (`SQUEEZED`); and only then is it let go.
+  const makeWay = (x: number, y: number, t: TreeInfo): TreeInfo | null => {
+    const room = TREE_RADIUS * (SPACING.broad.room + SPACING.conifer.room) / 2;
+    let { x: px, y: py, scale } = t;
+    const crowding = () => {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          for (const b of broadAt(x + dx, y + dy)) {
+            const [ox, oy, r] = [px - b.x - dx, py - b.y - dy, room * (b.scale + scale * CONIFER_WIDE)];
+            if (ox * ox + oy * oy < r * r) return { ox, oy, r };
+          }
+        }
+      }
+      return null;
+    };
+    for (let pass = 0; pass < PUSHES + 2; pass++) {
+      const c = crowding();
+      if (!c) return { ...t, x: px, y: py, scale };
+      if (pass < PUSHES) {
+        const d = Math.hypot(c.ox, c.oy) || 1e-3;
+        const by = c.r * 1.1 - d;
+        [px, py] = [px + (c.ox / d) * by, py + (c.oy / d) * by];
+      } else if (scale > SQUEEZED) scale = Math.max(SQUEEZED, scale * 0.8);
+    }
+    return crowding() ? null : { ...t, x: px, y: py, scale };
+  };
 
   // A tile of wood, as its floor is drawn: not built on.
   const wood = (x: number, y: number) => TYPE_BY_BYTE[tiles[(y - originY + CHUNK_SKIRT) * CHUNK_STRIDE + x - originX + CHUNK_SKIRT]] === "Forest" && !isBuilt(x, y);
@@ -1346,24 +1481,30 @@ export function buildTrees(
         return Math.abs(px - cx) + Math.abs(py - cy) < CORNER_CUT;
       };
 
-      for (const tree of treesForTile(x, y)) {
+      for (const [kind, tree] of (["broad", "conifer"] as const).flatMap((k) => treesForTile(x, y, k).map((t) => [k, t] as const))) {
         const flipped = corners[cornerOf(tree.x, tree.y)] && inCorner(tree.x, tree.y);
         if (mine === flipped) continue;
-        const w = tree.scale * TREE_RADIUS;
-        const c = Math.cos(tree.turn) * w, s = Math.sin(tree.turn) * w;
+        // Which side of a stand's edge: each kind's trees grow only on theirs.
+        if (kindAt(x + tree.x, y + tree.y) !== kind) continue;
+        const placed = kind === "conifer" ? makeWay(x, y, tree) : tree;
+        if (!placed) continue;
+        const { matrices, colors } = sets[kind];
+        const w = placed.scale * TREE_RADIUS * (kind === "conifer" ? CONIFER_WIDE : 1);
+        const c = Math.cos(placed.turn) * w, s = Math.sin(placed.turn) * w;
         // Column-major 4x4: a turn and a scale, translation in the last row.
         matrices.push(
           c, s, 0, 0,
           -s, c, 0, 0,
-          0, 0, CROWN_HEIGHT * (0.45 + 0.55 * tree.tall), 0,
-          x - originX + tree.x, y - originY + tree.y, 0, 1,
+          0, 0, CROWN_HEIGHT * (0.45 + 0.55 * placed.tall) * (kind === "conifer" ? CONIFER_TALL : 1), 0,
+          x - originX + placed.x, y - originY + placed.y, 0, 1,
         );
-        let pick = 0, t = tree.shade;
+        let pick = 0, t = placed.shade;
         while (pick < CROWN_SHARES.length - 1 && t >= CROWN_SHARES[pick]) t -= CROWN_SHARES[pick++];
-        const crown = crowns[pick];
+        const crown = (kind === "conifer" ? palette.conifers : palette.crowns)[pick];
         colors.push(crown.r, crown.g, crown.b, 1);
       }
     }
   }
-  return { matrices: new Float32Array(matrices), colors: new Float32Array(colors) };
+  const done = ({ matrices, colors }: { matrices: number[]; colors: number[] }) => ({ matrices: new Float32Array(matrices), colors: new Float32Array(colors) });
+  return { broad: done(sets.broad), conifer: done(sets.conifer) };
 }

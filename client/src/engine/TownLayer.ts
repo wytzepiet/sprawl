@@ -1,4 +1,5 @@
 import type { Mesh } from "@babylonjs/lite";
+import { spread } from "./budget";
 import { perfCount } from "./PerfReport";
 import { Tints, tintPlugin } from "./tints";
 import { ROOF } from "./roofs";
@@ -195,12 +196,19 @@ export class TownLayer {
       .draw(snapshot)
       .then(
         ({ chunks, window }) => {
-          const shown = performance.now();
-          for (const c of chunks) {
-            this.drop(c.key);
-            this.show(c, window, byId);
-          }
-          perfCount("town.mainMs", gathered + performance.now() - shown);
+          perfCount("town.mainMs", gathered);
+          // A chunk a part, in frames' spare time; the next drawing waits
+          // for the last, so an older one never lands over a newer.
+          const showing = function* (this: TownLayer) {
+            for (const c of chunks) {
+              const shown = performance.now();
+              this.drop(c.key);
+              this.show(c, window, byId);
+              perfCount("town.mainMs", performance.now() - shown);
+              yield;
+            }
+          };
+          return spread(showing.call(this));
         },
         (e) => {
           // Never dropped: drawn again, and said so.

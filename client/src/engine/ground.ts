@@ -80,15 +80,17 @@ const SLATE_GRAIN = 0.5;
  *  edges onto lower ground round over, which the grass under it does. */
 const LOOKS = [
   // Sand glints, where the rest is bumped; and goes flat into the water.
-  { shine: 0.12, bevel: 0, bump: 0, glint: 1, fray: 0, mottle: 0, slate: 0 },
+  { shine: 0.12, bevel: 0, bump: 0, glint: 1, fray: 0, mottle: 0, slate: 0, matte: 0 },
   // The rock the land stands on: its edge is the cliff's top, of slate,
   // rounding over a little further than the grass does.
-  { shine: 0.06, bevel: BEVEL * 1.5, bump: 0, glint: 0, fray: 0, mottle: 0, slate: SLATE_GRAIN },
+  { shine: 0.06, bevel: BEVEL * 1.5, bump: 0, glint: 0, fray: 0, mottle: 0, slate: SLATE_GRAIN, matte: 0 },
   // Grass rounds over onto the rock more tightly, half as far, and stops
   // short of the cliff, as the wood floor does.
-  { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1, slate: 0 },
-  // The wood floor frays into the grass, thinning plate by plate.
-  { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 1, mottle: 0, slate: 0 },
+  { shine: 0, bevel: BEVEL / 2, bump: 1, glint: 0, fray: 1, mottle: 1, slate: 0, matte: 0 },
+  // The wood floor frays into the grass, thinning plate by plate, and
+  // further in than the grass does: it lies under the trees, not past them.
+  // Needle litter in shade: fully matte.
+  { shine: 0, bevel: 0, bump: 1, glint: 0, fray: 2.5, mottle: 0, slate: 0, matte: 1 },
 ];
 
 /** A slot's side in texels, the texels to a tile, and its low corner in
@@ -147,7 +149,7 @@ function bake(key: string): [Float32Array, Float32Array] {
   // The curves across the edges that come near.
   edges.push(...nearLines(shape));
   // As far in as a layer rounds over, frays or stops short of a cliff.
-  const reach = Math.max(BEVEL * 1.5, FRAY, PATCHES_IN) + 2 / DENSITY;
+  const reach = Math.max(BEVEL * 1.5, FRAY * Math.max(...LOOKS.map((l) => l.fray)), PATCHES_IN) + 2 / DENSITY;
   const inside = kerbDistances(edges, ORIGIN, ORIGIN, DENSITY, SLOT, SLOT, reach);
   const rounded = kerbDistances(
     edges.filter((e) => e.lies === "-"),
@@ -196,7 +198,7 @@ const [inner0, inner1] = [n(0.5 / DENSITY), n(1 - 0.5 / DENSITY)];
 // Then the grain, before anything is dropped (its mipmaps need every
 // pixel); whether the pixel is on the share; and how near its edges.
 /** The land's tiles: each told its slot, round, bump and glint, its colour
- *  and shine, its fray, mottle and slate (`GroundTiles`), one buffer a
+ *  and shine, its fray, mottle, slate and matte (`GroundTiles`), one buffer a
  *  chunk; the grain, the atlas, the slate and the ripples, read. */
 function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
   return {
@@ -205,10 +207,10 @@ function groundPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
     getAttributes: () => [
       { name: "groundSlot", type: "vec4<f32>", perInstance: true, buffer: "ground" },
       { name: "groundLook", type: "vec4<f32>", perInstance: true, buffer: "ground" },
-      { name: "groundGrass", type: "vec3<f32>", perInstance: true, buffer: "ground" },
+      { name: "groundGrass", type: "vec4<f32>", perInstance: true, buffer: "ground" },
     ],
     getVaryings: () => [
-      { name: "vGroundGrass", type: "vec3f" },
+      { name: "vGroundGrass", type: "vec4f" },
       { name: "vGroundAt", type: "vec2f" },
       { name: "vGroundSlot", type: "vec4f" },
       { name: "vGroundLook", type: "vec4f" },
@@ -255,14 +257,19 @@ let groundSlateDx = dpdx(groundSlateUv) * ${n(2 ** CALM)};
 let groundSlateDy = dpdy(groundSlateUv) * ${n(2 ** CALM)};
 var groundSlateTilt = vec2f(0.);
 if (input.vGroundGrass.z > 0.) { groundSlateTilt = textureSampleGrad(groundSlate, groundSlateSampler, groundSlateUv, groundSlateDx, groundSlateDy).rg * 2. - 1.; }
-// The rock breaking through the grass near its edge, plate by plate.
-if (input.vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && textureSampleLevel(groundSlate, groundSlateSampler, input.worldPos.xy / ${patchSpan}, 0.).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) { discard; }
+// The rock breaking through the grass near its edge, plate by plate: read
+// at the size it is drawn, its slopes taken outside the branch.
+let groundPatchUv = input.worldPos.xy / ${patchSpan};
+let groundPatchDx = dpdx(groundPatchUv);
+let groundPatchDy = dpdy(groundPatchUv);
+if (input.vGroundGrass.x > 0. && groundD.g >= 0. && groundD.g < ${patchesIn} && textureSampleGrad(groundSlate, groundSlateSampler, groundPatchUv, groundPatchDx, groundPatchDy).b > mix(${patched}, 1.05, groundD.g / ${patchesIn})) { discard; }
 // A beach draws back from each wave as it breaks, and is wet where they reach.
 var groundSwash = 0.;
 if (input.vGroundSlot.w > 0.) { groundSwash = input.vGroundSlot.w * ${swash} * groundWash(material.groundTime, input.worldPos.xy) * (0.6 + 0.8 * groundFrayBy); }
 if (groundD.g >= 0. && groundD.g < max(groundSwash, groundFrayBy * input.vGroundGrass.x * ${fray})) { discard; }`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = min(1., input.vGroundLook.a * ${glint} + groundGlinting);
 baseColor = baseColor * input.vGroundLook.rgb * (1. + input.vGroundGrass.y * groundMottle * vec3f(${mottleWarm})) * (1. - ${wet} * input.vGroundSlot.w * (1. - smoothstep(${swash}, ${swash} * 1.6, groundD.g)) * step(0., groundD.g));
+roughness = mix(roughness, 1., input.vGroundGrass.w);
 N = normalize(N - vec3f(groundBump * ${bump} * input.vGroundSlot.z, 0.) + vec3f((groundGlint.yz - 0.5) * 2. * ${glintTilt} * groundGlinting, 0.) + vec3f(groundSlateTilt * input.vGroundGrass.z, 0.));
 // Its slope read only near an edge, where it rounds over.
 if (groundD.g >= 0. && groundD.g < groundBevel) {
@@ -286,6 +293,8 @@ if (groundD.g >= 0. && groundD.g < groundBevel) {
 export class GroundTiles {
   private atlas: Atlas;
   private chunks = new Map<string, Mesh>();
+  /** Grounds drawn anew, the old kept until the new is drawn. */
+  private replaced: { old: Mesh; by: Mesh }[] = [];
   private material: TownMaterial;
   private colours: Rgb[] = LAYERS.map(() => WHITE);
   private stopClock: () => void;
@@ -307,26 +316,38 @@ export class GroundTiles {
     this.stopClock = beforeRender(() => {
       this.atlas.upload();
       markMaterialUboDirty(this.material);
+      // A chunk drawn anew is built a frame or two after it is shown: its
+      // old ground stays until then, or the land under it flashes through.
+      const drawn = new Set((scene as unknown as { _renderables: { mesh: Mesh }[] })._renderables.map((r) => r.mesh));
+      this.replaced = this.replaced.filter(({ old, by }) => {
+        if (drawn.has(by) || !this.scene.meshes.includes(by)) return this.cull.forget(old), drop(this.scene, old), false;
+        return true;
+      });
     });
   }
 
-  /** A chunk's tiles, from its low corner, in place of whatever it had. */
+  /** A chunk's tiles, from its low corner, in place of whatever it had:
+   *  that kept until these are drawn. */
   set(key: string, [ox, oy]: [number, number], layers: LayerTiles[]) {
-    this.delete(key);
+    const old = this.chunks.get(key);
+    this.chunks.delete(key);
     const count = layers.reduce((sum, l) => sum + l.shapes.length, 0);
-    if (!count) return;
+    if (!count) {
+      if (old) this.cull.forget(old), drop(this.scene, old);
+      return;
+    }
     const matrices = new Float32Array(count * 16);
-    // A tile's slot, round, bump and glint; colour and shine; fray, mottle and slate.
-    const data = new Float32Array(count * 11);
+    // A tile's slot, round, bump and glint; colour and shine; fray, mottle, slate and matte.
+    const data = new Float32Array(count * 12);
     let n = 0;
     for (let l = layers.length - 1; l >= 0; l--) {
       const { at, shapes } = layers[l];
-      const [{ z }, { shine, bevel, bump, glint, fray, mottle, slate: grain }, colour] = [LAYERS[l], LOOKS[l], this.colours[l]];
+      const [{ z }, { shine, bevel, bump, glint, fray, mottle, slate: grain, matte }, colour] = [LAYERS[l], LOOKS[l], this.colours[l]];
       for (let i = 0; i < shapes.length; i++, n++) {
         const m = n * 16;
         [matrices[m], matrices[m + 5], matrices[m + 10], matrices[m + 15]] = [1, 1, 1, 1];
         [matrices[m + 12], matrices[m + 13], matrices[m + 14]] = [ox + at[i * 2], oy + at[i * 2 + 1], z];
-        data.set([this.atlas.slotOf(shapes[i], () => bake(shapes[i])), bevel, bump, glint, colour.r, colour.g, colour.b, shine, fray, mottle, grain], n * 11);
+        data.set([this.atlas.slotOf(shapes[i], () => bake(shapes[i])), bevel, bump, glint, colour.r, colour.g, colour.b, shine, fray, mottle, grain, matte], n * 12);
       }
     }
     const mesh = meshOf(this.engine, `ground_${key}`, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
@@ -340,6 +361,7 @@ export class GroundTiles {
     this.cull.keep(mesh, this.turned ? [-ox - CHUNK_SIZE, -oy - CHUNK_SIZE, -ox, -oy] : [ox, oy, ox + CHUNK_SIZE, oy + CHUNK_SIZE]);
     show(this.scene, mesh);
     this.chunks.set(key, mesh);
+    if (old) this.replaced.push({ old, by: mesh });
   }
 
   delete(key: string) {
@@ -355,6 +377,8 @@ export class GroundTiles {
 
   dispose() {
     for (const key of [...this.chunks.keys()]) this.delete(key);
+    for (const { old } of this.replaced) this.cull.forget(old), drop(this.scene, old);
+    this.replaced = [];
     this.stopClock();
     this.atlas.dispose();
   }

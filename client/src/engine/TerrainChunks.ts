@@ -1,4 +1,5 @@
 import type { Mesh } from "@babylonjs/lite";
+import { spread } from "./budget";
 import { CAST_ONLY, FLAT, townMaterial, type TownMaterial } from "./material";
 import type { EngineContext } from "./Canvas";
 import type { Casters } from "./DayNightCycle";
@@ -18,19 +19,13 @@ import {
 import { GroundTiles } from "./ground";
 import { cliffMaterial, peakMaterial } from "./peaks";
 import { waterMaterial } from "./water";
-import { grove, plant, uproot, type Grove } from "./trees";
+import { grove, plant, uproot, type Grove, type Kind } from "./trees";
 import type { TerrainApi } from "./terrainWorker";
 import type { TerrainType } from "../generated";
 
 import { viewExtent } from "./view";
 
 export { CHUNK_SIZE };
-
-/**
- * Finished chunks uploaded per frame. The build is off-thread now, but the
- * upload is not — this caps how much GPU work one frame can take on.
- */
-const APPLIES_PER_FRAME = 2;
 
 /** Sun frustum half-extent beyond which per-chunk detail is dropped. */
 const DETAIL_MAX_ORTHO = 30;
@@ -43,8 +38,8 @@ const DETAIL_MAX_ORTHO = 30;
 interface ChunkMeshes {
   meshes: Mesh[];
   cliffs: Mesh | null;
-  trees: Grove;
-  hasTrees: boolean;
+  trees: Record<Kind, Grove>;
+  hasTrees: Record<Kind, boolean>;
   dispose: (() => void)[];
   tick: (() => void) | null;
 }
@@ -74,7 +69,6 @@ export class TerrainChunks {
    * unloaded or re-dirtied are dropped instead of resurrecting it.
    */
   private generation = new Map<string, number>();
-  private ready: { key: string; geometry: ChunkGeometry }[] = [];
 
   private worker = new Worker(new URL("./terrainWorker.ts", import.meta.url), {
     type: "module",
@@ -202,15 +196,21 @@ export class TerrainChunks {
     for (const key of this.dirtyTrees) this.rebuildTrees(key);
     this.dirtyTrees.clear();
 
-    // Dispatch is free — the worker does the work. Only the uploads are capped.
+    // Dispatch is free — the worker does the work; what it hands back is
+    // taken up in frames' spare time (`arriving`).
     for (const key of this.dirtyGeometry) void this.requestBuild(key);
     this.dirtyGeometry.clear();
+  }
 
-    let budget = APPLIES_PER_FRAME;
-    while (this.ready.length > 0 && budget-- > 0) {
-      const { key, geometry } = this.ready.shift()!;
-      this.applyGeometry(key, geometry);
-    }
+  /** A built chunk taken up in two parts, in frames' spare time
+   *  (`budget.ts`): its land and meshes, then its trees; neither if it was
+   *  unloaded or drawn anew while it waited. */
+  private *arriving(key: string, generation: number | undefined, geometry: ChunkGeometry) {
+    const current = () => this.tiles.has(key) && this.generation.get(key) === generation;
+    if (!current()) return;
+    this.applyGeometry(key, geometry);
+    yield;
+    if (current()) this.rebuildTrees(key);
   }
 
   private async requestBuild(key: string): Promise<void> {
@@ -243,7 +243,7 @@ export class TerrainChunks {
       this.disposeChunk(key);
       return;
     }
-    this.ready.push({ key, geometry });
+    void spread(this.arriving(key, generation, geometry));
   }
 
   private applyGeometry(key: string, geometry: ChunkGeometry): void {
@@ -251,7 +251,7 @@ export class TerrainChunks {
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
     const { engine, scene } = this.ctx;
     const old = this.chunks.get(key);
-    const chunk: ChunkMeshes = { meshes: [], cliffs: null, trees: old?.trees ?? grove(this.ctx, `chunk_${key}`), hasTrees: old?.hasTrees ?? false, dispose: [], tick: null };
+    const chunk: ChunkMeshes = { meshes: [], cliffs: null, trees: old?.trees ?? { broad: grove(this.ctx, `chunk_${key}`), conifer: grove(this.ctx, `chunk_${key}`, "conifer") }, hasTrees: old?.hasTrees ?? { broad: false, conifer: false }, dispose: [], tick: null };
     if (old) this.dropMeshes(old);
 
     this.ground.set(key, [ox, oy], geometry.layers);
@@ -291,7 +291,6 @@ export class TerrainChunks {
     this.chunks.set(key, chunk);
     this.applyDetail(chunk);
 
-    this.rebuildTrees(key);
   }
 
   /** Cheap enough to run on demand: placement is seeded off the tile coords. */
@@ -301,14 +300,17 @@ export class TerrainChunks {
     if (!chunk || !tiles) return;
 
     const [cx, cy] = parseKey(key);
-    const { matrices, colors } = buildTrees(tiles, cx, cy, this.isBuilt, this.theme().crowns);
-    // Grown from the chunk's corner.
-    for (const mesh of [chunk.trees.bodies, chunk.trees.tops]) {
-      mesh.position.x = cx * CHUNK_SIZE;
-      mesh.position.y = cy * CHUNK_SIZE;
-    }
+    const sets = buildTrees(tiles, cx, cy, this.isBuilt, this.theme());
     const [ox, oy] = [cx * CHUNK_SIZE, cy * CHUNK_SIZE];
-    chunk.hasTrees = plant(this.ctx, chunk.trees, matrices, colors, this.casters, [ox - 1, oy - 1, ox + CHUNK_SIZE + 1, oy + CHUNK_SIZE + 1]);
+    for (const kind of ["broad", "conifer"] as const) {
+      // Grown from the chunk's corner.
+      for (const mesh of [chunk.trees[kind].bodies, chunk.trees[kind].tops]) {
+        mesh.position.x = ox;
+        mesh.position.y = oy;
+      }
+      const { matrices, colors } = sets[kind];
+      chunk.hasTrees[kind] = plant(this.ctx, chunk.trees[kind], matrices, colors, this.casters, [ox - 1, oy - 1, ox + CHUNK_SIZE + 1, oy + CHUNK_SIZE + 1]);
+    }
     this.applyDetail(chunk);
   }
 
@@ -326,7 +328,7 @@ export class TerrainChunks {
     const chunk = this.chunks.get(key);
     if (!chunk) return;
     this.dropMeshes(chunk);
-    uproot(this.ctx, chunk.trees, this.casters);
+    for (const g of Object.values(chunk.trees)) uproot(this.ctx, g, this.casters);
     this.ground.delete(key);
     this.chunks.delete(key);
   }
@@ -343,7 +345,9 @@ export class TerrainChunks {
   private applyDetail(chunk: ChunkMeshes): void {
     const { cull } = this.ctx;
     if (chunk.cliffs) cull.want(chunk.cliffs, this.detailVisible);
-    if (chunk.hasTrees) for (const mesh of [chunk.trees.bodies, chunk.trees.tops]) cull.want(mesh, this.detailVisible);
+    for (const kind of ["broad", "conifer"] as const) {
+      if (chunk.hasTrees[kind]) for (const mesh of [chunk.trees[kind].bodies, chunk.trees[kind].tops]) cull.want(mesh, this.detailVisible);
+    }
   }
 
   dispose(): void {
@@ -355,6 +359,5 @@ export class TerrainChunks {
     this.heights.clear();
     this.dirtyGeometry.clear();
     this.dirtyTrees.clear();
-    this.ready.length = 0;
   }
 }

@@ -18,11 +18,15 @@ const light = {
   water: hex3("#76AAB2"),
   beach: hex3("#E2DCCF"),
   // The floor between the crowns: the wood's shade, of the crowns' teal
-  // greens, so a forest reads as one even zoomed out past its trees.
-  forest: hex3("#426A58"),
+  // greens, darker than them as the ground under a canopy is, so a forest
+  // reads as one even zoomed out past its trees.
+  forest: hex3("#4A6461"),
   // Tree crowns, dark to light: deep teal-greens, the dark note, light
   // enough that a forest reads as a wood and not a hole.
-  crowns: [hex3("#2C5650"), hex3("#386756"), hex3("#4B7B62")],
+  crowns: [hex3("#325E57"), hex3("#3F705E"), hex3("#52846A")],
+  // Conifers, dark to light: darker and bluer than the broadleaves, as a
+  // stand of spruce is beside an oak wood.
+  conifers: [hex3("#2A554B"), hex3("#325F53"), hex3("#3D6B5C")],
   // A field through its season: ploughed earth beside the beach, the
   // growing crop beside the grass, the ripe crop beside the highway's
   // yellow, the stubble between.
@@ -49,6 +53,7 @@ const dark = {
   beach: hex3("#2A2518"),
   forest: hex3("#053030"),
   crowns: [hex3("#042626"), hex3("#053030"), hex3("#0A3A34")],
+  conifers: [hex3("#031E20"), hex3("#04262A"), hex3("#072E2C")],
   earth: hex3("#6B5230"),
   growing: hex3("#4A6B2A"),
   ripe: hex3("#7A6428"),

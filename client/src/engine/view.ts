@@ -11,6 +11,19 @@ import { createPickingRay, getViewProjectionMatrix, type SceneContext } from "@b
  * size of the view is measured by asking where two pixels land.
  */
 
+/** Where the canvas is on the page, read once and again only when it is
+ *  resized: reading it in a frame, after the pins have moved, made the
+ *  browser lay the page out anew, every frame, a few times. */
+const RECTS = new WeakMap<HTMLCanvasElement, DOMRect>();
+export function rectOf(canvas: HTMLCanvasElement): DOMRect {
+  let rect = RECTS.get(canvas);
+  if (!rect) {
+    RECTS.set(canvas, (rect = canvas.getBoundingClientRect()));
+    new ResizeObserver(() => RECTS.set(canvas, canvas.getBoundingClientRect())).observe(canvas);
+  }
+  return rect;
+}
+
 /** The camera's view and projection, for a canvas this many CSS pixels across. */
 function viewProjection(scene: SceneContext, width: number, height: number) {
   return getViewProjectionMatrix(scene.camera!, width / height);
@@ -35,7 +48,7 @@ export function screenToWorld(
   canvas: HTMLCanvasElement,
   e: { clientX: number; clientY: number },
 ): { wx: number; wy: number } {
-  const rect = canvas.getBoundingClientRect();
+  const rect = rectOf(canvas);
   return groundAt(scene, rect.width, rect.height, e.clientX - rect.left, e.clientY - rect.top);
 }
 
@@ -46,7 +59,7 @@ export function screenToWorld(
  * the circle grows toward them.
  */
 export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { cx: number; cy: number; radius: number } {
-  const { width, height } = canvas.getBoundingClientRect();
+  const { width, height } = rectOf(canvas);
   const mid = groundAt(scene, width, height, width / 2, height / 2);
   let radius = 0;
   for (const [x, y] of [[0, 0], [width, 0], [0, height], [width, height]]) {
@@ -64,7 +77,7 @@ export function groundCover(scene: SceneContext, canvas: HTMLCanvasElement): { c
  * the camera is and how wide its lens; measuring gets the answer either way.
  */
 export function viewExtent(scene: SceneContext, canvas: HTMLCanvasElement): { halfW: number; halfH: number } {
-  const { width, height } = canvas.getBoundingClientRect();
+  const { width, height } = rectOf(canvas);
   const mid = groundAt(scene, width, height, width / 2, height / 2);
   const top = groundAt(scene, width, height, width / 2, 0);
   const side = groundAt(scene, width, height, 0, height / 2);
@@ -81,7 +94,7 @@ export function viewExtent(scene: SceneContext, canvas: HTMLCanvasElement): { ha
  * hundred matrix multiplies and no allocation at all.
  */
 export function projector(scene: SceneContext, canvas: HTMLCanvasElement) {
-  const rect = canvas.getBoundingClientRect();
+  const rect = rectOf(canvas);
   const m = viewProjection(scene, rect.width, rect.height);
   return {
     rect,

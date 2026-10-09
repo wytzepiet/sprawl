@@ -110,6 +110,8 @@ export default function PerfReport() {
     const mean = (a: number[]) => (a.length ? +(a.reduce((s, v) => s + v, 0) / a.length).toFixed(2) : 0);
     const body = {
       at: new Date().toISOString(),
+      // Which tab: a test's own reports are told from a player's by it (`scripts/pan.ts`).
+      tab: new URLSearchParams(location.search).get("tab"),
       seconds: EVERY_MS / 1000,
       frames: gaps.length,
       fps: +(gaps.length / (EVERY_MS / 1000)).toFixed(1),

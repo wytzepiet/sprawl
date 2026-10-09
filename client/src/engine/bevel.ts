@@ -158,7 +158,7 @@ N = bevelTurn(N, bevelFace, input.vBevelAcross2, input.vBevelReach.z, input.vBev
 const LACQUER: Record<string, readonly [number, number?, number?]> = {
   car: [0.3],
   building: [0.55, 0.015, 0.06],
-  tree: [0.65],
+  tree: [0.72],
   rock: [0.6],
 };
 

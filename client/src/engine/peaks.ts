@@ -5,6 +5,8 @@ import { rgb as colour, type Rgb } from "./rgb";
 import { lacquer } from "./bevel";
 import { CHUNK_SIZE, CLIFF_OUT, CLIFF_REACH, CLIFF_WANDER, CLIFF_RUN, EDGE, LAYER, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, REACH, SHORE_DENSITY } from "./objects/terrainGeometry";
 import { SECOND, SIDE as SLATE_SIDE, SPAN } from "./slate";
+import recipe from "./slate.ts?raw";
+import { baked } from "./bakeCache";
 
 /**
  * The mountains as dark slate, drawn as trees' crowns are: the mesh is
@@ -146,11 +148,7 @@ export function slate(engine: EngineContext): Texture2D {
       addressModeV: "repeat",
     });
     SLATES.set(engine, (texture = made));
-    const worker = new Worker(new URL("./slateWorker.ts", import.meta.url), { type: "module" });
-    worker.onmessage = ({ data }: MessageEvent<Uint8Array>) => {
-      worker.terminate();
-      updateTexture2DFromPixels(engine, made, data);
-    };
+    void baked("slate", recipe, () => new Worker(new URL("./slateWorker.ts", import.meta.url), { type: "module" })).then((data) => updateTexture2DFromPixels(engine, made, data));
   }
   return texture;
 }

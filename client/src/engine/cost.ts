@@ -1,3 +1,4 @@
+import { crownsBaked } from "./trees";
 import { renderFrame, setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCasterMeshes, waitForGpuIdle, type EngineContext, type Mesh, type SceneContext, type ShadowGenerator } from "@babylonjs/lite";
 
 /**
@@ -9,7 +10,10 @@ import { renderFrame, setMeshVisible, setShadowGeneratorEnabled, setShadowTaskCa
  * alone lets the GPU drop its clock between frames, so neither is used.) Each kind is then hidden, and
  * then kept out of the shadow map alone, and what the frame lost is its cost.
  * Conditions alternate round by round and the medians are taken, as the
- * laptop throttles. `client/scripts/cost.ts` drives it from outside.
+ * laptop throttles; rounds go on until a further one moves no median by
+ * more than `STEADY`, between two rounds and `rounds`. It first waits for
+ * the scene to be ready: the crowns baked, and nothing more arriving.
+ * `client/scripts/cost.ts` drives it from outside.
  *
  * A kind is a mesh's name with its chunk or tile taken out (`ground_3,-1`
  * is `ground_`), so every chunk's ground is one kind and a new kind of mesh
@@ -41,12 +45,19 @@ export interface Kind {
 }
 
 export interface CostReport {
-  base: { frame: number; cpu: number; drawCalls: number; meshes: number };
+  base: { frame: number; cpu: number; drawCalls: number; meshes: number; rounds: number };
   kinds: Kind[];
 }
 
 const kindOf = (m: Mesh) => m.name.replace(/-?\d+(\.\d+)?/g, "").replace(/[,#]+/g, "").replace(/_+/g, "_");
-const median = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
+const median = (a: number[]) => {
+  const s = [...a].sort((x, y) => x - y);
+  return s.length % 2 ? (s[(s.length - 1) / 2] ?? 0) : ((s[s.length / 2 - 1] ?? 0) + (s[s.length / 2] ?? 0)) / 2;
+};
+/** A round moving no condition's median by more than this, in ms, ends the run. */
+const STEADY = 0.2;
+/** The scene is ready when its meshes and their draws have held this long. */
+const READY_MS = 1000;
 
 export function costMeter(engine: EngineContext, scene: SceneContext, after: () => void, hold: (held: boolean) => void) {
   /** One frame drawn and handed to the GPU, not waited on. */
@@ -74,7 +85,20 @@ export function costMeter(engine: EngineContext, scene: SceneContext, after: () 
     return { cpu: median(got.map((g) => g.cpu)), draws: median(got.map((g) => g.draws)), frame: each };
   }
 
-  return async function report(rounds = 3, only = ""): Promise<CostReport> {
+  /** Until the crowns are baked and nothing has come or gone a while:
+   *  chunks, buildings and cars arriving at a fresh view. */
+  async function ready() {
+    await crownsBaked(engine);
+    const state = () => `${scene.meshes.length},${(scene as unknown as { _renderables: unknown[] })._renderables.length}`;
+    let [seen, since] = [state(), performance.now()];
+    for (const end = performance.now() + 20_000; performance.now() < end && performance.now() - since < READY_MS; ) {
+      await new Promise((r) => setTimeout(r, 100));
+      if (state() !== seen) [seen, since] = [state(), performance.now()];
+    }
+  }
+
+  return async function report(rounds = 5, only = ""): Promise<CostReport> {
+    await ready();
     hold(true);
     try {
       await measure();
@@ -89,46 +113,60 @@ export function costMeter(engine: EngineContext, scene: SceneContext, after: () 
       const kinds = new Map<string, Mesh[]>();
       for (const m of scene.meshes) kinds.set(kindOf(m), [...(kinds.get(kindOf(m)) ?? []), m]);
 
-      // Each condition measured right after the scene as it is, round by
-      // round, and what it saved over that: the laptop's drift between the
-      // two is small, and the median over the rounds drops a stray one.
+      // Each kind's conditions measured right after the scene as it is, one
+      // baseline for them all, round by round, and what each saved over it:
+      // the laptop's drift between them is small, and the median over the
+      // rounds drops a stray one.
       const bases: Sample[] = [];
       const saved = new Map<string, Sample[]>();
-      const against = async (name: string, change: () => () => void) => {
+      const against = async (changes: [string, () => () => void][]) => {
         const base = await measure();
         bases.push(base);
-        const undo = change();
-        const cut = await measure();
-        undo();
-        saved.set(name, [...(saved.get(name) ?? []), Object.fromEntries(FIELDS.map((f) => [f, base[f] - cut[f]])) as Sample]);
+        for (const [name, change] of changes) {
+          const undo = change();
+          const cut = await measure();
+          undo();
+          saved.set(name, [...(saved.get(name) ?? []), Object.fromEntries(FIELDS.map((f) => [f, base[f] - cut[f]])) as Sample]);
+        }
       };
       const shown = [...kinds].filter(([kind, ms]) => kind.includes(only) && ms.some((m) => active.has(m) || casters.has(m)));
-      for (let r = 0; r < rounds; r++) {
-        for (const [kind, meshes] of shown) {
-          await against(`hide ${kind}`, () => {
-            const was = meshes.map((m) => m.visible !== false);
-            meshes.forEach((m) => setMeshVisible(m, false));
-            return () => meshes.forEach((m, i) => setMeshVisible(m, was[i]));
-          });
-          if (sun && meshes.some((m) => casters.has(m))) {
-            await against(`noshadow ${kind}`, () => {
-              const list = castList();
-              setShadowTaskCasterMeshes(sun, list.filter((m) => !meshes.includes(m)));
-              return () => setShadowTaskCasterMeshes(sun, list);
-            });
-          }
-        }
-      }
       // What belongs to no one mesh: the shadow map's pass as a whole.
       const whole: Record<string, () => () => void> = sun
         ? { "(shadow map)": () => (setShadowGeneratorEnabled(sun, false), () => setShadowGeneratorEnabled(sun, true)) }
         : {};
-      if (!only) for (let r = 0; r < rounds; r++) for (const [name, change] of Object.entries(whole)) await against(`hide ${name}`, change);
+      const medians = () => new Map([...saved].map(([name, samples]) => [name, median(samples.map((x) => x.frame))]));
+      let done = 0;
+      for (let r = 0, before = medians(); r < rounds; r++, done = r) {
+        for (const [kind, meshes] of shown) {
+          const changes: [string, () => () => void][] = [
+            [`hide ${kind}`, () => {
+              const was = meshes.map((m) => m.visible !== false);
+              meshes.forEach((m) => setMeshVisible(m, false));
+              return () => meshes.forEach((m, i) => setMeshVisible(m, was[i]));
+            }],
+          ];
+          if (sun && meshes.some((m) => casters.has(m))) {
+            changes.push([`noshadow ${kind}`, () => {
+              const list = castList();
+              setShadowTaskCasterMeshes(sun, list.filter((m) => !meshes.includes(m)));
+              return () => setShadowTaskCasterMeshes(sun, list);
+            }]);
+          }
+          await against(changes);
+        }
+        if (!only && sun) await against(Object.entries(whole).map(([name, change]) => [`hide ${name}`, change]));
+        const now = medians();
+        if (r >= 1 && [...now].every(([name, m]) => Math.abs(m - (before.get(name) ?? Infinity)) <= STEADY)) {
+          done = r + 1;
+          break;
+        }
+        before = now;
+      }
       const round = (x: number) => +x.toFixed(2);
       const of = (name: string, f: (typeof FIELDS)[number]) => round(median((saved.get(name) ?? []).map((s) => s[f])));
       const base = (f: (typeof FIELDS)[number]) => round(median(bases.map((b) => b[f])));
       return {
-        base: { frame: base("frame"), cpu: base("cpu"), drawCalls: base("draws"), meshes: scene.meshes.length },
+        base: { frame: base("frame"), cpu: base("cpu"), drawCalls: base("draws"), meshes: scene.meshes.length, rounds: done },
         kinds: [...[...kinds], ...Object.keys(whole).map((name) => [name, [] as Mesh[]] as const)]
           .map(([kind, meshes]) => {
             const instances = (m: Mesh) => m.thinInstances?.count ?? 1;

@@ -1,3 +1,4 @@
+import { work } from "./budget";
 import {
   createContext,
   useContext,
@@ -71,6 +72,9 @@ const MOVING_FPS = 60;
 /** Frames a second while it stands still. Cars and water move a few pixels a
  *  frame, smooth enough at 30; a pan moves every pixel, and wants 60. */
 const STILL_FPS = 30;
+/** Work that can wait (`budget.ts`) runs in each tick until this long after
+ *  the tick began, leaving a 60 Hz frame room to spare. */
+const WORK_MS = 10;
 
 /** A list of callbacks run in order, each able to take itself off. */
 function hooks() {
@@ -148,7 +152,7 @@ export default function Canvas(props: ParentProps) {
       requestAnimationFrame(frame);
       if (held) return;
       const fps = moved || where() !== seen ? MOVING_FPS : STILL_FPS;
-      if (now - lastFrame < (1000 / fps) * 0.75) return;
+      if (now - lastFrame < (1000 / fps) * 0.75) return work(now + WORK_MS);
       const delta = now - lastFrame;
       lastFrame = now;
       const was = where();
@@ -158,6 +162,7 @@ export default function Canvas(props: ParentProps) {
       after.run();
       seen = where();
       moved = seen !== was;
+      work(now + WORK_MS);
     };
     requestAnimationFrame(frame);
 
