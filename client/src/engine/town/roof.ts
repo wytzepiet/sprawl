@@ -1,7 +1,7 @@
 import earcut from "earcut";
 import type { MeshGeometry } from "../geometry";
 import type { Tile, Town } from "./grid";
-import { capped, eaves, slope, type RGB } from "./mass";
+import { BAND, PARAPET_H, PARAPET_W, RECESS, eaves, mansard, planted, slope, type RGB } from "./mass";
 import { facts, type Facts } from "./facts";
 import { convex, footprints, intersect, shrink, subtract, unite, type Half, type Polygon, type Pt } from "./footprint";
 
@@ -23,17 +23,34 @@ import { convex, footprints, intersect, shrink, subtract, unite, type Half, type
  * is straight lines, cut exactly (`footprint.ts`), so nothing is sampled
  * and nothing can fail to meet.
  *
- * An office tower is capped instead: a flat roof a shade darker, and on
- * it a slab a shade lighter drawn in from the edge, the way a model
- * town's towers are. Big lines only: nothing smaller.
+ * Every flat roof has a parapet round its edge, and an office tower's
+ * carries its plant: a lift room, AC units, vents.
  */
 
-/** A cap's slab: how far in from the edge, and how high. */
-const CAP_IN = 0.15, CAP_H = 0.05;
 
 type V = [number, number, number];
 /** A wall's line: how far in from it a point is, a·x + b·y + c. */
 type Line = [number, number, number];
+
+/** An office roof's plant, in tiles: how far in from the parapet; the lift
+ *  room's length, breadth and height; an AC unit's side and height; a
+ *  vent's cap across and height. */
+/** A flat roof's bitumen: charcoal, whatever the building's colour (as
+ *  a shade of it: the colour × a + b). */
+const BITUMEN = [0.05, 0.3] as const;
+/** What stands on a high-street place's flat (`kit`), in tiles: how far in
+ *  from the flat's edge; an AC unit's side and height; a duct's breadth
+ *  and height; an extract stack's breadth (its cowl's) and height; a
+ *  dish's breadth and how high it stands; a rooflight's and its dome's. */
+const KIT = {
+  margin: 0.02,
+  ac: 0.085, acHigh: 0.055,
+  duct: 0.03, ductHigh: 0.03,
+  stack: 0.06, stackHigh: 0.1,
+  dish: 0.07, dishHigh: 0.04,
+  rooflight: 0.075, rooflightHigh: 0.025,
+} as const;
+const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
 /** Every building's plan as it stands: its masses, and the loading bay cut
  *  from each, its corners square. */
@@ -54,8 +71,29 @@ export type Paint = (t: Tile, a: number, b: number) => RGB;
 /** Each tile its colour, shaded. */
 export const shaded = (colour: (t: Tile) => RGB): Paint => (t, a, b) => colour(t).map((v) => v * a + b) as RGB;
 
-export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[] } {
+/** What stands on a roof and is drawn as a prop of its own (`props.ts`),
+ *  not as the building: an AC unit, a vent; where in the world's frame,
+ *  standing on the roof at `z`, how broad and how high. */
+export interface Prop {
+  kind: PropKind;
+  x: number;
+  y: number;
+  z: number;
+  size: number;
+  high: number;
+  /** A second point: where a duct runs to; where a dish faces. */
+  tx: number;
+  ty: number;
+}
+/** The props there are, in the order their codes cross from the worker. */
+export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight"] as const;
+export type PropKind = (typeof PROP_KINDS)[number];
+
+export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[]; props: Prop[] } {
   const positions: number[] = [], normals: number[] = [], colors: number[] = [], indices: number[] = [];
+  const props: Prop[] = [];
+  /** A prop at a point of the plan, in the world's frame as the triangles are. */
+  const prop = (kind: PropKind, [x, y]: Pt, z: number, size: number, high: number, [tx, ty]: Pt = [x, y]) => props.push({ kind, x: -x, y: -y, z, size, high, tx: -tx, ty: -ty });
   /** A triangle in the fixture's frame, turned into the world's (+x to the
    *  screen's left, +y up) and wound to face along `n`. */
   const tri = (p: V, q: V, s: V, n: V, rgb: RGB) => {
@@ -110,7 +148,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     const colourAt = (p: Pt): RGB => tint(mass.parts.find((part) => part.polygons.some((poly) => inPolygon(p, poly))) ?? mass.parts[0]);
     /** Walls round a region from z0 up to its top at z1, coloured as the
      *  building is, and the top, a shade darker or lighter by `dim`. */
-    const prism = (region: Polygon[], z0: number, z1: (p: Pt) => number, dim = 1) => {
+    const sides = (region: Polygon[], z0: number, z1: (p: Pt) => number) => {
       for (const ring of region.flat()) {
         ring.forEach((p, i) => {
           const q = ring[(i + 1) % ring.length];
@@ -122,30 +160,131 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
           tri([p[0], p[1], z0], [q[0], q[1], z1(q)], [p[0], p[1], z1(p)], n, c);
         });
       }
+    };
+    const prism = (region: Polygon[], z0: number, z1: (p: Pt) => number, dim = 1) => {
+      sides(region, z0, z1);
       cover(region, z1, dim);
     };
+    /** A solid standing on the plan from z0 to z1, walls and top one colour. */
+    const solid = (region: Polygon[], z0: number, z1: number, rgb: RGB) => {
+      for (const ring of region.flat()) {
+        ring.forEach((p, i) => {
+          const q = ring[(i + 1) % ring.length];
+          const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+          const len = Math.hypot(dx, dy);
+          const n: V = [dy / len, -dx / len, 0];
+          tri([p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1], n, rgb);
+          tri([p[0], p[1], z0], [q[0], q[1], z1], [p[0], p[1], z1], n, rgb);
+        });
+      }
+      for (const piece of region) fill(piece, () => z1, rgb);
+    };
+    /** A flat roof's plant, as an office's has: a lift room at one end of
+     *  its length, two AC units at the other and vents along a side, both
+     *  props (`props.ts`); clear of the middle, where its sign is painted.
+     *  Which end is which goes by where it stands, so it never changes. */
+    const plant = (polygon: Polygon, top: number, tile: Tile) => {
+      const ring = polygon[0];
+      const [x0, y0] = [Math.min(...ring.map((p) => p[0])), Math.min(...ring.map((p) => p[1]))];
+      const [x1, y1] = [Math.max(...ring.map((p) => p[0])), Math.max(...ring.map((p) => p[1]))];
+      const long = x1 - x0 >= y1 - y0;
+      const [length, width] = long ? [x1 - x0, y1 - y0] : [y1 - y0, x1 - x0];
+      const flip = Math.abs(Math.sin(x0 * 12.9898 + y0 * 78.233) * 43758.5453) % 1 > 0.5;
+      /** A point `a` along the roof's length from one end, `b` across. */
+      const at = (a: number, b: number): Pt => {
+        const along = flip ? length - a : a;
+        return long ? [x0 + along, y0 + b] : [x0 + b, y0 + along];
+      };
+      const box = ([cx, cy]: Pt, a: number, b: number): Polygon[] => {
+        const [w, h] = long ? [a, b] : [b, a];
+        return [[[[cx - w / 2, cy - h / 2], [cx + w / 2, cy - h / 2], [cx + w / 2, cy + h / 2], [cx - w / 2, cy + h / 2]]]];
+      };
+      const m = PARAPET_W + PLANT.margin;
+      const [lw, lh] = [Math.min(PLANT.room[0], length * 0.25), Math.min(PLANT.room[1], width - 2 * m)];
+      solid(box(at(m + lw / 2, m + lh / 2), lw, lh), top, top + PLANT.room[2], paint(tile, 0.9, 0.2));
+      for (let k = 0; k < 2; k++) prop("ac", at(length - m - PLANT.ac / 2, m + PLANT.ac / 2 + k * (PLANT.ac + 0.03)), top, PLANT.ac, PLANT.acHigh);
+      for (let k = 0; k < 3; k++) prop("vent", at(m + lw + 0.1 + k * 0.1, width - m - 0.025), top, PLANT.vent, PLANT.ventHigh);
+    };
+    /** One AC unit in a corner of a small flat roof, which corner by where
+     *  the building stands, clear of the sign in its middle. */
+    /** What stands on a high-street place's flat, by its corners, which
+     *  corner first by where it stands: an AC unit in one; and by its kind,
+     *  in the one across from it, a restaurant's extract stack with its
+     *  duct run along an edge to it, a bar's satellite dish, a shop's
+     *  rooflight with a second unit beside the first for its fridges. */
+    const kit = (flat: Polygon[], z: number, tile: Tile) => {
+      const all = flat.flat(2);
+      if (!all.length) return;
+      const [x0, y0] = [Math.min(...all.map((p) => p[0])), Math.min(...all.map((p) => p[1]))];
+      const [x1, y1] = [Math.max(...all.map((p) => p[0])), Math.max(...all.map((p) => p[1]))];
+      const first = Math.floor((Math.abs(Math.sin(x0 * 12.9898 + y0 * 78.233) * 43758.5453) % 1) * 4);
+      /** Corner k (bit 1 the far x, bit 2 the far y), a thing this broad tucked into it. */
+      const corner = (k: number, size: number): Pt => {
+        const reach = KIT.margin + size / 2;
+        return [k & 1 ? x1 - reach : x0 + reach, k & 2 ? y1 - reach : y0 + reach];
+      };
+      const [across, beside] = [first ^ 3, first ^ 1];
+      prop("ac", corner(first, KIT.ac), z, KIT.ac, KIT.acHigh);
+      if (tile.kind === "Restaurant") {
+        const stack = corner(across, KIT.stack);
+        // The duct comes up near the corner beside and runs along the
+        // edge to the stack, low on the roof.
+        const from = corner(across ^ 1, KIT.duct);
+        const start: Pt = [stack[0] + (from[0] - stack[0]) * 0.75, stack[1]];
+        prop("duct", start, z, KIT.duct, KIT.ductHigh, stack);
+        prop("stack", stack, z, KIT.stack, KIT.stackHigh);
+      } else if (tile.kind === "Bar") {
+        // Turned to the south-east sky, as dishes on this coast are.
+        const at = corner(across, KIT.dish);
+        prop("dish", at, z, KIT.dish, KIT.dishHigh, [at[0] - 1, at[1] - 1]);
+      } else if (tile.kind === "Shop") {
+        prop("rooflight", corner(across, KIT.rooflight), z, KIT.rooflight, KIT.rooflightHigh);
+        prop("ac", corner(beside, KIT.ac), z, KIT.ac, KIT.acHigh);
+      }
+    };
+    /** A flat roof's parapet: a low wall round its edge, its coping a shade
+     *  lighter, so the roof reads as a roof and not a box's lid. */
+    const parapet = (region: Polygon[], z: number) => prism(subtract(region, shrink(region, PARAPET_W)), z, () => z + PARAPET_H, 1.08);
 
     // The roof over a point of the plan: as high as it is far in from
     // the nearest wall, to its reach.
     const walls = polygon.flatMap((ring) => ring.map((p, i): [Pt, Pt] => [p, ring[(i + 1) % ring.length]]));
     const roofAt = (p: Pt) => top + pitch * Math.min(reach, ...walls.map(([a, b]) => toSegment(p, a, b)));
-    if (capped(mass.tile)) {
-      // Walls to the eaves, a flat roof a shade darker, and on it the
-      // slab a shade lighter.
-      prism(outline, 0, () => top, 0.82);
-      prism(shrink(outline, CAP_IN), top, () => top + CAP_H, 1.15);
-      continue;
-    }
-    // Walls: every edge of every ring, from the ground to the roof.
-    prism(outline, 0, roofAt);
+    // Walls: every edge of every ring, from the ground to the roof; the
+    // roof's faces and its flat are what cover them.
+    sides(outline, 0, roofAt);
     const faces = reach > 0 ? roofFaces(polygon, reach) : [];
     for (const { line, region } of faces) {
       cover(intersect(region, outline), ([x, y]) => top + pitch * Math.min(reach, Math.max(0, line[0] * x + line[1] * y + line[2])));
     }
     const flat = subtract(outline, unite(faces.flatMap((f) => f.region)));
-    cover(flat, () => top + height);
+    if (mansard(mass.tile)) {
+      // A mansard's flat behind its slope: at the slope's top a flat band
+      // round a hole, capped along the slope's edge; and in the hole,
+      // sunk below it, the flat, bitumen, an AC unit in a corner.
+      const [rim, sunk] = [top + height, top + height - RECESS];
+      const hole = shrink(flat, BAND);
+      cover(subtract(flat, hole), () => rim);
+      // The step down to it walled, facing in: never seen from above, but
+      // the sun would slip through the gap and draw the hole on the ground.
+      for (const ring of hole.flat()) {
+        ring.forEach((p, i) => {
+          const q = ring[(i + 1) % ring.length];
+          const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+          const len = Math.hypot(dx, dy);
+          const inward: V = [-dy / len, dx / len, 0];
+          const c = colourAt(p);
+          tri([p[0], p[1], sunk], [q[0], q[1], sunk], [q[0], q[1], rim], inward, c);
+          tri([p[0], p[1], sunk], [q[0], q[1], rim], [p[0], p[1], rim], inward, c);
+        });
+      }
+      for (const piece of hole) fill(piece, () => sunk, paint(mass.tile, ...BITUMEN));
+      kit(hole, sunk, mass.tile);
+    } else cover(flat, () => top + height);
+    if (height === 0) parapet(outline, top);
+    if (planted(mass.tile)) plant(polygon, top, mass.tile);
   }
-  return { positions, normals, colors, indices };
+  return { positions, normals, colors, indices, props };
 }
 
 /** Each wall's face of a roof that climbs `reach` in from its walls: its

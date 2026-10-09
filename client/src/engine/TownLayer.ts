@@ -24,6 +24,7 @@ import { kerbField, kerbPlugin, unkerb, type KerbField } from "./kerbs";
 import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
 import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
+import { clearProps, placeProps } from "./props";
 import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType } from "../generated";
 
@@ -52,7 +53,7 @@ const KINDS: TerrainType[] = ["Water", "Sea", "Beach", "Grass", "Forest", "Mount
  */
 export class TownLayer {
   /** Each chunk's meshes, by chunk, and the chunks to draw again. */
-  private chunks = new Map<string, { meshes: Mesh[]; trees: Grove; kerbs: KerbField | null }>();
+  private chunks = new Map<string, { meshes: Mesh[]; trees: Grove; kerbs: KerbField | null; props: Mesh[] }>();
   private stale = new Set<string>();
   /** The road tiles, and the tiles to draw again. */
   private roads: RoadTiles;
@@ -274,7 +275,7 @@ export class TownLayer {
    *  in, placed on the map: its paving a square over the chunk, cut to
    *  the paving, rounded at its kerbs and its yards' lines painted on by a
    *  texture, its texels worked out with the drawing; and its trees. */
-  private show({ key, pieces, trees, cut, paving }: ChunkDrawing, [, , x1, y1]: Bounds, byId: Map<number, GameObjectEntry>) {
+  private show({ key, pieces, trees, props, cut, paving }: ChunkDrawing, [, , x1, y1]: Bounds, byId: Map<number, GameObjectEntry>) {
     const { engine, scene } = this.ctx;
     const [ox, oy] = [x1 + 1, y1 + 1];
     // The chunk on the map, and a tile round it for what stands over its edge.
@@ -307,7 +308,8 @@ export class TownLayer {
       mesh.position.y = oy;
     }
     plant(this.ctx, g, matrices, colors, this.casters, area);
-    this.chunks.set(key, { meshes, trees: g, kerbs });
+    const placed = placeProps(this.ctx, `town_${key}`, props, [ox, oy], area, this.casters);
+    this.chunks.set(key, { meshes, trees: g, kerbs, props: placed });
   }
 
   /** A chunk's pavement's material: paving, rounded at its kerbs and its
@@ -331,6 +333,7 @@ export class TownLayer {
       drop(this.ctx.scene, m);
     }
     uproot(this.ctx, chunk.trees, this.casters);
+    clearProps(this.ctx, chunk.props, this.casters);
     if (chunk.kerbs) unkerb(chunk.kerbs);
     this.chunks.delete(key);
   }

@@ -7,7 +7,7 @@ import { asphalt } from "./dressing";
 import type { Polygon } from "./footprint";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type Tile, type Town } from "./grid";
-import type { Paint } from "./roof";
+import { PROP_KINDS, type Paint } from "./roof";
 
 /**
  * The town's chunks drawn from a snapshot of the world, plain data in and
@@ -53,10 +53,17 @@ export interface Snapshot {
  *  in, its trees, the tiles it covers in that frame, and its paving's kerb
  *  texels over them. The masses' vertex colours carry each surface's shade
  *  and its building (`Paint`). */
+/** A prop as it crosses from the worker: its kind (its place in
+ *  `PROP_KINDS`), where, its roof's height, how broad and how high, and
+ *  its second point. */
+export const PROP_FLOATS = 8;
+
 export interface ChunkDrawing {
   key: string;
   pieces: Piece[];
   trees: { matrices: Float32Array; colors: Float32Array };
+  /** What stands on its roofs (`props.ts`), PROP_FLOATS to each. */
+  props: Float32Array;
   cut: Box;
   paving: KerbTexels | null;
 }
@@ -169,7 +176,7 @@ export function drawChunks(s: Snapshot): Drawing {
   const [c0, r0] = [x1 - wx1, y1 - wy1];
   const [ww, wh] = [wx1 - wx0 + 1, wy1 - wy0 + 1];
   const inWindow = windowOf(whole, c0, r0, ww, wh);
-  const { pieces, dressing } = drawTown(inWindow, s.theme, paint, windowFacts(known, c0, r0, ww, wh));
+  const { pieces, dressing, props } = drawTown(inWindow, s.theme, paint, windowFacts(known, c0, r0, ww, wh));
   // The roads, as the paving is cut for them: every tile's asphalt and the
   // lanes off it, overlapping as they are drawn.
   const { street, through } = asphalt(windowOf(on, c0, r0, ww, wh));
@@ -210,7 +217,11 @@ export function drawChunks(s: Snapshot): Drawing {
     const sheet = own.find((p) => p.name === "pavement" && p.geo.indices.length);
     const near = (roadsBy.get(key) ?? []).flatMap((t) => [roadSheet.indices[t], roadSheet.indices[t + 1], roadSheet.indices[t + 2]]);
     const paving = sheet ? kerbTexels(kerbs, cut, { cover: sheet.geo, lines, roads: { sheet: { ...roadSheet, indices: near }, edges: roadEdges } }) : null;
-    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, s.theme), cut, paving };
+    // A prop stands on the chunk it is on, as a tree does.
+    const mine = props.filter((p) => p.x >= cut[0] && p.x < cut[2] && p.y >= cut[1] && p.y < cut[3]);
+    const packed = new Float32Array(mine.length * PROP_FLOATS);
+    mine.forEach((p, i) => packed.set([PROP_KINDS.indexOf(p.kind), p.x, p.y, p.z, p.size, p.high, p.tx, p.ty], i * PROP_FLOATS));
+    return { key, pieces: own.filter((p) => p.geo.indices.length), trees: treeInstances(trees, s.theme), props: packed, cut, paving };
   });
   return { chunks, window };
 }

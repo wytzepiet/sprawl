@@ -52,13 +52,33 @@ export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
  *  big box's flat, as a depot's is seen from above. */
 export function slope(t: Tile) {
   if (formOf(t).family !== "street") return { pitch: 1, height: 0 };
-  return t.storeys <= 3 ? { pitch: 0.75, height: 0.225 } : { pitch: 0.5, height: 0.03 };
+  if (t.storeys > 3) return { pitch: 0.5, height: 0.03 };
+  // A place on the street, a shop or a pub, wears a mansard: a short
+  // slope at its eaves and flat on top, where its sign lies.
+  return mansard(t) ? { pitch: 0.75, height: 0.06 } : { pitch: 0.75, height: 0.225 };
 }
+/** Whether a building wears a mansard: a place on the high street. At
+ *  its slope's top a flat band BAND wide runs round, and inside it the
+ *  flat sits RECESS down, as a mansard hides its roof, an AC unit in a
+ *  corner (`roof.ts`). */
+export const mansard = (t: Tile) => formOf(t).family === "street" && t.storeys <= 3 && SIGNED.has(t.kind as BuildingKind);
+const SIGNED = new Set<BuildingKind>(["Shop", "Restaurant", "Bar"]);
+export const RECESS = 0.03, BAND = 0.035;
 
-/** An office tower is capped, the way a model town's towers are: a flat
- *  roof with a second, smaller slab on it. Everything else is roofed by
- *  its slope. */
-export const capped = (t: Tile) => t.kind === "Office";
+/** An office tower's flat roof carries its plant, as a real one does: a
+ *  lift room at one end, AC units at the other, vents along a side
+ *  (`roof.ts`). */
+export const planted = (t: Tile) => t.kind === "Office";
+/** A flat roof's parapet: how thick its wall, and how high above the roof. */
+export const PARAPET_W = 0.045, PARAPET_H = 0.05;
+
+/** Where a sign lies on a building's roof: how high; how far in from the
+ *  walls the flat it lies on begins (a mansard's slope); and that it is
+ *  painted on, as roof markings are. */
+export function seat(t: Tile): { z: number; inset: number; painted: boolean } {
+  const { pitch, height } = slope(t);
+  return mansard(t) ? { z: eaves(t) + height - RECESS, inset: height / pitch + BAND, painted: true } : { z: eaves(t) + height, inset: height / pitch, painted: true };
+}
 
 /** Buildings that may join, where no stroke says: tiles of one kind, as
  *  the terrain's types are. */

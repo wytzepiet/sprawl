@@ -6,7 +6,7 @@ import {
   on,
   type ParentProps,
 } from "solid-js";
-import { composeMat4IntoBuffer, setThinInstanceCount, setThinInstances, type EngineContext, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { composeMat4IntoBuffer, setThinInstanceCount, setThinInstances, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
 import { FLAT, setTint, townMaterial, type TownMaterial } from "./material";
 import { useEngine } from "./Canvas";
 import { useDayNight, type Casters } from "./DayNightCycle";
@@ -111,6 +111,7 @@ export class InstancePool {
     castShadow: boolean,
     receiveShadow: boolean,
     texture?: Texture2D,
+    plugins: MaterialPlugin[] = [],
   ): Bucket {
     let bucket = this.buckets.get(key);
     if (bucket) return bucket;
@@ -120,7 +121,7 @@ export class InstancePool {
     // colours are as an eye sees them: the town's material makes them
     // linear itself (`material.ts`).
     const bevel: Bevel = { width: 0.05, soft: null };
-    const mat = townMaterial(receiveShadow ? [bevelPlugin(bevel)] : [bevelPlugin(bevel), FLAT], 0.9, texture);
+    const mat = townMaterial(receiveShadow ? [bevelPlugin(bevel), ...plugins] : [bevelPlugin(bevel), FLAT, ...plugins], 0.9, texture);
     const shape = bevelled(geometry);
 
     // A shape's own colours scale its bucket's: a car's glass darker.

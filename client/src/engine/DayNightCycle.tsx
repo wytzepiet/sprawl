@@ -29,6 +29,9 @@ import { linear, lerp, mul, rgb, scale, tuple, type Rgb } from "./rgb";
 
 const pinned = import.meta.env.DEV ? new URLSearchParams(location.search).get("t") : null;
 const PINNED = pinned === null ? null : Number(pinned);
+/** The time of day the world is lit for: the simulation's, or in
+ *  development the one `?t=` holds it at. */
+export const shownTimeOfDay = () => PINNED ?? simTimeOfDay();
 /** How open the eye is to the scene's light, and how strong
  *  the sky's light is beside the sun's. A low sky gives deep shadows and
  *  sunlit surfaces that glow; the eye opened wide brings the whole back up. */
@@ -451,7 +454,7 @@ export default function DayNightLights(props: ParentProps) {
     // moves the light with the traffic, and a reconnect resumes the same hour.
     // In development `?t=` holds the light at a time of day (0 midnight,
     // 0.5 noon), to judge a look at an hour without moving the world's clock.
-    const t = PINNED ?? simTimeOfDay();
+    const t = shownTimeOfDay();
     setTimeOfDay(t);
 
     const night = isNight(t);

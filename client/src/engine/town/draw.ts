@@ -8,7 +8,7 @@ import { facts } from "./facts";
 import type { Polygon } from "./footprint";
 import type { Tile, Town } from "./grid";
 import type { RGB } from "./mass";
-import { townMesh, type Paint } from "./roof";
+import { townMesh, type Paint, type Prop } from "./roof";
 
 /** A piece of the town to draw: one mesh, one material. */
 export interface Piece {
@@ -54,11 +54,12 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
  * buildings, and a door behind every dock; the roads are `drawRoads`.
  * Geometry alone, in the same frame. The yards' lines are the caller's to
  * paint on the pavement (`stripLines`), and the trees the dressing plants
- * its to plant (`treeInstances`), as is what stands on it that moves, the
+ * its to plant (`treeInstances`), and what stands on its roofs the props'
+ * (`props.ts`), as is what stands on it that moves, the
  * cars, lorries and ferries the dressing would put there: the game draws
  * its own, the sandbox the dressing's.
  */
-export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town)): { pieces: Piece[]; dressing: Dressing } {
+export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town)): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
   const pieces: Piece[] = [];
   const add = (name: string, geo: Piece["geo"], c: Colour | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
@@ -66,7 +67,8 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   add("pavement", flatPolygons(pavement(town), KERB_Z), theme.paved);
   const dressing = dress(town, known);
   add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
-  add("mass", townMesh(town, paint, undefined, known), null);
+  const mass = townMesh(town, paint, undefined, known);
+  add("mass", mass, null);
   // A door in the wall behind every dock, just proud of it.
   const doors: MeshGeometry = { positions: [], normals: [], indices: [] };
   for (const dock of dressing.docks) {
@@ -79,7 +81,7 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
     doors.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
   }
   add("doors", doors, DOOR);
-  return { pieces, dressing };
+  return { pieces, dressing, props: mass.props };
 }
 
 /** Trees as instances of the forest's: a matrix and a colour each, in the

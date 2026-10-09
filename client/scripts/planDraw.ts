@@ -10,7 +10,7 @@ import { intersect, soften, unite, type Polygon, type Pt } from "../src/engine/t
 import { facts } from "../src/engine/town/facts";
 import { asphalt, dress, FERRY, pavement } from "../src/engine/town/dressing";
 import { plans, roofFaces } from "../src/engine/town/roof";
-import { capped, slope } from "../src/engine/town/mass";
+import { slope } from "../src/engine/town/mass";
 import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
 import { BLUEPRINTS } from "../src/blueprints";
 import { themes } from "../src/engine/theme";
@@ -75,19 +75,15 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   }
 
   // The buildings: each part its kind's colour, a head lighter; the roof's
-  // faces' edges, ridges and hips, thin and light; an office's cap.
+  // faces' edges, ridges and hips, thin and light.
   for (const { mass, polygon, outline } of plans(fs)) {
     for (const part of mass.parts) {
       const base = BLUEPRINTS[part.tile.kind as BuildingKind]?.color ?? "#888888";
       const rgb = [1, 3, 5].map((k) => parseInt(base.slice(k, k + 2), 16) / 255).map((v) => (part.head ? v + (1 - v) * 0.45 : v));
       fill(mass.parts.length === 1 ? outline : intersect(part.polygons, outline), hex({ r: rgb[0], g: rgb[1], b: rgb[2] }));
     }
-    if (capped(mass.tile)) {
-      out.push(`<path fill="#ffffff" fill-opacity="0.25" d="${d(polygon)}"/>`);
-    } else {
-      const { pitch, height } = slope(mass.tile);
-      if (height > 0) for (const face of roofFaces(polygon, height / pitch)) fill(face.region, "none", `stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.02"`);
-    }
+    const { pitch, height } = slope(mass.tile);
+    if (height > 0) for (const face of roofFaces(polygon, height / pitch)) fill(face.region, "none", `stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.02"`);
   }
 
   for (const t of dressing.trees) out.push(`<circle cx="${f(t.x)}" cy="${f(t.y)}" r="${f(0.2 * t.scale)}" fill="${hex(T.crowns[t.shade])}"/>`);

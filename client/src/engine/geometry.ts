@@ -10,6 +10,35 @@ export interface MeshGeometry {
 
 type Numbers = ArrayLike<number>;
 
+/** A point on a plan. */
+export type P = [number, number];
+
+/** A flat outline, convex and anticlockwise, extruded `thick` up from
+ *  z = 0: its face fanned from `mid` and mapped by `uv`, its sides onto
+ *  `rim`; every triangle its own three vertices, as the bevel wants. */
+export function slab(ring: P[], mid: P, thick: number, uv: (p: P) => number[], rim: number[]) {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const [a, b] = [ring[i], ring[(i + 1) % ring.length]];
+    for (const p of [mid, b, a]) {
+      positions.push(p[0], p[1], thick);
+      normals.push(0, 0, 1);
+      uvs.push(...uv(p));
+    }
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const n = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len, 0];
+    for (const [p, z] of [[a, 0], [b, thick], [b, 0], [a, 0], [a, thick], [b, thick]] as [P, number][]) {
+      positions.push(p[0], p[1], z);
+      normals.push(...n);
+      uvs.push(...rim);
+    }
+  }
+  return { positions, normals, uvs, indices: Array.from({ length: positions.length / 3 }, (_, i) => i) };
+}
+
+
 /** A mesh of a shape: its vertex colours, if it has them, as an eye sees them. */
 export function meshOf(engine: EngineContext, name: string, geo: { positions: Numbers; normals: Numbers; indices: Numbers; uvs?: Numbers; colors?: Numbers | null }): Mesh {
   const vertices = geo.positions.length / 3;

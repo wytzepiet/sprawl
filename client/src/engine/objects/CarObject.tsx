@@ -1,3 +1,4 @@
+import type { MaterialPlugin } from "@babylonjs/lite";
 import type { EngineContext } from "../Canvas";
 import { rgb } from "../rgb";
 import type { InstancePool } from "../InstancePool";
@@ -50,6 +51,21 @@ const shipGeo = boxGeometry(HULL.w, HULL.l, HULL.h);
 const SHIP = rgb(0.2, 0.24, 0.3);
 const SHIP_Z = -0.5 + HULL.h / 2;
 
+/** A vehicle's finish: its paint a clear coat, glossier than the town's
+ *  lacquer, and its glass (the shape's darker vertices, `carShape.ts`) all
+ *  but a mirror, the sky in it. */
+const finish = (glazed: boolean): MaterialPlugin => ({
+  name: glazed ? "ClearCoatGlazed" : "ClearCoat",
+  priority: 900,
+  getCustomCode: (stage) =>
+    stage === "fragment"
+      ? { CUSTOM_FRAGMENT_UPDATE_DIFFUSE: glazed ? `roughness = select(${PAINT_ROUGH.toFixed(3)}, ${GLASS_ROUGH.toFixed(3)}, input.vColor.r < 0.7);` : `roughness = ${PAINT_ROUGH.toFixed(3)};` }
+      : null,
+});
+const [PAINT_ROUGH, GLASS_ROUGH] = [0.18, 0.06];
+/** A car's, whose shape has its glass; a box's (a van, a lorry, a ship), paint alone. */
+const [CLEAR_COAT, PAINT_COAT] = [finish(true), finish(false)];
+
 /** A vehicle's material: lacquered, and its edges rounded tight. A lit
  *  bucket's is the town's (`InstancePool`). */
 function glossy(pool: InstancePool, key: string) {
@@ -84,7 +100,7 @@ export function mountCar(
   // drawn into the shadow map every frame, and one that stands still is not.
   const parked = !car.trip && !car.run;
   const bucket = (ship ? `ship${look.key}` : car.role === "Tractor" ? `tractor${look.key}` : van ? `van${look.key}` : `car${look.key}c${PALETTE.indexOf(color)}`) + (parked ? "p" : "");
-  pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true);
+  pool.ensureBucket(bucket, ship ? shipGeo : van ? vanGeo : carGeo, look.tint(color), look.castShadow, true, undefined, [ship || van ? PAINT_COAT : CLEAR_COAT]);
   glossy(pool, bucket);
   const z = ship ? SHIP_Z : CAR_Z;
 
@@ -146,8 +162,8 @@ export function mountCar(
 function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext, look: Look): () => void {
   const cab = `lorry_cab${look.key}`;
   const trailer = `lorry_trailer${look.key}`;
-  pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true);
-  pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true);
+  pool.ensureBucket(cab, cabGeo, look.tint(CAB_COLOR), look.castShadow, true, undefined, [PAINT_COAT]);
+  pool.ensureBucket(trailer, trailerGeo, look.tint(TRAILER_COLOR), look.castShadow, true, undefined, [PAINT_COAT]);
   glossy(pool, cab);
   glossy(pool, trailer);
   const cabZ = GROUND + CAB.h / 2;

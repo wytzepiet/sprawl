@@ -73,14 +73,17 @@ export function lie(kind: BuildingKind, facing: number, [w, h]: [number, number]
   }
 }
 
-/** Where a building stands, for a pin over it: the middle of its bounds,
- *  its yard left out. */
-export function middle(b: Building): [number, number] {
+/** Where a building stands and how big it is, in tiles: the middle and
+ *  size of its bounds, its yard left out. */
+export function standing(b: Building): { at: [number, number]; size: [number, number] } {
   const xs = b.tiles.map((t) => t.x), ys = b.tiles.map((t) => t.y);
   const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
   const [[bx, by], [bw, bh]] = lie(b.kind, b.facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]).building;
-  return [x0 + bx + bw / 2, y0 + by + bh / 2];
+  return { at: [x0 + bx + bw / 2, y0 + by + bh / 2], size: [bw, bh] };
 }
+
+/** Where a building stands: the middle of its bounds, its yard left out. */
+export const middle = (b: Building): [number, number] => standing(b).at;
 
 /** The bulk of a city: somewhere people live or work, and there are hundreds. */
 const COMMON = 7;

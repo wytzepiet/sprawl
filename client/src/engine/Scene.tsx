@@ -11,7 +11,7 @@ import { GameProvider } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
 import PerfReport from "./PerfReport";
-import PinLayer from "../ui/PinLayer";
+import Pins from "./Pins";
 import LumpLayer from "../ui/LumpLayer";
 import GrowthMeter from "../ui/GrowthMeter";
 import SkillTree from "../ui/SkillTree";
@@ -31,10 +31,10 @@ function SceneInner() {
               <Picker />
               <Highlight />
               <World />
+              <Pins />
             </InstancePoolProvider>
           </Registered>
         </DayNightLights>
-        <PinLayer />
         <LumpLayer />
         <GrowthMeter />
         <Card />
