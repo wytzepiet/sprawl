@@ -118,7 +118,7 @@ export default function BuildModeToolbar() {
     return t === null ? 0 : t === "Demolish" ? slots().length - 1 : 1 + shelves().findIndex((s) => s.id === shelfOf(t));
   };
   const held = () => tool() !== null;
-  const bead = () => { const t = tool(); return t === null ? "rgb(var(--glass))" : t === "Demolish" ? DEMOLISH_COLOR : color(t); };
+  const bead = () => { const t = tool(); return t === null ? undefined : t === "Demolish" ? DEMOLISH_COLOR : color(t); };
   // The bead slides on a spring, and is drawn out by its own speed: long
   // and thin as it goes, round again as it lands.
   const [beadX, beadV] = follow(() => cx(active()) - 20);
@@ -163,58 +163,39 @@ export default function BuildModeToolbar() {
 
   return (
     <div ref={dock} class="fixed bottom-7 left-1/2 -translate-x-1/2 select-none" style={{ width: `${width()}px`, height: `${BAR}px` }}>
-      {/* The frost behind the bar. */}
-      <div class="glass absolute inset-0 rounded-[30px]" style={{ background: "transparent" }} />
-      {/* And behind each row, rising with it. */}
+      {/* The glass: bar, bumps, rows, run together (`engine/glass.ts`). */}
+      <div data-glass="dock" class="absolute bottom-0 left-0 rounded-[30px] pointer-events-none" style={{ width: `${width()}px`, height: `${BAR}px` }} />
+      <For each={bumps()}>
+        {(bump, si) => <div data-glass="dock" class="absolute rounded-[9px] pointer-events-none" style={{ left: `${cx(si() + 1) - 11}px`, bottom: `${bump()}px`, width: "22px", height: "18px" }} />}
+      </For>
       <For each={sprung()}>
         {(m) => (
           <div
-            class="frost absolute rounded-[22px] pointer-events-none"
-            style={{ left: `${m.r().x - 26}px`, bottom: `${m.bottom()}px`, width: `${Math.max(0, (m.w() + 4) * m.shown())}px`, height: `${m.h()}px`, opacity: m.fade() }}
+            data-glass="dock"
+            class="absolute rounded-[22px] pointer-events-none"
+            style={{ left: `${m.r().x - 22}px`, bottom: `${m.bottom()}px`, width: `${Math.max(0, m.w() * m.shown())}px`, height: `${m.h()}px`, opacity: m.fade() }}
           />
         )}
       </For>
 
-      {/* The glass and what is laid into it, blended in a group of their
-          own: a blend closes off its group, and the frost above must see
-          past it to the game. */}
-      <div class="absolute inset-0 isolate pointer-events-none">
-      {/* The glass: bar, bumps, rows, run together. The layer is tall and
-          wide so the filter has room for what rises out of the bar. */}
-      <div class="glass-goo absolute bottom-0 left-0 pointer-events-none" style={{ width: `${width() + 320}px`, height: "640px" }}>
-        <div class="glass-solid absolute bottom-0 left-0 rounded-[30px]" style={{ width: `${width()}px`, height: `${BAR}px` }} />
-        <For each={bumps()}>
-          {(bump, si) => <div class="glass-solid absolute rounded-[9px]" style={{ left: `${cx(si() + 1) - 11}px`, bottom: `${bump()}px`, width: "22px", height: "18px" }} />}
-        </For>
-        <For each={sprung()}>
-          {(m) => (
-            <div
-              class="glass-solid absolute rounded-[22px]"
-              style={{ left: `${m.r().x - 26}px`, bottom: `${m.bottom()}px`, width: `${Math.max(0, (m.w() + 4) * m.shown())}px`, height: `${m.h()}px`, opacity: m.fade() }}
-            />
-          )}
-        </For>
-      </div>
-
-      {/* What is built, in its colour, laid into the glass like dye (or lit
-          in it like a lantern, at night): the bead in hand, and the open
-          shelf's drops. */}
-      <div class="goo dye absolute bottom-0 left-0 pointer-events-none" style={{ width: `${width()}px`, height: "640px" }}>
-        <div
-          class="absolute rounded-full transition-[background-color] duration-300"
-          style={{ left: `${beadX()}px`, bottom: "10px", width: "40px", height: "40px", background: bead(), transform: `scale(${beadSize() * (1 + stretch())}, ${beadSize() * (1 - stretch() / 2)})` }}
-        />
-        <For each={sprung()}>
-          {(m) => (
-            <div
-              class="absolute rounded-full"
-              style={{ left: `${m.r().x - 18}px`, bottom: `${m.bottom() + m.h() - 40}px`, width: "36px", height: "36px", background: color(m.r().t), opacity: m.fade(), transform: `scale(${0.3 + 0.7 * Math.max(0, m.shown())})` }}
-            />
-          )}
-        </For>
-      </div>
-
-      </div>
+      {/* What is built, in its colour, as tinted glass of its own on the
+          bar and the rows: the bead in hand, and the open shelf's drops. */}
+      <div
+        data-glass={bead() ? "beads" : undefined}
+        data-dye={bead()}
+        class="absolute rounded-full pointer-events-none"
+        style={{ left: `${beadX()}px`, bottom: "10px", width: "40px", height: "40px", transform: `scale(${beadSize() * (1 + stretch())}, ${beadSize() * (1 - stretch() / 2)})` }}
+      />
+      <For each={sprung()}>
+        {(m) => (
+          <div
+            data-glass="beads"
+            data-dye={color(m.r().t)}
+            class="absolute rounded-full pointer-events-none"
+            style={{ left: `${m.r().x - 18}px`, bottom: `${m.bottom() + m.h() - 40}px`, width: "36px", height: "36px", opacity: m.fade(), transform: `scale(${0.3 + 0.7 * Math.max(0, m.shown())})` }}
+          />
+        )}
+      </For>
 
       {/* What is read and pressed. */}
       <For each={sprung()}>

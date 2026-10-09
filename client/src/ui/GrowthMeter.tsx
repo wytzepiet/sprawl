@@ -40,17 +40,12 @@ export default function GrowthMeter() {
 
   return (
     <div class="fixed top-6 right-6 z-30 h-[120px] w-[260px] select-none">
-      {/* Frost behind both shapes. */}
-      <div class="glass absolute right-0 top-0 h-[52px] w-[190px] rounded-full" style={{ background: "transparent" }} />
-      <div class="glass absolute right-[168px] top-[-2px] h-14 w-14 rounded-full" style={{ background: "transparent" }} />
-      {/* The glass, one shape, the drips running out of it. */}
-      <div class="glass-goo absolute inset-0 pointer-events-none">
-        <div class="glass-solid absolute right-0 top-0 h-[52px] w-[190px] rounded-full" />
-        <div class="glass-solid absolute right-[168px] top-[-2px] h-14 w-14 rounded-full" />
-        <For each={drips()}>
-          {() => <div class="drip absolute right-[70px] top-3 h-7 w-[38px] rounded-[14px]" style={{ background: "#57A773" }} />}
-        </For>
-      </div>
+      {/* The glass, one shape, the drips running out of it (`engine/glass.ts`). */}
+      <div data-glass="meter" class="absolute right-0 top-0 h-[52px] w-[190px] rounded-full pointer-events-none" />
+      <div data-glass="meter" class="absolute right-[168px] top-[-2px] h-14 w-14 rounded-full pointer-events-none" />
+      <For each={drips()}>
+        {() => <div data-glass="meter" data-dye="#57A773" class="drip absolute right-[70px] top-3 h-7 w-[38px] rounded-[14px] pointer-events-none" />}
+      </For>
 
       <button onClick={() => setTreeOpen(true)} class="press ink absolute right-[168px] top-[-2px] grid h-14 w-14 place-items-center rounded-full cursor-pointer" title={`Level ${growth().level}: the skill tree (L)`}>
         <svg class="absolute inset-0 -rotate-90" viewBox="0 0 56 56" aria-hidden="true">

@@ -25,6 +25,7 @@ import {
 import { useTheme } from "./theme";
 import { Culler } from "./cull";
 import { createOutline, type Outline } from "./outline";
+import { createGlass } from "./glass";
 
 export type EngineContext = {
   engine: Engine;
@@ -72,6 +73,11 @@ const MOVING_FPS = 60;
 /** Frames a second while it stands still. Cars and water move a few pixels a
  *  frame, smooth enough at 30; a pan moves every pixel, and wants 60. */
 const STILL_FPS = 30;
+/** How long the view counts as moving after it last moved. A drag's pointer
+ *  events do not land before every tick: one that finds the camera where the
+ *  last frame left it would fall back to the still rate mid-pan, and the pan
+ *  stutters between 60 and 30. */
+const MOVING_LINGER_MS = 100;
 /** Work that can wait (`budget.ts`) runs in each tick until this long after
  *  the tick began, leaving a 60 Hz frame room to spare. */
 const WORK_MS = 10;
@@ -100,7 +106,8 @@ export default function Canvas(props: ParentProps) {
 
   const initCanvas = async (el: HTMLCanvasElement) => {
     // Multisampled only where pixels are big enough to show their edges.
-    const engine = await createEngine(el, { maxDevicePixelRatio: MAX_DEVICE_RATIO, msaaSamples: devicePixelRatio < 2 ? 4 : 1 });
+    // The swapchain a copy source: the UI's glass reads what lies under it (`glass.ts`).
+    const engine = await createEngine(el, { maxDevicePixelRatio: MAX_DEVICE_RATIO, msaaSamples: devicePixelRatio < 2 ? 4 : 1, copySource: true });
     const stopResizing = enableSurfaceResizeObserver(engine.surfaces[0]);
     const scene = createSceneContext(engine);
     const land = theme().land;
@@ -128,6 +135,7 @@ export default function Canvas(props: ParentProps) {
     setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, registered, prepare: (work) => preparing.push(work) });
     await Promise.all(preparing);
     await registerSceneWithShadowSupport(scene);
+    const glass = createGlass(engine, scene);
     setRegistered(true);
 
     // Ticks that come much sooner than a frame are skipped. Ticks jitter,
@@ -136,22 +144,25 @@ export default function Canvas(props: ParentProps) {
     // one every other, and none is dropped for landing a hair early.
     // The view is moving if the camera stands elsewhere than after the last
     // frame (a drag moves it between frames), or that frame moved it (a
-    // zoom glides on inside them).
+    // zoom glides on inside them), and for a moment after (`MOVING_LINGER_MS`).
     let lastFrame = 0;
     let seen = "";
-    let moved = false;
+    let lastMoved = -Infinity;
     // Held while something outside draws the frames itself (`cost.ts`).
     let held = false;
     let running = true;
+    // The glass moving counts too: the UI's springs move at the moving rate.
     const where = () => {
       const c = scene.camera;
-      return c ? `${c.worldMatrixVersion},${c.ortho?.halfHeight}` : "";
+      return c ? `${c.worldMatrixVersion},${c.ortho?.halfHeight},${glass.key()}` : "";
     };
     const frame = (now: number) => {
       if (!running) return;
       requestAnimationFrame(frame);
       if (held) return;
-      const fps = moved || where() !== seen ? MOVING_FPS : STILL_FPS;
+      glass.read();
+      if (where() !== seen) lastMoved = now;
+      const fps = now - lastMoved < MOVING_LINGER_MS ? MOVING_FPS : STILL_FPS;
       if (now - lastFrame < (1000 / fps) * 0.75) return work(now + WORK_MS);
       const delta = now - lastFrame;
       lastFrame = now;
@@ -161,7 +172,7 @@ export default function Canvas(props: ParentProps) {
       renderFrame(engine, delta);
       after.run();
       seen = where();
-      moved = seen !== was;
+      if (seen !== was) lastMoved = now;
       work(now + WORK_MS);
     };
     requestAnimationFrame(frame);

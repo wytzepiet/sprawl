@@ -24,7 +24,7 @@ export default function TimeControls() {
   const { timeOfDay } = useDayNight();
 
   return (
-    <div class="glass fixed top-6 left-6 z-50 flex h-12 items-center gap-1 rounded-full pl-5 pr-2 select-none">
+    <div data-glass="clock" class="fixed top-6 left-6 z-50 flex h-12 items-center gap-1 rounded-full pl-5 pr-2 select-none">
       <span class="serif mr-2.5 text-[26px] font-light tabular-nums">{clock(timeOfDay())}</span>
       <For each={SPEEDS}>
         {(speed) => (
