@@ -13,4 +13,9 @@ have: number,
 /**
  * Boxes to order to cover the shortfall, and their price.
  */
-boxes: number, coins: number, };
+boxes: number, coins: number, 
+/**
+ * Coins Build pays at once: a road is laid on the stone the depots
+ * hold now, and what they lack comes express (`economy::paved`).
+ */
+express: number, };
