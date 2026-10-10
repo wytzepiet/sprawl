@@ -124,14 +124,19 @@ export interface Placing {
 }
 
 /** Where a tap at a tile places a kind placed whole, and whether it may:
- *  round the tile, or, for a tap on the coast, round one beside it that
- *  works. Null for a kind that is painted. */
+ *  round the tile, or, for a tap on the coast, round one a tile or two off
+ *  that works. Null for a kind that is painted. */
 export function placing(h: Hand, kind: BuildingKind, at: GridCoord): Placing | null {
   if (!whole(kind, at)) return null;
-  const near = [[0, 0], ...STEPS.filter(([dx, dy]) => dx === 0 || dy === 0), ...STEPS.filter(([dx, dy]) => dx !== 0 && dy !== 0)];
-  const tried = near.map(([dx, dy]) => place(h, kind, { x: at.x + dx, y: at.y + dy }));
+  const tried = NEAR.map(([dx, dy]) => place(h, kind, { x: at.x + dx, y: at.y + dy }));
   return tried.find((p) => !p.why) ?? tried[0];
 }
+
+/** The tiles within two of a tap, nearest first: a plot's middle is a
+ *  tile or two in from the shore it backs onto. */
+const NEAR: [number, number][] = Array.from({ length: 25 }, (_, i): [number, number] => [(i % 5) - 2, Math.floor(i / 5) - 2]).sort(
+  ([a, b], [c, d]) => Math.max(Math.abs(a), Math.abs(b)) - Math.max(Math.abs(c), Math.abs(d)) || Math.abs(a) + Math.abs(b) - Math.abs(c) - Math.abs(d),
+);
 
 /** The draft's rule for a harbour (`drafts::fair`, `World::may_paint`):
  *  open land under its whole plot, nobody's draft on it, and sea behind

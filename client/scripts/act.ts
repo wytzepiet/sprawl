@@ -10,6 +10,8 @@
  *       12,5 14,5 14,6                  tiles paint on through them, stepping
  *                                       as the brush does: one building as far
  *                                       as a kind that grows is painted
+ *   bun run act build Harbour 12,5      a harbour, whole, round this tile, and
+ *                                       its street
  *   bun run act demolish 12,5 14,5      whatever stands on the tiles, through
  *       Each of these is drafted and committed at once, as the bill's
  *       Build would; `draft` before one leaves it drafted:
@@ -225,6 +227,7 @@ const at = ([x, y]: Pt) => ({ x, y });
 let report: string[] = [];
 for (const line of lines) {
   const before = missions;
+  const drafted = draft?.strokes.flat().length ?? 0;
   // `draft road …`: the stroke drafted, not built.
   const drafting = line[0] === "draft";
   const [verb, ...rest] = drafting ? line.slice(1) : line;
@@ -303,6 +306,9 @@ for (const line of lines) {
       throw new Error(`no such command: ${verb}`);
   }
   const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...told.splice(0), ...report];
+  // Undo and discard change only the draft: say what they took back.
+  const left = draft?.strokes.flat().length ?? 0;
+  if ((verb === "undo" || verb === "discard") && left < drafted) said.push(`${drafted - left} drafted steps taken back`);
   // What is left drafted, and its bill.
   if (draft) {
     const marks = draft.strokes.flat();

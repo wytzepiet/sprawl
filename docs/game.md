@@ -155,7 +155,20 @@ drawn beside a drafted street (`may.ts`).
   a tile, free before there is a harbour); what they lack comes express
   at twice the price, and the bill says so in coins, beside the stone
   line, rather than offering a box that would land after the road is
-  laid. Its boxes are for the buildings' stone, which can wait.
+  laid. Its boxes are for the buildings' stone, which can wait. What
+  Build paid express is in the news.
+- **A stroke is a drag**, each step from where the last ended, and is
+  built so: a step waits for the one before it, and what follows a step
+  that no longer fits stays drafted with it. A road whose first step is
+  refused is never laid from its second, cut off and paid for.
+- **The harbour is placed whole**, at a click: its three-by-three plot
+  round the tile, turned to face the sea, shown under the pointer in
+  green where the ferry would berth and red where it would not, with
+  why (`may.ts` `placing`, the server's `World::whole` and `berth_at`).
+  It is refused, drafted or built, where no way round berths, and it
+  comes down whole, so there is never part of one. Drafted, it brings a
+  street of its own from its park to the nearest street in reach, or a
+  stub inland, laid before it in the same stroke (`drafts::stub`).
 - **Anyone's draft is drawn**: one's own blue, a stuck step amber,
   another player's grey, as land taken.
 - `bun run act` drafts each command and commits it, as the bill's Build
@@ -312,7 +325,7 @@ anything the map cannot show by hand.
 
 ## The opening
 
-1. Build a harbour on the coast.
+1. Build a harbour on the coast: one click, with its own street.
 2. Build a depot.
 3. Connect them with a road.
 4. A shipment arrives: the starter pack, trailers off the first ferry.

@@ -22,16 +22,17 @@ import type { Building, BuildingKind, GridCoord, Mark } from "../generated";
  * taken back; built, it flashes pale and sinks into the ground, where its
  * site or its road stands.
  */
-type Look = "mine" | "stuck" | "theirs" | "doomed" | "fits" | "unfit";
+type Look = "mine" | "stuck" | "theirs" | "doomed" | "fits" | "unfit" | "park";
 const LOOKS: Record<Look, { side: string; top: string; opacity: number }> = {
   mine: { side: "#2F7BF0", top: "#86B9FF", opacity: 0.55 },
   stuck: { side: "#E39220", top: "#FFD27A", opacity: 0.62 },
   theirs: { side: "#7F8898", top: "#C2C8D3", opacity: 0.4 },
   doomed: { side: "#E0402F", top: "#FF8D7D", opacity: 0.5 },
   // A harbour in hand, where a tap would place it: green where the
-  // ferry would berth, red where it would not (`aim`).
+  // ferry would berth, red where it would not (`aim`); its park pale.
   fits: { side: "#2E9E5B", top: "#93E3B0", opacity: 0.6 },
   unfit: { side: "#D8432F", top: "#FF9E8E", opacity: 0.55 },
+  park: { side: "#B9C4C0", top: "#EEF3F0", opacity: 0.5 },
 };
 /** A road's band, of a tile; a box's inset from its tile's edge. */
 const BAND = 0.62;
@@ -81,13 +82,12 @@ function shapesOf(m: Mark, look: Look): Shape[] {
 }
 
 /** A harbour in hand, where a tap would place it: its building a box at
- *  its back, its park flat on the street side, so it is seen which way
- *  it faces. */
+ *  its back, in green or red, its park pale and flat on the street side,
+ *  so it is seen which way it faces. */
 function aimed(p: Placing): Shape[] {
-  const look = p.why ? "unfit" : "fits";
   const yard = yardOf(p.tiles, p.kind, p.facing) ?? [];
-  const flat = (t: GridCoord) => yard.some((y) => y.x === t.x && y.y === t.y);
-  return p.tiles.map((t) => ({ look, a: [t.x, t.y], h: flat(t) ? 0.05 : tall(p.kind), join: p.kind }));
+  const park = (t: GridCoord) => yard.some((y) => y.x === t.x && y.y === t.y);
+  return p.tiles.map((t) => (park(t) ? { look: "park", a: [t.x, t.y], h: 0.05, join: p.kind } : { look: p.why ? "unfit" : "fits", a: [t.x, t.y], h: tall(p.kind), join: p.kind }));
 }
 
 export function Ghosts() {
@@ -110,7 +110,7 @@ export function Ghosts() {
   const label = document.createElement("div");
   label.dataset.glass = "toast";
   label.className = "ink absolute rounded-full px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap";
-  label.style.cssText = "transform:translate(-50%,-130%);display:none";
+  label.style.cssText = "transform:translate(-50%,-115%);display:none";
   el.appendChild(label);
 
   createEffect(on([drafts, builtVersion, aim], () => {
@@ -173,7 +173,8 @@ export function Ghosts() {
     const tile = Math.hypot(e[0] - o[0], e[1] - o[1]);
     const p = aim();
     if (p) {
-      const [lx, ly] = at(p.at.x + 0.5, p.at.y + 0.5, tall(p.kind) + 0.3);
+      // Over the plot's far edge, clear of it.
+      const [lx, ly] = at(p.at.x + 0.5, p.at.y + 2, tall(p.kind));
       [label.style.left, label.style.top] = [`${lx}px`, `${ly}px`];
     }
     // Bands first, under the boxes; the boxes' sides, then their tops, so

@@ -7,6 +7,9 @@ import { BLUEPRINTS, GOODS, GoodIcon } from "../blueprints";
 import { coins } from "./kit";
 import type { BuildingKind, Line } from "../generated";
 
+/** A drafted road in the bill's words, as the toolbar names its tool. */
+const ROAD_WORDS: Record<string, string> = { Street: "street", OneWay: "one-way", Road: "road" };
+
 /**
  * The draft's bill, over the toolbar, from the moment anything is drafted
  * (docs/game.md §Drafts): what is drawn, each material it takes against
@@ -41,19 +44,20 @@ export default function Bill(props: { hidden: boolean }) {
   window.addEventListener("keydown", onKey, { capture: true });
   onCleanup(() => window.removeEventListener("keydown", onKey, { capture: true }));
 
-  /** What is drawn, in words: "3 houses, a depot, 12 road, 1 to come down". */
+  /** What is drawn, in words: "3 houses, a depot, 12 street, 1 to come down". */
   const what = () => {
     const marks = myMarks().filter((m) => !m.stuck);
     const tiles = new Map<string, Set<string>>();
     let down = 0;
     for (const { step } of marks) {
       const { tool, from, to } = step;
+      // A road by the tool's own name in the toolbar.
+      const k = typeof tool === "string" ? ROAD_WORDS[tool] : tool.Building;
       if (tool === "Demolish") down++;
-      else if (typeof tool !== "string") (tiles.get(tool.Building) ?? tiles.set(tool.Building, new Set()).get(tool.Building)!).add(`${to.x},${to.y}`);
-      else for (const t of [from, to]) (tiles.get("road") ?? tiles.set("road", new Set()).get("road")!).add(`${t.x},${t.y}`);
+      else for (const t of typeof tool === "string" ? [from, to] : [to]) (tiles.get(k) ?? tiles.set(k, new Set()).get(k)!).add(`${t.x},${t.y}`);
     }
     const words = [...tiles].map(([k, ts]) => {
-      if (k === "road") return `${ts.size} road`;
+      if (Object.values(ROAD_WORDS).includes(k)) return `${ts.size} ${k}`;
       const { label, size } = BLUEPRINTS[k as BuildingKind];
       return size[0] * size[1] === 1 ? plural(ts.size, label.toLowerCase(), `${label.toLowerCase()}s`) : `a ${label.toLowerCase()}`;
     });

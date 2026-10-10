@@ -123,8 +123,9 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     if (e.button !== 0 || tool() === null) return;
     const w = pick(e);
     const whole = placed({ x: Math.floor(w.wx), y: Math.floor(w.wy) });
+    // Placed, the harbour is put down: a town wants one at a time.
     if (whole) {
-      if (!whole.why) step(whole.at, whole.at);
+      if (!whole.why) (step(whole.at, whole.at), setTool(null));
       return;
     }
     current = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
