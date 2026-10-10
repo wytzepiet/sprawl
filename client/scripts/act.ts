@@ -21,6 +21,8 @@
  *   bun run act standing 18 on          its standing orders, on or off
  *   bun run act order 18 Timber 2       two boxes of timber from the world
  *   bun run act sell 18 Crates          a box of crates to the world
+ *   bun run act rule 18 Stone 20 40     its rule for stone: keep 20, fill to
+ *                                       40 (twice the keep if left out)
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
  *                                       day (0 midnight, 0.5 noon)
@@ -29,6 +31,10 @@
  *                                       .dev/paths.json, and every bend tighter
  *                                       than a car turns counted
  *   bun run act time                    the clock, as now and time of day
+ *   bun run act missions                the town's missions, each step ticked
+ *                                       or not, and what the one at hand says;
+ *                                       every command also says the steps it
+ *                                       saw done and the missions it saw open
  *   bun run act reset                   a new world
  *   bun run act - < steps.txt           one command a line; # comments
  *
@@ -85,6 +91,9 @@ let ops: Op[] = [];
 const trips = new Map<string, Recorded>();
 const PLAYER = process.env.PLAYER ?? "4242";
 /** Our draft and its bill, as the last update had them. */
+/** The town's missions, as the last update had them. */
+type Mission = { title: string; finished: number | null; reward: { data: number }; steps: { title: string; text: string; done: boolean; at: number | null }[] };
+let missions: Mission[] = [];
 let draft: { strokes: { step: unknown; stuck: boolean }[][]; bill: { good: string; takes: number; have: number; boxes: number; coins: number; express: number }[] } | undefined;
 const ws = new WebSocket(`ws://localhost:${PORT}/ws?player=${PLAYER}`);
 ws.binaryType = "arraybuffer";
@@ -92,6 +101,7 @@ ws.onmessage = (e) => {
   const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as { type: string; data: any };
   if (msg.type !== "Update") return;
   clock = msg.data.clock;
+  missions = msg.data.missions ?? [];
   draft = (msg.data.drafts ?? []).find((d: { owner: number }) => d.owner === Number(PLAYER));
   if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
   for (const op of msg.data.ops as Op[]) {
@@ -137,6 +147,28 @@ function changes(batch: Op[]): string[] {
     ...(roads(gone) ? [`- ${roads(gone)} road tiles`] : []), ...rest(gone).map((s) => `- ${s}`),
   ];
 }
+/** What became of the missions over a command: opened, steps done, finished. */
+function progress(before: Mission[]): string[] {
+  const out: string[] = [];
+  for (const m of missions) {
+    const was = before.find((b) => b.title === m.title);
+    if (!was) out.push(`mission opened: ${m.title}`);
+    m.steps.forEach((s, i) => s.done && !was?.steps[i]?.done && out.push(`mission ${m.title}: ${s.title} done`));
+    if (m.finished !== null && was?.finished == null) out.push(`mission finished: ${m.title}, +${m.reward.data} coins`);
+  }
+  return out;
+}
+/** Every mission, its steps, and what the one at hand says. */
+function listed(): string[] {
+  return missions.flatMap((m) => {
+    const at = m.steps.findIndex((s) => !s.done);
+    return [
+      `${m.title}${m.finished !== null ? " (finished)" : ""}, +${m.reward.data} coins`,
+      ...m.steps.map((s, i) => `  [${s.done ? "x" : " "}] ${s.title}${s.at !== null ? ` (#${s.at})` : ""}${i === at ? `: ${s.text.replace(/\n\n/g, " ")}` : ""}`),
+    ];
+  });
+}
+
 /** The trips seen, kept for `bun run plan --paths`, and their bends
  *  tighter than a car turns, by where on the trip they are. */
 function watched(): string[] {
@@ -188,6 +220,7 @@ const at = ([x, y]: Pt) => ({ x, y });
 /** What a command has to say beyond what it changed. */
 let report: string[] = [];
 for (const line of lines) {
+  const before = missions;
   // `draft road …`: the stroke drafted, not built.
   const drafting = line[0] === "draft";
   const [verb, ...rest] = drafting ? line.slice(1) : line;
@@ -233,10 +266,16 @@ for (const line of lines) {
     case "sell":
       send("Sell", { depot: Number(args[0]), good: args[1] });
       break;
+    case "rule":
+      send("SetRule", { depot: Number(args[0]), good: args[1], rule: { keep: Number(args[2]), fill: Number(args[3] ?? 2 * Number(args[2])), sell: null } });
+      break;
     case "reset":
       send("ResetWorld");
       break;
     case "time":
+      break;
+    case "missions":
+      report = listed();
       break;
     case "watch":
     case "run": {
@@ -259,7 +298,7 @@ for (const line of lines) {
     default:
       throw new Error(`no such command: ${verb}`);
   }
-  const said = [...changes(await settled()), ...report];
+  const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...report];
   // What is left drafted, and its bill.
   if (draft) {
     const marks = draft.strokes.flat();
@@ -269,6 +308,6 @@ for (const line of lines) {
   }
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : ["time", "speed", "run", "watch", "send", "standing", "order", "sell"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch", "send", "standing", "order", "sell", "rule", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
 ws.close();

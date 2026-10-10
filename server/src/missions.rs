@@ -64,7 +64,9 @@ pub enum Reward {
 #[ts(export)]
 pub struct Step {
     pub goal: Goal,
-    /// What to do, paragraphs apart by a blank line.
+    /// What it asks, in a line.
+    pub title: String,
+    /// How, paragraphs apart by a blank line.
     pub text: String,
     pub done: bool,
     /// The building the step's button acts on: the depot, for a depot's
@@ -103,7 +105,7 @@ struct Row {
     key: Key,
     when: When,
     title: &'static str,
-    steps: &'static [(Goal, &'static str)],
+    steps: &'static [(Goal, &'static str, &'static str)],
     reward: Reward,
 }
 
@@ -115,11 +117,11 @@ const ROWS: &[Row] = &[
         when: When::Start,
         title: "The opening",
         steps: &[
-            (Goal::Stands(BuildingKind::Harbour), "Its back to the sea, open water straight out behind it: the ferry berths there. Built, it stands at once.\n\nEvery building stands on a street: draw one along the coast first, then paint the harbour between it and the sea, three tiles by three."),
-            (Goal::Stands(BuildingKind::Depot), "Where the town keeps what lands. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone."),
-            (Goal::Joined, "From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.\n\nA street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile."),
-            (Goal::Fetched, "Timber, stone, crates and fuel, the world's gift, come on the first ferry, and the tug lands them in the trailer park. Tap the depot's lorry to fetch them, and ride along."),
-            (Goal::Settled, "Draw a row of them, and Build: each is a site till a van brings its four timber, and the bill says if the depot has it. Then the next ferry brings their people.\n\nThe rest of the pack: tap the lorry again, or give it standing orders on the depot's card."),
+            (Goal::Stands(BuildingKind::Harbour), "Build a harbour on the coast", "Its back to the sea, open water straight out behind it: the ferry berths there. Built, it stands at once.\n\nEvery building stands on a street: draw one along the coast first, then paint the harbour between it and the sea, three tiles by three."),
+            (Goal::Stands(BuildingKind::Depot), "Build a depot", "Where the town keeps what lands. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone."),
+            (Goal::Joined, "Join them with a street", "From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.\n\nA street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile."),
+            (Goal::Fetched, "Fetch the starter pack", "Timber, stone, crates and fuel, the world's gift, come on the first ferry, and the tug lands them in the trailer park. Tap the depot's lorry to fetch them, and ride along."),
+            (Goal::Settled, "Build houses", "Draw a row of them, and Build: each is a site till a van brings its four timber, and the bill says if the depot has it. Then the next ferry brings their people.\n\nThe rest of the pack: tap the lorry again, or give it standing orders on the depot's card."),
         ],
         reward: Reward::Coins(100.0),
     },
@@ -127,56 +129,57 @@ const ROWS: &[Row] = &[
         key: Key::Standing,
         when: When::After(Key::Opening),
         title: "Standing orders",
-        steps: &[(Goal::Standing, "Give the depot's lorry standing orders: it fetches each box as it lands, and you need not tap it again.")],
+        steps: &[(Goal::Standing, "Give the lorry standing orders", "On the depot's card: its lorry fetches each box as it lands, and you need not tap it again.")],
         reward: Reward::Coins(25.0),
     },
     Row {
         key: Key::Stone,
         when: When::After(Key::Standing),
         title: "Keep stone in stock",
-        steps: &[(Goal::Keeps(Good::Stone), "Roads are laid on stone, and what the depot lacks comes express, at twice the price. A rule on the depot keeps a box in: under the line, it orders more on the next ferry.")],
+        steps: &[(Goal::Keeps(Good::Stone), "Keep stone at the depot", "Roads are laid on stone, and what the depot lacks comes express, at twice the price. A rule on the depot keeps a box in: under the line, it orders more on the next ferry.")],
         reward: Reward::Coins(25.0),
     },
     Row {
         key: Key::Sell,
         when: When::After(Key::Stone),
         title: "Sell to the world",
-        steps: &[(Goal::Sold, "Sell a box of crates from the depot: its lorry takes it to the ferry, and the coins land as it casts off. What the town makes, it can sell.")],
+        steps: &[(Goal::Sold, "Sell a box of crates", "Sell a box of crates from the depot: its lorry takes it to the ferry, and the coins land as it casts off. What the town makes, it can sell.")],
         reward: Reward::Coins(25.0),
     },
     Row {
         key: Key::Pump,
         when: When::Dry,
         title: "Cars running dry",
-        steps: &[(Goal::Stands(BuildingKind::GasStation), "Cars are running low on fuel, with nowhere in town to fill up: build a gas station on the high street, where they pass.")],
+        steps: &[(Goal::Stands(BuildingKind::GasStation), "Build a gas station", "Cars are running low on fuel, with nowhere in town to fill up: build a gas station on the high street, where they pass.")],
         reward: Reward::Coins(50.0),
     },
     Row {
         key: Key::Quarry,
         when: When::Short(Good::Stone),
         title: "Sites wait on stone",
-        steps: &[(Goal::Stands(BuildingKind::Quarry), "Your sites wait on stone, and no depot has any: build a quarry at the mountain's foot, and the depot's lorry fetches from its yard.")],
+        steps: &[(Goal::Stands(BuildingKind::Quarry), "Build a quarry", "Your sites wait on stone, and no depot has any: build a quarry at the mountain's foot, and the depot's lorry fetches from its yard.")],
         reward: Reward::Coins(50.0),
     },
     Row {
         key: Key::Sawmill,
         when: When::Short(Good::Timber),
         title: "Sites wait on timber",
-        steps: &[(Goal::Stands(BuildingKind::Sawmill), "Your sites wait on timber, and no depot has any: build a sawmill at the forest's edge, and the depot's lorry fetches from its yard.")],
+        steps: &[(Goal::Stands(BuildingKind::Sawmill), "Build a sawmill", "Your sites wait on timber, and no depot has any: build a sawmill at the forest's edge, and the depot's lorry fetches from its yard.")],
         reward: Reward::Coins(50.0),
     },
     Row {
         key: Key::Farm,
         when: When::Short(Good::Crates),
         title: "Shelves run empty",
-        steps: &[(Goal::Stands(BuildingKind::Farm), "Shops call for crates, and no depot has any: build a farm on open grass. Its crates feed the town, and what is over sells.")],
+        steps: &[(Goal::Stands(BuildingKind::Farm), "Build a farm", "Shops call for crates, and no depot has any: build a farm on open grass. Its crates feed the town, and what is over sells.")],
         reward: Reward::Coins(50.0),
     },
 ];
 
 /// A finished mission stays in what the clients are sent this long, so
-/// its last tick and its reward are seen: an hour of the town's day.
-const SHOWN_MS: GameTime = DAY_MS as GameTime / 24;
+/// its last tick and its reward are seen: three hours of the town's day,
+/// a few minutes of the player's.
+const SHOWN_MS: GameTime = DAY_MS as GameTime / 8;
 
 /// The town's missions, open and finished, and whether something has
 /// happened since they were last read.
@@ -209,7 +212,7 @@ impl Missions {
     }
 
     /// What the clients are sent: every open mission, and those finished
-    /// within the hour.
+    /// a little while ago.
     pub fn shown(&self, now: GameTime) -> Vec<Mission> {
         self.list.iter().filter(|m| m.finished.is_none_or(|f| now < f + SHOWN_MS)).cloned().collect()
     }
@@ -219,7 +222,7 @@ fn open(row: &Row, now: GameTime) -> Mission {
     Mission {
         key: row.key,
         title: row.title.into(),
-        steps: row.steps.iter().map(|&(goal, text)| Step { goal, text: text.into(), done: false, at: None }).collect(),
+        steps: row.steps.iter().map(|&(goal, title, text)| Step { goal, title: title.into(), text: text.into(), done: false, at: None }).collect(),
         reward: row.reward,
         opened: now,
         finished: None,
@@ -308,7 +311,7 @@ pub fn sense(world: &mut World, when: When, now: GameTime) {
         When::Short(good) => !depots(world).any(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)),
         _ => true,
     };
-    if !real || row.steps.iter().all(|&(goal, _)| met(world, goal)) {
+    if !real || row.steps.iter().all(|&(goal, ..)| met(world, goal)) {
         return;
     }
     world.missions.list.push(open(row, now));

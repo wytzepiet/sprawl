@@ -19,7 +19,7 @@ import Board from "../ui/Board";
 import Glass from "../ui/Glass";
 import Shipments, { BoxPins } from "../ui/Shipments";
 import News from "../ui/News";
-import Guide from "../ui/Guide";
+import Missions from "../ui/Missions";
 import Minimap from "../ui/Minimap";
 
 function SceneInner() {
@@ -49,7 +49,7 @@ function SceneInner() {
       <TimeControls />
       <Shipments />
       <News />
-      <Guide />
+      <Missions />
       <Minimap />
       {/* <DebugOverlay /> */}
     </DayNightProvider>

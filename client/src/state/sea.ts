@@ -8,7 +8,7 @@ import type { Building, Car, Good, Leg, Sailing, Sea, Shipment } from "../genera
 /**
  * The sea as the last update had it: every box with an order, where it is,
  * and every harbour's timetable. The whole world's, not just what is in
- * view, so the shipments list, the cards and the guide all read it.
+ * view, so the shipments list, the cards and the missions all read it.
  * Reconciled by key, so a line that stays on the list stays the same line.
  */
 const [sea, setSea] = createStore<Sea>({ shipments: [], sailings: [] });
@@ -38,10 +38,6 @@ function tell(text: string, sub: string, at: number) {
   setTimeout(() => setNews((l) => l.filter((x) => x !== n)), NEWS_MS);
 }
 
-/** Has a ferry come in with settlers yet: the opening's last beat. */
-const [settled, setSettled] = createSignal(false);
-export { settled };
-
 let heard = false;
 /** An update's sea: kept, and what changed at a ramp told. */
 export function hearSea(s: Sea) {
@@ -50,7 +46,6 @@ export function hearSea(s: Sea) {
     setSea("shipments", reconcile(s.shipments, { key: "trailer" }));
     setSea("sailings", reconcile(s.sailings, { key: "harbour" }));
   });
-  if (s.sailings.some((x) => x.berthed && x.settlers > 0)) setSettled(true);
   if (!heard) return void (heard = true);
   for (const x of s.sailings) {
     const was = before.get(x.harbour);

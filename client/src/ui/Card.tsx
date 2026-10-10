@@ -5,7 +5,7 @@ import { selected, select, setFollowing, setSubject } from "../state/selection";
 import { getEntity, useGame } from "../state/gameObjects";
 import { now, sailingOf, sea } from "../state/sea";
 import { track } from "./Shipments";
-import { guideUp } from "./Guide";
+import { missionsUp } from "./Missions";
 import { HarbourPanel, Timetable, type DepotLine } from "./Harbour";
 import { DepotPanel } from "./Depot";
 import { SitePanel, type MakerLine } from "./Site";
@@ -125,7 +125,7 @@ export default function Card() {
   return (
     <Show when={card()}>
       {(c) => (
-        <div data-glass="card" style={{ "max-height": guideUp() ? "calc(100vh - 96px - 136px)" : "calc(100vh - 8.5rem)" }} class="ink card fixed top-24 left-6 z-40 w-[320px] overflow-y-auto rounded-[22px] text-sm select-none pb-1.5">
+        <div data-glass="card" style={{ "max-height": missionsUp() ? "calc(100vh - 96px - 136px)" : "calc(100vh - 8.5rem)" }} class="ink card fixed top-24 left-6 z-40 w-[320px] overflow-y-auto rounded-[22px] text-sm select-none pb-1.5">
           <Show when={c().kind === "resident"}>{ResidentCard(c() as Extract<Card, { kind: "resident" }>)}</Show>
           <Show when={c().kind === "car"}>{CarCard(c() as Extract<Card, { kind: "car" }>)}</Show>
           <Show when={building()} keyed>

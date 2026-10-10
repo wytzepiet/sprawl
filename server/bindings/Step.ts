@@ -3,7 +3,11 @@ import type { Goal } from "./Goal";
 
 export type Step = { goal: Goal, 
 /**
- * What to do, paragraphs apart by a blank line.
+ * What it asks, in a line.
+ */
+title: string, 
+/**
+ * How, paragraphs apart by a blank line.
  */
 text: string, done: boolean, 
 /**
