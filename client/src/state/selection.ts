@@ -25,6 +25,8 @@ export function select(id: number | null) {
   setSubject(id);
   setFollowing(id);
 }
+// For `bun run look --select`, which photographs a card.
+(window as unknown as { sprawlSelect: typeof select }).sprawlSelect = select;
 
 /** Where every car is drawn this frame, by id — the cars' own record, so a
  *  click on the map can find the one under it without asking the scene. */

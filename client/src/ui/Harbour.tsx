@@ -4,13 +4,16 @@ import { clockAt, landsAt, now, plural, room, sailingOf, sea, turn, until, voyag
 import { setFollowing } from "../state/selection";
 import { boxCost, GOODS } from "../blueprints";
 import { Btn, coins, GoodDot, Section, Stepper, type Link } from "./kit";
-import type { Building, Good, Sailing } from "../generated";
+import type { Building, Good, Rule, Sailing } from "../generated";
 
 /** A depot as a harbour's or a site's card lists it (`card.rs`). */
 export interface DepotLine {
   depot: Link;
   tiles: number;
   joined: boolean;
+  /** Its lorry fetches without being sent. */
+  standing: boolean;
+  rules: Partial<Record<Good, Rule>>;
   stocks: Partial<Record<Good, number>>;
 }
 
@@ -22,7 +25,7 @@ export const building = (id: number) =>
     return e?.object.kind === "Building" ? (e.object.data as Building) : null;
   });
 
-export const ORDER: Good[] = ["Timber", "Crates", "Fuel"];
+export const ORDER: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
 
 /** What the town owes for boxes booked and at sea, paid as each lands. */
 const owed = () => sea.shipments.filter((s) => !s.outbound && s.order !== 0 && (s.leg === "Booked" || s.leg === "Aboard") && s.good).reduce((a, s) => a + (s.units * GOODS[s.good!].price * 1.1), 0);

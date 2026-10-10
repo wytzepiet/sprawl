@@ -90,11 +90,15 @@ pub enum BuildingKind {
     /// sawing it, the planks stacked in its yard for a depot's lorry.
     /// Placed by the mayor, beside the woods.
     Sawmill,
+    /// Where stone comes from: hands breaking the rock of the mountain
+    /// beside it, the stone heaped in its yard for a depot's lorry.
+    /// Placed by the mayor, at the mountain's foot.
+    Quarry,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 11] = [
+    pub const ALL: [BuildingKind; 12] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -106,6 +110,7 @@ impl BuildingKind {
         BuildingKind::Farm,
         BuildingKind::Harbour,
         BuildingKind::Sawmill,
+        BuildingKind::Quarry,
     ];
 }
 
@@ -134,11 +139,11 @@ pub struct Building {
     /// (`economy::open`).
     #[serde(default)]
     pub stocks: std::collections::BTreeMap<Good, crate::needs::Stock>,
-    /// Still going up: the timber delivered toward it, of what its row
-    /// takes (`blueprint::Blueprint::timber`). A site has no door for
-    /// anyone but the van bringing its timber; full, it stands.
+    /// Still going up: each material delivered toward it, of what its
+    /// row takes (`blueprint::Blueprint::materials`). A site has no door
+    /// for anyone but the vans bringing its materials; all in, it stands.
     #[serde(default)]
-    pub site: Option<crate::needs::Stock>,
+    pub site: Option<std::collections::BTreeMap<Good, crate::needs::Stock>>,
     /// A harbour's trailer park: its docks, each where a box stands and
     /// the box standing there, if any (`world/sea.rs`). The poses are its
     /// lot's, laid when the lot is.
@@ -241,19 +246,17 @@ pub struct Run {
 }
 
 impl Building {
-    /// One of a kind, founded: what it buys in full, what it makes not
-    /// yet made.
-    /// One of a kind, placed: a site waiting for its timber, or standing
-    /// at once where its row takes none (`economy::stand`).
+    /// One of a kind, placed: a site waiting for its materials, or
+    /// standing at once where its row takes none (`economy::stand`).
     pub fn new(kind: BuildingKind, tiles: Vec<GridCoord>, facing: u8) -> Building {
-        let timber = crate::blueprint::blueprint(kind).timber as f64;
+        let materials = crate::blueprint::blueprint(kind).materials;
         Building {
             kind,
             tiles,
             size: None,
             facing,
             stocks: Default::default(),
-            site: (timber > 0.0).then_some(crate::needs::Stock { level: 0.0, cap: timber }),
+            site: (!materials.is_empty()).then(|| materials.iter().map(|&(g, n)| (g, crate::needs::Stock { level: 0.0, cap: n as f64 })).collect()),
             park: Vec::new(),
             rules: Default::default(),
             standing: false,
@@ -377,16 +380,19 @@ pub enum Good {
     Fuel,
     /// What buildings are built from, the first material.
     Timber,
+    /// Broken rock: what roads are laid on, and the masonry of the
+    /// bigger buildings. Bulk: it rides in a lined box.
+    Stone,
 }
 
 impl Good {
     /// Units one box holds: a trailer of crates is a hundred, of timber
-    /// twenty, a tank box fifty tanks.
+    /// or stone twenty, a tank box fifty tanks.
     pub fn per_box(self) -> f64 {
         match self {
             Good::Crates => 100.0,
             Good::Fuel => 50.0,
-            Good::Timber => 20.0,
+            Good::Timber | Good::Stone => 20.0,
         }
     }
 }
@@ -861,7 +867,8 @@ pub struct Lump {
     pub gdp: f64,
     #[ts(type = "number")]
     pub at: u64,
-    /// Or goods landing: a box unloaded onto a depot's shelf.
+    /// Or goods landing: a box unloaded onto a depot's shelf; or, less
+    /// than none, leaving it: stone off its shelf for a road laid.
     #[serde(default)]
     pub good: Option<Good>,
     #[serde(default)]

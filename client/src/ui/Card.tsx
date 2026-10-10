@@ -7,9 +7,9 @@ import { now, sailingOf } from "../state/sea";
 import { guideUp } from "./Guide";
 import { HarbourPanel, Timetable, type DepotLine } from "./Harbour";
 import { DepotPanel } from "./Depot";
-import { SitePanel } from "./Site";
+import { SitePanel, type MakerLine } from "./Site";
 import { Bar, Row, Section, To, type Link } from "./kit";
-import type { Building, BuildingKind, CarRole, Need } from "../generated";
+import type { Building, BuildingKind, CarRole, Good, Need } from "../generated";
 
 interface Bucket {
   need: Need;
@@ -53,9 +53,10 @@ type Card =
       household: Link[];
       staff: { who: Link; present: boolean }[];
       fleet: Link[];
-      calls: { what: string; since: string; answered_by: Link | null }[];
+      calls: { what: string; good: Good; since: string; answered_by: Link | null }[];
       served: { need: Need; hours_today: number }[];
       depots: DepotLine[];
+      makers: MakerLine[];
     }
   | { kind: "gone"; id: number };
 type BuildingCard = Extract<Card, { kind: "building" }>;
@@ -223,7 +224,7 @@ function CarCard(c: Extract<Card, { kind: "car" }>) {
 /**
  * A building's card: made once for the building, its lines read from the
  * card as it refreshes. What the mayor does here comes first: a site's
- * timber, a harbour's ferry and order, a depot's lorry and rules.
+ * materials, a harbour's ferry and order, a depot's lorry and rules.
  */
 function BuildingCard(props: { id: number; card: () => BuildingCard }) {
   const c = props.card;
@@ -236,19 +237,18 @@ function BuildingCard(props: { id: number; card: () => BuildingCard }) {
     return e?.object.kind === "Building" ? (e.object.data as Building).site : null;
   });
   const lorries = () => c().fleet.filter((l) => l.label === "Lorry").map((l) => l.id);
-  const van = () => c().calls.find((k) => k.answered_by)?.answered_by ?? null;
   return (
     <>
       <Header
         title={site() ? `${bp().label} · a site` : bp().label}
-        sub={c().reached ? (site() ? "going up as its timber lands" : undefined) : "no road reaches it"}
+        sub={c().reached ? (site() ? "going up as its materials land" : undefined) : "no road reaches it"}
         icon={
           <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ "background-color": bp().color, opacity: site() ? 0.65 : 1 }}>
             <BuildingIcon kind={kind()} class="text-white" width="19" height="19" />
           </span>
         }
       />
-      <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} van={van()} />}</Show>
+      <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
       <Show when={!site() && kind() === "Harbour"}>
         <HarbourPanel id={props.id} depots={c().depots} />
       </Show>

@@ -1,8 +1,8 @@
 import { createEffect, createSignal, For, indexArray, on, Show } from "solid-js";
 import { follow, LOOSE } from "../engine/spring";
 import { setTool, tool } from "./buildMode";
-import { BLUEPRINTS, GoodIcon, KINDS, plot, TABS } from "../blueprints";
-import type { Tool } from "../generated";
+import { BLUEPRINTS, GoodIcon, GOODS, KINDS, plot, TABS } from "../blueprints";
+import type { Good, Tool } from "../generated";
 import Bill from "./Bill";
 
 /** What the road shelf holds. */
@@ -40,12 +40,18 @@ const shelfOf = (t: Tool | null): Shelf | null =>
 const road = (t: Tool) => ROAD_KINDS.find((r) => r.id === t)!;
 const label = (t: Tool) => (typeof t === "string" ? road(t).label : BLUEPRINTS[t.Building].label);
 const color = (t: Tool) => (typeof t === "string" ? road(t).color : BLUEPRINTS[t.Building].color);
-/** What a building is built of: its timber, which a depot's van brings. */
-const timber = (t: Tool) => (typeof t === "string" ? null : BLUEPRINTS[t.Building].timber);
+/** What a thing is built of: a building's materials, which a depot's vans
+ *  bring to its site; a road's stone, a unit a tile, off the depot's
+ *  shelf as it is laid (`economy::paved`). None for the demolisher. */
+const materials = (t: Tool): [Good, number][] | null =>
+  t === "Demolish" ? null : typeof t === "string" ? [["Stone", 1]] : (Object.entries(BLUEPRINTS[t.Building].materials) as [Good, number][]);
+const words = (m: [Good, number][]) => m.map(([g, n]) => `${n} ${GOODS[g].label}`).join(" and ");
 /** What the card under the "i" says of each kind beyond its size. */
 const ABOUT: Partial<Record<string, string>> = {
   Harbour: "The door: the ferry berths at its back, so it stands on the coast with open sea straight out behind it. Stands at once.",
-  Depot: "Keeps the town's goods. Its lorry fetches boxes from the harbour; its vans take timber to sites. The first stands at once.",
+  Depot: "Keeps the town's goods. Its lorry fetches boxes from the harbour; its vans take materials to sites. The first stands at once.",
+  Quarry: "Breaks stone out of the mountain beside it: build it at the mountain's foot. A depot's lorry fetches the stone.",
+  Sawmill: "Fells and saws the woods round it: build it in the forest. A depot's lorry fetches the timber.",
 };
 const glyph = (t: Tool) => (typeof t === "string" ? road(t).glyph : BLUEPRINTS[t.Building].glyph);
 
@@ -122,7 +128,12 @@ export default function BuildModeToolbar() {
   const stretch = () => Math.min(0.45, Math.abs(beadV()) / 1400);
 
   /** A thing's size, and the card's height to show it. */
-  const size = (t: Tool) => (typeof t === "string" ? "" : `${plot(t.Building, 0).size.join("×")} tiles. ${ABOUT[t.Building] ?? (timber(t) ? `A site until a depot's van brings its ${timber(t)} timber.` : "")}`);
+  const size = (t: Tool) => {
+    if (typeof t === "string") return t === "Demolish" ? "" : "Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price.";
+    const m = materials(t)!;
+    const site = m.length ? `A site until a depot's vans bring its ${words(m)}.` : "";
+    return `${plot(t.Building, 0).size.join("×")} tiles. ${[ABOUT[t.Building], site].filter(Boolean).join(" ")}`;
+  };
   const cardHeight = (t: Tool) => 56 + Math.ceil(size(t).length / 38) * 20;
 
   /** Every row of every shelf, placed: risen above its shelf when open, sunk into it when not. */
@@ -204,10 +215,12 @@ export default function BuildModeToolbar() {
             >
               <span class="grid w-11 h-11 shrink-0 place-items-center text-white"><Glyph d={glyph(m.r().t)} size={17} /></span>
               <span class="ink text-[15px] font-semibold whitespace-nowrap">{label(m.r().t)}</span>
-              <Show when={timber(m.r().t) !== null}>
-                <span class="soft inline-flex items-center gap-1 serif italic font-light text-[15px] whitespace-nowrap" title="Timber it is built of">
-                  {timber(m.r().t) ? <><GoodIcon good="Timber" width="13" height="13" />{timber(m.r().t)}</> : "at once"}
-                </span>
+              <Show when={materials(m.r().t)}>
+                {(ms) => (
+                  <span class="soft inline-flex items-center gap-1.5 serif italic font-light text-[15px] whitespace-nowrap" title={ms().length ? `Built of ${words(ms())}` : undefined}>
+                    {ms().length ? <For each={ms()}>{([g, n]) => <span class="inline-flex items-center gap-0.5"><GoodIcon good={g} width="13" height="13" />{n}</span>}</For> : "at once"}
+                  </span>
+                )}
               </Show>
             </button>
             <button

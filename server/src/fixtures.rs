@@ -14,7 +14,7 @@
 //! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
-//! M supermarket  D warehouse  P port
+//! M supermarket  D depot  P harbour  W sawmill  Q quarry
 //! ```
 //!
 //! A building's letters are its tiles, painted in one stroke as the mayor
@@ -60,12 +60,14 @@ fn building(c: char) -> Option<BuildingKind> {
         'M' => Supermarket,
         'D' => Depot,
         'P' => Harbour,
+        'W' => Sawmill,
+        'Q' => Quarry,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOFGMDP".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASOFGMDPWQ".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
@@ -175,7 +177,8 @@ pub fn build(world: &mut World, dir: &Path) {
         placed.push(Placed { name, title, x: x0, y: 0, w, h });
         x0 += w + GAP;
     }
-    // A town written by hand stands as written: no site waits for timber.
+    // A town written by hand stands as written: no site waits for its
+    // materials.
     let sites: Vec<_> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_some())).map(|e| e.id).collect();
     for id in sites {
         world.finish(id);

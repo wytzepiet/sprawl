@@ -2,15 +2,44 @@
 
 Status: draft, 2026-10-10, for the player to correct. Built so far:
 house, apartment, shop, office, factory, gas station, supermarket, the
-general depot (`Depot`: crates 200, fuel 100, timber 60, a lorry and two
-vans, and up to three more lorries bought from the world at 40 coins
-each), the farm, the sawmill (four hands felling the forest within five
-tiles, half a unit of timber an hour each in thick woods, nothing in the
-open; a yard of six boxes) and the ferry harbour, each built from timber
-(house 4, apartment 12, shop 4, office 10, factory 14, gas station 6,
-supermarket 16, depot 10, farm 8, sawmill 6, harbour none). Goods are
-crates, fuel and timber. A maker's yard needs no vehicle of its own: a
-depot's lorry fetches from it, or fills an empty there for the world. What kinds the game
+general depot (`Depot`: crates 200, fuel 100, timber 60, stone 60, a
+lorry and two vans, and up to three more lorries bought from the world at
+40 coins each), the farm, the sawmill and the quarry (each four hands
+working the ground within five tiles, the forest for timber, the
+mountain for stone: half a unit an hour each with thirty tiles of it in
+reach, nothing in the open; a yard of six boxes) and the ferry harbour.
+Goods are crates, fuel, timber and stone. A maker's yard needs no vehicle
+of its own: a depot's lorry fetches a load from it, a box's worth or what
+its shelf has room for, or fills an empty there for the world.
+
+What each kind is built from is its row's `materials`, a material each
+and how much (`Blueprint::materials`, which a draft's bill reads):
+
+| Kind | Timber | Stone |
+|---|---|---|
+| House | 4 | |
+| Apartment | 12 | 8 |
+| Shop | 4 | |
+| Office | 10 | 6 |
+| Factory | 14 | 8 |
+| Gas station | 6 | 4 |
+| Supermarket | 16 | 10 |
+| Depot | 10 | |
+| Farm | 8 | |
+| Sawmill | 6 | |
+| Quarry | 8 | |
+| Harbour | | |
+
+The opening's kinds take timber alone, so it teaches one material; the
+big ones take stone besides, standing in for the concrete they will take
+once there is a cement works. The quarry takes no stone, so a town can
+build its own before it has any. Stone is a coin a half-unit at the
+world's price, twenty to a box, a bulk good riding in a tipper box. A
+road is laid on it, a unit a tile (`trade.md` §Building materials).
+
+The rest of this is what kinds the game
+has once trade, materials and chains are in: what each is for, what it
+takes and makes, what it is built from, and what moves its goods. What kinds the game
 has once trade, materials and chains are in: what each is for, what it
 takes and makes, what it is built from, and what moves its goods. The
 numbers are guesses to be tuned in play; the shape is the point. A kind is

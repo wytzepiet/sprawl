@@ -386,7 +386,9 @@ fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut Int
         Tool::Street | Tool::OneWay | Tool::Road => {
             let one_way = tool == Tool::OneWay;
             let (from_id, to_id) = (world.road_node_at(from), world.road_node_at(to));
+            let laid = world.laid;
             world.handle_place_road(from, to, one_way, tool == Tool::Road);
+            crate::economy::paved(world, to, world.laid.saturating_sub(laid), now);
             // Insert edges for newly created connections
             if let (Some(f), Some(t)) = (world.road_node_at(from), world.road_node_at(to))
                 && (from_id.is_none() || to_id.is_none() || !world.edges.contains_key(&(f, t)))
@@ -398,7 +400,7 @@ fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut Int
             }
         }
         Tool::Building(kind) => {
-            // A site calls for its timber at once.
+            // A site calls for its materials at once.
             if let Some(id) = world.paint(kind, from, to) {
                 crate::calls::turn(world, events, id, now);
             }
@@ -1163,6 +1165,33 @@ mod tests {
         assert!(world.road_node_at(at(5, 1)).is_none(), "the side street left with no road goes too");
     }
 
+    /// A road is laid at once, on stone: a tile's comes off the nearest
+    /// depot's shelf, and what the depots lack the world sends express,
+    /// paid at the harbour at twice the boat's price.
+    #[test]
+    fn a_road_is_laid_on_stone_from_the_depot() {
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
+        let stone = |w: &World| building_of(w, depot).stocks[&Good::Stone].level;
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            b.stocks.get_mut(&Good::Stone).unwrap().level = 2.0;
+        }
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let at = |x, y| GridCoord { x, y };
+        let treasury = world.treasury;
+        let mut hand = |world: &mut World, from, to| take_step(world, &mut events, &mut intersections, Build { tool: Tool::Street, from, to }, 0);
+        hand(&mut world, at(10, 0), at(10, 1));
+        hand(&mut world, at(10, 1), at(10, 2));
+        assert_eq!(stone(&world), 0.0, "two tiles took {} stone", 2.0 - stone(&world));
+        assert_eq!(world.treasury, treasury, "stone in stock was paid for");
+        hand(&mut world, at(10, 2), at(10, 3));
+        let express = crate::economy::EXPRESS * crate::economy::import(Good::Stone, crate::economy::ROAD_STONE);
+        assert!((treasury - world.treasury - express).abs() < 1e-9, "the third tile cost {}", treasury - world.treasury);
+        assert!(world.lumps.iter().any(|l| l.building == harbour_of(&world) && l.coins < 0.0 && l.good == Some(Good::Stone)), "no lump at the harbour");
+    }
+
     fn build(world: &mut World, x: i32, kind: BuildingKind, _w: u8) -> EntityId {
         world
             .place_on_street(GridCoord { x, y: 1 }, kind)
@@ -1545,17 +1574,16 @@ mod tests {
     /// mix of every kind, its people coming over on the ferry. Returns it
     /// and how many times a resident thought.
     fn live(mix: &[BuildingKind], days: u64) -> (World, u64) {
-        season(mix, days, |_, _, _| {})
+        season_with(street(), mix, days, |_, _| Vec::new(), |_, _, _| {})
     }
 
-    /// `live`, with a look at the town at the end of every day, after the
-    /// midnight wake.
-    fn season(mix: &[BuildingKind], days: u64, each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
-        season_with(street(), mix, days, each_day)
-    }
+    /// The mayor's steps, as the hand takes them.
+    type Steps = Vec<(Tool, GridCoord, GridCoord)>;
 
-    /// `season` on a street of the caller's, founded with the stake.
-    fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
+    /// `live` on a street of the caller's, founded with the stake: the
+    /// mayor's hand at every midnight, `hand`, and a look at the town at
+    /// the end of every day, after the midnight wake, `each_day`.
+    fn season_with(mut world: World, mix: &[BuildingKind], days: u64, mut hand: impl FnMut(&World, u64) -> Steps, mut each_day: impl FnMut(&World, u64, u64)) -> (World, u64) {
         // Forty plots in a row, a tile apart: a lot claims the tile beside
         // it for its ring, and a house may not stand on it.
         let mut x = 0;
@@ -1596,6 +1624,13 @@ mod tests {
             assert_eq!(stuck, 0, "day {day}: {stuck} cars a day past their due time — the street has gridlocked");
             println!("day {day}: {} claims lapsed so far", intersections.lapses);
             each_day(&world, day, wakes);
+            let steps = hand(&world, day);
+            if !steps.is_empty() {
+                for (tool, from, to) in steps {
+                    take_step(&mut world, &mut events, &mut intersections, Build { tool, from, to }, now);
+                }
+                settle_and_wake(&mut world, &mut events);
+            }
         }
         (world, wakes)
     }
@@ -1639,7 +1674,7 @@ mod tests {
     fn a_town_thinks_as_fast_in_a_wide_world() {
         let timed = |world: World| {
             let started = Instant::now();
-            season_with(world, &town_mix(), 1, |_, _, _| {});
+            season_with(world, &town_mix(), 1, |_, _| Vec::new(), |_, _, _| {});
             started.elapsed().as_secs_f64()
         };
         let narrow = timed(street());
@@ -1856,6 +1891,11 @@ mod tests {
         assert!(world.street_of(*world.occupied.get(&(24, -1)).unwrap()).is_some(), "the street came back");
     }
 
+    /// Where the season's quarry and sawmill stand, past the town's forty
+    /// plots, each with its ground behind it.
+    const QUARRY_X: i32 = 150;
+    const SAWMILL_X: i32 = 170;
+
     /// The season: a month of the same town as
     /// `a_town_thinks_within_budget`, `#[ignore]`d for the same reason:
     /// `cargo test season -- --ignored --nocapture`. Thirty days is a
@@ -1873,11 +1913,46 @@ mod tests {
     /// leave for the world, so the town ends the season with coins. Each
     /// day's page is printed: hours served, coins in and out at the
     /// border, the treasury, empty shelves.
+    ///
+    /// And it builds: a quarry at the mountain's foot and a sawmill in the
+    /// woods, and every midnight the mayor puts down a block of flats, of
+    /// timber and stone, and a side street of three tiles laid on stone.
+    /// Every site stands within a day of the next midnight: the depot's
+    /// lorry fetches from the quarry and the sawmill, its vans take the
+    /// materials to the sites, and the roads draw on the depot's stone.
     #[test]
     #[ignore]
     fn season_the_shelves_stay_stocked_and_everyone_eats() {
         use crate::needs::Need;
         let days = season_days();
+        // The mountain behind the quarry's plot, and the woods behind the
+        // sawmill's, beyond the town's forty.
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        for (x0, ground) in [(QUARRY_X, TerrainType::Mountain), (SAWMILL_X, TerrainType::Forest)] {
+            for x in x0 - 5..x0 + 7 {
+                for y in 5..14 {
+                    world.terrain.insert((x, y), ground);
+                }
+            }
+        }
+        let quarry = build(&mut world, QUARRY_X, BuildingKind::Quarry, 1);
+        let sawmill = build(&mut world, SAWMILL_X, BuildingKind::Sawmill, 1);
+        let mut stood = 0;
+        // Each midnight, a block of flats across the street, painted a
+        // tile at a time, and a side street beside it.
+        let hand = |_: &World, day: u64| -> Steps {
+            let x = 112 + 4 * (day as i32 - 1);
+            let at = |x, y| GridCoord { x, y };
+            let flats = Tool::Building(BuildingKind::Apartment);
+            vec![
+                (flats, at(x, -1), at(x, -1)),
+                (flats, at(x, -1), at(x + 1, -1)),
+                (Tool::Street, at(x + 2, 0), at(x + 2, -1)),
+                (Tool::Street, at(x + 2, -1), at(x + 2, -2)),
+                (Tool::Street, at(x + 2, -2), at(x + 2, -3)),
+            ]
+        };
         let mut empty_since: std::collections::BTreeMap<(EntityId, String), u64> = Default::default();
         let mut stood_empty = |what: (EntityId, String), empty: bool, day: u64| -> u64 {
             if empty {
@@ -1887,9 +1962,27 @@ mod tests {
                 0
             }
         };
-        let (world, _) = season(&town_mix(), days, |world, day, _| {
+        let (world, _) = season_with(world, &town_mix(), days, hand, |world, day, _| {
             let midnight = day * DAY_MS as u64;
             let page = world.town.before(midnight);
+            // Every block of flats put down at a midnight stands by the next.
+            let flats = |site: bool| world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Apartment && b.tiles[0].y < 0 && b.site.is_some() == site)).count();
+            stood = flats(false);
+            let waiting: Vec<_> = world.calls.iter().filter(|c| matches!(world.objects.get(c.at).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some())).collect();
+            assert_eq!(stood as u64, day - 1, "day {day}: {} sites still waiting; calls {waiting:?}", flats(true));
+            let level = |id: EntityId, good: Good| match world.objects.get(id).map(|e| &e.object) {
+                Some(GameObject::Building(b)) => b.stocks.get(&good).map_or(0.0, |s| s.level),
+                _ => 0.0,
+            };
+            let depot = world.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Depot)).map(|e| e.id).unwrap();
+            println!(
+                "  built: {stood} blocks of flats; yards: quarry {:.0} stone, sawmill {:.0} timber; depot {:.0} stone, {:.0} timber; bought {:.1?}",
+                level(quarry, Good::Stone),
+                level(sawmill, Good::Timber),
+                level(depot, Good::Stone),
+                level(depot, Good::Timber),
+                page.bought,
+            );
             let mut empty = Vec::new();
             for e in world.objects.iter() {
                 let GameObject::Building(ref b) = e.object else { continue };
@@ -1966,7 +2059,8 @@ mod tests {
             }
         });
         let sold = world.town.season().map(|p| p.sold.get(&Good::Crates).copied().unwrap_or(0.0)).sum::<f64>();
-        println!("the season: treasury {:.1}, crates sold to the world for {sold:.1}", world.treasury);
+        println!("the season: treasury {:.1}, crates sold to the world for {sold:.1}, {stood} sites stood", world.treasury);
+
         assert!(sold > 0.0, "the farm never sold a harvest to the world");
         assert!(world.treasury > 0.0, "the town ran out of coins");
     }
@@ -2146,7 +2240,7 @@ mod tests {
         let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
         let tug = world.tug_of(harbour).expect("the harbour's tug");
         let lorry = crate::haul::lorry_of(&world, depot).expect("the depot's lorry");
-        assert_eq!(car_of(&world, ferry).booked.len(), 5, "the starter pack is booked");
+        assert_eq!(car_of(&world, ferry).booked.len(), 6, "the starter pack is booked");
         // A settle with nothing new touches nothing: what it touches goes
         // to every client, and is written down, each tick.
         world.objects.drain_dirty();
@@ -2163,7 +2257,7 @@ mod tests {
         }
         let berthed = now;
         assert!(sailed, "it never sailed in");
-        assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| !t.empty()).count(), 5, "the starter pack is not aboard");
+        assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| !t.empty()).count(), 6, "the starter pack is not aboard");
         assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| t.empty()).count(), crate::world::sea::EMPTIES, "the world sent no empties");
         // The tug unloads while it is in, and it sails on time.
         let mut shunted = false;

@@ -218,8 +218,9 @@ impl World {
 
     /// A harbour is built: the world's ferry is put on its line, due half
     /// an hour later. The first harbour's first sailing brings the starter
-    /// pack, the world's gift: timber for the first houses, crates for the
-    /// first shop, fuel, every box the town's (docs/game.md §The opening).
+    /// pack, the world's gift: timber for the first houses, stone for the
+    /// first streets, crates for the first shop, fuel, every box the
+    /// town's (docs/game.md §The opening).
     pub fn commission(&mut self, harbour: EntityId, now: GameTime) {
         let first = !self.objects.iter().any(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Ferry));
         // Its tug stands by the ramp from the first.
@@ -237,7 +238,7 @@ impl World {
         let mut ferry = Car::new(harbour, CarRole::Ferry);
         ferry.due = now + FIRST_CALL;
         if first {
-            for good in [Good::Timber, Good::Timber, Good::Timber, Good::Crates, Good::Fuel] {
+            for good in [Good::Timber, Good::Timber, Good::Timber, Good::Stone, Good::Crates, Good::Fuel] {
                 let id = self.objects.reserve_id();
                 ferry.booked.push(Trailer { id, good: Some(good), units: good.per_box(), to: None, outbound: false, order: Some(GIFT) });
             }

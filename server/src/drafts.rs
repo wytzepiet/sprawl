@@ -9,7 +9,7 @@
 //! demolitions, round again while anything more goes in; what is refused
 //! stays, marked. Undo takes back the last stroke, discard the lot.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -300,16 +300,29 @@ fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
             *takes.entry(good).or_default() += n;
         }
     }
+    // A road's stone, a tile at a time, for the tiles not road already;
+    // before there is a harbour a road is free (`economy::paved`).
+    let harbour = world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Harbour && b.site.is_none()));
+    let road: HashSet<(i32, i32)> = strokes
+        .iter()
+        .flatten()
+        .filter(|m| matches!(m.step.tool, Tool::Street | Tool::OneWay | Tool::Road))
+        .flat_map(|m| [m.step.from, m.step.to])
+        .filter(|t| world.road_node_at(*t).is_none())
+        .map(|t| (t.x, t.y))
+        .collect();
+    if harbour && !road.is_empty() {
+        *takes.entry(Good::Stone).or_default() += road.len() as f64 * crate::economy::ROAD_STONE;
+    }
     if takes.is_empty() {
         return Vec::new();
     }
     let mut have: BTreeMap<Good, f64> = BTreeMap::new();
     for e in world.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
-        if let Some(site) = b.site {
-            let left = 1.0 - site.level / site.cap.max(1.0);
-            for (good, n) in crate::blueprint::takes(b.kind) {
-                *have.entry(good).or_default() -= n * left;
+        if let Some(site) = &b.site {
+            for (&good, s) in site {
+                *have.entry(good).or_default() -= s.cap - s.level;
             }
         } else if crate::economy::depot(b.kind) {
             for (&good, s) in &b.stocks {

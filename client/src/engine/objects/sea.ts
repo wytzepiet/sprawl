@@ -84,7 +84,8 @@ function faces(outlines: [number, number, number][][]): MeshGeometry {
  * good's own colour (`GOODS`), so a park reads at a glance from above.
  * Crates ride in a dry van, ribbed across its roof, its doors at the back
  * pale; fuel in a silver tank in a frame of its colour; timber loose in an
- * open tipper, logs in it as far along as it is full. An empty is that
+ * open tipper, logs in it as far along as it is full, and stone heaped in
+ * one, a ridge along it. An empty is that
  * tipper bare and pale, its floor seen. A shape's colours are its own: its
  * bucket is white.
  */
@@ -165,6 +166,7 @@ const BOXES: Record<Good, { body: Drawn; load?: Drawn }> = {
   Crates: { body: { key: "box_Crates", geo: dry(colour("Crates")) } },
   Fuel: { body: { key: "box_Fuel", geo: tank(colour("Fuel")) } },
   Timber: { body: TIPPER, load: { key: "load_Timber", geo: logs(colour("Timber")) } },
+  Stone: { body: TIPPER, load: { key: "load_Stone", geo: heap(colour("Stone")) } },
 };
 
 /** A box's parts, each with its scale: the body whole, a load as far
