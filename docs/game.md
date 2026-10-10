@@ -49,9 +49,12 @@ per handling class where a bigger ship lands boxes, fuel or bulk by the
 shipload, cheaper. The mayor never owns a ship, and
 nothing arrives anywhere but the ramp.
 
-Neighbours are reached by road and the world by sea. That is the whole of
-multiplayer's geography, and a single player's island is the same island
-with one town on it.
+The sea is the default way between towns as well as to the world: the
+world's shipping company runs every ship, a planner routes every load
+over its timetable, through hubs, and harbours have yards where loads
+wait to be collected (`trade.md` §Shipping, direction). Neighbours may
+join their towns by road when they want to; nothing makes them. A
+single player's island is the same island with one town on it.
 
 ## Roads
 

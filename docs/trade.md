@@ -74,10 +74,10 @@ Beyond the sea the world buys and sells everything, without limit:
   world's price sells nothing; one who sells below its buying price
   should have sold to the world.
 
-Speed is a choice that costs: the ferry is slow and cheap and carries a
-lot; a neighbour by road is fast if near; an airport, later, is fast and
-dear and carries little. "I need it now" is always possible and always
-costs.
+Speed is a choice that costs: the scheduled ship is slow and cheap and
+carries a lot; a neighbour by road is fast if near and joined; an express
+boat or, later, an airport is fast and dear and carries little. "I need
+it now" is always possible and always costs (§Shipping).
 
 Shipping takes time, and that is part of the game: order before you need
 it. Every shipment shows when it will land, and the estimate moves when
@@ -172,20 +172,97 @@ hides. It is a thing on the map:
   become a dashboard, the list of what is on its way, and then the flow
   itself: a steady line of your lorries, a quay that never empties.
 
-## Shipments
+## Shipping
 
-Every shipment is a vehicle in the world, and the list of pending ones
-is the way to it. Click one and the camera goes to the lorry, the
-tanker, the ship, wherever it is, and follows it home. Because the world
-is the server's, it is not an animation: a late shipment is late for a
-reason you can see, a neighbour's rush hour or your own junction. In a
-shared world it crosses other players' towns.
+Status: direction, 2026-10-10, argued and liked, not settled in its
+numbers. Nothing built.
 
-- A pin on the map for every shipment on its way.
-- The world's ship comes over the horizon and grows as it nears the
-  quay.
-- The ride-along camera (`shelved.md`) is for this: sit behind the
-  lorry and drive home with it.
+The sea is the default way between towns, and the player never handles a
+ship. Real shipping keeps three things apart, and so does this: who runs
+the ships, how a load finds its way, and who asks for it.
+
+**The shipping company runs the lines.** One company, the world's, runs
+every ship. A line is a timetable over a route of harbours, its ships
+sailing it in a loop, so every ship is somewhere at sea at every moment,
+on the map, without anything dispatching it. Every harbour gets a line,
+and a busy pair of harbours gets more sailings: the company follows the
+traffic, up to what a harbour's size allows, and the tree grows that.
+Ships sail on time whether full or not, so a wait is for the next
+sailing, never for a shipload; small loads from many senders share a
+ship. A sailing has room per class: vehicles, boxes, liquid, bulk. The
+ferry is a line whose ships carry mostly vehicles, settlers and the
+world's lorries among them, and is the same thing as a cargo line.
+
+**A shipment is planned, not driven.** The player says what, from where,
+to where, and by when: an order by hand, a top-up rule on a depot, a
+contract with a player, a request from the world or from someone the
+world stands for. A planner finds its route over the timetable: the
+sailings, the changes of ship at a hub, and the road leg at the end,
+earliest arrival first. This is a journey planner, the problem trains
+and container lines solved long ago (Connection Scan: every departure in
+time order, swept once), and it is worth making smart, because watching
+a load go to a hub, wait, change ship and come home is the fun of it. A
+shipment that misses its connection is planned again from where it is.
+Every step is on the map and a click follows it: on a ship, in a yard
+waiting for the next, on a lorry. Its arrival time is the plan's, and
+moves when the plan does; because the world is the server's, a late
+load is late for a reason you can see, a full yard or your own junction.
+A pin marks every load on its way, and the ride-along camera
+(`shelved.md`) is for sitting behind one and coming home with it.
+
+**Urgency costs.** The timetable is the cheap, reliable way. An express
+boat, sent for one load, is the fast and dear one; an airport later the
+fastest and dearest. "I need it now" is always possible.
+
+**Harbours have yards.** A ship unloads into its harbour's yard: boxes
+stacked by where they go next, tanks into a tank row, bulk onto a heap.
+The yard is a buffer in transit, not stock. Nothing in town draws on it;
+a load in a yard is the town's only once a lorry has carried it to a
+depot. A load in a yard either waits for its next ship, a transfer, or
+for a lorry to its depot. The yard's size is the harbour's, and a yard
+full of boxes is a jam you can see.
+
+**The last mile is a choice.** By default the town's own lorries collect
+from the yard, as importers' own trucks do (merchant haulage): tapped by
+hand at first, then on standing orders, which is the manual phase of
+`game.md`. Or the shipping company's lorry brings it to the depot's door
+for a fee (carrier haulage), for the player who would rather not.
+
+**A harbour can be a hub.** The planner may route someone else's cargo
+through your harbour: their boxes sit in your yard waiting for their
+connection. For each one handled, onto a ship or off it, your town is
+paid dues: coins in, since it is a service sold across the border, and
+GDP, since handling is work that adds value, as a port's is in any
+country's accounts. Only others' cargo pays; a box of your own changing
+ship in your own yard is your own pocket. Dues are per box handled, not
+per day sitting, so a yard clogged with others' boxes costs room and
+earns nothing more. A big harbour in a good spot is a way to play.
+
+**Roads between towns are a choice.** Towns are not joined by road
+unless their players join them. Islands, towns far apart and a shared
+road too small for two towns' traffic stop being problems; a road link
+is built when lorries beat ships, a neighbour close enough to drive to.
+A shipment's planner uses one where it exists.
+
+**Units.** Boxed goods travel by the container, so many crates or so
+much timber to a box; liquids by the tank, bulk by the hold. The
+container is what is stacked, lifted and followed.
+
+Open:
+
+1. How the company decides sailings: a frequency per line from the last
+   days' bookings, or a ship added when the next sailings are full.
+2. What the planner minimises: arrival only, or arrival with the price,
+   and whether the player can say "cheapest" or "fastest".
+3. Where hubs come from: any harbour the planner finds useful, or ones
+   the player declares; and what the dues are.
+4. How a top-up rule books: "will I be under my floor by the next
+   arrival", and how it avoids booking twice for one shortfall.
+5. How big a box is, and whether a part-full box sails.
+6. Carrier haulage's fee, and whether the company's lorries are drawn
+   on the town's roads like anyone's.
+7. Whether players run lines of their own one day, against `game.md`'s
+   "the mayor never owns a ship".
 
 ## Depots
 
