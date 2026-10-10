@@ -302,6 +302,13 @@ parted from the direction above.
 - **Boxes per good**: a hundred crates, fifty tanks of fuel, twenty of
   timber. Nothing is boxed by class yet beyond the drawing: tank boxes
   and lined bulk boxes are the same box.
+- **A box is drawn by what is in it** (`sea.ts`): crates in a dry van,
+  ribbed across the roof, its doors a pale band at the back; fuel in a
+  silver tank between two end frames; timber loose in an open tipper,
+  logs as far along it as the box is full (a heap, for stone or gravel,
+  is ready for a loose good to use). Each in its good's colour as the
+  panels have it (`GOODS`). An empty, which has no class, is the tipper
+  bare and pale. Seen from above, so all of it is on the top.
 - **Seeing it**: `GET /sea` gives every shipment, timetable, park and
   lorry; `bun run act send|standing|order|sell` work the border by hand;
   `the_opening_from_the_harbour` plays the whole opening as a test.

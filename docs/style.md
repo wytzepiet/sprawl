@@ -77,6 +77,11 @@ Each a rule, why, and when it was given. New verdicts go here.
 - **Parking belongs to streets; yards are only as big as what they serve,**
   at the end that suits them: a depot's lorries at its quiet end, a
   supermarket's car park on its busy corner, deliveries round the back.
+- **A box reads from above** (2026-10-10). The camera looks straight
+  down, so what tells boxes apart is their tops: the build says the class
+  (van, tank, tipper), the colour the good, the same as the panels', and
+  an empty is pale with its floor showing. A side or an end face is never
+  seen. How full a box is shows only where the load is open to the sky.
 - **Look at real places first.** Every new kind starts from a handful of
   real ones (below); the supermarket's service bay and the ferry's layout
   came from them.
