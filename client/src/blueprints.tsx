@@ -298,7 +298,7 @@ export const GOODS: Record<Good, { label: string; color: string; glyph: string; 
   },
   Stone: {
     label: "stone",
-    color: "#8E9399",
+    color: "#737A83",
     // A heap of broken rock, three stones on a pile.
     glyph: "M2 21l3.5-6 4 1 2.5-5 4 2 2.5 3.5L22 21zM7 9.5l3-3 3.5 1.5L12 11l-4 .5zM14.5 6.5 17 4l3 2-1 3.5-3 .5z",
     price: 0.5,

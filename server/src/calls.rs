@@ -160,7 +160,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             // The depot's own lorry goes to the nearest maker's yard with
             // the good, and back with it.
             CallKind::Fetch => free_vehicle(world, at, CarRole::Truck).and_then(|(car, door)| {
-                let seller = nearest_source(world, at, good)?;
+                let seller = nearest_source(world, at, good, order.min(good.per_box()))?;
                 crate::car::spawn::start_trip(world, events, car, door, seller, now, GameTime::MAX).then(|| {
                     world.calls[i].from = Some(seller);
                     car
@@ -180,15 +180,16 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
     }
 }
 
-/// The nearest maker's yard in town with the good on it, by road. `None`
-/// where nothing can be reached.
-fn nearest_source(world: &World, at: EntityId, good: Good) -> Option<EntityId> {
+/// The nearest maker's yard in town with a load of the good on it, by
+/// road: a lorry goes for a load, not for the last shift's handful.
+/// `None` where nothing can be reached.
+fn nearest_source(world: &World, at: EntityId, good: Good, load: f64) -> Option<EntityId> {
     let door = world.street_of(at)?;
     let mut routes = Routes::from(world, door);
     let sources: Vec<EntityId> = world
         .objects
         .iter()
-        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::source(b.kind, good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
+        .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::source(b.kind, good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0 && s.level >= load)))
         .map(|e| e.id)
         .collect();
     sources

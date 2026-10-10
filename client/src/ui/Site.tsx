@@ -101,7 +101,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   };
   const ruleless = () => nearest() && !nearest()!.rules[g()];
   return (
-    <div class="mt-1 pl-[36px]">
+    <div class="mt-1.5 pl-[36px]">
       <Show when={van()}>
         {(v) => <Line dot="#57A773" text="On the van, on its way" act={<Btn onClick={() => setFollowing(v().id)}>follow</Btn>} />}
       </Show>
@@ -143,7 +143,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
           />
         </Show>
       </Show>
-      <Show when={ruleless() && !van() && !stocked()}>
+      <Show when={ruleless() && !van() && !stocked() && !maker() && !parked() && !coming()}>
         <Line
           dot="rgb(var(--ink) / 0.3)"
           text={ruled() ? `The depot keeps ${label()} now` : `The depot keeps no ${label()} of its own`}
@@ -155,17 +155,23 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   );
 }
 
+/** A line of where a material is: a dot of how it stands, what, and the
+ *  fix, if there is one, under it, so the words keep the card's width. */
 function Line(props: { dot: string; text: string; sub?: string; act?: JSX.Element }) {
   return (
-    <div class="flex items-center gap-2.5 py-0.5">
-      <span class="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: props.dot }} />
-      <div class="min-w-0 flex-1 leading-tight">
-        <div class="text-[13.5px] font-semibold">{props.text}</div>
-        <Show when={props.sub}>
-          <div class="soft text-[11.5px]">{props.sub}</div>
-        </Show>
+    <div class="py-0.5">
+      <div class="flex items-baseline gap-2.5">
+        <span class="h-2.5 w-2.5 shrink-0 translate-y-[1px] rounded-full" style={{ background: props.dot }} />
+        <div class="min-w-0 flex-1 leading-tight">
+          <div class="text-[13.5px] font-semibold">{props.text}</div>
+          <Show when={props.sub}>
+            <div class="soft text-[11.5px]">{props.sub}</div>
+          </Show>
+        </div>
       </div>
-      {props.act}
+      <Show when={props.act}>
+        <div class="mt-1.5 flex justify-end">{props.act}</div>
+      </Show>
     </div>
   );
 }
