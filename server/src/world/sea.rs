@@ -222,6 +222,14 @@ impl World {
     /// first shop, fuel, every box the town's (docs/game.md §The opening).
     pub fn commission(&mut self, harbour: EntityId, now: GameTime) {
         let first = !self.objects.iter().any(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Ferry));
+        // Its tug stands by the ramp from the first.
+        if let Some(tug) = self.tug_of(harbour)
+            && let Some(rest) = self.berth(harbour).map(|b| b.rest())
+            && let Some(GameObject::Car(c)) = self.objects.get_mut(tug).map(|e| &mut e.object)
+            && c.spot.is_none()
+        {
+            c.spot = Some(rest);
+        }
         if self.ferry_of(harbour).is_some() || self.berth(harbour).is_none() {
             return;
         }
@@ -487,8 +495,13 @@ impl World {
                 events.wake(s.ends - now, tug);
                 return;
             }
+            let rest = self.berth(harbour).map(|b| b.rest());
             if let Some(GameObject::Car(c)) = self.objects.get_mut(tug).map(|e| &mut e.object) {
-                c.spot = Some(end_pose(&s));
+                // Back at its place it faces the land, ready for the next.
+                c.spot = Some(match (s.to, rest) {
+                    (Place::Rest, Some(rest)) => rest,
+                    _ => end_pose(&s),
+                });
                 c.shunt = None;
             }
             self.arrive(events, tug, harbour, s.to, now);

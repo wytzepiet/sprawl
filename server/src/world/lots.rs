@@ -971,7 +971,9 @@ impl World {
             .objects
             .iter()
             .filter_map(|e| match e.object {
-                GameObject::Car(ref c) if c.trip.is_none() => Some((e.id, c.spot, e.position?)),
+                // A ferry at its berth and a tug on its apron stand where they
+                // stand: neither is in a lot.
+                GameObject::Car(ref c) if c.trip.is_none() && !matches!(c.role, crate::protocol::CarRole::Ferry | crate::protocol::CarRole::Tug) => Some((e.id, c.spot, e.position?)),
                 _ => None,
             })
             .collect();

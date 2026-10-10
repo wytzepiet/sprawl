@@ -383,6 +383,15 @@ pub fn exported(world: &mut World, harbour: EntityId, good: Good, units: f64, no
     door(world, harbour, good, export(good, units), now);
 }
 
+/// What a van carries of a good: a shop's shelf of crates or a station's
+/// tanks, and five of timber, so a site goes up a vanload at a time.
+pub fn van_load(good: Good) -> f64 {
+    match good {
+        Good::Crates | Good::Fuel => 40.0,
+        Good::Timber => 5.0,
+    }
+}
+
 /// What booking `boxes` of a good costs, full, at the world's price and
 /// the margin: what the treasury must hold to book them.
 pub fn quote(good: Good, boxes: u32) -> f64 {

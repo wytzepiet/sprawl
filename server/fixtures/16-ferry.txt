@@ -1,5 +1,4 @@
-# A ferry terminal: queue lanes for one sailing down to the ramp, the ferry at its berth, the terminal by the road
-# The port's letter is the sandbox's alone for now: the server draws it as grass.
+# A ferry harbour: its trailer park on the street side, the apron and the ramp on the quay, the berth behind it
 ~~~~~~~~~~~~~~~~~~~~~~
 ~~~~~~~~~~~~~~~~~~~~~~
 ~~~~~~~~~~~~~~~~~~~~~~

@@ -55,9 +55,6 @@ pub struct Blueprint {
     /// The vehicles it runs, each in a dock of its yard. A kind with
     /// shelves and vehicles delivers them (`economy::depot`).
     pub vehicles: &'static [CarRole],
-    /// Slots in its yard for boxes: a harbour's trailer park, a depot's
-    /// empties (`Building::park`).
-    pub slots: u8,
     /// Stands with its back to the sea: the world's ferry berths at the
     /// quay behind it (`world/sea.rs`).
     pub quay: bool,
@@ -161,7 +158,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     };
 
     let row = |class, homes, jobs, size, lot, timber, taps| Blueprint {
-        class, homes, jobs, size, lot, timber, taps, shelves: &[], makes: None, vehicles: &[], slots: 0, quay: false, farm: false,
+        class, homes, jobs, size, lot, timber, taps, shelves: &[], makes: None, vehicles: &[], quay: false, farm: false,
     };
     vec![
         (House, row(Living, 2, 0, (1, 1), (0, 0), 4, household(2))),
@@ -192,12 +189,10 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         }),
         // Where the town's goods are kept, a little of every class: two
         // boxes of crates, two tank boxes, three of timber. Its lorry hauls
-        // boxes from the harbour, its vans deliver to shops and sites, and
-        // its yard keeps four empties.
+        // boxes from the harbour and its vans deliver to shops and sites.
         (Depot, Blueprint {
             shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60)],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
-            slots: 4,
             ..row(Industry, 0, 6, (2, 2), (2, 2), 10, vec![shift(6, 18, 6)])
         }),
         // Where food comes from. Four hands, six to three, each growing a
@@ -216,13 +211,12 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             farm: true,
             ..row(Industry, 0, 4, (3, 2), (2, 2), 8, vec![shift(6, 15, 4)])
         }),
-        // The door: a terminal on the quay, the ramp behind it, and a park
-        // of eight trailers on the street side with the tug that shunts
-        // them. Two hands drive the tug and work the ramp, dawn to late.
+        // The door: an apron on the quay that the tug crosses, the ramp
+        // behind it, and a trailer park on the street side, its docks the
+        // slots boxes stand in, with the tug that shunts them. Two hands drive the tug and work the ramp, dawn to late.
         // Built from nothing: it is where timber first comes in.
         (Harbour, Blueprint {
             vehicles: &[CarRole::Tug],
-            slots: 8,
             quay: true,
             ..row(Industry, 0, 2, (3, 1), (3, 2), 0, vec![shift(6, 22, 2)])
         }),
@@ -247,7 +241,7 @@ pub fn check() {
         assert_eq!(*kind, BuildingKind::ALL[i], "{kind:?} missing from BuildingKind::ALL");
         assert!(!b.farm || b.vehicles.contains(&CarRole::Tractor), "{kind:?} farms without a tractor");
         // A harbour has a park for the ferry's boxes and a tug to shunt them.
-        assert!(!b.quay || (b.slots > 0 && b.vehicles.contains(&CarRole::Tug)), "{kind:?} has a quay and nowhere to land a box");
+        assert!(!b.quay || (b.lot.1 > 0 && b.vehicles.contains(&CarRole::Tug)), "{kind:?} has a quay and nowhere to land a box");
         assert!(b.makes.is_none_or(|g| b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} makes what it has no shelf for");
         for tap in &b.taps {
             // T1: a fixed-length service still takes time.

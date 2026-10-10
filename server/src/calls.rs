@@ -170,7 +170,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             }),
             CallKind::Stock => nearest_seller(world, at, good).and_then(|(depot, van, door)| {
                 crate::car::spawn::start_trip(world, events, van, door, at, now, GameTime::MAX).then(|| {
-                    world.calls[i].load = economy::loaded(world, depot, good, order);
+                    world.calls[i].load = economy::loaded(world, depot, good, order.min(economy::van_load(good)));
                     van
                 })
             }),

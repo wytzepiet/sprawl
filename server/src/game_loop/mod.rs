@@ -672,6 +672,17 @@ fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     }
     // A harbour reached, or cut off: the town's way out, and its ferry.
     world.mark_harbours(events.now());
+    // A site reached, and not calling: it calls for its timber.
+    let waiting: Vec<EntityId> = world
+        .objects
+        .iter()
+        .filter(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_some()))
+        .map(|e| e.id)
+        .filter(|&id| world.street_of(id).is_some() && !world.calls.iter().any(|c| c.at == id))
+        .collect();
+    for id in waiting {
+        crate::calls::turn(world, events, id, events.now());
+    }
     // Their ferries and tugs read the time from where they stand, so a
     // wake too many is no harm, and one too few after a load would be.
     let harbours: Vec<EntityId> = world.harbours.keys().copied().collect();
