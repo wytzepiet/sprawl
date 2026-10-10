@@ -21,3 +21,19 @@ export const launch = () =>
         env: { ...process.env, VK_ICD_FILENAMES: `${dirname(realpathSync(SOFTWARE))}/vk_swiftshader_icd.json` },
       })
     : chromium.launch({ channel: "chrome", args: ["--enable-unsafe-webgpu"] });
+
+/**
+ * A page of it, the canvas configured so the glass can copy from it: the
+ * Lite fork checked out here may lack `copySource`, and without it the
+ * UI's glass draws nothing behind the cards. Only for photographs.
+ */
+export async function open(browser: Awaited<ReturnType<typeof launch>>, viewport: { width: number; height: number }) {
+  const page = await browser.newPage({ viewport });
+  await page.addInitScript(() => {
+    const configure = GPUCanvasContext.prototype.configure;
+    GPUCanvasContext.prototype.configure = function (c: GPUCanvasConfiguration) {
+      return configure.call(this, { ...c, usage: (c.usage ?? GPUTextureUsage.RENDER_ATTACHMENT) | GPUTextureUsage.COPY_SRC });
+    };
+  });
+  return page;
+}

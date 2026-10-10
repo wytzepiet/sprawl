@@ -4,6 +4,7 @@
  *
  *   bun run look 6,80         the game round tile (6, 80), ten tiles each way
  *   bun run look 6,80,4       four tiles each way
+ *   --ui                      with the toolbar, cards and pins, as played
  *   --frames 8 --every 250    eight frames a quarter second apart, and a strip
  *                             of them side by side
  *   T=0.7 bun run look ...    at this time of day (0 midnight, 0.5 noon)
@@ -12,7 +13,7 @@
  * `.dev/look/frame-<n>.png` and `.dev/look/strip.png`. The game is the one
  * `bun run dev` runs, or SPRAWL_CLIENT_PORT's, in `browser.ts`'s browser.
  */
-import { launch } from "./browser";
+import { launch, open } from "./browser";
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -35,14 +36,15 @@ const [x, y, half = 10] = (args[0] ?? "0,0").split(",").map(Number);
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
+const ui = args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1);
 const browser = await launch();
-const page = await browser.newPage({ viewport: VIEW });
+const page = await open(browser, ui ? { width: 1280, height: 860 } : VIEW);
 page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
 page.on("console", (m) => m.type() === "error" && console.log(`console: ${m.text().slice(0, 300)}`));
 await page.goto(process.env.T ? `${CLIENT}/?t=${process.env.T}` : CLIENT);
 await page.waitForFunction(() => "sprawlCamera" in window, null, { timeout: 60_000 });
-// The map alone: no toolbar, dials or pins over it.
-await page.addStyleTag({ content: "#root * { visibility: hidden } #root canvas { visibility: visible }" });
+// The map alone: no toolbar, dials or pins over it, unless asked for.
+if (!ui) await page.addStyleTag({ content: "#root * { visibility: hidden } #root canvas { visibility: visible }" });
 // The camera looks at a tile's middle; `look` takes the half height seen.
 await page.evaluate(([x, y, h]) => (window as any).sprawlCamera.look(x + 0.5, y + 0.5, h), [x, y, half]);
 await page.waitForTimeout(SETTLE_MS);
