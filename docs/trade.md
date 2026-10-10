@@ -1,6 +1,10 @@
 # Trade: depots, shipments, listings and contracts
 
-Status: direction, 2026-10-10. Nothing built. Replaces the price economy
+Status: direction, 2026-10-10. Built: coins at the border, GDP, the
+world's two prices (`economy.rs`), orders by hand and top-up rules on
+depots (keep, fill, sell) booking the ferry, with the world as the only
+source (`haul.rs`, `shipping.md` §Built). Not built: the Exchange,
+listings, standing offers, contracts. Replaces the price economy
 of `economy.md` as the game's economy: what goes and what stays is at the
 end, and `shelved.md` has the price economy under that date. `game.md` is
 the short version; this is the detail.

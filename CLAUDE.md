@@ -67,8 +67,16 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   shelves stay stocked and its residents fed: no shelf and no tank empty
   two midnights running, a day's meals eaten every day, and coins left at
   the end. It prints each day's hours worked, eaten out and filled up,
-  GDP by building, and coins across the border. A chain that stops
-  delivering shows here before it shows in play.
+  GDP by building, and coins across the border. Its town's only door is a
+  harbour: everything it buys comes by ferry and its depot's lorry, and
+  the farm's crates go out the same way. `SEA=1` adds each midnight's
+  border: the park, the deck, the lorries and the yards. A chain that
+  stops delivering shows here before it shows in play.
+- **The opening, end to end:** `cargo test the_opening` plays it: the
+  starter pack lands, the tapped lorry fetches, a house waits for its
+  timber, its settlers come on the next ferry, a box sold is paid for.
+  In a running game, `curl localhost:4801/sea` is the border as the server
+  has it, and `bun run act send|standing|order|sell` work it by hand.
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.
@@ -90,8 +98,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `server/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
   photographs each: `.dev/shots/sheet.png` has them all on one page.
   `--keep` leaves that stack up to look round by hand. The renderer is
-  WebGPU only, so without desktop Chrome (a cloud container) it needs a
-  Chrome whose WebGPU runs in software (SwiftShader); not yet tried. A new look gets a
+  WebGPU only; in a cloud container Playwright's Chromium draws it in
+  software (SwiftShader), slowly but truly. A new look gets a
   fixture that shows it, so the next change can be seen not to break it.
 - **The plan:** `bun run plan [fixture…]` draws the town grid flat as SVG
   in `.dev/plan/`, from the sandbox's own code, in well under a second a

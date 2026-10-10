@@ -50,15 +50,18 @@ that assert old design are rewritten, not obeyed.
 - Milestone 0 is done (`roadmap.md`): no prices inside a town, the nearest
   seller with stock, people stay in their town, coins only at the border,
   the level as GDP.
-- A ferry harbour was being built in another session when this was
-  written. If it is on `main`, build on it; if it is on an unmerged
-  branch, read it and decide.
-- The road's edge, the generated roads and the fog are still in the code,
-  though shelved; the old port's call-driven world ship is in `sea.rs`.
+- The ferry harbour is the only door (`shipping.md` §Built): a ferry on a
+  timetable, a tug, a trailer park, boxes hauled by depots' lorries, the
+  starter pack, top-up rules, exports paid as the ferry sails. The edge,
+  the generated roads, the fog and the port's world ship are gone.
+- Goods are split from needs: crates, fuel, timber. Buildings cost timber,
+  not coins, and stand as sites until a van has brought it.
 - The skill tree is switched off: everything unlocked, its screen gone.
 - The terrain is islands in one ocean, a fifth of the map land.
-- The client renders with Babylon Lite on WebGPU only, which a cloud
-  container cannot run (`canvas.md`).
+- The client renders with Babylon Lite on WebGPU only, and a cloud
+  container can run it: headless Chromium draws WebGPU in software
+  (SwiftShader), so `look` and `shots` photograph the real game
+  (`canvas.md`).
 
 ## The work
 
@@ -67,8 +70,9 @@ on its own, and is done when it is tested, seen (in the flat view's
 pictures, at least), and its documents say what was built.
 
 1. **The flat view** (`canvas.md`): the game drawn on a 2D canvas from the
-   same state, a script that photographs it headless, and the minimap. Do
-   this first: everything after it can then be seen from the cloud.
+   same state, a script that photographs it headless, and the minimap.
+   Set aside for now: the cloud sees the real game (see above), which was
+   its first reason; the minimap and the far zoom remain its case.
 2. **Terrain** (`game.md` §The island and the door): mostly sea, several
    islands, one connected ocean, a coast with room for a harbour and a
    starting town on each; checked on twenty seeds.

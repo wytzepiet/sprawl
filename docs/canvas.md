@@ -1,7 +1,11 @@
 # The flat view: the game in 2D, and seeing what the server does
 
 Status: direction, 2026-10-10. Nothing built beyond `bun run plan`, which
-draws the town grid flat as SVG from the sandbox's code.
+draws the town grid flat as SVG from the sandbox's code. Its first reason
+is gone: headless Chromium runs WebGPU in software (SwiftShader, with
+`--enable-unsafe-webgpu --use-angle=swiftshader
+--use-webgpu-adapter=swiftshader`), so a cloud session photographs the
+real game, slowly. The minimap, the far zoom and the low-end mode stand.
 
 ## Why
 

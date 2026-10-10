@@ -1,6 +1,11 @@
 # Buildings: the roster
 
-Status: draft, 2026-10-10, for the player to correct. What kinds the game
+Status: draft, 2026-10-10, for the player to correct. Built so far:
+house, apartment, shop, office, factory, gas station, supermarket, the
+general depot (`Depot`: crates 200, fuel 100, timber 60, a lorry and two
+vans), the farm and the ferry harbour, each built from timber (house 4,
+apartment 12, shop 4, office 10, factory 14, gas station 6, supermarket
+16, depot 10, farm 8, harbour none). Goods are crates, fuel and timber. What kinds the game
 has once trade, materials and chains are in: what each is for, what it
 takes and makes, what it is built from, and what moves its goods. The
 numbers are guesses to be tuned in play; the shape is the point. A kind is
