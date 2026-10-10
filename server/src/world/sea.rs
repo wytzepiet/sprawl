@@ -258,8 +258,11 @@ impl World {
     /// next sailing from the world, the one it has not yet left on.
     pub fn next_call(&self, ferry: EntityId) -> Option<GameTime> {
         let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return None };
-        let away = c.run.is_none() && c.spot.is_none();
-        Some(if away { c.due } else if c.spot.is_some() { c.due + TURN } else { c.due + DWELL + TURN })
+        let berth = self.berth(c.owner)?;
+        // Coming in, it has left the world already: the sailing after it.
+        // Going out, or away, `due` is its next berthing, which is the one.
+        let inbound = c.run.as_ref().is_some_and(|r| r.path.last() == Some(&berth.tile(2)));
+        Some(if inbound { c.due + DWELL + TURN } else if c.spot.is_some() { c.due + TURN } else { c.due })
     }
 
     /// The ferry woke: time to leave the world, to cast off, or to roll

@@ -1160,9 +1160,9 @@ mod tests {
         let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
         let depot = stroke(&mut world, BuildingKind::Depot, &[(0, 1)])[0].unwrap();
         assert!(world.street_of(depot).is_none(), "one tile is no depot");
-        stroke(&mut world, BuildingKind::Depot, &[(0, 1), (1, 1), (1, 2), (0, 2), (0, 3), (1, 3), (1, 4), (0, 4)]);
-        assert_eq!(tiles_of(&world, depot).len(), 8);
-        assert!(world.street_of(depot).is_some(), "two by four is, and the street reaches it");
+        stroke(&mut world, BuildingKind::Depot, &[(0, 1), (1, 1), (2, 1), (2, 2), (1, 2), (0, 2), (0, 3), (1, 3), (2, 3), (2, 4), (1, 4), (0, 4)]);
+        assert_eq!(tiles_of(&world, depot).len(), 12);
+        assert!(world.street_of(depot).is_some(), "three by four is, and the street reaches it");
     }
 
     /// A building cut in two is two: the part with the tile it is known by

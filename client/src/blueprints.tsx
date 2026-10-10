@@ -117,7 +117,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.6],
     timber: 10, tab: "trade",
     size: [2, 2],
-    lot: [2, 2],
+    lot: [3, 2],
   },
   House: {
     label: "House",
@@ -225,6 +225,19 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.4],
     timber: 8, tab: "work",
     size: [3, 2],
+    lot: [2, 2],
+  },
+  Sawmill: {
+    label: "Sawmill",
+    color: "#8A5A2B",
+    material: "#7A5A3A",
+    // A saw blade over a log: the teeth round, the log's rings below.
+    glyph: "M12 2l1.6 2.2 2.6-.8.4 2.7 2.7.4-.8 2.6L20.7 11l-2.2 1.6.8 2.6-2.7.4-.4 2.7-2.6-.8L12 19.7l-1.6-2.2-2.6.8-.4-2.7-2.7-.4.8-2.6L3.3 11l2.2-1.6-.8-2.6 2.7-.4.4-2.7 2.6.8zm0 5.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM3 20h18v2H3z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.35],
+    timber: 6, tab: "work",
+    size: [2, 2],
     lot: [2, 2],
   },
 };

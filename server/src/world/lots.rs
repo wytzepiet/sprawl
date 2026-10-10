@@ -1177,8 +1177,8 @@ mod tests {
     fn a_depot_has_docks_a_lorry_backs_into() {
         let mut world = street();
         let depot = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Depot).unwrap();
-        let shop = world.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::Shop).unwrap();
-        assert_eq!(world.lot_mut(depot).unwrap().spots.len(), 4, "four docks across two tiles");
+        let shop = world.place_on_street(GridCoord { x: 7, y: 1 }, BuildingKind::Shop).unwrap();
+        assert_eq!(world.lot_mut(depot).unwrap().spots.len(), 7, "seven docks across three tiles");
         world.lot_mut(shop).unwrap();
         // One of the depot's own lorries, in its dock since the depot was reached.
         let lorry = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).unwrap();

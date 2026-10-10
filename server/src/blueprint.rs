@@ -193,7 +193,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Depot, Blueprint {
             shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60)],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
-            ..row(Industry, 0, 6, (2, 2), (2, 2), 10, vec![shift(6, 18, 6)])
+            ..row(Industry, 0, 6, (2, 2), (3, 2), 10, vec![shift(6, 18, 6)])
         }),
         // Where food comes from. Four hands, six to three, each growing a
         // sitting's worth every few minutes: at eighteen crates an hour a
