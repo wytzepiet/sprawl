@@ -104,7 +104,9 @@ export default function Bill(props: { hidden: boolean }) {
               )}
             </For>
             <Show when={stuck() > 0}>
-              <span class="font-semibold" style={{ color: "#C77A12" }}>{plural(stuck(), "step no longer fits", "steps no longer fit")}</span>
+              <span class="font-semibold" style={{ color: "#C77A12" }} title="Drawn amber: something stands there, or no street reaches it. Undo, or the demolisher, takes it back.">
+                {plural(stuck(), "step can't be built", "steps can't be built")}
+              </span>
             </Show>
           </div>
         </div>
