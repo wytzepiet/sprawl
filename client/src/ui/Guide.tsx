@@ -187,7 +187,7 @@ export default function Guide() {
             </p>
           }
         >
-          <p>{parked().length} boxes are in the trailer park. Tap the depot's lorry to fetch them, and ride along.</p>
+          <p>{parked().length === 1 ? "A box is" : `${parked().length} boxes are`} in the trailer park. Tap the depot's lorry to fetch {parked().length === 1 ? "it" : "them"}, and ride along.</p>
           <Btn big onClick={fetch1} color="#A0714A" disabled={!depot()}>Send the lorry</Btn>
         </Show>
       ),
