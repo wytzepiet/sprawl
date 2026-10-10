@@ -151,7 +151,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         .calls
         .iter()
         .filter(|call| call.at == id)
-        .map(|call| json!({ "what": format!("{:?}", call.kind), "since": hhmm(call.raised), "answered_by": call.answered_by.map(|c| link(world, c)) }))
+        .map(|call| json!({ "what": format!("{:?}", call.kind), "good": call.good, "since": hhmm(call.raised), "answered_by": call.answered_by.map(|c| link(world, c)) }))
         .collect();
     let served: Vec<Value> = bp
         .taps
@@ -175,10 +175,24 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
             }
             let joined = world.street_of(e.id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined));
             let tiles = (at.x - here.x).abs() + (at.y - here.y).abs();
-            depots.push((tiles, json!({ "depot": link(world, e.id), "tiles": tiles, "joined": joined, "stocks": d.stocks.iter().map(|(g, s)| (format!("{g:?}"), json!(s.level))).collect::<serde_json::Map<_, _>>() })));
+            depots.push((tiles, json!({ "depot": link(world, e.id), "tiles": tiles, "joined": joined, "standing": d.standing, "rules": d.rules, "stocks": d.stocks.iter().map(|(g, s)| (format!("{g:?}"), json!(s.level))).collect::<serde_json::Map<_, _>>() })));
         }
     }
     depots.sort_by_key(|(t, _)| *t);
+    // Where a site's materials are made in town: every maker of one, its
+    // yard, nearest first.
+    let mut makers: Vec<(i32, Value)> = Vec::new();
+    if let (Some(site), Some(here)) = (&b.site, here) {
+        for e in world.objects.iter() {
+            let GameObject::Building(ref m) = e.object else { continue };
+            let (Some(good), Some(at)) = (crate::blueprint::blueprint(m.kind).makes, e.position) else { continue };
+            if m.site.is_none() && site.contains_key(&good) {
+                let tiles = (at.x - here.x).abs() + (at.y - here.y).abs();
+                makers.push((tiles, json!({ "maker": link(world, e.id), "kind": m.kind, "good": good, "level": m.stocks.get(&good).map_or(0.0, |s| s.level), "tiles": tiles })));
+            }
+        }
+    }
+    makers.sort_by_key(|(t, _)| *t);
     json!({
         "kind": "building",
         "id": id,
@@ -186,11 +200,12 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "building_kind": b.kind,
         "reached": world.street_of(id).is_some(),
         "stocks": b.stocks.iter().map(|(good, s)| json!({ "need": good, "good": good, "full": s.level / s.cap, "level": s.level, "cap": s.cap })).collect::<Vec<_>>(),
-        "site": b.site.map(|s| json!({ "timber": s.level, "of": s.cap })),
+        "site": b.site,
         "rules": b.rules,
         "standing": b.standing,
         "selling": b.selling,
         "depots": depots.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+        "makers": makers.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
         "here": here,
         "household": household,
         "staff": staff,

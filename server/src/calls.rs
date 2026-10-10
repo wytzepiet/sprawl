@@ -3,8 +3,8 @@
 //!
 //! A call has a good and a place. A stock at its reorder point calls, and
 //! the building takes its turn: the nearest depot with the good on its
-//! shelf and a van free, by road, delivers it. A site calls for its timber
-//! the same way. A depot's own shelf of a good a maker in town makes
+//! shelf and a van free, by road, delivers it. A site calls for each of
+//! its materials the same way. A depot's own shelf of a good a maker in town makes
 //! sends its lorry to fetch from the nearest maker's yard with some; what
 //! the town has to buy comes by sea (`haul`). A farm's tractor is no call
 //! at all: it runs over the farm's own land (`world/fields.rs`). A vehicle
@@ -27,7 +27,7 @@ use crate::world::World;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum CallKind {
-    /// A stock at its reorder point, or a site's timber: answered by the
+    /// A stock at its reorder point, or a site's material: answered by the
     /// nearest depot with the good and a van free.
     Stock,
     /// A depot's lorry out to a maker's yard for its input, and back with
@@ -67,12 +67,13 @@ pub fn staffed(world: &World, building: EntityId) -> bool {
     world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at == Some(building) && r.selected == Some(crate::needs::Need::Work)))
 }
 
-/// What a building is short of and calls for: a site, its timber; a
-/// standing building, every shelf its row buys under its reorder point.
+/// What a building is short of and calls for: a site, each material not
+/// yet in; a standing building, every shelf its row buys under its
+/// reorder point.
 fn wants(world: &World, building: EntityId) -> Vec<Good> {
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return Vec::new() };
-    if let Some(site) = b.site {
-        return if site.short() > 0.0 { vec![Good::Timber] } else { Vec::new() };
+    if let Some(site) = &b.site {
+        return site.iter().filter(|(_, s)| s.short() > 0.0).map(|(&g, _)| g).collect();
     }
     // A depot that sells a good fetches it whenever it has room for a
     // load, so what makers make goes through it and out to the world.
@@ -152,10 +153,7 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             continue;
         }
         let order = match world.objects.get(at).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => match b.site {
-                Some(site) => site.short(),
-                None => b.stocks.get(&good).map_or(0.0, |s| s.short()),
-            },
+            Some(GameObject::Building(b)) => b.site.as_ref().unwrap_or(&b.stocks).get(&good).map_or(0.0, |s| s.short()),
             _ => continue,
         };
         let answered = match kind {

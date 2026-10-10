@@ -32,6 +32,8 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Depot: { family: "industry", yard: { fill: "docks", end: "quiet", need: (n) => n / 2 } },
   // A sawmill's yard is its log and plank stacks, a lorry backed to them.
   Sawmill: { family: "industry", yard: { fill: "docks", end: "quiet", need: (n) => n / 2 } },
+  // A quarry's yard is its heaps of broken stone, a lorry backed to them.
+  Quarry: { family: "industry", yard: { fill: "docks", end: "quiet", need: (n) => n / 2 } },
   // A supermarket's car park is its shop window, on the busy corner.
   Supermarket: { family: "box", yard: { fill: "cars", end: "busy", need: (n) => 3 * n } },
   GasStation: { family: "box" },

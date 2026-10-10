@@ -64,7 +64,8 @@ const CHASSIS: Shade = [0.28, 0.29, 0.31];
  * on a dark chassis, its shape and colour what is in it, so a park reads
  * at a glance. Crates in a closed box in a clear red, the colour of food
  * on a map; timber stacked warm brown on a flatbed; fuel in a silver
- * tank; an empty, pale and open, its floor seen down in it.
+ * tank; stone heaped grey in a low lined tub, a bulk box; an empty, pale
+ * and open, its floor seen down in it.
  */
 const { w: W, l: L, h: H } = TRAILER;
 const BED = 0.045;
@@ -75,6 +76,13 @@ const SHAPES = {
     // Two stacks of sawn timber, end on, with a gap between.
     [box(W - 0.02, L / 2 - 0.03, 0.12), [0, -L / 4, BED + 0.06], WHITE],
     [box(W - 0.02, L / 2 - 0.03, 0.12), [0, L / 4, BED + 0.06], [0.88, 0.86, 0.84]],
+  ]),
+  Stone: shape([
+    [box(W, L, BED), [0, 0, BED / 2], CHASSIS],
+    // The tub, low, and the heap in it, a ridge along it.
+    [box(W - 0.01, L - 0.01, 0.07), [0, 0, BED + 0.035], [0.72, 0.72, 0.72]],
+    [box(W - 0.05, L - 0.08, 0.05), [0, 0, BED + 0.095], WHITE],
+    [box(W - 0.11, L - 0.2, 0.035), [0, 0, BED + 0.135], WHITE],
   ]),
   Fuel: shape([
     [box(W - 0.03, L, BED), [0, 0, BED / 2], CHASSIS],
@@ -93,6 +101,7 @@ const SHAPES = {
 const COLOURS: Record<keyof typeof SHAPES, Rgb> = {
   Crates: rgb(0.83, 0.29, 0.24),
   Timber: rgb(0.62, 0.42, 0.25),
+  Stone: rgb(0.6, 0.61, 0.63),
   Fuel: rgb(0.8, 0.82, 0.85),
   Empty: rgb(0.9, 0.9, 0.87),
 };

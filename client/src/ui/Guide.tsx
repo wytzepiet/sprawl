@@ -122,7 +122,7 @@ export default function Guide() {
       done: depots().length > 0,
       body: () => (
         <>
-          <p>Where the town keeps what lands. Its lorry fetches boxes; its vans take timber to the sites.</p>
+          <p>Where the town keeps what lands. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone.</p>
           <Btn onClick={take({ Building: "Depot" })} color="#A0714A">Take the depot</Btn>
         </>
       ),
@@ -133,6 +133,7 @@ export default function Guide() {
       body: () => (
         <>
           <p>From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.</p>
+          <p>A street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile.</p>
           <Btn onClick={take("Street")}>Take the street</Btn>
         </>
       ),
@@ -145,7 +146,7 @@ export default function Guide() {
           when={parked().length > 0}
           fallback={
             <p>
-              Timber, crates and fuel, the world's gift, are on the first ferry
+              Timber, stone, crates and fuel, the world's gift, are on the first ferry
               <Show when={next()}>{(s) => <>: in at {clockAt(s().eta!)}, <b class="tabular-nums">{until(s().eta!)}</b> from now</>}</Show>.
             </p>
           }

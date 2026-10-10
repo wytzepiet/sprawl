@@ -30,9 +30,10 @@ export interface Blueprint {
   shape: "gabled" | "sawtooth" | "box";
   /** Heights a box may be built at; one is picked per building and kept. */
   heights: number[];
-  /** The timber it is built from, which a depot's van brings to its
-   *  site; none stands at once (`blueprint.rs`'s `timber`). */
-  timber: number;
+  /** What it is built from, a material each and how much, which a
+   *  depot's vans bring to its site; none stands at once (`blueprint.rs`'s
+   *  `materials`). */
+  materials: Partial<Record<Good, number>>;
   /** Which shelf of the build menu it stands on. */
   tab: Tab;
   /** The building's own footprint in tiles, wide along its frontage. */
@@ -41,6 +42,8 @@ export interface Blueprint {
   lot: [number, number];
   /** A harbour: a quay along its back wall, out over the water, where the ferry berths. */
   quay?: boolean;
+  /** What its hands make into its yard, for a depot's lorry (`blueprint.rs`'s `makes`). */
+  makes?: Good;
 }
 
 /** The four ways a plot can lie: which side the lot and street are on. */
@@ -101,7 +104,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.5],
-    timber: 0, tab: "trade",
+    materials: {}, tab: "trade",
     size: [3, 1],
     lot: [3, 2],
     quay: true,
@@ -115,7 +118,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.6],
-    timber: 10, tab: "trade",
+    materials: { Timber: 10 }, tab: "trade",
     size: [2, 2],
     lot: [3, 2],
   },
@@ -128,7 +131,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "gabled",
     heights: [0],
-    timber: 4, tab: "homes",
+    materials: { Timber: 4 }, tab: "homes",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -141,7 +144,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "box",
     heights: [0.85, 1.15, 1.5],
-    timber: 12, tab: "homes",
+    materials: { Timber: 12, Stone: 8 }, tab: "homes",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -155,7 +158,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.45, 0.55],
-    timber: 4, tab: "shops",
+    materials: { Timber: 4 }, tab: "shops",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -171,7 +174,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     // Tall, and worth varying: a few towers among them is what gives a
     // business district a skyline instead of a plateau.
     heights: [1.0, 1.45, 2.3],
-    timber: 10, tab: "work",
+    materials: { Timber: 10, Stone: 6 }, tab: "work",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -184,7 +187,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "sawtooth",
     heights: [0],
-    timber: 14, tab: "work",
+    materials: { Timber: 14, Stone: 8 }, tab: "work",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -197,7 +200,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.3],
-    timber: 6, tab: "services",
+    materials: { Timber: 6, Stone: 4 }, tab: "services",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -210,7 +213,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: SPECIAL,
     shape: "box",
     heights: [0.5],
-    timber: 16, tab: "services",
+    materials: { Timber: 16, Stone: 10 }, tab: "services",
     size: [2, 2],
     lot: [0, 0],
   },
@@ -223,7 +226,8 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.4],
-    timber: 8, tab: "work",
+    materials: { Timber: 8 }, tab: "work",
+    makes: "Crates",
     size: [3, 2],
     lot: [2, 2],
   },
@@ -236,7 +240,22 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.35],
-    timber: 6, tab: "work",
+    materials: { Timber: 6 }, tab: "work",
+    makes: "Timber",
+    size: [2, 2],
+    lot: [2, 2],
+  },
+  Quarry: {
+    label: "Quarry",
+    color: "#7D7F86",
+    material: "#8C8A84",
+    // A rock face, benched, a pick across the heap below.
+    glyph: "M2 21 8 7l3 4 4-7 7 17zM9.5 13.5l2 2.5 2-3.5 2.5 5.5h-8zM3 22h18v1H3z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.3],
+    materials: { Timber: 8 }, tab: "work",
+    makes: "Stone",
     size: [2, 2],
     lot: [2, 2],
   },
@@ -276,6 +295,14 @@ export const GOODS: Record<Good, { label: string; color: string; glyph: string; 
     glyph: "M3 4h18v4H3zM4 9.5h16V21H4zm3 2.5v6.5h2V12zm4 0v6.5h2V12zm4 0v6.5h2V12z",
     price: 0.2,
     box: 100,
+  },
+  Stone: {
+    label: "stone",
+    color: "#8E9399",
+    // A heap of broken rock, three stones on a pile.
+    glyph: "M2 21l3.5-6 4 1 2.5-5 4 2 2.5 3.5L22 21zM7 9.5l3-3 3.5 1.5L12 11l-4 .5zM14.5 6.5 17 4l3 2-1 3.5-3 .5z",
+    price: 0.5,
+    box: 20,
   },
   Fuel: {
     label: "fuel",
