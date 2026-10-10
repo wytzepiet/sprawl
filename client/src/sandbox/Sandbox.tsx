@@ -19,9 +19,9 @@ import { LETTERS, parseTown, tileOf, townOf, type Tile, type Town } from "../eng
 import { complete, paintable, PROGRAMS, touching, type Cell } from "../engine/town/brush";
 import type { BuildingKind, TerrainType } from "../generated";
 import { shaded, townMesh as mesh } from "../engine/town/roof";
-import { defaultJoins, type Polygon } from "../engine/town/footprint";
+import { defaultJoins } from "../engine/town/footprint";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
-import { asphalt, FERRY } from "../engine/town/dressing";
+import { asphalt } from "../engine/town/dressing";
 import { carShape, ROUNDING } from "../engine/objects/carShape";
 import { waterMaterial } from "../engine/water";
 import { GroundTiles } from "../engine/ground";
@@ -523,14 +523,14 @@ function build(ctx: EngineContext, casters: Casters, town: Town, theme: Theme, r
   for (const p of [...drawRoads(town, theme), ...pieces]) {
     const colour = p.colour ? rgb(p.colour.r, p.colour.g, p.colour.b) : WHITE;
     if (p.name === "pavement") {
-      const field = kerbs(kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines), roads: roadsOf(flatPolygons([...asphalt(town).street, ...asphalt(town).through, ...dressing.lanes.map((l): Polygon => [l])], 0)) }));
+      const field = kerbs(kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines), roads: roadsOf(flatPolygons([...asphalt(town).street, ...asphalt(town).through], 0)) }));
       add(p.name, p.geo, colour, [kerbPlugin(field, theme.road, colour), pavingPlugin(engine, true)], PAVING_ROUGHNESS);
     } else if (p.name === "street" || p.name === "through") {
       const on = runsOn(p.geo);
       add(p.name, p.geo, colour, [kerbPlugin(kerbs(kerbTexels(kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo))), rgb(0, 0, 0), colour)]);
     } else add(p.name, p.geo, colour);
   }
-  const { cars, docks, ships } = dressing;
+  const { cars, docks } = dressing;
   const trees = grove(ctx, "sandbox");
   const { matrices, colors } = treeInstances(dressing.trees, theme);
   plant(ctx, trees, matrices, colors, casters, [-town.w - 1, -town.h - 1, 1, 1]);
@@ -568,13 +568,6 @@ function build(ctx: EngineContext, casters: Casters, town: Town, theme: Theme, r
       quad([[p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z0 + h], [p[0], p[1], z0 + h]], [ey / len, -ex / len, 0], rgb);
     }
   };
-  // A ferry: a white hull, and on it a deckhouse in the port's blue,
-  // toward the bow.
-  for (const ship of ships) {
-    const [ux, uy] = [Math.cos(ship.angle), Math.sin(ship.angle)];
-    box(ship.x, ship.y, ship.angle, [FERRY.w, FERRY.l, 0.16], [0.96, 0.96, 0.95], -0.02);
-    box(ship.x + ux * 0.4, ship.y + uy * 0.4, ship.angle, [FERRY.w * 0.75, FERRY.l * 0.5, 0.14], [0.17, 0.42, 0.64], 0.14);
-  }
   // A car the game's shape, along `angle`, its front ahead.
   const SHAPE = carShape(CAR.w, CAR.l, CAR.h);
   for (const car of cars) {

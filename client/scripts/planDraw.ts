@@ -8,7 +8,7 @@ import type { BuildingKind } from "../src/generated";
 import { parseTown, type Tile } from "../src/engine/town/grid";
 import { intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
 import { facts } from "../src/engine/town/facts";
-import { asphalt, dress, FERRY, pavement } from "../src/engine/town/dressing";
+import { asphalt, dress, pavement } from "../src/engine/town/dressing";
 import { plans, roofFaces } from "../src/engine/town/roof";
 import { slope } from "../src/engine/town/mass";
 import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
@@ -50,10 +50,9 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   const fs = facts(town);
   const dressing = dress(town, fs);
 
-  // The asphalt: roads, and the drives and ramps leading off them, one
-  // surface.
+  // The asphalt: roads, and the drives leading off them, one surface.
   const { street, through } = asphalt(town);
-  fill([...street, ...dressing.lanes.map((l): Polygon => [l])], hex(T.road));
+  fill(street, hex(T.road));
   fill(through, hex(T.highway));
 
   // What stands on the ground: yard lines, lorries at docks, parked
@@ -67,11 +66,6 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
     const trailer = 0.01 + TRAILER.l / 2, cab = 0.01 + TRAILER.l + 0.02 + CAB.l / 2;
     box(dock.x + ux * trailer, dock.y + uy * trailer, dock.angle, TRAILER.l, TRAILER.w, "#e6e6e0");
     box(dock.x + ux * cab, dock.y + uy * cab, dock.angle, CAB.l, CAB.w, "#475c94");
-  }
-  for (const ship of dressing.ships) {
-    box(ship.x, ship.y, ship.angle, FERRY.l, FERRY.w, "#f5f5f2");
-    const [ux, uy] = [Math.cos(ship.angle), Math.sin(ship.angle)];
-    box(ship.x + ux * 0.4, ship.y + uy * 0.4, ship.angle, FERRY.l * 0.5, FERRY.w * 0.75, "#2b6ba3");
   }
 
   // The buildings: each part its kind's colour, a head lighter; the roof's

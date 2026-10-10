@@ -16,13 +16,8 @@ import { CAB, TRAILER } from "../objects/roadGeometry";
  *   enough. The rest is building. A depot's yard holds lorries at docks
  *   on the wall across from its street, and its office stands at the busy
  *   end; a supermarket's holds cars in rows, its car park on the corner.
- * - **Ferry ports**: down one side of a port, the one whose end reaches a
- *   street, runs its exit road, from the ramp at the quay back to the
- *   street, so the cars come off before the queue goes on. Beside it the
- *   yard holds the next sailing, queue lanes from the water back, as many
- *   tiles as one ferry load fills; the rest, in the far corner, is the
- *   terminal. At the middle of its water's edge, a ramp, and
- *   the ferry moored stern on to it (`ferries`).
+ * - **Harbours**: all yard, a trailer park, its slots the game's own
+ *   (`Building.park`), painted on by the town (`TownLayer`).
  * - **Loading bays**: a supermarket whose shop is two tiles or more each
  *   way takes its deliveries in a corner cut from it, a lorry long and
  *   wide, the lorry backed in along the wall with its tail to the door.
@@ -46,8 +41,6 @@ const BAY = { l: TRAILER.l + 0.02 + CAB.l + 0.04, w: TRAILER.w + 0.06 };
 export const DOCKS = 3;
 /** Cars in a tile of car park: two rows of five, an aisle between. */
 export const PARKED = 10;
-/** Cars queued in a tile of a ferry port's yard: four lanes of two. */
-export const QUEUED = 8;
 
 export interface Facts {
   /** The town as drawn: the painted one with the heads raised. */
@@ -59,17 +52,6 @@ export interface Facts {
    *  across from its street. */
   docks(c: number, r: number): [number, number][];
   services: Service[];
-  ferries: Ferry[];
-}
-
-/** A ferry port's berth: which way the water is from its quay, and the
- *  quay end of its exit road, where the ramp is. */
-export interface Ferry {
-  to: [number, number];
-  /** Which side of the yard its exit road runs down. */
-  side: [number, number];
-  x: number;
-  y: number;
 }
 
 export function facts(painted: Town): Facts {
@@ -89,39 +71,7 @@ export function facts(painted: Town): Facts {
     yard: (c, r) => yard.get(`${c},${r}`),
     docks: (c, r) => (yard.get(`${c},${r}`) === "docks" ? walls(c, r) : []),
     services: services(painted, yard),
-    ferries: ferries(painted, yard),
   };
-}
-
-/** Each ferry port's berth: on the side with most water along it, at the
- *  middle of that edge. */
-function ferries(town: Town, yard: Map<string, Yard["fill"]>): Ferry[] {
-  const out: Ferry[] = [];
-  for (const cells of buildings(town)) {
-    if (formOf(town.tile(...cells[0])).yard?.fill !== "ferry") continue;
-    const { to, side } = berth(town, cells);
-    const quay = cells.find(([c, r]) => yard.get(`${c},${r}`) === "exit" && town.tile(c + to[0], r + to[1]).kind === "water");
-    if (!quay) continue;
-    out.push({ to, side, x: quay[0] + 0.5 + to[0] / 2, y: quay[1] + 0.5 + to[1] / 2 });
-  }
-  return out;
-}
-
-/** A ferry port's lie: which way the water is from its quay, the side most
- *  water is on, and which side its exit road runs down, the side whose
- *  last tiles reach a street (the first such, `to` turned left, then
- *  right). */
-function berth(town: Town, cells: [number, number][]) {
-  const wet = (c: number, r: number) => town.tile(c, r).kind === "water";
-  const along = ([dc, dr]: number[]) => cells.filter(([c, r]) => wet(c + dc, r + dr)).length;
-  const to = [...SIDES].sort((a, b) => along(b) - along(a))[0] as [number, number];
-  const column = (s: number[]) => {
-    const far = Math.max(...cells.map(([c, r]) => c * s[0] + r * s[1]));
-    return cells.filter(([c, r]) => c * s[0] + r * s[1] === far);
-  };
-  const sides = [[-to[1], to[0]], [to[1], -to[0]]] as [number, number][];
-  const side = sides.find((s) => column(s).some(([c, r]) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road"))) ?? sides[0];
-  return { to, side, exit: column(side) };
 }
 
 /** Each supermarket's loading bay, where its shop is two tiles or more
@@ -230,20 +180,16 @@ function yards(town: Town): Map<string, Yard["fill"]> {
   for (const cells of buildings(town)) {
     const { fill, end, need } = formOf(town.tile(...cells[0])).yard!;
     const yard = new Set<string>();
-    // A ferry port's exit road is laid first, down its side, and the yard
-    // fills from the water back, nearest the exit first.
-    const lie = fill === "ferry" ? berth(town, cells) : undefined;
-    const exit = new Set((lie?.exit ?? []).map(([c, r]) => `${c},${r}`));
-    const inYard = (c: number, r: number) => yard.has(`${c},${r}`) || exit.has(`${c},${r}`);
+    // A trailer park is the whole of its building.
+    if (fill === "park") for (const [c, r] of cells) yard.add(`${c},${r}`);
+    const inYard = (c: number, r: number) => yard.has(`${c},${r}`);
     const walls = docksOf(town, inYard);
     const street = (c: number, r: number) => SIDES.some(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road");
-    const holds = (c: number, r: number) => (fill === "docks" ? DOCKS * walls(c, r).length : fill === "ferry" ? QUEUED : street(c, r) ? PARKED : 0);
-    const shore = (c: number, r: number) => Math.min(...cells.filter(([x, y]) => SIDES.some(([dc, dr]) => town.tile(x + dc, y + dr).kind === "water")).map(([x, y]) => Math.abs(x - c) + Math.abs(y - r)));
+    const holds = (c: number, r: number) => (fill === "docks" ? DOCKS * walls(c, r).length : street(c, r) ? PARKED : 0);
     const held = () => [...yard].reduce((n, k) => n + holds(...(k.split(",").map(Number) as [number, number])), 0);
-    const toExit = ([c, r]: [number, number]) => (lie ? -(c * lie.side[0] + r * lie.side[1]) : 0);
     const order = (a: [number, number], b: [number, number]) =>
-      (end === "water" ? shore(...a) - shore(...b) : (end === "quiet" ? 1 : -1) * (streetAround(town, ...a) - streetAround(town, ...b))) || toExit(a) - toExit(b) || a[1] - b[1] || a[0] - b[0];
-    while (held() < need(cells.length) && yard.size + exit.size + 1 < cells.length) {
+      (end === "quiet" ? 1 : -1) * (streetAround(town, ...a) - streetAround(town, ...b)) || a[1] - b[1] || a[0] - b[0];
+    while (fill !== "park" && held() < need(cells.length) && yard.size + 1 < cells.length) {
       const next = cells
         .filter(([c, r]) => !inYard(c, r) && holds(c, r))
         .filter(([c, r]) => !yard.size || SIDES.some(([dc, dr]) => inYard(c + dc, r + dr)))
@@ -252,7 +198,6 @@ function yards(town: Town): Map<string, Yard["fill"]> {
       yard.add(`${next[0]},${next[1]}`);
     }
     for (const k of yard) out.set(k, fill);
-    for (const k of exit) out.set(k, "exit");
   }
   return out;
 }
@@ -308,6 +253,5 @@ export function windowFacts(known: Facts, x0: number, y0: number, w: number, h: 
     services: known.services
       .filter((s) => near(s.cut))
       .map((s) => ({ cut: s.cut.map(([x, y]): Pt => [x - x0, y - y0]), dock: { ...s.dock, x: s.dock.x - x0, y: s.dock.y - y0 } })),
-    ferries: known.ferries.filter((f) => near([[f.x, f.y]])).map((f) => ({ ...f, x: f.x - x0, y: f.y - y0 })),
   };
 }

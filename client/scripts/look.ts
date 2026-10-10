@@ -10,18 +10,15 @@
  *
  * Tiles are the game's, as `bun run plan --live` numbers them. Writes
  * `.dev/look/frame-<n>.png` and `.dev/look/strip.png`. The game is the one
- * `bun run dev` runs; without desktop Chrome (a cloud container) it draws
- * with WebGL in software on the Chromium CHROME names, or Playwright's.
+ * `bun run dev` runs, or SPRAWL_CLIENT_PORT's, in `browser.ts`'s browser.
  */
-import { chromium } from "playwright-core";
+import { launch } from "./browser";
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const OUT = `${ROOT}/.dev/look`;
 const CLIENT = `http://localhost:${process.env.SPRAWL_CLIENT_PORT ?? 4800}`;
-/** Long enough for the chunks, the buildings and the cars to arrive. */
-const SETTLE_MS = 6000;
 const VIEW = { width: 800, height: 800 };
 
 const args = process.argv.slice(2);
@@ -29,17 +26,19 @@ const flag = (name: string, or: number) => {
   const i = args.indexOf(name);
   return i < 0 ? or : Number(args.splice(i, 2)[1]);
 };
+/** Long enough for the chunks, the buildings and the cars to arrive; in
+ *  software (`browser.ts`) far longer: `--settle 30000`. */
+const SETTLE_MS = flag("--settle", 6000);
 const frames = flag("--frames", 1);
 const every = flag("--every", 250);
 const [x, y, half = 10] = (args[0] ?? "0,0").split(",").map(Number);
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
-const chrome = process.env.CHROME ?? "/opt/pw-browsers/chromium";
-const browser = await chromium.launch({ executablePath: chrome, args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] })
-  .catch(() => chromium.launch({ channel: "chrome", args: ["--enable-unsafe-webgpu"] }));
+const browser = await launch();
 const page = await browser.newPage({ viewport: VIEW });
 page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
+page.on("console", (m) => m.type() === "error" && console.log(`console: ${m.text().slice(0, 300)}`));
 await page.goto(process.env.T ? `${CLIENT}/?t=${process.env.T}` : CLIENT);
 await page.waitForFunction(() => "sprawlCamera" in window, null, { timeout: 60_000 });
 // The map alone: no toolbar, dials or pins over it.

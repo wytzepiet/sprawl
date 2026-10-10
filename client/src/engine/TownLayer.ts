@@ -27,6 +27,9 @@ import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
 import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType } from "../generated";
+import type { Pose } from "../generated/Pose";
+import type { Pt } from "./town/footprint";
+import { TRAILER } from "./objects/roadGeometry";
 
 /** Ground round what is built the town is drawn over: its pavement and
  *  its trees. */
@@ -149,6 +152,7 @@ export class TownLayer {
     const roads: Snapshot["roads"] = [];
     const joined: Snapshot["joined"] = [];
     const doors: Snapshot["doors"] = [];
+    const marks = new Map<string, Snapshot["marks"][number]>();
     const byId = new Map<number, GameObjectEntry>();
     // The bounds of the buildings.
     const built: Bounds = [Infinity, Infinity, -Infinity, -Infinity];
@@ -161,8 +165,10 @@ export class TownLayer {
         byId.set(e.id, e);
         joined.push([e.id, b.joined.map((t) => [t.x, t.y])]);
         if (b.door) doors.push([b.door.tile.x, b.door.tile.y, b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y]);
+        for (const p of b.park) for (const side of [-1, 1]) slotLine(marks, p.pose, side);
+        // A site is its ground, paved, until it stands (`BuildingObject`).
         for (const t of b.tiles) {
-          buildings.push([t.x, t.y, e.id, b.kind]);
+          buildings.push([t.x, t.y, e.id, b.site ? "paved" : b.kind]);
           grow(built, t.x, t.y);
         }
       }
@@ -190,7 +196,7 @@ export class TownLayer {
         if (g !== undefined) ground[k] = KINDS.indexOf(g);
       }
     }
-    const snapshot: Snapshot = { box, todo, buildings, roads, joined, doors, ground, kinds: KINDS, theme: this.theme() };
+    const snapshot: Snapshot = { box, todo, buildings, roads, joined, doors, marks: [...marks.values()], ground, kinds: KINDS, theme: this.theme() };
     const gathered = performance.now() - started;
     this.drawing = true;
     this.builder
@@ -346,6 +352,19 @@ export class TownLayer {
     this.worker.terminate();
   }
 }
+
+/** A line down one side of a trailer park's slot, from behind the box to
+ *  past its hitch, where a lorry's cab stands; a line two slots share
+ *  painted once. */
+function slotLine(marks: Map<string, Snapshot["marks"][number]>, { at: [x, y], heading }: Pose, side: number) {
+  const [ux, uy] = [Math.cos(heading), Math.sin(heading)];
+  const [cx, cy] = [x - uy * side * SLOT / 2, y + ux * side * SLOT / 2];
+  const [a, b, w] = [-TRAILER.l / 2 - 0.04, TRAILER.l / 2 + 0.12, 0.008];
+  const at = (t: number, o: number): Pt => [cx + ux * t - uy * o, cy + uy * t + ux * o];
+  marks.set(`${cx.toFixed(2)},${cy.toFixed(2)}`, [at(a, -w), at(b, -w), at(b, w), at(a, w)]);
+}
+/** A slot's width: the docks' spacing (`BAY_W` in the server's `lots.rs`). */
+const SLOT = 0.3;
 
 /** Every building's door, by its tile: the way on the map to its street. */
 function doorsOf(each: (f: (e: GameObjectEntry) => void) => void): Map<string, [number, number]> {

@@ -164,8 +164,8 @@ export default function World() {
   }
 
   /** What the town draws of a road, where it stands, its kind and its
-   *  links; and of a building, its plot, its door, the streets it joins
-   *  and its treatment. */
+   *  links; and of a building, its plot, its door, the streets it joins,
+   *  whether it stands yet and the slots painted on its park. */
   function drawnOf(entry: GameObjectEntry): string | undefined {
     if (entry.object.kind === "RoadNode") {
       const n = entry.object.data as RoadNode;
@@ -173,7 +173,7 @@ export default function World() {
     }
     if (entry.object.kind !== "Building") return undefined;
     const b = entry.object.data as Building;
-    return JSON.stringify([b.kind, b.tiles, b.door, b.joined]);
+    return JSON.stringify([b.kind, b.tiles, b.door, b.joined, !b.site, b.park.map((s) => s.pose)]);
   }
 
   setOpsListener(processOps);

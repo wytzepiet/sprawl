@@ -12,7 +12,7 @@
  * paused; this points the camera at each and writes `.dev/shots/<name>.png`
  * and `.dev/shots/sheet.png`, every fixture on one page.
  */
-import { chromium } from "playwright-core";
+import { launch } from "./browser";
 import { mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -22,8 +22,9 @@ const SERVER_PORT = 4811;
 const CLIENT_PORT = 4810;
 /** Tiles of grass shown round a fixture. */
 const MARGIN = 3;
-/** Long enough for the chunks, the buildings and the ink to arrive. */
-const SETTLE_MS = 2500;
+/** Long enough for the chunks, the buildings and the ink to arrive; in
+ *  software (`browser.ts`) far longer: SETTLE=60000. */
+const SETTLE_MS = Number(process.env.SETTLE ?? 2500);
 const VIEW = { width: 900, height: 600 };
 
 type Placed = { name: string; title: string; x: number; y: number; w: number; h: number };
@@ -84,14 +85,7 @@ try {
     if (!(await fetch(`http://localhost:${CLIENT_PORT}`)).ok) throw new Error();
   });
 
-  // Desktop Chrome, on WebGPU; or, where there is none, the Chromium named
-  // by CHROME, drawing with WebGL in software (headless WebGPU there fails).
-  const chrome = process.env.CHROME;
-  const browser = await chromium.launch(
-    chrome
-      ? { executablePath: chrome, args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] }
-      : { channel: "chrome", args: ["--enable-unsafe-webgpu"] },
-  );
+  const browser = await launch();
   const page = await browser.newPage({ viewport: VIEW, deviceScaleFactor: 2 });
   await page.goto(`http://localhost:${CLIENT_PORT}${sandbox ? `/sandbox?f=${fixtures[0].name}` : ""}`);
   await page.waitForFunction(() => "sprawlCamera" in window);

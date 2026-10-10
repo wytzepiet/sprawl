@@ -196,12 +196,13 @@ for (const [verb, ...rest] of lines) {
     case "watch":
     case "run": {
       trips.clear();
+      // The clock as the server has it: a paused town sends no updates.
+      const now = async () => (await (await fetch(`http://localhost:${PORT}/health`)).json()).sim_time as number;
+      clock.now = await now();
       const to = flags.includes("--to") ? Number(rest[rest.indexOf("--to") + 1]) : undefined;
       const until = to !== undefined
         ? clock.now + (((to - timeOfDay() + 1) % 1) * clock.day_ms)
         : clock.now + (Number(args[0]) * clock.day_ms) / 24;
-      // The clock as the server has it: a paused town sends no updates.
-      const now = async () => (await (await fetch(`http://localhost:${PORT}/health`)).json()).sim_time as number;
       const was = clock.speed;
       send("SetSpeed", FULL);
       while ((clock.now = await now()) < until) await Bun.sleep(200);

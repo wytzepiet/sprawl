@@ -13,7 +13,7 @@
  * comes in as it does in play; then zooming in and out with the wheel.
  * Desktop Chrome's WebGPU.
  */
-import { chromium } from "playwright-core";
+import { launch } from "./browser";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -31,7 +31,7 @@ const PHASE_MS = flag("--phase", 15) * 1000;
 const [x, y, half = 15] = (args[0] ?? "6,80").split(",").map(Number);
 const tab = `pan-${Date.now()}`;
 
-const browser = await chromium.launch({ channel: "chrome", args: ["--enable-unsafe-webgpu"] });
+const browser = await launch();
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 2 });
 page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
 await page.goto(`${CLIENT}/?t=${t}&tab=${tab}`);

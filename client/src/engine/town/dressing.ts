@@ -53,23 +53,10 @@ type Pt = [number, number];
 export interface Dressing {
   trees: Tree[];
   cars: Car[];
-  /** What is driven on off the road and joins it (`asphalt`): drives,
-   *  ramps. */
-  lanes: Pt[][];
   docks: Dock[];
-  /** The lines between the bays of yards: docks, car parks and a ferry
-   *  port's queue lanes. */
+  /** The lines between the bays of yards: docks and car parks. */
   yardLines: Pt[][];
-  /** Ferries at their berths: the middle of each, and which way its bow
-   *  points, out to sea. */
-  ships: { x: number; y: number; angle: number }[];
 }
-
-/** A ferry, long and broad, in tiles: bigger than true to the map, so it
- *  reads beside the yard it empties. */
-export const FERRY = { l: 3.2, w: 0.85 };
-/** The ramp from the quay to a ferry's stern. */
-const RAMP = { l: 0.3, w: 0.55 };
 
 /** A lorry bay's depth: a lorry and a little. */
 const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
@@ -127,11 +114,9 @@ export function dress(town: Town, facts: Facts): Dressing {
   const cars = [...park(town, facts).filter((car) => clear(car.x, car.y)), ...drives.cars];
   const lorries = docks(town, facts), lots = carParks(town, facts);
   const service = facts.services;
-  const port = ferries(town, facts);
   return {
-    trees, cars: [...cars, ...lots.cars, ...port.cars], lanes: port.ramps,
-    docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines, ...port.lines],
-    ships: port.ships,
+    trees, cars: [...cars, ...lots.cars],
+    docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines],
   };
 }
 
@@ -301,49 +286,6 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[]; arm
     }
   }
   return { strips, cars, mouths, arms };
-}
-
-/** A ferry port: its yard in queue lanes running down to the water, four
- *  to a tile, the cars waiting in them thinning out from the front of the
- *  queue to the back; down its side the exit road the cars come off by;
- *  a ramp at the quay end of the exit, and the ferry moored stern on to
- *  it. */
-function ferries(town: Town, facts: Facts) {
-  const cars: Car[] = [], lines: Pt[][] = [], ramps: Pt[][] = [], ships: Dressing["ships"] = [];
-  if (!facts.ferries.length) return { cars, lines, ramps, ships };
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      const fill = facts.yard(c, r);
-      if (fill !== "ferry" && fill !== "exit") continue;
-      const near = facts.ferries.reduce((a, b) => (Math.hypot(b.x - c, b.y - r) < Math.hypot(a.x - c, a.y - r) ? b : a));
-      const [tx, ty] = near.to;
-      const [ux, uy] = [-ty, tx];
-      const [x0, y0] = [c + 0.5, r + 0.5];
-      if (fill === "exit") {
-        // The exit road: a lane from the ramp to the street, and now and
-        // then a car just off the boat, driving away from the water.
-        ramps.push(strip(x0, y0, tx, ty, -0.5, 0.5, ux, uy, -0.17, 0.17));
-        if (hash(c, r, 37) < 0.5) cars.push({ x: x0, y: y0, angle: Math.atan2(-ty, -tx), colour: Math.floor(hash(c, r, 38) * 8) });
-        continue;
-      }
-      for (const o of [-0.25, 0, 0.25]) lines.push(strip(x0, y0, tx, ty, -0.5, 0.5, ux, uy, o - 0.006, o + 0.006));
-      for (const o of [-0.375, -0.125, 0.125, 0.375]) {
-        for (const t of [-0.22, 0.22]) {
-          const [x, y] = [x0 + tx * t + ux * o, y0 + ty * t + uy * o];
-          // How far back in the queue: from the water's edge, in tiles.
-          const back = (near.x - x) * tx + (near.y - y) * ty;
-          if (hash(Math.round(x * 100), Math.round(y * 100), 29) > 0.95 - 0.22 * back) continue;
-          cars.push({ x, y, angle: Math.atan2(ty, tx), colour: Math.floor(hash(Math.round(x * 100), Math.round(y * 100), 31) * 8) });
-        }
-      }
-    }
-  }
-  for (const { to: [tx, ty], x, y } of facts.ferries) {
-    ramps.push(strip(x, y, tx, ty, -0.05, RAMP.l, -ty, tx, -RAMP.w / 2, RAMP.w / 2));
-    const m = RAMP.l + FERRY.l / 2;
-    ships.push({ x: x + tx * m, y: y + ty * m, angle: Math.atan2(ty, tx) });
-  }
-  return { cars, lines, ramps, ships };
 }
 
 /** A car park: on each tile, an aisle along its street between two rows
