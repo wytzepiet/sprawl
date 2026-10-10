@@ -250,8 +250,10 @@ parted from the direction above.
   what the town paves becomes quay.
 - **The ferry is double-ended**, as small island ferries are: it sails in
   one end first, lands its ramp on the quay, and sails out the other end
-  first, so it never turns in the harbour and needs no room to. One
-  ferry a harbour, the world's, on its line's timetable: out along a
+  first, so it never turns in the harbour and needs no room to. The
+  world's ferries, one a call every 3:20 at most (two where the edge is
+  far, passing at sea, one at the ramp at a time), on the line's
+  timetable: out along a
   real way over the water to the map's edge and back (`shipping/`,
   docs/plan-sea.md), an hour and a quarter at the ramp, half an hour
   beyond the edge, the round on the company's clock (50 minutes times a

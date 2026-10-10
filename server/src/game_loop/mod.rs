@@ -716,7 +716,7 @@ fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     // wake too many is no harm, and one too few after a load would be.
     let harbours: Vec<EntityId> = world.harbours.keys().copied().collect();
     for h in harbours {
-        for id in [world.ferry_of(h), world.tug_of(h)].into_iter().flatten() {
+        for id in world.ferries_of(h).into_iter().chain(world.tug_of(h)) {
             events.wake(0, id);
         }
     }
@@ -2213,6 +2213,34 @@ mod tests {
             Some(GameObject::Building(b)) => b.clone(),
             _ => panic!("no building {id}"),
         }
+    }
+
+    /// A harbour on a real coast, seed 7's, where the map's edge is two
+    /// hours' sail out: the world's line takes two ferries, so the
+    /// harbour is called at as often as the old ferry's 6.4 a day, the
+    /// two passing at sea, never both at the ramp, the second waiting
+    /// beyond the edge if it would be.
+    #[test]
+    fn a_real_coast_is_called_at_as_often_as_ever() {
+        let mut world = World::new();
+        world.terrain = crate::terrain::generate(7);
+        world.place_road_path(&(-6..10).map(|x| GridCoord { x, y: 31 }).collect::<Vec<_>>());
+        let harbour = world.place_on_street(GridCoord { x: 1, y: 32 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let ferries = world.ferries_of(harbour);
+        assert_eq!(ferries.len(), 2, "the world's line, {} ms round, runs {} ferries", world.lines[&harbour].cycle(), ferries.len());
+        let (mut now, mut calls, mut moored) = (0, 0, vec![false; 2]);
+        let days = 2;
+        while step(&mut world, &mut events, &mut intersections, &mut now, days * DAY_MS as u64) {
+            let here: Vec<bool> = ferries.iter().map(|&f| car_of(&world, f).spot.is_some()).collect();
+            assert!(here.iter().filter(|&&m| m).count() <= 1, "two ferries at the ramp at {now}");
+            calls += here.iter().zip(&moored).filter(|&(&h, &m)| h && !m).count();
+            moored = here;
+        }
+        let per_day = calls as f64 / days as f64;
+        assert!(per_day >= 6.0, "{per_day} calls a day");
     }
 
     /// The opening, docs/game.md: a harbour, a depot, a street between

@@ -39,6 +39,9 @@ pub const MIN_DWELL: GameTime = HOUR / 2;
 /// round 2:44, would have waited out a four-hour one, and its town went
 /// hungry; at 3:20 it does not.
 pub const TAKT: GameTime = HOUR * 5 / 6;
+/// The longest a harbour waits between calls of the world's line: as
+/// often as the old ferry came, on the clock (four `TAKT`s, 3:20).
+pub const CALL_EVERY: GameTime = 4 * TAKT;
 /// How finely the company tries the times a new sailing could leave.
 const TRY: GameTime = HOUR / 12;
 
@@ -122,6 +125,13 @@ impl Line {
     pub fn spaced(&mut self, n: usize, first: u64, start: GameTime) {
         let cycle = self.cycle();
         self.ships = (0..n).map(|k| (first + k as u64, start + cycle * k as GameTime / n as GameTime)).collect();
+    }
+
+    /// Ships enough that one calls every `CALL_EVERY` at most, evenly
+    /// round the line: a round of a power of two `TAKT`s divides into a
+    /// power of two of them, each on the clock.
+    pub fn every_call(&self) -> usize {
+        (self.cycle() / CALL_EVERY).max(1) as usize
     }
 
     /// Sailings enough each way for `per_day` boxes: ships round the line,

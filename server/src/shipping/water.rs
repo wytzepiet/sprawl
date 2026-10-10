@@ -492,6 +492,17 @@ mod tests {
                 if ms > 50.0 {
                     wrong.push(format!("seed {seed}: the way to {name} took {ms:.0} ms"));
                 }
+                // The world's line from here calls as often as the old
+                // ferry's 6.4 a day, with as many ferries as that takes.
+                if end == End::Edge {
+                    let back = way.iter().rev().copied().collect();
+                    let ferry = crate::shipping::lines::Line { calls: vec![crate::shipping::lines::Call::Harbour(0), crate::shipping::lines::Call::World], legs: vec![way.clone(), back], ships: Vec::new(), slots: 15, dwell: crate::world::sea::DWELL, stay: crate::shipping::WORLD_STAY, every: 0 };
+                    let calls = ferry.every_call() as f64 * crate::protocol::DAY_MS as f64 / ferry.cycle() as f64;
+                    line += &format!(" {} ferries, {calls:.1} calls a day;", ferry.every_call());
+                    if calls < 6.0 {
+                        wrong.push(format!("seed {seed}: {calls:.1} calls a day"));
+                    }
+                }
             }
             eprintln!("{line}");
         }

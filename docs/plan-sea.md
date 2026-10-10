@@ -432,10 +432,16 @@ Each stage leaves the game playable and the suite green
     client's `landsAt`, `turn()`, `dwell()` and `towardHarbour` guesses
     are deleted, and the card and the flat legend read the timetable.
   - Not built: the route drawn while the harbour is selected; keep-right.
-  - The clock face costs frequency: on real seeds the edge is 2.1 to 2.3
-    hours out, so the world ferry's round is 6:40 (about 3.6 calls a day,
-    from 6.4). The lever is a second ship on the world's line, sized by
-    the forecast like any other (stage 3), or `SEA_PACE`.
+  - On real seeds the edge is 2.1 to 2.3 hours out, so the world line's
+    round is 6:40. It runs as many ferries as keep a call at the berth
+    every `CALL_EVERY` (3:20) at most, evenly spaced on the clock: two on
+    every seed 0 to 19, 7.2 calls a day (the old ferry made 6.4). They
+    pass each other at sea, on one lane until keep-right is built. One is
+    at the ramp at a time; a ferry that would find the other still there
+    waits beyond the edge. A box books onto the next to leave the world;
+    the tug and the deck serve whichever is at the ramp. A late first
+    call starts its way in partway, where a ship due then would be.
+    `a_real_coast_is_called_at_as_often_as_ever` checks it on seed 7.
   - Seen on seed 7 with `bun run flat --follow`: in from the north edge,
     slowing into the berth on time, out again the same way, the flat
     legend saying "at sea, berths 03:06".

@@ -97,6 +97,23 @@ pub fn length(path: &[[f64; 2]]) -> f64 {
     path.windows(2).map(|w| (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1])).sum()
 }
 
+/// The last `keep` of a polyline.
+pub fn last(path: &[[f64; 2]], keep: f64) -> Vec<[f64; 2]> {
+    let from = length(path) - keep;
+    if from <= 0.0 {
+        return path.to_vec();
+    }
+    let mut out = vec![point_at(path, from).0];
+    let mut along = 0.0;
+    for w in path.windows(2) {
+        along += (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]);
+        if along > from + 1e-9 {
+            out.push(w[1]);
+        }
+    }
+    out
+}
+
 /// The point `d` along a polyline, and the way it runs there.
 pub fn point_at(path: &[[f64; 2]], d: f64) -> ([f64; 2], f64) {
     let mut left = d.max(0.0);
@@ -149,5 +166,7 @@ mod tests {
         assert_eq!(point_at(&path, 1.0).0, [1.0, 0.0]);
         assert_eq!(point_at(&path, 4.0).0, [2.0, 2.0]);
         assert_eq!(point_at(&path, 9.0).0, [2.0, 3.0]);
+        assert_eq!(last(&path, 4.0), vec![[1.0, 0.0], [2.0, 0.0], [2.0, 3.0]]);
+        assert_eq!(last(&path, 9.0), path.to_vec());
     }
 }

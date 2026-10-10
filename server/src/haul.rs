@@ -100,7 +100,7 @@ fn harbour_for(world: &World, depot: EntityId) -> Option<EntityId> {
 /// sailing, as many as the treasury can pay for when they land. Returns
 /// how many were booked.
 pub fn book(world: &mut World, depot: EntityId, good: Good, boxes: u32) -> u32 {
-    let Some(ferry) = harbour_for(world, depot).and_then(|h| world.ferry_of(h)) else { return 0 };
+    let Some(ferry) = harbour_for(world, depot).and_then(|h| world.next_ferry(h)) else { return 0 };
     let owed: f64 = self::boxes(world).iter().filter(|(t, l, _)| !t.outbound && matches!(l, Leg::Booked | Leg::Aboard) && t.order != Some(crate::world::sea::GIFT)).map(|(t, _, _)| t.good.map_or(0.0, |g| crate::economy::import(g, t.units))).sum();
     let afford = ((world.treasury - owed) / crate::economy::quote(good, 1)).floor().max(0.0) as u32;
     let n = boxes.min(afford);
@@ -426,7 +426,7 @@ fn set_load(world: &mut World, lorry: EntityId, t: Option<Trailer>) {
 /// The sea's part of an update: every box with an order, where it is and
 /// when it lands; every harbour's timetable.
 pub fn sea(world: &World) -> Sea {
-    let calls: BTreeMap<EntityId, Option<GameTime>> = world.harbours.keys().filter_map(|&h| world.ferry_of(h)).map(|f| (f, world.next_call(f))).collect();
+    let calls: BTreeMap<EntityId, Option<GameTime>> = world.harbours.keys().flat_map(|&h| world.ferries_of(h)).map(|f| (f, world.next_call(f))).collect();
     let shipments = boxes(world)
         .into_iter()
         .filter_map(|(t, leg, carrier)| {
@@ -461,7 +461,7 @@ pub fn sea(world: &World) -> Sea {
                 deck: crate::world::sea::DECK as u32,
                 booked: c.booked.len() as u32,
                 waiting: world.waiting_settlers(harbour).len() as u32,
-                lands: world.next_call(ferry)?,
+                lands: world.next_ferry(harbour).and_then(|f| world.next_call(f))?,
                 turn: world.turn(harbour)?,
             })
         })
