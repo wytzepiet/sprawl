@@ -323,6 +323,13 @@ is the town's one lorry, tapped by hand, until the first lorry with
 standing orders; the lorry stays for good, a slump you can dig out of by
 hand, never a chore.
 
+The opening is the first mission (`missions.md`): its steps are facts
+the server reads off the town and ticks as they come true, and it pays
+when the last is done. The trunk follows it, standing orders, a rule
+for stone, a box sold, and after it the town's situation opens a
+mission when something first matters: a site short of stone asks for a
+quarry.
+
 ## Out
 
 Pedestrians, transit, water, sewage, garbage, zoning, sliders, policies,
