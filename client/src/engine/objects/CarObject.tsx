@@ -1,6 +1,6 @@
 import type { MaterialPlugin } from "@babylonjs/lite";
 import type { EngineContext } from "../Canvas";
-import { rgb, type Rgb } from "../rgb";
+import { rgb, WHITE, type Rgb } from "../rgb";
 import type { MeshGeometry } from "../geometry";
 import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
@@ -83,14 +83,15 @@ function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look):
 /** A box (`sea.ts`) standing at a pose, its base at `z`; moved, or taken
  *  away. A box is the world's: no building's look is on it. */
 export function placeBox(pool: InstancePool, t: Trailer, p: Stand, z: number) {
-  const { key: name, geo, colour } = boxShape(t);
-  const key = paint(pool, name, geo, colour, SOLID);
   const placed = (q: Stand): [[number, number, number], [number, number, number]] => [[q.at[0], q.at[1], z], [0, 0, q.heading - Math.PI / 2]];
-  const id = pool.addInstance(key, ...placed(p));
+  const parts = boxShape(t).map(({ key, geo, scale }) => {
+    const k = paint(pool, key, geo, WHITE, SOLID);
+    return { key: k, id: pool.addInstance(k, ...placed(p), scale) };
+  });
   return {
-    move: (q: Stand) => pool.updateInstance(key, id, ...placed(q)),
-    remove: () => pool.removeInstance(key, id),
-    part: { key, id },
+    move: (q: Stand) => parts.forEach(({ key, id }) => pool.updateInstance(key, id, ...placed(q))),
+    remove: () => parts.forEach(({ key, id }) => pool.removeInstance(key, id)),
+    parts,
   };
 }
 
@@ -198,7 +199,7 @@ function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext
   const a = pool.addInstance(cab, [first.body.x, first.body.y, cabZ], [0, 0, first.body.heading - Math.PI / 2]);
   const box = car.hitched && placeBox(pool, car.hitched, stand(first.trailer), GROUND);
   carPoses.set(id, [first.body.x, first.body.y]);
-  parts.set(id, [{ key: cab, id: a }, ...(box ? [box.part] : [])]);
+  parts.set(id, [{ key: cab, id: a }, ...(box ? box.parts : [])]);
   const stop = drive && ctx.beforeRender(() => {
     const p = pose();
     carPoses.set(id, [p.body.x, p.body.y]);
@@ -273,7 +274,7 @@ function mountTug(id: number, car: Car, pool: InstancePool, ctx: EngineContext):
   const t = pool.addInstance(key, ...placed(p0.tug));
   const box = car.hitched && placeBox(pool, car.hitched, p0.box, GROUND);
   carPoses.set(id, p0.tug.at);
-  parts.set(id, [{ key, id: t }, ...(box ? [box.part] : [])]);
+  parts.set(id, [{ key, id: t }, ...(box ? box.parts : [])]);
   const stop = move && ctx.beforeRender(() => {
     const p = move(simNow());
     pool.updateInstance(key, t, ...placed(p.tug));

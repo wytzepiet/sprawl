@@ -100,7 +100,8 @@ pictures, at least), and its documents say what was built.
 10. **The container port and the network** (`shipping.md`): the Exchange,
     container ships, lines between harbours, the planner with transfers,
     hubs and dues, charters for tankers and bulkers; ships routed over the
-    sea with lanes and blocks.
+    sea with lanes and blocks. Planned in stages in `plan-sea.md`, which
+    cuts the Exchange, charters and dues from this item and says why.
 11. **The new tree**, designed from the roster, with a look of its own.
 
 Further than that is `roadmap.md`: roads that are roads, other players,
