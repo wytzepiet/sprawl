@@ -17,6 +17,9 @@ import GrowthMeter from "../ui/GrowthMeter";
 import Card from "../ui/Card";
 import Board from "../ui/Board";
 import Glass from "../ui/Glass";
+import Shipments, { BoxPins } from "../ui/Shipments";
+import News from "../ui/News";
+import Guide from "../ui/Guide";
 
 function SceneInner() {
   return (
@@ -35,6 +38,7 @@ function SceneInner() {
           </Registered>
         </DayNightLights>
         <LumpLayer />
+        <BoxPins />
         <GrowthMeter />
         <Card />
         <Board />
@@ -42,6 +46,9 @@ function SceneInner() {
       <Glass />
       <BuildModeToolbar />
       <TimeControls />
+      <Shipments />
+      <News />
+      <Guide />
       {/* <DebugOverlay /> */}
     </DayNightProvider>
   );

@@ -1,10 +1,10 @@
-import { createEffect, createMemo, on, onCleanup } from "solid-js";
+import { createEffect, on, onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { isRoad, setTool, tool } from "../ui/buildMode";
-import { affords, hand, may, mayStart, snap, STEPS, type Hand } from "./may";
+import { hand, may, mayStart, snap, STEPS, type Hand } from "./may";
 import type { GridCoord, TerrainType, Tool } from "../generated";
 
 /**
@@ -26,7 +26,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   const { scene, canvas, afterRender } = useEngine();
   const dots = new Dots(scene, canvas);
   const stopTick = afterRender(() => dots.frame());
-  const { send, growth } = useGame();
+  const { send } = useGame();
   let current: GridCoord | null = null;
   /** The tile pressed on, while the hand is down. */
   let pressed: GridCoord | null = null;
@@ -43,15 +43,11 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   // The world as the hand sees it, read again when something is built.
   let world: Hand | null = null;
   createEffect(on(builtVersion, () => {
-    world = hand(eachEntity, props.ground, growth());
+    world = hand(eachEntity, props.ground);
     draw();
   }));
-  // And drawn again when a tile of the held kind comes within the purse.
-  const gate = createMemo(() => {
-    const held = tool();
-    return held !== null && typeof held !== "string" && affords(growth(), held.Building);
-  });
-  createEffect(on([gate, tool], () => draw(), { defer: true }));
+  // And drawn again when another tool is taken up.
+  createEffect(on(tool, () => draw(), { defer: true }));
   const allowed = (at: GridCoord, i: number) => {
     const held = tool();
     return !!world && held !== null && may(world, held, at, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] });
@@ -81,7 +77,6 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     const nexts: [number, number][] = [];
     const [x0, y0, x1, y1] = viewBox();
     if (world && held !== null) {
-      world.growth = growth();
       if (current) for (const [i, [dx, dy]] of STEPS.entries()) if (allowed(current, i)) nexts.push([current.x + dx, current.y + dy]);
       drawnOver = [x0, y0, x1, y1].join();
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (mayStart(world, held, { x, y })) starts.push([x, y]);

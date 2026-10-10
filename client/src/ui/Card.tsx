@@ -1,15 +1,15 @@
-import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
-import type { BuildingKind, CarRole, Need } from "../generated";
-
-/** A line that points at something else on the map. */
-interface Link {
-  id: number;
-  label: string;
-  kind: "resident" | "building" | "car" | "gone";
-}
+import { getEntity } from "../state/gameObjects";
+import { now, sailingOf } from "../state/sea";
+import { guideUp } from "./Guide";
+import { HarbourPanel, Timetable, type DepotLine } from "./Harbour";
+import { DepotPanel } from "./Depot";
+import { SitePanel } from "./Site";
+import { Bar, Row, Section, To, type Link } from "./kit";
+import type { Building, BuildingKind, CarRole, Need } from "../generated";
 
 interface Bucket {
   need: Need;
@@ -49,23 +49,25 @@ type Card =
       building_kind: BuildingKind;
       reached: boolean;
       stocks: { need: Need; full: number }[];
-      spots: number | null;
       here: { who: Link; doing: Need | null }[];
       household: Link[];
       staff: { who: Link; present: boolean }[];
       fleet: Link[];
       calls: { what: string; since: string; answered_by: Link | null }[];
       served: { need: Need; hours_today: number }[];
+      depots: DepotLine[];
     }
   | { kind: "gone"; id: number };
+type BuildingCard = Extract<Card, { kind: "building" }>;
 
 /** How often an open card asks again. The world moves; the card should too. */
 const REFRESH_MS = 1000;
 
 /**
  * The card for whatever was tapped: who is in it, where it is going, what it
- * owes, each line a thing on the map you can go to. Read-only, and it says
- * nothing the map could not have shown — it only saves you watching for it.
+ * owes, each line a thing on the map you can go to; and, for the harbour, a
+ * depot and a site, what the mayor does there. On the glass, in the glass's
+ * ink.
  */
 export default function Card() {
   const [card, setCard] = createSignal<Card | null>(null);
@@ -110,13 +112,23 @@ export default function Card() {
   window.addEventListener("keydown", onKey);
   onCleanup(() => window.removeEventListener("keydown", onKey));
 
+  /** The building whose card is open, by id alone: what the mayor works
+   *  with on it is made once, not again with every refresh. */
+  const building = createMemo(() => {
+    const c = card();
+    return c?.kind === "building" ? c.id : null;
+  });
+  const asBuilding = () => card() as BuildingCard;
+
   return (
     <Show when={card()}>
       {(c) => (
-        <div class="card fixed top-24 left-6 z-40 w-72 max-h-[calc(100vh-8rem)] overflow-y-auto rounded-xl bg-white/80 backdrop-blur-xl border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.08)] text-stone-800 text-sm select-none">
+        <div data-glass="card" style={{ "max-height": guideUp() ? "calc(100vh - 96px - 136px)" : "calc(100vh - 8.5rem)" }} class="ink card fixed top-24 left-6 z-40 w-[320px] overflow-y-auto rounded-[22px] text-sm select-none pb-1.5">
           <Show when={c().kind === "resident"}>{ResidentCard(c() as Extract<Card, { kind: "resident" }>)}</Show>
           <Show when={c().kind === "car"}>{CarCard(c() as Extract<Card, { kind: "car" }>)}</Show>
-          <Show when={c().kind === "building"}>{BuildingCard(c() as Extract<Card, { kind: "building" }>)}</Show>
+          <Show when={building()} keyed>
+            {(id) => <BuildingCard id={id} card={asBuilding} />}
+          </Show>
           <Show when={c().kind === "gone"}>
             <Header title="Gone" sub="Nothing stands here any more" />
           </Show>
@@ -128,60 +140,18 @@ export default function Card() {
 
 function Header(props: { title: string; sub?: string; icon?: JSX.Element }) {
   return (
-    <div class="flex items-center gap-2 px-3 pt-3 pb-2">
+    <div class="flex items-center gap-2.5 px-4 pt-3.5 pb-2.5">
       {props.icon}
       <div class="min-w-0 flex-1">
-        <div class="font-semibold truncate">{props.title}</div>
+        <div class="truncate text-[16px] font-semibold">{props.title}</div>
         <Show when={props.sub}>
-          <div class="text-xs text-stone-500 truncate">{props.sub}</div>
+          <div class="soft truncate text-xs">{props.sub}</div>
         </Show>
       </div>
-      <button class="text-stone-400 hover:text-stone-800 px-1 cursor-pointer" onClick={() => select(null)} title="Close (Esc)">
+      <button class="soft press px-1 text-lg leading-none cursor-pointer" onClick={() => select(null)} title="Close (Esc)">
         ×
       </button>
     </div>
-  );
-}
-
-function Section(props: { title: string; children: JSX.Element }) {
-  return (
-    <div class="px-3 py-2 border-t border-black/[0.05]">
-      <div class="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">{props.title}</div>
-      {props.children}
-    </div>
-  );
-}
-
-/** A line you can go to. */
-function To(props: { link: Link | null | undefined; fallback?: string }) {
-  return (
-    <Show when={props.link} fallback={<span class="text-stone-400">{props.fallback ?? "—"}</span>}>
-      {(l) => (
-        <button
-          class="text-left underline decoration-stone-300 underline-offset-2 hover:decoration-stone-800 cursor-pointer"
-          onClick={() => select(l().id)}
-        >
-          {l().label}
-        </button>
-      )}
-    </Show>
-  );
-}
-
-function Row(props: { label: string; children: JSX.Element }) {
-  return (
-    <div class="flex justify-between gap-2 py-0.5">
-      <span class="text-stone-500">{props.label}</span>
-      <span class="text-right truncate">{props.children}</span>
-    </div>
-  );
-}
-
-function Bar(props: { value: number; color?: string }) {
-  return (
-    <span class="inline-block h-1.5 w-20 rounded-full bg-black/[0.06] overflow-hidden align-middle">
-      <span class="block h-full rounded-full" style={{ width: `${Math.round(Math.max(0, Math.min(1, props.value)) * 100)}%`, "background-color": props.color ?? "#5B57C8" }} />
-    </span>
   );
 }
 
@@ -199,9 +169,9 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
         <For each={c.buckets}>
           {(b) => (
             <div class="flex items-center justify-between gap-2 py-0.5" classList={{ "font-semibold": c.selected === b.need }}>
-              <span class="w-16 text-stone-600">{b.need}</span>
-              <Bar value={b.full} color={c.selected === b.need ? "#5B57C8" : "#A8A29E"} />
-              <span class="w-24 text-right text-xs text-stone-500 truncate">
+              <span class="soft w-16">{b.need}</span>
+              <Bar value={b.full} color={c.selected === b.need ? "#7B77E0" : "#A8A29E"} />
+              <span class="soft w-24 truncate text-right text-xs">
                 <Show when={b.option !== "nothing"} fallback="nothing found">
                   <To link={{ id: (b.option as { building: number }).building, label: "→ option", kind: "building" }} />
                 </Show>
@@ -214,11 +184,15 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
   );
 }
 
+const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry", Tug: "Tug" };
+
 function CarCard(c: Extract<Card, { kind: "car" }>) {
-  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : c.role === "Tractor" ? "Tractor" : c.role === "Ferry" ? "Ferry" : c.role === "Tug" ? "Tug" : "Car";
+  const what = ROLE[c.role];
+  const sailing = () => (c.role === "Ferry" ? sailingOf(c.owner.id) : undefined);
   return (
     <>
-      <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : "parked out of sight"} />
+      <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : c.role === "Ferry" ? `of the harbour` : "parked out of sight"} />
+      <Show when={sailing()}>{(s) => <Section title="Timetable"><Timetable sailing={s()} /></Section>}</Show>
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
         <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
@@ -246,58 +220,80 @@ function CarCard(c: Extract<Card, { kind: "car" }>) {
   );
 }
 
-function BuildingCard(c: Extract<Card, { kind: "building" }>) {
-  const bp = BLUEPRINTS[c.building_kind];
+/**
+ * A building's card: made once for the building, its lines read from the
+ * card as it refreshes. What the mayor does here comes first: a site's
+ * timber, a harbour's ferry and order, a depot's lorry and rules.
+ */
+function BuildingCard(props: { id: number; card: () => BuildingCard }) {
+  const c = props.card;
+  const kind = () => c().building_kind;
+  const bp = () => BLUEPRINTS[kind()];
+  /** Still going up: the client's own record of the site. */
+  const site = createMemo(() => {
+    now();
+    const e = getEntity(props.id);
+    return e?.object.kind === "Building" ? (e.object.data as Building).site : null;
+  });
+  const lorries = () => c().fleet.filter((l) => l.label === "Lorry").map((l) => l.id);
+  const van = () => c().calls.find((k) => k.answered_by)?.answered_by ?? null;
   return (
     <>
       <Header
-        title={bp.label}
-        sub={c.reached ? (c.spots !== null ? `${c.spots} parking spots` : undefined) : "no road reaches it"}
+        title={site() ? `${bp().label} · a site` : bp().label}
+        sub={c().reached ? (site() ? "going up as its timber lands" : undefined) : "no road reaches it"}
         icon={
-          <span class="grid h-8 w-8 place-items-center rounded-full" style={{ "background-color": bp.color }}>
-            <BuildingIcon kind={c.building_kind} class="text-white" width="18" height="18" />
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ "background-color": bp().color, opacity: site() ? 0.65 : 1 }}>
+            <BuildingIcon kind={kind()} class="text-white" width="19" height="19" />
           </span>
         }
       />
-      <Show when={c.stocks.length > 0}>
+      <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} van={van()} />}</Show>
+      <Show when={!site() && kind() === "Harbour"}>
+        <HarbourPanel id={props.id} depots={c().depots} />
+      </Show>
+      <Show when={!site() && kind() === "Depot"}>
+        <DepotPanel id={props.id} lorries={lorries()} depots={[]} />
+      </Show>
+      <Show when={kind() !== "Depot" && c().stocks.length > 0}>
         <Section title="Stocks">
-          <For each={c.stocks}>{(s) => <Row label={s.need}><Bar value={s.full} color={s.full <= 0 ? "#D9483B" : "#57A773"} /></Row>}</For>
+          <For each={c().stocks}>{(s) => <Row label={s.need}><Bar value={s.full} color={s.full <= 0 ? "#D9483B" : "#57A773"} /></Row>}</For>
         </Section>
       </Show>
-      <Show when={c.here.length > 0}>
-        <Section title={`Here now · ${c.here.length}`}>
-          <For each={c.here}>{(h) => <Row label={h.doing ?? ""}><To link={h.who} /></Row>}</For>
+      <Show when={c().here.length > 0}>
+        <Section title={`Here now · ${c().here.length}`}>
+          <For each={c().here}>{(h) => <Row label={h.doing ?? ""}><To link={h.who} /></Row>}</For>
         </Section>
       </Show>
-      <Show when={c.household.length > 0}>
-        <Section title={`Lives here · ${c.household.length}`}>
-          <For each={c.household}>{(l) => <div class="py-0.5"><To link={l} /></div>}</For>
+      <Show when={c().household.length > 0}>
+        <Section title={`Lives here · ${c().household.length}`}>
+          <For each={c().household}>{(l) => <div class="py-0.5"><To link={l} /></div>}</For>
         </Section>
       </Show>
-      <Show when={c.staff.length > 0}>
-        <Section title={`Works here · ${c.staff.filter((s) => s.present).length} of ${c.staff.length} in`}>
-          <For each={c.staff}>
+      <Show when={c().staff.length > 0}>
+        <Section title={`Works here · ${c().staff.filter((s) => s.present).length} of ${c().staff.length} in`}>
+          <For each={c().staff}>
             {(s) => (
-              <div class="py-0.5" classList={{ "text-stone-400": !s.present }}>
+              <div class="py-0.5" classList={{ "opacity-50": !s.present }}>
                 <To link={s.who} />
               </div>
             )}
           </For>
         </Section>
       </Show>
-      <Show when={c.fleet.length > 0}>
+      <Show when={c().fleet.length > 0}>
         <Section title="Fleet">
-          <For each={c.fleet}>{(l) => <div class="py-0.5"><To link={l} /></div>}</For>
+          <For each={c().fleet}>{(l) => <div class="py-0.5"><To link={l} /></div>}</For>
         </Section>
       </Show>
-      <Show when={c.calls.length > 0}>
+      <Show when={!site() && c().calls.length > 0}>
         <Section title="Calls">
-          <For each={c.calls}>{(k) => <Row label={`${k.what} since ${k.since}`}><To link={k.answered_by} fallback="waiting" /></Row>}</For>
+          <For each={c().calls}>{(k) => <Row label={`${k.what} since ${k.since}`}><To link={k.answered_by} fallback="waiting" /></Row>}</For>
         </Section>
       </Show>
-      <Show when={c.served.some((s) => s.hours_today > 0)}>
+      <Show when={c().served.some((s) => s.hours_today > 0)}>
         <Section title="Served today">
-          <For each={c.served.filter((s) => s.hours_today > 0)}>{(s) => <Row label={s.need}>{s.hours_today.toFixed(1)} h</Row>}</For>
+          <For each={c().served.filter((s) => s.hours_today > 0)}>{(s) => <Row label={s.need}>{s.hours_today.toFixed(1)} h</Row>}</For>
         </Section>
       </Show>
     </>

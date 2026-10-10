@@ -14,9 +14,9 @@ const DRIP_MS = 1600;
  *
  * The level is the town's GDP to date: the value it adds, landing as
  * each meal is served, each tank filled, each crop cut and each shift at
- * a desk worked. The purse is the town's coins, stepped at the border: a harvest sold to
- * the world, a lorry of crates bought from it, a placement; a tap opens
- * the town's books. The coins are on the map first, so what comes into
+ * a desk worked. The purse is the town's coins, stepped at the border: a box
+ * sold to the world as the ferry casts off, a box bought from it as it
+ * lands; a tap opens the town's books. The coins are on the map first, so what comes into
  * the purse drips up out of it as it lands: an event you could have
  * watched, never a rate.
  */

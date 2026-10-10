@@ -54,6 +54,8 @@ export function positionOf(id: number): [number, number] | null {
   if (e?.object.kind === "Building" && e.position) {
     return middle(e.object.data as Building);
   }
+  // A car not drawn as one, a ferry on its voyage: the tile it is on.
+  if (e?.object.kind === "Car" && e.position) return [e.position.x + 0.5, e.position.y + 0.5];
   return null;
 }
 

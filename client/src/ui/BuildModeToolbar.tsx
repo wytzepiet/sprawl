@@ -1,8 +1,7 @@
 import { createEffect, createSignal, For, indexArray, on, Show } from "solid-js";
 import { follow, LOOSE } from "../engine/spring";
 import { setTool, tool } from "./buildMode";
-import { useGame } from "../state/gameObjects";
-import { BLUEPRINTS, KINDS, plot, TABS } from "../blueprints";
+import { BLUEPRINTS, GoodIcon, KINDS, plot, TABS } from "../blueprints";
 import type { Tool } from "../generated";
 
 /** What the road shelf holds. */
@@ -19,10 +18,11 @@ const DEMOLISH_COLOR = "#D9483B";
 type Shelf = "road" | (typeof TABS)[number];
 const SHELVES: { id: Shelf; key: string; label: string }[] = [
   { id: "road", key: "R", label: "Roads" },
-  { id: "homes", key: "1", label: "Homes" },
-  { id: "shops", key: "2", label: "Shops" },
-  { id: "work", key: "3", label: "Work" },
-  { id: "services", key: "4", label: "Services" },
+  { id: "trade", key: "1", label: "Harbour and depot" },
+  { id: "homes", key: "2", label: "Homes" },
+  { id: "shops", key: "3", label: "Shops" },
+  { id: "work", key: "4", label: "Work" },
+  { id: "services", key: "5", label: "Services" },
 ];
 
 /** The dock's measure: a slot every 52px, the bar 60 tall; a shelf's
@@ -39,7 +39,13 @@ const shelfOf = (t: Tool | null): Shelf | null =>
 const road = (t: Tool) => ROAD_KINDS.find((r) => r.id === t)!;
 const label = (t: Tool) => (typeof t === "string" ? road(t).label : BLUEPRINTS[t.Building].label);
 const color = (t: Tool) => (typeof t === "string" ? road(t).color : BLUEPRINTS[t.Building].color);
-const price = (t: Tool) => (typeof t === "string" ? "" : `${BLUEPRINTS[t.Building].price} h`);
+/** What a building is built of: its timber, which a depot's van brings. */
+const timber = (t: Tool) => (typeof t === "string" ? null : BLUEPRINTS[t.Building].timber);
+/** What the card under the "i" says of each kind beyond its size. */
+const ABOUT: Partial<Record<string, string>> = {
+  Harbour: "The door: the ferry berths at its back, so it stands on the coast with open sea straight out behind it. Stands at once.",
+  Depot: "Keeps the town's goods. Its lorry fetches boxes from the harbour; its vans take timber to sites. The first stands at once.",
+};
 const glyph = (t: Tool) => (typeof t === "string" ? road(t).glyph : BLUEPRINTS[t.Building].glyph);
 
 function Glyph(props: { d: string; size: number }) {
@@ -62,9 +68,6 @@ function Glyph(props: { d: string; size: number }) {
  * glassy; what is built, in its colour, in another at full strength.
  */
 export default function BuildModeToolbar() {
-  const { growth } = useGame();
-  const afford = (t: Tool) => typeof t === "string" || growth().treasury >= BLUEPRINTS[t.Building].price;
-
   /** What a shelf holds. */
   const tools = (s: Shelf): Tool[] =>
     s === "road" ? ROAD_KINDS.map((r) => r.id as Tool) : KINDS.filter((k) => BLUEPRINTS[k].tab === s).map((k) => ({ Building: k }));
@@ -74,11 +77,8 @@ export default function BuildModeToolbar() {
   const [last, setLast] = createSignal<Partial<Record<Shelf, Tool>>>({});
   createEffect(() => { const t = tool(), s = shelfOf(t); if (s) setLast((l) => ({ ...l, [s]: t! })); });
   const face = (s: Shelf) => last()[s] ?? tools(s)[0];
-  /** Picking up a shelf takes its face, or else the first on it the purse covers. */
-  const pick = (s: Shelf) => take(afford(face(s)) ? face(s) : tools(s).find(afford) ?? face(s));
-  const take = (t: Tool) => {
-    if (afford(t)) setTool(t);
-  };
+  /** Picking up a shelf takes its face. */
+  const pick = (s: Shelf) => setTool(face(s));
 
   // The shelf whose menu is open, and the thing on it whose card is.
   // A press outside the dock puts the menu away.
@@ -99,10 +99,9 @@ export default function BuildModeToolbar() {
     if (!s) return;
     const all = tools(s.id);
     if (shelfOf(tool()) !== s.id) return pick(s.id);
-    // Again: the next on the shelf that can be had.
+    // Again: the next on the shelf.
     const i = all.findIndex((t) => same(t, tool()));
-    const next = [...all.slice(i + 1), ...all.slice(0, i)].find(afford);
-    if (next) take(next);
+    setTool(all[(i + 1) % all.length]);
   };
   window.addEventListener("keydown", onKey);
 
@@ -122,8 +121,8 @@ export default function BuildModeToolbar() {
   const stretch = () => Math.min(0.45, Math.abs(beadV()) / 1400);
 
   /** A thing's size, and the card's height to show it. */
-  const size = (t: Tool) => (typeof t === "string" ? "" : `${plot(t.Building, 0).size.join("×")} tiles.`);
-  const cardHeight = (t: Tool) => 56 + Math.ceil(size(t).length / 40) * 20;
+  const size = (t: Tool) => (typeof t === "string" ? "" : `${plot(t.Building, 0).size.join("×")} tiles. ${ABOUT[t.Building] ?? (timber(t) ? `A site until a depot's van brings its ${timber(t)} timber.` : "")}`);
+  const cardHeight = (t: Tool) => 56 + Math.ceil(size(t).length / 38) * 20;
 
   /** Every row of every shelf, placed: risen above its shelf when open, sunk into it when not. */
   const rows = () =>
@@ -199,12 +198,16 @@ export default function BuildModeToolbar() {
             style={{ left: `${m.r().x - 22}px`, bottom: `${m.bottom()}px`, width: `${m.w()}px`, height: `${m.h()}px`, opacity: m.fade(), "pointer-events": m.r().open ? "auto" : "none" }}
           >
             <button
-              onClick={() => { take(m.r().t); open(null); }}
-              class={`absolute left-0 top-0 h-11 right-11 flex items-center gap-2.5 text-left ${afford(m.r().t) ? "cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+              onClick={() => { setTool(m.r().t); open(null); }}
+              class="absolute left-0 top-0 h-11 right-11 flex items-center gap-2.5 text-left cursor-pointer"
             >
               <span class="grid w-11 h-11 shrink-0 place-items-center text-white"><Glyph d={glyph(m.r().t)} size={17} /></span>
               <span class="ink text-[15px] font-semibold whitespace-nowrap">{label(m.r().t)}</span>
-              <span class="soft serif italic font-light text-[15px] whitespace-nowrap">{price(m.r().t)}</span>
+              <Show when={timber(m.r().t) !== null}>
+                <span class="soft inline-flex items-center gap-1 serif italic font-light text-[15px] whitespace-nowrap" title="Timber it is built of">
+                  {timber(m.r().t) ? <><GoodIcon good="Timber" width="13" height="13" />{timber(m.r().t)}</> : "at once"}
+                </span>
+              </Show>
             </button>
             <button
               onClick={() => setAbout((a) => (same(a, m.r().t) ? null : m.r().t))}
