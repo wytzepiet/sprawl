@@ -1194,6 +1194,23 @@ mod tests {
         settle_and_wake(&mut world, &mut events);
     }
 
+    /// A depot painted a tile at a time is short of its yard until it is
+    /// big enough to work, and a road drawn into it then asks of a yard
+    /// that is not there yet: it once subtracted the yard's depth from a
+    /// plot one tile deep, and the server crashed.
+    #[test]
+    fn a_road_into_a_depot_painted_in_part_is_asked_of_no_yard() {
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let at = |x, y| GridCoord { x, y };
+        assert!(take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Building(BuildingKind::Depot), from: at(30, 1), to: at(30, 1) }, 0));
+        assert!(world.occupied.contains_key(&(30, 1)), "the depot's first tile was not painted");
+        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(31, 2), to: at(30, 1) }, 0);
+        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(30, 2), to: at(30, 1) }, 0);
+    }
+
     /// A stroke is a drag: what follows a step refused waits for it, so a
     /// road whose first step no longer fits is not laid from its second,
     /// cut off and paid for.

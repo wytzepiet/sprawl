@@ -147,8 +147,13 @@ impl World {
         (origin, crate::blueprint::lie(kind, facing, size))
     }
 
-    /// A building's yard tiles, lying this way, if its kind keeps a yard.
+    /// A building's yard tiles, lying this way, if its kind keeps a yard
+    /// and it is big enough to work: one painted short of its smallest
+    /// plot has no yard yet, as it has no door.
     pub fn yard_of(tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<Vec<GridCoord>> {
+        if !Self::works(tiles, kind) {
+            return None;
+        }
         let (o, p) = Self::lie(tiles, kind, facing);
         let ((lx, ly), ls) = p.lot?;
         Some(Self::footprint(GridCoord { x: o.x + lx as i32, y: o.y + ly as i32 }, ls).filter(|t| tiles.contains(t)).collect())
