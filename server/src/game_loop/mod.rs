@@ -2093,6 +2093,9 @@ mod tests {
                 0
             }
         };
+        // Yesterday's eating, hours had and asked: the town is fed over two
+        // days, so a day's timing is not taken for a chain that fails.
+        let mut yesterday = (0.0, 0.0);
         let (world, _) = season_with(world, &town_mix(), days, hand, |world, day, _| {
             let midnight = day * DAY_MS as u64;
             let page = world.town.before(midnight);
@@ -2182,8 +2185,11 @@ mod tests {
                     }
                 }
             }
+            let (had, of) = std::mem::replace(&mut yesterday, (eaten, asked));
+            if day > 2 {
+                assert!(eaten + had >= 0.9 * (asked + of), "days {}–{day}: the town ate {:.1}h of the {:.1}h its people need", day - 1, eaten + had, asked + of);
+            }
             if day > 1 {
-                assert!(eaten >= 0.9 * asked, "day {day}: the town ate {eaten:.1}h of the {asked:.1}h its people need");
                 for need in [Need::Work, Need::Eat, Need::Fuel] {
                     assert!(out.get(&need).is_some_and(|&h| h > 0.0), "day {day}: nobody in town was served {need:?}");
                 }

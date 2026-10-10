@@ -65,7 +65,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Does the town still keep?** `cargo test season -- --ignored
   --nocapture` runs the same town for thirty days and asserts that its
   shelves stay stocked and its residents fed: no shelf and no tank empty
-  two midnights running, a day's meals eaten every day, and coins left at
+  two midnights running, nine meals in ten eaten over any two days, and coins left at
   the end. It prints each day's hours worked, eaten out and filled up,
   GDP by building, and coins across the border. Its town's only door is a
   harbour: everything it buys comes by ferry and its depot's lorry, and
