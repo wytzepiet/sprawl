@@ -29,11 +29,11 @@ facing: number,
  */
 stocks: { [key in Good]?: Stock }, 
 /**
- * Still going up: the timber delivered toward it, of what its row
- * takes (`blueprint::Blueprint::timber`). A site has no door for
- * anyone but the van bringing its timber; full, it stands.
+ * Still going up: each material delivered toward it, of what its
+ * row takes (`blueprint::Blueprint::materials`). A site has no door
+ * for anyone but the vans bringing its materials; all in, it stands.
  */
-site: Stock | null, 
+site: { [key in Good]?: Stock } | null, 
 /**
  * A harbour's trailer park: its docks, each where a box stands and
  * the box standing there, if any (`world/sea.rs`). The poses are its

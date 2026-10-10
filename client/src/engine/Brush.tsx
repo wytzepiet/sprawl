@@ -4,6 +4,7 @@ import { Dots } from "./dots";
 import { screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { isRoad, setTool, tool } from "../ui/buildMode";
+import { drafts, myMarks, theirMarks } from "../state/drafts";
 import { hand, may, mayStart, snap, STEPS, type Hand } from "./may";
 import type { GridCoord, TerrainType, Tool } from "../generated";
 
@@ -18,6 +19,9 @@ import type { GridCoord, TerrainType, Tool } from "../generated";
  * And where it may go, worked out here (`may.ts`) and shown by the dots
  * (`dots.ts`): one on every tile in view a drag may start from, and
  * while dragging the steps the tile it is on allows. A step refused is not taken: the drag waits there, straining.
+ *
+ * What the hand lays is a draft (`state/drafts.ts`): it stands in blue
+ * and does nothing until the bill's Build commits it.
  *
  * Alt with the bare hand is the eyedropper: it picks up what stands
  * where it presses, and a drag from there lays more of it.
@@ -40,10 +44,11 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     if (held !== null) send({ type: "Build", data: { tool: held, from, to } });
   };
 
-  // The world as the hand sees it, read again when something is built.
+  // The world as the hand sees it, read again when something is built or
+  // drafted.
   let world: Hand | null = null;
-  createEffect(on(builtVersion, () => {
-    world = hand(eachEntity, props.ground);
+  createEffect(on([builtVersion, drafts], () => {
+    world = hand(eachEntity, props.ground, myMarks(), theirMarks());
     draw();
   }));
   // And drawn again when another tool is taken up.

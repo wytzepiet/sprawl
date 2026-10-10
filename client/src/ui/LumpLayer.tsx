@@ -9,7 +9,7 @@ import type { Building, Lump } from "../generated";
  * What lands on the map: coins as goods cross the border, a box landing
  * from the world or one going out on the ferry; GDP as value is added,
  * a meal served, a crop cut, a shift at a desk; and goods, a box unloaded
- * onto a depot's shelf. Each lump floats up over its building for a
+ * onto a depot's shelf, or stone off it for a road laid. Each lump floats up over its building for a
  * moment and fades — the event the meter sums, seen where it happened.
  * Green is coins arriving, red coins leaving, violet GDP, the level's
  * colour; goods pop up bigger, in their own colour, with their glyph.
@@ -53,7 +53,7 @@ export default function LumpLayer() {
               style={{ "background-color": goods(lump) ? GOODS[lump.good!].color : lump.gdp > 0 ? "#7B77E0" : lump.coins < 0 ? "#D9483B" : "#57A773" }}
             >
               <Show when={lump.good}>{(g) => <GoodIcon good={g()} width={goods(lump) ? 18 : 11} height={goods(lump) ? 18 : 11} />}</Show>
-              {lump.coins < 0 ? "−" : "+"}
+              {lump.coins < 0 || lump.units < 0 ? "−" : "+"}
               {amount(Math.abs(lump.units || lump.gdp || lump.coins))}
               <Show when={goods(lump)}>
                 <span class="font-semibold opacity-90">{GOODS[lump.good!].label}</span>
@@ -67,10 +67,10 @@ export default function LumpLayer() {
 }
 
 /** Worth a lump: a tank topped up from a depot's shelf moves a coin's hundredths. */
-const seen = (l: Lump) => l.units > 0 || Math.abs(l.coins) >= 0.05 || l.gdp >= 0.05;
+const seen = (l: Lump) => l.units !== 0 || Math.abs(l.coins) >= 0.05 || l.gdp >= 0.05;
 
-/** Goods unloaded at a depot, not coins or GDP. */
-const goods = (l: Lump) => l.units > 0 && l.good !== null;
+/** Goods unloaded at a depot, or taken off its shelf, not coins or GDP. */
+const goods = (l: Lump) => l.units !== 0 && l.good !== null;
 
 /** To a tenth under ten, whole over it. */
 const amount = (v: number) => (v < 10 ? v.toFixed(1) : Math.round(v).toString());

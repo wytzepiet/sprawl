@@ -299,9 +299,28 @@ parted from the direction above.
   for it, boxes enough to fill it are booked on the next sailing. Over the
   sell line, what is over goes out a box at a time, once it is a quarter
   of one. A new depot comes with rules for timber, crates and fuel.
+- **Stone** (2026-10-10): a bulk good, twenty to a box, carried in the
+  same box as everything else and drawn as a tipper heaped grey. The
+  starter pack brings one box of it, for the first streets. A depot's
+  first rules leave stone out: the opening teaches timber, and the first
+  site that takes stone, finding none, offers the order and the rule.
+- **The stalled site offers its fix.** A site's card lists each material
+  it waits on and where it is: on a van, in stock at a depot, in a
+  maker's yard, in the trailer park, at sea, booked. Where it is stuck,
+  the fix is one tap: a box in the park and no standing orders, "Send
+  the lorry"; nothing in town and nothing coming, "Order stone", with how
+  many boxes, when they land and what they cost; and a depot with no rule
+  for it, "Keep 20 in stock".
 - **Boxes per good**: a hundred crates, fifty tanks of fuel, twenty of
-  timber. Nothing is boxed by class yet beyond the drawing: tank boxes
+  timber or stone. Nothing is boxed by class yet beyond the drawing: tank boxes
   and lined bulk boxes are the same box.
+- **A box is drawn by what is in it** (`sea.ts`): crates in a dry van,
+  ribbed across the roof, its doors a pale band at the back; fuel in a
+  silver tank between two end frames; timber loose in an open tipper,
+  logs as far along it as the box is full (a heap, for stone or gravel,
+  is ready for a loose good to use). Each in its good's colour as the
+  panels have it (`GOODS`). An empty, which has no class, is the tipper
+  bare and pale. Seen from above, so all of it is on the top.
 - **Seeing it**: `GET /sea` gives every shipment, timetable, park and
   lorry; `bun run act send|standing|order|sell` work the border by hand;
   `the_opening_from_the_harbour` plays the whole opening as a test.

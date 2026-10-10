@@ -23,6 +23,7 @@ import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
+import { Ghosts } from "./Ghosts";
 
 interface MountedEntry {
   kind: string;
@@ -195,5 +196,10 @@ export default function World() {
     terrain.dispose();
   });
 
-  return <Brush ground={(x, y) => terrain.typeAt(x, y)} />;
+  return (
+    <>
+      <Ghosts />
+      <Brush ground={(x, y) => terrain.typeAt(x, y)} />
+    </>
+  );
 }

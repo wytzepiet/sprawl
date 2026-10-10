@@ -34,7 +34,7 @@ const DOLPHINS = { across: 0.6, out: [0.95, 2.45], foot: -0.8 };
 const WALL = 0.05;
 /** The link span's steel, its gantry's towers and beam, the dolphins'
  *  concrete, their fenders and the bollards' iron, the walkway's boards;
- *  a site's slab and scaffolding, and timber. */
+ *  a site's slab and scaffolding, timber and stone. */
 const STEEL = hex("#6B7078");
 const TOWER = hex("#E9E6DF");
 const CONCRETE = hex("#B9B4AA");
@@ -44,6 +44,7 @@ const SLAB = hex("#BDB2A0");
 const SCAFFOLD = hex("#9AA3AD");
 const FLOOR = hex("#9E9A92");
 const TIMBER = hex("#9E6B40");
+const STONE = hex("#9A9C9F");
 const CRANE = hex("#E9B530");
 const WHITE_RGB = hex("#FFFFFF");
 /** Heights in steps of a hundredth, so a site's buckets are few. */
@@ -139,12 +140,16 @@ export function mountBuilding(
     for (const { pose, trailer } of data.park) if (trailer) boxes.push(placeBox(pool, trailer, pose, KERB_Z));
   }
 
-  // A site going up: its slab, the walls rising on it as the timber comes
-  // in, in its colour still pale, scaffolding round them a little higher,
-  // the timber stacked at the front, and over it all a tower crane in
-  // builders' yellow, the sign of a site anywhere.
+  // A site going up: its slab, the walls rising on it as its materials
+  // come in, in its colour still pale, scaffolding round them a little
+  // higher, the timber stacked at the front and the stone heaped beside
+  // it, and over it all a tower crane in builders' yellow, the sign of a
+  // site anywhere.
   if (data.site) {
-    const done = data.site.cap > 0 ? Math.min(1, data.site.level / data.site.cap) : 0;
+    const materials = Object.values(data.site);
+    const sum = (f: (s: { level: number; cap: number }) => number) => materials.reduce((a, s) => a + (s ? f(s) : 0), 0);
+    const done = sum((s) => s.cap) > 0 ? Math.min(1, sum((s) => s.level) / sum((s) => s.cap)) : 0;
+    const stone = data.site.Stone ? data.site.Stone.level / data.site.Stone.cap : 0;
     const full = eaves({ kind: data.kind, storeys: storeysOf(data.kind) });
     const high = full * done;
     const [w, d] = dx === 0 ? [bw, bh] : [bh, bw];
@@ -166,6 +171,7 @@ export function mountBuilding(
     for (const o of [-1, 1]) frame("boards", [2 * sa + 0.06, 0.06, 0.02], SCAFFOLD, 0, o * so, KERB_Z + top);
     for (const a of [-1, 1]) frame("boards", [0.06, 2 * so - 0.06, 0.02], SCAFFOLD, a * sa, 0, KERB_Z + top);
     if (done > 0) frame("timber", [Math.min(0.5, w - 0.5), 0.1, round(0.02 + 0.08 * done)], TIMBER, 0, d / 2 - 0.15, KERB_Z + 0.025);
+    if (stone > 0) frame("stone", [0.18, 0.14, round(0.02 + 0.06 * stone)], STONE, Math.min(0.5, w - 0.5) / 2 + 0.14, d / 2 - 0.15, KERB_Z + 0.025);
     // The crane at a back corner, its jib across the site over the walls.
     const [ca, co] = [-(ww / 2 - 0.1), -(wd / 2 - 0.1)];
     const mast = round(full + 0.25);

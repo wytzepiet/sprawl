@@ -41,9 +41,11 @@ pub struct Blueprint {
     /// a kind with vehicles of its own keeps one. (0, 0) is none: it parks
     /// on its drive.
     pub lot: (u8, u8),
-    /// The timber it is built from: a site stands when this much has been
-    /// delivered to it (docs/game.md §Buildings). Zero stands at once.
-    pub timber: u32,
+    /// What it is built from, a material each and how much: a site stands
+    /// when all of it has been delivered (docs/game.md §Buildings). None
+    /// stands at once. Timber for every kind the opening builds; stone
+    /// besides for the big ones, the masonry a timber frame stands on.
+    pub materials: &'static [(Good, u32)],
     /// What it serves, to whom, and when.
     pub taps: Vec<Tap>,
     /// Its shelves, a good each and the units it holds: what a counter
@@ -68,6 +70,12 @@ pub fn blueprint(kind: BuildingKind) -> &'static Blueprint {
     let (k, b) = &BLUEPRINTS[kind as usize];
     debug_assert_eq!(*k, kind, "blueprint table out of order");
     b
+}
+
+/// What a kind is built from, material by material: what a draft of it
+/// puts on the bill and its site waits for.
+pub fn takes(kind: BuildingKind) -> Vec<(Good, f64)> {
+    blueprint(kind).materials.iter().map(|&(good, n)| (good, n as f64)).collect()
 }
 
 /// The four ways a plot can lie: which side of the building its lot, and
@@ -157,21 +165,22 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         ]
     };
 
-    let row = |class, homes, jobs, size, lot, timber, taps| Blueprint {
-        class, homes, jobs, size, lot, timber, taps, shelves: &[], makes: None, vehicles: &[], quay: false, farm: false,
+    let row = |class, homes, jobs, size, lot, materials, taps| Blueprint {
+        class, homes, jobs, size, lot, materials, taps, shelves: &[], makes: None, vehicles: &[], quay: false, farm: false,
     };
+    use Good::{Stone, Timber};
     vec![
-        (House, row(Living, 2, 0, (1, 1), (0, 0), 4, household(2))),
-        (Apartment, row(Living, 7, 0, (2, 1), (0, 0), 12, household(7))),
+        (House, row(Living, 2, 0, (1, 1), (0, 0), &[(Timber, 4)], household(2))),
+        (Apartment, row(Living, 7, 0, (2, 1), (0, 0), &[(Timber, 12), (Stone, 8)], household(7))),
         // A shop seats as many as it staffs.
         (Shop, Blueprint {
             shelves: &[(Good::Crates, 40)],
-            ..row(Commerce, 0, 2, (1, 1), (0, 0), 4, vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
+            ..row(Commerce, 0, 2, (1, 1), (0, 0), &[(Timber, 4)], vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
         // spike: industry starts before offices, offices before shops.
-        (Office, row(Commerce, 0, 12, (2, 1), (0, 0), 10, vec![shift(8, 17, 12)])),
-        (Factory, row(Industry, 0, 12, (2, 1), (0, 0), 14, vec![shift(6, 15, 12)])),
+        (Office, row(Commerce, 0, 12, (2, 1), (0, 0), &[(Timber, 10), (Stone, 6)], vec![shift(8, 17, 12)])),
+        (Factory, row(Industry, 0, 12, (2, 1), (0, 0), &[(Timber, 14), (Stone, 8)], vec![shift(6, 15, 12)])),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
         // Its shelf is tanks: a delivery is a van's worth, and more than
@@ -179,21 +188,21 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         // full, or it would never stop ordering.
         (GasStation, Blueprint {
             shelves: &[(Good::Fuel, 40)],
-            ..row(Commerce, 0, 1, (1, 1), (0, 0), 6, vec![shift(6, 22, 1), pump(always(), 4)])
+            ..row(Commerce, 0, 1, (1, 1), (0, 0), &[(Timber, 6), (Stone, 4)], vec![shift(6, 22, 1), pump(always(), 4)])
         }),
         // Shopping for a whole district, with far more on the shelves than a
         // corner shop.
         (Supermarket, Blueprint {
             shelves: &[(Good::Crates, 150)],
-            ..row(Commerce, 0, 6, (2, 2), (0, 0), 16, vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
+            ..row(Commerce, 0, 6, (2, 2), (0, 0), &[(Timber, 16), (Stone, 10)], vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
         }),
         // Where the town's goods are kept, a little of every class: two
-        // boxes of crates, two tank boxes, three of timber. Its lorry hauls
+        // boxes of crates, two tank boxes, three of timber, three of stone. Its lorry hauls
         // boxes from the harbour and its vans deliver to shops and sites.
         (Depot, Blueprint {
-            shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60)],
+            shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60), (Good::Stone, 60)],
             vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
-            ..row(Industry, 0, 6, (2, 2), (3, 2), 10, vec![shift(6, 18, 6)])
+            ..row(Industry, 0, 6, (2, 2), (3, 2), &[(Timber, 10)], vec![shift(6, 18, 6)])
         }),
         // Where food comes from. Four hands, six to three, each growing a
         // sitting's worth every few minutes: at eighteen crates an hour a
@@ -209,7 +218,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             makes: Some(Good::Crates),
             vehicles: &[CarRole::Tractor],
             farm: true,
-            ..row(Industry, 0, 4, (3, 2), (2, 2), 8, vec![shift(6, 15, 4)])
+            ..row(Industry, 0, 4, (3, 2), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
         }),
         // The door: an apron on the quay that the tug crosses, the ramp
         // behind it, and a trailer park on the street side, its docks the
@@ -218,7 +227,7 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Harbour, Blueprint {
             vehicles: &[CarRole::Tug],
             quay: true,
-            ..row(Industry, 0, 2, (3, 1), (3, 2), 0, vec![shift(6, 22, 2)])
+            ..row(Industry, 0, 2, (3, 1), (3, 2), &[], vec![shift(6, 22, 2)])
         }),
         // Four hands, seven to four, felling and sawing the forest round it:
         // with woods all round, a box of timber a shift and a half, a house
@@ -226,7 +235,16 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         (Sawmill, Blueprint {
             shelves: &[(Good::Timber, 120)],
             makes: Some(Good::Timber),
-            ..row(Industry, 0, 4, (2, 2), (2, 2), 6, vec![shift(7, 16, 4)])
+            ..row(Industry, 0, 4, (2, 2), (2, 2), &[(Timber, 6)], vec![shift(7, 16, 4)])
+        }),
+        // The sawmill's twin at the mountain's foot: four hands, seven to
+        // four, breaking the rock within reach, as much stone a shift as the
+        // sawmill makes timber. Built of timber alone, so the town can
+        // build its quarry before it has any stone.
+        (Quarry, Blueprint {
+            shelves: &[(Good::Stone, 120)],
+            makes: Some(Good::Stone),
+            ..row(Industry, 0, 4, (2, 2), (2, 2), &[(Timber, 8)], vec![shift(7, 16, 4)])
         }),
     ]
 });
@@ -243,6 +261,10 @@ pub fn check() {
         // A harbour has a park for the ferry's boxes and a tug to shunt them.
         assert!(!b.quay || (b.lot.1 > 0 && b.vehicles.contains(&CarRole::Tug)), "{kind:?} has a quay and nowhere to land a box");
         assert!(b.makes.is_none_or(|g| b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} makes what it has no shelf for");
+        // A depot's van brings every material a site takes.
+        for &(good, _) in b.materials {
+            assert!(blueprint(BuildingKind::Depot).shelves.iter().any(|&(s, _)| s == good), "{kind:?} is built of {good:?}, which no depot keeps");
+        }
         for tap in &b.taps {
             // T1: a fixed-length service still takes time.
             assert!(tap.rate.is_finite() || tap.overhead > 0, "{kind:?} serves {:?} instantly and for free", tap.need);
@@ -266,7 +288,7 @@ pub fn inspect() -> Value {
         "homes": b.homes,
         "jobs": b.jobs,
         "size": b.size,
-        "timber": b.timber,
+        "materials": b.materials,
         "shelves": b.shelves,
         "taps": b.taps.iter().map(|t| json!({
             "need": t.need, "open_h": hours(&t.curve), "rate": t.rate, "slots": t.slots,

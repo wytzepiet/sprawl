@@ -38,3 +38,6 @@ export type { Shipment } from "./Shipment";
 export type { Shunt } from "./Shunt";
 export type { Slot } from "./Slot";
 export type { Trailer } from "./Trailer";
+export type { Draft } from "./Draft";
+export type { Line } from "./Line";
+export type { Mark } from "./Mark";

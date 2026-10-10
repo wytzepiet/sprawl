@@ -9,6 +9,7 @@ import { createConnection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
 import { hearSea } from "./sea";
+import { hearDrafts } from "./drafts";
 import type { Building,
   GameObjectEntry,
   ClientMessage,
@@ -35,11 +36,6 @@ const spatial = new Map<string, number[]>();
  */
 const [me, setMe] = createSignal(0);
 export { me };
-
-/**
- * Our own uncommitted entities. Kept as ops arrive rather than derived on
- * demand, since it decides whether the commit bar is on screen at all.
- */
 
 /**
  * What carries a pin: every building. Kept as ops arrive, with a version the
@@ -135,6 +131,11 @@ let opsListener: OpsListener | null = null;
 export function setOpsListener(fn: OpsListener | null) {
   opsListener = fn;
 }
+
+/** The ground of every chunk heard of, kept after it is out of view, since
+ *  it never changes: the minimap draws the island as far as it was seen. */
+const ground = new Map<string, Uint8Array>();
+export const groundOf = (cx: number, cy: number) => ground.get(`${cx},${cy}`);
 
 /** Terrain arrives per chunk rather than as entities, so it bypasses ops. */
 export interface TerrainListener {
@@ -277,6 +278,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         setIsland(msg.data.island);
         setGrowth(msg.data.growth);
         hearSea(msg.data.sea);
+        hearDrafts(msg.data.drafts);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
         break;
@@ -284,6 +286,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         console.error("[ws] server error:", msg.data.message);
         break;
       case "TerrainChunk":
+        ground.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
         terrainListener?.setChunk(msg.data);
         break;
       case "UnloadChunk":

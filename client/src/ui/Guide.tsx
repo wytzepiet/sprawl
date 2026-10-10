@@ -6,6 +6,7 @@ import { setTool } from "./buildMode";
 import { selected } from "../state/selection";
 import { track } from "./Shipments";
 import { Btn } from "./kit";
+import { myMarks } from "../state/drafts";
 import type { DepotLine } from "./Harbour";
 import type { Car, Tool } from "../generated";
 
@@ -105,6 +106,14 @@ export default function Guide() {
     if (box) track(box.trailer, lorry);
   };
   const take = (t: Tool) => () => setTool(t);
+  /** Said under a beat while something of it is drawn and not built. */
+  const drafted = () => (
+    <Show when={myMarks().length > 0}>
+      <p>
+        Drawn in blue, it is only a draft: <b>Build</b>, by the toolbar, or Enter, makes it real.
+      </p>
+    </Show>
+  );
 
   const steps = (): { title: string; done: boolean; body: () => JSX.Element }[] => [
     {
@@ -112,8 +121,9 @@ export default function Guide() {
       done: harbour() !== null,
       body: () => (
         <>
-          <p>Its back to the sea, open water straight out behind it: the ferry berths there. It stands at once.</p>
+          <p>Its back to the sea, open water straight out behind it: the ferry berths there. Built, it stands at once.</p>
           <Btn onClick={take({ Building: "Harbour" })} color="#2B6CA3">Take the harbour</Btn>
+          {drafted()}
         </>
       ),
     },
@@ -122,8 +132,9 @@ export default function Guide() {
       done: depots().length > 0,
       body: () => (
         <>
-          <p>Where the town keeps what lands. Its lorry fetches boxes; its vans take timber to the sites.</p>
+          <p>Where the town keeps what lands. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone.</p>
           <Btn onClick={take({ Building: "Depot" })} color="#A0714A">Take the depot</Btn>
+          {drafted()}
         </>
       ),
     },
@@ -133,7 +144,9 @@ export default function Guide() {
       body: () => (
         <>
           <p>From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.</p>
+          <p>A street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile.</p>
           <Btn onClick={take("Street")}>Take the street</Btn>
+          {drafted()}
         </>
       ),
     },
@@ -145,7 +158,7 @@ export default function Guide() {
           when={parked().length > 0}
           fallback={
             <p>
-              Timber, crates and fuel, the world's gift, are on the first ferry
+              Timber, stone, crates and fuel, the world's gift, are on the first ferry
               <Show when={next()}>{(s) => <>: in at {clockAt(s().eta!)}, <b class="tabular-nums">{until(s().eta!)}</b> from now</>}</Show>.
             </p>
           }
@@ -159,9 +172,10 @@ export default function Guide() {
       title: "Build houses",
       done: !!k().settled,
       body: () => <>
-        <p>A house is a site till a van brings its four timber. Then the next ferry brings its people.</p>
+        <p>Draw a row of them, and Build: each is a site till a van brings its four timber, and the bill says if the depot has it. Then the next ferry brings their people.</p>
         <p>The rest of the pack: tap the lorry again, or give it standing orders on the depot's card.</p>
         <Btn onClick={take({ Building: "House" })} color="#E8566F">Take a house</Btn>
+        {drafted()}
       </>,
     },
   ];

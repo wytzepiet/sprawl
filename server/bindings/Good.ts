@@ -4,4 +4,4 @@
  * A good: what a shelf, a yard or a box holds, and what the world
  * prices. A resident's need draws one off a counter's shelf (`Need::good`).
  */
-export type Good = "Crates" | "Fuel" | "Timber";
+export type Good = "Crates" | "Fuel" | "Timber" | "Stone";

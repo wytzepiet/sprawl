@@ -1,11 +1,11 @@
 # The flat view: the game in 2D, and seeing what the server does
 
-Status: direction, 2026-10-10. Nothing built beyond `bun run plan`, which
-draws the town grid flat as SVG from the sandbox's code. Its first reason
-is gone: headless Chromium runs WebGPU in software (SwiftShader, with
-`--enable-unsafe-webgpu --use-angle=swiftshader
---use-webgpu-adapter=swiftshader`), so a cloud session photographs the
-real game, slowly. The minimap, the far zoom and the low-end mode stand.
+Status: direction, 2026-10-10; built the same day: the drawing, `bun run
+flat` and the minimap (§Built). Headless Chromium runs WebGPU in software
+(SwiftShader), so a cloud session can photograph the real game, but at
+twenty-odd seconds a picture: `bun run look` is kept for light and
+material, and the flat view answers where things are in a fifth of a
+second. The far zoom and the low-end mode stand.
 
 ## Why
 
@@ -46,13 +46,49 @@ rules, flat:
 The rule for everything new: **a kind of thing draws itself in both views.**
 A building, a vehicle, a box that has no flat drawing is not finished.
 
-## Pictures from the cloud
+## Built
 
-A script, beside `look` and `shots`, that starts a stack (or uses a running
-one), opens the client in headless Chromium in the flat view, frames a
-tile or a building or a vehicle, and writes PNGs: one, or a strip over
-game time (`--frames 8 --every 250`), and a sheet. Its pictures land in
-`.dev/` and can be sent to the player. It needs no GPU.
+- **One drawing**, `client/src/flat/draw.ts`: the entities as the client
+  holds them, the ground as the server's chunks, and the clock, onto any
+  2D canvas: the browser's, or `@napi-rs/canvas`'s in a script. No
+  Babylon, no Solid. The ground is a picture a chunk, a pixel a tile,
+  made once and drawn scaled and crisp, so the whole island costs as
+  little as a street. Roads as lines of their width, a one-way's arrow,
+  an island network red; buildings their tiles in their kind's colour,
+  outlined; a site an outline filled from the bottom as its timber
+  comes, and labelled with how much; a farm's land by stage; a
+  harbour's park, each dock and its box.
+- **Vehicles where the 3D view has them.** Their poses come from
+  `engine/objects/motion.ts`, which `CarObject.tsx` places its meshes by
+  too: a trip driven as `driver.ts` steers it, a run, the ferry's voyage,
+  the tug's shunt, the deck's slots, a lorry's box straight behind it
+  when parked. The flat view takes the server's distance as it is; the
+  3D one eases a change of pedal in over half a second, the one
+  difference. Each role its shape and livery: cars in their colour, a
+  lorry's cab and box, a van, a tractor, the tug, the ferry's hull with
+  its fifteen slots and what is on them. Boxes by their good's colour
+  (`GOODS`), empties hollow. The 3D boxes are coloured by `sea.ts`'s own
+  table, which does not yet agree (crates red there, green here).
+- **`bun run flat x,y[,r]`** (`client/scripts/flat.ts`): listens on the
+  game's socket as a client does, so it draws what a player would see,
+  and writes `.dev/flat/<name>.png`, labelled: kinds and ids of
+  buildings, ids of vehicles, the grid numbered in the game's tiles,
+  and a legend with the clock and each ferry's state. `--frames 8
+  --every 500` a run of them and a strip; `--follow <id>` keeps a
+  vehicle in the middle; `--px` the scale. About 150 ms a picture in all
+  on the opening's harbour, the drawing 40 to 100 ms of it.
+- **The minimap** (`ui/Minimap.tsx`), in the bottom right, on the glass:
+  the drawing round the camera, three times its view or ninety-six tiles,
+  every vehicle a dot, the view outlined, drawn again three times a
+  second, 1 ms a drawing. A click sends the camera there. Its rim is the
+  glass's colour, not the GPU's glass, whose frost would be spent round a
+  picture that hides it. The ground of every chunk ever
+  heard of is kept (`groundOf`), so the island fills in as it is seen.
+
+Not yet: drafts and demolitions (drawn where the buildings are, in
+`drawFlat`'s building loop, once the server sends them), lanes at sea,
+shipments' pins, the far zoom (the drawing already scales to the island),
+the low-end mode.
 
 ## Seeing what the server does
 

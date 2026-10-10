@@ -27,16 +27,7 @@
 import { mkdirSync, readdirSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { $ } from "bun";
-
-// The colours live in .tsx files beside their components, which Vite
-// compiles for Solid; here nothing is rendered, so any JSX runtime will do.
-Bun.plugin({
-  name: "solid-jsx",
-  setup(build) {
-    const tsx = new Bun.Transpiler({ loader: "tsx", tsconfig: { compilerOptions: { jsx: "react-jsx", jsxImportSource: "solid-js/h" } } });
-    build.onLoad({ filter: /\.tsx$/ }, async ({ path }) => ({ contents: tsx.transformSync(await Bun.file(path).text()), loader: "js" }));
-  },
-});
+import "./tsx";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const OUT = `${ROOT}/.dev/plan`;
