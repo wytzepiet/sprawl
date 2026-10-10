@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import type { Building, BuildingKind } from "./generated";
+import type { Building, BuildingKind, Good } from "./generated";
 
 /**
  * Every kind of building, one row each, as the client draws it: its colour,
@@ -12,7 +12,7 @@ import type { Building, BuildingKind } from "./generated";
  * silhouettes on a 24-unit grid — one shape, windows and doors cut out — so a
  * pin reads at a glance and still reads shrunk to a dot's neighbour.
  */
-export const TABS = ["homes", "shops", "work", "services"] as const;
+export const TABS = ["trade", "homes", "shops", "work", "services"] as const;
 export type Tab = (typeof TABS)[number];
 
 export interface Blueprint {
@@ -30,17 +30,16 @@ export interface Blueprint {
   shape: "gabled" | "sawtooth" | "box";
   /** Heights a box may be built at; one is picked per building and kept. */
   heights: number[];
-  /** What the mayor pays the world for one, in coins: its materials. */
-  price: number;
+  /** The timber it is built from, which a depot's van brings to its
+   *  site; none stands at once (`blueprint.rs`'s `timber`). */
+  timber: number;
   /** Which shelf of the build menu it stands on. */
   tab: Tab;
   /** The building's own footprint in tiles, wide along its frontage. */
   size: [number, number];
   /** Its yard in tiles along the frontage and deep, on the street side; [0, 0] is none: it parks on its drive. */
   lot: [number, number];
-  /** A depot: its lot is a yard of docks, not a ring, and fuses with nobody. */
-  yard?: boolean;
-  /** A port: a quay along its back wall, out over the water, where its ship moors. */
+  /** A harbour: a quay along its back wall, out over the water, where the ferry berths. */
   quay?: boolean;
 }
 
@@ -93,6 +92,33 @@ const NOTABLE = 28;
 const SPECIAL = 45;
 
 export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
+  Harbour: {
+    label: "Harbour",
+    color: "#2B6CA3",
+    material: "#4E6A84",
+    // A quay with a crane over it: the mast, the jib, and the hook.
+    glyph: "M2 19h20v3H2zM6 3h3v16H6zM9 5h12v2.5H9zM17.5 7.5h2.5v5h-2.5zM16 12.5h5.5v2.5H16z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.5],
+    timber: 0, tab: "trade",
+    size: [3, 1],
+    lot: [3, 2],
+    quay: true,
+  },
+  Depot: {
+    label: "Depot",
+    color: "#A0714A",
+    material: "#7E6248",
+    // A wide shed: the roof, a loading door and two bays.
+    glyph: "M2 9.5 12 3l10 6.5V22H2zM5 12h14v2.5H5zM5 16h5v6H5zM14 16h5v6h-5z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.6],
+    timber: 10, tab: "trade",
+    size: [2, 2],
+    lot: [2, 2],
+  },
   House: {
     label: "House",
     color: "#E8566F",
@@ -102,7 +128,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "gabled",
     heights: [0],
-    price: 5, tab: "homes",
+    timber: 4, tab: "homes",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -115,7 +141,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "box",
     heights: [0.85, 1.15, 1.5],
-    price: 15, tab: "homes",
+    timber: 12, tab: "homes",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -129,7 +155,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.45, 0.55],
-    price: 18, tab: "shops",
+    timber: 4, tab: "shops",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -145,7 +171,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     // Tall, and worth varying: a few towers among them is what gives a
     // business district a skyline instead of a plateau.
     heights: [1.0, 1.45, 2.3],
-    price: 15, tab: "work",
+    timber: 10, tab: "work",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -158,7 +184,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "sawtooth",
     heights: [0],
-    price: 25, tab: "work",
+    timber: 14, tab: "work",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -171,7 +197,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.3],
-    price: 14, tab: "services",
+    timber: 6, tab: "services",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -184,23 +210,9 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: SPECIAL,
     shape: "box",
     heights: [0.5],
-    price: 47, tab: "services",
+    timber: 16, tab: "services",
     size: [2, 2],
     lot: [0, 0],
-  },
-  Depot: {
-    label: "Depot",
-    color: "#A0714A",
-    material: "#7E6248",
-    // A wide shed: the roof, a loading door and two bays.
-    glyph: "M2 9.5 12 3l10 6.5V22H2zM5 12h14v2.5H5zM5 16h5v6H5zM14 16h5v6h-5z",
-    pinUntil: NOTABLE,
-    shape: "box",
-    heights: [0.6],
-    price: 56, tab: "services",
-    size: [2, 2],
-    lot: [3, 2],
-    yard: true,
   },
   Farm: {
     label: "Farm",
@@ -211,41 +223,68 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.4],
-    price: 40, tab: "work",
+    timber: 8, tab: "work",
     size: [3, 2],
     lot: [2, 2],
-    yard: true,
-  },
-  Harbour: {
-    label: "Harbour",
-    color: "#2B6CA3",
-    material: "#4E6A84",
-    // A quay with a crane over it: the mast, the jib, and the hook.
-    glyph: "M2 19h20v3H2zM6 3h3v16H6zM9 5h12v2.5H9zM17.5 7.5h2.5v5h-2.5zM16 12.5h5.5v2.5H16z",
-    pinUntil: NOTABLE,
-    shape: "box",
-    heights: [0.5],
-    price: 0, tab: "services",
-    size: [3, 1],
-    lot: [3, 2],
-    yard: true,
-    quay: true,
   },
 };
 
-/**
- * Every kind the mayor may put down: everything with a price. The edge has
- * none — it is the world past the frontier, not a thing a town has — so it
- * never reaches the build menu. Mirrors the server's own reading of the
- * table.
- */
-export const KINDS = (Object.keys(BLUEPRINTS) as BuildingKind[]).filter((k) => Number.isFinite(BLUEPRINTS[k].price));
+/** Every kind the mayor may put down, the opening's first: the harbour, the depot. */
+export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];
 
 /** The glyph for a kind, as an SVG that takes the current colour. */
 export function BuildingIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { kind: BuildingKind }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" {...props}>
       <path d={BLUEPRINTS[props.kind].glyph} />
+    </svg>
+  );
+}
+
+/**
+ * Every good, as the client shows it: its name, its colour, its glyph, and
+ * what the world trades it at (`economy.rs`): `price` a unit, `box` units
+ * to a box (`Good::per_box`), and a tenth over to buy, a tenth under to
+ * sell (`MARGIN`).
+ */
+export const GOODS: Record<Good, { label: string; color: string; glyph: string; price: number; box: number }> = {
+  Timber: {
+    label: "timber",
+    color: "#B07A3E",
+    // Three logs stacked, their ends ringed.
+    glyph: "M7 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM17 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM12 4.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z",
+    price: 1.0,
+    box: 20,
+  },
+  Crates: {
+    label: "crates",
+    color: "#5E9E52",
+    // A crate: its lid and two slats.
+    glyph: "M3 4h18v4H3zM4 9.5h16V21H4zm3 2.5v6.5h2V12zm4 0v6.5h2V12zm4 0v6.5h2V12z",
+    price: 0.2,
+    box: 100,
+  },
+  Fuel: {
+    label: "fuel",
+    color: "#D4513B",
+    // A jerrycan: its handle and spout.
+    glyph: "M8 2h6v3h-6zM5 6h11l3 3v13H5zm3 5v8h8v-8zM17 2.5l3 3-1.5 1.5-3-3z",
+    price: 1.0,
+    box: 50,
+  },
+};
+
+/** The world's margin each way (`economy::MARGIN`). */
+const MARGIN = 0.1;
+/** What a box of a good costs from the world, and fetches sold to it. */
+export const boxCost = (good: Good) => GOODS[good].box * GOODS[good].price * (1 + MARGIN);
+export const boxSale = (good: Good) => GOODS[good].box * GOODS[good].price * (1 - MARGIN);
+
+/** A good's glyph, as an SVG that takes the current colour. */
+export function GoodIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { good: Good }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" {...props}>
+      <path d={GOODS[props.good].glyph} />
     </svg>
   );
 }

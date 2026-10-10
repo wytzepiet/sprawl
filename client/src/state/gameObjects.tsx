@@ -8,6 +8,7 @@ import {
 import { createConnection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
+import { hearSea } from "./sea";
 import type { Building,
   GameObjectEntry,
   ClientMessage,
@@ -54,11 +55,11 @@ export function pinned(): GameObjectEntry[] {
   return [...pinnedEntries.values()];
 }
 /**
- * Coins and GDP that landed on buildings in view, for a moment: each lump floats up
- * over its building and is gone. Kept for a couple of seconds of wall time
+ * Coins, GDP and goods that landed on buildings in view, for a moment:
+ * each lump floats up over its building and is gone. Kept for a couple of seconds of wall time
  * and read by the lump layer; nothing else wants it.
  */
-const LUMP_MS = 2400;
+const LUMP_MS = 3200;
 const [lumps, setLumps] = createSignal<(Lump & { key: number; since: number })[]>([]);
 let lumpKey = 0;
 export function recentLumps() {
@@ -275,6 +276,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
         setIsland(msg.data.island);
         setGrowth(msg.data.growth);
+        hearSea(msg.data.sea);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
         break;

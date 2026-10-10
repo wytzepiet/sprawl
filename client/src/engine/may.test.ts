@@ -1,18 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { may, type Hand } from "./may";
-import type { Growth, TerrainType } from "../generated";
+import type { TerrainType } from "../generated";
 
 /** The server's test street (`game_loop` tests): grass, and a street along
  *  y = 0, every tile linked both ways to the next. */
 function street(): Hand & { wet: Set<string> } {
   const wet = new Set<string>();
-  const growth: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 1e9, income: 0, imports: 0, taken: [], road_tiles_left: 100 };
   const h: Hand & { wet: Set<string> } = {
     roads: new Map(),
     at: new Map(),
     occupied: new Map(),
     ground: (x, y): TerrainType => (wet.has(`${x},${y}`) ? "Water" : "Grass"),
-    growth,
     wet,
   };
   for (let x = -2; x < 20; x++) {

@@ -161,6 +161,24 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
             json!({ "need": t.need, "hours_today": today })
         })
         .collect();
+    // Where an order can be sent and timber found: every depot, nearest
+    // first, on a harbour's card and a site's, and whether its street is
+    // joined to the harbour.
+    let here = world.objects.get(id).and_then(|e| e.position);
+    let mut depots: Vec<(i32, Value)> = Vec::new();
+    if b.kind == crate::protocol::BuildingKind::Harbour || b.site.is_some() {
+        for e in world.objects.iter() {
+            let GameObject::Building(ref d) = e.object else { continue };
+            let (Some(at), Some(here)) = (e.position, here) else { continue };
+            if !crate::economy::depot(d.kind) || d.site.is_some() {
+                continue;
+            }
+            let joined = world.street_of(e.id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined));
+            let tiles = (at.x - here.x).abs() + (at.y - here.y).abs();
+            depots.push((tiles, json!({ "depot": link(world, e.id), "tiles": tiles, "joined": joined, "stocks": d.stocks.iter().map(|(g, s)| (format!("{g:?}"), json!(s.level))).collect::<serde_json::Map<_, _>>() })));
+        }
+    }
+    depots.sort_by_key(|(t, _)| *t);
     json!({
         "kind": "building",
         "id": id,
@@ -172,6 +190,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "rules": b.rules,
         "standing": b.standing,
         "selling": b.selling,
+        "depots": depots.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
         "here": here,
         "household": household,
         "staff": staff,
