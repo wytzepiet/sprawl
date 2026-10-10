@@ -186,6 +186,16 @@ discard_drafts, erase_draft, draft_remove, is_going_away}`, the
 Also the multiplayer claim it gave: an unfinished draft reserved its land
 for its owner. Last lived at `dd53fbe`.
 
+**Brought back, 2026-10-10.** Once building costs materials, the second
+step buys something: the bill, what a draft takes against what is in
+stock, and a swipe of the demolisher that is not instant ruin. The new
+one is meant to be lighter (`game.md` §Drafts): there is one world, not a
+"now" and an "after". A draft takes up its tiles and reserves them, but
+is never wired into anything: a drafted road is in no edge and in no live
+node's links until commit, a drafted building has no door, and a drafted
+demolition is a mark on the live thing. Commit replays the strokes through
+the handlers that build live.
+
 ## Pedestrians, transit, walkability
 
 **What.** People on the map: walkers on sidewalks, buses and trams with

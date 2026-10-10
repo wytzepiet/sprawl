@@ -46,19 +46,28 @@ Delete before building. Each goes to `shelved.md` with its last commit.
 *Playable:* the same town, smaller, every truck on it carrying something
 you can name, and nothing on a card you cannot see on the map.
 
-## Milestone 1: The opening (≈ 6 days)
+## Milestone 1: The opening (≈ 9 days)
 
-The four beats of `game.md` §The opening, from nothing.
+The four beats of `game.md` §The opening, from nothing, in four slices
+each playable on its own.
 
-- The harbour, built by the player on the coast; the world's ferry on a
-  timetable with a batch; the quay as a small buffer.
-- The general depot, holding a little of every class.
-- The starter pack: the first sailing's load, carried by the town's one
-  lorry, tapped by hand, from the quay to the depot, with the camera on
-  it the first time.
-- Sites: a placement waits for timber, steel and concrete, a lorry
-  brings them from the depot, and it goes up as they land. The site's
-  card says what it waits for and where that is.
+1. The harbour, built by the player on the coast, as the one door; the
+   world's ferry on a timetable with a batch; the quay as a small
+   buffer. The road's edge, the generated roads and the fog go
+   (`shelved.md`, 2026-09-23).
+2. Drafts (`game.md` §Drafts): every placement and demolition a draft
+   until committed, blue and reserved, drawn on the map with its bill;
+   commit, undo, discard. A draft takes up space and is wired into
+   nothing.
+3. The general depot, holding a little of every class, and sites: a
+   placement waits for its materials, timber first, a lorry brings them
+   from the depot, and it goes up as they land. A building's cost is a
+   row on its blueprint. The first depot comes with a top-up rule on it,
+   and a stalled site offers its own fix. `Need` splits into the needs
+   and the goods, since timber is a good and nobody's need.
+4. The starter pack: the first sailing's load, carried by the town's one
+   lorry, tapped by hand, from the quay to the depot, with the camera on
+   it the first time.
 
 *Playable:* build a harbour and a depot, watch the starter pack come
 home, and build a street with your own lorry.
@@ -95,7 +104,10 @@ it and the building front as the thing you fix.
   physics.
 - Priority at junctions: roads over streets, via the intersection
   registry.
-- Levels: an overpass is a road one level up; bridges over water.
+- Levels: an overpass is a road one level up; bridges over water, taking
+  concrete and steel from stock.
+- Roads draw gravel and asphalt from stock as they are committed, once
+  the quarry of milestone 3 makes them.
 
 *Playable:* an interchange that actually flows, and a bypass that empties
 the high street.

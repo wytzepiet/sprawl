@@ -223,6 +223,13 @@ every material comes by boat; a sawmill by the forest or a quarry in
 the mountains makes them in town later. Building ten houses tomorrow
 means topping up timber today.
 
+Roads take theirs too, gravel and asphalt and, over water or over each
+other, concrete and steel, but straight from the depots' stock as they
+are committed, with no lorry: a road is instant, and so the bigger the
+gravel depot, the more road can be laid in one go. Placing anything is a
+draft until it is committed, and the draft's bill says what it will take
+against what is in stock (`game.md` §Drafts).
+
 ## The opening
 
 1. Build a harbour on the coast.

@@ -63,6 +63,44 @@ Intersections are the skill ceiling: roundabouts, merges, interchanges are
 built from these three things, and your steel lorries share them with the
 school run.
 
+**Roads are instant.** A committed road is there at once, with no crew to
+wait for, because the network is the thing you iterate on: a shortcut, a
+junction drawn again, and the traffic answering in the same minute. A
+road that waited on a paving crew would also make a jam slow to fix, the
+crew stuck in the jam. What a road takes comes straight out of the depots' stock as it
+is committed: gravel for its base and asphalt for its top, and concrete
+and steel for a bridge or an overpass, which is the big project you stock
+a big depot for. Until the quarry (`roadmap.md` milestone 3) a road costs
+only the build's tiles. Demolition gives back part of what a road took,
+so trying things is never punished.
+
+## Drafts
+
+**Everything you place or take away is a draft until you commit it.** A
+swipe of the finger is not a hundred tonnes of concrete, and a swipe of
+the demolisher is not half the town. A drafted road or building stands
+on its tiles, blue and translucent, and reserves them, so in a shared
+town nobody else builds there; it joins what it touches, so a house beside
+a drafted street is fine; and it does nothing yet: no traffic on it, nobody
+living in it, no call from it. A drafted demolition is a red tint on the
+real thing, which goes on working until the commit. Beside the draft
+stands its bill: each material it takes against what the depots hold,
+short in red, and the coins for anything that has to be bought in.
+
+**Commit** makes it real in one stroke: roads first, then buildings, then
+the demolitions, each as if it had been drawn live. Roads are laid and
+draw their materials; buildings become sites; demolitions come down. What
+the stock cannot cover the bill offers to order, with when it would land,
+and what no longer fits (someone built there meanwhile) stays a draft,
+marked. Undo takes back the last stroke and discard the lot. A draft is
+the player's own and outlives a restart.
+
+Why it is back after being shelved (`shelved.md`): once building costs
+materials the second step buys something, the bill; and this one is
+lighter. A draft only takes up space. It is never part of the road graph,
+a draft building has no door, and so nothing that runs the town has to
+know drafts exist.
+
 ## Buildings
 
 **You place every building, and every building is built from materials
@@ -70,10 +108,8 @@ delivered to it.** Pick a kind from a hotkey menu, tap beside a street,
 and it snaps to the frontage with its lot behind. What stands is a site:
 a dotted outline with one stock, the materials it needs, and a call like
 a shop with an empty shelf. Deliveries land on it, and when the stock is
-full the building stands. Build time is the deliveries; tap the site
-before the first load lands and the call is cancelled and nothing is
-spent. The materials are timber, steel and concrete, and they come from a
-depot: a lorry drives them to the site, and the site goes up as they land,
+full the building stands. Build time is the deliveries. The materials
+are timber, steel and concrete, and they come from a depot: a lorry drives them to the site, and the site goes up as they land,
 outline, scaffolding, walls. Its card says what it waits for and where
 that is, and a click follows it. There is no construction firm. The site
 is the buyer, the depot is the builder, and a sawmill or a quarry in town
@@ -82,7 +118,21 @@ is later a nearer source for the same call.
 **A building costs materials, not coins.** Materials cost coins only
 when they are bought in. Early on that is every building; later, with a
 sawmill and a quarry, nothing at all. Building ten houses tomorrow means
-topping up timber today.
+topping up timber today. What a kind takes is a row on its blueprint,
+and the materials come in by tier: the first buildings take timber
+alone, so the opening teaches one material, one import and one lorry;
+concrete and steel arrive with the kinds that are big, tall or over
+water. More materials are more to trade and more ways to specialise, and
+more to keep stocked; whether three feels like depth or a chore is for
+play to say, and the rows are where it is tuned.
+
+**Nobody waits on a mechanic they were not taught.** The first depot
+comes with a top-up rule already on it, drawn over it like any rule:
+keep above so much timber, from the world. The player sees automation
+before they need to understand it, and can change it. And anything that
+stalls says why where it stalls, with the fix beside it: a site's card
+says "waiting on 12 timber, none in stock" and offers the order, with
+when it would land.
 
 There is no line between placeables and the rest. A depot, a pump, a works
 and a house are all placed the same way; they differ in what they need and
@@ -92,8 +142,8 @@ sea, slowly.
 
 ## The build
 
-The skill tree is a town plan. Points come from the city's level (what
-the level counts is open: `trade.md` §Open). Four
+The skill tree is a town plan. Points come from the city's level, which
+is GDP to date (`trade.md` §GDP). Four
 avenues: homes, commerce, industry, roads. Placeables unlock where two
 avenues meet, in chain order, so a kind arrives after the map has shown
 the need for it. The build is the one gate for what may be bought, how
@@ -214,7 +264,7 @@ a body or a wheel, conveyor belts, hand-wired supply pairs inside a
 town, trucking companies, prices and wages inside a town, taxes, leisure
 as a need, services as a good, wear on cars.
 
-Filed, not promised: roads built from asphalt; big infrastructure built
+Filed, not promised: big infrastructure built
 by cranes; the raw goods table above; the world's prices drifting with
 its trade; sidings and trains; the airport as the fast, dear door; a
 ride-along camera behind a shipment.
