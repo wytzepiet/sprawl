@@ -1,4 +1,4 @@
-import { lie, plot } from "../blueprints";
+import { BLUEPRINTS, FACINGS, lie, plot } from "../blueprints";
 import type { Build, Building, BuildingKind, GameObjectEntry, GridCoord, Mark, RoadNode, TerrainType, Tool } from "../generated";
 
 /**
@@ -53,7 +53,10 @@ export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Ha
   for (const { step } of mine) {
     const { tool, from, to } = step;
     if (typeof tool !== "string") {
-      if (!h.occupied.has(key(to.x, to.y))) h.occupied.set(key(to.x, to.y), { kind: tool.Building, tiles: [to], facing: 2, stocks: {}, site: null, park: [], rules: {}, standing: false, selling: [], lorries: 0, land: [], ruts: [], joined: [], door: null });
+      const tiles = lays(step);
+      const facing = seaward(h, tiles, tool.Building)[0] ?? 2;
+      const b: Building = { kind: tool.Building, tiles, facing, stocks: {}, site: null, park: [], rules: {}, standing: false, selling: [], lorries: 0, land: [], ruts: [], joined: [], door: null };
+      for (const t of tiles) if (!h.occupied.has(key(t.x, t.y))) h.occupied.set(key(t.x, t.y), b);
     } else if (tool !== "Demolish" && !h.occupied.has(key(to.x, to.y))) {
       const [a, b] = [node(from), node(to)];
       a.node.road ||= tool === "Road";
@@ -65,9 +68,92 @@ export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Ha
   return h;
 }
 
-/** The tiles a step lays something on: a road's two, a building's one. */
+/** The tiles a step lays something on: a road's two, a building's one,
+ *  a harbour's whole plot. */
 export function lays({ tool, from, to }: Build): GridCoord[] {
-  return tool === "Demolish" ? [] : typeof tool === "string" ? [from, to] : [to];
+  return tool === "Demolish" ? [] : typeof tool === "string" ? [from, to] : (whole(tool.Building, to) ?? [to]);
+}
+
+/** `World::whole`: the plot a kind placed whole stands on, round the tile
+ *  tapped: a harbour, never painted a tile at a time. Null for a kind
+ *  that is painted. */
+export function whole(kind: BuildingKind, at: GridCoord): GridCoord[] | null {
+  if (!BLUEPRINTS[kind].quay) return null;
+  const [w, d] = plot(kind, 0).size;
+  const out: GridCoord[] = [];
+  for (let dy = 0; dy < d; dy++) for (let dx = 0; dx < w; dx++) out.push({ x: at.x - Math.floor(w / 2) + dx, y: at.y - Math.floor(d / 2) + dy });
+  return out;
+}
+
+/** Tiles of open sea the ferry needs in a line behind a harbour
+ *  (`shipping::water::BERTH`). */
+const BERTH = 6;
+
+/** What lies behind a harbour on these tiles facing this way, as
+ *  `World::berth_at` reads it: "berth" where a tile behind its back has
+ *  `BERTH` of sea straight out, else the best of what is there: some
+ *  sea, a lake, or land. */
+function behind(h: Hand, tiles: GridCoord[], kind: BuildingKind, facing: number): "berth" | "sea" | "lake" | "land" {
+  const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
+  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
+  const [[bx, by], [gw, gh]] = lie(kind, facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]).building;
+  const [dx, dy] = FACINGS[facing % 4];
+  const back: GridCoord[] = dx === 0
+    ? Array.from({ length: gw }, (_, i) => ({ x: x0 + bx + i, y: dy < 0 ? y0 + by + gh : y0 + by - 1 }))
+    : Array.from({ length: gh }, (_, i) => ({ x: dx < 0 ? x0 + bx + gw : x0 + bx - 1, y: y0 + by + i }));
+  const sea = (t: GridCoord) => h.ground(t.x, t.y) === "Sea";
+  if (back.some((q) => Array.from({ length: BERTH }, (_, n) => ({ x: q.x - dx * n, y: q.y - dy * n })).every(sea))) return "berth";
+  if (back.some(sea)) return "sea";
+  return back.some((q) => h.ground(q.x, q.y) === "Water") ? "lake" : "land";
+}
+
+/** `World::seaward`: the ways a harbour on these tiles may face. */
+export function seaward(h: Hand, tiles: GridCoord[], kind: BuildingKind): number[] {
+  return BLUEPRINTS[kind].quay ? [0, 1, 2, 3].filter((f) => behind(h, tiles, kind, f) === "berth") : [];
+}
+
+/** A harbour held over the map: where a tap would place it, the way it
+ *  would face, and, if it may not go there, why, in words. */
+export interface Placing {
+  kind: BuildingKind;
+  /** The tile the tap places it round. */
+  at: GridCoord;
+  tiles: GridCoord[];
+  facing: number;
+  why: string | null;
+}
+
+/** Where a tap at a tile places a kind placed whole, and whether it may:
+ *  round the tile, or, for a tap on the coast, round one beside it that
+ *  works. Null for a kind that is painted. */
+export function placing(h: Hand, kind: BuildingKind, at: GridCoord): Placing | null {
+  if (!whole(kind, at)) return null;
+  const near = [[0, 0], ...STEPS.filter(([dx, dy]) => dx === 0 || dy === 0), ...STEPS.filter(([dx, dy]) => dx !== 0 && dy !== 0)];
+  const tried = near.map(([dx, dy]) => place(h, kind, { x: at.x + dx, y: at.y + dy }));
+  return tried.find((p) => !p.why) ?? tried[0];
+}
+
+/** The draft's rule for a harbour (`drafts::fair`, `World::may_paint`):
+ *  open land under its whole plot, nobody's draft on it, and sea behind
+ *  its back. It needs no street: it brings its own. */
+function place(h: Hand, kind: BuildingKind, at: GridCoord): Placing {
+  const tiles = whole(kind, at)!;
+  const backs = [0, 1, 2, 3].map((f) => behind(h, tiles, kind, f));
+  const rank = { berth: 3, sea: 2, lake: 1, land: 0 };
+  const facing = [0, 1, 2, 3].reduce((a, f) => (rank[backs[f]] > rank[backs[a]] ? f : a), 2);
+  const p = (why: string | null): Placing => ({ kind, at, tiles, facing, why });
+  const ground = tiles.map((t) => h.ground(t.x, t.y));
+  if (tiles.some((t) => h.taken.has(key(t.x, t.y)))) return p("Someone's draft is there");
+  if (tiles.some((t) => h.occupied.has(key(t.x, t.y)))) return p("Something stands there");
+  if (tiles.some((t) => (nodeAt(h, t)?.id ?? 0) < 0)) return p("Your draft is there");
+  if (tiles.some((t) => { const n = nodeAt(h, t); return !!n && new Set(arms(n.node, false)).size > 1; })) return p("A street runs through it");
+  if (ground.some((g) => g === "Sea" || g === "Water")) return p("Its plot runs into the water: it needs three tiles by three of land");
+  if (ground.some((g) => g === "Beach")) return p("On the beach: it stands on grass or forest");
+  if (ground.some((g) => !land(g))) return p("Not on open land: it needs three tiles by three of grass or forest");
+  if (backs[facing] === "sea") return p(`The water behind is too narrow: the ferry needs ${BERTH} tiles of open sea straight out`);
+  if (backs[facing] === "lake") return p("A lake: the ferry comes only by sea");
+  if (backs[facing] === "land") return p("No berth: its back is not on the sea");
+  return p(null);
 }
 
 /** The steps out of a tile, as the brush numbers them: east and on round toward +y. */
@@ -83,6 +169,7 @@ export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolea
   if (lays({ tool, from, to }).some((t) => h.taken.has(key(t.x, t.y)))) return false;
   if (typeof tool !== "string") {
     const kind = tool.Building;
+    if (whole(kind, to)) return from.x === to.x && from.y === to.y && !place(h, kind, to).why;
     return mayPaint(h, kind, from, to) && wouldBeReached(h, kind, from, to);
   }
   if (tool === "Demolish") {
@@ -167,7 +254,7 @@ function mayEnter(tiles: GridCoord[], entrances: GridCoord[], from: GridCoord, t
 }
 
 /** `World::yard_of`. */
-function yardOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoord[] | null {
+export function yardOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoord[] | null {
   const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
   const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
   const { lot } = lie(kind, facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]);

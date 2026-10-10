@@ -197,12 +197,7 @@ function Act(props: { step: Step }) {
       const go = () => GROUND[kind] && toward(GROUND[kind]);
       return (
         <>
-          <div class="flex gap-2">
-            <Show when={kind === "Harbour"}>
-              <Btn onClick={() => (go(), setTool("Street"))}>Take the street</Btn>
-            </Show>
-            <Btn onClick={() => (go(), setTool({ Building: kind }))}>Take the {BLUEPRINTS[kind].label.toLowerCase()}</Btn>
-          </div>
+          <Btn onClick={() => (go(), setTool({ Building: kind }))}>Take the {BLUEPRINTS[kind].label.toLowerCase()}</Btn>
           {drafted()}
         </>
       );

@@ -3,9 +3,9 @@ import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
-import { isRoad, setTool, tool } from "../ui/buildMode";
+import { isRoad, setAim, setTool, tool } from "../ui/buildMode";
 import { drafts, myMarks, theirMarks } from "../state/drafts";
-import { hand, may, mayStart, snap, STEPS, type Hand } from "./may";
+import { hand, may, mayStart, placing, snap, STEPS, type Hand } from "./may";
 import type { GridCoord, TerrainType, Tool } from "../generated";
 
 /**
@@ -47,12 +47,21 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   // The world as the hand sees it, read again when something is built or
   // drafted.
   let world: Hand | null = null;
+  /** A harbour is placed whole at a tap, never dragged: its plot shown
+   *  under the pointer as it moves (`aim`), turned to the sea. */
+  let hover: GridCoord | null = null;
+  const placed = (at: GridCoord | null) => {
+    const held = tool();
+    return world && at && held !== null && typeof held !== "string" ? placing(world, held.Building, at) : null;
+  };
+  const aimAt = (at: GridCoord | null) => setAim(placed(at));
   createEffect(on([builtVersion, drafts], () => {
     world = hand(eachEntity, props.ground, myMarks(), theirMarks());
     draw();
+    aimAt(hover);
   }));
   // And drawn again when another tool is taken up.
-  createEffect(on(tool, () => draw(), { defer: true }));
+  createEffect(on(tool, () => (draw(), aimAt(hover)), { defer: true }));
   const allowed = (at: GridCoord, i: number) => {
     const held = tool();
     return !!world && held !== null && may(world, held, at, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] });
@@ -113,6 +122,11 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0 || tool() === null) return;
     const w = pick(e);
+    const whole = placed({ x: Math.floor(w.wx), y: Math.floor(w.wy) });
+    if (whole) {
+      if (!whole.why) step(whole.at, whole.at);
+      return;
+    }
     current = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
     prevWorld = w;
     accDx = 0;
@@ -127,7 +141,12 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!current || !prevWorld) return;
+    if (!current || !prevWorld) {
+      const w = pick(e);
+      const at = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
+      if (at.x !== hover?.x || at.y !== hover?.y) aimAt((hover = at));
+      return;
+    }
     const w = pick(e);
     dots.pull({ x: w.wx, y: w.wy });
     accDx += w.wx - prevWorld.wx;
@@ -178,8 +197,12 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
+  const onLeave = () => aimAt((hover = null));
+  canvas.addEventListener("pointerleave", onLeave);
 
   onCleanup(() => {
+    canvas.removeEventListener("pointerleave", onLeave);
+    setAim(null);
     canvas.removeEventListener("pointerdown", onEyedrop, { capture: true });
     canvas.removeEventListener("pointerdown", onPointerDown);
     canvas.removeEventListener("pointermove", onPointerMove);

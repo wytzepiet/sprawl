@@ -6,7 +6,9 @@ import { storeysOf } from "./town/grid";
 import { builtVersion, buildingAt, getObjectsAt } from "../state/gameObjects";
 import { drafts, lastDone, myMarks, theirMarks } from "../state/drafts";
 import { plot } from "../blueprints";
-import type { Building, BuildingKind, Mark } from "../generated";
+import { aim } from "../ui/buildMode";
+import { lays, yardOf, type Placing } from "./may";
+import type { Building, BuildingKind, GridCoord, Mark } from "../generated";
 
 /**
  * The drafts on the map (docs/game.md §Drafts), drawn flat over the scene
@@ -20,12 +22,16 @@ import type { Building, BuildingKind, Mark } from "../generated";
  * taken back; built, it flashes pale and sinks into the ground, where its
  * site or its road stands.
  */
-type Look = "mine" | "stuck" | "theirs" | "doomed";
+type Look = "mine" | "stuck" | "theirs" | "doomed" | "fits" | "unfit";
 const LOOKS: Record<Look, { side: string; top: string; opacity: number }> = {
   mine: { side: "#2F7BF0", top: "#86B9FF", opacity: 0.55 },
   stuck: { side: "#E39220", top: "#FFD27A", opacity: 0.62 },
   theirs: { side: "#7F8898", top: "#C2C8D3", opacity: 0.4 },
   doomed: { side: "#E0402F", top: "#FF8D7D", opacity: 0.5 },
+  // A harbour in hand, where a tap would place it: green where the
+  // ferry would berth, red where it would not (`aim`).
+  fits: { side: "#2E9E5B", top: "#93E3B0", opacity: 0.6 },
+  unfit: { side: "#D8432F", top: "#FF9E8E", opacity: 0.55 },
 };
 /** A road's band, of a tile; a box's inset from its tile's edge. */
 const BAND = 0.62;
@@ -69,9 +75,19 @@ function shapesOf(m: Mark, look: Look): Shape[] {
   }
   if (typeof tool !== "string") {
     const [w, d] = plot(tool.Building, 0).size;
-    return [{ look, a: [to.x, to.y], h: tall(tool.Building), join: w * d > 1 ? tool.Building : undefined }];
+    return lays(m.step).map((t) => ({ look, a: [t.x, t.y], h: tall(tool.Building), join: w * d > 1 ? tool.Building : undefined }));
   }
   return [{ look, a: [from.x, from.y], b: [to.x, to.y], h: 0 }];
+}
+
+/** A harbour in hand, where a tap would place it: its building a box at
+ *  its back, its park flat on the street side, so it is seen which way
+ *  it faces. */
+function aimed(p: Placing): Shape[] {
+  const look = p.why ? "unfit" : "fits";
+  const yard = yardOf(p.tiles, p.kind, p.facing) ?? [];
+  const flat = (t: GridCoord) => yard.some((y) => y.x === t.x && y.y === t.y);
+  return p.tiles.map((t) => ({ look, a: [t.x, t.y], h: flat(t) ? 0.05 : tall(p.kind), join: p.kind }));
 }
 
 export function Ghosts() {
@@ -89,8 +105,21 @@ export function Ghosts() {
   const landing = layer(0.9);
   const ghosts = new Map<string, Ghost>();
 
-  createEffect(on([drafts, builtVersion], () => {
+  // Why a harbour in hand may not go where it is, or that it may, in
+  // words over its plot.
+  const label = document.createElement("div");
+  label.dataset.glass = "toast";
+  label.className = "ink absolute rounded-full px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap";
+  label.style.cssText = "transform:translate(-50%,-130%);display:none";
+  el.appendChild(label);
+
+  createEffect(on([drafts, builtVersion, aim], () => {
     const want = new Map<string, Shape>();
+    const p = aim();
+    for (const s of p ? aimed(p) : []) want.set(key(s), s);
+    label.textContent = p ? (p.why ?? "The ferry berths here; a street comes with it") : "";
+    label.style.color = p?.why ? "#C2361F" : "";
+    label.style.display = p ? "" : "none";
     for (const m of myMarks()) for (const s of shapesOf(m, m.stuck ? "stuck" : "mine")) want.set(key(s), s);
     for (const m of theirMarks()) for (const s of shapesOf(m, "theirs")) if (s.look !== "doomed") want.set(key(s), s);
     const built = lastDone() === "commit";
@@ -142,6 +171,11 @@ export function Ghosts() {
     };
     const o = at(0, 0, 0), e = at(1, 0, 0);
     const tile = Math.hypot(e[0] - o[0], e[1] - o[1]);
+    const p = aim();
+    if (p) {
+      const [lx, ly] = at(p.at.x + 0.5, p.at.y + 0.5, tall(p.kind) + 0.3);
+      [label.style.left, label.style.top] = [`${lx}px`, `${ly}px`];
+    }
     // Bands first, under the boxes; the boxes' sides, then their tops, so
     // a row of them reads as one roof.
     const order = [...ghosts.values()].sort((p, q) => +!p.b - +!q.b);

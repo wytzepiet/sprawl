@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hand, may, type Hand } from "./may";
+import { hand, may, placing, type Hand } from "./may";
 import type { TerrainType } from "../generated";
 
 /** The server's test street (`game_loop` tests): grass, and a street along
@@ -58,5 +58,23 @@ describe("the hand's rule, as the server's", () => {
     expect(may(drafted, house, at(1, 1), at(1, 1))).toBe(true);
     expect(may(drafted, "Street", at(2, 0), at(3, 0))).toBe(true);
     expect(may(drafted, "Street", at(4, 0), at(5, 0))).toBe(false);
+  });
+
+  // The server's `a_harbour_is_placed_whole_and_never_in_part`: grass to
+  // y = 3, the sea from y = 4.
+  test("a harbour whole at a tap, its back on the sea, and nowhere else", () => {
+    const coast = hand(() => {}, (_x, y): TerrainType => (y >= 4 ? "Sea" : "Grass"));
+    const harbour = { Building: "Harbour" as const };
+    expect(may(coast, harbour, at(9, 2), at(9, 2))).toBe(true);
+    expect(may(coast, harbour, at(9, 1), at(9, 1))).toBe(false);
+    expect(may(coast, harbour, at(9, 3), at(9, 3))).toBe(false);
+    expect(may(coast, harbour, at(9, 2), at(10, 2))).toBe(false);
+    expect(may(coast, harbour, at(10, -10), at(10, -10))).toBe(false);
+    // A tap on the coast places it round the tile beside that fits.
+    const p = placing(coast, "Harbour", at(9, 3))!;
+    expect([p.at, p.facing, p.why]).toEqual([at(9, 2), 0, null]);
+    expect(placing(coast, "Harbour", at(9, -10))!.why).toBe("No berth: its back is not on the sea");
+    const lake = hand(() => {}, (_x, y): TerrainType => (y >= 4 ? "Water" : "Grass"));
+    expect(placing(lake, "Harbour", at(9, 2))!.why).toBe("A lake: the ferry comes only by sea");
   });
 });
