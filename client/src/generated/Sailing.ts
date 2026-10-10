@@ -23,4 +23,13 @@ booked: number,
 /**
  * Households moved in and waiting beyond the sea for a sailing.
  */
-waiting: number, };
+waiting: number, 
+/**
+ * When a box booked now berths: the sailing from the world the ferry
+ * has not yet left on.
+ */
+lands: number, 
+/**
+ * From casting off to berthing again, by the line's timetable.
+ */
+turn: number, };

@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { buildingAt, getEntity, useGame } from "../state/gameObjects";
-import { clockAt, landsAt, now, plural, room, sailingOf, sea, turn, until, voyage } from "../state/sea";
+import { clockAt, landsAt, now, plural, room, sailingOf, sea, until, voyage } from "../state/sea";
 import { setFollowing } from "../state/selection";
 import { boxCost, GOODS } from "../blueprints";
 import { Btn, coins, GoodDot, Section, Stepper, type Link } from "./kit";
@@ -40,17 +40,17 @@ export function Timetable(props: { sailing: Sailing }) {
   return (
     <div>
       <div class="flex items-baseline justify-between gap-2">
-        <span class="text-[15px] font-semibold">{s().berthed ? "At the ramp" : away() ? "Beyond the horizon" : "At sea"}</span>
+        <span class="text-[15px] font-semibold">{s().berthed ? "At the ramp" : away() ? "Beyond the edge" : "At sea"}</span>
         <span class="serif text-[22px] font-light tabular-nums"><span class="soft font-sans text-xs">{s().berthed ? "sails in " : "in "}</span>{s().berthed ? until(s().departs) : until(s().arrives)}</span>
       </div>
-      <div class="soft text-xs">{s().berthed ? `sails ${clockAt(s().departs)}, back ${clockAt(s().departs + turn())}` : `in at ${clockAt(s().arrives)}, sails ${clockAt(s().departs)}`}</div>
-      {/* The voyage: the sea from the horizon to the ramp, the ferry on it. */}
+      <div class="soft text-xs">{s().berthed ? `sails ${clockAt(s().departs)}, back ${clockAt(s().lands)}` : `in at ${clockAt(s().arrives)}, sails ${clockAt(s().departs)}`}</div>
+      {/* The voyage: the sea from the edge to the ramp, the ferry on it. */}
       <div class="relative mt-2.5 mb-1 h-3">
         <div class="absolute inset-x-0 top-[5px] h-[2px] rounded-full" style={{ background: "repeating-linear-gradient(to right, rgb(var(--ink) / 0.25) 0 4px, transparent 4px 8px)" }} />
-        <div class="absolute left-0 top-[5px] h-[2px] rounded-full" style={{ width: `${voyage(s(), turn()) * 100}%`, background: s().berthed ? "#57A773" : "#2B6CA3" }} />
+        <div class="absolute left-0 top-[5px] h-[2px] rounded-full" style={{ width: `${voyage(s()) * 100}%`, background: s().berthed ? "#57A773" : "#2B6CA3" }} />
         <div
           class="absolute top-0 h-3 w-5 -translate-x-1/2 rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.3)]"
-          style={{ left: `${voyage(s(), turn()) * 100}%`, background: s().berthed ? "#57A773" : "#2B6CA3", transition: "left 0.25s linear" }}
+          style={{ left: `${voyage(s()) * 100}%`, background: s().berthed ? "#57A773" : "#2B6CA3", transition: "left 0.25s linear" }}
         />
         <span class="soft absolute -bottom-3.5 left-0 text-[9px] uppercase tracking-wider">{s().berthed ? "in" : "sea"}</span>
         <span class="soft absolute -bottom-3.5 right-0 text-[9px] uppercase tracking-wider">{s().berthed ? "sails" : "ramp"}</span>

@@ -91,14 +91,8 @@ export function running(car: Car): { drawn: DrawnPath; at(now: number, z: number
   };
 }
 
-/** A ferry's voyage, by the server's clock: in, if it ends nearer its
- *  harbour (`home`) than it begins. None while it is moored or away. */
-export function voyage(car: Car, home: GridCoord | null | undefined): ((now: number) => Stand) | null {
-  const path = car.run?.path;
-  if (!path || path.length < 2) return null;
-  const near = (t: GridCoord) => (home ? Math.hypot(t.x - home.x, t.y - home.y) : 0);
-  return sailing(car, near(path[path.length - 1]) < near(path[0]));
-}
+/** A ferry's leg, by the server's clock; none while it is moored or away. */
+export const voyage = (car: Car): ((now: number) => Stand) | null => (car.sail ? sailing(car.sail) : null);
 
 /** What stands on a ferry's deck, each in its slot `k` and so far along
  *  it, `d`: the boxes, and the settlers' cars in the free slots from the
@@ -127,11 +121,11 @@ export interface Moment {
 
 /** Where a vehicle is at `now`, exactly where the server's physics has it
  *  (the 3D view eases a change of pedal in over half a second; this does
- *  not); none if it is out of sight. `home` is a ferry's harbour. */
-export function moment(id: number, car: Car, now: number, home?: GridCoord | null): Moment | null {
+ *  not); none if it is out of sight. */
+export function moment(id: number, car: Car, now: number): Moment | null {
   switch (car.role) {
     case "Ferry": {
-      const sail = voyage(car, home);
+      const sail = voyage(car);
       if (!sail && !car.spot) return null;
       const body = sail ? sail(now) : car.spot!;
       return { body, deck: aboard(car).map(({ k, d, box, settler }) => ({ at: ahead(deckPose(body, k), d), box, settler })) };

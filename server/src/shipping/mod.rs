@@ -5,17 +5,17 @@
 //! harness (`sim.rs`, `cargo test scenario`) call the same functions, so
 //! what the harness measures is what the game does (docs/plan-sea.md).
 
-// Until the game sails by it (stage 2), only the harness calls in.
+// The game sails one line a harbour, to the world, so far: the rest of
+// `lines.rs` (journeys, the company's rule) is the harness's until stage 3.
 #![cfg_attr(not(test), allow(dead_code))]
 
 pub mod water;
-#[cfg(test)]
 pub mod lines;
 #[cfg(test)]
 mod sim;
 
 use crate::engine::GameTime;
-use crate::protocol::DAY_MS;
+use crate::protocol::{Pose, Sail, CHUNK_SIZE, DAY_MS};
 
 /// An hour of the clock.
 pub const HOUR: GameTime = DAY_MS as GameTime / 24;
@@ -68,6 +68,28 @@ pub fn sail_ms(len: f64, ease: [bool; 2]) -> GameTime {
         _ => out(len),
     };
     ms.round() as GameTime
+}
+
+impl Sail {
+    /// Where the ferry is at `t`, and which way its land end points: the
+    /// way it goes coming in to a berth, back the way it came going out,
+    /// since it never turns.
+    pub fn pose(&self, t: GameTime) -> Pose {
+        let len = length(&self.path);
+        let (at, way) = point_at(&self.path, covered(len, self.ease, t.saturating_sub(self.started)));
+        Pose { at, heading: if self.ease[0] && !self.ease[1] { way + std::f64::consts::PI } else { way } }
+    }
+
+    /// The first moment after `now` the ship is in another chunk, or the
+    /// end of the leg: when the views that watch a chunk must hear of it.
+    pub fn next_crossing(&self, now: GameTime) -> GameTime {
+        let chunk = |t: GameTime| {
+            let p = self.pose(t).at;
+            ((p[0].floor() as i32).div_euclid(CHUNK_SIZE), (p[1].floor() as i32).div_euclid(CHUNK_SIZE))
+        };
+        let here = chunk(now);
+        (1..).map(|k| now + k * 250).find(|&t| t >= self.ends || chunk(t) != here).unwrap().min(self.ends)
+    }
 }
 
 /// A polyline's length.

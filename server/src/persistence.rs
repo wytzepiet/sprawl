@@ -157,7 +157,7 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         // them anyway. The parked car is; a save mid-journey keeps the
         // version last seen parked, and the driver self-heals home, or the
         // shelves the ship was fetching for call again.
-        if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.away > 0) {
+        if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.sail.is_some() || c.away > 0) {
             continue;
         }
         let json = serde_json::to_string(entry).expect("failed to serialize");
@@ -210,7 +210,7 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Car, CarRole, GameObject, GridCoord, Job, Run};
+    use crate::protocol::{Car, CarRole, GameObject, GridCoord, Sail};
 
     /// A ship saved mid-voyage comes back as it was last seen at the quay:
     /// the wakes that time a voyage die with the process, so a saved one
@@ -223,10 +223,10 @@ mod tests {
         let mut ship = Car::new(1, CarRole::Ferry);
         let moored = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(quay) };
         save(&dir, &[moored], &[], Meta::default());
-        ship.run = Some(Run { job: Job::Sail, path: vec![quay, GridCoord { x: 5, y: 6 }], started: 0, pace: 1 });
+        ship.sail = Some(Sail { path: vec![[5.5, 5.5], [5.5, 9.5]], started: 0, ends: 1, ease: [true, false] });
         let sailing = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(GridCoord { x: 5, y: 6 }) };
         save(&dir, &[sailing], &[], Meta::default());
-        ship.run = None;
+        ship.sail = None;
         ship.away = 7;
         let beyond = GameObjectEntry { id: 2, object: GameObject::Car(ship), position: None };
         save(&dir, &[beyond], &[], Meta::default());
@@ -234,7 +234,7 @@ mod tests {
         let _ = std::fs::remove_file(&dir);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].position, Some(quay), "the ship is not where it was last moored");
-        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.run.is_none() && c.away == 0));
+        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none() && c.away == 0));
     }
 
     /// A draft outlives a restart, and one rubbed out is gone after it.

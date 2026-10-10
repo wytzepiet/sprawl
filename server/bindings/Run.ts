@@ -3,9 +3,8 @@ import type { GridCoord } from "./GridCoord";
 import type { Job } from "./Job";
 
 /**
- * A run off the roads: a tractor's over the land, a ship's over the
- * water. The tiles it drives in order, doing its job to each as it
- * arrives, standing on the first at `started` and reaching one more
+ * A tractor's run off the roads, over its farm's land. The tiles it
+ * drives in order, doing its job to each as it arrives, standing on the first at `started` and reaching one more
  * every `pace` milliseconds. No route, no claims, no queue — and nothing
  * that changes as it goes, so the run is sent once.
  */

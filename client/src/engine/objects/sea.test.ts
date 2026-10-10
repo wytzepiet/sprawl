@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { deckPose, sailing, shunting } from "./sea";
-import type { Car } from "../../generated";
+import type { Sail } from "../../generated";
 
 const near = (a: number[], b: number[]) => expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(1e-6);
 
@@ -25,11 +25,22 @@ test("a tug ends where the server has it, its box on the slot, and backs facing 
 });
 
 test("a ferry sailing in ends moored at the berth, its land end at the ramp, and deck slots on the hull", () => {
-  const path = [{ x: -24, y: 53 }, { x: -18, y: 53 }, { x: -18, y: 52 }, { x: -18, y: 51 }, { x: -18, y: 50 }];
-  const steps = path.flatMap((p, i) => (i ? Array.from({ length: Math.abs(p.x - path[i - 1].x) + Math.abs(p.y - path[i - 1].y) }, (_, k) => ({ x: path[i - 1].x + Math.sign(p.x - path[i - 1].x) * (k + 1), y: path[i - 1].y + Math.sign(p.y - path[i - 1].y) * (k + 1) })) : [p]));
-  const car = { run: { job: "Sail", path: steps, started: 0, pace: 1200 } } as unknown as Car;
-  const at = sailing(car, true)((steps.length - 1) * 1200);
+  // In from the edge, round a corner, and straight up to the berth.
+  const sail: Sail = { path: [[-30, 53.5], [-17.5, 53.5], [-17.5, 49.6]], started: 0, ends: 40_000, ease: [false, true] };
+  const at = sailing(sail)(sail.ends);
   near(at.at, [-17.5, 49.6]);
   expect(Math.sin(at.heading)).toBeCloseTo(-1);
   near(deckPose(at, 0).at, [-17.77, 48.45]);
+  // Still in the last moment, and never a snap of the facing.
+  const at50 = sailing(sail)(sail.ends - 50).at;
+  expect(Math.hypot(at50[0] + 17.5, at50[1] - 49.6)).toBeLessThan(0.001);
+  let last = sailing(sail)(0).heading;
+  for (let t = 16; t <= sail.ends; t += 16) {
+    const h = sailing(sail)(t).heading;
+    expect(Math.abs(Math.atan2(Math.sin(h - last), Math.cos(h - last)))).toBeLessThan(0.2);
+    last = h;
+  }
+  // Going out it backs away, its land end toward the berth.
+  const out: Sail = { path: [[-17.5, 49.6], [-17.5, 160]], started: 0, ends: 40_000, ease: [true, false] };
+  expect(Math.sin(sailing(out)(20_000).heading)).toBeCloseTo(-1);
 });

@@ -11,8 +11,9 @@
 //!
 //! The ferry is the world's, one to a harbour, on a timetable: it leaves
 //! the world with what was booked for it and the settlers waiting to come,
-//! sails in over the horizon, berths for `DWELL`, and casts off on time
-//! with whatever the tug got aboard, back out of sight. The world pays for
+//! sails in from the map's edge along its line's way (`shipping/`),
+//! berths for `DWELL`, and casts off on time with whatever the tug got
+//! aboard, back out over the edge. The world pays for
 //! what went out as it casts off; the town pays for what came in as each
 //! box lands in the park. It is double-ended, as small island ferries
 //! are: it never turns, it sails in one end first and out the other.
@@ -24,20 +25,13 @@
 //! backs a box out of its dock and up the ramp, the box leading. It only
 //! starts what it can finish before the ferry sails.
 
-use std::collections::{HashMap, VecDeque};
-
 use crate::blueprint::FACINGS;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::protocol::{BuildingKind, Car, CarRole, EntityId, GameObject, Good, GridCoord, Job, Place, Pose, Run, Shunt, TerrainType, Trailer, DAY_MS};
+use crate::protocol::{BuildingKind, Car, CarRole, EntityId, GameObject, Good, GridCoord, Place, Pose, Sail, Shunt, TerrainType, Trailer, DAY_MS};
+use crate::shipping::lines::{Call, Line};
+use crate::shipping::water::{End, Water};
 use crate::world::World;
-
-/// How long a ship takes to cross a tile: 1.2 seconds of the clock, a
-/// ship at twenty knots on twelve-metre tiles, a little under a car.
-pub const PACE: GameTime = DAY_MS as GameTime / 1000;
-/// How far out over the water a ship is still in sight: a minute of its
-/// sailing, about what the town's view takes in.
-pub const HORIZON: usize = 48;
 /// The ferry, in tiles: long and broad, bigger than true to the map, as
 /// `FERRY` in the client's `dressing.ts`.
 pub const FERRY_LENGTH: f64 = 3.2;
@@ -49,9 +43,6 @@ pub const DECK: usize = LANES * ROWS;
 const LANE_GAP: f64 = 0.27;
 const ROW_FIRST: f64 = 0.45;
 const ROW_GAP: f64 = 0.6;
-/// From casting off to berthing again: two and a half hours, the voyage
-/// out and back included.
-pub const TURN: GameTime = DAY_MS as GameTime * 5 / 48;
 /// At the ramp: an hour and a quarter.
 pub const DWELL: GameTime = DAY_MS as GameTime * 5 / 96;
 /// The first call at a new harbour: half an hour after it is built.
@@ -66,9 +57,6 @@ const HITCH_MS: GameTime = 2_500;
 /// of each and the coupling.
 pub const TUG_BOX: f64 = 0.32;
 pub const CAB_BOX: f64 = 0.262;
-
-/// The four ways off a tile.
-const AROUND: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
 /// Empties the world keeps standing in a harbour's park.
 pub const EMPTIES: usize = 2;
@@ -155,46 +143,21 @@ impl World {
         self.berth_at(&b.tiles, b.kind, b.facing)
     }
 
-    /// The way from a tile of the sea to the horizon: the shortest over
-    /// the sea to the map's edge, cut at the horizon, since a ship further
-    /// out is out of sight either way. None from a tile not on the sea, or
-    /// on a sea with no way out.
-    fn horizon(&self, from: GridCoord) -> Option<Vec<GridCoord>> {
-        let sea = |t: (i32, i32)| self.terrain.get(&t) == Some(&TerrainType::Sea);
-        let off = |t: GridCoord| AROUND.iter().any(|d| !self.terrain.contains_key(&(t.x + d.0, t.y + d.1)));
-        let mut came: HashMap<(i32, i32), (i32, i32)> = HashMap::from([((from.x, from.y), (from.x, from.y))]);
-        let mut queue = VecDeque::from([from]);
-        let mut edge = None;
-        while let Some(t) = queue.pop_front() {
-            if off(t) || came.len() > 40_000 {
-                edge = Some(t);
-                break;
-            }
-            for (dx, dy) in AROUND {
-                let n = GridCoord { x: t.x + dx, y: t.y + dy };
-                if sea((n.x, n.y)) && !came.contains_key(&(n.x, n.y)) {
-                    came.insert((n.x, n.y), (t.x, t.y));
-                    queue.push_back(n);
-                }
-            }
-        }
-        let mut path = vec![edge?];
-        while path.last().unwrap() != &from {
-            let at = came[&(path.last().unwrap().x, path.last().unwrap().y)];
-            path.push(GridCoord { x: at.0, y: at.1 });
-        }
-        path.reverse();
-        path.truncate(HORIZON);
-        Some(path)
+    /// A harbour's line to the world: out from its berth to the map's
+    /// edge (`shipping::water::route`) and back the same way, on the
+    /// clock-face timetable (`Line::cycle`). Found once, when the harbour
+    /// is commissioned, and kept; rebuilt from nothing on load. None where
+    /// the water does not reach the edge.
+    fn line_to_world(&self, harbour: EntityId) -> Option<Line> {
+        let water = self.water.get_or_init(|| Water::of(&self.terrain));
+        let out = water.route(&self.berth(harbour)?, End::Edge)?;
+        let back = out.iter().rev().copied().collect();
+        Some(Line { calls: vec![Call::Harbour(harbour), Call::World], legs: vec![out, back], ships: Vec::new(), slots: DECK, dwell: DWELL, stay: crate::shipping::WORLD_STAY, every: 0 })
     }
 
-    /// Out from the berth to the horizon: straight out from the quay, then
-    /// the shortest way off.
-    fn voyage_out(&self, berth: Berth) -> Option<Vec<GridCoord>> {
-        let mut path: Vec<GridCoord> = (2..BERTH).map(|n| berth.tile(n)).collect();
-        path.extend(self.horizon(berth.tile(BERTH - 1))?.into_iter().skip(1));
-        path.truncate(HORIZON);
-        Some(path)
+    /// From casting off to berthing again, by the harbour's line.
+    pub fn turn(&self, harbour: EntityId) -> Option<GameTime> {
+        Some(self.lines.get(&harbour)?.cycle() - DWELL)
     }
 
     /// A harbour is built: the world's ferry is put on its line, due half
@@ -204,6 +167,11 @@ impl World {
     /// town's (docs/game.md §The opening).
     pub fn commission(&mut self, harbour: EntityId, now: GameTime) {
         let first = !self.objects.iter().any(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Ferry));
+        if !self.lines.contains_key(&harbour)
+            && let Some(line) = self.line_to_world(harbour)
+        {
+            self.lines.insert(harbour, line);
+        }
         // Its tug stands by the ramp from the first.
         // Asked every settle: only a tug with no place is touched, or every
         // tick would send it to the clients again.
@@ -213,7 +181,7 @@ impl World {
         {
             c.spot = Some(rest);
         }
-        if self.ferry_of(harbour).is_some() || self.berth(harbour).is_none() {
+        if self.ferry_of(harbour).is_some() || !self.lines.contains_key(&harbour) {
             return;
         }
         let mut ferry = Car::new(harbour, CarRole::Ferry);
@@ -241,47 +209,49 @@ impl World {
     /// next sailing from the world, the one it has not yet left on.
     pub fn next_call(&self, ferry: EntityId) -> Option<GameTime> {
         let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return None };
-        let berth = self.berth(c.owner)?;
+        let turn = self.turn(c.owner)?;
         // Coming in, it has left the world already: the sailing after it.
         // Going out, or away, `due` is its next berthing, which is the one.
-        let inbound = c.run.as_ref().is_some_and(|r| r.path.last() == Some(&berth.tile(2)));
-        Some(if inbound { c.due + DWELL + TURN } else if c.spot.is_some() { c.due + TURN } else { c.due })
+        let inbound = c.sail.as_ref().is_some_and(|s| s.ease[1]);
+        Some(if inbound { c.due + DWELL + turn } else if c.spot.is_some() { c.due + turn } else { c.due })
     }
 
     /// The ferry woke: time to leave the world, to cast off, or to roll
-    /// the next settler off; or it is at the next tile of its voyage.
+    /// the next settler off; or it is crossing into another chunk, or at
+    /// the end of its leg.
     pub fn ferry_wake(&mut self, events: &mut EventQueue, ferry: EntityId, now: GameTime) {
         let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return };
-        let (harbour, due, run, moored) = (c.owner, c.due, c.run.clone(), c.spot.is_some());
+        let (harbour, due, sail, moored) = (c.owner, c.due, c.sail.clone(), c.spot.is_some());
         if self.objects.get(harbour).is_none() {
             self.despawn_car(ferry);
             return;
         }
-        let Some(berth) = self.berth(harbour) else { return };
-        if let Some(run) = run {
-            self.voyage_step(events, ferry, run, berth, now);
+        let Some(line) = self.lines.get(&harbour) else { return };
+        if let Some(sail) = sail {
+            self.sailing(events, ferry, &sail, now);
         } else if moored {
             if now >= due {
-                self.cast_off(events, ferry, berth, now);
+                self.cast_off(events, ferry, now);
             } else {
                 self.roll_off(events, ferry, harbour, now);
                 let next = if self.passengers(ferry) > 0 { ROLL_MS } else { due - now };
                 events.wake(next.min(due - now).max(1), ferry);
             }
         } else {
-            let Some(mut path) = self.voyage_out(berth) else { return };
-            path.reverse();
-            let sailing = path.len() as GameTime * PACE;
-            if now + sailing < due {
-                events.wake(due - sailing - now, ferry);
+            // It leaves the world a leg before it is due at the ramp, and
+            // is wherever that puts it now: the first call, half an hour
+            // after a harbour stands, finds it already well on its way.
+            let leg = line.leg_ms(1);
+            if now + leg < due {
+                events.wake(due - leg - now, ferry);
                 return;
             }
+            let sail = Sail { path: line.legs[1].clone(), started: due - leg, ends: due, ease: [false, true] };
             self.board(ferry, harbour);
-            self.update_position(ferry, path[0]);
             if let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) {
-                c.run = Some(Run { job: Job::Sail, path, started: now, pace: PACE });
+                c.sail = Some(sail.clone());
             }
-            events.wake(PACE, ferry);
+            self.sailing(events, ferry, &sail, now);
         }
     }
 
@@ -377,35 +347,35 @@ impl World {
         }
     }
 
-    /// The next tile of a voyage. In at the berth it moors; out at the
-    /// horizon it is away, and back at the berth a turn after it cast off.
-    fn voyage_step(&mut self, events: &mut EventQueue, ferry: EntityId, run: Run, berth: Berth, now: GameTime) {
-        let k = ((now - run.started) / run.pace) as usize;
-        let Some(&here) = run.path.get(k) else { return };
-        self.update_position(ferry, here);
-        if k + 1 < run.path.len() {
-            events.wake(PACE, ferry);
+    /// On a leg: on the map where the leg has it, and awake again as it
+    /// crosses into another chunk, for the views that watch one. At the
+    /// end, in at the berth it moors; out over the edge it is away, back at
+    /// the berth a turn after it cast off.
+    fn sailing(&mut self, events: &mut EventQueue, ferry: EntityId, sail: &Sail, now: GameTime) {
+        let tile = |t: GameTime| {
+            let p = sail.pose(t).at;
+            GridCoord { x: p[0].floor() as i32, y: p[1].floor() as i32 }
+        };
+        if now < sail.ends {
+            self.update_position(ferry, tile(now));
+            events.wake(sail.next_crossing(now) - now, ferry);
             return;
         }
-        let inbound = here == berth.tile(2);
-        let harbour = match self.objects.get(ferry).map(|e| &e.object) {
-            Some(GameObject::Car(c)) => c.owner,
-            _ => return,
-        };
-        if let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) {
-            c.run = None;
-            if inbound {
-                c.spot = Some(berth.moored());
-                c.due = now + DWELL;
-            }
-        }
-        if inbound {
+        let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) else { return };
+        c.sail = None;
+        let harbour = c.owner;
+        if sail.ease[1] {
+            c.spot = Some(sail.pose(sail.ends));
+            c.due = now + DWELL;
+            self.update_position(ferry, tile(sail.ends));
             events.wake(0, ferry);
             if let Some(tug) = self.tug_of(harbour) {
                 events.wake(0, tug);
             }
         } else {
-            self.unplace(ferry, here);
+            if let Some(at) = self.objects.get(ferry).and_then(|e| e.position) {
+                self.unplace(ferry, at);
+            }
             events.wake(1, ferry);
         }
     }
@@ -413,10 +383,12 @@ impl World {
     /// Time to sail: what went out on the deck is the world's, and paid
     /// for, as it casts off; the empties go back for nothing. Settlers
     /// still aboard ride back to wait for the next.
-    fn cast_off(&mut self, events: &mut EventQueue, ferry: EntityId, berth: Berth, now: GameTime) {
-        let Some(path) = self.voyage_out(berth) else { return };
-        let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) else { return };
+    fn cast_off(&mut self, events: &mut EventQueue, ferry: EntityId, now: GameTime) {
+        let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return };
         let harbour = c.owner;
+        let (Some(line), Some(turn)) = (self.lines.get(&harbour), self.turn(harbour)) else { return };
+        let sail = Sail { path: line.legs[0].clone(), started: now, ends: now + line.leg_ms(0), ease: [true, false] };
+        let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) else { return };
         let mut sold = Vec::new();
         for slot in c.deck.iter_mut() {
             if slot.is_some_and(|t| t.outbound) {
@@ -428,13 +400,12 @@ impl World {
         }
         c.passengers.clear();
         c.spot = None;
-        c.due = now + TURN;
-        c.run = Some(Run { job: Job::Sail, path: path.clone(), started: now, pace: PACE });
+        c.due = now + turn;
+        c.sail = Some(sail.clone());
         for (good, units) in sold {
             crate::economy::exported(self, harbour, good, units, now);
         }
-        self.update_position(ferry, path[0]);
-        events.wake(PACE, ferry);
+        self.sailing(events, ferry, &sail, now);
     }
 
     /// Take an entity off the map: no position, out of every chunk.
@@ -449,7 +420,7 @@ impl World {
     fn berthed(&self, harbour: EntityId) -> Option<(EntityId, GameTime)> {
         let ferry = self.ferry_of(harbour)?;
         match self.objects.get(ferry).map(|e| &e.object) {
-            Some(GameObject::Car(c)) if c.spot.is_some() && c.run.is_none() => Some((ferry, c.due)),
+            Some(GameObject::Car(c)) if c.spot.is_some() && c.sail.is_none() => Some((ferry, c.due)),
             _ => None,
         }
     }
@@ -685,11 +656,14 @@ mod tests {
         let harbour = world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Harbour).expect("the coast takes a harbour");
         let berth = world.berth(harbour).unwrap();
         assert_eq!((berth.quay.y, berth.out), (4, (0, 1)), "the quay is the water behind the back face: {berth:?}");
-        // The way out is straight out and then to the edge.
-        let path = world.voyage_out(berth).expect("a way to the sea");
-        assert_eq!(path[0], berth.tile(2));
-        assert!(path.windows(2).all(|w| (w[0].x - w[1].x).abs() + (w[0].y - w[1].y).abs() == 1));
-        assert!(path.iter().all(|t| world.terrain[&(t.x, t.y)] == TerrainType::Sea), "the ship sailed over land");
+        // The way out is straight out from the moored ferry and on over the
+        // map's edge, all of it on the water.
+        world.commission(harbour, 0);
+        let way = &world.lines[&harbour].legs[0];
+        assert_eq!(way[0], berth.moored().at);
+        assert_eq!(way[1], [berth.tile(BERTH - 1).x as f64 + 0.5, berth.tile(BERTH - 1).y as f64 + 0.5]);
+        assert!(world.water.get().unwrap().afloat(way), "the ship sailed over land");
+        assert_eq!(way.last().unwrap()[1], 41.0, "it did not sail off the map's edge: {way:?}");
         // Moored, its land end is on the ramp.
         let m = berth.moored();
         let end = plus(m.at, ahead(m.heading, FERRY_LENGTH / 2.0));
@@ -722,3 +696,4 @@ mod tests {
         }
     }
 }
+

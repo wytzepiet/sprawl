@@ -188,7 +188,7 @@ function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext
  *  at the land end, gone as each rolls off; all moving with it. */
 function mountFerry(id: number, car: Car, pool: InstancePool, ctx: EngineContext): () => void {
   const hull = paint(pool, "ferry", FERRY_SHAPE, LIVERY.ferry, SOLID);
-  const sail = voyage(car, getEntity(car.owner)?.position);
+  const sail = voyage(car);
   if (!sail && !car.spot) return () => {};
   const pose = (): Stand => (sail ? sail(simNow()) : car.spot!);
   const p0 = pose();

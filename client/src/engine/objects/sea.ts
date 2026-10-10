@@ -1,10 +1,9 @@
 import { boxGeometry as box } from "./buildings";
 import type { MeshGeometry, P } from "../geometry";
-import { drawnPath } from "./drawnPath";
 import { TRAILER } from "./roadGeometry";
 import { hex, rgb, type Rgb } from "../rgb";
 import { GOODS } from "../../blueprints";
-import type { Car, Good, Shunt, Trailer } from "../../generated";
+import type { Good, Sail, Shunt, Trailer } from "../../generated";
 import type { Pose } from "../../generated/Pose";
 
 /**
@@ -237,37 +236,47 @@ export function deckPose(p: Pose, k: number): Pose {
   return { at: [p.at[0] + Math.cos(h) * along - Math.sin(h) * across, p.at[1] + Math.sin(h) * along + Math.cos(h) * across], heading: h };
 }
 
-/** A ferry on its voyage: where it is now and which way its land end
- *  points. In from the horizon, its land end leading, it slows from a
- *  steady pace into the berth, and is there as the server moors it; out,
- *  it backs away from the berth and gathers way, the sea end leading. The
- *  berth is on from the run's end, the way it came: the moored ferry's
- *  middle FERRY_LENGTH/2 off the quay edge, 2.5 tiles from the berth's
- *  third tile of sea (`Berth::moored`). */
-export function sailing(car: Car, inbound: boolean): (now: number) => Pose {
-  const run = car.run!;
-  const tiles = run.path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 }));
-  if (inbound) tiles.reverse();
-  // From the berth outward, whichever way it sails.
-  const [a, b] = [tiles[0], tiles[1] ?? tiles[0]];
-  const d = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-  const berth = { x: a.x - ((b.x - a.x) / d) * 0.9, y: a.y - ((b.y - a.y) / d) * 0.9 };
-  const drawn = drawnPath([berth, ...tiles], 0, 0, 0)!;
-  const span = (run.path.length - 1) * run.pace;
-  const EASE = 5 * run.pace;
-  // A steady pace, and the last stretch slowing to rest (or, out, the
-  // first gathering way), the whole covered in the run's time.
-  const pace = drawn.length / (span - EASE / 2);
+/** How a ship moves along a leg, as `shipping/mod.rs` has it: full speed
+ *  a tile every `SEA_PACE` ms, gathering way from rest at an even push
+ *  over `GATHER` ms at an end that is a berth, and losing it the same
+ *  way coming in. */
+const SEA_PACE = 200;
+const GATHER = 30_000;
+/** How far along a leg `len` tiles long, `t` ms of `whole` in (`covered`). */
+function covered(len: number, ease: [boolean, boolean], t: number, whole: number): number {
+  const v = 1 / SEA_PACE;
+  const out = (t: number) => (t < GATHER ? (v * t * t) / (2 * GATHER) : v * (t - GATHER / 2));
+  t = Math.min(Math.max(0, t), whole);
+  if (ease[0] && ease[1]) return t < whole / 2 ? out(t) : len - out(whole - t);
+  if (ease[0]) return out(t);
+  if (ease[1]) return len - out(whole - t);
+  return v * t;
+}
+
+/** A ferry on a leg (`Sail`): where it is at a moment and which way its
+ *  land end points, off the server's way and clock. The way's corners are
+ *  rounded already; its facing is read over a short reach either side,
+ *  so it swings through them. Coming in to a berth its land end leads;
+ *  going out it backs away, the sea end leading, as it never turns. */
+export function sailing(s: Sail): (now: number) => Pose {
+  const at = [0];
+  for (let i = 1; i < s.path.length; i++) at.push(at[i - 1] + Math.hypot(s.path[i][0] - s.path[i - 1][0], s.path[i][1] - s.path[i - 1][1]));
+  const len = at[at.length - 1];
+  const point = (d: number): [number, number] => {
+    d = Math.min(Math.max(0, d), len);
+    let i = 0;
+    while (i < at.length - 2 && at[i + 1] < d) i++;
+    const k = at[i + 1] > at[i] ? (d - at[i]) / (at[i + 1] - at[i]) : 0;
+    return [s.path[i][0] + (s.path[i + 1][0] - s.path[i][0]) * k, s.path[i][1] + (s.path[i + 1][1] - s.path[i][1]) * k];
+  };
+  const astern = s.ease[0] && !s.ease[1];
   return (now) => {
-    const t = Math.min(Math.max(0, now - run.started), span);
-    // How far from the berth, by the time left to it (in) or since it (out).
-    const from = inbound ? span - t : t;
-    const s = from >= EASE ? pace * (from - EASE / 2) : (pace * (from - (EASE / Math.PI) * Math.sin((Math.PI * from) / EASE))) / 2;
-    const fix = drawn.at(s, 0);
-    // The way the path runs, outward: the land end points back along it.
-    return { at: [fix.pos[0], fix.pos[1]], heading: fix.rot[2] + Math.PI / 2 + Math.PI };
+    const d = Math.min(covered(len, s.ease, now - s.started, s.ends - s.started), len);
+    const [a, b] = [point(d - REACH), point(d + REACH)];
+    return { at: point(d), heading: Math.atan2(b[1] - a[1], b[0] - a[0]) + (astern ? Math.PI : 0) };
   };
 }
+const REACH = 0.4;
 
 /**
  * A tug on a move (`Shunt`): along its path at a steady pace over the

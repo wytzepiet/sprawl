@@ -88,7 +88,7 @@ for (let n = 0; n < frames; n++) {
   const at = now();
   // A vehicle followed is the view's middle, wherever it has got to.
   const car = entities.get(follow);
-  const m = car?.object.kind === "Car" ? moment(follow, car.object.data, at, entities.get(car.object.data.owner)?.position) : null;
+  const m = car?.object.kind === "Car" ? moment(follow, car.object.data, at) : null;
   const [vx, vy] = m ? m.body.at : [x + 0.5, y + 0.5];
   const canvas = createCanvas(side, side);
   const t = performance.now();

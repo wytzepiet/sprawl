@@ -3,6 +3,7 @@ import type { CarRole } from "./CarRole";
 import type { Need } from "./Need";
 import type { Pose } from "./Pose";
 import type { Run } from "./Run";
+import type { Sail } from "./Sail";
 import type { Shunt } from "./Shunt";
 import type { Stock } from "./Stock";
 import type { Trailer } from "./Trailer";
@@ -33,10 +34,13 @@ spot: Pose | null,
  */
 stocks: { [key in Need]?: Stock }, 
 /**
- * A tractor's run over its farm's land, or a ship's voyage, while
- * it is on one.
+ * A tractor's run over its farm's land, while it is on one.
  */
 run: Run | null, 
+/**
+ * A ship's leg, while it sails one.
+ */
+sail: Sail | null, 
 /**
  * The box on its hitch: a lorry's, or a tug's.
  */

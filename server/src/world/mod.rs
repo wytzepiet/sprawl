@@ -81,6 +81,12 @@ pub struct World {
     /// The mountains' heights, eroded, made from the terrain the first time
     /// a chunk of it is sent (`mountains.rs`).
     pub peaks: std::sync::OnceLock<crate::mountains::Peaks>,
+    /// The sea, read from the terrain the first time a way over it is
+    /// wanted (`shipping::water`).
+    pub water: std::sync::OnceLock<crate::shipping::water::Water>,
+    /// Each harbour's line to the world, its ways found when it is
+    /// commissioned. Derived, like every other index.
+    pub lines: std::collections::BTreeMap<EntityId, crate::shipping::lines::Line>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
@@ -157,6 +163,8 @@ impl World {
             laid: 0,
             terrain: HashMap::new(),
             peaks: Default::default(),
+            water: Default::default(),
+            lines: Default::default(),
             chunk_crossings: Vec::new(),
             built: HashSet::new(),
             occupied: HashMap::new(),
@@ -192,6 +200,8 @@ impl World {
             laid: 0,
             terrain: HashMap::new(),
             peaks: Default::default(),
+            water: Default::default(),
+            lines: Default::default(),
             chunk_crossings: Vec::new(),
             built: HashSet::new(),
             occupied: HashMap::new(),

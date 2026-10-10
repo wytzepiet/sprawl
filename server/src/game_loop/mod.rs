@@ -273,7 +273,7 @@ fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock
         lumps,
         clock: clk,
         growth: crate::economy::growth(world, clk.now),
-        sea: crate::haul::sea(world, clk.now),
+        sea: crate::haul::sea(world),
         drafts: crate::drafts::all(world),
         terrain_seed: world.terrain_seed,
         island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
@@ -2225,7 +2225,7 @@ mod tests {
     /// casts off; and the ferry keeps its timetable throughout.
     #[test]
     fn the_opening_from_the_harbour() {
-        use crate::world::sea::{DWELL, TURN};
+        use crate::world::sea::{DWELL, FIRST_CALL};
         let mut world = street();
         let harbour = harbour_of(&world);
         let x = HARBOUR_X - 12;
@@ -2249,14 +2249,20 @@ mod tests {
         let day = DAY_MS as u64;
         let mut now = 0;
 
-        // In over the horizon, and moored with the starter pack on deck.
+        // In from the map's edge, never over land, and moored with the
+        // starter pack on deck, on time.
+        let turn = world.turn(harbour).expect("the harbour's line");
         let mut sailed = false;
         while car_of(&world, ferry).spot.is_none() {
             assert!(step(&mut world, &mut events, &mut intersections, &mut now, day), "the ferry never berthed");
-            sailed |= car_of(&world, ferry).run.is_some();
+            if let Some(sail) = car_of(&world, ferry).sail {
+                assert!(world.water.get().unwrap().afloat(&sail.path), "the ferry's way crosses land");
+                sailed = true;
+            }
         }
         let berthed = now;
         assert!(sailed, "it never sailed in");
+        assert!(berthed <= FIRST_CALL + 100, "the first ferry berthed at {berthed}, due at {FIRST_CALL}");
         assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| !t.empty()).count(), 6, "the starter pack is not aboard");
         assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| t.empty()).count(), crate::world::sea::EMPTIES, "the world sent no empties");
         // The tug unloads while it is in, and it sails on time.
@@ -2315,14 +2321,14 @@ mod tests {
         let settlers = world.household(house);
         assert_eq!(settlers.len(), 2, "nobody moved in");
         // They come on the next ferry, and drive home.
-        let until = now + TURN + DWELL + day / 6;
+        let until = now + turn + DWELL + day / 6;
         while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
         assert!(settlers.iter().all(|&id| at_of(&world, id) == Some(house)), "the settlers never got home");
 
         // A box of crates sold: out on the ferry, paid as it casts off.
         let before = world.treasury;
         crate::haul::sell(&mut world, &mut events, depot, Good::Crates);
-        let until = now + 2 * TURN;
+        let until = now + 2 * turn;
         while world.town.on(now).sold.get(&Good::Crates).is_none() && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
         let sold = world.town.on(now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
         assert!((sold - crate::economy::export(Good::Crates, 100.0)).abs() < 1e-6, "the box went out for {sold}");

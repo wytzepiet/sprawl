@@ -84,8 +84,8 @@ demand A->C crates 2/day from=3
 demand W->A crates 3/day
 days 10
 # The plan asks an hour. B's one berth takes four lines here, and the
-# last's first clean window is two hours out. This holds today's number:
-# improve it, then tighten.
+# last's first clean window is an hour and a quarter out. This holds
+# today's number with room: improve it, then tighten.
 expect first_sailing <= 2
 expect forecast_ratio <= 2
 expect near_empty <= 0.25

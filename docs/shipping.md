@@ -251,9 +251,13 @@ parted from the direction above.
 - **The ferry is double-ended**, as small island ferries are: it sails in
   one end first, lands its ramp on the quay, and sails out the other end
   first, so it never turns in the harbour and needs no room to. One
-  ferry a harbour, the world's, on a fixed turn: two and a half hours
-  from casting off to berthing again, an hour and a quarter at the ramp,
-  first call half an hour after the harbour stands. It leaves the world
+  ferry a harbour, the world's, on its line's timetable: out along a
+  real way over the water to the map's edge and back (`shipping/`,
+  docs/plan-sea.md), an hour and a quarter at the ramp, half an hour
+  beyond the edge, the round on the company's clock (50 minutes times a
+  power of two: 3:20 on the test street, 6:40 from seed 7's home coast);
+  first call half an hour after the harbour stands, on time, the ferry
+  already on its way in when the harbour is built. It leaves the world
   with what was booked for it and the settlers waiting to come, and
   sails on time with whatever the tug got aboard; boxes it could not
   land ride round again.

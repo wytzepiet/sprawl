@@ -223,13 +223,19 @@ one berth a harbour, its world ferry and a line to another harbour met
 at the berth: on `two`, 65 hours of ships waiting in ten days; on the
 hub, the queue grew without end. Slotting a new line into a free window
 did not help while rounds were three and four hours long: they meet
-every twelve hours whatever the phase. So every line's round is a
-power of two of `TAKT` (an hour): 1, 2, 4, 8 hours. Of any two lines at
-a harbour one's round divides the other's, their berth windows keep
-their places on the clock, and `slot` puts a new line's sailings in the
-first window clear at both ends (a quarter hour of overlap allowed).
-What a round has to spare is spent at the world, or at the anchorage
-off the first call. Berth waits fell to a few minutes in ten days.
+every twelve hours whatever the phase. So every line's round is `TAKT`
+(50 minutes) times a power of two: 0:50, 1:40, 3:20, 6:40. Of any two
+lines at a harbour one's round divides the other's, their berth windows
+keep their places on the clock, and `slot` puts a new line's sailings in
+the first window clear at both ends (a quarter hour of overlap
+allowed), trying either end for the first sailing. What a round has to
+spare is spent at the world, or at the anchorage off the first call.
+Berth waits fell to minutes on `two` and the hub. Fifty minutes, not an
+hour: on an hour's clock the season's ferry (raw round 2:44) waited out
+a four-hour round, and its town fell just short of fed on day 2; at 3:20
+it is fed. A clock of mutually dividing rounds chosen per harbour
+(three and six beside four) was tried and dropped: a line retimed later
+broke it, where powers of two never break.
 
 **A scenario harness**, `shipping/sim.rs` (test only). A discrete-event
 loop: ships sail their routes by `covered`, queue for the one berth,
@@ -299,22 +305,23 @@ in red, the harbours, and a dot every ten minutes for each ship.
 
 ```text
 scenario     delivere  transit transit_ late_p90  stretch transfer   missed     util  empties berth_wa yard_pea landed_p coins_in coins_ou
-congested        0.99     2.90     5.67     1.11     1.18     0.00     0.00     0.04     0.62     3.75     5.00     0.56     0.00  1056.00
-hub              0.99     5.39     8.84     5.36     1.53     0.36    29.00     0.03     0.20     2.31     5.00     0.45   360.00   880.00
-new_port         0.98     4.42     9.40     4.26     1.47     0.26    35.00     0.03     0.37     0.90     7.00     0.48     0.00   660.00
-strait           0.99     4.64     5.78     5.06     2.41     0.00     0.00     0.02     0.10     0.01     4.00     0.53     0.00     0.00
-two              1.00     3.36     3.50     0.25     1.08     0.00     0.00     0.04     0.55     0.01     5.00     0.63   360.00   660.00
-world            1.00     1.82     1.82     0.57     1.37     0.00     1.00     0.04     0.46     0.00     4.00     0.69    54.00  1540.00
+congested        0.99     2.83     4.34     0.49     1.31     0.00     0.00     0.03     0.61    32.51     5.00     0.44     0.00  1034.00
+hub              0.99     6.19    14.64     4.55     1.54     0.31     6.00     0.03     0.18     2.70     6.00     0.43   360.00   880.00
+new_port         1.00     3.92     7.40     3.58     1.25     0.27    19.00     0.02     0.37    11.71     6.00     0.46     0.00   660.00
+strait           0.99     2.96     4.45     3.58     1.31     0.00     0.00     0.02     0.10     0.01     4.00     0.45     0.00     0.00
+two              1.00     2.86     4.73     3.58     1.27     0.00     0.00     0.04     0.55     0.01     5.00     0.53   360.00   660.00
+world            1.00     2.30     3.54     0.57     1.21     0.00     0.00     0.04     0.46     0.00     4.00     0.58    54.00  1540.00
 ```
 
 Each scenario also prints the company's line: `links`, `idle_lines`,
 `by_road`, `via_world`, `first_sailing`, `flow_to_line`,
 `forecast_ratio`, `near_empty`, `wait_max`.
 
-1. **`world`**: one harbour, today's ferry (fifteen slots, an hour and a
-   quarter at the ramp, a 2.5-hour turn by its `stay`) and the season
-   town's trade. Calibrated on `landed_per_call`: the season test, ten
-   days, lands 56 boxes off 65 calls, 0.86 a call; the harness 0.69.
+1. **`world`**: one harbour and the world, as the game's ferry (fifteen
+   slots, an hour and a quarter at the ramp, out forty tiles to the edge
+   and back on the clock, 3:20) and the season town's trade. Calibrated
+   on `landed_per_call`: the season test, ten days, lands 53 boxes off
+   72 calls, 0.74 a call; the harness 0.58.
 2. **`two`**: the outpost linked to home the hour it stands; no box goes
    by the world, the first sailing within the hour.
 3. **`hub`**: three outposts round a central harbour that stands first,
@@ -323,17 +330,23 @@ Each scenario also prints the company's line: `links`, `idle_lines`,
    none longer than four hours.
 5. **`strait`**: pending stage 5; the narrows are drawn.
 6. **`new_port`**: C stands on day 3 and is linked to B, its nearest, so
-   its trade with A changes ship at B (`transfers` 0.26). D stands on
+   its trade with A changes ship at B (`transfers` 0.27). D stands on
    day 4 with nothing to carry and gets no line (`idle_lines` 0) until
    its maker starts on day 6, when it is linked that midnight
    (`flow_to_line` 0). E is a 0.3-hour drive up the coast from A: no
    line, its boxes go by road (`by_road` 30). F is round B's bay, four
    hours by road and minutes by sea: a line (`links` 4). The forecast is
-   within 1.8× of what moves, and 21% of sailings from a line's busier
+   within 1.75× of what moves, and 20% of sailings from a line's busier
    end carry no full box (the way back of a one-way trade is not
    counted). The plan's hour to the first sailing is not met: B's one
-   berth takes four lines, and the last's first clean window is two
-   hours out; the scenario holds that number, to be tightened.
+   berth takes four lines, and the last's first clean window is 1.25
+   hours out; the scenario asks for two, to be tightened.
+
+Utilisation of 2 to 4% is expected: the scenarios' demand is small next
+to a fifteen-slot ship every round. It is reported, not a target; stage
+4 answers it with smaller ships (below). `missed` and `late_p90` on `hub` and `new_port` may be
+real: boxes left by the tug's time at a short dwell, and transfers at a
+hub waiting a round.
 
 ## Stages
 
@@ -400,6 +413,32 @@ Each stage leaves the game playable and the suite green
   - `voyage_step`'s per-tile wakes.
   - The client's tile-centre reconstruction and its `near()` guess.
   - "Beyond the horizon" becomes "Beyond the edge".
+- **Built** (2026-10-10). As above, with these differences:
+  - `Sail { path, started, ends, ease: [bool; 2] }`: `ease` says which
+    ends are berths; `shipping::covered` is the one law of motion, read
+    by the server (`Sail::pose`, `Sail::next_crossing`) and by the client
+    (`sea.ts` `sailing`), which also picks the land end: ahead coming in,
+    astern going out. The way is rounded on the server, so the client
+    follows it as it is and smooths only the facing.
+  - `World.water` is a `OnceLock` read from the terrain the first time
+    a way is wanted, as `peaks` is; `World.lines` holds each harbour's
+    `Line` to the world, made in `commission` (asked every settle, so
+    rebuilt on load). `World::turn` is the line's cycle less the dwell.
+  - The first call is on time: the ferry's inbound `Sail` starts a leg
+    before it is due, even if that is before the harbour stood, so it
+    appears on its way in (the old voyage started when it woke and
+    berthed a minute late).
+  - `Sailing` gains `lands` (the server's `next_call`) and `turn`; the
+    client's `landsAt`, `turn()`, `dwell()` and `towardHarbour` guesses
+    are deleted, and the card and the flat legend read the timetable.
+  - Not built: the route drawn while the harbour is selected; keep-right.
+  - The clock face costs frequency: on real seeds the edge is 2.1 to 2.3
+    hours out, so the world ferry's round is 6:40 (about 3.6 calls a day,
+    from 6.4). The lever is a second ship on the world's line, sized by
+    the forecast like any other (stage 3), or `SEA_PACE`.
+  - Seen on seed 7 with `bun run flat --follow`: in from the north edge,
+    slowing into the berth on time, out again the same way, the flat
+    legend saying "at sea, berths 03:06".
 
 ### Stage 3: the second harbour, connected the day it stands
 
@@ -482,6 +521,20 @@ Each stage leaves the game playable and the suite green
   - Scenarios `hub` and `congested`.
 - **Deleted.** Nothing new; this is the rule in `lines.rs` replacing
   stage 3's fixed sailings.
+- **Ship classes, not fewer sailings** (the player, 2026-10-10: smaller
+  ships rather than sailing less often).
+  - Two classes: a coaster (about 4 slots) and the ferry (15 slots); the
+    container ship comes with stage 6.
+  - A new line gets the class its forecast fills.
+  - A line whose sailings leave full for about two days running gets the
+    bigger ship, visibly: the new ship sails in, the coaster sails off,
+    and the news says so.
+  - A thinning line drops back to a coaster after its trial rather than
+    losing sailings.
+  - Harness: `full_share` (sailings leaving full, which drives an
+    upgrade) beside `near_empty`. `util` stays reported and is not a
+    target; it reads 2 to 4% today, the scenarios' demand being small
+    next to a fifteen-slot ship every round.
 
 ### Stage 5: blocks in narrow water
 

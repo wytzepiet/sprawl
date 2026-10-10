@@ -20,7 +20,7 @@ let leading: number | null = null;
 let fetching: number | null = null;
 
 /** Where the camera should be for a box: its carrier, if that is on the
- *  map; else its harbour, the ferry being beyond the horizon. */
+ *  map; else its harbour, the ferry being beyond the edge. */
 function carrierOf(s: Shipment): number | null {
   if (s.carrier !== null && positionOf(s.carrier)) return s.carrier;
   return sea.sailings.find((x) => x.ferry === s.carrier)?.harbour ?? s.carrier;

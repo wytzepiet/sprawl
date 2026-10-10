@@ -425,7 +425,7 @@ fn set_load(world: &mut World, lorry: EntityId, t: Option<Trailer>) {
 
 /// The sea's part of an update: every box with an order, where it is and
 /// when it lands; every harbour's timetable.
-pub fn sea(world: &World, now: GameTime) -> Sea {
+pub fn sea(world: &World) -> Sea {
     let calls: BTreeMap<EntityId, Option<GameTime>> = world.harbours.keys().filter_map(|&h| world.ferry_of(h)).map(|f| (f, world.next_call(f))).collect();
     let shipments = boxes(world)
         .into_iter()
@@ -448,9 +448,8 @@ pub fn sea(world: &World, now: GameTime) -> Sea {
             let ferry = world.ferry_of(harbour)?;
             let c = car(world, ferry)?;
             let berthed = c.spot.is_some();
-            let arrives = if berthed { c.due - crate::world::sea::DWELL } else if c.run.is_some() { c.due } else { c.due };
-            let departs = if berthed { c.due } else { arrives + crate::world::sea::DWELL };
-            let _ = now;
+            let arrives = if berthed { c.due - crate::world::sea::DWELL } else { c.due };
+            let departs = arrives + crate::world::sea::DWELL;
             Some(Sailing {
                 harbour,
                 ferry,
@@ -462,6 +461,8 @@ pub fn sea(world: &World, now: GameTime) -> Sea {
                 deck: crate::world::sea::DECK as u32,
                 booked: c.booked.len() as u32,
                 waiting: world.waiting_settlers(harbour).len() as u32,
+                lands: world.next_call(ferry)?,
+                turn: world.turn(harbour)?,
             })
         })
         .collect();
@@ -555,7 +556,7 @@ pub fn inspect(world: &World, now: GameTime) -> serde_json::Value {
             let park = building(world, h).map(|b| b.park.iter().map(|s| s.trailer).collect::<Vec<_>>());
             let ferry = world.ferry_of(h).and_then(|f| car(world, f).map(|c| json!({
                 "id": f, "at": world.objects.get(f).and_then(|e| e.position), "due": c.due, "moored": c.spot.is_some(),
-                "sailing": c.run.is_some(), "deck": c.deck, "passengers": c.passengers, "booked": c.booked,
+                "sailing": c.sail.is_some(), "deck": c.deck, "passengers": c.passengers, "booked": c.booked,
             })));
             let tug = world.tug_of(h).and_then(|t| car(world, t).map(|c| json!({ "id": t, "spot": c.spot, "shunt": c.shunt, "hitched": c.hitched })));
             json!({ "harbour": h, "park": park, "ferry": ferry, "tug": tug })
@@ -572,5 +573,5 @@ pub fn inspect(world: &World, now: GameTime) -> serde_json::Value {
             _ => None,
         })
         .collect();
-    json!({ "now": now, "summary": sea(world, now), "harbours": harbours, "lorries": lorries })
+    json!({ "now": now, "summary": sea(world), "harbours": harbours, "lorries": lorries })
 }

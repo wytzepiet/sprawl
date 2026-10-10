@@ -228,7 +228,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
   // Vehicles where the server's clock has them now.
   const moments: [GameObjectEntry, Car, Moment][] = [];
   for (const [e, car] of cars) {
-    const m = moment(e.id, car, world.now, byId.get(car.owner)?.position);
+    const m = moment(e.id, car, world.now);
     if (m && on(m.body.at[0], m.body.at[1], 4)) moments.push([e, car, m]);
   }
   // Ships under what drives on land, which drives under the tug.
@@ -431,7 +431,7 @@ function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntr
     return `${String(Math.floor(u * 24)).padStart(2, "0")}:${String(Math.floor((u * 1440) % 60)).padStart(2, "0")}`;
   };
   const ferries = cars.filter(([, c]) => c.role === "Ferry").map(([e, c]) => {
-    const where = c.spot ? `moored, casts off ${hhmm(c.due)}` : c.run ? "at sea" : `away, berths ${hhmm(c.due)}`;
+    const where = c.spot ? `moored, casts off ${hhmm(c.due)}` : c.sail ? `at sea, ${c.sail.ease[1] ? "berths" : "over the edge"} ${hhmm(c.sail.ends)}` : `away, berths ${hhmm(c.due)}`;
     const boxes = c.deck.filter(Boolean).length;
     const harbour = byId.get(c.owner)?.object.data as Building | undefined;
     const parked = harbour?.park.filter((s) => s.trailer).length ?? 0;

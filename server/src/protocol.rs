@@ -217,21 +217,34 @@ pub enum Stage {
     Cut,
 }
 
-/// What a vehicle does to a tile as it drives over it: a tractor's job
-/// on the land, or a ship's sailing over the water, which does nothing
-/// to it.
+/// What a tractor does to a tile as it drives over it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Job {
     Plough,
     Seed,
     Harvest,
-    Sail,
 }
 
-/// A run off the roads: a tractor's over the land, a ship's over the
-/// water. The tiles it drives in order, doing its job to each as it
-/// arrives, standing on the first at `started` and reaching one more
+/// A ship's leg over the water (`shipping::water::route`): the way, in
+/// tiles, from the ferry's middle at one end to the other, and when it
+/// set out and arrives. It gathers way from a berth and comes into one
+/// at an even push (`ease`: the start is a berth, the end is), at full
+/// speed over the map's edge; `shipping::covered` says how far along it
+/// is at any moment, here and in the client. Sent once.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Sail {
+    pub path: Vec<[f64; 2]>,
+    #[ts(type = "number")]
+    pub started: u64,
+    #[ts(type = "number")]
+    pub ends: u64,
+    pub ease: [bool; 2],
+}
+
+/// A tractor's run off the roads, over its farm's land. The tiles it
+/// drives in order, doing its job to each as it arrives, standing on the first at `started` and reaching one more
 /// every `pace` milliseconds. No route, no claims, no queue — and nothing
 /// that changes as it goes, so the run is sent once.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -289,7 +302,7 @@ pub enum CarRole {
     /// A farm's: out along the track to a ripe field and home with the
     /// crop, driven by a hand on shift. On the road it is a slow car.
     Tractor,
-    /// The world's ferry: in over the horizon to a harbour's ramp on the
+    /// The world's ferry: in from the map's edge to a harbour's ramp on the
     /// timetable, settlers and boxes on its deck, and away again. Never on
     /// a road.
     Ferry,
@@ -326,10 +339,12 @@ pub struct Car {
     /// stop. A save from before cars had them gets them full.
     #[serde(default = "crate::needs::Bucket::driven")]
     pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
-    /// A tractor's run over its farm's land, or a ship's voyage, while
-    /// it is on one.
+    /// A tractor's run over its farm's land, while it is on one.
     #[serde(default)]
     pub run: Option<Run>,
+    /// A ship's leg, while it sails one.
+    #[serde(default)]
+    pub sail: Option<Sail>,
     /// The box on its hitch: a lorry's, or a tug's.
     #[serde(default)]
     pub hitched: Option<Trailer>,
@@ -357,7 +372,7 @@ pub struct Car {
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None, hitched: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
+        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None, sail: None, hitched: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
     }
 }
 
@@ -540,6 +555,13 @@ pub struct Sailing {
     pub booked: u32,
     /// Households moved in and waiting beyond the sea for a sailing.
     pub waiting: u32,
+    /// When a box booked now berths: the sailing from the world the ferry
+    /// has not yet left on.
+    #[ts(type = "number")]
+    pub lands: u64,
+    /// From casting off to berthing again, by the line's timetable.
+    #[ts(type = "number")]
+    pub turn: u64,
 }
 
 /// The sea's part of an update: every shipment on its way and every

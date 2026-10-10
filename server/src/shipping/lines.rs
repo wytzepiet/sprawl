@@ -30,13 +30,15 @@ pub const TRIAL: u64 = 2;
 pub const TUG: f64 = 4.0;
 pub const MIN_DWELL: GameTime = HOUR / 2;
 /// The clock the company times by: every line's round is this times a
-/// power of two (an hour, two, four, eight), so of any two lines calling
-/// at a harbour one's round divides the other's, their berth windows keep
-/// their places on the clock, and a new line is slotted into a free one
-/// once, for good, as a clock-face timetable is. Rounds that were whole
-/// hours of different lengths (three and four) met at the berth every
-/// twelve hours whatever their phase.
-pub const TAKT: GameTime = HOUR;
+/// power of two (50 minutes, 1:40, 3:20, 6:40, 13:20), so of any two lines
+/// calling at a harbour one's round divides the other's, their berth
+/// windows keep their places on the clock, and a new line is slotted into
+/// a free one once, for good, as a clock-face timetable is. Rounds of
+/// three and four hours met at the berth every twelve hours whatever
+/// their phase. Fifty minutes, not an hour: the season's ferry, its raw
+/// round 2:44, would have waited out a four-hour one, and its town went
+/// hungry; at 3:20 it does not.
+pub const TAKT: GameTime = HOUR * 5 / 6;
 /// How finely the company tries the times a new sailing could leave.
 const TRY: GameTime = HOUR / 12;
 
@@ -93,7 +95,7 @@ impl Line {
     }
 
     /// Once round as fast as it goes: every leg and every stay.
-    fn sailed(&self) -> GameTime {
+    pub fn sailed(&self) -> GameTime {
         (0..self.calls.len()).map(|i| self.leg_ms(i) + if self.calls[i] == Call::World { self.stay } else { self.dwell }).sum()
     }
 
@@ -356,7 +358,7 @@ mod tests {
     #[test]
     fn sailings_follow_the_forecast() {
         let l = line(vec![Call::Harbour(1), Call::Harbour(2)], &[100.0, 100.0], 1);
-        let per_ship = 15.0 * crate::protocol::DAY_MS as f64 / l.cycle() as f64;
+        let per_ship = 15.0 * crate::protocol::DAY_MS as f64 / l.sailed() as f64;
         assert_eq!(l.sailings(0.0), 1);
         assert_eq!(l.sailings(per_ship * 2.5), 3);
         assert_eq!(prior(&[(4, 90.0), (2, 40.0), (3, 40.0)]), Some(2));

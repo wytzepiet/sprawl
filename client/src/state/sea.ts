@@ -87,36 +87,16 @@ export function until(t: number): string {
 /** A harbour's timetable. */
 export const sailingOf = (harbour: number): Sailing | undefined => sea.sailings.find((s) => s.harbour === harbour);
 
-/** How far through its leg of the timetable a ferry is, 0 to 1: the voyage
- *  in while it is away, the stay while it is at the ramp. */
-export function voyage(s: Sailing, turn: number): number {
-  const [from, to] = s.berthed ? [s.arrives, s.departs] : [s.arrives - turn, s.arrives];
+/** How far through its leg of the timetable a ferry is, 0 to 1: the
+ *  round from casting off to berthing while it is away, the stay while
+ *  it is at the ramp. */
+export function voyage(s: Sailing): number {
+  const [from, to] = s.berthed ? [s.arrives, s.departs] : [s.arrives - s.turn, s.arrives];
   return Math.max(0, Math.min(1, (now() - from) / Math.max(1, to - from)));
 }
-/** At the ramp (`sea.rs` DWELL): five ninety-sixths of a day. */
-const dwell = () => (dayLengthMs() * 5) / 96;
 
-/**
- * When a box booked now would berth: on the ferry's next sailing from the
- * world, the one it has not yet left on. At the ramp, the one after this
- * stay; sailing in, the one after it berths; sailing out or away, the next.
- */
-export function landsAt(s: Sailing): number {
-  if (s.berthed) return s.departs + turn();
-  const e = getEntity(s.ferry);
-  const run = e?.object.kind === "Car" ? (e.object.data as Car).run : null;
-  const inbound = run && run.path.length > 1 && towardHarbour(run.path, s.harbour);
-  return inbound ? s.arrives + dwell() + turn() : s.arrives;
-}
-const towardHarbour = (path: { x: number; y: number }[], harbour: number) => {
-  const h = getEntity(harbour)?.position;
-  if (!h) return false;
-  const d = (p: { x: number; y: number }) => Math.abs(p.x - h.x) + Math.abs(p.y - h.y);
-  return d(path[path.length - 1]) < d(path[0]);
-};
-
-/** From casting off to berthing again (`sea.rs` TURN): five forty-eighths of a day. */
-export const turn = () => (dayLengthMs() * 5) / 48;
+/** When a box booked now would berth: the server's timetable says. */
+export const landsAt = (s: Sailing): number => s.lands;
 
 /** A car's trip, if it is on one and the client has it. */
 export const tripOf = (id: number | null) => {

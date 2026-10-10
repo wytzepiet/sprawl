@@ -5,7 +5,7 @@ import { LANE_OFFSET } from "./roadGeometry";
 import type { Car, Trailer, Trip } from "../../generated";
 
 const near = (a: number[], b: number[], d = 1e-6) => expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(d);
-const car = (c: Partial<Car>): Car => ({ owner: 1, trip: null, role: "Private", spot: null, stocks: {}, run: null, hitched: null, deck: [], passengers: [], shunt: null, booked: [], due: 0, ...c });
+const car = (c: Partial<Car>): Car => ({ owner: 1, trip: null, role: "Private", spot: null, stocks: {}, run: null, sail: null, hitched: null, deck: [], passengers: [], shunt: null, booked: [], due: 0, ...c });
 const box: Trailer = { id: 9, good: "Timber", units: 20, to: null, outbound: false, order: null };
 
 test("a vehicle is where the server's state has it, and what it carries with it", () => {

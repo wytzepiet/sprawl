@@ -32,6 +32,7 @@ export type { Good } from "./Good";
 export type { Leg } from "./Leg";
 export type { Place } from "./Place";
 export type { Rule } from "./Rule";
+export type { Sail } from "./Sail";
 export type { Sailing } from "./Sailing";
 export type { Sea } from "./Sea";
 export type { Shipment } from "./Shipment";
