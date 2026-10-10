@@ -92,7 +92,19 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Does every seed still start?** After touching `terrain.rs` or
   `road_gen.rs`, `cargo test every_seed -- --ignored` checks the first
   twenty seeds are islands in one ocean and seats their starting towns;
-  `DRAW=1` draws the ones that fail.
+  `DRAW=1` draws the ones that fail. It also finds ships' ways from the
+  home coast to the edge and to every island, and times them (50 ms
+  budget).
+- **Does the sea work?** `cargo test scenario -- --nocapture` runs the
+  scenarios in `server/scenarios/*.txt` (a map in text, harbours, demand,
+  `expect` lines; the key is at the top of `server/src/shipping/sim.rs`)
+  headless for days in under a second each, with the game's own routing,
+  timetable and company rule (`server/src/shipping/`), and prints a page
+  a day and a row of metrics: delivered, transit, lateness against the
+  quoted ETA, transfers, missed, berth waits, empties, coins, a hash.
+  `SCENARIO=two` runs one; `SVG=1` draws each into `.dev/scenarios/`.
+  Change the network's rules here first, against the numbers
+  (docs/plan-sea.md §The harness comes first).
 - **Does it still look right?** `bun run shots` builds the test towns in
   `server/fixtures/*.txt` (a map in text; the key is in
   `server/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and

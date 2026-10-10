@@ -15,6 +15,7 @@ mod network;
 mod persistence;
 mod protocol;
 mod resident;
+mod shipping;
 mod terrain;
 mod tree;
 mod world;

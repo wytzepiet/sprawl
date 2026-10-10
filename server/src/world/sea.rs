@@ -38,9 +38,6 @@ pub const PACE: GameTime = DAY_MS as GameTime / 1000;
 /// How far out over the water a ship is still in sight: a minute of its
 /// sailing, about what the town's view takes in.
 pub const HORIZON: usize = 48;
-/// Tiles of sea in a line behind a harbour: the ferry's length at the
-/// berth, and room to come straight in.
-pub const BERTH: i32 = 6;
 /// The ferry, in tiles: long and broad, bigger than true to the map, as
 /// `FERRY` in the client's `dressing.ts`.
 pub const FERRY_LENGTH: f64 = 3.2;
@@ -106,32 +103,12 @@ pub fn deck_pose(ship: Pose, k: usize) -> Pose {
     Pose { at: plus(along, across), heading: ship.heading }
 }
 
-/// The berth of a harbour: its quay tile and the way out to sea from it.
-#[derive(Debug, Clone, Copy)]
-pub struct Berth {
-    pub quay: GridCoord,
-    pub out: (i32, i32),
-}
+pub use crate::shipping::water::{Berth, BERTH};
 
 impl Berth {
-    fn tile(&self, n: i32) -> GridCoord {
-        GridCoord { x: self.quay.x + self.out.0 * n, y: self.quay.y + self.out.1 * n }
-    }
-    /// The middle of the quay's edge, where the ramp comes down.
-    pub fn ramp(&self) -> [f64; 2] {
-        [self.quay.x as f64 + 0.5 - self.out.0 as f64 * 0.5, self.quay.y as f64 + 0.5 - self.out.1 as f64 * 0.5]
-    }
-    /// Toward the land, from the sea.
-    fn landward(&self) -> f64 {
-        (-self.out.1 as f64).atan2(-self.out.0 as f64)
-    }
     /// On the quay apron, half a tile in from the ramp.
     fn apron(&self) -> [f64; 2] {
         plus(self.ramp(), ahead(self.landward(), 0.5))
-    }
-    /// The ferry at the berth: its land end on the ramp, facing the land.
-    pub fn moored(&self) -> Pose {
-        Pose { at: plus(self.ramp(), ahead(self.landward(), -FERRY_LENGTH / 2.0)), heading: self.landward() }
     }
     /// Where the tug waits: on the apron beside the ramp.
     fn rest(&self) -> Pose {

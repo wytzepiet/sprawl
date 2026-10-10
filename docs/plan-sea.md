@@ -138,10 +138,12 @@ deleted):
   times the straight line. To the map's edge is 350 to 490 tiles.
 - **At today's `PACE`** (1.2 s a tile), 350 tiles is 7 real minutes, or
   8.4 game hours, at speed one. That is too slow beside a 2.5-hour ferry
-  turn. Ships sail at `SEA_PACE = PACE / 4` in open water and at `PACE`
-  over their last `APPROACH` tiles, which the client eases already. The
-  map's sea is compressed (islands 36 tiles apart, about 430 m), so the
-  ships are too, honestly. The median leg is then about 2 game hours.
+  turn. Built: ships sail at `SEA_PACE` (200 ms a tile, `PACE / 6`) at
+  full speed and gather way over `GATHER` (30 s) from a berth, covering
+  the first fifty tiles at half speed on average. The map's sea is
+  compressed (islands 36 tiles apart, about 430 m), so the ships are
+  too, honestly. The edge is then 2.1 to 2.3 hours from the home coast,
+  the other islands 1.1 to 3.1.
 - **Search cost.** A single-source flood over all ~850k sea tiles with a
   `HashMap` took 1.3 to 2.1 s. A coarse 8×8 grid, a cell open only if
   every tile in it is sea, could not leave a coastal start (seed 1). So:
@@ -155,109 +157,160 @@ deleted):
 
 The router and the planner can be tested in isolation, so they are
 built that way and iterated against numbers before the game sees them.
+Built 2026-10-10 (stage 1); this section says what is there.
 
-**Pure functions over plain data,** in a new module `server/src/shipping/`
-that never names `World` or `EventQueue`:
+**Pure functions over plain data,** in `server/src/shipping/`, which
+never names `World` or `EventQueue`:
 
-- `water.rs`: `Water { w, h, origin, clearance: Vec<u8> }` from any
-  terrain map. `route(&Water, from: Berth, to: Berth | Edge) ->
-  Vec<[f64; 2]>` gives the string-pulled waypoints with the offset already
-  applied. `narrows(&Water, &route) -> Vec<Range<f64>>` gives the blocks,
-  as distances along the route.
-- `lines.rs`: `Call = Harbour(EntityId) | World`. `Line { id, calls:
-  Vec<Call>, legs: Vec<Vec<[f64; 2]>>, ships: Vec<EntityId>, class:
-  ShipClass, dwell }`. `timetable(&[Line], from, until) ->
-  Vec<Connection>`, where a connection is one ship sailing from one call
-  to the next, with departure and arrival times.
-  `earliest(&[Connection], from: Call, to: Call, ready: GameTime) ->
-  Option<Journey>` is a Connection Scan with a transfer time per call.
-  `boards(&[Connection], ship, at, box_to, now) -> bool` is the boarding
-  decision.
-- `open_lines(&History) -> Vec<(Call, Call)>`: the company's rule.
-- `dues(&Journey, owner_of) -> Vec<(Call, u32)>`: boxes handled for
-  others at each call. It is counted, and not paid yet.
+- `mod.rs`: how a ship moves along a leg. `covered(len, ease, t)` and
+  `sail_ms(len, ease)`: a ship gathers way at an even push from rest
+  over `GATHER` (30 s) at an end that is a berth, and loses it the same
+  way coming in; at full speed it takes `SEA_PACE` (200 ms) a tile; at
+  the map's edge it is at full speed. This replaces the plan's
+  `SEA_PACE`/`PACE`/`APPROACH` three-part speed: one law, two numbers,
+  invertible in closed form, which the client reads the same way.
+- `water.rs`: `Water { x0, y0, w, h, clearance: Vec<u8> }` from any
+  terrain map (`Water::of`), clearance being steps to land, eight ways,
+  capped at 15. `Berth` moved here from `world/sea.rs`.
+  `route(&Water, from: &Berth, to: End::Berth | End::Edge)` is A* over
+  tiles (eight ways, no corner cutting, +3 tiles a step at clearance 1,
+  +1 at 2), pulled tight along lines of sight that keep as far off land
+  as the tiles they replace (up to 3), its corners rounded to arcs of
+  `ROUNDING` (4 tiles) where they fit on the water and the legs have
+  room, tighter where not; it starts and ends at the moored ferry's
+  middle, straight along the berth's line, and an edge route runs out
+  over the map's border. `narrows(&route)` is the runs of clearance 1
+  beyond the berths' approaches. `tightest(&route)` is the class check:
+  no turn tighter than `TURN` (half the ferry's length) outside the
+  berths' own `BERTH` tiles, where the ferry turns on its thrusters.
+  The `KEEP_RIGHT` offset is not built: with one ferry a line nothing
+  passes, and it is the first thing to add when two ships share a leg.
+- `lines.rs`: `Call = Harbour(u64) | World`. `Line { calls, legs, ships:
+  Vec<(id, first departure)>, slots, dwell, stay, every }`: each ship
+  keeps its own phase, so a sailing is added at a departure without
+  moving the others. `timetable(&[Line], from, until)`;
+  `earliest(&[Connection], from, to, ready)` is the Connection Scan,
+  with `TRANSFER` (half an hour) to change ship at a harbour and no
+  changing ship at the world at all; `boards(..)` is the boarding
+  decision. The company's rule: `opens(forecast, same_road)`, a line
+  only where the forecast says boxes would flow and no road joins the
+  two; `prior(ways)` picks the nearest harbour by sea not on the same
+  road network; `Line::sized(per_day, ceiling)` turns a forecast into ships,
+  a dwell (the tug's time for a call's share, `MIN_DWELL` to `DWELL`) and
+  `every`, no more sailings than fill half a box; `backlog(line, left,
+  full)` turns boxes left behind into a `Change`: a longer dwell when the
+  deck had room (the tug was short of time), a sailing more when it was
+  full; `slot(lines, line, at, from)` picks when a new sailing leaves.
+- `open_lines(&History)` and `dues` are not built: the first is replaced
+  by the prior and the backlog (§Decisions), the second waits for
+  boxes that are not the player's.
 
-**A scenario harness**, `shipping/sim.rs`. It is a small discrete-event
-loop: ships sail their routes, queue for berths, take blocks, and load
-and land by the functions above. The land side is a rate: the tug lands
-`TUG` boxes an hour at the ferry and `CRANE` at the port, and each
-harbour's lorries take `DRAY` boxes an hour out of the yard and bring
-exports in. A yard has its harbour's dock count. It runs headless for N
-simulated days in well under a second. The game uses the same functions,
-and the land side is the real tug and lorries.
+**The clock face** (found by the harness, not in the first plan). With
+one berth a harbour, its world ferry and a line to another harbour met
+at the berth: on `two`, 65 hours of ships waiting in ten days; on the
+hub, the queue grew without end. Slotting a new line into a free window
+did not help while rounds were three and four hours long: they meet
+every twelve hours whatever the phase. So every line's round is a
+power of two of `TAKT` (an hour): 1, 2, 4, 8 hours. Of any two lines at
+a harbour one's round divides the other's, their berth windows keep
+their places on the clock, and `slot` puts a new line's sailings in the
+first window clear at both ends (a quarter hour of overlap allowed).
+What a round has to spare is spent at the world, or at the anchorage
+off the first call. Berth waits fell to a few minutes in ten days.
 
-**Scenarios are text** in `server/scenarios/*.txt`, the way
-`server/fixtures/*.txt` are maps. The grid comes first: `~` is sea, `.`
-is land, `A` to `Z` are harbours (the letter on the quay tile, its berth
-straight out to sea), and the map's border is the world. Below the grid
-come directives, one per line:
+**A scenario harness**, `shipping/sim.rs` (test only). A discrete-event
+loop: ships sail their routes by `covered`, queue for the one berth,
+wait at the anchorage when early, cut their dwell to half when late,
+and load and land by `boards`. The land side is rates: each harbour's
+tug moves `tug` boxes an hour (one at a time, only what it can finish
+before the ship sails) and its depot's lorries make `dray` round trips
+an hour, drop and hook, as `haul.rs` does: an export filled from the
+empty the depot kept, or a spare empty out, and an import home. The
+world keeps `EMPTIES` standing in each yard. The company's rule runs
+as in the game will: a harbour standing gets the world's ferry, and a
+line to its nearest by sea once its forecast (the scenario's demand
+from and to it, `from=` a day for a maker or rule that starts later)
+says boxes would flow, asked again each midnight; a departure that leaves `BACKLOG` boxes
+behind changes its line. Blocks are not built (stage 5).
+
+**Scenarios are text** in `server/scenarios/*.txt`. The grid comes
+first: `~` is sea, `.` is land, `A` to `Z` but `W` are harbours (the
+letter on the quay tile, land behind it, `BERTH` tiles of sea straight
+out), and the map's border is the world. Below the grid, directives:
 
 ```text
-# two islands: an outpost's timber home, crates out
-harbour A ferry docks=9 dray=4/h
-harbour B ferry docks=9 dray=2/h
-line A W                       # the world's ferry, as today
-line B W
-demand B->A timber 6/day       # boxes a day, at even times
-demand W->A crates 3/day
-demand A->W crates 2/day
-open_line 4                    # the company's threshold, boxes/day
+harbour A docks=9 dray=4/h tug=4/h day=0 road=1  # stands on day 0
+line A B ships=2 dwell=1h                 # a line besides the company's
+demand B->A timber 6/day from=0           # even times; W is the world
+stay 0.5h                                 # beyond the edge
 days 10
-expect delivered >= 0.95
-expect late_p90 <= 3h
-expect empties <= 0.35
+expect delivered >= 0.95                  # any metric; hours bare
+pending stage 5: blocks                   # runs, prints, asserts nothing
 ```
 
-`cargo test scenario -- --nocapture` runs all of them, and `SCENARIO=two`
-runs one. Each prints a page a day and a final table, then asserts its
-`expect` lines. `SVG=1` writes `.dev/sea/<name>.svg`, drawn from the sim's
-own state: the water, the routes, a strobe of each ship, and the blocks
-in red. That is a picture of the network in a fraction of a second, as
-`bun run plan` is for the town.
+`cargo test scenario -- --nocapture` runs all of them, twice each to
+check the hash, and `SCENARIO=two` one. Each prints its pages (the
+company's moves and a line a day) and a row of the table. `SVG=1`
+writes `.dev/scenarios/<name>.svg`: land, each line's legs, the narrows
+in red, the harbours, and a dot every ten minutes for each ship.
 
-**The metrics:**
+**The metrics** (hours where a time):
 
-| Metric | What | Why |
-|---|---|---|
-| `delivered` | boxes landed at their destination ÷ boxes demanded and due by the end | does it work |
-| `transit` | mean and p90, ready to landed, hours | is it fast |
-| `late_p90` | p90 of landed − ETA quoted at booking | does the shown ETA mean anything |
-| `stretch` | mean transit ÷ the fastest journey on an empty network | how much it wastes |
-| `transfers` | mean ship changes per box | is the hub used |
-| `missed` | boxes a full ship left behind | the jam the player should see |
-| `util` | slots filled per leg ÷ slots, per line | are ships worth running |
-| `empties` | empty box-legs ÷ all box-legs | repositioning |
-| `berth_wait` | hours ships waited off a harbour | congestion |
-| `block_wait` | hours ships waited at a block's mouth | narrows |
-| `yard_peak` | most boxes in each yard | when the yard is full |
-| `coins` | in and out at the border | does the town pay |
-| `dues` | boxes handled for others, per harbour | ready for hubs |
-| `hash` | of the event log | runs are deterministic |
+| Metric | What |
+|---|---|
+| `delivered` | boxes landed at their destination ÷ boxes quoted to land by the end |
+| `transit`, `transit_p90` | ready to landed |
+| `late_p90` | p90 of landed − the ETA quoted when the box was made |
+| `stretch` | mean transit ÷ mean quoted transit |
+| `transfers` | mean ship changes per box |
+| `via_world` | boxes between two harbours that went by the world (must be 0) |
+| `missed` | box-departures a ship sailed without, deck full or the tug out of time |
+| `util` | boxes aboard at each sailing ÷ slots, mean over lines |
+| `empties` | empty box-rides ÷ all box-rides |
+| `berth_wait`, `wait_max` | ships off a harbour, in all and the longest |
+| `block_wait` | 0 until stage 5 |
+| `yard_peak` | most boxes in any yard |
+| `landed_per_call` | boxes off a ship at a harbour, per call: the calibration |
+| `coins_in`, `coins_out` | the world's prices for exports landed beyond and imports landed |
+| `first_sailing` | the longest from a line between harbours opening to its first sailing |
+| `forecast_ratio` | worst of forecast ÷ carried (the busier way, a day, after the trial), or its inverse |
+| `near_empty` | sailings between harbours after their trial with no full box aboard |
+| `links`, `idle_lines` | lines between harbours, and those opened on a forecast of nothing |
+| `flow_to_line` | the longest a harbour with a flow forecast waited for its line |
 
-**Named scenarios:**
+**The scenarios, as they stand:**
 
-1. **`world`**: one harbour and the world, set to today's ferry (fifteen
-   slots, a 2.5-hour turn, an hour and a quarter at the ramp). This is
-   the calibration: its boxes landed per turn must match
-   `the_opening_from_the_harbour` and the season test's `SEA=1` pages,
-   within a box.
-2. **`two`**: the example above. The direct line runs from the hour
-   the second harbour stands; asserts `transfers` = 0 and that the
-   first sailing leaves within the hour.
-3. **`hub`**: hub and spoke. Four harbours, one central. Lines run
-   spoke ↔ hub and hub ↔ world. Asserts `stretch <= 1.6` and that no box
-   is routed spoke to spoke through the world when the hub is faster.
-4. **`congested`**: the hub with one berth and three lines. Asserts
-   `berth_wait` is visible (more than zero) and bounded, with no
-   deadlock: every ship berths within a cycle.
-5. **`strait`**: two harbours behind a one-tile strait, a line each way.
-   Asserts that the block flips, that no two ships are in it head-on,
-   and that `block_wait` is bounded.
-6. **`new port`**: the cold start. Two harbours trading steadily; a
-   third built on day 3. Asserts the time from its standing to its first
-   direct sailing (under an hour), that its sailings are sized by the
-   forecast within a factor of two of what then moves, and the share of
-   sailings that leave near empty (under a quarter after its trial).
+```text
+scenario     delivere  transit transit_ late_p90  stretch transfer   missed     util  empties berth_wa yard_pea landed_p coins_in coins_ou
+congested        0.99     2.90     5.67     1.11     1.18     0.00     0.00     0.04     0.62     3.75     5.00     0.56     0.00  1056.00
+hub              0.99     5.39     8.84     5.36     1.53     0.36    29.00     0.03     0.20     2.31     5.00     0.45   360.00   880.00
+new_port         0.98     5.70     9.65     5.00     1.54     0.30    50.00     0.03     0.40     0.05     7.00     0.63     0.00   660.00
+strait           0.99     4.64     5.78     5.06     2.41     0.00     0.00     0.02     0.10     0.01     4.00     0.53     0.00     0.00
+two              1.00     3.36     3.50     0.25     1.08     0.00     0.00     0.04     0.55     0.01     5.00     0.63   360.00   660.00
+world            1.00     1.82     1.82     0.57     1.37     0.00     1.00     0.04     0.46     0.00     4.00     0.69    54.00  1540.00
+```
+
+1. **`world`**: one harbour, today's ferry (fifteen slots, an hour and a
+   quarter at the ramp, a 2.5-hour turn by its `stay`) and the season
+   town's trade. Calibrated on `landed_per_call`: the season test, ten
+   days, lands 56 boxes off 65 calls, 0.86 a call; the harness 0.69.
+2. **`two`**: the outpost linked to home the hour it stands; no box goes
+   by the world, the first sailing within the hour.
+3. **`hub`**: three outposts round a central harbour that stands first,
+   so the prior builds the hub; `stretch` 1.52, nothing by the world.
+4. **`congested`**: the hub's one berth with four lines; waits visible,
+   none longer than four hours.
+5. **`strait`**: pending stage 5; the narrows are drawn.
+6. **`new_port`**: C stands on day 3 and is linked to B, its nearest, so
+   its trade with A changes ship at B (`transfers` 0.30). D stands on
+   day 4 with nothing to carry and gets no line (`idle_lines` 0) until
+   its maker starts on day 6, when it is linked that midnight
+   (`flow_to_line` 0). The plan's targets are not met yet: B's one berth
+   takes four lines, and the fourth's first clean window is 1.9 hours
+   out (asked: an hour); a third of sailings after the trial carry no
+   full box (asked: a quarter), the light way of an uneven trade. The
+   scenario holds today's numbers (2 hours, 35%), to be tightened as
+   they improve.
 
 ## Stages
 
@@ -283,6 +336,11 @@ Each stage leaves the game playable and the suite green
     extends `every_seed` (ignored).
   - Same input gives the same hash.
 - **Deleted.** Nothing. This stage is the instrument.
+- **Built** (2026-10-10): as §The harness comes first says, with the
+  clock face it found. On seeds 0 to 19, 125 ways (the edge and every
+  other island from the home harbour site nearest the origin): median
+  4.4 ms, p90 13 ms, worst 22 ms; the edge 454 to 493 tiles, 2.1 to 2.3
+  hours. `cargo test every_seed -- --ignored` runs it.
 
 ### Stage 2: ships sail real routes (one harbour, the world)
 
