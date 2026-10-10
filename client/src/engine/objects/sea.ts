@@ -130,7 +130,7 @@ const HITCH_MS = 2500;
  * origin, ahead +y; the deck at z = 0.
  */
 export const FERRY = { l: 3.2, w: 0.85 };
-const FREEBOARD = 0.5;
+const FREEBOARD = 0.7;
 const hull = (inset: number): P[] => {
   const [x, y] = [FERRY.w / 2 - inset, FERRY.l / 2 - inset];
   return [[x, -y + 0.35], [x, y - 0.35], [x - 0.12, y - 0.1], [x - 0.27, y], [-x + 0.27, y], [-x + 0.12, y - 0.1], [-x, y - 0.35], [-x, -y + 0.35], [-x + 0.12, -y + 0.1], [-x + 0.27, -y], [x - 0.27, -y], [x - 0.12, -y + 0.1]];
@@ -149,8 +149,9 @@ export const FERRY_SHAPE = shape([
   [box(FERRY.w - 0.02, 0.19, 0.035), [0, 0, 0.4375], [0.22, 0.25, 0.3]],
   [box(FERRY.w, 0.21, 0.025), [0, 0, 0.4675], BLUE],
 ]);
-/** The sea's surface, half a unit under the land, and the deck over it. */
-export const DECK_Z = -0.5 + FREEBOARD;
+/** The sea's surface, 0.7 under the land (`WATER_Z` in `terrainGeometry.ts`),
+ *  and the deck over it, level with the quay. */
+export const DECK_Z = -0.7 + FREEBOARD;
 
 /** A deck slot's place on a ferry standing at `p`: three lanes across,
  *  five rows from the end its heading points to (`deck_pose`). */

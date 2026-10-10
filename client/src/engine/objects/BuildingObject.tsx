@@ -17,9 +17,6 @@ import type { Building, GameObjectEntry } from "../../generated";
 import type { Job } from "../../generated/Job";
 import type { Tile } from "../../generated/Tile";
 
-/** A quay's stone, the kerb's colour. */
-const KERB = hex("#E6E2D6");
-
 /** A farm's field is the ground the tractor last drove, a strip a tile
  *  wide along its path, painted flat like a map's farmland in one tone
  *  for the stage the last run left it in — earth, growing, ripe,
@@ -27,15 +24,22 @@ const KERB = hex("#E6E2D6");
  *  darker, lit as the roads and the lots are, and no grid over it. A run paints the
  *  stage it leaves behind the tractor, over the field as it was. */
 export const FIELD_Z = 0.008;
-/** A quay: how far out over the water it reaches, its deck's height over
- *  the land, and how far down to the water it stands; and the gap between
- *  its two piers the ferry berths in, a little over its beam. */
-const QUAY = { deck: 0.7, top: 0.03, height: 0.53 };
-const SLIP = 1;
+/** The ferry's berth, out from the quay's edge (`town/draw.ts`): the link
+ *  span over its land end, the dolphins it lies between, this far either
+ *  side of its middle, out along it, and how far down they stand into the
+ *  water (0.7 under the land). */
+const SPAN = { across: 0.5, out: 0.36 };
+const DOLPHINS = { across: 0.6, out: [0.95, 2.45], foot: -0.8 };
 /** A site's walls going up: how thick. */
 const WALL = 0.05;
-/** The link span's steel, a site's slab and scaffolding, and timber. */
-const SPAN = hex("#6B7078");
+/** The link span's steel, its gantry's towers and beam, the dolphins'
+ *  concrete, their fenders and the bollards' iron, the walkway's boards;
+ *  a site's slab and scaffolding, and timber. */
+const STEEL = hex("#6B7078");
+const TOWER = hex("#E9E6DF");
+const CONCRETE = hex("#B9B4AA");
+const IRON = hex("#2E3238");
+const BOARDS = hex("#8C7A64");
 const SLAB = hex("#BDB2A0");
 const SCAFFOLD = hex("#9AA3AD");
 const FLOOR = hex("#9E9A92");
@@ -103,20 +107,35 @@ export function mountBuilding(
     placed.push({ key, id: pool.addInstance(key, [x - oy * across + ox * out, y + ox * across + oy * out, z + h / 2], [0, 0, Math.atan2(oy, ox) - Math.PI / 2]) });
   };
 
-  // A harbour on its quay: the ramp at the middle of its back, where the
-  // ferry's land end lies, a link span down to its deck, and either side
-  // of the ferry's berth a pier out over the water, the land's height,
-  // the water half a unit under it; on one, the terminal. And in its park
-  // the boxes standing in their slots.
+  // A harbour's berth, behind the middle of its back, where its paving
+  // meets the water as a quay: a link span from the quay's edge down onto
+  // the ferry's land end, under a gantry on two towers that lifts it; two
+  // dolphins either side of the ferry, out along it, that it lies between,
+  // a walkway out to those on one side; bollards along the quay. On the
+  // other side, inland, the terminal: the harbour master's and the
+  // ticket office. And in its park the boxes standing in their slots.
   if (BLUEPRINTS[data.kind].quay) {
     const out = [-dx, -dy];
+    const deep = dx === 0 ? bh : bw;
     const wide = dx === 0 ? bw : bh;
-    const ramp = [mx + out[0] * (dx === 0 ? bh : bw) / 2, my + out[1] * (dx === 0 ? bh : bw) / 2];
-    const pier = (wide - SLIP) / 2;
-    for (const side of [-1, 1]) put("quay", [pier, QUAY.deck, QUAY.height], KERB, ramp, out, side * (SLIP + pier) / 2, QUAY.deck / 2, QUAY.top - QUAY.height);
-    put("span", [0.55, 0.3, 0.025], SPAN, ramp, out, 0, 0.1, 0.005);
-    put("terminal", [pier - 0.3, 0.42, 0.2], hex(BLUEPRINTS[data.kind].material), ramp, out, (SLIP + pier) / 2, 0.33, QUAY.top);
-    put("roof", [pier - 0.26, 0.46, 0.03], hex("#E8E4DA"), ramp, out, (SLIP + pier) / 2, 0.33, QUAY.top + 0.2);
+    const edge = [mx + out[0] * deep / 2, my + out[1] * deep / 2];
+    const at = (name: string, size: number[], colour: Rgb, across: number, o: number, z: number) => put(name, size, colour, edge, out, across, o, z);
+    at("span", [SPAN.across, SPAN.out, 0.03], STEEL, 0, SPAN.out / 2, KERB_Z - 0.03);
+    for (const s of [-1, 1]) at("spanRail", [0.03, SPAN.out, 0.04], TOWER, s * (SPAN.across / 2 - 0.015), SPAN.out / 2, KERB_Z);
+    const towers = DOLPHINS.across;
+    for (const s of [-1, 1]) at("tower", [0.08, 0.08, 0.55 - DOLPHINS.foot], TOWER, s * towers, SPAN.out - 0.04, DOLPHINS.foot);
+    at("beam", [2 * towers + 0.08, 0.07, 0.06], hex(BLUEPRINTS[data.kind].color), 0, SPAN.out - 0.04, 0.5);
+    for (const s of [-1, 1]) {
+      for (const o of DOLPHINS.out) {
+        at("dolphin", [0.16, 0.16, KERB_Z + 0.02 - DOLPHINS.foot], CONCRETE, s * DOLPHINS.across, o, DOLPHINS.foot);
+        at("fender", [0.03, 0.14, 0.12], IRON, s * (DOLPHINS.across - 0.095), o, -0.1);
+        at("bollard", [0.05, 0.05, 0.05], IRON, s * DOLPHINS.across, o, KERB_Z + 0.02);
+      }
+    }
+    at("walk", [0.1, DOLPHINS.out[1] - 0.08, 0.025], BOARDS, DOLPHINS.across, DOLPHINS.out[1] / 2 - 0.04, KERB_Z - 0.005);
+    for (let a = -wide / 2 + 0.2; a < wide / 2 - 0.1; a += 0.42) if (Math.abs(a) > SPAN.across / 2 + 0.1 && Math.abs(a - DOLPHINS.across) > 0.12) at("bollard", [0.05, 0.05, 0.05], IRON, a, -0.07, KERB_Z);
+    at("terminal", [0.36, 0.4, 0.17], hex(BLUEPRINTS[data.kind].material), -(wide / 2 - 0.32), -0.32, KERB_Z);
+    at("roof", [0.4, 0.44, 0.025], TOWER, -(wide / 2 - 0.32), -0.32, KERB_Z + 0.17);
     for (const { pose, trailer } of data.park) if (trailer) boxes.push(placeBox(pool, trailer, pose, KERB_Z));
   }
 
@@ -152,7 +171,7 @@ export function mountBuilding(
     const mast = round(full + 0.25);
     frame("mast", [0.05, 0.05, mast], CRANE, ca, co, KERB_Z + 0.025);
     frame("jib", [Math.max(0.6, ww), 0.04, 0.035], CRANE, ca + Math.max(0.6, ww) / 2 - 0.15, co, KERB_Z + 0.025 + mast);
-    frame("weight", [0.09, 0.08, 0.05], SPAN, ca - 0.12, co, KERB_Z + 0.025 + mast - 0.02);
+    frame("weight", [0.09, 0.08, 0.05], STEEL, ca - 0.12, co, KERB_Z + 0.025 + mast - 0.02);
   }
 
   // A farm's field: the ground its tractor last drove over, along the

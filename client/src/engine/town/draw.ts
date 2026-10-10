@@ -22,6 +22,14 @@ export type Colour = { r: number; g: number; b: number };
 
 /** A dock's door: dark, in any light. */
 const DOOR: Colour = { r: 0.22, g: 0.24, b: 0.3 };
+/** A quay's wall, stone a shade under the paving, and its capping, a
+ *  shade over it. */
+const QUAY: Colour = { r: 0.6, g: 0.58, b: 0.54 };
+const CAP: Colour = { r: 0.88, g: 0.86, b: 0.81 };
+/** How far down a quay's wall stands, past the water's surface; and how
+ *  broad its capping is, along the edge. */
+const QUAY_FOOT = -0.78;
+const CAP_W = 0.07;
 
 /** How far over the grass the roads lie. */
 export const PAVED_Z = 0.02;
@@ -60,7 +68,11 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   const add = (name: string, geo: Piece["geo"], c: Colour | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
-  add("pavement", flatPolygons(pavement(town), KERB_Z), theme.paved);
+  const paved = pavement(town);
+  add("pavement", flatPolygons(paved, KERB_Z), theme.paved);
+  const { wall, cap } = quay(town, paved);
+  add("quay", wall, QUAY);
+  add("quayCap", cap, CAP);
   const dressing = dress(town, known);
   const mass = townMesh(town, paint, undefined, known);
   add("mass", mass, null);
@@ -77,6 +89,48 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   }
   add("doors", doors, DOOR);
   return { pieces, dressing, props: mass.props };
+}
+
+/**
+ * A quay: wherever the paving meets the water, its edge is a wall straight
+ * down into it, as a harbour's is, and along the top a capping of lighter
+ * stone. The terrain's coast steps back under it (`TerrainChunks`), so no
+ * beach, cliff or foam is left at its foot. Along each edge of the
+ * paving, a wall where the tile on one side of it is water and the other
+ * not, facing the water.
+ */
+function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeometry } {
+  const wall: MeshGeometry = { positions: [], normals: [], indices: [] };
+  const cap: MeshGeometry = { positions: [], normals: [], indices: [] };
+  const wet = ([x, y]: number[]) => town.tile(Math.floor(x), Math.floor(y)).kind === "water";
+  for (const ring of paved.flat()) {
+    ring.forEach((a, i) => {
+      const b = ring[(i + 1) % ring.length];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (len < 1e-6) return;
+      const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      let n = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
+      const at = (s: number) => [m[0] + n[0] * s, m[1] + n[1] * s];
+      if (wet(at(-0.08)) && !wet(at(0.08))) n = [-n[0], -n[1]];
+      else if (!wet(at(0.08)) || wet(at(-0.08))) return;
+      // The map's frame is the plan's turned half round.
+      const p = (q: number[], o: number, z: number): number[] => [-(q[0] - n[0] * o), -(q[1] - n[1] * o), z];
+      face(wall, [p(a, 0, KERB_Z), p(b, 0, KERB_Z), p(b, 0, QUAY_FOOT), p(a, 0, QUAY_FOOT)], [-n[0], -n[1], 0]);
+      face(cap, [p(a, 0, KERB_Z + 0.004), p(b, 0, KERB_Z + 0.004), p(b, CAP_W, KERB_Z + 0.004), p(a, CAP_W, KERB_Z + 0.004)], [0, 0, 1]);
+    });
+  }
+  return { wall, cap };
+}
+
+/** A flat quad, its corners in order round it, facing `n`: wound as the
+ *  front faces are, every triangle its own three vertices. */
+function face(g: MeshGeometry, [p0, p1, p2, p3]: number[][], n: number[]) {
+  for (const [a, b, c] of [[p0, p1, p2], [p0, p2, p3]]) {
+    const [u, v] = [[b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]];
+    const out = (u[1] * v[2] - u[2] * v[1]) * n[0] + (u[2] * v[0] - u[0] * v[2]) * n[1] + (u[0] * v[1] - u[1] * v[0]) * n[2];
+    for (const q of out < 0 ? [a, b, c] : [a, c, b]) g.positions.push(q[0], q[1], q[2]), g.normals.push(n[0], n[1], n[2]);
+    g.indices.push(g.indices.length, g.indices.length + 1, g.indices.length + 2);
+  }
 }
 
 /** Trees as instances of the forest's: a matrix and a colour each, in the
