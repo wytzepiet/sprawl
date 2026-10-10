@@ -13,8 +13,9 @@ const DRIP_MS = 1600;
  * The city's two dials, run together into one shape in the top right
  * corner: the level, a ring closing on the next, and the purse.
  *
- * The level is hours of need served in town to date: the shifts, the
- * meals and the tanks. A tap opens the tree, where its points are spent.
+ * The level is the town's GDP to date: the value it adds, landing as
+ * each meal is served, each tank filled, each crop cut and each shift at
+ * a desk worked. A tap opens the tree, where its points are spent.
  * The purse is the town's coins, stepped at the border: a harvest sold to
  * the world, a lorry of crates bought from it, a placement; a tap opens
  * the town's books. The coins are on the map first, so what comes into
@@ -67,7 +68,7 @@ export default function GrowthMeter() {
       </For>
       {/* What the day has done, beneath. */}
       <div class="soft serif italic absolute right-5 top-[58px] text-[13px] whitespace-nowrap">
-        {low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today`} · {Math.floor(growth().served)}h served
+        {low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today`} · GDP {Math.floor(growth().gdp)}
       </div>
     </div>
   );

@@ -61,7 +61,7 @@ pub struct RoadNode {
 
 /// What stands on a plot. The kind follows from the footprint the layout chose,
 /// so a wide plot becomes an Apartment where a single tile becomes a House.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq, PartialOrd, Ord)]
 #[ts(export)]
 pub enum BuildingKind {
     House,
@@ -570,18 +570,18 @@ pub struct Clock {
 
 /// How the city is doing, as the two dials read it.
 ///
-/// The level is hours of need the city's buildings have served, ever.
+/// The level is the town's GDP to date.
 /// The treasury is the mayor's coins, stepped as goods cross the border.
 /// Neither is extrapolated: a dial that steps is the event landing.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Growth {
     pub level: u32,
-    /// Hours served since the level was reached, and what the next takes.
+    /// GDP since the level was reached, and what the next takes.
     pub toward: f64,
     pub needed: f64,
-    /// Hours of need served in town today so far.
-    pub served: f64,
+    /// GDP added in town today so far.
+    pub gdp: f64,
     /// What the town has to spend, in coins: earned at the border, net of
     /// what it bought and built.
     pub treasury: f64,
@@ -595,15 +595,17 @@ pub struct Growth {
     pub road_tiles_left: u32,
 }
 
-/// Coins landing somewhere on the map as goods cross the border: a load
-/// sold to the world, a delivery or a tank bought from it. Negative is
-/// coins leaving. docs/trade.md, Coins.
+/// Something landing on a building: coins as goods cross the border, a
+/// load sold to the world or a delivery bought from it, negative leaving;
+/// or GDP as value is added there, a meal served, a crop cut, a shift
+/// worked at a desk. docs/trade.md.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct Sale {
+pub struct Lump {
     #[ts(type = "number")]
     pub building: EntityId,
-    pub amount: f64,
+    pub coins: f64,
+    pub gdp: f64,
     #[ts(type = "number")]
     pub at: u64,
 }
@@ -614,7 +616,7 @@ pub struct StateUpdate {
     pub ops: Vec<Operation>,
     /// Lumps that landed on buildings in view since the last update.
     #[serde(default)]
-    pub sales: Vec<Sale>,
+    pub lumps: Vec<Lump>,
     pub clock: Clock,
     pub growth: Growth,
     #[ts(type = "number")]

@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{Build, BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Sale, ServerMessage, StateUpdate, Tool, GridCoord};
+use crate::protocol::{Build, BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Lump, ServerMessage, StateUpdate, Tool, GridCoord};
 use crate::world::chunk_of;
 use crate::world::{Link, World};
 
@@ -288,10 +288,10 @@ fn clock(now: GameTime, speed: u32) -> Clock {
 
 /// Every update carries the ambient world state alongside its ops, so a client
 /// never has to ask for the seed or the surveyed extent separately.
-fn state_update(world: &World, ops: Vec<Operation>, sales: Vec<Sale>, clk: Clock) -> ServerMessage {
+fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock) -> ServerMessage {
     ServerMessage::Update(StateUpdate {
         ops,
-        sales,
+        lumps,
         clock: clk,
         growth: crate::economy::growth(world, clk.now),
         terrain_seed: world.terrain_seed,
@@ -307,7 +307,7 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
         // What the city has served, and what the mayor has, outlive a
         // restart; a fresh world keeps its stake.
         let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
-        world.served = meta.served;
+        world.gdp = meta.gdp;
         world.treasury = meta.treasury;
         world.build = crate::tree::Build::load(meta.taken);
         world
@@ -340,7 +340,7 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
             next_id: world.objects.next_id(),
             terrain_seed: world.terrain_seed,
             sim_time,
-            served: world.served,
+            gdp: world.gdp,
             treasury: world.treasury,
             taken: world.build.taken(),
         },
@@ -414,7 +414,7 @@ fn handle_player_action(
             }
         }
         ClientMessage::Take(cell) => {
-            let (level, _) = crate::economy::level(world.served);
+            let (level, _) = crate::economy::level(world.gdp);
             world.build.take(cell, level);
         }
         ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),
@@ -795,12 +795,12 @@ fn flush_dirty(
             .collect();
     let newly_revealed = std::mem::take(&mut world.newly_revealed);
     // Money that landed, for whoever is looking at where it landed.
-    let sales: Vec<(ChunkCoord, Sale)> = std::mem::take(&mut world.sales)
+    let lumps: Vec<(ChunkCoord, Lump)> = std::mem::take(&mut world.lumps)
         .into_iter()
         .filter_map(|s| Some((chunk_of(world.objects.get(s.building)?.position?), s)))
         .collect();
 
-    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && newly_revealed.is_empty() && sales.is_empty()
+    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && newly_revealed.is_empty() && lumps.is_empty()
     {
         return;
     }
@@ -864,10 +864,10 @@ fn flush_dirty(
                 ops.push(Operation::Delete(*id));
             }
         }
-        let sales: Vec<Sale> = sales.iter().filter(|(c, _)| cs.known_chunks.contains(c)).map(|(_, s)| *s).collect();
+        let lumps: Vec<Lump> = lumps.iter().filter(|(c, _)| cs.known_chunks.contains(c)).map(|(_, s)| *s).collect();
 
-        if !ops.is_empty() || !sales.is_empty() {
-            let _ = cs.sender.send(state_update(world, ops, sales, clk));
+        if !ops.is_empty() || !lumps.is_empty() {
+            let _ = cs.sender.send(state_update(world, ops, lumps, clk));
         }
     }
 }
@@ -2060,12 +2060,23 @@ mod tests {
             // home or out, against what a day asks of each of them.
             let eaten: f64 = world.books.values().map(|k| k.before(midnight).served.get(&Need::Eat).copied().unwrap_or(0.0)).sum();
             let asked = world.resident_ids().len() as f64 * Need::Eat.daily_ms() / (DAY_MS as f64 / 24.0);
+            // Hours served out of the house, per need: work, eating out,
+            // filling up.
+            let mut out: std::collections::BTreeMap<Need, f64> = Default::default();
+            for (id, k) in &world.books {
+                if matches!(world.objects.get(*id).map(|e| &e.object), Some(GameObject::Building(b)) if crate::blueprint::blueprint(b.kind).homes == 0) {
+                    for (&need, &h) in &k.before(midnight).served {
+                        *out.entry(need).or_default() += h;
+                    }
+                }
+            }
             println!(
-                "day {day}: ate {eaten:.0}h of {asked:.0}h; served {:.0}h ({:.0} work, {:.1} eating out, {:.1} filling up), in {:.1} out {:.1}, treasury {:.1}; {} empty {:?}",
-                page.served.values().sum::<f64>(),
-                page.served.get(&Need::Work).copied().unwrap_or(0.0),
-                page.served.get(&Need::Eat).copied().unwrap_or(0.0),
-                page.served.get(&Need::Fuel).copied().unwrap_or(0.0),
+                "day {day}: ate {eaten:.0}h of {asked:.0}h; {:.0}h work, {:.1}h eating out, {:.1}h filling up; GDP {:.1} {:.1?}, in {:.1} out {:.1}, treasury {:.1}; {} empty {:?}",
+                out.get(&Need::Work).copied().unwrap_or(0.0),
+                out.get(&Need::Eat).copied().unwrap_or(0.0),
+                out.get(&Need::Fuel).copied().unwrap_or(0.0),
+                page.gdp.values().sum::<f64>(),
+                page.gdp,
                 page.revenue(),
                 page.purchases(),
                 world.treasury,
@@ -2075,7 +2086,7 @@ mod tests {
             if day > 1 {
                 assert!(eaten >= 0.9 * asked, "day {day}: the town ate {eaten:.1}h of the {asked:.1}h its people need");
                 for need in [Need::Work, Need::Eat, Need::Fuel] {
-                    assert!(page.served.get(&need).is_some_and(|&h| h > 0.0), "day {day}: nobody in town was served {need:?}");
+                    assert!(out.get(&need).is_some_and(|&h| h > 0.0), "day {day}: nobody in town was served {need:?}");
                 }
             }
         });

@@ -509,7 +509,7 @@ impl World {
             }
         }
         if cut > 0.0 {
-            economy::harvested(self, farm, cut);
+            economy::harvested(self, farm, cut, now);
         }
         if k + 1 < run.path.len() {
             events.wake(PACE, tractor);

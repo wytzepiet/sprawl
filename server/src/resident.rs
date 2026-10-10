@@ -460,8 +460,8 @@ fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
 /// need is constant: it neither refills nor drains. A driven need drains at
 /// the end of a trip, in `drove`, and refills like any other.
 ///
-/// What was served goes on the tab, drawn off the shelf when the visit
-/// ends, and on the books as hours served: the level.
+/// What was served goes on the tab, drawn off the shelf and banked as
+/// GDP when the visit ends, and on the building's books as hours served.
 fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &Crowd) {
     let Some(r) = resident(world, id) else { return };
     let (last, selected) = (r.last_update, r.selected);
@@ -796,12 +796,13 @@ fn set_selected(world: &mut World, events: &mut EventQueue, id: EntityId, need: 
 }
 
 /// The visit is over: what it served comes off the shelf it was served
-/// from, and the building takes its turn.
+/// from, the value it added lands as GDP, and the building takes its
+/// turn.
 fn end_visit(world: &mut World, events: &mut EventQueue, id: EntityId, at: EntityId, now: GameTime) {
     let Some(r) = resident_mut(world, id) else { return };
     let (Some(need), tab) = (r.selected, std::mem::take(&mut r.tab)) else { return };
     if tab > 0.0 && matches!(world.objects.get(at).map(|e| &e.object), Some(GameObject::Building(_))) {
-        economy::drawn(world, at, need, tab);
+        economy::visited(world, at, need, tab, now);
         crate::calls::turn(world, events, at, now);
     }
 }

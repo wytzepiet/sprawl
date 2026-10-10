@@ -61,15 +61,15 @@ pub struct World {
     pub books: HashMap<EntityId, crate::economy::Books>,
     /// The town's own books: what it served, and what crossed the border.
     pub town: crate::economy::Books<crate::economy::Town>,
-    /// Hours of need served in town to date, banked as each visit is had.
-    /// The level is its running sum.
-    pub served: f64,
+    /// GDP to date: the value the town has added, banked as it appears
+    /// (`economy`). The level is its running sum.
+    pub gdp: f64,
     /// The mayor's coins: the town's balance of trade, less what it built.
     /// docs/trade.md, Coins.
     pub treasury: f64,
-    /// Coins that crossed the border at buildings since the last flush,
-    /// for the clients looking at them.
-    pub sales: Vec<crate::protocol::Sale>,
+    /// Coins and GDP that landed on buildings since the last flush, for
+    /// the clients looking at them.
+    pub lumps: Vec<crate::protocol::Lump>,
     /// The nodes of the tree the player has taken: the gate for everything
     /// the city may do. See `tree.rs`.
     pub build: crate::tree::Build,
@@ -160,9 +160,9 @@ impl World {
             terrain_seed: 0,
             books: HashMap::new(),
             town: Default::default(),
-            served: 0.0,
+            gdp: 0.0,
             treasury: crate::economy::STAKE,
-            sales: Vec::new(),
+            lumps: Vec::new(),
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
@@ -195,9 +195,9 @@ impl World {
             terrain_seed,
             books: HashMap::new(),
             town: Default::default(),
-            served: 0.0,
+            gdp: 0.0,
             treasury: 0.0,
-            sales: Vec::new(),
+            lumps: Vec::new(),
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),

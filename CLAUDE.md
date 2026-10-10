@@ -66,9 +66,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   --nocapture` runs the same town for thirty days and asserts that its
   shelves stay stocked and its residents fed: no shelf and no tank empty
   two midnights running, a day's meals eaten every day, and coins left at
-  the end. It prints each day's hours served and coins across the
-  border. A chain that stops delivering shows here before it shows in
-  play.
+  the end. It prints each day's hours worked, eaten out and filled up,
+  GDP by building, and coins across the border. A chain that stops
+  delivering shows here before it shows in play.
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.

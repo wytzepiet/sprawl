@@ -37,6 +37,30 @@ cross a town's border: in when the town sells, out when it buys. Nothing
 inside the town has a price. A building costs materials, not coins, and
 materials cost coins only when they are bought in.
 
+## GDP
+
+The level is GDP to date: the value the town adds, counted once, where
+and when it appears on the map, at the world's prices, and nothing a
+resident or a building decides by. A crop is worth its price as it is
+cut. A meal or a tank served over a counter is worth the counter's
+price less the crate or the fuel it used, whoever made that, so a shop
+fed by the town's own farm and one fed from the boat add the same, and
+the farm adds its crops on top. Work is valued through what it makes; a
+farm hand's shift is in the crops already. Work that makes no good to
+sell, a building there for what it does (an office until it has a
+product, the Exchange, a fire station), is counted at cost, a wage an
+hour, as GDP counts government work. Imports add nothing, and exports
+nothing again. Each lands as a lump on the building it was added at.
+
+GDP and coins are two numbers: the treasury is the balance of trade,
+and a town serving its own people raises GDP without moving a coin.
+Value sits on what is served, not on the visit, so ten restaurants do
+not make anyone eat more: the level grows with how many people the town
+has and how much of what they need it makes and serves for them. A
+better building serving the same need for more, a villa's night or a
+restaurant's dinner, is the ladder of wants (§Open 4), and a number on
+its row.
+
 ## The world
 
 Beyond the sea the world buys and sells everything, without limit:
@@ -242,8 +266,8 @@ People stay in their own town; only goods cross its border.
    that every town on the island fills together; demand that softens
    when everyone ships the same good.
 4. What a town wants from inside: whether houses climb a ladder of wants
-   (Caesar III, Anno), and what opens the tree, which was GDP's running
-   sum, a number priced at the world's prices.
+   (Caesar III, Anno), and so what a night at home is worth in GDP
+   (nothing yet).
 5. The Exchange's name. Kontor (the Hanse's trading posts) and the
    weigh house (Waag) were the alternatives.
 6. Whether the harbour and the first depot are free, or built from the

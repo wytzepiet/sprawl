@@ -1,18 +1,19 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
-import type { Need } from "../generated";
+import type { BuildingKind, Need } from "../generated";
+import { BLUEPRINTS } from "../blueprints";
 
-/** One day of the town's books: hours served in town, per need, and
- *  coins across the border, per good. */
+/** One day of the town's books: GDP, per kind of building it was added
+ *  at, and coins across the border, per good. */
 interface TownPage {
-  served: Partial<Record<Need, number>>;
+  gdp: Partial<Record<BuildingKind, number>>;
   sold: Partial<Record<Need, number>>;
   bought: Partial<Record<Need, number>>;
   built: number;
 }
 
 interface Town {
-  served: number;
+  gdp: number;
   treasury: number;
   today: TownPage;
   season: TownPage[];
@@ -24,13 +25,13 @@ export { open as boardOpen, setOpen as setBoardOpen };
 /** How often the open board asks again. */
 const REFRESH_MS = 1000;
 
-const sum = (m: Partial<Record<Need, number>>) => Object.values(m).reduce((a, b) => a + b, 0);
+const sum = (m: object) => (Object.values(m) as number[]).reduce((a, b) => a + b, 0);
 const mean = (pages: TownPage[], f: (p: TownPage) => number) => (pages.length ? pages.reduce((a, p) => a + f(p), 0) / pages.length : 0);
 const num = (v: number) => `${v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}`;
 
 /**
- * The town's page: the two dials read back by need and by good. The
- * hours served today, per need, add up to the level's step; the coins
+ * The town's page: the two dials read back by building and by good. The
+ * GDP added today, per kind of building, adds up to the level's step; the coins
  * that crossed the border, per good, in and out, and what the mayor
  * built, add up to the treasury's. Beside each line, the same a day over
  * the season. docs/trade.md.
@@ -62,8 +63,8 @@ export default function Board() {
   onCleanup(() => window.removeEventListener("keydown", onKey));
 
   /** Every need with a line on any page, in the order the first page names them. */
-  const needs = (t: Town, of: (p: TownPage) => Partial<Record<Need, number>>) =>
-    [...new Set([t.today, ...t.season].flatMap((p) => Object.keys(of(p))))] as Need[];
+  const keys = <K extends string>(t: Town, of: (p: TownPage) => Partial<Record<K, number>>) =>
+    [...new Set([t.today, ...t.season].flatMap((p) => Object.keys(of(p))))] as K[];
 
   return (
     <Show when={open() && town()}>
@@ -79,20 +80,20 @@ export default function Board() {
             </button>
           </div>
 
-          <Section title="Hours served" today={sum(t().today.served)} season={mean(t().season, (p) => sum(p.served))}>
-            <For each={needs(t(), (p) => p.served)}>
-              {(need) => <Line label={need} today={t().today.served[need] ?? 0} season={mean(t().season, (p) => p.served[need] ?? 0)} />}
+          <Section title="GDP" today={sum(t().today.gdp)} season={mean(t().season, (p) => sum(p.gdp))}>
+            <For each={keys(t(), (p) => p.gdp)}>
+              {(kind) => <Line label={BLUEPRINTS[kind].label} today={t().today.gdp[kind] ?? 0} season={mean(t().season, (p) => p.gdp[kind] ?? 0)} />}
             </For>
           </Section>
 
           <Section title="Coins in at the border" today={sum(t().today.sold)} season={mean(t().season, (p) => sum(p.sold))}>
-            <For each={needs(t(), (p) => p.sold)}>
+            <For each={keys<Need>(t(), (p) => p.sold)}>
               {(need) => <Line label={need} today={t().today.sold[need] ?? 0} season={mean(t().season, (p) => p.sold[need] ?? 0)} />}
             </For>
           </Section>
 
           <Section title="Coins out at the border" today={-sum(t().today.bought) - t().today.built} season={-mean(t().season, (p) => sum(p.bought) + p.built)}>
-            <For each={needs(t(), (p) => p.bought)}>
+            <For each={keys<Need>(t(), (p) => p.bought)}>
               {(need) => <Line label={need} today={-(t().today.bought[need] ?? 0)} season={-mean(t().season, (p) => p.bought[need] ?? 0)} />}
             </For>
             <Show when={t().today.built > 0 || t().season.some((p) => p.built > 0)}>

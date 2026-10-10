@@ -22,7 +22,7 @@ export type { Operation } from "./Operation";
 export type { Resident } from "./Resident";
 export type { RoadNode } from "./RoadNode";
 export type { Row } from "./Row";
-export type { Sale } from "./Sale";
+export type { Lump } from "./Lump";
 export type { ServerMessage } from "./ServerMessage";
 export type { StateUpdate } from "./StateUpdate";
 export type { Stock } from "./Stock";

@@ -6,8 +6,15 @@
 //! town sells to the world and out when it buys, and a placement is
 //! materials bought in. The treasury is the town's balance of trade.
 //!
-//! The level is hours of need served in town, banked as each visit is
-//! had: the shifts worked, the meals and the tanks.
+//! The level is GDP to date: the value the town adds, counted once,
+//! where and when it appears on the map. A crop is worth the world's
+//! price as it is cut; a meal or a tank served is worth the counter's
+//! price less the crate or the fuel it used, whoever made that; an hour
+//! at a desk that sells no good is worth what it costs, a wage, the way
+//! statisticians count government work. Imports add nothing; exports add
+//! nothing again, having counted when they were made. Coins and GDP are
+//! different numbers: the treasury is the balance of trade, and what the
+//! town makes for itself raises GDP and moves no coin.
 //!
 //! What is a number lives here, with the referent that set it. What is a
 //! verb — settling a visit, finding a seller — lives with the code that
@@ -20,7 +27,7 @@ use serde_json::{json, Value};
 use crate::blueprint::blueprint;
 use crate::engine::GameTime;
 use crate::needs::{Need, Tap};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Growth, Sale, DAY_MS};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Growth, Lump, DAY_MS};
 use crate::world::World;
 
 pub const HOUR: f64 = DAY_MS as f64 / 24.0;
@@ -44,6 +51,22 @@ pub fn world_price(good: Need) -> f64 {
 /// and its towns. A town that sells to the world never gets what it pays
 /// for the same load.
 pub const MARGIN: f64 = 0.1;
+/// What a unit of a good is worth served over a counter in town, in
+/// coins: the crate or the fuel, and the work of serving it. A meal at
+/// twice its crate, a tank at twice its fuel, the margins the price
+/// economy's counters came to. The counter adds the difference.
+pub fn served_price(good: Need) -> f64 {
+    2.0 * world_price(good)
+}
+
+/// What an hour of work is worth where it makes no good to sell: an
+/// office, a factory until it has a product, later the Exchange or a fire
+/// station. Valued at cost, as GDP counts government work. A meal out's
+/// worth an hour, so a desk adds about what a farm hand's crates do in a
+/// fifth of the time; it sets how much of GDP desks are until they make
+/// something.
+pub const WAGE: f64 = 0.2;
+
 /// What the town pays the world for `units` of a good.
 pub fn import(good: Need, units: f64) -> f64 {
     units * world_price(good) * (1.0 + MARGIN)
@@ -137,14 +160,15 @@ pub fn crop(kind: BuildingKind, tiles: usize) -> f64 {
     blueprint(kind).stock as f64 / tiles.max(1) as f64
 }
 
-/// The tractor cut a tile: its crop lands in the yard. §12.8.
-pub fn harvested(world: &mut World, farm: EntityId, load: f64) {
+/// The tractor cut a tile: its crop lands in the yard, and is GDP at the
+/// world's price. §12.8.
+pub fn harvested(world: &mut World, farm: EntityId, load: f64, now: GameTime) {
     let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) else { return };
-    if let Some(good) = blueprint(b.kind).makes
-        && let Some(yard) = b.stocks.get_mut(&good)
-    {
-        yard.add(load);
-    }
+    let Some(good) = blueprint(b.kind).makes else { return };
+    let Some(yard) = b.stocks.get_mut(&good) else { return };
+    let grown = load.min(yard.short());
+    yard.add(grown);
+    added(world, farm, grown * world_price(good), now);
 }
 
 /// A row calls only for what it keeps: the shelf its counter serves from
@@ -226,19 +250,23 @@ fn door(world: &mut World, at: EntityId, good: Need, amount: f64, now: GameTime)
     }
     world.treasury += amount;
     if amount != 0.0 {
-        world.sales.push(Sale { building: at, amount, at: now });
+        world.lumps.push(Lump { building: at, coins: amount, gdp: 0.0, at: now });
     }
 }
 
-/// Hours of a need served in town, at a building that is not a home: a
-/// line on the building's page and the town's, and the level's running
-/// sum.
+/// Value added at a building: GDP, the level's running sum, a line on
+/// the town's page under the building's kind, and a lump on the map.
+fn added(world: &mut World, at: EntityId, gdp: f64, now: GameTime) {
+    let Some(kind) = kind_of(world, at).filter(|_| gdp > 0.0) else { return };
+    world.gdp += gdp;
+    *world.town.today(now).gdp.entry(kind).or_default() += gdp;
+    world.lumps.push(Lump { building: at, coins: 0.0, gdp, at: now });
+}
+
+/// Hours of a need served at a building: a line on its page, what its
+/// card says it did today.
 pub fn served(world: &mut World, at: EntityId, need: Need, hours: f64, now: GameTime) {
     *world.books.entry(at).or_default().today(now).served.entry(need).or_default() += hours;
-    if kind_of(world, at).is_some_and(|k| blueprint(k).homes == 0) && hours > 0.0 {
-        world.served += hours;
-        *world.town.today(now).served.entry(need).or_default() += hours;
-    }
 }
 
 /// The mayor placed something: its materials are bought from the world,
@@ -249,13 +277,23 @@ pub fn built(world: &mut World, price: f64, now: GameTime) {
 }
 
 /// A visit is over: `units` of `need` served at `at` come off the shelf
-/// they were served from, if it keeps one. A home's kitchen keeps none.
-pub fn drawn(world: &mut World, at: EntityId, need: Need, units: f64) {
-    if let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object)
-        && let Some(stock) = b.stocks.get_mut(&need)
-    {
-        stock.take(units);
-    }
+/// they were served from, and the value it added is GDP. A meal or a
+/// tank off a counter's shelf adds the counter's work; a shift at a desk
+/// that sells no good adds its cost. A home's kitchen keeps no shelf
+/// and adds nothing; a shift at a counter or a farm is already in what
+/// it serves or grows.
+pub fn visited(world: &mut World, at: EntityId, need: Need, units: f64, now: GameTime) {
+    let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object) else { return };
+    let kind = b.kind;
+    let gdp = match b.stocks.get_mut(&need) {
+        Some(stock) => {
+            stock.take(units);
+            units * (served_price(need) - world_price(need))
+        }
+        None if need == Need::Work && blueprint(kind).stock == 0 => units * WAGE,
+        None => 0.0,
+    };
+    added(world, at, gdp, now);
 }
 
 /// A van loads at a depot: as much of the order as the shelf has. §7.
@@ -333,13 +371,13 @@ pub struct Day {
     pub served: BTreeMap<Need, f64>,
 }
 
-/// One day of the town's books: hours served in town, per need, which
-/// add up to the level's step; and what crossed the border, per good, in
-/// and out, and what the mayor built, which add up to the treasury's
-/// step. §10.
+/// One day of the town's books: GDP, per kind of building it was added
+/// at, which adds up to the level's step; and what crossed the border,
+/// per good, in and out, and what the mayor built, which add up to the
+/// treasury's step. §10.
 #[derive(Debug, Default, Clone)]
 pub struct Town {
-    pub served: BTreeMap<Need, f64>,
+    pub gdp: BTreeMap<BuildingKind, f64>,
     pub sold: BTreeMap<Need, f64>,
     pub bought: BTreeMap<Need, f64>,
     pub built: f64,
@@ -416,30 +454,28 @@ impl<P: Default> Books<P> {
     }
 }
 
-/// Hours served for the first level. Each one after costs a level more
-/// than the last. Six is a little under a shift: one resident's first
-/// day at work is a level, as it was when the level counted value.
+/// GDP for the first level. Each one after costs a level more than the
+/// last.
 const LEVEL_BASE: f64 = 6.0;
 
-/// The city's level from its hours served to date, and what it took to
-/// reach it.
+/// The city's level from its GDP to date, and what it took to reach it.
 ///
 /// Level `n` is reached at `LEVEL_BASE * n * (n + 1) / 2`, so each one asks for
 /// a little more than the last.
-pub fn level(served: f64) -> (u32, f64) {
-    let n = (((1.0 + 8.0 * served / LEVEL_BASE).sqrt() - 1.0) / 2.0).floor().max(0.0);
+pub fn level(gdp: f64) -> (u32, f64) {
+    let n = (((1.0 + 8.0 * gdp / LEVEL_BASE).sqrt() - 1.0) / 2.0).floor().max(0.0);
     (n as u32, LEVEL_BASE * n * (n + 1.0) / 2.0)
 }
 
 /// Everything the dials need to draw themselves.
 pub fn growth(world: &World, now: GameTime) -> Growth {
-    let (level, reached) = level(world.served);
+    let (level, reached) = level(world.gdp);
     let town = world.town.on(now);
     Growth {
         level,
-        toward: world.served - reached,
+        toward: world.gdp - reached,
         needed: LEVEL_BASE * (level as f64 + 1.0),
-        served: town.served.values().sum(),
+        gdp: town.gdp.values().sum(),
         treasury: world.treasury,
         income: town.revenue() - town.purchases() - town.built,
         imports: town.purchases(),
@@ -448,13 +484,13 @@ pub fn growth(world: &World, now: GameTime) -> Growth {
     }
 }
 
-/// The town's page: what it served today and what crossed the border,
-/// and the season behind it. Each line is the level's step or the
-/// treasury's read back by need or by good. §10.
+/// The town's page: the GDP it added today and what crossed the border,
+/// and the season behind it. Each line is the level's step read back by
+/// kind of building, or the treasury's by good. §10.
 pub fn town(world: &World, now: GameTime) -> Value {
-    let page = |t: &Town| json!({ "served": t.served, "sold": t.sold, "bought": t.bought, "built": t.built });
+    let page = |t: &Town| json!({ "gdp": t.gdp, "sold": t.sold, "bought": t.bought, "built": t.built });
     json!({
-        "served": world.served,
+        "gdp": world.gdp,
         "treasury": world.treasury,
         "today": page(world.town.on(now)),
         "season": world.town.season().map(page).collect::<Vec<_>>(),
@@ -537,14 +573,14 @@ mod tests {
         let load = loaded(&mut world, depot, Need::Eat, 30.0);
         delivered(&mut world, shop, false, Need::Eat, load, 0);
         assert_eq!(world.treasury, 100.0, "a delivery inside the town moved money");
-        assert!(world.sales.is_empty(), "a delivery inside the town landed coins");
+        assert!(world.lumps.is_empty(), "a delivery inside the town landed coins");
         assert_eq!(shelf(&world, shop, Need::Eat).short(), 0.0, "the shelf is full");
         assert_eq!(shelf(&world, depot, Need::Eat).short(), 30.0, "the depot's shelf went down by the same");
         // The lorry home from beyond the edge fills the shelf.
         delivered(&mut world, depot, true, Need::Eat, f64::INFINITY, 0);
         assert_eq!(shelf(&world, depot, Need::Eat).short(), 0.0, "the fetch did not fill the depot");
         assert!((100.0 - world.treasury - import(Need::Eat, 30.0)).abs() < 1e-9, "the fetch cost {}", 100.0 - world.treasury);
-        assert!(matches!(world.sales[..], [Sale { building, amount, .. }] if building == depot && amount < 0.0), "no lump at the depot");
+        assert!(matches!(world.lumps[..], [Lump { building, coins, .. }] if building == depot && coins < 0.0), "no lump at the depot");
         assert!((world.town.on(0).bought[&Need::Eat] - import(Need::Eat, 30.0)).abs() < 1e-9, "the town's page");
         take(&mut world, shop, Need::Eat, 30.0);
         let before = world.treasury;
@@ -578,37 +614,49 @@ mod tests {
         assert!(hiring(&world, farm), "an empty yard offers no work");
         assert!(!buys(Farm, Need::Eat) && buys(Shop, Need::Eat) && buys(Warehouse, Need::Eat) && !buys(House, Need::Eat), "the rows buy the wrong things");
 
-        harvested(&mut world, farm, crop(Farm, 200));
+        harvested(&mut world, farm, crop(Farm, 200), 0);
         assert_eq!((shelf(&world, farm, Need::Eat).level, world.treasury), (crop(Farm, 200), 100.0), "the harvest moved money");
+        assert!((world.gdp - crop(Farm, 200) * world_price(Need::Eat)).abs() < 1e-9, "a crop cut is GDP at the world's price: {}", world.gdp);
+        // A shift at the farm is in its crops already.
+        visited(&mut world, farm, Need::Work, 9.0, 0);
+        assert!((world.gdp - crop(Farm, 200) * world_price(Need::Eat)).abs() < 1e-9, "a farm hand's shift counted twice");
 
         let yard = shelf(&world, farm, Need::Eat).cap;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
             b.stocks.get_mut(&Need::Eat).unwrap().level = yard - lump(Farm) / 2.0;
         }
         assert!(!hiring(&world, farm), "a full yard hires");
+        let gdp = world.gdp;
         let load = shipped(&mut world, farm, Need::Eat);
         exported(&mut world, farm, Need::Eat, load, 0);
         assert!((world.treasury - 100.0 - export(Need::Eat, load)).abs() < 1e-9, "the world paid {}", world.treasury - 100.0);
+        assert_eq!(world.gdp, gdp, "an export counted again");
         assert!(hiring(&world, farm), "an emptied yard does not hire");
     }
 
-    /// A visit draws the shelf it was served from and moves no money; a
-    /// home's kitchen keeps no shelf.
+    /// A visit draws the shelf it was served from and moves no money. What
+    /// it adds is GDP, landing on the building: a meal the counter's work
+    /// over its crate, a shift at a desk that sells nothing its cost; a
+    /// meal at home or a shift at a counter, nothing of its own.
     #[test]
-    fn a_visit_draws_the_shelf_and_moves_no_money() {
+    fn a_visit_draws_the_shelf_and_adds_its_value() {
         let mut world = town();
         let home = world.place_on_street(at(4), House).unwrap();
         let shop = world.place_on_street(at(8), Shop).unwrap();
-        drawn(&mut world, shop, Need::Eat, 3.0);
-        drawn(&mut world, home, Need::Eat, 3.0);
+        let office = world.place_on_street(at(12), Office).unwrap();
+        visited(&mut world, shop, Need::Eat, 3.0, 0);
         assert_eq!(shelf(&world, shop, Need::Eat).short(), 3.0);
+        assert!((world.gdp - 3.0 * (served_price(Need::Eat) - world_price(Need::Eat))).abs() < 1e-9, "three meals added {}", world.gdp);
+        let gdp = world.gdp;
+        visited(&mut world, home, Need::Eat, 3.0, 0);
+        visited(&mut world, shop, Need::Work, 9.0, 0);
         assert!(building(&world, home).stocks.is_empty(), "a home keeps a shelf");
+        assert_eq!(world.gdp, gdp, "a meal at home or a shift at a counter added value of its own");
+        visited(&mut world, office, Need::Work, 9.0, 0);
+        assert!((world.gdp - gdp - 9.0 * WAGE).abs() < 1e-9, "a shift at a desk is not worth its cost");
         assert_eq!(world.treasury, STAKE, "a visit moved money");
-        // Hours served at the shop are the level's; at home, not.
-        served(&mut world, shop, Need::Eat, 2.0, 0);
-        served(&mut world, home, Need::Eat, 2.0, 0);
-        assert_eq!((world.served, world.town.on(0).served[&Need::Eat]), (2.0, 2.0));
-        assert_eq!(world.books[&home].on(0).served[&Need::Eat], 2.0, "the home's card lost its hours");
+        assert!((world.town.on(0).gdp[&Office] - 9.0 * WAGE).abs() < 1e-9, "the town's page");
+        assert!(matches!(world.lumps.last(), Some(Lump { building, gdp, coins, .. }) if *building == office && *gdp > 0.0 && *coins == 0.0), "no lump at the office");
     }
 
     /// A depot's van is filled in the yard, and the depot buys what the

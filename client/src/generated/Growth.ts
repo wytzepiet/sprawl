@@ -4,19 +4,19 @@ import type { Cell } from "./Cell";
 /**
  * How the city is doing, as the two dials read it.
  *
- * The level is hours of need the city's buildings have served, ever.
+ * The level is the town's GDP to date.
  * The treasury is the mayor's coins, stepped as goods cross the border.
  * Neither is extrapolated: a dial that steps is the event landing.
  */
 export type Growth = { level: number, 
 /**
- * Hours served since the level was reached, and what the next takes.
+ * GDP since the level was reached, and what the next takes.
  */
 toward: number, needed: number, 
 /**
- * Hours of need served in town today so far.
+ * GDP added in town today so far.
  */
-served: number, 
+gdp: number, 
 /**
  * What the town has to spend, in coins: earned at the border, net of
  * what it bought and built.
