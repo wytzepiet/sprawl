@@ -149,20 +149,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     size: [2, 1],
     lot: [0, 0],
   },
-  Workshop: {
-    label: "Workshop",
-    color: "#F29E38",
-    material: "#B88A4E",
-    // A wrench.
-    glyph:
-      "M21.5 6.2a6.3 6.3 0 0 1-8.1 8.1l-7.3 7.3a2.3 2.3 0 0 1-3.2-3.2l7.3-7.3a6.3 6.3 0 0 1 8.1-8.1l-3.7 3.7 1.1 3.2 3.2 1.1z",
-    pinUntil: NOTABLE,
-    shape: "box",
-    heights: [0.42, 0.5],
-    price: 8, tab: "work",
-    size: [1, 1],
-    lot: [0, 0],
-  },
   Factory: {
     label: "Factory",
     color: "#5C6470",
@@ -174,33 +160,6 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0],
     price: 25, tab: "work",
     size: [2, 1],
-    lot: [0, 0],
-  },
-  Restaurant: {
-    label: "Restaurant",
-    color: "#E8503F",
-    material: "#A84E3C",
-    // Fork and knife.
-    glyph:
-      "M5.5 2h1.6v6h1.2V2h1.4v6h1.2V2h1.6v7a3.5 3.5 0 0 1-2.2 3.3V22H7.7v-9.7A3.5 3.5 0 0 1 5.5 9zM15.5 2c2.2 1.6 3.3 4.6 3.3 8 0 1.8-.8 3-1.9 3.6V22h-2.3V2z",
-    pinUntil: SPECIAL,
-    shape: "box",
-    heights: [0.5, 0.62],
-    price: 16, tab: "shops",
-    size: [1, 1],
-    lot: [0, 0],
-  },
-  Bar: {
-    label: "Bar",
-    color: "#8E4FA3",
-    material: "#6E5168",
-    // A pint glass, tapered, with a head of foam cut across it.
-    glyph: "M5 2h14l-1.6 20H6.6zM6.3 5.5h11.4l-.2 2H6.5z",
-    pinUntil: NOTABLE,
-    shape: "box",
-    heights: [0.45, 0.55],
-    price: 16, tab: "shops",
-    size: [1, 1],
     lot: [0, 0],
   },
   GasStation: {

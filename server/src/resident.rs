@@ -158,7 +158,7 @@ pub fn handle_resident_wake(
 }
 
 /// Everything a resident weighs: their own buckets, and their car's — the
-/// tank and the wear — which they drive and so decide for. In one list,
+/// tank — which they drive and so decide for. In one list,
 /// in one order, so an index into the verdicts is an index into this.
 fn buckets(world: &World, r: &Resident) -> Vec<Bucket> {
     let mut all = r.buckets.clone();
@@ -199,17 +199,14 @@ fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: E
                 .or_else(|| world.objects.get(r.home).and_then(|e| e.position).and_then(|p| world.nearest_edge(p)))
                 .map_or(Verdict::Nothing, |w| verdict_at(world, r, earning, at, b, w, now, crowd, routes, true)),
             Need::Rest | Need::Home => verdict_at(world, r, earning, at, b, r.home, now, crowd, routes, true),
-            Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => search(world, r, earning, at, b, now, crowd, routes),
-            // Nobody carries it: a building's, delivered by a call.
-            Need::Services => Verdict::Nothing,
+            Need::Eat | Need::Fuel => search(world, r, earning, at, b, now, crowd, routes),
         })
         .collect()
 }
 
 /// A row with an empty input stops (docs/economy.md §4): a resident
-/// whose food, sleep, time off, tank or car stands at zero cannot work until
-/// it does not. Time off run to nothing is a holiday; a week of night
-/// shifts ends in a lie-in.
+/// whose food, sleep or tank stands at zero cannot work until it does
+/// not. A week of night shifts ends in a lie-in.
 fn fit(buckets: &[Bucket]) -> bool {
     buckets.iter().all(|b| b.need.constant() || b.stock.level > 0.0)
 }
@@ -806,8 +803,7 @@ fn resident_mut(world: &mut World, id: EntityId) -> Option<&mut Resident> {
     }
 }
 
-/// A trip's end: what it burned comes off the tank, and what it wore off
-/// the car.
+/// A trip's end: what it burned comes off the tank.
 pub fn drove(world: &mut World, car: EntityId, tiles: f64) {
     if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
         for (need, stock) in c.stocks.iter_mut() {

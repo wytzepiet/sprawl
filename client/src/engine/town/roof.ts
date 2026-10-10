@@ -225,19 +225,7 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
       };
       const [across, beside] = [first ^ 3, first ^ 1];
       prop("ac", corner(first, KIT.ac), z, KIT.ac, KIT.acHigh);
-      if (tile.kind === "Restaurant") {
-        const stack = corner(across, KIT.stack);
-        // The duct comes up near the corner beside and runs along the
-        // edge to the stack, low on the roof.
-        const from = corner(across ^ 1, KIT.duct);
-        const start: Pt = [stack[0] + (from[0] - stack[0]) * 0.75, stack[1]];
-        prop("duct", start, z, KIT.duct, KIT.ductHigh, stack);
-        prop("stack", stack, z, KIT.stack, KIT.stackHigh);
-      } else if (tile.kind === "Bar") {
-        // Turned to the south-east sky, as dishes on this coast are.
-        const at = corner(across, KIT.dish);
-        prop("dish", at, z, KIT.dish, KIT.dishHigh, [at[0] - 1, at[1] - 1]);
-      } else if (tile.kind === "Shop") {
+      if (tile.kind === "Shop") {
         prop("rooflight", corner(across, KIT.rooflight), z, KIT.rooflight, KIT.rooflightHigh);
         prop("ac", corner(beside, KIT.ac), z, KIT.ac, KIT.acHigh);
       }

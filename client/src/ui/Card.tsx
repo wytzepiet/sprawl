@@ -2,7 +2,7 @@ import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
-import type { BuildingKind, Need } from "../generated";
+import type { BuildingKind, CarRole, Need } from "../generated";
 
 /** A line that points at something else on the map. */
 interface Link {
@@ -35,7 +35,7 @@ type Card =
   | {
       kind: "car";
       id: number;
-      role: "Private" | "Van" | "Truck" | "Company" | "Tractor" | "Ship";
+      role: CarRole;
       owner: Link;
       rider: Link | null;
       stocks: { need: Need; full: number }[];

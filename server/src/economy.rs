@@ -37,29 +37,12 @@ pub fn edge_wage() -> f64 {
 /// What the edge sells a unit of each need for: what the row behind it
 /// is worth, link by link (§8.1). A meal is the crate plus the world's
 /// counter over two thirds, and the crate is the farm's row read back
-/// (`wholesale`); a unit of services is the office's row. The rest have
-/// no row in town yet, so each is a number with the row's name on it
-/// (§13.3), set by the household's budget: a day at the edge earns
-/// eight, a sixth of it goes on transport, a tenth on leisure. The tank
-/// is three, and a service six (`Need::Wear`). An evening out is less
-/// than its share, because the price is added to the visit in the
-/// resident's own hours (§6.1) and the ladder of residents.md §5.5 is
-/// tuned to tenths: at an hour an evening loses to waiting up for bed
-/// and nobody goes out. Housing's third is in the household's services.
-/// Low stakes: the band turns a wrong number into a town that is a
-/// little dear or a little cheap, never one that runs away. §12.1,
-/// §12.2, §12.7.
+/// (`wholesale`). The tank has no row in town yet, so it is a number
+/// with the row's name on it (§13.3). §12.1, §12.2, §12.7.
 pub fn edge_price(need: Need) -> f64 {
     match need {
         Need::Eat => worth(wholesale(need), COUNTER),
-        Need::Services => wholesale(need),
-        Need::Leisure => 0.5,
         Need::Fuel => 3.0,
-        // A service, every two and a half tanks: with the tank's price,
-        // the two come to the transport sixth at a commuter's hundred and
-        // twenty tiles a day. Half the drive's cost is fuel and half is
-        // upkeep, near enough what running a car costs.
-        Need::Wear => 6.0,
         Need::Work => EDGE_WAGE,
         Need::Home | Need::Rest => 0.0,
     }
@@ -76,10 +59,9 @@ pub const COUNTER: f64 = 1.0 / 36.0;
 
 /// What the edge sells the unit on the shelf for. A good a row in town
 /// makes is worth that row's labour over two thirds: a crate is a
-/// farm hand's few minutes, a unit of services an office's hour. The
-/// delivery behind a tank and the parts behind a service have no row
-/// in town yet, and are half the price over the counter: retail margins
-/// on fuel and parts sit between a third and a half.
+/// farm hand's few minutes. The delivery behind a tank has no row in
+/// town yet, and is half the price over the counter: retail margins on
+/// fuel sit between a third and a half.
 pub const WHOLESALE: f64 = 0.5;
 pub fn wholesale(need: Need) -> f64 {
     match crate::blueprint::maker(need) {
@@ -128,18 +110,10 @@ pub const STAKE: f64 = 500.0;
 /// economics. A household's labour is worth its inputs over one less its
 /// saving: households consume about nine tenths of what they earn.
 pub const CAPITAL: f64 = 1.0 / 3.0;
-pub const SAVING: f64 = 0.1;
-/// What a firm buys in services for each hour of labour it buys, at the
-/// world's price: purchased services against the wage bill, about a fifth
-/// in input-output tables. The one input every firm's row has besides
-/// what its shelf holds (§4), the same fifth on every row until a row
-/// has a referent of its own (§13.15).
-pub const SERVICES: f64 = 0.2;
 /// What a row's output is worth at the world's prices: its inputs bought
-/// in, plus its labour with the services bought in for it, over two
-/// thirds (§8.1). One link of the chain.
+/// in, plus its labour, over two thirds (§8.1). One link of the chain.
 pub fn worth(inputs: f64, labour: f64) -> f64 {
-    (inputs + labour * (1.0 + SERVICES)) / (1.0 - CAPITAL)
+    (inputs + labour) / (1.0 - CAPITAL)
 }
 /// What an hour of labour makes on its own: a pass-through's export,
 /// and a maker's unit at its rate.
@@ -147,54 +121,14 @@ pub fn adds(labour: f64) -> f64 {
     worth(0.0, labour)
 }
 
-/// The household row's inputs a head a day, at the world's prices,
-/// which come to nine tenths of a day's wage at the edge (§4, §8.1).
-/// Sittings and an evening are the table's; transport is its budget
-/// sixth, an estimate of what the car burns; services — the night's
-/// upkeep, repairs, and everything else on no shelf — are the rest,
-/// drawn from the home's services stock by the day, made by an office in
-/// town or a consultant from beyond the edge. A night served is worth
-/// its services in GDP.
 /// Hours a head sells a day at the edge: a shift.
 pub const SHIFT: f64 = 8.0;
-pub const TRANSPORT: f64 = SHIFT / 6.0;
-pub fn household() -> f64 {
-    SHIFT * EDGE_WAGE * (1.0 - SAVING)
-}
-pub fn services() -> f64 {
-    let sittings = 2.4 * edge_price(Need::Eat);
-    let evening = edge_price(Need::Leisure);
-    household() - sittings - evening - TRANSPORT
-}
-
-/// Days of its own draw a building's services stock holds: two, so it
-/// calls about every other day, as a shop's shelf does. A week was
-/// tried: forty buildings founded together order the same day, the
-/// office has shipped its shelf to the edge by then, and the town buys
-/// the week from consultants. §12.5.
-pub const SERVICES_COVER: f64 = 2.0;
-
-/// Units of services a kind's row draws a day: a head's share for each
-/// room, and a fifth of an hour's worth for each hour its desks could
-/// work. The edge draws nothing; it runs at capacity. The rate on the
-/// row; what a home draws is by its actual heads (`drawn`).
-pub fn draw(kind: BuildingKind) -> f64 {
-    if kind == BuildingKind::Edge {
-        return 0.0;
-    }
-    let bp = blueprint(kind);
-    (bp.homes as f64 * services() + rated(kind, Need::Work) * SERVICES * EDGE_WAGE) / edge_price(Need::Services)
-}
 
 /// The stocks a kind holds, and their caps: its shelf, if the row keeps
-/// one, and a week of the services it draws — or, for a kind that makes
-/// them, its shelf is the services. §4.
+/// one. §4.
 pub fn stocks(kind: BuildingKind) -> BTreeMap<Need, f64> {
     let bp = blueprint(kind);
     let mut stocks = BTreeMap::new();
-    if draw(kind) > 0.0 {
-        stocks.insert(Need::Services, SERVICES_COVER * draw(kind));
-    }
     for need in shelves(kind) {
         stocks.insert(need, bp.stock as f64);
     }
@@ -273,8 +207,8 @@ pub fn edge_price_of(kind: BuildingKind, need: Need) -> f64 {
 
 /// The goods a kind keeps a shelf of, each of the row's size: what its
 /// labour makes; or every good of the class it handles, a depot's boxes;
-/// or what its deliveries are — fuel where it pumps, parts where it
-/// services cars, food everywhere else that keeps a shelf. None for a
+/// or what its deliveries are — fuel where it pumps, food everywhere
+/// else that keeps a shelf. None for a
 /// row without one. §4, §12.10.
 pub fn shelves(kind: BuildingKind) -> Vec<Need> {
     let bp = blueprint(kind);
@@ -345,16 +279,12 @@ pub fn harvested(world: &mut World, farm: EntityId, load: f64) {
     }
 }
 
-/// A row calls only for what it buys: the services it draws, and the
-/// shelf its counter sells from or its vans deliver, unless its own
-/// labour or fields fill it.
+/// A row calls only for what it buys: the shelf its counter sells from
+/// or its vans deliver, unless its own labour or fields fill it.
 pub fn buys(kind: BuildingKind, need: Need) -> bool {
     let bp = blueprint(kind);
     if makes(kind, need) {
         return false;
-    }
-    if need == Need::Services {
-        return draw(kind) > 0.0;
     }
     shelves(kind).contains(&need) && (bp.taps.iter().any(|t| t.need == need) || depot(kind))
 }
@@ -428,7 +358,7 @@ pub fn open(world: &mut World, id: EntityId) {
 
 /// The reorder point: the `s` of the `(s, S)` policy of every inventory
 /// textbook, with the stock's cap as `S`. Expected use over the lead
-/// time — what the taps could sell, and the row draws, in the time the
+/// time — what the taps could sell in the time the
 /// last delivery took — plus a margin, which is a full house: everyone
 /// the taps seat at once, so a rush during the lead does not empty the
 /// shelf. Until a building has had a delivery, one is assumed to take as
@@ -439,35 +369,7 @@ pub fn reorder(world: &World, building: EntityId, need: Need) -> f64 {
     // A full house is everyone the taps seat at once: two bays with seven
     // cars at the door is a rush of seven.
     let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| crate::blueprint::seats(kind, t)).sum();
-    let draw = if need == Need::Services { draw(kind) } else { 0.0 };
-    (rated(kind, need) + draw) * lead as f64 / DAY_MS as f64 + seats as f64
-}
-
-/// Time passed at a building: at every look at its stocks, what the row
-/// used since the last look comes off its services — a home by the
-/// heads under its roof, a firm by its row — and what the stock had of
-/// it a home banks as GDP, a night served at the world's price. A
-/// firm's draw is a line, not GDP: intermediate. An empty stock serves
-/// nothing. The first look after a load only starts the clock. §4, §10.
-pub fn passed(world: &mut World, building: EntityId, now: GameTime) {
-    let Some(kind) = kind_of(world, building) else { return };
-    let bp = blueprint(kind);
-    let Some(since) = world.books.entry(building).or_default().looked.replace(now) else { return };
-    let days = now.saturating_sub(since) as f64 / DAY_MS as f64;
-    let rate = if bp.homes > 0 {
-        let heads = world.household(building).len() as f64;
-        heads * services() / edge_price(Need::Services)
-    } else {
-        draw(kind)
-    };
-    let Some(GameObject::Building(b)) = world.objects.get_mut(building).map(|e| &mut e.object) else { return };
-    let Some(stock) = b.stocks.get_mut(&Need::Services) else { return };
-    let due = rate * days;
-    let served = due.min(stock.level);
-    stock.take(due);
-    if bp.homes > 0 {
-        gdp(world, Need::Services, served * wholesale(Need::Services), now);
-    }
+    rated(kind, need) * lead as f64 / DAY_MS as f64 + seats as f64
 }
 
 /// What a kind's row is worth a day at the world's prices, at capacity:
@@ -577,7 +479,7 @@ fn outside(world: &World, resident: EntityId) -> bool {
 
 /// One visit paid for, as it ends: `units` of `need` served at `at` to
 /// `who`. A shift is sold by the resident and bought by the building; a
-/// meal, an evening, a tank or a service is bought by the resident and
+/// meal or a tank is bought by the resident and
 /// sold by the building. Two lines in the books, and a lump on the map; the treasury
 /// moves only when one party is the outside — the edge, or a household
 /// beyond it. Anything that runs a shelf draws it down. §6, §8.
@@ -633,8 +535,8 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
                 door(world, Need::Work, -due, now);
             }
         }
-        Need::Home | Need::Rest | Need::Services => {}
-        Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => {
+        Need::Home | Need::Rest => {}
+        Need::Eat | Need::Fuel => {
             let due = units * price_of(world, at, need);
             if edge {
                 // A meal beyond the edge is the town buying one, unless
@@ -713,12 +615,11 @@ pub fn exported(world: &mut World, maker: EntityId, need: Need, load: f64, now: 
     door(world, need, due, now);
 }
 
-/// A facility's vehicle is home: its tank is filled and its wear put
-/// right in the yard, and the building pays the world's price for what
-/// the trip used, at wholesale plus the crossing, as the depot's fuel
-/// and parts are bought in bulk from beyond the edge until a row in
-/// town sells them. The freight of §5.3 in money: fuel and upkeep per
-/// tile, on the row that sent the vehicle. Nobody sits in a fleet
+/// A facility's vehicle is home: its tank is filled in the yard, and
+/// the building pays the world's price for what the trip used, at
+/// wholesale plus the crossing, as the depot's fuel is bought in bulk
+/// from beyond the edge until a row in town sells it. The freight of
+/// §5.3 in money: fuel per tile, on the row that sent the vehicle. Nobody sits in a fleet
 /// vehicle, so nobody weighs its needs; the building's turn does, when
 /// it comes home. A line in the books and the door, no GDP:
 /// intermediate. §12.6.
@@ -885,14 +786,11 @@ pub struct Books<P = Day> {
     /// landing: the lead time the reorder point covers. None until there
     /// has been one.
     pub lead: Option<GameTime>,
-    /// When time last passed at it (`passed`): services drawn, a crop
-    /// grown. None until the first look, which starts the clock.
-    pub looked: Option<GameTime>,
 }
 
 impl<P: Default> Default for Books<P> {
     fn default() -> Self {
-        Books { day: 0, opened: u64::MAX, pages: std::iter::repeat_with(P::default).take(SEASON).collect(), blank: P::default(), lead: None, looked: None }
+        Books { day: 0, opened: u64::MAX, pages: std::iter::repeat_with(P::default).take(SEASON).collect(), blank: P::default(), lead: None }
     }
 }
 
@@ -1132,52 +1030,6 @@ mod tests {
         assert!((before - world.treasury - import(crates)).abs() < 1e-9, "from beyond the edge cost {}", before - world.treasury);
     }
 
-    /// §4, services: an office's shift fills its shelf a unit an hour and
-    /// sells nothing at the door; a home's stock is filled by the office's
-    /// car at the office's price, two lines, or by a consultant from
-    /// beyond the edge at the edge's price plus the crossing; and a load
-    /// nobody in town bought goes out to the edge for its price less the
-    /// crossing, GDP at the world's, and is no sale for the nudge.
-    #[test]
-    fn services_are_made_at_the_office_and_delivered_by_its_car() {
-        let mut world = town();
-        let home = world.place_on_street(at(4), House).unwrap();
-        let office = world.place_on_street(at(20), Office).unwrap();
-        world.settle();
-        world.treasury = 100.0;
-        let worker = world.resident_ids().into_iter().find(|&id| resident(&world, id).work == Some(office)).expect("the office hired");
-        let day = shelf(&world, office, Need::Services).cap;
-        assert_eq!(day, rated(Office, Need::Work), "the office's shelf is a day's make");
-        assert!(sells(Office).eq([Need::Services]), "the office sells its services and nothing else");
-        assert_eq!(building(&world, office).prices[&Need::Services], edge_price(Need::Services), "it opens at the edge's price");
-        take(&mut world, office, Need::Services, day);
-        sale(&mut world, worker, office, Need::Work, 9.0, 0);
-        assert_eq!(shelf(&world, office, Need::Services).level, 9.0, "a shift made a unit an hour");
-        assert_eq!((world.treasury, world.gdp), (100.0, 0.0), "the shift crossed the door, or counted before it was sold");
-
-        let order = 5.0;
-        take(&mut world, home, Need::Services, order);
-        let load = loaded(&mut world, office, Need::Services, order, 0);
-        delivered(&mut world, home, Some(office), Need::Services, load, 0);
-        assert_eq!(world.treasury, 100.0, "a delivery inside the town moved money");
-        assert_eq!(shelf(&world, home, Need::Services).short(), 0.0, "the home's stock is full again");
-        let due = order * edge_price(Need::Services);
-        assert!((world.books[&office].on(0).revenue - due).abs() < 1e-9 && (world.books[&home].on(0).purchases - due).abs() < 1e-9, "the books disagree");
-
-        take(&mut world, home, Need::Services, order);
-        delivered(&mut world, home, None, Need::Services, order, 0);
-        assert!((100.0 - world.treasury - import(due)).abs() < 1e-9, "the consultant from the edge cost {}", 100.0 - world.treasury);
-
-        let before = world.treasury;
-        let left = shelf(&world, office, Need::Services).level;
-        let load = shipped(&mut world, office, Need::Services);
-        assert_eq!((load, shelf(&world, office, Need::Services).level), (left, 0.0), "the car took the whole shelf");
-        assert!(world.books[&office].on(0).sold_out.is_empty() && world.books[&office].on(0).sold.get(&Need::Services).copied().unwrap_or(0.0) == order, "a shipment counted as selling out");
-        exported(&mut world, office, Need::Services, load, 0);
-        assert!((world.treasury - before - export(load * edge_price(Need::Services))).abs() < 1e-9, "the edge paid {}", world.treasury - before);
-        assert!((world.gdp - load * edge_price(Need::Services)).abs() < 1e-9, "what the town sold out is GDP at the world's price: {}", world.gdp);
-    }
-
     /// §12.7 and §12.8, the farm: its crates are a depot's shelf — it
     /// opens at the crate's price and floors at what the edge pays — but
     /// a shift grows nothing in the yard, its land does: a tile cut lands
@@ -1201,7 +1053,7 @@ mod tests {
         assert!(hiring(&world, farm), "an empty yard offers no work");
         sale(&mut world, hand, farm, Need::Work, 2.0, 0);
         assert_eq!(shelf(&world, farm, Need::Eat).level, 0.0, "a shift grew crates in the yard");
-        assert!(!buys(Farm, Need::Eat) && !buys(Office, Need::Services) && buys(Shop, Need::Eat) && buys(Warehouse, Need::Eat) && buys(Shop, Need::Services), "the rows buy the wrong things");
+        assert!(!buys(Farm, Need::Eat) && buys(Shop, Need::Eat) && buys(Warehouse, Need::Eat), "the rows buy the wrong things");
 
         // A tile cut is a crop in the yard, and no line.
         harvested(&mut world, farm, crop(Farm, 200));
@@ -1234,7 +1086,6 @@ mod tests {
         world.place_on_street(at(4), House).unwrap();
         let shop = world.place_on_street(at(8), Shop).unwrap();
         let factory = world.place_on_street(at(30), Factory).unwrap();
-        let office = world.place_on_street(at(40), Office).unwrap();
         world.settle();
         let edge = *world.edge.iter().next().expect("the street runs off the map");
         let people = world.resident_ids();
@@ -1264,15 +1115,6 @@ mod tests {
         let before = world.treasury;
         sale(&mut world, local, edge, Need::Work, 8.0, 0);
         assert!((world.treasury - before - export(8.0 * EDGE_WAGE)).abs() < 1e-9, "a shift beyond the edge brought {}", world.treasury - before);
-        // An office's shift is made, not sold: it goes on the shelf.
-        let (gdp, before) = (world.gdp, world.treasury);
-        if let Some(GameObject::Building(b)) = world.objects.get_mut(office).map(|e| &mut e.object) {
-            let s = b.stocks.get_mut(&Need::Services).unwrap();
-            s.level = s.cap - 9.0;
-        }
-        sale(&mut world, local, office, Need::Work, 9.0, 0);
-        assert_eq!((world.gdp, world.treasury), (gdp, before), "an office's shift was sold at the door");
-        assert_eq!(shelf(&world, office, Need::Services).short(), 0.0, "and did not fill the shelf");
 
         let before = world.treasury;
         sale(&mut world, local, shop, Need::Eat, 1.0, 0);
@@ -1284,72 +1126,6 @@ mod tests {
         sale(&mut world, local, edge, Need::Eat, 1.0, 0);
         assert!((before - world.treasury - edge_price(Need::Eat)).abs() < 1e-9, "a meal at the edge is an import");
         assert_eq!(world.town.on(0).visits[&Need::Eat], 2, "a meal beyond the edge is no visit in town");
-    }
-
-    /// §8.1, §11.9: the household row's inputs at the world's prices are
-    /// nine tenths of what its labour sells for, so a household that
-    /// works and consumes at the edge nets the town its saving less the
-    /// crossing, which at a tenth each is nothing. And a firm's hour is
-    /// worth its labour and the services behind it over two thirds, which
-    /// is what a unit of services is.
-    #[test]
-    fn the_door_breaks_even_by_the_rows_arithmetic() {
-        let inputs = 2.4 * edge_price(Need::Eat) + edge_price(Need::Leisure) + TRANSPORT + services();
-        assert!((inputs - 8.0 * (1.0 - SAVING)).abs() < 1e-9, "the row draws {inputs}");
-        assert!(services() > 8.0 / 3.0, "the table prices the rest of the row over a day's wage");
-        let net = export(8.0 * EDGE_WAGE) - inputs;
-        assert!(net.abs() < 8.0 * SAVING + 1e-9, "a commuter nets the town {net}");
-        assert!((adds(2.0) - 3.0 * (1.0 + SERVICES)).abs() < 1e-9);
-        assert_eq!(edge_price(Need::Services), adds(EDGE_WAGE));
-        // §8.1, link by link: the crate is the farm hand's minutes over
-        // two thirds, the meal the crate and the counter's over two
-        // thirds, and the meal lands on the ladder's fifth of an hour.
-        let crate_ = wholesale(Need::Eat);
-        assert!((crate_ - adds(1.0 / 18.0)).abs() < 1e-9, "the crate is {crate_}");
-        assert!((edge_price(Need::Eat) - (crate_ + COUNTER * (1.0 + SERVICES)) / (1.0 - CAPITAL)).abs() < 1e-9);
-        assert!((edge_price(Need::Eat) - 0.2).abs() < 0.01, "a meal is {}", edge_price(Need::Eat));
-        assert!((crate_ - 0.1).abs() < 0.01, "a crate is {crate_}");
-        // No row in town yet: the tank's delivery is the authored half.
-        assert_eq!(wholesale(Need::Fuel), WHOLESALE * edge_price(Need::Fuel));
-        // A head's day of services, a house's week of them, a desk's hour.
-        assert!((draw(House) - 2.0 * services() / edge_price(Need::Services)).abs() < 1e-9);
-        assert!((stocks(House)[&Need::Services] - SERVICES_COVER * draw(House)).abs() < 1e-9);
-        assert!((draw(Factory) - 12.0 * 9.0 * SERVICES / edge_price(Need::Services)).abs() < 1e-9);
-        assert!(stocks(Edge).is_empty(), "the edge keeps stock");
-    }
-
-    /// §10: GDP is value served in town at the world's prices, whatever
-    /// the town charged; labour counts inside what it makes; a night is
-    /// the household's services, drawn from its stock once a head at
-    /// midnight, and nothing crosses the door for it then. A firm's draw
-    /// is a line, not GDP. An empty stock serves nothing.
-    #[test]
-    fn gdp_is_value_at_the_worlds_prices() {
-        assert_eq!(value(Shop, Need::Eat), edge_price(Need::Eat));
-        assert_eq!(value(Warehouse, Need::Eat), wholesale(Need::Eat));
-        assert_eq!((value(Shop, Need::Work), value(House, Need::Rest), value(House, Need::Home)), (0.0, 0.0, 0.0));
-        let mut world = town();
-        let home = world.place_on_street(at(4), House).unwrap();
-        let shop = world.place_on_street(at(8), Shop).unwrap();
-        world.settle();
-        world.treasury = 15.0;
-        let heads = world.resident_ids().len() as f64;
-        let two_days = shelf(&world, home, Need::Services).cap;
-        // The first look starts the clock; a day later, a day is drawn.
-        for id in [home, shop] {
-            passed(&mut world, id, 0);
-        }
-        assert_eq!((world.gdp, shelf(&world, home, Need::Services).level), (0.0, two_days), "the first look drew");
-        for id in [home, shop] {
-            passed(&mut world, id, DAY_MS as u64);
-        }
-        assert!((world.gdp - heads * services()).abs() < 1e-9, "{heads} nights served: {}", world.gdp);
-        assert_eq!(world.treasury, 15.0, "the night crossed the door");
-        assert!((two_days - shelf(&world, home, Need::Services).level - heads * services() / edge_price(Need::Services)).abs() < 1e-9, "the home drew {}", two_days - shelf(&world, home, Need::Services).level);
-        assert!((stocks(Shop)[&Need::Services] - shelf(&world, shop, Need::Services).level - draw(Shop)).abs() < 1e-9, "the shop drew its row's");
-        take(&mut world, home, Need::Services, two_days);
-        passed(&mut world, home, 2 * DAY_MS as u64);
-        assert!((world.gdp - heads * services()).abs() < 1e-9, "a night with nothing in the stock was served");
     }
 
     /// §12.6: a depot's van is filled and put right in the yard, and the
@@ -1365,14 +1141,13 @@ mod tests {
         world.treasury = 100.0;
         crate::resident::drove(&mut world, van, 250.0);
         let tanks = 250.0 / Need::Fuel.tiles();
-        let services = 250.0 / Need::Wear.tiles();
         refilled(&mut world, van, 0);
         let fuel = match world.objects.get(van).map(|e| &e.object) {
             Some(GameObject::Car(c)) => c.stocks.clone(),
             _ => unreachable!(),
         };
         assert!(fuel.values().all(|s| s.level == s.cap), "the yard did not fill it");
-        let cost = import(tanks * wholesale(Need::Fuel) + services * wholesale(Need::Wear));
+        let cost = import(tanks * wholesale(Need::Fuel));
         assert!((100.0 - world.treasury - cost).abs() < 1e-9, "the fill cost {}", 100.0 - world.treasury);
         assert!((world.books[&depot].on(0).purchases - cost).abs() < 1e-9, "the depot's books say {}", world.books[&depot].on(0).purchases);
         assert_eq!(world.gdp, 0.0, "a fleet's fuel is not a need served");
@@ -1415,9 +1190,6 @@ mod tests {
         assert!((s - (a_day * crate::calls::AWAY_MS as f64 / DAY_MS as f64 + seats)).abs() < 1e-9, "{s}");
         world.books.entry(shop).or_default().lead = Some(0);
         assert_eq!(reorder(&world, shop, Need::Eat), seats, "a depot next door leaves the full house");
-        assert_eq!(reorder(&world, shop, Need::Services), 0.0, "an office next door leaves nothing to cover");
-        world.books.entry(shop).or_default().lead = Some(DAY_MS as GameTime);
-        assert!((reorder(&world, shop, Need::Services) - draw(Shop)).abs() < 1e-9, "a day's lead asks for a day's draw");
         world.books.entry(shop).or_default().lead = Some(DAY_MS as GameTime);
         assert!(reorder(&world, shop, Need::Eat) > blueprint(Shop).stock as f64, "a day's lead asks for more than the shelf holds");
     }

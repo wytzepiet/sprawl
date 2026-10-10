@@ -28,9 +28,8 @@ export interface Program {
 
 const HOME: Program = { w: 1, d: 1, reach: 1 };
 export const PROGRAMS: Partial<Record<BuildingKind, Program>> = {
-  House: HOME, Shop: HOME, Restaurant: HOME, Bar: HOME, Office: HOME,
+  House: HOME, Shop: HOME, Office: HOME,
   Apartment: { w: 2, d: 1, reach: 2 },
-  Workshop: { w: 2, d: 1, reach: 3 },
   Factory: { w: 2, d: 2, reach: 6 },
   Warehouse: { w: 3, d: 2, reach: 6 },
   Supermarket: { w: 1, d: 1, reach: 4 },

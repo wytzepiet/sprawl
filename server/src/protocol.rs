@@ -68,14 +68,7 @@ pub enum BuildingKind {
     Apartment,
     Shop,
     Office,
-    Workshop,
     Factory,
-    /// The first special kind: a place to eat out, and to be, into the
-    /// evening. Placed by hand or offered by the city.
-    Restaurant,
-    /// Somewhere to be after dark. The first thing open when everything
-    /// else has shut.
-    Bar,
     /// Pumps that never close, and a kiosk that does.
     GasStation,
     /// Shopping for the whole street, with shelves that a warehouse keeps
@@ -100,15 +93,12 @@ pub enum BuildingKind {
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 14] = [
+    pub const ALL: [BuildingKind; 11] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
         BuildingKind::Office,
-        BuildingKind::Workshop,
         BuildingKind::Factory,
-        BuildingKind::Restaurant,
-        BuildingKind::Bar,
         BuildingKind::GasStation,
         BuildingKind::Supermarket,
         BuildingKind::Warehouse,
@@ -266,11 +256,6 @@ pub enum CarRole {
     Truck,
     /// A depot's van, on the last mile to a shop.
     Van,
-    /// An ordinary car that is a building's: an office's, its staff
-    /// driving out to whoever called for services, or a consultant's in
-    /// from beyond the edge where the town has no office. Looks like any
-    /// car; only who dispatches it differs.
-    Company,
     /// A farm's: out along the track to a ripe field and home with the
     /// crop, driven by a hand on shift. On the road it is a slow car.
     Tractor,

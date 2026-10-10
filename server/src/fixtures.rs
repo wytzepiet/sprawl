@@ -13,8 +13,8 @@
 //! .  grass     ~  water     T  forest    _  beach     ^  mountain
 //! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
 //! =  street    #  road (a through route)
-//! H house  A apartment  S shop  O office  W workshop  F factory
-//! R restaurant  B bar  G gas station  M supermarket  D warehouse  P port
+//! H house  A apartment  S shop  O office  F factory  G gas station
+//! M supermarket  D warehouse  P port
 //! ```
 //!
 //! A building's letters are its tiles, painted in one stroke as the mayor
@@ -55,10 +55,7 @@ fn building(c: char) -> Option<BuildingKind> {
         'A' => Apartment,
         'S' => Shop,
         'O' => Office,
-        'W' => Workshop,
         'F' => Factory,
-        'R' => Restaurant,
-        'B' => Bar,
         'G' => GasStation,
         'M' => Supermarket,
         'D' => Warehouse,
@@ -68,7 +65,7 @@ fn building(c: char) -> Option<BuildingKind> {
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOWFRBGMDP".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASOFGMDP".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {

@@ -4,16 +4,14 @@
 //! A call has a good and a place. A stock at its reorder point calls, and
 //! the building takes its turn (docs/economy.md §6.2): among every seller
 //! of the good it can reach — a depot with it on the shelf and a van free,
-//! an office with services on its shelf and a car free, or the outside
-//! beyond the edge — it takes the cheapest delivered, which is the posted
+//! or the outside beyond the edge — it takes the cheapest delivered, which is the posted
 //! price in hours of its own earning plus the drive. A depot's own shelf
 //! running low sends its own lorry to fetch: to the cheapest source it
 //! can reach, a maker's yard in town or the world beyond the edge, and
 //! back with the load. A farm's tractor is no call at all: it runs over
-//! the farm's own land (`world/fields.rs`). A maker's shelf running full sends its car
-//! out with the load, since what nobody in town buys the edge buys
-//! (§8.1), or, with no lorry of its own, calls for one from beyond the
-//! edge to come and take it. A vehicle drives to the caller, spends the
+//! the farm's own land (`world/fields.rs`). A maker's shelf running full calls
+//! for a lorry from beyond the edge to come and take the load, since what
+//! nobody in town buys the edge buys (§8.1). A vehicle drives to the caller, spends the
 //! service time at its door, and goes home — or, from beyond the edge,
 //! simply goes. Empty shelves sell nothing, and every delivery is paid
 //! for as it lands (`economy::delivered`).
@@ -42,11 +40,8 @@ pub enum CallKind {
     /// depot's lorry to a maker's yard or beyond the edge. `from` says
     /// where it went; `None` is beyond the edge.
     Fetch,
-    /// A maker's own vehicle out past the edge with a load nobody in
-    /// town bought, and back paid.
-    Ship,
     /// A lorry from beyond the edge, come for a load nobody in town
-    /// bought from a maker with no lorry of its own, and gone with it.
+    /// bought from a maker, and gone with it.
     Pickup,
 }
 
@@ -90,17 +85,6 @@ fn kind_of(world: &World, building: EntityId) -> Option<crate::protocol::Buildin
     }
 }
 
-/// Who carries a good over the edge by road: a lorry for crates and
-/// tanks, a car for someone who does the job on site.
-fn lorry(good: Need) -> CarRole {
-    if good == Need::Services { CarRole::Company } else { CarRole::Truck }
-}
-
-/// Who carries it the last mile from a seller in town.
-fn van(good: Need) -> CarRole {
-    if good == Need::Services { CarRole::Company } else { CarRole::Van }
-}
-
 /// A hand on shift at the building: a tractor goes only with someone to
 /// drive it.
 pub fn staffed(world: &World, building: EntityId) -> bool {
@@ -111,13 +95,12 @@ pub fn staffed(world: &World, building: EntityId) -> bool {
 /// passes at it — services drawn, a crop grown; a stock at its reorder
 /// point calls for what the row buys — a depot's own shelf for a fetch,
 /// anything else for a delivery; a maker's shelf with no room for the
-/// next load ships to the edge, or calls for pickup if it has no lorry,
+/// next load calls for a pickup from beyond the edge,
 /// since a load lands in one lump and a lump that does not fit is lost
 /// (docs/economy.md §12.7); and a farm with a hand on shift, room in the
 /// yard and a ripe field sends the tractor. A row never calls for what
 /// its own labour makes.
 pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
-    economy::passed(world, building, now);
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
     let kind = b.kind;
     let mut calls = Vec::new();
@@ -126,7 +109,7 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
         && let Some(shelf) = b.stocks.get(&make.good)
     {
         if shelf.short() < economy::lump(kind) {
-            call(if blueprint(kind).vehicles.contains(&lorry(make.good)) { CallKind::Ship } else { CallKind::Pickup }, make.good);
+            call(CallKind::Pickup, make.good);
         }
     }
     // A farm's tractor sets out on a run, with a hand to drive it.
@@ -197,21 +180,13 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             continue
         };
         let answered = match kind {
-            // A maker's car sets out with what it is selling beyond the edge.
-            CallKind::Ship => free_vehicle(world, at, lorry(good)).and_then(|(car, door)| {
-                let exit = world.entry_node_near(here)?;
-                crate::car::spawn::leave_for_edge(world, events, car, door, exit, now).then(|| {
-                    world.calls[i].load = economy::shipped(world, at, good);
-                    car
-                })
-            }),
             // A port's ship sails for its shelves, while the town can pay
             // for what it brings back (docs/economy.md §9, §12.10).
             CallKind::Fetch if economy::ships(row) => free_vehicle(world, at, CarRole::Ship).and_then(|(ship, _)| (world.treasury > 0.0 && world.set_sail(events, ship, now)).then_some(ship)),
             // The building's own vehicle goes for its input: to a source
             // in town, or out past the edge if the town can pay for what
             // it brings back (docs/economy.md §9).
-            CallKind::Fetch => free_vehicle(world, at, lorry(good)).and_then(|(car, door)| match cheapest_source(world, at, good, now)? {
+            CallKind::Fetch => free_vehicle(world, at, CarRole::Truck).and_then(|(car, door)| match cheapest_source(world, at, good, now)? {
                 Source::Edge(exit) => crate::car::spawn::leave_for_edge(world, events, car, door, exit, now).then_some(car),
                 Source::Seller(seller) => crate::car::spawn::start_trip(world, events, car, door, seller, now, GameTime::MAX).then(|| {
                     world.calls[i].from = Some(seller);
@@ -234,10 +209,9 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
                     van
                 }),
                 Some(Seller::Edge(entry)) => {
-                    // From beyond the edge: a lorry, or a consultant's car,
-                    // appears on the road out past the frontier and drives
+                    // From beyond the edge: a lorry appears on the road out past the frontier and drives
                     // in. It belongs to nobody here; it goes when it is done.
-                    let car = world.insert_at(GameObject::Car(Car::new(at, lorry(good))), None);
+                    let car = world.insert_at(GameObject::Car(Car::new(at, CarRole::Truck)), None);
                     let started = crate::car::spawn::start_trip(world, events, car, entry, at, now, GameTime::MAX);
                     if !started {
                         world.despawn_car(car);
@@ -336,7 +310,7 @@ fn cheapest_seller(world: &mut World, at: EntityId, good: Need, now: GameTime) -
         .filter(|e| e.id != at && matches!(e.object, GameObject::Building(ref b) if economy::depot(b.kind) && economy::shelves(b.kind).contains(&good) && b.stocks.get(&good).is_some_and(|s| s.level > 0.0)))
         .map(|e| e.id)
         .collect();
-    let vans: Vec<(EntityId, EntityId, EntityId)> = depots.into_iter().filter_map(|d| free_vehicle(world, d, van(good)).map(|(van, door)| (d, van, door))).collect();
+    let vans: Vec<(EntityId, EntityId, EntityId)> = depots.into_iter().filter_map(|d| free_vehicle(world, d, CarRole::Van).map(|(van, door)| (d, van, door))).collect();
     let door = world.street_of(at)?;
     let mut routes = Routes::from(world, door);
     // Milliseconds of the building's own time per hour of money.
@@ -510,7 +484,6 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         // A maker's car is paid for its load; a lorry lands its, from a
         // seller in town at the seller's price or from beyond the edge
         // without limit; a ship lands every shelf's worth at once.
-        CallKind::Ship => economy::exported(world, call.at, call.good, call.load, now),
         CallKind::Fetch => match call.from {
             Some(seller) => economy::delivered(world, call.at, Some(seller), call.good, call.load, now),
             None if role == CarRole::Ship => {
