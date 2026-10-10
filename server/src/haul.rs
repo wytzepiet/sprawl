@@ -158,8 +158,11 @@ fn waiting_for(world: &World, depot: EntityId) -> Option<(EntityId, usize)> {
         .filter_map(|&h| {
             let b = building(world, h)?;
             let p = world.objects.get(h)?.position?;
+            // One the depot has room for, whole: a lorry does not fetch a
+            // box to stand in the yard on its hitch.
+            let room = |g: Good, units: f64| building(world, depot).and_then(|d| d.stocks.get(&g)).is_some_and(|s| s.short() >= units);
             let i = b.park.iter().position(|s| {
-                s.trailer.is_some_and(|t| !t.outbound && !t.empty() && (t.to == Some(depot) || t.to.is_none_or(|d| world.objects.get(d).is_none())))
+                s.trailer.is_some_and(|t| !t.outbound && !t.empty() && t.good.is_some_and(|g| room(g, t.units)) && (t.to == Some(depot) || t.to.is_none_or(|d| world.objects.get(d).is_none())))
             });
             let i = i.filter(|&i| !taken.contains(&(h, i)))?;
             Some(((p.x - at.x).abs() + (p.y - at.y).abs(), h, i))
@@ -174,14 +177,18 @@ fn empty_at(world: &World, harbour: EntityId) -> Option<usize> {
     building(world, harbour)?.park.iter().position(|s| s.trailer.is_some_and(|t| t.empty()))
 }
 
-/// What the depot wants to sell now: a box the mayor sold by hand, first;
-/// or a box of whatever its rules sell with a box over the line.
-fn to_sell(world: &World, depot: EntityId) -> Option<Good> {
+/// What the depot wants to sell now, and how much: a box the mayor sold
+/// by hand, first, full as the shelf allows; or what its rules sell,
+/// everything over the line up to a box, once that is a quarter of one.
+fn to_sell(world: &World, depot: EntityId) -> Option<(Good, f64)> {
     let b = building(world, depot)?;
     if let Some(&g) = b.selling.first() {
-        return Some(g);
+        return Some((g, g.per_box()));
     }
-    b.rules.iter().find(|(g, r)| r.sell.is_some_and(|s| b.stocks.get(g).is_some_and(|st| st.level >= s + g.per_box()))).map(|(&g, _)| g)
+    b.rules.iter().find_map(|(&g, r)| {
+        let over = b.stocks.get(&g)?.level - r.sell?;
+        (over >= g.per_box() / 4.0).then_some((g, over.min(g.per_box())))
+    })
 }
 
 /// The lorry woke, parked: at the end of its service where it stands, or
@@ -200,6 +207,10 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
         at_harbour(world, events, lorry, depot, at, now);
         return;
     }
+    if at != depot {
+        return go_home(world, events, lorry, at, now);
+    }
+    crate::economy::refilled(world, lorry, now);
     // Home. A box from the harbour is unloaded onto the shelf, what fits.
     if let Some(t) = hitched.filter(|t| !t.outbound && !t.empty()) {
         let good = t.good.unwrap();
@@ -212,6 +223,11 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
             events.wake(SERVICE_MS, lorry);
             return;
         }
+        // The shelf is full: the rest waits on the hitch in the yard
+        // until there is room, and the lorry with it.
+        if left > 0.0 {
+            return;
+        }
     }
     let Some(b) = building(world, depot) else { return };
     let (standing, sent) = (b.standing, world.sent.contains(&lorry));
@@ -222,8 +238,8 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
     }
     // An empty on the hitch is filled with what is sold, and goes out.
     let hitched = car(world, lorry).and_then(|c| c.hitched);
-    if let (Some(good), Some(t)) = (selling, hitched.filter(|t| t.empty())) {
-        let units = crate::economy::loaded(world, depot, good, good.per_box());
+    if let (Some((good, units)), Some(t)) = (selling, hitched.filter(|t| t.empty())) {
+        let units = crate::economy::loaded(world, depot, good, units);
         if units > 0.0 {
             let order = world.objects.reserve_id();
             set_load(world, lorry, Some(Trailer { good: Some(good), units, to: None, outbound: true, order: Some(order), ..t }));

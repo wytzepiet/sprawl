@@ -279,9 +279,18 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
     let Some(i) = world.calls.iter().position(|c| c.answered_by == Some(car)) else {
         if role == CarRole::Truck {
             crate::haul::lorry_wake(world, events, car, now);
+            return;
         }
-        if world.claims.get(&car) == Some(&owner) {
-            economy::refilled(world, car, now);
+        // Done somewhere else, and not yet away: home, as soon as the
+        // street lets it out.
+        match world.claims.get(&car).copied().filter(|&at| at != owner) {
+            Some(at) => {
+                let home = world.street_of(at).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX));
+                if !home {
+                    events.wake(SERVICE_MS, car);
+                }
+            }
+            None => economy::refilled(world, car, now),
         }
         return;
     };

@@ -10,7 +10,6 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::blueprint::Class;
 use crate::protocol::BuildingKind;
 
 /// A node of a tree, as the old saves and the protocol name one.

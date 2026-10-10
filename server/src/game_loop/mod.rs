@@ -949,7 +949,7 @@ mod tests {
     /// of the harbour, and runs off the map.
     fn street() -> World {
         let mut world = World::new();
-        for y in -6..60 {
+        for y in -10..60 {
             for x in -4..300 {
                 let sea = x >= HARBOUR_X - 2 && y >= 4;
                 if sea || y < 14 {
@@ -959,6 +959,12 @@ mod tests {
         }
         let street: Vec<GridCoord> = (-2..HARBOUR_X + 6).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
+        // A back street, and lanes between the two every forty tiles, so a
+        // lorry turns round in a block, not at the end of the world.
+        world.place_road_path(&(-2..HARBOUR_X + 6).map(|x| GridCoord { x, y: -9 }).collect::<Vec<_>>());
+        for x in (-2..HARBOUR_X + 6).step_by(40) {
+            world.place_road_path(&(-9..=0).map(|y| GridCoord { x, y }).collect::<Vec<_>>());
+        }
         world.place_on_street(GridCoord { x: HARBOUR_X, y: 1 }, BuildingKind::Harbour).expect("the coast takes a harbour");
         world
     }
@@ -1472,7 +1478,7 @@ mod tests {
         for d in depots {
             if let Some(GameObject::Building(b)) = world.objects.get_mut(d).map(|e| &mut e.object) {
                 b.standing = true;
-                b.rules.get_mut(&Good::Crates).unwrap().sell = Some(150.0);
+                b.rules.get_mut(&Good::Crates).unwrap().sell = Some(100.0);
             }
         }
         let mut events = EventQueue::new();
