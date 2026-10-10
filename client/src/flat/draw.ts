@@ -137,7 +137,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       const tiles = world.ground(cx, cy);
       if (tiles) g.drawImage(chunkImage(tiles, sheet, theme) as CanvasImageSource, cx * CHUNK_SIZE, cy * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
     }
-  for (const lane of world.lanes ?? []) if (lane.path.some(([x, y]) => on(x, y, 8))) drawLane(g, lane, S);
+  for (const lane of world.lanes ?? []) drawLane(g, lane, S);
 
   const byId = new Map<number, GameObjectEntry>();
   const buildings: [GameObjectEntry, Building][] = [];
