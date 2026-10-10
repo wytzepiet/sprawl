@@ -20,6 +20,7 @@ import Glass from "../ui/Glass";
 import Shipments, { BoxPins } from "../ui/Shipments";
 import News from "../ui/News";
 import Guide from "../ui/Guide";
+import Minimap from "../ui/Minimap";
 
 function SceneInner() {
   return (
@@ -49,6 +50,7 @@ function SceneInner() {
       <Shipments />
       <News />
       <Guide />
+      <Minimap />
       {/* <DebugOverlay /> */}
     </DayNightProvider>
   );

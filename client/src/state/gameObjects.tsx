@@ -136,6 +136,11 @@ export function setOpsListener(fn: OpsListener | null) {
   opsListener = fn;
 }
 
+/** The ground of every chunk heard of, kept after it is out of view, since
+ *  it never changes: the minimap draws the island as far as it was seen. */
+const ground = new Map<string, Uint8Array>();
+export const groundOf = (cx: number, cy: number) => ground.get(`${cx},${cy}`);
+
 /** Terrain arrives per chunk rather than as entities, so it bypasses ops. */
 export interface TerrainListener {
   setChunk(chunk: TerrainChunk): void;
@@ -284,6 +289,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         console.error("[ws] server error:", msg.data.message);
         break;
       case "TerrainChunk":
+        ground.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
         terrainListener?.setChunk(msg.data);
         break;
       case "UnloadChunk":
