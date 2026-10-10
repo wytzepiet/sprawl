@@ -57,8 +57,9 @@ that assert old design are rewritten, not obeyed.
 - Goods are split from needs: crates, fuel, timber. Buildings cost timber,
   not coins, and stand as sites until a van has brought it.
 - The skill tree is switched off: everything unlocked, its screen gone.
-- Everything the hand lays is a draft until the bill's Build commits it
-  (`game.md` §Drafts).
+- What the hand lays is laid at once, a building placed whole from the
+  build menu, and undo takes back the last few minutes (`game.md`
+  §Buildings, §Undo); drafts came and went (`shelved.md`).
 - The terrain is islands in one ocean, a fifth of the map land.
 - The client renders with Babylon Lite on WebGPU only, and a cloud
   container can run it: headless Chromium draws WebGPU in software
@@ -84,8 +85,8 @@ pictures, at least), and its documents say what was built.
    edge, the generated roads and the fog go; the ferry on a timetable, its
    deck as what fits; settlers drive off; the tug; the trailer park; the
    town's lorries hitch boxes; empties ride back, filled with exports.
-5. **Drafts** (`game.md` §Drafts): placing and demolishing as drafts,
-   reserved, drawn blue and red, with the bill; commit, undo, discard.
+5. **Drafts** (`game.md` §Undo): built, then replaced by placing at once
+   and undo after the player's playtest (`shelved.md`).
 6. **Goods and materials** (`buildings.md`): goods split from needs; the
    general depot; sites that wait for their materials and go up as lorries
    bring them; building costs as rows, timber first; the first depot's

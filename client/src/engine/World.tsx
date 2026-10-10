@@ -23,7 +23,7 @@ import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
-import { Ghosts } from "./Ghosts";
+import { aim } from "../ui/buildMode";
 
 interface MountedEntry {
   kind: string;
@@ -90,6 +90,9 @@ export default function World() {
   const town = new TownLayer(ctx, casters()!, theme, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
 
   createEffect(on(theme, () => (terrain.markAllDirty(), town.repaint()), { defer: true }));
+  // The building in hand, drawn where it would stand.
+  createEffect(() => town.hold(aim()));
+  if (import.meta.env.DEV) Object.assign(window, { sprawlHeldMs: town.previewMs });
 
   function mount(entry: GameObjectEntry): (() => void) | null {
     switch (entry.object.kind) {
@@ -174,7 +177,7 @@ export default function World() {
     }
     if (entry.object.kind !== "Building") return undefined;
     const b = entry.object.data as Building;
-    return JSON.stringify([b.kind, b.tiles, b.door, b.joined, !b.site, b.park.map((s) => s.pose)]);
+    return JSON.stringify([b.kind, b.tiles, b.door, !b.site, b.park.map((s) => s.pose)]);
   }
 
   setOpsListener(processOps);
@@ -198,7 +201,6 @@ export default function World() {
 
   return (
     <>
-      <Ghosts />
       <Brush ground={(x, y) => terrain.typeAt(x, y)} />
     </>
   );

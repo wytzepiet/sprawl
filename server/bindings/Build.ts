@@ -3,7 +3,8 @@ import type { GridCoord } from "./GridCoord";
 import type { Tool } from "./Tool";
 
 /**
- * A step of the mayor's hand: one tile to the next, or a tap, from and
- * to the same tile. A drag is its steps, each built as it is sent.
+ * A step of the mayor's road or demolisher: one tile to the next, or a
+ * tap, from and to the same tile. A drag is its steps, each built as it
+ * is sent.
  */
 export type Build = { tool: Tool, from: GridCoord, to: GridCoord, };

@@ -241,9 +241,9 @@ that it can be owed. Express is the rule the world already has, "I need
 it now is always possible and always dear", and it makes the lesson
 plain: about a coin a tile from the treasury, half that from a depot's
 stone, nothing from the town's own quarry. Demolition gives nothing back
-yet. Placing anything is a
-draft until it is committed, and the draft's bill says what it will take
-against what is in stock (`game.md` §Drafts).
+yet. A building in hand
+says beside it what it takes against what the depots hold (`game.md`
+§Buildings).
 
 ## The opening
 

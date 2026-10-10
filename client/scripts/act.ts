@@ -6,18 +6,14 @@
  *   bun run act road 10,4 20,4 20,9     a street through these tiles, stepping
  *                                       as the brush does, diagonals and all
  *       --road | --one-way              a through road, or one way
- *   bun run act build House 12,5        a building painted on this tile; more
- *       12,5 14,5 14,6                  tiles paint on through them, stepping
- *                                       as the brush does: one building as far
- *                                       as a kind that grows is painted
- *   bun run act build Harbour 12,5      a harbour, whole, round this tile, and
- *                                       its street
- *   bun run act demolish 12,5 14,5      whatever stands on the tiles, through
- *       Each of these is drafted and committed at once, as the bill's
- *       Build would; `draft` before one leaves it drafted:
- *   bun run act draft road 10,4 20,4    drafted only, and the bill said
- *   bun run act commit | undo | discard the draft built, its last stroke
- *                                       taken back, or dropped
+ *   bun run act build House 12,5        a building placed whole round this
+ *       build Depot 12,5 0              tile, its front the first way it fits,
+ *                                       or this way (0 toward -y, 1 +x, 2 +y,
+ *                                       3 -x); a harbour brings its street
+ *   bun run act demolish 12,5 14,5      a tap takes what stands on a tile, a
+ *                                       building whole; more tiles, the road
+ *                                       a drag through them cuts
+ *   bun run act undo                    the hand's last action taken back
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act send 18                 depot 18's lorry to the harbour now
  *   bun run act standing 18 on          its standing orders, on or off
@@ -42,12 +38,12 @@
  *
  * Tiles are the game's own (x, y), as `bun run plan --live` numbers them;
  * on the map +x is to the left and +y up. Each command answers with what it
- * made and took away, and a command that changed nothing says so, since
- * the server refuses quietly (the build's gate, the purse, a tile already
- * taken; refusals of buildings are in `.dev/server.log`). The game is the
+ * made and took away, and a command that changed nothing says so: a
+ * building refused and an undo say why, a road step refused is in
+ * `.dev/server.log`. The game is the
  * one `bun run dev` runs, or SPRAWL_PORT's. The hand is a player of its
  * own, PLAYER (the browser's is in its localStorage, `sprawl.player`), so
- * its drafts are its own and outlive the command.
+ * its history to undo is its own and outlives the command.
  */
 import { decode, encode } from "@msgpack/msgpack";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
@@ -92,13 +88,11 @@ let ops: Op[] = [];
 /** Every trip seen, once each. */
 const trips = new Map<string, Recorded>();
 const PLAYER = process.env.PLAYER ?? "4242";
-/** Our draft and its bill, as the last update had them. */
 /** The town's missions, as the last update had them. */
 type Mission = { title: string; finished: number | null; reward: { data: number }; steps: { title: string; text: string; done: boolean; at: number | null }[] };
 let missions: Mission[] = [];
 /** News heard since the last command said what it saw. */
 const told: string[] = [];
-let draft: { strokes: { step: unknown; stuck: boolean }[][]; bill: { good: string; takes: number; have: number; boxes: number; coins: number; express: number }[] } | undefined;
 const ws = new WebSocket(`ws://localhost:${PORT}/ws?player=${PLAYER}`);
 ws.binaryType = "arraybuffer";
 ws.onmessage = (e) => {
@@ -108,7 +102,6 @@ ws.onmessage = (e) => {
   if (msg.type !== "Update") return;
   clock = msg.data.clock;
   missions = msg.data.missions ?? [];
-  draft = (msg.data.drafts ?? []).find((d: { owner: number }) => d.owner === Number(PLAYER));
   if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
   for (const op of msg.data.ops as Op[]) {
     const trip = op.op === "Upsert" && op.data.object.kind === "Car" && op.data.object.data.trip;
@@ -207,10 +200,9 @@ changes(await settled());
 
 /** A drag through these tiles with this in hand, a step at a time as the
  *  brush takes them, straight or diagonal; a road starts from its first
- *  tile, anything else paints or clears it first. */
+ *  tile, the demolisher's tap, one tile alone, takes what stands there. */
 function stroke(tool: unknown, pts: Pt[]) {
-  if (!pts.length) return;
-  if (tool !== "Street" && tool !== "OneWay" && tool !== "Road") send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
+  if (pts.length === 1) send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
   for (let i = 1; i < pts.length; i++) {
     let [x, y] = pts[i - 1];
     const [tx, ty] = pts[i];
@@ -227,34 +219,21 @@ const at = ([x, y]: Pt) => ({ x, y });
 let report: string[] = [];
 for (const line of lines) {
   const before = missions;
-  const drafted = draft?.strokes.flat().length ?? 0;
-  // `draft road …`: the stroke drafted, not built.
-  const drafting = line[0] === "draft";
-  const [verb, ...rest] = drafting ? line.slice(1) : line;
-  const built = () => drafting || send("Commit");
+  const [verb, ...rest] = line;
   const flags = rest.filter((a) => a.startsWith("--"));
   const args = rest.filter((a) => !a.startsWith("--"));
   switch (verb) {
     case "road":
       stroke(flags.includes("--road") ? "Road" : flags.includes("--one-way") ? "OneWay" : "Street", args.map(tile));
-      built();
       break;
     case "build":
-      stroke({ Building: args[0] }, args.slice(1).map(tile));
-      built();
+      send("Place", { kind: args[0], at: at(tile(args[1])), facing: args[2] === undefined ? null : Number(args[2]) });
       break;
     case "demolish":
       stroke("Demolish", args.map(tile));
-      built();
-      break;
-    case "commit":
-      send("Commit");
       break;
     case "undo":
       send("Undo");
-      break;
-    case "discard":
-      send("Discard");
       break;
     case "speed":
       send("SetSpeed", Number(args[0]));
@@ -306,16 +285,6 @@ for (const line of lines) {
       throw new Error(`no such command: ${verb}`);
   }
   const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...told.splice(0), ...report];
-  // Undo and discard change only the draft: say what they took back.
-  const left = draft?.strokes.flat().length ?? 0;
-  if ((verb === "undo" || verb === "discard") && left < drafted) said.push(`${drafted - left} drafted steps taken back`);
-  // What is left drafted, and its bill.
-  if (draft) {
-    const marks = draft.strokes.flat();
-    const stuck = marks.filter((m) => m.stuck).length;
-    said.push(`draft: ${marks.length} steps in ${draft.strokes.length} strokes${stuck ? `, ${stuck} no longer fit` : ""}`);
-    for (const l of draft.bill) said.push(`  ${l.takes} ${l.good}, ${Math.floor(l.have)} to hand${l.boxes ? `: ${l.boxes} box${l.boxes === 1 ? "" : "es"} to order, ${Math.round(l.coins)} coins` : ""}${l.express ? `; ${Math.round(l.express)} coins express at Build` : ""}`);
-  }
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
   for (const s of said.length ? said : ["time", "speed", "run", "watch", "send", "standing", "order", "sell", "rule", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);

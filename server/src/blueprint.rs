@@ -72,8 +72,8 @@ pub fn blueprint(kind: BuildingKind) -> &'static Blueprint {
     b
 }
 
-/// What a kind is built from, material by material: what a draft of it
-/// puts on the bill and its site waits for.
+/// What a kind is built from, material by material: what its site waits
+/// for, and what undoing it gives back.
 pub fn takes(kind: BuildingKind) -> Vec<(Good, f64)> {
     blueprint(kind).materials.iter().map(|&(good, n)| (good, n as f64)).collect()
 }
@@ -104,8 +104,8 @@ pub fn plot(kind: BuildingKind, facing: u8) -> Plot {
 
 /// How a building `size` across lies facing this way: its yard, if its
 /// kind keeps one, the rows on its street side as deep as the kind's, the
-/// whole width; the rest the building. A painted building is laid out by
-/// its bounds, the smallest that works by `plot`.
+/// whole width; the rest the building. A building is laid out by its
+/// bounds: placed, they are its plot's (`plot`); a fixture's may be any.
 pub fn lie(kind: BuildingKind, facing: u8, (w, h): (u8, u8)) -> Plot {
     let ld = blueprint(kind).lot.1;
     let lot = ld > 0;

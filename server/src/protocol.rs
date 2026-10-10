@@ -11,8 +11,9 @@ pub struct GridCoord {
     pub y: i32,
 }
 
-/// A step of the mayor's hand: one tile to the next, or a tap, from and
-/// to the same tile. A drag is its steps, each built as it is sent.
+/// A step of the mayor's road or demolisher: one tile to the next, or a
+/// tap, from and to the same tile. A drag is its steps, each built as it
+/// is sent.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Build {
@@ -31,10 +32,8 @@ pub enum Tool {
     OneWay,
     /// A road: a through route nothing fronts onto.
     Road,
-    /// A kind of building: `to` painted, and joined to whatever of the
-    /// kind `from` is part of.
-    Building(BuildingKind),
-    /// Whatever stands on `to`.
+    /// Whatever stands on `to`, a building whole; a drag cuts the road
+    /// between its tiles.
     Demolish,
 }
 
@@ -174,11 +173,6 @@ pub struct Building {
     /// ground, so the last run's path is the field. Redrawn by the next.
     #[serde(default)]
     pub ruts: Vec<GridCoord>,
-    /// The tiles beside it, of other buildings of its kind, the hand drew
-    /// it on from or onto: a row of houses drawn as a row, each a home of
-    /// its own. Only a kind that never grows into one building keeps any.
-    #[serde(default)]
-    pub joined: Vec<GridCoord>,
     /// Where it is driven into: one of its tiles, and the street tile
     /// beside it the drive runs from. The drive is the building's, not a
     /// road: drawn as one, driven by the cars of its lot, and gone with it.
@@ -277,7 +271,6 @@ impl Building {
             lorries: 0,
             land: Vec::new(),
             ruts: Vec::new(),
-            joined: Vec::new(),
             door: None,
         }
     }
@@ -785,14 +778,13 @@ impl ChunkBounds {
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
-    /// A step of the hand, drafted (`drafts.rs`): built at the commit.
+    /// A step of a road or the demolisher, built as it is sent.
     Build(Build),
-    /// The player's draft built, in one stroke.
-    Commit,
-    /// The player's last stroke taken back.
+    /// A building placed whole round `at`, its front this way
+    /// (`blueprint::FACINGS`); none, the first way it fits.
+    Place { kind: BuildingKind, at: GridCoord, facing: Option<u8> },
+    /// The player's last action taken back (`undo.rs`).
     Undo,
-    /// The player's draft dropped.
-    Discard,
     /// Spend a point on a node of the tree.
     Take(crate::tree::Cell),
     DespawnAllCars,
@@ -909,9 +901,6 @@ pub struct StateUpdate {
     /// Every shipment on its way and every harbour's timetable.
     #[serde(default)]
     pub sea: Sea,
-    /// Every player's draft and its bill.
-    #[serde(default)]
-    pub drafts: Vec<crate::drafts::Draft>,
     /// The town's open missions, and those just finished.
     #[serde(default)]
     pub missions: Vec<crate::missions::Mission>,
@@ -925,8 +914,7 @@ pub struct StateUpdate {
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
-    /// Who you are. Drafts carry an owner, and the client needs this to tell
-    /// its own pending work from everyone else's.
+    /// Who you are.
     Welcome(#[ts(type = "number")] OwnerId),
     Update(StateUpdate),
     TerrainChunk(TerrainChunk),
@@ -934,7 +922,8 @@ pub enum ServerMessage {
     Error(ErrorMessage),
     Pong(#[ts(type = "number")] u64),
     /// What the town did with the mayor's coins of its own accord, or more
-    /// than the bill said: a box a rule bought, stone bought express.
+    /// than it was asked: a box a rule bought, stone bought express. And
+    /// what the hand did, to its player alone: an undo, a building refused.
     News(Vec<News>),
 }
 

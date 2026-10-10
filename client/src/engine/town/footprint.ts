@@ -268,7 +268,9 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean, 
       const byColour = new Map<string, { tile: Tile; head: boolean; rings: Pt[][] }>();
       for (const p of mine) {
         const h = head(...p.at);
-        const key = `${tileOf(p).kind}:${h}`;
+        // A part a kind, a head, and in the game a building, so each
+        // house of a row wears its own tint, and one held in hand blue.
+        const key = `${tileOf(p).kind}:${h}:${tileOf(p).id ?? ""}`;
         (byColour.get(key) ?? byColour.set(key, { tile: tileOf(p), head: h, rings: [] }).get(key)!).rings.push(p.ring);
       }
       masses.push({

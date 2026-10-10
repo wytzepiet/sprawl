@@ -126,13 +126,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   in the game's own tiles and drawn as the town grid will draw it. Most
   layout questions need only this; photographs are for light and height.
 - **The mayor's hand:** `bun run act road 7,78 7,85 0,85`, `build House
-  5,86` (more tiles paint on through them, as the brush drags),
-  `demolish 5,86`, `speed 0`, `run 2` (hours, or `--to 0.83` of a
-  day), `reset`; `bun run act - < steps` reads one a line. Each says what
-  it made and took away; a tile refused is in `.dev/server.log`. Each of
-  `road`, `build` and `demolish` is drafted and committed at once;
-  `draft road …` leaves it a draft and says its bill, and `commit`,
-  `undo`, `discard` work the draft (`game.md` §Drafts). To set up a situation and watch it:
+  5,86` (placed whole round the tile, the first way it fits; `build
+  Depot 5,86 1` turned that way), `demolish 5,86` (a building whole),
+  `undo`, `speed 0`, `run 2` (hours, or `--to 0.83` of a day), `reset`;
+  `bun run act - < steps` reads one a line. Each says what it made and
+  took away, and a building refused or an undo says why; a road step
+  refused is in `.dev/server.log`. To set up a situation and watch it:
   `watch 2 5,80` (or `--to 0.45`) runs the clock and records every trip
   round that tile to `.dev/paths.json`, as the client draws them, and
   counts the bends tighter than a car turns (style.md's 0.45), as the
@@ -153,6 +152,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container, as for `shots`.
+  `--menu` opens the build menu, `--hold Depot@5,86` puts a depot in
+  hand over that tile as a drag would, its preview and all.
 - **What a frame costs, by kind:** `bun run cost 6,80,15` (a tile and how
   many tiles each way up and down, `--t 0.95` a time of day) hides each kind
   of mesh in view in turn (a mesh's name with its chunk taken out:

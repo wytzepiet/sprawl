@@ -2,7 +2,7 @@ import { onCleanup } from "solid-js";
 import { attachFreeControl, createFreeCamera, disableOrthographicCamera, enableOrthographicCamera } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
-import { tool } from "../ui/buildMode";
+import { held, inHand } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 import { viewExtent, rectOf } from "./view";
 import { following, setFollowing, positionOf } from "../state/selection";
@@ -268,7 +268,7 @@ export function OrthoCamera() {
   const onPointerDown = (e: PointerEvent) => {
     // A tool has the left button, so the right one always pans. Without it a
     // build mode is one you cannot move around in.
-    if (tool() !== null && e.button !== 2) return;
+    if (inHand() && e.button !== 2) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     canvas.setPointerCapture(e.pointerId);
 
@@ -350,7 +350,8 @@ export function OrthoCamera() {
   const preventContextMenu = (e: Event) => e.preventDefault();
 
   const onWheel = (e: WheelEvent) => {
-    if (debugMode) return;
+    // A building in hand is turned by the wheel (`Brush`).
+    if (debugMode || held()) return;
     e.preventDefault();
 
     zoomToward(targetViewHalf * (1 + e.deltaY * 0.001), e.clientX, e.clientY);

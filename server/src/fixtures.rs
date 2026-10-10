@@ -17,9 +17,9 @@
 //! M supermarket  D depot  P harbour  W sawmill  Q quarry
 //! ```
 //!
-//! A building's letters are its tiles, painted in one stroke as the mayor
-//! would: a kind that grows is one building as far as its letter runs, a
-//! house a house a tile. Lines starting with `#` are the fixture's
+//! A building's letters are its tiles: a kind bigger than a tile is one
+//! building as far as its letter runs, of whatever shape, which the hand
+//! cannot place but the look must draw; a house is a house a tile. Lines starting with `#` are the fixture's
 //! description; the first is its title.
 
 use std::path::Path;
@@ -135,39 +135,36 @@ pub fn build(world: &mut World, dir: &Path) {
             }
         }
 
-        // Painted as the mayor would: each run of a letter in one stroke,
-        // from tile to tile beside or diagonal, so a kind that grows is one
-        // building as far as its letter runs, and a house is a house a tile.
-        let mut painted = std::collections::HashSet::new();
+        // Each run of a letter, beside or diagonal, is one building, a
+        // kind one tile big a building a tile: a row of houses is houses.
+        // Its front faces the first street it has, its back the sea.
+        let mut built = std::collections::HashSet::new();
         for row in 0..h {
             for col in 0..w {
                 let Some(kind) = building(char_at(col, row)) else { continue };
-                if !painted.insert((col, row)) {
+                if !built.insert((col, row)) {
                     continue;
                 }
-                let mut stroke = vec![((col, row), (col, row))];
+                let mut run = vec![(col, row)];
                 let mut i = 0;
-                while i < stroke.len() {
-                    let ((c, r), _) = stroke[i];
+                while i < run.len() && crate::blueprint::plot(kind, 0).size != (1, 1) {
+                    let (c, r) = run[i];
                     for (dc, dr) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
                         let n = (c + dc, r + dr);
-                        if building(char_at(n.0, n.1)) == Some(kind) && painted.insert(n) {
-                            stroke.push((n, (c, r)));
+                        if building(char_at(n.0, n.1)) == Some(kind) && built.insert(n) {
+                            run.push(n);
                         }
                     }
                     i += 1;
                 }
-                // A harbour is placed whole, at a tap on its middle.
-                if World::whole(kind, at(col, row)).is_some() {
-                    let mid = |f: fn(&(i32, i32)) -> i32| (stroke.iter().map(|(t, _)| f(t)).min().unwrap() + stroke.iter().map(|(t, _)| f(t)).max().unwrap()) / 2;
-                    let c = (mid(|t| t.0), mid(|t| t.1));
-                    stroke = vec![(c, c)];
+                let tiles: Vec<GridCoord> = run.iter().map(|&(c, r)| at(c, r)).collect();
+                if !tiles.iter().all(|&t| world.may_stand(t)) {
+                    println!("fixtures: {}: no room for {kind:?} at column {col}, row {row}", path.display());
+                    continue;
                 }
-                for &((c, r), from) in &stroke {
-                    if world.paint(kind, at(from.0, from.1), at(c, r)).is_none() {
-                        println!("fixtures: {}: no room for {kind:?} at column {c}, row {r}", path.display());
-                    }
-                }
+                let quay = crate::blueprint::blueprint(kind).quay;
+                let facing = (0..4).find(|&f| world.driveway_for(&tiles, kind, f, false).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())).unwrap_or(2);
+                world.raise(kind, tiles, facing);
             }
         }
 
