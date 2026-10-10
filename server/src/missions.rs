@@ -117,7 +117,7 @@ const ROWS: &[Row] = &[
         when: When::Start,
         title: "The opening",
         steps: &[
-            (Goal::Stands(BuildingKind::Harbour), "Build a harbour on the coast", "Its back to the sea, open water straight out behind it: the ferry berths there. Built, it stands at once.\n\nEvery building stands on a street: draw one along the coast first, then paint the harbour between it and the sea, three tiles by three."),
+            (Goal::Stands(BuildingKind::Harbour), "Build a harbour on the coast", "Take the harbour and click on the coast. Its plot shows under the pointer, turned to the sea: green where the ferry can berth, red where it cannot, and why.\n\nIt comes with a street of its own, and stands at once when built."),
             (Goal::Stands(BuildingKind::Depot), "Build a depot", "Where the town keeps what lands. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone."),
             (Goal::Joined, "Join them with a street", "From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.\n\nA street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile."),
             (Goal::Fetched, "Fetch the starter pack", "Timber, stone, crates and fuel, the world's gift, come on the first ferry, and the tug lands them in the trailer park. Tap the depot's lorry to fetch them, and ride along."),
@@ -129,7 +129,7 @@ const ROWS: &[Row] = &[
         key: Key::Standing,
         when: When::After(Key::Opening),
         title: "Standing orders",
-        steps: &[(Goal::Standing, "Give the lorry standing orders", "On the depot's card: its lorry fetches each box as it lands, and you need not tap it again.")],
+        steps: &[(Goal::Standing, "Give the lorry standing orders", "On the depot's card: its lorry fetches each box as it lands, and you need not tap it again. And the depot's rules start to buy from the world, each order in the news with its price.")],
         reward: Reward::Coins(25.0),
     },
     Row {

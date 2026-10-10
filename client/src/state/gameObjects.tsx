@@ -8,7 +8,7 @@ import {
 import { createConnection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
-import { hearSea } from "./sea";
+import { hearSea, tell } from "./sea";
 import { hearDrafts } from "./drafts";
 import { hearMissions } from "./missions";
 import type { Building,
@@ -296,6 +296,9 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         break;
       case "Welcome":
         setMe(msg.data);
+        break;
+      case "News":
+        for (const n of msg.data) tell(n.text, n.sub, n.at, true);
         break;
       case "Pong":
         syncClock(msg.data);

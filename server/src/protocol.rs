@@ -933,6 +933,19 @@ pub enum ServerMessage {
     UnloadChunk(ChunkCoord),
     Error(ErrorMessage),
     Pong(#[ts(type = "number")] u64),
+    /// What the town did with the mayor's coins of its own accord, or more
+    /// than the bill said: a box a rule bought, stone bought express.
+    News(Vec<News>),
+}
+
+/// A line of news, and the building a tap on it goes to.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct News {
+    pub text: String,
+    pub sub: String,
+    #[ts(type = "number")]
+    pub at: EntityId,
 }
 
 

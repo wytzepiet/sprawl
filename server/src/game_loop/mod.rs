@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{Build, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Lump, ServerMessage, StateUpdate, Tool, GridCoord};
+use crate::protocol::{Build, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Good, Operation, OwnerId, Lump, ServerMessage, StateUpdate, Tool, GridCoord};
 use crate::world::chunk_of;
 use crate::world::{Link, World};
 
@@ -355,8 +355,20 @@ fn handle_player_action(
         ClientMessage::Build(step) => {
             crate::drafts::draw(world, owner, step);
         }
-        // A demolition refused is one with nothing left to take down.
-        ClientMessage::Commit => crate::drafts::commit(world, owner, |w, step| take_step(w, events, intersections, step, now) || step.tool == Tool::Demolish),
+        // A demolition refused is one with nothing left to take down. What
+        // a commit pays is the roads' stone the depots lacked, express, and
+        // the news says so.
+        ClientMessage::Commit => {
+            let purse = world.treasury;
+            crate::drafts::commit(world, owner, |w, step| take_step(w, events, intersections, step, now) || step.tool == Tool::Demolish);
+            let paid = purse - world.treasury;
+            if paid > 0.0
+                && let Some(&harbour) = world.harbours.keys().next()
+            {
+                let stone = paid / (crate::economy::EXPRESS * crate::economy::import(Good::Stone, 1.0));
+                world.news.push(crate::protocol::News { text: format!("Build paid {paid:.0} express"), sub: format!("for {stone:.0} stone the depots did not have, −{paid:.0}"), at: harbour });
+            }
+        }
         ClientMessage::Undo => crate::drafts::undo(world, owner),
         ClientMessage::Discard => crate::drafts::discard(world, owner),
         ClientMessage::DespawnAllCars => {
@@ -826,6 +838,13 @@ fn flush_dirty(
     clients: &mut HashMap<ClientId, ClientState>,
     clk: Clock,
 ) {
+    // The news, to every player, wherever they are looking.
+    let news = std::mem::take(&mut world.news);
+    if !news.is_empty() {
+        for cs in clients.values() {
+            let _ = cs.sender.send(ServerMessage::News(news.clone()));
+        }
+    }
     let (changed, removed) = world.objects.drain_dirty();
     let crossings: Vec<(EntityId, ChunkCoord, ChunkCoord)> =
         std::mem::take(&mut world.chunk_crossings)

@@ -91,7 +91,7 @@ export function DepotPanel(props: { id: number; lorries: number[]; depots: Depot
               </span>
               <span onClick={() => send({ type: "Standing", data: { depot: props.id, on: !d().standing } })}>
                 <b>Standing orders</b>
-                <span class="soft"> {d().standing ? "· fetches what lands, takes out what sells" : "· goes when you tap it"}</span>
+                <span class="soft"> {d().standing ? "· fetches what lands, takes out what sells, and buys from the world by the rules below" : "· off, it goes when you tap it. On, it fetches what lands, takes out what sells, and buys from the world by the rules below"}</span>
               </span>
             </label>
           </Section>

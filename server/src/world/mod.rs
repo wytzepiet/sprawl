@@ -70,6 +70,9 @@ pub struct World {
     /// Coins and GDP that landed on buildings since the last flush, for
     /// the clients looking at them.
     pub lumps: Vec<crate::protocol::Lump>,
+    /// What the town bought of its own accord since the last flush, said
+    /// to every player.
+    pub news: Vec<crate::protocol::News>,
     /// The nodes of the tree the player has taken: the gate for everything
     /// the city may do. See `tree.rs`.
     pub build: crate::tree::Build,
@@ -161,6 +164,7 @@ impl World {
             gdp: 0.0,
             treasury: crate::economy::STAKE,
             lumps: Vec::new(),
+            news: Vec::new(),
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),
@@ -199,6 +203,7 @@ impl World {
             gdp: 0.0,
             treasury: 0.0,
             lumps: Vec::new(),
+            news: Vec::new(),
             build: Default::default(),
             laid: 0,
             terrain: HashMap::new(),

@@ -30,7 +30,8 @@ use crate::world::World;
 /// The rules a new depot comes with, drawn over it like any rule, so the
 /// player sees automation before they need to understand it (docs/game.md
 /// §Buildings): keep a box and a half of timber, a few days of a small
-/// town's meals, and a tank box for the vans.
+/// town's meals, and a tank box for the vans. They buy nothing until the
+/// depot has standing orders (`top_up`).
 pub fn first_rules() -> BTreeMap<Good, Rule> {
     BTreeMap::from([
         (Good::Timber, Rule { keep: 30.0, fill: 60.0, sell: None }),
@@ -117,11 +118,13 @@ pub fn book(world: &mut World, depot: EntityId, good: Good, boxes: u32) -> u32 {
     n
 }
 
-/// A depot's rules, read: for each good under its floor with what is
-/// already on its way, boxes enough to fill it are booked.
+/// A depot's rules, read, once the mayor has given it standing orders:
+/// for each good under its floor with what is already on its way, boxes
+/// enough to fill it are booked, and the news says so, with the price.
+/// Without standing orders a rule is only drawn, and spends nothing.
 pub fn top_up(world: &mut World, depot: EntityId) {
     let Some(b) = building(world, depot) else { return };
-    if b.site.is_some() {
+    if b.site.is_some() || !b.standing {
         return;
     }
     let rules: Vec<(Good, Rule, f64, f64)> = b.rules.iter().filter_map(|(&g, &r)| Some((g, r, b.stocks.get(&g)?.level, b.stocks.get(&g)?.cap))).collect();
@@ -138,8 +141,14 @@ pub fn top_up(world: &mut World, depot: EntityId) {
         let room = ((cap - have) / good.per_box()).floor().max(0.0) as u32;
         if have < rule.keep {
             let boxes = (((rule.fill - have) / good.per_box()).ceil().max(1.0) as u32).min(room);
-            if boxes > 0 {
-                book(world, depot, good, boxes);
+            let n = if boxes > 0 { book(world, depot, good, boxes) } else { 0 };
+            if n > 0 {
+                let units = n as f64 * good.per_box();
+                world.news.push(crate::protocol::News {
+                    text: format!("Depot ordered {units:.0} {}", format!("{good:?}").to_lowercase()),
+                    sub: format!("under its keep line of {:.0}, −{:.0} as it lands", rule.keep, crate::economy::quote(good, n)),
+                    at: depot,
+                });
             }
         }
     }
@@ -614,8 +623,21 @@ mod tests {
         if let Some(GameObject::Car(c)) = world.objects.get_mut(ferry).map(|e| &mut e.object) {
             c.booked.clear();
         }
+        // Drawn, its rules spend nothing until the mayor gives it standing
+        // orders; then they buy, and the news says what, why and for how much.
+        let booked = |world: &World| match world.objects.get(ferry).map(|e| &e.object) {
+            Some(GameObject::Car(c)) => c.booked.iter().filter(|t| t.good == Some(Good::Crates)).count(),
+            _ => panic!("no ferry"),
+        };
         top_up(&mut world, depot);
-        let Some(GameObject::Car(c)) = world.objects.get(ferry).map(|e| &e.object) else { panic!("no ferry") };
-        assert_eq!(c.booked.iter().filter(|t| t.good == Some(Good::Crates)).count(), 1);
+        assert_eq!((booked(&world), world.news.len()), (0, 0), "a rule bought without standing orders");
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            b.standing = true;
+        }
+        top_up(&mut world, depot);
+        assert_eq!(booked(&world), 1);
+        let news = &world.news[0];
+        assert_eq!((news.text.as_str(), news.at), ("Depot ordered 100 crates", depot));
+        assert_eq!(news.sub, format!("under its keep line of 80, −{:.0} as it lands", crate::economy::quote(Good::Crates, 1)));
     }
 }

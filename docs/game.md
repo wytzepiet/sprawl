@@ -191,7 +191,12 @@ play to say, and the rows are where it is tuned.
 **Nobody waits on a mechanic they were not taught.** The first depot
 comes with a top-up rule already on it, drawn over it like any rule:
 keep above so much timber, from the world. The player sees automation
-before they need to understand it, and can change it. And anything that
+before they need to understand it, and can change it; it spends nothing
+until the player gives the depot standing orders, whose switch says it
+buys by the rules, and every box a rule buys is in the news with its
+price ("Depot ordered 100 crates: under its keep line of 80, −44"). A
+town that buys things on its own is automation the player has turned
+on, never a purse that falls by itself. And anything that
 stalls says why where it stalls, with the fix beside it: a site's card
 says "waiting on 12 timber, none in stock" and offers the order, with
 when it would land.
