@@ -259,7 +259,7 @@ fn verdict_at(
 fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Verdict {
     let need = b.need;
     let mut heap: BinaryHeap<Candidate> = world
-        .revealed
+        .built
         .iter()
         .flat_map(|&c| world.buildings_in(c))
         // A home's kitchen is its residents' alone.

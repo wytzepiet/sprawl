@@ -10,7 +10,6 @@ mod health;
 mod intersection;
 mod mountains;
 mod needs;
-mod road_gen;
 mod network;
 mod persistence;
 mod protocol;

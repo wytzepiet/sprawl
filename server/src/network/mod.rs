@@ -101,7 +101,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
             let mut clock = Clock { now: 0, speed: 1, day_ms: DAY_MS };
             let mut growth = Growth::default();
             let mut terrain_seed: u32 = 0;
-            let mut revealed_bounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
+            let mut island = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
             let mut has_update = false;
 
             for msg in buf.drain(..) {
@@ -113,7 +113,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                         clock = su.clock;
                         growth = su.growth.clone();
                         terrain_seed = su.terrain_seed;
-                        revealed_bounds = su.revealed_bounds;
+                        island = su.island;
                     }
                     other => {
                         let bytes = rmp_serde::to_vec_named(&other).unwrap();
@@ -131,7 +131,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                     clock,
                     growth,
                     terrain_seed,
-                    revealed_bounds,
+                    island,
                 });
                 let bytes = rmp_serde::to_vec_named(&merged).unwrap();
                 if sink.send(Message::Binary(bytes.into())).await.is_err() {

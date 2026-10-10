@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{Build, BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Lump, ServerMessage, StateUpdate, Tool, GridCoord};
+use crate::protocol::{Build, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Lump, ServerMessage, StateUpdate, Tool, GridCoord};
 use crate::world::chunk_of;
 use crate::world::{Link, World};
 
@@ -48,25 +48,16 @@ const BEHIND: Duration = Duration::from_millis(250);
 const STEP_MS: GameTime = 10;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
-/// The starting network gets a spread of kinds so there is somewhere to
-/// drive to and from before the mayor has placed anything.
-const STARTING_MIX: [BuildingKind; 3] = [BuildingKind::House, BuildingKind::Shop, BuildingKind::GasStation];
 
 /// What a save does not keep, rebuilt from what it does, as the game
 /// opens it.
 fn restore(world: &mut World) {
-    world.rebuild_revealed();
     world.rebuild_edges();
     world.rebuild_node_cars();
     world.rebuild_occupied();
     world.restore_spots();
-    world.rebuild_roads_generated();
     world.rebuild_laid();
     world.doors_from_drives();
-    // A saved world may have been revealed further than its roads reach,
-    // if it was saved before this existed.
-    let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-    crate::road_gen::extend_to(world, seed, bounds);
 }
 
 pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
@@ -80,7 +71,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
 
     // Terrain is derived from the seed, so it is regenerated on every start
-    // rather than persisted. A fresh world also gets its roads laid out.
+    // rather than persisted. A fresh world is the bare island: no road is
+    // born with the map.
     let fresh = world.objects.is_empty();
     if let Some(dir) = &fixtures {
         crate::fixtures::build(&mut world, std::path::Path::new(dir));
@@ -91,13 +83,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         world.terrain = crate::terrain::generate(world.terrain_seed);
         println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
         world.raise_mountains();
-    }
-
-    if fresh && fixtures.is_none() {
-        let seed = world.terrain_seed;
-        if let Some(anchor) = crate::road_gen::generate(&mut world, seed) {
-            crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
-        }
     }
 
     // Rebuild edges/indices and schedule car spawns for loaded buildings
@@ -167,12 +152,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         world.terrain_seed = seed;
                         world.terrain = crate::terrain::generate(seed);
                         world.raise_mountains();
-                        if let Some(anchor) = crate::road_gen::generate(&mut world, seed) {
-                            crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
-                        }
                         world.resettle();
                         settle_and_wake(&mut world, &mut events);
-                        world.newly_revealed.clear();
                         // Re-send subscribed chunks for all connected clients
                         let subs: Vec<_> = clients.iter()
                             .filter_map(|(id, cs)| cs.subscribed.map(|b| (*id, b)))
@@ -258,21 +239,6 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         // it.
         crate::health::SIM_TIME.store(sim_time, std::sync::atomic::Ordering::Relaxed);
 
-        // Road follows the survey outward, so there is always a way in from
-        // beyond the frontier. Laid in the same tick as the survey grew, before
-        // anything is flushed, so the network is never seen cut off from the
-        // world in between. Only new chunks cost anything: extend_to skips
-        // whatever it has already laid.
-        // Fixtures have no survey: their streets are all the road there is.
-        if !world.newly_revealed.is_empty() && fixtures.is_none() {
-            let (seed, bounds) = (world.terrain_seed, world.revealed_bounds);
-            crate::road_gen::extend_to(&mut world, seed, bounds);
-            // That road can cross the new frontier, and a road crossing the
-            // frontier is a way out; `reveal_around` stood the doors before
-            // it was laid.
-            world.stand_edges();
-        }
-
         flush_dirty(&mut world, &mut clients, clock(now, speed));
 
         if last_persist.elapsed() >= PERSIST_INTERVAL {
@@ -287,7 +253,7 @@ fn clock(now: GameTime, speed: u32) -> Clock {
 }
 
 /// Every update carries the ambient world state alongside its ops, so a client
-/// never has to ask for the seed or the surveyed extent separately.
+/// never has to ask for the seed or the island's extent separately.
 fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock) -> ServerMessage {
     ServerMessage::Update(StateUpdate {
         ops,
@@ -295,7 +261,7 @@ fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock
         clock: clk,
         growth: crate::economy::growth(world, clk.now),
         terrain_seed: world.terrain_seed,
-        revealed_bounds: world.revealed_bounds,
+        island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
     })
 }
 
@@ -740,10 +706,10 @@ fn handle_set_chunks(
     cs.subscribed = Some(bounds);
 
     // Terrain travels per chunk, so only the chunks that just came into view
-    // are sent, and panning inside a chunk sends nothing at all. Unrevealed
-    // chunks are withheld entirely — that withholding is the fog.
+    // are sent, and panning inside a chunk sends nothing at all. The whole
+    // island is seen from the first minute: there is no fog.
     for &coord in visible_chunks.iter() {
-        if world.revealed.contains(&coord) && cs.known_chunks.insert(coord) {
+        if cs.known_chunks.insert(coord) {
             let _ = cs.sender.send(ServerMessage::TerrainChunk(world.terrain_chunk(coord)));
         }
     }
@@ -793,27 +759,14 @@ fn flush_dirty(
             .into_iter()
             .filter(|(id, ..)| !removed.contains(id))
             .collect();
-    let newly_revealed = std::mem::take(&mut world.newly_revealed);
     // Money that landed, for whoever is looking at where it landed.
     let lumps: Vec<(ChunkCoord, Lump)> = std::mem::take(&mut world.lumps)
         .into_iter()
         .filter_map(|s| Some((chunk_of(world.objects.get(s.building)?.position?), s)))
         .collect();
 
-    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && newly_revealed.is_empty() && lumps.is_empty()
-    {
+    if changed.is_empty() && removed.is_empty() && crossings.is_empty() && lumps.is_empty() {
         return;
-    }
-
-    // A building can reveal ground someone is already looking at, and nothing
-    // about their subscription changed — so the terrain has to be pushed.
-    for cs in clients.values_mut() {
-        let Some(bounds) = cs.subscribed else { continue };
-        for &coord in &newly_revealed {
-            if bounds.contains(coord) && cs.known_chunks.insert(coord) {
-                let _ = cs.sender.send(ServerMessage::TerrainChunk(world.terrain_chunk(coord)));
-            }
-        }
     }
 
     // Group by chunk so a client walks the chunks it subscribes to rather than
@@ -987,6 +940,8 @@ mod tests {
         }
         let street: Vec<GridCoord> = (-2..168).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
+        // It leaves the map a few chunks along: the world's lorries' way in.
+        world.open_exit(world.road_node_at(GridCoord { x: 127, y: 0 }).unwrap());
         world
     }
 
@@ -1123,82 +1078,16 @@ mod tests {
         assert_eq!(world.laid, 0);
     }
 
-    /// A fresh world fills: every household of the starting town has a way
-    /// in from beyond the map. Seed 7's nearest door as the crow flies is on
-    /// a road that never joins the town, and its people waited there for
-    /// ever.
+    /// A fresh world is the bare island: no road is born with the map, and
+    /// nothing stands on it until the mayor builds.
     #[test]
-    fn every_household_of_a_fresh_world_can_drive_in() {
+    fn a_fresh_world_is_the_bare_island() {
         let mut world = World::new();
-        world.terrain_seed = 7;
         world.terrain = crate::terrain::generate(7);
-        let anchor = crate::road_gen::generate(&mut world, 7).expect("no anchor near the middle");
-        crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
-        // As the game opens it: the survey extended to what is revealed,
-        // which lays roads that never join the town, doors and all.
         restore(&mut world);
-        world.stand_edges();
-        world.settle();
-        let ids = world.resident_ids();
-        assert!(!ids.is_empty(), "nobody to move in");
-        for id in ids {
-            let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| e.object.clone()) else { continue };
-            if world.edge.contains(&r.home) {
-                continue;
-            }
-            let home = world.objects.get(r.home).and_then(|e| e.position).unwrap();
-            let entry = world.entry_node_near(home).expect("no door");
-            let to = world.approach(r.home).expect("no way to the door of home");
-            assert!(crate::world::pathfinding::Routes::from(&world, entry).route_to(to).is_some(), "resident {id} has no road in from {entry}");
-        }
-    }
-
-    /// A fresh world is not empty land: the survey's anchors each get a
-    /// starting building beside the road, and a house among them has
-    /// people in it.
-    #[test]
-    fn a_fresh_world_has_a_starting_town() {
-        let mut world = World::new();
-        world.terrain_seed = 7;
-        world.terrain = crate::terrain::generate(7);
-        let anchor = crate::road_gen::generate(&mut world, 7).expect("no anchor near the middle");
-        crate::road_gen::start_town(&mut world, anchor, &STARTING_MIX);
-        assert_eq!(world.all_buildings().len(), STARTING_MIX.len(), "not every starting building was placed");
-        eprintln!("anchor {:?}", anchor);
-        // The town, drawn: streets as dots, roads as bars, plots as letters.
-        for y in (anchor.y - 12)..=(anchor.y + 12) {
-            let row: String = ((anchor.x - 16)..=(anchor.x + 16))
-                .map(|x| {
-                    let t = GridCoord { x, y };
-                    if let Some(&b) = world.occupied.get(&(x, y)) {
-                        return match world.objects.get(b).map(|e| &e.object) {
-                            Some(GameObject::Building(b)) => format!("{:?}", b.kind).chars().next().unwrap(),
-                            _ => '?',
-                        };
-                    }
-                    match world.road_node_at(t).map(|id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road)) {
-                        Some(true) => '=',
-                        Some(false) => '.',
-                        None if t == anchor => '+',
-                        None => ' ',
-                    }
-                })
-                .collect();
-            eprintln!("{row}");
-        }
-        // Every junction is one the mayor could have drawn: no two arms at
-        // an acute angle.
-        for e in world.objects.roads() {
-            let (GameObject::RoadNode(n), Some(p)) = (&e.object, e.position) else { continue };
-            let arms: Vec<(i32, i32)> = n.outgoing.iter().chain(&n.incoming).filter_map(|&a| world.objects.get(a)?.position).map(|q| (q.x - p.x, q.y - p.y)).collect();
-            for (i, a) in arms.iter().enumerate() {
-                for b in &arms[i + 1..] {
-                    assert!(a == b || a.0 * b.0 + a.1 * b.1 <= 0, "acute junction at {:?}: arms {:?} and {:?}", p, a, b);
-                }
-            }
-        }
-        world.settle();
-        assert!(!world.resident_ids().is_empty(), "nobody moved into the starting town");
+        world.resettle();
+        assert!(world.objects.roads().next().is_none(), "a road was born with the map");
+        assert!(world.all_buildings().is_empty() && world.resident_ids().is_empty(), "something stood on the island");
     }
 
     /// Where a car stands on the map, and how fast it goes along its route.
@@ -1715,14 +1604,6 @@ mod tests {
             build(&mut world, x, kind, 1);
             x += crate::blueprint::plot(kind, 0).size.0 as i32 + 1;
         }
-        // The street runs on well past anything built on it, so it leaves
-        // the survey: the world's lorries need a way in.
-        for y in -6..14 {
-            for x in 170..400 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world.place_road_path(&(167..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         // Started as the game starts one.

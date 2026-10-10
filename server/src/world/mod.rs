@@ -16,7 +16,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use crate::engine::GameTime;
 
 use crate::protocol::{
-    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkBounds, ChunkCoord, EdgeKey, EntityId,
+    CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, ChunkCoord, EdgeKey, EntityId,
     GameObject, TILE_ABSENT, TerrainChunk, TerrainType,
 };
 use crate::engine::tracked::Tracked;
@@ -85,20 +85,10 @@ pub struct World {
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
     pub chunk_crossings: Vec<(EntityId, ChunkCoord, ChunkCoord)>,
-    /// Chunks the world has been revealed in. Terrain outside this set is not
-    /// sent, so looking somewhere is not enough to see it — a building has to
-    /// have reached. Derived from building positions, like every other index.
-    pub revealed: HashSet<ChunkCoord>,
-    /// Chunks revealed since the last flush, for pushing terrain to clients
-    /// already looking at them.
-    pub newly_revealed: Vec<ChunkCoord>,
-    /// Extent of `revealed`. The client clamps the camera to it, so it has to
-    /// know the whole survey, not just the part it happens to be looking at.
-    pub revealed_bounds: ChunkBounds,
-    /// Chunks whose procedural roads have been laid. Derived at startup from
-    /// where road already stands, like every other index — a chunk with road
-    /// in it has been through this once.
-    pub roads_generated: HashSet<ChunkCoord>,
+    /// Chunks a building has stood in: where a search for one looks. It
+    /// never shrinks, and a chunk a building has left is looked in for
+    /// nothing. Derived from the buildings at load, like every other index.
+    pub built: HashSet<ChunkCoord>,
     /// Tile → building covering it. Buildings span several tiles but carry one
     /// position, so without this "what is on this tile" would only ever find a
     /// building at its origin corner. Derived, like every other index.
@@ -121,14 +111,6 @@ pub struct World {
     /// `settle`: everything a build changed, and all `settle` reads.
     pub unsettled: BTreeSet<EntityId>,
 }
-
-/// Marks an empty box: max below min, so the first reveal replaces it outright.
-const NO_BOUNDS: ChunkBounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
-
-/// How far a building sees, in tiles. Generous on purpose: the frontier has to
-/// stay ahead of what you have built, or you are siting blind — a chunk and a
-/// half beyond, so there is always ground in view to build the next thing on.
-const REVEAL_RADIUS: i32 = 80;
 
 use crate::protocol::GridCoord;
 
@@ -168,13 +150,10 @@ impl World {
             terrain: HashMap::new(),
             peaks: Default::default(),
             chunk_crossings: Vec::new(),
-            revealed: HashSet::new(),
-            newly_revealed: Vec::new(),
-            revealed_bounds: NO_BOUNDS,
+            built: HashSet::new(),
             occupied: HashMap::new(),
             roads: HashMap::new(),
             calls: Vec::new(),
-            roads_generated: HashSet::new(),
             edge: BTreeSet::new(),
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
@@ -203,13 +182,10 @@ impl World {
             terrain: HashMap::new(),
             peaks: Default::default(),
             chunk_crossings: Vec::new(),
-            revealed: HashSet::new(),
-            newly_revealed: Vec::new(),
-            revealed_bounds: NO_BOUNDS,
+            built: HashSet::new(),
             occupied: HashMap::new(),
             roads: HashMap::new(),
             calls: Vec::new(),
-            roads_generated: HashSet::new(),
             edge: BTreeSet::new(),
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
@@ -240,10 +216,6 @@ impl World {
                 }
             })
             .collect();
-        for (id, _) in &entries {
-            let beyond = self.objects.get(*id).and_then(|e| e.position).is_some_and(|p| !self.revealed.contains(&chunk_of(p)));
-            self.network.set_exit(*id, beyond);
-        }
         for (id, outgoing) in &entries {
             for neighbor in outgoing {
                 let len = self.segment_length(*id, *neighbor);
@@ -365,8 +337,7 @@ impl World {
     /// search finds one like any other shop; see `blueprint.rs`.
     ///
     /// Derived from the road graph rather than remembered, like every other
-    /// index: the frontier moves as the map is revealed and the doors move
-    /// with it, and running this twice changes nothing.
+    /// index: running this twice changes nothing.
     pub fn stand_edges(&mut self) {
         let doors: HashSet<EntityId> = self
             .network
@@ -517,93 +488,6 @@ impl World {
         }
     }
 
-    /// Reveal everything within REVEAL_RADIUS of a tile, chunk-granular.
-    ///
-    /// Monotonic: a chunk never leaves the set. Terrain does not change, so
-    /// re-hiding it would only make the map flicker as a city's shape shifts.
-    pub fn reveal_around(&mut self, pos: GridCoord) {
-        let min = chunk_of(GridCoord { x: pos.x - REVEAL_RADIUS, y: pos.y - REVEAL_RADIUS });
-        let max = chunk_of(GridCoord { x: pos.x + REVEAL_RADIUS, y: pos.y + REVEAL_RADIUS });
-        let mut moved = false;
-        for cy in min.cy..=max.cy {
-            for cx in min.cx..=max.cx {
-                let coord = ChunkCoord { cx, cy };
-                if self.revealed.insert(coord) {
-                    moved = true;
-                    self.newly_revealed.push(coord);
-                    self.grow_bounds(coord);
-                    // Road here is surveyed now, not the world beyond. The
-                    // road that runs on past the new frontier is laid before
-                    // any client hears of this, so nothing flashes red.
-                    let here: Vec<EntityId> = self.spatial.get(&coord).into_iter().flatten().copied().collect();
-                    for id in here {
-                        if matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(_))) {
-                            let turning = self.network.set_exit(id, false);
-                            self.mark_joined(turning);
-                        }
-                    }
-                }
-            }
-        }
-        // The frontier moved, so the doors onto the world beyond it have.
-        if moved {
-            self.stand_edges();
-        }
-    }
-
-    fn grow_bounds(&mut self, c: ChunkCoord) {
-        let b = &mut self.revealed_bounds;
-        if b.max_cx < b.min_cx {
-            *b = ChunkBounds { min_cx: c.cx, min_cy: c.cy, max_cx: c.cx, max_cy: c.cy };
-            return;
-        }
-        b.min_cx = b.min_cx.min(c.cx);
-        b.min_cy = b.min_cy.min(c.cy);
-        b.max_cx = b.max_cx.max(c.cx);
-        b.max_cy = b.max_cy.max(c.cy);
-    }
-
-    /// Rebuild the revealed set from building positions on startup. Nothing is
-    /// newly revealed from a client's point of view, so the queue is dropped.
-    /// Which chunks already hold road, so generation does not lay it twice.
-    pub fn rebuild_roads_generated(&mut self) {
-        let chunks: Vec<ChunkCoord> = self
-            .objects
-            .roads()
-            .filter(|e| matches!(e.object, GameObject::RoadNode(_)))
-            .filter_map(|e| e.position.map(chunk_of))
-            .collect();
-        self.roads_generated.extend(chunks);
-    }
-
-    /// Every road link in the world, as the path search reads them.
-    pub fn road_edge_set(&self) -> HashSet<((i32, i32), (i32, i32))> {
-        let mut out = HashSet::new();
-        for entry in self.objects.roads() {
-            let GameObject::RoadNode(ref node) = entry.object else { continue };
-            let Some(a) = entry.position else { continue };
-            for id in node.outgoing.iter().chain(node.incoming.iter()) {
-                if let Some(b) = self.objects.get(*id).and_then(|e| e.position) {
-                    out.insert(((a.x, a.y), (b.x, b.y)));
-                }
-            }
-        }
-        out
-    }
-
-    pub fn rebuild_revealed(&mut self) {
-        let positions: Vec<GridCoord> = self
-            .objects
-            .iter()
-            .filter(|e| matches!(e.object, GameObject::Building(_)))
-            .filter_map(|e| e.position)
-            .collect();
-        for pos in positions {
-            self.reveal_around(pos);
-        }
-        self.newly_revealed.clear();
-    }
-
     /// Serialise one chunk's tile types, including the skirt the client needs
     /// to derive corner shapes. Tiles outside the generated world are marked
     /// absent so the client renders nothing there.
@@ -671,9 +555,8 @@ mod tests {
     use super::*;
     use crate::protocol::BuildingKind;
 
-    /// A long road across open ground, and one house on it. Revealing the
-    /// ground around the house leaves the far end of the road beyond the
-    /// survey, which is what a road exit is.
+    /// A long road across open ground, one house on it, and its far end
+    /// opened as a way off the map.
     fn frontier() -> (World, EntityId) {
         let mut world = World::new();
         for y in -4..4 {
@@ -683,37 +566,19 @@ mod tests {
         }
         world.place_road_path(&(-2..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
         let house = world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).expect("a driveway");
+        let end = world.road_node_at(GridCoord { x: 399, y: 0 }).unwrap();
+        world.open_exit(end);
         (world, house)
     }
 
-    /// One building stands where the road crosses out of the survey, and
-    /// only there: the road runs on for chunks past it, and none of that is
-    /// a door.
+    /// One building stands where the road leaves the map, and only there.
     #[test]
     fn the_edge_stands_where_the_road_leaves_the_map() {
         let (world, _) = frontier();
         assert_eq!(world.edge.len(), 1, "one road out, one door");
         let door = *world.edge.iter().next().unwrap();
         let node = world.street_of(door).expect("the door stands on the road");
-        assert!(world.network.is_exit(node), "the door is beyond the survey");
-        let pos = world.objects.get(door).unwrap().position.unwrap();
-        assert!(!world.revealed.contains(&chunk_of(pos)), "the door is past the frontier");
-        assert!(
-            world.revealed.contains(&chunk_of(GridCoord { x: pos.x - 1, y: pos.y })),
-            "and the tile behind it is inside",
-        );
-    }
-
-    /// Build out toward it and the frontier moves; the door moves with it,
-    /// rather than piling up behind.
-    #[test]
-    fn the_door_moves_with_the_frontier() {
-        let (mut world, _) = frontier();
-        let was = world.objects.get(*world.edge.iter().next().unwrap()).unwrap().position.unwrap();
-        world.place_on_street(GridCoord { x: 120, y: 1 }, BuildingKind::House).expect("a driveway");
-        assert_eq!(world.edge.len(), 1, "one road out is still one door");
-        let now = world.objects.get(*world.edge.iter().next().unwrap()).unwrap().position.unwrap();
-        assert!(now.x > was.x, "the door stayed at {was:?} while the survey grew");
+        assert!(world.network.is_exit(node), "the door is the way out");
     }
 
     /// Standing them again changes nothing: it is derived from the roads,
@@ -725,19 +590,5 @@ mod tests {
         world.stand_edges();
         world.stand_edges();
         assert_eq!(world.edge.iter().copied().collect::<Vec<_>>(), before);
-    }
-
-    /// A world nobody has surveyed has no doors: every road is beyond the
-    /// edge, so no road crosses out of it.
-    #[test]
-    fn an_unsurveyed_world_has_no_doors() {
-        let mut world = World::new();
-        for x in -4..40 {
-            world.terrain.insert((x, 0), TerrainType::Grass);
-        }
-        world.place_road_path(&(0..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
-        world.stand_edges();
-        assert!(world.edge.is_empty());
-        assert!(world.nearest_edge(GridCoord { x: 0, y: 0 }).is_none());
     }
 }

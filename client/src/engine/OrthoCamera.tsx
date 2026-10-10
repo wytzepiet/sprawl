@@ -45,7 +45,7 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
 
 export function OrthoCamera() {
   const { scene, canvas, beforeRender, afterRender } = useEngine();
-  const { send, revealedBounds } = useGame();
+  const { send, island } = useGame();
 
   const camera = createFreeCamera({ x: 0, y: 0, z: 10 }, { x: 0, y: 0, z: 0 });
   camera.nearPlane = 1;
@@ -120,13 +120,12 @@ export function OrthoCamera() {
   updateProjection();
 
   /**
-   * Hold the view inside the surveyed world plus a chunk of margin. Panning off
-   * into unsurveyed ground would only ever show empty grid, and the fog mask is
-   * finite — this is what keeps the camera inside it.
+   * Hold the view over the island's map plus a margin: past it there is
+   * nothing to see.
    */
-  function clampToSurveyed() {
-    const b = revealedBounds();
-    if (b.max_cx < b.min_cx) return; // nothing surveyed yet
+  function clampToIsland() {
+    const b = island();
+    if (b.max_cx < b.min_cx) return; // not heard yet
 
     const m = PAN_MARGIN_CHUNKS;
     const minX = (b.min_cx - m) * CHUNK_SIZE;
@@ -181,9 +180,7 @@ export function OrthoCamera() {
   function sendViewportIfChanged() {
     const chunk = (v: number) => Math.floor(v / CHUNK_SIZE);
 
-    // A margin beyond the viewport: the fog fade is derived from which chunks
-    // exist, so without it the client cannot tell "unrevealed" from "not asked
-    // for yet" and paints a frontier along the edge of the screen.
+    // A margin beyond the viewport, so the ground is there before it is seen.
     const PAD = 2;
     const minCx = chunk(camera.position.x - viewHalf * aspect()) - PAD;
     const maxCx = chunk(camera.position.x + viewHalf * aspect()) + PAD;
@@ -220,7 +217,7 @@ export function OrthoCamera() {
       aim(camera.position.x, camera.position.y);
       updateProjection();
     }
-    clampToSurveyed();
+    clampToIsland();
     sendViewportIfChanged();
     if (perspective && !debugMode) lean(1);
   });
