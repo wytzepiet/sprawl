@@ -4,11 +4,10 @@ import { eye } from "../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { clockAt, sea, until } from "../state/sea";
 import { missions } from "../state/missions";
-import { setTool } from "./buildMode";
+import { hold, setTool } from "./buildMode";
 import { select, selected } from "../state/selection";
 import { track } from "./Shipments";
 import { Btn } from "./kit";
-import { myMarks } from "../state/drafts";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import type { BuildingKind, Key, Mission, Step, TerrainType } from "../generated";
 
@@ -161,14 +160,6 @@ function Act(props: { step: Step }) {
   const { send } = useGame();
   const g = () => props.step.goal;
   const depot = () => props.step.at;
-  /** Said under a step while something of it is drawn and not built. */
-  const drafted = () => (
-    <Show when={myMarks().length > 0}>
-      <p>
-        Drawn in blue, it is only a draft: <b>Build</b>, by the toolbar, or Enter, makes it real.
-      </p>
-    </Show>
-  );
   /** The depot's card, open on what the step changed there. */
   const on = (message: Parameters<typeof send>[0]) => () => {
     send(message);
@@ -195,20 +186,10 @@ function Act(props: { step: Step }) {
     case "Stands": {
       const kind = goal.data;
       const go = () => GROUND[kind] && toward(GROUND[kind]);
-      return (
-        <>
-          <Btn onClick={() => (go(), setTool({ Building: kind }))}>Take the {BLUEPRINTS[kind].label.toLowerCase()}</Btn>
-          {drafted()}
-        </>
-      );
+      return <Btn onClick={() => (go(), hold(kind))}>Take the {BLUEPRINTS[kind].label.toLowerCase()}</Btn>;
     }
     case "Joined":
-      return (
-        <>
-          <Btn onClick={() => setTool("Street")}>Take the street</Btn>
-          {drafted()}
-        </>
-      );
+      return <Btn onClick={() => setTool("Street")}>Take the street</Btn>;
     case "Fetched":
       return (
         <Show
@@ -220,12 +201,7 @@ function Act(props: { step: Step }) {
         </Show>
       );
     case "Settled":
-      return (
-        <>
-          <Btn onClick={() => setTool({ Building: "House" })}>Take a house</Btn>
-          {drafted()}
-        </>
-      );
+      return <Btn onClick={() => hold("House")}>Take a house</Btn>;
     case "Standing":
       return <Btn big onClick={on({ type: "Standing", data: { depot: depot()!, on: true } })} color={BLUEPRINTS.Depot.color} disabled={depot() === null}>Give it standing orders</Btn>;
     case "Keeps": {

@@ -3,10 +3,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::protocol::{GameObjectEntry, GameObject};
-use std::collections::BTreeMap;
 
-use crate::drafts::Stroke;
-use crate::protocol::OwnerId;
 use crate::tree::Cell;
 
 const SCHEMA: &str = "
@@ -20,10 +17,7 @@ CREATE TABLE IF NOT EXISTS metadata (
     key TEXT PRIMARY KEY,
     value INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS drafts (
-    owner INTEGER PRIMARY KEY,
-    strokes TEXT NOT NULL
-);
+DROP TABLE IF EXISTS drafts;
 CREATE TABLE IF NOT EXISTS missions (
     id INTEGER PRIMARY KEY,
     data TEXT NOT NULL
@@ -46,8 +40,6 @@ pub struct Meta {
     pub treasury: f64,
     /// The nodes of the tree taken, one metadata row each.
     pub taken: Vec<Cell>,
-    /// Each player's draft, a row each.
-    pub drafts: BTreeMap<OwnerId, Vec<Stroke>>,
     /// The town's missions, open and finished, a row each in order.
     pub missions: Vec<crate::missions::Mission>,
 }
@@ -127,16 +119,6 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
         })
         .unwrap_or_default();
 
-    // A draft this build cannot read is dropped: it is only ever an
-    // unbuilt sketch.
-    let drafts = conn
-        .prepare("SELECT owner, strokes FROM drafts")
-        .and_then(|mut stmt| {
-            stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
-                .map(|rows| rows.filter_map(|r| r.ok()).filter_map(|(o, json)| Some((o as OwnerId, serde_json::from_str(&json).ok()?))).collect())
-        })
-        .unwrap_or_default();
-
     // A mission this build cannot read is dropped, and opens again if
     // its row still exists.
     let missions = conn
@@ -150,7 +132,6 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
     (
         entries,
         Meta {
-            drafts,
             missions,
             next_id,
             terrain_seed,
@@ -192,15 +173,6 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
     for &id in removed {
         tx.execute("DELETE FROM objects WHERE id = ?1", [id])
             .expect("failed to delete object");
-    }
-
-    tx.execute("DELETE FROM drafts", []).expect("failed to clear drafts");
-    for (owner, strokes) in &meta.drafts {
-        tx.execute(
-            "INSERT INTO drafts (owner, strokes) VALUES (?1, ?2)",
-            rusqlite::params![*owner as i64, serde_json::to_string(strokes).expect("failed to serialize")],
-        )
-        .expect("failed to save a draft");
     }
 
     tx.execute("DELETE FROM missions", []).expect("failed to clear missions");
@@ -276,25 +248,5 @@ mod tests {
         let (_, meta) = load(&path);
         let _ = std::fs::remove_file(&path);
         assert_eq!(serde_json::to_string(&meta.missions).unwrap(), serde_json::to_string(&missions).unwrap());
-    }
-
-    /// A draft outlives a restart, and one rubbed out is gone after it.
-    #[test]
-    fn a_draft_is_saved() {
-        use crate::drafts::Mark;
-        use crate::protocol::{Build, Tool};
-        let path = std::env::temp_dir().join(format!("sprawl-drafts-{}", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let at = |x, y| GridCoord { x, y };
-        let mark = Mark { step: Build { tool: Tool::Street, from: at(1, 2), to: at(2, 2) }, stuck: true };
-        let drafts = BTreeMap::from([(7, vec![vec![mark]])]);
-        save(&path, &[], &[], Meta { drafts, ..Meta::default() });
-        let (_, meta) = load(&path);
-        assert_eq!(meta.drafts[&7][0][0].step.to, at(2, 2));
-        assert!(meta.drafts[&7][0][0].stuck);
-        save(&path, &[], &[], Meta::default());
-        let (_, meta) = load(&path);
-        let _ = std::fs::remove_file(&path);
-        assert!(meta.drafts.is_empty(), "a discarded draft came back");
     }
 }

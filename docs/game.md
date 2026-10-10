@@ -83,12 +83,12 @@ Intersections are the skill ceiling: roundabouts, merges, interchanges are
 built from these three things, and your steel lorries share them with the
 school run.
 
-**Roads are instant.** A committed road is there at once, with no crew to
+**Roads are instant.** A road is laid as it is drawn, with no crew to
 wait for, because the network is the thing you iterate on: a shortcut, a
 junction drawn again, and the traffic answering in the same minute. A
 road that waited on a paving crew would also make a jam slow to fix, the
 crew stuck in the jam. What a road takes comes straight out of the depots' stock as it
-is committed: gravel for its base and asphalt for its top, and concrete
+is laid: gravel for its base and asphalt for its top, and concrete
 and steel for a bridge or an overpass, which is the big project you stock
 a big depot for. As built, a tile takes a unit of stone off the nearest
 depot's shelf, and what the depots lack the world sends express, dear,
@@ -96,91 +96,70 @@ so a road is never refused (`trade.md` §Building materials). Demolition
 is to give back part of what a road took, so trying things is never
 punished; it does not yet.
 
-## Drafts
+## Undo
 
-**Everything you place or take away is a draft until you commit it.** A
-swipe of the finger is not a hundred tonnes of concrete, and a swipe of
-the demolisher is not half the town. A drafted road or building stands
-on its tiles, blue and translucent, and reserves them, so in a shared
-town nobody else builds there; it joins what it touches, so a house beside
-a drafted street is fine; and it does nothing yet: no traffic on it, nobody
-living in it, no call from it. A drafted demolition is a red tint on the
-real thing, which goes on working until the commit. Beside the draft
-stands its bill: each material it takes against what the depots hold,
-short in red, and the coins for anything that has to be bought in.
+**What the hand does is done at once, and the last few things it did can
+be taken back.** A road is laid as it is drawn and a building is a site
+the moment it is let go; there is no draft and no second step. Instead,
+an Undo button by the toolbar, and Ctrl or Cmd Z, take back the
+player's last action: everything one drag of road laid, a building
+placed, or a demolition. Pressed again, the one before, and so on back.
 
-**Commit** makes it real in one stroke: roads first, then buildings, then
-the demolitions, each as if it had been drawn live, and round again while
-anything more goes in, so a house drafted over one drafted to come down
-goes up once the old one is gone. Roads are laid and draw their
-materials; buildings become sites; demolitions come down. What the stock
-cannot cover the bill offers to order, with when it would land, and what
-no longer fits (someone built there meanwhile) stays a draft, marked.
-Undo takes back the last stroke and discard the lot. A draft is the
-player's own and outlives a restart.
+- **What an action is.** A drag is one: every step of a drag of road
+  or of the demolisher's drag, each from where the last ended, is one
+  action; a building placed, or a tap of the demolisher, another.
+- **It gives back what was paid.** The stone a road took goes back on
+  the shelves it came off, and the coins it paid express go back to
+  the purse. A building taken back gives what its site had been
+  brought, and what was on a van on its way to it, to the nearest
+  depot, and what no shelf has room for in coins at the world's price;
+  one that stood, all it took, unless it stood for nothing (the town's
+  first depot). A demolition taken back stands the building again as
+  it stood, its stock and its rules, for nothing.
+- **For five minutes.** An action can be taken back for a quarter of the
+  town's day, five minutes of play. Not a count: what makes an action
+  no longer a slip is that the town has started to use it, and that
+  takes time, not other actions. Five minutes is long enough to see a
+  mistake and short enough that undo is never a demolition with all
+  the materials back.
+- **In order, or not at all.** Undo takes back only the newest action,
+  so what a player built on their own road goes before the road does.
+  What someone else did since is never taken back with it: an action
+  something since rests on is refused, with why, and stays (a street
+  another player's building now opens onto; ground a demolition would
+  stand again on, built on since). A building someone else took down
+  meanwhile has nothing left to undo: it goes from the history, said so,
+  and the next press goes on before it.
+- **Per player, on the server, and only while it runs.** Each player's
+  history is the server's (`server/src/undo.rs`, `World::undo`), and a
+  restart forgets it. What it says, done or refused, comes back to that
+  player alone, as a line of news.
 
-Why it is back after being shelved (`shelved.md`): once building costs
-materials the second step buys something, the bill; and this one is
-lighter. A draft only takes up space. It is never part of the road graph,
-a draft building has no door, and so nothing that runs the town has to
-know drafts exist.
-
-**Built, 2026-10-10** (`server/src/drafts.rs`, `client/src/ui/Bill.tsx`,
-`client/src/engine/Ghosts.tsx`). A draft is nothing but the steps of the
-hand as they were taken, a drag to a stroke, kept per player
-(`World::drafts`, its own table in the save). There is no draft road node
-or draft building anywhere: the server never works out what a draft
-*would* be, it replays the steps through the handler that builds live
-when it is committed (`take_step`), and what that handler refuses is the
-step that no longer fits. The one rule of where the hand may go is still
-the live one; at the moment of drafting the server only asks that a step
-is on the map, onto ground it could stand on, and on nobody else's draft.
-The client's hand sees its own draft as built, so its dots let a house be
-drawn beside a drafted street (`may.ts`).
-
-- **The second step is nearly free.** The moment anything is drafted the
-  bill appears over the toolbar: what is drawn in words ("15 road, a
-  harbour, a depot, 3 houses"), each material against what the town has
-  (in the depots or on its way, less what standing sites still wait
-  for), short in red, the order for the shortfall at the harbour one tap
-  away, and Build. Enter builds, Ctrl or Cmd Z takes back a stroke, Esc
-  with nothing in hand drops the draft. Built, the ghosts flash pale and
-  sink into their sites.
-- **The demolisher rubs a draft out**: a tap on one's own drafted tile
-  takes back what lies on it, a drag across a drafted road cuts that
-  link, and a tap on a demolition drafted takes it back.
-- **The first depot is free on the bill**, as it stands at once; a
-  harbour takes nothing.
-- **A road is laid at Build**, on the stone the depots hold then (a unit
-  a tile, free before there is a harbour); what they lack comes express
-  at twice the price, and the bill says so in coins, beside the stone
-  line, rather than offering a box that would land after the road is
-  laid. Its boxes are for the buildings' stone, which can wait. What
-  Build paid express is in the news.
-- **A stroke is a drag**, each step from where the last ended, and is
-  built so: a step waits for the one before it, and what follows a step
-  that no longer fits stays drafted with it. A road whose first step is
-  refused is never laid from its second, cut off and paid for.
-- **The harbour is placed whole**, at a click: its three-by-three plot
-  round the tile, turned to face the sea, shown under the pointer in
-  green where the ferry would berth and red where it would not, with
-  why (`may.ts` `placing`, the server's `World::whole` and `berth_at`).
-  It is refused, drafted or built, where no way round berths, and it
-  comes down whole, so there is never part of one. Drafted, it brings a
-  street of its own from its park to the nearest street in reach, or a
-  stub inland, laid before it in the same stroke (`drafts::stub`).
-- **Anyone's draft is drawn**: one's own blue, a stuck step amber,
-  another player's grey, as land taken.
-- `bun run act` drafts each command and commits it, as the bill's Build
-  would; `act draft …` leaves it drafted, and says the bill; `act
-  commit | undo | discard`. `PLAYER=<id> bun run look --ui` sees a draft
-  as its owner does.
+`bun run act undo` presses it.
 
 ## Buildings
 
 **You place every building, and every building is built from materials
-delivered to it.** Pick a kind from a hotkey menu, tap beside a street,
-and it snaps to the frontage with its lot behind. What stands is a site:
+delivered to it.** A building is a fixed shape, its kind's plot: the
+building and, for a kind with vehicles, its yard on the street side
+(`blueprint.rs` `size` and `lot`). The toolbar's Build opens a menu of
+every kind, each with a picture of it as the town draws it, its name and
+what it is built of. Press on one and drag it onto the map: the menu
+goes, and where it was is a place to let it go and put it back. While
+it is in hand the dots show every place it fits; it turns itself to face
+the nearest street, a harbour to face the sea, and R, the wheel or two
+fingers twisting turn it by hand; the town is drawn as it would be with
+it standing, its drive joined and its pavement laid, the building in
+blue (`TownLayer.hold`); and beside it are what it takes against what
+the depots hold, and, where it may not go, why ("No street before its
+yard", "No berth: its back is not on the sea"). Let go where it fits
+and it is placed at once, a site; anywhere else, nothing happens. The
+rule of where it fits is the server's (`World::fit`), mirrored by the
+hand (`may.ts` `fit`). It is taken down whole, with one tap of the
+demolisher. Its look still joins it to what is round it: a house beside
+a house is a row (`town/layer.ts`).
+
+What stands is a site:
 a dotted outline with one stock, the materials it needs, and a call like
 a shop with an empty shelf. Deliveries land on it, and when the stock is
 full the building stands. Build time is the deliveries. The materials
@@ -325,7 +304,7 @@ anything the map cannot show by hand.
 
 ## The opening
 
-1. Build a harbour on the coast: one click, with its own street.
+1. Build a harbour on the coast: dragged there whole, with its own street.
 2. Build a depot.
 3. Connect them with a road.
 4. A shipment arrives: the starter pack, trailers off the first ferry.

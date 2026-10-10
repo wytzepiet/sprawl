@@ -18,7 +18,7 @@ pub enum Command {
     ClientConnect {
         id: ClientId,
         /// Who is behind the socket. Outlives it, so a reload rejoins as the
-        /// same person and finds their drafts still standing.
+        /// same person and finds their history to undo.
         owner: OwnerId,
         sender: mpsc::UnboundedSender<ServerMessage>,
     },
@@ -104,7 +104,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
             let mut clock = Clock { now: 0, speed: 1, day_ms: DAY_MS };
             let mut growth = Growth::default();
             let mut sea = crate::protocol::Sea::default();
-            let mut drafts = Vec::new();
             let mut missions = Vec::new();
             let mut terrain_seed: u32 = 0;
             let mut island = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
@@ -119,7 +118,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                         clock = su.clock;
                         growth = su.growth.clone();
                         sea = su.sea;
-                        drafts = su.drafts;
                         missions = su.missions;
                         terrain_seed = su.terrain_seed;
                         island = su.island;
@@ -140,7 +138,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                     clock,
                     growth,
                     sea,
-                    drafts,
                     missions,
                     terrain_seed,
                     island,

@@ -419,6 +419,13 @@ pub fn bought(world: &mut World, at: EntityId, coins: f64, now: GameTime) {
     world.lumps.push(Lump { building: at, coins: -coins, gdp: 0.0, at: now, good: None, units: 0.0 });
 }
 
+/// Coins given back for something taken back (`undo.rs`): into the
+/// purse, a lump where they land.
+pub fn refunded(world: &mut World, at: EntityId, coins: f64, now: GameTime) {
+    world.treasury += coins;
+    world.lumps.push(Lump { building: at, coins, gdp: 0.0, at: now, good: None, units: 0.0 });
+}
+
 /// A box from the world landed in a harbour's park: the town pays for
 /// what is in it, at the harbour, as far as the treasury goes. The
 /// starter pack is the world's gift and costs nothing.

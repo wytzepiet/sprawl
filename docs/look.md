@@ -136,8 +136,10 @@ The code is `client/src/engine/town/`:
   a town centre is paved shop to shop, a suburb is green with a sidewalk
   round each block, and the grass left between blocks has soft edges. Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
-- **Buildings are painted**, a tile at a time as roads are drawn, with a
-  brush per kind (`town/brush.ts`). Each kind has a program: the smallest
+- **Buildings are painted** in the sandbox, a tile at a time as roads
+  are drawn, with a brush per kind (`town/brush.ts`); in the game a
+  building is placed whole, its kind's plot (`game.md` §Buildings, and
+  `shelved.md` for why painting went). Each kind has a program: the smallest
   rectangle it works in, fronting a street along its long side, and how far
   from a street it may reach (a house: one tile, the frontage only; a depot:
   three by two, and back six). A stroke is completed as it is painted to the
@@ -291,7 +293,10 @@ building's tiles, a street, a junction, or a free tile):
 ## Into the game
 
 Plan, 2026-10-03. Decided by the mayor the same day: building is
-dragging, and a building is the tiles it was painted on.
+dragging, and a building is the tiles it was painted on. Set aside
+2026-10-10 after the player's playtest: a building is placed whole from
+a build menu, its look still joined to its neighbours by the grid
+(`game.md` §Buildings, `shelved.md`); what follows is how it got here.
 
 Built 2026-10-04, steps 1 to 4: one command and a toolbar, a building
 its tiles, the rings gone, and the game drawn by the town grid, a road

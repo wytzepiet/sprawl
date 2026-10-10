@@ -4,7 +4,8 @@ import type { Theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
 import { asphalt } from "./dressing";
-import type { Pt } from "./footprint";
+import { defaultJoins, type Pt } from "./footprint";
+import { formOf } from "./mass";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type Tile, type Town } from "./grid";
 import { PROP_KINDS, type Paint } from "./roof";
@@ -38,8 +39,6 @@ export interface Snapshot {
   /** Every road tile: x, y, its node, whether a road rather than a street,
    *  and the nodes it leads to and from. */
   roads: [number, number, number, boolean, number[], number[]][];
-  /** Each building, and the tiles of the row the hand drew it in. */
-  joined: [number, [number, number][]][];
   /** Each building's door: its tile, and the way to its street. */
   doors: [number, number, number, number][];
   /** Lines painted on the yards where the game says, on the map: a
@@ -98,7 +97,6 @@ export function drawChunks(s: Snapshot): Drawing {
     roads.set(`${x},${y}`, { id, road, outgoing, incoming });
     if (!tiles.has(`${x},${y}`)) tiles.set(`${x},${y}`, ROAD);
   }
-  const joined = new Map(s.joined);
   const doors = new Map(s.doors.map(([x, y, dx, dy]) => [`${x},${y}`, [dx, dy] as [number, number]]));
   const [bw] = [box[2] - box[0] + 1];
   const groundAt = (x: number, y: number) => s.kinds[s.ground[(y - box[1]) * bw + (x - box[0])]];
@@ -128,22 +126,24 @@ export function drawChunks(s: Snapshot): Drawing {
   const beyond = (c: number, r: number) => tiles.get(`${x1 - c},${y1 - r}`);
   const tileOn = (c: number, r: number): Tile => (inside(c, r) ? grid[r * w + c] : (beyond(c, r) ?? OPEN));
   const roadOn = (c: number, r: number) => (inside(c, r) ? nodes[r * w + c] : beyond(c, r) === ROAD ? roads.get(`${x1 - c},${y1 - r}`) : undefined);
+  const linked = (c0: number, r0: number, c1: number, r1: number) => {
+    const [a, b] = [road(c0, r0), road(c1, r1)];
+    return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
+  };
+  const kinJoin = defaultJoins({ w, h, tile, linked, through: () => false });
   const whole: Town = {
     w,
     h,
     tile,
-    linked: (c0, r0, c1, r1) => {
-      const [a, b] = [road(c0, r0), road(c1, r1)];
-      return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
-    },
+    linked,
     through: (c, r) => !!road(c, r)?.road,
-    // A building is joined in itself, and to the row the hand drew it
-    // in (`Building::joined`); tiles painted apart stand apart.
+    // A building is joined in itself, and to its own kind beside it as
+    // a fixture's are, so houses side by side are a row; a kind with a
+    // yard stands apart, its yard its own.
     joins: (c0, r0, c1, r1) => {
-      const [a, b] = [tile(c0, r0).id, tile(c1, r1).id];
-      if (a === undefined || b === undefined) return false;
-      const [x, y] = [x1 - c1, y1 - r1];
-      return a === b || !!joined.get(a)?.some(([tx, ty]) => tx === x && ty === y);
+      const [a, b] = [tile(c0, r0), tile(c1, r1)];
+      if (a.id === undefined || b.id === undefined) return false;
+      return a.id === b.id || (!formOf(a).yard && kinJoin(c0, r0, c1, r1));
     },
     // Turned half round, so the way to the street is too.
     door: (c, r) => turned(doors.get(`${x1 - c},${y1 - r}`)),

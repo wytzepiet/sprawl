@@ -200,6 +200,42 @@ every check of "is this a draft" in the simulation. What made the old
 one unintuitive is answered by the bill appearing the moment anything is
 drawn, with Build on Enter: whether that is enough is for play to say.
 
+**Shelved again, 2026-10-10.** Play said it was not enough. The player
+tested the opening by hand and found every build a two-step act again,
+the bill or no bill, and twice took a blue draft for something built.
+And the drafted world was a second world after all: the hand's dots had
+to see the player's own draft as standing and everyone else's as taken,
+the bill had to guess what a commit would found, and a stroke had to
+replay as a chain. What replaced it is undo (`game.md` §Undo): a road
+is laid as it is drawn and a building placed as it is let go, and the
+player's last few minutes can be taken back, with what they paid. The
+bill's one good idea, what a building takes against what the depots
+hold, is the tag beside a building in hand. `drafts.rs`, `Bill.tsx`,
+`Ghosts.tsx` and the drafts table last lived at `34a0320`.
+
+## Painting buildings tile by tile (2026-10-04 to 2026-10-10)
+
+**What.** A building was the tiles the brush painted, a step at a time:
+a kind that grows one building as far as its stroke ran, a house a tile
+each and linked to its row (`Building::joined`), a building cut in two
+by taking a tile out, two joined by a step across. Its yard and its
+door were read off whatever shape it had, and one short of its kind's
+smallest plot stood and did not work (`World::paint`, `unpaint`,
+`works`; `look.md` §Into the game).
+
+**Why shelved.** Painting passes through every half-built state on the
+way to a building, and every rule, door, yard, berth, joins, bill, had
+to hold in each of them. They did not: a depot would not take its road,
+a harbour would only face south and a half-painted one crashed the
+server, and removing a building a tile at a time was unreliable. A
+building is now its kind's plot, placed whole from the build menu and
+taken down whole (`game.md` §Buildings); its look still joins it to
+its neighbours, and a fixture may still draw any shape.
+
+**To bring back.** Only with the ladders (`look.md` §The ladders), if a
+kind's size is to mean something in play, and then as size variants
+placed whole before any free shape. The code last lived at `34a0320`.
+
 ## Pedestrians, transit, walkability
 
 **What.** People on the map: walkers on sidewalks, buses and trams with

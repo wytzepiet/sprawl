@@ -57,10 +57,9 @@ each playable on its own.
    empties go back with the next trip, filled with an export when there
    is one. No outside vehicle drives the town. The road's edge, the generated roads
    and the fog go (`shelved.md`, 2026-09-23).
-2. Drafts (`game.md` §Drafts): every placement and demolition a draft
-   until committed, blue and reserved, drawn on the map with its bill;
-   commit, undo, discard. A draft takes up space and is wired into
-   nothing.
+2. Undo (`game.md` §Undo): every placement and demolition done at once,
+   and the last few minutes taken back with what they paid. (Drafts were
+   built here first, and shelved: `shelved.md`.)
 3. The general depot, holding a little of every class, and sites: a
    placement waits for its materials, timber first, a lorry brings them
    from the depot, and it goes up as they land. A building's cost is a

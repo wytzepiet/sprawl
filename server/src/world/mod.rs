@@ -1,6 +1,6 @@
 pub mod bezier;
 mod buildings;
-pub use buildings::{grows, Link};
+
 pub mod fields;
 mod geometry;
 pub mod lots;
@@ -130,9 +130,8 @@ pub struct World {
     /// Buildings placed, reached, cut off or taken away since the last
     /// `settle`: everything a build changed, and all `settle` reads.
     pub unsettled: BTreeSet<EntityId>,
-    /// Each player's draft: the strokes of their hand not yet built
-    /// (`drafts.rs`). Saved, so a draft outlives a restart.
-    pub drafts: std::collections::BTreeMap<crate::protocol::OwnerId, Vec<crate::drafts::Stroke>>,
+    /// What each player did lately, to take back (`undo.rs`). Not saved.
+    pub undo: HashMap<crate::protocol::OwnerId, Vec<crate::undo::Done>>,
     /// The town's missions (`missions.rs`). Saved.
     pub missions: crate::missions::Missions,
 }
@@ -190,7 +189,7 @@ impl World {
             sent: HashSet::new(),
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
-            drafts: Default::default(),
+            undo: HashMap::new(),
             missions: Default::default(),
         }
     }
@@ -232,7 +231,7 @@ impl World {
             sent: HashSet::new(),
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
-            drafts: Default::default(),
+            undo: HashMap::new(),
             missions: Default::default(),
             objects,
         };
@@ -405,10 +404,7 @@ impl World {
 
     /// Insert an edge for a directed connection between two nodes.
     ///
-    /// `edges` is what traffic reads, so this is the one gate that keeps drafts
-    /// out of the simulation: a road that has not been committed carries no
-    /// cars, however completely it is drawn. A road merely *marked* for removal
-    /// still carries them — that marker is visual until the moment it commits.
+    /// `edges` is what traffic reads.
     pub fn insert_edge(&mut self, from: EntityId, to: EntityId) {
         let len = self.segment_length(from, to);
         self.edges.insert((from, to), EdgeSegment::new(len));

@@ -6,11 +6,14 @@
  *   bun run look 6,80,4       four tiles each way
  *   --ui                      with the toolbar, cards and pins, as played
  *   --select 117              with the card of thing 117 open (and --ui)
+ *   --menu                    with the build menu open (and --ui)
+ *   --hold Depot@5,86[,1]     with a depot in hand over that tile, as if
+ *                             dragged there, turned that way or left to
+ *                             turn itself (and --ui)
  *   --frames 8 --every 250    eight frames a quarter second apart, and a strip
  *                             of them side by side
  *   T=0.7 bun run look ...    at this time of day (0 midnight, 0.5 noon)
- *   PLAYER=4242 bun run look  as that player: their draft blue, with its
- *                             bill (`act`'s hand is 4242)
+ *   PLAYER=4242 bun run look  as that player (`act`'s hand is 4242)
  *
  * Tiles are the game's, as `bun run plan --live` numbers them. Writes
  * `.dev/look/frame-<n>.png` and `.dev/look/strip.png`. The game is the one
@@ -40,10 +43,16 @@ const [x, y, half = 10] = (args[0] ?? "0,0").split(",").map(Number);
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
-const ui = (args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1)) || chosen >= 0;
+const word = (name: string) => {
+  const i = args.indexOf(name);
+  return i < 0 ? null : args.splice(i, 2)[1];
+};
+const held = word("--hold")?.match(/^(\w+)@(-?\d+),(-?\d+)(?:,(\d))?$/);
+const menu = args.includes("--menu") && !!args.splice(args.indexOf("--menu"), 1);
+const ui = (args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1)) || chosen >= 0 || !!held || menu;
 const browser = await launch();
 const page = ui ? await open(browser, { width: 1280, height: 860 }) : await browser.newPage({ viewport: VIEW });
-// As that player: their draft is drawn blue, with its bill.
+// As that player.
 if (process.env.PLAYER) await page.addInitScript((p) => localStorage.setItem("sprawl.player", p), process.env.PLAYER);
 page.on("pageerror",(e) => console.log(`page error: ${e.message}`));
 page.on("console", (m) => m.type() === "error" && console.log(`console: ${m.text().slice(0, 300)}`));
@@ -54,6 +63,10 @@ if (!ui) await page.addStyleTag({ content: "#root * { visibility: hidden } #root
 // The camera looks at a tile's middle; `look` takes the half height seen.
 await page.evaluate(([x, y, h]) => (window as any).sprawlCamera.look(x + 0.5, y + 0.5, h), [x, y, half]);
 if (chosen >= 0) await page.evaluate((id) => (window as any).sprawlSelect(id), chosen);
+// The hand in a pose a photograph cannot drag it into (`Brush`).
+await page.waitForTimeout(held || menu ? SETTLE_MS / 2 : 0);
+if (held) await page.evaluate(([k, x, y, f]) => (window as any).sprawlHold(k, Number(x), Number(y), f === undefined ? null : Number(f)), held.slice(1));
+if (menu) await page.keyboard.press("b");
 await page.waitForTimeout(SETTLE_MS);
 for (let n = 0; n < frames; n++) {
   await page.screenshot({ path: `${OUT}/frame-${n}.png` });

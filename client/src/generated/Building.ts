@@ -72,12 +72,6 @@ land: Array<Tile>,
  */
 ruts: Array<GridCoord>, 
 /**
- * The tiles beside it, of other buildings of its kind, the hand drew
- * it on from or onto: a row of houses drawn as a row, each a home of
- * its own. Only a kind that never grows into one building keeps any.
- */
-joined: Array<GridCoord>, 
-/**
  * Where it is driven into: one of its tiles, and the street tile
  * beside it the drive runs from. The drive is the building's, not a
  * road: drawn as one, driven by the cars of its lot, and gone with it.
