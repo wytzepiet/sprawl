@@ -34,10 +34,20 @@ home.
 
 ## The island and the door
 
-The world is one island in a sea, seen whole from the first minute. There
+The world is islands in a sea, seen whole from the first minute. There
 is no fog and no survey. You can look anywhere, and what you see is the
 map: grass, forest, mountain, coast. Beyond the shore is the world, and it
 is reached only by sea.
+
+**The map is mostly sea.** Several islands of different sizes and
+different land, in one connected ocean that every coast can sail to,
+because ships are how towns reach each other and the world. Today's
+generator makes about half the map land, mostly one continent; the target
+is land well under a third of the map, a handful of islands, each with
+coast for a harbour and room for a starting town, some with forest, some
+with mountain, flat land on most, and no coast cut off from the open sea.
+Checked on the first twenty seeds, as `every_seed` checks the starting
+town now (`plan.md`).
 
 **The door is the harbour**, built on the coast first, so every town
 starts on the coast and grows inland. It begins as a ferry harbour, a
@@ -49,16 +59,16 @@ them to a depot. No outside vehicle drives the town's roads; the boxes
 are the world's and the lorries the town's, and an empty goes back with
 the next trip, filled with an export if there is one. What the town
 sells leaves the same way. The ferry's deck is the door's size, and the
-tree grows the door: more sailings, a bigger ferry, then the container
-port, a building of its own with cranes and container ships and the
-trade board (the Exchange), then berths for tankers and bulkers that
-land fuel or gravel by the shipload (`trade.md` §Shipping). The mayor
+door grows: more sailings, a bigger ferry, then the container port, a
+building of its own with cranes and container ships and the trade board
+(the Exchange), then berths for tankers and bulkers that land fuel or
+gravel by the shipload (`shipping.md`). The mayor
 never owns a ship, and nothing arrives anywhere but a harbour.
 
 The sea is the default way between towns as well as to the world: the
 world's shipping company runs every ship, a planner routes every load
 over its timetable, through hubs, and harbours have yards where loads
-wait to be collected (`trade.md` §Shipping, direction). Neighbours may
+wait to be collected (`shipping.md`, direction). Neighbours may
 join their towns by road when they want to; nothing makes them. A
 single player's island is the same island with one town on it.
 
@@ -151,13 +161,17 @@ sea, slowly.
 
 ## The build
 
-The skill tree is a town plan. Points come from the city's level, which
-is GDP to date (`trade.md` §GDP). Four
-avenues: homes, commerce, industry, roads. Placeables unlock where two
-avenues meet, in chain order, so a kind arrives after the map has shown
-the need for it. The build is the one gate for what may be bought, how
-much road, which road kinds, and how big the door is. It says what may
-exist and in what proportion, never where.
+**Switched off, to be designed again.** The skill tree as built is old: its
+avenues and nodes name kinds that are gone or going, it reads poorly and
+it plays poorly. Until the roster settles (`buildings.md`) everything is
+unlocked and the tree's screen is hidden; the level, which is GDP to date
+(`trade.md` §GDP), still counts. The tree that replaces it is designed
+from the roster, with a look of its own.
+
+What it should keep from the old idea: the build is a town plan, the one
+gate for what may be built, how much road, which road kinds and how big
+the door is; a kind arrives after the map has shown the need for it; it
+says what may exist and in what proportion, never where.
 
 ## People
 
@@ -193,7 +207,8 @@ it. A full depot stops what fills it, and is seen.
 Chains are one input and one output a row, each from a terrain the island
 draws: timber from forest, stone and gravel from the mountain, crops from
 flat land, oil off the boat. Not every town's land has every one, which
-is why towns trade.
+is why towns trade. The kinds, what they take and make and what they are
+built from, are in `buildings.md`.
 
 ## Money
 

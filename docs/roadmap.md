@@ -5,6 +5,11 @@ something you can sit down and play for an evening and notice is better
 than the last. Estimates are working days for one person with an
 assistant; they are guesses, and the order matters more than the numbers.
 
+The next build is briefed in `plan.md`: the flat view, the terrain, the
+tree switched off, then milestones 1 to 3 and the container port of
+milestone 5, as one long run with the authority to do them as it sees
+best. The milestones below remain the shape of the whole.
+
 ## Where we are (2026-10-10)
 
 Built: roads and streets, one-way, the tree as the build, buildings
@@ -52,7 +57,7 @@ The four beats of `game.md` §The opening, from nothing, in four slices
 each playable on its own.
 
 1. The ferry harbour, built by the player on the coast, as the one
-   door (`trade.md` §Shipping): a ramp and a trailer park; the shipping
+   door (`shipping.md`): a ramp and a trailer park; the shipping
    company's ferry on a timetable, its deck as many cars and trailers as
    fit, carrying settlers in their cars and the world's trailers. The
    town's lorries hitch a trailer in the park and fetch it to a depot;
@@ -99,7 +104,7 @@ over the horizon without you.
 - The warehouse, the tank farm and the bulk yard: much of one class.
 - Charters: a tanker or a bulker for a shipload, landing at the
   harbour's berth for its class, and the standing charter for a flow
-  that recurs (`trade.md` §Shipping).
+  that recurs (`shipping.md`).
 - A full depot stops what fills it, and is seen.
 
 *Playable:* a sawmill that stops the timber boats, and the road between
@@ -131,7 +136,7 @@ the high street.
 - The shipping company's network: a line to every harbour, sailings
   that follow the traffic, the planner routing each load through hubs,
   dues for a hub's handling, and roads between towns where players
-  choose to build them (`trade.md` §Shipping).
+  choose to build them (`shipping.md`).
 - Shipments that cross towns, followed through a neighbour's streets.
 
 *Playable:* sell your timber to a friend, and watch your convoy drive
