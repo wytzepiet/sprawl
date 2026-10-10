@@ -3,7 +3,10 @@
 Status: specification, argued 2026-09-10 on top of `economy.md` step 4.
 On 2026-09-23 §1 and §2 became the single-player design and moved to
 `game.md`; §3's fog is gone with the survey; §4 onward stands. Nothing
-here is built. Builds on `economy.md` (the door, the
+here is built. On 2026-10-10 the economy became trade (`trade.md`):
+towns trade by listings and contracts, every trade a shipment, so §1's
+rule 4 and §5 read through it; where they lean on rows, the band or the
+crossing, `trade.md` is the decision. Builds on `economy.md` (the door, the
 band, the crossing, the building's turn) and `services.md` §5 (calls).
 The archived guide's one hard rule
 survives: a road that would disconnect someone from what they depend on

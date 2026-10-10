@@ -1,8 +1,9 @@
 # Sprawl: how the game works
 
-The short version of every design decision, 2026-09-23. Older documents
-hold the detail; this one is the shape. What this version set aside, and
-why, is in `shelved.md` under that date.
+The short version of every design decision, 2026-09-23; the economy
+rewritten 2026-10-10 around trade (`trade.md`). Older documents hold the
+detail; this one is the shape. What each version set aside, and why, is
+in `shelved.md` under its date.
 
 ## The rule
 
@@ -18,11 +19,17 @@ up; a car drives onto the ferry because the town has no fuel. A dial may
 sum the events, but the events come first. A system that is only a rate on
 a dial might as well not exist.
 
-**Automation is earned.** The first loads are yours: the town's one lorry
-moves when you tap it, and the first building whose vehicles move on their
-own is a relief you remember. Everything that dispatches itself was once
-something you did by hand, and the hand never goes away; it only becomes
-absurd.
+**Automation is earned, and seen.** The first loads are yours: the town's
+one lorry moves when you tap it, and the first lorry that moves on its own
+orders is a relief you remember. Everything that dispatches itself was
+once something you did by hand, and the hand never goes away; it only
+becomes absurd. Automation is a thing on the map, a vehicle with orders or
+a rule on a building that shows it, never a setting in a menu, and an
+automated shipment is the same event as a manual one.
+
+**Every shipment can be followed.** Click a pending import and the camera
+goes to the lorry or the ship carrying it, wherever it is, and follows it
+home.
 
 ## The island and the door
 
@@ -31,17 +38,15 @@ is no fog and no survey. You can look anywhere, and what you see is the
 map: grass, forest, mountain, coast. Beyond the shore is the world, and it
 is reached only by sea.
 
-**The door is the terminal**, the one building the world builds for you.
-Placing it on the coast is how a game starts, so every town starts on the
-coast and grows inland. The world runs a ferry to it on a timetable: so
-many cars a sailing, so many sailings a day, a crossing time. Cars roll off
-the ramp, the outside's commuters and the world's lorries and tankers among
-them; boxes come off onto the quay, which is a depot's shelf; what the town
-sells goes back the same way. The boat's batch is the door's size. When a
-sailing is full the next load waits, its price rises, and making the thing
-in town becomes worth it. The tree grows the door: a bigger ferry, then a
-berth per handling class where a bigger ship lands boxes, fuel or bulk by
-the shipload at a fifth of the crossing. The mayor never owns a ship, and
+**The door is the harbour**, built on the coast first, so every town
+starts on the coast and grows inland. The world runs a ferry to it on a
+timetable: so many cars a sailing, so many sailings a day, a crossing
+time. Cars roll off the ramp, the world's lorries and tankers among them;
+goods come off onto the quay, a small buffer that wants moving to a
+depot; what the town sells goes back the same way. The boat's batch is
+the door's size. The tree grows the door: a bigger ferry, then a berth
+per handling class where a bigger ship lands boxes, fuel or bulk by the
+shipload, cheaper. The mayor never owns a ship, and
 nothing arrives anywhere but the ramp.
 
 Neighbours are reached by road and the world by sea. That is the whole of
@@ -67,16 +72,17 @@ a dotted outline with one stock, the materials it needs, and a call like
 a shop with an empty shelf. Deliveries land on it, and when the stock is
 full the building stands. Build time is the deliveries; tap the site
 before the first load lands and the call is cancelled and nothing is
-spent. Who delivers is the one protocol: the town's lorry when you tap
-it, a depot's van, a lorry off the ferry when the quay is bare and the
-town can pay. There is no construction firm. The site is the buyer, the
-depot is the builder, and a works in town is later a cheaper source for
-the same call.
+spent. The materials are timber, steel and concrete, and they come from a
+depot: a lorry drives them to the site, and the site goes up as they land,
+outline, scaffolding, walls. Its card says what it waits for and where
+that is, and a click follows it. There is no construction firm. The site
+is the buyer, the depot is the builder, and a sawmill or a quarry in town
+is later a nearer source for the same call.
 
-**The mayor never spends money.** A building costs its materials, and
-materials cost the reserve only when they come from outside. Early on that
-is every building. Later, with a works and a quarry, nothing at all. The
-list at the quay says which, and the ghost says it before you place.
+**A building costs materials, not coins.** Materials cost coins only
+when they are bought in. Early on that is every building; later, with a
+sawmill and a quarry, nothing at all. Building ten houses tomorrow means
+topping up timber today.
 
 There is no line between placeables and the rest. A depot, a pump, a works
 and a house are all placed the same way; they differ in what they need and
@@ -86,7 +92,8 @@ sea, slowly.
 
 ## The build
 
-The skill tree is a town plan. Points come from the city's level. Four
+The skill tree is a town plan. Points come from the city's level (what
+the level counts is open: `trade.md` §Open). Four
 avenues: homes, commerce, industry, roads. Placeables unlock where two
 avenues meet, in chain order, so a kind arrives after the map has shown
 the need for it. The build is the one gate for what may be bought, how
@@ -105,60 +112,50 @@ the ramp. Nobody walks.
 **Everything the town lacks exists beyond the sea.** A resident with no
 shop in town drives onto the ferry to eat abroad; a car with no pump rides
 the boat to fuel; a job nobody fills is filled by a commuter off the
-morning boat, whose wage goes home on the evening one. The sailing is the
+morning boat, who goes home on the evening one. The sailing is the
 price, and a seat on the boat is a seat a commuter wanted, so a town that
 sends its people abroad for lunch finds its workers waiting on the far
 side. The signal is the queue at the ramp.
 
 ## Goods
 
-One mechanism: a good is a load on a shelf, carried by the vehicle of its
-class. Boxes ride a lorry: crates, materials. Liquid rides a tanker: fuel.
-Bulk rides a hopper, once there is a mine to fill one. **Farms produce
-crates, a works produces materials**, both call for pickup. **Shops sell
-meals, sites eat materials**, both call for delivery. A buyer takes the
-cheapest delivered option, a **warehouse** is what wins when it is nearer
-than the producer, and what nobody in town buys, the door buys. **The
-player never routes a load.** The road decides who is nearest, and the
-game is the road.
+One mechanism inside a town: a good is a load on a shelf, carried by the
+vehicle of its class. Containers ride a lorry: crates, timber, steel.
+Liquid rides a tanker: fuel. Bulk rides a tipper: gravel, cement, grain.
+Makers call for pickup, buyers call for delivery, and **a buyer takes the
+nearest seller with stock, by road.** Nothing inside a town has a price.
+The player never routes a load inside the town; the road decides who is
+nearest, and the game is the road.
 
-One material, until the map gives a reason for a second. The ceiling is
-one per avenue of the tree, each from a terrain the island draws: lumber
-from forest, concrete from a quarry, steel from a mine, asphalt from crude
-at the port. Every row is one input and one output; a chain, never a
-graph. Trains are a bigger, cheaper truck on a siding you lay, later.
+**Depots keep everything.** What is made or bought is stored somewhere
+real. A general depot holds a little of every class; a warehouse, a tank
+farm and a bulk yard hold much of one. The town's stock is what its
+depots hold, and where a depot stands matters, since goods ship from
+it. A full depot stops what fills it, and is seen.
 
-Three sinks, all on the map: people eat and burn fuel, growth eats
-materials, and the door takes the rest at the world's price less the
-crossing.
+Chains are one input and one output a row, each from a terrain the island
+draws: timber from forest, stone and gravel from the mountain, crops from
+flat land, oil off the boat. Not every town's land has every one, which
+is why towns trade.
 
 ## Money
 
-Two things are called money, and the player spends neither.
+**Coins are what trade is priced in, and only that.** They move when
+goods cross the town's border: in when it sells, out when it buys. There
+are no prices, wages or taxes inside a town.
 
-**Prices decide where trucks go.** Every building posts a price in hours
-for what it fills, nudging it up when the stock empties and down when it
-fills, never below cost. A buyer takes the cheapest delivered, its workers
-included, so a shorter road changes who wins. Beyond the sea is a world
-that runs the same rows at capacity and charges a crossing, so no price
-can run away and none is authored.
+**Across the border every trade is the player's** (`trade.md`): bought
+or sold by hand at the harbour, or by a top-up rule on a depot. Trading
+with other players comes later, with the Exchange: listings, standing
+offers and contracts. Each is a shipment that drives or sails and can
+be followed, and the coins land when it does.
 
-**The reserve is outside money.** The town has one purse. It moves only at
-the quay: in when the town sells to the world, out when it buys from it,
-out when a commuter takes a wage home. Inside town a sale is a line in two
-sets of books and nothing moves. The town spends the reserve through its
-imports; the mayor steers it by what they build. Nothing crosses the door
-at zero, so a town that buys more than it sells finds its sites waiting
-for a boat that does not come, until it sells something or makes its own.
-A town's money is what it sells to others: that is why a town that trades
-with nobody grows with nobody, and why the multiplayer island is a place
-towns need each other.
-
-Two numbers: GDP, hours of need served in town, which is how big the town
-is and what opens the tree; and the reserve, which is whether it pays its
-way. Taxes were argued and rejected: a tax pays the town where the sale
-happens, which rewards self-sufficiency and turns every neighbour into a
-rival for diners. `economy.md` is the mechanism.
+**The world beyond the sea always trades**, badly: it sells anything at a
+premium, on the slow boat, and buys anything at a discount. A town never
+runs out of anything for good, and the world is never the cheap way.
+Every player's price lives between its two. Speed costs: the ferry is
+slow and cheap, a neighbour by road fast if near, an airport later fast
+and dear. Order before you need it.
 
 ## Power
 
@@ -177,17 +174,16 @@ there is only what they save.
 ## Legibility
 
 The map warns first: red for unjoined, grey for empty shelves, dark for
-unpowered, a dimming shop for one losing money, and over a waiting site
-the icon of what it waits for and the boat it is on. Every load crossing
-the ramp carries a lump, one colour in and one out, and the cargo is
-drawn on the truck.
+unpowered, a glowing depot for one under its floor, and over a waiting
+site the icon of what it waits for and the boat it is on. Every trade
+lands as a lump of coins when its shipment does, one colour in and one
+out, and the cargo is drawn on the truck.
 
-The meter has two dials and one line: GDP, the reserve, and the biggest
-import today, which is the next thing to make. The terminal's card is the
-list of what crossed today, both ways, vehicles first, each line lighting
-on the map what used it. Click anything else for a card that leads with
-what it did for the reserve. The town's page keeps the season, and the one
-chart, for day twenty.
+The pending shipments are a list, each one a click from the vehicle
+carrying it, with an arrival time that moves with the traffic. The
+harbour's card is the list of what crossed today, both ways, vehicles
+first, each line lighting on the map what used it. Click anything else
+for a card that leads with what it did today.
 
 **The advisor** is the inspect panel in language: a model with read-only
 tools over the same rates, answering the questions that cross three
@@ -196,36 +192,38 @@ anything the map cannot show by hand.
 
 ## The opening
 
-The ferry docks and unloads the kit: the town's lorry, the first settlers'
-cars, and the starting materials onto the quay. You draw the first road
-from the ramp. You place a shop; a site icon says materials; you tap the
-quay, then the site, and your lorry builds it. You place houses; the next
-boat brings the people; they drive home and then to your shop, and the
-first lump lands. The farm's yard fills and you carry crates until the
-shop is stocked, then carry the surplus to the quay and watch the boat
-take it, and the reserve rise. Cars queue at the ramp with empty tanks:
-you place a pump. The icons outrun one lorry: the tree offers the
-warehouse, two lorries that do this by themselves, and you stop tapping.
-Everything after is that loop, one good higher: sites want materials, the
-works wants ore, ore is that mountain or that berth.
+1. Build a harbour on the coast.
+2. Build a depot.
+3. Connect them with a road.
+4. A shipment arrives: the starter pack. The camera follows the lorry
+   from the quay to the depot, the first time, and the crates stack in
+   its yard.
+5. Build. A house is a site; a lorry brings its timber from the depot,
+   and it goes up. The next boat brings its people.
 
-The manual phase ends within minutes and the lorry stays for good, the way
-hand-mining stays: a slump you can dig out of by hand, never a chore.
+Four beats, each teaching one thing: ships come here, things are kept
+here, roads move them, this is what arriving looks like. The manual phase
+is the town's one lorry, tapped by hand, until the first lorry with
+standing orders; the lorry stays for good, a slump you can dig out of by
+hand, never a chore.
 
 ## Out
 
 Pedestrians, transit, water, sewage, garbage, zoning, sliders, policies,
 drawn wires, panels that control, buildings that arrive on their own,
 proposals to accept, fog, a survey, roads born with the map, a mayor with
-a body or a wheel, conveyor belts, hand-wired supply pairs, trucking
-companies, taxes, leisure as a need, services as a good, wear on cars.
+a body or a wheel, conveyor belts, hand-wired supply pairs inside a
+town, trucking companies, prices and wages inside a town, taxes, leisure
+as a need, services as a good, wear on cars.
 
 Filed, not promised: roads built from asphalt; big infrastructure built
-by cranes; the raw goods table above; edge prices that drift with the
-world's trade; sidings and trains; a ride-along camera.
+by cranes; the raw goods table above; the world's prices drifting with
+its trade; sidings and trains; the airport as the fast, dear door; a
+ride-along camera behind a shipment.
 
 ## Order
 
 `roadmap.md` holds it, as playable milestones. The shape: the cut, then
-the opening, then goods and the works, then money made legible, then
-roads that are roads, power, services, the advisor, other people.
+the opening, then the world as a trader, then chains in town, then roads
+that are roads, then other people and trade between them, power,
+services, the advisor.

@@ -1,5 +1,12 @@
 # Economy: stocks, rows, prices, one purse and one door
 
+**Superseded 2026-10-10 by `trade.md`.** The economy is trade: nothing
+inside a town has a price, and every trade across its border is the
+player's. Posted prices, the labour market, the band and one purse go
+(`shelved.md`, the price economy); stocks, calls, the farm and the
+warehouse stay. The built sections below remain the record of the code
+until `roadmap.md` milestone 0 deletes it.
+
 Status: specification, drafted 2026-09-09 and reworked twice the same
 day: once after an argument about where money goes when nobody spends
 it, and again after one about where it comes from. The second rework is

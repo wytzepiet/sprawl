@@ -5,6 +5,35 @@ why it went, what bringing it back would take, and the last commit where
 the code lived — so nothing has to be reinvented from memory, and nothing
 has to stay in the tree to be remembered.
 
+## The price economy (2026-10-10)
+
+**What.** `economy.md` as built through §12.10: every building posting a
+price for what it fills and nudging it by its stock, never below unit
+cost; a buyer taking the cheapest delivered seller; money entering the
+score as hours of the mover's wage (Becker); households posting an ask
+on their labour, bought on a building's turn with a hiring threshold;
+the world beyond the edge running the same rows at capacity, so every
+price lived in a band a crossing wide; capital's third and the
+household's tenth as what the town keeps; one purse moved only at the
+door; GDP as hours served at the world's prices; seasons of books; and
+the `season` test asserting the band, no ringing, no harm and tenure.
+
+**Why shelved.** It held together and was not a game. Its own rule 8,
+ignoring prices never hurts, said that a player did not need it, and a
+player who could not predict what placing a building would do to the
+reserve read the result as weather. Most of `economy.md` §13 was the
+calibration of a system the player was designed not to need. The
+decisions moved to the border, where the player can make them
+(`trade.md`): inside a town a buyer takes the nearest seller with stock,
+and across it every trade is a listing, a contract or a rule on a depot,
+and a shipment that can be followed.
+
+**To bring back.** Only if a town grows owners the player is not, so
+that a price inside it decides something the player could not. The
+mechanisms are in `economy.md` §4 to §8 and §12, each with its referent.
+The code is still in the tree at `6eec4cf`; it goes with `roadmap.md`
+milestone 0.
+
 ## The continuous ledger
 
 **What.** `xp.rs`: one number that was both the city's level and the
