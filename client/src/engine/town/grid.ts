@@ -42,15 +42,15 @@ export interface Town {
 }
 
 export const LETTERS: Record<string, BuildingKind> = {
-  H: "House", A: "Apartment", S: "Shop", O: "Office", W: "Workshop", F: "Factory",
-  R: "Restaurant", B: "Bar", G: "GasStation", M: "Supermarket", D: "Warehouse", P: "Port",
+  H: "House", A: "Apartment", S: "Shop", O: "Office", F: "Factory",
+  G: "GasStation", M: "Supermarket", D: "Warehouse", P: "Port",
 };
 
 /** How tall each kind is built. One height for a kind: a height picked per
  *  tile is a chequerboard of steps across every block. Heights that vary
  *  come with success, and by hand in the sandbox. */
 const STOREYS: Partial<Record<BuildingKind, number>> = {
-  House: 2, Apartment: 5, Shop: 2, Restaurant: 2, Bar: 2, Office: 6, Workshop: 1, Factory: 1, Warehouse: 1, Supermarket: 1, GasStation: 1,
+  House: 2, Apartment: 5, Shop: 2, Office: 6, Factory: 1, Warehouse: 1, Supermarket: 1, GasStation: 1,
 };
 
 const GROUND = new Set(["open", "paved", "road", "water", "wood"]);

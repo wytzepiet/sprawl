@@ -11,14 +11,12 @@ const H: u32 = DAY_MS / 24;
 const HOUR: f64 = H as f64;
 
 /// Something a resident has to do, and so a good: what a tap serves, what
-/// a shelf holds, what a price is per unit of. Three kinds, by where the
+/// a shelf holds, what the world prices a unit of. Three kinds, by where the
 /// timing lives: a **timed** need is used up by the passage of time and
 /// carries it in `drain`; a **constant** need is imposed by the world and
 /// carries it in the curve of whatever serves it, holding a fixed level
 /// meanwhile; a **driven** need is used up by the road, a little per tile,
-/// and is the car's rather than the day's — the tank, and wear. And one is
-/// a building's alone: **services**, drawn by the day of operation and
-/// delivered by a call.
+/// and is the car's rather than the day's: the tank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Need {
@@ -31,20 +29,8 @@ pub enum Need {
     /// Meals take as long as the hunger owed, up to a sitting: served at
     /// home always, and wherever sells food while it is open.
     Eat,
-    /// Time off. Served indifferently at home and well at a place to go —
-    /// the first need with nothing in the world to say when.
-    Leisure,
     /// The tank. Used by the mile rather than the hour, and refilled at a pump.
     Fuel,
-    /// The car's wear: used by the mile too, slower, and put right at a
-    /// workshop. What a breakdown costs, the way the tank is what running
-    /// dry costs (docs/economy.md §4).
-    Wear,
-    /// Upkeep, repairs and everything else on no shelf: what an office
-    /// makes from its labour, a unit an hour, and every building and home
-    /// draws by the day. No tap serves it; a car delivers it
-    /// (docs/economy.md §4).
-    Services,
 }
 
 /// How a good is handled on its way through a door: boxed, or liquid.
@@ -56,34 +42,30 @@ pub enum Cargo {
 }
 
 impl Need {
-    /// The class a good is handled in: crates and parts come boxed, a
-    /// tank's litres are liquid, and services and labour are people and
-    /// have none. docs/economy.md §12.10.
+    /// The class a good is handled in: crates come boxed, a tank's litres
+    /// are liquid, and labour is people and has none. docs/trade.md.
     pub fn cargo(self) -> Option<Cargo> {
         match self {
-            Need::Eat | Need::Wear => Some(Cargo::Box),
+            Need::Eat => Some(Cargo::Box),
             Need::Fuel => Some(Cargo::Liquid),
             _ => None,
         }
     }
 
     /// Baseline first, so ties fall to staying put.
-    pub const ALL: [Need; 8] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure, Need::Fuel, Need::Wear, Need::Services];
-    /// The needs a person carries. The tank and the wear are the car's,
-    /// though its driver is the one who decides to stop for them.
-    pub const OWN: [Need; 5] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Leisure];
+    pub const ALL: [Need; 5] = [Need::Home, Need::Work, Need::Rest, Need::Eat, Need::Fuel];
+    /// The needs a person carries. The tank is the car's, though its
+    /// driver is the one who decides to stop for it.
+    pub const OWN: [Need; 4] = [Need::Home, Need::Work, Need::Rest, Need::Eat];
     /// The needs a car carries: used by the tile, and weighed by whoever
     /// drives it.
-    pub const DRIVEN: [Need; 2] = [Need::Fuel, Need::Wear];
+    pub const DRIVEN: [Need; 1] = [Need::Fuel];
 
-    /// A full stock's worth, in tiles: a tank, and a service. What sets how
-    /// often anyone stops for either. A service lasts two and a half
-    /// tanks — every ten days or so for a commuter, so the workshop sees
-    /// each car a few times a season and the tank still sets the rhythm.
+    /// A full stock's worth, in tiles: a tank. What sets how often anyone
+    /// stops for it.
     pub fn tiles(self) -> f64 {
         match self {
             Need::Fuel => 500.0,
-            Need::Wear => 1200.0,
             _ => f64::INFINITY,
         }
     }
@@ -96,8 +78,6 @@ impl Need {
     /// How long a fill takes: twenty minutes at the pump, so the pump's
     /// rate is the tank over that.
     pub const FILL_MS: f64 = HOUR / 3.0;
-    /// How long a service takes in the bay: an hour.
-    pub const SERVICE_MS: f64 = HOUR;
 
     /// Holds its level: the world's curves say when, not the stock.
     pub fn constant(self) -> bool {
@@ -108,15 +88,12 @@ impl Need {
     /// constant need. For `D` hours a day at unit rate this is `D / (24 - D)`.
     pub fn drain(self) -> f64 {
         match self {
-            Need::Work | Need::Home | Need::Fuel | Need::Wear | Need::Services => 0.0,
+            Need::Work | Need::Home | Need::Fuel => 0.0,
             Need::Rest => 8.0 / 16.0,
             // About 1.2 hours a day, as people actually spend: a sitting is
             // owed ten hours after the last, and lunch out is worth the
             // drive about six hours after breakfast.
             Need::Eat => 0.05,
-            // About five hours a day, as people actually spend, at the rate
-            // home serves it.
-            Need::Leisure => 0.35 * 5.0 / 19.0,
         }
     }
 
@@ -126,28 +103,19 @@ impl Need {
             Need::Work | Need::Home => 24.0 * HOUR,
             Need::Rest => 12.0 * HOUR,
             Need::Eat => 0.5 * HOUR,
-            Need::Leisure => 5.0 * HOUR,
             // What an empty tank costs: the afternoon it takes to be towed
-            // and filled, which is what a fill has to be worth to be
-            // scored against its price. A near-empty tank then beats an
-            // evening in and loses to a shift, as it should.
+            // and filled. A near-empty tank then beats an evening in and
+            // loses to a shift, as it should.
             Need::Fuel => 2.0 * HOUR,
-            // What a breakdown costs: a morning towed and a repair waited
-            // on, twice a dry tank.
-            Need::Wear => 4.0 * HOUR,
-            // An hour of an office's make: the unit. A building's stock of
-            // it has a cap of its own (`economy::stocks`).
-            Need::Services => HOUR,
         }
     }
 
-    /// The one thing a tap sells, in milliseconds of need: a sitting, an
-    /// evening, a tank, a service, an hour of labour. A price is per one of these,
-    /// and a shelf counts them. docs/economy.md §12.1.
+    /// The one thing a tap serves, in milliseconds of need: a sitting, a
+    /// tank, an hour of labour. A shelf counts them.
     pub fn unit(self) -> f64 {
         match self {
-            Need::Work | Need::Home | Need::Rest | Need::Services => HOUR,
-            Need::Eat | Need::Leisure | Need::Fuel | Need::Wear => self.cap(),
+            Need::Work | Need::Home | Need::Rest => HOUR,
+            Need::Eat | Need::Fuel => self.cap(),
         }
     }
 
@@ -161,10 +129,8 @@ impl Need {
         let level = match self {
             Need::Work => 0.5 * cap,
             Need::Home => 0.7 * cap,
-            // Everyone drives in from beyond the edge, where fuel is
-            // unlimited: the tank is full, less the drive in, and the car
-            // freshly serviced.
-            Need::Rest | Need::Eat | Need::Leisure | Need::Fuel | Need::Wear | Need::Services => cap,
+            // Everyone drives in with a full tank.
+            Need::Rest | Need::Eat | Need::Fuel => cap,
         };
         Stock { level, cap }
     }
@@ -172,7 +138,7 @@ impl Need {
     /// Hours a day a timed need asks for: the referent `drain` was derived
     /// from. Zero for a constant need, which fills time rather than
     /// demanding it.
-    fn daily_ms(self) -> f64 {
+    pub fn daily_ms(self) -> f64 {
         let drain = self.drain();
         DAY_MS as f64 * drain / (1.0 + drain)
     }
@@ -269,8 +235,8 @@ impl Bucket {
         Need::OWN.iter().map(|&need| Bucket { need, stock: need.fresh(), shortfall: 0.0 }).collect()
     }
 
-    /// A car's stocks, as issued: a full tank, freshly serviced. What a
-    /// save from before a car carried them gets.
+    /// A car's stocks, as issued: a full tank. What a save from before a
+    /// car carried them gets.
     pub fn driven() -> std::collections::BTreeMap<Need, Stock> {
         Need::DRIVEN.into_iter().map(|need| (need, need.fresh())).collect()
     }
@@ -341,7 +307,6 @@ mod tests {
 
     #[test]
     fn the_ceiling_inverts() {
-        // Services no tap serves, so nothing bounds it.
         for need in Need::ALL.into_iter().filter(|n| n.bounds().0 > 0.0) {
             let short = 0.3 * need.cap();
             let target = need.ceiling(short);

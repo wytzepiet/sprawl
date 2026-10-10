@@ -30,7 +30,6 @@ interface Form {
 const STREET: Form = { family: "street" };
 const FORMS: Partial<Record<BuildingKind, Form>> = {
   Office: { family: "office" },
-  Workshop: { family: "industry" },
   Factory: { family: "industry" },
   // A depot's lorries come and go at its back, out of sight of the junction.
   Warehouse: { family: "industry", yard: { fill: "docks", end: "quiet", need: (n) => n / 2 } },
@@ -62,7 +61,7 @@ export function slope(t: Tile) {
  *  flat sits RECESS down, as a mansard hides its roof, an AC unit in a
  *  corner (`roof.ts`). */
 export const mansard = (t: Tile) => formOf(t).family === "street" && t.storeys <= 3 && SIGNED.has(t.kind as BuildingKind);
-const SIGNED = new Set<BuildingKind>(["Shop", "Restaurant", "Bar"]);
+const SIGNED = new Set<BuildingKind>(["Shop"]);
 export const RECESS = 0.03, BAND = 0.035;
 
 /** An office tower's flat roof carries its plant, as a real one does: a

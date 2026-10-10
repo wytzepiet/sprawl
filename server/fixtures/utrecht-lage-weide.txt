@@ -1,15 +1,15 @@
 # Utrecht, Lage Weide: an industrial estate of sheds and yards
 # 52.10199,5.06334,52.10501,5.06966, from OpenStreetMap. Map data © OpenStreetMap contributors, ODbL.
 ......................................
-..=:WW::FFFFFFFFFFF==:D::#:::::::::::.
+..=:FF::FFFFFFFFFFF==:D::#:::::::::::.
 ...=:::::FFFFFFFF:=:DDD:::#::::::::::.
 ....=::::FFFFFFF==:DDDDD::#::::::::::.
 ...:=:::::FFFF==:DDDDDDD::#:::::::::H.
 ..:::=::::FF:=:DDDDDDDDDD:#::::::::::.
 ..:::.=::::==DDDDDDDDDDDD::#:::::::::.
 ...TT.=::==::DDDDDDDDDDDD::#=========.
-....T..==:WW:DDDDDDDDDD::::#:::::::::.
-.....T.=::W::DDDDDDD:::::::#:TTTTTTTT.
+....T..==:FF:DDDDDDDDDD::::#:::::::::.
+.....T.=::F::DDDDDDD:::::::#:TTTTTTTT.
 .#......=::DDDDDDDD:::::::::#TTTTTTTT.
 ..#...T.=::DDDDDD:::::::::::#TTTTTTTT.
 ..#......=:DDDD:::::::FF::::#TTTTTTTT.
@@ -27,6 +27,6 @@
 ..........#.....=DDD:::FFFF::::#T:FFF.
 ..........##.....=DD:D:FFF:::::#T:FFF.
 ...........#.....=:DDD:::::::::#T::FF.
-............##....=DDD::WW:::::#TT:FF.
-...................=::::WWF::::#:T:::.
+............##....=DDD::FF:::::#TT:FF.
+...................=::::FFF::::#:T:::.
 ......................................

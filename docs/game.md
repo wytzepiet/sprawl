@@ -15,7 +15,8 @@ the rules produce by default; the game is what you make of it.
 
 **Every system pays out as an event you can see on the map.** A visit
 ends and the money lands on the shop; a truck arrives and the building goes
-up; a car drives onto the ferry because the town has no fuel. A dial may
+up; a trailer is towed off the ferry and a lorry backs up to take it
+home. A dial may
 sum the events, but the events come first. A system that is only a rate on
 a dial might as well not exist.
 
@@ -39,19 +40,27 @@ map: grass, forest, mountain, coast. Beyond the shore is the world, and it
 is reached only by sea.
 
 **The door is the harbour**, built on the coast first, so every town
-starts on the coast and grows inland. The world runs a ferry to it on a
-timetable: so many cars a sailing, so many sailings a day, a crossing
-time. Cars roll off the ramp, the world's lorries and tankers among them;
-goods come off onto the quay, a small buffer that wants moving to a
-depot; what the town sells goes back the same way. The boat's batch is
-the door's size. The tree grows the door: a bigger ferry, then a berth
-per handling class where a bigger ship lands boxes, fuel or bulk by the
-shipload, cheaper. The mayor never owns a ship, and
-nothing arrives anywhere but the ramp.
+starts on the coast and grows inland. It begins as a ferry harbour, a
+ramp and a trailer park, the way small islands are supplied. The world's
+shipping company's ferry calls on a timetable: the settlers drive their
+cars off the ramp into town, and the world's trailers are towed off into
+the trailer park, where they wait for the town's own lorries to fetch
+them to a depot. No outside vehicle drives the town's roads; the boxes
+are the world's and the lorries the town's, and an empty goes back with
+the next trip, filled with an export if there is one. What the town
+sells leaves the same way. The ferry's deck is the door's size, and the
+tree grows the door: more sailings, a bigger ferry, then the container
+port, a building of its own with cranes and container ships and the
+trade board (the Exchange), then berths for tankers and bulkers that
+land fuel or gravel by the shipload (`trade.md` §Shipping). The mayor
+never owns a ship, and nothing arrives anywhere but a harbour.
 
-Neighbours are reached by road and the world by sea. That is the whole of
-multiplayer's geography, and a single player's island is the same island
-with one town on it.
+The sea is the default way between towns as well as to the world: the
+world's shipping company runs every ship, a planner routes every load
+over its timetable, through hubs, and harbours have yards where loads
+wait to be collected (`trade.md` §Shipping, direction). Neighbours may
+join their towns by road when they want to; nothing makes them. A
+single player's island is the same island with one town on it.
 
 ## Roads
 
@@ -63,6 +72,44 @@ Intersections are the skill ceiling: roundabouts, merges, interchanges are
 built from these three things, and your steel lorries share them with the
 school run.
 
+**Roads are instant.** A committed road is there at once, with no crew to
+wait for, because the network is the thing you iterate on: a shortcut, a
+junction drawn again, and the traffic answering in the same minute. A
+road that waited on a paving crew would also make a jam slow to fix, the
+crew stuck in the jam. What a road takes comes straight out of the depots' stock as it
+is committed: gravel for its base and asphalt for its top, and concrete
+and steel for a bridge or an overpass, which is the big project you stock
+a big depot for. Until the quarry (`roadmap.md` milestone 3) a road costs
+only the build's tiles. Demolition gives back part of what a road took,
+so trying things is never punished.
+
+## Drafts
+
+**Everything you place or take away is a draft until you commit it.** A
+swipe of the finger is not a hundred tonnes of concrete, and a swipe of
+the demolisher is not half the town. A drafted road or building stands
+on its tiles, blue and translucent, and reserves them, so in a shared
+town nobody else builds there; it joins what it touches, so a house beside
+a drafted street is fine; and it does nothing yet: no traffic on it, nobody
+living in it, no call from it. A drafted demolition is a red tint on the
+real thing, which goes on working until the commit. Beside the draft
+stands its bill: each material it takes against what the depots hold,
+short in red, and the coins for anything that has to be bought in.
+
+**Commit** makes it real in one stroke: roads first, then buildings, then
+the demolitions, each as if it had been drawn live. Roads are laid and
+draw their materials; buildings become sites; demolitions come down. What
+the stock cannot cover the bill offers to order, with when it would land,
+and what no longer fits (someone built there meanwhile) stays a draft,
+marked. Undo takes back the last stroke and discard the lot. A draft is
+the player's own and outlives a restart.
+
+Why it is back after being shelved (`shelved.md`): once building costs
+materials the second step buys something, the bill; and this one is
+lighter. A draft only takes up space. It is never part of the road graph,
+a draft building has no door, and so nothing that runs the town has to
+know drafts exist.
+
 ## Buildings
 
 **You place every building, and every building is built from materials
@@ -70,10 +117,8 @@ delivered to it.** Pick a kind from a hotkey menu, tap beside a street,
 and it snaps to the frontage with its lot behind. What stands is a site:
 a dotted outline with one stock, the materials it needs, and a call like
 a shop with an empty shelf. Deliveries land on it, and when the stock is
-full the building stands. Build time is the deliveries; tap the site
-before the first load lands and the call is cancelled and nothing is
-spent. The materials are timber, steel and concrete, and they come from a
-depot: a lorry drives them to the site, and the site goes up as they land,
+full the building stands. Build time is the deliveries. The materials
+are timber, steel and concrete, and they come from a depot: a lorry drives them to the site, and the site goes up as they land,
 outline, scaffolding, walls. Its card says what it waits for and where
 that is, and a click follows it. There is no construction firm. The site
 is the buyer, the depot is the builder, and a sawmill or a quarry in town
@@ -82,7 +127,21 @@ is later a nearer source for the same call.
 **A building costs materials, not coins.** Materials cost coins only
 when they are bought in. Early on that is every building; later, with a
 sawmill and a quarry, nothing at all. Building ten houses tomorrow means
-topping up timber today.
+topping up timber today. What a kind takes is a row on its blueprint,
+and the materials come in by tier: the first buildings take timber
+alone, so the opening teaches one material, one import and one lorry;
+concrete and steel arrive with the kinds that are big, tall or over
+water. More materials are more to trade and more ways to specialise, and
+more to keep stocked; whether three feels like depth or a chore is for
+play to say, and the rows are where it is tuned.
+
+**Nobody waits on a mechanic they were not taught.** The first depot
+comes with a top-up rule already on it, drawn over it like any rule:
+keep above so much timber, from the world. The player sees automation
+before they need to understand it, and can change it. And anything that
+stalls says why where it stalls, with the fix beside it: a site's card
+says "waiting on 12 timber, none in stock" and offers the order, with
+when it would land.
 
 There is no line between placeables and the rest. A depot, a pump, a works
 and a house are all placed the same way; they differ in what they need and
@@ -92,8 +151,8 @@ sea, slowly.
 
 ## The build
 
-The skill tree is a town plan. Points come from the city's level (what
-the level counts is open: `trade.md` §Open). Four
+The skill tree is a town plan. Points come from the city's level, which
+is GDP to date (`trade.md` §GDP). Four
 avenues: homes, commerce, industry, roads. Placeables unlock where two
 avenues meet, in chain order, so a kind arrives after the map has shown
 the need for it. The build is the one gate for what may be bought, how
@@ -144,16 +203,16 @@ are no prices, wages or taxes inside a town.
 
 **Across the border every trade is the player's** (`trade.md`): bought
 or sold by hand at the harbour, or by a top-up rule on a depot. Trading
-with other players comes later, with the Exchange: listings, standing
-offers and contracts. Each is a shipment that drives or sails and can
+with other players comes later, with the Exchange, which is the
+container port: listings, standing offers and contracts. Each is a shipment that drives or sails and can
 be followed, and the coins land when it does.
 
 **The world beyond the sea always trades**, badly: it sells anything at a
 premium, on the slow boat, and buys anything at a discount. A town never
 runs out of anything for good, and the world is never the cheap way.
-Every player's price lives between its two. Speed costs: the ferry is
-slow and cheap, a neighbour by road fast if near, an airport later fast
-and dear. Order before you need it.
+Every player's price lives between its two. Speed costs: the scheduled
+ship is slow and cheap, a neighbour by road fast if near and joined, an
+express boat or an airport later fast and dear. Order before you need it.
 
 ## Power
 
@@ -193,9 +252,10 @@ anything the map cannot show by hand.
 1. Build a harbour on the coast.
 2. Build a depot.
 3. Connect them with a road.
-4. A shipment arrives: the starter pack. The camera follows the lorry
-   from the quay to the depot, the first time, and the crates stack in
-   its yard.
+4. A shipment arrives: the starter pack, trailers off the first ferry.
+   You tap the town's one lorry to fetch them, and the camera follows it
+   from the harbour to the depot the first time; the crates stack in its
+   yard.
 5. Build. A house is a site; a lorry brings its timber from the depot,
    and it goes up. The next boat brings its people.
 
@@ -214,7 +274,7 @@ a body or a wheel, conveyor belts, hand-wired supply pairs inside a
 town, trucking companies, prices and wages inside a town, taxes, leisure
 as a need, services as a good, wear on cars.
 
-Filed, not promised: roads built from asphalt; big infrastructure built
+Filed, not promised: big infrastructure built
 by cranes; the raw goods table above; the world's prices drifting with
 its trade; sidings and trains; the airport as the fast, dear door; a
 ride-along camera behind a shipment.

@@ -1,15 +1,15 @@
 use std::collections::{BTreeSet, HashSet};
 
 use crate::blueprint::blueprint;
-use crate::economy::{self, HIRING};
+use crate::economy;
 use crate::protocol::{Car, ChunkCoord, EntityId, GameObject, GridCoord, Resident, CHUNK_SIZE, DAY_MS};
 use crate::world::World;
 
 impl World {
     /// Everything as if it had just been built: at startup, for a world
     /// laid out fresh or loaded from a save. A save from before a need
-    /// existed owes it from now on; one from before prices gets its shelf
-    /// and prices; a household saved without a car gets one, and a parked
+    /// existed owes it from now on; one from before stocks gets its shelf;
+    /// a household saved without a car gets one, and a parked
     /// car nobody owns is scrap. And every building is due to settle, and
     /// every one anybody lived or worked at: the doors are not saved, so a
     /// household from beyond one is gone with it. The one pass that reads
@@ -54,8 +54,7 @@ impl World {
     /// reached, cut off or taken away since last time, and nothing else.
     /// A home with a spare room gains residents, a resident whose home is
     /// gone goes with it, and a line that gained a door or lost a worker
-    /// fills its desks on its turn, cheapest delivered first
-    /// (docs/economy.md §5.2, §6.2). What it costs is what changed, never
+    /// fills its desks on its turn, nearest first. What it costs is what changed, never
     /// the size of the town: every player's build shares the one loop.
     ///
     /// Returns everyone whose situation changed — moved in, hired, or laid
@@ -85,25 +84,31 @@ impl World {
                 }
                 continue;
             };
-            if self.edge.contains(&b) {
-                continue;
-            }
             let bp = blueprint(kind);
             // New residents are not here yet: `at: None` is off-map, and
             // their first wake drives them in from beyond the frontier.
             // Nobody materialises out of thin air — they arrive the way
             // everyone arrives, by road.
             for _ in self.household(b).len()..bp.homes as usize {
-                touched.push(self.move_in(b, None, None, economy::ask(self, b)));
+                touched.push(self.move_in(b));
             }
             if bp.jobs > 0 {
                 lines.insert(b);
             }
         }
         // A line that loses a worker to a nearer one takes its turn after.
-        let mut fresh = HashSet::new();
         while let Some(line) = lines.pop_first() {
-            self.hire(line, &mut lines, &mut fresh, &mut touched);
+            self.hire(line, &mut lines, &mut touched);
+        }
+        // Someone moved in or lost their job, and a desk is free somewhere
+        // in town: every line with one takes its turn too, once.
+        let jobless = touched.iter().any(|&id| matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Resident(r)) if r.work.is_none()));
+        if jobless {
+            let vacant: Vec<EntityId> = self.objects.iter().filter(|e| matches!(e.object, GameObject::Building(_))).map(|e| e.id).filter(|&b| self.vacant(b)).collect();
+            lines.extend(vacant);
+            while let Some(line) = lines.pop_first() {
+                self.hire(line, &mut lines, &mut touched);
+            }
         }
         touched.sort_unstable();
         touched.dedup();
@@ -117,54 +122,32 @@ impl World {
         touched
     }
 
-    /// One line's turn at the labour market. Every seller it could take, at
-    /// the delivered price — the household's ask plus the drive there and
-    /// back over the shift — and the cheapest fill the desks. Whoever is at
-    /// a desk keeps it unless a seller beats them by the hiring threshold,
-    /// which is what tenure is; a household working at another line is a
-    /// seller only if this one is cheaper than that by as much, so it
-    /// moves for a shorter drive and never for a penny — unless it was
-    /// only hired in this same settling (`fresh`), and holds nothing yet:
-    /// then cheaper is enough, and a town settled at once comes out as if
-    /// every desk had been offered at once. The outside sells
-    /// at the edge wage plus the crossing from the nearest exit, and never
-    /// runs out, so no desk stays empty; what it costs is what a town with
-    /// no houses pays. Households are looked for nearest first, and the
-    /// search stops where nobody farther could be cheaper than what it has.
-    /// docs/economy.md §5.2.
-    fn hire(&mut self, line: EntityId, lines: &mut BTreeSet<EntityId>, fresh: &mut HashSet<EntityId>, touched: &mut Vec<EntityId>) {
+    /// One line's turn at the labour market. Its desks go to the
+    /// households nearest it: whoever is at a desk keeps it unless someone
+    /// lives nearer, and a household working at another line moves only
+    /// for a shorter drive. Nobody comes from beyond the town for a job:
+    /// a desk nobody in town takes stays empty (docs/game.md, People).
+    /// Households are looked for nearest first, and the search stops where
+    /// nobody farther could be nearer than what it has.
+    fn hire(&mut self, line: EntityId, lines: &mut BTreeSet<EntityId>, touched: &mut Vec<EntityId>) {
         let Some(e) = self.objects.get(line).filter(|_| self.street_of(line).is_some()) else { return };
         let (Some(at), GameObject::Building(b)) = (e.position, &e.object) else { return };
-        let (jobs, hours) = (blueprint(b.kind).jobs as usize, economy::shift_hours(b.kind));
-        // (what it costs this line, who, what they would be paid)
-        let mut offers: Vec<(f64, EntityId, f64)> = Vec::new();
-        for id in self.staff(line) {
-            if let Some(wage) = self.delivered(id, line) {
-                offers.push((wage / (1.0 + HIRING), id, wage));
-            }
-        }
-        // The outside sells labour to a town that can pay for it, like any
-        // other good (docs/economy.md §8.2).
-        let outside = (self.treasury > 0.0)
-            .then(|| self.nearest_edge(at))
-            .flatten()
-            .and_then(|exit| Some((exit, self.objects.get(exit)?.position?)))
-            .map(|(exit, p)| (exit, economy::delivered_wage(economy::import(economy::EDGE_WAGE), commute_h(p, at), hours)));
-        let ceiling = outside.map_or(f64::INFINITY, |(_, wage)| wage);
+        let jobs = blueprint(b.kind).jobs as usize;
+        // (the drive to this line, who)
+        let mut offers: Vec<(f64, EntityId)> = self.staff(line).into_iter().filter_map(|id| Some((self.commute(id, line)?, id))).collect();
         let rings = self.rings_from(crate::world::chunk_of(at));
         let mut seen = HashSet::new();
         for (k, ring) in rings.into_iter().enumerate() {
-            // The nearest a home in this ring stands, and so the least
-            // anyone there could cost.
-            let floor = economy::delivered_wage(economy::export(economy::EDGE_WAGE), tiles_h((k as i32 - 1).max(0) * CHUNK_SIZE), hours);
+            // The nearest a home in this ring stands, and so the shortest
+            // drive anyone there could have.
+            let floor = tiles_h((k as i32 - 1).max(0) * CHUNK_SIZE);
             offers.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-            let bar = jobs.checked_sub(1).and_then(|k| offers.get(k)).map_or(ceiling, |o| o.0.min(ceiling));
-            if floor >= bar {
+            if jobs.checked_sub(1).and_then(|k| offers.get(k)).is_some_and(|o| floor >= o.0) {
                 break;
             }
             for chunk in ring {
                 for home in self.buildings_in(chunk) {
-                    if !seen.insert(home) || self.edge.contains(&home) {
+                    if !seen.insert(home) {
                         continue;
                     }
                     for &id in self.people.get(&home).into_iter().flatten() {
@@ -172,17 +155,15 @@ impl World {
                         if r.home != home || r.work == Some(line) {
                             continue;
                         }
-                        let Some(wage) = self.delivered(id, line) else { continue };
-                        let threshold = if fresh.contains(&id) { 1.0 } else { 1.0 + HIRING };
-                        if r.work.and_then(|w| self.delivered(id, w)).is_none_or(|there| wage * threshold < there) {
-                            offers.push((wage, id, wage));
+                        let Some(drive) = self.commute(id, line) else { continue };
+                        if r.work.and_then(|w| self.commute(id, w)).is_none_or(|there| drive < there) {
+                            offers.push((drive, id));
                         }
                     }
                 }
             }
         }
         offers.sort_unstable_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-        offers.retain(|o| o.0 < ceiling);
         offers.truncate(jobs);
         let hired: HashSet<EntityId> = offers.iter().map(|o| o.1).collect();
         for id in self.staff(line) {
@@ -190,36 +171,31 @@ impl World {
                 self.lay_off(id, touched);
             }
         }
-        for &(_, id, wage) in &offers {
+        for &(_, id) in &offers {
             let was = match self.objects.get(id).map(|e| &e.object) {
                 Some(GameObject::Resident(r)) => r.work,
                 _ => continue,
             };
             if was != Some(line) {
                 lines.extend(was);
-                fresh.insert(id);
-            }
-            if self.employ(id, Some(line), wage) {
+                self.employ(id, Some(line));
                 touched.push(id);
-            }
-        }
-        // Households beyond the map, one per desk left: home is the
-        // nearest road exit, and the job is the whole reason they exist.
-        if let Some((exit, wage)) = outside {
-            for _ in offers.len()..jobs {
-                touched.push(self.move_in(exit, Some(line), Some(exit), wage));
             }
         }
     }
 
-    /// What a household's hours cost a line, delivered: the ask, with the
-    /// drive there and back spread over the line's shift.
-    fn delivered(&self, id: EntityId, line: EntityId) -> Option<f64> {
-        let home = self.home_of(id)?;
-        let from = self.objects.get(home)?.position?;
-        let e = self.objects.get(line)?;
-        let GameObject::Building(ref b) = e.object else { return None };
-        Some(economy::delivered_wage(economy::ask(self, home), commute_h(from, e.position?), economy::shift_hours(b.kind)))
+    /// A line a road reaches with a desk nobody holds.
+    fn vacant(&self, line: EntityId) -> bool {
+        match self.objects.get(line).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => self.street_of(line).is_some() && self.staff(line).len() < blueprint(b.kind).jobs as usize,
+            _ => false,
+        }
+    }
+
+    /// A household's drive to a line, in hours.
+    fn commute(&self, id: EntityId, line: EntityId) -> Option<f64> {
+        let from = self.objects.get(self.home_of(id)?)?.position?;
+        Some(commute_h(from, self.objects.get(line)?.position?))
     }
 
     /// Chunks around one, a ring at a time, nearest first, as far as the
@@ -239,12 +215,9 @@ impl World {
     }
 
     /// A household, carless until the settle ends (`issue_car`).
-    fn move_in(&mut self, home: EntityId, work: Option<EntityId>, at: Option<EntityId>, wage: f64) -> EntityId {
-        let id = self.objects.insert(GameObject::Resident(Resident { home, work, at, car: 0, buckets: crate::needs::Bucket::fresh(), selected: None, last_update: 0, wage, tab: 0.0 }), None);
+    fn move_in(&mut self, home: EntityId) -> EntityId {
+        let id = self.objects.insert(GameObject::Resident(Resident { home, work: None, at: None, car: 0, buckets: crate::needs::Bucket::fresh(), selected: None, last_update: 0, tab: 0.0 }), None);
         self.tie(id, home);
-        if let Some(w) = work {
-            self.tie(id, w);
-        }
         id
     }
 
@@ -281,33 +254,21 @@ impl World {
         }
     }
 
-    /// Out of a job: someone in town works beyond the edge for their ask,
-    /// the drive being their own price; someone beyond the edge goes home.
+    /// Out of a job: at home until a desk in town comes free.
     fn lay_off(&mut self, id: EntityId, touched: &mut Vec<EntityId>) {
-        let Some(home) = self.home_of(id) else { return };
-        if self.edge.contains(&home) {
-            self.move_out(id);
-        } else if self.employ(id, None, economy::ask(self, home)) {
-            touched.push(id);
-        }
+        self.employ(id, None);
+        touched.push(id);
     }
 
-    /// Whether anything changed.
-    fn employ(&mut self, id: EntityId, work: Option<EntityId>, wage: f64) -> bool {
-        let Some(GameObject::Resident(r)) = self.objects.get_mut(id).map(|e| &mut e.object) else { return false };
-        let was = r.work;
-        let changed = was != work || r.wage != wage;
-        r.work = work;
-        r.wage = wage;
-        if was != work {
-            if let Some(w) = was {
-                self.untie(id, w);
-            }
-            if let Some(w) = work {
-                self.tie(id, w);
-            }
+    fn employ(&mut self, id: EntityId, work: Option<EntityId>) {
+        let Some(GameObject::Resident(r)) = self.objects.get_mut(id).map(|e| &mut e.object) else { return };
+        let was = std::mem::replace(&mut r.work, work);
+        if let Some(w) = was {
+            self.untie(id, w);
         }
-        changed
+        if let Some(w) = work {
+            self.tie(id, w);
+        }
     }
 
     fn tie(&mut self, resident: EntityId, building: EntityId) {
@@ -514,109 +475,26 @@ mod tests {
         assert_eq!(leftover, 0, "an evicted household takes its car with it");
     }
 
-    /// The same street, with its far end left beyond the survey: a road
-    /// exit, and so a door onto everything the town has not built.
-    fn town_with_a_way_out() -> World {
-        let mut world = World::new();
-        for y in -4..4 {
-            for x in -4..400 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world.place_road_path(&(-2..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
-        world
-    }
-
-    /// Nobody moves to the edge for its own sake: it has unlimited room and
-    /// draws not one person into it. Its households are made by the jobs the
-    /// town cannot fill, and unmade when those go.
+    /// A desk nobody in town can take stays empty: nobody comes from
+    /// beyond the town for a job. Two people and twelve desks are two
+    /// at desks and ten free, whatever road leaves the map; and when
+    /// the office goes, its two are out of work at home, and take the
+    /// next job that opens.
     #[test]
-    fn the_edge_houses_the_staff_the_town_cannot() {
-        let mut world = town_with_a_way_out();
+    fn a_desk_nobody_in_town_takes_stays_empty() {
+        let mut world = town();
         build(&mut world, 0, BuildingKind::House); // two people
+        let office = build(&mut world, 20, BuildingKind::Office);
         world.settle();
-        assert!(!world.edge.is_empty(), "the road runs off the map");
-        assert_eq!(residents(&world).len(), 2, "an empty town is two people, not a queue at the door");
-
-        let office = build(&mut world, 40, BuildingKind::Office);
-        world.settle();
-        let jobs = crate::blueprint::blueprint(BuildingKind::Office).jobs as usize;
-        assert_eq!(residents(&world).len(), jobs, "every desk has someone at it");
-        let commuters: Vec<Resident> =
-            residents(&world).into_iter().filter(|r| world.edge.contains(&r.home)).collect();
-        assert_eq!(commuters.len(), jobs - 2, "the ten the town cannot house live off the map");
-        assert!(commuters.iter().all(|r| r.work == Some(office)), "they are here for the job");
-        assert!(commuters.iter().all(|r| r.at == Some(r.home)), "and they are already out there");
-
-        // Settling again adds nobody: the vacancies are all spoken for.
-        world.settle();
-        assert_eq!(residents(&world).len(), jobs);
-
-        // The office goes, and so do they — but the town's own two stay,
-        // and take what work there is: no job in town, which is the job
-        // beyond the edge.
+        assert_eq!(residents(&world).len(), 2, "somebody moved in for the job");
+        assert!(residents(&world).iter().all(|r| r.work == Some(office)), "the town's two did not take it");
         world.remove_building(office);
         world.settle();
-        assert_eq!(residents(&world).len(), 2);
-        assert!(residents(&world).iter().all(|r| !world.edge.contains(&r.home)));
+        assert_eq!(residents(&world).len(), 2, "losing a job is not leaving");
         assert!(residents(&world).iter().all(|r| r.work.is_none()));
-
-        // And a shop in town wins them straight back off it: nobody keeps
-        // driving off the map once there is something here to do.
         let shop = build(&mut world, 6, BuildingKind::Shop);
         world.settle();
-        assert!(
-            residents(&world).iter().all(|r| r.work == Some(shop)),
-            "someone kept the job beyond the edge with one next door",
-        );
-    }
-
-    /// A building no road reaches is not somewhere anyone can go, so it is
-    /// not a candidate. It used to be: with no route to lengthen it, the
-    /// crow-flies estimate came out cheaper than anywhere real, so a shop
-    /// stranded off the street beat the edge, the drive was refused, and
-    /// the search chose it again at every retry.
-    #[test]
-    fn a_shop_no_road_reaches_loses_to_the_edge() {
-        let mut world = town_with_a_way_out();
-        for y in -8..8 {
-            for x in -4..400 {
-                world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
-            }
-        }
-        let home = build(&mut world, 0, BuildingKind::House);
-        // Three tiles off the street, so no driveway forms.
-        let orphan = world
-            .place_building(GridCoord { x: 4, y: 3 }, BuildingKind::Shop, 2)
-            .expect("land is land");
-        assert!(world.street_of(orphan).is_none(), "the point of the test");
-        world.settle();
-
-        let who = world.resident_ids()[0];
-        let edge = *world.edge.iter().next().unwrap();
-        // Stood at home with an evening owed, rather than off-map with nothing.
-        if let Some(e) = world.objects.get_mut(who)
-            && let GameObject::Resident(ref mut r) = e.object
-        {
-            r.at = Some(home);
-            for b in &mut r.buckets {
-                b.stock.level = 0.4 * b.need.cap();
-            }
-        }
-        let noon = 12 * (crate::protocol::DAY_MS as u64) / 24;
-        let v = crate::resident::inspect(&world, who, noon);
-        let leisure = v["buckets"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|b| b["need"] == "Leisure")
-            .expect("a Leisure bucket");
-        assert_eq!(
-            leisure["option"]["building"].as_u64(),
-            Some(edge as u64),
-            "an evening out should be at the edge, not at {orphan}: {}",
-            leisure["option"],
-        );
+        assert!(residents(&world).iter().all(|r| r.work == Some(shop)), "nobody took the shop's desks");
     }
 
     /// A building the road has not reached stands dormant: it houses nobody

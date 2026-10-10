@@ -39,15 +39,8 @@ selected: Need | null,
  */
 last_update: number, 
 /**
- * What their job pays an hour: their ask, plus the commute spread
- * over the shift, which is the delivered price of their labour. What
- * an hour of money is worth to them in the score. docs/economy.md
- * §5.2, §6.1.
- */
-wage: number, 
-/**
- * Units of the selected need served since this visit began, not yet
- * paid for: the sale lands as one lump when the visit ends. A record
- * of what is happening, like `at`.
+ * Units of the selected need served since this visit began: drawn
+ * off the shelf it was served from when the visit ends. A record of
+ * what is happening, like `at`.
  */
 tab: number, };

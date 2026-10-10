@@ -10,24 +10,25 @@ assistant; they are guesses, and the order matters more than the numbers.
 Built: roads and streets, one-way, the tree as the build, buildings
 painted a tile at a time with the hand's dots, residents with needs and
 commutes, call-outs for stock with a warehouse and trucks from the edge,
-the supermarket, the farm with its land and tractor, the port with its
-own ship, kerb parking before shops, offices and flats, day and night,
-the island's terrain, coast, trees and light. The price economy of
-`economy.md` runs under all of it.
+the supermarket, the farm with its land and tractor, the port filled by
+the world's ship on call, kerb parking before shops, offices and flats,
+day and night, the island's terrain, coast, trees and light. Milestone 0
+is done: nothing inside a town has a price, a buyer takes the nearest
+seller with stock by road, people stay in their own town, and coins move
+only when goods cross the border, bought from and sold to the world
+automatically until the player's trade replaces it.
 
-Decided on 2026-10-10 and not built: the economy is trade (`trade.md`).
-Nothing inside a town has a price; coins move only when goods cross its
-border; every trade is the player's, by hand or by a rule on a depot;
-every shipment can be followed; depots keep everything; buildings are
-built from materials a lorry brings. Still to build from 2026-09-23: the
-harbour as the door with the world's ferry, sites, the tapped lorry, the
-cut of services, wear and leisure.
+Decided on 2026-10-10 and not built: every trade across the border is
+the player's, by hand or by a rule on a depot; every shipment can be
+followed; depots keep everything; buildings are built from materials a
+lorry brings. Still to build from 2026-09-23: the harbour as the door
+with the world's ferry, sites, the tapped lorry.
 
 Not built, unchanged: parking past the kerb, power, fire, hospital, the
 advisor, road speed and priority, levels, trains, multiplayer,
 deployment.
 
-## Milestone 0: The cut (≈ 3 days)
+## Milestone 0: The cut (done, 2026-10-10)
 
 Delete before building. Each goes to `shelved.md` with its last commit.
 
@@ -45,19 +46,32 @@ Delete before building. Each goes to `shelved.md` with its last commit.
 *Playable:* the same town, smaller, every truck on it carrying something
 you can name, and nothing on a card you cannot see on the map.
 
-## Milestone 1: The opening (≈ 6 days)
+## Milestone 1: The opening (≈ 9 days)
 
-The four beats of `game.md` §The opening, from nothing.
+The four beats of `game.md` §The opening, from nothing, in four slices
+each playable on its own.
 
-- The harbour, built by the player on the coast; the world's ferry on a
-  timetable with a batch; the quay as a small buffer.
-- The general depot, holding a little of every class.
-- The starter pack: the first sailing's load, carried by the town's one
-  lorry, tapped by hand, from the quay to the depot, with the camera on
-  it the first time.
-- Sites: a placement waits for timber, steel and concrete, a lorry
-  brings them from the depot, and it goes up as they land. The site's
-  card says what it waits for and where that is.
+1. The ferry harbour, built by the player on the coast, as the one
+   door (`trade.md` §Shipping): a ramp and a trailer park; the shipping
+   company's ferry on a timetable, its deck as many cars and trailers as
+   fit, carrying settlers in their cars and the world's trailers. The
+   town's lorries hitch a trailer in the park and fetch it to a depot;
+   empties go back with the next trip, filled with an export when there
+   is one. No outside vehicle drives the town. The road's edge, the generated roads
+   and the fog go (`shelved.md`, 2026-09-23).
+2. Drafts (`game.md` §Drafts): every placement and demolition a draft
+   until committed, blue and reserved, drawn on the map with its bill;
+   commit, undo, discard. A draft takes up space and is wired into
+   nothing.
+3. The general depot, holding a little of every class, and sites: a
+   placement waits for its materials, timber first, a lorry brings them
+   from the depot, and it goes up as they land. A building's cost is a
+   row on its blueprint. The first depot comes with a top-up rule on it,
+   and a stalled site offers its own fix. `Need` splits into the needs
+   and the goods, since timber is a good and nobody's need.
+4. The starter pack: the first ferry's trailers, fetched by the town's
+   one lorry, tapped by hand, from the harbour to the depot, with the
+   camera on it the first time.
 
 *Playable:* build a harbour and a depot, watch the starter pack come
 home, and build a street with your own lorry.
@@ -83,6 +97,9 @@ over the horizon without you.
 - A sawmill by the forest and a quarry on the mountain: materials made
   in town, called for pickup, carried to the nearest depot with room.
 - The warehouse, the tank farm and the bulk yard: much of one class.
+- Charters: a tanker or a bulker for a shipload, landing at the
+  harbour's berth for its class, and the standing charter for a flow
+  that recurs (`trade.md` §Shipping).
 - A full depot stops what fills it, and is seen.
 
 *Playable:* a sawmill that stops the timber boats, and the road between
@@ -94,7 +111,10 @@ it and the building front as the thing you fix.
   physics.
 - Priority at junctions: roads over streets, via the intersection
   registry.
-- Levels: an overpass is a road one level up; bridges over water.
+- Levels: an overpass is a road one level up; bridges over water, taking
+  concrete and steel from stock.
+- Roads draw gravel and asphalt from stock as they are committed, once
+  the quarry of milestone 3 makes them.
 
 *Playable:* an interchange that actually flows, and a bypass that empties
 the high street.
@@ -104,9 +124,14 @@ the high street.
 - Deployment: the server on a VPS, the client built, reconnects.
 - Several towns on one island, each with a build and a harbour; roads
   between them; `multiplayer.md` §4's claim.
-- The Exchange, and the trade board it opens: listings, standing
+- The container port, which is the Exchange: cranes, a container yard,
+  container ships, and the trade board it opens: listings, standing
   offers, and contracts between players, the seller always delivering,
   from the world if it must.
+- The shipping company's network: a line to every harbour, sailings
+  that follow the traffic, the planner routing each load through hubs,
+  dues for a hub's handling, and roads between towns where players
+  choose to build them (`trade.md` §Shipping).
 - Shipments that cross towns, followed through a neighbour's streets.
 
 *Playable:* sell your timber to a friend, and watch your convoy drive

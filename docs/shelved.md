@@ -31,8 +31,8 @@ and a shipment that can be followed.
 **To bring back.** Only if a town grows owners the player is not, so
 that a price inside it decides something the player could not. The
 mechanisms are in `economy.md` §4 to §8 and §12, each with its referent.
-The code is still in the tree at `6eec4cf`; it goes with `roadmap.md`
-milestone 0.
+The code last lived at `7364679`, the commit before milestone 0's cut
+of it.
 
 ## Jobs across the border (2026-10-10)
 
@@ -55,6 +55,9 @@ or two towns in a shared world grow close enough that a commute between
 them is a short drive:
 labour as the one good with no depot, a job centre whose rules fill empty
 jobs from outside and find jobs abroad, coins per shift at the border.
+What was built of it, commuters living at the road's edge for the desks a
+town could not fill, residents working and eating there, and a workplace
+selling its hours across the border, last lived at `8d4a96d`.
 
 ## The continuous ledger
 
@@ -183,6 +186,16 @@ discard_drafts, erase_draft, draft_remove, is_going_away}`, the
 Also the multiplayer claim it gave: an unfinished draft reserved its land
 for its owner. Last lived at `dd53fbe`.
 
+**Brought back, 2026-10-10.** Once building costs materials, the second
+step buys something: the bill, what a draft takes against what is in
+stock, and a swipe of the demolisher that is not instant ruin. The new
+one is meant to be lighter (`game.md` §Drafts): there is one world, not a
+"now" and an "after". A draft takes up its tiles and reserves them, but
+is never wired into anything: a drafted road is in no edge and in no live
+node's links until commit, a drafted building has no door, and a drafted
+demolition is a mark on the live thing. Commit replays the strokes through
+the handlers that build live.
+
 ## Pedestrians, transit, walkability
 
 **What.** People on the map: walkers on sidewalks, buses and trams with
@@ -286,7 +299,7 @@ that are loads; the works replaces the office as the export base.
 
 **To bring back.** The office blueprint, `Need::Services` and its stock
 on homes and firms, `economy::draw`, `services()`, the fifth on
-`worth`, `season_no_harm`'s services report. Last lived at `df49b81`.
+`worth`, `season_no_harm`'s services report. Last lived at `1e571a1`.
 
 ## Wear, parts and the workshop
 
@@ -300,7 +313,7 @@ Fuel is enough for a car to want, and a pump is enough to place for it.
 
 **To bring back.** `Need::Wear`, `Bucket::driven`'s second entry, the
 workshop blueprint, `resident::drove`'s wear line. Last lived at
-`df49b81`.
+`1e571a1`.
 
 ## Leisure, evenings out and the household budget
 
@@ -316,7 +329,7 @@ them land. People eat and their cars burn fuel; that is what a person
 costs, and both are trucks on the road.
 
 **To bring back.** `Need::Leisure`, the bar and restaurant blueprints,
-`economy::household` as written, §12.4's row. Last lived at `df49b81`.
+`economy::household` as written, §12.4's row. Last lived at `1e571a1`.
 
 ## The port's own ship
 
@@ -333,8 +346,11 @@ prices move and a works worth building. The quay, the shelves, the vans
 and the voyage over the sea all stay; only who owns the boat and when it
 sails changes.
 
-**To bring back.** `CallKind::Fetch if economy::ships(row)` and the
-reorder point as the ship's trigger. Last lived at `df49b81`.
+**To bring back.** `CarRole::Ship` among the port's vehicles, moored at
+the quay by `calls::stable`, and its fetch sent from there. Last lived at
+`5eb6ea3`. Since `8d4a96d` the world's ship answers the port's call: it
+sails in, lands the shelves and sails away, still on call until the
+ferry's timetable (milestone 1).
 
 ## The construction firm
 

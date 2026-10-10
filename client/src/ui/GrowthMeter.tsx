@@ -13,13 +13,14 @@ const DRIP_MS = 1600;
  * The city's two dials, run together into one shape in the top right
  * corner: the level, a ring closing on the next, and the purse.
  *
- * The level is the town's GDP to date: value served in town at the
- * world's prices, banked as each visit ends. A tap opens the tree, where
- * its points are spent. The purse is the town's one purse, stepped at
- * the door: a shift worked beyond the edge, a lorry in from it, a
- * placement; a tap opens the town's books. Both move in lumps, and the
- * lumps are on the map first, so what comes into the purse drips up out
- * of it as it lands: an event you could have watched, never a rate.
+ * The level is the town's GDP to date: the value it adds, landing as
+ * each meal is served, each tank filled, each crop cut and each shift at
+ * a desk worked. A tap opens the tree, where its points are spent.
+ * The purse is the town's coins, stepped at the border: a harvest sold to
+ * the world, a lorry of crates bought from it, a placement; a tap opens
+ * the town's books. The coins are on the map first, so what comes into
+ * the purse drips up out of it as it lands: an event you could have
+ * watched, never a rate.
  */
 export default function GrowthMeter() {
   const { growth } = useGame();
@@ -60,7 +61,7 @@ export default function GrowthMeter() {
       </button>
       <button onClick={() => setBoardOpen((o) => !o)} class="ink absolute right-0 top-0 flex h-[52px] w-[166px] items-baseline justify-end gap-1.5 pr-5 pt-[9px] cursor-pointer" title="The town's books">
         <span class="serif text-[28px] font-light tabular-nums" classList={{ "!text-red-500": low() }}>{Math.floor(treasury()).toLocaleString()}</span>
-        <span class="soft text-xs font-semibold">hours</span>
+        <span class="soft text-xs font-semibold">coins</span>
       </button>
       <For each={drips()}>
         {(d) => <span class="drip pointer-events-none absolute right-[70px] top-3 grid h-7 w-[38px] place-items-center text-xs font-bold text-white">+{d.n}</span>}

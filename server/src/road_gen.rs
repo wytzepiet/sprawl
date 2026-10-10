@@ -545,7 +545,7 @@ mod tests {
     #[test]
     #[ignore]
     fn every_seed_seats_its_starting_town() {
-        let kinds = [BuildingKind::House, BuildingKind::Shop, BuildingKind::Workshop];
+        let kinds = [BuildingKind::House, BuildingKind::Shop, BuildingKind::GasStation];
         let mut short = Vec::new();
         for seed in 1..=20 {
             let mut world = World::new();

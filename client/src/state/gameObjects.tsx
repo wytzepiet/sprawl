@@ -15,7 +15,7 @@ import type { Building,
   Growth,
   ChunkCoord,
   Operation,
-  Sale,
+  Lump,
   TerrainChunk,
 } from "../generated";
 
@@ -54,20 +54,20 @@ export function pinned(): GameObjectEntry[] {
   return [...pinnedEntries.values()];
 }
 /**
- * Money that landed on buildings in view, for a moment: each lump floats up
+ * Coins and GDP that landed on buildings in view, for a moment: each lump floats up
  * over its building and is gone. Kept for a couple of seconds of wall time
  * and read by the lump layer; nothing else wants it.
  */
 const LUMP_MS = 2400;
-const [lumps, setLumps] = createSignal<(Sale & { key: number; since: number })[]>([]);
+const [lumps, setLumps] = createSignal<(Lump & { key: number; since: number })[]>([]);
 let lumpKey = 0;
 export function recentLumps() {
   return lumps();
 }
-function land(sales: Sale[]) {
-  if (sales.length === 0) return;
+function land(lumps: Lump[]) {
+  if (lumps.length === 0) return;
   const since = performance.now();
-  setLumps((l) => [...l.filter((s) => since - s.since < LUMP_MS), ...sales.map((s) => ({ ...s, key: lumpKey++, since }))]);
+  setLumps((l) => [...l.filter((s) => since - s.since < LUMP_MS), ...lumps.map((s) => ({ ...s, key: lumpKey++, since }))]);
   setTimeout(() => setLumps((l) => l.filter((s) => performance.now() - s.since < LUMP_MS)), LUMP_MS + 50);
 }
 export { LUMP_MS };
@@ -221,14 +221,14 @@ function applyOps(ops: Operation[]) {
   opsListener?.(ops);
 }
 
-/** A message's ops, so many at a time, then its sales. */
+/** A message's ops, so many at a time, then its lumps. */
 const OPS_A_PART = 64;
-function* applying(ops: Operation[], sales: Sale[]) {
+function* applying(ops: Operation[], lumps: Lump[]) {
   for (let i = 0; i < ops.length; i += OPS_A_PART) {
     applyOps(ops.slice(i, i + OPS_A_PART));
     yield;
   }
-  land(sales);
+  land(lumps);
 }
 
 // --- Context (thin — just what UI needs) ---
@@ -276,7 +276,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         setRevealedBounds(msg.data.revealed_bounds);
         setGrowth(msg.data.growth);
         // Many at once when the view travels: spread over frames, in order.
-        void spread(applying(msg.data.ops, msg.data.sales));
+        void spread(applying(msg.data.ops, msg.data.lumps));
         break;
       case "Error":
         console.error("[ws] server error:", msg.data.message);

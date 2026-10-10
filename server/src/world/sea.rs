@@ -1,18 +1,16 @@
-//! A port's quay, and its ship's voyages over the water. docs/economy.md
-//! §12.10.
+//! A port's quay, and the world's ship's voyages over the water to it.
 //!
 //! The sea is a tile of its own from the generator (`terrain.rs`): water
 //! on the ocean's side of the step. Water on the shelf is a lake, and no
 //! port stands on it. A port stands with its back to the sea: the tile
-//! behind its building's back face is the quay, where the ship stands when
-//! it is home. A voyage is a run off the roads, as a tractor's is
-//! (`world/fields.rs`): the shortest way over the sea from the quay toward
-//! the map's edge, a tile every pace, as far as the fog, which is the
-//! horizon, or the map's edge where the survey reaches it. There the ship
-//! sails out of sight, is away the sailing,
-//! and sails back in the way it went; home, it is a lorry back from beyond
-//! the edge (`calls::car_idle`), and lands every shelf's worth at the
-//! sea's crossing.
+//! behind its building's back face is the quay, where the ship lands. A
+//! voyage is a run off the roads, as a tractor's is (`world/fields.rs`):
+//! the shortest way over the sea between the quay and the map's edge, a
+//! tile every pace, as far as the fog, which is the horizon, or the map's
+//! edge where the survey reaches it. The ship is the world's, not the
+//! port's: it sails in from the horizon when a port's shelves call,
+//! lands every shelf's worth (`calls::car_idle`),
+//! and sails back out of sight, gone.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -25,8 +23,8 @@ use crate::world::World;
 /// How long a ship takes to cross a tile: 1.2 seconds of the clock, a
 /// ship at twenty knots on twelve-metre tiles, a little under a car.
 pub const PACE: GameTime = DAY_MS as GameTime / 1000;
-/// How long a ship is beyond the horizon: four hours, twice a lorry's
-/// absence beyond the edge.
+/// How long the world's ship takes to reach the horizon once a port
+/// calls: four hours, twice a lorry's absence beyond the edge.
 pub const SAILING: GameTime = DAY_MS as GameTime / 6;
 
 /// The four ways off a tile.
@@ -117,8 +115,8 @@ impl World {
         Some(path)
     }
 
-    /// The ship sets out from the quay for the horizon. False from a
-    /// port with no way to the sea.
+    /// The ship sets out from the quay for the horizon, and is gone. False
+    /// from a port with no way to the sea.
     pub fn set_sail(&mut self, events: &mut EventQueue, ship: EntityId, now: GameTime) -> bool {
         let owner = match self.objects.get(ship).map(|e| &e.object) {
             Some(GameObject::Car(c)) if c.run.is_none() && c.trip.is_none() => c.owner,
@@ -134,8 +132,8 @@ impl World {
         true
     }
 
-    /// Back over the horizon, the way it went, home to the quay. False
-    /// where the port is gone.
+    /// In over the horizon to the quay of the port it was called by. False
+    /// where the port is gone, or has no way to the sea.
     pub fn sail_home(&mut self, events: &mut EventQueue, ship: EntityId, now: GameTime) -> bool {
         let owner = match self.objects.get(ship).map(|e| &e.object) {
             Some(GameObject::Car(c)) => c.owner,
@@ -153,8 +151,8 @@ impl World {
     }
 
     /// The ship reaches the tile of its voyage the clock names. At the
-    /// horizon it sails out of sight for the sailing; at the quay it is
-    /// home, and thinks as a lorry home from beyond the edge does.
+    /// horizon it sails out of sight; at the quay it lands its load, as a
+    /// lorry in from beyond the edge does.
     pub fn ship_step(&mut self, events: &mut EventQueue, ship: EntityId, now: GameTime) {
         let Some(GameObject::Car(c)) = self.objects.get(ship).map(|e| &e.object) else { return };
         let (owner, Some(run)) = (c.owner, c.run.clone()) else { return };
@@ -171,11 +169,7 @@ impl World {
             self.moor(ship);
             events.wake(0, ship);
         } else {
-            self.leave_map(ship, now + SAILING);
-            if let Some(GameObject::Car(c)) = self.objects.get_mut(ship).map(|e| &mut e.object) {
-                c.run = None;
-            }
-            events.wake(SAILING, ship);
+            self.despawn_car(ship);
         }
     }
 }

@@ -30,7 +30,7 @@ pub struct Meta {
     /// GDP to date: the level. Kept to the hundredth, which is far finer
     /// than a bar can show — the metadata column holds whole numbers.
     pub gdp: f64,
-    /// The mayor's money, in hours of the edge's wage.
+    /// The mayor's coins.
     pub treasury: f64,
     /// The nodes of the tree taken, one metadata row each.
     pub taken: Vec<Cell>,

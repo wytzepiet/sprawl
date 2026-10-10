@@ -41,7 +41,6 @@ fn link(world: &World, id: EntityId) -> Value {
             CarRole::Private => name(c.owner) + "'s car",
             CarRole::Van => "Van".into(),
             CarRole::Truck => "Lorry".into(),
-            CarRole::Company => "Car".into(),
             CarRole::Tractor => "Tractor".into(),
             CarRole::Ship => "Ship".into(),
         }),
@@ -78,11 +77,10 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Value {
         "work": r.work.map(|w| link(world, w)),
         "at": r.at.map(|a| link(world, a)),
         "car": link(world, r.car),
-        "wage": r.wage,
         "selected": r.selected,
         "since": hhmm(r.last_update),
-        // The tank and the wear are the car's; its card shows them.
-        "buckets": thinking["buckets"].as_array().map(|bs| bs.iter().filter(|b| b["need"] != "Fuel" && b["need"] != "Wear").cloned().collect::<Vec<_>>()),
+        // The tank is the car's; its card shows it.
+        "buckets": thinking["buckets"].as_array().map(|bs| bs.iter().filter(|b| b["need"] != "Fuel").cloned().collect::<Vec<_>>()),
     })
 }
 
@@ -169,7 +167,6 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "building_kind": b.kind,
         "reached": world.street_of(id).is_some(),
         "stocks": b.stocks.iter().map(|(need, s)| json!({ "need": need, "full": s.level / s.cap })).collect::<Vec<_>>(),
-        "money": (!world.edge.contains(&id)).then(|| crate::economy::inspect(world, id, now)),
         "here": here,
         "household": household,
         "staff": staff,

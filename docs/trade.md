@@ -37,6 +37,30 @@ cross a town's border: in when the town sells, out when it buys. Nothing
 inside the town has a price. A building costs materials, not coins, and
 materials cost coins only when they are bought in.
 
+## GDP
+
+The level is GDP to date: the value the town adds, counted once, where
+and when it appears on the map, at the world's prices, and nothing a
+resident or a building decides by. A crop is worth its price as it is
+cut. A meal or a tank served over a counter is worth the counter's
+price less the crate or the fuel it used, whoever made that, so a shop
+fed by the town's own farm and one fed from the boat add the same, and
+the farm adds its crops on top. Work is valued through what it makes; a
+farm hand's shift is in the crops already. Work that makes no good to
+sell, a building there for what it does (an office until it has a
+product, the Exchange, a fire station), is counted at cost, a wage an
+hour, as GDP counts government work. Imports add nothing, and exports
+nothing again. Each lands as a lump on the building it was added at.
+
+GDP and coins are two numbers: the treasury is the balance of trade,
+and a town serving its own people raises GDP without moving a coin.
+Value sits on what is served, not on the visit, so ten restaurants do
+not make anyone eat more: the level grows with how many people the town
+has and how much of what they need it makes and serves for them. A
+better building serving the same need for more, a villa's night or a
+restaurant's dinner, is the ladder of wants (§Open 4), and a number on
+its row.
+
 ## The world
 
 Beyond the sea the world buys and sells everything, without limit:
@@ -50,10 +74,10 @@ Beyond the sea the world buys and sells everything, without limit:
   world's price sells nothing; one who sells below its buying price
   should have sold to the world.
 
-Speed is a choice that costs: the ferry is slow and cheap and carries a
-lot; a neighbour by road is fast if near; an airport, later, is fast and
-dear and carries little. "I need it now" is always possible and always
-costs.
+Speed is a choice that costs: the scheduled ship is slow and cheap and
+carries a lot; a neighbour by road is fast if near and joined; an express
+boat or, later, an airport is fast and dear and carries little. "I need
+it now" is always possible and always costs (§Shipping).
 
 Shipping takes time, and that is part of the game: order before you need
 it. Every shipment shows when it will land, and the estimate moves when
@@ -62,11 +86,14 @@ surprises is a chore.
 
 ## The Exchange
 
-Trading with other players starts with a building: the Exchange,
-placed on any street. Until a town has one it trades with the world
-alone, at the harbour by hand and through its depots' top-up rules,
-which is all a new player needs to learn: the harbour, the depot, the
-road. The Exchange opens the trade board, listings to other towns,
+Trading with other players starts with a building: the container port,
+which is the Exchange (§Shipping). Until a town has one it trades with
+the world alone, through its ferry harbour, by hand and through its
+depots' top-up rules, which is all a new player needs to learn: the
+harbour, the depot, the road. Trading at scale and trading with players
+are the same step, and it is a building you can watch work: the stacks,
+the cranes, the boxes for your neighbour. The Exchange opens the trade
+board, listings to other towns,
 standing offers and contracts, and is where they are managed. It comes
 later in the tree, once a player knows what their town is short of and
 what it has too much of. In single player the world, and later computer
@@ -148,20 +175,156 @@ hides. It is a thing on the map:
   become a dashboard, the list of what is on its way, and then the flow
   itself: a steady line of your lorries, a quay that never empties.
 
-## Shipments
+## Shipping
 
-Every shipment is a vehicle in the world, and the list of pending ones
-is the way to it. Click one and the camera goes to the lorry, the
-tanker, the ship, wherever it is, and follows it home. Because the world
-is the server's, it is not an animation: a late shipment is late for a
-reason you can see, a neighbour's rush hour or your own junction. In a
-shared world it crosses other players' towns.
+Status: direction, 2026-10-10, argued and liked, not settled in its
+numbers. Nothing built.
 
-- A pin on the map for every shipment on its way.
-- The world's ship comes over the horizon and grows as it nears the
-  quay.
-- The ride-along camera (`shelved.md`) is for this: sit behind the
-  lorry and drive home with it.
+The sea is the default way between towns, and the player never handles a
+ship. Real shipping keeps three things apart, and so does this: who runs
+the ships, how a load finds its way, and who asks for it. And it keeps
+the truck apart from the box.
+
+**The shipping company runs the lines.** One company, the world's, runs
+every ship. A line is a timetable over a route of harbours, its ships
+sailing it in a loop, so every ship is somewhere at sea at every moment,
+on the map, without anything dispatching it. A busy pair of harbours
+gets more sailings: the company follows the traffic, up to what a
+harbour's size allows, and the tree grows that. Ships sail on time
+whether full or not, so a wait is for the next sailing, never for a
+shipload; small loads from many senders share a ship. Each ship carries
+one kind of thing and lands it one way, and a line is run by ships of
+one kind. What a ship carries is what fits on it: a ferry's car deck is
+a grid of spots, a container ship's a grid of slots stacked a few high,
+and a bigger ship is a longer hull you can count the difference on.
+
+**Boxes are the world's, lorries are the town's.** What travels is a
+box: an unaccompanied trailer rolled off a ferry, or a container lifted
+off a ship, which in the game are the same thing landed two ways. A box
+belongs to the shipping company; it is the load, not a vehicle. Lorries
+belong to buildings, a depot's fleet, and only a town's own lorries
+drive its roads: no outside vehicle comes to a depot for a dock it would
+have to find. A lorry drives to the harbour, hitches a full box from the
+yard, drives it home and unloads it, and the empty stays at the depot.
+There is no trucking company (`shelved.md`, haulers): a depot is its own
+haulier. Imports are as fast as the town's lorries and the road from the
+harbour make them, which is the traffic game.
+
+**Empties ride back, and are filled when they can be.** Real shipping
+moves a fifth of its boxes empty, from where goods are used back to
+where they are made, and tries hard not to. Here, the next time a lorry
+drives to the harbour it takes an empty with it, drop and hook: it drops
+the box in the yard and hitches the next full one, so an empty costs no
+trip of its own. If the depot has something to export, the empty is
+filled with it first and goes back full, as an importer's box goes
+straight to an exporter in the trade (a street turn). A town that buys
+and sells carries something both ways on every trip; a town that only
+buys drives empties about, and a depot whose lorry never goes back
+gathers a stack of them, in sight. Exports are the same in reverse: an
+empty filled at the depot, a lorry to the yard, the next ship away.
+Later, the world may charge less for what rides in a box that would have
+gone back empty, as shipping lines sell their backhaul cheap.
+
+**The harbour grows.** It starts as a ferry harbour: a ramp, a trailer
+park, and the ferry, which carries the settlers' cars and the world's
+trailers, on one deck, so the deck's size is the door's size and a full
+ferry leaves a trailer for the next sailing, queued in sight. Small
+islands are supplied this way in the real world, and no small harbour
+has a crane. The harbour's own tug moves the trailers between deck and
+park, as a port's tugmasters do: it lifts a trailer's nose, backs it up
+the ramp into its lane on the deck, and pulls it off forwards at the
+other end; the cars drive through, off forwards into town. The town's
+lorries never board: they drop a trailer in the park and hitch another,
+so none waits for a ferry, and the ferry sails on time with whatever the
+tug got aboard. Loading is slower than unloading, and a crowded park
+slows the tug, in sight. The container port comes later in the tree, its own
+building: cranes, a container yard, container ships on the company's
+lines, many more boxes for less each. It is also the Exchange (§The
+Exchange). After it, berths for tankers and bulkers (below).
+
+**Harbours have yards.** A ship unloads into its harbour's yard, the
+trailer park or the container stacks: boxes by where they go next. The
+yard is a buffer in transit, not stock. Nothing in town draws on it; a
+load is the town's only once a lorry has carried it to a depot. A box in
+a yard waits either for its next ship, a transfer, or for a lorry. The
+yard's size is the harbour's, and a full yard is a jam you can see.
+Everything is drawn as it happens: the ramp lowering and the trailers
+towed off, the cranes lifting boxes onto the stacks one at a time, a
+lorry backing up to a box and driving off with it. A harbour working is
+the satisfying thing to watch in the game, never a number going up.
+
+**A shipment is planned, not driven.** The player says what, from where,
+to where, and by when: an order by hand, a top-up rule on a depot, a
+contract with a player, a request from the world or from someone the
+world stands for. A planner finds its route over the timetable: the
+sailings, the changes of ship at a hub, earliest arrival first. This is
+a journey planner, the problem trains and container lines solved long
+ago (Connection Scan: every departure in time order, swept once), and it
+is worth making smart, because watching a load go to a hub, wait,
+change ship and come home is the fun of it. A shipment that misses its
+connection is planned again from where it is. Every step is on the map
+and a click follows it: on a ship, in a yard, on a lorry. Its arrival
+time is the plan's and moves when the plan does; because the world is
+the server's, a late load is late for a reason you can see, a full yard
+or your own junction. A pin marks every load on its way, and the
+ride-along camera (`shelved.md`) is for sitting behind one and coming
+home with it.
+
+**Urgency costs.** The timetable is the cheap, reliable way. An express
+boat, sent for one load, is the fast and dear one; an airport later the
+fastest and dearest. "I need it now" is always possible.
+
+**A harbour can be a hub.** The planner may route someone else's cargo
+through your container port: their boxes sit in your yard waiting for
+their connection. For each one handled, onto a ship or off it, your town
+is paid dues: coins in, since it is a service sold across the border,
+and GDP, since handling is work that adds value, as a port's is in any
+country's accounts. Only others' cargo pays; a box of your own changing
+ship in your own yard is your own pocket. Dues are per box handled, not
+per day sitting, so a yard clogged with others' boxes costs room and
+earns nothing more. A big port in a good spot is a way to play.
+
+**Roads between towns are a choice.** Towns are not joined by road
+unless their players join them. Islands, towns far apart and a shared
+road too small for two towns' traffic stop being problems; a road link
+is built when lorries beat ships, a neighbour close enough to drive to.
+A shipment's planner uses one where it exists.
+
+**Everything comes boxed at first.** Crates and timber in boxes, fuel
+in tank boxes, gravel and cement in lined bulk boxes, on the same
+sailings and through the same yard. One way to learn.
+
+**Liquids and bulk by the shipload.** When an order or a top-up is big
+enough to fill a ship, a tank farm with room for a tankerful, a bulk
+yard emptying ahead of a big build, the planner offers a charter: a
+tanker or a bulker for that one load, point to point, cheaper by the
+unit and only for the whole of it. A flow that recurs becomes a standing
+charter, a tanker every few days (a contract of affreightment, in the
+trade). It lands at the harbour's berth for its class: a tanker pumps
+straight into a tank farm built beside its berth, or into the berth's
+tanks for the town's road tankers to carry inland; a bulker's grabs
+unload onto a heap for tippers, or into a bulk yard at the berth. Only a
+tank farm can take a tankerful and only a bulk yard a bulkerful, which
+is what each is for: chartering is the step from a town that imports to
+one that trades.
+
+Open:
+
+1. How the company decides sailings: a frequency per line from the last
+   days' bookings, or a ship added when the next sailings are full.
+2. What the planner minimises: arrival only, or arrival with the price,
+   and whether the player can say "cheapest" or "fastest".
+3. Where hubs come from: any port the planner finds useful, or ones the
+   player declares; and what the dues are.
+4. How a top-up rule books: "will I be under my floor by the next
+   arrival", and how it avoids booking twice for one shortfall.
+5. How much a box holds, and whether a part-full box sails.
+6. How big an order has to be before a charter is offered, and whether
+   the pipe from a berth to a tank farm is drawn or follows from their
+   standing side by side.
+7. Whether the world prices backhaul lower, and by how much.
+8. Whether players run lines of their own one day, against `game.md`'s
+   "the mayor never owns a ship".
 
 ## Depots
 
@@ -199,14 +362,23 @@ every material comes by boat; a sawmill by the forest or a quarry in
 the mountains makes them in town later. Building ten houses tomorrow
 means topping up timber today.
 
+Roads take theirs too, gravel and asphalt and, over water or over each
+other, concrete and steel, but straight from the depots' stock as they
+are committed, with no lorry: a road is instant, and so the bigger the
+gravel depot, the more road can be laid in one go. Placing anything is a
+draft until it is committed, and the draft's bill says what it will take
+against what is in stock (`game.md` §Drafts).
+
 ## The opening
 
 1. Build a harbour on the coast.
 2. Build a depot.
 3. Connect them with a road.
-4. A shipment arrives: the starter pack. The camera follows the lorry
-   from the quay to the depot the first time, so the player learns that
-   shipments can be followed. The crates stack.
+4. A shipment arrives: the starter pack, trailers off the first ferry
+   into the harbour's trailer park. The player taps the town's one lorry
+   to fetch them, and the camera follows it from the harbour to the
+   depot the first time, so the player learns that shipments can be
+   followed. The crates stack, and the empties wait for the next trip.
 5. Build.
 
 Four beats, each teaching one thing: ships come here, things are kept
@@ -242,10 +414,10 @@ People stay in their own town; only goods cross its border.
    that every town on the island fills together; demand that softens
    when everyone ships the same good.
 4. What a town wants from inside: whether houses climb a ladder of wants
-   (Caesar III, Anno), and what opens the tree, which was GDP's running
-   sum, a number priced at the world's prices.
-5. The Exchange's name. Kontor (the Hanse's trading posts) and the
-   weigh house (Waag) were the alternatives.
+   (Caesar III, Anno), and so what a night at home is worth in GDP
+   (nothing yet).
+5. The Exchange is the container port (§Shipping); what the building is
+   called on the menu.
 6. Whether the harbour and the first depot are free, or built from the
    starter pack.
 7. How many coins the starter pack carries, and the world's two prices
