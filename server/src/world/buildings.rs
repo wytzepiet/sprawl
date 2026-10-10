@@ -407,9 +407,17 @@ impl World {
             let (tiles, kind, facing) = (b.tiles.clone(), b.kind, b.facing);
             // It faces the way a street lets it: the way it was laid if a
             // street is there, else the first that has one.
-            let facing = std::iter::once(facing).chain(0..4).find(|&f| self.driveway_for(&tiles, kind, f, false).is_some()).unwrap_or(facing);
+            // A harbour faces only the way that puts its back to open sea.
+            let quay = crate::blueprint::blueprint(kind).quay;
+            let facing = std::iter::once(facing)
+                .chain(0..4)
+                .find(|&f| self.driveway_for(&tiles, kind, f, false).is_some() && (!quay || self.berth_at(&tiles, kind, f).is_some()))
+                .unwrap_or(facing);
             if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
                 b.facing = facing;
+            }
+            if quay && self.berth_at(&tiles, kind, facing).is_none() {
+                return false;
             }
             let Some((street, tile)) = self.driveway_for(&tiles, kind, facing, true) else { return false };
             let Some(street) = self.objects.get(street).and_then(|e| e.position) else { return false };

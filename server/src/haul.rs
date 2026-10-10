@@ -303,13 +303,8 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
             let selling = to_sell(world, depot).is_some();
             match waiting_for(world, depot).filter(|&(h, _)| h == harbour).or_else(|| selling.then(|| empty_at(world, harbour).map(|i| (harbour, i))).flatten()) {
                 Some((_, i)) if i != dock => {
-                    world.aims.insert(lorry, (harbour, i));
-                    let from = world.street_of(harbour);
-                    let moved = from.is_some_and(|from| crate::car::spawn::start_trip(world, events, lorry, from, harbour, now, GameTime::MAX));
-                    if !moved {
-                        world.aims.remove(&lorry);
-                        go_home(world, events, lorry, harbour, now);
-                    }
+                    world.redock(harbour, lorry, i, now);
+                    events.wake(SERVICE_MS, lorry);
                 }
                 _ => go_home(world, events, lorry, harbour, now),
             }
@@ -433,3 +428,34 @@ pub fn sell(world: &mut World, events: &mut EventQueue, depot: EntityId, good: G
     send(world, events, depot);
 }
 
+
+/// The sea as the server has it, for reading: the summary the client gets,
+/// every harbour's park and ferry, and every lorry and what it hauls.
+pub fn inspect(world: &World, now: GameTime) -> serde_json::Value {
+    use serde_json::json;
+    let harbours: Vec<_> = world
+        .harbours
+        .keys()
+        .map(|&h| {
+            let park = building(world, h).map(|b| b.park.iter().map(|s| s.trailer).collect::<Vec<_>>());
+            let ferry = world.ferry_of(h).and_then(|f| car(world, f).map(|c| json!({
+                "id": f, "at": world.objects.get(f).and_then(|e| e.position), "due": c.due, "moored": c.spot.is_some(),
+                "sailing": c.run.is_some(), "deck": c.deck, "passengers": c.passengers, "booked": c.booked,
+            })));
+            let tug = world.tug_of(h).and_then(|t| car(world, t).map(|c| json!({ "id": t, "spot": c.spot, "shunt": c.shunt, "hitched": c.hitched })));
+            json!({ "harbour": h, "park": park, "ferry": ferry, "tug": tug })
+        })
+        .collect();
+    let lorries: Vec<_> = world
+        .objects
+        .iter()
+        .filter_map(|e| match e.object {
+            GameObject::Car(ref c) if c.role == CarRole::Truck => Some(json!({
+                "id": e.id, "depot": c.owner, "at": e.position, "to": c.trip.as_ref().map(|t| t.destination),
+                "hitched": c.hitched, "standing_at": world.claims.get(&e.id),
+            })),
+            _ => None,
+        })
+        .collect();
+    json!({ "now": now, "summary": sea(world, now), "harbours": harbours, "lorries": lorries })
+}

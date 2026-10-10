@@ -12,6 +12,10 @@
  *                                       as a kind that grows is painted
  *   bun run act demolish 12,5 14,5      whatever stands on the tiles, through
  *   bun run act speed 0                 sim steps per tick; 0 pauses
+ *   bun run act send 18                 depot 18's lorry to the harbour now
+ *   bun run act standing 18 on          its standing orders, on or off
+ *   bun run act order 18 Timber 2       two boxes of timber from the world
+ *   bun run act sell 18 Crates          a box of crates to the world
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
  *                                       day (0 midnight, 0.5 noon)
@@ -188,6 +192,20 @@ for (const [verb, ...rest] of lines) {
     case "speed":
       send("SetSpeed", Number(args[0]));
       break;
+    // The border: a depot's lorry sent, its standing orders, boxes bought
+    // or a box sold. The sea's state is at /sea.
+    case "send":
+      send("Send", { depot: Number(args[0]) });
+      break;
+    case "standing":
+      send("Standing", { depot: Number(args[0]), on: args[1] !== "off" });
+      break;
+    case "order":
+      send("Order", { depot: Number(args[0]), good: args[1], boxes: Number(args[2] ?? 1) });
+      break;
+    case "sell":
+      send("Sell", { depot: Number(args[0]), good: args[1] });
+      break;
     case "reset":
       send("ResetWorld");
       break;
@@ -216,6 +234,6 @@ for (const [verb, ...rest] of lines) {
   const said = [...changes(await settled()), ...report];
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : ["time", "speed", "run", "watch"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch", "send", "standing", "order", "sell"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
 ws.close();

@@ -76,6 +76,10 @@ pub async fn card(Path(id): Path<EntityId>, State(state): State<AppState>) -> St
 }
 
 /// The town's page: `/town`.
+pub async fn sea(State(state): State<AppState>) -> String {
+    ask(&state, Ask::Sea).await
+}
+
 pub async fn town(State(state): State<AppState>) -> String {
     ask(&state, Ask::Town).await
 }

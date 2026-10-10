@@ -187,6 +187,7 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
                         Ask::Lot(id) => world.inspect_lot(id, now),
                         Ask::Card(id) => crate::card::card(&world, id, now),
                         Ask::Town => crate::economy::town(&world, now),
+                        Ask::Sea => crate::haul::inspect(&world, now),
                         Ask::Map { x, y, r } => crate::fixtures::draw(&world, x, y, r).into(),
                         Ask::Call(id) => {
                             // Its shelf, emptied: a depot fetches, a maker

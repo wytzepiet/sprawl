@@ -266,6 +266,19 @@ impl World {
         }
     }
 
+    /// A lorry in one dock of a yard moves along to another: drop and hook,
+    /// out of the dock it dropped a box in and back under the box it came
+    /// for, a few metres along the same yard.
+    pub fn redock(&mut self, building: EntityId, car: EntityId, i: usize, now: GameTime) {
+        if self.lot_mut(building).is_none() {
+            return;
+        }
+        self.release_spot(car);
+        self.hold(building, car, Claim::Spot(i), now, GameTime::MAX);
+        let pose = self.pose_of(building, car, Claim::Spot(i));
+        self.set_spot(car, pose);
+    }
+
     /// The tug lets go of the dock it held, and stands where it stands.
     pub fn unhold_dock(&mut self, building: EntityId, car: EntityId) {
         if let Some(lot) = self.lots.get_mut(&building) {

@@ -45,6 +45,9 @@ pub enum Ask {
     Card(EntityId),
     /// The town's page: what it served and what crossed the door.
     Town,
+    /// Every shipment, every timetable, every harbour's park and every
+    /// box on a hitch: the sea as the server has it.
+    Sea,
     /// The tiles round a point as a fixture's text.
     Map { x: i32, y: i32, r: i32 },
 }

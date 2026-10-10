@@ -48,6 +48,7 @@ async fn main() {
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
         .route("/inspect/{id}", axum::routing::get(health::card))
         .route("/town", axum::routing::get(health::town))
+        .route("/sea", axum::routing::get(health::sea))
         .route("/map", axum::routing::get(health::map))
         .route("/fixtures", axum::routing::get(|| async { axum::Json(fixtures::PLACED.get().cloned().unwrap_or_default()) }))
         .layer(CorsLayer::permissive())
