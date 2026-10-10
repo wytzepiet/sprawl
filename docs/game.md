@@ -108,18 +108,55 @@ stands its bill: each material it takes against what the depots hold,
 short in red, and the coins for anything that has to be bought in.
 
 **Commit** makes it real in one stroke: roads first, then buildings, then
-the demolitions, each as if it had been drawn live. Roads are laid and
-draw their materials; buildings become sites; demolitions come down. What
-the stock cannot cover the bill offers to order, with when it would land,
-and what no longer fits (someone built there meanwhile) stays a draft,
-marked. Undo takes back the last stroke and discard the lot. A draft is
-the player's own and outlives a restart.
+the demolitions, each as if it had been drawn live, and round again while
+anything more goes in, so a house drafted over one drafted to come down
+goes up once the old one is gone. Roads are laid and draw their
+materials; buildings become sites; demolitions come down. What the stock
+cannot cover the bill offers to order, with when it would land, and what
+no longer fits (someone built there meanwhile) stays a draft, marked.
+Undo takes back the last stroke and discard the lot. A draft is the
+player's own and outlives a restart.
 
 Why it is back after being shelved (`shelved.md`): once building costs
 materials the second step buys something, the bill; and this one is
 lighter. A draft only takes up space. It is never part of the road graph,
 a draft building has no door, and so nothing that runs the town has to
 know drafts exist.
+
+**Built, 2026-10-10** (`server/src/drafts.rs`, `client/src/ui/Bill.tsx`,
+`client/src/engine/Ghosts.tsx`). A draft is nothing but the steps of the
+hand as they were taken, a drag to a stroke, kept per player
+(`World::drafts`, its own table in the save). There is no draft road node
+or draft building anywhere: the server never works out what a draft
+*would* be, it replays the steps through the handler that builds live
+when it is committed (`take_step`), and what that handler refuses is the
+step that no longer fits. The one rule of where the hand may go is still
+the live one; at the moment of drafting the server only asks that a step
+is on the map, onto ground it could stand on, and on nobody else's draft.
+The client's hand sees its own draft as built, so its dots let a house be
+drawn beside a drafted street (`may.ts`).
+
+- **The second step is nearly free.** The moment anything is drafted the
+  bill appears over the toolbar: what is drawn in words ("15 road, a
+  harbour, a depot, 3 houses"), each material against what the town has
+  (in the depots or on its way, less what standing sites still wait
+  for), short in red, the order for the shortfall at the harbour one tap
+  away, and Build. Enter builds, Ctrl or Cmd Z takes back a stroke, Esc
+  with nothing in hand drops the draft. Built, the ghosts flash pale and
+  sink into their sites.
+- **The demolisher rubs a draft out**: a tap on one's own drafted tile
+  takes back what lies on it, a drag across a drafted road cuts that
+  link, and a tap on a demolition drafted takes it back.
+- **The first depot is free on the bill**, as it stands at once; a
+  harbour takes nothing.
+- **Roads cost nothing yet**, so the bill counts buildings only; a
+  road's materials are a line in `drafts::bill` once roads draw on stock.
+- **Anyone's draft is drawn**: one's own blue, a stuck step amber,
+  another player's grey, as land taken.
+- `bun run act` drafts each command and commits it, as the bill's Build
+  would; `act draft …` leaves it drafted, and says the bill; `act
+  commit | undo | discard`. `PLAYER=<id> bun run look --ui` sees a draft
+  as its owner does.
 
 ## Buildings
 

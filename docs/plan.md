@@ -57,6 +57,8 @@ that assert old design are rewritten, not obeyed.
 - Goods are split from needs: crates, fuel, timber. Buildings cost timber,
   not coins, and stand as sites until a van has brought it.
 - The skill tree is switched off: everything unlocked, its screen gone.
+- Everything the hand lays is a draft until the bill's Build commits it
+  (`game.md` §Drafts).
 - The terrain is islands in one ocean, a fifth of the map land.
 - The client renders with Babylon Lite on WebGPU only, and a cloud
   container can run it: headless Chromium draws WebGPU in software

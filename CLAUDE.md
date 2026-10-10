@@ -116,7 +116,10 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   5,86` (more tiles paint on through them, as the brush drags),
   `demolish 5,86`, `speed 0`, `run 2` (hours, or `--to 0.83` of a
   day), `reset`; `bun run act - < steps` reads one a line. Each says what
-  it made and took away; a tile refused is in `.dev/server.log`. To set up a situation and watch it:
+  it made and took away; a tile refused is in `.dev/server.log`. Each of
+  `road`, `build` and `demolish` is drafted and committed at once;
+  `draft road …` leaves it a draft and says its bill, and `commit`,
+  `undo`, `discard` work the draft (`game.md` §Drafts). To set up a situation and watch it:
   `watch 2 5,80` (or `--to 0.45`) runs the clock and records every trip
   round that tile to `.dev/paths.json`, as the client draws them, and
   counts the bends tighter than a car turns (style.md's 0.45), as the

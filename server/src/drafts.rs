@@ -84,6 +84,14 @@ fn mine(world: &World, owner: OwnerId, t: GridCoord) -> bool {
     marks(world, owner).any(|m| lays(&m.step).contains(&t))
 }
 
+/// The kind of building the owner's draft paints on a tile.
+fn drafted(world: &World, owner: OwnerId, t: GridCoord) -> Option<BuildingKind> {
+    marks(world, owner).filter(|m| m.step.to == t).find_map(|m| match m.step.tool {
+        Tool::Building(kind) => Some(kind),
+        _ => None,
+    })
+}
+
 /// May the step be drafted: on the map, on nobody else's draft, onto
 /// ground it could stand on. Lenient, since what it joins may itself be a
 /// draft: the whole rule (`game_loop::may`) is the commit's.
@@ -101,10 +109,21 @@ fn fair(world: &World, owner: OwnerId, step: &Build) -> bool {
                 && !world.are_connected(step.from, step.to)
                 && [step.from, step.to].iter().all(|&t| road(t) || mine(world, owner, t) || world.occupied.contains_key(&(t.x, t.y)) || land(t))
         }
-        Tool::Building(kind) => match world.occupied.get(&(step.to.x, step.to.y)) {
-            Some(&there) => matches!(world.objects.get(there).map(|e| &e.object), Some(GameObject::Building(b)) if b.kind == kind),
-            None => land(step.to) && (mine(world, owner, step.to) || world.road_node_at(step.to).is_none_or(|n| world.arms_of(n, false).len() <= 1)),
-        },
+        // Onto a building, standing or drafted, only a step from another
+        // of its kind, to join or link the two: a tap there does nothing.
+        Tool::Building(kind) => {
+            let tap = step.from == step.to;
+            let standing = |t: GridCoord| world.occupied.get(&(t.x, t.y)).and_then(|&b| match world.objects.get(b)?.object {
+                GameObject::Building(ref b) => Some(b.kind),
+                _ => None,
+            });
+            match (standing(step.to), drafted(world, owner, step.to)) {
+                (Some(k), _) => !tap && k == kind && (world.may_paint(kind, step.from, step.to) || drafted(world, owner, step.from) == Some(kind)),
+                // Two tiles of one drafted building are one already.
+                (None, Some(k)) => !tap && k == kind && !(crate::world::grows(kind) && drafted(world, owner, step.from) == Some(kind)),
+                (None, None) => land(step.to) && (mine(world, owner, step.to) || world.road_node_at(step.to).is_none_or(|n| world.arms_of(n, false).len() <= 1)),
+            }
+        }
         Tool::Demolish if step.from == step.to => road(step.to) || world.occupied.contains_key(&(step.to.x, step.to.y)),
         Tool::Demolish => world.link_between(step.from, step.to).is_some(),
     }
@@ -349,6 +368,23 @@ mod tests {
         assert_eq!(world.drafts[&1].len(), 1);
         discard(&mut world, 1);
         assert!(world.drafts.is_empty());
+    }
+
+    /// A press on a building already drawn, to paint on from it, drafts
+    /// nothing: it would only be refused at the commit, and stick.
+    #[test]
+    fn a_press_on_a_drafted_building_is_nothing() {
+        let mut world = World::new();
+        grass(&mut world);
+        let depot = Tool::Building(BuildingKind::Depot);
+        assert!(draw(&mut world, 1, step(depot, at(5, 1), at(5, 1))));
+        assert!(draw(&mut world, 1, step(depot, at(5, 1), at(6, 1))));
+        assert!(draw(&mut world, 1, step(depot, at(6, 1), at(7, 1))));
+        assert!(!draw(&mut world, 1, step(depot, at(6, 1), at(6, 1))), "a press drafted");
+        assert!(draw(&mut world, 1, step(depot, at(6, 1), at(6, 2))));
+        assert!(!draw(&mut world, 1, step(depot, at(6, 2), at(7, 1))), "a step within one drafted building");
+        assert!(!draw(&mut world, 1, step(Tool::Building(BuildingKind::House), at(4, 1), at(5, 1))), "a house onto a depot");
+        assert_eq!(world.drafts[&1].concat().len(), 4);
     }
 
     #[test]

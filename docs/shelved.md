@@ -189,12 +189,16 @@ for its owner. Last lived at `dd53fbe`.
 **Brought back, 2026-10-10.** Once building costs materials, the second
 step buys something: the bill, what a draft takes against what is in
 stock, and a swipe of the demolisher that is not instant ruin. The new
-one is meant to be lighter (`game.md` §Drafts): there is one world, not a
-"now" and an "after". A draft takes up its tiles and reserves them, but
-is never wired into anything: a drafted road is in no edge and in no live
-node's links until commit, a drafted building has no door, and a drafted
-demolition is a mark on the live thing. Commit replays the strokes through
-the handlers that build live.
+one is lighter (`game.md` §Drafts): there is one world, not a "now" and
+an "after". A draft is only the steps of the hand, kept per player; it
+takes up its tiles and reserves them, but is never wired into anything,
+and no road node or building stands for it. Commit replays the steps
+through the handler that builds live. What came back of the old version
+is the reservation and the toolbar's commit; what did not is
+`acting_as`, the `now`/`after` split, `draftLook.ts`'s four looks and
+every check of "is this a draft" in the simulation. What made the old
+one unintuitive is answered by the bill appearing the moment anything is
+drawn, with Build on Enter: whether that is enough is for play to say.
 
 ## Pedestrians, transit, walkability
 
