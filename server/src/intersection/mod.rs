@@ -3,7 +3,12 @@ use std::collections::{HashMap, VecDeque};
 use crate::engine::GameTime;
 use crate::protocol::EntityId;
 
-type Dir = (i32, i32);
+pub type Dir = (i32, i32);
+
+/// Who may go together through a junction: does a party waiting, from
+/// its arm to its exit, cross one passing. Roads keep right
+/// (`paths_conflict`); the sea has its own (`shipping::lanes`).
+pub type Rule = fn(waiting: (Dir, Dir), passing: (Dir, Dir)) -> bool;
 
 #[derive(Clone, Copy)]
 struct QueueEntry {
@@ -31,17 +36,17 @@ fn dir_angle(d: Dir) -> f64 {
 /// Right-hand traffic conflict test.
 /// Sweep CCW from the waiting car's entry arm. If we hit the waiting car's exit
 /// before any arm of the passing car, the paths don't cross.
-fn paths_conflict(waiting: &QueueEntry, passing: &QueueEntry) -> bool {
+pub fn paths_conflict((w_from, w_to): (Dir, Dir), (p_from, p_to): (Dir, Dir)) -> bool {
     // Same entry arm: segment ordering handles safety
-    if waiting.from == passing.from {
+    if w_from == p_from {
         return false;
     }
-    let base = dir_angle(waiting.from);
+    let base = dir_angle(w_from);
     let tau = std::f64::consts::TAU;
     let ccw = |d: Dir| (dir_angle(d) - base).rem_euclid(tau);
-    let w_to = ccw(waiting.to);
-    let p_from = ccw(passing.from);
-    let p_to = ccw(passing.to);
+    let w_to = ccw(w_to);
+    let p_from = ccw(p_from);
+    let p_to = ccw(p_to);
     // Conflict if a passing arm appears before our exit in the CCW sweep.
     // p_from at boundary = opposite directions on same arm (no conflict) → strict <
     // p_to at boundary = same exit arm (merge conflict) → <=
@@ -59,13 +64,15 @@ fn paths_conflict(waiting: &QueueEntry, passing: &QueueEntry) -> bool {
 pub struct IntersectionManager {
     queue: VecDeque<QueueEntry>,
     passing: Vec<QueueEntry>,
+    rule: Rule,
 }
 
 impl IntersectionManager {
-    pub fn new() -> Self {
+    pub fn new(rule: Rule) -> Self {
         Self {
             queue: VecDeque::new(),
             passing: Vec::new(),
+            rule,
         }
     }
 
@@ -101,7 +108,7 @@ impl IntersectionManager {
     fn grant_passage(&mut self, now: GameTime) -> Vec<EntityId> {
         let mut newly_granted = Vec::new();
         while let Some(front) = self.queue.front() {
-            let dominated = self.passing.iter().any(|p| paths_conflict(front, p));
+            let dominated = self.passing.iter().any(|p| (self.rule)((front.from, front.to), (p.from, p.to)));
             if dominated {
                 break;
             }
@@ -165,7 +172,12 @@ impl IntersectionRegistry {
     }
 
     pub fn get_or_create(&mut self, node_id: EntityId) -> &mut IntersectionManager {
-        self.managers.entry(node_id).or_insert_with(IntersectionManager::new)
+        self.get_or_create_with(node_id, paths_conflict)
+    }
+
+    /// A junction that keeps its own rule (a sea's: `shipping::lanes`).
+    pub fn get_or_create_with(&mut self, node_id: EntityId, rule: Rule) -> &mut IntersectionManager {
+        self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(rule))
     }
 
     pub fn has_passage(&self, node_id: EntityId, car_id: EntityId) -> bool {

@@ -223,7 +223,7 @@ mod tests {
         let mut ship = Car::new(1, CarRole::Ferry);
         let moored = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(quay) };
         save(&dir, &[moored], &[], Meta::default());
-        ship.sail = Some(Sail { path: vec![[5.5, 5.5], [5.5, 9.5]], started: 0, ends: 1, ease: [true, false] });
+        ship.sail = Some(Sail { path: vec![[5.5, 5.5], [5.5, 9.5]], started: 0, ends: 1, ease: [true, false], astern: true });
         let sailing = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(GridCoord { x: 5, y: 6 }) };
         save(&dir, &[sailing], &[], Meta::default());
         ship.sail = None;

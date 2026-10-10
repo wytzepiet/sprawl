@@ -216,7 +216,7 @@ pub fn slot(lines: &[Line], line: &Line, at: usize, from: GameTime) -> GameTime 
     };
     // A few minutes' overlap is a few minutes at the anchorage: soon is
     // better than perfect.
-    (0..line.cycle().div_ceil(TRY)).map(|k| from + k * TRY).min_by_key(|&dep| ((overlap(dep) - (3 * TRY) as i64).max(0), dep)).unwrap_or(from)
+    (0..line.cycle().div_ceil(TRY)).map(|k| from + k * TRY).min_by_key(|&dep| (overlap(dep), dep)).unwrap_or(from)
 }
 
 /// How much faster than the road a sea leg must be, its loading at both

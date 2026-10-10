@@ -231,7 +231,9 @@ pub enum Job {
 /// set out and arrives. It gathers way from a berth and comes into one
 /// at an even push (`ease`: the start is a berth, the end is), at full
 /// speed over the map's edge; `shipping::covered` says how far along it
-/// is at any moment, here and in the client. Sent once.
+/// is at any moment, here and in the client. A leg is sailed in pieces
+/// where it stops at a junction's mouth (`shipping::voyage`); each piece
+/// is sent once.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Sail {
@@ -241,6 +243,9 @@ pub struct Sail {
     #[ts(type = "number")]
     pub ends: u64,
     pub ease: [bool; 2],
+    /// Its land end trails: it is sailing out from a berth, as a
+    /// double-ended ferry does, never turning.
+    pub astern: bool,
 }
 
 /// A tractor's run off the roads, over its farm's land. The tiles it

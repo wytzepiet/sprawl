@@ -9,6 +9,8 @@
 // `lines.rs` (journeys, the company's rule) is the harness's until stage 3.
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub mod lanes;
+pub mod voyage;
 pub mod water;
 pub mod lines;
 #[cfg(test)]
@@ -72,12 +74,12 @@ pub fn sail_ms(len: f64, ease: [bool; 2]) -> GameTime {
 
 impl Sail {
     /// Where the ferry is at `t`, and which way its land end points: the
-    /// way it goes coming in to a berth, back the way it came going out,
-    /// since it never turns.
+    /// way it goes, or back the way it came going out (`astern`), since it
+    /// never turns.
     pub fn pose(&self, t: GameTime) -> Pose {
         let len = length(&self.path);
         let (at, way) = point_at(&self.path, covered(len, self.ease, t.saturating_sub(self.started)));
-        Pose { at, heading: if self.ease[0] && !self.ease[1] { way + std::f64::consts::PI } else { way } }
+        Pose { at, heading: if self.astern { way + std::f64::consts::PI } else { way } }
     }
 
     /// The first moment after `now` the ship is in another chunk, or the

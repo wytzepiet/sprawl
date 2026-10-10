@@ -1,6 +1,7 @@
 //! The scenario harness: the sea's network run headless, for days, in a
-//! fraction of a second. Ships sail their lines' routes, queue for a
-//! harbour's one berth, and load and land boxes by `lines.rs`'s decision,
+//! fraction of a second. Ships sail their lines' ways, laid as lanes,
+//! take junctions and a harbour's one berth as the game's ships do
+//! (`voyage.rs`), and load and land boxes by `lines.rs`'s decision,
 //! the game's own; the land side is rates: each harbour's tug moves `tug`
 //! boxes an hour between the deck and the yard, and its depot's lorries
 //! make `dray` round trips an hour, drop and hook, an export or an empty
@@ -36,9 +37,13 @@ use crate::engine::GameTime;
 use crate::protocol::{GridCoord, Good, DAY_MS};
 use crate::world::sea::{DECK, DWELL, EMPTIES};
 
+use super::lanes::{Gate, Kind, Lanes};
+use super::voyage::Voyage;
+use crate::intersection::IntersectionRegistry;
+use crate::protocol::Sail;
 use super::lines::{boards, by_sea, earliest, prior, slot, worth_a_line, timetable, Call, Change, Connection, Line, BACKLOG, FIRST_SAILING, TRIAL};
 use super::water::{Berth, End, Water, BERTH};
-use super::{covered, length, point_at, HOUR, WORLD_STAY};
+use super::{length, point_at, HOUR, WORLD_STAY};
 
 const DAY: GameTime = DAY_MS as GameTime;
 
@@ -177,16 +182,6 @@ impl Scenario {
         }
     }
 
-    /// The way from one call to the next: from the world, the way out
-    /// to it turned round.
-    fn leg(&self, from: Call, to: Call) -> Vec<[f64; 2]> {
-        let way = |a: Call, b: Call| match a {
-            Call::Harbour(p) => self.water.route(&self.ports[p as usize].berth, self.end(b)),
-            Call::World => None,
-        };
-        let found = if from == Call::World { way(to, from).map(|mut w| { w.reverse(); w }) } else { way(from, to) };
-        found.unwrap_or_else(|| panic!("{}: no way over the water from {from:?} to {to:?}", self.name))
-    }
 }
 
 #[derive(Clone)]
@@ -211,7 +206,6 @@ impl Box {
 #[derive(Default)]
 struct Yard {
     at_berth: Option<usize>,
-    queue: VecDeque<(usize, GameTime)>,
     yard: Vec<usize>,
     /// Exports at the depot, waiting for an empty and a lorry.
     depot: VecDeque<usize>,
@@ -237,14 +231,25 @@ struct Ship {
     round: u64,
     delay: GameTime,
     departs: GameTime,
-    /// Every leg sailed: the way, when, and eased where.
-    sails: Vec<(Vec<[f64; 2]>, GameTime, [bool; 2])>,
+    /// The leg it sails, and the piece of it it is on.
+    voyage: Option<(Voyage, Sail)>,
+    /// Every piece sailed, and from when, for the drawing: a piece may
+    /// be cut short by the next.
+    sails: Vec<(Sail, GameTime)>,
+}
+
+impl Ship {
+    /// Each piece sailed, and when: from when it took over until the next
+    /// did, or its end; a ship stands where a piece ended until the next
+    /// sets out.
+    fn sailed(&self) -> impl Iterator<Item = (&Sail, std::ops::Range<GameTime>)> {
+        self.sails.iter().enumerate().map(|(i, (s, from))| (s, *from..self.sails.get(i + 1).map_or(s.ends, |n| n.1)))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Ev {
     Arrive(usize),
-    Berth(usize),
     Depart(usize),
     Tug(usize),
     TugDone(usize),
@@ -252,6 +257,7 @@ enum Ev {
     Demand(usize),
     Road(usize),
     Stand(usize),
+    Sea(usize),
     Midnight,
 }
 
@@ -261,6 +267,8 @@ pub struct Sim<'a> {
     seq: u64,
     queue: BinaryHeap<Reverse<(GameTime, u64, Ev)>>,
     lines: Vec<Line>,
+    lanes: Lanes,
+    junctions: IntersectionRegistry,
     ships: Vec<Ship>,
     ports: Vec<Yard>,
     boxes: Vec<Box>,
@@ -275,6 +283,7 @@ pub struct Sim<'a> {
     pub pages: Vec<String>,
     log: u64,
     berth_wait: GameTime,
+    block_wait: GameTime,
     wait_max: GameTime,
     /// The longest a harbour with a flow forecast waited for its line.
     flow_to_line: GameTime,
@@ -311,6 +320,8 @@ impl<'a> Sim<'a> {
             seq: 0,
             queue: BinaryHeap::new(),
             lines: Vec::new(),
+            lanes: Lanes::new(&s.water),
+            junctions: IntersectionRegistry::new(),
             ships: Vec::new(),
             ports: s.ports.iter().map(|_| Yard::default()).collect(),
             boxes: Vec::new(),
@@ -320,6 +331,7 @@ impl<'a> Sim<'a> {
             pages: Vec::new(),
             log: 0xcbf2_9ce4_8422_2325,
             berth_wait: 0,
+            block_wait: 0,
             wait_max: 0,
             flow_to_line: 0,
             missed: 0,
@@ -353,9 +365,27 @@ impl<'a> Sim<'a> {
         self.queue.push(Reverse((t, self.seq, e)));
     }
 
+    /// The way from one call to the next, routed over the lanes laid so
+    /// far and laid as one itself: from the world, routed from the berth
+    /// it goes to, read the way a ship coming in meets the lanes.
+    fn leg(&mut self, from: Call, to: Call) -> Vec<[f64; 2]> {
+        let berth = |c: Call| match c {
+            Call::Harbour(p) => Some(self.s.ports[p as usize].berth),
+            Call::World => None,
+        };
+        let way = match (berth(from), berth(to)) {
+            (Some(a), _) => self.s.water.route(&self.lanes, &a, self.s.end(to), false),
+            (None, Some(b)) => self.s.water.route(&self.lanes, &b, End::Edge, true),
+            (None, None) => None,
+        };
+        let way = way.unwrap_or_else(|| panic!("{}: no way over the water from {from:?} to {to:?}", self.s.name));
+        self.lanes.lay(&self.s.water, &way, [from != Call::World, to != Call::World]);
+        way
+    }
+
     /// A line, with no ships yet.
     fn add_line(&mut self, calls: Vec<Call>, slots: usize, dwell: GameTime) -> usize {
-        let legs = (0..calls.len()).map(|i| self.s.leg(calls[i], calls[(i + 1) % calls.len()])).collect();
+        let legs = (0..calls.len()).map(|i| self.leg(calls[i], calls[(i + 1) % calls.len()])).collect();
         self.lines.push(Line { calls, legs, ships: Vec::new(), slots, dwell, stay: self.s.stay, every: 0 });
         self.filled.push((0, 0));
         self.opened.push((self.now, 0.0, None, Vec::new()));
@@ -374,7 +404,7 @@ impl<'a> Sim<'a> {
             // Its call `at`, with each ship's own round counted from it.
             let phase = leaves.saturating_sub(offset);
             let id = self.ships.len();
-            self.ships.push(Ship { line: l, phase, at, deck: Vec::new(), round: 0, delay: 0, departs: 0, sails: Vec::new() });
+            self.ships.push(Ship { line: l, phase, at, deck: Vec::new(), round: 0, delay: 0, departs: 0, voyage: None, sails: Vec::new() });
             self.lines[l].ships.push((id as u64, phase));
             self.at(leaves.saturating_sub(stay).max(self.now), Ev::Arrive(id));
         }
@@ -400,7 +430,7 @@ impl<'a> Sim<'a> {
 
     /// The sea leg between two harbours, and whether it beats the road.
     fn sea(&self, p: usize, q: usize) -> Option<(f64, bool)> {
-        let len = length(&self.s.water.route(&self.s.ports[p].berth, End::Berth(self.s.ports[q].berth))?);
+        let len = length(&self.s.water.route(&self.lanes, &self.s.ports[p].berth, End::Berth(self.s.ports[q].berth), false)?);
         Some((len, by_sea(super::sail_ms(len, [true, true]), self.road(Call::Harbour(p as u64), Call::Harbour(q as u64)))))
     }
 
@@ -514,20 +544,20 @@ impl<'a> Sim<'a> {
             }
             self.now = t;
             for v in [t, seq, match e {
-                Ev::Arrive(i) | Ev::Berth(i) | Ev::Depart(i) | Ev::Tug(i) | Ev::TugDone(i) | Ev::Dray(i) | Ev::Demand(i) | Ev::Road(i) | Ev::Stand(i) => i as u64,
+                Ev::Arrive(i) | Ev::Depart(i) | Ev::Tug(i) | Ev::TugDone(i) | Ev::Dray(i) | Ev::Demand(i) | Ev::Road(i) | Ev::Stand(i) | Ev::Sea(i) => i as u64,
                 Ev::Midnight => u64::MAX,
             }] {
                 self.log = (self.log ^ v).wrapping_mul(0x100_0000_01b3);
             }
             match e {
                 Ev::Arrive(s) => self.arrive(s),
-                Ev::Berth(s) => self.berth(s),
                 Ev::Depart(s) => self.depart(s),
                 Ev::Tug(p) => self.tug(p),
                 Ev::TugDone(p) => self.tug_done(p),
                 Ev::Dray(p) => self.dray(p),
                 Ev::Demand(d) => self.demand(d),
                 Ev::Stand(p) => self.stand(p),
+                Ev::Sea(s) => self.sea_wake(s),
                 Ev::Road(b) => {
                     self.boxes[b].by_road = true;
                     self.land(b);
@@ -558,18 +588,72 @@ impl<'a> Sim<'a> {
                 self.ships[s].delay = due - self.due(s);
                 self.at(due, Ev::Depart(s));
             }
-            Call::Harbour(p) => {
-                let p = p as usize;
-                // Early, it waits at the anchorage for its time.
-                let dwell = self.lines[self.ships[s].line].dwell;
-                if self.now + dwell < self.due(s) {
-                    self.at(self.due(s) - dwell, Ev::Arrive(s));
-                } else if self.ports[p].at_berth.is_none() {
-                    self.berth(s);
-                } else {
-                    self.ports[p].queue.push_back((s, self.now));
+            Call::Harbour(_) => {
+                // In by its approach, it holds the berth; a ship put on
+                // the line at a berth asks for it, and waits off it if
+                // another has it.
+                if let Some(g) = self.berth_gate(s).filter(|g| !self.junctions.has_passage(g.id, s as u64)) {
+                    self.junctions.get_or_create_with(g.id, g.kind.rule()).register(s as u64, g.from, g.to, self.now);
+                    if !self.junctions.has_passage(g.id, s as u64) {
+                        return;
+                    }
                 }
+                self.berth(s);
             }
+        }
+    }
+
+    /// The berth's approach at the call a ship is at: the junction it
+    /// holds while it is at the ramp.
+    fn berth_gate(&self, s: usize) -> Option<Gate> {
+        let ship = &self.ships[s];
+        let line = &self.lines[ship.line];
+        let leg = &line.legs[(ship.at + line.calls.len() - 1) % line.calls.len()];
+        self.lanes.gates(leg).pop().filter(|g| g.kind == Kind::Berth && g.d1 >= length(leg) - 1e-6)
+    }
+
+    /// A ship at sea thinks (`Voyage::step`): the ships it lets through
+    /// think too; at the end of its leg it arrives. A ship put on a line
+    /// at a berth another held is let on to it.
+    fn sea_wake(&mut self, s: usize) {
+        let Some((mut voyage, mut sail)) = self.ships[s].voyage.take() else {
+            if self.berth_gate(s).is_some_and(|g| self.junctions.has_passage(g.id, s as u64)) && self.here_berthed(s).is_none() {
+                self.berth(s);
+            }
+            return;
+        };
+        let before = sail.clone();
+        let (woken, done) = voyage.step(s as u64, &mut sail, self.berth_free(s), self.now, &mut self.junctions);
+        for w in woken {
+            self.at(self.now, Ev::Sea(w as usize));
+        }
+        if sail != before {
+            self.ships[s].sails.push((sail.clone(), self.now));
+        }
+        if done {
+            self.berth_wait += voyage.waited[1];
+            self.block_wait += voyage.waited[0];
+            self.wait_max = self.wait_max.max(voyage.waited[0].max(voyage.waited[1]));
+            self.arrive(s);
+            return;
+        }
+        let next = voyage.wake(&sail);
+        if next < GameTime::MAX {
+            self.at(next.max(self.now), Ev::Sea(s));
+        }
+        self.ships[s].voyage = Some((voyage, sail));
+    }
+
+    /// When the ship at the ramp of the harbour a ship sails to casts off.
+    fn berth_free(&self, s: usize) -> GameTime {
+        self.here_berthed(s).filter(|&o| o != s).map_or(GameTime::MAX, |o| self.ships[o].departs)
+    }
+
+    /// The ship at the ramp of the harbour a ship is at.
+    fn here_berthed(&self, s: usize) -> Option<usize> {
+        match self.here(s) {
+            Call::Harbour(p) => self.ports[p as usize].at_berth,
+            Call::World => None,
         }
     }
 
@@ -600,11 +684,6 @@ impl<'a> Sim<'a> {
                 self.missed += left as u32;
                 self.ports[p].at_berth = None;
                 self.backlog(p, s, left);
-                if let Some((next, since)) = self.ports[p].queue.pop_front() {
-                    self.berth_wait += self.now - since;
-                    self.wait_max = self.wait_max.max(self.now - since);
-                    self.at(self.now, Ev::Berth(next));
-                }
             }
             Call::World => {
                 let slots = self.lines[line].slots;
@@ -638,18 +717,29 @@ impl<'a> Sim<'a> {
         if self.now >= opened.0 + TRIAL * DAY {
             opened.3.push((self.ships[s].at, self.ships[s].deck.iter().filter(|&&b| self.boxes[b].good.is_some()).count()));
         }
-        let ship = &mut self.ships[s];
+        // Out by the junctions on its way; it holds the berth it leaves
+        // until it is clear of the approach. Early for its next call, it
+        // waits at that berth's mouth.
         let l = &self.lines[line];
         let n = l.calls.len();
-        let leg = l.legs[ship.at].clone();
-        let ease = [l.calls[ship.at] != Call::World, l.calls[(ship.at + 1) % n] != Call::World];
-        let ms = l.leg_ms(ship.at);
-        ship.sails.push((leg, self.now, ease));
-        ship.at = (ship.at + 1) % n;
+        let at = self.ships[s].at;
+        let way = l.legs[at].clone();
+        let ease = [l.calls[at] != Call::World, l.calls[(at + 1) % n] != Call::World];
+        let gates = self.lanes.gates(&way);
+        let dwell = l.dwell;
+        let ship = &mut self.ships[s];
+        ship.at = (at + 1) % n;
         if ship.at == 0 {
             ship.round += 1;
         }
-        self.at(self.now + ms, Ev::Arrive(s));
+        let not_before = if ease[1] { self.due(s).saturating_sub(dwell) } else { 0 };
+        let (voyage, sail, woken) = Voyage::new(s as u64, way, ease, false, gates, [not_before, self.berth_free(s)], self.now, &mut self.junctions);
+        for w in woken {
+            self.at(self.now, Ev::Sea(w as usize));
+        }
+        self.ships[s].sails.push((sail.clone(), self.now));
+        self.ships[s].voyage = Some((voyage, sail));
+        self.at(self.now, Ev::Sea(s));
     }
 
     /// The tug's next move, if the ship at the berth has time for one:
@@ -864,6 +954,7 @@ impl<'a> Sim<'a> {
         let coins_out: f64 = landed.iter().filter(|b| b.from == Call::World).map(|b| crate::economy::import(b.good.unwrap(), b.units())).sum::<f64>() + 0.0;
         let coins_in: f64 = landed.iter().filter(|b| b.to == Call::World).map(|b| crate::economy::export(b.good.unwrap(), b.units())).sum::<f64>() + 0.0;
         let calls: u32 = self.ports.iter().map(|y| y.calls).sum();
+        let (head_on, crossed, flips) = self.junctions_seen();
         let util: Vec<f64> = self.filled.iter().zip(&self.lines).filter(|(f, _)| f.1 > 0).map(|(f, l)| f.0 as f64 / (f.1 * l.slots) as f64).collect();
         Metrics::from([
             ("delivered", if due == 0 { 1.0 } else { landed.iter().filter(|b| b.quoted.is_some_and(|q| q <= end)).count() as f64 / due as f64 }),
@@ -886,7 +977,12 @@ impl<'a> Sim<'a> {
             ("empties", if self.rides.1 == 0 { 0.0 } else { self.rides.0 as f64 / self.rides.1 as f64 }),
             ("berth_wait", hours(self.berth_wait)),
             ("wait_max", hours(self.wait_max)),
-            ("block_wait", 0.0),
+            ("block_wait", hours(self.block_wait)),
+            ("head_on", head_on as f64),
+            ("crossed", crossed as f64),
+            ("flips", flips as f64),
+            ("lane_tiles", self.lanes.tiles().0 as f64),
+            ("junction_tiles", self.lanes.tiles().1 as f64),
             ("yard_peak", self.ports.iter().map(|y| y.peak).max().unwrap_or(0) as f64),
             ("landed_per_call", if calls == 0 { 0.0 } else { self.ports.iter().map(|y| y.landed).sum::<u32>() as f64 / calls as f64 }),
             ("loaded_per_call", if calls == 0 { 0.0 } else { self.ports.iter().map(|y| y.loaded).sum::<u32>() as f64 / calls as f64 }),
@@ -896,7 +992,38 @@ impl<'a> Sim<'a> {
         ])
     }
 
-    /// The network drawn: the land, each line's legs, the narrows in red,
+    /// What the junctions saw, read off every piece every ship sailed, a
+    /// minute apart: the minutes two ships were in one stretch of narrow
+    /// water going opposite ways, or in one crossing on ways that cross,
+    /// which must never be; and how often narrow water was taken the
+    /// other way from the ship before, its flips.
+    fn junctions_seen(&self) -> (u32, u32, u32) {
+        let mut inside: BTreeMap<(GameTime, u64), (Kind, Vec<f64>)> = BTreeMap::new();
+        for ship in &self.ships {
+            for (sail, when) in ship.sailed() {
+                for t in (when.start.div_ceil(HOUR / 60) * (HOUR / 60)..when.end.min(self.now)).step_by((HOUR / 60) as usize) {
+                    let pose = sail.pose(t);
+                    if let Some((id, kind)) = self.lanes.junction_at(pose.at[0].floor() as i32, pose.at[1].floor() as i32) {
+                        inside.entry((t, id)).or_insert((kind, Vec::new())).1.push(pose.heading);
+                    }
+                }
+            }
+        }
+        let opposite = |a: f64, b: f64| (a - b).cos() < -0.7;
+        let across = |a: f64, b: f64| (a - b).cos().abs() <= 0.7;
+        let seen = |kind: Kind, met: &dyn Fn(f64, f64) -> bool| inside.values().filter(|(k, h)| *k == kind && h.iter().any(|&a| h.iter().any(|&b| met(a, b)))).count() as u32;
+        let mut last: BTreeMap<u64, f64> = BTreeMap::new();
+        let mut flips = 0;
+        for (&(_, id), (kind, h)) in &inside {
+            if *kind == Kind::TwoWay && let Some(before) = last.insert(id, h[0]) && opposite(before, h[0]) {
+                flips += 1;
+            }
+        }
+        (seen(Kind::TwoWay, &opposite), seen(Kind::Crossing, &across), flips)
+    }
+
+    /// The network drawn: the land, each line's legs, junctions in red and
+    /// berths' approaches in orange,
     /// the harbours, and a dot every ten minutes for each ship at sea.
     pub fn svg(&self) -> String {
         let px = 6.0;
@@ -919,22 +1046,22 @@ impl<'a> Sim<'a> {
         for (i, line) in self.lines.iter().enumerate() {
             for leg in &line.legs {
                 out += &format!("<polyline points='{}' fill='none' stroke='{}' stroke-width='1.5' stroke-opacity='0.6'/>", poly(leg), colours[i % colours.len()]);
-                for (a, b) in self.s.water.narrows(leg) {
-                    let part: Vec<[f64; 2]> = (0..=((b - a) * 2.0) as usize).map(|k| point_at(leg, a + k as f64 / 2.0).0).collect();
-                    out += &format!("<polyline points='{}' fill='none' stroke='#e02020' stroke-width='3'/>", poly(&part));
+                for g in self.lanes.gates(leg) {
+                    let part: Vec<[f64; 2]> = (0..=((g.d1 - g.d0) * 2.0) as usize).map(|j| point_at(leg, g.d0 + j as f64 / 2.0).0).collect();
+                    let colour = match g.kind {
+                        Kind::Berth => "#e08a1e",
+                        Kind::TwoWay => "#e02020",
+                        Kind::Crossing => "#8f5bd1",
+                    };
+                    out += &format!("<polyline points='{}' fill='none' stroke='{colour}' stroke-width='3'/>", poly(&part));
                 }
             }
         }
         for ship in &self.ships {
             let colour = colours[ship.line % colours.len()];
-            for (leg, start, ease) in &ship.sails {
-                let len = length(leg);
-                let ms = super::sail_ms(len, *ease);
-                for t in (0..ms).step_by((HOUR / 6) as usize) {
-                    if start + t > self.now {
-                        break;
-                    }
-                    let p = point_at(leg, covered(len, *ease, t)).0;
+            for (sail, when) in ship.sailed() {
+                for t in (when.start..when.end.min(self.now)).step_by((HOUR / 6) as usize) {
+                    let p = sail.pose(t).at;
                     out += &format!("<circle cx='{:.1}' cy='{:.1}' r='2' fill='{colour}'/>", p[0] * px, p[1] * px);
                 }
             }
@@ -973,6 +1100,7 @@ fn scenarios_meet_their_expectations() {
         assert_eq!(sim.log, again.log, "{name}: two runs differ");
         println!("{}", sim.pages.join("\n"));
         println!("  the company: {}", ["links", "idle_lines", "by_road", "via_world", "first_sailing", "flow_to_line", "forecast_ratio", "near_empty", "wait_max"].map(|k| format!("{k} {:.2}", m[k])).join(", "));
+        println!("  the lanes: {}", ["lane_tiles", "junction_tiles", "block_wait", "head_on", "crossed", "flips"].map(|k| format!("{k} {:.2}", m[k])).join(", "));
         println!("  {} days in {:.0} ms", s.days, started.elapsed().as_secs_f64() * 1000.0 / 2.0);
         table.push(format!("{:<12} {}  {:016x}", name, columns.iter().map(|c| format!("{:>8.2}", m[c])).collect::<Vec<_>>().join(" "), sim.log));
         if std::env::var("SVG").is_ok() {

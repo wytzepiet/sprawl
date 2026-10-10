@@ -87,6 +87,12 @@ pub struct World {
     /// Each harbour's line to the world, its ways found when it is
     /// commissioned. Derived, like every other index.
     pub lines: std::collections::BTreeMap<EntityId, crate::shipping::lines::Line>,
+    /// The lanes those ways are laid as, the junctions where they share
+    /// or cross water, and each ship's leg through them: derived too, and
+    /// a ship saved at sea comes back moored.
+    pub lanes: Option<crate::shipping::lanes::Lanes>,
+    pub junctions: crate::intersection::IntersectionRegistry,
+    pub voyages: HashMap<EntityId, crate::shipping::voyage::Voyage>,
     /// Entities that changed chunk since the last flush, as (id, from, to).
     /// Chunks are what clients subscribe to, so a crossing is the exact moment
     /// an entity enters or leaves someone's view.
@@ -165,6 +171,9 @@ impl World {
             peaks: Default::default(),
             water: Default::default(),
             lines: Default::default(),
+            lanes: None,
+            junctions: crate::intersection::IntersectionRegistry::new(),
+            voyages: HashMap::new(),
             chunk_crossings: Vec::new(),
             built: HashSet::new(),
             occupied: HashMap::new(),
@@ -202,6 +211,9 @@ impl World {
             peaks: Default::default(),
             water: Default::default(),
             lines: Default::default(),
+            lanes: None,
+            junctions: crate::intersection::IntersectionRegistry::new(),
+            voyages: HashMap::new(),
             chunk_crossings: Vec::new(),
             built: HashSet::new(),
             occupied: HashMap::new(),
