@@ -100,10 +100,15 @@ pub struct World {
     /// check, every bend, every site the placer tries — and a chunk's
     /// entity set was being walked for each answer. Derived at load.
     pub roads: HashMap<(i32, i32), EntityId>,
-    /// The buildings standing at the road exits: the world beyond the map,
-    /// one for each road that runs off it. Derived from the road graph by
-    /// `stand_edges`, never placed and never saved.
-    pub edge: BTreeSet<EntityId>,
+    /// Every harbour, and the street node it is reached by: a way out of
+    /// the town, so what reaches it is joined. Derived by `mark_harbours`,
+    /// never saved.
+    pub harbours: std::collections::BTreeMap<EntityId, Option<EntityId>>,
+    /// The dock a lorry is on its way to back under, to hook the box in it
+    /// (`haul`). Trips are not saved, and neither is this.
+    pub aims: HashMap<EntityId, (EntityId, usize)>,
+    /// Lorries the mayor has tapped and that have not set out yet.
+    pub sent: HashSet<EntityId>,
     /// Who lives or works at each building. Derived from the residents at
     /// startup (`resettle`), and kept by the only code that moves anyone.
     pub people: HashMap<EntityId, BTreeSet<EntityId>>,
@@ -154,7 +159,9 @@ impl World {
             occupied: HashMap::new(),
             roads: HashMap::new(),
             calls: Vec::new(),
-            edge: BTreeSet::new(),
+            harbours: Default::default(),
+            aims: HashMap::new(),
+            sent: HashSet::new(),
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
         }
@@ -186,7 +193,9 @@ impl World {
             occupied: HashMap::new(),
             roads: HashMap::new(),
             calls: Vec::new(),
-            edge: BTreeSet::new(),
+            harbours: Default::default(),
+            aims: HashMap::new(),
+            sent: HashSet::new(),
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
             objects,
@@ -245,27 +254,6 @@ impl World {
     }
 
     /// Remove a car from the world entirely — scrap, not parking.
-    /// A lorry drives off the map: off the roads and out of sight, its dock
-    /// let go of, until `until`, when it comes back in.
-    pub fn leave_map(&mut self, car_id: EntityId, until: GameTime) {
-        self.release_spot(car_id);
-        self.car_segment.remove(&car_id);
-        self.remove_car_from_edges(car_id);
-        if let Some(entry) = self.objects.get(car_id)
-            && let Some(pos) = entry.position
-        {
-            self.unindex(car_id, pos);
-        }
-        if let Some(entry) = self.objects.get_mut(car_id) {
-            entry.position = None;
-            if let GameObject::Car(ref mut c) = entry.object {
-                c.trip = None;
-                c.spot = None;
-                c.away = until;
-            }
-        }
-    }
-
     pub fn despawn_car(&mut self, car_id: EntityId) {
         self.release_spot(car_id);
         self.car_segment.remove(&car_id);
@@ -309,86 +297,43 @@ impl World {
         ids
     }
 
-    /// The road exit nearest the building on a tile, as a building: the
-    /// door everything from beyond the map comes in by, and the last stop
-    /// of everything leaving. Nearest as the crow flies, among the doors on
-    /// a road its own joins: one on a road that never meets its street,
-    /// though it stand next door, is no way in. By id at a tie, so a world
-    /// answers the same way however its sets iterate.
-    pub fn nearest_edge(&self, pos: GridCoord) -> Option<EntityId> {
-        let from = self.occupied.get(&(pos.x, pos.y)).and_then(|&b| self.street_of(b))?;
-        self.edge
-            .iter()
-            .filter(|&&b| self.street_of(b).is_some_and(|n| self.network.connected(from, n)))
-            .filter_map(|&b| Some((b, self.objects.get(b)?.position?)))
-            .min_by_key(|&(b, p)| ((p.x - pos.x).abs().max((p.y - pos.y).abs()), b))
-            .map(|(b, _)| b)
-    }
-
-    /// The road that door stands on: where a car appears from off the map,
-    /// and where one drives off it.
-    pub fn entry_node_near(&self, pos: GridCoord) -> Option<EntityId> {
-        self.street_of(self.nearest_edge(pos)?)
-    }
-
-    /// Stand a building at every road exit — every stretch of the survey's
-    /// road that runs off the map, at the tile where it crosses out of what
-    /// has been surveyed. Everything the city lacks is served there, so the
-    /// search finds one like any other shop; see `blueprint.rs`.
-    ///
-    /// Derived from the road graph rather than remembered, like every other
-    /// index: running this twice changes nothing.
-    pub fn stand_edges(&mut self) {
-        let doors: HashSet<EntityId> = self
-            .network
-            .exits()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .filter(|&n| self.arms_of(n, false).iter().any(|&a| !self.network.is_exit(a)))
-            .collect();
-        let standing: HashMap<EntityId, EntityId> = self
-            .edge
-            .iter()
-            .filter_map(|&b| Some((self.street_of(b)?, b)))
-            .collect();
-        for (node, building) in &standing {
-            if !doors.contains(node) {
-                self.drop_edge(*building);
-            }
-        }
-        for node in doors {
-            if standing.contains_key(&node) {
-                continue;
-            }
-            let Some(pos) = self.objects.get(node).and_then(|e| e.position) else { continue };
-            // Straight in at the road, with no plot and no land under it:
-            // the tile is the road's, and the building is only what stands
-            // for what lies past it.
-            let id = self.insert_at(
-                GameObject::Building(crate::protocol::Building::new(crate::protocol::BuildingKind::Edge, vec![pos], 2)),
-                Some(pos),
-            );
-            self.edge.insert(id);
-        }
-    }
-
-    /// Make a road a way off the map, as one crossing the frontier is, so
-    /// what it reaches is joined to the world. For worlds built by hand.
+    /// Make a road a way out of the town, as a harbour's street is, so what
+    /// it reaches is joined. For towns written as fixtures, which have no
+    /// harbour and are only looked at.
     pub fn open_exit(&mut self, node: EntityId) {
         let turning = self.network.set_exit(node, true);
         self.mark_joined(turning.into_iter().chain([node]));
-        self.stand_edges();
     }
 
-    /// Take one down: the road it stood on is inside the survey now, or gone.
-    fn drop_edge(&mut self, building: EntityId) {
-        self.drop_lot(building);
-        if let Some(pos) = self.objects.get(building).and_then(|e| e.position) {
-            self.unindex(building, pos);
+    /// Every harbour's street node is a way out of the town: a road that
+    /// reaches one is joined, and drawn so; one that reaches none is red.
+    /// Derived from the buildings rather than remembered: running this
+    /// twice changes nothing.
+    pub fn mark_harbours(&mut self, now: GameTime) {
+        let standing: Vec<EntityId> = self
+            .objects
+            .iter()
+            .filter(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == crate::protocol::BuildingKind::Harbour && b.site.is_none()))
+            .map(|e| e.id)
+            .collect();
+        let was = std::mem::take(&mut self.harbours);
+        for (h, node) in &was {
+            if let Some(node) = node
+                && (!standing.contains(h) || self.street_of(*h) != Some(*node))
+            {
+                let turning = self.network.set_exit(*node, false);
+                self.mark_joined(turning.into_iter().chain([*node]));
+            }
         }
-        self.objects.remove(building);
-        self.edge.remove(&building);
-        self.unsettled.insert(building);
+        for h in standing {
+            let node = self.street_of(h);
+            if let Some(node) = node {
+                let turning = self.network.set_exit(node, true);
+                self.mark_joined(turning.into_iter().chain([node]));
+            }
+            self.harbours.insert(h, node);
+            self.commission(h, now);
+        }
     }
 
     /// Update the spatial position of an entity.
@@ -550,45 +495,3 @@ impl World {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::protocol::BuildingKind;
-
-    /// A long road across open ground, one house on it, and its far end
-    /// opened as a way off the map.
-    fn frontier() -> (World, EntityId) {
-        let mut world = World::new();
-        for y in -4..4 {
-            for x in -4..400 {
-                world.terrain.insert((x, y), TerrainType::Grass);
-            }
-        }
-        world.place_road_path(&(-2..400).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
-        let house = world.place_on_street(GridCoord { x: 0, y: 1 }, BuildingKind::House).expect("a driveway");
-        let end = world.road_node_at(GridCoord { x: 399, y: 0 }).unwrap();
-        world.open_exit(end);
-        (world, house)
-    }
-
-    /// One building stands where the road leaves the map, and only there.
-    #[test]
-    fn the_edge_stands_where_the_road_leaves_the_map() {
-        let (world, _) = frontier();
-        assert_eq!(world.edge.len(), 1, "one road out, one door");
-        let door = *world.edge.iter().next().unwrap();
-        let node = world.street_of(door).expect("the door stands on the road");
-        assert!(world.network.is_exit(node), "the door is the way out");
-    }
-
-    /// Standing them again changes nothing: it is derived from the roads,
-    /// so it can run after any commit.
-    #[test]
-    fn standing_the_edge_twice_stands_one_edge() {
-        let (mut world, _) = frontier();
-        let before: Vec<EntityId> = world.edge.iter().copied().collect();
-        world.stand_edges();
-        world.stand_edges();
-        assert_eq!(world.edge.iter().copied().collect::<Vec<_>>(), before);
-    }
-}

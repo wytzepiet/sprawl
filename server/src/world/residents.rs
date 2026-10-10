@@ -15,7 +15,6 @@ impl World {
     /// household from beyond one is gone with it. The one pass that reads
     /// the whole world, and it runs once.
     pub fn resettle(&mut self) {
-        self.stand_edges();
         self.people.clear();
         let mut carless = Vec::new();
         for id in self.resident_ids() {

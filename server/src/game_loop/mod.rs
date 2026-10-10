@@ -260,6 +260,7 @@ fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock
         lumps,
         clock: clk,
         growth: crate::economy::growth(world, clk.now),
+        sea: crate::haul::sea(world, clk.now),
         terrain_seed: world.terrain_seed,
         island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
     })
@@ -345,9 +346,7 @@ fn handle_player_action(
                     }
                 }
                 Tool::Building(kind) => {
-                    if world.paint(kind, from, to).is_some() {
-                        crate::economy::built(world, crate::economy::price(world, kind) / crate::economy::tiles(kind), now);
-                    }
+                    world.paint(kind, from, to);
                 }
                 Tool::Demolish => {
                     // A tap takes everything on the tile: its road and all
@@ -379,6 +378,11 @@ fn handle_player_action(
                 park_at_home(world, intersections, events, car_id);
             }
         }
+        ClientMessage::Order { depot, good, boxes } => crate::haul::order(world, events, depot, good, boxes),
+        ClientMessage::SetRule { depot, good, rule } => crate::haul::set_rule(world, events, depot, good, rule, now),
+        ClientMessage::Standing { depot, on } => crate::haul::set_standing(world, events, depot, on),
+        ClientMessage::Send { depot } => crate::haul::send(world, events, depot),
+        ClientMessage::Sell { depot, good } => crate::haul::sell(world, events, depot, good),
         ClientMessage::Take(cell) => {
             let (level, _) = crate::economy::level(world.gdp);
             world.build.take(cell, level);
@@ -409,11 +413,10 @@ pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
                 && world.laid + new_tiles <= world.build.road_tiles()
                 && world.may_lay(from, to, one_way)
         }
-        // A tile is paid for as it is laid, from what the city has earned:
-        // a kind's price shared over the smallest of it.
+        // A building costs timber, not coins: it is placed as a site and
+        // waits for its timber (docs/game.md §Buildings).
         Tool::Building(kind) => {
             world.build.may_place(kind)
-                && world.treasury >= crate::economy::price(world, kind) / crate::economy::tiles(kind)
                 && world.may_paint(kind, from, to)
                 && world.would_be_reached(kind, from, to)
         }
@@ -661,6 +664,16 @@ const MIDNIGHT: EntityId = EntityId::MAX;
 fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
     for id in world.settle() {
         wake_resident(world, events, id);
+    }
+    // A harbour reached, or cut off: the town's way out, and its ferry.
+    world.mark_harbours(events.now());
+    // Their ferries and tugs read the time from where they stand, so a
+    // wake too many is no harm, and one too few after a load would be.
+    let harbours: Vec<EntityId> = world.harbours.keys().copied().collect();
+    for h in harbours {
+        for id in [world.ferry_of(h), world.tug_of(h)].into_iter().flatten() {
+            events.wake(0, id);
+        }
     }
     let day = DAY_MS as u64;
     events.wake(day - events.now() % day, MIDNIGHT);
@@ -1217,7 +1230,7 @@ mod tests {
     fn a_warehouse_sends_its_own_truck_and_it_comes_home() {
         let mut world = street();
         let shop = build(&mut world, 20, BuildingKind::Shop, 1);
-        let warehouse = build(&mut world, 60, BuildingKind::Warehouse, 1);
+        let warehouse = build(&mut world, 60, BuildingKind::Depot, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         sell(&mut world, &mut events, shop, 35.0, 0);
@@ -1247,8 +1260,8 @@ mod tests {
         use crate::needs::Need;
         let mut world = street();
         let shop = build(&mut world, 20, BuildingKind::Shop, 1);
-        let near = build(&mut world, 30, BuildingKind::Warehouse, 1);
-        let far = build(&mut world, 60, BuildingKind::Warehouse, 1);
+        let near = build(&mut world, 30, BuildingKind::Depot, 1);
+        let far = build(&mut world, 60, BuildingKind::Depot, 1);
         let mut events = EventQueue::new();
         let empty = |world: &mut World, depot: EntityId| {
             if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
@@ -1282,7 +1295,7 @@ mod tests {
     fn a_depot_fetches_from_beyond_the_edge() {
         let mut world = street();
         let shop = build(&mut world, 20, BuildingKind::Shop, 1);
-        let depot = build(&mut world, 60, BuildingKind::Warehouse, 1);
+        let depot = build(&mut world, 60, BuildingKind::Depot, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         let lorries = |w: &World| w.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).collect::<Vec<_>>();
@@ -2045,7 +2058,7 @@ mod tests {
         build(&mut world, 0, BuildingKind::House, 1);
         build(&mut world, 3, BuildingKind::House, 1);
         let farm = build(&mut world, 10, BuildingKind::Farm, 1);
-        let depot = build(&mut world, 30, BuildingKind::Warehouse, 1);
+        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);

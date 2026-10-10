@@ -26,22 +26,23 @@ use serde_json::{json, Value};
 
 use crate::blueprint::blueprint;
 use crate::engine::GameTime;
-use crate::needs::{Need, Tap};
-use crate::protocol::{BuildingKind, EntityId, GameObject, Growth, Lump, DAY_MS};
+use crate::needs::{Need, Stock, Tap};
+use crate::protocol::{BuildingKind, EntityId, GameObject, Good, Growth, Lump, DAY_MS};
 use crate::world::World;
 
 pub const HOUR: f64 = DAY_MS as f64 / 24.0;
 
 /// What the world beyond the border reckons a unit of a good is worth,
-/// in coins: a crate, a tank. The numbers are what the price economy's
-/// wholesale came to (shelved.md, the price economy): a crate a farm
-/// hand's few minutes, a tank half its price at the pump. trade.md §Open
-/// 7 leaves the world's prices open; these hold the place.
-pub fn world_price(good: Need) -> f64 {
+/// in coins. A crate is a farm hand's few minutes and a tank half its
+/// price at the pump, what the price economy's wholesale came to
+/// (shelved.md, the price economy); timber is a coin a unit, so a house's
+/// four is about what a house cost the mayor when it cost coins. trade.md
+/// §Open 7 leaves the world's prices open; these hold the place.
+pub fn world_price(good: Good) -> f64 {
     match good {
-        Need::Eat => 0.1,
-        Need::Fuel => 1.5,
-        Need::Home | Need::Work | Need::Rest => 0.0,
+        Good::Crates => 0.1,
+        Good::Fuel => 1.5,
+        Good::Timber => 1.0,
     }
 }
 
@@ -51,98 +52,76 @@ pub fn world_price(good: Need) -> f64 {
 /// and its towns. A town that sells to the world never gets what it pays
 /// for the same load.
 pub const MARGIN: f64 = 0.1;
-/// What a unit of a good is worth served over a counter in town, in
-/// coins: the crate or the fuel, and the work of serving it. A meal at
-/// twice its crate, a tank at twice its fuel, the margins the price
-/// economy's counters came to. The counter adds the difference.
-pub fn served_price(good: Need) -> f64 {
+/// What a unit of a need is worth served over a counter in town, in
+/// coins: the crate or the fuel it draws, and the work of serving it. A
+/// meal at twice its crate, a tank at twice its fuel, the margins the
+/// price economy's counters came to. The counter adds the difference.
+pub fn served_price(good: Good) -> f64 {
     2.0 * world_price(good)
 }
 
 /// What an hour of work is worth where it makes no good to sell: an
-/// office, a factory until it has a product, later the Exchange or a fire
-/// station. Valued at cost, as GDP counts government work. A meal out's
-/// worth an hour, so a desk adds about what a farm hand's crates do in a
-/// fifth of the time; it sets how much of GDP desks are until they make
-/// something.
+/// office, a factory until it has a product, the harbour's tug. Valued at
+/// cost, as GDP counts government work. A meal out's worth an hour, so a
+/// desk adds about what a farm hand's crates do in a fifth of the time;
+/// it sets how much of GDP desks are until they make something.
 pub const WAGE: f64 = 0.2;
 
 /// What the town pays the world for `units` of a good.
-pub fn import(good: Need, units: f64) -> f64 {
+pub fn import(good: Good, units: f64) -> f64 {
     units * world_price(good) * (1.0 + MARGIN)
 }
 /// What the world pays the town for `units` of a good.
-pub fn export(good: Need, units: f64) -> f64 {
+pub fn export(good: Good, units: f64) -> f64 {
     units * world_price(good) * (1.0 - MARGIN)
 }
 
-/// What the mayor founds the town with: a few weeks of the starting
-/// town's imports, so it can buy fuel and crates until it has something
-/// to sell. A treasury at zero cannot import fuel, and a town without
-/// fuel cannot work, which is a trap a fresh town must not start in.
+/// What the mayor founds the town with: enough for a few weeks of a
+/// starting town's crates and fuel, and the timber for its first streets
+/// of houses, until it has something to sell.
 pub const STAKE: f64 = 500.0;
+
+/// How long a delivery is assumed to take before a building has had one:
+/// two hours, the reorder point's lead until it learns its own.
+pub const LEAD_MS: GameTime = DAY_MS as GameTime / 12;
 
 /// Hours of the shift a kind's row posts.
 pub fn shift_hours(kind: BuildingKind) -> f64 {
     blueprint(kind).taps.iter().find(|t| t.need == Need::Work).map_or(0.0, |t| t.curve.per_day() / HOUR)
 }
 
-/// The stocks a kind holds, and their caps: its shelf, if the row keeps
-/// one. §4.
-pub fn stocks(kind: BuildingKind) -> BTreeMap<Need, f64> {
-    let bp = blueprint(kind);
-    shelves(kind).into_iter().map(|need| (need, bp.stock as f64)).collect()
+/// The shelves a kind keeps, and their caps.
+pub fn stocks(kind: BuildingKind) -> BTreeMap<Good, f64> {
+    blueprint(kind).shelves.iter().map(|&(good, cap)| (good, cap as f64)).collect()
 }
 
-/// Units of a need a kind could serve in a day with every slot busy: what
-/// its shelf is drawn down at, at most. A depot's shelf has no tap; what
-/// it could deliver in a day is the shelf, turned once.
-pub fn rated(kind: BuildingKind, need: Need) -> f64 {
-    let bp = blueprint(kind);
-    let over_the_counter: f64 = bp.taps.iter().filter(|t| t.need == need).map(Tap::rated).sum();
-    over_the_counter + if depot(kind) && shelves(kind).contains(&need) { bp.stock as f64 } else { 0.0 }
+/// The goods a kind keeps a shelf of.
+pub fn shelves(kind: BuildingKind) -> Vec<Good> {
+    blueprint(kind).shelves.iter().map(|&(good, _)| good).collect()
 }
 
-/// The goods a kind keeps a shelf of, each of the row's size: what its
-/// land grows; or every good of the class it handles, a depot's boxes;
-/// or what its taps serve — fuel where it pumps, food everywhere else
-/// that keeps a shelf. None for a row without one. §4.
-pub fn shelves(kind: BuildingKind) -> Vec<Need> {
-    let bp = blueprint(kind);
-    if bp.stock == 0 {
-        return Vec::new();
-    }
-    match (bp.makes, bp.handles) {
-        (Some(m), _) => vec![m],
-        (None, Some(class)) => Need::ALL.into_iter().filter(|n| n.cargo() == Some(class)).collect(),
-        (None, None) => vec![bp.taps.iter().map(|t| t.need).find(|n| Need::DRIVEN.contains(n)).unwrap_or(Need::Eat)],
-    }
-}
-
-/// The world's ship fills its shelves at the quay behind it
-/// (`world/sea.rs`).
-pub fn ships(kind: BuildingKind) -> bool {
-    blueprint(kind).quay
+/// Units of a good a kind could pass on in a day: what its taps could
+/// serve with every slot busy, and a depot's shelf, turned once.
+pub fn rated(kind: BuildingKind, good: Good) -> f64 {
+    let over_the_counter: f64 = blueprint(kind).taps.iter().filter(|t| t.need.good() == Some(good)).map(Tap::rated).sum();
+    over_the_counter + if depot(kind) { stocks(kind).get(&good).copied().unwrap_or(0.0) } else { 0.0 }
 }
 
 /// A seller in town whose shelf is filled without a fetch from town: a
-/// maker's yard, its land's; or a port's quay, the world's ship's. What a
-/// depot's lorry may fetch from, so that a warehouse never fetches from
-/// a warehouse, round and round for nothing. §7.
-pub fn source(kind: BuildingKind, need: Need) -> bool {
-    makes(kind, need) || (ships(kind) && shelves(kind).contains(&need))
+/// maker's yard, its land's. What a depot's lorry may fetch from, so that
+/// a depot never fetches from a depot, round and round for nothing. §7.
+pub fn source(kind: BuildingKind, good: Good) -> bool {
+    makes(kind, good)
 }
 
-/// Its land fills its shelf with this: it never calls for it, and what
-/// nobody in town takes goes to the world.
-pub fn makes(kind: BuildingKind, need: Need) -> bool {
-    blueprint(kind).makes == Some(need)
+/// Its land fills its shelf with this: it never calls for it.
+pub fn makes(kind: BuildingKind, good: Good) -> bool {
+    blueprint(kind).makes == Some(good)
 }
 
 /// What lands on a maker's shelf at once: a tile's crop, at the least a
-/// farm's land comes to. A shelf with less room than this calls for
-/// pickup before the load is lost to it (`calls::turn`), and offers no
-/// work meanwhile (`hiring`).
+/// farm's land comes to. A shelf with less room than this offers no work
+/// meanwhile (`hiring`).
 pub fn lump(kind: BuildingKind) -> f64 {
     if farm(kind) { crop(kind, crate::world::fields::capacity(kind) as usize) } else { 0.0 }
 }
@@ -157,7 +136,7 @@ pub fn farm(kind: BuildingKind) -> bool {
 /// whatever ground the farm got. A farm on cramped ground has fewer
 /// tiles and a longer wait between runs, not a smaller harvest.
 pub fn crop(kind: BuildingKind, tiles: usize) -> f64 {
-    blueprint(kind).stock as f64 / tiles.max(1) as f64
+    blueprint(kind).makes.and_then(|g| stocks(kind).get(&g).copied()).unwrap_or(0.0) / tiles.max(1) as f64
 }
 
 /// The tractor cut a tile: its crop lands in the yard, and is GDP at the
@@ -171,10 +150,10 @@ pub fn harvested(world: &mut World, farm: EntityId, load: f64, now: GameTime) {
     added(world, farm, grown * world_price(good), now);
 }
 
-/// A row calls only for what it keeps: the shelf its counter serves from
-/// or its vans deliver, unless its own land fills it.
-pub fn buys(kind: BuildingKind, need: Need) -> bool {
-    !makes(kind, need) && shelves(kind).contains(&need) && (blueprint(kind).taps.iter().any(|t| t.need == need) || depot(kind))
+/// A row calls for what it keeps: the shelf its counter serves from or
+/// its vans deliver, unless its own land fills it; or, a site, its timber.
+pub fn buys(kind: BuildingKind, good: Good) -> bool {
+    !makes(kind, good) && shelves(kind).contains(&good) && (blueprint(kind).taps.iter().any(|t| t.need.good() == Some(good)) || depot(kind))
 }
 
 /// Does a maker's shelf have room for the next load? One with none
@@ -188,36 +167,38 @@ pub fn hiring(world: &World, building: EntityId) -> bool {
     }
 }
 
-/// Keeps a shelf and runs vehicles: delivers its shelf, answering the
-/// calls of stocks running low with a van of its own.
+/// Keeps shelves and runs vans: delivers its shelves, answering the calls
+/// of stocks running low.
 pub fn depot(kind: BuildingKind) -> bool {
     let bp = blueprint(kind);
-    bp.stock > 0 && !bp.vehicles.is_empty()
+    !bp.shelves.is_empty() && bp.vehicles.contains(&crate::protocol::CarRole::Van)
 }
 
-/// What one of a kind costs the mayor: the row's price, with the build's
-/// discount on its class. Paid to the world: the materials are bought in.
-pub fn price(world: &World, kind: BuildingKind) -> f64 {
-    let b = blueprint(kind);
-    b.price / world.build.weight(b.class)
-}
-
-/// How many tiles the smallest of a kind is: its price is shared over
-/// them, a tile paid for as it is painted.
-pub fn tiles(kind: BuildingKind) -> f64 {
-    let (w, h) = crate::blueprint::plot(kind, 0).size;
-    (w as u32 * h as u32) as f64
-}
-
-/// A building saved before it had a stock gets it the way a placed one
-/// does; one whose row changed a stock gets the new one, full.
+/// A building saved before it had its shelves or its yard gets them the
+/// way a standing one does; one whose row changed a shelf gets the new
+/// one. A site has neither until it stands.
 pub fn open(world: &mut World, id: EntityId) {
     let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) else { return };
-    let fresh = crate::protocol::Building::new(b.kind, b.tiles.clone(), b.facing);
-    b.stocks.retain(|need, stock| fresh.stocks.get(need).is_some_and(|f| f.cap == stock.cap));
-    for (need, stock) in fresh.stocks {
-        b.stocks.entry(need).or_insert(stock);
+    if b.site.is_some() {
+        return;
     }
+    let caps = stocks(b.kind);
+    b.stocks.retain(|good, stock| caps.get(good) == Some(&stock.cap));
+    for (good, cap) in caps {
+        b.stocks.entry(good).or_insert(Stock { level: 0.0, cap });
+    }
+}
+
+/// The last of a site's timber landed: it stands, its shelves empty and
+/// calling; its vehicles stand in its yard, and a farm claims its land.
+pub fn stand(world: &mut World, id: EntityId) {
+    if let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) {
+        b.site = None;
+    }
+    open(world, id);
+    world.unsettled.insert(id);
+    crate::calls::stable(world, id);
+    world.claim_land(id);
 }
 
 /// The reorder point: the `s` of the `(s, S)` policy of every inventory
@@ -225,22 +206,21 @@ pub fn open(world: &mut World, id: EntityId) {
 /// time — what the taps could serve in the time the last delivery took —
 /// plus a margin, which is a full house: everyone the taps seat at once,
 /// so a rush during the lead does not empty the shelf. Until a building
-/// has had a delivery, one is assumed to take as long as a lorry is away
-/// beyond the edge. §6.2.
-pub fn reorder(world: &World, building: EntityId, need: Need) -> f64 {
+/// has had a delivery, one is assumed to take `LEAD_MS`. §6.2.
+pub fn reorder(world: &World, building: EntityId, good: Good) -> f64 {
     let Some(kind) = kind_of(world, building) else { return 0.0 };
-    let lead = world.books.get(&building).and_then(|k| k.lead).unwrap_or(crate::calls::AWAY_MS);
+    let lead = world.books.get(&building).and_then(|k| k.lead).unwrap_or(LEAD_MS);
     // A full house is everyone the taps seat at once: two bays with seven
     // cars at the door is a rush of seven.
-    let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need == need).map(|t| crate::blueprint::seats(kind, t)).sum();
-    rated(kind, need) * lead as f64 / DAY_MS as f64 + seats as f64
+    let seats: u32 = blueprint(kind).taps.iter().filter(|t| t.need.good() == Some(good)).map(|t| crate::blueprint::seats(kind, t)).sum();
+    rated(kind, good) * lead as f64 / DAY_MS as f64 + seats as f64
 }
 
 /// Coins crossing the border at a building, for a good: in when the town
 /// sold, out when it bought. Money out stops at nothing: an import the
 /// treasury cannot pay for is paid as far as it goes. A lump on the map
 /// where it landed, and a line on the town's page.
-fn door(world: &mut World, at: EntityId, good: Need, amount: f64, now: GameTime) {
+fn door(world: &mut World, at: EntityId, good: Good, amount: f64, now: GameTime) {
     let amount = amount.max(-world.treasury);
     let page = world.town.today(now);
     if amount >= 0.0 {
@@ -250,7 +230,7 @@ fn door(world: &mut World, at: EntityId, good: Need, amount: f64, now: GameTime)
     }
     world.treasury += amount;
     if amount != 0.0 {
-        world.lumps.push(Lump { building: at, coins: amount, gdp: 0.0, at: now });
+        world.lumps.push(Lump { building: at, coins: amount, gdp: 0.0, at: now, good: Some(good), units: 0.0 });
     }
 }
 
@@ -260,7 +240,7 @@ fn added(world: &mut World, at: EntityId, gdp: f64, now: GameTime) {
     let Some(kind) = kind_of(world, at).filter(|_| gdp > 0.0) else { return };
     world.gdp += gdp;
     *world.town.today(now).gdp.entry(kind).or_default() += gdp;
-    world.lumps.push(Lump { building: at, coins: 0.0, gdp, at: now });
+    world.lumps.push(Lump { building: at, coins: 0.0, gdp, at: now, good: None, units: 0.0 });
 }
 
 /// Hours of a need served at a building: a line on its page, what its
@@ -269,92 +249,92 @@ pub fn served(world: &mut World, at: EntityId, need: Need, hours: f64, now: Game
     *world.books.entry(at).or_default().today(now).served.entry(need).or_default() += hours;
 }
 
-/// The mayor placed something: its materials are bought from the world,
-/// paid in full. §10.
-pub fn built(world: &mut World, price: f64, now: GameTime) {
-    world.town.today(now).built += price;
-    world.treasury -= price;
-}
-
 /// A visit is over: `units` of `need` served at `at` come off the shelf
 /// they were served from, and the value it added is GDP. A meal or a
-/// tank off a counter's shelf adds the counter's work; a shift at a desk
-/// that sells no good adds its cost. A home's kitchen keeps no shelf
-/// and adds nothing; a shift at a counter or a farm is already in what
-/// it serves or grows.
+/// tank off a counter's shelf adds the counter's work; a shift where the
+/// work makes no good to sell adds its cost. A home's kitchen keeps no
+/// shelf and adds nothing; a shift at a counter or a farm is already in
+/// what it serves or grows.
 pub fn visited(world: &mut World, at: EntityId, need: Need, units: f64, now: GameTime) {
     let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object) else { return };
     let kind = b.kind;
-    let gdp = match b.stocks.get_mut(&need) {
-        Some(stock) => {
+    let gdp = match need.good().and_then(|g| Some((g, b.stocks.get_mut(&g)?))) {
+        Some((good, stock)) => {
             stock.take(units);
-            units * (served_price(need) - world_price(need))
+            units * (served_price(good) - world_price(good))
         }
-        None if need == Need::Work && blueprint(kind).stock == 0 => units * WAGE,
+        None if need == Need::Work && blueprint(kind).shelves.is_empty() => units * WAGE,
         None => 0.0,
     };
     added(world, at, gdp, now);
 }
 
 /// A van loads at a depot: as much of the order as the shelf has. §7.
-pub fn loaded(world: &mut World, depot: EntityId, need: Need, order: f64) -> f64 {
+pub fn loaded(world: &mut World, depot: EntityId, good: Good, order: f64) -> f64 {
     let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) else { return 0.0 };
-    let Some(stock) = b.stocks.get_mut(&need) else { return 0.0 };
+    let Some(stock) = b.stocks.get_mut(&good) else { return 0.0 };
     let load = order.min(stock.level);
     stock.take(load);
     load
 }
 
-/// A lorry from beyond the edge loads at a maker's yard for the world:
-/// the whole shelf, since the world takes anything. Paid when it has
-/// left (`exported`).
-pub fn shipped(world: &mut World, maker: EntityId, need: Need) -> f64 {
-    let Some(GameObject::Building(b)) = world.objects.get_mut(maker).map(|e| &mut e.object) else { return 0.0 };
-    let Some(stock) = b.stocks.get_mut(&need) else { return 0.0 };
-    std::mem::replace(&mut stock.level, 0.0)
-}
-
-/// A load left the map for the world: the town sold it, at the world's
-/// price less the margin.
-pub fn exported(world: &mut World, maker: EntityId, need: Need, load: f64, now: GameTime) {
-    door(world, maker, need, export(need, load), now);
-}
-
-/// A facility's vehicle is home: its tank is filled in the yard, bought
-/// from the world, as the depot's fuel is until something in town
-/// delivers it. Nobody sits in a fleet vehicle, so nobody weighs its
-/// tank; the building's turn does, when it comes home.
+/// A facility's vehicle is home: its tank is filled in the yard, off the
+/// building's own fuel where it keeps some, else bought from the world.
+/// Nobody sits in a fleet vehicle, so nobody weighs its tank; the
+/// building's turn does, when it comes home.
 pub fn refilled(world: &mut World, car: EntityId, now: GameTime) {
     let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) else { return };
     let owner = c.owner;
-    let mut due = Vec::new();
-    for (&need, stock) in c.stocks.iter_mut() {
-        due.push((need, import(need, stock.short() / stock.cap)));
+    let mut due = 0.0;
+    for stock in c.stocks.values_mut() {
+        due += stock.short() / stock.cap;
         stock.level = stock.cap;
     }
-    if kind_of(world, owner).is_none() {
+    if due <= 0.0 || kind_of(world, owner).is_none() {
         return;
     }
-    for (need, due) in due.into_iter().filter(|&(_, due)| due > 0.0) {
-        door(world, owner, need, -due, now);
-    }
+    let kept = loaded(world, owner, Good::Fuel, due);
+    door(world, owner, Good::Fuel, -import(Good::Fuel, due - kept), now);
 }
 
-/// A delivery landed: `load` of `need` onto `buyer`'s stock, from a
-/// seller in town, which moves nothing, or from the world, which the
-/// town pays for as far as the treasury goes. A lorry home from a fetch
-/// beyond the edge lands a load without limit: the shelf fills. §7.
-pub fn delivered(world: &mut World, buyer: EntityId, from_world: bool, need: Need, load: f64, now: GameTime) {
-    let Some(GameObject::Building(b)) = world.objects.get_mut(buyer).map(|e| &mut e.object) else { return };
-    let Some(stock) = b.stocks.get_mut(&need) else { return };
-    let units = load.min(stock.short());
-    if units <= 0.0 {
-        return;
-    }
+/// A delivery landed: `load` of `good` onto `buyer`'s shelf from a depot
+/// in town, which moves no coins; or onto a site, which stands when the
+/// last of its timber is in. What does not fit comes back.
+pub fn delivered(world: &mut World, buyer: EntityId, good: Good, load: f64) -> f64 {
+    let Some(GameObject::Building(b)) = world.objects.get_mut(buyer).map(|e| &mut e.object) else { return load };
+    let stock = match b.site.as_mut() {
+        Some(site) if good == Good::Timber => site,
+        Some(_) => return load,
+        None => match b.stocks.get_mut(&good) {
+            Some(stock) => stock,
+            None => return load,
+        },
+    };
+    let units = load.min(stock.short()).max(0.0);
     stock.add(units);
-    if from_world {
-        door(world, buyer, need, -import(need, units), now);
+    if b.site.is_some_and(|s| s.short() <= 1e-9) {
+        stand(world, buyer);
     }
+    load - units
+}
+
+/// A box from the world landed in a harbour's park: the town pays for
+/// what is in it, at the harbour, as far as the treasury goes. The
+/// starter pack is the world's gift and costs nothing.
+pub fn landed(world: &mut World, harbour: EntityId, good: Good, units: f64, now: GameTime) {
+    door(world, harbour, good, -import(good, units), now);
+}
+
+/// A box went out on the ferry: the world pays for what is in it, at the
+/// harbour, as the ferry casts off.
+pub fn exported(world: &mut World, harbour: EntityId, good: Good, units: f64, now: GameTime) {
+    door(world, harbour, good, export(good, units), now);
+}
+
+/// What booking `boxes` of a good costs, full, at the world's price and
+/// the margin: what the treasury must hold to book them.
+pub fn quote(good: Good, boxes: u32) -> f64 {
+    import(good, boxes as f64 * good.per_box())
 }
 
 fn kind_of(world: &World, building: EntityId) -> Option<BuildingKind> {
@@ -373,14 +353,12 @@ pub struct Day {
 
 /// One day of the town's books: GDP, per kind of building it was added
 /// at, which adds up to the level's step; and what crossed the border,
-/// per good, in and out, and what the mayor built, which add up to the
-/// treasury's step. §10.
+/// per good, in and out, which add up to the treasury's step. §10.
 #[derive(Debug, Default, Clone)]
 pub struct Town {
     pub gdp: BTreeMap<BuildingKind, f64>,
-    pub sold: BTreeMap<Need, f64>,
-    pub bought: BTreeMap<Need, f64>,
-    pub built: f64,
+    pub sold: BTreeMap<Good, f64>,
+    pub bought: BTreeMap<Good, f64>,
 }
 
 impl Town {
@@ -477,7 +455,7 @@ pub fn growth(world: &World, now: GameTime) -> Growth {
         needed: LEVEL_BASE * (level as f64 + 1.0),
         gdp: town.gdp.values().sum(),
         treasury: world.treasury,
-        income: town.revenue() - town.purchases() - town.built,
+        income: town.revenue() - town.purchases(),
         imports: town.purchases(),
         taken: world.build.taken(),
         road_tiles_left: world.build.road_tiles().saturating_sub(world.laid),
@@ -488,7 +466,7 @@ pub fn growth(world: &World, now: GameTime) -> Growth {
 /// and the season behind it. Each line is the level's step read back by
 /// kind of building, or the treasury's by good. §10.
 pub fn town(world: &World, now: GameTime) -> Value {
-    let page = |t: &Town| json!({ "gdp": t.gdp, "sold": t.sold, "bought": t.bought, "built": t.built });
+    let page = |t: &Town| json!({ "gdp": t.gdp, "sold": t.sold, "bought": t.bought });
     json!({
         "gdp": world.gdp,
         "treasury": world.treasury,
@@ -506,29 +484,29 @@ mod tests {
     fn the_books_turn_a_page_at_midnight() {
         let day = DAY_MS as u64;
         let mut b: Books<Town> = Books::default();
-        b.today(100).built += 3.0;
-        assert_eq!(b.on(100).built, 3.0);
-        b.today(day + 5).built += 1.0;
-        assert_eq!((b.before(day + 5).built, b.on(day + 5).built), (3.0, 1.0));
+        let built = |t: &Town| t.gdp.get(&House).copied().unwrap_or(0.0);
+        *b.today(100).gdp.entry(House).or_default() += 3.0;
+        assert_eq!(built(b.on(100)), 3.0);
+        *b.today(day + 5).gdp.entry(House).or_default() += 1.0;
+        assert_eq!((built(b.before(day + 5)), built(b.on(day + 5))), (3.0, 1.0));
         // A day skipped is a day with nothing in it.
         b.today(3 * day);
-        assert_eq!(b.before(3 * day).built, 0.0);
+        assert_eq!(built(b.before(3 * day)), 0.0);
         // And the first day has no yesterday at all.
-        assert_eq!(Books::<Town>::default().before(100).built, 0.0);
+        assert_eq!(built(Books::<Town>::default().before(100)), 0.0);
         // The season is every page since the books were opened, and no
         // more than thirty: the first page is written over by the
         // thirty-first, and a day before the season is blank.
-        assert_eq!(b.season().map(|p| p.built).collect::<Vec<_>>(), vec![3.0, 1.0, 0.0, 0.0]);
-        b.today(SEASON as u64 * day).built += 5.0;
+        assert_eq!(b.season().map(built).collect::<Vec<_>>(), vec![3.0, 1.0, 0.0, 0.0]);
+        *b.today(SEASON as u64 * day).gdp.entry(House).or_default() += 5.0;
         assert_eq!(b.season().count(), SEASON);
-        assert_eq!((b.season().next().unwrap().built, b.on(0).built), (1.0, 0.0));
+        assert_eq!((built(b.season().next().unwrap()), built(b.on(0))), (1.0, 0.0));
     }
 
-    /// Grass, a street that runs off the survey so the edge stands at its
-    /// end, and whatever is built beside it.
+    /// Grass, and a street along it, and whatever is built beside it.
     fn town() -> World {
         let mut world = World::new();
-        // Deep enough for a warehouse and its yard behind the street.
+        // Deep enough for a depot and its yard behind the street.
         for y in -6..6 {
             for x in -4..300 {
                 world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
@@ -549,89 +527,79 @@ mod tests {
         }
     }
 
-    fn shelf(world: &World, id: EntityId, need: Need) -> crate::needs::Stock {
-        building(world, id).stocks[&need]
+    fn shelf(world: &World, id: EntityId, good: Good) -> Stock {
+        building(world, id).stocks[&good]
     }
 
-    fn take(world: &mut World, id: EntityId, need: Need, units: f64) {
+    fn take(world: &mut World, id: EntityId, good: Good, units: f64) {
         if let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) {
-            b.stocks.get_mut(&need).unwrap().take(units);
+            b.stocks.get_mut(&good).unwrap().take(units);
         }
     }
 
-    /// A delivery from a depot in town moves no money; what the town pays
-    /// is the depot's fetch from the world, at the world's price and the
-    /// margin, which is what a delivery straight from the world costs too.
-    /// Each lands as a lump on the building it crossed the border at.
+    /// A delivery from a depot in town moves no money. What the town pays
+    /// for is a box from the world as it lands, at the world's price and
+    /// the margin; what it is paid for is a box out on the ferry, at the
+    /// world's price less the margin. Each lands as a lump where it
+    /// crossed, and nothing goes under zero.
     #[test]
     fn only_what_crosses_the_border_is_paid_for() {
         let mut world = town();
         let shop = world.place_on_street(at(4), Shop).unwrap();
-        let depot = world.place_on_street(at(20), Warehouse).unwrap();
+        let depot = world.place_on_street(at(20), Depot).unwrap();
         world.treasury = 100.0;
-        take(&mut world, shop, Need::Eat, 30.0);
-        let load = loaded(&mut world, depot, Need::Eat, 30.0);
-        delivered(&mut world, shop, false, Need::Eat, load, 0);
+        take(&mut world, shop, Good::Crates, 30.0);
+        let load = loaded(&mut world, depot, Good::Crates, 30.0);
+        assert_eq!(delivered(&mut world, shop, Good::Crates, load), 0.0, "the load did not fit");
         assert_eq!(world.treasury, 100.0, "a delivery inside the town moved money");
         assert!(world.lumps.is_empty(), "a delivery inside the town landed coins");
-        assert_eq!(shelf(&world, shop, Need::Eat).short(), 0.0, "the shelf is full");
-        assert_eq!(shelf(&world, depot, Need::Eat).short(), 30.0, "the depot's shelf went down by the same");
-        // The lorry home from beyond the edge fills the shelf.
-        delivered(&mut world, depot, true, Need::Eat, f64::INFINITY, 0);
-        assert_eq!(shelf(&world, depot, Need::Eat).short(), 0.0, "the fetch did not fill the depot");
-        assert!((100.0 - world.treasury - import(Need::Eat, 30.0)).abs() < 1e-9, "the fetch cost {}", 100.0 - world.treasury);
-        assert!(matches!(world.lumps[..], [Lump { building, coins, .. }] if building == depot && coins < 0.0), "no lump at the depot");
-        assert!((world.town.on(0).bought[&Need::Eat] - import(Need::Eat, 30.0)).abs() < 1e-9, "the town's page");
-        take(&mut world, shop, Need::Eat, 30.0);
+        assert_eq!(shelf(&world, shop, Good::Crates).short(), 0.0, "the shelf is full");
+        assert_eq!(shelf(&world, depot, Good::Crates).short(), 30.0, "the depot's shelf went down by the same");
+        // What does not fit comes back.
+        assert_eq!(delivered(&mut world, shop, Good::Crates, 5.0), 5.0);
+        // A box lands at the harbour, which here is the depot: paid for.
+        landed(&mut world, depot, Good::Crates, 100.0, 0);
+        assert!((100.0 - world.treasury - import(Good::Crates, 100.0)).abs() < 1e-9, "the box cost {}", 100.0 - world.treasury);
+        assert!(matches!(world.lumps[..], [Lump { building, coins, .. }] if building == depot && coins < 0.0), "no lump where it landed");
+        assert!((world.town.on(0).bought[&Good::Crates] - import(Good::Crates, 100.0)).abs() < 1e-9, "the town's page");
         let before = world.treasury;
-        delivered(&mut world, shop, true, Need::Eat, 30.0, 0);
-        assert!((before - world.treasury - import(Need::Eat, 30.0)).abs() < 1e-9, "from the world cost {}", before - world.treasury);
+        exported(&mut world, depot, Good::Timber, 20.0, 0);
+        assert!((world.treasury - before - export(Good::Timber, 20.0)).abs() < 1e-9);
         // The world buys for less than it sells.
-        assert!(export(Need::Eat, 1.0) < world_price(Need::Eat) && world_price(Need::Eat) < import(Need::Eat, 1.0));
-        // Nothing goes under zero: an import the town cannot pay for is
-        // paid as far as it goes.
+        assert!(export(Good::Crates, 1.0) < world_price(Good::Crates) && world_price(Good::Crates) < import(Good::Crates, 1.0));
         world.treasury = 1.0;
-        take(&mut world, shop, Need::Eat, 30.0);
-        delivered(&mut world, shop, true, Need::Eat, 30.0, 0);
-        assert_eq!(world.treasury, 0.0);
+        landed(&mut world, depot, Good::Fuel, 50.0, 0);
+        assert_eq!(world.treasury, 0.0, "an import went under zero");
     }
 
-    /// The farm: a tile cut lands its crop in the yard, and no money; a
-    /// yard with no room for a crop offers no work; a lorry from beyond
-    /// the edge takes the yard away, paid at the world's price less the
-    /// margin.
+    /// The farm: a tile cut lands its crop in the yard, and is GDP, and no
+    /// money; a yard with no room for a crop offers no work.
     #[test]
-    fn a_farm_grows_on_its_land_and_the_world_takes_the_rest() {
+    fn a_farm_grows_on_its_land() {
         let mut world = town();
         world.place_on_street(at(4), House).unwrap();
         let farm = world.place_on_street(at(8), Farm).unwrap();
         world.settle();
         world.treasury = 100.0;
-        assert!(depot(Farm) && makes(Farm, Need::Eat) && shelves(Farm) == [Need::Eat], "the farm is not a depot of crates");
+        assert!(!depot(Farm) && makes(Farm, Good::Crates) && shelves(Farm) == [Good::Crates], "the farm is not a maker of crates");
+        assert!(source(Farm, Good::Crates) && !source(Depot, Good::Crates));
         assert!(super::farm(Farm) && !super::farm(Office));
         assert!((crop(Farm, 200) - 1944.0 / 200.0).abs() < 1e-9 && (lump(Farm) - 1944.0 / crate::world::fields::capacity(Farm)).abs() < 1e-9);
-        assert_eq!(shelf(&world, farm, Need::Eat).level, 0.0, "the yard is founded with a harvest");
+        assert_eq!(shelf(&world, farm, Good::Crates).level, 0.0, "the yard is founded with a harvest");
         assert!(hiring(&world, farm), "an empty yard offers no work");
-        assert!(!buys(Farm, Need::Eat) && buys(Shop, Need::Eat) && buys(Warehouse, Need::Eat) && !buys(House, Need::Eat), "the rows buy the wrong things");
+        assert!(!buys(Farm, Good::Crates) && buys(Shop, Good::Crates) && buys(Depot, Good::Crates) && !buys(House, Good::Crates), "the rows buy the wrong things");
 
         harvested(&mut world, farm, crop(Farm, 200), 0);
-        assert_eq!((shelf(&world, farm, Need::Eat).level, world.treasury), (crop(Farm, 200), 100.0), "the harvest moved money");
-        assert!((world.gdp - crop(Farm, 200) * world_price(Need::Eat)).abs() < 1e-9, "a crop cut is GDP at the world's price: {}", world.gdp);
+        assert_eq!((shelf(&world, farm, Good::Crates).level, world.treasury), (crop(Farm, 200), 100.0), "the harvest moved money");
+        assert!((world.gdp - crop(Farm, 200) * world_price(Good::Crates)).abs() < 1e-9, "a crop cut is GDP at the world's price: {}", world.gdp);
         // A shift at the farm is in its crops already.
         visited(&mut world, farm, Need::Work, 9.0, 0);
-        assert!((world.gdp - crop(Farm, 200) * world_price(Need::Eat)).abs() < 1e-9, "a farm hand's shift counted twice");
-
-        let yard = shelf(&world, farm, Need::Eat).cap;
+        assert!((world.gdp - crop(Farm, 200) * world_price(Good::Crates)).abs() < 1e-9, "a farm hand's shift counted twice");
+        let yard = shelf(&world, farm, Good::Crates).cap;
         if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
-            b.stocks.get_mut(&Need::Eat).unwrap().level = yard - lump(Farm) / 2.0;
+            b.stocks.get_mut(&Good::Crates).unwrap().level = yard - lump(Farm) / 2.0;
         }
         assert!(!hiring(&world, farm), "a full yard hires");
-        let gdp = world.gdp;
-        let load = shipped(&mut world, farm, Need::Eat);
-        exported(&mut world, farm, Need::Eat, load, 0);
-        assert!((world.treasury - 100.0 - export(Need::Eat, load)).abs() < 1e-9, "the world paid {}", world.treasury - 100.0);
-        assert_eq!(world.gdp, gdp, "an export counted again");
-        assert!(hiring(&world, farm), "an emptied yard does not hire");
     }
 
     /// A visit draws the shelf it was served from and moves no money. What
@@ -645,8 +613,8 @@ mod tests {
         let shop = world.place_on_street(at(8), Shop).unwrap();
         let office = world.place_on_street(at(12), Office).unwrap();
         visited(&mut world, shop, Need::Eat, 3.0, 0);
-        assert_eq!(shelf(&world, shop, Need::Eat).short(), 3.0);
-        assert!((world.gdp - 3.0 * (served_price(Need::Eat) - world_price(Need::Eat))).abs() < 1e-9, "three meals added {}", world.gdp);
+        assert_eq!(shelf(&world, shop, Good::Crates).short(), 3.0);
+        assert!((world.gdp - 3.0 * (served_price(Good::Crates) - world_price(Good::Crates))).abs() < 1e-9, "three meals added {}", world.gdp);
         let gdp = world.gdp;
         visited(&mut world, home, Need::Eat, 3.0, 0);
         visited(&mut world, shop, Need::Work, 9.0, 0);
@@ -659,45 +627,46 @@ mod tests {
         assert!(matches!(world.lumps.last(), Some(Lump { building, gdp, coins, .. }) if *building == office && *gdp > 0.0 && *coins == 0.0), "no lump at the office");
     }
 
-    /// A depot's van is filled in the yard, and the depot buys what the
-    /// trip used from the world.
+    /// A depot's van is filled in the yard off the depot's own fuel; with
+    /// none left, it is bought from the world.
     #[test]
     fn a_fleet_vehicle_is_refilled_in_the_yard() {
         let mut world = town();
-        let depot = world.place_on_street(at(20), Warehouse).unwrap();
-        crate::calls::stable(&mut world, depot);
-        let van = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot)).map(|e| e.id).expect("a van in the yard");
+        let depot = world.place_on_street(at(20), Depot).unwrap();
+        let van = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Van)).map(|e| e.id).expect("a van in the yard");
         world.treasury = 100.0;
         crate::resident::drove(&mut world, van, 250.0);
+        let fuel = shelf(&world, depot, Good::Fuel).level;
         refilled(&mut world, van, 0);
         let full = match world.objects.get(van).map(|e| &e.object) {
             Some(GameObject::Car(c)) => c.stocks.values().all(|s| s.level == s.cap),
             _ => unreachable!(),
         };
         assert!(full, "the yard did not fill it");
-        let cost = import(Need::Fuel, 250.0 / Need::Fuel.tiles());
-        assert!((100.0 - world.treasury - cost).abs() < 1e-9, "the fill cost {}", 100.0 - world.treasury);
+        assert!((fuel - shelf(&world, depot, Good::Fuel).level - 0.5).abs() < 1e-9, "half a tank came off the depot's shelf");
+        assert_eq!(world.treasury, 100.0, "the depot's own fuel was paid for");
+        take(&mut world, depot, Good::Fuel, f64::INFINITY);
+        crate::resident::drove(&mut world, van, 250.0);
         refilled(&mut world, van, 0);
-        assert!((100.0 - world.treasury - cost).abs() < 1e-9, "a full van was charged");
+        assert!((100.0 - world.treasury - import(Good::Fuel, 0.5)).abs() < 1e-9, "the fill cost {}", 100.0 - world.treasury);
     }
 
     /// A shelf that reorders before it is full never stops ordering: every
-    /// kind's shelf holds more than its taps could sell while a lorry is
-    /// away beyond the edge with the lot full, which is where a fresh
-    /// building's reorder point stands.
+    /// counter's shelf holds more than its taps could sell over the lead a
+    /// fresh building assumes, with the lot full.
     #[test]
     fn every_shelf_is_bigger_than_its_reorder_point() {
         let mut world = town();
         let mut x = 4;
         for kind in BuildingKind::ALL {
-            if blueprint(kind).stock == 0 || !blueprint(kind).price.is_finite() || blueprint(kind).quay {
+            if blueprint(kind).shelves.is_empty() || blueprint(kind).quay || blueprint(kind).makes.is_some() {
                 continue;
             }
             let b = world.place_on_street(at(x), kind).unwrap();
             x += 8;
-            for need in shelves(kind) {
-                let s = reorder(&world, b, need);
-                assert!(s < blueprint(kind).stock as f64, "{kind:?} reorders {need:?} at {s} with a shelf of {}", blueprint(kind).stock);
+            for (good, cap) in stocks(kind) {
+                let s = reorder(&world, b, good);
+                assert!(s < cap, "{kind:?} reorders {good:?} at {s} with a shelf of {cap}");
             }
         }
     }
@@ -710,14 +679,38 @@ mod tests {
         let mut world = town();
         let shop = world.place_on_street(at(4), Shop).unwrap();
         let seats = 7.0;
-        let a_day = rated(Shop, Need::Eat);
-        // No delivery yet: as long as a lorry is away beyond the edge.
-        let s = reorder(&world, shop, Need::Eat);
-        assert!((s - (a_day * crate::calls::AWAY_MS as f64 / DAY_MS as f64 + seats)).abs() < 1e-9, "{s}");
+        let a_day = rated(Shop, Good::Crates);
+        let s = reorder(&world, shop, Good::Crates);
+        assert!((s - (a_day * LEAD_MS as f64 / DAY_MS as f64 + seats)).abs() < 1e-9, "{s}");
         world.books.entry(shop).or_default().lead = Some(0);
-        assert_eq!(reorder(&world, shop, Need::Eat), seats, "a depot next door leaves the full house");
+        assert_eq!(reorder(&world, shop, Good::Crates), seats, "a depot next door leaves the full house");
         world.books.entry(shop).or_default().lead = Some(DAY_MS as GameTime);
-        assert!(reorder(&world, shop, Need::Eat) > blueprint(Shop).stock as f64, "a day's lead asks for more than the shelf holds");
+        assert!(reorder(&world, shop, Good::Crates) > 40.0, "a day's lead asks for more than the shelf holds");
+    }
+
+    /// A building costs timber, not coins: placed, it is a site, with no
+    /// shelf, no door for anyone but its timber; the timber in, it stands,
+    /// its shelves empty and calling. The town's first depot stands at
+    /// once: it is where the first timber is kept.
+    #[test]
+    fn a_site_stands_when_its_timber_is_in() {
+        let mut world = town();
+        let depot = world.place_building(at(20), Depot, 2).unwrap();
+        assert!(building(&world, depot).site.is_none(), "the first depot waited for timber");
+        let shop = world.place_building(at(4), Shop, 2).unwrap();
+        let b = building(&world, shop);
+        assert_eq!(b.site.map(|s| s.cap), Some(blueprint(Shop).timber as f64));
+        assert!(b.stocks.is_empty(), "a site keeps a shelf");
+        assert_eq!(delivered(&mut world, shop, Good::Crates, 10.0), 10.0, "a site took crates");
+        assert_eq!(delivered(&mut world, shop, Good::Timber, 3.0), 0.0);
+        assert!(building(&world, shop).site.is_some(), "it stood short of its timber");
+        assert_eq!(delivered(&mut world, shop, Good::Timber, 3.0), 2.0, "it took more timber than it needs");
+        let b = building(&world, shop);
+        assert!(b.site.is_none(), "it did not stand");
+        assert_eq!(b.stocks[&Good::Crates].level, 0.0, "it stood stocked");
+        assert_eq!(world.treasury, STAKE, "a building cost coins");
+        let second = world.place_building(at(40), Depot, 2).unwrap();
+        assert!(building(&world, second).site.is_some(), "a second depot stood for nothing");
     }
 
     #[test]

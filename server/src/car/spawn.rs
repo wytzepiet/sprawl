@@ -2,7 +2,6 @@ use crate::car::{nose, physics, tail, ACCELERATION, CRUISE_SPEED, LOT_SPEED, MIN
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, Trip};
-use crate::world::pathfinding;
 use crate::world::World;
 
 /// Send a parked car out to a spot at a building, owner aboard. It leaves
@@ -68,30 +67,6 @@ pub fn start_trip(
     let backing = backing(backs_out, backs_in, route.len());
     let stretches = [leaving, world.kerb_stretch(car_id)];
     launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, stretches, now);
-    true
-}
-
-/// A depot's lorry sets out for the edge of the map: out of its dock and
-/// along the roads to a node beyond the frontier, where it leaves the
-/// map for a while. No place is claimed at the far end; there is none.
-pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: EntityId, from_node: EntityId, exit: EntityId, now: GameTime) -> bool {
-    let owner = match world.objects.get(car_id).map(|e| &e.object) {
-        Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
-        _ => return false,
-    };
-    let out = world.way_out(car_id).unwrap_or_default();
-    let backs_out = world.backs_out(car_id);
-    let leaving = world.kerb_stretch(car_id);
-    let from_node = out.last().copied().unwrap_or(from_node);
-    let path = match pathfinding::Routes::from(world, from_node).route_to(exit) {
-        Some(r) if r.len() >= 2 => r,
-        _ => return false,
-    };
-    let from_lot = out.len().saturating_sub(1);
-    let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
-    world.release_spot(car_id);
-    let backing = backing(backs_out, 0, route.len());
-    launch(world, events, car_id, owner, owner, route, from_lot, 0, backing, [leaving, Vec::new()], now);
     true
 }
 

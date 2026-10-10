@@ -58,8 +58,8 @@ fn building(c: char) -> Option<BuildingKind> {
         'F' => Factory,
         'G' => GasStation,
         'M' => Supermarket,
-        'D' => Warehouse,
-        'P' => Port,
+        'D' => Depot,
+        'P' => Harbour,
         _ => return None,
     })
 }
@@ -174,6 +174,11 @@ pub fn build(world: &mut World, dir: &Path) {
         let title = notes.first().map(|n| n.trim_start_matches('#').trim().to_string()).unwrap_or_else(|| name.clone());
         placed.push(Placed { name, title, x: x0, y: 0, w, h });
         x0 += w + GAP;
+    }
+    // A town written by hand stands as written: no site waits for timber.
+    let sites: Vec<_> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_some())).map(|e| e.id).collect();
+    for id in sites {
+        world.finish(id);
     }
     println!("fixtures: built {} from {}", placed.len(), dir.display());
     let _ = PLACED.set(placed);

@@ -13,8 +13,8 @@ use std::sync::LazyLock;
 use serde_json::{json, Value};
 
 use crate::needs::curve::Curve;
-use crate::needs::{Cargo, Need, Tap};
-use crate::protocol::{CarRole, BuildingKind, DAY_MS};
+use crate::needs::{Need, Tap};
+use crate::protocol::{BuildingKind, CarRole, Good, DAY_MS};
 
 const H: u32 = DAY_MS / 24;
 
@@ -31,7 +31,7 @@ pub enum Class {
 pub struct Blueprint {
     pub class: Class,
     /// How many the settlement moves in of its own accord. Zero for
-    /// anything nobody moves into: a shop, and the edge.
+    /// anything nobody moves into.
     pub homes: u32,
     /// How many work here.
     pub jobs: u32,
@@ -41,29 +41,25 @@ pub struct Blueprint {
     /// a kind with vehicles of its own keeps one. (0, 0) is none: it parks
     /// on its drive.
     pub lot: (u8, u8),
-    /// What the mayor pays the world for one, in coins: its materials,
-    /// bought in, so a placement is an import. Days of a town's trade: a
-    /// house is a few coins, a district's supermarket a day of the
-    /// district's.
-    pub price: f64,
+    /// The timber it is built from: a site stands when this much has been
+    /// delivered to it (docs/game.md §Buildings). Zero stands at once.
+    pub timber: u32,
     /// What it serves, to whom, and when.
     pub taps: Vec<Tap>,
-    /// Units its shelf holds — meals, or tanks where it pumps, or a
-    /// harvest of what its land grows — which is what one delivery fills.
-    /// Zero: no shelf.
-    pub stock: u32,
+    /// Its shelves, a good each and the units it holds: what a counter
+    /// serves from, what a depot keeps, what a farm's yard fills with.
+    pub shelves: &'static [(Good, u32)],
     /// What its land fills its shelf with: a farm's crates. None for a
-    /// row that buys its shelf in, or keeps none.
-    pub makes: Option<Need>,
-    /// The vehicles it runs, each in a dock of its yard. A kind with a
-    /// shelf and vehicles delivers its shelf (`economy::depot`).
+    /// row that buys its shelves in, or keeps none.
+    pub makes: Option<Good>,
+    /// The vehicles it runs, each in a dock of its yard. A kind with
+    /// shelves and vehicles delivers them (`economy::depot`).
     pub vehicles: &'static [CarRole],
-    /// The handling class it keeps a shelf of every good in: a depot's
-    /// boxes. None for a row with one shelf, its make's or its taps'
-    /// (`economy::shelves`). docs/economy.md §12.10.
-    pub handles: Option<Cargo>,
-    /// Stands with its back to the water: the world's ship lands its
-    /// shelves at the quay behind it (`world/sea.rs`).
+    /// Slots in its yard for boxes: a harbour's trailer park, a depot's
+    /// empties (`Building::park`).
+    pub slots: u8,
+    /// Stands with its back to the sea: the world's ferry berths at the
+    /// quay behind it (`world/sea.rs`).
     pub quay: bool,
     /// A farm: its land is what its tractor ploughs in a shift, and its
     /// yard holds a harvest, the cycle's make (docs/economy.md §12.8).
@@ -164,104 +160,71 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
         ]
     };
 
+    let row = |class, homes, jobs, size, lot, timber, taps| Blueprint {
+        class, homes, jobs, size, lot, timber, taps, shelves: &[], makes: None, vehicles: &[], slots: 0, quay: false, farm: false,
+    };
     vec![
-        (House, Blueprint {
-            class: Living, homes: 2, jobs: 0, size: (1, 1), lot: (0, 0), price: 5.0, quay: false,
-            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: household(2),
-        }),
-        (Apartment, Blueprint {
-            class: Living, homes: 7, jobs: 0, size: (2, 1), lot: (0, 0), price: 15.0, quay: false,
-            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: household(7),
-        }),
+        (House, row(Living, 2, 0, (1, 1), (0, 0), 4, household(2))),
+        (Apartment, row(Living, 7, 0, (2, 1), (0, 0), 12, household(7))),
         // A shop seats as many as it staffs.
         (Shop, Blueprint {
-            class: Commerce, homes: 0, jobs: 2, size: (1, 1), lot: (0, 0), price: 18.0, quay: false,
-            stock: 40, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![
-                shift(9, 18, 2),
-                meal(hours(9 * H, 18 * H), 7),
-            ],
+            shelves: &[(Good::Crates, 40)],
+            ..row(Commerce, 0, 2, (1, 1), (0, 0), 4, vec![shift(9, 18, 2), meal(hours(9 * H, 18 * H), 7)])
         }),
         // Rush hour is staggered by kind so it comes as a wave rather than a
         // spike: industry starts before offices, offices before shops.
-        (Office, Blueprint {
-            class: Commerce, homes: 0, jobs: 12, size: (2, 1), lot: (0, 0), price: 15.0, quay: false,
-            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![shift(8, 17, 12)],
-        }),
-        (Factory, Blueprint {
-            class: Industry, homes: 0, jobs: 12, size: (2, 1), lot: (0, 0), price: 25.0, quay: false,
-            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![shift(6, 15, 12)],
-        }),
+        (Office, row(Commerce, 0, 12, (2, 1), (0, 0), 10, vec![shift(8, 17, 12)])),
+        (Factory, row(Industry, 0, 12, (2, 1), (0, 0), 14, vec![shift(6, 15, 12)])),
         // The pumps run round the clock; the kiosk keeps shop hours. Where
         // the tanks are filled is where the driving is — beside the homes.
-        // Its shelf is tanks: a delivery is a tanker's worth, and more than
-        // four pumps could sell in the two hours a tanker is away with the
-        // lot full, or it would never stop ordering.
+        // Its shelf is tanks: a delivery is a van's worth, and more than
+        // four pumps could sell in the two hours a van is away with the lot
+        // full, or it would never stop ordering.
         (GasStation, Blueprint {
-            class: Commerce, homes: 0, jobs: 1, size: (1, 1), lot: (0, 0), price: 14.0, quay: false,
-            stock: 40, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![
-                shift(6, 22, 1),
-                pump(always(), 4),
-            ],
+            shelves: &[(Good::Fuel, 40)],
+            ..row(Commerce, 0, 1, (1, 1), (0, 0), 6, vec![shift(6, 22, 1), pump(always(), 4)])
         }),
         // Shopping for a whole district, with far more on the shelves than a
-        // corner shop and a warehouse's truck to keep them full. The first
-        // placeable with something to run out of.
+        // corner shop.
         (Supermarket, Blueprint {
-            class: Commerce, homes: 0, jobs: 6, size: (2, 2), lot: (0, 0), price: 47.0, quay: false,
-            stock: 150, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![
-                shift(8, 21, 6),
-                meal(hours(8 * H, 21 * H), 12),
-            ],
+            shelves: &[(Good::Crates, 150)],
+            ..row(Commerce, 0, 6, (2, 2), (0, 0), 16, vec![shift(8, 21, 6), meal(hours(8 * H, 21 * H), 12)])
         }),
-        // Where stock comes from. Its trucks answer the shops' calls; until
-        // there is one, every delivery comes from beyond the edge. It
-        // holds everything that comes boxed, a shelf of six shops' worth
-        // each: crates.
-        (Warehouse, Blueprint {
-            class: Industry, homes: 0, jobs: 6, size: (2, 2), lot: (2, 2), price: 56.0, quay: false,
-            stock: 240, makes: None, vehicles: &[CarRole::Truck, CarRole::Truck, CarRole::Van, CarRole::Van], farm: false, handles: Some(Cargo::Box),
-            taps: vec![shift(6, 18, 6)],
+        // Where the town's goods are kept, a little of every class: two
+        // boxes of crates, two tank boxes, three of timber. Its lorry hauls
+        // boxes from the harbour, its vans deliver to shops and sites, and
+        // its yard keeps four empties.
+        (Depot, Blueprint {
+            shelves: &[(Good::Crates, 200), (Good::Fuel, 100), (Good::Timber, 60)],
+            vehicles: &[CarRole::Truck, CarRole::Van, CarRole::Van],
+            slots: 4,
+            ..row(Industry, 0, 6, (2, 2), (2, 2), 10, vec![shift(6, 18, 6)])
         }),
         // Where food comes from. Four hands, six to three, each growing a
         // sitting's worth every few minutes: at eighteen crates an hour a
         // day's work feeds sixty people, a fifth of what a modern farm
         // manages and about what a market garden does. The make grows on
-        // its land, the grass behind it that its tractor
-        // ploughs in a shift, seeds the next day and harvests the day
-        // after, each tile's crop landing in the yard as it is cut
-        // (§12.8). No lorry: the warehouse's fetches from it, and a lorry
-        // from beyond the edge comes for what nobody in town buys. Its
-        // yard is a harvest: three days of four hands' nine hours at eighteen
-        // crates an hour.
+        // its land, the grass behind it that its tractor ploughs in a
+        // shift, seeds the next day and harvests the day after, each tile's
+        // crop landing in the yard as it is cut (§12.8). A depot's lorry
+        // fetches from it. Its yard is a harvest: three days of four hands'
+        // nine hours at eighteen crates an hour.
         (Farm, Blueprint {
-            class: Industry, homes: 0, jobs: 4, size: (3, 2), lot: (2, 2), price: 40.0, quay: false,
-            stock: 1944, makes: Some(Eat), vehicles: &[CarRole::Tractor], farm: true, handles: None,
-            taps: vec![shift(6, 15, 4)],
+            shelves: &[(Good::Crates, 1944)],
+            makes: Some(Good::Crates),
+            vehicles: &[CarRole::Tractor],
+            farm: true,
+            ..row(Industry, 0, 4, (3, 2), (2, 2), 8, vec![shift(6, 15, 4)])
         }),
-        // The second door: a depot on the coast. Six dockers, six to six;
-        // a shelf of everything that comes boxed, the warehouse's size,
-        // filled by the world's ship; vans for the last mile. It stands with its back to the
-        // water, and the ship lands at the quay.
-        (Port, Blueprint {
-            class: Industry, homes: 0, jobs: 6, size: (3, 2), lot: (2, 2), price: 80.0, quay: true,
-            stock: 240, makes: None, vehicles: &[CarRole::Van, CarRole::Van], farm: false, handles: Some(Cargo::Box),
-            taps: vec![shift(6, 18, 6)],
-        }),
-        // The world beyond the survey, standing where a road runs off the
-        // map: the door the world's lorries drive in and out by. It serves
-        // nobody: people stay in their own town, and only goods cross its
-        // border (docs/game.md, People). Not for sale at any price.
-        (Edge, Blueprint {
-            class: Commerce, homes: 0, jobs: 0, size: (1, 1), lot: (0, 0), price: f64::INFINITY, quay: false,
-            stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: Vec::new(),
+        // The door: a terminal on the quay, the ramp behind it, and a park
+        // of eight trailers on the street side with the tug that shunts
+        // them. Two hands drive the tug and work the ramp, dawn to late.
+        // Built from nothing: it is where timber first comes in.
+        (Harbour, Blueprint {
+            vehicles: &[CarRole::Tug],
+            slots: 8,
+            quay: true,
+            ..row(Industry, 0, 2, (3, 1), (3, 2), 0, vec![shift(6, 22, 2)])
         }),
     ]
 });
@@ -279,9 +242,9 @@ pub fn check() {
             assert!(!b.vehicles.is_empty(), "{kind:?} makes {good:?} and has nothing to deliver it in");
         }
         assert!(!b.farm || b.vehicles.contains(&CarRole::Tractor), "{kind:?} farms without a tractor");
-        // A ship brings a shelf's worth of a class; a row with a quay and
-        // no shelf, or no class, has nothing for it to bring.
-        assert!(!b.quay || (b.stock > 0 && b.handles.is_some()), "{kind:?} has a quay and nothing for a ship to bring");
+        // A harbour has a park for the ferry's boxes and a tug to shunt them.
+        assert!(!b.quay || (b.slots > 0 && b.vehicles.contains(&CarRole::Tug)), "{kind:?} has a quay and nowhere to land a box");
+        assert!(b.makes.is_none_or(|g| b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} makes what it has no shelf for");
         for tap in &b.taps {
             // T1: a fixed-length service still takes time.
             assert!(tap.rate.is_finite() || tap.overhead > 0, "{kind:?} serves {:?} instantly and for free", tap.need);
@@ -305,7 +268,8 @@ pub fn inspect() -> Value {
         "homes": b.homes,
         "jobs": b.jobs,
         "size": b.size,
-        "price": b.price,
+        "timber": b.timber,
+        "shelves": b.shelves,
         "taps": b.taps.iter().map(|t| json!({
             "need": t.need, "open_h": hours(&t.curve), "rate": t.rate, "slots": t.slots,
         })).collect::<Vec<_>>(),
@@ -322,17 +286,8 @@ mod tests {
         check();
     }
 
-    /// The edge is a door for goods and nothing else: nobody eats, works
-    /// or lives there, and it is not for sale at any price.
-    #[test]
-    fn the_edge_serves_nobody_and_is_not_for_sale() {
-        let b = blueprint(Edge);
-        assert!(b.taps.is_empty() && b.jobs == 0 && b.homes == 0, "the edge serves somebody");
-        assert!(!b.price.is_finite(), "the outside is for sale");
-    }
-
-    /// The whole table serialises, infinite price and all: the readout is
-    /// the only way to see what a kind actually says.
+    /// The whole table serialises: the readout is the only way to see
+    /// what a kind actually says.
     #[test]
     fn the_table_can_be_read() {
         let v = inspect();

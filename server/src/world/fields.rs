@@ -707,7 +707,7 @@ mod tests {
                 // wide beside the plot and between the neighbours are
                 // slivers, and fall away; what is left is the block behind.
                 for x in [7, 10, 18, 21] {
-                    world.place_on_street(GridCoord { x, y: 1 }, BuildingKind::Warehouse).unwrap();
+                    world.place_on_street(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
                 }
                 world.tend(farm);
             }
@@ -869,7 +869,7 @@ mod tests {
         let mut events = EventQueue::new();
         let tractor = tractor(&world, farm);
         let yard = |world: &World| match world.objects.get(farm).unwrap().object {
-            GameObject::Building(ref b) => b.stocks[&Need::Eat].level,
+            GameObject::Building(ref b) => b.stocks[&crate::protocol::Good::Crates].level,
             _ => unreachable!(),
         };
         let stages = |world: &World| -> Vec<Stage> { self::tiles(world, farm).iter().map(|t| t.stage).collect() };
@@ -928,7 +928,7 @@ mod tests {
             for t in b.land.iter_mut() {
                 (t.stage, t.since) = (Stage::Sown, 0);
             }
-            let s = b.stocks.get_mut(&Need::Eat).unwrap();
+            let s = b.stocks.get_mut(&crate::protocol::Good::Crates).unwrap();
             s.level = s.cap;
         }
         assert!(world.batch(farm, now).is_none(), "a harvest with no room in the yard");

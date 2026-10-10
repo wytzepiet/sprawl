@@ -117,9 +117,9 @@ pub static LEGEND: &[(char, Row)] = {
         ('r', Row { name: "Roads", effect: RoadTiles { tiles: 60 }, cost: 1, blurb: "Sixty more tiles of road. Room to build." }),
         ('o', Row { name: "One-way streets", effect: OneWay, cost: 1, blurb: "One-way streets. Half the road, all the throughput." }),
         ('M', Row { name: "Supermarket", effect: Building { building: Supermarket }, cost: 1, blurb: "Shopping for a whole district. Shelves that run low, and a truck to fill them." }),
-        ('V', Row { name: "Warehouse", effect: Building { building: Warehouse }, cost: 1, blurb: "Where stock comes from. Its trucks answer the shops' calls; without one, every delivery comes from beyond the edge." }),
+        ('V', Row { name: "Warehouse", effect: Building { building: Depot }, cost: 1, blurb: "Where stock comes from. Its trucks answer the shops' calls; without one, every delivery comes from beyond the edge." }),
         ('P', Row { name: "Farm", effect: Building { building: Farm }, cost: 1, blurb: "Where food comes from. Four hands fill a yard with crates; a van takes them to the shops, and what nobody in town buys goes out to the edge." }),
-        ('Q', Row { name: "Port", effect: Building { building: Port }, cost: 1, blurb: "The second door. The world's ship brings everything that comes boxed in from beyond the horizon; its vans take it to the shops. Stands with its back to the water." }),
+        ('Q', Row { name: "Port", effect: Building { building: Harbour }, cost: 1, blurb: "The second door. The world's ship brings everything that comes boxed in from beyond the horizon; its vans take it to the shops. Stands with its back to the water." }),
         ('T', Row { name: "Through roads", effect: Road, cost: 1, blurb: "Roads nothing fronts onto: nothing arrives beside them, and nothing turns out of a driveway into the traffic." }),
     ]
 };

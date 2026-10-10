@@ -139,13 +139,6 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.away > 0) {
             continue;
         }
-        // Nor is the edge: it is derived from where the roads run off the
-        // map, and it is stood again from the road graph on the way back in.
-        // Saved, it would be a building beyond the frontier revealing the
-        // ground around itself on every load.
-        if matches!(entry.object, GameObject::Building(ref b) if b.kind == crate::protocol::BuildingKind::Edge) {
-            continue;
-        }
         let json = serde_json::to_string(entry).expect("failed to serialize");
         let (px, py) = entry
             .position
@@ -197,7 +190,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sprawl-journey-{}", std::process::id()));
         let _ = std::fs::remove_file(&dir);
         let quay = GridCoord { x: 5, y: 5 };
-        let mut ship = Car::new(1, CarRole::Ship);
+        let mut ship = Car::new(1, CarRole::Ferry);
         let moored = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(quay) };
         save(&dir, &[moored], &[], Meta::default());
         ship.run = Some(Run { job: Job::Sail, path: vec![quay, GridCoord { x: 5, y: 6 }], started: 0, pace: 1 });

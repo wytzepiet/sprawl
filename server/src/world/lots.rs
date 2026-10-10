@@ -218,8 +218,75 @@ impl World {
             lot.shape = shape;
             self.lots.insert(building, lot);
             self.reseat(building, held);
+            self.lay_park(building);
         }
         self.lots.get_mut(&building)
+    }
+
+    /// A harbour's trailer park is its docks: each slot where a box stands
+    /// in one, its middle behind a docked lorry's cab. The boxes keep their
+    /// slots when the lot is laid again.
+    fn lay_park(&mut self, building: EntityId) {
+        let Some(GameObject::Building(b)) = self.objects.get(building).map(|e| &e.object) else { return };
+        if !crate::blueprint::blueprint(b.kind).quay {
+            return;
+        }
+        let poses: Vec<Pose> = self.lots[&building]
+            .spots
+            .iter()
+            .map(|s| Pose { at: [s.pose.at[0] - s.pose.heading.cos() * crate::world::sea::CAB_BOX, s.pose.at[1] - s.pose.heading.sin() * crate::world::sea::CAB_BOX], heading: s.pose.heading })
+            .collect();
+        if let Some(GameObject::Building(b)) = self.objects.get_mut(building).map(|e| &mut e.object) {
+            b.park.resize(poses.len(), crate::protocol::Slot { pose: Pose { at: [0.0, 0.0], heading: 0.0 }, trailer: None });
+            for (slot, pose) in b.park.iter_mut().zip(poses) {
+                slot.pose = pose;
+            }
+        }
+    }
+
+    /// The dock a lorry stands in or is bound for, at a yard.
+    pub fn claim_of_dock(&self, building: EntityId, car: EntityId) -> Option<usize> {
+        match self.claim_of(building, car) {
+            Some(Claim::Spot(i)) => Some(i),
+            _ => None,
+        }
+    }
+
+    /// Someone holds a dock of this yard, now or later: a lorry on its way
+    /// or standing in it, or the tug bringing a box.
+    pub fn dock_held(&self, building: EntityId, i: usize) -> bool {
+        self.lots.get(&building).is_some_and(|l| l.spots.get(i).is_some_and(|s| !s.windows.is_empty()))
+    }
+
+    /// The tug holds a dock while it brings a box to it.
+    pub fn hold_dock(&mut self, building: EntityId, car: EntityId, i: usize, from: GameTime, to: GameTime) {
+        if self.lot_mut(building).is_some() {
+            self.unhold_dock(building, car);
+            self.hold(building, car, Claim::Spot(i), from, to);
+        }
+    }
+
+    /// The tug lets go of the dock it held, and stands where it stands.
+    pub fn unhold_dock(&mut self, building: EntityId, car: EntityId) {
+        if let Some(lot) = self.lots.get_mut(&building) {
+            for s in &mut lot.spots {
+                s.windows.retain(|w| w.car != car);
+            }
+        }
+        self.claims.remove(&car);
+    }
+
+    /// Whether a dock is one this car may back into: one with no box in it,
+    /// or the one whose box it is coming to hook.
+    fn dock_open(&self, building: EntityId, car: EntityId, i: usize) -> bool {
+        let boxed = match self.objects.get(building).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.park.get(i).is_some_and(|s| s.trailer.is_some()),
+            _ => false,
+        };
+        match self.aims.get(&car) {
+            Some(&(at, dock)) if at == building => dock == i,
+            _ => !boxed,
+        }
     }
 
     fn building_of(&self, id: EntityId) -> Option<(Vec<GridCoord>, crate::protocol::BuildingKind, u8)> {
@@ -624,7 +691,7 @@ impl World {
             .or_else(|| door_only.then_some(Claim::Door))
             .or_else(|| {
                 (0..lot.spots.len())
-                    .filter(|&i| usable(i) && lot.spots[i].clear_from(car, from, len) == from)
+                    .filter(|&i| usable(i) && self.dock_open(building, car, i) && lot.spots[i].clear_from(car, from, len) == from)
                     .map(|i| (i, appeal(i)))
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(i, _)| Claim::Spot(i))
@@ -1094,7 +1161,7 @@ mod tests {
     #[test]
     fn a_depot_has_docks_a_lorry_backs_into() {
         let mut world = street();
-        let depot = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Warehouse).unwrap();
+        let depot = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Depot).unwrap();
         let shop = world.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::Shop).unwrap();
         assert_eq!(world.lot_mut(depot).unwrap().spots.len(), 4, "four docks across two tiles");
         world.lot_mut(shop).unwrap();
@@ -1125,7 +1192,7 @@ mod tests {
     fn a_car_backs_out_of_its_driveway() {
         let mut world = street();
         let house = world.place_on_street(GridCoord { x: 6, y: 1 }, BuildingKind::House).unwrap();
-        let depot = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Warehouse).unwrap();
+        let depot = world.place_on_street(GridCoord { x: 20, y: 1 }, BuildingKind::Depot).unwrap();
         let car = world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
         let ways = world.ways_to(house, world.road_node_at(GridCoord { x: 30, y: 0 }).unwrap()).unwrap();
         let (way, _) = world.way_in(house, car, &ways, 0, GameTime::MAX).unwrap();

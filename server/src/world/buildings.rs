@@ -211,17 +211,13 @@ impl World {
     pub fn fits(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> bool {
         let p = crate::blueprint::plot(kind, facing);
         Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t))
-            && (!crate::economy::ships(kind) || self.quay_at(&Self::footprint(pos, p.size).collect::<Vec<_>>(), kind, facing).is_some())
+            && (!crate::blueprint::blueprint(kind).quay || self.berth_at(&Self::footprint(pos, p.size).collect::<Vec<_>>(), kind, facing).is_some())
     }
 
     /// The street node a building is reached by: where every trip to it
     /// ends and from it starts, its lot taking the car the rest of the way.
     /// The edge stands on its road. `None` is a building no road reaches.
     pub fn street_of(&self, id: EntityId) -> Option<EntityId> {
-        if self.edge.contains(&id) {
-            let b = self.objects.get(id)?.position?;
-            return self.road_node_at(b);
-        }
         self.door_of(id).map(|(_, street)| street)
     }
 
@@ -337,7 +333,7 @@ impl World {
     pub fn all_buildings(&self) -> Vec<(EntityId, GridCoord)> {
         self.objects
             .iter()
-            .filter(|e| matches!(e.object, GameObject::Building(_)) && !self.edge.contains(&e.id))
+            .filter(|e| matches!(e.object, GameObject::Building(_)))
             .filter_map(|e| e.position.map(|p| (e.id, p)))
             .collect()
     }
@@ -360,6 +356,7 @@ impl World {
         }
         let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, facing).size).collect();
         let id = self.insert_at(GameObject::Building(Building::new(kind, tiles.clone(), facing)), Some(pos));
+        self.founded(id);
         for tile in &tiles {
             self.take_stub(id, *tile);
             self.occupied.insert((tile.x, tile.y), id);
@@ -375,6 +372,28 @@ impl World {
     /// The building on this tile, if any.
     pub(super) fn claimed_plot_at(&self, tile: GridCoord) -> Option<EntityId> {
         self.occupied.get(&(tile.x, tile.y)).copied()
+    }
+
+    /// A building placed by the mayor: a depot comes with its first rules
+    /// over it; the town's first depot, and anything built of nothing,
+    /// stands at once, and the rest are sites waiting for their timber.
+    pub fn founded(&mut self, id: EntityId) {
+        let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return };
+        let kind = b.kind;
+        let first_depot = crate::economy::depot(kind)
+            && !self.objects.iter().any(|e| e.id != id && matches!(e.object, GameObject::Building(ref o) if o.kind == kind && o.site.is_none()));
+        if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
+            if crate::economy::depot(kind) {
+                b.rules = crate::haul::first_rules();
+            }
+            if first_depot {
+                b.site = None;
+            }
+        }
+        let standing = matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_none());
+        if standing {
+            crate::economy::stand(self, id);
+        }
     }
 
     /// Give a building its door, if a street is beside it; nothing beside
@@ -422,12 +441,30 @@ impl World {
 
     /// A building that can be driven to, or nothing: the placer works out
     /// the facing itself, and the driveway goes in with it.
+    /// Standing, and stocked, as a town written by hand is.
     #[cfg(test)]
     pub fn place_on_street(&mut self, pos: GridCoord, kind: BuildingKind) -> Option<EntityId> {
         let (facing, _, _) = self.site_for(pos, kind)?;
         let id = self.place_building(pos, kind, facing)?;
         self.open_door(id);
+        self.finish(id);
         Some(id)
+    }
+
+    /// A building as a town written by hand has it: standing, its timber
+    /// in, its shelves full but for what its own land fills.
+    pub fn finish(&mut self, id: EntityId) {
+        if matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()) {
+            crate::economy::stand(self, id);
+        }
+        if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
+            let kind = b.kind;
+            for (good, stock) in b.stocks.iter_mut() {
+                if !crate::economy::makes(kind, *good) {
+                    stock.level = stock.cap;
+                }
+            }
+        }
     }
 
     /// A step of the mayor's brush: `to` painted with a kind, and joined to
@@ -458,7 +495,11 @@ impl World {
                 }
                 id
             }
-            None => self.insert_at(GameObject::Building(Building::new(kind, vec![to], 2)), Some(to)),
+            None => {
+                let id = self.insert_at(GameObject::Building(Building::new(kind, vec![to], 2)), Some(to));
+                self.founded(id);
+                id
+            }
         };
         self.take_stub(id, to);
         self.occupy(id, to);
@@ -649,7 +690,6 @@ impl World {
         let buildings: Vec<(EntityId, Vec<GridCoord>)> = self
             .objects
             .iter()
-            .filter(|e| !self.edge.contains(&e.id))
             .filter_map(|e| match e.object {
                 GameObject::Building(ref b) => Some((e.id, b.tiles.clone())),
                 _ => None,
@@ -1110,9 +1150,9 @@ mod tests {
     #[test]
     fn a_building_too_small_does_not_work_until_it_is_painted_out() {
         let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
-        let depot = stroke(&mut world, BuildingKind::Warehouse, &[(0, 1)])[0].unwrap();
+        let depot = stroke(&mut world, BuildingKind::Depot, &[(0, 1)])[0].unwrap();
         assert!(world.street_of(depot).is_none(), "one tile is no depot");
-        stroke(&mut world, BuildingKind::Warehouse, &[(0, 1), (1, 1), (1, 2), (0, 2), (0, 3), (1, 3), (1, 4), (0, 4)]);
+        stroke(&mut world, BuildingKind::Depot, &[(0, 1), (1, 1), (1, 2), (0, 2), (0, 3), (1, 3), (1, 4), (0, 4)]);
         assert_eq!(tiles_of(&world, depot).len(), 8);
         assert!(world.street_of(depot).is_some(), "two by four is, and the street reaches it");
     }
