@@ -82,6 +82,9 @@ export default function Guide() {
     if (h === null || k().away) return;
     let live = true;
     const ask = async () => {
+      // Settled, as well as seen at the ramp: a settler's car on the map,
+      // for a player who was away when they landed.
+      if (!k().settled) eachEntity((e) => e.object.kind === "Car" && e.object.data.role === "Private" && note({ settled: true }));
       const c = await (await fetch(`/inspect/${h}`)).json();
       if (live) setDepots(((c.depots ?? []) as DepotLine[]).map((d) => ({ id: d.depot.id, joined: d.joined, stocked: Object.values(d.stocks).some((v) => (v ?? 0) > 0) })));
     };

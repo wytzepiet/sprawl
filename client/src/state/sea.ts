@@ -1,7 +1,7 @@
 import { batch, createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { dayLengthMs, simNow } from "../network/clock";
-import { eachEntity, getEntity } from "./gameObjects";
+import { getEntity } from "./gameObjects";
 import { GOODS } from "../blueprints";
 import type { Building, Car, Good, Leg, Sailing, Sea, Shipment } from "../generated";
 
@@ -38,9 +38,7 @@ function tell(text: string, sub: string, at: number) {
   setTimeout(() => setNews((l) => l.filter((x) => x !== n)), NEWS_MS);
 }
 
-/** Has a ferry come in with settlers yet: the opening's last beat. Seen
- *  at the ramp, or after, by the cars they drove off in: a player who was
- *  away when they landed comes back to a town that is lived in. */
+/** Has a ferry come in with settlers yet: the opening's last beat. */
 const [settled, setSettled] = createSignal(false);
 export { settled };
 
@@ -53,7 +51,6 @@ export function hearSea(s: Sea) {
     setSea("sailings", reconcile(s.sailings, { key: "harbour" }));
   });
   if (s.sailings.some((x) => x.berthed && x.settlers > 0)) setSettled(true);
-  else if (!settled()) eachEntity((e) => e.object.kind === "Car" && e.object.data.role === "Private" && setSettled(true));
   if (!heard) return void (heard = true);
   for (const x of s.sailings) {
     const was = before.get(x.harbour);
