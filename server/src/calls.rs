@@ -90,7 +90,13 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
     }
     let mut calls = Vec::new();
     for good in wants(world, building) {
-        let kind_of_call = if economy::depot(kind) { CallKind::Fetch } else { CallKind::Stock };
+        // A depot fetches only what a maker in town makes; what the town
+        // buys comes by sea, booked by its rules.
+        let depot = economy::depot(kind);
+        if depot && !crate::protocol::BuildingKind::ALL.into_iter().any(|k| economy::makes(k, good)) {
+            continue;
+        }
+        let kind_of_call = if depot { CallKind::Fetch } else { CallKind::Stock };
         calls.push(Call { kind: kind_of_call, good, at: building, raised: now, answered_by: None, load: 0.0, from: None });
     }
     if economy::depot(kind) {

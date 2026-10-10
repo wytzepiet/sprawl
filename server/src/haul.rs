@@ -76,8 +76,11 @@ pub fn boxes(world: &World) -> Vec<(Trailer, Leg, Option<EntityId>)> {
 
 /// What is on its way to a depot of a good, booked, at sea, in the park
 /// or on a hitch: what its rule counts as good as in stock.
+/// A box for the town, for whichever depot's lorry comes first, counts
+/// for every depot: a town of one depot, which is the town that has them,
+/// counts it once.
 pub fn incoming(world: &World, depot: EntityId, good: Good) -> f64 {
-    boxes(world).iter().filter(|(t, _, _)| t.to == Some(depot) && t.good == Some(good) && !t.outbound).map(|(t, _, _)| t.units).sum()
+    boxes(world).iter().filter(|(t, _, _)| t.to.is_none_or(|d| d == depot) && t.good == Some(good) && !t.outbound).map(|(t, _, _)| t.units).sum()
 }
 
 /// The harbour a depot books through: the nearest standing, by its tile.

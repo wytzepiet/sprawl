@@ -67,11 +67,11 @@ impl World {
                 Some(GameObject::Building(b)) => Some(b.kind),
                 _ => None,
             };
-            // Built but not reached, or not built at all: nobody lives or
-            // works where no road goes. Losing your job is not losing your
+            // Built but not reached, still a site, or not built at all:
+            // nobody lives or works where no road goes, or in scaffolding. Losing your job is not losing your
             // home; losing your home is leaving, and the desk you held is
             // a vacancy.
-            let Some(kind) = kind.filter(|_| self.street_of(b).is_some()) else {
+            let Some(kind) = kind.filter(|_| self.open(b)) else {
                 for id in self.people.remove(&b).unwrap_or_default() {
                     let Some(GameObject::Resident(r)) = self.objects.get(id).map(|e| &e.object) else { continue };
                     if r.home == b {
@@ -129,7 +129,7 @@ impl World {
     /// Households are looked for nearest first, and the search stops where
     /// nobody farther could be nearer than what it has.
     fn hire(&mut self, line: EntityId, lines: &mut BTreeSet<EntityId>, touched: &mut Vec<EntityId>) {
-        let Some(e) = self.objects.get(line).filter(|_| self.street_of(line).is_some()) else { return };
+        let Some(e) = self.objects.get(line).filter(|_| self.open(line)) else { return };
         let (Some(at), GameObject::Building(b)) = (e.position, &e.object) else { return };
         let jobs = blueprint(b.kind).jobs as usize;
         // (the drive to this line, who)
@@ -186,7 +186,7 @@ impl World {
     /// A line a road reaches with a desk nobody holds.
     fn vacant(&self, line: EntityId) -> bool {
         match self.objects.get(line).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => self.street_of(line).is_some() && self.staff(line).len() < blueprint(b.kind).jobs as usize,
+            Some(GameObject::Building(b)) => self.open(line) && self.staff(line).len() < blueprint(b.kind).jobs as usize,
             _ => false,
         }
     }
@@ -210,6 +210,11 @@ impl World {
                     .collect()
             })
             .collect()
+    }
+
+    /// Open to people: reached by a road, and standing, not a site.
+    fn open(&self, b: EntityId) -> bool {
+        self.street_of(b).is_some() && matches!(self.objects.get(b).map(|e| &e.object), Some(GameObject::Building(bd)) if bd.site.is_none())
     }
 
     /// A household, carless until the settle ends (`issue_car`).
@@ -504,6 +509,7 @@ mod tests {
         let home = world
             .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, 2)
             .expect("land is land");
+        world.finish(home);
         assert!(world.street_of(home).is_none(), "dormant");
         assert!(world.settle().is_empty(), "nobody moves in off the road");
 

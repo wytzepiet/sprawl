@@ -346,7 +346,10 @@ fn handle_player_action(
                     }
                 }
                 Tool::Building(kind) => {
-                    world.paint(kind, from, to);
+                    // A site calls for its timber at once.
+                    if let Some(id) = world.paint(kind, from, to) {
+                        crate::calls::turn(world, events, id, now);
+                    }
                 }
                 Tool::Demolish => {
                     // A tap takes everything on the tile: its road and all
@@ -1414,6 +1417,7 @@ mod tests {
         let home = world
             .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, 2)
             .expect("land is land");
+        world.finish(home);
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
@@ -1978,5 +1982,113 @@ mod tests {
         let fetched = before - yard(&world);
         assert!(fetched > 0.0, "the lorry took nothing from the yard");
         assert_eq!(bought(&world), bought_before, "crates fetched in town were paid for");
+    }
+
+    fn car_of(world: &World, id: EntityId) -> crate::protocol::Car {
+        match world.objects.get(id).map(|e| &e.object) {
+            Some(GameObject::Car(c)) => c.clone(),
+            _ => panic!("no car {id}"),
+        }
+    }
+
+    fn building_of(world: &World, id: EntityId) -> crate::protocol::Building {
+        match world.objects.get(id).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.clone(),
+            _ => panic!("no building {id}"),
+        }
+    }
+
+    /// The opening, docs/game.md: a harbour, a depot, a street between
+    /// them. The first ferry comes in on time with the starter pack and
+    /// the tug lands it in the trailer park, for nothing; the mayor taps
+    /// the depot's lorry, which fetches a box and unloads it onto the
+    /// shelf; standing orders fetch the rest. A house is a site until a
+    /// van brings its timber; then its settlers come on the next ferry and
+    /// drive home. A box of crates sold goes out on the ferry, paid as it
+    /// casts off; and the ferry keeps its timetable throughout.
+    #[test]
+    fn the_opening_from_the_harbour() {
+        use crate::world::sea::{DWELL, TURN};
+        let mut world = street();
+        let harbour = harbour_of(&world);
+        let x = HARBOUR_X - 12;
+        let (facing, _, _) = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
+        let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
+        world.open_door(depot);
+        assert!(building_of(&world, depot).site.is_none(), "the first depot is a site");
+        assert!(building_of(&world, depot).stocks.values().all(|s| s.level == 0.0), "the depot stood stocked");
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
+        let tug = world.tug_of(harbour).expect("the harbour's tug");
+        let lorry = crate::haul::lorry_of(&world, depot).expect("the depot's lorry");
+        assert_eq!(car_of(&world, ferry).booked.len(), 5, "the starter pack is booked");
+        let day = DAY_MS as u64;
+        let mut now = 0;
+
+        // In over the horizon, and moored with the starter pack on deck.
+        let mut sailed = false;
+        while car_of(&world, ferry).spot.is_none() {
+            assert!(step(&mut world, &mut events, &mut intersections, &mut now, day), "the ferry never berthed");
+            sailed |= car_of(&world, ferry).run.is_some();
+        }
+        let berthed = now;
+        assert!(sailed, "it never sailed in");
+        assert_eq!(car_of(&world, ferry).deck.iter().flatten().count(), 5, "the starter pack is not aboard");
+        // The tug unloads while it is in, and it sails on time.
+        let mut shunted = false;
+        while car_of(&world, ferry).spot.is_some() {
+            assert!(step(&mut world, &mut events, &mut intersections, &mut now, day), "the ferry never sailed");
+            shunted |= car_of(&world, tug).shunt.is_some();
+        }
+        assert!(shunted, "the tug never moved");
+        assert!(now - berthed <= DWELL + 100, "it sailed late: {} after berthing", now - berthed);
+        let parked = |w: &World| building_of(w, harbour).park.iter().filter(|s| s.trailer.is_some()).count();
+        assert!(parked(&world) >= 3, "only {} boxes landed in the park", parked(&world));
+        assert_eq!(world.treasury, crate::economy::STAKE, "the starter pack was paid for");
+
+        // The mayor taps the lorry: it fetches a box and unloads it.
+        let stock = |w: &World| building_of(w, depot).stocks.values().map(|s| s.level).sum::<f64>();
+        crate::haul::send(&mut world, &mut events, depot);
+        let until = now + day / 12;
+        while stock(&world) == 0.0 && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+        assert!(stock(&world) > 0.0, "the tapped lorry brought nothing home in two hours");
+        assert!(car_of(&world, lorry).hitched.is_some_and(|t| t.empty()), "the empty did not stay on the hitch");
+        assert!(world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
+
+        // Standing orders fetch the rest.
+        crate::haul::set_standing(&mut world, &mut events, depot, true);
+        let until = now + day / 4;
+        while (parked(&world) > 0 || car_of(&world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+        let shelf = |w: &World, g: Good| building_of(w, depot).stocks[&g].level;
+        assert!(shelf(&world, Good::Timber) >= 40.0, "the timber did not come in: {}", shelf(&world, Good::Timber));
+
+        // A house: a site until a van brings its timber.
+        handle_player_action(&mut world, &mut events, &mut intersections, ClientMessage::Build(Build { tool: Tool::Building(BuildingKind::House), from: GridCoord { x: 20, y: 1 }, to: GridCoord { x: 20, y: 1 } }), now);
+        settle_and_wake(&mut world, &mut events);
+        let house = world.occupied[&(20, 1)];
+        assert!(building_of(&world, house).site.is_some(), "the house stood without its timber");
+        assert!(world.household(house).is_empty(), "people moved into a site");
+        let until = now + day / 4;
+        while building_of(&world, house).site.is_some() && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+        assert!(building_of(&world, house).site.is_none(), "the van never brought the timber");
+        settle_and_wake(&mut world, &mut events);
+        let settlers = world.household(house);
+        assert_eq!(settlers.len(), 2, "nobody moved in");
+        // They come on the next ferry, and drive home.
+        let until = now + TURN + DWELL + day / 6;
+        while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+        assert!(settlers.iter().all(|&id| at_of(&world, id) == Some(house)), "the settlers never got home");
+
+        // A box of crates sold: out on the ferry, paid as it casts off.
+        let before = world.treasury;
+        crate::haul::sell(&mut world, &mut events, depot, Good::Crates);
+        let until = now + 2 * TURN;
+        while world.town.on(now).sold.get(&Good::Crates).is_none() && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+        let sold = world.town.on(now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
+        assert!((sold - crate::economy::export(Good::Crates, 100.0)).abs() < 1e-6, "the box went out for {sold}");
+        assert!(world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
+        let _ = before;
     }
 }

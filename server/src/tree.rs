@@ -48,11 +48,6 @@ impl Build {
         true
     }
 
-    /// How much cheaper this class is than the table says.
-    pub fn weight(&self, _class: Class) -> f64 {
-        1.0
-    }
-
     /// Tiles of road the mayor may have laid, all told.
     pub fn road_tiles(&self) -> u32 {
         u32::MAX

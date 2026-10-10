@@ -459,8 +459,10 @@ impl World {
     /// back to its place by the ramp.
     pub fn tug_wake(&mut self, events: &mut EventQueue, tug: EntityId, now: GameTime) {
         let Some(GameObject::Car(c)) = self.objects.get(tug).map(|e| &e.object) else { return };
-        let harbour = c.owner;
-        if let Some(s) = c.shunt.clone() {
+        let (harbour, shunt) = (c.owner, c.shunt.clone());
+        // The park is the yard's docks, laid with the lot.
+        self.lot_mut(harbour);
+        if let Some(s) = shunt {
             if now < s.ends {
                 events.wake(s.ends - now, tug);
                 return;
