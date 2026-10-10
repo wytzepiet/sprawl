@@ -49,9 +49,11 @@ export default function Minimap() {
     const [sx, sy] = [((e.clientX - r.left) / r.width) * v.w, ((e.clientY - r.top) / r.height) * v.h];
     eye.go(v.x - (sx - v.w / 2) / v.px, v.y - (sy - v.h / 2) / v.px);
   };
+  // Shown and hidden with the UI, not with the map's canvas, which the
+  // photographs keep when they hide the UI (`look`, `shots`).
   return (
     <div class="fixed right-6 bottom-7 z-30 rounded-[22px] p-1.5 select-none" style={{ background: "rgb(var(--glass) / 0.9)", "box-shadow": "0 4px 18px rgb(0 0 0 / 0.18)" }}>
-      <canvas ref={canvas} class="block cursor-pointer rounded-[16px]" style={{ width: `${SIZE}px`, height: `${SIZE}px` }} onPointerDown={go} />
+      <canvas ref={canvas} class="block cursor-pointer rounded-[16px]" style={{ width: `${SIZE}px`, height: `${SIZE}px`, visibility: "inherit" }} onPointerDown={go} />
     </div>
   );
 }
