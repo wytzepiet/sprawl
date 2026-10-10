@@ -147,6 +147,12 @@ export class TerrainChunks {
   }
 
 
+  /** Whether a tile of land has water beside it. */
+  private ashore(x: number, y: number, typeAt: (x: number, y: number) => TerrainType | undefined): boolean {
+    const wet = (t: TerrainType | undefined) => t === "Sea" || t === "Water";
+    return !wet(typeAt(x, y)) && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => wet(typeAt(x + dx, y + dy)));
+  }
+
   /** The ground on a tile, if its chunk has arrived. */
   typeAt(x: number, y: number): TerrainType | undefined {
     const [cx, cy] = [floorDiv(x, CHUNK_SIZE), floorDiv(y, CHUNK_SIZE)];
@@ -166,15 +172,18 @@ export class TerrainChunks {
 
   /** Something built appearing or vanishing, a road or a building, moves
    *  the trees there; and in a wood, the ground under it too, the wood's
-   *  floor cleared to grass (`requestBuild`): for every chunk whose tiles,
-   *  skirt and all, take it in. Nothing else of the land. */
+   *  floor cleared to grass, and on the shore, the coast, a quay or not
+   *  (`requestBuild`): for every chunk whose tiles, skirt and all, take it
+   *  in. Nothing else of the land. */
   markTile(x: number, y: number): void {
     this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
-    if (this.typeAt(x, y) !== "Forest") return;
+    if (this.typeAt(x, y) !== "Forest" && !this.ashore(x, y, (x, y) => this.typeAt(x, y))) return;
     for (const dy of [-CHUNK_SKIRT, 0, CHUNK_SKIRT]) {
       for (const dx of [-CHUNK_SKIRT, 0, CHUNK_SKIRT]) {
         const key = `${floorDiv(x + dx, CHUNK_SIZE)},${floorDiv(y + dy, CHUNK_SIZE)}`;
-        if (this.chunks.has(key)) this.invalidate(key);
+        // A chunk still on its way is built again too: it was asked for
+        // before this was built.
+        if (this.tiles.has(key)) this.invalidate(key);
       }
     }
   }
@@ -226,10 +235,22 @@ export class TerrainChunks {
     let geometry: ChunkGeometry | null;
     try {
       // tiles is cloned, not transferred — we keep it for tree rebuilds. A
-      // wood's tile built on is drawn as grass, its floor cleared with its trees.
-      const [forest, grass] = [TYPE_BY_BYTE.indexOf("Forest"), TYPE_BY_BYTE.indexOf("Grass")];
+      // wood's tile built on is drawn as grass, its floor cleared with its
+      // trees; and a tile built on at the water's edge, as water: the coast
+      // steps back under its paving, which runs on to the water as a quay
+      // (`town/draw.ts`), its wall straight down where the shore was, and
+      // the shore's beach, cliff and foam hid under it.
+      const [forest, grass, sea] = [TYPE_BY_BYTE.indexOf("Forest"), TYPE_BY_BYTE.indexOf("Grass"), TYPE_BY_BYTE.indexOf("Sea")];
       const [ox, oy] = [cx * CHUNK_SIZE - CHUNK_SKIRT, cy * CHUNK_SIZE - CHUNK_SKIRT];
-      const cleared = tiles.map((b, k) => (b === forest && this.isBuilt(ox + (k % CHUNK_STRIDE), oy + Math.floor(k / CHUNK_STRIDE)) ? grass : b));
+      const own = (x: number, y: number) => {
+        const [i, j] = [x - ox, y - oy];
+        return i >= 0 && j >= 0 && i < CHUNK_STRIDE && j < CHUNK_STRIDE ? TYPE_BY_BYTE[tiles[j * CHUNK_STRIDE + i]] : this.typeAt(x, y);
+      };
+      const cleared = tiles.map((b, k) => {
+        const [x, y] = [ox + (k % CHUNK_STRIDE), oy + Math.floor(k / CHUNK_STRIDE)];
+        if (!this.isBuilt(x, y)) return b;
+        return this.ashore(x, y, own) ? sea : b === forest ? grass : b;
+      });
       geometry = await this.builder.build(cleared, this.heights.get(key)!, cx, cy, this.palette());
     } catch (e) {
       // Terrain is sent once and never re-requested, so dropping a failed build
