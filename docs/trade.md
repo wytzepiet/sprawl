@@ -230,7 +230,14 @@ park, and the ferry, which carries the settlers' cars and the world's
 trailers, on one deck, so the deck's size is the door's size and a full
 ferry leaves a trailer for the next sailing, queued in sight. Small
 islands are supplied this way in the real world, and no small harbour
-has a crane. The container port comes later in the tree, its own
+has a crane. The harbour's own tug moves the trailers between deck and
+park, as a port's tugmasters do: it lifts a trailer's nose, backs it up
+the ramp into its lane on the deck, and pulls it off forwards at the
+other end; the cars drive through, off forwards into town. The town's
+lorries never board: they drop a trailer in the park and hitch another,
+so none waits for a ferry, and the ferry sails on time with whatever the
+tug got aboard. Loading is slower than unloading, and a crowded park
+slows the tug, in sight. The container port comes later in the tree, its own
 building: cranes, a container yard, container ships on the company's
 lines, many more boxes for less each. It is also the Exchange (§The
 Exchange). After it, berths for tankers and bulkers (below).
