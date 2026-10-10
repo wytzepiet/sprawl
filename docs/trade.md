@@ -166,7 +166,8 @@ hides. It is a thing on the map:
   automation is the lorry; what is automated is what is driving.
 - **Rules live on buildings.** A depot's top-up shows over it as the
   good and its level; the stack in its yard is the level. When it
-  reorders a ship sets out from the horizon.
+  reorders, its boxes are booked on the next sailing, and the ferry
+  that brings them is on the map.
 - **Automation costs capacity.** A standing order needs a lorry, a berth
   slot, a contract. Automating more is building more, and three lorries
   on standing orders through one junction is a jam you made.
