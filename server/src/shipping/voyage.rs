@@ -206,7 +206,7 @@ impl Voyage {
             // in on the way.
             Some(k) if end > self.gates[k].d0 + 0.01 => sail.ends.max(self.free),
             Some(_) => GameTime::MAX,
-            None => self.next(sail.ease[0]).filter(|&(_, at)| at <= end).map_or(sail.ends, |(_, at)| sail.ends.min(self.when(sail, at.max(self.from)))),
+            None => self.next(sail.ease[0]).filter(|&(k, at)| at <= end && self.gates[k].d0 < end - 1e-6).map_or(sail.ends, |(_, at)| sail.ends.min(self.when(sail, at.max(self.from)))),
         };
         (0..self.gates.len())
             .filter(|&k| self.pass[k] == Pass::Through && !self.kept(k) && self.gates[k].d1 <= end)
