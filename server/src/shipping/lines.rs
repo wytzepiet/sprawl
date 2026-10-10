@@ -214,8 +214,9 @@ pub fn slot(lines: &[Line], line: &Line, at: usize, from: GameTime) -> GameTime 
             .flat_map(|(&h, taken)| windows(line, &[phase], h).into_iter().map(move |(a, b)| taken.iter().map(|&(c, d)| (b.min(d) - a.max(c)).max(0)).sum::<i64>()))
             .sum()
     };
-    // A few minutes' overlap is a few minutes at the anchorage: soon is
-    // better than perfect.
+    // The least overlap, then the soonest: a few minutes' overlap is a
+    // ship stopped at the mouth of the berth's approach and crawling in
+    // (`voyage`), dearer than the minutes.
     (0..line.cycle().div_ceil(TRY)).map(|k| from + k * TRY).min_by_key(|&dep| (overlap(dep), dep)).unwrap_or(from)
 }
 

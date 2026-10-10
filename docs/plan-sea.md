@@ -603,10 +603,12 @@ Each stage leaves the game playable and the suite green
     not beyond the edge. Every update's `Sea.lanes` carries the lanes;
     the flat view and the minimap draw them faint: one-way with chevrons,
     two-way dashed amber, crossings red. Not built: the lane in 3D.
-  - The clock face counts the approach: a line's berth window opens
-    when its ship comes into the approach, and `slot` allows no overlap,
-    since an overlap is now a stop at the mouth, not minutes at an
-    anchorage.
+  - The clock face allows no overlap of berth windows (`slot` allowed a
+    quarter hour): an overlap is now a stop at the approach's mouth and a
+    crawl in, not minutes at an anchorage. Widening each window by the
+    half hour a ship coming in holds the approach was tried and dropped:
+    the hub's four lines no longer fit their round; a ship sailing on
+    into a berth whose ship casts off before it is in costs nothing.
   - Measured: on seeds 0 to 19, 250 ways (out and back to the edge and
     to every island): median 7.3 ms, p90 22 ms, worst 40 ms; no two-way
     water in open water, out and back never share more than a crossing
