@@ -282,9 +282,9 @@ fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock
 
 fn load_world(db_path: &Path) -> (World, GameTime) {
     let (entries, meta) = persistence::load(db_path);
-    // A new town opens at seven in the morning, so the opening, and its
+    // A new town opens at nine in the morning, so the opening, and its
     // first ferry, are played by daylight rather than in the dark.
-    let sim_time = if entries.is_empty() { meta.sim_time.max(DAY_MS as GameTime * 7 / 24) } else { meta.sim_time };
+    let sim_time = if entries.is_empty() { meta.sim_time.max(DAY_MS as GameTime * 9 / 24) } else { meta.sim_time };
     let mut world = if entries.is_empty() {
         World::new()
     } else {
