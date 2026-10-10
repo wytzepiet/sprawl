@@ -12,6 +12,8 @@
  *                              apart, and a strip of them
  *   --follow 37                the view kept on vehicle 37
  *   --name harbour             .dev/flat/harbour.png (flat.png)
+ *   PLAYER=4242                that player's draft blue, the rest grey
+ *                              (`act`'s hand is 4242)
  *
  * It listens as a client does, over the game's socket, to the same
  * messages, so it draws what a player's screen would. Tiles are the
@@ -23,7 +25,7 @@ import { createCanvas, type Canvas } from "@napi-rs/canvas";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import "./tsx";
-import type { GameObjectEntry, Operation, ServerMessage, TerrainChunk } from "../src/generated";
+import type { Draft, GameObjectEntry, Operation, ServerMessage, TerrainChunk } from "../src/generated";
 
 const t0 = performance.now();
 const { drawFlat } = await import("../src/flat/draw");
@@ -48,6 +50,8 @@ const [x, y, r = 12] = (args[0] ?? "0,0").split(",").map(Number);
 const entities = new Map<number, GameObjectEntry>();
 const chunks = new Map<string, Uint8Array>();
 let clock = { now: 0, speed: 0, day_ms: 1, heard: 0 };
+/** Every player's draft; PLAYER's drawn as ours, the rest grey. */
+let drafts: Draft[] = [];
 let updates = 0;
 const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
 ws.binaryType = "arraybuffer";
@@ -59,6 +63,7 @@ ws.onmessage = (e) => {
   }
   if (msg.type !== "Update") return;
   clock = { ...msg.data.clock, heard: Date.now() };
+  drafts = msg.data.drafts ?? [];
   for (const op of msg.data.ops as Operation[]) op.op === "Upsert" ? entities.set(op.data.id, op.data) : entities.delete(op.data);
   if (msg.data.ops.length) updates++;
 };
@@ -87,7 +92,7 @@ for (let n = 0; n < frames; n++) {
   const [vx, vy] = m ? m.body.at : [x + 0.5, y + 0.5];
   const canvas = createCanvas(side, side);
   const t = performance.now();
-  drawFlat(canvas.getContext("2d") as unknown as CanvasRenderingContext2D, { entities: (each) => entities.forEach(each), ground: (cx, cy) => chunks.get(`${cx},${cy}`), now: at, dayMs: clock.day_ms }, { x: vx, y: vy, px, w: side, h: side }, sheet);
+  drawFlat(canvas.getContext("2d") as unknown as CanvasRenderingContext2D, { entities: (each) => entities.forEach(each), drafts, me: process.env.PLAYER ? Number(process.env.PLAYER) : undefined, ground: (cx, cy) => chunks.get(`${cx},${cy}`), now: at, dayMs: clock.day_ms }, { x: vx, y: vy, px, w: side, h: side }, sheet);
   const file = `${OUT}/${name}${frames > 1 ? `-${n}` : ""}.png`;
   await Bun.write(file, await canvas.encode("png"));
   console.log(`${file}  ${entities.size} things, drawn in ${Math.round(performance.now() - t)} ms${n ? "" : `, ${Math.round(performance.now() - t0)} ms in all`}`);

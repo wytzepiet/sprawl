@@ -1,6 +1,7 @@
 import { onCleanup, onMount } from "solid-js";
 import { drawFlat, type View } from "../flat/draw";
-import { eachEntity, groundOf } from "../state/gameObjects";
+import { eachEntity, groundOf, me } from "../state/gameObjects";
+import { drafts } from "../state/drafts";
 import { dayLengthMs, simNow } from "../network/clock";
 import { eye } from "../engine/OrthoCamera";
 import { useTheme } from "../engine/theme";
@@ -32,7 +33,7 @@ export default function Minimap() {
     const v = view();
     if (canvas.width !== v.w) canvas.width = canvas.height = v.w;
     const g = canvas.getContext("2d")!;
-    drawFlat(g, { entities: eachEntity, ground: groundOf, now: simNow(), dayMs: dayLengthMs() }, v, sheet, { labels: false, theme: theme() });
+    drawFlat(g, { entities: eachEntity, drafts: drafts(), me: me(), ground: groundOf, now: simNow(), dayMs: dayLengthMs() }, v, sheet, { labels: false, theme: theme() });
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.strokeStyle = "rgba(255,255,255,0.9)";
     g.lineWidth = 1.5 * devicePixelRatio;

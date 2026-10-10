@@ -5,7 +5,7 @@ import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeomet
 import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
 import { colourOf, LIVERY, moment, PALETTE, type Moment } from "../engine/objects/motion";
 import type { Rgb } from "../engine/rgb";
-import type { Building, Car, GameObjectEntry, RoadNode, TerrainType, Trailer } from "../generated";
+import type { Building, Car, Draft, GameObjectEntry, RoadNode, TerrainType, Trailer } from "../generated";
 import type { Pose as Stand } from "../generated/Pose";
 
 /**
@@ -24,6 +24,10 @@ import type { Pose as Stand } from "../generated/Pose";
  *  server's clock. */
 export interface World {
   entities(each: (e: GameObjectEntry) => void): void;
+  /** Every player's draft, and whose ours is: ours blue, a step stuck
+   *  amber, anyone else's grey; with no `me`, every draft is ours. */
+  drafts?: Draft[];
+  me?: number;
   ground(cx: number, cy: number): Uint8Array | undefined;
   now: number;
   dayMs: number;
@@ -181,6 +185,45 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       if (slot.trailer) box(g, slot.pose, slot.trailer);
     }
   }
+
+  // Drafts, over what stands (docs/game.md §Drafts): a drafted road a
+  // band, a drafted building its tile, each look in one stroke so a draft
+  // reads as one shape; what is drafted to come down, red over it.
+  const drafted = { mine: "#2f7bf0", stuck: "#e39220", theirs: "#7f8898", doomed: RED };
+  const bands = new Map<string, [number, number, number, number][]>();
+  const tiles = new Map<string, [number, number][]>();
+  const at = new Map<string, Building>();
+  for (const [, b] of buildings) for (const t of b.tiles) at.set(`${t.x},${t.y}`, b);
+  const road = new Set(roads.map(([e]) => `${e.position!.x},${e.position!.y}`));
+  const put = <T>(m: Map<string, T[]>, k: string, v: T) => (m.get(k) ?? m.set(k, []).get(k)!).push(v);
+  for (const d of world.drafts ?? [])
+    for (const { step, stuck } of d.strokes.flat()) {
+      const { tool, from, to } = step;
+      const look = world.me !== undefined && d.owner !== world.me ? "theirs" : stuck ? "stuck" : "mine";
+      if (tool === "Demolish") {
+        if (look === "theirs") continue;
+        const b = at.get(`${to.x},${to.y}`);
+        if (from.x !== to.x || from.y !== to.y) put(bands, "doomed", [from.x + 0.5, from.y + 0.5, to.x + 0.5, to.y + 0.5]);
+        else if (b) for (const t of b.tiles) put(tiles, "doomed", [t.x, t.y]);
+        else if (road.has(`${to.x},${to.y}`)) put(tiles, "doomed", [to.x, to.y]);
+      } else if (typeof tool === "string") put(bands, look, [from.x + 0.5, from.y + 0.5, to.x + 0.5, to.y + 0.5]);
+      else put(tiles, look, [to.x, to.y]);
+    }
+  g.globalAlpha = 0.5;
+  g.lineWidth = ROAD_WIDTH;
+  for (const [look, segs] of bands) {
+    g.strokeStyle = drafted[look as keyof typeof drafted];
+    g.beginPath();
+    for (const [ax, ay, bx, by] of segs) g.moveTo(ax, ay), g.lineTo(bx, by);
+    g.stroke();
+  }
+  for (const [look, ts] of tiles) {
+    g.fillStyle = drafted[look as keyof typeof drafted];
+    g.beginPath();
+    for (const [x, y] of ts) g.rect(x + 0.04, y + 0.04, 0.92, 0.92);
+    g.fill();
+  }
+  g.globalAlpha = 1;
 
   // Vehicles where the server's clock has them now.
   const moments: [GameObjectEntry, Car, Moment][] = [];
