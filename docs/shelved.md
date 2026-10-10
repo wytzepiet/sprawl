@@ -453,3 +453,39 @@ rule: automatic on the island, explicit only between islands.
 **To bring back.** Lines, later, for the few big pipes only: a ship
 between two ports on a schedule, a siding from a quarry to a works.
 Never the last mile.
+
+## Faces: the mayors' and the players' avatars
+
+**What.** Characters for the mayors beyond the map edge who send the town
+orders, and later the players' own avatars: stylised, warm, toy-like,
+with expressions (asks, delighted, worried, cross) and customisation. The
+player's aim is Apple's Memoji: a 3D face halfway between an emoji and a
+person.
+
+**Why parked.** Not the game's problem yet. Looked at 2026-10-10:
+- **2D libraries** do expressions for free. DiceBear has about 30 styles,
+  SVG from a seed, and its Micah style reads moods best. Sheets are in
+  `.dev/avatars.png` and `.dev/moods.png`. The player wants 3D.
+- **Memoji-like services:**
+  - Ready Player Me shut down on 2026-01-31.
+  - Genies is Unity only.
+  - Bitmoji for Games went to selected partners, on Unity, Unreal and
+    PlayCanvas.
+  - Avatar SDK's MetaPerson (a cartoon style, GLB, web) and Streamoji
+    (web, 52 expressions) are photo-first and priced by contract.
+- **Open:** VRM is a standard 3D avatar format with expressions built in.
+  CharacterStudio (MIT, three.js) is a creator over it. Whether Lite loads
+  VRM is untested.
+- **The Nintendo way** (Mii, Animal Crossing): a simple 3D head with the
+  eyes, brows and mouth as 2D pictures on it, an expression being a
+  swap. Charming, customisable, no facial rig.
+
+**What can be made here.** Mii-level faces built in code (parts,
+expressions as moving parts, portraits rendered once and cached) are
+within reach. Memoji's polish is sculpted organic meshes and hand-made
+blend shapes: an artist's work, or bought assets, with the code around
+them made here.
+
+**To bring back.** A mayor carries a plain description (features, mood)
+and one function draws it; missions and orders never know how. Start
+with the Nintendo way, or VRM if Lite loads it.
