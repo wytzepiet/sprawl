@@ -4,7 +4,7 @@ import type { Theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
 import { asphalt } from "./dressing";
-import type { Polygon } from "./footprint";
+import type { Pt } from "./footprint";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type Tile, type Town } from "./grid";
 import { PROP_KINDS, type Paint } from "./roof";
@@ -42,6 +42,9 @@ export interface Snapshot {
   joined: [number, [number, number][]][];
   /** Each building's door: its tile, and the way to its street. */
   doors: [number, number, number, number][];
+  /** Lines painted on the yards where the game says, on the map: a
+   *  harbour's trailer park's slots. */
+  marks: Pt[][];
   /** The ground under the box, a row of x at a time, as `kinds` lists it,
    *  255 where it is not known. */
   ground: Uint8Array;
@@ -177,10 +180,10 @@ export function drawChunks(s: Snapshot): Drawing {
   const [ww, wh] = [wx1 - wx0 + 1, wy1 - wy0 + 1];
   const inWindow = windowOf(whole, c0, r0, ww, wh);
   const { pieces, dressing, props } = drawTown(inWindow, s.theme, paint, windowFacts(known, c0, r0, ww, wh));
-  // The roads, as the paving is cut for them: every tile's asphalt and the
-  // lanes off it, overlapping as they are drawn.
+  // The roads, as the paving is cut for them: every tile's asphalt,
+  // overlapping as they are drawn.
   const { street, through } = asphalt(windowOf(on, c0, r0, ww, wh));
-  const roadSheet = flatPolygons([...street, ...through, ...dressing.lanes.map((l): Polygon => [l])], 0);
+  const roadSheet = flatPolygons([...street, ...through], 0);
   const roadEdges = roadsOf(roadSheet).edges;
   // A tile's place in the window's drawing: tile x runs over x - wx1 - 1
   // to x - wx1, and so for y.
@@ -195,7 +198,9 @@ export function drawChunks(s: Snapshot): Drawing {
   // point is on a road.
   const roadsBy = fileBy(roadSheet, chunkAt, (cx, cy) => `${cx},${cy}`, PAVING_PAD);
   const pavement = pieces.find((p) => p.name === "pavement");
-  const [kerbs, lines] = [pavement ? kerbsOf(pavement.geo) : [], stripLines(dressing.yardLines)];
+  // The game's own marks, turned half round into the window.
+  const marks = s.marks.map((m) => m.map(([x, y]): Pt => [x1 - c0 + 1 - x, y1 - r0 + 1 - y]));
+  const [kerbs, lines] = [pavement ? kerbsOf(pavement.geo) : [], stripLines([...dressing.yardLines, ...marks])];
   const chunks = s.todo.map((key): ChunkDrawing => {
     const [cx, cy] = key.split(",").map(Number);
     // The chunk, as far as the town reaches into it.

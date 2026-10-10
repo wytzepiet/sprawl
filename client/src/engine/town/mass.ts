@@ -9,17 +9,14 @@ import { isBuilt, type Tile } from "./grid";
  */
 
 /** What a building gives up of its own ground to a yard (`facts.ts`):
- *  what stands in it, lorries at docks or cars in rows; which end of the
- *  building it takes, the quiet one, the busy one or the one on the water;
- *  and how much it must hold, for a building so many tiles big. */
+ *  what stands in it, lorries at docks, cars in rows, or boxes in a
+ *  trailer park; which end of the building it takes, the quiet one or the
+ *  busy one; and how much it must hold, for a building so many tiles big. */
 export interface Yard {
-  fill: "docks" | "cars" | "ferry" | "exit";
-  end: "quiet" | "busy" | "water";
+  fill: "docks" | "cars" | "park";
+  end: "quiet" | "busy";
   need: (tiles: number) => number;
 }
-
-/** What a ferry carries, in cars: its yard holds the next sailing's. */
-export const FERRY_LOAD = 40;
 
 /** Homes and the shops of a high street are one family; offices, sheds
  *  and big boxes each another. */
@@ -36,9 +33,10 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   // A supermarket's car park is its shop window, on the busy corner.
   Supermarket: { family: "box", yard: { fill: "cars", end: "busy", need: (n) => 3 * n } },
   GasStation: { family: "box" },
-  // A ferry port's marshalling yard holds one sailing, from the water back;
-  // the rest is its terminal.
-  Harbour: { family: "port", yard: { fill: "ferry", end: "water", need: () => FERRY_LOAD } },
+  // A harbour is open ground all through: its trailer park on the street
+  // side, the apron the tug crosses to the ramp on the water side. Its
+  // terminal stands on the quay (`BuildingObject.tsx`).
+  Harbour: { family: "port", yard: { fill: "park", end: "busy", need: () => Infinity } },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 

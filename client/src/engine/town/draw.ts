@@ -3,7 +3,6 @@ import type { MeshGeometry } from "../geometry";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
 import { asphalt, dress, pavement, type Dressing } from "./dressing";
-import { soften } from "./footprint";
 import { facts } from "./facts";
 import type { Polygon } from "./footprint";
 import type { Tile, Town } from "./grid";
@@ -23,9 +22,6 @@ export type Colour = { r: number; g: number; b: number };
 
 /** A dock's door: dark, in any light. */
 const DOOR: Colour = { r: 0.22, g: 0.24, b: 0.3 };
-
-/** How round a port lane's corners are, as the asphalt's. */
-const LANE_ROUND = 0.05;
 
 /** How far over the grass the roads lie. */
 export const PAVED_Z = 0.02;
@@ -50,7 +46,7 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
 }
 
 /**
- * The town grid's town, drawn: the pavement, a port's lanes, the
+ * The town grid's town, drawn: the pavement, the
  * buildings, and a door behind every dock; the roads are `drawRoads`.
  * Geometry alone, in the same frame. The yards' lines are the caller's to
  * paint on the pavement (`stripLines`), and the trees the dressing plants
@@ -66,7 +62,6 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   };
   add("pavement", flatPolygons(pavement(town), KERB_Z), theme.paved);
   const dressing = dress(town, known);
-  add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
   const mass = townMesh(town, paint, undefined, known);
   add("mass", mass, null);
   // A door in the wall behind every dock, just proud of it.

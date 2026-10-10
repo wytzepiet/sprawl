@@ -425,7 +425,9 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
     record() {},
     execute() {
       const frame = surface.scRT._colorTexture;
-      if (!runs.length || !frame) return 0;
+      // A swapchain that is no copy source (a Lite without `copySource`)
+      // has no glass rather than no frame.
+      if (!runs.length || !frame || !(frame.usage & GPUTextureUsage.COPY_SRC)) return 0;
       const [w, h] = [frame.width, frame.height];
       fit(w, h);
       const encoder = engine._currentEncoder;
