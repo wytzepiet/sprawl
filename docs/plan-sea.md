@@ -33,23 +33,44 @@ code already brings settlers in by their nearest harbour
 the order board (`trade.md` §Open 3) and the first payers of dues, and
 they come after this plan.
 
-**The world is the map's edge, and it is the first hub.** A line to the
-world sails to the sea tile on the map's edge nearest its last harbour,
-in sight all the way, and leaves the map there. `shipping.md` §The sea
-already says "the horizon is the map's edge", while the code cuts the
-voyage off at `HORIZON` (48 tiles); the code is brought in line. Until
-the company opens a direct line, a box going from your outpost to your
-home goes out to the world on one ferry and comes back in on the other.
-It is slow, but it works on the first day, and it is a transfer you can
-watch.
+**The world is the map's edge.** A line to the world sails to the sea
+tile on the map's edge nearest its last harbour, in sight all the way,
+and leaves the map there. `shipping.md` §The sea already says "the
+horizon is the map's edge", while the code cuts the voyage off at
+`HORIZON` (48 tiles); the code is brought in line. The world is where
+imports come from and exports go, not a place your own boxes change
+ships: a box between two of your harbours that went out to the edge
+and back would be absurd at forty tiles apart. (The player, 2026-10-10:
+"there needs to be a mechanic to adopt new more direct lines fast,
+especially between your own ports.")
 
-**The company follows the traffic.** The player does not draw a line. At
-midnight, if a pair of your harbours moved at least `OPEN_LINE` boxes
-between them on each of the last two days, the company opens a direct
-coastal line for that pair and puts a new ferry on it. A new ship
-appearing on a new route is the reward for an outpost that works. This
-settles `shipping.md` §Open 1 in its simplest form. Adding sailings to a
-busy line follows the same rule later.
+**A new harbour is connected the day it stands.** Building a harbour
+should change the map at once, so the company does not wait for
+traffic it has no data for: the cold start is answered from the map and
+from what the towns want, not from history.
+
+- **The prior is the map.** When a harbour stands, the company opens a
+  direct line from it to your nearest harbour by sea, and its first
+  sailing leaves within the hour. A third harbour links to its nearest,
+  so your harbours grow as a tree, each new one a ship you watch arrive.
+  Each harbour keeps its own ferry to the world as well.
+- **The sailings are sized by forecast, not history.** What a line is
+  worth before any box has moved is what its two ends say they want:
+  the depots' rules (keep, fill, sell, the same numbers `top_up` books
+  against) and what the makers near each harbour make a day. That gives
+  boxes a day each way, and the sailings a day follow from it.
+- **A box waiting is a signal now.** Demand counts when a box is booked
+  or stands in a yard for a call with no direct line, not when it is
+  delivered. A backlog for one pair, `BACKLOG` boxes, opens a line or adds
+  a sailing at the next departure, not at midnight.
+- **Lines prove themselves.** A new line is on trial for its first
+  `TRIAL` days, drawn as such on its card; after that the loads it
+  carried thicken it, thin it, or withdraw it, with a day's notice in the
+  news. The forecast starts it; what moves keeps it.
+
+The harness carries a scenario for exactly this, `new port`: a third
+harbour built mid-run, asserting the time to its first direct sailing
+and the share of sailings that leave near empty.
 
 **Routing is decided where the box stands.** A box carries no stored
 plan. At a yard, when a ship is loading, the box boards if this ship is
@@ -220,9 +241,9 @@ in red. That is a picture of the network in a fraction of a second, as
    the calibration: its boxes landed per turn must match
    `the_opening_from_the_harbour` and the season test's `SEA=1` pages,
    within a box.
-2. **`two`**: the example above. Transfers go through the world until
-   the direct line opens, and the test asserts it opens by day 3 and
-   that `transfers` falls afterwards.
+2. **`two`**: the example above. The direct line runs from the hour
+   the second harbour stands; asserts `transfers` = 0 and that the
+   first sailing leaves within the hour.
 3. **`hub`**: hub and spoke. Four harbours, one central. Lines run
    spoke ↔ hub and hub ↔ world. Asserts `stretch <= 1.6` and that no box
    is routed spoke to spoke through the world when the hub is faster.
@@ -232,6 +253,11 @@ in red. That is a picture of the network in a fraction of a second, as
 5. **`strait`**: two harbours behind a one-tile strait, a line each way.
    Asserts that the block flips, that no two ships are in it head-on,
    and that `block_wait` is bounded.
+6. **`new port`**: the cold start. Two harbours trading steadily; a
+   third built on day 3. Asserts the time from its standing to its first
+   direct sailing (under an hour), that its sailings are sized by the
+   forecast within a factor of two of what then moves, and the share of
+   sailings that leave near empty (under a quarter after its trial).
 
 ## Stages
 
@@ -294,27 +320,36 @@ Each stage leaves the game playable and the suite green
   - The client's tile-centre reconstruction and its `near()` guess.
   - "Beyond the horizon" becomes "Beyond the edge".
 
-### Stage 3: the second harbour, the world as hub
+### Stage 3: the second harbour, connected the day it stands
 
 - **Player.**
   - Build a harbour on another island, then a depot and a sawmill there.
-  - The home depot's timber rule now reads "from: Forest depot → the
-    world". It books from your own depot first, while that depot is over
-    its keep line.
+  - Within the hour of the harbour standing, a new ferry sails in on a
+    direct line between it and your nearest harbour. The news says so;
+    the harbour card says "New line to Home harbour, on trial".
+  - The home depot's timber rule books from your own depot first, while
+    that depot is over its keep line, then from the world.
   - The outpost's lorry fills a box at the sawmill and drops it in its
-    park. It rides the outpost's ferry out to the edge, waits there, and
-    comes in on the home ferry. The shipment list shows both legs and the
-    transfer.
+    park; the line's ferry carries it home. The shipment list shows its
+    calls.
 - **Data.**
   - The world's yard `World.beyond: Vec<Trailer>` replaces each ferry's
-    `Car.booked`. A booked box waits at the world, and a transfer at the
-    world waits there too. This makes `Trailer`'s doc comment, which
-    already says `World::booked`, true.
+    `Car.booked`: a booked box waits at the world for a ship bound in.
+    This makes `Trailer`'s doc comment, which already says
+    `World::booked`, true.
   - `Trailer` is unchanged. Its destination is the harbour of its `to`
     depot (`to: None` with `outbound` is the world).
-  - `Leg` gains `Beyond`, at the world between ships. `Shipment` gains
-    `via: Vec<EntityId>`, the journey's calls, for the list.
+  - `Line.calls` can be two harbours. `Shipment` gains `via:
+    Vec<EntityId>`, the journey's calls, for the list.
 - **Systems.**
+  - A harbour standing runs the company's prior (§Decisions): a line to
+    the nearest of your harbours by sea, its sailings sized by
+    `forecast` (the two ends' rules and makers), and `commission`s its
+    ferry.
+  - Two ships now call at one harbour (the world's ferry and the line's),
+    so the berth needs a queue: a ship arriving at a taken berth waits
+    at the anchorage, `APPROACH` tiles out on its leg, and berths in
+    arrival order. The tug serves whichever ship is at the ramp.
   - `board()` asks `lines::boards` for each box in the yard and in
     `beyond`.
   - `harbour_for` and `waiting_settlers` choose the nearest harbour *by
@@ -324,43 +359,44 @@ Each stage leaves the game playable and the suite green
   - `top_up` looks at your own depots on other islands before the world.
   - Coins: none move between your own harbours. A box you sell still pays
     as it leaves on any ship bound for the world.
-- **Client.** The harbour card lists every line calling there. The
+- **Client.** The harbour card lists every line calling there. A ship at
+  anchor is drawn idling, and its card says "waiting for the berth". The
   shipments list shows a box's calls as dots, with the current one lit.
-  A pin waits at the world's edge for a box held beyond the sea.
 - **Tests.**
-  - New `the_outpost`: two islands on a test map. Timber made on one
-    reaches the depot on the other, through the world, within two turns,
-    and none of it is bought.
-  - Scenario `two` with game numbers.
+  - New `the_outpost`: two islands on a test map. The line's first
+    sailing leaves within an hour of the second harbour standing; timber
+    made on one island reaches the depot on the other directly
+    (`transfers` = 0), and none of it is bought.
+  - Scenarios `two` and `new port` with game numbers.
   - The season with one outpost.
-- **Deleted.** `Car.booked`. The `inbound`/`spot` special cases in
-  `next_call` and in `haul::sea`'s `arrives`/`departs`; `Sailing` reads
-  the timetable.
+- **Deleted.** `Car.booked`. `ferry_of(harbour)` as "the" ferry: callers
+  ask for the ship at the berth (`berthed`) or the lines calling there.
+  The `inbound`/`spot` special cases in `next_call` and in `haul::sea`'s
+  `arrives`/`departs`; `Sailing` reads the timetable.
 
-### Stage 4: the company opens a line
+### Stage 4: the lines follow the traffic
 
-- **Player.** Two midnights of steady timber, then a second ferry
-  appears on a direct line between the islands. The harbour card says
-  "New line to Forest harbour, every 3 h". Transit falls, and you can
-  see why.
-- **Data.**
-  - `Line.calls` can be two harbours.
-  - `World.history`: boxes moved per pair per day, kept for two days.
-- **Systems.**
-  - At midnight, `open_lines` runs and `commission`s a ferry onto any
-    new line.
-  - Two ships may now call at one harbour, so the berth needs a queue:
-    a ship arriving at a taken berth waits at the anchorage, `APPROACH`
-    tiles out on its leg, and berths in arrival order.
-  - The tug serves whichever ship is at the ramp.
-- **Client.** A ship at anchor is drawn idling, and the card shows
-  "waiting for the berth".
+- **Player.** A line the forecast underrated fills up: a backlog of
+  boxes in a park adds a sailing at the next departure, and the card
+  says why ("12 boxes waiting: a sailing added"). A line that carries
+  nothing through its trial is withdrawn with a day's notice. With three
+  harbours, steady traffic between two that are not neighbours in the
+  tree opens a direct line between them.
+- **Data.** `World.history`: boxes moved and waiting per pair per day,
+  kept for `TRIAL` days. `Line.trial_until`.
+- **Systems.** At each departure, a pair's backlog over `BACKLOG` adds a
+  sailing or opens a line. At midnight, lines past their trial are
+  thickened, thinned or withdrawn by what they carried against their
+  forecast.
+- **Client.** Lines on trial drawn dashed on the far zoom; the news says
+  when one opens, grows or goes.
 - **Tests.**
-  - `the_outpost` extended: the line opens, and later boxes go direct
-    (`transfers` = 0).
-  - Scenario `congested`.
-- **Deleted.** `ferry_of(harbour)` as "the" ferry. Callers ask for the
-  ship at the berth (`berthed`) or the lines calling there.
+  - `the_outpost` extended: a burst of sawmill output adds a sailing the
+    same day; an outpost whose sawmill is demolished loses its line after
+    its trial, warned.
+  - Scenarios `hub` and `congested`.
+- **Deleted.** Nothing new; this is the rule in `lines.rs` replacing
+  stage 3's fixed sailings.
 
 ### Stage 5: blocks in narrow water
 
@@ -449,10 +485,11 @@ ferry on a real course, from the real edge.
   is a game day. That may be right (order ahead), or a chore. Tune
   `SEA_PACE` and `WORLD_STAY` in the harness against `transit`, not by
   feel in the game.
-- **The world as hub is slow enough to feel broken.** Until the direct
-  line opens it is two world turns. Mitigation: `OPEN_LINE` is low, and
-  the card says what the company is waiting for ("a line opens after two
-  busy days").
+- **A line on a bad forecast.** The forecast reads rules and makers,
+  which a player changes all the time; a line sized on a rule set
+  yesterday may sail empty today. Mitigation: sailings are cheap to add
+  and drop, the trial is short, and the harness's `new port` scenario
+  scores empty sailings.
 - **Settlers on two islands.** The outpost's houses fill from its own
   harbour, and its people stay on their island because there is no road.
   The season test needs an outpost to prove they eat.
@@ -463,10 +500,10 @@ ferry on a real course, from the real edge.
 
 ## Open
 
-1. `OPEN_LINE`, `SEA_PACE`, `WORLD_STAY`, `KEEP_RIGHT`, `APPROACH`: set
+1. `BACKLOG`, `TRIAL`, `SEA_PACE`, `WORLD_STAY`, `KEEP_RIGHT`, `APPROACH`: set
    in the harness.
-2. Whether a line ever closes when the traffic stops, and whether the
-   player sees it warned a day ahead.
+2. Whether the player can ask for a line by hand (a tap on a harbour:
+   "connect to…"), or the prior and the backlog are always enough.
 3. Whether freight is charged between your own harbours. For now it is
    not: the cost is time and lorries.
 4. Where the container port's settlers come from: the ferry staying on
