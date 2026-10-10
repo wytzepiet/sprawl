@@ -22,7 +22,7 @@ Decided on 2026-10-10 and not built: every trade across the border is
 the player's, by hand or by a rule on a depot; every shipment can be
 followed; depots keep everything; buildings are built from materials a
 lorry brings. Still to build from 2026-09-23: the harbour as the door
-with the world's ferry and container ship, sites, the tapped lorry.
+with the world's ferry, sites, the tapped lorry.
 
 Not built, unchanged: parking past the kerb, power, fire, hospital, the
 advisor, road speed and priority, levels, trains, multiplayer,
@@ -51,12 +51,13 @@ you can name, and nothing on a card you cannot see on the map.
 The four beats of `game.md` §The opening, from nothing, in four slices
 each playable on its own.
 
-1. The harbour, built by the player on the coast, as the one door
-   (`trade.md` §Shipping): one quay with a ramp and a crane, and two of
-   the shipping company's lines calling at it on timetables, the ferry
-   with settlers and their cars, and a small container ship whose boxes
-   the crane lifts onto the harbour's yard, from where a lorry collects
-   them to a depot. The road's edge, the generated roads
+1. The ferry harbour, built by the player on the coast, as the one
+   door (`trade.md` §Shipping): a ramp and a trailer park; the shipping
+   company's ferry on a timetable, its deck as many cars and trailers as
+   fit, carrying settlers in their cars and the world's trailers. The
+   town's lorries hitch a trailer in the park and fetch it to a depot;
+   empties go back with the next trip, filled with an export when there
+   is one. No outside vehicle drives the town. The road's edge, the generated roads
    and the fog go (`shelved.md`, 2026-09-23).
 2. Drafts (`game.md` §Drafts): every placement and demolition a draft
    until committed, blue and reserved, drawn on the map with its bill;
@@ -68,9 +69,9 @@ each playable on its own.
    row on its blueprint. The first depot comes with a top-up rule on it,
    and a stalled site offers its own fix. `Need` splits into the needs
    and the goods, since timber is a good and nobody's need.
-4. The starter pack: the first sailing's load, carried by the town's one
-   lorry, tapped by hand, from the quay to the depot, with the camera on
-   it the first time.
+4. The starter pack: the first ferry's trailers, fetched by the town's
+   one lorry, tapped by hand, from the harbour to the depot, with the
+   camera on it the first time.
 
 *Playable:* build a harbour and a depot, watch the starter pack come
 home, and build a street with your own lorry.
@@ -123,7 +124,8 @@ the high street.
 - Deployment: the server on a VPS, the client built, reconnects.
 - Several towns on one island, each with a build and a harbour; roads
   between them; `multiplayer.md` §4's claim.
-- The Exchange, and the trade board it opens: listings, standing
+- The container port, which is the Exchange: cranes, a container yard,
+  container ships, and the trade board it opens: listings, standing
   offers, and contracts between players, the seller always delivering,
   from the world if it must.
 - The shipping company's network: a line to every harbour, sailings

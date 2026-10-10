@@ -15,7 +15,7 @@ the rules produce by default; the game is what you make of it.
 
 **Every system pays out as an event you can see on the map.** A visit
 ends and the money lands on the shop; a truck arrives and the building goes
-up; the crane lifts a box off the ship and a lorry backs up to take it
+up; a trailer is towed off the ferry and a lorry backs up to take it
 home. A dial may
 sum the events, but the events come first. A system that is only a rate on
 a dial might as well not exist.
@@ -40,17 +40,20 @@ map: grass, forest, mountain, coast. Beyond the shore is the world, and it
 is reached only by sea.
 
 **The door is the harbour**, built on the coast first, so every town
-starts on the coast and grows inland. It begins as one quay with a ramp
-and a crane. The world's shipping company calls at it with two kinds of
-ship, each on a timetable: the ferry, whose settlers drive their cars
-off the ramp into town, and a small container ship, whose boxes the
-crane lifts onto the harbour's yard, where they wait for a lorry to take
-them to a depot. What the town sells leaves the same way. The sailings
-are the door's size, and the tree grows the door: more of them, bigger
-ships, then a container berth of its own, then berths for tankers and
-bulkers that land fuel or gravel by the shipload (`trade.md`
-§Shipping). The mayor never owns a ship, and nothing arrives anywhere
-but the harbour.
+starts on the coast and grows inland. It begins as a ferry harbour, a
+ramp and a trailer park, the way small islands are supplied. The world's
+shipping company's ferry calls on a timetable: the settlers drive their
+cars off the ramp into town, and the world's trailers are towed off into
+the trailer park, where they wait for the town's own lorries to fetch
+them to a depot. No outside vehicle drives the town's roads; the boxes
+are the world's and the lorries the town's, and an empty goes back with
+the next trip, filled with an export if there is one. What the town
+sells leaves the same way. The ferry's deck is the door's size, and the
+tree grows the door: more sailings, a bigger ferry, then the container
+port, a building of its own with cranes and container ships and the
+trade board (the Exchange), then berths for tankers and bulkers that
+land fuel or gravel by the shipload (`trade.md` §Shipping). The mayor
+never owns a ship, and nothing arrives anywhere but a harbour.
 
 The sea is the default way between towns as well as to the world: the
 world's shipping company runs every ship, a planner routes every load
@@ -200,8 +203,8 @@ are no prices, wages or taxes inside a town.
 
 **Across the border every trade is the player's** (`trade.md`): bought
 or sold by hand at the harbour, or by a top-up rule on a depot. Trading
-with other players comes later, with the Exchange: listings, standing
-offers and contracts. Each is a shipment that drives or sails and can
+with other players comes later, with the Exchange, which is the
+container port: listings, standing offers and contracts. Each is a shipment that drives or sails and can
 be followed, and the coins land when it does.
 
 **The world beyond the sea always trades**, badly: it sells anything at a
@@ -249,9 +252,10 @@ anything the map cannot show by hand.
 1. Build a harbour on the coast.
 2. Build a depot.
 3. Connect them with a road.
-4. A shipment arrives: the starter pack. The camera follows the lorry
-   from the quay to the depot, the first time, and the crates stack in
-   its yard.
+4. A shipment arrives: the starter pack, trailers off the first ferry.
+   You tap the town's one lorry to fetch them, and the camera follows it
+   from the harbour to the depot the first time; the crates stack in its
+   yard.
 5. Build. A house is a site; a lorry brings its timber from the depot,
    and it goes up. The next boat brings its people.
 
