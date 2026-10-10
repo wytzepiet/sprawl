@@ -49,11 +49,20 @@ should change the map at once, so the company does not wait for
 traffic it has no data for: the cold start is answered from the map and
 from what the towns want, not from history.
 
-- **The prior is the map.** When a harbour stands, the company opens a
-  direct line from it to your nearest harbour by sea, and its first
-  sailing leaves within the hour. A third harbour links to its nearest,
-  so your harbours grow as a tree, each new one a ship you watch arrive.
-  Each harbour keeps its own ferry to the world as well.
+- **The forecast decides; the map only makes it fast.** Your harbours
+  are not always worth joining: two on one road network are joined
+  already (a lorry does it), and a harbour that only imports for its own
+  town has nothing to carry to the others. (The player, 2026-10-10:
+  "mostly yes, but not necessarily always.") So when a harbour stands,
+  the company joins it to your nearest harbour by sea that is *not* on
+  its road network, and only if the forecast (below) says boxes would
+  flow: one side makes, or holds over its sell line, what the other
+  side's rules keep. Then the first sailing leaves within the hour. If
+  not, there is no line, and the harbour card says why and what would
+  open one: "No line to Home harbour: nothing to carry yet. A sawmill
+  here, or a timber rule there, would open one." A third harbour joins
+  its nearest the same way, so connected harbours grow as a tree. Each
+  harbour keeps its own ferry to the world as well.
 - **The sailings are sized by forecast, not history.** What a line is
   worth before any box has moved is what its two ends say they want:
   the depots' rules (keep, fill, sell, the same numbers `top_up` books
@@ -342,10 +351,11 @@ Each stage leaves the game playable and the suite green
   - `Line.calls` can be two harbours. `Shipment` gains `via:
     Vec<EntityId>`, the journey's calls, for the list.
 - **Systems.**
-  - A harbour standing runs the company's prior (§Decisions): a line to
-    the nearest of your harbours by sea, its sailings sized by
-    `forecast` (the two ends' rules and makers), and `commission`s its
-    ferry.
+  - A harbour standing, a rule set or a maker built asks the company
+    (§Decisions): the nearest of your harbours by sea off its road
+    network gets a line if `forecast` (the two ends' rules and makers)
+    says boxes would flow, its sailings sized by it, and its ferry
+    `commission`ed. Otherwise the harbour card says what would open one.
   - Two ships now call at one harbour (the world's ferry and the line's),
     so the berth needs a queue: a ship arriving at a taken berth waits
     at the anchorage, `APPROACH` tiles out on its leg, and berths in
@@ -364,7 +374,9 @@ Each stage leaves the game playable and the suite green
   shipments list shows a box's calls as dots, with the current one lit.
 - **Tests.**
   - New `the_outpost`: two islands on a test map. The line's first
-    sailing leaves within an hour of the second harbour standing; timber
+    sailing leaves within an hour of the sawmill on the second island
+    standing, with the home depot keeping timber; a second harbour on
+    the home island's own road network gets no line; timber
     made on one island reaches the depot on the other directly
     (`transfers` = 0), and none of it is bought.
   - Scenarios `two` and `new port` with game numbers.
