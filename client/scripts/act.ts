@@ -85,7 +85,7 @@ let ops: Op[] = [];
 const trips = new Map<string, Recorded>();
 const PLAYER = process.env.PLAYER ?? "4242";
 /** Our draft and its bill, as the last update had them. */
-let draft: { strokes: { step: unknown; stuck: boolean }[][]; bill: { good: string; takes: number; have: number; boxes: number; coins: number }[] } | undefined;
+let draft: { strokes: { step: unknown; stuck: boolean }[][]; bill: { good: string; takes: number; have: number; boxes: number; coins: number; express: number }[] } | undefined;
 const ws = new WebSocket(`ws://localhost:${PORT}/ws?player=${PLAYER}`);
 ws.binaryType = "arraybuffer";
 ws.onmessage = (e) => {
@@ -265,7 +265,7 @@ for (const line of lines) {
     const marks = draft.strokes.flat();
     const stuck = marks.filter((m) => m.stuck).length;
     said.push(`draft: ${marks.length} steps in ${draft.strokes.length} strokes${stuck ? `, ${stuck} no longer fit` : ""}`);
-    for (const l of draft.bill) said.push(`  ${l.takes} ${l.good}, ${Math.floor(l.have)} to hand${l.boxes ? `: ${l.boxes} box${l.boxes === 1 ? "" : "es"} to order, ${Math.round(l.coins)} coins` : ""}`);
+    for (const l of draft.bill) said.push(`  ${l.takes} ${l.good}, ${Math.floor(l.have)} to hand${l.boxes ? `: ${l.boxes} box${l.boxes === 1 ? "" : "es"} to order, ${Math.round(l.coins)} coins` : ""}${l.express ? `; ${Math.round(l.express)} coins express at Build` : ""}`);
   }
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);

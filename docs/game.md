@@ -151,8 +151,11 @@ drawn beside a drafted street (`may.ts`).
   link, and a tap on a demolition drafted takes it back.
 - **The first depot is free on the bill**, as it stands at once; a
   harbour takes nothing.
-- **Roads cost nothing yet**, so the bill counts buildings only; a
-  road's materials are a line in `drafts::bill` once roads draw on stock.
+- **A road is laid at Build**, on the stone the depots hold then (a unit
+  a tile, free before there is a harbour); what they lack comes express
+  at twice the price, and the bill says so in coins, beside the stone
+  line, rather than offering a box that would land after the road is
+  laid. Its boxes are for the buildings' stone, which can wait.
 - **Anyone's draft is drawn**: one's own blue, a stuck step amber,
   another player's grey, as land taken.
 - `bun run act` drafts each command and commits it, as the bill's Build

@@ -58,6 +58,9 @@ pub struct Line {
     /// Boxes to order to cover the shortfall, and their price.
     pub boxes: u32,
     pub coins: f64,
+    /// Coins Build pays at once: a road is laid on the stone the depots
+    /// hold now, and what they lack comes express (`economy::paved`).
+    pub express: f64,
 }
 
 /// The tiles a step would lay something on: a road's two, a building's
@@ -312,13 +315,15 @@ fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
         .filter(|t| world.road_node_at(*t).is_none())
         .map(|t| (t.x, t.y))
         .collect();
-    if harbour && !road.is_empty() {
-        *takes.entry(Good::Stone).or_default() += road.len() as f64 * crate::economy::ROAD_STONE;
+    let road_stone = if harbour { road.len() as f64 * crate::economy::ROAD_STONE } else { 0.0 };
+    if road_stone > 0.0 {
+        *takes.entry(Good::Stone).or_default() += road_stone;
     }
     if takes.is_empty() {
         return Vec::new();
     }
     let mut have: BTreeMap<Good, f64> = BTreeMap::new();
+    let mut shelved = 0.0;
     for e in world.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
         if let Some(site) = &b.site {
@@ -329,6 +334,7 @@ fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
             for (&good, s) in &b.stocks {
                 *have.entry(good).or_default() += s.level;
             }
+            shelved += b.stocks.get(&Good::Stone).map_or(0.0, |s| s.level);
         }
     }
     // The first harbour drafted brings the starter pack on its first
@@ -347,8 +353,13 @@ fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
         .into_iter()
         .map(|(good, takes)| {
             let have = have.get(&good).copied().unwrap_or(0.0).max(0.0);
-            let boxes = ((takes - have).max(0.0) / good.per_box()).ceil() as u32;
-            Line { good, takes, have, boxes, coins: crate::economy::quote(good, boxes) }
+            // The road's stone off the shelves now, the rest express; the
+            // buildings wait for what is left and what is on its way.
+            let road = if good == Good::Stone { road_stone } else { 0.0 };
+            let off_shelf = road.min(shelved);
+            let boxes = ((takes - road - (have - off_shelf)).max(0.0) / good.per_box()).ceil() as u32;
+            let express = crate::economy::EXPRESS * crate::economy::import(good, road - off_shelf);
+            Line { good, takes, have, boxes, coins: crate::economy::quote(good, boxes), express }
         })
         .collect()
 }
@@ -468,5 +479,24 @@ mod tests {
         let bill = bill(&world, &world.drafts[&1]);
         assert!(!bill.is_empty(), "the houses' timber is not on the bill");
         assert!(bill.iter().all(|l| l.boxes == 0), "the opening's bill offers to buy: {:?}", bill.iter().map(|l| (l.good, l.boxes)).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_road_the_shelves_cannot_lay_is_paid_express() {
+        // A road is laid at Build, on what the depots hold then: stone on
+        // its way is no help to it, and the bill says what Build will
+        // charge rather than offering a box that lands too late.
+        let mut world = World::new();
+        grass(&mut world);
+        let harbour = crate::protocol::Building::new(BuildingKind::Harbour, vec![at(20, 0)], 2);
+        world.insert_at(GameObject::Building(harbour), Some(at(20, 0)));
+        for x in 0..3 {
+            draw(&mut world, 1, step(Tool::Street, at(x, 0), at(x + 1, 0)));
+        }
+        let bill = bill(&world, &world.drafts[&1]);
+        let stone = bill.iter().find(|l| l.good == Good::Stone).expect("the road's stone is on the bill");
+        assert_eq!(stone.takes, 4.0 * crate::economy::ROAD_STONE);
+        assert_eq!(stone.boxes, 0, "a box ordered now lands after the road is laid");
+        assert!((stone.express - crate::economy::EXPRESS * crate::economy::import(Good::Stone, stone.takes)).abs() < 1e-9);
     }
 }

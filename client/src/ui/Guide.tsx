@@ -1,6 +1,8 @@
 import { createEffect, createSignal, Index, onCleanup, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import { eachEntity, getEntity, useGame } from "../state/gameObjects";
+import { eachEntity, getEntity, groundOf, useGame } from "../state/gameObjects";
+import { eye } from "../engine/OrthoCamera";
+import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { clockAt, sea, settled, until } from "../state/sea";
 import { setTool } from "./buildMode";
 import { selected } from "../state/selection";
@@ -39,6 +41,21 @@ const keep = (k: Kept) => {
 /** How often the guide asks the harbour about its depots, while it waits on them. */
 const ASK_MS = 2000;
 
+/** The camera to the nearest sea it has the ground of, stopping a few
+ *  tiles short so the coast fills the view: the town opens inland. */
+function toCoast() {
+  const sea = (x: number, y: number) => {
+    const [cx, cy] = [Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE)];
+    const tiles = groundOf(cx, cy);
+    return !!tiles && TYPE_BY_BYTE[tiles[(y - cy * CHUNK_SIZE + CHUNK_SKIRT) * CHUNK_STRIDE + x - cx * CHUNK_SIZE + CHUNK_SKIRT]] === "Sea";
+  };
+  const [x0, y0] = [Math.round(eye.x), Math.round(eye.y)];
+  for (let r = 1; r < 96; r++)
+    for (let d = -r; d <= r; d++)
+      for (const [x, y] of [[x0 + d, y0 - r], [x0 + d, y0 + r], [x0 - r, y0 + d], [x0 + r, y0 + d]])
+        if (sea(x, y)) return eye.go(x0 + ((x - x0) * (r - 4)) / r, y0 + ((y - y0) * (r - 4)) / r);
+}
+
 /**
  * The opening, five beats (docs/game.md §The opening), in a pane of glass
  * in the corner: the harbour, the depot, the street between, the starter
@@ -65,6 +82,9 @@ export default function Guide() {
     if (h === null || k().away) return;
     let live = true;
     const ask = async () => {
+      // Settled, as well as seen at the ramp: a settler's car on the map,
+      // for a player who was away when they landed.
+      if (!k().settled) eachEntity((e) => e.object.kind === "Car" && e.object.data.role === "Private" && note({ settled: true }));
       const c = await (await fetch(`/inspect/${h}`)).json();
       if (live) setDepots(((c.depots ?? []) as DepotLine[]).map((d) => ({ id: d.depot.id, joined: d.joined, stocked: Object.values(d.stocks).some((v) => (v ?? 0) > 0) })));
     };
@@ -122,7 +142,11 @@ export default function Guide() {
       body: () => (
         <>
           <p>Its back to the sea, open water straight out behind it: the ferry berths there. Built, it stands at once.</p>
-          <Btn onClick={take({ Building: "Harbour" })} color="#2B6CA3">Take the harbour</Btn>
+          <p>Every building stands on a street: draw one along the coast first, then paint the harbour between it and the sea, three tiles by three.</p>
+          <div class="flex gap-2">
+            <Btn onClick={() => (toCoast(), setTool("Street"))}>Take the street</Btn>
+            <Btn onClick={() => (toCoast(), setTool({ Building: "Harbour" }))} color="#2B6CA3">Take the harbour</Btn>
+          </div>
           {drafted()}
         </>
       ),
@@ -163,7 +187,7 @@ export default function Guide() {
             </p>
           }
         >
-          <p>{parked().length} boxes are in the trailer park. Tap the depot's lorry to fetch them, and ride along.</p>
+          <p>{parked().length === 1 ? "A box is" : `${parked().length} boxes are`} in the trailer park. Tap the depot's lorry to fetch {parked().length === 1 ? "it" : "them"}, and ride along.</p>
           <Btn big onClick={fetch1} color="#A0714A" disabled={!depot()}>Send the lorry</Btn>
         </Show>
       ),

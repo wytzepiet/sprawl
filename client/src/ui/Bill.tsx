@@ -92,14 +92,21 @@ export default function Bill(props: { hidden: boolean }) {
                   <GoodIcon good={l.good} width="12" height="12" style={{ color: GOODS[l.good].color }} />
                   <span class="tabular-nums">{l.takes}</span>
                   <span class="soft">{GOODS[l.good].label.toLowerCase()}</span>
-                  <Show when={short(l) > 0} fallback={<span class="soft">· covered</span>}>
+                  <Show when={short(l) > 0} fallback={<Show when={l.express < 0.5}><span class="soft">· covered</span></Show>}>
                     <span class="font-semibold" style={{ color: "#D9483B" }}>· {short(l)} short</span>
+                  </Show>
+                  <Show when={l.express >= 0.5}>
+                    <span class="font-semibold tabular-nums" style={{ color: "#D9483B" }} title="A road is laid at once, on the stone the depots hold: the rest comes express">
+                      {coins(-l.express)} express
+                    </span>
                   </Show>
                 </span>
               )}
             </For>
             <Show when={stuck() > 0}>
-              <span class="font-semibold" style={{ color: "#C77A12" }}>{plural(stuck(), "step no longer fits", "steps no longer fit")}</span>
+              <span class="font-semibold" style={{ color: "#C77A12" }} title="Drawn amber: something stands there, or no street reaches it. Undo, or the demolisher, takes it back.">
+                {plural(stuck(), "step can't be built", "steps can't be built")}
+              </span>
             </Show>
           </div>
         </div>
