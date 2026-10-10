@@ -314,9 +314,11 @@ impl World {
                 return;
             }
             // Out of sight it has come as far as the time left says: the
-            // last of the way, from where a ship that is due then is now.
+            // last of the way, from where a ship that is due then is now;
+            // held up on its way out, it comes in late, over the edge.
             let way = &line.legs[1];
-            let left = crate::shipping::covered(crate::shipping::length(way), [true, false], due - now);
+            let len = crate::shipping::length(way);
+            let left = if now < due { crate::shipping::covered(len, [true, false], due - now) } else { len };
             let way = crate::shipping::last(way, left);
             self.board(ferry, harbour);
             self.set_out(events, ferry, way, false, now);
