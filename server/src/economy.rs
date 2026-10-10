@@ -363,6 +363,13 @@ pub fn delivered(world: &mut World, buyer: EntityId, good: Good, load: f64) -> f
     load - units
 }
 
+/// Something bought whole from the world for a building, a lorry: coins
+/// out, a lump where it stands.
+pub fn bought(world: &mut World, at: EntityId, coins: f64, now: GameTime) {
+    world.treasury -= coins;
+    world.lumps.push(Lump { building: at, coins: -coins, gdp: 0.0, at: now, good: None, units: 0.0 });
+}
+
 /// A box from the world landed in a harbour's park: the town pays for
 /// what is in it, at the harbour, as far as the treasury goes. The
 /// starter pack is the world's gift and costs nothing.

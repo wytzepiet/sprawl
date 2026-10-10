@@ -56,6 +56,10 @@ standing: boolean,
  */
 selling: Array<Good>, 
 /**
+ * Lorries bought for it beyond the one its row comes with.
+ */
+lorries: number, 
+/**
  * A farm's land: the grass it claimed when a street reached it, each
  * tile at a stage of the cycle the tractor drives it through
  * (`world/fields.rs`). A tile built over is dropped.

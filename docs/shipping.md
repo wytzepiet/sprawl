@@ -268,6 +268,13 @@ parted from the direction above.
   the empty, and takes it back on its next trip, filled with what is sold
   if there is anything. A lorry fetches only a box its depot has room for
   whole, so no box waits half unloaded on a hitch.
+- **Lorries are bought.** A depot comes with one and can import three
+  more, forty coins each (`BuyLorry`): throughput at the border is a
+  thing the mayor buys and can see, and four lorries through one
+  junction is a jam they made.
+- **The street turn.** A lorry with an empty, from a depot that sells a
+  good, fills it at a maker's yard (a farm, a sawmill) and takes it
+  straight to the harbour, and hooks an empty there for the next.
 - **The lorry** is tapped (`Send`) or has standing orders (`Standing`).
   With either it goes when a box for its depot, or for the town, stands
   in a park, or when its depot has something to sell. The first lorry is

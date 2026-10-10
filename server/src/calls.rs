@@ -228,13 +228,17 @@ pub fn stable(world: &mut World, facility: EntityId) {
         Some(GameObject::Building(b)) if b.site.is_none() => b.kind,
         _ => return,
     };
-    let vehicles = &blueprint(kind).vehicles;
+    let bought = match world.objects.get(facility).map(|e| &e.object) {
+        Some(GameObject::Building(b)) => b.lorries as usize,
+        _ => 0,
+    };
+    let vehicles: Vec<CarRole> = blueprint(kind).vehicles.iter().copied().chain(std::iter::repeat_n(CarRole::Truck, bought)).collect();
     if vehicles.is_empty() {
         return;
     }
     let tile = world.objects.get(facility).and_then(|e| e.position);
     let have = fleet_of(world, facility).into_iter().filter(|&c| !matches!(world.objects.get(c).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == CarRole::Ferry)).count();
-    for &role in vehicles.iter().skip(have) {
+    for role in vehicles.into_iter().skip(have) {
         let car = world.insert_at(GameObject::Car(Car::new(facility, role)), tile);
         if role == CarRole::Tug {
             continue;

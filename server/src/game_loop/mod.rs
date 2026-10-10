@@ -387,6 +387,7 @@ fn handle_player_action(
         ClientMessage::Standing { depot, on } => crate::haul::set_standing(world, events, depot, on),
         ClientMessage::Send { depot } => crate::haul::send(world, events, depot),
         ClientMessage::Sell { depot, good } => crate::haul::sell(world, events, depot, good),
+        ClientMessage::BuyLorry { depot } => crate::haul::buy_lorry(world, events, depot, now),
         ClientMessage::Take(cell) => {
             let (level, _) = crate::economy::level(world.gdp);
             world.build.take(cell, level);
@@ -1480,6 +1481,7 @@ mod tests {
         for d in depots {
             if let Some(GameObject::Building(b)) = world.objects.get_mut(d).map(|e| &mut e.object) {
                 b.standing = true;
+                b.lorries = 1;
                 b.rules.get_mut(&Good::Crates).unwrap().sell = Some(100.0);
             }
         }
@@ -2090,7 +2092,12 @@ mod tests {
         assert!(car_of(&world, lorry).hitched.is_some_and(|t| t.empty()), "the empty did not stay on the hitch");
         assert!(world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
 
-        // Standing orders fetch the rest.
+        // A second lorry, bought from the world, and standing orders for
+        // both: they fetch the rest.
+        let before = world.treasury;
+        crate::haul::buy_lorry(&mut world, &mut events, depot, now);
+        assert_eq!(crate::haul::lorries_of(&world, depot).len(), 2, "no second lorry");
+        assert!((before - world.treasury - crate::haul::LORRY_PRICE).abs() < 1e-9, "the lorry was not paid for");
         crate::haul::set_standing(&mut world, &mut events, depot, true);
         let until = now + day / 4;
         while (parked(&world) > 0 || car_of(&world, ferry).deck.iter().flatten().any(|t| !t.outbound)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {}

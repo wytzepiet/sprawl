@@ -156,6 +156,9 @@ pub struct Building {
     /// to the harbour, a good a box.
     #[serde(default)]
     pub selling: Vec<Good>,
+    /// Lorries bought for it beyond the one its row comes with.
+    #[serde(default)]
+    pub lorries: u8,
     /// A farm's land: the grass it claimed when a street reached it, each
     /// tile at a stage of the cycle the tractor drives it through
     /// (`world/fields.rs`). A tile built over is dropped.
@@ -255,6 +258,7 @@ impl Building {
             rules: Default::default(),
             standing: false,
             selling: Vec::new(),
+            lorries: 0,
             land: Vec::new(),
             ruts: Vec::new(),
             joined: Vec::new(),
@@ -768,6 +772,8 @@ pub enum ClientMessage {
     /// Sell a box of a good from a depot to the world: the lorry takes it
     /// to the harbour for the next ferry.
     Sell { #[ts(type = "number")] depot: EntityId, good: Good },
+    /// Buy a depot another lorry from the world.
+    BuyLorry { #[ts(type = "number")] depot: EntityId },
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     ResetWorld,

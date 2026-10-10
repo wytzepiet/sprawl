@@ -3,9 +3,14 @@
 Status: draft, 2026-10-10, for the player to correct. Built so far:
 house, apartment, shop, office, factory, gas station, supermarket, the
 general depot (`Depot`: crates 200, fuel 100, timber 60, a lorry and two
-vans), the farm and the ferry harbour, each built from timber (house 4,
-apartment 12, shop 4, office 10, factory 14, gas station 6, supermarket
-16, depot 10, farm 8, harbour none). Goods are crates, fuel and timber. What kinds the game
+vans, and up to three more lorries bought from the world at 40 coins
+each), the farm, the sawmill (four hands felling the forest within five
+tiles, half a unit of timber an hour each in thick woods, nothing in the
+open; a yard of six boxes) and the ferry harbour, each built from timber
+(house 4, apartment 12, shop 4, office 10, factory 14, gas station 6,
+supermarket 16, depot 10, farm 8, sawmill 6, harbour none). Goods are
+crates, fuel and timber. A maker's yard needs no vehicle of its own: a
+depot's lorry fetches from it, or fills an empty there for the world. What kinds the game
 has once trade, materials and chains are in: what each is for, what it
 takes and makes, what it is built from, and what moves its goods. The
 numbers are guesses to be tuned in play; the shape is the point. A kind is

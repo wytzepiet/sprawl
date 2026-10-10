@@ -156,9 +156,9 @@ pub fn call_lorries(world: &mut World, events: &mut EventQueue) {
 /// A box in a harbour's park the depot's lorry should fetch: one bound
 /// for the depot, or for the town; the nearest harbour's first. And the
 /// dock it stands in.
-fn waiting_for(world: &World, depot: EntityId) -> Option<(EntityId, usize)> {
+fn waiting_for(world: &World, depot: EntityId, lorry: EntityId) -> Option<(EntityId, usize)> {
     let at = world.objects.get(depot)?.position?;
-    let taken: Vec<(EntityId, usize)> = world.aims.iter().filter(|&(&l, _)| car(world, l).is_some_and(|c| c.owner != depot)).map(|(_, &a)| a).collect();
+    let taken: Vec<(EntityId, usize)> = world.aims.iter().filter(|&(&l, _)| l != lorry).map(|(_, &a)| a).collect();
     world
         .harbours
         .keys()
@@ -290,7 +290,7 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
     let Some(b) = building(world, depot) else { return };
     let (standing, sent) = (b.standing, world.sent.contains(&lorry));
     let selling = to_sell(world, depot);
-    let wanted = waiting_for(world, depot);
+    let wanted = waiting_for(world, depot, lorry);
     if !(standing || sent || b.selling.first().is_some()) {
         return;
     }
@@ -372,7 +372,7 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
             }
             // Dropped: on to the box it came for, if there is one.
             let selling = wants_empty(world, depot);
-            match waiting_for(world, depot).filter(|&(h, _)| h == harbour).or_else(|| selling.then(|| empty_at(world, harbour).map(|i| (harbour, i))).flatten()) {
+            match waiting_for(world, depot, lorry).filter(|&(h, _)| h == harbour).or_else(|| selling.then(|| empty_at(world, harbour).map(|i| (harbour, i))).flatten()) {
                 Some((_, i)) if i != dock => {
                     world.redock(harbour, lorry, i, now);
                     events.wake(SERVICE_MS, lorry);
@@ -479,16 +479,44 @@ pub fn set_standing(world: &mut World, events: &mut EventQueue, depot: EntityId,
     if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
         b.standing = on;
     }
-    if let Some(lorry) = lorry_of(world, depot) {
+    for lorry in lorries_of(world, depot) {
         events.wake(0, lorry);
     }
 }
 
+/// The tap: the first of the depot's lorries standing in its yard goes.
 pub fn send(world: &mut World, events: &mut EventQueue, depot: EntityId) {
-    if let Some(lorry) = lorry_of(world, depot) {
+    let lorry = lorries_of(world, depot).into_iter().find(|&l| car(world, l).is_some_and(|c| c.trip.is_none()) && world.claims.get(&l) == Some(&depot));
+    if let Some(lorry) = lorry.or_else(|| lorry_of(world, depot)) {
         world.sent.insert(lorry);
         events.wake(0, lorry);
     }
+}
+
+/// A depot's lorries, by id.
+pub fn lorries_of(world: &World, depot: EntityId) -> Vec<EntityId> {
+    world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Truck && c.owner == depot)).map(|e| e.id).collect()
+}
+
+/// What a lorry costs from the world: a vehicle is an import like any
+/// other, paid as it is bought.
+pub const LORRY_PRICE: f64 = 40.0;
+/// Lorries a depot can keep beyond its own: its yard has seven docks, and
+/// its vans want two of them.
+pub const MORE_LORRIES: u8 = 3;
+
+/// Buy the depot another lorry from the world, while its yard has a dock
+/// for one and the treasury can pay. It stands in the yard at once, with
+/// the depot's standing orders.
+pub fn buy_lorry(world: &mut World, events: &mut EventQueue, depot: EntityId, now: GameTime) {
+    let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) else { return };
+    if !crate::economy::depot(b.kind) || b.lorries >= MORE_LORRIES || world.treasury < LORRY_PRICE {
+        return;
+    }
+    b.lorries += 1;
+    crate::economy::bought(world, depot, LORRY_PRICE, now);
+    crate::calls::stable(world, depot);
+    call_lorries(world, events);
 }
 
 pub fn sell(world: &mut World, events: &mut EventQueue, depot: EntityId, good: Good) {
