@@ -5,7 +5,6 @@ import { useEngine } from "./Canvas";
 import { useDayNight } from "./DayNightCycle";
 import { useTheme } from "./theme";
 import { TerrainChunks } from "./TerrainChunks";
-import { FogOfWar } from "./FogOfWar";
 import {
   eachEntity,
   setOpsListener,
@@ -84,7 +83,6 @@ export default function World() {
   }
 
   const terrain = new TerrainChunks(ctx, casters()!, theme, isBuilt);
-  const fog = new FogOfWar(ctx);
   // Red where no joined road reaches it; grey where any stock is bare.
   const lookOf = (entry: GameObjectEntry) =>
     !reached(entry) ? DORMANT : Object.values((entry.object.data as Building).stocks).every((s) => s.level > 0) ? SOLID : EMPTY;
@@ -182,11 +180,9 @@ export default function World() {
   setTerrainListener({
     setChunk: (chunk) => {
       terrain.setChunk(chunk.coord.cx, chunk.coord.cy, chunk.tiles, chunk.heights);
-      fog.setChunk(chunk.coord.cx, chunk.coord.cy);
     },
     unloadChunk: (coord) => {
       terrain.unloadChunk(coord.cx, coord.cy);
-      fog.unloadChunk(coord.cx, coord.cy);
     },
   });
 
@@ -197,7 +193,6 @@ export default function World() {
     mounted.clear();
     town.dispose();
     terrain.dispose();
-    fog.dispose();
   });
 
   return <Brush ground={(x, y) => terrain.typeAt(x, y)} />;

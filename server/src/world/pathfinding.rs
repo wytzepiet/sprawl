@@ -343,20 +343,33 @@ mod tests {
         })
     }
 
-    fn seed_seven() -> World {
-        let terrain = crate::terrain::generate(7);
+    /// A town of streets: a grid of them nine tiles by seven, every other
+    /// one broken off short, and two long diagonals across it, so a route
+    /// has junctions of every kind to find its way through.
+    fn a_town_of_streets() -> World {
         let mut world = World::new();
-        world.terrain = terrain.clone();
-        crate::road_gen::generate(&mut world, 7);
+        for y in -2..100 {
+            for x in -2..100 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        for (i, y) in (0..98).step_by(7).enumerate() {
+            world.place_road_path(&(0..if i % 2 == 0 { 98 } else { 60 }).map(|x| GridCoord { x, y }).collect::<Vec<_>>());
+        }
+        for (i, x) in (0..98).step_by(9).enumerate() {
+            world.place_road_path(&(if i % 2 == 0 { 0 } else { 30 }..98).map(|y| GridCoord { x, y }).collect::<Vec<_>>());
+        }
+        world.place_road_path(&(0..98).map(|k| GridCoord { x: k, y: k }).collect::<Vec<_>>());
+        world.place_road_path(&(0..98).map(|k| GridCoord { x: k, y: 97 - k }).collect::<Vec<_>>());
         world
     }
 
-    /// The claim in one test: over a real map, searching by stretches finds a
-    /// route of the same length as searching tile by tile, and one a car can
-    /// actually drive.
+    /// The claim in one test: over a town of streets, searching by
+    /// stretches finds a route of the same length as searching tile by
+    /// tile, and one a car can actually drive.
     #[test]
     fn it_finds_what_the_tile_search_finds() {
-        let world = seed_seven();
+        let world = a_town_of_streets();
         let nodes: Vec<EntityId> = world
             .objects
             .roads()

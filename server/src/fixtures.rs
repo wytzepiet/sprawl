@@ -160,11 +160,6 @@ pub fn build(world: &mut World, dir: &Path) {
             }
         }
 
-        for row in [0, h] {
-            for col in [0, w] {
-                world.reveal_around(at(col, row));
-            }
-        }
         // Every network leads off the map: the first road of each, reading
         // west to east down the columns, is an exit, and everything it
         // reaches is joined. A real place cut out of a map is many.

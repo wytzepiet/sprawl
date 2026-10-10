@@ -512,12 +512,6 @@ impl ChunkBounds {
             .flat_map(move |cy| (self.min_cx..=self.max_cx).map(move |cx| ChunkCoord { cx, cy }))
     }
 
-    pub fn contains(&self, coord: ChunkCoord) -> bool {
-        coord.cx >= self.min_cx
-            && coord.cx <= self.max_cx
-            && coord.cy >= self.min_cy
-            && coord.cy <= self.max_cy
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -621,8 +615,8 @@ pub struct StateUpdate {
     pub growth: Growth,
     #[ts(type = "number")]
     pub terrain_seed: u32,
-    /// Extent of the surveyed world, which the client keeps its camera inside.
-    pub revealed_bounds: ChunkBounds,
+    /// The island's map, which the client keeps its camera inside.
+    pub island: ChunkBounds,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

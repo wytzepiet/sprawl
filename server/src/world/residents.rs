@@ -198,11 +198,10 @@ impl World {
         Some(commute_h(from, self.objects.get(line)?.position?))
     }
 
-    /// Chunks around one, a ring at a time, nearest first, as far as the
-    /// survey goes: nothing stands beyond it.
+    /// Chunks around one, a ring at a time, nearest first, as far as
+    /// anything has been built: nothing stands beyond it.
     fn rings_from(&self, c: ChunkCoord) -> Vec<Vec<ChunkCoord>> {
-        let b = self.revealed_bounds;
-        let far = [c.cx - b.min_cx, b.max_cx - c.cx, c.cy - b.min_cy, b.max_cy - c.cy].into_iter().max().unwrap_or(0).max(0);
+        let far = self.built.iter().map(|b| (b.cx - c.cx).abs().max((b.cy - c.cy).abs())).max().unwrap_or(0);
         (0..=far)
             .map(|k| {
                 (-k..=k)

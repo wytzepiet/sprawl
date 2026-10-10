@@ -237,8 +237,8 @@ interface GameContext {
   /** Who this client is. */
   me(): number;
   terrainSeed(): number;
-  /** Surveyed extent, in chunks. max < min means nothing is surveyed yet. */
-  revealedBounds(): ChunkBounds;
+  /** The island's map, in chunks: the camera stays over it. */
+  island(): ChunkBounds;
   /** The two dials: the city's level, and what the mayor has to spend. */
   growth(): Growth;
   send(msg: ClientMessage): boolean;
@@ -260,7 +260,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
     taken: [],
     road_tiles_left: 0,
   });
-  const [revealedBounds, setRevealedBounds] = createSignal<ChunkBounds>({
+  const [island, setIsland] = createSignal<ChunkBounds>({
     min_cx: 0,
     min_cy: 0,
     max_cx: -1,
@@ -273,7 +273,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
       case "Update":
         syncFromClock(msg.data.clock);
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
-        setRevealedBounds(msg.data.revealed_bounds);
+        setIsland(msg.data.island);
         setGrowth(msg.data.growth);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
@@ -299,7 +299,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ me, terrainSeed, revealedBounds, growth, send, getObjectsAt }}>
+    <Ctx.Provider value={{ me, terrainSeed, island, growth, send, getObjectsAt }}>
       {props.children}
     </Ctx.Provider>
   );
@@ -311,7 +311,7 @@ export function OfflineGame(props: ParentProps) {
   const none = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
   const growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, taken: [], road_tiles_left: 0 };
   return (
-    <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, revealedBounds: () => none, growth: () => growth, send: () => true, getObjectsAt: () => [] }}>
+    <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, island: () => none, growth: () => growth, send: () => true, getObjectsAt: () => [] }}>
       {props.children}
     </Ctx.Provider>
   );

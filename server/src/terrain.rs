@@ -4,9 +4,8 @@ use noise::{NoiseFn, Simplex};
 
 use crate::protocol::{ChunkCoord, TerrainType, CHUNK_SIZE};
 
-/// The map, in tiles and in chunks.
+/// The map, in tiles and in chunks: a square.
 const WIDTH: i32 = 1024;
-const HEIGHT: i32 = 1024;
 pub const CHUNKS_MIN: i32 = -(WIDTH / 2) / CHUNK_SIZE;
 pub const CHUNKS_MAX: i32 = (WIDTH / 2) / CHUNK_SIZE - 1;
 /// Four layers of noise. A continental one, whose features are seas and
@@ -196,7 +195,7 @@ mod tests {
         let seed = std::env::var("SPRAWL_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(7);
         let land = generate(seed);
         eprintln!("seed {seed}");
-        for y in (-HEIGHT / 2..HEIGHT / 2).step_by(16) {
+        for y in (-WIDTH / 2..WIDTH / 2).step_by(16) {
             let row: String = (-WIDTH / 2..WIDTH / 2)
                 .step_by(16)
                 .map(|x| {

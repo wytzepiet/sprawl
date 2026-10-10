@@ -83,6 +83,7 @@ impl World {
     /// plot is open land and whose lot fronts a street, with that street and
     /// the tile the driveway lands on. A kind with no lot fronts a street
     /// on any side, facing it.
+    #[cfg(test)]
     pub fn site_for(&self, pos: GridCoord, kind: BuildingKind) -> Option<(u8, EntityId, GridCoord)> {
         // Every way round starts on this tile, and the ghost asks about it
         // again on every frame the mayor drags a building over the map.
@@ -194,6 +195,7 @@ impl World {
 
     /// The street and door a kind's plot would have at `pos` facing this
     /// way, if it fits there.
+    #[cfg(test)]
     pub fn site_facing(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<(EntityId, GridCoord)> {
         if !self.fits(pos, kind, facing) {
             return None;
@@ -205,6 +207,7 @@ impl World {
     /// Can a kind's plot stand here this way round: open ground under the
     /// whole footprint, and, for a kind whose lorry is a ship, water
     /// behind its back for the quay (`world/sea.rs`).
+    #[cfg(test)]
     pub fn fits(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> bool {
         let p = crate::blueprint::plot(kind, facing);
         Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t))
@@ -342,9 +345,10 @@ impl World {
     /// Put a building on the map, road or no road.
     ///
     /// Everything that has to happen per building — occupancy, spatial
-    /// indexing across every chunk it touches, revealing the map — happens
+    /// indexing across every chunk it touches — happens
     /// here, so none of it can be forgotten at a call site. A building with
     /// no road is dormant: it stands, and nothing serves it until one comes.
+    #[cfg(test)]
     pub fn place_building(
         &mut self,
         pos: GridCoord,
@@ -363,8 +367,8 @@ impl World {
             // chunk — indexed only at its origin, a building would vanish for
             // anyone looking at the other half.
             self.spatial.entry(crate::world::chunk_of(*tile)).or_default().insert(id);
+            self.built.insert(crate::world::chunk_of(*tile));
         }
-        self.reveal_around(pos);
         Some(id)
     }
 
@@ -418,6 +422,7 @@ impl World {
 
     /// A building that can be driven to, or nothing: the placer works out
     /// the facing itself, and the driveway goes in with it.
+    #[cfg(test)]
     pub fn place_on_street(&mut self, pos: GridCoord, kind: BuildingKind) -> Option<EntityId> {
         let (facing, _, _) = self.site_for(pos, kind)?;
         let id = self.place_building(pos, kind, facing)?;
@@ -592,7 +597,7 @@ impl World {
     fn occupy(&mut self, id: EntityId, t: GridCoord) {
         self.occupied.insert((t.x, t.y), id);
         self.spatial.entry(crate::world::chunk_of(t)).or_default().insert(id);
-        self.reveal_around(t);
+        self.built.insert(crate::world::chunk_of(t));
     }
 
     /// Index a building in exactly the chunks its tiles are in.
@@ -692,6 +697,7 @@ impl World {
             for tile in b.tiles.clone() {
                 self.occupied.insert((tile.x, tile.y), id);
                 self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(id);
+                self.built.insert(crate::world::chunk_of(tile));
             }
         }
     }
@@ -946,15 +952,15 @@ mod tests {
                 world.terrain.insert((x, y), TerrainType::Grass);
             }
         }
-        // The survey covers the middle; the street runs out past it.
-        world.reveal_around(GridCoord { x: 0, y: 0 });
+        // The street's far end is its way out.
         let street: Vec<GridCoord> = (0..130).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
+        world.open_exit(world.road_node_at(GridCoord { x: 129, y: 0 }).unwrap());
         let joined = |world: &World, at: GridCoord| {
             let id = world.road_node_at(at).unwrap();
             matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.joined)
         };
-        assert!(joined(&world, GridCoord { x: 0, y: 0 }), "the street reaches beyond the survey");
+        assert!(joined(&world, GridCoord { x: 0, y: 0 }), "the street reaches its way out");
 
         let lane: Vec<GridCoord> = (2..6).map(|y| GridCoord { x: 3, y }).collect();
         world.place_road_path(&lane);
@@ -967,8 +973,8 @@ mod tests {
         assert!(!joined(&world, GridCoord { x: 3, y: 5 }), "cut off again");
         assert!(joined(&world, GridCoord { x: 3, y: 0 }), "the street is unmoved");
 
-        // Cut the street inside the survey, between the town and the world:
-        // the whole town is an island, and the far end still reaches beyond.
+        // Cut the street between the town and its way out: the whole town
+        // is an island, and the far end still reaches beyond.
         lift_road(&mut world, GridCoord { x: 60, y: 0 });
         assert!(!joined(&world, GridCoord { x: 0, y: 0 }), "the town lost its way out");
         assert!(joined(&world, GridCoord { x: 100, y: 0 }), "the far end still reaches beyond");

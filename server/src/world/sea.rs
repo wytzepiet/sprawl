@@ -6,8 +6,7 @@
 //! behind its building's back face is the quay, where the ship lands. A
 //! voyage is a run off the roads, as a tractor's is (`world/fields.rs`):
 //! the shortest way over the sea between the quay and the map's edge, a
-//! tile every pace, as far as the fog, which is the horizon, or the map's
-//! edge where the survey reaches it. The ship is the world's, not the
+//! tile every pace, as far as the horizon. The ship is the world's, not the
 //! port's: it sails in from the horizon when a port's shelves call,
 //! lands every shelf's worth (`calls::car_idle`),
 //! and sails back out of sight, gone.
@@ -26,6 +25,10 @@ pub const PACE: GameTime = DAY_MS as GameTime / 1000;
 /// How long the world's ship takes to reach the horizon once a port
 /// calls: four hours, twice a lorry's absence beyond the edge.
 pub const SAILING: GameTime = DAY_MS as GameTime / 6;
+
+/// How far out over the water a ship is still in sight: a minute of its
+/// sailing, about what the town's view takes in.
+pub const HORIZON: usize = 48;
 
 /// The four ways off a tile.
 const AROUND: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
@@ -81,9 +84,9 @@ impl World {
     }
 
     /// The way from the quay to the horizon: the shortest over the sea to
-    /// the map's edge, cut where it enters the fog, since a ship out of
-    /// the survey is out of sight either way. None from a quay that is
-    /// not on the sea, or on a sea with no way out.
+    /// the map's edge, cut at the horizon, since a ship further out is out
+    /// of sight either way. None from a quay that is not on the sea, or on
+    /// a sea with no way out.
     fn horizon(&self, quay: GridCoord) -> Option<Vec<GridCoord>> {
         let sea = |t: (i32, i32)| self.terrain.get(&t) == Some(&TerrainType::Sea);
         let off = |t: GridCoord| AROUND.iter().any(|d| !self.terrain.contains_key(&(t.x + d.0, t.y + d.1)));
@@ -109,9 +112,7 @@ impl World {
             path.push(GridCoord { x: at.0, y: at.1 });
         }
         path.reverse();
-        if let Some(fog) = path.iter().position(|t| !self.revealed.contains(&crate::world::chunk_of(*t))) {
-            path.truncate(fog + 1);
-        }
+        path.truncate(HORIZON);
         Some(path)
     }
 
@@ -225,17 +226,18 @@ mod tests {
         let quay = world.quay(port).unwrap();
         assert_eq!(quay.y, 5, "the quay is the water behind the back face: {quay:?}");
         assert_eq!(world.terrain[&(quay.x, quay.y)], TerrainType::Sea);
-        // The horizon is where the map ends, the survey reaching it: the
-        // last tile of water.
+        // The horizon is where the map ends, the last tile of water.
         let path = world.horizon(quay).expect("a way to the sea");
         assert_eq!((path[0], path.last().unwrap().y), (quay, 40));
         assert!(path.windows(2).all(|w| (w[0].x - w[1].x).abs() + (w[0].y - w[1].y).abs() == 1));
         assert!(path.iter().all(|t| world.terrain[&(t.x, t.y)] == TerrainType::Sea), "the ship sailed over land");
-        // Or the fog, where the survey stops short of it: the first tile
-        // of the chunk nobody has surveyed.
-        world.revealed.retain(|c| c.cy < 1);
-        let path = world.horizon(quay).unwrap();
-        assert_eq!(path.last().unwrap().y, crate::protocol::CHUNK_SIZE, "the ship did not stop at the fog: {path:?}");
+        // Or out of sight, where the map runs on further than that.
+        for y in 41..200 {
+            for x in -60..100 {
+                world.terrain.insert((x, y), TerrainType::Sea);
+            }
+        }
+        assert_eq!(world.horizon(quay).unwrap().len(), HORIZON, "the ship sailed on out of sight");
     }
 
     #[test]
@@ -248,37 +250,5 @@ mod tests {
             }
         }
         assert!(world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Port).is_none(), "a port stood on a lake");
-    }
-}
-
-#[cfg(test)]
-mod look {
-    use super::*;
-    use crate::protocol::TerrainType;
-
-    /// Not an assertion: for SPRAWL_SEED, or seeds 1 to 20, where the
-    /// starting town is and how far its nearest sea is, for whoever wants
-    /// to watch a port. Seed 7's town is on a lake.
-    #[test]
-    #[ignore]
-    fn where_the_sea_is() {
-        let seeds: Vec<u32> = match std::env::var("SPRAWL_SEED").ok().and_then(|s| s.parse().ok()) {
-            Some(s) => vec![s],
-            None => (1..=20).collect(),
-        };
-        for seed in seeds {
-            let mut world = World::new();
-            world.terrain = crate::terrain::generate(seed);
-            let terrain = world.terrain.clone();
-            let Some(anchor) = crate::road_gen::generate(&mut world, seed) else {
-                eprintln!("seed {seed}: no town");
-                continue;
-            };
-            let far = |&(x, y): &(i32, i32)| (x - anchor.x).abs().max((y - anchor.y).abs());
-            match terrain.iter().filter(|(_, v)| **v == TerrainType::Sea).map(|(t, _)| t).min_by_key(|t| (far(t), t.0, t.1)) {
-                Some(t) => eprintln!("seed {seed}: town at {:?}, the sea {} tiles off at {t:?}", anchor, far(t)),
-                None => eprintln!("seed {seed}: town at {:?}, no sea on the map", anchor),
-            }
-        }
     }
 }

@@ -11,6 +11,6 @@ export type StateUpdate = { ops: Array<Operation>,
  */
 lumps: Array<Lump>, clock: Clock, growth: Growth, terrain_seed: number, 
 /**
- * Extent of the surveyed world, which the client keeps its camera inside.
+ * The island's map, which the client keeps its camera inside.
  */
-revealed_bounds: ChunkBounds, };
+island: ChunkBounds, };
