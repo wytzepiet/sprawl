@@ -10,24 +10,25 @@ assistant; they are guesses, and the order matters more than the numbers.
 Built: roads and streets, one-way, the tree as the build, buildings
 painted a tile at a time with the hand's dots, residents with needs and
 commutes, call-outs for stock with a warehouse and trucks from the edge,
-the supermarket, the farm with its land and tractor, the port with its
-own ship, kerb parking before shops, offices and flats, day and night,
-the island's terrain, coast, trees and light. The price economy of
-`economy.md` runs under all of it.
+the supermarket, the farm with its land and tractor, the port filled by
+the world's ship on call, kerb parking before shops, offices and flats,
+day and night, the island's terrain, coast, trees and light. Milestone 0
+is done: nothing inside a town has a price, a buyer takes the nearest
+seller with stock by road, people stay in their own town, and coins move
+only when goods cross the border, bought from and sold to the world
+automatically until the player's trade replaces it.
 
-Decided on 2026-10-10 and not built: the economy is trade (`trade.md`).
-Nothing inside a town has a price; coins move only when goods cross its
-border; every trade is the player's, by hand or by a rule on a depot;
-every shipment can be followed; depots keep everything; buildings are
-built from materials a lorry brings. Still to build from 2026-09-23: the
-harbour as the door with the world's ferry, sites, the tapped lorry, the
-cut of services, wear and leisure.
+Decided on 2026-10-10 and not built: every trade across the border is
+the player's, by hand or by a rule on a depot; every shipment can be
+followed; depots keep everything; buildings are built from materials a
+lorry brings. Still to build from 2026-09-23: the harbour as the door
+with the world's ferry, sites, the tapped lorry.
 
 Not built, unchanged: parking past the kerb, power, fire, hospital, the
 advisor, road speed and priority, levels, trains, multiplayer,
 deployment.
 
-## Milestone 0: The cut (≈ 3 days)
+## Milestone 0: The cut (done, 2026-10-10)
 
 Delete before building. Each goes to `shelved.md` with its last commit.
 
