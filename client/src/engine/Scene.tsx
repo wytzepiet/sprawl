@@ -14,7 +14,6 @@ import PerfReport from "./PerfReport";
 import Pins from "./Pins";
 import LumpLayer from "../ui/LumpLayer";
 import GrowthMeter from "../ui/GrowthMeter";
-import SkillTree from "../ui/SkillTree";
 import Card from "../ui/Card";
 import Board from "../ui/Board";
 import Glass from "../ui/Glass";
@@ -39,7 +38,6 @@ function SceneInner() {
         <GrowthMeter />
         <Card />
         <Board />
-        <SkillTree />
       </Canvas>
       <Glass />
       <BuildModeToolbar />

@@ -1,5 +1,5 @@
 import { BLUEPRINTS, lie, plot } from "../blueprints";
-import type { Building, BuildingKind, Effect, GameObjectEntry, GridCoord, Growth, RoadNode, TerrainType, Tool } from "../generated";
+import type { Building, BuildingKind, GameObjectEntry, GridCoord, Growth, RoadNode, TerrainType, Tool } from "../generated";
 
 /**
  * Where the mayor's hand may go, worked out here rather than asked of the
@@ -16,15 +16,13 @@ export interface Hand {
   occupied: Map<string, Building>;
   ground: (x: number, y: number) => TerrainType | undefined;
   growth: Growth;
-  /** Has the build opened this (`state/tree`'s `unlocked`)? */
-  opened: (want: (e: Effect) => boolean) => boolean;
 }
 
 const key = (x: number, y: number) => `${x},${y}`;
 
 /** The world as the hand sees it, read once a change. */
-export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Hand["ground"], growth: Growth, opened: Hand["opened"]): Hand {
-  const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground, growth, opened };
+export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Hand["ground"], growth: Growth): Hand {
+  const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground, growth };
   each((e) => {
     if (e.object.kind === "RoadNode" && e.position) {
       h.roads.set(key(e.position.x, e.position.y), { id: e.id, node: e.object.data });
@@ -44,25 +42,19 @@ export function snap(dx: number, dy: number): number {
   return ((Math.round((Math.atan2(dy, dx) * 4) / Math.PI) % 8) + 8) % 8;
 }
 
-/** May the hand take this step with this tool: the build's gate, then the world's rule. */
+/** May the hand take this step with this tool: the purse, then the world's rule. */
 export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolean {
   if (typeof tool !== "string") {
     const kind = tool.Building;
-    return h.opened((e) => e.kind === "Building" && e.building === kind) && affords(h.growth, kind) && mayPaint(h, kind, from, to) && wouldBeReached(h, kind, from, to);
+    return affords(h.growth, kind) && mayPaint(h, kind, from, to) && wouldBeReached(h, kind, from, to);
   }
   if (tool === "Demolish") {
     if (from.x === to.x && from.y === to.y) return h.roads.has(key(to.x, to.y)) || h.occupied.has(key(to.x, to.y));
     return linked(h, from, to);
   }
-  const want = tool === "OneWay" ? "OneWay" : tool === "Road" ? "Road" : null;
-  if (want && !h.opened((e) => e.kind === want)) return false;
-  // Into a building is its door: nothing laid on its tile, and a through
-  // road is no door.
-  const door = h.occupied.has(key(to.x, to.y));
-  if (door && tool === "Road") return false;
-  // Each end not standing yet is a tile laid.
-  const fresh = +!h.roads.has(key(from.x, from.y)) + +(!door && !h.roads.has(key(to.x, to.y)));
-  return fresh <= h.growth.road_tiles_left && mayLay(h, from, to, tool === "OneWay");
+  // Into a building is its door, and a through road is no door.
+  if (tool === "Road" && h.occupied.has(key(to.x, to.y))) return false;
+  return mayLay(h, from, to, tool === "OneWay");
 }
 
 /** Can the purse pay for a tile of a kind: its price shared over the

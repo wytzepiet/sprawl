@@ -30,7 +30,6 @@ use network::AppState;
 async fn main() {
     needs::check();
     blueprint::check();
-    tree::check();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(game_loop::run(command_rx));
@@ -47,7 +46,6 @@ async fn main() {
         .route("/debug/lot/{id}", axum::routing::get(health::inspect_lot))
         .route("/debug/call/{id}", axum::routing::get(health::call))
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
-        .route("/tree", axum::routing::get(health::tree))
         .route("/inspect/{id}", axum::routing::get(health::card))
         .route("/town", axum::routing::get(health::town))
         .route("/map", axum::routing::get(health::map))

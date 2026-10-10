@@ -13,7 +13,6 @@ function street(): Hand & { wet: Set<string> } {
     occupied: new Map(),
     ground: (x, y): TerrainType => (wet.has(`${x},${y}`) ? "Water" : "Grass"),
     growth,
-    opened: () => true,
     wet,
   };
   for (let x = -2; x < 20; x++) {
