@@ -5,7 +5,7 @@ import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeomet
 import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
 import { colourOf, LIVERY, moment, PALETTE, type Moment } from "../engine/objects/motion";
 import type { Rgb } from "../engine/rgb";
-import type { Building, Car, GameObjectEntry, RoadNode, TerrainType, Trailer } from "../generated";
+import type { Building, Car, GameObjectEntry, Good, RoadNode, Stock, TerrainType, Trailer } from "../generated";
 import type { Pose as Stand } from "../generated/Pose";
 
 /**
@@ -162,7 +162,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       g.lineTo(b.door.tile.x + 0.5, b.door.tile.y + 0.5);
       g.stroke();
     }
-    const share = b.site ? b.site.level / Math.max(1, b.site.cap) : 1;
+    const share = b.site ? sum(b.site, (s) => s.level) / Math.max(1, sum(b.site, (s) => s.cap)) : 1;
     g.fillStyle = colour;
     g.globalAlpha = b.site ? 0.15 : 0.55;
     for (const t of b.tiles) g.fillRect(t.x, t.y, 1, 1);
@@ -223,7 +223,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       if (!on(mx, my, 0)) continue;
       const [sx, sy] = screen(mx, my);
       text(`${BLUEPRINTS[b.kind].label} #${e.id}`, sx, sy, 11);
-      if (b.site) text(`site ${Math.floor(b.site.level)}/${b.site.cap} timber`, sx, sy + 12, 10, "#553");
+      if (b.site) text(`site ${(Object.entries(b.site) as [Good, Stock][]).map(([g, s]) => `${Math.floor(s.level)}/${s.cap} ${GOODS[g].label}`).join(", ")}`, sx, sy + 12, 10, "#553");
     }
   if (S >= 20)
     for (const [e, car, m] of moments) {
@@ -432,3 +432,6 @@ function swatch(g: CanvasRenderingContext2D, x: number, y: number, fill: string,
   g.lineWidth = line;
   g.strokeRect(x + 0.5, y - 3.5, 14, 7);
 }
+
+/** What a site's materials add up to: delivered, or wanted. */
+const sum = (site: NonNullable<Building["site"]>, f: (s: Stock) => number) => Object.values(site).reduce((a, s) => a + (s ? f(s) : 0), 0);
