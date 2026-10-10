@@ -99,7 +99,10 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   photographs each: `.dev/shots/sheet.png` has them all on one page.
   `--keep` leaves that stack up to look round by hand. The renderer is
   WebGPU only; in a cloud container Playwright's Chromium draws it in
-  software (SwiftShader), slowly but truly. A new look gets a
+  software (SwiftShader), slowly but truly: a frame a second, a `look`
+  in about twenty-five seconds. A shot that comes out all in shade is a
+  shadow pass that never ran: Lite skips it while a new caster set
+  loads, so a mesh added and dropped every frame keeps it skipped. A new look gets a
   fixture that shows it, so the next change can be seen not to break it.
 - **The plan:** `bun run plan [fixture…]` draws the town grid flat as SVG
   in `.dev/plan/`, from the sandbox's own code, in well under a second a

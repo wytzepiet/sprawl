@@ -240,6 +240,14 @@ parted from the direction above.
   street is the town's way out: a road that reaches a harbour is joined,
   and one that reaches none is drawn red. The edge, its lorries and the
   port's call-driven ship are gone.
+- **The quay is any paving at the water.** A built tile at the water's
+  edge is drawn as water under it: the beach, cliff and foam step back,
+  and the paving's edge is a stone wall straight down, capped
+  (`town/draw.ts`, `TerrainChunks.ts`). The berth is a link span from the
+  quay onto the ferry's land end under a gantry, two dolphins it lies
+  between, a walkway out to them and bollards along the quay
+  (`BuildingObject.tsx`). The rest of the shore stays rock and sand: only
+  what the town paves becomes quay.
 - **The ferry is double-ended**, as small island ferries are: it sails in
   one end first, lands its ramp on the quay, and sails out the other end
   first, so it never turns in the harbour and needs no room to. One
