@@ -71,7 +71,7 @@ Labour is not a good (`shelved.md`, jobs across the border).
 
 | Kind | What | Ships | Built from |
 |---|---|---|---|
-| Ferry harbour | ramp, trailer park, tug | ferry: settlers, cars, the world's trailers | timber (the first placement may be free, `trade.md` §Open 6) |
+| Ferry harbour | ramp, trailer park, tug | ferry: settlers, cars, the world's trailers | nothing: it is where timber first comes in (`shipping.md` §Built) |
 | Container port (the Exchange) | cranes, container yard, the trade board | container ships | concrete, steel |
 | Tanker berth | jetty, pipe, tanks | tankers by charter | concrete, steel |
 | Bulk berth | grabs, heap or conveyor | bulkers by charter | concrete, steel |

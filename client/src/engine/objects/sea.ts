@@ -2,7 +2,8 @@ import { boxGeometry as box } from "./buildings";
 import type { MeshGeometry, P } from "../geometry";
 import { drawnPath } from "./drawnPath";
 import { TRAILER } from "./roadGeometry";
-import { rgb, type Rgb } from "../rgb";
+import { hex, rgb, type Rgb } from "../rgb";
+import { GOODS } from "../../blueprints";
 import type { Car, Good, Shunt, Trailer } from "../../generated";
 import type { Pose } from "../../generated/Pose";
 
@@ -15,10 +16,11 @@ import type { Pose } from "../../generated/Pose";
 
 type Shape = MeshGeometry & { colors: number[] };
 type Shade = [number, number, number];
+type Part = [MeshGeometry, [number, number, number], Shade];
 
 /** Parts as one shape, each a geometry moved to `at` and painted a shade
  *  of what the bucket's colour is multiplied by. */
-function shape(parts: [MeshGeometry, [number, number, number], Shade][]): Shape {
+function shape(parts: Part[]): Shape {
   const out: Shape = { positions: [], normals: [], indices: [], colors: [] };
   for (const [g, [x, y, z], [r, gr, b]] of parts) {
     const base = out.positions.length / 3;
@@ -59,48 +61,119 @@ function barrel(r: number, l: number): MeshGeometry {
 const WHITE: Shade = [1, 1, 1];
 const CHASSIS: Shade = [0.28, 0.29, 0.31];
 
+/** A shape of flat faces, each a convex outline anticlockwise from
+ *  outside, fanned from its middle as `boxGeometry` fans a box's. */
+function faces(outlines: [number, number, number][][]): MeshGeometry {
+  const out: MeshGeometry = { positions: [], normals: [], indices: [] };
+  for (const f of outlines) {
+    const [a, b, c] = f;
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const len = Math.hypot(n[0], n[1], n[2]);
+    const mid = [0, 1, 2].map((k) => f.reduce((s, p) => s + p[k], 0) / f.length);
+    const base = out.positions.length / 3;
+    for (const p of [mid, ...f]) out.positions.push(...p), out.normals.push(n[0] / len, n[1] / len, n[2] / len);
+    f.forEach((_, i) => out.indices.push(base, base + 1 + ((i + 1) % f.length), base + 1 + i));
+  }
+  return out;
+}
+
 /**
  * A box: a semi-trailer as the ferry carries them, TRAILER long and wide,
- * on a dark chassis, its shape and colour what is in it, so a park reads
- * at a glance. Crates in a closed box in a clear red, the colour of food
- * on a map; timber stacked warm brown on a flatbed; fuel in a silver
- * tank; an empty, pale and open, its floor seen down in it.
+ * on a dark chassis, built for the kind of thing in it and painted in the
+ * good's own colour (`GOODS`), so a park reads at a glance from above.
+ * Crates ride in a dry van, ribbed across its roof, its doors at the back
+ * pale; fuel in a silver tank in a frame of its colour; timber loose in an
+ * open tipper, logs in it as far along as it is full. An empty is that
+ * tipper bare and pale, its floor seen. A shape's colours are its own: its
+ * bucket is white.
  */
 const { w: W, l: L, h: H } = TRAILER;
 const BED = 0.045;
-const SHAPES = {
-  Crates: shape([[box(W, L, BED), [0, 0, BED / 2], CHASSIS], [box(W, L - 0.01, H - BED), [0, 0, BED + (H - BED) / 2], WHITE]]),
-  Timber: shape([
-    [box(W, L, BED), [0, 0, BED / 2], CHASSIS],
-    // Two stacks of sawn timber, end on, with a gap between.
-    [box(W - 0.02, L / 2 - 0.03, 0.12), [0, -L / 4, BED + 0.06], WHITE],
-    [box(W - 0.02, L / 2 - 0.03, 0.12), [0, L / 4, BED + 0.06], [0.88, 0.86, 0.84]],
-  ]),
-  Fuel: shape([
-    [box(W - 0.03, L, BED), [0, 0, BED / 2], CHASSIS],
-    [barrel(W / 2 / Math.cos(Math.PI / 8), L - 0.02), [0, 0, BED + W / 2 - 0.01], WHITE],
-  ]),
-  Empty: shape([
-    [box(W, L, BED), [0, 0, BED / 2], CHASSIS],
-    // The floor, low and in shade, and four thin walls round it.
-    [box(W - 0.03, L - 0.03, 0.01), [0, 0, BED + 0.005], [0.62, 0.62, 0.6]],
-    [box(0.015, L, H - BED), [(W - 0.015) / 2, 0, BED + (H - BED) / 2], WHITE],
-    [box(0.015, L, H - BED), [-(W - 0.015) / 2, 0, BED + (H - BED) / 2], WHITE],
-    [box(W - 0.03, 0.015, H - BED), [0, (L - 0.015) / 2, BED + (H - BED) / 2], WHITE],
-    [box(W - 0.03, 0.015, H - BED), [0, -(L - 0.015) / 2, BED + (H - BED) / 2], WHITE],
-  ]),
-};
-const COLOURS: Record<keyof typeof SHAPES, Rgb> = {
-  Crates: rgb(0.83, 0.29, 0.24),
-  Timber: rgb(0.62, 0.42, 0.25),
-  Fuel: rgb(0.8, 0.82, 0.85),
-  Empty: rgb(0.9, 0.9, 0.87),
+const shade = (c: Rgb, s = 1): Shade => [c.r * s, c.g * s, c.b * s];
+const chassis = (w = W): Part => [box(w, L, BED), [0, 0, BED / 2], CHASSIS];
+
+/** A dry van: a closed body, ribs across its roof, its doors a pale band
+ *  round the back. */
+function dry(c: Rgb): Shape {
+  const body = H - BED;
+  return shape([
+    chassis(),
+    [box(W, L - 0.01, body), [0, 0, BED + body / 2], shade(c)],
+    ...Array.from({ length: 7 }, (_, k): Part => [box(W - 0.02, 0.02, 0.008), [0, -0.15 + k * 0.05, H], shade(c, 0.82)]),
+    [box(W + 0.004, 0.035, body + 0.004), [0, -(L - 0.01) / 2 + 0.0175, BED + body / 2], [0.9, 0.89, 0.86]],
+  ]);
+}
+
+/** A tank box: a silver tank lying in two end frames of its colour, a
+ *  walkway along its top. */
+function tank(c: Rgb): Shape {
+  const r = (W - 0.02) / 2, end = 0.035, frame = H - BED;
+  const long = L - 2 * end - 0.01;
+  return shape([
+    chassis(W - 0.03),
+    [barrel(r / Math.cos(Math.PI / 8), long), [0, 0, BED + r], [0.84, 0.85, 0.87]],
+    [box(0.035, long - 0.06, 0.01), [0, 0, BED + 2 * r + 0.004], CHASSIS],
+    ...[-1, 1].flatMap((s): Part[] => [
+      ...[-1, 1].map((x): Part => [box(end, end, frame), [(x * (W - end)) / 2, (s * (L - end)) / 2, BED + frame / 2], shade(c)]),
+      [box(W, end, end), [0, (s * (L - end)) / 2, H - end / 2], shade(c)],
+      [box(W, end, end), [0, (s * (L - end)) / 2, BED + end / 2], shade(c)],
+    ]),
+  ]);
+}
+
+/** An open tipper: a floor and four walls, the front one higher. */
+const WALL = 0.02;
+const RIM = 0.12;
+const INSIDE = { w: W - 2 * WALL, l: L - 2 * WALL };
+function tipper(walls: Shade, floor: Shade): Shape {
+  const wall = (w: number, l: number, x: number, y: number, h = RIM): Part => [box(w, l, h), [x, y, BED + h / 2], walls];
+  return shape([
+    chassis(),
+    [box(INSIDE.w, INSIDE.l, 0.01), [0, 0, BED + 0.005], floor],
+    wall(WALL, L, (W - WALL) / 2, 0),
+    wall(WALL, L, -(W - WALL) / 2, 0),
+    wall(INSIDE.w, WALL, 0, -(L - WALL) / 2),
+    wall(INSIDE.w, WALL, 0, (L - WALL) / 2, RIM + 0.04),
+  ]);
+}
+
+/** Logs in a tipper, three, two and three, the length of it, each a shade
+ *  of bark; scaled along, the box as far as it is full. */
+function logs(c: Rgb): Shape {
+  const r = INSIDE.w / 6;
+  const rows = [[-2, 0, 2], [-1, 1], [-2, 0, 2]];
+  return shape(rows.flatMap((row, j) => row.map((k, i): Part => [barrel(r / Math.cos(Math.PI / 8), INSIDE.l - 0.01), [k * r, 0, BED + 0.01 + r + j * r * Math.sqrt(3)], shade(c, [1, 0.82, 0.92][(i + j) % 3])])));
+}
+
+/** A heap in a tipper, of stone or gravel: from the floor's edges up to
+ *  a ridge along its middle, lit one side and shaded the other; scaled
+ *  along, the box as far as it is full. */
+export function heap(c: Rgb): Shape {
+  const [a, b, z, top] = [INSIDE.w / 2, INSIDE.l / 2, BED + 0.01, BED + 0.16];
+  const p = (x: number, y: number): [number, number, number] => [x * a, y * b, z];
+  const r = (y: number): [number, number, number] => [0, y * (b - a), top];
+  return shape([[faces([[p(1, -1), p(1, 1), r(1), r(-1)], [p(-1, 1), p(-1, -1), r(-1), r(1)], [p(1, 1), p(-1, 1), r(1)], [p(-1, -1), p(1, -1), r(-1)]]), [0, 0, 0], shade(c)]]);
+}
+
+type Drawn = { key: string; geo: Shape };
+const TIPPER: Drawn = { key: "box_tipper", geo: tipper([0.36, 0.38, 0.42], [0.52, 0.53, 0.55]) };
+const EMPTY: Drawn = { key: "box_empty", geo: tipper([0.86, 0.86, 0.84], [0.76, 0.76, 0.74]) };
+const colour = (g: Good) => hex(GOODS[g].color);
+/** Each good's box, and a loose good's load in it. */
+const BOXES: Record<Good, { body: Drawn; load?: Drawn }> = {
+  Crates: { body: { key: "box_Crates", geo: dry(colour("Crates")) } },
+  Fuel: { body: { key: "box_Fuel", geo: tank(colour("Fuel")) } },
+  Timber: { body: TIPPER, load: { key: "load_Timber", geo: logs(colour("Timber")) } },
 };
 
-/** A box's shape and colour, by what is in it; its base on z = 0. */
-export function boxShape(t: Trailer): { key: string; geo: Shape; colour: Rgb } {
-  const kind: keyof typeof SHAPES = t.good && t.units > 0 ? (t.good as Good) : "Empty";
-  return { key: `box_${kind}`, geo: SHAPES[kind], colour: COLOURS[kind] };
+/** A box's parts, each with its scale: the body whole, a load as far
+ *  along as the box is full. Their base on z = 0. */
+export function boxShape(t: Trailer): (Drawn & { scale: [number, number, number] })[] {
+  if (!t.good || t.units <= 0) return [{ ...EMPTY, scale: [1, 1, 1] }];
+  const { body, load } = BOXES[t.good];
+  const full = Math.min(1, t.units / GOODS[t.good].box);
+  return [{ ...body, scale: [1, 1, 1] }, ...(load ? [{ ...load, scale: [1, full, 1] as [number, number, number] }] : [])];
 }
 
 /** The tug: a tugmaster, low and short, its one-seat cab off to one side
@@ -131,7 +204,7 @@ const HITCH_MS = 2500;
  */
 export const FERRY = { l: 3.2, w: 0.85 };
 const FREEBOARD = 0.7;
-const hull = (inset: number): P[] => {
+export const hull = (inset: number): P[] => {
   const [x, y] = [FERRY.w / 2 - inset, FERRY.l / 2 - inset];
   return [[x, -y + 0.35], [x, y - 0.35], [x - 0.12, y - 0.1], [x - 0.27, y], [-x + 0.27, y], [-x + 0.12, y - 0.1], [-x, y - 0.35], [-x, -y + 0.35], [-x + 0.12, -y + 0.1], [-x + 0.27, -y], [x - 0.27, -y], [x - 0.12, -y + 0.1]];
 };

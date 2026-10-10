@@ -126,6 +126,17 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   client drives them (`client/src/engine/objects/driver.ts`); `bun run
   plan --live 6,79,6 --paths` draws them, a strobe of each vehicle, those
   bends red, and `--paths=<car,car>` those cars' trips alone.
+- **Where is everything, now?** `bun run flat 6,80` draws the running
+  game flat round a tile (`,30` thirty tiles each way, twelve by
+  default) into `.dev/flat/flat.png` in a fifth of a second, no browser
+  and no GPU: every vehicle placed by the 3D client's own code
+  (`motion.ts`), what is on the ferry's deck and in the park, box by box
+  in its good's colour, a site's timber, ids beside things, the grid in
+  the game's tiles, a legend with the clock and the ferry's state.
+  `--frames 8 --every 500` a run of them and a strip, `--follow <id>` a
+  vehicle kept in the middle, `--px` the scale, `--name`. Reach for this
+  first after a change to what moves; `look` is for light and material.
+  The drawing (`client/src/flat/draw.ts`) is the minimap's too.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container, as for `shots`.
