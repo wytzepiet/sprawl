@@ -34,6 +34,28 @@ mechanisms are in `economy.md` §4 to §8 and §12, each with its referent.
 The code is still in the tree at `6eec4cf`; it goes with `roadmap.md`
 milestone 0.
 
+## Jobs across the border (2026-10-10)
+
+**What.** Argued, not built: jobs traded like goods. A town's idle
+residents taking jobs abroad off the ferry, a town's empty jobs filled by
+commuters off the boat, neighbours' jobs taken by contract through the
+Exchange, a job centre as the building that handles it. It would have
+kept the bedroom town and the job town as ways to play.
+
+**Why shelved.** A shift cannot be stored, so none of what makes trade
+good applies: no depot, no stocking up, no shipment to follow in. A
+commuter's car carries nothing you can see, and makes the same trip
+twice a day forever. It ties two towns' residents together across a
+border. And nobody commutes daily to a town across an island, or across
+the sea. The ferry brings settlers when a town has jobs and homes, so
+nothing is left hanging without it.
+
+**To bring back.** If the bedroom town is missed once trade is played,
+or two towns in a shared world grow close enough that a commute between
+them is a short drive:
+labour as the one good with no depot, a job centre whose rules fill empty
+jobs from outside and find jobs abroad, coins per shift at the border.
+
 ## The continuous ledger
 
 **What.** `xp.rs`: one number that was both the city's level and the

@@ -228,6 +228,7 @@ warehouse, sites built from delivered materials, the world beyond the
 sea.
 
 Inside a town a buyer takes the nearest seller with stock, by road.
+People stay in their own town; only goods cross its border.
 
 ## Open
 

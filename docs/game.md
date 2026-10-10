@@ -109,13 +109,11 @@ parked cars sit in the building's spots, so who is home and how busy a
 shop is can be seen from the lot. Arrivals come off the ferry and drive off
 the ramp. Nobody walks.
 
-**Everything the town lacks exists beyond the sea.** A resident with no
-shop in town drives onto the ferry to eat abroad; a car with no pump rides
-the boat to fuel; a job nobody fills is filled by a commuter off the
-morning boat, who goes home on the evening one. The sailing is the
-price, and a seat on the boat is a seat a commuter wanted, so a town that
-sends its people abroad for lunch finds its workers waiting on the far
-side. The signal is the queue at the ramp.
+**People stay in their own town.** Only goods cross its border. A
+resident with no shop in town goes without, and it shows; a job nobody in
+town takes stays empty. The ferry brings settlers when the town has both
+jobs and homes for them, so a town grows by giving people a reason to
+come, and stops when it does not.
 
 ## Goods
 
