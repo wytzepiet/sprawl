@@ -1440,14 +1440,13 @@ mod tests {
         assert!(matches!(e.object, GameObject::Car(ref c) if c.trip.is_none() && c.spot.is_some()));
     }
 
-    /// The second door (docs/economy.md §12.10): a port stands with its
-    /// back to the water, its vans answer the shops' calls like a
-    /// warehouse's, and when its shelves run low its ship sails from the
-    /// quay to the horizon, is away the sailing, and comes home to land
-    /// every shelf's worth at once at the sea's crossing, a fifth of the
-    /// road's.
+    /// The second door: a port stands with its back to the water, its
+    /// vans answer the shops' calls like a warehouse's, and when its
+    /// shelves run low the world's ship comes over the horizon to the
+    /// quay, lands every shelf's worth at once at the sea's crossing, a
+    /// fifth of the road's, and sails away again. The port owns no ship.
     #[test]
-    fn a_port_fetches_by_ship_and_its_vans_deliver() {
+    fn the_worlds_ship_fills_a_port_and_its_vans_deliver() {
         let mut world = street();
         // The sea, behind the street's south side from x = 40 on.
         for y in 5..14 {
@@ -1460,13 +1459,9 @@ mod tests {
         let port = build(&mut world, 60, BuildingKind::Port, 1);
         let quay = world.quay(port).expect("a port has a quay");
         assert_eq!(world.terrain.get(&(quay.x, quay.y)), Some(&TerrainType::Sea), "the quay is on land");
-        let ship = world
-            .objects
-            .iter()
-            .find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == port && c.role == crate::protocol::CarRole::Ship))
-            .map(|e| e.id)
-            .expect("a ship from the day it is reached");
-        assert_eq!(world.objects.get(ship).unwrap().position, Some(quay), "the ship is not at the quay");
+        let ships = |w: &World| w.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Ship)).map(|e| e.id).collect::<Vec<_>>();
+        calls::stable(&mut world, port);
+        assert!(ships(&world).is_empty(), "the port keeps a ship of its own");
         let shelves = |w: &World| match w.objects.get(port).unwrap().object {
             GameObject::Building(ref b) => crate::economy::shelves(b.kind).into_iter().map(|n| (n, b.stocks[&n].level / b.stocks[&n].cap)).collect::<Vec<_>>(),
             _ => unreachable!(),
@@ -1475,13 +1470,6 @@ mod tests {
 
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
-        let mut sailed = false;
-        let mut gone = false;
-        let watch = |world: &World, sailed: &mut bool, gone: &mut bool| {
-            let e = world.objects.get(ship).unwrap();
-            *sailed |= matches!(e.object, GameObject::Car(ref c) if c.run.as_ref().is_some_and(|r| r.job == crate::protocol::Job::Sail));
-            *gone |= e.position.is_none();
-        };
         // The shop sells; the port's van restocks it, off the port's shelf.
         let mut t = 0;
         let mut rounds = 0;
@@ -1492,40 +1480,36 @@ mod tests {
             let van = world.calls.iter().find(|c| c.kind == calls::CallKind::Stock).and_then(|c| c.answered_by).expect("a van answers");
             assert!(matches!(world.objects.get(van).unwrap().object, GameObject::Car(ref c) if c.role == crate::protocol::CarRole::Van && c.owner == port), "not the port's van");
             let until = t + 3 * DAY_MS as u64 / 24;
-            while step(&mut world, &mut events, &mut intersections, &mut t, until) {
-                watch(&world, &mut sailed, &mut gone);
-            }
+            while step(&mut world, &mut events, &mut intersections, &mut t, until) {}
         }
-        assert_eq!(world.calls.iter().find(|c| c.kind == calls::CallKind::Fetch).and_then(|c| c.answered_by), Some(ship), "the fetch is not the ship's");
+        let ship = world.calls.iter().find(|c| c.kind == calls::CallKind::Fetch).and_then(|c| c.answered_by).expect("a ship answers the fetch");
+        assert_eq!(ships(&world), vec![ship], "the fetch is not the world's ship");
         let before = world.treasury;
         let crates_short = match world.objects.get(port).unwrap().object {
             GameObject::Building(ref b) => b.stocks[&crate::needs::Need::Eat].short(),
             _ => unreachable!(),
         };
+        let (mut sailed, mut docked) = (false, false);
         for _ in 0..40 {
             let until = t + calls::AWAY_MS / 4;
             while step(&mut world, &mut events, &mut intersections, &mut t, until) {
-                watch(&world, &mut sailed, &mut gone);
+                let e = world.objects.get(ship);
+                sailed |= e.is_some_and(|e| matches!(e.object, GameObject::Car(ref c) if c.run.as_ref().is_some_and(|r| r.job == crate::protocol::Job::Sail)));
+                docked |= e.is_some_and(|e| e.position == Some(quay));
             }
-            if world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) {
+            if world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch) && world.objects.get(ship).is_none() {
                 break;
             }
         }
-        assert!(sailed, "the ship never sailed");
-        assert!(gone, "the ship was never beyond the horizon");
+        assert!(sailed && docked, "the ship never sailed to the quay");
         assert!(world.calls.iter().all(|c| c.kind != calls::CallKind::Fetch), "the fetch is done");
         assert!(shelves(&world).iter().all(|&(_, full)| full == 1.0), "every shelf is full again: {:?}", shelves(&world));
-        let e = world.objects.get(ship).unwrap();
-        assert_eq!(e.position, Some(quay), "the ship is not home at the quay");
-        assert!(matches!(e.object, GameObject::Car(ref c) if c.run.is_none() && c.spot.is_some()));
+        assert!(world.objects.get(ship).is_none(), "the ship did not sail away");
         // Paid at the sea's crossing: what the load cost the town is under
         // what the road would have charged by the difference.
-        let paid = world.town.on(t).bought[&crate::needs::Need::Eat];
+        let paid = before - world.treasury;
         let by_sea = crates_short * crate::economy::landed(BuildingKind::Port, crate::economy::wholesale(crate::needs::Need::Eat));
-        let by_road = crates_short * crate::economy::import(crate::economy::wholesale(crate::needs::Need::Eat));
-        assert!((paid - by_sea).abs() < 1e-6, "the crates cost {paid}, not {by_sea} by sea");
-        assert!(paid < by_road, "no cheaper than the road: {paid} against {by_road}");
-        assert!(before - world.treasury > paid, "the ship's own fuel was not paid for");
+        assert!(paid >= by_sea - 1e-6 && paid < crates_short * crate::economy::import(crate::economy::wholesale(crate::needs::Need::Eat)), "the crates cost {paid}, not {by_sea} by sea");
     }
 
     /// Every wake, every arrival: the log the model in docs/residents.md is

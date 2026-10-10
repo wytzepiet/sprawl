@@ -222,10 +222,10 @@ pub fn shelves(kind: BuildingKind) -> Vec<Need> {
     }
 }
 
-/// Its lorry is a ship: it fetches by sea, at the sea's crossing, and
-/// stands with its back to the water (`world/sea.rs`). §12.10.
+/// The world's ship fills its shelves, at the sea's crossing, at the
+/// quay behind it (`world/sea.rs`). §12.10.
 pub fn ships(kind: BuildingKind) -> bool {
-    blueprint(kind).vehicles.contains(&crate::protocol::CarRole::Ship)
+    blueprint(kind).quay
 }
 
 /// A seller in town whose shelf is filled without a fetch from town: a

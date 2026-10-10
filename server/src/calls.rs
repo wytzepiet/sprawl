@@ -180,9 +180,16 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             continue
         };
         let answered = match kind {
-            // A port's ship sails for its shelves, while the town can pay
-            // for what it brings back (docs/economy.md §9, §12.10).
-            CallKind::Fetch if economy::ships(row) => free_vehicle(world, at, CarRole::Ship).and_then(|(ship, _)| (world.treasury > 0.0 && world.set_sail(events, ship, now)).then_some(ship)),
+            // The world's ship sails in from beyond the horizon for a
+            // port's shelves, while the town can pay for what it brings.
+            // It belongs to nobody here; it goes when it is done.
+            CallKind::Fetch if economy::ships(row) => (world.treasury > 0.0).then(|| {
+                let mut ship = Car::new(at, CarRole::Ship);
+                ship.away = now + crate::world::sea::SAILING;
+                let ship = world.insert_at(GameObject::Car(ship), None);
+                events.wake(crate::world::sea::SAILING, ship);
+                ship
+            }),
             // The building's own vehicle goes for its input: to a source
             // in town, or out past the edge if the town can pay for what
             // it brings back (docs/economy.md §9).
@@ -352,11 +359,7 @@ pub fn stable(world: &mut World, facility: EntityId) {
     let have = fleet_of(world, facility).len();
     for &role in vehicles.iter().skip(have) {
         let car = world.insert_at(GameObject::Car(Car::new(facility, role)), tile);
-        if role == CarRole::Ship {
-            world.moor(car);
-        } else {
-            world.park_in_lot(facility, car, 0);
-        }
+        world.park_in_lot(facility, car, 0);
     }
 }
 
@@ -406,8 +409,8 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         }
         return;
     }
-    // Home with nothing to do: filled and put right in the yard, at the
-    // building's cost.
+    // Home with nothing to do: filled in the yard, at the building's
+    // cost.
     let Some(i) = world.calls.iter().position(|c| c.answered_by == Some(car)) else {
         economy::refilled(world, car, now);
         return;
@@ -424,9 +427,8 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
             dispatch(world, events, now);
             return;
         }
-        // Back in from beyond the edge, home to the yard: over the
-        // horizon to the quay, or in at the nearest exit and along the
-        // roads.
+        // Back in from beyond the edge: over the horizon to the quay, or
+        // in at the nearest exit and along the roads to the yard.
         let home = world.objects.get(owner).and_then(|e| e.position);
         let came = if role == CarRole::Ship {
             world.sail_home(events, car, now)
@@ -481,9 +483,9 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
     // A vehicle home from a fetch or a shipment is home already.
     let facility = call.kind != CallKind::Stock || owner != call.at;
     match call.kind {
-        // A maker's car is paid for its load; a lorry lands its, from a
-        // seller in town at the seller's price or from beyond the edge
-        // without limit; a ship lands every shelf's worth at once.
+        // A lorry lands its load, from a seller in town at the seller's
+        // price or from beyond the edge without limit; a ship lands every
+        // shelf's worth at once.
         CallKind::Fetch => match call.from {
             Some(seller) => economy::delivered(world, call.at, Some(seller), call.good, call.load, now),
             None if role == CarRole::Ship => {
@@ -511,7 +513,12 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
         call.at,
         (now - call.raised) / 1000
     );
-    if call.kind != CallKind::Stock {
+    if role == CarRole::Ship {
+        // The world's ship sails back over the horizon.
+        if !world.set_sail(events, car, now) {
+            world.despawn_car(car);
+        }
+    } else if call.kind != CallKind::Stock {
         // Nothing to do: the vehicle is in its dock, and is filled there.
         economy::refilled(world, car, now);
     } else if facility {
