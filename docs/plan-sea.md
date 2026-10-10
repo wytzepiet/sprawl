@@ -50,13 +50,16 @@ traffic it has no data for: the cold start is answered from the map and
 from what the towns want, not from history.
 
 - **The forecast decides; the map only makes it fast.** Your harbours
-  are not always worth joining: two on one road network are joined
+  are not always worth joining: two a short drive apart are joined
   already (a lorry does it), and a harbour that only imports for its own
   town has nothing to carry to the others. (The player, 2026-10-10:
-  "mostly yes, but not necessarily always.") So when a harbour stands,
-  the company joins it to your nearest harbour by sea that is *not* on
-  its road network, and only if the forecast (below) says boxes would
-  flow: one side makes, or holds over its sell line, what the other
+  "mostly yes, but not necessarily always"; and "you can drive from Spain
+  to Morocco, but you wouldn't if you can ship".) So the test is which
+  way is faster, not whether a road exists: when a harbour stands, the
+  company joins it to the nearest of your harbours where the sea leg,
+  with its loading at both ends, beats the road by `SEA_GAIN` (a third),
+  or where there is no road at all, and only if the forecast (below)
+  says boxes would flow: one side makes, or holds over its sell line, what the other
   side's rules keep. Then the first sailing leaves within the hour. If
   not, there is no line, and the harbour card says why and what would
   open one: "No line to Home harbour: nothing to carry yet. A sawmill
@@ -410,8 +413,8 @@ Each stage leaves the game playable and the suite green
     Vec<EntityId>`, the journey's calls, for the list.
 - **Systems.**
   - A harbour standing, a rule set or a maker built asks the company
-    (§Decisions): the nearest of your harbours by sea off its road
-    network gets a line if `forecast` (the two ends' rules and makers)
+    (§Decisions): the nearest of your harbours where the sea beats the
+    road by `SEA_GAIN` (or there is no road) gets a line if `forecast` (the two ends' rules and makers)
     says boxes would flow, its sailings sized by it, and its ferry
     `commission`ed. Otherwise the harbour card says what would open one.
   - Two ships now call at one harbour (the world's ferry and the line's),
@@ -433,8 +436,9 @@ Each stage leaves the game playable and the suite green
 - **Tests.**
   - New `the_outpost`: two islands on a test map. The line's first
     sailing leaves within an hour of the sawmill on the second island
-    standing, with the home depot keeping timber; a second harbour on
-    the home island's own road network gets no line; timber
+    standing, with the home depot keeping timber; a second harbour a
+    short drive away on the home island gets no line, and one at the far
+    end of a long coast road does; timber
     made on one island reaches the depot on the other directly
     (`transfers` = 0), and none of it is bought.
   - Scenarios `two` and `new port` with game numbers.
@@ -570,7 +574,7 @@ ferry on a real course, from the real edge.
 
 ## Open
 
-1. `BACKLOG`, `TRIAL`, `SEA_PACE`, `WORLD_STAY`, `KEEP_RIGHT`, `APPROACH`: set
+1. `BACKLOG`, `TRIAL`, `SEA_GAIN`, `SEA_PACE`, `WORLD_STAY`, `KEEP_RIGHT`, `APPROACH`: set
    in the harness.
 2. Whether the player can ask for a line by hand (a tap on a harbour:
    "connect to…"), or the prior and the backlog are always enough.
