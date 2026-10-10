@@ -135,13 +135,11 @@ pub fn stocks(kind: BuildingKind) -> BTreeMap<Need, f64> {
     stocks
 }
 
-/// What a household asks for an hour of its labour. The town's: what the
-/// edge would pay them, net of the crossing, since below that they sell
-/// there instead. The world's, beyond the edge: the edge wage plus the
-/// crossing. The commute is added on delivery (`delivered_wage`). Not
-/// yet nudged by the household's own stock (§12.4). §5.2.
-pub fn ask(world: &World, home: EntityId) -> f64 {
-    if world.edge.contains(&home) { import(EDGE_WAGE) } else { export(EDGE_WAGE) }
+/// What a household asks for an hour of its labour: what the edge would
+/// pay them, net of the crossing. The commute is added on delivery
+/// (`delivered_wage`). §5.2.
+pub fn ask(_world: &World, _home: EntityId) -> f64 {
+    export(EDGE_WAGE)
 }
 
 /// What a household's hour costs a building, delivered: the ask, with the
@@ -470,82 +468,27 @@ pub fn built(world: &mut World, price: f64, now: GameTime) {
     world.treasury -= price;
 }
 
-fn outside(world: &World, resident: EntityId) -> bool {
-    match world.objects.get(resident).map(|e| &e.object) {
-        Some(GameObject::Resident(r)) => world.edge.contains(&r.home),
-        _ => false,
-    }
-}
-
 /// One visit paid for, as it ends: `units` of `need` served at `at` to
 /// `who`. A shift is sold by the resident and bought by the building; a
-/// meal or a tank is bought by the resident and
-/// sold by the building. Two lines in the books, and a lump on the map; the treasury
-/// moves only when one party is the outside — the edge, or a household
-/// beyond it. Anything that runs a shelf draws it down. §6, §8.
+/// meal or a tank is bought by the resident and sold by the building. Two
+/// lines in the books, and a lump on the map; nothing crosses the door
+/// but the groceries behind a meal at home. Anything that runs a shelf
+/// draws it down. §6, §8.
 pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f64, now: GameTime) {
     if units <= 0.0 {
         return;
     }
-    let edge = world.edge.contains(&at);
     let Some(kind) = kind_of(world, at) else { return };
-    let commuter = outside(world, who);
     match need {
         Need::Work => {
-            let wage = earning(world, who);
-            let due = units * wage;
-            if edge {
-                // A shift beyond the edge: the town sold its labour.
-                if !commuter {
-                    door(world, Need::Work, due, now);
-                }
-                return;
-            }
-            // A workplace with nothing to sell sells its hours to the
-            // edge, at what an hour makes, less the crossing: a
-            // pass-through, until goods give it an output. §12.1, §8.1.
-            if sells(kind).next().is_none() {
-                let made = adds(units * EDGE_WAGE);
-                gdp(world, Need::Work, made, now);
-                let book = world.books.entry(at).or_default().today(now);
-                book.revenue += export(made);
-                book.exported += export(made);
-                world.sales.push(Sale { building: at, amount: export(made), at: now });
-                door(world, Need::Work, export(made), now);
-                visit(world, need, now);
-            }
-            // A row that makes something fills its shelf at its rate;
-            // what does not fit is lost, which is the full yard stopping
-            // the line (§4). A farm makes by the harvest: its hands drive
-            // the tractor (`world/fields.rs`).
-            if let Some(row) = blueprint(kind).makes
-                && !farm(kind)
-                && let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object)
-                && let Some(stock) = b.stocks.get_mut(&row.good)
-            {
-                stock.add(units * row.per_hour);
-            }
+            let due = units * earning(world, who);
             let book = world.books.entry(at).or_default().today(now);
             book.wages += due;
             book.hours += units;
-            // A commuter takes the wage home, beyond the edge: the
-            // company's line says how much of its wage bill left.
-            if commuter {
-                book.remitted += due;
-                door(world, Need::Work, -due, now);
-            }
         }
         Need::Home | Need::Rest => {}
         Need::Eat | Need::Fuel => {
             let due = units * price_of(world, at, need);
-            if edge {
-                // A meal beyond the edge is the town buying one, unless
-                // the eater lives there too.
-                if !commuter {
-                    door(world, need, -due, now);
-                }
-                return;
-            }
             visit(world, need, now);
             // The groceries behind a meal at home are the edge's, until
             // something in town sells them.
@@ -556,15 +499,8 @@ pub fn sale(world: &mut World, who: EntityId, at: EntityId, need: Need, units: f
             let book = world.books.entry(at).or_default().today(now);
             book.revenue += due;
             *book.sold.entry(need).or_default() += units;
-            // A commuter's lunch is a meal sold to the outside.
-            if commuter {
-                book.exported += due;
-            }
             if due > 0.0 {
                 world.sales.push(Sale { building: at, amount: due, at: now });
-            }
-            if commuter {
-                door(world, need, due, now);
             }
             if let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object)
                 && let Some(stock) = b.stocks.get_mut(&need)
@@ -1075,57 +1011,20 @@ mod tests {
         assert!(hiring(&world, farm) && hiring(&world, shop), "an emptied yard, or a shop, does not hire");
     }
 
-    /// §8.2, the door: money moves only when one party is the outside. A
-    /// resident's shift at a shop is two lines; at a pass-through it is
-    /// hours sold to the edge; at the edge it is the edge wage less the
-    /// crossing coming in. A commuter's shift takes their wage home, and
-    /// their lunch in town is a meal sold to the outside.
+    /// §8.2, the door: money moves only when goods cross it. A shift in
+    /// town and a meal in town are lines in two sets of books.
     #[test]
     fn money_moves_only_at_the_door() {
         let mut world = town();
         world.place_on_street(at(4), House).unwrap();
         let shop = world.place_on_street(at(8), Shop).unwrap();
-        let factory = world.place_on_street(at(30), Factory).unwrap();
         world.settle();
-        let edge = *world.edge.iter().next().expect("the street runs off the map");
-        let people = world.resident_ids();
-        let local = *people.iter().find(|&&id| resident(&world, id).work == Some(shop)).expect("the shop hired next door");
-        let commuter = *people.iter().find(|&&id| world.edge.contains(&resident(&world, id).home) && resident(&world, id).work == Some(factory)).expect("the factory hired from beyond the edge");
-
+        let local = *world.resident_ids().iter().find(|&&id| resident(&world, id).work == Some(shop)).expect("the shop hired next door");
         sale(&mut world, local, shop, Need::Work, 9.0, 0);
-        assert_eq!(world.treasury, STAKE, "a shift in town moved money");
-        assert!((world.books[&shop].on(0).wages - 9.0 * resident(&world, local).wage).abs() < 1e-9);
-
-        let pay = 9.0 * resident(&world, commuter).wage;
-        assert!(pay > 9.0 * import(EDGE_WAGE), "a commuter is paid the crossing and the drive: {pay}");
-        sale(&mut world, commuter, factory, Need::Work, 9.0, 0);
-        let door = world.town.on(0).clone();
-        assert!((door.sold[&Need::Work] - export(adds(9.0 * EDGE_WAGE))).abs() < 1e-9, "the factory sold its hours for {}", door.revenue());
-        assert!((door.bought[&Need::Work] - pay).abs() < 1e-9, "the commuter took home {}", door.purchases());
-        assert!((world.books[&factory].on(0).remitted - pay).abs() < 1e-9, "the factory's line does not say what its commuter took home");
-        assert_eq!(world.books[&shop].on(0).remitted, 0.0, "a local's wage left the shop's line");
-        assert_eq!(door.visits[&Need::Work], 1, "a pass-through's shift is the one visit behind its line");
-        assert!((door.served[&Need::Work] - world.gdp).abs() < 1e-9, "the town's page does not add up to the dial");
-        assert!((world.gdp - adds(9.0)).abs() < 1e-9, "hours made in town are GDP at the world's price: {}", world.gdp);
-
-        let home_ask = ask(&world, resident(&world, local).home);
-        if let Some(GameObject::Resident(r)) = world.objects.get_mut(local).map(|e| &mut e.object) {
-            r.wage = home_ask;
-        }
-        let before = world.treasury;
-        sale(&mut world, local, edge, Need::Work, 8.0, 0);
-        assert!((world.treasury - before - export(8.0 * EDGE_WAGE)).abs() < 1e-9, "a shift beyond the edge brought {}", world.treasury - before);
-
-        let before = world.treasury;
         sale(&mut world, local, shop, Need::Eat, 1.0, 0);
-        assert_eq!(world.treasury, before, "a meal in town moved money");
-        sale(&mut world, commuter, shop, Need::Eat, 1.0, 0);
-        assert!((world.treasury - before - price_of(&world, shop, Need::Eat)).abs() < 1e-9, "a commuter's lunch is an export");
-        assert_eq!(world.town.on(0).visits[&Need::Eat], 2, "two meals in town are two visits");
-        let before = world.treasury;
-        sale(&mut world, local, edge, Need::Eat, 1.0, 0);
-        assert!((before - world.treasury - edge_price(Need::Eat)).abs() < 1e-9, "a meal at the edge is an import");
-        assert_eq!(world.town.on(0).visits[&Need::Eat], 2, "a meal beyond the edge is no visit in town");
+        assert_eq!(world.treasury, STAKE, "a shift or a meal in town moved money");
+        assert!((world.books[&shop].on(0).wages - 9.0 * resident(&world, local).wage).abs() < 1e-9);
+        assert_eq!(world.town.on(0).visits[&Need::Eat], 1, "a meal in town is a visit");
     }
 
     /// §12.6: a depot's van is filled and put right in the yard, and the

@@ -1532,11 +1532,10 @@ mod tests {
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
-        // Fourteen households in the two blocks, and three desks over: the
-        // office's last two and the pump are filled from beyond the edge,
-        // by people who drive in and are gone again by night.
+        // Fourteen households in the two blocks, and three desks over that
+        // stay empty: nobody comes from beyond the town for a job.
         let people = world.resident_ids();
-        assert_eq!(people.len(), 17);
+        assert_eq!(people.len(), 14);
 
         let mut log = Vec::new();
         let mut last: Vec<Option<EntityId>> = people.iter().map(|_| None).collect();
@@ -1917,10 +1916,11 @@ mod tests {
     }
 
     /// What settling must leave true, whatever was built: every home a
-    /// road reaches full and every line staffed, nobody living or working
-    /// where no road goes, the index of who is where agreeing with the
+    /// road reaches full, every line staffed while anyone is out of work,
+    /// nobody living or working where no road goes, the index of who is where agreeing with the
     /// residents, and everyone with a car.
     fn assert_settled(world: &World, after: &str) {
+        let jobless = world.objects.iter().filter(|e| matches!(e.object, GameObject::Resident(ref r) if r.work.is_none())).count();
         for e in world.objects.iter() {
             let GameObject::Building(ref b) = e.object else { continue };
             if world.edge.contains(&e.id) {
@@ -1930,7 +1930,9 @@ mod tests {
             let reached = world.street_of(e.id).is_some();
             let want = |n: u32| if reached { n as usize } else { 0 };
             assert_eq!(world.household(e.id).len(), want(bp.homes), "after {after}: {:?} {} (reached {reached}) houses the wrong number", b.kind, e.id);
-            assert_eq!(world.staff(e.id).len(), want(bp.jobs), "after {after}: {:?} {} (reached {reached}) staffs the wrong number", b.kind, e.id);
+            // A desk stays empty only while nobody in town is out of work.
+            assert!(world.staff(e.id).len() <= want(bp.jobs), "after {after}: {:?} {} (reached {reached}) staffs too many", b.kind, e.id);
+            assert!(world.staff(e.id).len() == want(bp.jobs) || jobless == 0, "after {after}: {:?} {} has a desk free and {jobless} out of work", b.kind, e.id);
         }
         for id in world.resident_ids() {
             let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| &e.object) else { continue };
@@ -2198,8 +2200,8 @@ mod tests {
     fn the_same_town_lives_the_same_days() {
         let (three, lunch) = arrival_log(3);
         let (one, _) = arrival_log(1);
-        // Seventeen people, each at least driving in, to work, and home.
-        assert!(one.len() >= 17 * 3, "only {} moves logged", one.len());
+        // Fourteen people, each at least driving in, to work, and home.
+        assert!(one.len() >= 14 * 3, "only {} moves logged", one.len());
         assert_eq!(three[..one.len()], one[..], "the first day differs between runs");
         assert!(three.len() > one.len(), "nobody moved on the second day");
 
@@ -2216,7 +2218,7 @@ mod tests {
         for &(_, id, ..) in two.iter().filter(|&&(t, ..)| t >= settled) {
             *moves.entry(id).or_insert(0) += 1;
         }
-        assert_eq!(moves.len(), 17, "everyone went out on day three");
+        assert_eq!(moves.len(), 14, "everyone went out on day three");
         assert!(moves.values().all(|&n| n % 2 == 0 && (4..=14).contains(&n)), "someone thrashed: {moves:?}");
         assert!(moves.values().any(|&n| n >= 8), "nobody went out for lunch: {moves:?}");
         let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at, _)| (id, at)).collect();
@@ -2243,43 +2245,6 @@ mod tests {
             most = most.max(present.len());
         }
         assert!(most <= 12, "{most} eating at a twelve-spot shop at once");
-    }
-
-    /// A household with nowhere in town to work still works: the job is
-    /// beyond the edge, and the commute out to it is the whole price of not
-    /// having built one. Nothing is missing, so nothing shows as missing —
-    /// that is what the edge is for.
-    #[test]
-    fn a_town_without_jobs_sends_its_people_beyond_the_edge() {
-        let mut world = street();
-        let home = build(&mut world, 0, BuildingKind::House, 1);
-        let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
-        settle_and_wake(&mut world, &mut events);
-        let people = world.resident_ids();
-        assert_eq!(people.len(), 2);
-        assert!(
-            people.iter().all(|&id| matches!(world.objects.get(id).unwrap().object, GameObject::Resident(ref r) if r.work.is_none())),
-            "nobody in town hired them",
-        );
-        let edge = world.nearest_edge(world.objects.get(home).unwrap().position.unwrap()).expect("a way out");
-
-        // And they drive there: a day of it puts them at the edge, on the
-        // clock, and back home again.
-        let day = DAY_MS as u64;
-        let mut seen_at_work = false;
-        let mut now = 0;
-        while step(&mut world, &mut events, &mut intersections, &mut now, day) {
-            seen_at_work |= people.iter().any(|&id| {
-                at_of(&world, id) == Some(edge) && doing(&world, id) == Some(crate::needs::Need::Work)
-            });
-        }
-        assert!(seen_at_work, "nobody ever got to the job beyond the edge");
-        assert!(people.iter().any(|&id| at_of(&world, id) == Some(home)), "and somebody came home");
-
-        // Nothing at all was on offer nowhere: the edge answers everything.
-        let d = crate::resident::demand(&world, day);
-        assert_eq!(d["unmet"].as_array().unwrap().len(), 0, "{}", d["unmet"]);
     }
 
     /// Land and the tractor, docs/economy.md §12.8: a farm on a street
@@ -2408,100 +2373,5 @@ mod tests {
         let got = world.books[&farm].on(now + 6 * day / 24).revenue - before;
         assert!((got - paid).abs() < 5.0, "the edge paid {got} for the yard, not {paid}");
         assert!(lorries(&world) <= stood, "the pickup lorry stayed");
-    }
-
-    /// A vacancy the city cannot fill from among its own is filled from off
-    /// the map: someone whose home is the road exit, who drives in to work
-    /// and is gone again by night.
-    #[test]
-    fn a_job_nobody_in_town_fills_is_filled_from_the_edge() {
-        let mut world = street();
-        build(&mut world, 0, BuildingKind::House, 1); // two people
-        let office = build(&mut world, 30, BuildingKind::Office, 2); // twelve jobs
-        let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
-        settle_and_wake(&mut world, &mut events);
-
-        let jobs = crate::blueprint::blueprint(BuildingKind::Office).jobs as usize;
-        let staff: Vec<EntityId> = world
-            .resident_ids()
-            .into_iter()
-            .filter(|&id| matches!(world.objects.get(id).unwrap().object, GameObject::Resident(ref r) if r.work == Some(office)))
-            .collect();
-        assert_eq!(staff.len(), jobs, "every desk is taken");
-        let commuters: Vec<EntityId> = staff
-            .iter()
-            .copied()
-            .filter(|&id| matches!(world.objects.get(id).unwrap().object, GameObject::Resident(ref r) if world.edge.contains(&r.home)))
-            .collect();
-        assert_eq!(commuters.len(), jobs - 2, "the ten the town cannot house live off the map");
-
-        // They drive in like anyone else, and the office fills up.
-        let day = DAY_MS as u64;
-        let mut at_desk = 0;
-        let mut now = 0;
-        while step(&mut world, &mut events, &mut intersections, &mut now, day) {
-            at_desk = at_desk.max(commuters.iter().filter(|&&id| at_of(&world, id) == Some(office)).count());
-        }
-        assert!(at_desk >= 2, "only {at_desk} of the commuters ever reached the office");
-
-        // Pull the office down and the commuters go with it: nobody lives at
-        // the edge for its own sake.
-        world.remove_building(office);
-        world.settle();
-        assert!(
-            commuters.iter().all(|&id| world.objects.get(id).is_none()),
-            "someone stayed on at the edge with no job to come in for",
-        );
-    }
-
-    /// With no shop in town, a hungry resident drives out to the edge for a
-    /// meal — the edge is a building with a kitchen like any other, found by
-    /// the same search.
-    #[test]
-    fn with_nothing_in_town_a_meal_is_had_beyond_the_edge() {
-        let mut world = street();
-        build(&mut world, 0, BuildingKind::Apartment, 2);
-        let mut events = EventQueue::new();
-        let mut intersections = IntersectionRegistry::new();
-        settle_and_wake(&mut world, &mut events);
-        let people = world.resident_ids();
-
-        let day = DAY_MS as u64;
-        let mut ate_out = 0;
-        let mut now = 0;
-        while step(&mut world, &mut events, &mut intersections, &mut now, 2 * day) {
-            ate_out = ate_out.max(
-                people
-                    .iter()
-                    .filter(|&&id| {
-                        at_of(&world, id).is_some_and(|a| world.edge.contains(&a))
-                            && doing(&world, id) == Some(crate::needs::Need::Eat)
-                    })
-                    .count(),
-            );
-        }
-        assert!(ate_out > 0, "nobody drove to the edge to eat");
-        // And the city earned nothing by it: that meal was sold off the map.
-        let d = crate::resident::demand(&world, 2 * day);
-        let sold_at_the_edge = d["delivered"].as_array().unwrap().iter().any(|v| {
-            world.edge.contains(&(v["building"].as_u64().unwrap() as EntityId)) && v["need"] == "Eat"
-        });
-        assert!(sold_at_the_edge, "the edge's books show no meals");
-        // And GDP is the town's value only: what the books of everything
-        // in town served, over the two pages they keep, at the world's
-        // prices — never the edge's meals.
-        let hour = DAY_MS as f64 / 24.0;
-        let worth = |id: &EntityId, page: &crate::economy::Day| -> f64 {
-            let kind = match world.objects.get(*id).map(|e| &e.object) {
-                Some(GameObject::Building(b)) => b.kind,
-                _ => return 0.0,
-            };
-            page.served.iter().map(|(&need, h)| h * hour / need.unit() * crate::economy::value(kind, need)).sum()
-        };
-        let in_town: f64 = world.books.iter().filter(|(id, _)| !world.edge.contains(id)).map(|(id, k)| worth(id, k.before(2 * day)) + worth(id, k.on(2 * day))).sum();
-        let with_edge: f64 = world.books.iter().map(|(id, k)| worth(id, k.before(2 * day)) + worth(id, k.on(2 * day))).sum();
-        assert!((world.gdp - in_town).abs() < 1e-6, "GDP is not the town's value: {} against {in_town}", world.gdp);
-        assert!(with_edge > in_town, "GDP counts the edge's meals: {} against {in_town} in town, {with_edge} with the edge", world.gdp);
     }
 }

@@ -31,8 +31,7 @@ pub enum Class {
 pub struct Blueprint {
     pub class: Class,
     /// How many the settlement moves in of its own accord. Zero for
-    /// anything nobody moves into — a shop, and the edge, whose households
-    /// are made by the jobs the city could not fill.
+    /// anything nobody moves into: a shop, and the edge.
     pub homes: u32,
     /// How many work here.
     pub jobs: u32,
@@ -136,11 +135,11 @@ pub fn lie(kind: BuildingKind, facing: u8, (w, h): (u8, u8)) -> Plot {
 
 /// How many a tap serves at once. A visitor's tap seats seven, what a
 /// building's lot parked when it had one, until the kerb's bays say how
-/// many can come; staff, a house's two homes, a yard and the edge seat
-/// the row's number.
+/// many can come; staff, a house's two homes and a yard seat the row's
+/// number.
 pub fn seats(kind: BuildingKind, tap: &Tap) -> u32 {
     let b = blueprint(kind);
-    let parked = b.vehicles.is_empty() && !matches!(kind, BuildingKind::House | BuildingKind::Edge);
+    let parked = b.vehicles.is_empty() && kind != BuildingKind::House;
     if tap.need != Need::Work && parked { 7 } else { tap.slots }
 }
 
@@ -171,10 +170,6 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
     // the row says (`seats`); the row's number is its rate.
     let hours = Curve::hours;
     let always = Curve::always;
-    // A tap of the edge: open always, and with room for everyone who ever
-    // turns up, because beyond the map there is as much of everything as
-    // you like.
-    let everywhere = |need, rate| Tap { need, curve: always(), rate, overhead: 0, slots: u32::MAX };
     // A shift: work on offer between these hours, with a place for each of the staff.
     let shift = |open: u32, close: u32, jobs: u32| tap(Work, hours(open * H, close * H), jobs);
     // A household: sleep on offer through the night; being home and the
@@ -279,23 +274,13 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             taps: vec![shift(6, 18, 6)],
         }),
         // The world beyond the survey, standing where a road runs off the
-        // map. Every tap in the game, never closed and never crowded: a
-        // town with no restaurant still eats, a job nobody in town wants is
-        // still worked. What it costs is the drive, and that is the whole
-        // argument for building your own. Priceless in the literal sense —
-        // the outside is not for sale, so the mayor can never afford one —
-        // and what it serves is another city's earnings, not this one's
-        // (see `resident::served`).
+        // map: the door the world's lorries drive in and out by. It serves
+        // nobody: people stay in their own town, and only goods cross its
+        // border (docs/game.md, People). Not for sale at any price.
         (Edge, Blueprint {
-            class: Commerce, homes: 0, jobs: u32::MAX, size: (1, 1), lot: (0, 0), price: f64::INFINITY, quay: false,
+            class: Commerce, homes: 0, jobs: 0, size: (1, 1), lot: (0, 0), price: f64::INFINITY, quay: false,
             stock: 0, makes: None, vehicles: &[], farm: false, handles: None,
-            taps: vec![
-                everywhere(Home, 1.0),
-                everywhere(Work, 1.0),
-                everywhere(Rest, 1.0),
-                everywhere(Eat, 1.0),
-                everywhere(Fuel, Fuel.cap() / Need::FILL_MS),
-            ],
+            taps: Vec::new(),
         }),
     ]
 });
@@ -360,26 +345,13 @@ mod tests {
         check();
     }
 
-    /// The edge answers every need a resident has, always, and with room
-    /// for everyone: that is what "everything the city lacks exists beyond
-    /// the edge" means in the table. And it is not for sale at any price.
+    /// The edge is a door for goods and nothing else: nobody eats, works
+    /// or lives there, and it is not for sale at any price.
     #[test]
-    fn the_edge_serves_everything_and_is_not_for_sale() {
+    fn the_edge_serves_nobody_and_is_not_for_sale() {
         let b = blueprint(Edge);
-        for need in Need::OWN.into_iter().chain(Need::DRIVEN) {
-            let tap = b.taps.iter().find(|t| t.need == need).unwrap_or_else(|| panic!("the edge does not serve {need:?}"));
-            assert_eq!(tap.slots, u32::MAX, "{need:?} at the edge is rationed");
-            assert_eq!(tap.curve.per_day(), DAY_MS as f64, "{need:?} at the edge closes");
-            // No better than the best in town, or the edge would raise what
-            // every bucket anywhere thinks is possible.
-            assert!(tap.rate <= need.bounds().0, "{need:?} is served better at the edge than anywhere");
-        }
+        assert!(b.taps.is_empty() && b.jobs == 0 && b.homes == 0, "the edge serves somebody");
         assert!(!b.price.is_finite(), "the outside is for sale");
-        assert!(b.taps.iter().any(|t| t.need == Need::Work), "no work beyond the edge");
-        assert_eq!(b.jobs, u32::MAX, "the edge runs out of jobs");
-        // Its kitchen is nobody's in particular, so the search offers it to
-        // everyone — see `resident::search`.
-        assert_eq!(b.homes, 0, "the edge draws people in for its own sake");
     }
 
     /// The whole table serialises, infinite price and all: the readout is

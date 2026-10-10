@@ -191,12 +191,10 @@ fn verdicts(world: &World, r: &Resident, id: EntityId, buckets: &[Bucket], at: E
         .map(|b| match b.need {
             Need::Work if !fit(buckets) => Verdict::Nothing,
             // A maker's yard with no room for the next load offers no work
-            // (docs/economy.md §13.19); the edge hires everyone, always,
-            // which is labour as the export of last resort (§8.1).
+            // (docs/economy.md §13.19).
             Need::Work => r
                 .work
                 .filter(|&w| economy::hiring(world, w))
-                .or_else(|| world.objects.get(r.home).and_then(|e| e.position).and_then(|p| world.nearest_edge(p)))
                 .map_or(Verdict::Nothing, |w| verdict_at(world, r, earning, at, b, w, now, crowd, routes, true)),
             Need::Rest | Need::Home => verdict_at(world, r, earning, at, b, r.home, now, crowd, routes, true),
             Need::Eat | Need::Fuel => search(world, r, earning, at, b, now, crowd, routes),
@@ -246,15 +244,12 @@ fn verdict_at(
         crow_flies_ms(world, at, building)
     };
     // A shift is sold, not bought, and once taken it is the constant
-    // habit: whoever hired them is where. A meal beyond the edge, or the
-    // groceries behind one at home, cross the door, and nothing crosses
-    // a door the town cannot pay at (docs/economy.md §8.2); a commuter
-    // eating beyond the edge is spending the outside's money there.
+    // habit: whoever hired them is where. The groceries behind a meal at
+    // home cross the door, and nothing crosses a door the town cannot pay
+    // at (docs/economy.md §8.2).
     let price = if b.need == Need::Work { 0.0 } else { economy::price_of(world, building, b.need) };
-    let crossing = if b.need == Need::Work || world.edge.contains(&r.home) {
+    let crossing = if b.need == Need::Work {
         0.0
-    } else if world.edge.contains(&building) {
-        1.0
     } else if building == r.home {
         1.0 + economy::CROSSING
     } else {
@@ -294,9 +289,6 @@ fn search(world: &World, r: &Resident, earning: f64, at: EntityId, b: &Bucket, n
         .revealed
         .iter()
         .flat_map(|&c| world.buildings_in(c))
-        // The edge stands beyond the survey, so it is in no revealed chunk,
-        // and it is what makes a need with nothing in town answerable at all.
-        .chain(world.edge.iter().copied())
         // A home's kitchen is its residents' alone.
         .filter(|&id| id == r.home || kind(world, id).is_some_and(|k| blueprint(k).homes == 0))
         // Empty shelves sell nothing.
@@ -505,7 +497,6 @@ fn overtake(b: &Bucket, v: &Verdict, score: f64, now: GameTime) -> GameTime {
 ///
 /// What was served goes on the tab, to be paid as one lump when the visit
 /// ends, and on GDP at the world's price for it: value the town made.
-/// The edge's is some other town's.
 fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &Crowd) {
     let Some(r) = resident(world, id) else { return };
     let (last, selected) = (r.last_update, r.selected);
@@ -524,9 +515,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
     {
         let out = rate * served;
         *world.books.entry(at).or_default().today(now).served.entry(need).or_default() += out / HOUR;
-        if !world.edge.contains(&at)
-            && let Some(k) = kind(world, at)
-        {
+        if let Some(k) = kind(world, at) {
             economy::gdp(world, need, out / need.unit() * economy::value(k, need), now);
         }
         if let Some(r) = resident_mut(world, id) {
@@ -694,8 +683,7 @@ struct Want {
 fn wants(world: &World) -> impl Iterator<Item = Want> + '_ {
     world.resident_ids().into_iter().filter_map(|id| resident(world, id)).flat_map(|r| {
         let home = world.objects.get(r.home).and_then(|e| e.position);
-        // No job in town is the job beyond the edge, where there is one.
-        let jobless = r.work.is_none() && home.and_then(|p| world.nearest_edge(p)).is_none();
+        let jobless = r.work.is_none();
         r.at.and(home).into_iter().flat_map(move |home| {
             r.buckets.iter().filter_map(move |b| {
                 let (shortfall, weight) = if b.need.drain() > 0.0 {
