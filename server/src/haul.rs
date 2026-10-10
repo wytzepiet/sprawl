@@ -124,17 +124,23 @@ pub fn top_up(world: &mut World, depot: EntityId) {
     if b.site.is_some() {
         return;
     }
-    let rules: Vec<(Good, Rule, f64)> = b.rules.iter().filter_map(|(&g, &r)| Some((g, r, b.stocks.get(&g)?.level))).collect();
-    for (good, rule, level) in rules {
+    let rules: Vec<(Good, Rule, f64, f64)> = b.rules.iter().filter_map(|(&g, &r)| Some((g, r, b.stocks.get(&g)?.level, b.stocks.get(&g)?.cap))).collect();
+    for (good, rule, level, cap) in rules {
         // What a maker in town has a load of comes from it, by the depot's
         // own fetch, not from over the sea.
         if made_in_town(world, good) {
             continue;
         }
         let have = level + incoming(world, depot, good);
+        // As many as fill it, but only whole boxes the shelf has room
+        // for: the lorry fetches a box only when it fits, and one bought
+        // past that would stand in the park, paid for, till it did.
+        let room = ((cap - have) / good.per_box()).floor().max(0.0) as u32;
         if have < rule.keep {
-            let boxes = ((rule.fill - have) / good.per_box()).ceil().max(1.0) as u32;
-            book(world, depot, good, boxes);
+            let boxes = (((rule.fill - have) / good.per_box()).ceil().max(1.0) as u32).min(room);
+            if boxes > 0 {
+                book(world, depot, good, boxes);
+            }
         }
     }
 }
@@ -573,4 +579,42 @@ pub fn inspect(world: &World, now: GameTime) -> serde_json::Value {
         })
         .collect();
     json!({ "now": now, "summary": sea(world, now), "harbours": harbours, "lorries": lorries })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{BuildingKind, GridCoord, TerrainType};
+
+    #[test]
+    fn a_rule_buys_only_the_boxes_the_shelf_has_room_for() {
+        // Crates keep 80, fill to 200, on a shelf of 200, with 20 left:
+        // two boxes of a hundred would fill it, but the second could
+        // never be fetched, and would stand in the park, paid for.
+        let mut world = World::new();
+        for y in -8..41 {
+            for x in -60..100 {
+                world.terrain.insert((x, y), if y >= 4 { TerrainType::Sea } else { TerrainType::Grass });
+            }
+        }
+        world.place_road_path(&(-4..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        let harbour = world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Harbour).expect("the coast takes a harbour");
+        let depot = world.place_on_street(GridCoord { x: 20, y: -4 }, BuildingKind::Depot).expect("a depot by the street");
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            b.rules = first_rules();
+            for (g, s) in b.stocks.iter_mut() {
+                s.level = if *g == Good::Crates { 20.0 } else { s.cap };
+            }
+        }
+        world.treasury = 10_000.0;
+        // Its ferry, without the starter pack, which would count as on its way.
+        world.mark_harbours(0);
+        let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
+        if let Some(GameObject::Car(c)) = world.objects.get_mut(ferry).map(|e| &mut e.object) {
+            c.booked.clear();
+        }
+        top_up(&mut world, depot);
+        let Some(GameObject::Car(c)) = world.objects.get(ferry).map(|e| &e.object) else { panic!("no ferry") };
+        assert_eq!(c.booked.iter().filter(|t| t.good == Some(Good::Crates)).count(), 1);
+    }
 }
