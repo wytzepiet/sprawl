@@ -83,6 +83,9 @@ pub fn handle_resident_wake(
         };
     }
     store(world, id, r.car, &buckets);
+    if buckets.iter().zip(&verdicts).any(|(b, v)| b.need == Need::Fuel && matches!(v, Verdict::Nothing) && b.stock.level < b.stock.cap / 4.0) {
+        crate::missions::sense(world, crate::missions::When::Dry, now);
+    }
 
     // Actionable: can be set out for now, or is right here — where waiting
     // for it to open is the action. Waiting for somewhere else is not; that

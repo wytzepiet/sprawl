@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS drafts (
     owner INTEGER PRIMARY KEY,
     strokes TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS missions (
+    id INTEGER PRIMARY KEY,
+    data TEXT NOT NULL
+);
 ";
 
 /// Everything about a world that is not one of its objects.
@@ -44,6 +48,8 @@ pub struct Meta {
     pub taken: Vec<Cell>,
     /// Each player's draft, a row each.
     pub drafts: BTreeMap<OwnerId, Vec<Stroke>>,
+    /// The town's missions, open and finished, a row each in order.
+    pub missions: Vec<crate::missions::Mission>,
 }
 
 /// A whole number of hundredths, which is what the metadata table can hold.
@@ -131,10 +137,21 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
         })
         .unwrap_or_default();
 
+    // A mission this build cannot read is dropped, and opens again if
+    // its row still exists.
+    let missions = conn
+        .prepare("SELECT data FROM missions ORDER BY id")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).filter_map(|json| serde_json::from_str(&json).ok()).collect())
+        })
+        .unwrap_or_default();
+
     (
         entries,
         Meta {
             drafts,
+            missions,
             next_id,
             terrain_seed,
             sim_time,
@@ -186,6 +203,15 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         .expect("failed to save a draft");
     }
 
+    tx.execute("DELETE FROM missions", []).expect("failed to clear missions");
+    for (i, m) in meta.missions.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO missions (id, data) VALUES (?1, ?2)",
+            rusqlite::params![i as i64, serde_json::to_string(m).expect("failed to serialize")],
+        )
+        .expect("failed to save a mission");
+    }
+
     let taken: Vec<(String, i64)> = meta.taken.iter().map(|c| (format!("taken:{},{}", c.x, c.y), 1)).collect();
     for (key, value) in [
         ("next_id".to_string(), meta.next_id as i64),
@@ -235,6 +261,21 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].position, Some(quay), "the ship is not where it was last moored");
         assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none() && c.away == 0));
+    }
+
+    /// The town's missions outlive a restart, finished and open, with
+    /// their steps as they stood.
+    #[test]
+    fn missions_are_saved() {
+        let path = std::env::temp_dir().join(format!("sprawl-missions-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut missions = crate::missions::Missions::default().list;
+        missions[0].steps[1].done = true;
+        missions[0].finished = Some(7);
+        save(&path, &[], &[], Meta { missions: missions.clone(), ..Meta::default() });
+        let (_, meta) = load(&path);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(serde_json::to_string(&meta.missions).unwrap(), serde_json::to_string(&missions).unwrap());
     }
 
     /// A draft outlives a restart, and one rubbed out is gone after it.

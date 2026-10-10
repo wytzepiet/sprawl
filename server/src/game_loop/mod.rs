@@ -252,6 +252,8 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
         // it.
         crate::health::SIM_TIME.store(sim_time, std::sync::atomic::Ordering::Relaxed);
 
+        // Before the flush, which takes the lumps a mission reads.
+        crate::missions::check(&mut world, now);
         flush_dirty(&mut world, &mut clients, clock(now, speed));
 
         if last_persist.elapsed() >= PERSIST_INTERVAL {
@@ -275,6 +277,7 @@ fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock
         growth: crate::economy::growth(world, clk.now),
         sea: crate::haul::sea(world),
         drafts: crate::drafts::all(world),
+        missions: world.missions.shown(clk.now),
         terrain_seed: world.terrain_seed,
         island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
     })
@@ -295,6 +298,9 @@ fn load_world(db_path: &Path) -> (World, GameTime) {
         world.treasury = meta.treasury;
         world.build = crate::tree::Build::load(meta.taken);
         world.drafts = meta.drafts.clone();
+        if !meta.missions.is_empty() {
+            world.missions.list = meta.missions;
+        }
         world
     };
     // SPRAWL_ALL: the whole tree and a bottomless treasury, to test any building.
@@ -329,6 +335,7 @@ fn persist(world: &mut World, db_path: &Path, sim_time: GameTime, drafted: bool)
             treasury: world.treasury,
             taken: world.build.taken(),
             drafts: world.drafts.clone(),
+            missions: world.missions.list.clone(),
         },
     );
     println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());
@@ -342,6 +349,8 @@ fn handle_player_action(
     message: ClientMessage,
     now: GameTime,
 ) {
+    // Anything the mayor does may do a mission's step.
+    world.missions.stir();
     match message {
         ClientMessage::Build(step) => {
             crate::drafts::draw(world, owner, step);
@@ -699,6 +708,9 @@ const MIDNIGHT: EntityId = EntityId::MAX;
 /// Population follows what changed, and whoever's situation changed gets to
 /// think about it. And the day is always due to turn.
 fn settle_and_wake(world: &mut World, events: &mut EventQueue) {
+    if !world.unsettled.is_empty() {
+        world.missions.stir();
+    }
     for id in world.settle() {
         wake_resident(world, events, id);
     }
@@ -2246,6 +2258,121 @@ mod tests {
         assert!(per_day >= 6.0, "{per_day} calls a day");
     }
 
+    /// The opening, done: what the town's situation waits for.
+    fn opening_done(world: &mut World) {
+        world.missions.list.iter_mut().for_each(|m| m.finished = Some(0));
+    }
+
+    /// A shelf emptied, or filled.
+    fn shelve(world: &mut World, at: EntityId, good: Good, level: f64) {
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object) {
+            b.stocks.get_mut(&good).unwrap().level = level;
+        }
+    }
+
+    /// A situation opens its mission when it first matters, once: a site
+    /// calls for stone that no depot in town has. Not during the opening,
+    /// not while a depot has some and only its van is busy, and not
+    /// again once open; and building the quarry it asks for finishes it
+    /// and pays.
+    #[test]
+    fn a_site_short_of_stone_asks_for_a_quarry_once() {
+        use crate::missions::Key;
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        for x in QUARRY_X - 5..QUARRY_X + 7 {
+            for y in 5..14 {
+                world.terrain.insert((x, y), TerrainType::Mountain);
+            }
+        }
+        let depot = build(&mut world, 30, BuildingKind::Depot, 1);
+        for good in [Good::Stone, Good::Timber, Good::Crates, Good::Fuel] {
+            shelve(&mut world, depot, good, if good == Good::Stone { 0.0 } else { 100.0 });
+        }
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let quarry = |world: &mut World| missions(world, 0).into_iter().filter(|m| m.0 == Key::Quarry).map(|m| m.2).collect::<Vec<_>>();
+        // Flats, a site of timber and stone, call for both, and the depot
+        // has no stone.
+        let at = GridCoord { x: 100, y: 1 };
+        let (facing, _, _) = world.site_for(at, BuildingKind::Apartment).unwrap();
+        let flats = world.place_building(at, BuildingKind::Apartment, facing).unwrap();
+        world.open_door(flats);
+        calls::turn(&mut world, &mut events, flats, 0);
+        assert!(world.calls.iter().any(|c| c.at == flats && c.good == Good::Stone && c.answered_by.is_none()), "the flats never called for stone");
+        assert_eq!(quarry(&mut world), [false; 0], "it opened during the opening");
+        opening_done(&mut world);
+        // A depot with stone sends its van, and the town is not short.
+        shelve(&mut world, depot, Good::Stone, 10.0);
+        calls::dispatch(&mut world, &mut events, 0);
+        assert!(world.calls.iter().any(|c| c.at == flats && c.good == Good::Stone && c.answered_by.is_some()), "the van never set out");
+        assert_eq!(quarry(&mut world), [false; 0], "it opened while the depot had stone");
+        // Then the shelf is empty, and the flats call again.
+        world.calls.clear();
+        shelve(&mut world, depot, Good::Stone, 0.0);
+        calls::turn(&mut world, &mut events, flats, 0);
+        assert_eq!(quarry(&mut world), [false], "no depot has stone, and nothing asked for a quarry");
+        calls::dispatch(&mut world, &mut events, 0);
+        calls::turn(&mut world, &mut events, flats, 0);
+        assert_eq!(quarry(&mut world), [false], "it opened twice");
+        let before = world.treasury;
+        build(&mut world, QUARRY_X, BuildingKind::Quarry, 1);
+        settle_and_wake(&mut world, &mut events);
+        assert_eq!(quarry(&mut world), [true], "the quarry stands and the mission is open");
+        assert!((world.treasury - before - 50.0).abs() < 1e-9, "the quarry's mission paid {}", world.treasury - before);
+        let _ = intersections;
+    }
+
+    /// A car low on fuel with nowhere in town to fill it asks for a gas
+    /// station, once the opening is done; a full tank does not.
+    #[test]
+    fn a_car_running_dry_asks_for_a_gas_station() {
+        use crate::missions::Key;
+        use crate::needs::Need;
+        let mut world = street();
+        let house = build(&mut world, 10, BuildingKind::House, 1);
+        let mut events = EventQueue::new();
+        settle_and_wake(&mut world, &mut events);
+        let id = world.household(house)[0];
+        let car = match world.objects.get(id).map(|e| &e.object) {
+            Some(GameObject::Resident(r)) => r.car,
+            _ => unreachable!(),
+        };
+        if let Some(GameObject::Resident(r)) = world.objects.get_mut(id).map(|e| &mut e.object) {
+            r.at = Some(house);
+        }
+        let tank = |world: &mut World, full: f64| {
+            if let Some(GameObject::Car(c)) = world.objects.get_mut(car).map(|e| &mut e.object) {
+                let s = c.stocks.get_mut(&Need::Fuel).unwrap();
+                s.level = s.cap * full;
+            }
+        };
+        let pump = |world: &World| world.missions.list.iter().filter(|m| m.key == Key::Pump).count();
+        tank(&mut world, 0.1);
+        handle_resident_wake(&mut world, &mut events, id, 0);
+        assert_eq!(pump(&world), 0, "it opened during the opening");
+        opening_done(&mut world);
+        tank(&mut world, 0.9);
+        handle_resident_wake(&mut world, &mut events, id, 1);
+        assert_eq!(pump(&world), 0, "a full tank asked for a pump");
+        tank(&mut world, 0.1);
+        handle_resident_wake(&mut world, &mut events, id, 2);
+        handle_resident_wake(&mut world, &mut events, id, 3);
+        assert_eq!(pump(&world), 1, "a dry tank with nowhere to fill opened {} missions", pump(&world));
+    }
+
+    /// The open missions' steps, by mission, as the tick reads them.
+    fn missions(world: &mut World, now: GameTime) -> Vec<(crate::missions::Key, Vec<bool>, bool)> {
+        crate::missions::check(world, now);
+        world.missions.list.iter().map(|m| (m.key, m.steps.iter().map(|s| s.done).collect(), m.finished.is_some())).collect()
+    }
+
+    /// The opening's steps done.
+    fn opening(world: &mut World, now: GameTime) -> Vec<bool> {
+        missions(world, now).into_iter().find(|m| m.0 == crate::missions::Key::Opening).expect("no opening").1
+    }
+
     /// The opening, docs/game.md: a harbour, a depot, a street between
     /// them. The first ferry comes in on time with the starter pack and
     /// the tug lands it in the trailer park, for nothing; the mayor taps
@@ -2253,12 +2380,16 @@ mod tests {
     /// shelf; standing orders fetch the rest. A house is a site until a
     /// van brings its timber; then its settlers come on the next ferry and
     /// drive home. A box of crates sold goes out on the ferry, paid as it
-    /// casts off; and the ferry keeps its timetable throughout.
+    /// casts off; and the ferry keeps its timetable throughout. The
+    /// opening mission ticks off each step as the town does it, on the
+    /// server, and pays when the last is done; the trunk follows it.
     #[test]
     fn the_opening_from_the_harbour() {
+        use crate::missions::Key;
         use crate::world::sea::{DWELL, FIRST_CALL};
         let mut world = street();
         let harbour = harbour_of(&world);
+        assert_eq!(opening(&mut world, 0), [true, false, false, false, false], "the harbour stands, and nothing else");
         let x = HARBOUR_X - 12;
         let (facing, _, _) = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
         let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
@@ -2268,6 +2399,7 @@ mod tests {
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);
+        assert_eq!(opening(&mut world, 0), [true, true, true, false, false], "a depot on the harbour's street");
         let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
         let tug = world.tug_of(harbour).expect("the harbour's tug");
         let lorry = crate::haul::lorry_of(&world, depot).expect("the depot's lorry");
@@ -2316,6 +2448,7 @@ mod tests {
         assert!(stock(&world) > 0.0, "the tapped lorry brought nothing home in two hours");
         assert!(car_of(&world, lorry).hitched.is_some_and(|t| t.empty()), "the empty did not stay on the hitch");
         assert!(world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
+        assert_eq!(opening(&mut world, now), [true, true, true, true, false], "the box fetched");
 
         // A second lorry, bought from the world, and standing orders for
         // both: they fetch the rest.
@@ -2355,6 +2488,17 @@ mod tests {
         let until = now + turn + DWELL + day / 6;
         while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
         assert!(settlers.iter().all(|&id| at_of(&world, id) == Some(house)), "the settlers never got home");
+        // The opening done, and paid; standing orders were given above, so
+        // the trunk's first is done as it opens, and the next waits on a
+        // rule for stone.
+        let before = world.treasury;
+        assert_eq!(opening(&mut world, now), [true; 5], "the settlers came");
+        assert!((world.treasury - before - 125.0).abs() < 1e-9, "the opening and standing orders paid {}", world.treasury - before);
+        let trunk = |world: &mut World, now| missions(world, now).into_iter().map(|(k, _, done)| (k, done)).collect::<Vec<_>>();
+        assert_eq!(trunk(&mut world, now), [(Key::Opening, true), (Key::Standing, true), (Key::Stone, false)]);
+        let rule = crate::protocol::Rule { keep: 20.0, fill: 40.0, sell: None };
+        handle_player_action(&mut world, &mut events, &mut intersections, player, ClientMessage::SetRule { depot, good: Good::Stone, rule: Some(rule) }, now);
+        assert_eq!(trunk(&mut world, now)[2..], [(Key::Stone, true), (Key::Sell, false)]);
 
         // A box of crates sold: out on the ferry, paid as it casts off.
         let before = world.treasury;
@@ -2364,6 +2508,7 @@ mod tests {
         let sold = world.town.on(now).sold.get(&Good::Crates).copied().unwrap_or(0.0);
         assert!((sold - crate::economy::export(Good::Crates, 100.0)).abs() < 1e-6, "the box went out for {sold}");
         assert!(world.lumps.iter().any(|l| l.building == harbour && l.coins > 0.0), "no coins landed at the harbour");
+        assert_eq!(trunk(&mut world, now)[3], (Key::Sell, true), "the box sold");
         let _ = before;
     }
 }

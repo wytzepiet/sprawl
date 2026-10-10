@@ -124,6 +124,8 @@ pub struct World {
     /// Each player's draft: the strokes of their hand not yet built
     /// (`drafts.rs`). Saved, so a draft outlives a restart.
     pub drafts: std::collections::BTreeMap<crate::protocol::OwnerId, Vec<crate::drafts::Stroke>>,
+    /// The town's missions (`missions.rs`). Saved.
+    pub missions: crate::missions::Missions,
 }
 
 use crate::protocol::GridCoord;
@@ -176,6 +178,7 @@ impl World {
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
             drafts: Default::default(),
+            missions: Default::default(),
         }
     }
 
@@ -213,6 +216,7 @@ impl World {
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
             drafts: Default::default(),
+            missions: Default::default(),
             objects,
         };
         // Rebuild the spatial index and the road index from loaded objects.

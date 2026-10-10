@@ -42,3 +42,6 @@ export type { Trailer } from "./Trailer";
 export type { Draft } from "./Draft";
 export type { Line } from "./Line";
 export type { Mark } from "./Mark";
+export type { Mission } from "./Mission";
+export type { Step } from "./Step";
+export type { Goal } from "./Goal";

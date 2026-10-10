@@ -1,0 +1,316 @@
+//! Missions: a few steps, each a fact the server reads off the town, a
+//! line of text each, and a reward when the last is done. The opening is
+//! one, the trunk follows it, and the town's situation opens the rest
+//! when something first matters. docs/missions.md.
+//!
+//! Nothing here runs per tick. A mission's steps are read when something
+//! that could have done one happened (`stir`): a build settled, a command,
+//! a box unloaded, coins in, a settler off the ferry. A situation is
+//! sensed where the server already finds it (`sense`): a call nothing in
+//! town can answer, a car low on fuel with nowhere to fill.
+
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+use crate::engine::GameTime;
+use crate::protocol::{Building, BuildingKind, EntityId, GameObject, Good, Lump, DAY_MS};
+use crate::world::World;
+
+/// Which mission this is: each opens once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Key {
+    Opening,
+    Standing,
+    Stone,
+    Sell,
+    Pump,
+    Quarry,
+    Sawmill,
+    Farm,
+}
+
+/// What a step asks of the town: a fact read off the world.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "kind", content = "data")]
+pub enum Goal {
+    /// A building of this kind stands, built and reached by a street.
+    Stands(BuildingKind),
+    /// A depot's street joined to the harbour's.
+    Joined,
+    /// Something on a depot's shelf: a box fetched and unloaded.
+    Fetched,
+    /// Settlers in town: someone has driven off the ferry.
+    Settled,
+    /// A depot's lorries on standing orders.
+    Standing,
+    /// A depot keeps this good by a rule.
+    Keeps(Good),
+    /// Something sold to the world.
+    Sold,
+}
+
+/// What finishing a mission pays. Coins for now; XP once the level means
+/// something.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "kind", content = "data")]
+pub enum Reward {
+    Coins(f64),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Step {
+    pub goal: Goal,
+    /// What to do, paragraphs apart by a blank line.
+    pub text: String,
+    pub done: bool,
+    /// The building the step's button acts on: the depot, for a depot's
+    /// goal.
+    #[ts(type = "number | null")]
+    pub at: Option<EntityId>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Mission {
+    pub key: Key,
+    pub title: String,
+    pub steps: Vec<Step>,
+    pub reward: Reward,
+    #[ts(type = "number")]
+    pub opened: GameTime,
+    #[ts(type = "number | null")]
+    pub finished: Option<GameTime>,
+}
+
+/// When a mission opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum When {
+    /// With the town.
+    Start,
+    /// When another is finished: the trunk.
+    After(Key),
+    /// A call for this good that no depot in town has any of.
+    Short(Good),
+    /// A car low on fuel with nowhere to fill it.
+    Dry,
+}
+
+struct Row {
+    key: Key,
+    when: When,
+    title: &'static str,
+    steps: &'static [(Goal, &'static str)],
+    reward: Reward,
+}
+
+/// Every mission the town can be given, a row each. A situation's waits
+/// for the opening, and opens only if its steps are not already done.
+const ROWS: &[Row] = &[
+    Row {
+        key: Key::Opening,
+        when: When::Start,
+        title: "The opening",
+        steps: &[
+            (Goal::Stands(BuildingKind::Harbour), "Its back to the sea, open water straight out behind it: the ferry berths there. Built, it stands at once.\n\nEvery building stands on a street: draw one along the coast first, then paint the harbour between it and the sea, three tiles by three."),
+            (Goal::Stands(BuildingKind::Depot), "Where the town keeps what lands. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone."),
+            (Goal::Joined, "From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.\n\nA street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile."),
+            (Goal::Fetched, "Timber, stone, crates and fuel, the world's gift, come on the first ferry, and the tug lands them in the trailer park. Tap the depot's lorry to fetch them, and ride along."),
+            (Goal::Settled, "Draw a row of them, and Build: each is a site till a van brings its four timber, and the bill says if the depot has it. Then the next ferry brings their people.\n\nThe rest of the pack: tap the lorry again, or give it standing orders on the depot's card."),
+        ],
+        reward: Reward::Coins(100.0),
+    },
+    Row {
+        key: Key::Standing,
+        when: When::After(Key::Opening),
+        title: "Standing orders",
+        steps: &[(Goal::Standing, "Give the depot's lorry standing orders: it fetches each box as it lands, and you need not tap it again.")],
+        reward: Reward::Coins(25.0),
+    },
+    Row {
+        key: Key::Stone,
+        when: When::After(Key::Standing),
+        title: "Keep stone in stock",
+        steps: &[(Goal::Keeps(Good::Stone), "Roads are laid on stone, and what the depot lacks comes express, at twice the price. A rule on the depot keeps a box in: under the line, it orders more on the next ferry.")],
+        reward: Reward::Coins(25.0),
+    },
+    Row {
+        key: Key::Sell,
+        when: When::After(Key::Stone),
+        title: "Sell to the world",
+        steps: &[(Goal::Sold, "Sell a box of crates from the depot: its lorry takes it to the ferry, and the coins land as it casts off. What the town makes, it can sell.")],
+        reward: Reward::Coins(25.0),
+    },
+    Row {
+        key: Key::Pump,
+        when: When::Dry,
+        title: "Cars running dry",
+        steps: &[(Goal::Stands(BuildingKind::GasStation), "Cars are running low on fuel, with nowhere in town to fill up: build a gas station on the high street, where they pass.")],
+        reward: Reward::Coins(50.0),
+    },
+    Row {
+        key: Key::Quarry,
+        when: When::Short(Good::Stone),
+        title: "Sites wait on stone",
+        steps: &[(Goal::Stands(BuildingKind::Quarry), "Your sites wait on stone, and no depot has any: build a quarry at the mountain's foot, and the depot's lorry fetches from its yard.")],
+        reward: Reward::Coins(50.0),
+    },
+    Row {
+        key: Key::Sawmill,
+        when: When::Short(Good::Timber),
+        title: "Sites wait on timber",
+        steps: &[(Goal::Stands(BuildingKind::Sawmill), "Your sites wait on timber, and no depot has any: build a sawmill at the forest's edge, and the depot's lorry fetches from its yard.")],
+        reward: Reward::Coins(50.0),
+    },
+    Row {
+        key: Key::Farm,
+        when: When::Short(Good::Crates),
+        title: "Shelves run empty",
+        steps: &[(Goal::Stands(BuildingKind::Farm), "Shops call for crates, and no depot has any: build a farm on open grass. Its crates feed the town, and what is over sells.")],
+        reward: Reward::Coins(50.0),
+    },
+];
+
+/// A finished mission stays in what the clients are sent this long, so
+/// its last tick and its reward are seen: an hour of the town's day.
+const SHOWN_MS: GameTime = DAY_MS as GameTime / 24;
+
+/// The town's missions, open and finished, and whether something has
+/// happened since they were last read.
+#[derive(Debug, Clone)]
+pub struct Missions {
+    pub list: Vec<Mission>,
+    pub stirred: bool,
+}
+
+impl Default for Missions {
+    /// A new town's: what opens with it.
+    fn default() -> Self {
+        let list = ROWS.iter().filter(|r| r.when == When::Start).map(|r| open(r, 0)).collect();
+        Self { list, stirred: true }
+    }
+}
+
+impl Missions {
+    /// Something happened that could have done a step.
+    pub fn stir(&mut self) {
+        self.stirred = true;
+    }
+
+    fn has(&self, key: Key) -> bool {
+        self.list.iter().any(|m| m.key == key)
+    }
+
+    fn finished(&self, key: Key) -> bool {
+        self.list.iter().any(|m| m.key == key && m.finished.is_some())
+    }
+
+    /// What the clients are sent: every open mission, and those finished
+    /// within the hour.
+    pub fn shown(&self, now: GameTime) -> Vec<Mission> {
+        self.list.iter().filter(|m| m.finished.is_none_or(|f| now < f + SHOWN_MS)).cloned().collect()
+    }
+}
+
+fn open(row: &Row, now: GameTime) -> Mission {
+    Mission {
+        key: row.key,
+        title: row.title.into(),
+        steps: row.steps.iter().map(|&(goal, text)| Step { goal, text: text.into(), done: false, at: None }).collect(),
+        reward: row.reward,
+        opened: now,
+        finished: None,
+    }
+}
+
+/// The standing depots, by id.
+fn depots(world: &World) -> impl Iterator<Item = (EntityId, &Building)> {
+    world.objects.iter().filter_map(|e| match e.object {
+        GameObject::Building(ref b) if b.site.is_none() && crate::economy::depot(b.kind) => Some((e.id, b)),
+        _ => None,
+    })
+}
+
+/// Is the fact true of the town now.
+fn met(world: &World, goal: Goal) -> bool {
+    match goal {
+        Goal::Stands(kind) => world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == kind && b.site.is_none()) && world.street_of(e.id).is_some()),
+        Goal::Joined => depots(world).any(|(id, _)| world.street_of(id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
+        Goal::Fetched => depots(world).any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
+        Goal::Settled => world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
+        Goal::Standing => depots(world).any(|(_, b)| b.standing),
+        Goal::Keeps(good) => depots(world).any(|(_, b)| b.rules.contains_key(&good)),
+        Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
+    }
+}
+
+/// What a step's button acts on.
+fn at(world: &World, goal: Goal) -> Option<EntityId> {
+    match goal {
+        Goal::Stands(_) | Goal::Settled => None,
+        _ => depots(world).next().map(|(id, _)| id),
+    }
+}
+
+/// Read every open mission's steps, if anything happened that could have
+/// done one; pay for what is finished, and open what follows it. A box
+/// unloaded and coins in are lumps, so they need no hook of their own.
+pub fn check(world: &mut World, now: GameTime) {
+    let landed = world.lumps.iter().any(|l| l.units > 0.0 || l.coins > 0.0);
+    if !std::mem::take(&mut world.missions.stirred) && !landed {
+        return;
+    }
+    loop {
+        for i in 0..world.missions.list.len() {
+            if world.missions.list[i].finished.is_some() {
+                continue;
+            }
+            for s in 0..world.missions.list[i].steps.len() {
+                let step = &world.missions.list[i].steps[s];
+                let (done, here) = (step.done || met(world, step.goal), at(world, step.goal));
+                let step = &mut world.missions.list[i].steps[s];
+                (step.done, step.at) = (done, here);
+            }
+            if world.missions.list[i].steps.iter().all(|s| s.done) {
+                world.missions.list[i].finished = Some(now);
+                let Reward::Coins(coins) = world.missions.list[i].reward;
+                pay(world, coins, now);
+            }
+        }
+        let next: Vec<Mission> = ROWS.iter().filter(|r| matches!(r.when, When::After(k) if world.missions.finished(k)) && !world.missions.has(r.key)).map(|r| open(r, now)).collect();
+        if next.is_empty() {
+            return;
+        }
+        world.missions.list.extend(next);
+    }
+}
+
+/// A reward: coins from the world, landing at the harbour as trade does.
+fn pay(world: &mut World, coins: f64, now: GameTime) {
+    world.treasury += coins;
+    if let Some(&harbour) = world.harbours.keys().next() {
+        world.lumps.push(Lump { building: harbour, coins, gdp: 0.0, at: now, good: None, units: 0.0 });
+    }
+}
+
+/// The server found a situation: the mission it opens does, once, after
+/// the opening, and only if the town has not already done what it asks.
+pub fn sense(world: &mut World, when: When, now: GameTime) {
+    let Some(row) = ROWS.iter().find(|r| r.when == when && !world.missions.has(r.key)) else { return };
+    if !world.missions.finished(Key::Opening) {
+        return;
+    }
+    // Short is short in the whole town: a van busy elsewhere is not.
+    let real = match when {
+        When::Short(good) => !depots(world).any(|(_, b)| b.stocks.get(&good).is_some_and(|s| s.level > 0.0)),
+        _ => true,
+    };
+    if !real || row.steps.iter().all(|&(goal, _)| met(world, goal)) {
+        return;
+    }
+    world.missions.list.push(open(row, now));
+    world.missions.stir();
+}

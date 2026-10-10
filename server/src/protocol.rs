@@ -912,6 +912,9 @@ pub struct StateUpdate {
     /// Every player's draft and its bill.
     #[serde(default)]
     pub drafts: Vec<crate::drafts::Draft>,
+    /// The town's open missions, and those just finished.
+    #[serde(default)]
+    pub missions: Vec<crate::missions::Mission>,
     #[ts(type = "number")]
     pub terrain_seed: u32,
     /// The island's map, which the client keeps its camera inside.
