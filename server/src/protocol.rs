@@ -86,11 +86,15 @@ pub enum BuildingKind {
     /// ferry lands settlers and boxes and takes boxes away
     /// (`world/sea.rs`). Placed by the mayor, with its back to the sea.
     Harbour,
+    /// Where timber comes from: hands felling the forest round it and
+    /// sawing it, the planks stacked in its yard for a depot's lorry.
+    /// Placed by the mayor, beside the woods.
+    Sawmill,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 10] = [
+    pub const ALL: [BuildingKind; 11] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -101,6 +105,7 @@ impl BuildingKind {
         BuildingKind::Depot,
         BuildingKind::Farm,
         BuildingKind::Harbour,
+        BuildingKind::Sawmill,
     ];
 }
 

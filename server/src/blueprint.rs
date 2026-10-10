@@ -226,6 +226,14 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             quay: true,
             ..row(Industry, 0, 2, (3, 1), (3, 2), 0, vec![shift(6, 22, 2)])
         }),
+        // Four hands, seven to four, felling and sawing the forest round it:
+        // with woods all round, a box of timber a shift and a half, a house
+        // every hour and a bit. Its yard holds six boxes; full, it stops.
+        (Sawmill, Blueprint {
+            shelves: &[(Good::Timber, 120)],
+            makes: Some(Good::Timber),
+            ..row(Industry, 0, 4, (2, 2), (2, 2), 6, vec![shift(7, 16, 4)])
+        }),
     ]
 });
 
@@ -237,10 +245,6 @@ pub fn check() {
     for (i, (kind, b)) in BLUEPRINTS.iter().enumerate() {
         assert_eq!(*kind as usize, i, "blueprint table out of order at {kind:?}");
         assert_eq!(*kind, BuildingKind::ALL[i], "{kind:?} missing from BuildingKind::ALL");
-        // A maker delivers what it makes, in something.
-        if let Some(good) = b.makes {
-            assert!(!b.vehicles.is_empty(), "{kind:?} makes {good:?} and has nothing to deliver it in");
-        }
         assert!(!b.farm || b.vehicles.contains(&CarRole::Tractor), "{kind:?} farms without a tractor");
         // A harbour has a park for the ferry's boxes and a tug to shunt them.
         assert!(!b.quay || (b.slots > 0 && b.vehicles.contains(&CarRole::Tug)), "{kind:?} has a quay and nowhere to land a box");

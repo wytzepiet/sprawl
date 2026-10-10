@@ -124,7 +124,36 @@ pub fn makes(kind: BuildingKind, good: Good) -> bool {
 /// farm's land comes to. A shelf with less room than this offers no work
 /// meanwhile (`hiring`).
 pub fn lump(kind: BuildingKind) -> f64 {
-    if farm(kind) { crop(kind, crate::world::fields::capacity(kind) as usize) } else { 0.0 }
+    if farm(kind) {
+        crop(kind, crate::world::fields::capacity(kind) as usize)
+    } else if blueprint(kind).makes.is_some() {
+        blueprint(kind).jobs as f64 * HANDS
+    } else {
+        0.0
+    }
+}
+
+/// What an hour of a hand's work makes at a maker that is not a farm, in
+/// the woods: half a unit of timber, so a sawmill's four make a box a day
+/// and a house's timber in two hours.
+const HANDS: f64 = 0.5;
+
+/// How much of the forest within reach of a building is standing: the
+/// forest tiles within five of it nothing stands on, against thirty, at
+/// most one. A sawmill in the open makes nothing; at the forest's edge,
+/// half; in the woods, all it can.
+pub fn woods(world: &World, building: EntityId) -> f64 {
+    let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return 0.0 };
+    let (o, (w, h)) = World::bounds(&b.tiles);
+    let mut n = 0;
+    for y in o.y - 5..o.y + h as i32 + 5 {
+        for x in o.x - 5..o.x + w as i32 + 5 {
+            if world.terrain.get(&(x, y)) == Some(&crate::protocol::TerrainType::Forest) && !world.occupied.contains_key(&(x, y)) && world.road_node_at(crate::protocol::GridCoord { x, y }).is_none() {
+                n += 1;
+            }
+        }
+    }
+    (n as f64 / 30.0).min(1.0)
 }
 
 /// Works land with a tractor. §12.8.
@@ -270,6 +299,19 @@ pub fn visited(world: &mut World, at: EntityId, need: Need, units: f64, now: Gam
         None => 0.0,
     };
     added(world, at, gdp, now);
+    // A shift at a maker off the land makes its good, into the yard, as
+    // much as the woods round it give: GDP at the world's price.
+    if need == Need::Work
+        && !farm(kind)
+        && let Some(good) = blueprint(kind).makes
+    {
+        let made = units * HANDS * woods(world, at);
+        let Some(GameObject::Building(b)) = world.objects.get_mut(at).map(|e| &mut e.object) else { return };
+        let Some(yard) = b.stocks.get_mut(&good) else { return };
+        let made = made.min(yard.short());
+        yard.add(made);
+        added(world, at, made * world_price(good), now);
+    }
 }
 
 /// A van loads at a depot: as much of the order as the shelf has. §7.
@@ -714,6 +756,36 @@ mod tests {
         assert_eq!(world.treasury, STAKE, "a building cost coins");
         let second = world.place_building(at(40), Depot, 2).unwrap();
         assert!(building(&world, second).site.is_some(), "a second depot stood for nothing");
+    }
+
+    /// A sawmill's hands make timber as they work, as much as the woods
+    /// round it give, GDP at the world's price; one in the open makes
+    /// nothing, and a full yard stops the line.
+    #[test]
+    fn a_sawmill_makes_timber_from_the_woods_round_it() {
+        let mut world = town();
+        for y in -6..6 {
+            for x in 40..60 {
+                if y != 0 {
+                    world.terrain.insert((x, y), crate::protocol::TerrainType::Forest);
+                }
+            }
+        }
+        let woods = world.place_on_street(at(48), Sawmill).unwrap();
+        let open = world.place_on_street(at(8), Sawmill).unwrap();
+        assert!(makes(Sawmill, Good::Timber) && !buys(Sawmill, Good::Timber));
+        assert_eq!(super::woods(&world, open), 0.0);
+        assert!(super::woods(&world, woods) > 0.9, "the woods are thin: {}", super::woods(&world, woods));
+        visited(&mut world, open, Need::Work, 9.0, 0);
+        assert_eq!(shelf(&world, open, Good::Timber).level, 0.0, "timber from no trees");
+        visited(&mut world, woods, Need::Work, 9.0, 0);
+        let made = shelf(&world, woods, Good::Timber).level;
+        assert!((made - 9.0 * HANDS * super::woods(&world, woods)).abs() < 1e-9, "a shift made {made}");
+        assert!((world.gdp - made * world_price(Good::Timber)).abs() < 1e-9);
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(woods).map(|e| &mut e.object) {
+            b.stocks.get_mut(&Good::Timber).unwrap().level = 119.0;
+        }
+        assert!(!hiring(&world, woods), "a full yard hires");
     }
 
     #[test]
