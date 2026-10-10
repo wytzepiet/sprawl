@@ -821,15 +821,15 @@ mod tests {
         assert!(!tiles(&world, farm).is_empty(), "the farm claimed no land");
     }
 
-    /// The farm from the save of 2026-09-15: seed 7, a diagonal highway on
-    /// both flanks a tile off the plot, the farm placed beside it and
-    /// reached by a door drawn later. Its tractor stands in a dock,
+    /// The farm from the save of 2026-09-15: a diagonal highway on both
+    /// flanks a tile off the plot, on open grass, the farm placed beside
+    /// it and reached by a door drawn later. Its tractor stands in a dock,
     /// and its land, though both flanks are lane and not field, lies
     /// behind the barn across the lane.
     #[test]
     fn the_farm_by_the_diagonal_highway() {
         let mut world = World::new();
-        world.terrain = crate::terrain::generate(7);
+        world.terrain = (40..80).flat_map(|x| (30..60).map(move |y| ((x, y), TerrainType::Grass))).collect();
         world.place_road_path_of(&[(57, 46), (58, 45), (59, 44), (60, 43), (61, 42)].map(|(x, y)| GridCoord { x, y }), true);
         world.place_road_path_of(&[(61, 42), (62, 43), (62, 44), (63, 45), (64, 46), (65, 47)].map(|(x, y)| GridCoord { x, y }), true);
         let farm = world.place_building(GridCoord { x: 60, y: 45 }, BuildingKind::Farm, 0).expect("the farm");
