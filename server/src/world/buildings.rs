@@ -147,8 +147,13 @@ impl World {
         (origin, crate::blueprint::lie(kind, facing, size))
     }
 
-    /// A building's yard tiles, lying this way, if its kind keeps a yard.
+    /// A building's yard tiles, lying this way, if its kind keeps a yard
+    /// and it is big enough to work: one painted short of its smallest
+    /// plot has no yard yet, as it has no door.
     pub fn yard_of(tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<Vec<GridCoord>> {
+        if !Self::works(tiles, kind) {
+            return None;
+        }
         let (o, p) = Self::lie(tiles, kind, facing);
         let ((lx, ly), ls) = p.lot?;
         Some(Self::footprint(GridCoord { x: o.x + lx as i32, y: o.y + ly as i32 }, ls).filter(|t| tiles.contains(t)).collect())
@@ -486,6 +491,17 @@ impl World {
         if !self.may_paint(kind, from, to) {
             return None;
         }
+        if let Some(tiles) = Self::whole(kind, to) {
+            let facing = self.seaward(&tiles, kind).next()?;
+            let id = self.insert_at(GameObject::Building(Building::new(kind, tiles.clone(), facing)), Some(tiles[0]));
+            for &t in &tiles {
+                self.take_stub(id, t);
+                self.occupy(id, t);
+            }
+            self.founded(id);
+            self.open_door(id);
+            return Some(id);
+        }
         let here = self.drawn_from(kind, from, to);
         let grows = grows(kind);
         if let (Some(a), Some(&b)) = (here, self.occupied.get(&(to.x, to.y))) {
@@ -523,6 +539,9 @@ impl World {
     /// the step came from. The one rule, which the brush is refused by and
     /// the client's dots mirror (`client/src/engine/may.ts`).
     pub fn may_paint(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> bool {
+        if let Some(tiles) = Self::whole(kind, to) {
+            return from == to && tiles.iter().all(|&t| self.is_buildable(t) || self.is_driveway_stub(t)) && self.seaward(&tiles, kind).next().is_some();
+        }
         match self.occupied.get(&(to.x, to.y)) {
             Some(&there) => {
                 self.kind_at(there) == Some(kind)
@@ -537,10 +556,27 @@ impl World {
     /// or, new, on a tile a street may run a drive to. The mayor paints
     /// only what can work; a town written as a fixture stands as written.
     pub fn would_be_reached(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> bool {
+        if let Some(tiles) = Self::whole(kind, to) {
+            return self.seaward(&tiles, kind).any(|f| self.driveway_for(&tiles, kind, f, false).is_some());
+        }
         self.occupied.contains_key(&(to.x, to.y))
             || (grows(kind) && self.drawn_from(kind, from, to).is_some())
             || self.road_node_at(to).is_some()
             || self.driveway_between(&[to], None, None, true).is_some()
+    }
+
+    /// The plot a kind placed whole stands on, at a tap on its middle
+    /// tile: the harbour, turned by the sea behind it, and nothing without
+    /// its quay and its park, so it is never painted a tile at a time.
+    /// None for a kind that is painted.
+    pub fn whole(kind: BuildingKind, at: GridCoord) -> Option<Vec<GridCoord>> {
+        let (w, h) = crate::blueprint::plot(kind, 0).size;
+        crate::blueprint::blueprint(kind).quay.then(|| Self::footprint(GridCoord { x: at.x - w as i32 / 2, y: at.y - h as i32 / 2 }, (w, h)).collect())
+    }
+
+    /// The ways a harbour on these tiles may face: open sea behind its back.
+    pub fn seaward<'a>(&'a self, tiles: &'a [GridCoord], kind: BuildingKind) -> impl Iterator<Item = u8> + 'a {
+        (0..4).filter(move |&f| self.berth_at(tiles, kind, f).is_some())
     }
 
     /// The building of the kind on `from` beside `to`: what a step to `to`
@@ -600,7 +636,8 @@ impl World {
         let Some(&id) = self.occupied.get(&(tile.x, tile.y)) else { return false };
         let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return false };
         let (kind, facing) = (b.kind, b.facing);
-        let rest: Vec<GridCoord> = b.tiles.iter().copied().filter(|&t| t != tile).collect();
+        // A kind placed whole comes down whole.
+        let rest: Vec<GridCoord> = b.tiles.iter().copied().filter(|&t| t != tile && Self::whole(kind, t).is_none()).collect();
         if rest.is_empty() {
             // Its row lets go of it.
             for t in b.joined.clone() {

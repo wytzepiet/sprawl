@@ -66,7 +66,7 @@ export default function GrowthMeter() {
       </For>
       {/* What the day has done, beneath. */}
       <div class="soft serif italic absolute right-5 top-[58px] text-[13px] whitespace-nowrap">
-        {low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today`} · GDP {Math.floor(growth().gdp)}
+        {low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today`} · GDP today {Math.floor(growth().gdp)}
       </div>
     </div>
   );

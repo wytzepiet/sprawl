@@ -8,8 +8,9 @@ import {
 import { createConnection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
-import { hearSea } from "./sea";
+import { hearSea, tell } from "./sea";
 import { hearDrafts } from "./drafts";
+import { hearMissions } from "./missions";
 import type { Building,
   GameObjectEntry,
   ClientMessage,
@@ -279,6 +280,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         setGrowth(msg.data.growth);
         hearSea(msg.data.sea);
         hearDrafts(msg.data.drafts);
+        hearMissions(msg.data.missions);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
         break;
@@ -294,6 +296,9 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         break;
       case "Welcome":
         setMe(msg.data);
+        break;
+      case "News":
+        for (const n of msg.data) tell(n.text, n.sub, n.at, true);
         break;
       case "Pong":
         syncClock(msg.data);

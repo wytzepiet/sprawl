@@ -125,10 +125,13 @@ fn launch(
 
     // The driver's `at` points at the car for the whole ride; arrival points
     // it at the destination.
+    // A settler off the ferry, the first time they are anywhere: a
+    // mission may have waited for them.
     if let Some(entry) = world.objects.get_mut(owner)
         && let GameObject::Resident(ref mut r) = entry.object
+        && r.at.replace(car_id).is_none()
     {
-        r.at = Some(car_id);
+        world.missions.stir();
     }
 
     // The run it is setting off along starts here, so the first junction it

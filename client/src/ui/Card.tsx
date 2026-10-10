@@ -2,13 +2,14 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from
 import type { JSX } from "solid-js";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
-import { getEntity } from "../state/gameObjects";
-import { now, sailingOf } from "../state/sea";
-import { guideUp } from "./Guide";
+import { getEntity, useGame } from "../state/gameObjects";
+import { now, sailingOf, sea } from "../state/sea";
+import { track } from "./Shipments";
+import { missionsUp } from "./Missions";
 import { HarbourPanel, Timetable, type DepotLine } from "./Harbour";
 import { DepotPanel } from "./Depot";
 import { SitePanel, type MakerLine } from "./Site";
-import { Bar, Row, Section, To, type Link } from "./kit";
+import { Bar, Btn, Row, Section, To, type Link } from "./kit";
 import type { Building, BuildingKind, CarRole, Good, Need } from "../generated";
 
 interface Bucket {
@@ -124,7 +125,7 @@ export default function Card() {
   return (
     <Show when={card()}>
       {(c) => (
-        <div data-glass="card" style={{ "max-height": guideUp() ? "calc(100vh - 96px - 136px)" : "calc(100vh - 8.5rem)" }} class="ink card fixed top-24 left-6 z-40 w-[320px] overflow-y-auto rounded-[22px] text-sm select-none pb-1.5">
+        <div data-glass="card" style={{ "max-height": missionsUp() ? "calc(100vh - 96px - 136px)" : "calc(100vh - 8.5rem)" }} class="ink card fixed top-24 left-6 z-40 w-[320px] overflow-y-auto rounded-[22px] text-sm select-none pb-1.5">
           <Show when={c().kind === "resident"}>{ResidentCard(c() as Extract<Card, { kind: "resident" }>)}</Show>
           <Show when={c().kind === "car"}>{CarCard(c() as Extract<Card, { kind: "car" }>)}</Show>
           <Show when={building()} keyed>
@@ -188,11 +189,24 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
 const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry", Tug: "Tug" };
 
 function CarCard(c: Extract<Card, { kind: "car" }>) {
+  const { send } = useGame();
   const what = ROLE[c.role];
   const sailing = () => (c.role === "Ferry" ? sailingOf(c.owner.id) : undefined);
+  /** The tap the opening asks for: a depot's lorry, standing, sent to the
+   *  harbour, the camera riding along with it to the first box for it. */
+  const go = () => {
+    send({ type: "Send", data: { depot: c.owner.id } });
+    const box = sea.shipments.find((s) => s.leg === "Parked" && !s.outbound && (s.to === c.owner.id || s.to === null));
+    if (box) track(box.trailer, c.id);
+  };
   return (
     <>
       <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : c.role === "Ferry" ? `of the harbour` : "parked out of sight"} />
+      <Show when={c.role === "Truck" && !c.trip}>
+        <div class="px-4 pb-3">
+          <Btn big color="#A0714A" class="w-full" onClick={go}>Send to the harbour</Btn>
+        </div>
+      </Show>
       <Show when={sailing()}>{(s) => <Section title="Timetable"><Timetable sailing={s()} /></Section>}</Show>
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>

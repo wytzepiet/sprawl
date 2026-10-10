@@ -30,7 +30,8 @@ use crate::world::World;
 /// The rules a new depot comes with, drawn over it like any rule, so the
 /// player sees automation before they need to understand it (docs/game.md
 /// §Buildings): keep a box and a half of timber, a few days of a small
-/// town's meals, and a tank box for the vans.
+/// town's meals, and a tank box for the vans. They buy nothing until the
+/// depot has standing orders (`top_up`).
 pub fn first_rules() -> BTreeMap<Good, Rule> {
     BTreeMap::from([
         (Good::Timber, Rule { keep: 30.0, fill: 60.0, sell: None }),
@@ -117,24 +118,38 @@ pub fn book(world: &mut World, depot: EntityId, good: Good, boxes: u32) -> u32 {
     n
 }
 
-/// A depot's rules, read: for each good under its floor with what is
-/// already on its way, boxes enough to fill it are booked.
+/// A depot's rules, read, once the mayor has given it standing orders:
+/// for each good under its floor with what is already on its way, boxes
+/// enough to fill it are booked, and the news says so, with the price.
+/// Without standing orders a rule is only drawn, and spends nothing.
 pub fn top_up(world: &mut World, depot: EntityId) {
     let Some(b) = building(world, depot) else { return };
-    if b.site.is_some() {
+    if b.site.is_some() || !b.standing {
         return;
     }
-    let rules: Vec<(Good, Rule, f64)> = b.rules.iter().filter_map(|(&g, &r)| Some((g, r, b.stocks.get(&g)?.level))).collect();
-    for (good, rule, level) in rules {
+    let rules: Vec<(Good, Rule, f64, f64)> = b.rules.iter().filter_map(|(&g, &r)| Some((g, r, b.stocks.get(&g)?.level, b.stocks.get(&g)?.cap))).collect();
+    for (good, rule, level, cap) in rules {
         // What a maker in town has a load of comes from it, by the depot's
         // own fetch, not from over the sea.
         if made_in_town(world, good) {
             continue;
         }
         let have = level + incoming(world, depot, good);
+        // As many as fill it, but only whole boxes the shelf has room
+        // for: the lorry fetches a box only when it fits, and one bought
+        // past that would stand in the park, paid for, till it did.
+        let room = ((cap - have) / good.per_box()).floor().max(0.0) as u32;
         if have < rule.keep {
-            let boxes = ((rule.fill - have) / good.per_box()).ceil().max(1.0) as u32;
-            book(world, depot, good, boxes);
+            let boxes = (((rule.fill - have) / good.per_box()).ceil().max(1.0) as u32).min(room);
+            let n = if boxes > 0 { book(world, depot, good, boxes) } else { 0 };
+            if n > 0 {
+                let units = n as f64 * good.per_box();
+                world.news.push(crate::protocol::News {
+                    text: format!("Depot ordered {units:.0} {}", format!("{good:?}").to_lowercase()),
+                    sub: format!("under its keep line of {:.0}, −{:.0} as it lands", rule.keep, crate::economy::quote(good, n)),
+                    at: depot,
+                });
+            }
         }
     }
 }
@@ -496,6 +511,8 @@ pub fn set_standing(world: &mut World, events: &mut EventQueue, depot: EntityId,
     if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
         b.standing = on;
     }
+    // Its rules, read now they may buy.
+    top_up(world, depot);
     for lorry in lorries_of(world, depot) {
         events.wake(0, lorry);
     }
@@ -575,4 +592,55 @@ pub fn inspect(world: &World, now: GameTime) -> serde_json::Value {
         })
         .collect();
     json!({ "now": now, "summary": sea(world), "harbours": harbours, "lorries": lorries })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{BuildingKind, GridCoord, TerrainType};
+
+    #[test]
+    fn a_rule_buys_only_the_boxes_the_shelf_has_room_for() {
+        // Crates keep 80, fill to 200, on a shelf of 200, with 20 left:
+        // two boxes of a hundred would fill it, but the second could
+        // never be fetched, and would stand in the park, paid for.
+        let mut world = World::new();
+        for y in -8..41 {
+            for x in -60..100 {
+                world.terrain.insert((x, y), if y >= 4 { TerrainType::Sea } else { TerrainType::Grass });
+            }
+        }
+        world.place_road_path(&(-4..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        let harbour = world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Harbour).expect("the coast takes a harbour");
+        let depot = world.place_on_street(GridCoord { x: 20, y: -4 }, BuildingKind::Depot).expect("a depot by the street");
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            b.rules = first_rules();
+            for (g, s) in b.stocks.iter_mut() {
+                s.level = if *g == Good::Crates { 20.0 } else { s.cap };
+            }
+        }
+        world.treasury = 10_000.0;
+        // Its ferry, without the starter pack, which would count as on its way.
+        world.mark_harbours(0);
+        let ferry = world.ferry_of(harbour).expect("the harbour's ferry");
+        if let Some(GameObject::Car(c)) = world.objects.get_mut(ferry).map(|e| &mut e.object) {
+            c.booked.clear();
+        }
+        // Drawn, its rules spend nothing until the mayor gives it standing
+        // orders; then they buy, and the news says what, why and for how much.
+        let booked = |world: &World| match world.objects.get(ferry).map(|e| &e.object) {
+            Some(GameObject::Car(c)) => c.booked.iter().filter(|t| t.good == Some(Good::Crates)).count(),
+            _ => panic!("no ferry"),
+        };
+        top_up(&mut world, depot);
+        assert_eq!((booked(&world), world.news.len()), (0, 0), "a rule bought without standing orders");
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            b.standing = true;
+        }
+        top_up(&mut world, depot);
+        assert_eq!(booked(&world), 1);
+        let news = &world.news[0];
+        assert_eq!((news.text.as_str(), news.at), ("Depot ordered 100 crates", depot));
+        assert_eq!(news.sub, format!("under its keep line of 80, −{:.0} as it lands", crate::economy::quote(Good::Crates, 1)));
+    }
 }

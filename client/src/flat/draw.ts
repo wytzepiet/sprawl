@@ -7,6 +7,7 @@ import { colourOf, LIVERY, moment, PALETTE, type Moment } from "../engine/object
 import type { Rgb } from "../engine/rgb";
 import type { Building, Car, Draft, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Trailer } from "../generated";
 import type { Pose as Stand } from "../generated/Pose";
+import { lays } from "../engine/may";
 
 /**
  * The game drawn flat, on a 2D canvas: the browser's (the minimap) or
@@ -249,7 +250,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
         else if (b) for (const t of b.tiles) put(tiles, "doomed", [t.x, t.y]);
         else if (road.has(`${to.x},${to.y}`)) put(tiles, "doomed", [to.x, to.y]);
       } else if (typeof tool === "string") put(bands, look, [from.x + 0.5, from.y + 0.5, to.x + 0.5, to.y + 0.5]);
-      else put(tiles, look, [to.x, to.y]);
+      else for (const t of lays(step)) put(tiles, look, [t.x, t.y]);
     }
   g.globalAlpha = 0.5;
   g.lineWidth = ROAD_WIDTH;

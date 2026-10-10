@@ -165,9 +165,10 @@ hides. It is a thing on the map:
   morning, collect at the quay, unload at the north depot. The
   automation is the lorry; what is automated is what is driving.
 - **Rules live on buildings.** A depot's top-up shows over it as the
-  good and its level; the stack in its yard is the level. When it
-  reorders, its boxes are booked on the next sailing, and the ferry
-  that brings them is on the map.
+  good and its level; the stack in its yard is the level. Its rules buy
+  only once it has standing orders. When it reorders, its boxes are
+  booked on the next sailing, the news says what it bought, why and for
+  how much, and the ferry that brings them is on the map.
 - **Automation costs capacity.** A standing order needs a lorry, a berth
   slot, a contract. Automating more is building more, and three lorries
   on standing orders through one junction is a jam you made.

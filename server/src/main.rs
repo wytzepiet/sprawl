@@ -10,6 +10,7 @@ mod game_loop;
 mod haul;
 mod health;
 mod intersection;
+mod missions;
 mod mountains;
 mod needs;
 mod network;

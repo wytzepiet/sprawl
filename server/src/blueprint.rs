@@ -260,6 +260,8 @@ pub fn check() {
         assert!(!b.farm || b.vehicles.contains(&CarRole::Tractor), "{kind:?} farms without a tractor");
         // A harbour has a park for the ferry's boxes and a tug to shunt them.
         assert!(!b.quay || (b.lot.1 > 0 && b.vehicles.contains(&CarRole::Tug)), "{kind:?} has a quay and nowhere to land a box");
+        // Placed whole round the tile tapped, whichever way the sea turns it.
+        assert!(!b.quay || plot(*kind, 0).size == plot(*kind, 1).size, "{kind:?} has a quay and a plot that is not square");
         assert!(b.makes.is_none_or(|g| b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} makes what it has no shelf for");
         // A depot's van brings every material a site takes.
         for &(good, _) in b.materials {

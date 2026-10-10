@@ -4,6 +4,7 @@ import type { Clock } from "./Clock";
 import type { Draft } from "./Draft";
 import type { Growth } from "./Growth";
 import type { Lump } from "./Lump";
+import type { Mission } from "./Mission";
 import type { Operation } from "./Operation";
 import type { Sea } from "./Sea";
 
@@ -19,7 +20,11 @@ sea: Sea,
 /**
  * Every player's draft and its bill.
  */
-drafts: Array<Draft>, terrain_seed: number, 
+drafts: Array<Draft>, 
+/**
+ * The town's open missions, and those just finished.
+ */
+missions: Array<Mission>, terrain_seed: number, 
 /**
  * The island's map, which the client keeps its camera inside.
  */

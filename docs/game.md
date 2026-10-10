@@ -151,8 +151,24 @@ drawn beside a drafted street (`may.ts`).
   link, and a tap on a demolition drafted takes it back.
 - **The first depot is free on the bill**, as it stands at once; a
   harbour takes nothing.
-- **Roads cost nothing yet**, so the bill counts buildings only; a
-  road's materials are a line in `drafts::bill` once roads draw on stock.
+- **A road is laid at Build**, on the stone the depots hold then (a unit
+  a tile, free before there is a harbour); what they lack comes express
+  at twice the price, and the bill says so in coins, beside the stone
+  line, rather than offering a box that would land after the road is
+  laid. Its boxes are for the buildings' stone, which can wait. What
+  Build paid express is in the news.
+- **A stroke is a drag**, each step from where the last ended, and is
+  built so: a step waits for the one before it, and what follows a step
+  that no longer fits stays drafted with it. A road whose first step is
+  refused is never laid from its second, cut off and paid for.
+- **The harbour is placed whole**, at a click: its three-by-three plot
+  round the tile, turned to face the sea, shown under the pointer in
+  green where the ferry would berth and red where it would not, with
+  why (`may.ts` `placing`, the server's `World::whole` and `berth_at`).
+  It is refused, drafted or built, where no way round berths, and it
+  comes down whole, so there is never part of one. Drafted, it brings a
+  street of its own from its park to the nearest street in reach, or a
+  stub inland, laid before it in the same stroke (`drafts::stub`).
 - **Anyone's draft is drawn**: one's own blue, a stuck step amber,
   another player's grey, as land taken.
 - `bun run act` drafts each command and commits it, as the bill's Build
@@ -188,7 +204,12 @@ play to say, and the rows are where it is tuned.
 **Nobody waits on a mechanic they were not taught.** The first depot
 comes with a top-up rule already on it, drawn over it like any rule:
 keep above so much timber, from the world. The player sees automation
-before they need to understand it, and can change it. And anything that
+before they need to understand it, and can change it; it spends nothing
+until the player gives the depot standing orders, whose switch says it
+buys by the rules, and every box a rule buys is in the news with its
+price ("Depot ordered 100 crates: under its keep line of 80, −44"). A
+town that buys things on its own is automation the player has turned
+on, never a purse that falls by itself. And anything that
 stalls says why where it stalls, with the fix beside it: a site's card
 says "waiting on 12 timber, none in stock" and offers the order, with
 when it would land.
@@ -304,7 +325,7 @@ anything the map cannot show by hand.
 
 ## The opening
 
-1. Build a harbour on the coast.
+1. Build a harbour on the coast: one click, with its own street.
 2. Build a depot.
 3. Connect them with a road.
 4. A shipment arrives: the starter pack, trailers off the first ferry.
@@ -319,6 +340,13 @@ here, roads move them, this is what arriving looks like. The manual phase
 is the town's one lorry, tapped by hand, until the first lorry with
 standing orders; the lorry stays for good, a slump you can dig out of by
 hand, never a chore.
+
+The opening is the first mission (`missions.md`): its steps are facts
+the server reads off the town and ticks as they come true, and it pays
+when the last is done. The trunk follows it, standing orders, a rule
+for stone, a box sold, and after it the town's situation opens a
+mission when something first matters: a site short of stone asks for a
+quarry.
 
 ## Out
 

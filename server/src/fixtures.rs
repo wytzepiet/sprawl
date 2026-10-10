@@ -10,7 +10,7 @@
 //! A fixture is a grid, one character a tile, top row north:
 //!
 //! ```text
-//! .  grass     ~  water     T  forest    _  beach     ^  mountain
+//! .  grass     ~  water     ≈  sea       T  forest    _  beach     ^  mountain
 //! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
@@ -73,6 +73,7 @@ fn letter(kind: BuildingKind) -> char {
 fn ground(c: char) -> TerrainType {
     match c {
         '~' => TerrainType::Water,
+        '≈' => TerrainType::Sea,
         'T' => TerrainType::Forest,
         '_' => TerrainType::Beach,
         '^' => TerrainType::Mountain,
@@ -147,10 +148,7 @@ pub fn build(world: &mut World, dir: &Path) {
                 let mut stroke = vec![((col, row), (col, row))];
                 let mut i = 0;
                 while i < stroke.len() {
-                    let ((c, r), from) = stroke[i];
-                    if world.paint(kind, at(from.0, from.1), at(c, r)).is_none() {
-                        println!("fixtures: {}: no room for {kind:?} at column {c}, row {r}", path.display());
-                    }
+                    let ((c, r), _) = stroke[i];
                     for (dc, dr) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
                         let n = (c + dc, r + dr);
                         if building(char_at(n.0, n.1)) == Some(kind) && painted.insert(n) {
@@ -158,6 +156,17 @@ pub fn build(world: &mut World, dir: &Path) {
                         }
                     }
                     i += 1;
+                }
+                // A harbour is placed whole, at a tap on its middle.
+                if World::whole(kind, at(col, row)).is_some() {
+                    let mid = |f: fn(&(i32, i32)) -> i32| (stroke.iter().map(|(t, _)| f(t)).min().unwrap() + stroke.iter().map(|(t, _)| f(t)).max().unwrap()) / 2;
+                    let c = (mid(|t| t.0), mid(|t| t.1));
+                    stroke = vec![(c, c)];
+                }
+                for &((c, r), from) in &stroke {
+                    if world.paint(kind, at(from.0, from.1), at(c, r)).is_none() {
+                        println!("fixtures: {}: no room for {kind:?} at column {c}, row {r}", path.display());
+                    }
                 }
             }
         }

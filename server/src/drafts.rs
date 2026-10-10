@@ -58,6 +58,9 @@ pub struct Line {
     /// Boxes to order to cover the shortfall, and their price.
     pub boxes: u32,
     pub coins: f64,
+    /// Coins Build pays at once: a road is laid on the stone the depots
+    /// hold now, and what they lack comes express (`economy::paved`).
+    pub express: f64,
 }
 
 /// The tiles a step would lay something on: a road's two, a building's
@@ -65,7 +68,7 @@ pub struct Line {
 fn lays(step: &Build) -> Vec<GridCoord> {
     match step.tool {
         Tool::Street | Tool::OneWay | Tool::Road => vec![step.from, step.to],
-        Tool::Building(_) => vec![step.to],
+        Tool::Building(kind) => World::whole(kind, step.to).unwrap_or_else(|| vec![step.to]),
         Tool::Demolish => vec![],
     }
 }
@@ -86,8 +89,8 @@ fn mine(world: &World, owner: OwnerId, t: GridCoord) -> bool {
 
 /// The kind of building the owner's draft paints on a tile.
 fn drafted(world: &World, owner: OwnerId, t: GridCoord) -> Option<BuildingKind> {
-    marks(world, owner).filter(|m| m.step.to == t).find_map(|m| match m.step.tool {
-        Tool::Building(kind) => Some(kind),
+    marks(world, owner).find_map(|m| match m.step.tool {
+        Tool::Building(kind) if lays(&m.step).contains(&t) => Some(kind),
         _ => None,
     })
 }
@@ -111,6 +114,10 @@ fn fair(world: &World, owner: OwnerId, step: &Build) -> bool {
         }
         // Onto a building, standing or drafted, only a step from another
         // of its kind, to join or link the two: a tap there does nothing.
+        // A harbour, whole, on nobody's draft, its owner's own included.
+        Tool::Building(kind) if World::whole(kind, step.to).is_some() => {
+            lays(step).iter().all(|&t| !mine(world, owner, t)) && world.may_paint(kind, step.from, step.to)
+        }
         Tool::Building(kind) => {
             let tap = step.from == step.to;
             let standing = |t: GridCoord| world.occupied.get(&(t.x, t.y)).and_then(|&b| match world.objects.get(b)?.object {
@@ -161,6 +168,15 @@ pub fn draw(world: &mut World, owner: OwnerId, step: Build) -> bool {
         println!("refused draft: {:?} from {:?} to {:?}", step.tool, step.from, step.to);
         return false;
     }
+    // A harbour comes with its street, laid before it: one stroke.
+    if let Tool::Building(kind) = step.tool
+        && World::whole(kind, step.to).is_some()
+    {
+        let mut stroke: Stroke = stub(world, owner, kind, step.to).into_iter().map(|step| Mark { step, stuck: false }).collect();
+        stroke.push(Mark { step, stuck: false });
+        world.drafts.entry(owner).or_default().push(stroke);
+        return true;
+    }
     let strokes = world.drafts.entry(owner).or_default();
     let carries_on = step.from != step.to && strokes.last().and_then(|s| s.last()).is_some_and(|m| m.step.tool == step.tool && m.step.to == step.from);
     let mark = Mark { step, stuck: false };
@@ -169,6 +185,76 @@ pub fn draw(world: &mut World, owner: OwnerId, step: Build) -> bool {
         _ => strokes.push(vec![mark]),
     }
     true
+}
+
+/// How far a harbour's street looks for another to join, in tiles each
+/// way; and how many tiles it runs inland where there is none.
+const REACH: i32 = 12;
+const STUB: i32 = 4;
+
+/// The street a harbour drafted at `at` brings with it, from the middle
+/// of its park's front: on to the nearest street, standing or drafted,
+/// with as few bends as may be, or a short one straight inland where none
+/// is in reach. Nothing where a street already runs to its park. Its
+/// steps in the order they are laid.
+fn stub(world: &World, owner: OwnerId, kind: BuildingKind, at: GridCoord) -> Vec<Build> {
+    use std::cmp::Reverse;
+    let Some(tiles) = World::whole(kind, at) else { return Vec::new() };
+    let Some(facing) = world.seaward(&tiles, kind).next().filter(|_| !world.would_be_reached(kind, at, at)) else { return Vec::new() };
+    let ahead = crate::blueprint::FACINGS[facing as usize];
+    let out = crate::blueprint::plot(kind, facing).size.1 as i32 / 2 + 1;
+    let front = GridCoord { x: at.x + ahead.0 * out, y: at.y + ahead.1 * out };
+    let street = |t: GridCoord| world.road_node_at(t).is_some() || marks(world, owner).any(|m| matches!(m.step.tool, Tool::Street | Tool::OneWay | Tool::Road) && lays(&m.step).contains(&t));
+    let open = |t: GridCoord| {
+        (t.x - front.x).abs() <= REACH
+            && (t.y - front.y).abs() <= REACH
+            && matches!(world.terrain.get(&(t.x, t.y)), Some(TerrainType::Grass | TerrainType::Forest))
+            && !world.occupied.contains_key(&(t.x, t.y))
+            && !tiles.contains(&t)
+            && !taken(world, owner, t)
+            && drafted(world, owner, t).is_none()
+    };
+    let steps = |path: &[GridCoord]| path.windows(2).map(|w| Build { tool: Tool::Street, from: w[0], to: w[1] }).collect();
+    // Fewest bends, then fewest tiles: a step costs two, a bend five more.
+    // A state is a tile and the way in to it.
+    type State = (i32, i32, usize);
+    let mut came: HashMap<State, State> = HashMap::new();
+    let mut cost: HashMap<State, u32> = HashMap::new();
+    let mut heap = std::collections::BinaryHeap::new();
+    if open(front) || street(front) {
+        for d in 0..4 {
+            cost.insert((front.x, front.y, d), 0);
+            heap.push(Reverse((0, (front.x, front.y, d))));
+        }
+    }
+    while let Some(Reverse((c, here))) = heap.pop() {
+        let (x, y, d) = here;
+        if cost[&here] < c {
+            continue;
+        }
+        if street(GridCoord { x, y }) {
+            let mut path = vec![GridCoord { x, y }];
+            let mut k = here;
+            while let Some(&p) = came.get(&k) {
+                path.push(GridCoord { x: p.0, y: p.1 });
+                k = p;
+            }
+            path.reverse();
+            return steps(&path);
+        }
+        for (nd, &(dx, dy)) in crate::blueprint::FACINGS.iter().enumerate() {
+            let next = (x + dx, y + dy, nd);
+            let t = GridCoord { x: next.0, y: next.1 };
+            let nc = c + 2 + if nd == d { 0 } else { 5 };
+            if (open(t) || street(t)) && cost.get(&next).is_none_or(|&b| nc < b) {
+                cost.insert(next, nc);
+                came.insert(next, here);
+                heap.push(Reverse((nc, next)));
+            }
+        }
+    }
+    let inland: Vec<GridCoord> = (0..STUB).map(|k| GridCoord { x: front.x + ahead.0 * k, y: front.y + ahead.1 * k }).take_while(|&t| open(t)).collect();
+    steps(&inland)
 }
 
 /// The owner's last stroke taken back.
@@ -200,14 +286,24 @@ fn pass(step: &Build) -> u8 {
 /// The owner's draft made real in one stroke, each step through `build`,
 /// the handler that builds live, which says whether it took the step. Round
 /// again while anything more goes in: a demolition can free a tile a road
-/// was refused. What is never taken stays in the draft, marked.
+/// was refused. A stroke is a drag, each step from where the last ended,
+/// so a step waits for the one before it: a road whose first step is
+/// refused is not laid from its second, unjoined. What is never taken
+/// stays in the draft, marked.
 pub fn commit(world: &mut World, owner: OwnerId, mut build: impl FnMut(&mut World, Build) -> bool) {
     let Some(strokes) = world.drafts.remove(&owner) else { return };
     let mut left: Vec<(usize, Build)> = strokes.iter().enumerate().flat_map(|(i, s)| s.iter().map(move |m| (i, m.step))).collect();
     loop {
         let before = left.len();
         for p in 0..3 {
-            left.retain(|(_, s)| pass(s) != p || !build(world, *s));
+            let mut waiting: HashSet<usize> = HashSet::new();
+            left.retain(|&(i, s)| {
+                let left = waiting.contains(&i) || pass(&s) != p || !build(world, s);
+                if left {
+                    waiting.insert(i);
+                }
+                left
+            });
         }
         if left.is_empty() || left.len() == before {
             break;
@@ -312,13 +408,15 @@ fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
         .filter(|t| world.road_node_at(*t).is_none())
         .map(|t| (t.x, t.y))
         .collect();
-    if harbour && !road.is_empty() {
-        *takes.entry(Good::Stone).or_default() += road.len() as f64 * crate::economy::ROAD_STONE;
+    let road_stone = if harbour { road.len() as f64 * crate::economy::ROAD_STONE } else { 0.0 };
+    if road_stone > 0.0 {
+        *takes.entry(Good::Stone).or_default() += road_stone;
     }
     if takes.is_empty() {
         return Vec::new();
     }
     let mut have: BTreeMap<Good, f64> = BTreeMap::new();
+    let mut shelved = 0.0;
     for e in world.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
         if let Some(site) = &b.site {
@@ -329,6 +427,7 @@ fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
             for (&good, s) in &b.stocks {
                 *have.entry(good).or_default() += s.level;
             }
+            shelved += b.stocks.get(&Good::Stone).map_or(0.0, |s| s.level);
         }
     }
     // The first harbour drafted brings the starter pack on its first
@@ -347,8 +446,13 @@ fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
         .into_iter()
         .map(|(good, takes)| {
             let have = have.get(&good).copied().unwrap_or(0.0).max(0.0);
-            let boxes = ((takes - have).max(0.0) / good.per_box()).ceil() as u32;
-            Line { good, takes, have, boxes, coins: crate::economy::quote(good, boxes) }
+            // The road's stone off the shelves now, the rest express; the
+            // buildings wait for what is left and what is on its way.
+            let road = if good == Good::Stone { road_stone } else { 0.0 };
+            let off_shelf = road.min(shelved);
+            let boxes = ((takes - road - (have - off_shelf)).max(0.0) / good.per_box()).ceil() as u32;
+            let express = crate::economy::EXPRESS * crate::economy::import(good, road - off_shelf);
+            Line { good, takes, have, boxes, coins: crate::economy::quote(good, boxes), express }
         })
         .collect()
 }
@@ -459,8 +563,14 @@ mod tests {
         // offered to buy what the gift brings would cost a new player coins.
         let mut world = World::new();
         grass(&mut world);
+        for x in -10..30 {
+            world.terrain.insert((x, -10), TerrainType::Sea);
+            for y in -30..-3 {
+                world.terrain.insert((x, y), TerrainType::Sea);
+            }
+        }
         let harbour = Tool::Building(BuildingKind::Harbour);
-        draw(&mut world, 1, step(harbour, at(0, 0), at(0, 0)));
+        assert!(draw(&mut world, 1, step(harbour, at(0, -2), at(0, -2))), "the harbour was not drafted");
         let house = Tool::Building(BuildingKind::House);
         for x in 4..7 {
             draw(&mut world, 1, step(house, at(x, 1), at(x, 1)));
@@ -468,5 +578,24 @@ mod tests {
         let bill = bill(&world, &world.drafts[&1]);
         assert!(!bill.is_empty(), "the houses' timber is not on the bill");
         assert!(bill.iter().all(|l| l.boxes == 0), "the opening's bill offers to buy: {:?}", bill.iter().map(|l| (l.good, l.boxes)).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_road_the_shelves_cannot_lay_is_paid_express() {
+        // A road is laid at Build, on what the depots hold then: stone on
+        // its way is no help to it, and the bill says what Build will
+        // charge rather than offering a box that lands too late.
+        let mut world = World::new();
+        grass(&mut world);
+        let harbour = crate::protocol::Building::new(BuildingKind::Harbour, vec![at(20, 0)], 2);
+        world.insert_at(GameObject::Building(harbour), Some(at(20, 0)));
+        for x in 0..3 {
+            draw(&mut world, 1, step(Tool::Street, at(x, 0), at(x + 1, 0)));
+        }
+        let bill = bill(&world, &world.drafts[&1]);
+        let stone = bill.iter().find(|l| l.good == Good::Stone).expect("the road's stone is on the bill");
+        assert_eq!(stone.takes, 4.0 * crate::economy::ROAD_STONE);
+        assert_eq!(stone.boxes, 0, "a box ordered now lands after the road is laid");
+        assert!((stone.express - crate::economy::EXPRESS * crate::economy::import(Good::Stone, stone.takes)).abs() < 1e-9);
     }
 }

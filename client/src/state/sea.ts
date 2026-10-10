@@ -8,7 +8,7 @@ import type { Building, Car, Good, Leg, Sailing, Sea, Shipment } from "../genera
 /**
  * The sea as the last update had it: every box with an order, where it is,
  * and every harbour's timetable. The whole world's, not just what is in
- * view, so the shipments list, the cards and the guide all read it.
+ * view, so the shipments list, the cards and the missions all read it.
  * Reconciled by key, so a line that stays on the list stays the same line.
  */
 const [sea, setSea] = createStore<Sea>({ shipments: [], sailings: [], lanes: [] });
@@ -19,28 +19,26 @@ const [now, setNow] = createSignal(simNow());
 setInterval(() => setNow(simNow()), 250);
 export { now };
 
-/** A line of news: the ferry in, the ferry gone. */
+/** A line of news: the ferry in, the ferry gone; or, from the server,
+ *  coins the town spent of its own accord. */
 export interface News {
   key: number;
   text: string;
   sub: string;
   /** What a tap on it goes to. */
   at: number;
+  coins: boolean;
 }
 const [news, setNews] = createSignal<News[]>([]);
 export { news };
 let newsKey = 0;
 /** How long a line of news stays up, wall time. */
 const NEWS_MS = 7000;
-function tell(text: string, sub: string, at: number) {
-  const n = { key: newsKey++, text, sub, at };
+export function tell(text: string, sub: string, at: number, coins = false) {
+  const n = { key: newsKey++, text, sub, at, coins };
   setNews((l) => [...l, n]);
   setTimeout(() => setNews((l) => l.filter((x) => x !== n)), NEWS_MS);
 }
-
-/** Has a ferry come in with settlers yet: the opening's last beat. */
-const [settled, setSettled] = createSignal(false);
-export { settled };
 
 let heard = false;
 /** An update's sea: kept, and what changed at a ramp told. */
@@ -51,7 +49,6 @@ export function hearSea(s: Sea) {
     setSea("sailings", reconcile(s.sailings, { key: "harbour" }));
     setSea("lanes", reconcile(s.lanes ?? []));
   });
-  if (s.sailings.some((x) => x.berthed && x.settlers > 0)) setSettled(true);
   if (!heard) return void (heard = true);
   for (const x of s.sailings) {
     const was = before.get(x.harbour);
