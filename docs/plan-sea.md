@@ -204,10 +204,11 @@ never names `World` or `EventQueue`:
   `earliest(&[Connection], from, to, ready)` is the Connection Scan,
   with `TRANSFER` (half an hour) to change ship at a harbour and no
   changing ship at the world at all; `boards(..)` is the boarding
-  decision. The company's rule: `opens(forecast, same_road)`, a line
-  only where the forecast says boxes would flow and no road joins the
-  two; `prior(ways)` picks the nearest harbour by sea not on the same
-  road network; `Line::sized(per_day, ceiling)` turns a forecast into ships,
+  decision. The company's rule: `worth_a_line(sea, road, flow)`, a line
+  only where the forecast says boxes would flow and the sea leg, with
+  `TRANSFER` loading at both ends, beats the road by `SEA_GAIN` (or
+  there is no road: `by_sea`); `prior(ways)` picks the nearest of those
+  by sea; `Line::sized(per_day, ceiling)` turns a forecast into ships,
   a dwell (the tug's time for a call's share, `MIN_DWELL` to `DWELL`) and
   `every`, no more sailings than fill half a box; `backlog(line, left,
   full)` turns boxes left behind into a `Change`: a longer dwell when the
@@ -240,9 +241,11 @@ an hour, drop and hook, as `haul.rs` does: an export filled from the
 empty the depot kept, or a spare empty out, and an import home. The
 world keeps `EMPTIES` standing in each yard. The company's rule runs
 as in the game will: a harbour standing gets the world's ferry, and a
-line to its nearest by sea once its forecast (the scenario's demand
-from and to it, `from=` a day for a maker or rule that starts later)
-says boxes would flow, asked again each midnight; a departure that leaves `BACKLOG` boxes
+line to its nearest by sea where the sea beats the road, once its
+forecast (the scenario's demand from and to harbours it would reach by
+sea, `from=` a day for a maker or rule that starts later) says boxes
+would flow, asked again each midnight; a box between two harbours the
+road serves better goes by lorry, landing after the road's time; a departure that leaves `BACKLOG` boxes
 behind changes its line. Blocks are not built (stage 5).
 
 **Scenarios are text** in `server/scenarios/*.txt`. The grid comes
@@ -251,7 +254,8 @@ letter on the quay tile, land behind it, `BERTH` tiles of sea straight
 out), and the map's border is the world. Below the grid, directives:
 
 ```text
-harbour A docks=9 dray=4/h tug=4/h day=0 road=1  # stands on day 0
+harbour A docks=9 dray=4/h tug=4/h day=0  # stands on day 0
+road A E 0.3h                             # a lorry's time between two
 line A B ships=2 dwell=1h                 # a line besides the company's
 demand B->A timber 6/day from=0           # even times; W is the world
 stay 0.5h                                 # beyond the edge
@@ -286,8 +290,9 @@ in red, the harbours, and a dot every ten minutes for each ship.
 | `coins_in`, `coins_out` | the world's prices for exports landed beyond and imports landed |
 | `first_sailing` | the longest from a line between harbours opening to its first sailing |
 | `forecast_ratio` | worst of forecast ÷ carried (the busier way, a day, after the trial), or its inverse |
-| `near_empty` | sailings between harbours after their trial with no full box aboard |
+| `near_empty` | sailings from a line's busier end, after its trial, with no full box aboard |
 | `links`, `idle_lines` | lines between harbours, and those opened on a forecast of nothing |
+| `by_road` | boxes between harbours that went by road, the road beating the sea |
 | `flow_to_line` | the longest a harbour with a flow forecast waited for its line |
 
 **The scenarios, as they stand:**
@@ -296,11 +301,15 @@ in red, the harbours, and a dot every ten minutes for each ship.
 scenario     delivere  transit transit_ late_p90  stretch transfer   missed     util  empties berth_wa yard_pea landed_p coins_in coins_ou
 congested        0.99     2.90     5.67     1.11     1.18     0.00     0.00     0.04     0.62     3.75     5.00     0.56     0.00  1056.00
 hub              0.99     5.39     8.84     5.36     1.53     0.36    29.00     0.03     0.20     2.31     5.00     0.45   360.00   880.00
-new_port         0.98     5.70     9.65     5.00     1.54     0.30    50.00     0.03     0.40     0.05     7.00     0.63     0.00   660.00
+new_port         0.98     4.42     9.40     4.26     1.47     0.26    35.00     0.03     0.37     0.90     7.00     0.48     0.00   660.00
 strait           0.99     4.64     5.78     5.06     2.41     0.00     0.00     0.02     0.10     0.01     4.00     0.53     0.00     0.00
 two              1.00     3.36     3.50     0.25     1.08     0.00     0.00     0.04     0.55     0.01     5.00     0.63   360.00   660.00
 world            1.00     1.82     1.82     0.57     1.37     0.00     1.00     0.04     0.46     0.00     4.00     0.69    54.00  1540.00
 ```
+
+Each scenario also prints the company's line: `links`, `idle_lines`,
+`by_road`, `via_world`, `first_sailing`, `flow_to_line`,
+`forecast_ratio`, `near_empty`, `wait_max`.
 
 1. **`world`**: one harbour, today's ferry (fifteen slots, an hour and a
    quarter at the ramp, a 2.5-hour turn by its `stay`) and the season
@@ -314,15 +323,17 @@ world            1.00     1.82     1.82     0.57     1.37     0.00     1.00     
    none longer than four hours.
 5. **`strait`**: pending stage 5; the narrows are drawn.
 6. **`new_port`**: C stands on day 3 and is linked to B, its nearest, so
-   its trade with A changes ship at B (`transfers` 0.30). D stands on
+   its trade with A changes ship at B (`transfers` 0.26). D stands on
    day 4 with nothing to carry and gets no line (`idle_lines` 0) until
    its maker starts on day 6, when it is linked that midnight
-   (`flow_to_line` 0). The plan's targets are not met yet: B's one berth
-   takes four lines, and the fourth's first clean window is 1.9 hours
-   out (asked: an hour); a third of sailings after the trial carry no
-   full box (asked: a quarter), the light way of an uneven trade. The
-   scenario holds today's numbers (2 hours, 35%), to be tightened as
-   they improve.
+   (`flow_to_line` 0). E is a 0.3-hour drive up the coast from A: no
+   line, its boxes go by road (`by_road` 30). F is round B's bay, four
+   hours by road and minutes by sea: a line (`links` 4). The forecast is
+   within 1.8× of what moves, and 21% of sailings from a line's busier
+   end carry no full box (the way back of a one-way trade is not
+   counted). The plan's hour to the first sailing is not met: B's one
+   berth takes four lines, and the last's first clean window is two
+   hours out; the scenario holds that number, to be tightened.
 
 ## Stages
 

@@ -207,11 +207,22 @@ pub fn slot(lines: &[Line], line: &Line, at: usize, from: GameTime) -> GameTime 
     (0..line.cycle().div_ceil(TRY)).map(|k| from + k * TRY).min_by_key(|&dep| ((overlap(dep) - (3 * TRY) as i64).max(0), dep)).unwrap_or(from)
 }
 
-/// Does a pair of the player's harbours get a line: only when the
-/// forecast says boxes would flow between them, and never when one road
-/// network joins them, since a lorry carries what a ship would.
-pub fn opens(forecast: f64, same_road: bool) -> bool {
-    forecast > 0.0 && !same_road
+/// How much faster than the road a sea leg must be, its loading at both
+/// ends counted, to be worth a line: a third.
+pub const SEA_GAIN: f64 = 1.0 / 3.0;
+
+/// The way by sea between two harbours, its loading at both ends
+/// counted, `sea` ms for a leg: is it worth a line over the road, if
+/// there is one (`road` ms). You can drive from Spain to Morocco, but you
+/// would ship.
+pub fn by_sea(sea: GameTime, road: Option<GameTime>) -> bool {
+    road.is_none_or(|r| (sea + 2 * TRANSFER) as f64 * (1.0 + SEA_GAIN) <= r as f64)
+}
+
+/// Does a pair of the player's harbours get a line: boxes would flow
+/// between them (`flow` a day, forecast), and the sea beats the road.
+pub fn worth_a_line(sea: GameTime, road: Option<GameTime>, flow: f64) -> bool {
+    flow > 0.0 && by_sea(sea, road)
 }
 
 /// Which of the player's harbours a new one is linked to: the nearest by
@@ -349,6 +360,9 @@ mod tests {
         assert_eq!(l.sailings(0.0), 1);
         assert_eq!(l.sailings(per_ship * 2.5), 3);
         assert_eq!(prior(&[(4, 90.0), (2, 40.0), (3, 40.0)]), Some(2));
-        assert!(opens(0.5, false) && !opens(0.0, false) && !opens(3.0, true));
+        let h = HOUR;
+        assert!(worth_a_line(h, None, 0.5) && !worth_a_line(h, None, 0.0));
+        assert!(!worth_a_line(h, Some(h), 3.0), "a short coast road took a line");
+        assert!(worth_a_line(h, Some(6 * h), 3.0), "a long detour round the bay got none");
     }
 }

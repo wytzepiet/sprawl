@@ -36,7 +36,7 @@ use crate::engine::GameTime;
 use crate::protocol::{GridCoord, Good, DAY_MS};
 use crate::world::sea::{DECK, DWELL, EMPTIES};
 
-use super::lines::{boards, earliest, opens, prior, slot, timetable, Call, Change, Connection, Line, BACKLOG, FIRST_SAILING, TRIAL};
+use super::lines::{boards, by_sea, earliest, prior, slot, worth_a_line, timetable, Call, Change, Connection, Line, BACKLOG, FIRST_SAILING, TRIAL};
 use super::water::{Berth, End, Water, BERTH};
 use super::{covered, length, point_at, HOUR, WORLD_STAY};
 
@@ -50,8 +50,6 @@ struct Port {
     tug: f64,
     /// The day it stands.
     day: u64,
-    /// Its road network: harbours on one are never given a line.
-    road: Option<u32>,
 }
 
 struct LineSpec {
@@ -82,6 +80,8 @@ pub struct Scenario {
     ports: Vec<Port>,
     lines: Vec<LineSpec>,
     demand: Vec<Demand>,
+    /// Roads between harbours, and how long a lorry takes.
+    roads: Vec<(char, char, GameTime)>,
     stay: GameTime,
     days: u64,
     expects: Vec<Expect>,
@@ -119,7 +119,7 @@ impl Scenario {
         let (w, h) = (rows[0].len() as i32, rows.len() as i32);
         let sea = |x: i32, y: i32| x >= 0 && y >= 0 && x < w && y < h && rows[y as usize][x as usize] != b'.';
         let water = Water::new(0, 0, w, h, sea);
-        let mut s = Scenario { name: name.into(), water, ports: Vec::new(), lines: Vec::new(), demand: Vec::new(), stay: WORLD_STAY, days: 7, expects: Vec::new(), pending: None, rows: Vec::new() };
+        let mut s = Scenario { name: name.into(), water, ports: Vec::new(), lines: Vec::new(), demand: Vec::new(), roads: Vec::new(), stay: WORLD_STAY, days: 7, expects: Vec::new(), pending: None, rows: Vec::new() };
         for l in lines {
             let words: Vec<&str> = l.split_whitespace().collect();
             let opt = |key: &str| words.iter().find_map(|w| w.strip_prefix(key).and_then(|v| v.strip_prefix('=')));
@@ -135,7 +135,7 @@ impl Scenario {
                         .map(|out| Berth { quay, out })
                         .find(|b| !sea(quay.x - b.out.0, quay.y - b.out.1) && (0..BERTH).all(|n| sea(b.tile(n).x, b.tile(n).y)))
                         .unwrap_or_else(|| panic!("{name}: {letter} has no land behind it and {BERTH} tiles of sea in front"));
-                    s.ports.push(Port { letter, berth, docks: rate("docks", 9.0) as usize, dray: rate("dray", 4.0), tug: rate("tug", 4.0), day: rate("day", 0.0) as u64, road: opt("road").map(|r| r.parse().unwrap()) });
+                    s.ports.push(Port { letter, berth, docks: rate("docks", 9.0) as usize, dray: rate("dray", 4.0), tug: rate("tug", 4.0), day: rate("day", 0.0) as u64 });
                 }
                 Some("line") => {
                     let calls = words[1..].iter().take_while(|w| !w.contains('=')).map(|w| w.chars().next().unwrap()).collect();
@@ -152,6 +152,7 @@ impl Scenario {
                     s.demand.push(Demand { from: from.chars().next().unwrap(), to: to.chars().next().unwrap(), good: good(words[2]), per_day, from_day: rate("from", 0.0) as u64 });
                 }
                 Some("stay") => s.stay = duration(words[1]),
+                Some("road") => s.roads.push((words[1].chars().next().unwrap(), words[2].chars().next().unwrap(), duration(words[3]))),
                 Some("days") => s.days = words[1].parse().unwrap(),
                 Some("expect") => s.expects.push(Expect { metric: words[1].into(), op: words[2].into(), value: words[3].trim_end_matches('h').parse().unwrap() }),
                 Some("pending") => s.pending = Some(words[1..].join(" ")),
@@ -198,6 +199,7 @@ struct Box {
     landed: Option<GameTime>,
     rides: u32,
     via_world: bool,
+    by_road: bool,
 }
 
 impl Box {
@@ -248,6 +250,7 @@ enum Ev {
     TugDone(usize),
     Dray(usize),
     Demand(usize),
+    Road(usize),
     Stand(usize),
     Midnight,
 }
@@ -390,27 +393,40 @@ impl<'a> Sim<'a> {
         self.add_ships(world, 1, 0, FIRST_SAILING);
     }
 
+    /// The road between two harbours, if one joins them.
+    fn road(&self, a: Call, b: Call) -> Option<GameTime> {
+        self.s.roads.iter().find(|r| (self.s.call(r.0), self.s.call(r.1)) == (a, b) || (self.s.call(r.0), self.s.call(r.1)) == (b, a)).map(|r| r.2)
+    }
+
+    /// The sea leg between two harbours, and whether it beats the road.
+    fn sea(&self, p: usize, q: usize) -> Option<(f64, bool)> {
+        let len = length(&self.s.water.route(&self.s.ports[p].berth, End::Berth(self.s.ports[q].berth))?);
+        Some((len, by_sea(super::sail_ms(len, [true, true]), self.road(Call::Harbour(p as u64), Call::Harbour(q as u64)))))
+    }
+
     /// A harbour with no line to another of the player's is linked to the
-    /// nearest by sea that is not on its road network, once its forecast
-    /// says boxes would flow (`lines::opens`). A new harbour is a leaf: all
-    /// its trade with the others goes over its one link. Asked when it
-    /// stands, and each midnight, as rules and makers change.
+    /// nearest by sea where the sea beats the road, once its forecast says
+    /// boxes would flow (`lines::worth_a_line`). A new harbour is a leaf:
+    /// all its trade with the others that goes by sea goes over its one
+    /// link. Asked when it stands, and each midnight, as rules and makers
+    /// change.
     fn connect(&mut self, p: usize) {
         let here = Call::Harbour(p as u64);
         if self.lines.iter().any(|l| l.calls.contains(&here) && !l.calls.contains(&Call::World)) {
             return;
         }
-        let road = self.s.ports[p].road;
         let ways: Vec<(u64, f64)> = (0..self.ports.len())
-            .filter(|&q| q != p && self.ports[q].standing && (road.is_none() || self.s.ports[q].road != road))
-            .filter_map(|q| Some((q as u64, length(&self.s.water.route(&self.s.ports[p].berth, End::Berth(self.s.ports[q].berth))?))))
+            .filter(|&q| q != p && self.ports[q].standing)
+            .filter_map(|q| self.sea(p, q).filter(|s| s.1).map(|s| (q as u64, s.0)))
             .collect();
         let Some(q) = prior(&ways) else { return };
-        let per_day = self.forecast(|c| c == here, |c| c != here).max(self.forecast(|c| c != here, |c| c == here));
+        let by_sea = |c: Call| self.road(here, c).is_none() || matches!(c, Call::Harbour(r) if self.sea(p, r as usize).is_some_and(|s| s.1));
+        let per_day = self.forecast(|c| c == here, |c| c != here && by_sea(c)).max(self.forecast(|c| c != here && by_sea(c), |c| c == here));
         if per_day > 0.0 {
             self.ports[p].flows.get_or_insert(self.now);
         }
-        if opens(per_day, false) {
+        let sea = super::sail_ms(ways.iter().find(|w| w.0 == q).unwrap().1, [true, true]);
+        if worth_a_line(sea, self.road(here, Call::Harbour(q)), per_day) {
             self.flow_to_line = self.flow_to_line.max(self.now - self.ports[p].flows.unwrap());
             self.link(here, Call::Harbour(q), per_day, FIRST_SAILING);
         }
@@ -486,7 +502,7 @@ impl<'a> Sim<'a> {
     fn new_box(&mut self, from: Call, to: Call, good: Option<Good>) -> usize {
         let conns = self.conns();
         let quoted = earliest(&conns, from, to, self.now).map(|j| j.arrives);
-        self.boxes.push(Box { from, to, good, ready: self.now, quoted, landed: None, rides: 0, via_world: false });
+        self.boxes.push(Box { from, to, good, ready: self.now, quoted, landed: None, rides: 0, via_world: false, by_road: false });
         self.boxes.len() - 1
     }
 
@@ -498,7 +514,7 @@ impl<'a> Sim<'a> {
             }
             self.now = t;
             for v in [t, seq, match e {
-                Ev::Arrive(i) | Ev::Berth(i) | Ev::Depart(i) | Ev::Tug(i) | Ev::TugDone(i) | Ev::Dray(i) | Ev::Demand(i) | Ev::Stand(i) => i as u64,
+                Ev::Arrive(i) | Ev::Berth(i) | Ev::Depart(i) | Ev::Tug(i) | Ev::TugDone(i) | Ev::Dray(i) | Ev::Demand(i) | Ev::Road(i) | Ev::Stand(i) => i as u64,
                 Ev::Midnight => u64::MAX,
             }] {
                 self.log = (self.log ^ v).wrapping_mul(0x100_0000_01b3);
@@ -512,6 +528,10 @@ impl<'a> Sim<'a> {
                 Ev::Dray(p) => self.dray(p),
                 Ev::Demand(d) => self.demand(d),
                 Ev::Stand(p) => self.stand(p),
+                Ev::Road(b) => {
+                    self.boxes[b].by_road = true;
+                    self.land(b);
+                }
                 Ev::Midnight => self.midnight(),
             }
         }
@@ -726,6 +746,14 @@ impl<'a> Sim<'a> {
         let demand = &self.s.demand[d];
         let (from, to) = (self.s.call(demand.from), self.s.call(demand.to));
         let b = self.new_box(from, to, demand.good);
+        // Where the road beats the sea, a lorry drives it there.
+        if let (Call::Harbour(p), Call::Harbour(q)) = (from, to)
+            && let Some(road) = self.road(from, to).filter(|_| self.sea(p as usize, q as usize).is_none_or(|s| !s.1))
+        {
+            self.boxes[b].quoted = Some(self.now + road);
+            self.at(self.now + road, Ev::Road(b));
+            return;
+        }
         match from {
             Call::World => self.beyond.push(b),
             Call::Harbour(p) => self.ports[p as usize].depot.push_back(b),
@@ -777,9 +805,9 @@ impl<'a> Sim<'a> {
         for (to, n) in stranded {
             let pair = (here.min(to), here.max(to));
             let Call::Harbour(q) = to else { continue };
-            let same_road = self.s.ports[p].road.is_some() && self.s.ports[p].road == self.s.ports[q as usize].road;
             let per_day = self.forecast(|c| c == here, |c| c == to).max(self.forecast(|c| c == to, |c| c == here));
-            if n >= BACKLOG && opens(per_day.max(n as f64), same_road) && self.added.get(&pair).is_none_or(|&t| self.now >= t) {
+            let sea = self.sea(p, q as usize).map_or(GameTime::MAX / 4, |s| super::sail_ms(s.0, [true, true]));
+            if n >= BACKLOG && worth_a_line(sea, self.road(here, to), per_day.max(n as f64)) && self.added.get(&pair).is_none_or(|&t| self.now >= t) {
                 self.link(here, to, per_day, FIRST_SAILING);
                 let cycle = self.lines.last().unwrap().cycle();
                 self.added.insert(pair, self.now + cycle);
@@ -823,7 +851,15 @@ impl<'a> Sim<'a> {
             let (f, c) = (o.1.max(0.5), way(0).max(way(1)).max(0.5));
             (f / c).max(c / f)
         }).fold(1.0, f64::max);
-        let after: Vec<usize> = links.iter().flat_map(|(_, o)| o.3.iter().map(|s| s.1)).collect();
+        // From each line's busier end: the way back of a one-way trade
+        // sails empty whatever the forecast says.
+        let after: Vec<usize> = links
+            .iter()
+            .flat_map(|(_, o)| {
+                let busier = (0..2).max_by_key(|&k| (o.3.iter().filter(|s| s.0 == k).map(|s| s.1).sum::<usize>(), k)).unwrap();
+                o.3.iter().filter(move |s| s.0 == busier).map(|s| s.1)
+            })
+            .collect();
         let near_empty = if after.is_empty() { 0.0 } else { after.iter().filter(|&&n| n == 0).count() as f64 / after.len() as f64 };
         let coins_out: f64 = landed.iter().filter(|b| b.from == Call::World).map(|b| crate::economy::import(b.good.unwrap(), b.units())).sum::<f64>() + 0.0;
         let coins_in: f64 = landed.iter().filter(|b| b.to == Call::World).map(|b| crate::economy::export(b.good.unwrap(), b.units())).sum::<f64>() + 0.0;
@@ -840,6 +876,7 @@ impl<'a> Sim<'a> {
             ("flow_to_line", hours(self.flow_to_line)),
             ("idle_lines", links.iter().filter(|(_, o)| o.1 <= 0.0).count() as f64),
             ("links", links.len() as f64),
+            ("by_road", landed.iter().filter(|b| b.by_road).count() as f64),
             ("forecast_ratio", forecast_ratio),
             ("near_empty", near_empty),
             ("via_world", landed.iter().filter(|b| b.via_world && b.from != Call::World && b.to != Call::World).count() as f64),
@@ -935,6 +972,7 @@ fn scenarios_meet_their_expectations() {
         again.run();
         assert_eq!(sim.log, again.log, "{name}: two runs differ");
         println!("{}", sim.pages.join("\n"));
+        println!("  the company: {}", ["links", "idle_lines", "by_road", "via_world", "first_sailing", "flow_to_line", "forecast_ratio", "near_empty", "wait_max"].map(|k| format!("{k} {:.2}", m[k])).join(", "));
         println!("  {} days in {:.0} ms", s.days, started.elapsed().as_secs_f64() * 1000.0 / 2.0);
         table.push(format!("{:<12} {}  {:016x}", name, columns.iter().map(|c| format!("{:>8.2}", m[c])).collect::<Vec<_>>().join(" "), sim.log));
         if std::env::var("SVG").is_ok() {
