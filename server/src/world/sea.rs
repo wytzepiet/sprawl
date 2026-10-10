@@ -223,10 +223,11 @@ impl World {
     pub fn commission(&mut self, harbour: EntityId, now: GameTime) {
         let first = !self.objects.iter().any(|e| matches!(e.object, GameObject::Car(ref c) if c.role == CarRole::Ferry));
         // Its tug stands by the ramp from the first.
-        if let Some(tug) = self.tug_of(harbour)
+        // Asked every settle: only a tug with no place is touched, or every
+        // tick would send it to the clients again.
+        if let Some(tug) = self.tug_of(harbour).filter(|&t| self.spot_of(t).is_none())
             && let Some(rest) = self.berth(harbour).map(|b| b.rest())
             && let Some(GameObject::Car(c)) = self.objects.get_mut(tug).map(|e| &mut e.object)
-            && c.spot.is_none()
         {
             c.spot = Some(rest);
         }

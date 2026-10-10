@@ -2069,6 +2069,11 @@ mod tests {
         let tug = world.tug_of(harbour).expect("the harbour's tug");
         let lorry = crate::haul::lorry_of(&world, depot).expect("the depot's lorry");
         assert_eq!(car_of(&world, ferry).booked.len(), 5, "the starter pack is booked");
+        // A settle with nothing new touches nothing: what it touches goes
+        // to every client, and is written down, each tick.
+        world.objects.drain_dirty();
+        settle_and_wake(&mut world, &mut events);
+        assert_eq!(world.objects.drain_dirty(), (vec![], vec![]), "a quiet settle changed something");
         let day = DAY_MS as u64;
         let mut now = 0;
 

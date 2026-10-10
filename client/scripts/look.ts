@@ -38,7 +38,7 @@ mkdirSync(OUT, { recursive: true });
 
 const ui = args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1);
 const browser = await launch();
-const page = await open(browser, ui ? { width: 1280, height: 860 } : VIEW);
+const page = ui ? await open(browser, { width: 1280, height: 860 }) : await browser.newPage({ viewport: VIEW });
 page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
 page.on("console", (m) => m.type() === "error" && console.log(`console: ${m.text().slice(0, 300)}`));
 await page.goto(process.env.T ? `${CLIENT}/?t=${process.env.T}` : CLIENT);
