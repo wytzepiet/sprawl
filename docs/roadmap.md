@@ -51,10 +51,12 @@ you can name, and nothing on a card you cannot see on the map.
 The four beats of `game.md` §The opening, from nothing, in four slices
 each playable on its own.
 
-1. The harbour, built by the player on the coast, as the one door; the
-   world's ferry on a timetable with a batch; the quay as a small
-   buffer. The road's edge, the generated roads and the fog go
-   (`shelved.md`, 2026-09-23).
+1. The harbour, built by the player on the coast, as the one door
+   (`trade.md` §Shipping): one line of the shipping company's, the ferry,
+   on a timetable, carrying settlers, vehicles and containers; the
+   harbour's yard, where the cranes stack its boxes and from where a
+   lorry collects them to a depot. The road's edge, the generated roads
+   and the fog go (`shelved.md`, 2026-09-23).
 2. Drafts (`game.md` §Drafts): every placement and demolition a draft
    until committed, blue and reserved, drawn on the map with its bill;
    commit, undo, discard. A draft takes up space and is wired into
@@ -93,6 +95,9 @@ over the horizon without you.
 - A sawmill by the forest and a quarry on the mountain: materials made
   in town, called for pickup, carried to the nearest depot with room.
 - The warehouse, the tank farm and the bulk yard: much of one class.
+- Charters: a tanker or a bulker for a shipload, landing at the
+  harbour's berth for its class, and the standing charter for a flow
+  that recurs (`trade.md` §Shipping).
 - A full depot stops what fills it, and is seen.
 
 *Playable:* a sawmill that stops the timber boats, and the road between
@@ -120,6 +125,10 @@ the high street.
 - The Exchange, and the trade board it opens: listings, standing
   offers, and contracts between players, the seller always delivering,
   from the world if it must.
+- The shipping company's network: a line to every harbour, sailings
+  that follow the traffic, the planner routing each load through hubs,
+  dues for a hub's handling, and roads between towns where players
+  choose to build them (`trade.md` §Shipping).
 - Shipments that cross towns, followed through a neighbour's streets.
 
 *Playable:* sell your timber to a friend, and watch your convoy drive

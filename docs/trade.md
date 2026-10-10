@@ -244,9 +244,30 @@ road too small for two towns' traffic stop being problems; a road link
 is built when lorries beat ships, a neighbour close enough to drive to.
 A shipment's planner uses one where it exists.
 
-**Units.** Boxed goods travel by the container, so many crates or so
-much timber to a box; liquids by the tank, bulk by the hold. The
-container is what is stacked, lifted and followed.
+**Containers are the bread and butter.** Everything a town orders
+travels by the container at first: crates and timber in boxes, fuel in
+tank containers, gravel and cement in lined bulk boxes, on the same
+sailings and through the same yard. One way to learn. The container is
+what is lifted, stacked and followed, and it is seen: the ship comes in,
+the cranes lift its boxes onto the stacks one at a time, lorries back up
+to the stacks and drive off with them. A harbour working is the
+satisfying thing to watch in the game, and it is drawn as it happens,
+never as a number going up.
+
+**Liquids and bulk by the shipload.** When an order or a top-up is
+big enough to fill a ship, a tank farm with room for a tankerful, a
+bulk yard emptying ahead of a big build, the planner offers a charter: a
+tanker or a bulker for that one load, point to point, cheaper by the
+unit and only for the whole of it. A flow that recurs becomes a
+standing charter, a tanker every few days (a contract of affreightment,
+in the trade). It lands at the harbour's berth for its class, which is
+the berth `game.md` §The island and the door grows the door with: a
+tanker pumps straight into a tank farm built beside its berth, or into
+the berth's tanks for road tankers to carry inland; a bulker's grabs
+unload onto a heap in the yard for tippers, or into a bulk yard at the
+berth. Only a tank farm can take a tankerful and only a bulk yard a
+bulkerful, which is what each is for: chartering is the step from a
+town that imports to one that trades.
 
 Open:
 
@@ -259,6 +280,9 @@ Open:
 4. How a top-up rule books: "will I be under my floor by the next
    arrival", and how it avoids booking twice for one shortfall.
 5. How big a box is, and whether a part-full box sails.
+8. How big an order has to be before a charter is offered, and whether
+   the pipe from a berth to a tank farm is drawn or follows from their
+   standing side by side.
 6. Carrier haulage's fee, and whether the company's lorries are drawn
    on the town's roads like anyone's.
 7. Whether players run lines of their own one day, against `game.md`'s
