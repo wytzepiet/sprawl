@@ -43,6 +43,10 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
   return Math.min(Math.max(v, lo + half), hi - half);
 }
 
+/** Where the camera looks and how much ground it sees either way, as of
+ *  the last frame; and a way to send it somewhere, for the minimap. */
+export const eye = { x: 0, y: 0, halfW: 15, halfH: 15, go(_x: number, _y: number) {} };
+
 export function OrthoCamera() {
   const { scene, canvas, beforeRender, afterRender } = useEngine();
   const { send, island } = useGame();
@@ -162,6 +166,12 @@ export function OrthoCamera() {
     targetViewHalf = newSize;
   }
 
+  eye.go = (x, y) => {
+    setFollowing(null);
+    targetCamX = x;
+    targetCamY = y;
+  };
+
   // The fixture shots point the camera from outside: straight to a place and
   // a zoom, no travel. Dev only.
   if (import.meta.env.DEV) {
@@ -219,6 +229,7 @@ export function OrthoCamera() {
     }
     clampToIsland();
     sendViewportIfChanged();
+    Object.assign(eye, { x: camera.position.x, y: camera.position.y, halfW: viewHalf * aspect(), halfH: viewHalf });
     if (perspective && !debugMode) lean(1);
   });
   const stopAfter = afterRender(() => {
