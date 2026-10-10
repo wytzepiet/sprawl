@@ -41,13 +41,14 @@ is reached only by sea.
 
 **The map is mostly sea.** Several islands of different sizes and
 different land, in one connected ocean that every coast can sail to,
-because ships are how towns reach each other and the world. Today's
-generator makes about half the map land, mostly one continent; the target
-is land well under a third of the map, a handful of islands, each with
-coast for a harbour and room for a starting town, some with forest, some
-with mountain, flat land on most, and no coast cut off from the open sea.
-Checked on the first twenty seeds, as `every_seed` checks the starting
-town now (`plan.md`).
+because ships are how towns reach each other and the world. Land is a
+sixth to a quarter of the map, in four to eight islands, the origin's the
+biggest, with the origin forty tiles in from its coast on open grass;
+each island has a character, most grass with some wood, some forest,
+some mountain, and lakes inland but none on the sea. Each island is a
+coast drawn round a centre and the map bent, so no sea is ever shut in
+(`terrain.rs`). `every_seed_is_islands_in_one_ocean` checks it on the
+first twenty seeds.
 
 **The door is the harbour**, built on the coast first, so every town
 starts on the coast and grows inland. It begins as a ferry harbour, a

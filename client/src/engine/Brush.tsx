@@ -3,7 +3,6 @@ import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
-import { tree, unlocked } from "../state/tree";
 import { isRoad, setTool, tool } from "../ui/buildMode";
 import { affords, hand, may, mayStart, snap, STEPS, type Hand } from "./may";
 import type { GridCoord, TerrainType, Tool } from "../generated";
@@ -44,15 +43,13 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   // The world as the hand sees it, read again when something is built.
   let world: Hand | null = null;
   createEffect(on(builtVersion, () => {
-    world = hand(eachEntity, props.ground, growth(), (want) => unlocked(tree(), growth().taken, want));
+    world = hand(eachEntity, props.ground, growth());
     draw();
   }));
-  // And drawn again when what the build allows changes: what is taken,
-  // road left to lay, a tile of the held kind come within the purse.
+  // And drawn again when a tile of the held kind comes within the purse.
   const gate = createMemo(() => {
-    const [g, held] = [growth(), tool()];
-    const purse = held !== null && typeof held !== "string" && affords(g, held.Building);
-    return `${g.road_tiles_left},${g.taken.length},${tree() ? 1 : 0},${purse}`;
+    const held = tool();
+    return held !== null && typeof held !== "string" && affords(growth(), held.Building);
   });
   createEffect(on([gate, tool], () => draw(), { defer: true }));
   const allowed = (at: GridCoord, i: number) => {

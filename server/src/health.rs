@@ -64,11 +64,6 @@ pub async fn inspect_blueprints() -> String {
     format!("{:#}\n", crate::blueprint::inspect())
 }
 
-/// The skill tree, for the client to draw: kinds, nodes, edges and routes.
-pub async fn tree() -> axum::Json<serde_json::Value> {
-    axum::Json(crate::tree::inspect())
-}
-
 /// A building's lot: spots, windows, and what it has seen.
 pub async fn inspect_lot(Path(id): Path<EntityId>, State(state): State<AppState>) -> String {
     ask(&state, Ask::Lot(id)).await

@@ -2,11 +2,10 @@ import { createEffect, createSignal, For, indexArray, on, Show } from "solid-js"
 import { follow, LOOSE } from "../engine/spring";
 import { setTool, tool } from "./buildMode";
 import { useGame } from "../state/gameObjects";
-import { tree, unlocked } from "../state/tree";
 import { BLUEPRINTS, KINDS, plot, TABS } from "../blueprints";
 import type { Tool } from "../generated";
 
-/** What the road shelf holds; all but the street are opened on the tree by name. */
+/** What the road shelf holds. */
 const ROAD_KINDS = [
   { id: "Street", label: "Street", color: "#8FA39A", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
   { id: "OneWay", label: "One-way", color: "#7A8F86", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
@@ -64,20 +63,17 @@ function Glyph(props: { d: string; size: number }) {
  */
 export default function BuildModeToolbar() {
   const { growth } = useGame();
-  const may = (t: Tool) =>
-    t === "Street" ||
-    unlocked(tree(), growth().taken, (e) => (typeof t === "string" ? e.kind === t : e.kind === "Building" && e.building === t.Building));
   const afford = (t: Tool) => typeof t === "string" || growth().treasury >= BLUEPRINTS[t.Building].price;
 
-  /** What a shelf holds that the tree has opened. */
+  /** What a shelf holds. */
   const tools = (s: Shelf): Tool[] =>
-    (s === "road" ? ROAD_KINDS.map((r) => r.id as Tool) : KINDS.filter((k) => BLUEPRINTS[k].tab === s).map((k) => ({ Building: k }))).filter(may);
+    s === "road" ? ROAD_KINDS.map((r) => r.id as Tool) : KINDS.filter((k) => BLUEPRINTS[k].tab === s).map((k) => ({ Building: k }));
   const shelves = () => SHELVES.filter((s) => tools(s.id).length > 0);
 
   // The last thing in hand from each shelf, however it got there, which its button shows.
   const [last, setLast] = createSignal<Partial<Record<Shelf, Tool>>>({});
   createEffect(() => { const t = tool(), s = shelfOf(t); if (s) setLast((l) => ({ ...l, [s]: t! })); });
-  const face = (s: Shelf) => { const t = last()[s]; return t && may(t) ? t : tools(s)[0]; };
+  const face = (s: Shelf) => last()[s] ?? tools(s)[0];
   /** Picking up a shelf takes its face, or else the first on it the purse covers. */
   const pick = (s: Shelf) => take(afford(face(s)) ? face(s) : tools(s).find(afford) ?? face(s));
   const take = (t: Tool) => {
@@ -125,11 +121,9 @@ export default function BuildModeToolbar() {
   const [beadSize] = follow(() => (held() ? 1 : 0.2), { rest: 0.002 });
   const stretch = () => Math.min(0.45, Math.abs(beadV()) / 1400);
 
-  /** What the tree says of a thing, and its size; the card's height guessed from their length. */
-  const blurb = (t: Tool) =>
-    Object.values(tree()?.legend ?? {}).find((r) => (typeof t === "string" ? r.effect.kind === t : r.effect.kind === "Building" && r.effect.building === t.Building))?.blurb ?? "";
+  /** A thing's size, and the card's height to show it. */
   const size = (t: Tool) => (typeof t === "string" ? "" : `${plot(t.Building, 0).size.join("×")} tiles.`);
-  const cardHeight = (t: Tool) => 56 + Math.ceil((blurb(t).length + size(t).length + 1) / 40) * 20;
+  const cardHeight = (t: Tool) => 56 + Math.ceil(size(t).length / 40) * 20;
 
   /** Every row of every shelf, placed: risen above its shelf when open, sunk into it when not. */
   const rows = () =>
@@ -222,22 +216,12 @@ export default function BuildModeToolbar() {
             </button>
             <Show when={m.r().info}>
               <p class="appear soft absolute left-[18px] right-4 top-[46px] m-0 text-[13.5px] leading-[1.45] font-medium">
-                {blurb(m.r().t)} <span class="serif italic">{size(m.r().t)}</span>
+                <span class="serif italic">{size(m.r().t)}</span>
               </p>
             </Show>
           </div>
         )}
       </For>
-      {/* What the build still allows to be laid, over the road shelf's rows. */}
-      <Show when={menu() === "road"}>
-        <span
-          class="appear serif italic absolute text-sm whitespace-nowrap"
-          classList={{ soft: growth().road_tiles_left > 0, "text-red-500": growth().road_tiles_left === 0 }}
-          style={{ left: `${cx(1) - 14}px`, bottom: `${FIRST_ROW + tools("road").length * ROW}px` }}
-        >
-          {growth().road_tiles_left} tiles left
-        </span>
-      </Show>
 
       <For each={shelves()}>
         {(s, si) => (

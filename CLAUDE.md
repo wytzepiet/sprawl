@@ -82,8 +82,9 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the crate with `cfg(test)` on, so a stray `#[cfg(test)]` above something the
   game needs passes the suite and leaves a server that will not build.
 - **Does every seed still start?** After touching `terrain.rs` or
-  `road_gen.rs`, `cargo test every_seed -- --ignored` seats the starting
-  town on the first twenty seeds; `DRAW=1` draws the ones that fail.
+  `road_gen.rs`, `cargo test every_seed -- --ignored` checks the first
+  twenty seeds are islands in one ocean and seats their starting towns;
+  `DRAW=1` draws the ones that fail.
 - **Does it still look right?** `bun run shots` builds the test towns in
   `server/fixtures/*.txt` (a map in text; the key is in
   `server/src/fixtures.rs`) on a stack of its own, ports 4810/4811, and
@@ -142,8 +143,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads and forest to build into — enough to
-  exercise building, tree clearing and demolition; the sea is seventy tiles
-  off to the north-west, and seed 3 starts on the shore. `SPRAWL_ALL=1` opens
+  exercise building, tree clearing and demolition; every seed's origin is
+  forty tiles in from its island's coast. `SPRAWL_ALL=1` opens
   the whole tree and a bottomless treasury. Any fixed seed gives
   the same map back, so a change in behaviour is a change in the code.
   `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the whole

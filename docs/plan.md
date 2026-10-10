@@ -55,8 +55,8 @@ that assert old design are rewritten, not obeyed.
   branch, read it and decide.
 - The road's edge, the generated roads and the fog are still in the code,
   though shelved; the old port's call-driven world ship is in `sea.rs`.
-- The skill tree is old and is to be switched off.
-- The terrain is about half land, mostly one continent.
+- The skill tree is switched off: everything unlocked, its screen gone.
+- The terrain is islands in one ocean, a fifth of the map land.
 - The client renders with Babylon Lite on WebGPU only, which a cloud
   container cannot run (`canvas.md`).
 
