@@ -225,7 +225,22 @@ means topping up timber today.
 Roads take theirs too, gravel and asphalt and, over water or over each
 other, concrete and steel, but straight from the depots' stock as they
 are committed, with no lorry: a road is instant, and so the bigger the
-gravel depot, the more road can be laid in one go. Placing anything is a
+gravel depot, the more road can be laid in one go.
+
+As built (2026-10-10): a road tile takes a unit of stone, off the
+shelves of the depots nearest it as far as they hold any. What they lack
+the world sends on the spot, express, at twice the ferry's price, paid
+at the harbour as a lump; with no harbour yet there is no border to pay
+at, and the first street is free. A road is never refused for want of
+stone: refusing would make the network, the thing the player iterates
+on, wait on a ferry, and the opening's first street comes before its
+first stone. Laying it on credit (stock below zero, paid back by the
+next box) was the other way, and lost: every shelf would have to learn
+that it can be owed. Express is the rule the world already has, "I need
+it now is always possible and always dear", and it makes the lesson
+plain: about a coin a tile from the treasury, half that from a depot's
+stone, nothing from the town's own quarry. Demolition gives nothing back
+yet. Placing anything is a
 draft until it is committed, and the draft's bill says what it will take
 against what is in stock (`game.md` §Drafts).
 

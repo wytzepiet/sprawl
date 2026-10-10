@@ -88,13 +88,17 @@ pictures, at least), and its documents say what was built.
    general depot; sites that wait for their materials and go up as lorries
    bring them; building costs as rows, timber first; the first depot's
    top-up rule; the stalled site that offers its fix; roads drawing
-   materials from stock once there are any.
+   materials from stock once there are any. *Built 2026-10-10:* costs are
+   rows (`Blueprint::materials`), stone the second material; a site waits
+   for every row and its card offers the fix; roads draw stone from the
+   nearest depots, the rest express from the world (`trade.md` §Building
+   materials). Left: demolition giving back, and asphalt.
 7. **The world as a trader** (`trade.md`): ordering by hand at the harbour,
    top-up rules on depots booking the ferry, the pending shipments as a
    list and pins, the coins landing as the boxes do.
 8. **The starter pack and the tapped lorry**: the opening's four beats from
    nothing (`game.md` §The opening), and standing orders for the lorry.
-9. **Chains** (`buildings.md`): sawmill, quarry, mine, cement works,
+9. **Chains** (`buildings.md`): sawmill and quarry built; mine, cement works,
    steelworks, refinery, the specialist depots; the office and the
    factory go once the chains give the town its work.
 10. **The container port and the network** (`shipping.md`): the Exchange,

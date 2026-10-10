@@ -90,9 +90,11 @@ road that waited on a paving crew would also make a jam slow to fix, the
 crew stuck in the jam. What a road takes comes straight out of the depots' stock as it
 is committed: gravel for its base and asphalt for its top, and concrete
 and steel for a bridge or an overpass, which is the big project you stock
-a big depot for. Until the quarry (`roadmap.md` milestone 3) a road costs
-only the build's tiles. Demolition gives back part of what a road took,
-so trying things is never punished.
+a big depot for. As built, a tile takes a unit of stone off the nearest
+depot's shelf, and what the depots lack the world sends express, dear,
+so a road is never refused (`trade.md` §Building materials). Demolition
+is to give back part of what a road took, so trying things is never
+punished; it does not yet.
 
 ## Drafts
 
