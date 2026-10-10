@@ -569,13 +569,36 @@ pub struct Sailing {
     pub turn: u64,
 }
 
-/// The sea's part of an update: every shipment on its way and every
-/// harbour's timetable. Small, and summarised afresh each update.
+/// The sea's part of an update: every shipment on its way, every
+/// harbour's timetable, and the lanes its lines are laid as. Small, and
+/// summarised afresh each update.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Sea {
     pub shipments: Vec<Shipment>,
     pub sailings: Vec<Sailing>,
+    #[serde(default)]
+    pub lanes: Vec<Lane>,
+}
+
+/// A stretch of a line's way as it lies on the map (`shipping::lanes`):
+/// a lane, one way, the way the points run; or a junction between lanes.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Lane {
+    pub path: Vec<[f64; 2]>,
+    pub kind: LaneKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum LaneKind {
+    OneWay,
+    /// Shared both ways, one way at a time: a berth's approach, or water
+    /// too narrow for two lanes.
+    TwoWay,
+    /// Lanes crossing: ships whose ways cross take turns.
+    Crossing,
 }
 
 /// One journey: born when the driver pulls out, gone on arrival.

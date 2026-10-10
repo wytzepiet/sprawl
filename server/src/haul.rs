@@ -466,7 +466,8 @@ pub fn sea(world: &World) -> Sea {
             })
         })
         .collect();
-    Sea { shipments, sailings }
+    let lanes = world.lanes.as_ref().map_or(Vec::new(), |lanes| world.lines.values().flat_map(|l| &l.legs).flat_map(|leg| lanes.drawn(leg)).collect());
+    Sea { shipments, sailings, lanes }
 }
 
 /// The mayor's hand at the border: an order, a rule, standing orders, a

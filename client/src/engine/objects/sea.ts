@@ -257,7 +257,9 @@ function covered(len: number, ease: [boolean, boolean], t: number, whole: number
  *  land end points, off the server's way and clock. The way's corners are
  *  rounded already; its facing is read over a short reach either side,
  *  so it swings through them. Coming in to a berth its land end leads;
- *  going out it backs away, the sea end leading, as it never turns. */
+ *  going out (`astern`) it backs away, the sea end leading, as it never
+ *  turns. A leg comes in pieces where it stops at a junction's mouth; a
+ *  ship stands where its piece ends. */
 export function sailing(s: Sail): (now: number) => Pose {
   const at = [0];
   for (let i = 1; i < s.path.length; i++) at.push(at[i - 1] + Math.hypot(s.path[i][0] - s.path[i - 1][0], s.path[i][1] - s.path[i - 1][1]));
@@ -269,11 +271,10 @@ export function sailing(s: Sail): (now: number) => Pose {
     const k = at[i + 1] > at[i] ? (d - at[i]) / (at[i + 1] - at[i]) : 0;
     return [s.path[i][0] + (s.path[i + 1][0] - s.path[i][0]) * k, s.path[i][1] + (s.path[i + 1][1] - s.path[i][1]) * k];
   };
-  const astern = s.ease[0] && !s.ease[1];
   return (now) => {
     const d = Math.min(covered(len, s.ease, now - s.started, s.ends - s.started), len);
     const [a, b] = [point(d - REACH), point(d + REACH)];
-    return { at: point(d), heading: Math.atan2(b[1] - a[1], b[0] - a[0]) + (astern ? Math.PI : 0) };
+    return { at: point(d), heading: Math.atan2(b[1] - a[1], b[0] - a[0]) + (s.astern ? Math.PI : 0) };
   };
 }
 const REACH = 0.4;

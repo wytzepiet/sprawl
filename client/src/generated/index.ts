@@ -29,6 +29,8 @@ export type { TerrainType } from "./TerrainType";
 export type { Tool } from "./Tool";
 export type { Trip } from "./Trip";
 export type { Good } from "./Good";
+export type { Lane } from "./Lane";
+export type { LaneKind } from "./LaneKind";
 export type { Leg } from "./Leg";
 export type { Place } from "./Place";
 export type { Rule } from "./Rule";

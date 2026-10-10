@@ -5,7 +5,7 @@ import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeomet
 import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
 import { colourOf, LIVERY, moment, PALETTE, type Moment } from "../engine/objects/motion";
 import type { Rgb } from "../engine/rgb";
-import type { Building, Car, Draft, GameObjectEntry, Good, RoadNode, Stock, TerrainType, Trailer } from "../generated";
+import type { Building, Car, Draft, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Trailer } from "../generated";
 import type { Pose as Stand } from "../generated/Pose";
 
 /**
@@ -29,6 +29,8 @@ export interface World {
   drafts?: Draft[];
   me?: number;
   ground(cx: number, cy: number): Uint8Array | undefined;
+  /** The sea's lanes (`Sea.lanes`), drawn faint on the water. */
+  lanes?: Lane[];
   now: number;
   dayMs: number;
 }
@@ -77,6 +79,45 @@ function chunkImage(tiles: Uint8Array, sheet: Sheet, theme: Theme): unknown {
 }
 
 /**
+ * A lane faint on the water, as the map reserves it (`shipping::lanes`):
+ * one way, a thin line with a chevron every few tiles the way it runs; a
+ * junction shared both ways, a berth's approach or a strait, dashed and
+ * warmer; a crossing, a short bold stroke where the lanes meet.
+ */
+function drawLane(g: CanvasRenderingContext2D, lane: Lane, S: number) {
+  const ink = { OneWay: "rgba(255,255,255,0.45)", TwoWay: "rgba(255,196,96,0.7)", Crossing: "rgba(255,120,120,0.7)" }[lane.kind];
+  g.save();
+  g.strokeStyle = ink;
+  g.lineWidth = (lane.kind === "Crossing" ? 4 : 1.5) / S;
+  g.setLineDash(lane.kind === "TwoWay" ? [6 / S, 4 / S] : []);
+  g.beginPath();
+  lane.path.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.stroke();
+  if (lane.kind === "OneWay") {
+    g.setLineDash([]);
+    const every = Math.max(3, 60 / S);
+    let left = every / 2;
+    for (let i = 1; i < lane.path.length; i++) {
+      const [a, b] = [lane.path[i - 1], lane.path[i]];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      for (let d = left; d < len; d += every) {
+        const [ux, uy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+        const [x, y] = [a[0] + ux * d, a[1] + uy * d];
+        const w = 4 / S;
+        g.beginPath();
+        g.moveTo(x - ux * w - uy * w, y - uy * w + ux * w);
+        g.lineTo(x, y);
+        g.lineTo(x - ux * w + uy * w, y - uy * w - ux * w);
+        g.stroke();
+      }
+      left = (left - len) % every;
+      if (left < 0) left += every;
+    }
+  }
+  g.restore();
+}
+
+/**
  * Draw the world into `g`, `view.w` by `view.h` pixels. `labels` adds ids
  * and a legend; without, it is the minimap's picture.
  */
@@ -100,6 +141,7 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       const tiles = world.ground(cx, cy);
       if (tiles) g.drawImage(chunkImage(tiles, sheet, theme) as CanvasImageSource, cx * CHUNK_SIZE, cy * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
     }
+  for (const lane of world.lanes ?? []) if (lane.path.some(([x, y]) => on(x, y, 8))) drawLane(g, lane, S);
 
   const byId = new Map<number, GameObjectEntry>();
   const buildings: [GameObjectEntry, Building][] = [];
@@ -431,7 +473,7 @@ function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntr
     return `${String(Math.floor(u * 24)).padStart(2, "0")}:${String(Math.floor((u * 1440) % 60)).padStart(2, "0")}`;
   };
   const ferries = cars.filter(([, c]) => c.role === "Ferry").map(([e, c]) => {
-    const where = c.spot ? `moored, casts off ${hhmm(c.due)}` : c.sail ? `at sea, ${c.sail.ease[1] ? "berths" : "over the edge"} ${hhmm(c.sail.ends)}` : `away, berths ${hhmm(c.due)}`;
+    const where = c.spot ? `moored, casts off ${hhmm(c.due)}` : c.sail ? `at sea, ${c.sail.ends <= world.now ? "waiting at a junction, " : ""}${c.sail.astern ? "out to the edge" : `berths ${hhmm(c.due)}`}` : `away, berths ${hhmm(c.due)}`;
     const boxes = c.deck.filter(Boolean).length;
     const harbour = byId.get(c.owner)?.object.data as Building | undefined;
     const parked = harbour?.park.filter((s) => s.trailer).length ?? 0;

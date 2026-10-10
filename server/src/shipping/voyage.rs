@@ -69,7 +69,7 @@ fn time_at(len: f64, ease: [bool; 2], x: f64) -> GameTime {
 
 /// The part of a polyline from `a` to `b` along it; where that is no
 /// length, a stub the way it runs there, so a ship standing faces on.
-fn part(path: &[[f64; 2]], a: f64, b: f64) -> Vec<[f64; 2]> {
+pub fn part(path: &[[f64; 2]], a: f64, b: f64) -> Vec<[f64; 2]> {
     let (p, heading) = point_at(path, a);
     if b - a < 1e-6 {
         return vec![p, [p[0] + heading.cos() * 1e-3, p[1] + heading.sin() * 1e-3]];

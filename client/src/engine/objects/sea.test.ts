@@ -26,7 +26,7 @@ test("a tug ends where the server has it, its box on the slot, and backs facing 
 
 test("a ferry sailing in ends moored at the berth, its land end at the ramp, and deck slots on the hull", () => {
   // In from the edge, round a corner, and straight up to the berth.
-  const sail: Sail = { path: [[-30, 53.5], [-17.5, 53.5], [-17.5, 49.6]], started: 0, ends: 40_000, ease: [false, true] };
+  const sail: Sail = { path: [[-30, 53.5], [-17.5, 53.5], [-17.5, 49.6]], started: 0, ends: 40_000, ease: [false, true], astern: false };
   const at = sailing(sail)(sail.ends);
   near(at.at, [-17.5, 49.6]);
   expect(Math.sin(at.heading)).toBeCloseTo(-1);
@@ -41,6 +41,6 @@ test("a ferry sailing in ends moored at the berth, its land end at the ramp, and
     last = h;
   }
   // Going out it backs away, its land end toward the berth.
-  const out: Sail = { path: [[-17.5, 49.6], [-17.5, 160]], started: 0, ends: 40_000, ease: [true, false] };
+  const out: Sail = { path: [[-17.5, 49.6], [-17.5, 160]], started: 0, ends: 40_000, ease: [true, false], astern: true };
   expect(Math.sin(sailing(out)(20_000).heading)).toBeCloseTo(-1);
 });

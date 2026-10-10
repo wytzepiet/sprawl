@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use crate::intersection::{paths_conflict, Dir, Rule};
+use crate::protocol::{Lane, LaneKind};
 
 use super::water::{Water, BERTH, NARROW};
 use crate::world::sea::FERRY_LENGTH;
@@ -295,21 +296,23 @@ impl Lanes {
         gates
     }
 
-    /// A way cut into its lanes and the junctions between them: each
-    /// piece's span along it and its junction's kind, none for a lane.
-    pub fn pieces(&self, way: &[[f64; 2]]) -> Vec<(f64, f64, Option<Kind>)> {
-        let len = super::length(way);
+    /// A way cut into its lanes and the junctions between them, for the
+    /// map: a lane runs one way between junctions, as a street runs
+    /// between road nodes.
+    pub fn drawn(&self, way: &[[f64; 2]]) -> Vec<Lane> {
+        let piece = |a: f64, b: f64, kind: LaneKind| Lane { path: super::voyage::part(way, a, b), kind };
         let mut out = Vec::new();
         let mut d = 0.0;
         for g in self.gates(way) {
             if g.d0 > d {
-                out.push((d, g.d0, None));
+                out.push(piece(d, g.d0, LaneKind::OneWay));
             }
-            out.push((g.d0, g.d1, Some(g.kind)));
+            out.push(piece(g.d0, g.d1, if g.kind == Kind::Crossing { LaneKind::Crossing } else { LaneKind::TwoWay }));
             d = g.d1;
         }
+        let len = super::length(way);
         if d < len {
-            out.push((d, len, None));
+            out.push(piece(d, len, LaneKind::OneWay));
         }
         out
     }
