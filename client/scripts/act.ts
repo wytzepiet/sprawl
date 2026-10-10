@@ -94,11 +94,15 @@ const PLAYER = process.env.PLAYER ?? "4242";
 /** The town's missions, as the last update had them. */
 type Mission = { title: string; finished: number | null; reward: { data: number }; steps: { title: string; text: string; done: boolean; at: number | null }[] };
 let missions: Mission[] = [];
+/** News heard since the last command said what it saw. */
+const told: string[] = [];
 let draft: { strokes: { step: unknown; stuck: boolean }[][]; bill: { good: string; takes: number; have: number; boxes: number; coins: number; express: number }[] } | undefined;
 const ws = new WebSocket(`ws://localhost:${PORT}/ws?player=${PLAYER}`);
 ws.binaryType = "arraybuffer";
 ws.onmessage = (e) => {
   const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as { type: string; data: any };
+  // The town spending of its own accord, as the news tells a player.
+  if (msg.type === "News") for (const n of msg.data) told.push(`news: ${n.text}, ${n.sub}`);
   if (msg.type !== "Update") return;
   clock = msg.data.clock;
   missions = msg.data.missions ?? [];
@@ -298,7 +302,7 @@ for (const line of lines) {
     default:
       throw new Error(`no such command: ${verb}`);
   }
-  const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...report];
+  const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...told.splice(0), ...report];
   // What is left drafted, and its bill.
   if (draft) {
     const marks = draft.strokes.flat();

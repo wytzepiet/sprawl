@@ -366,7 +366,7 @@ fn handle_player_action(
                 && let Some(&harbour) = world.harbours.keys().next()
             {
                 let stone = paid / (crate::economy::EXPRESS * crate::economy::import(Good::Stone, 1.0));
-                world.news.push(crate::protocol::News { text: format!("Build paid {paid:.0} express"), sub: format!("for {stone:.0} stone the depots did not have, −{paid:.0}"), at: harbour });
+                world.news.push(crate::protocol::News { text: format!("Build paid {paid:.0} coins express"), sub: format!("for {stone:.0} stone the depots did not have"), at: harbour });
             }
         }
         ClientMessage::Undo => crate::drafts::undo(world, owner),

@@ -510,6 +510,8 @@ pub fn set_standing(world: &mut World, events: &mut EventQueue, depot: EntityId,
     if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
         b.standing = on;
     }
+    // Its rules, read now they may buy.
+    top_up(world, depot);
     for lorry in lorries_of(world, depot) {
         events.wake(0, lorry);
     }
