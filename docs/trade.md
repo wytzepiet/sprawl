@@ -189,9 +189,15 @@ and a busy pair of harbours gets more sailings: the company follows the
 traffic, up to what a harbour's size allows, and the tree grows that.
 Ships sail on time whether full or not, so a wait is for the next
 sailing, never for a shipload; small loads from many senders share a
-ship. A sailing has room per class: vehicles, boxes, liquid, bulk. The
-ferry is a line whose ships carry mostly vehicles, settlers and the
-world's lorries among them, and is the same thing as a cargo line.
+ship. Each ship carries one kind of thing and lands it one way: the
+ferry carries people and their cars, off a ramp; the container ship
+carries boxes, lifted off by a crane; later the tanker and the bulker
+(below). A line is run by ships of one kind, and the ferry's line and the
+container line are the same machinery with different ships. A small
+harbour serves both from one quay, a ramp and a crane side by side, the
+way small island ports do; a busy one grows a container berth of its
+own, then berths for tankers and bulkers, and that is the tree growing
+the door.
 
 **A shipment is planned, not driven.** The player says what, from where,
 to where, and by when: an order by hand, a top-up rule on a depot, a

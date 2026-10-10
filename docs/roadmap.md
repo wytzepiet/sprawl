@@ -22,7 +22,7 @@ Decided on 2026-10-10 and not built: every trade across the border is
 the player's, by hand or by a rule on a depot; every shipment can be
 followed; depots keep everything; buildings are built from materials a
 lorry brings. Still to build from 2026-09-23: the harbour as the door
-with the world's ferry, sites, the tapped lorry.
+with the world's ferry and container ship, sites, the tapped lorry.
 
 Not built, unchanged: parking past the kerb, power, fire, hospital, the
 advisor, road speed and priority, levels, trains, multiplayer,
@@ -52,10 +52,11 @@ The four beats of `game.md` §The opening, from nothing, in four slices
 each playable on its own.
 
 1. The harbour, built by the player on the coast, as the one door
-   (`trade.md` §Shipping): one line of the shipping company's, the ferry,
-   on a timetable, carrying settlers, vehicles and containers; the
-   harbour's yard, where the cranes stack its boxes and from where a
-   lorry collects them to a depot. The road's edge, the generated roads
+   (`trade.md` §Shipping): one quay with a ramp and a crane, and two of
+   the shipping company's lines calling at it on timetables, the ferry
+   with settlers and their cars, and a small container ship whose boxes
+   the crane lifts onto the harbour's yard, from where a lorry collects
+   them to a depot. The road's edge, the generated roads
    and the fog go (`shelved.md`, 2026-09-23).
 2. Drafts (`game.md` §Drafts): every placement and demolition a draft
    until committed, blue and reserved, drawn on the map with its bill;

@@ -15,7 +15,8 @@ the rules produce by default; the game is what you make of it.
 
 **Every system pays out as an event you can see on the map.** A visit
 ends and the money lands on the shop; a truck arrives and the building goes
-up; a car drives onto the ferry because the town has no fuel. A dial may
+up; the crane lifts a box off the ship and a lorry backs up to take it
+home. A dial may
 sum the events, but the events come first. A system that is only a rate on
 a dial might as well not exist.
 
@@ -39,15 +40,17 @@ map: grass, forest, mountain, coast. Beyond the shore is the world, and it
 is reached only by sea.
 
 **The door is the harbour**, built on the coast first, so every town
-starts on the coast and grows inland. The world runs a ferry to it on a
-timetable: so many cars a sailing, so many sailings a day, a crossing
-time. Cars roll off the ramp, the world's lorries and tankers among them;
-goods come off onto the quay, a small buffer that wants moving to a
-depot; what the town sells goes back the same way. The boat's batch is
-the door's size. The tree grows the door: a bigger ferry, then a berth
-per handling class where a bigger ship lands boxes, fuel or bulk by the
-shipload, cheaper. The mayor never owns a ship, and
-nothing arrives anywhere but the ramp.
+starts on the coast and grows inland. It begins as one quay with a ramp
+and a crane. The world's shipping company calls at it with two kinds of
+ship, each on a timetable: the ferry, whose settlers drive their cars
+off the ramp into town, and a small container ship, whose boxes the
+crane lifts onto the harbour's yard, where they wait for a lorry to take
+them to a depot. What the town sells leaves the same way. The sailings
+are the door's size, and the tree grows the door: more of them, bigger
+ships, then a container berth of its own, then berths for tankers and
+bulkers that land fuel or gravel by the shipload (`trade.md`
+§Shipping). The mayor never owns a ship, and nothing arrives anywhere
+but the harbour.
 
 The sea is the default way between towns as well as to the world: the
 world's shipping company runs every ship, a planner routes every load
@@ -204,9 +207,9 @@ be followed, and the coins land when it does.
 **The world beyond the sea always trades**, badly: it sells anything at a
 premium, on the slow boat, and buys anything at a discount. A town never
 runs out of anything for good, and the world is never the cheap way.
-Every player's price lives between its two. Speed costs: the ferry is
-slow and cheap, a neighbour by road fast if near, an airport later fast
-and dear. Order before you need it.
+Every player's price lives between its two. Speed costs: the scheduled
+ship is slow and cheap, a neighbour by road fast if near and joined, an
+express boat or an airport later fast and dear. Order before you need it.
 
 ## Power
 
