@@ -78,6 +78,10 @@ pub const EMPTIES: usize = 2;
 
 /// The starter pack's order: the world's gift, paid for by nobody.
 pub const GIFT: u64 = 0;
+/// The starter pack, the first harbour's first sailing: timber for the
+/// first houses, stone for the first streets, crates for the first shop,
+/// fuel; a box of each.
+pub const STARTER: [Good; 6] = [Good::Timber, Good::Timber, Good::Timber, Good::Stone, Good::Crates, Good::Fuel];
 
 fn ahead(heading: f64, d: f64) -> [f64; 2] {
     [heading.cos() * d, heading.sin() * d]
@@ -238,7 +242,7 @@ impl World {
         let mut ferry = Car::new(harbour, CarRole::Ferry);
         ferry.due = now + FIRST_CALL;
         if first {
-            for good in [Good::Timber, Good::Timber, Good::Timber, Good::Stone, Good::Crates, Good::Fuel] {
+            for good in STARTER {
                 let id = self.objects.reserve_id();
                 ferry.booked.push(Trailer { id, good: Some(good), units: good.per_box(), to: None, outbound: false, order: Some(GIFT) });
             }

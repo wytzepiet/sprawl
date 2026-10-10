@@ -92,7 +92,7 @@ export default function Bill(props: { hidden: boolean }) {
                   <GoodIcon good={l.good} width="12" height="12" style={{ color: GOODS[l.good].color }} />
                   <span class="tabular-nums">{l.takes}</span>
                   <span class="soft">{GOODS[l.good].label.toLowerCase()}</span>
-                  <Show when={short(l) > 0} fallback={<span class="soft">· in stock</span>}>
+                  <Show when={short(l) > 0} fallback={<span class="soft">· covered</span>}>
                     <span class="font-semibold" style={{ color: "#D9483B" }}>· {short(l)} short</span>
                   </Show>
                 </span>

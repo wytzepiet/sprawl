@@ -290,6 +290,7 @@ fn founds(world: &World, strokes: &[Stroke]) -> Vec<BuildingKind> {
 /// stands at once (`World::founded`).
 fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
     let mut founds = founds(world, strokes);
+    let founds_harbour = founds.contains(&BuildingKind::Harbour);
     let depot_stands = world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if crate::economy::depot(b.kind) && b.site.is_none()));
     if !depot_stands && let Some(i) = founds.iter().position(|&k| crate::economy::depot(k)) {
         founds.remove(i);
@@ -328,6 +329,13 @@ fn bill(world: &World, strokes: &[Stroke]) -> Vec<Line> {
             for (&good, s) in &b.stocks {
                 *have.entry(good).or_default() += s.level;
             }
+        }
+    }
+    // The first harbour drafted brings the starter pack on its first
+    // sailing: the bill counts it as on its way, as it will be.
+    if !harbour && founds_harbour {
+        for good in crate::world::sea::STARTER {
+            *have.entry(good).or_default() += good.per_box();
         }
     }
     for (t, _, _) in crate::haul::boxes(world) {
@@ -443,5 +451,22 @@ mod tests {
         assert_eq!(bill[0].takes, 3.0 * timber);
         assert_eq!(bill[0].have, 0.0);
         assert_eq!(bill[0].boxes, (3.0 * timber / Good::Timber.per_box()).ceil() as u32);
+    }
+
+    #[test]
+    fn the_opening_drafted_asks_nothing_of_the_purse() {
+        // Its harbour's first sailing is the starter pack: a bill that
+        // offered to buy what the gift brings would cost a new player coins.
+        let mut world = World::new();
+        grass(&mut world);
+        let harbour = Tool::Building(BuildingKind::Harbour);
+        draw(&mut world, 1, step(harbour, at(0, 0), at(0, 0)));
+        let house = Tool::Building(BuildingKind::House);
+        for x in 4..7 {
+            draw(&mut world, 1, step(house, at(x, 1), at(x, 1)));
+        }
+        let bill = bill(&world, &world.drafts[&1]);
+        assert!(!bill.is_empty(), "the houses' timber is not on the bill");
+        assert!(bill.iter().all(|l| l.boxes == 0), "the opening's bill offers to buy: {:?}", bill.iter().map(|l| (l.good, l.boxes)).collect::<Vec<_>>());
     }
 }
