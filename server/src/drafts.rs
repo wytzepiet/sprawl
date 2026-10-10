@@ -68,7 +68,7 @@ pub struct Line {
 fn lays(step: &Build) -> Vec<GridCoord> {
     match step.tool {
         Tool::Street | Tool::OneWay | Tool::Road => vec![step.from, step.to],
-        Tool::Building(_) => vec![step.to],
+        Tool::Building(kind) => World::whole(kind, step.to).unwrap_or_else(|| vec![step.to]),
         Tool::Demolish => vec![],
     }
 }
@@ -89,8 +89,8 @@ fn mine(world: &World, owner: OwnerId, t: GridCoord) -> bool {
 
 /// The kind of building the owner's draft paints on a tile.
 fn drafted(world: &World, owner: OwnerId, t: GridCoord) -> Option<BuildingKind> {
-    marks(world, owner).filter(|m| m.step.to == t).find_map(|m| match m.step.tool {
-        Tool::Building(kind) => Some(kind),
+    marks(world, owner).find_map(|m| match m.step.tool {
+        Tool::Building(kind) if lays(&m.step).contains(&t) => Some(kind),
         _ => None,
     })
 }
@@ -114,6 +114,10 @@ fn fair(world: &World, owner: OwnerId, step: &Build) -> bool {
         }
         // Onto a building, standing or drafted, only a step from another
         // of its kind, to join or link the two: a tap there does nothing.
+        // A harbour, whole, on nobody's draft, its owner's own included.
+        Tool::Building(kind) if World::whole(kind, step.to).is_some() => {
+            lays(step).iter().all(|&t| !mine(world, owner, t)) && world.may_paint(kind, step.from, step.to)
+        }
         Tool::Building(kind) => {
             let tap = step.from == step.to;
             let standing = |t: GridCoord| world.occupied.get(&(t.x, t.y)).and_then(|&b| match world.objects.get(b)?.object {
@@ -164,6 +168,15 @@ pub fn draw(world: &mut World, owner: OwnerId, step: Build) -> bool {
         println!("refused draft: {:?} from {:?} to {:?}", step.tool, step.from, step.to);
         return false;
     }
+    // A harbour comes with its street, laid before it: one stroke.
+    if let Tool::Building(kind) = step.tool
+        && World::whole(kind, step.to).is_some()
+    {
+        let mut stroke: Stroke = stub(world, owner, kind, step.to).into_iter().map(|step| Mark { step, stuck: false }).collect();
+        stroke.push(Mark { step, stuck: false });
+        world.drafts.entry(owner).or_default().push(stroke);
+        return true;
+    }
     let strokes = world.drafts.entry(owner).or_default();
     let carries_on = step.from != step.to && strokes.last().and_then(|s| s.last()).is_some_and(|m| m.step.tool == step.tool && m.step.to == step.from);
     let mark = Mark { step, stuck: false };
@@ -172,6 +185,76 @@ pub fn draw(world: &mut World, owner: OwnerId, step: Build) -> bool {
         _ => strokes.push(vec![mark]),
     }
     true
+}
+
+/// How far a harbour's street looks for another to join, in tiles each
+/// way; and how many tiles it runs inland where there is none.
+const REACH: i32 = 12;
+const STUB: i32 = 4;
+
+/// The street a harbour drafted at `at` brings with it, from the middle
+/// of its park's front: on to the nearest street, standing or drafted,
+/// with as few bends as may be, or a short one straight inland where none
+/// is in reach. Nothing where a street already runs to its park. Its
+/// steps in the order they are laid.
+fn stub(world: &World, owner: OwnerId, kind: BuildingKind, at: GridCoord) -> Vec<Build> {
+    use std::cmp::Reverse;
+    let Some(tiles) = World::whole(kind, at) else { return Vec::new() };
+    let Some(facing) = world.seaward(&tiles, kind).next().filter(|_| !world.would_be_reached(kind, at, at)) else { return Vec::new() };
+    let ahead = crate::blueprint::FACINGS[facing as usize];
+    let out = crate::blueprint::plot(kind, facing).size.1 as i32 / 2 + 1;
+    let front = GridCoord { x: at.x + ahead.0 * out, y: at.y + ahead.1 * out };
+    let street = |t: GridCoord| world.road_node_at(t).is_some() || marks(world, owner).any(|m| matches!(m.step.tool, Tool::Street | Tool::OneWay | Tool::Road) && lays(&m.step).contains(&t));
+    let open = |t: GridCoord| {
+        (t.x - front.x).abs() <= REACH
+            && (t.y - front.y).abs() <= REACH
+            && matches!(world.terrain.get(&(t.x, t.y)), Some(TerrainType::Grass | TerrainType::Forest))
+            && !world.occupied.contains_key(&(t.x, t.y))
+            && !tiles.contains(&t)
+            && !taken(world, owner, t)
+            && drafted(world, owner, t).is_none()
+    };
+    let steps = |path: &[GridCoord]| path.windows(2).map(|w| Build { tool: Tool::Street, from: w[0], to: w[1] }).collect();
+    // Fewest bends, then fewest tiles: a step costs two, a bend five more.
+    // A state is a tile and the way in to it.
+    type State = (i32, i32, usize);
+    let mut came: HashMap<State, State> = HashMap::new();
+    let mut cost: HashMap<State, u32> = HashMap::new();
+    let mut heap = std::collections::BinaryHeap::new();
+    if open(front) || street(front) {
+        for d in 0..4 {
+            cost.insert((front.x, front.y, d), 0);
+            heap.push(Reverse((0, (front.x, front.y, d))));
+        }
+    }
+    while let Some(Reverse((c, here))) = heap.pop() {
+        let (x, y, d) = here;
+        if cost[&here] < c {
+            continue;
+        }
+        if street(GridCoord { x, y }) {
+            let mut path = vec![GridCoord { x, y }];
+            let mut k = here;
+            while let Some(&p) = came.get(&k) {
+                path.push(GridCoord { x: p.0, y: p.1 });
+                k = p;
+            }
+            path.reverse();
+            return steps(&path);
+        }
+        for (nd, &(dx, dy)) in crate::blueprint::FACINGS.iter().enumerate() {
+            let next = (x + dx, y + dy, nd);
+            let t = GridCoord { x: next.0, y: next.1 };
+            let nc = c + 2 + if nd == d { 0 } else { 5 };
+            if (open(t) || street(t)) && cost.get(&next).is_none_or(|&b| nc < b) {
+                cost.insert(next, nc);
+                came.insert(next, here);
+                heap.push(Reverse((nc, next)));
+            }
+        }
+    }
+    let inland: Vec<GridCoord> = (0..STUB).map(|k| GridCoord { x: front.x + ahead.0 * k, y: front.y + ahead.1 * k }).take_while(|&t| open(t)).collect();
+    steps(&inland)
 }
 
 /// The owner's last stroke taken back.
@@ -203,14 +286,24 @@ fn pass(step: &Build) -> u8 {
 /// The owner's draft made real in one stroke, each step through `build`,
 /// the handler that builds live, which says whether it took the step. Round
 /// again while anything more goes in: a demolition can free a tile a road
-/// was refused. What is never taken stays in the draft, marked.
+/// was refused. A stroke is a drag, each step from where the last ended,
+/// so a step waits for the one before it: a road whose first step is
+/// refused is not laid from its second, unjoined. What is never taken
+/// stays in the draft, marked.
 pub fn commit(world: &mut World, owner: OwnerId, mut build: impl FnMut(&mut World, Build) -> bool) {
     let Some(strokes) = world.drafts.remove(&owner) else { return };
     let mut left: Vec<(usize, Build)> = strokes.iter().enumerate().flat_map(|(i, s)| s.iter().map(move |m| (i, m.step))).collect();
     loop {
         let before = left.len();
         for p in 0..3 {
-            left.retain(|(_, s)| pass(s) != p || !build(world, *s));
+            let mut waiting: HashSet<usize> = HashSet::new();
+            left.retain(|&(i, s)| {
+                let left = waiting.contains(&i) || pass(&s) != p || !build(world, s);
+                if left {
+                    waiting.insert(i);
+                }
+                left
+            });
         }
         if left.is_empty() || left.len() == before {
             break;
@@ -470,8 +563,14 @@ mod tests {
         // offered to buy what the gift brings would cost a new player coins.
         let mut world = World::new();
         grass(&mut world);
+        for x in -10..30 {
+            world.terrain.insert((x, -10), TerrainType::Sea);
+            for y in -30..-3 {
+                world.terrain.insert((x, y), TerrainType::Sea);
+            }
+        }
         let harbour = Tool::Building(BuildingKind::Harbour);
-        draw(&mut world, 1, step(harbour, at(0, 0), at(0, 0)));
+        assert!(draw(&mut world, 1, step(harbour, at(0, -2), at(0, -2))), "the harbour was not drafted");
         let house = Tool::Building(BuildingKind::House);
         for x in 4..7 {
             draw(&mut world, 1, step(house, at(x, 1), at(x, 1)));

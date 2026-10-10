@@ -1118,6 +1118,84 @@ mod tests {
         assert!(world.drafts.is_empty());
     }
 
+    /// A coast with no road on it: grass to y = 3, the sea from y = 4 out
+    /// past the map's edge.
+    fn bare_coast() -> World {
+        let mut world = World::new();
+        for y in -30..41 {
+            for x in -60..100 {
+                world.terrain.insert((x, y), if y >= 4 { TerrainType::Sea } else { TerrainType::Grass });
+            }
+        }
+        world
+    }
+
+    /// A harbour is placed whole at a tap, its back to the sea, with a
+    /// street of its own drafted to its park and laid before it. Painted
+    /// a row at a time it is refused, step by step: there is no such thing
+    /// as part of a harbour, standing or drafted, and so nothing to crash
+    /// on when the town looks for its berth. Taken down, it goes whole.
+    #[test]
+    fn a_harbour_is_placed_whole_and_never_in_part() {
+        let mut world = bare_coast();
+        world.build = crate::tree::Build::all();
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let at = |x, y| GridCoord { x, y };
+        let harbour = Tool::Building(BuildingKind::Harbour);
+        let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, &mut intersections, 1, message, 0);
+        let step = |from, to| ClientMessage::Build(Build { tool: harbour, from, to });
+        hand(&mut world, step(at(10, -10), at(10, -10)));
+        assert!(world.drafts.is_empty(), "a harbour inland was drafted");
+        // Row by row, as the brush paints: a step on is refused, and only
+        // the tap on the middle row, the middle of a plot that berths,
+        // drafts anything: the harbour whole, and its street.
+        for y in 1..4 {
+            hand(&mut world, step(at(9, y), at(9, y)));
+            hand(&mut world, step(at(9, y), at(10, y)));
+            hand(&mut world, step(at(10, y), at(11, y)));
+        }
+        let marks: Vec<Build> = world.drafts[&1].concat().iter().map(|m| m.step).collect();
+        let (last, street) = marks.split_last().unwrap();
+        assert!((last.tool, last.from, last.to) == (harbour, at(9, 2), at(9, 2)), "part of a harbour was drafted: {marks:?}");
+        assert!(street.len() >= 2 && street.iter().all(|m| m.tool == Tool::Street), "no street with it: {marks:?}");
+        hand(&mut world, ClientMessage::Commit);
+        assert!(world.drafts.is_empty(), "the commit left {:?}", world.drafts);
+        let id = world.occupied[&(9, 2)];
+        assert!((8..11).all(|x| (1..4).all(|y| world.occupied.get(&(x, y)) == Some(&id))), "the harbour is not its whole plot");
+        assert!(world.door_of(id).is_some(), "its street does not reach it");
+        assert!(world.berth(id).is_some(), "it does not berth");
+        let mut events = EventQueue::new();
+        settle_and_wake(&mut world, &mut events);
+        assert!(world.lines.contains_key(&id), "no ferry line");
+        // One tile taken is the harbour gone.
+        let mut intersections = IntersectionRegistry::new();
+        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Demolish, from: at(8, 3), to: at(8, 3) }, 0);
+        assert!((8..11).all(|x| (1..4).all(|y| !world.occupied.contains_key(&(x, y)))), "part of the harbour stands");
+        settle_and_wake(&mut world, &mut events);
+    }
+
+    /// A stroke is a drag: what follows a step refused waits for it, so a
+    /// road whose first step no longer fits is not laid from its second,
+    /// cut off and paid for.
+    #[test]
+    fn a_road_whose_first_step_is_refused_is_not_laid() {
+        let mut world = street();
+        world.build = crate::tree::Build::all();
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        let at = |x, y| GridCoord { x, y };
+        let (roads, treasury) = (world.roads.len(), world.treasury);
+        let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, &mut intersections, 1, message, 0);
+        for y in 2..6 {
+            hand(&mut world, ClientMessage::Build(Build { tool: Tool::Street, from: at(20, y), to: at(20, y + 1) }));
+        }
+        world.terrain.insert((20, 2), TerrainType::Water);
+        hand(&mut world, ClientMessage::Commit);
+        assert_eq!((world.roads.len(), world.treasury), (roads, treasury), "a road was laid from its second step");
+        assert!(world.drafts[&1].concat().iter().all(|m| m.stuck), "the stroke is not left stuck");
+    }
+
     /// One tap of the demolisher takes a house, its drive with it: the
     /// drive is the house's, not a road on its tile.
     #[test]

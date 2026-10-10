@@ -62,7 +62,7 @@ export const storeysOf = (kind: BuildingKind) => STOREYS[kind] ?? 1;
 export function tileOf(ch: string): Tile {
   const kind = LETTERS[ch];
   if (kind) return { kind, storeys: storeysOf(kind) };
-  const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
+  const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" || ch === "≈" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
   return { kind: ground, storeys: 0 };
 }
 
