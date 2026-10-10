@@ -18,6 +18,8 @@ export const HALF_W = ROAD_WIDTH / 2;
 /** A car, across, along and up: in its lane, a little room either side
  *  and between it and the car it passes. */
 export const CAR = { w: 0.15, l: 0.29, h: 0.125 };
+/** A van: a box a car and a bit long, and tall. */
+export const VAN = { w: 0.17, l: 0.37, h: 0.18 };
 /** A lorry: a cab-over tractor and a semi-trailer, two boxes. */
 export const CAB = { w: 0.17, l: 0.17, h: 0.21 };
 export const TRAILER = { w: 0.17, l: 0.46, h: 0.22, axle: 0.37, overhang: 0.025 };

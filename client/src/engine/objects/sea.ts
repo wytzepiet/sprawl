@@ -206,7 +206,7 @@ const HITCH_MS = 2500;
  */
 export const FERRY = { l: 3.2, w: 0.85 };
 const FREEBOARD = 0.7;
-const hull = (inset: number): P[] => {
+export const hull = (inset: number): P[] => {
   const [x, y] = [FERRY.w / 2 - inset, FERRY.l / 2 - inset];
   return [[x, -y + 0.35], [x, y - 0.35], [x - 0.12, y - 0.1], [x - 0.27, y], [-x + 0.27, y], [-x + 0.12, y - 0.1], [-x, y - 0.35], [-x, -y + 0.35], [-x + 0.12, -y + 0.1], [-x + 0.27, -y], [x - 0.27, -y], [x - 0.12, -y + 0.1]];
 };
