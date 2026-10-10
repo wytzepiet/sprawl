@@ -4,26 +4,26 @@ import type { Cell } from "./Cell";
 /**
  * How the city is doing, as the two dials read it.
  *
- * The level is hours of need the city's buildings have served, ever,
- * banked as each visit ends. The treasury is the mayor's money, in hours
- * of the edge's wage, stepped by each sweep. Both move in lumps, so
- * neither is extrapolated: a dial that steps is the event landing.
+ * The level is hours of need the city's buildings have served, ever.
+ * The treasury is the mayor's coins, stepped as goods cross the border.
+ * Neither is extrapolated: a dial that steps is the event landing.
  */
 export type Growth = { level: number, 
 /**
- * GDP banked since the level was reached, and what the next takes.
+ * Hours served since the level was reached, and what the next takes.
  */
 toward: number, needed: number, 
 /**
- * Today's GDP so far: value served in town at the world's prices.
+ * Hours of need served in town today so far.
  */
-gdp: number, 
+served: number, 
 /**
- * What the town has to spend: earned at the door, net of what it built.
+ * What the town has to spend, in coins: earned at the border, net of
+ * what it bought and built.
  */
 treasury: number, 
 /**
- * Today's net at the door so far, and what went out: the treasury
+ * Today's net at the border so far, and what went out: the treasury
  * over it is days of imports left.
  */
 income: number, imports: number, 

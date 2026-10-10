@@ -34,9 +34,6 @@ use crate::world::World;
 /// half minutes of the game's clock, two seconds watched at full speed,
 /// so a shift's ploughing is a couple of hundred tiles.
 pub const PACE: GameTime = DAY_MS as GameTime / 600;
-/// Days in the cycle: a plough day, a seed day, a harvest day. The yard
-/// holds a harvest, which is this many days of the row's make.
-pub const CYCLE: u32 = 3;
 /// A crop sown by the end of a shift is ripe by the next morning.
 pub const RIPEN: GameTime = DAY_MS as GameTime / 2;
 /// The tiles a shift's ploughing makes a farm of, on open ground: the
@@ -191,7 +188,7 @@ impl World {
         let sown = tiles(Stage::Sown);
         if !sown.is_empty() {
             let ripe = b.land.iter().filter(|t| t.stage == Stage::Sown).all(|t| now >= t.since + RIPEN);
-            let room = crate::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m.good)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind, b.land.len()));
+            let room = crate::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= economy::crop(b.kind, b.land.len()));
             if ripe && room {
                 return Some((Job::Harvest, sown));
             }
@@ -502,7 +499,7 @@ impl World {
                 (Job::Plough, Stage::Grass | Stage::Cut) => (tile.stage, tile.since) = (Stage::Ploughed, now),
                 (Job::Seed, Stage::Ploughed) => (tile.stage, tile.since) = (Stage::Sown, now),
                 (Job::Harvest, Stage::Sown) => {
-                    let room = crate::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m.good)).is_some_and(|s| s.short() + 1e-6 >= crop.unwrap_or(0.0));
+                    let room = crate::blueprint::blueprint(b.kind).makes.and_then(|m| b.stocks.get(&m)).is_some_and(|s| s.short() + 1e-6 >= crop.unwrap_or(0.0));
                     if room {
                         (tile.stage, tile.since) = (Stage::Cut, now);
                         cut = crop.unwrap_or(0.0);

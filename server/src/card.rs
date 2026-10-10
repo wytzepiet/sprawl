@@ -77,7 +77,6 @@ fn resident(world: &World, id: EntityId, r: &Resident, now: GameTime) -> Value {
         "work": r.work.map(|w| link(world, w)),
         "at": r.at.map(|a| link(world, a)),
         "car": link(world, r.car),
-        "wage": r.wage,
         "selected": r.selected,
         "since": hhmm(r.last_update),
         // The tank is the car's; its card shows it.
@@ -168,7 +167,6 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "building_kind": b.kind,
         "reached": world.street_of(id).is_some(),
         "stocks": b.stocks.iter().map(|(need, s)| json!({ "need": need, "full": s.level / s.cap })).collect::<Vec<_>>(),
-        "money": (!world.edge.contains(&id)).then(|| crate::economy::inspect(world, id, now)),
         "here": here,
         "household": household,
         "staff": staff,

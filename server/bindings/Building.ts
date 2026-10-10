@@ -19,19 +19,13 @@ tiles: Array<GridCoord>,
  */
 facing: number, 
 /**
- * Its stocks, by good: the shelf of what it sells or keeps — meals,
- * tanks, an office's services — drawn down by sales and loads and
- * filled by a delivery or its own labour; and the services it draws
- * by the day. Empty shelves sell nothing. A save from before a stock
- * existed gets it issued at load (`economy::open`).
+ * Its stocks, by good: the shelf of what it serves or keeps — meals,
+ * tanks, a farm's crates — drawn down by visits and loads and filled
+ * by a delivery or its own land. Empty shelves serve nothing. A save
+ * from before a stock existed gets it issued at load
+ * (`economy::open`).
  */
 stocks: { [key in Need]?: Stock }, 
-/**
- * The price posted on each thing it sells, per unit of the need.
- * Nudged daily by its own stock, never below unit cost. Issued at the
- * edge's price to a save from before prices.
- */
-prices: { [key in Need]?: number }, 
 /**
  * A farm's land: the grass it claimed when a street reached it, each
  * tile at a stage of the cycle the tractor drives it through

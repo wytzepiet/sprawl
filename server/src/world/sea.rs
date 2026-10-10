@@ -9,7 +9,7 @@
 //! tile every pace, as far as the fog, which is the horizon, or the map's
 //! edge where the survey reaches it. The ship is the world's, not the
 //! port's: it sails in from the horizon when a port's shelves call,
-//! lands every shelf's worth at the sea's crossing (`calls::car_idle`),
+//! lands every shelf's worth (`calls::car_idle`),
 //! and sails back out of sight, gone.
 
 use std::collections::{HashMap, VecDeque};

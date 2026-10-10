@@ -56,20 +56,19 @@ pub struct World {
     /// (`car::simulation`, `gap_at`), unless it stands still too long.
     pub manoeuvres: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
     pub terrain_seed: u32,
-    /// Every building's books: what came in, what went out, what its taps
-    /// served, today and yesterday. Learned, not saved — a loaded world
+    /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
     /// starts counting afresh.
     pub books: HashMap<EntityId, crate::economy::Books>,
-    /// The town's own books: what it served, and what crossed the door.
+    /// The town's own books: what it served, and what crossed the border.
     pub town: crate::economy::Books<crate::economy::Town>,
-    /// GDP to date: value served in town at the world's prices, banked as
-    /// each visit ends. The level is its running sum; today's rate is what
-    /// it has grown since midnight.
-    pub gdp: f64,
-    /// The mayor's money, in hours of the edge's wage. docs/economy.md §8.2.
+    /// Hours of need served in town to date, banked as each visit is had.
+    /// The level is its running sum.
+    pub served: f64,
+    /// The mayor's coins: the town's balance of trade, less what it built.
+    /// docs/trade.md, Coins.
     pub treasury: f64,
-    /// Money that landed on buildings since the last flush, for the clients
-    /// looking at them.
+    /// Coins that crossed the border at buildings since the last flush,
+    /// for the clients looking at them.
     pub sales: Vec<crate::protocol::Sale>,
     /// The nodes of the tree the player has taken: the gate for everything
     /// the city may do. See `tree.rs`.
@@ -161,7 +160,7 @@ impl World {
             terrain_seed: 0,
             books: HashMap::new(),
             town: Default::default(),
-            gdp: 0.0,
+            served: 0.0,
             treasury: crate::economy::STAKE,
             sales: Vec::new(),
             build: Default::default(),
@@ -196,7 +195,7 @@ impl World {
             terrain_seed,
             books: HashMap::new(),
             town: Default::default(),
-            gdp: 0.0,
+            served: 0.0,
             treasury: 0.0,
             sales: Vec::new(),
             build: Default::default(),

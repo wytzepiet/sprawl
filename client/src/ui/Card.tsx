@@ -27,7 +27,6 @@ type Card =
       work: Link | null;
       at: Link | null;
       car: Link;
-      wage: number;
       selected: Need | null;
       since: string;
       buckets: Bucket[];
@@ -57,33 +56,8 @@ type Card =
       fleet: Link[];
       calls: { what: string; since: string; answered_by: Link | null }[];
       served: { need: Need; hours_today: number }[];
-      money: Money | null;
     }
   | { kind: "gone"; id: number };
-
-/** A building's prices and books, in hours of the edge's wage: today's
- *  page, and every page since it opened, thirty at most. */
-interface Money {
-  earns: number;
-  jobs: number;
-  prices: { need: Need; price: number; unit_cost: number; edge: number }[];
-  today: Page | null;
-  season: Page[] | null;
-}
-interface Page {
-  revenue: number;
-  purchases: number;
-  wages: number;
-  /** Of the wages, what commuters took home beyond the edge. */
-  remitted: number;
-  margin: number;
-  /** Of the revenue and the purchases, what crossed the door. */
-  exported: number;
-  imported: number;
-  /** The price the day traded at, per need; written when the day closed,
-   *  so today's page has none yet. */
-  prices: Partial<Record<Need, number>>;
-}
 
 /** How often an open card asks again. The world moves; the card should too. */
 const REFRESH_MS = 1000;
@@ -221,9 +195,6 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
         <Row label="Work"><To link={c.work} fallback="no job" /></Row>
         <Row label="Car"><To link={c.car} /></Row>
       </Section>
-      <Section title="Work">
-        <Row label="Earns">{h(c.wage)} / h</Row>
-      </Section>
       <Section title={`Needs, since ${c.since}`}>
         <For each={c.buckets}>
           {(b) => (
@@ -275,36 +246,6 @@ function CarCard(c: Extract<Card, { kind: "car" }>) {
   );
 }
 
-/**
- * A price over the season, each closed day and then today's, with the
- * edge's price dashed under it: a glance says whether it hunts above the
- * world's, sits on it, or has fallen to its floor. Scaled to the series
- * and the edge together, never narrower than a tenth of the edge's, so a
- * flat line stays flat and a five-percent step shows as a step.
- */
-function Trend(props: { series: number[]; edge: number }) {
-  const W = 44;
-  const H = 12;
-  const lo = () => Math.min(...props.series, props.edge);
-  const span = () => Math.max(Math.max(...props.series, props.edge) - lo(), 0.1 * props.edge, 1e-9);
-  const y = (v: number) => (H - 1 - ((v - lo()) / span()) * (H - 2)).toFixed(1);
-  const x = (i: number) => (0.5 + (i / (props.series.length - 1)) * (W - 1)).toFixed(1);
-  const path = () => props.series.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ");
-  return (
-    <Show when={props.series.length > 1}>
-      <svg width={W} height={H} class="inline-block align-middle mr-1.5">
-        <line x1="0" x2={W} y1={y(props.edge)} y2={y(props.edge)} stroke="#A8A29E" stroke-dasharray="2 2" />
-        <path d={path()} fill="none" stroke="#5B57C8" stroke-width="1.2" stroke-linejoin="round" />
-      </svg>
-    </Show>
-  );
-}
-
-/** Hours of the edge's wage, to a tenth. */
-function h(v: number): string {
-  return `${v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)} h`;
-}
-
 function BuildingCard(c: Extract<Card, { kind: "building" }>) {
   const bp = BLUEPRINTS[c.building_kind];
   return (
@@ -322,48 +263,6 @@ function BuildingCard(c: Extract<Card, { kind: "building" }>) {
         <Section title="Stocks">
           <For each={c.stocks}>{(s) => <Row label={s.need}><Bar value={s.full} color={s.full <= 0 ? "#D9483B" : "#57A773"} /></Row>}</For>
         </Section>
-      </Show>
-      <Show when={c.money}>
-        {(m) => (
-          <Section title="Books">
-            <Row label="Earns">{h(m().earns)} / h</Row>
-            <For each={m().prices}>
-              {(p) => (
-                <Row label={p.need}>
-                  <Trend series={[...(m().season ?? []).flatMap((d) => d.prices[p.need] ?? []), p.price]} edge={p.edge} />
-                  {h(p.price)} <span class="text-stone-400">· edge {h(p.edge)}</span>
-                </Row>
-              )}
-            </For>
-            <Show when={m().today}>
-              {(t) => {
-                const season = m().season ?? [];
-                const mean = (f: (p: Page) => number) => (season.length ? season.reduce((a, p) => a + f(p), 0) / season.length : 0);
-                const line = (label: string, f: (p: Page) => number, red?: boolean) => (
-                  <Row label={label}>
-                    <span class="tabular-nums" classList={{ "text-red-600": red && f(t()) < 0 }}>{h(f(t()))}</span>
-                    <span class="inline-block w-14 text-right text-stone-400 tabular-nums">{h(mean(f))}</span>
-                  </Row>
-                );
-                return (
-                  <>
-                    <Row label={`${season.length} ${season.length === 1 ? "day" : "days"} of books`}>
-                      <span class="text-[10px] uppercase tracking-widest text-stone-400">today</span>
-                      <span class="inline-block w-14 text-right text-[10px] uppercase tracking-widest text-stone-400">/ day</span>
-                    </Row>
-                    {line("In", (p) => p.revenue)}
-                    <Show when={t().exported > 0 || mean((p) => p.exported) > 0}>{line("· at the door", (p) => p.exported)}</Show>
-                    <Show when={t().purchases > 0 || mean((p) => p.purchases) > 0}>{line("Bought", (p) => p.purchases)}</Show>
-                    <Show when={t().imported > 0 || mean((p) => p.imported) > 0}>{line("· from beyond it", (p) => p.imported)}</Show>
-                    <Show when={t().wages > 0 || mean((p) => p.wages) > 0}>{line("Wages", (p) => p.wages)}</Show>
-                    <Show when={t().remitted > 0 || mean((p) => p.remitted) > 0}>{line("· home beyond it", (p) => p.remitted)}</Show>
-                    {line("Margin", (p) => p.margin, true)}
-                  </>
-                );
-              }}
-            </Show>
-          </Section>
-        )}
       </Show>
       <Show when={c.here.length > 0}>
         <Section title={`Here now · ${c.here.length}`}>

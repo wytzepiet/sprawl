@@ -6,7 +6,7 @@ import type { Growth, TerrainType } from "../generated";
  *  y = 0, every tile linked both ways to the next. */
 function street(): Hand & { wet: Set<string> } {
   const wet = new Set<string>();
-  const growth: Growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 1e9, income: 0, imports: 0, taken: [], road_tiles_left: 100 };
+  const growth: Growth = { level: 0, toward: 0, needed: 0, served: 0, treasury: 1e9, income: 0, imports: 0, taken: [], road_tiles_left: 100 };
   const h: Hand & { wet: Set<string> } = {
     roads: new Map(),
     at: new Map(),

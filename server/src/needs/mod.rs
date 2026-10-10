@@ -11,7 +11,7 @@ const H: u32 = DAY_MS / 24;
 const HOUR: f64 = H as f64;
 
 /// Something a resident has to do, and so a good: what a tap serves, what
-/// a shelf holds, what a price is per unit of. Three kinds, by where the
+/// a shelf holds, what the world prices a unit of. Three kinds, by where the
 /// timing lives: a **timed** need is used up by the passage of time and
 /// carries it in `drain`; a **constant** need is imposed by the world and
 /// carries it in the curve of whatever serves it, holding a fixed level
@@ -104,9 +104,8 @@ impl Need {
             Need::Rest => 12.0 * HOUR,
             Need::Eat => 0.5 * HOUR,
             // What an empty tank costs: the afternoon it takes to be towed
-            // and filled, which is what a fill has to be worth to be
-            // scored against its price. A near-empty tank then beats an
-            // evening in and loses to a shift, as it should.
+            // and filled. A near-empty tank then beats an evening in and
+            // loses to a shift, as it should.
             Need::Fuel => 2.0 * HOUR,
         }
     }
@@ -139,7 +138,7 @@ impl Need {
     /// Hours a day a timed need asks for: the referent `drain` was derived
     /// from. Zero for a constant need, which fills time rather than
     /// demanding it.
-    fn daily_ms(self) -> f64 {
+    pub fn daily_ms(self) -> f64 {
         let drain = self.drain();
         DAY_MS as f64 * drain / (1.0 + drain)
     }

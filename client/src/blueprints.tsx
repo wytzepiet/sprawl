@@ -30,7 +30,7 @@ export interface Blueprint {
   shape: "gabled" | "sawtooth" | "box";
   /** Heights a box may be built at; one is picked per building and kept. */
   heights: number[];
-  /** What the mayor pays for one, in hours of need served. */
+  /** What the mayor pays the world for one, in coins: its materials. */
   price: number;
   /** Which shelf of the build menu it stands on. */
   tab: Tab;

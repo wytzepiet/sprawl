@@ -27,10 +27,11 @@ pub struct Meta {
     pub next_id: u64,
     pub terrain_seed: u32,
     pub sim_time: u64,
-    /// GDP to date: the level. Kept to the hundredth, which is far finer
-    /// than a bar can show — the metadata column holds whole numbers.
-    pub gdp: f64,
-    /// The mayor's money, in hours of the edge's wage.
+    /// Hours served to date: the level. Kept to the hundredth, which is
+    /// far finer than a bar can show — the metadata column holds whole
+    /// numbers.
+    pub served: f64,
+    /// The mayor's coins.
     pub treasury: f64,
     /// The nodes of the tree taken, one metadata row each.
     pub taken: Vec<Cell>,
@@ -117,7 +118,7 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
             next_id,
             terrain_seed,
             sim_time,
-            gdp: read("gdp") as f64 / 100.0,
+            served: read("served") as f64 / 100.0,
             treasury: read("treasury") as f64 / 100.0,
             taken,
         },
@@ -168,7 +169,7 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         ("next_id".to_string(), meta.next_id as i64),
         ("terrain_seed".to_string(), meta.terrain_seed as i64),
         ("sim_time".to_string(), meta.sim_time as i64),
-        ("gdp".to_string(), centi(meta.gdp)),
+        ("served".to_string(), centi(meta.served)),
         ("treasury".to_string(), centi(meta.treasury)),
     ]
     .into_iter()

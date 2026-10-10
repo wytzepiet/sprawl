@@ -6,10 +6,11 @@ import { middle } from "../blueprints";
 import type { Building } from "../generated";
 
 /**
- * Money landing on the map: a visit paid for, a day's takings swept, a
- * delivery bought. Each lump floats up over its building for a moment and
- * fades — the event the meter sums, seen where it happened. Green is money
- * arriving, red is money leaving. docs/economy.md §10.
+ * Coins landing on the map as goods cross the border: a harvest sold to
+ * the world, a delivery bought from it. Each lump floats up over its
+ * building for a moment and fades — the event the meter sums, seen where
+ * it happened. Green is coins arriving, red is coins leaving.
+ * docs/trade.md, Coins.
  */
 export default function LumpLayer() {
   const { scene, canvas, afterRender } = useEngine();

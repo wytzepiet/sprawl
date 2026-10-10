@@ -2,7 +2,7 @@
 
 /**
  * Something a resident has to do, and so a good: what a tap serves, what
- * a shelf holds, what a price is per unit of. Three kinds, by where the
+ * a shelf holds, what the world prices a unit of. Three kinds, by where the
  * timing lives: a **timed** need is used up by the passage of time and
  * carries it in `drain`; a **constant** need is imposed by the world and
  * carries it in the curve of whatever serves it, holding a fixed level

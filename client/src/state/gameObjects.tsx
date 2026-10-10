@@ -253,7 +253,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
     level: 0,
     toward: 0,
     needed: 0,
-    gdp: 0,
+    served: 0,
     treasury: 0,
     income: 0,
     imports: 0,
@@ -309,7 +309,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
  *  see and has no one to tell. */
 export function OfflineGame(props: ParentProps) {
   const none = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
-  const growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, taken: [], road_tiles_left: 0 };
+  const growth = { level: 0, toward: 0, needed: 0, served: 0, treasury: 0, income: 0, imports: 0, taken: [], road_tiles_left: 0 };
   return (
     <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, revealedBounds: () => none, growth: () => growth, send: () => true, getObjectsAt: () => [] }}>
       {props.children}

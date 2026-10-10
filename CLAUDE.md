@@ -62,12 +62,13 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   in one twice the size, and asserts the bigger town costs about the same.
   A build costs what it changed: `World::settle` reads only the buildings
   marked `unsettled`, and `resettle`, the whole world, runs at startup.
-- **Does the economy still balance?** `cargo test season -- --ignored
-  --nocapture` runs the same town for thirty days and asserts the
-  equilibria `docs/economy.md` §11 names that take weeks to show — the
-  band and no ringing, no harm, tenure — and prints every building's
-  purse and books. A price that runs away or a shop that bleeds shows
-  here before it shows in play.
+- **Does the town still keep?** `cargo test season -- --ignored
+  --nocapture` runs the same town for thirty days and asserts that its
+  shelves stay stocked and its residents fed: no shelf and no tank empty
+  two midnights running, a day's meals eaten every day, and coins left at
+  the end. It prints each day's hours served and coins across the
+  border. A chain that stops delivering shows here before it shows in
+  play.
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.
@@ -143,7 +144,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   open land beside the starting roads and forest to build into — enough to
   exercise building, tree clearing and demolition; the sea is seventy tiles
   off to the north-west, and seed 3 starts on the shore. `SPRAWL_ALL=1` opens
-  the whole tree and a bottomless purse. Any fixed seed gives
+  the whole tree and a bottomless treasury. Any fixed seed gives
   the same map back, so a change in behaviour is a change in the code.
   `SPRAWL_SEED=7 cargo test draw_the_land -- --nocapture` prints the whole
   map, sixteen tiles to a character.

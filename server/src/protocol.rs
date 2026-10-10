@@ -81,9 +81,9 @@ pub enum BuildingKind {
     /// that takes them to the shops, and a lorry for what nobody in town
     /// buys. Placed by the mayor.
     Farm,
-    /// The second door: a depot on the coast whose lorry is a ship, its
-    /// shelves filled from beyond the horizon at the sea's crossing and
-    /// sold by van. Placed by the mayor, with its back to the water.
+    /// The second door: a depot on the coast, its shelves filled from
+    /// beyond the horizon by the world's ship and delivered by van.
+    /// Placed by the mayor, with its back to the water.
     Port,
     /// The world beyond the survey, standing where a road runs off the map.
     /// Not placed by anyone: it appears at every road exit and moves with
@@ -126,18 +126,13 @@ pub struct Building {
     /// within the footprint from this.
     #[serde(default = "south")]
     pub facing: u8,
-    /// Its stocks, by good: the shelf of what it sells or keeps — meals,
-    /// tanks, an office's services — drawn down by sales and loads and
-    /// filled by a delivery or its own labour; and the services it draws
-    /// by the day. Empty shelves sell nothing. A save from before a stock
-    /// existed gets it issued at load (`economy::open`).
+    /// Its stocks, by good: the shelf of what it serves or keeps — meals,
+    /// tanks, a farm's crates — drawn down by visits and loads and filled
+    /// by a delivery or its own land. Empty shelves serve nothing. A save
+    /// from before a stock existed gets it issued at load
+    /// (`economy::open`).
     #[serde(default)]
     pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
-    /// The price posted on each thing it sells, per unit of the need.
-    /// Nudged daily by its own stock, never below unit cost. Issued at the
-    /// edge's price to a save from before prices.
-    #[serde(default)]
-    pub prices: std::collections::BTreeMap<crate::needs::Need, f64>,
     /// A farm's land: the grass it claimed when a street reached it, each
     /// tile at a stage of the cycle the tractor drives it through
     /// (`world/fields.rs`). A tile built over is dropped.
@@ -221,17 +216,15 @@ pub struct Run {
 
 impl Building {
     /// One of a kind, founded: what it buys in full, what it makes not
-    /// yet made, and its prices the edge's — what the outside charges is
-    /// the one price a shop that has sold nothing yet can know.
+    /// yet made.
     pub fn new(kind: BuildingKind, tiles: Vec<GridCoord>, facing: u8) -> Building {
-        use crate::economy::{edge_price_of, makes, sells, stocks};
+        use crate::economy::{makes, stocks};
         Building {
             kind,
             tiles,
             size: None,
             facing,
             stocks: stocks(kind).into_iter().map(|(need, cap)| (need, if makes(kind, need) { crate::needs::Stock { level: 0.0, cap } } else { crate::needs::Stock::full(cap) })).collect(),
-            prices: sells(kind).map(|need| (need, edge_price_of(kind, need))).collect(),
             land: Vec::new(),
             ruts: Vec::new(),
             joined: Vec::new(),
@@ -469,15 +462,9 @@ pub struct Resident {
     #[serde(default)]
     #[ts(type = "number")]
     pub last_update: u64,
-    /// What their job pays an hour: their ask, plus the commute spread
-    /// over the shift, which is the delivered price of their labour. What
-    /// an hour of money is worth to them in the score. docs/economy.md
-    /// §5.2, §6.1.
-    #[serde(default = "crate::economy::edge_wage")]
-    pub wage: f64,
-    /// Units of the selected need served since this visit began, not yet
-    /// paid for: the sale lands as one lump when the visit ends. A record
-    /// of what is happening, like `at`.
+    /// Units of the selected need served since this visit began: drawn
+    /// off the shelf it was served from when the visit ends. A record of
+    /// what is happening, like `at`.
     #[serde(default)]
     pub tab: f64,
 }
@@ -583,22 +570,22 @@ pub struct Clock {
 
 /// How the city is doing, as the two dials read it.
 ///
-/// The level is hours of need the city's buildings have served, ever,
-/// banked as each visit ends. The treasury is the mayor's money, in hours
-/// of the edge's wage, stepped by each sweep. Both move in lumps, so
-/// neither is extrapolated: a dial that steps is the event landing.
+/// The level is hours of need the city's buildings have served, ever.
+/// The treasury is the mayor's coins, stepped as goods cross the border.
+/// Neither is extrapolated: a dial that steps is the event landing.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Growth {
     pub level: u32,
-    /// GDP banked since the level was reached, and what the next takes.
+    /// Hours served since the level was reached, and what the next takes.
     pub toward: f64,
     pub needed: f64,
-    /// Today's GDP so far: value served in town at the world's prices.
-    pub gdp: f64,
-    /// What the town has to spend: earned at the door, net of what it built.
+    /// Hours of need served in town today so far.
+    pub served: f64,
+    /// What the town has to spend, in coins: earned at the border, net of
+    /// what it bought and built.
     pub treasury: f64,
-    /// Today's net at the door so far, and what went out: the treasury
+    /// Today's net at the border so far, and what went out: the treasury
     /// over it is days of imports left.
     pub income: f64,
     pub imports: f64,
@@ -608,10 +595,9 @@ pub struct Growth {
     pub road_tiles_left: u32,
 }
 
-/// Money landing somewhere on the map: a visit paid for, a shift paid, a
-/// delivery bought. A line in the books made visible; it moves the
-/// treasury only when the other party is the outside. Negative is money
-/// leaving: an import, a wage bill. docs/economy.md §10.
+/// Coins landing somewhere on the map as goods cross the border: a load
+/// sold to the world, a delivery or a tank bought from it. Negative is
+/// coins leaving. docs/trade.md, Coins.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Sale {
