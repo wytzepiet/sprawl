@@ -74,7 +74,10 @@ fn wants(world: &World, building: EntityId) -> Vec<Good> {
     if let Some(site) = b.site {
         return if site.short() > 0.0 { vec![Good::Timber] } else { Vec::new() };
     }
-    b.stocks.iter().filter(|&(&g, s)| economy::buys(b.kind, g) && s.level < economy::reorder(world, building, g)).map(|(&g, _)| g).collect()
+    // A depot that sells a good fetches it whenever it has room for a
+    // load, so what makers make goes through it and out to the world.
+    let selling = |g: &Good, s: &crate::needs::Stock| b.rules.get(g).is_some_and(|r| r.sell.is_some()) && s.short() >= g.per_box() / 2.0;
+    b.stocks.iter().filter(|&(&g, s)| economy::buys(b.kind, g) && (s.level < economy::reorder(world, building, g) || selling(&g, s))).map(|(&g, _)| g).collect()
 }
 
 /// A stock changed, or time passed: the building takes its turn. A

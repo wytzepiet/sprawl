@@ -19,4 +19,8 @@ boxes: number, settlers: number, deck: number,
 /**
  * Boxes booked beyond the sea for this harbour.
  */
-booked: number, };
+booked: number, 
+/**
+ * Households moved in and waiting beyond the sea for a sailing.
+ */
+waiting: number, };

@@ -1345,8 +1345,9 @@ mod tests {
             // each, less the odd late morning, a lunch out, a dinner near
             // work, and the minute or two parking at the kerb.
             assert!((70.0..=99.0).contains(&office), "office received {office}h");
-            // Lunches over a whole day.
-            assert!(sold(lunch, "Eat", "yesterday_h") > 2.0, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
+            // Lunches over a whole day: the shops have no depot here, so
+            // by the third day their shelves have run down some.
+            assert!(sold(lunch, "Eat", "yesterday_h") > 1.5, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
         }
         (log, lunch)
     }
@@ -1634,8 +1635,13 @@ mod tests {
                 let (w, h) = crate::blueprint::plot(kind, 0).size;
                 let tiles: Vec<GridCoord> = (0..h as i32).flat_map(|r| (0..w as i32).map(move |c| at(x + if r % 2 == 0 { c } else { w as i32 - 1 - c }, -1 - r))).collect();
                 let steps = tiles.iter().enumerate().map(|(n, &t)| (Tool::Building(kind), tiles[n.saturating_sub(1)], t)).collect();
-                costs[2 * k].1.push(timed(&mut world, steps));
+                let painted = timed(&mut world, steps);
                 let id = *world.occupied.get(&(x, -1)).unwrap_or_else(|| panic!("the {kind:?} went down"));
+                // Its timber in, it stands, and the settle that follows is
+                // part of what it cost.
+                world.finish(id);
+                let stood = timed(&mut world, Vec::new());
+                costs[2 * k].1.push(painted + stood);
                 let bp = crate::blueprint::blueprint(kind);
                 assert_eq!((world.household(id).len(), world.staff(id).len()), (bp.homes as usize, bp.jobs as usize), "the {kind:?} filled");
                 // Every tile taken out, a drive on one taken first.
@@ -1842,6 +1848,25 @@ mod tests {
                 empty.len(),
                 empty,
             );
+            // `SEA=1` prints the border each midnight: every box and
+            // where it is, every lorry and what it hauls, and the yards.
+            if std::env::var("SEA").is_ok() {
+                let sea = crate::haul::inspect(world, midnight);
+                for h in sea["harbours"].as_array().unwrap() {
+                    let park: Vec<String> = h["park"].as_array().unwrap().iter().map(|t| if t.is_null() { "_".into() } else { format!("{}{}", t["good"].as_str().map_or("E", |g| &g[..1]), if t["outbound"].as_bool().unwrap() { "^" } else { "" }) }).collect();
+                    println!("  park {} deck {} booked {}", park.join(""), h["ferry"]["deck"].as_array().unwrap().iter().filter(|t| !t.is_null()).count(), h["ferry"]["booked"].as_array().unwrap().len());
+                }
+                for l in sea["lorries"].as_array().unwrap() {
+                    println!("  lorry {} to {} hitched {}", l["id"], l["to"], l["hitched"]);
+                }
+                for e in world.objects.iter() {
+                    if let GameObject::Building(ref b) = e.object
+                        && matches!(b.kind, BuildingKind::Depot | BuildingKind::Farm)
+                    {
+                        println!("  {:?} {} {:?}", b.kind, e.id, b.stocks.iter().map(|(g, s)| (*g, s.level as i32)).collect::<Vec<_>>());
+                    }
+                }
+            }
             if day > 1 {
                 assert!(eaten >= 0.9 * asked, "day {day}: the town ate {eaten:.1}h of the {asked:.1}h its people need");
                 for need in [Need::Work, Need::Eat, Need::Fuel] {
@@ -2042,7 +2067,8 @@ mod tests {
         }
         let berthed = now;
         assert!(sailed, "it never sailed in");
-        assert_eq!(car_of(&world, ferry).deck.iter().flatten().count(), 5, "the starter pack is not aboard");
+        assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| !t.empty()).count(), 5, "the starter pack is not aboard");
+        assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| t.empty()).count(), crate::world::sea::EMPTIES, "the world sent no empties");
         // The tug unloads while it is in, and it sails on time.
         let mut shunted = false;
         while car_of(&world, ferry).spot.is_some() {

@@ -19,6 +19,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::blueprint::blueprint;
+
 use crate::calls::SERVICE_MS;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
@@ -124,6 +126,11 @@ pub fn top_up(world: &mut World, depot: EntityId) {
     }
     let rules: Vec<(Good, Rule, f64)> = b.rules.iter().filter_map(|(&g, &r)| Some((g, r, b.stocks.get(&g)?.level))).collect();
     for (good, rule, level) in rules {
+        // What a maker in town has a load of comes from it, by the depot's
+        // own fetch, not from over the sea.
+        if made_in_town(world, good) {
+            continue;
+        }
         let have = level + incoming(world, depot, good);
         if have < rule.keep {
             let boxes = ((rule.fill - have) / good.per_box()).ceil().max(1.0) as u32;
@@ -191,6 +198,40 @@ fn to_sell(world: &World, depot: EntityId) -> Option<(Good, f64)> {
     })
 }
 
+/// Has the depot something to fill an empty with: its own shelf over a
+/// sell line, or a maker's yard of what it sells.
+fn wants_empty(world: &World, depot: EntityId) -> bool {
+    to_sell(world, depot).is_some() || maker_with_surplus(world, depot).is_some()
+}
+
+/// A maker in town has a box's worth of this good in its yard.
+fn made_in_town(world: &World, good: Good) -> bool {
+    world.objects.iter().any(|e| matches!(e.object, GameObject::Building(ref b) if blueprint(b.kind).makes == Some(good) && b.stocks.get(&good).is_some_and(|s| s.level >= good.per_box())))
+}
+
+/// Does the depot sell this good: a rule with a line to sell over.
+fn sells(world: &World, depot: EntityId, good: Good) -> bool {
+    building(world, depot).is_some_and(|b| b.rules.get(&good).is_some_and(|r| r.sell.is_some()))
+}
+
+/// The nearest maker in town with a box's worth in its yard of a good the
+/// depot sells, by the tiles between them.
+fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
+    let at = world.objects.get(depot)?.position?;
+    world
+        .objects
+        .iter()
+        .filter_map(|e| match e.object {
+            GameObject::Building(ref b) => {
+                let good = blueprint(b.kind).makes.filter(|&g| sells(world, depot, g))?;
+                (b.stocks.get(&good)?.level >= good.per_box() && world.street_of(e.id).is_some()).then_some((e.id, e.position?))
+            }
+            _ => None,
+        })
+        .min_by_key(|&(id, p)| ((p.x - at.x).abs() + (p.y - at.y).abs(), id))
+        .map(|(id, _)| id)
+}
+
 /// The lorry woke, parked: at the end of its service where it stands, or
 /// called. At home it unloads what it brought, fills an empty with what
 /// is sold, and sets out if there is a reason to; at a harbour it drops
@@ -208,6 +249,23 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
         return;
     }
     if at != depot {
+        // At a maker's yard with an empty: filled with what the depot
+        // sells, and on to the harbour with it.
+        let good = building(world, at).and_then(|b| blueprint(b.kind).makes).filter(|&g| sells(world, depot, g));
+        if let (Some(good), Some(t)) = (good, hitched.filter(|t| t.empty())) {
+            let units = crate::economy::loaded(world, at, good, good.per_box());
+            if units > 0.0 {
+                let order = world.objects.reserve_id();
+                set_load(world, lorry, Some(Trailer { good: Some(good), units, to: None, outbound: true, order: Some(order), ..t }));
+                crate::calls::turn(world, events, at, now);
+                let harbour = harbour_for(world, depot);
+                let gone = harbour.zip(world.street_of(at)).is_some_and(|(h, door)| crate::car::spawn::start_trip(world, events, lorry, door, h, now, GameTime::MAX));
+                if !gone {
+                    events.wake(crate::calls::RETRY_MS, lorry);
+                }
+                return;
+            }
+        }
         return go_home(world, events, lorry, at, now);
     }
     crate::economy::refilled(world, lorry, now);
@@ -251,8 +309,21 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
         }
     }
     let hitched = car(world, lorry).and_then(|c| c.hitched);
+    // Still empty, and a maker in town has a load of what the depot sells:
+    // the box is filled at the maker's yard and goes straight out, a
+    // street turn, not through the depot's shelf.
+    if hitched.is_some_and(|t| t.empty())
+        && let Some(maker) = maker_with_surplus(world, depot)
+        && let Some(door) = world.street_of(depot)
+    {
+        world.sent.remove(&lorry);
+        if !crate::car::spawn::start_trip(world, events, lorry, door, maker, now, GameTime::MAX) {
+            events.wake(crate::calls::RETRY_MS, lorry);
+        }
+        return;
+    }
     let outbound = hitched.is_some_and(|t| t.outbound);
-    let needs_empty = selling.is_some() && hitched.is_none();
+    let needs_empty = wants_empty(world, depot) && hitched.is_none();
     if !(outbound || wanted.is_some() || needs_empty || sent) {
         return;
     }
@@ -300,7 +371,7 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
                 events.wake(0, tug);
             }
             // Dropped: on to the box it came for, if there is one.
-            let selling = to_sell(world, depot).is_some();
+            let selling = wants_empty(world, depot);
             match waiting_for(world, depot).filter(|&(h, _)| h == harbour).or_else(|| selling.then(|| empty_at(world, harbour).map(|i| (harbour, i))).flatten()) {
                 Some((_, i)) if i != dock => {
                     world.redock(harbour, lorry, i, now);
@@ -375,6 +446,7 @@ pub fn sea(world: &World, now: GameTime) -> Sea {
                 settlers: c.passengers.len() as u32,
                 deck: crate::world::sea::DECK as u32,
                 booked: c.booked.len() as u32,
+                waiting: world.waiting_settlers(harbour).len() as u32,
             })
         })
         .collect();

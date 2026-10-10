@@ -73,6 +73,9 @@ pub const CAB_BOX: f64 = 0.262;
 /// The four ways off a tile.
 const AROUND: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
+/// Empties the world keeps standing in a harbour's park.
+pub const EMPTIES: usize = 2;
+
 /// The starter pack's order: the world's gift, paid for by nobody.
 pub const GIFT: u64 = 0;
 
@@ -288,19 +291,30 @@ impl World {
         }
     }
 
-    /// Leaving the world: the booked boxes that fit go on the deck, and
-    /// the settlers waiting to come take what room is left, two cars a
-    /// slot.
+    /// Leaving the world: the booked boxes that fit go on the deck; then
+    /// empties, enough that the park will have `EMPTIES` standing, for the
+    /// town's lorries to fill with what it sells, as lines bring empties
+    /// to where the exports are; and the settlers waiting to come take
+    /// what room is left, two cars a slot.
     fn board(&mut self, ferry: EntityId, harbour: EntityId) {
         let waiting: Vec<EntityId> = self.waiting_settlers(harbour);
+        let parked = match self.objects.get(harbour).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.park.iter().filter(|s| s.trailer.is_some_and(|t| t.empty())).count(),
+            _ => 0,
+        };
+        let ids: Vec<u64> = (0..EMPTIES).map(|_| self.objects.reserve_id()).collect();
         let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) else { return };
         c.deck.resize(DECK, None);
+        let aboard = c.deck.iter().flatten().filter(|t| t.empty() && !t.outbound).count();
+        let empties = ids.into_iter().take(EMPTIES.saturating_sub(parked + aboard)).map(|id| Trailer { id, good: None, units: 0.0, to: None, outbound: false, order: None });
+        let mut boxes = std::mem::take(&mut c.booked).into_iter().chain(empties);
         for slot in c.deck.iter_mut().filter(|s| s.is_none()) {
-            if c.booked.is_empty() {
-                break;
+            match boxes.next() {
+                Some(t) => *slot = Some(t),
+                None => break,
             }
-            *slot = Some(c.booked.remove(0));
         }
+        c.booked = boxes.filter(|t| !t.empty()).collect();
         let room = 2 * c.deck.iter().filter(|s| s.is_none()).count();
         c.passengers = waiting.into_iter().take(room).collect();
     }
@@ -308,7 +322,7 @@ impl World {
     /// Households moved into the town and not yet in it: their cars are
     /// nowhere, waiting for a ferry, and none is aboard one. With more than
     /// one harbour, each comes in by the nearest to their home.
-    fn waiting_settlers(&self, harbour: EntityId) -> Vec<EntityId> {
+    pub fn waiting_settlers(&self, harbour: EntityId) -> Vec<EntityId> {
         let aboard: std::collections::HashSet<EntityId> = self
             .objects
             .iter()
@@ -358,12 +372,14 @@ impl World {
             }),
             _ => None,
         };
+        // Off the deck once it is away, or at once if home is gone; one the
+        // street does not let out yet tries again with the next. Whoever is
+        // still aboard when the ferry sails waits for the next sailing.
         let drove = home.is_some_and(|home| crate::car::spawn::start_trip(self, events, car, street, home, now, GameTime::MAX));
-        // Off the deck either way: someone whose home is gone, or cut off,
-        // waits for the next sailing beyond the sea.
-        let _ = drove;
-        if let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) {
-            c.passengers.remove(0);
+        if drove || home.is_none() {
+            if let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) {
+                c.passengers.remove(0);
+            }
         }
     }
 
@@ -444,10 +460,14 @@ impl World {
         }
     }
 
-    /// A dock of the park with no box in it and nobody holding it.
+    /// The docks of the park with no box in them and nobody holding them.
+    fn free_docks(&self, harbour: EntityId) -> Vec<usize> {
+        let Some(GameObject::Building(b)) = self.objects.get(harbour).map(|e| &e.object) else { return Vec::new() };
+        (0..b.park.len()).filter(|&i| b.park[i].trailer.is_none() && !self.dock_held(harbour, i)).collect()
+    }
+
     fn free_dock(&self, harbour: EntityId) -> Option<usize> {
-        let GameObject::Building(ref b) = self.objects.get(harbour)?.object else { return None };
-        (0..b.park.len()).find(|&i| b.park[i].trailer.is_none() && !self.dock_held(harbour, i))
+        self.free_docks(harbour).first().copied()
     }
 
     /// The tug woke: its move is done, or there may be work. At the end of
@@ -532,8 +552,10 @@ impl World {
                 Some(GameObject::Car(c)) => c.deck.clone(),
                 _ => Vec::new(),
             };
+            // Off the ferry while that leaves a dock free, so a lorry
+            // bringing a box out always has somewhere to drop it.
             let off = (0..deck.len()).find(|&k| deck[k].is_some_and(|t| !t.outbound));
-            if let (Some(k), Some(_)) = (off, self.free_dock(harbour)) {
+            if let (Some(k), true) = (off, self.free_docks(harbour).len() >= 2) {
                 let s = Self::shunt(vec![here.at, berth.apron(), berth.ramp(), tug_at(deck_pose(ship, k))], 1, Place::Deck(k), now);
                 if done_by(&s) <= due {
                     return Some(s);

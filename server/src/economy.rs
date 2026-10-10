@@ -33,15 +33,16 @@ use crate::world::World;
 pub const HOUR: f64 = DAY_MS as f64 / 24.0;
 
 /// What the world beyond the border reckons a unit of a good is worth,
-/// in coins. A crate is a farm hand's few minutes and a tank half its
-/// price at the pump, what the price economy's wholesale came to
-/// (shelved.md, the price economy); timber is a coin a unit, so a house's
-/// four is about what a house cost the mayor when it cost coins. trade.md
-/// §Open 7 leaves the world's prices open; these hold the place.
+/// in coins. Tuned so that one farm's crates, sold abroad, keep a small
+/// town in fuel: a box of fuel is about three boxes of crates. The price
+/// economy's wholesale (shelved.md) had a tank at fifteen crates, and a
+/// town that fed itself could not pay for its driving. Timber is a coin a
+/// unit, so a house's four is about what a house cost the mayor when it
+/// cost coins. trade.md §Open 7 leaves the world's prices open.
 pub fn world_price(good: Good) -> f64 {
     match good {
-        Good::Crates => 0.1,
-        Good::Fuel => 1.5,
+        Good::Crates => 0.2,
+        Good::Fuel => 1.0,
         Good::Timber => 1.0,
     }
 }

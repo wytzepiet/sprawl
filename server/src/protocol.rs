@@ -523,6 +523,8 @@ pub struct Sailing {
     pub deck: u32,
     /// Boxes booked beyond the sea for this harbour.
     pub booked: u32,
+    /// Households moved in and waiting beyond the sea for a sailing.
+    pub waiting: u32,
 }
 
 /// The sea's part of an update: every shipment on its way and every
