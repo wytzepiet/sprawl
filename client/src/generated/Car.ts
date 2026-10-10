@@ -3,7 +3,9 @@ import type { CarRole } from "./CarRole";
 import type { Need } from "./Need";
 import type { Pose } from "./Pose";
 import type { Run } from "./Run";
+import type { Shunt } from "./Shunt";
 import type { Stock } from "./Stock";
+import type { Trailer } from "./Trailer";
 import type { Trip } from "./Trip";
 
 /**
@@ -34,4 +36,27 @@ stocks: { [key in Need]?: Stock },
  * A tractor's run over its farm's land, or a ship's voyage, while
  * it is on one.
  */
-run: Run | null, };
+run: Run | null, 
+/**
+ * The box on its hitch: a lorry's, or a tug's.
+ */
+hitched: Trailer | null, 
+/**
+ * A ferry's deck, by slot (`world/sea.rs` DECK): boxes, and the cars
+ * of settlers riding over, by id.
+ */
+deck: Array<Trailer | null>, passengers: Array<number>, 
+/**
+ * A tug's move between two poses, while it makes one.
+ */
+shunt: Shunt | null, 
+/**
+ * A ferry's boxes booked beyond the sea, waiting for a sailing with
+ * room on its deck.
+ */
+booked: Array<Trailer>, 
+/**
+ * A ferry's next moment on the timetable: when it berths, while it is
+ * away or at sea; when it casts off, while it is at the ramp.
+ */
+due: number, };

@@ -4,12 +4,17 @@ import type { Clock } from "./Clock";
 import type { Growth } from "./Growth";
 import type { Lump } from "./Lump";
 import type { Operation } from "./Operation";
+import type { Sea } from "./Sea";
 
 export type StateUpdate = { ops: Array<Operation>, 
 /**
  * Lumps that landed on buildings in view since the last update.
  */
-lumps: Array<Lump>, clock: Clock, growth: Growth, terrain_seed: number, 
+lumps: Array<Lump>, clock: Clock, growth: Growth, 
+/**
+ * Every shipment on its way and every harbour's timetable.
+ */
+sea: Sea, terrain_seed: number, 
 /**
  * The island's map, which the client keeps its camera inside.
  */

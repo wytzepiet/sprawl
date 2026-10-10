@@ -188,8 +188,8 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     size: [2, 2],
     lot: [0, 0],
   },
-  Warehouse: {
-    label: "Warehouse",
+  Depot: {
+    label: "Depot",
     color: "#A0714A",
     material: "#7E6248",
     // A wide shed: the roof, a loading door and two bays.
@@ -199,7 +199,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     heights: [0.6],
     price: 56, tab: "services",
     size: [2, 2],
-    lot: [2, 2],
+    lot: [3, 2],
     yard: true,
   },
   Farm: {
@@ -216,8 +216,8 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     lot: [2, 2],
     yard: true,
   },
-  Port: {
-    label: "Port",
+  Harbour: {
+    label: "Harbour",
     color: "#2B6CA3",
     material: "#4E6A84",
     // A quay with a crane over it: the mast, the jib, and the hook.
@@ -225,25 +225,11 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.5],
-    price: 80, tab: "services",
-    size: [3, 2],
-    lot: [2, 2],
+    price: 0, tab: "services",
+    size: [3, 1],
+    lot: [3, 2],
     yard: true,
     quay: true,
-  },
-  Edge: {
-    label: "Beyond the edge",
-    color: "#6B7280",
-    material: "#6B7280",
-    // A road running off the map: a lane, and an arrow away down it.
-    glyph: "M3 3h3v18H3zm15 0h3v18h-3zM11 3h2v10h3l-4 5-4-5h3z",
-    pinUntil: 0,
-    shape: "box",
-    heights: [0],
-    // Not for sale at any price, so it stands on no shelf of the menu.
-    price: Infinity, tab: "services",
-    size: [1, 1],
-    lot: [0, 0],
   },
 };
 

@@ -2,5 +2,7 @@
 import type { Build } from "./Build";
 import type { Cell } from "./Cell";
 import type { ChunkBounds } from "./ChunkBounds";
+import type { Good } from "./Good";
+import type { Rule } from "./Rule";
 
-export type ClientMessage = { "type": "Build", "data": Build } | { "type": "Take", "data": Cell } | { "type": "DespawnAllCars" } | { "type": "SetSpeed", "data": number } | { "type": "ResetWorld" } | { "type": "SetChunks", "data": ChunkBounds } | { "type": "Ping" };
+export type ClientMessage = { "type": "Build", "data": Build } | { "type": "Take", "data": Cell } | { "type": "DespawnAllCars" } | { "type": "Order", "data": { depot: number, good: Good, boxes: number, } } | { "type": "SetRule", "data": { depot: number, good: Good, rule: Rule | null, } } | { "type": "Standing", "data": { depot: number, on: boolean, } } | { "type": "Send", "data": { depot: number, } } | { "type": "Sell", "data": { depot: number, good: Good, } } | { "type": "SetSpeed", "data": number } | { "type": "ResetWorld" } | { "type": "SetChunks", "data": ChunkBounds } | { "type": "Ping" };

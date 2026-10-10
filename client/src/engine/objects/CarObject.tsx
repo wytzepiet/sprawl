@@ -94,7 +94,7 @@ export function mountCar(
   if (car.role === "Truck") return mountLorry(entry.id, car, pool, ctx, look);
   // A tractor is drawn as a van in the farm's green until it has a shape of its own.
   const van = car.role === "Van" || car.role === "Tractor";
-  const ship = car.role === "Ship";
+  const ship = car.role === "Ferry";
   const color = ship ? SHIP : car.role === "Tractor" ? TRACTOR : van ? VAN : PALETTE[Math.floor(hash(entry.id, 1) * PALETTE.length)];
   // Parked cars in buckets of their own: a bucket where one car moves is
   // drawn into the shadow map every frame, and one that stands still is not.

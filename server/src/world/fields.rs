@@ -800,6 +800,7 @@ mod tests {
         world.remove_building(first);
         world.place_road_path(&[GridCoord { x: door.x, y: 0 }, door]);
         let farm = world.place_building(pos, BuildingKind::Farm, facing).expect("a farm over the stub");
+        world.finish(farm);
         assert_eq!(world.door_of(farm).map(|d| d.0), Some(door), "the stub is the farm's door");
         assert!(world.road_node_at(door).is_none(), "and no road on its tile");
         world.open_door(farm);
@@ -813,6 +814,7 @@ mod tests {
     fn a_farm_reached_later_gets_its_tractor() {
         let mut world = land();
         let farm = world.place_building(GridCoord { x: 10, y: 4 }, BuildingKind::Farm, 0).expect("a farm off the street");
+        world.finish(farm);
         assert!(world.street_of(farm).is_none());
         assert!(world.objects.iter().all(|e| !matches!(e.object, GameObject::Car(ref c) if c.owner == farm)), "a tractor before any road");
         world.place_road_path(&(0..=3).map(|y| GridCoord { x: 11, y }).collect::<Vec<_>>());
@@ -833,6 +835,7 @@ mod tests {
         world.place_road_path_of(&[(57, 46), (58, 45), (59, 44), (60, 43), (61, 42)].map(|(x, y)| GridCoord { x, y }), true);
         world.place_road_path_of(&[(61, 42), (62, 43), (62, 44), (63, 45), (64, 46), (65, 47)].map(|(x, y)| GridCoord { x, y }), true);
         let farm = world.place_building(GridCoord { x: 60, y: 45 }, BuildingKind::Farm, 0).expect("the farm");
+        world.finish(farm);
         assert!(world.street_of(farm).is_none(), "served before any door");
         world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }]);
         world.handle_place_road(GridCoord { x: 61, y: 44 }, GridCoord { x: 61, y: 45 }, false, false);

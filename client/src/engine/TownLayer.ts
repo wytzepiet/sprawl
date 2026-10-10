@@ -156,7 +156,7 @@ export class TownLayer {
       if (e.object.kind === "RoadNode" && e.position) {
         const n = e.object.data as RoadNode;
         roads.push([e.position.x, e.position.y, e.id, n.road, n.outgoing, n.incoming]);
-      } else if (e.object.kind === "Building" && e.object.data.kind !== "Edge") {
+      } else if (e.object.kind === "Building" && true) {
         const b = e.object.data as Building;
         byId.set(e.id, e);
         joined.push([e.id, b.joined.map((t) => [t.x, t.y])]);

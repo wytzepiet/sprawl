@@ -32,13 +32,13 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Office: { family: "office" },
   Factory: { family: "industry" },
   // A depot's lorries come and go at its back, out of sight of the junction.
-  Warehouse: { family: "industry", yard: { fill: "docks", end: "quiet", need: (n) => n / 2 } },
+  Depot: { family: "industry", yard: { fill: "docks", end: "quiet", need: (n) => n / 2 } },
   // A supermarket's car park is its shop window, on the busy corner.
   Supermarket: { family: "box", yard: { fill: "cars", end: "busy", need: (n) => 3 * n } },
   GasStation: { family: "box" },
   // A ferry port's marshalling yard holds one sailing, from the water back;
   // the rest is its terminal.
-  Port: { family: "port", yard: { fill: "ferry", end: "water", need: () => FERRY_LOAD } },
+  Harbour: { family: "port", yard: { fill: "ferry", end: "water", need: () => FERRY_LOAD } },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
 

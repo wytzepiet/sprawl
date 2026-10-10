@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseTown } from "./grid";
 import { complete, paintable, PROGRAMS, touching, type Cell } from "./brush";
 
-const depot = PROGRAMS.Warehouse!;
+const depot = PROGRAMS.Depot!;
 const house = PROGRAMS.House!;
 const sorted = (cells: Cell[] | null) => cells?.map(([c, r]) => `${c},${r}`).sort();
 
@@ -44,7 +44,7 @@ describe("a painted stroke is completed to a working building", () => {
 
   test("painting beside a depot grows it, a one-wide bump out of its back too", () => {
     const built = parseTown(["==========", "...DDD....", "...DDD....", ".........."].join("\n"));
-    const grown = touching(built, "Warehouse", [4, 3]);
+    const grown = touching(built, "Depot", [4, 3]);
     expect(grown.length).toBe(6);
     expect(sorted(complete(built, depot, [...grown, [4, 3]]))?.length).toBe(7);
   });

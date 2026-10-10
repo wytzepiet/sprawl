@@ -197,8 +197,10 @@ pub fn stand(world: &mut World, id: EntityId) {
     }
     open(world, id);
     world.unsettled.insert(id);
-    crate::calls::stable(world, id);
-    world.claim_land(id);
+    if world.street_of(id).is_some() {
+        crate::calls::stable(world, id);
+        world.claim_land(id);
+    }
 }
 
 /// The reorder point: the `s` of the `(s, S)` policy of every inventory

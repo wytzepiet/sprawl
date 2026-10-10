@@ -215,7 +215,7 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
 }
 
 function CarCard(c: Extract<Card, { kind: "car" }>) {
-  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : c.role === "Tractor" ? "Tractor" : c.role === "Ship" ? "Ship" : "Car";
+  const what = c.role === "Truck" ? "Lorry" : c.role === "Van" ? "Van" : c.role === "Tractor" ? "Tractor" : c.role === "Ferry" ? "Ferry" : c.role === "Tug" ? "Tug" : "Car";
   return (
     <>
       <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : "parked out of sight"} />
