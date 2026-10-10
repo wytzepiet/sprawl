@@ -3,6 +3,7 @@ import { follow, LOOSE } from "../engine/spring";
 import { setTool, tool } from "./buildMode";
 import { BLUEPRINTS, GoodIcon, KINDS, plot, TABS } from "../blueprints";
 import type { Tool } from "../generated";
+import Bill from "./Bill";
 
 /** What the road shelf holds. */
 const ROAD_KINDS = [
@@ -262,6 +263,7 @@ export default function BuildModeToolbar() {
           );
         }}
       </For>
+      <Bill hidden={menu() !== null} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { lie, plot } from "../blueprints";
-import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Tool } from "../generated";
+import type { Build, Building, BuildingKind, GameObjectEntry, GridCoord, Mark, RoadNode, TerrainType, Tool } from "../generated";
 
 /**
  * Where the mayor's hand may go, worked out here rather than asked of the
@@ -8,20 +8,27 @@ import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, Terr
  * server's rule (`game_loop::may` and what it calls); the server keeps
  * its own and refuses a step by it, so where the two part the server wins
  * and the dots are only wrong.
+ *
+ * The hand sees the world as it will be once its draft is built: its own
+ * drafted roads and buildings stand in it, so a house may be drawn beside a
+ * drafted street, and the tiles of anyone else's draft are taken.
  */
 export interface Hand {
   roads: Map<string, { id: number; node: RoadNode }>;
   /** Where each road node stands, by id. */
   at: Map<number, GridCoord>;
   occupied: Map<string, Building>;
+  /** Tiles someone else's draft is drawn on. */
+  taken: Set<string>;
   ground: (x: number, y: number) => TerrainType | undefined;
 }
 
 const key = (x: number, y: number) => `${x},${y}`;
 
-/** The world as the hand sees it, read once a change. */
-export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Hand["ground"]): Hand {
-  const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground };
+/** The world as the hand sees it, read once a change, with our own draft
+ *  drawn into it and everyone else's taken. */
+export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Hand["ground"], mine: Mark[] = [], theirs: Mark[] = []): Hand {
+  const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), taken: new Set(), ground };
   each((e) => {
     if (e.object.kind === "RoadNode" && e.position) {
       h.roads.set(key(e.position.x, e.position.y), { id: e.id, node: e.object.data });
@@ -30,7 +37,37 @@ export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Ha
       for (const t of e.object.data.tiles) h.occupied.set(key(t.x, t.y), e.object.data);
     }
   });
+  for (const { step } of theirs) for (const t of lays(step)) h.taken.add(key(t.x, t.y));
+  // Drafted roads as nodes of their own, numbered below every real one.
+  let next = -1;
+  const node = (t: GridCoord) => {
+    const k = key(t.x, t.y);
+    let n = h.roads.get(k);
+    if (!n) {
+      n = { id: next--, node: { outgoing: [], incoming: [], joined: false, road: false, laid: true } };
+      h.roads.set(k, n);
+      h.at.set(n.id, t);
+    }
+    return n;
+  };
+  for (const { step } of mine) {
+    const { tool, from, to } = step;
+    if (typeof tool !== "string") {
+      if (!h.occupied.has(key(to.x, to.y))) h.occupied.set(key(to.x, to.y), { kind: tool.Building, tiles: [to], facing: 2, stocks: {}, site: null, park: [], rules: {}, standing: false, selling: [], lorries: 0, land: [], ruts: [], joined: [], door: null });
+    } else if (tool !== "Demolish" && !h.occupied.has(key(to.x, to.y))) {
+      const [a, b] = [node(from), node(to)];
+      a.node.road ||= tool === "Road";
+      b.node.road ||= tool === "Road";
+      a.node.outgoing.push(b.id);
+      (tool === "OneWay" ? b.node.incoming : b.node.outgoing).push(a.id);
+    }
+  }
   return h;
+}
+
+/** The tiles a step lays something on: a road's two, a building's one. */
+export function lays({ tool, from, to }: Build): GridCoord[] {
+  return tool === "Demolish" ? [] : typeof tool === "string" ? [from, to] : [to];
 }
 
 /** The steps out of a tile, as the brush numbers them: east and on round toward +y. */
@@ -43,6 +80,7 @@ export function snap(dx: number, dy: number): number {
 
 /** May the hand take this step with this tool: the world's rule. */
 export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolean {
+  if (lays({ tool, from, to }).some((t) => h.taken.has(key(t.x, t.y)))) return false;
   if (typeof tool !== "string") {
     const kind = tool.Building;
     return mayPaint(h, kind, from, to) && wouldBeReached(h, kind, from, to);

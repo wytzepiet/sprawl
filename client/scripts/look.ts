@@ -8,6 +8,8 @@
  *   --frames 8 --every 250    eight frames a quarter second apart, and a strip
  *                             of them side by side
  *   T=0.7 bun run look ...    at this time of day (0 midnight, 0.5 noon)
+ *   PLAYER=4242 bun run look  as that player: their draft blue, with its
+ *                             bill (`act`'s hand is 4242)
  *
  * Tiles are the game's, as `bun run plan --live` numbers them. Writes
  * `.dev/look/frame-<n>.png` and `.dev/look/strip.png`. The game is the one
@@ -39,7 +41,9 @@ mkdirSync(OUT, { recursive: true });
 const ui = args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1);
 const browser = await launch();
 const page = ui ? await open(browser, { width: 1280, height: 860 }) : await browser.newPage({ viewport: VIEW });
-page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
+// As that player: their draft is drawn blue, with its bill.
+if (process.env.PLAYER) await page.addInitScript((p) => localStorage.setItem("sprawl.player", p), process.env.PLAYER);
+page.on("pageerror",(e) => console.log(`page error: ${e.message}`));
 page.on("console", (m) => m.type() === "error" && console.log(`console: ${m.text().slice(0, 300)}`));
 await page.goto(process.env.T ? `${CLIENT}/?t=${process.env.T}` : CLIENT);
 await page.waitForFunction(() => "sprawlCamera" in window, null, { timeout: 60_000 });

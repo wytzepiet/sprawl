@@ -757,7 +757,14 @@ impl ChunkBounds {
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
+    /// A step of the hand, drafted (`drafts.rs`): built at the commit.
     Build(Build),
+    /// The player's draft built, in one stroke.
+    Commit,
+    /// The player's last stroke taken back.
+    Undo,
+    /// The player's draft dropped.
+    Discard,
     /// Spend a point on a node of the tree.
     Take(crate::tree::Cell),
     DespawnAllCars,
@@ -873,6 +880,9 @@ pub struct StateUpdate {
     /// Every shipment on its way and every harbour's timetable.
     #[serde(default)]
     pub sea: Sea,
+    /// Every player's draft and its bill.
+    #[serde(default)]
+    pub drafts: Vec<crate::drafts::Draft>,
     #[ts(type = "number")]
     pub terrain_seed: u32,
     /// The island's map, which the client keeps its camera inside.

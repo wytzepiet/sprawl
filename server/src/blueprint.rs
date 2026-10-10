@@ -70,6 +70,13 @@ pub fn blueprint(kind: BuildingKind) -> &'static Blueprint {
     b
 }
 
+/// What a kind is built from, material by material: what a draft of it
+/// puts on the bill and its site waits for.
+pub fn takes(kind: BuildingKind) -> Vec<(Good, f64)> {
+    let timber = blueprint(kind).timber;
+    if timber > 0 { vec![(Good::Timber, timber as f64)] } else { vec![] }
+}
+
 /// The four ways a plot can lie: which side of the building its lot, and
 /// so its street, is on. 0 is toward -y, then clockwise on the grid:
 /// 1 toward +x, 2 toward +y, 3 toward -x.

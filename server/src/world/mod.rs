@@ -1,6 +1,6 @@
 pub mod bezier;
 mod buildings;
-pub use buildings::Link;
+pub use buildings::{grows, Link};
 pub mod fields;
 mod geometry;
 pub mod lots;
@@ -115,6 +115,9 @@ pub struct World {
     /// Buildings placed, reached, cut off or taken away since the last
     /// `settle`: everything a build changed, and all `settle` reads.
     pub unsettled: BTreeSet<EntityId>,
+    /// Each player's draft: the strokes of their hand not yet built
+    /// (`drafts.rs`). Saved, so a draft outlives a restart.
+    pub drafts: std::collections::BTreeMap<crate::protocol::OwnerId, Vec<crate::drafts::Stroke>>,
 }
 
 use crate::protocol::GridCoord;
@@ -164,6 +167,7 @@ impl World {
             sent: HashSet::new(),
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
+            drafts: Default::default(),
         }
     }
 
@@ -198,6 +202,7 @@ impl World {
             sent: HashSet::new(),
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
+            drafts: Default::default(),
             objects,
         };
         // Rebuild the spatial index and the road index from loaded objects.

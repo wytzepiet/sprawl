@@ -11,6 +11,11 @@
  *                                       as the brush does: one building as far
  *                                       as a kind that grows is painted
  *   bun run act demolish 12,5 14,5      whatever stands on the tiles, through
+ *       Each of these is drafted and committed at once, as the bill's
+ *       Build would; `draft` before one leaves it drafted:
+ *   bun run act draft road 10,4 20,4    drafted only, and the bill said
+ *   bun run act commit | undo | discard the draft built, its last stroke
+ *                                       taken back, or dropped
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act send 18                 depot 18's lorry to the harbour now
  *   bun run act standing 18 on          its standing orders, on or off
@@ -32,7 +37,9 @@
  * made and took away, and a command that changed nothing says so, since
  * the server refuses quietly (the build's gate, the purse, a tile already
  * taken; refusals of buildings are in `.dev/server.log`). The game is the
- * one `bun run dev` runs, or SPRAWL_PORT's.
+ * one `bun run dev` runs, or SPRAWL_PORT's. The hand is a player of its
+ * own, PLAYER (the browser's is in its localStorage, `sprawl.player`), so
+ * its drafts are its own and outlive the command.
  */
 import { decode, encode } from "@msgpack/msgpack";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
@@ -76,12 +83,16 @@ let heard = Date.now();
 let ops: Op[] = [];
 /** Every trip seen, once each. */
 const trips = new Map<string, Recorded>();
-const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+const PLAYER = process.env.PLAYER ?? "4242";
+/** Our draft and its bill, as the last update had them. */
+let draft: { strokes: { step: unknown; stuck: boolean }[][]; bill: { good: string; takes: number; have: number; boxes: number; coins: number }[] } | undefined;
+const ws = new WebSocket(`ws://localhost:${PORT}/ws?player=${PLAYER}`);
 ws.binaryType = "arraybuffer";
 ws.onmessage = (e) => {
   const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as { type: string; data: any };
   if (msg.type !== "Update") return;
   clock = msg.data.clock;
+  draft = (msg.data.drafts ?? []).find((d: { owner: number }) => d.owner === Number(PLAYER));
   if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
   for (const op of msg.data.ops as Op[]) {
     const trip = op.op === "Upsert" && op.data.object.kind === "Car" && op.data.object.data.trip;
@@ -176,18 +187,34 @@ const at = ([x, y]: Pt) => ({ x, y });
 
 /** What a command has to say beyond what it changed. */
 let report: string[] = [];
-for (const [verb, ...rest] of lines) {
+for (const line of lines) {
+  // `draft road …`: the stroke drafted, not built.
+  const drafting = line[0] === "draft";
+  const [verb, ...rest] = drafting ? line.slice(1) : line;
+  const built = () => drafting || send("Commit");
   const flags = rest.filter((a) => a.startsWith("--"));
   const args = rest.filter((a) => !a.startsWith("--"));
   switch (verb) {
     case "road":
       stroke(flags.includes("--road") ? "Road" : flags.includes("--one-way") ? "OneWay" : "Street", args.map(tile));
+      built();
       break;
     case "build":
       stroke({ Building: args[0] }, args.slice(1).map(tile));
+      built();
       break;
     case "demolish":
       stroke("Demolish", args.map(tile));
+      built();
+      break;
+    case "commit":
+      send("Commit");
+      break;
+    case "undo":
+      send("Undo");
+      break;
+    case "discard":
+      send("Discard");
       break;
     case "speed":
       send("SetSpeed", Number(args[0]));
@@ -233,6 +260,13 @@ for (const [verb, ...rest] of lines) {
       throw new Error(`no such command: ${verb}`);
   }
   const said = [...changes(await settled()), ...report];
+  // What is left drafted, and its bill.
+  if (draft) {
+    const marks = draft.strokes.flat();
+    const stuck = marks.filter((m) => m.stuck).length;
+    said.push(`draft: ${marks.length} steps in ${draft.strokes.length} strokes${stuck ? `, ${stuck} no longer fit` : ""}`);
+    for (const l of draft.bill) said.push(`  ${l.takes} ${l.good}, ${Math.floor(l.have)} to hand${l.boxes ? `: ${l.boxes} box${l.boxes === 1 ? "" : "es"} to order, ${Math.round(l.coins)} coins` : ""}`);
+  }
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
   for (const s of said.length ? said : ["time", "speed", "run", "watch", "send", "standing", "order", "sell"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);

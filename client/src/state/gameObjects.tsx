@@ -9,6 +9,7 @@ import { createConnection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
 import { hearSea } from "./sea";
+import { hearDrafts } from "./drafts";
 import type { Building,
   GameObjectEntry,
   ClientMessage,
@@ -35,11 +36,6 @@ const spatial = new Map<string, number[]>();
  */
 const [me, setMe] = createSignal(0);
 export { me };
-
-/**
- * Our own uncommitted entities. Kept as ops arrive rather than derived on
- * demand, since it decides whether the commit bar is on screen at all.
- */
 
 /**
  * What carries a pin: every building. Kept as ops arrive, with a version the
@@ -277,6 +273,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         setIsland(msg.data.island);
         setGrowth(msg.data.growth);
         hearSea(msg.data.sea);
+        hearDrafts(msg.data.drafts);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
         break;

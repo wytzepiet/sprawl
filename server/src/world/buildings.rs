@@ -785,7 +785,7 @@ pub enum Link {
 /// Does a kind grow into one building as it is painted, or stand a
 /// building a tile, linked to its row: a kind a tile big, a home or a
 /// shop of its own on each.
-fn grows(kind: BuildingKind) -> bool {
+pub fn grows(kind: BuildingKind) -> bool {
     crate::blueprint::plot(kind, 0).size != (1, 1)
 }
 

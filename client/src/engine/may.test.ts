@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { may, type Hand } from "./may";
+import { hand, may, type Hand } from "./may";
 import type { TerrainType } from "../generated";
 
 /** The server's test street (`game_loop` tests): grass, and a street along
@@ -10,6 +10,7 @@ function street(): Hand & { wet: Set<string> } {
     roads: new Map(),
     at: new Map(),
     occupied: new Map(),
+    taken: new Set(),
     ground: (x, y): TerrainType => (wet.has(`${x},${y}`) ? "Water" : "Grass"),
     wet,
   };
@@ -45,5 +46,17 @@ describe("the hand's rule, as the server's", () => {
     expect(may(h, "Demolish", at(5, 0), at(5, 0))).toBe(true);
     expect(may(h, "Demolish", at(5, 0), at(6, 0))).toBe(true);
     expect(may(h, "Demolish", at(5, 0), at(5, 1))).toBe(false);
+  });
+
+  test("a house beside a drafted street, and nothing on another's draft", () => {
+    const grass = (): TerrainType => "Grass";
+    const step = (tool: "Street", from: [number, number], to: [number, number]) => ({ stuck: false, step: { tool, from: at(...from), to: at(...to) } });
+    const house = { Building: "House" as const };
+    const bare = hand(() => {}, grass);
+    expect(may(bare, house, at(1, 1), at(1, 1))).toBe(false);
+    const drafted = hand(() => {}, grass, [step("Street", [0, 0], [1, 0]), step("Street", [1, 0], [2, 0])], [step("Street", [5, 0], [6, 0])]);
+    expect(may(drafted, house, at(1, 1), at(1, 1))).toBe(true);
+    expect(may(drafted, "Street", at(2, 0), at(3, 0))).toBe(true);
+    expect(may(drafted, "Street", at(4, 0), at(5, 0))).toBe(false);
   });
 });
