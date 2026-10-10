@@ -327,6 +327,23 @@ parted from the direction above.
   is ready for a loose good to use). Each in its good's colour as the
   panels have it (`GOODS`). An empty, which has no class, is the tipper
   bare and pale. Seen from above, so all of it is on the top.
+- **Lanes** (2026-10-10, the design above, `shipping/lanes.rs`): a
+  line's ways are reserved on the map as lanes, one way in open water,
+  the way back a tile clear of the way out on its left, so ferries pass
+  port to port; later ways take a lane going their way, so trunks form.
+  Water is shared both ways only where there is no room, within two
+  tiles of land, and on a berth's approach. Where lanes share or cross
+  water is a junction, taken as a road junction is, by the same manager
+  with its own rule: a crossing by the road's right-hand rule, narrow
+  water one way at a time (a convoy, then the other side, as Suez runs),
+  a berth's approach one ship at a time. A ship asks a braking distance
+  out and stops at the mouth when it may not go on, in sight, late on
+  its timetable; a ferry whose berth is taken waits at the mouth of the
+  approach, not beyond the edge. The lanes are drawn faint on the flat
+  view and the minimap, so the sea's traffic can be read off the map:
+  arrows the way a lane runs, two-way water dashed, crossings marked.
+  Not built from the design: heading in the search state, the use stock
+  that fades, following by tile, the berth as a lot.
 - **Seeing it**: `GET /sea` gives every shipment, timetable, park and
   lorry; `bun run act send|standing|order|sell` work the border by hand;
   `the_opening_from_the_harbour` plays the whole opening as a test.

@@ -92,29 +92,31 @@ because the next ship asks again. This follows `haul.rs`'s rule ("a
 lorry reads what it should do from where it is and what it carries").
 The ETA shown is the same scan, run on demand.
 
-**A route is computed once per leg and kept.** The sea does not change:
-terrain is not dredged and harbours are buildings, so the route between
-two berths is a pure function of the map. A route is found when its line
-is made, kept on the line, and rebuilt from nothing on load, like the
-other caches. The `shipping.md` design is cut for now: lanes as a use
-stock on every tile, a heading in the search state, four tuned costs.
-That design solves dense traffic, and this game has a handful of ships.
-The parts that show are kept, more cheaply:
+**A route is computed once per leg and kept, and laid as a lane.** The
+sea does not change: terrain is not dredged and harbours are buildings,
+so a way is found when its line is made, kept on the line, and rebuilt
+from nothing on load, like the other caches. The first plan cut the
+lanes of `shipping.md` §The sea for a fixed keep-right offset and blocks
+only in narrow water; the player chose the lanes (2026-10-10), and they
+are built (stage 5, pulled forward): routing a leg reserves its water on
+the map, with the way ships go on it, as a lane kept while its line
+exists, so the sea's traffic is a thing you can read off the map.
 
-- **Trunks** form on their own. Shortest paths round the same headland
-  pull to the same corner points, so lines share legs.
-- **Two-way separation** is a fixed offset. A ship keeps `KEEP_RIGHT` of
-  a tile to the right of its leg's centreline, so ships on one leg in
-  opposite directions pass port to port, half a lane apart. No rule
-  about passing is needed.
-- **Blocks** apply only to narrow water. A run of a route where the
-  clearance is under two ship widths is a block, held by ships going one
-  way at a time, with Suez fairness (`shipping.md` §The sea). It is built
-  in the harness first; the game needs it only where a harbour sits in a
-  fjord.
-
-If the pictures show spaghetti, add lane attraction back then, as a
-discount in the same search.
+- **One-way in open water.** The way back is its own lane: routed with
+  going against a lane dear and running a tile clear of one, with it on
+  the left, cheap, it lies beside the way out and ships pass port to
+  port. No offset, no rule about passing.
+- **Trunks.** Going a lane's way is cheap, so later ways take it.
+- **Two-way only where there is no room**: narrow water (within
+  `NARROW`, two tiles, of land), where a way had to run against a lane,
+  and always a berth's approach. Elsewhere lanes that meet cross.
+- **Junctions, as a road's.** Where lanes share or cross water is a
+  junction, and lanes run between junctions as streets between road
+  nodes. A ship takes one through the car's `IntersectionManager`, its
+  conflict test made a rule per junction: a crossing keeps the road's
+  right-hand rule; narrow water lets ships going one way through
+  together and holds the other way, first come first served, so it
+  drains and flips as Suez does; a berth's approach takes one ship.
 
 **A container is a trailer.** `shipping.md` already says it: one box,
 landed two ways. `Trailer` stays the only box struct. The container port
@@ -191,12 +193,11 @@ never names `World` or `EventQueue`:
   `ROUNDING` (4 tiles) where they fit on the water and the legs have
   room, tighter where not; it starts and ends at the moored ferry's
   middle, straight along the berth's line, and an edge route runs out
-  over the map's border. `narrows(&route)` is the runs of clearance 1
-  beyond the berths' approaches. `tightest(&route)` is the class check:
+  over the map's border. (`narrows` is gone: narrow water is where lanes
+  meet, `lanes.rs`.) `tightest(&route)` is the class check:
   no turn tighter than `TURN` (half the ferry's length) outside the
   berths' own `BERTH` tiles, where the ferry turns on its thrusters.
-  The `KEEP_RIGHT` offset is not built: with one ferry a line nothing
-  passes, and it is the first thing to add when two ships share a leg.
+  The `KEEP_RIGHT` offset was never built: lanes replaced it (stage 5).
 - `lines.rs`: `Call = Harbour(u64) | World`. `Line { calls, legs, ships:
   Vec<(id, first departure)>, slots, dwell, stay, every }`: each ship
   keeps its own phase, so a sailing is added at a departure without
@@ -267,14 +268,15 @@ demand B->A timber 6/day from=0           # even times; W is the world
 stay 0.5h                                 # beyond the edge
 days 10
 expect delivered >= 0.95                  # any metric; hours bare
-pending stage 5: blocks                   # runs, prints, asserts nothing
+pending stage 6: a port                   # runs, prints, asserts nothing
 ```
 
 `cargo test scenario -- --nocapture` runs all of them, twice each to
 check the hash, and `SCENARIO=two` one. Each prints its pages (the
 company's moves and a line a day) and a row of the table. `SVG=1`
-writes `.dev/scenarios/<name>.svg`: land, each line's legs, the narrows
-in red, the harbours, and a dot every ten minutes for each ship.
+writes `.dev/scenarios/<name>.svg`: land, each line's legs, its
+junctions (berths' approaches orange, narrow water red, crossings
+purple), the harbours, and a dot every ten minutes for each ship.
 
 **The metrics** (hours where a time):
 
@@ -290,7 +292,10 @@ in red, the harbours, and a dot every ten minutes for each ship.
 | `util` | boxes aboard at each sailing ÷ slots, mean over lines |
 | `empties` | empty box-rides ÷ all box-rides |
 | `berth_wait`, `wait_max` | ships off a harbour, in all and the longest |
-| `block_wait` | 0 until stage 5 |
+| `block_wait` | ships held at a junction's mouth that is not a berth's, in all |
+| `head_on`, `crossed` | minutes two ships were in one stretch of narrow water going opposite ways, or in one crossing on crossing ways (must be 0) |
+| `flips` | times narrow water was taken the other way from the ship before |
+| `lane_tiles`, `junction_tiles` | tiles of one-way lane, and of junctions |
 | `yard_peak` | most boxes in any yard |
 | `landed_per_call` | boxes off a ship at a harbour, per call: the calibration |
 | `coins_in`, `coins_out` | the world's prices for exports landed beyond and imports landed |
@@ -305,11 +310,12 @@ in red, the harbours, and a dot every ten minutes for each ship.
 
 ```text
 scenario     delivere  transit transit_ late_p90  stretch transfer   missed     util  empties berth_wa yard_pea landed_p coins_in coins_ou
-congested        0.99     2.83     4.34     0.49     1.31     0.00     0.00     0.03     0.61    32.51     5.00     0.44     0.00  1034.00
-hub              0.99     6.19    14.64     4.55     1.54     0.31     6.00     0.03     0.18     2.70     6.00     0.43   360.00   880.00
-new_port         1.00     3.92     7.40     3.58     1.25     0.27    19.00     0.02     0.37    11.71     6.00     0.46     0.00   660.00
-strait           0.99     2.96     4.45     3.58     1.31     0.00     0.00     0.02     0.10     0.01     4.00     0.45     0.00     0.00
-two              1.00     2.86     4.73     3.58     1.27     0.00     0.00     0.04     0.55     0.01     5.00     0.53   360.00   660.00
+congested        0.99     2.88     4.31     0.76     1.32     0.00    21.00     0.03     0.58    79.85     4.00     0.41     0.00  1034.00
+crossing         0.98     4.05     6.09     4.77     2.45     0.00    33.00     0.02     0.10   296.65     4.00     0.40     0.00     0.00
+hub              0.99     6.20    14.64     4.53     1.54     0.31     6.00     0.03     0.18    34.69     6.00     0.43   360.00   880.00
+new_port         0.99     4.49     9.31     3.83     1.44     0.26    59.00     0.02     0.37    38.48     8.00     0.45     0.00   660.00
+strait           0.99     3.25     4.57     3.84     1.44     0.00     2.00     0.02     0.10     0.00     5.00     0.45     0.00     0.00
+two              1.00     2.86     4.73     3.58     1.27     0.00     0.00     0.04     0.55     0.00     5.00     0.53   360.00   660.00
 world            1.00     2.30     3.54     0.57     1.21     0.00     0.00     0.04     0.46     0.00     4.00     0.58    54.00  1540.00
 ```
 
@@ -328,7 +334,10 @@ Each scenario also prints the company's line: `links`, `idle_lines`,
    so the prior builds the hub; `stretch` 1.52, nothing by the world.
 4. **`congested`**: the hub's one berth with four lines; waits visible,
    none longer than four hours.
-5. **`strait`**: pending stage 5; the narrows are drawn.
+5. **`strait`**: A's bay is shut but for a one-tile strait, so its
+   ferries and its line to B all go through it, one way at a time: 87
+   flips in six days, never head on, 7 hours held at its mouths, none
+   longer than a quarter hour.
 6. **`new_port`**: C stands on day 3 and is linked to B, its nearest, so
    its trade with A changes ship at B (`transfers` 0.27). D stands on
    day 4 with nothing to carry and gets no line (`idle_lines` 0) until
@@ -341,6 +350,9 @@ Each scenario also prints the company's line: `links`, `idle_lines`,
    counted). The plan's hour to the first sailing is not met: B's one
    berth takes four lines, and the last's first clean window is 1.25
    hours out; the scenario asks for two, to be tightened.
+7. **`crossing`**: two lines of four ships across a sound, their lanes
+   crossing in the middle: ships on crossing ways take turns (3.8 hours
+   held in six days), never two crossing ways in it at once.
 
 Utilisation of 2 to 4% is expected: the scenarios' demand is small next
 to a fifteen-slot ship every round. It is reported, not a target; stage
@@ -436,7 +448,7 @@ Each stage leaves the game playable and the suite green
     round is 6:40. It runs as many ferries as keep a call at the berth
     every `CALL_EVERY` (3:20) at most, evenly spaced on the clock: two on
     every seed 0 to 19, 7.2 calls a day (the old ferry made 6.4). They
-    pass each other at sea, on one lane until keep-right is built. One is
+    pass each other at sea, port to port on their own lanes (stage 5). One is
     at the ramp at a time; a ferry that would find the other still there
     waits beyond the edge. A box books onto the next to leave the world;
     the tug and the deck serve whichever is at the ramp. A late first
@@ -542,7 +554,7 @@ Each stage leaves the game playable and the suite green
     target; it reads 2 to 4% today, the scenarios' demand being small
     next to a fifteen-slot ship every round.
 
-### Stage 5: blocks in narrow water
+### Stage 5: lanes, and blocks in narrow water
 
 - **Player.** In a fjord or a strait, ships take turns. A convoy goes
   through, then the other side does, as at Suez.
@@ -556,6 +568,54 @@ Each stage leaves the game playable and the suite green
   narrow entrance.
 - **Ships.** Only if a seed or a fixture shows one. If no seed's starting
   harbour needs it, ship this stage last or after item 10.
+- **Built** (2026-10-10), pulled forward and widened to the player's
+  design: lanes everywhere, not blocks in narrow water alone (§Decisions).
+  - `shipping/lanes.rs`: `Lanes`, a mark a tile, a bit for each way a
+    lane leaves it by and its junction kind. `lay` reserves a routed way;
+    `route` reads the marks as costs (along a lane its way, -5 tenths a
+    tile; against one, +100; hard by one going the other way, +10; a
+    tile clear of one on the left, -3, on the right, +5; onto a junction
+    or across a lane, +10). A crossing tile slips no diagonal step: its
+    corners count. The way out keeps the coast off its left too (the
+    search charges the coast two tiles to the left), so the way back has
+    room there, and lines of sight keep four tiles off land, not three.
+    Junctions are patches of tiles: a berth's approach (its first and
+    last `BERTH` tiles, and crossings that touch it, so it runs until the
+    lanes part), narrow water, crossings; crossings and narrow water two
+    tiles apart are one, so no ship waits in one for the next. A way's
+    `gates` are the junctions on it, its mouth half a ferry short of the
+    first tile; `drawn` cuts it into lanes and junctions for the map.
+  - `intersection`: `IntersectionManager::new(rule)`. Roads get
+    `paths_conflict`, as before; a sea junction its kind's rule.
+  - `shipping/voyage.rs`: a leg sailed in pieces of the one law. A ship
+    asks a braking distance (`BRAKE`, 76 tiles) before a mouth, or from
+    rest halfway to it; refused, it slows to a stop at the mouth and
+    stands there until let through, and is late. It gives a junction
+    back as its stern leaves it. A berth's approach is held from the ask
+    to casting off; a ship coming in sails on, unasked into, if the ship
+    at the ramp casts off before it is in, and one early for its call
+    by more than it costs to stop waits at the mouth, the anchorage.
+    `Sail.astern` says which end leads, since a piece's ease no longer
+    does.
+  - The game: `World.lanes`, `World.junctions`, `World.voyages`, all
+    derived; each harbour's line to the world is laid out and back. A
+    ferry finding the berth taken waits at its approach's mouth, in sight,
+    not beyond the edge. Every update's `Sea.lanes` carries the lanes;
+    the flat view and the minimap draw them faint: one-way with chevrons,
+    two-way dashed amber, crossings red. Not built: the lane in 3D.
+  - The clock face counts the approach: a line's berth window opens
+    when its ship comes into the approach, and `slot` allows no overlap,
+    since an overlap is now a stop at the mouth, not minutes at an
+    anchorage.
+  - Measured: on seeds 0 to 19, 250 ways (out and back to the edge and
+    to every island): median 7.3 ms, p90 22 ms, worst 40 ms; no two-way
+    water in open water, out and back never share more than a crossing
+    (they change sides 27 times in all, where a coast presses), and 6
+    ways in 250 turn tighter than the class limit, none tighter than the
+    router's floor (`cargo test every_seed -- --ignored`). Scenarios
+    `strait` (asserted now) and `crossing` (new) above; `congested` holds
+    ships at the hub's mouth, 80 hours in eight days, none longer than
+    0.7 hours.
 
 ### Stage 6: the container port
 
@@ -644,7 +704,7 @@ ferry on a real course, from the real edge.
 
 ## Open
 
-1. `BACKLOG`, `TRIAL`, `SEA_GAIN`, `SEA_PACE`, `WORLD_STAY`, `KEEP_RIGHT`, `APPROACH`: set
+1. `BACKLOG`, `TRIAL`, `SEA_GAIN`, `SEA_PACE`, `WORLD_STAY`, `APPROACH`, and the lanes' costs: set
    in the harness.
 2. Whether the player can ask for a line by hand (a tap on a harbour:
    "connect to…"), or the prior and the backlog are always enough.
