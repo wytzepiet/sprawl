@@ -34,8 +34,9 @@ export interface Mass {
 }
 
 /** How far every side facing out stands in from the tile's edge: the
- *  thick line is 1 - 2 * INSET wide. */
-export const INSET = 0.1;
+ *  thick line is 1 - 2 * INSET wide. No less than a diagonal road's half
+ *  width over √2, or a corner by one stands in its asphalt. */
+export const INSET = 0.17;
 
 /** Clipper works in integers: a tile is this many. */
 const S = 1e5;
