@@ -3,9 +3,9 @@ pub mod simulation;
 pub mod spawn;
 
 pub const CRUISE_SPEED: f64 = 1.5;
-/// What a vehicle drives in a lot: a manoeuvring pace, about fifteen
+/// What a vehicle drives in a lot: a manoeuvring pace, under twenty
 /// kilometres an hour.
-pub const LOT_SPEED: f64 = 0.35;
+pub const LOT_SPEED: f64 = 0.4;
 /// Backing, a brisk walk: under two metres a second.
 pub const REVERSE_SPEED: f64 = 0.15;
 /// Where the gear changes the vehicle stops, and stands this long before
