@@ -600,7 +600,12 @@ pub fn handle_car_wake_up(
     // Only before it has moved: one already on its way out, its hold
     // lapsed, carries on rather than stand in the road.
     let mut waiting = trip.from_lot > 0 && ri == 1 && cur_progress < START && world.manoeuvres.get(&street).is_none_or(|&(o, _)| o != car_id);
-    if waiting && gap_at(world, car_id, &trip, now) {
+    // Only the car at the head of the queue out of its lot takes the
+    // street: one behind another, holding it, would stop the one ahead,
+    // which waits for it (settlers off a ferry, one up the lane after
+    // another).
+    let first_out = (1..=trip.from_lot).all(|k| world.edges.get(&(trip.route[k - 1], trip.route[k])).and_then(|q| q.car_position(car_id)).is_none_or(|i| i == 0));
+    if waiting && first_out && gap_at(world, car_id, &trip, now) {
         hold(world, events, car_id, &turn_nodes(&trip, 0), now);
         waiting = false;
     }
@@ -757,7 +762,7 @@ pub fn handle_car_wake_up(
         obstacles.push(Obstacle::SpeedLimit { distance: 0.0, speed: LOT_SPEED });
     }
     if stops_at(ri) {
-        obstacles.push(Obstacle::MustStop { distance: remaining });
+        obstacles.push(Obstacle::Halt { distance: remaining });
     }
     // At its own give-way line, with no gap yet; or about to turn in
     // across the oncoming lane, with somebody coming.
@@ -813,7 +818,7 @@ pub fn handle_car_wake_up(
             });
         }
         if stops_at(k) {
-            obstacles.push(Obstacle::MustStop { distance: node_dist });
+            obstacles.push(Obstacle::Halt { distance: node_dist });
         }
         if let Some(limit) = bend(world, &trip.route, k) {
             obstacles.push(Obstacle::SpeedLimit { distance: entry_k, speed: limit });

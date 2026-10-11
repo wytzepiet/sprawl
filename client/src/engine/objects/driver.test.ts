@@ -53,3 +53,27 @@ test("a car leaves from where it stood, though its route points elsewhere", () =
   expect(move).toBeLessThan(2.5);
   expect(turn).toBeLessThan(6);
 });
+
+/** How much a drive turns, all told. */
+function turning(d: Drive) {
+  let [all, prev] = [0, d.at(0).body.heading];
+  for (let s = 0.01; s <= d.length; s += 0.01) {
+    const h = d.at(s).body.heading;
+    all += Math.abs(Math.atan2(Math.sin(h - prev), Math.cos(h - prev)));
+    prev = h;
+  }
+  return all;
+}
+
+test("a lorry leaving a yard by a hairpin at its door drives it, not a loop", () => {
+  // A depot's yard as the server lays it (`World::build_yard`): out of a
+  // dock, along the lane to the door, a few hand widths past the lane's
+  // first node, out onto the street and away back along it. Steered on
+  // the route as drawn, its corner at the door too tight for any lock,
+  // the lorry overshot and came round: four radians of turning for a
+  // way that turns three at most.
+  const out = { route_positions: [[10.85, 2.56], [10.85, 1.5], [10.55, 1.5], [10.5, 1.5], [10.5, 0.5], [11.5, 0.5], [12.5, 0.5], [13.5, 0.5]] as Pt[], from_lot: 4, to_lot: 0, backing: [] as [number, number][], leaves: { at: [10.85, 2.56] as Pt, heading: -Math.PI / 2 } };
+  const d = driveTrip(out, LORRY_RIG)!;
+  expect(turning(d)).toBeLessThan(3.2);
+  expect(jolts(d).move).toBeLessThan(2.5);
+});

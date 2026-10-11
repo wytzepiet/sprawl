@@ -382,6 +382,69 @@ export interface Driven {
 
 const pose = (p: Stand | null | undefined): Pose | undefined => p ? { x: p.at[0], y: p.at[1], heading: p.heading } : undefined;
 
+/** The tightest a drivable way turns: a little wider than full lock, so
+ *  the driver can hold it. */
+const WIDEST_LOCK = 0.35;
+
+/**
+ * A way as a vehicle can drive it: a route's corners are rounded only as
+ * far as the stretches either side allow, and a lot's are a few hand
+ * widths long (a yard's lane meets its door at the door), so a hairpin
+ * there is tighter than any lock. Driven as drawn, the driver overshoots,
+ * finds the way behind it and comes round in a loop. Points a short step
+ * apart, eased toward their neighbours' middle where the way turns
+ * tighter than `WIDEST_LOCK` until it nowhere does, its ends and the way
+ * it leaves and arrives kept.
+ */
+export function drivable(points: Pt[]): Pt[] {
+  const bend = (p: Pt[], i: number) => {
+    const [a, b, c] = [p[i - 1], p[i], p[i + 1]];
+    const turn = Math.abs(wrap(Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0])));
+    return turn < 1e-9 ? Infinity : Math.hypot(c[0] - a[0], c[1] - a[1]) / 2 / turn;
+  };
+  if (points.every((_, i) => i === 0 || i === points.length - 1 || bend(points, i) >= WIDEST_LOCK)) return points;
+  const gap = 0.04;
+  const out: Pt[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    for (let k = 1; k <= Math.ceil(l / gap); k++) {
+      const t = Math.min(1, (k * gap) / l);
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+  }
+  if (out.length < 5) return points;
+  const radius = (i: number) => bend(out, i);
+  // Only round the tight places, and what is near them, again and again.
+  let near = new Set<number>();
+  for (let i = 1; i < out.length - 1; i++) if (radius(i) < WIDEST_LOCK) near.add(i);
+  for (let round = 0; round < 400 && near.size; round++) {
+    const next = new Set<number>();
+    for (const i of near) {
+      for (let j = Math.max(2, i - 1); j <= Math.min(out.length - 3, i + 1); j++) {
+        const [a, c] = [out[j - 1], out[j + 1]];
+        out[j] = [out[j][0] + 0.5 * ((a[0] + c[0]) / 2 - out[j][0]), out[j][1] + 0.5 * ((a[1] + c[1]) / 2 - out[j][1])];
+      }
+    }
+    for (const i of near) {
+      for (let j = Math.max(1, i - 2); j <= Math.min(out.length - 2, i + 2); j++) if (radius(j) < WIDEST_LOCK) next.add(j);
+    }
+    near = next;
+  }
+  return out;
+}
+
+/** A part's ends made drivable, where its lot nodes are; a street's
+ *  corners are rounded wide enough already. */
+function ends(points: Pt[]): Pt[] {
+  const d = [0];
+  for (let i = 1; i < points.length; i++) d.push(d[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
+  const L = d[d.length - 1];
+  if (L <= 8) return drivable(points);
+  const a = d.findIndex((x) => x >= 4), b = d.findIndex((x) => x >= L - 4);
+  return [...drivable(points.slice(0, a + 1)), ...points.slice(a + 1, b), ...drivable(points.slice(b))];
+}
+
 /** A trip as the server sends it, driven: in parts at each change of
  *  gear (`backing`, stretches of edges `[a, b)` driven backwards), each
  *  part's route drawn as a street route is, its lot nodes where they are
@@ -396,7 +459,7 @@ export function driveTrip(t: Driven, rig: Rig): Drive | null {
     const nodes = route.slice(i, j + 1).map(([x, y]) => ({ x, y }));
     const fl = Math.max(fromLot - i, i > 0 ? 1 : 0), tl = Math.max(j + 1 - (n - toLot), j < n - 1 ? 1 : 0);
     const d = drawnPath(nodes, LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
-    if (d) drawn.push({ points: d.points.map((p): Pt => [p.x, p.y]), backing: backing.some(([a, b]) => a <= i && i < b) });
+    if (d) drawn.push({ points: ends(d.points.map((p): Pt => [p.x, p.y])), backing: backing.some(([a, b]) => a <= i && i < b) });
   }
   if (!drawn.length) return null;
   // Where each part starts and ends, by the server's distance; or by its
