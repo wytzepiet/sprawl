@@ -37,8 +37,8 @@ export interface Town {
    *  kind by its own rule (`footprint.ts`). */
   joins?(c0: number, r0: number, c1: number, r1: number): boolean;
   /** The way from a built tile to the street its door opens onto, if
-   *  that tile is its door; unset, a house's door is on the first side
-   *  with a street (`front` in `dressing.ts`). */
+   *  that tile is its door: the server's (`Building.door`), or a
+   *  fixture's as the server's loader finds it (`parseTown`). */
   door?(c: number, r: number): [number, number] | undefined;
   /** Where a tile is on the map, for what is placed by where it is — every
    *  third street tile's tree, a tree's shade — so it stays put however
@@ -116,6 +116,8 @@ export function parseTown(text: string): Town & { rows: string[] } {
   return townOf(tiles, (c, r) => rows[r]?.[c] === "#", rows);
 }
 
+/** A town of these tiles. Its doors are found as the server's loader finds
+ *  a fixture's (`doorsOf`). */
 export function townOf(
   tiles: Tile[][],
   through: (c: number, r: number) => boolean,
@@ -125,15 +127,72 @@ export function townOf(
   const h = tiles.length, w = tiles[0]?.length ?? 0;
   const tile = (c: number, r: number) => tiles[r]?.[c] ?? OPEN;
   const road = (c: number, r: number) => tile(c, r).kind === "road";
-  return {
+  let doors: Map<string, [number, number]> | undefined;
+  const town: Town & { rows: string[] } = {
     w, h, rows, tile, through, joins,
     linked(c0, r0, c1, r1) {
       const [dc, dr] = [c1 - c0, r1 - r0];
       if (!road(c0, r0) || !road(c1, r1) || Math.max(Math.abs(dc), Math.abs(dr)) !== 1) return false;
       return dc === 0 || dr === 0 || (!road(c0 + dc, r0) && !road(c0, r0 + dr));
     },
+    door: (c, r) => (doors ??= doorsOf(town)).get(`${c},${r}`),
   };
+  return town;
 }
+
+const SIDES: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+const CORNERS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+const EIGHT: [number, number][] = [...SIDES, ...CORNERS];
+
+/**
+ * Each door as the server's loader finds it (`World::driveway_for`), the
+ * way from its tile to its street: a house's on the first side a street
+ * runs straight past, or else on the diagonal where a drive meets its
+ * street square, not at a hairpin; a yard's gate from a street ahead of
+ * it (`World::enters`), beside first. Any other building's door is no
+ * drive, and is left out.
+ */
+function doorsOf(town: Town): Map<string, [number, number]> {
+  const doors = new Map<string, [number, number]>();
+  const street = (x: number, y: number) => town.tile(x, y).kind === "road" && !town.through(x, y);
+  const square = (x: number, y: number, fx: number, fy: number) =>
+    EIGHT.every(([dx, dy]) => !town.linked(x, y, x + dx, y + dy) || dx * fx + dy * fy >= 0) && EIGHT.some(([dx, dy]) => town.linked(x, y, x + dx, y + dy));
+  const yarded = new Set<number>();
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      const t = town.tile(c, r);
+      if (t.yard && t.id !== undefined) yarded.add(t.id);
+      if (t.kind !== "House") continue;
+      const door =
+        SIDES.find(([fx, fy]) => street(c + fx, r + fy) && (town.linked(c + fx, r + fy, c + fx - fy, r + fy + fx) || town.linked(c + fx, r + fy, c + fx + fy, r + fy - fx))) ??
+        CORNERS.find(([fx, fy]) => street(c + fx, r + fy) && square(c + fx, r + fy, fx, fy));
+      if (door) doors.set(`${c},${r}`, door);
+    }
+  }
+  for (const id of yarded) {
+    const run: GridCoord[] = [];
+    for (let r = 0; r < town.h; r++) for (let c = 0; c < town.w; c++) if (isBuilt(town.tile(c, r)) && town.tile(c, r).id === id) run.push({ x: c, y: r });
+    const kind = town.tile(run[0].x, run[0].y).kind as BuildingKind;
+    const marked = run.filter((q) => town.tile(q.x, q.y).yard);
+    const facing = [0, 1, 2, 3].find((f) => {
+      const yard = yardOf(run, kind, f);
+      return yard?.length === marked.length && marked.every((q) => yard.some((p) => p.x === q.x && p.y === q.y));
+    });
+    if (facing === undefined) continue;
+    const [fx, fy] = FACINGS[facing];
+    const on = (x: number, y: number) => run.some((q) => q.x === x && q.y === y);
+    const enters = ({ x, y }: GridCoord, [dx, dy]: [number, number]) =>
+      dx * fx + dy * fy > 0 && !on(x + dx, y + dy) && street(x + dx, y + dy) && (!dx || !dy || (!on(x + dx, y) && !on(x, y + dy) && square(x + dx, y + dy, dx, dy)));
+    for (const way of EIGHT) {
+      const q = marked.find((q) => enters(q, way));
+      if (!q) continue;
+      doors.set(`${q.x},${q.y}`, way);
+      break;
+    }
+  }
+  return doors;
+}
+
 
 /** A town seen through a window from column x0, row y0: its tiles within,
  *  open ground beyond, and nothing joined or linked across the frame. */

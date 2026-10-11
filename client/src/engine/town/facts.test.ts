@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { parseTown } from "./grid";
 import { facts } from "./facts";
-import { dress, front, waysAt } from "./dressing";
+import { dress } from "./dressing";
+import { surfaceAt } from "./surface";
 import { footprints } from "./footprint";
 import { CAR, HALF_W } from "../objects/roadGeometry";
 
@@ -45,14 +46,11 @@ describe("facts and dressing", () => {
 
   test("a house a diagonal step from its street has a drive to it on the diagonal", () => {
     const t = town(["=.H..", ".=...", "..=..", "...=."]);
-    expect(front(t, 2, 0)).toEqual([-1, 1]);
-    expect(waysAt(t, 1, 1)!.ways.some(([dc, dr]) => dc === 1 && dr === -1)).toBe(true);
+    expect(t.door!(2, 0)).toEqual([-1, 1]);
+    expect(surfaceAt(t, 1, 1)!.ways.some(([dc, dr]) => dc === 1 && dr === -1)).toBe(true);
     // Its cars stand on the drive, between the house and the street.
     const cars = dress(t, facts(t)).cars.filter((c) => c.x > 1.5 && c.x < 3 && c.y > 0 && c.y < 1.5);
     expect(cars.length).toBeGreaterThan(0);
-    // The game's door on the diagonal is drawn the same.
-    const game = { ...t, door: (c: number, r: number) => (c === 2 && r === 0 ? ([-1, 1] as [number, number]) : undefined) };
-    expect(front(game, 2, 0)).toEqual([-1, 1]);
   });
 
   test("a supermarket is a box, all building, square", () => {
@@ -79,12 +77,17 @@ describe("facts and dressing", () => {
     expect(dress(through, facts(through)).trees.length).toBe(0);
   });
 
-  test("a street before homes is parked along its kerbs, a through road not", () => {
-    const street = town(["HHHHHHHHHH", "==========", "HHHHHHHHHH"]);
+  test("a street is parked where the game parks: along the kerb before flats, nose in before shops, before homes not", () => {
+    const street = town(["AAAAAAAAAA", "==========", "SSSSSSSSSS", "..........", "=========="]);
     const cars = dress(street, facts(street)).cars;
-    expect(cars.length).toBeGreaterThan(4);
-    expect(cars.every((c) => Math.abs(c.y - 1.5) - CAR.w / 2 > HALF_W)).toBe(true);
-    const through = town(["HHHHHHHHHH", "##########", "HHHHHHHHHH"]);
+    const along = cars.filter((c) => c.y < 1.5), nosed = cars.filter((c) => c.y > 1.5);
+    expect(along.length).toBeGreaterThan(4);
+    expect(along.every((c) => Math.abs(c.y - 1.5) - CAR.w / 2 > HALF_W && Math.abs(Math.sin(c.angle)) < 1e-9)).toBe(true);
+    expect(nosed.length).toBeGreaterThan(8);
+    expect(nosed.every((c) => Math.abs(c.y - 2.05) < 1e-9 && Math.abs(c.angle - Math.PI / 2) < 1e-9)).toBe(true);
+    const homes = town(["HHHHHHHHHH", "==========", "HHHHHHHHHH"]);
+    expect(dress(homes, facts(homes)).cars.every((c) => Math.abs(c.y - 1.5) > 0.5)).toBe(true);
+    const through = town(["AAAAAAAAAA", "##########", "SSSSSSSSSS"]);
     expect(dress(through, facts(through)).cars.length).toBe(0);
   });
 });

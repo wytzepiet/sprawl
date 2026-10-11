@@ -1,5 +1,5 @@
 import { isBuilt, windowOf, type Town } from "./grid";
-import { formOf, type Yard } from "./mass";
+import { formOf, yardFill, type Yard } from "./mass";
 import { defaultJoins } from "./footprint";
 
 /**
@@ -31,11 +31,7 @@ export interface Facts {
 }
 
 export function facts(painted: Town): Facts {
-  const yard = (c: number, r: number) => {
-    const t = painted.tile(c, r);
-    const y = formOf(t).yard;
-    return y && (t.yard || y.fill === "park") ? y.fill : undefined;
-  };
+  const yard = (c: number, r: number) => yardFill(painted.tile(c, r));
   // The yard is open ground, but the building keeps its joins, so the
   // walls round its yard stand square.
   const open: Town = {

@@ -1,9 +1,9 @@
 import type { TerrainType } from "../../generated";
-import { kerbsOf, kerbTexels, roadsOf, stripLines, type KerbTexels } from "../kerbLines";
+import { kerbsOf, kerbTexels, roadsOf, type KerbTexels } from "../kerbLines";
 import type { Theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
-import { asphalt } from "./dressing";
+import { asphalt } from "./surface";
 import type { Pt } from "./footprint";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type Tile, type Town } from "./grid";
@@ -170,7 +170,9 @@ export function drawChunks(s: Snapshot): Drawing {
   const [c0, r0] = [x1 - wx1, y1 - wy1];
   const [ww, wh] = [wx1 - wx0 + 1, wy1 - wy0 + 1];
   const inWindow = windowOf(whole, c0, r0, ww, wh);
-  const { pieces, dressing, props } = drawTown(inWindow, s.theme, paint, windowFacts(known, c0, r0, ww, wh));
+  // The game's own marks, turned half round into the window.
+  const marks = s.marks.map((m) => m.map(([x, y]): Pt => [x1 - c0 + 1 - x, y1 - r0 + 1 - y]));
+  const { pieces, dressing, props } = drawTown(inWindow, s.theme, paint, windowFacts(known, c0, r0, ww, wh), marks);
   // The roads, as the paving is cut for them: every tile's asphalt,
   // overlapping as they are drawn.
   const { street, through } = asphalt(windowOf(on, c0, r0, ww, wh));
@@ -181,17 +183,14 @@ export function drawChunks(s: Snapshot): Drawing {
   const frame = ([fx0, fy0, fx1, fy1]: Bounds): Box => [fx0 - wx1 - 1, fy0 - wy1 - 1, fx1 - wx1, fy1 - wy1];
   // Each piece's triangles filed by the chunks they reach into, so a chunk
   // cuts only its own; the paving's kerbs found once, from the window's
-  // whole paving, so a kerb is never where a chunk was cut, and the yards'
-  // lines on it.
+  // whole paving, so a kerb is never where a chunk was cut.
   const chunkAt = (gx: number, gy: number): [number, number] => [Math.floor((gx + wx1 + 1) / CHUNK), Math.floor((gy + wy1 + 1) / CHUNK)];
   const filed = new Map(pieces.map((p) => [p, fileBy(p.geo, chunkAt, (cx, cy) => `${cx},${cy}`, p.name === "pavement" ? PAVING_PAD : 0)]));
   // And the roads', so a chunk's paving asks only those near it whether a
   // point is on a road.
   const roadsBy = fileBy(roadSheet, chunkAt, (cx, cy) => `${cx},${cy}`, PAVING_PAD);
   const pavement = pieces.find((p) => p.name === "pavement");
-  // The game's own marks, turned half round into the window.
-  const marks = s.marks.map((m) => m.map(([x, y]): Pt => [x1 - c0 + 1 - x, y1 - r0 + 1 - y]));
-  const [kerbs, lines] = [pavement ? kerbsOf(pavement.geo) : [], stripLines([...dressing.yardLines, ...marks])];
+  const kerbs = pavement ? kerbsOf(pavement.geo) : [];
   const chunks = s.todo.map((key): ChunkDrawing => {
     const [cx, cy] = key.split(",").map(Number);
     // The chunk, as far as the town reaches into it.
@@ -209,10 +208,10 @@ export function drawChunks(s: Snapshot): Drawing {
       return x >= cut[0] && x < cut[2] && y >= cut[1] && y < cut[3];
     });
     // Its paving's kerb texture, cut to it by its own triangles, its
-    // kerbs and lines the window's.
+    // kerbs the window's.
     const sheet = own.find((p) => p.name === "pavement" && p.geo.indices.length);
     const near = (roadsBy.get(key) ?? []).flatMap((t) => [roadSheet.indices[t], roadSheet.indices[t + 1], roadSheet.indices[t + 2]]);
-    const paving = sheet ? kerbTexels(kerbs, cut, { cover: sheet.geo, lines, roads: { sheet: { ...roadSheet, indices: near }, edges: roadEdges } }) : null;
+    const paving = sheet ? kerbTexels(kerbs, cut, { cover: sheet.geo, roads: { sheet: { ...roadSheet, indices: near }, edges: roadEdges } }) : null;
     // A prop stands on the chunk it is on, as a tree does.
     const mine = props.filter((p) => p.x >= cut[0] && p.x < cut[2] && p.y >= cut[1] && p.y < cut[3]);
     const packed = new Float32Array(mine.length * PROP_FLOATS);

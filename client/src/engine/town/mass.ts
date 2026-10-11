@@ -40,6 +40,14 @@ const FORMS: Partial<Record<BuildingKind, Form>> = {
   Harbour: { family: "port", yard: { fill: "park" } },
 };
 export const formOf = (t: Tile): Form => FORMS[t.kind as BuildingKind] ?? STREET;
+/** What stands in a tile of yard, if it is one: where the server lays a
+ *  building's lot (`Tile.yard`), or anywhere on a kind that is all yard,
+ *  as a harbour is. Docks, unless its kind says. */
+export const yardFill = (t: Tile): Yard["fill"] | undefined => {
+  const y = formOf(t).yard;
+  return t.yard ? (y?.fill ?? "docks") : y?.fill === "park" ? "park" : undefined;
+};
+export const isYard = (t: Tile) => yardFill(t) !== undefined;
 
 /** The walls' height. */
 export const eaves = (t: Tile) => 0.1 + 0.12 * t.storeys;
