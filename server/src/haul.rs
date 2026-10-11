@@ -235,7 +235,10 @@ fn sells(world: &World, depot: EntityId, good: Good) -> bool {
 }
 
 /// The nearest maker in town with a box's worth in its yard of a good the
-/// depot sells, by the tiles between them.
+/// depot is short of, by the tiles between them, or else of one it sells:
+/// the town's own shelf before the world's. A lorry is free to go to a
+/// maker whenever it is bobtail, so a farm's endless crates for the world
+/// would otherwise keep it from the sawmill's timber the town is out of.
 fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
     let at = world.objects.get(depot)?.position?;
     world
@@ -243,13 +246,15 @@ fn maker_with_surplus(world: &World, depot: EntityId) -> Option<EntityId> {
         .iter()
         .filter_map(|e| match e.object {
             GameObject::Building(ref b) => {
-                let good = blueprint(b.kind).makes.filter(|&g| sells(world, depot, g) || short_of(world, depot, g))?;
-                (b.stocks.get(&good)?.level >= good.per_box() && world.street_of(e.id).is_some()).then_some((e.id, e.position?))
+                let good = blueprint(b.kind).makes?;
+                let short = short_of(world, depot, good);
+                (short || sells(world, depot, good)).then_some(())?;
+                (b.stocks.get(&good)?.level >= good.per_box() && world.street_of(e.id).is_some()).then_some((!short, e.id, e.position?))
             }
             _ => None,
         })
-        .min_by_key(|&(id, p)| ((p.x - at.x).abs() + (p.y - at.y).abs(), id))
-        .map(|(id, _)| id)
+        .min_by_key(|&(sold, id, p)| (sold, (p.x - at.x).abs() + (p.y - at.y).abs(), id))
+        .map(|(_, id, _)| id)
 }
 
 /// The lorry woke, parked: at the end of its service where it stands, or
@@ -521,7 +526,7 @@ pub fn lorries_of(world: &World, depot: EntityId) -> Vec<EntityId> {
 /// What a lorry costs from the world: a vehicle is an import like any
 /// other, paid as it is bought.
 pub const LORRY_PRICE: f64 = 40.0;
-/// Lorries a depot can keep beyond its own: its yard has seven docks, and
+/// Lorries a depot can keep beyond its own: its yard has eight docks, and
 /// its vans want two of them.
 pub const MORE_LORRIES: u8 = 3;
 
