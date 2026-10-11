@@ -76,7 +76,12 @@ const OPEN: Tile = { kind: "open", storeys: 0 };
 export function parseTown(text: string): Town & { rows: string[] } {
   const rows = text.split("\n").filter((l) => l.trim() && !l.startsWith("#")).map((l) => l.replace(/\s/g, ""));
   const w = Math.max(...rows.map((r) => r.length));
-  const tiles = rows.map((row) => Array.from({ length: w }, (_, c) => tileOf(row[c] ?? ".")));
+  // A house is a tile, as the server raises a fixture's (`fixtures.rs`):
+  // each its own building. A run of any other letter is one.
+  const tiles = rows.map((row, r) => Array.from({ length: w }, (_, c) => {
+    const t = tileOf(row[c] ?? ".");
+    return t.kind === "House" ? { ...t, id: r * w + c } : t;
+  }));
   return townOf(tiles, (c, r) => rows[r]?.[c] === "#", rows);
 }
 

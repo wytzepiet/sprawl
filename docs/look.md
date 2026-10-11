@@ -330,8 +330,9 @@ diagonal.
   first tile: cut in two, the part with it keeps the building's
   residents, stock and money and the other starts empty; two joined, the
   older is kept. Houses never join for the simulation, each a house with
-  its two homes, its drive and its two cars, and are drawn joined all the
-  same (`01-terrace`); a kind that works as one building (the depot, the
+  its two homes, its drive and its two cars, and are drawn apart too:
+  a house or a block of flats is always freestanding (`kin` in
+  `mass.ts`, `01-terrace`); a kind that works as one building (the depot, the
   supermarket, the factory, the port) is one building as far as it is
   painted. A building smaller than its kind needs (`brush.ts`'s
   programs) stands and does not work, as one no road reaches; nothing is

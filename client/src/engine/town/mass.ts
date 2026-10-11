@@ -3,7 +3,7 @@ import { isBuilt, type Tile } from "./grid";
 
 /**
  * What the look knows of each kind of building: its family, which kinds
- * join into one building, how tall its walls stand and how its roof
+ * join their neighbours, how tall its walls stand and how its roof
  * climbs. The facts a tile cannot see from its neighbours are
  * `facts.ts`'s, the shapes `footprint.ts`'s, the mesh `roof.ts`'s.
  */
@@ -82,7 +82,11 @@ export function seat(t: Tile): { z: number; inset: number; painted: boolean } {
 }
 
 /** Buildings that may join, where no stroke says: tiles of one kind, as
- *  the terrain's types are. */
-export const kin = (a: Tile, b: Tile) => isBuilt(a) && isBuilt(b) && a.kind === b.kind;
+ *  the terrain's types are. A home stands alone: placed whole, it is one
+ *  building, never a row with the one beside it, so its tiles join only
+ *  each other. */
+export const kin = (a: Tile, b: Tile) =>
+  isBuilt(a) && isBuilt(b) && a.kind === b.kind && (!ALONE.has(a.kind as BuildingKind) || a.id === b.id);
+const ALONE = new Set<BuildingKind>(["House", "Apartment"]);
 
 export type RGB = [number, number, number];

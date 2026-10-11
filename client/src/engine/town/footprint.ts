@@ -14,10 +14,10 @@ import { kin } from "./mass";
  * - where four tiles round a corner are all joined beside each other, the
  *   square between their middles, so a block is solid.
  *
- * Tiles not joined are apart: detached houses, a gap between two sheds. A
- * town with no strokes (a fixture, a real place) is joined by kind:
- * beside each other, and on the diagonal unless the block is solid there
- * or a street runs between.
+ * Tiles not joined are apart: houses side by side, a gap between two
+ * sheds. A town with no strokes (a fixture, a real place) is joined by
+ * kind (`kin`, where a home joins only itself): beside each other, and on
+ * the diagonal unless the block is solid there or a street runs between.
  */
 
 export type Pt = [number, number];

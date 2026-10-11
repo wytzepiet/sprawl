@@ -138,8 +138,8 @@ export function drawChunks(s: Snapshot): Drawing {
     linked,
     through: (c, r) => !!road(c, r)?.road,
     // A building is joined in itself, and to its own kind beside it as
-    // a fixture's are, so houses side by side are a row; a kind with a
-    // yard stands apart, its yard its own.
+    // a fixture's are, so shops side by side are a terrace; a home stands
+    // alone (`kin`), and a kind with a yard apart, its yard its own.
     joins: (c0, r0, c1, r1) => {
       const [a, b] = [tile(c0, r0), tile(c1, r1)];
       if (a.id === undefined || b.id === undefined) return false;
