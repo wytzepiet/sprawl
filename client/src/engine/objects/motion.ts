@@ -1,7 +1,8 @@
 import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
 import { CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Pose, type Pt, type Rig } from "./driver";
-import { behind, deckPose, sailing, shunting } from "./sea";
+import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
+import { CAB, TRAILER, VAN } from "./roadGeometry";
 import type { Car, GridCoord, Trailer, Trip } from "../../generated";
 import type { Pose as Stand } from "../../generated/Pose";
 
@@ -23,10 +24,9 @@ export const PALETTE = [
   rgb(0.2, 0.5, 0.4),
   rgb(0.8, 0.65, 0.25),
 ];
-/** What the working vehicles are painted: a van always the same white, a
- *  tractor the farm's green, a lorry's cab, the ferry's hull. */
+/** What the working vehicles are painted: a tractor the farm's green, a
+ *  lorry's cab (a van's too), the ferry's hull. */
 export const LIVERY = {
-  van: rgb(0.92, 0.92, 0.9),
   tractor: rgb(0.36, 0.55, 0.16),
   cab: rgb(0.28, 0.36, 0.58),
   ferry: rgb(0.96, 0.96, 0.95),
@@ -108,6 +108,24 @@ export function aboard(car: Car): { k: number; d: number; box?: Trailer; settler
 
 /** A pose moved `d` along its heading. */
 export const ahead = (p: Stand, d: number): Stand => ({ at: [p.at[0] + Math.cos(p.heading) * d, p.at[1] + Math.sin(p.heading) * d], heading: p.heading });
+
+/** What a box behind a cab holds: a good, and how much. */
+export type Load = Pick<Trailer, "good" | "units">;
+
+/** The box behind a vehicle's cab: a lorry's on its hitch, the world's; a
+ *  van's its load on a call. None for a bobtail, or anything else. */
+export function carried(car: Car): Load | null {
+  if (car.role === "Truck") return car.hitched;
+  if (car.role === "Van") return car.load && { good: car.load[0], units: car.load[1] };
+  return null;
+}
+
+/** A van is a small rigid lorry, VAN long: a lorry's tractor at the front,
+ *  and on its chassis from behind the cab a box built and painted as a box
+ *  is (`sea.ts`), the rest of the length; `VAN_BOX` of a box's length, so
+ *  it holds that share of one. */
+export const VAN_BOX = (VAN.l - CAB_BLOCK) / TRAILER.l;
+export const vanParts = (middle: Stand): { body: Stand; box: Stand } => ({ body: ahead(middle, (VAN.l - CAB.l) / 2), box: ahead(middle, -CAB_BLOCK / 2) });
 
 const stand = (p: Pose): Stand => ({ at: [p.x, p.y], heading: p.heading });
 

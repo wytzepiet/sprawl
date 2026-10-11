@@ -44,11 +44,9 @@ pub struct Call {
     /// The building calling.
     pub at: EntityId,
     pub raised: GameTime,
-    /// The vehicle on its way, once one is.
+    /// The vehicle on its way, once one is; what it carries is its own
+    /// (`Car::load`).
     pub answered_by: Option<EntityId>,
-    /// What it carries, in units of the good: loaded at the seller's as
-    /// it leaves.
-    pub load: f64,
     /// Where a fetch was sent.
     pub from: Option<EntityId>,
 }
@@ -101,7 +99,7 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
             continue;
         }
         let kind_of_call = if depot { CallKind::Fetch } else { CallKind::Stock };
-        calls.push(Call { kind: kind_of_call, good, at: building, raised: now, answered_by: None, load: 0.0, from: None });
+        calls.push(Call { kind: kind_of_call, good, at: building, raised: now, answered_by: None, from: None });
     }
     if economy::depot(kind) {
         crate::haul::top_up(world, building);
@@ -168,7 +166,8 @@ pub fn dispatch(world: &mut World, events: &mut EventQueue, now: GameTime) {
             }),
             CallKind::Stock => nearest_seller(world, at, good).and_then(|(depot, van, door)| {
                 crate::car::spawn::start_trip(world, events, van, door, at, now, GameTime::MAX).then(|| {
-                    world.calls[i].load = economy::loaded(world, depot, good, order.min(economy::van_load(good)));
+                    let units = economy::loaded(world, depot, good, order.min(economy::van_load(good)));
+                    load(world, van, Some((good, units)));
                     van
                 })
             }),
@@ -261,6 +260,14 @@ fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole) -> Option<
     Some((car, door))
 }
 
+/// Put a load on a vehicle, or take it off; what it carried.
+pub fn load(world: &mut World, car: EntityId, load: Option<(Good, f64)>) -> Option<(Good, f64)> {
+    match world.objects.get_mut(car).map(|e| &mut e.object) {
+        Some(GameObject::Car(c)) => std::mem::replace(&mut c.load, load),
+        _ => None,
+    }
+}
+
 /// The vehicles a facility owns, in id order.
 fn fleet_of(world: &World, facility: EntityId) -> Vec<EntityId> {
     world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == facility)).map(|e| e.id).collect()
@@ -299,20 +306,29 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
                     events.wake(SERVICE_MS, car);
                 }
             }
-            None => economy::refilled(world, car, now),
+            // Home, with whatever it never landed (its caller gone) back
+            // on the shelf.
+            None => {
+                if let Some((good, units)) = load(world, car, None) {
+                    economy::delivered(world, owner, good, units);
+                }
+                economy::refilled(world, car, now)
+            }
         }
         return;
     };
     let call = world.calls[i];
     // At the far end of a fetch: load, and set off home with it.
-    let at_seller = call.from.is_some_and(|s| here.is_some() && world.objects.get(s).and_then(|e| e.position) == here && call.load == 0.0);
+    let empty = matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.load.is_none());
+    let at_seller = call.from.is_some_and(|s| here.is_some() && world.objects.get(s).and_then(|e| e.position) == here && empty);
     if at_seller {
         let seller = call.from.unwrap();
         let order = match world.objects.get(call.at).map(|e| &e.object) {
             Some(GameObject::Building(b)) => b.stocks.get(&call.good).map_or(0.0, |s| s.short()),
             _ => 0.0,
         };
-        world.calls[i].load = economy::loaded(world, seller, call.good, order);
+        let units = economy::loaded(world, seller, call.good, order);
+        load(world, car, Some((call.good, units)));
         turn(world, events, seller, now);
         let gone = world.street_of(seller).is_some_and(|door| crate::car::spawn::start_trip(world, events, car, door, owner, now, GameTime::MAX));
         if !gone {
@@ -324,7 +340,8 @@ pub fn car_idle(world: &mut World, events: &mut EventQueue, car: EntityId, now: 
     // How long it took, from the call to the load landing: the lead time
     // the next reorder point covers.
     world.books.entry(call.at).or_default().lead = Some(now - call.raised);
-    let left = economy::delivered(world, call.at, call.good, call.load);
+    let units = load(world, car, None).map_or(0.0, |(_, u)| u);
+    let left = economy::delivered(world, call.at, call.good, units);
     match call.kind {
         // Home from the yard: what did not fit goes back where it came from.
         CallKind::Fetch => {

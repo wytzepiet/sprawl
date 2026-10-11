@@ -3,7 +3,7 @@ import { themes, type Theme } from "../engine/theme";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { CAB, CAR, ROAD_WIDTH, TRAILER, VAN } from "../engine/objects/roadGeometry";
 import { FERRY, deckPose, hull, TUG } from "../engine/objects/sea";
-import { colourOf, LIVERY, moment, PALETTE, type Moment } from "../engine/objects/motion";
+import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN_BOX, vanParts } from "../engine/objects/motion";
 import type { Rgb } from "../engine/rgb";
 import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Trailer } from "../generated";
 import type { Pose as Stand } from "../generated/Pose";
@@ -328,17 +328,18 @@ function body(g: CanvasRenderingContext2D, p: Stand, l: number, w: number, fill:
   g.restore();
 }
 
-/** A box: its good's colour, or hollow if it is empty. */
-function box(g: CanvasRenderingContext2D, p: Stand, t: Trailer) {
+/** A box, `k` of a box's length: its good's colour, or hollow if it is empty. */
+function box(g: CanvasRenderingContext2D, p: Stand, t: Load, k = 1) {
   const full = t.good && t.units > 0;
+  const l = TRAILER.l * k;
   g.save();
   g.translate(p.at[0], p.at[1]);
   g.rotate(p.heading);
   g.fillStyle = full ? GOODS[t.good!].color : "rgba(255,255,255,0.7)";
-  g.fillRect(-TRAILER.l / 2, -TRAILER.w / 2, TRAILER.l, TRAILER.w);
+  g.fillRect(-l / 2, -TRAILER.w / 2, l, TRAILER.w);
   g.strokeStyle = INK;
   g.lineWidth = full ? 0.02 : 0.035;
-  g.strokeRect(-TRAILER.l / 2, -TRAILER.w / 2, TRAILER.l, TRAILER.w);
+  g.strokeRect(-l / 2, -TRAILER.w / 2, l, TRAILER.w);
   g.restore();
 }
 
@@ -383,8 +384,13 @@ function vehicle(g: CanvasRenderingContext2D, id: number, car: Car, m: Moment) {
     case "Truck":
       if (m.box && car.hitched) box(g, m.box, car.hitched);
       return body(g, m.body, CAB.l, CAB.w, css(LIVERY.cab));
-    case "Van":
-      return body(g, m.body, VAN.l, VAN.w, css(LIVERY.van));
+    case "Van": {
+      // A small rigid lorry: its cab, and its load in a short box behind.
+      const p = vanParts(m.body);
+      const load = carried(car);
+      if (load) box(g, p.box, load, VAN_BOX);
+      return body(g, p.body, CAB.l, CAB.w, css(LIVERY.cab));
+    }
     case "Tractor":
       return body(g, m.body, VAN.l, VAN.w, css(LIVERY.tractor));
     default:
@@ -440,7 +446,6 @@ function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntr
     ...(Object.keys(GOODS) as (keyof typeof GOODS)[]).map((good): [string, (x: number, y: number) => void] => [GOODS[good].label, (x, y) => swatch(g, x, y, GOODS[good].color)]),
     ["empty", (x, y) => swatch(g, x, y, "rgba(255,255,255,0.7)", 2)],
     ["lorry", (x, y) => swatch(g, x, y, css(LIVERY.cab))],
-    ["van", (x, y) => swatch(g, x, y, css(LIVERY.van))],
     ["tractor", (x, y) => swatch(g, x, y, css(LIVERY.tractor))],
     ["tug", (x, y) => swatch(g, x, y, css(TUG))],
   ];

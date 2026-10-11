@@ -346,6 +346,12 @@ pub struct Car {
     /// The box on its hitch: a lorry's, or a tug's.
     #[serde(default)]
     pub hitched: Option<Trailer>,
+    /// What it carries on a call, and how much: a van's load from its
+    /// depot to the caller's door, a lorry's from a maker's yard home.
+    /// Loaded as it sets out, landed at the end; on the vehicle, so it is
+    /// seen.
+    #[serde(default)]
+    pub load: Option<(Good, f64)>,
     /// A ferry's deck, by slot (`world/sea.rs` DECK): boxes, and the cars
     /// of settlers riding over, by id.
     #[serde(default)]
@@ -370,7 +376,7 @@ pub struct Car {
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None, sail: None, hitched: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
+        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None, sail: None, hitched: None, load: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
     }
 }
 

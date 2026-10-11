@@ -12,20 +12,17 @@ import type { Fix } from "./drawnPath";
 import type { Theme } from "../theme";
 import type { Strip } from "./strip";
 import { field, FIELD_Z, leaves } from "./BuildingObject";
-import { CAB, CAR, ROAD_Z, VAN } from "./roadGeometry";
-import { behind, boxShape, DECK_Z, deckPose, FERRY_SHAPE, shunting, TUG, TUG_SHAPE } from "./sea";
+import { CAR, ROAD_Z, VAN } from "./roadGeometry";
+import { behind, boxShape, DECK_Z, deckPose, FERRY_SHAPE, LORRY_SHAPE, shunting, TUG, TUG_SHAPE } from "./sea";
 import type { Drive, Pose } from "./driver";
-import { aboard, ahead, colourOf, driveOf, LIVERY, PALETTE, running, straightBehind, travelled, voyage } from "./motion";
+import { aboard, ahead, carried, colourOf, driveOf, LIVERY, type Load, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
 import { getEntity } from "../../state/gameObjects";
-import type { Building, Car, GameObjectEntry, Trailer } from "../../generated";
+import type { Building, Car, GameObjectEntry } from "../../generated";
 import type { Pose as Stand } from "../../generated/Pose";
 import { carPoses, parts } from "../../state/selection";
 
 const carGeo = carShape(CAR.w, CAR.l, CAR.h);
 const vanGeo = boxGeometry(VAN.w, VAN.l, VAN.h);
-/** A lorry: a cab-over tractor, the vehicle the server moves, and the box
- *  on its hitch, if it has one (`driver.ts`, `sea.ts`). */
-const cabGeo = boxGeometry(CAB.w, CAB.l, CAB.h);
 
 /** A box sits on the road: its centre is half its height up. */
 const CAR_Z = ROAD_Z + CAR.h / 2;
@@ -64,11 +61,12 @@ function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look):
   return paint(pool, `car_c${c}${parked ? "p" : ""}`, carGeo, PALETTE[c], look, CLEAR_COAT);
 }
 
-/** A box (`sea.ts`) standing at a pose, its base at `z`; moved, or taken
- *  away. A box is the world's: no building's look is on it. */
-export function placeBox(pool: InstancePool, t: Trailer, p: Stand, z: number) {
+/** A box (`sea.ts`) standing at a pose, its base at `z`, `k` of a box's
+ *  length; moved, or taken away. A box is the world's: no building's look
+ *  is on it. */
+export function placeBox(pool: InstancePool, t: Load, p: Stand, z: number, k = 1) {
   const placed = (q: Stand): [[number, number, number], [number, number, number]] => [[q.at[0], q.at[1], z], [0, 0, q.heading - Math.PI / 2]];
-  const parts = boxShape(t).map(({ key, geo, scale }) => {
+  const parts = boxShape(t, k).map(({ key, geo, scale }) => {
     const k = paint(pool, key, geo, WHITE, SOLID);
     return { key: k, id: pool.addInstance(k, ...placed(p), scale) };
   });
@@ -87,15 +85,15 @@ export function mountCar(
   look: Look,
 ): () => void {
   const car = entry.object.data as Car;
-  if (car.role === "Truck") return mountLorry(entry.id, car, pool, ctx, look);
+  if (car.role === "Truck" || car.role === "Van") return mountLorry(entry.id, car, pool, ctx, look);
   if (car.role === "Ferry") return mountFerry(entry.id, car, pool, ctx);
   if (car.role === "Tug") return mountTug(entry.id, car, pool, ctx);
-  // A tractor is drawn as a van in the farm's green until it has a shape of its own.
-  const van = car.role === "Van" || car.role === "Tractor";
+  // A tractor is a box in the farm's green until it has a shape of its own.
+  const van = car.role === "Tractor";
   // Parked cars in buckets of their own: a bucket where one car moves is
   // drawn into the shadow map every frame, and one that stands still is not.
   const parked = !car.trip && !car.run;
-  const bucket = van ? paint(pool, (car.role === "Tractor" ? "tractor" : "van") + (parked ? "p" : ""), vanGeo, car.role === "Tractor" ? LIVERY.tractor : LIVERY.van, look) : carBucket(pool, entry.id, parked, look);
+  const bucket = van ? paint(pool, "tractor" + (parked ? "p" : ""), vanGeo, LIVERY.tractor, look) : carBucket(pool, entry.id, parked, look);
   const z = CAR_Z;
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,
@@ -151,27 +149,30 @@ export function mountCar(
 }
 
 /** A lorry, parked or on the move: the cab, and the box on its hitch if
- *  it has one, as `driver.ts` steers them; a bobtail cab alone, without. */
+ *  it has one, as `driver.ts` steers them; a bobtail cab alone, without.
+ *  A van the same, rigid, its box short (`vanParts`) and its load in it. */
 function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext, look: Look): () => void {
-  const cab = paint(pool, "lorry_cab", cabGeo, LIVERY.cab, look);
-  const cabZ = GROUND + CAB.h / 2;
+  const cab = paint(pool, "lorry_cab", LORRY_SHAPE, LIVERY.cab, look);
   const stand = (p: Pose): Stand => ({ at: [p.x, p.y], heading: p.heading });
   const drive = follow(id, car);
   if (!drive && !car.spot) return () => {};
-  const pose = () => {
+  const van = car.role === "Van";
+  const pose = (): { body: Stand; box: Stand } => {
     const p = drive ? drive.now() : { body: { x: car.spot!.at[0], y: car.spot!.at[1], heading: car.spot!.heading }, trailer: undefined };
-    return { body: p.body, trailer: p.trailer ?? straightBehind(p.body) };
+    return van ? vanParts(stand(p.body)) : { body: stand(p.body), box: stand(p.trailer ?? straightBehind(p.body)) };
   };
+  const placed = (q: Stand): [[number, number, number], [number, number, number]] => [[q.at[0], q.at[1], GROUND], [0, 0, q.heading - Math.PI / 2]];
   const first = pose();
-  const a = pool.addInstance(cab, [first.body.x, first.body.y, cabZ], [0, 0, first.body.heading - Math.PI / 2]);
-  const box = car.hitched && placeBox(pool, car.hitched, stand(first.trailer), GROUND);
-  carPoses.set(id, [first.body.x, first.body.y]);
+  const a = pool.addInstance(cab, ...placed(first.body));
+  const load = carried(car);
+  const box = load && placeBox(pool, load, first.box, GROUND, van ? VAN_BOX : 1);
+  carPoses.set(id, first.body.at);
   parts.set(id, [{ key: cab, id: a }, ...(box ? box.parts : [])]);
   const stop = drive && ctx.beforeRender(() => {
     const p = pose();
-    carPoses.set(id, [p.body.x, p.body.y]);
-    pool.updateInstance(cab, a, [p.body.x, p.body.y, cabZ], [0, 0, p.body.heading - Math.PI / 2]);
-    if (box) box.move(stand(p.trailer));
+    carPoses.set(id, p.body.at);
+    pool.updateInstance(cab, a, ...placed(p.body));
+    if (box) box.move(p.box);
   });
   return () => {
     if (stop) stop();

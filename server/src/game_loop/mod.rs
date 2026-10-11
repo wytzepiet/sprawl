@@ -2428,7 +2428,8 @@ mod tests {
         // A depot with stone sends its van, and the town is not short.
         shelve(&mut world, depot, Good::Stone, 10.0);
         calls::dispatch(&mut world, &mut events, 0);
-        assert!(world.calls.iter().any(|c| c.at == flats && c.good == Good::Stone && c.answered_by.is_some()), "the van never set out");
+        let van = world.calls.iter().find(|c| c.at == flats && c.good == Good::Stone).and_then(|c| c.answered_by).expect("the van never set out");
+        assert!(car_of(&world, van).load.is_some_and(|(g, u)| g == Good::Stone && u > 0.0), "the van set out without its stone on it, to be seen");
         assert_eq!(quarry(&mut world), [false; 0], "it opened while the depot had stone");
         // Then the shelf is empty, and the flats call again.
         world.calls.clear();
