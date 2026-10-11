@@ -3,7 +3,7 @@ import { fillTriangles } from "./raster";
 import { RIM, runsOn } from "./town/draw";
 
 /**
- * A sheet's kerbs and the lines painted on it, and how far each point of a
+ * A sheet's kerbs, and how far each point of a
  * grid over it lies from them, as numbers alone: what the kerb textures
  * are made of (`kerbs.ts`) and the tile shapes are baked from (`atlas.ts`),
  * here apart from Babylon so they can be worked out on a worker
@@ -46,19 +46,6 @@ export function kerbsOf(g: MeshGeometry, kerb: KerbRule = () => true): Kerb[] {
     }
   }
   return out;
-}
-
-/** A line painted on a sheet: from a to b, half as wide as it is. */
-export type Line = { a: number[]; b: number[]; half: number };
-
-/** Lines given as thin rectangles, four corners each in the town's frame,
- *  as each runs down its middle, in a sheet's (x and y the other way). */
-export function stripLines(strips: number[][][]): Line[] {
-  return strips.map(([p0, p1, p2, p3]) => {
-    const mid = (u: number[], v: number[]) => [-(u[0] + v[0]) / 2, -(u[1] + v[1]) / 2];
-    const [across, along] = [Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), Math.hypot(p3[0] - p0[0], p3[1] - p0[1])];
-    return along >= across ? { a: mid(p0, p1), b: mid(p3, p2), half: across / 2 } : { a: mid(p0, p3), b: mid(p1, p2), half: along / 2 };
-  });
 }
 
 /** Texels to a tile, at most; a big sheet takes fewer. */
@@ -149,46 +136,10 @@ export function coverage(g: MeshGeometry, outline: Float32Array, x0: number, y0:
   return outline.map((d, k) => (covered[k] ? Math.abs(d) : -Math.abs(d)));
 }
 
-/** Off every line: beyond reach of all. */
-const OFF_LINE = 64;
-
-/**
- * Where each texel of a grid lies across the nearest line it is beside,
- * from one edge (-1) to the other (1); OFF_LINE beside none. Across a
- * line that changes evenly, and the texture is read between texels
- * evenly, so a line however much thinner than a texel comes out whole and
- * sharp, as a distance to its middle, which dips between texels, would not.
- */
-function lineDistances(lines: Line[], x0: number, y0: number, density: number, w: number, h: number): Float32Array {
-  const data = new Float32Array(w * h).fill(OFF_LINE);
-  const best = new Float32Array(w * h).fill(Infinity);
-  for (const { a, b, half } of lines) {
-    const reach = half + 2 / density;
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-    const [ux, uy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
-    const i0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - reach - x0) * density));
-    const i1 = Math.min(w - 1, Math.ceil((Math.max(a[0], b[0]) + reach - x0) * density));
-    const j0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - reach - y0) * density));
-    const j1 = Math.min(h - 1, Math.ceil((Math.max(a[1], b[1]) + reach - y0) * density));
-    for (let j = j0; j <= j1; j++) {
-      for (let i = i0; i <= i1; i++) {
-        const [dx, dy] = [x0 + (i + 0.5) / density - a[0], y0 + (j + 0.5) / density - a[1]];
-        const along = dx * ux + dy * uy;
-        const across = dx * -uy + dy * ux;
-        const k = j * w + i;
-        if (along < 0 || along > len || Math.abs(across) > reach || Math.abs(across) >= best[k]) continue;
-        best[k] = Math.abs(across);
-        data[k] = across / half;
-      }
-    }
-  }
-  return data;
-}
-
 /** A sheet's kerb texture over a box of it, as the texels it holds, half
  *  floats, read smoothly: how far inside its kerbs; of a sheet `cover`
  *  whose every edge is a kerb, how far inside the sheet, so a square drawn
- *  over the box is cut to it; where across the `lines` painted on it; and
+ *  over the box is cut to it; and
  *  how far inside the `roads` cut into it. Numbers alone, worked out where
  *  the town is drawn (`townWorker.ts`). */
 export interface KerbTexels {
@@ -199,18 +150,17 @@ export interface KerbTexels {
   texels: [number, number];
 }
 
-export function kerbTexels(kerbs: Kerb[], extent: Extent, { cover, lines = [], roads }: { cover?: MeshGeometry; lines?: Line[]; roads?: Roads } = {}): KerbTexels {
+export function kerbTexels(kerbs: Kerb[], extent: Extent, { cover, roads }: { cover?: MeshGeometry; roads?: Roads } = {}): KerbTexels {
   const { data, origin, size, texels, density } = kerbData(kerbs, extent);
   const on = cover ? coverage(cover, data, origin[0], origin[1], density, texels[0], texels[1]) : null;
   // How far inside the roads, negative off them, for a sheet the roads are
   // cut into, as far as its kerbs along them reach (`kerbs.ts`).
   const road = roads ? coverage(roads.sheet, kerbDistances(roads.edges, origin[0], origin[1], density, texels[0], texels[1], ROAD_REACH), origin[0], origin[1], density, texels[0], texels[1]) : null;
-  const painted = lineDistances(lines, origin[0], origin[1], density, texels[0], texels[1]);
   const half = new Uint16Array(data.length * 4);
   for (let i = 0; i < data.length; i++) {
     half[i * 4] = toHalf(data[i]);
     half[i * 4 + 1] = toHalf(on ? on[i] : FAR);
-    half[i * 4 + 2] = toHalf(painted[i]);
+    half[i * 4 + 2] = 0;
     half[i * 4 + 3] = toHalf(road ? road[i] : -FAR);
   }
   return { half, origin, size, texels };

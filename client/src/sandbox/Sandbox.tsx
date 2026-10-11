@@ -21,7 +21,7 @@ import type { BuildingKind, TerrainType } from "../generated";
 import { shaded, townMesh as mesh } from "../engine/town/roof";
 import { defaultJoins } from "../engine/town/footprint";
 import { buildChunk, CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, PEAK_APRON, PEAK_SAMPLES, PEAK_SIDE, TYPE_BY_BYTE, type TerrainPalette } from "../engine/objects/terrainGeometry";
-import { asphalt } from "../engine/town/dressing";
+import { asphalt } from "../engine/town/surface";
 import { carShape, ROUNDING } from "../engine/objects/carShape";
 import { waterMaterial } from "../engine/water";
 import { GroundTiles } from "../engine/ground";
@@ -31,7 +31,7 @@ import { grove, plant, uproot } from "../engine/trees";
 import { kerbField, kerbPlugin, unkerb } from "../engine/kerbs";
 import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "../engine/paving";
 import { ROOF } from "../engine/roofs";
-import { extentOf, kerbsOf, kerbTexels, roadsOf, stripLines } from "../engine/kerbLines";
+import { extentOf, kerbsOf, kerbTexels, roadsOf } from "../engine/kerbLines";
 
 /**
  * A town with no server: the fixtures, or a grid painted by hand, drawn the
@@ -523,11 +523,11 @@ function build(ctx: EngineContext, casters: Casters, town: Town, theme: Theme, r
   for (const p of [...drawRoads(town, theme), ...pieces]) {
     const colour = p.colour ? rgb(p.colour.r, p.colour.g, p.colour.b) : WHITE;
     if (p.name === "pavement") {
-      const field = kerbs(kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { lines: stripLines(dressing.yardLines), roads: roadsOf(flatPolygons([...asphalt(town).street, ...asphalt(town).through], 0)) }));
-      add(p.name, p.geo, colour, [kerbPlugin(field, theme.road, colour), pavingPlugin(engine, true)], PAVING_ROUGHNESS);
+      const field = kerbs(kerbTexels(kerbsOf(p.geo), extentOf(p.geo), { roads: roadsOf(flatPolygons([...asphalt(town).street, ...asphalt(town).through], 0)) }));
+      add(p.name, p.geo, colour, [kerbPlugin(field), pavingPlugin(engine, true)], PAVING_ROUGHNESS);
     } else if (p.name === "street" || p.name === "through") {
       const on = runsOn(p.geo);
-      add(p.name, p.geo, colour, [kerbPlugin(kerbs(kerbTexels(kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo))), rgb(0, 0, 0), colour)]);
+      add(p.name, p.geo, colour, [kerbPlugin(kerbs(kerbTexels(kerbsOf(p.geo, (a, b, out) => !on(a, b, out)), extentOf(p.geo))))]);
     } else add(p.name, p.geo, colour);
   }
   const { cars, docks } = dressing;

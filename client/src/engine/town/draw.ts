@@ -2,9 +2,10 @@ import earcut from "earcut";
 import type { MeshGeometry } from "../geometry";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
-import { asphalt, dress, pavement, type Dressing } from "./dressing";
+import { dress, type Dressing } from "./dressing";
+import { asphalt, pavement } from "./surface";
 import { facts } from "./facts";
-import type { Polygon } from "./footprint";
+import { area, type Polygon, type Pt } from "./footprint";
 import type { Tile, Town } from "./grid";
 import type { RGB } from "./mass";
 import { townMesh, type Paint, type Prop } from "./roof";
@@ -36,6 +37,9 @@ export const PAVED_Z = 0.02;
 /** The paving's height: over the roads, which are cut into it, a kerb's
  *  step down to them (`kerbs.ts`). */
 export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
+/** The lines painted on a yard's asphalt, just over it: a worn white. */
+const LINE_Z = ROAD_Z + PAVED_Z + 0.002;
+const LINE: Colour = { r: 0.82, g: 0.81, b: 0.77 };
 
 /**
  * The town grid's roads, drawn: the asphalt of the streets and the drives
@@ -56,14 +60,15 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
 /**
  * The town grid's town, drawn: the pavement, the
  * buildings, and a door behind every dock; the roads are `drawRoads`.
- * Geometry alone, in the same frame. The yards' lines are the caller's to
- * paint on the pavement (`stripLines`), and the trees the dressing plants
- * its to plant (`treeInstances`), and what stands on its roofs the props'
+ * Geometry alone, in the same frame, and the lines painted on the yards'
+ * asphalt: the docks', and the game's own `marks`, a harbour's trailer
+ * park's slots. The trees the dressing plants are the caller's to plant
+ * (`treeInstances`), and what stands on its roofs the props'
  * (`props.ts`), as is what stands on it that moves, the
  * cars, lorries and ferries the dressing would put there: the game draws
  * its own, the sandbox the dressing's.
  */
-export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town)): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
+export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: Pt[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
   const pieces: Piece[] = [];
   const add = (name: string, geo: Piece["geo"], c: Colour | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
@@ -88,6 +93,8 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
     doors.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
   }
   add("doors", doors, DOOR);
+  // Each wound as the sheets' outlines are.
+  add("lines", flatPolygons([...dressing.yardLines, ...marks].map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
   return { pieces, dressing, props: mass.props };
 }
 
@@ -195,21 +202,6 @@ export function runsOn(g: MeshGeometry) {
   };
   return (a: number[], b: number[], out: number[]) => inside((a[0] + b[0]) / 2 + out[0] * 1e-3, (a[1] + b[1]) / 2 + out[1] * 1e-3);
 }
-
-/** An edge wholly past the seam along one of a road tile's arms that
- *  runs on into the next tile, as drawn for its instance (x and y the
- *  other way, its middle at -0.5, -0.5): the end of the overlap, which the
- *  next tile covers. An edge that only reaches past it keeps its rim, and
- *  the two tiles' rims meet over the seam; where a bend bulges out past
- *  its square, between its arms, it keeps its rim too. */
-export const pastSeam = (ways: [number, number, boolean][]) => (a: number[], b: number[]) =>
-  ways.some(([dc, dr, on]) => {
-    if (!on) return false;
-    const len = Math.hypot(dc, dr);
-    const along = (p: number[]) => ((p[0] + 0.5) * -dc + (p[1] + 0.5) * -dr) / len;
-    return Math.min(along(a), along(b)) > len / 2 - 0.01;
-  });
-
 
 /** Flat squares on some tiles, a little over the ground. */
 export function quadsAt(cells: [number, number][], z: number): MeshGeometry {

@@ -17,8 +17,8 @@ import { BLUEPRINTS, yardOf } from "../blueprints";
 import { KERB_Z } from "./town/draw";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
-import { waysAt } from "./town/dressing";
-import { storeysOf, type Town } from "./town/grid";
+import { surfaceAt } from "./town/surface";
+import { storeysOf, type Tile, type Town } from "./town/grid";
 import type { Box } from "./town/clip";
 import { kerbField, kerbPlugin, unkerb, type KerbField } from "./kerbs";
 import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
@@ -366,8 +366,8 @@ export class TownLayer {
     const world = this.world();
     for (const key of this.dirty) {
       const [x, y] = key.split(",").map(Number);
-      const at = waysAt(world, -x, -y);
-      if (at) this.roads.set(key, x, y, at.through, at.ways);
+      const at = surfaceAt(world, -x, -y);
+      if (at) this.roads.set(key, x, y, at);
       else this.roads.delete(key);
     }
     this.dirty.clear();
@@ -375,28 +375,30 @@ export class TownLayer {
   }
 
   /** The whole world as a town, unbounded, in the fixture's frame turned
-   *  about the map's origin: column -x, row -y. */
+   *  about the map's origin: column -x, row -y. A building's tiles carry
+   *  which building and whether its yard, as the chunks' do. */
   private world(): Town {
     const nodes = new Map<string, RoadNode & { id: number }>();
-    const kinds = new Map<string, BuildingKind>();
+    const built = new Map<string, Tile>();
     const doors = doorsOf(this.entities);
+    const raise = (id: number, { tiles, kind, facing, site }: Pick<Building, "tiles" | "kind" | "facing"> & { site?: unknown }) => {
+      const yard = site ? new Set<string>() : yardTiles(tiles, kind, facing);
+      for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
+    };
     this.entities((e) => {
       if (e.object.kind === "RoadNode" && e.position) nodes.set(`${e.position.x},${e.position.y}`, { ...e.object.data, id: e.id });
-      else if (e.object.kind === "Building") for (const t of (e.object.data as Building).tiles) kinds.set(`${t.x},${t.y}`, e.object.data.kind);
+      else if (e.object.kind === "Building") raise(e.id, e.object.data as Building);
     });
     // And the building held, its drive on its street.
     const held = this.held;
-    if (held) for (const t of held.tiles) kinds.set(`${t.x},${t.y}`, held.kind);
+    if (held) raise(HELD, held);
     if (held?.door) doors.set(`${held.door.tile.x},${held.door.tile.y}`, [held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
     const key = (c: number, r: number) => `${-c},${-r}`;
-    const road = (c: number, r: number) => (kinds.has(key(c, r)) ? undefined : nodes.get(key(c, r)));
+    const road = (c: number, r: number) => (built.has(key(c, r)) ? undefined : nodes.get(key(c, r)));
     return {
       w: Infinity,
       h: Infinity,
-      tile: (c, r) => {
-        const kind = kinds.get(key(c, r));
-        return kind ? { kind, storeys: storeysOf(kind) } : road(c, r) ? { kind: "road", storeys: 0 } : { kind: "open", storeys: 0 };
-      },
+      tile: (c, r) => built.get(key(c, r)) ?? (road(c, r) ? { kind: "road", storeys: 0 } : { kind: "open", storeys: 0 }),
       linked: (c0, r0, c1, r1) => {
         const [a, b] = [road(c0, r0), road(c1, r1)];
         return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
@@ -451,7 +453,7 @@ export class TownLayer {
    *  yards' lines painted on from its kerb texture, if it has one. */
   private pavement(colour: Rgb, kerbs: KerbField | null): TownMaterial {
     const material = townMaterial(
-      kerbs ? [bevelPlugin(), kerbPlugin(kerbs, this.theme().road, colour), pavingPlugin(this.ctx.engine, true)] : [bevelPlugin(), pavingPlugin(this.ctx.engine, false)],
+      kerbs ? [bevelPlugin(), kerbPlugin(kerbs), pavingPlugin(this.ctx.engine, true)] : [bevelPlugin(), pavingPlugin(this.ctx.engine, false)],
       PAVING_ROUGHNESS,
     );
     setTint(material, colour);
