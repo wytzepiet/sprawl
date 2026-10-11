@@ -86,7 +86,7 @@ bays; and cruising when every bay near is taken.
 Square bays, 2026-10-06 (the mayor: perpendicular for everything but
 housing, and set back so they sit astride the street's tile and the
 building's). Flats keep the bays along the kerb; everything else parks
-nose in, square to the street, three bays a tile within its walls, each 0.37 from the
+nose in, square to the street, two bays a tile within its walls, 0.27 apart (a car and a door's swing; 2026-10-11), each 0.37 from the
 street's middle, its tail at the road's edge (`SQUARE`; 0.55 in the setback until 2026-10-11). A car turns
 square at the tightest a car turns (0.45) only by starting from the
 road's middle, so it swings out there, turns in round the arc and goes
@@ -94,7 +94,7 @@ straight in at the last, from either way along the street; and backs
 out round the same arc into its lane and drives on, through the
 give-way line (`kerb_bays`, tested against `driver.ts`: in at about
 84°, a few degrees off square, no snap). An office of twelve parks
-eight at its own frontage and the rest at its door.
+five at its own frontage and the rest at its door.
 
 A building parks along as much kerb as it needs, not every side a street
 passes (2026-10-11): as many bays as its long side holds, on its door's

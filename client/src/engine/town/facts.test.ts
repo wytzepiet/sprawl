@@ -75,7 +75,7 @@ describe("facts and dressing", () => {
     const along = cars.filter((c) => c.y < 1.5), nosed = cars.filter((c) => c.y > 1.5);
     expect(along.length).toBeGreaterThan(4);
     expect(along.every((c) => Math.abs(c.y - 1.5) - CAR.w / 2 > HALF_W && Math.abs(Math.sin(c.angle)) < 1e-9)).toBe(true);
-    expect(nosed.length).toBeGreaterThan(8);
+    expect(nosed.length).toBeGreaterThan(4);
     expect(nosed.every((c) => Math.abs(c.y - 1.87) < 1e-9 && Math.abs(c.angle - Math.PI / 2) < 1e-9)).toBe(true);
     const homes = town(["HHHHHHHHHH", "==========", "HHHHHHHHHH"]);
     expect(dress(homes, facts(homes)).cars.every((c) => Math.abs(c.y - 1.5) > 0.5)).toBe(true);

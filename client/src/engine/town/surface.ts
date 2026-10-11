@@ -78,9 +78,9 @@ function straight(town: Town, c: number, r: number, ux: number, uy: number) {
  *  within the building's walls. A bay's asphalt reaches past its car by
  *  `ROOM` all round, so a car stands wholly on it. */
 const KERB = 0.305;
-const ALONG_PITCH = 0.36;
+const ALONG_PITCH = 0.42;
 const SQUARE = 0.37;
-const SQUARE_PITCH = 0.2;
+const SQUARE_PITCH = 0.27;
 const ROOM = 0.02;
 
 /** How many bays a side `len` tiles long holds, within its walls
@@ -325,26 +325,36 @@ export function asphalt(town: Town): { street: Polygon[]; through: Polygon[] } {
   return { street, through };
 }
 
-/**
- * The pavement: every road, building and yard makes paved ground, shaped
- * by the buildings' own rule (the terrain's corners, a diagonal as far out
- * as a straight edge) at full size, then its corners rounded as the
- * terrain's are. A street's pavement is its sidewalk. A diagonal street is
- * as wide as a straight one. Joined on the diagonal only from road to
- * road, so a diagonal street is paved along, and a building's corner by a
- * street stays square. The asphalt is cut into it.
- */
 /** How round the pavement's corners are: a little, a kerb's corner, not
  *  a shore's (2026-10-11, the mayor: tighter reads better). */
 const PAVEMENT_ROUND = 0.12;
+/** Grass shut in by pavement smaller than this, in tiles, is paved: the
+ *  scraps between diagonal streets side by side, not a block's middle. */
+const SCRAP = 0.5;
+
+/**
+ * The pavement: every road, building and yard makes paved ground, shaped
+ * by the buildings' own rule (the terrain's corners, a diagonal as far out
+ * as a straight edge) at full size, then its corners rounded a little. A
+ * street's pavement is its sidewalk. A diagonal street is as wide as a
+ * straight one. Paved tiles touching only on the diagonal are paved
+ * through, road or not, so a house a diagonal step off a street is on its
+ * sidewalk; but a building's corner by a street stays square: where a
+ * tile beside the two is paved already, they join through it, not across
+ * the corner. And grass left shut in, too small to be anything, is paved.
+ * The asphalt is cut into it.
+ */
 export function pavement(town: Town): Polygon[] {
   const PAVING: Tile = { kind: "Shop", storeys: 1 };
   const tiles = Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
     const t = town.tile(c, r);
     return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
   }));
-  const kin = defaultJoins(townOf(tiles, () => false));
+  const plain = townOf(tiles, () => false);
+  const kin = defaultJoins(plain);
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
-  const paved = townOf(tiles, () => false, [], (c, r, x, y) => (x === c || y === r || road(c, r) === road(x, y)) && kin(c, r, x, y));
-  return soften(footprints(paved, 0).flatMap((m) => m.polygons), PAVEMENT_ROUND);
+  const on = (c: number, r: number) => plain.tile(c, r) === PAVING;
+  const paved = townOf(tiles, () => false, [], (c, r, x, y) => (x === c || y === r || road(c, r) === road(x, y) || (!on(x, r) && !on(c, y))) && kin(c, r, x, y));
+  const whole = footprints(paved, 0).flatMap((m) => m.polygons).map(([outline, ...holes]) => [outline, ...holes.filter((h) => Math.abs(area(h)) / 2 >= SCRAP)]);
+  return soften(whole, PAVEMENT_ROUND);
 }
