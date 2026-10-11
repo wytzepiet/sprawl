@@ -247,9 +247,8 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
                 None => crate::blueprint::takes(kind),
             };
             // And what is on a van on its way to it: the van arrives empty.
-            for call in world.calls.iter_mut().filter(|c| c.at == id && c.load > 0.0) {
-                materials.push((call.good, std::mem::take(&mut call.load)));
-            }
+            let vans: Vec<EntityId> = world.calls.iter().filter(|c| c.at == id).filter_map(|c| c.answered_by).collect();
+            materials.extend(vans.into_iter().filter_map(|van| crate::calls::load(world, van, None)));
             world.remove_building(id);
             take_up(world, events, intersections, &laid, now);
             let mut back = vec![refund(world, &paid, now)];

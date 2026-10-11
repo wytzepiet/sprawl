@@ -1,6 +1,6 @@
 import { boxGeometry as box } from "./buildings";
 import type { MeshGeometry, P } from "../geometry";
-import { TRAILER } from "./roadGeometry";
+import { CAB, TRAILER } from "./roadGeometry";
 import { hex, rgb, type Rgb } from "../rgb";
 import { GOODS } from "../../blueprints";
 import type { Good, Sail, Shunt, Trailer } from "../../generated";
@@ -169,13 +169,31 @@ const BOXES: Record<Good, { body: Drawn; load?: Drawn }> = {
 };
 
 /** A box's parts, each with its scale: the body whole, a load as far
- *  along as the box is full. Their base on z = 0. */
-export function boxShape(t: Trailer): (Drawn & { scale: [number, number, number] })[] {
-  if (!t.good || t.units <= 0) return [{ ...EMPTY, scale: [1, 1, 1] }];
+ *  along as the box is full. Their base on z = 0. A box `k` as long (a
+ *  van's, `motion.ts`) holds `k` as much. */
+export function boxShape(t: Pick<Trailer, "good" | "units">, k = 1): (Drawn & { scale: [number, number, number] })[] {
+  if (!t.good || t.units <= 0) return [{ ...EMPTY, scale: [1, k, 1] }];
   const { body, load } = BOXES[t.good];
-  const full = Math.min(1, t.units / GOODS[t.good].box);
-  return [{ ...body, scale: [1, 1, 1] }, ...(load ? [{ ...load, scale: [1, full, 1] as [number, number, number] }] : [])];
+  const full = Math.min(1, t.units / (GOODS[t.good].box * k));
+  return [{ ...body, scale: [1, k, 1] }, ...(load ? [{ ...load, scale: [1, k * full, 1] as [number, number, number] }] : [])];
 }
+
+/** A lorry's tractor, CAB long: the cab-over cab at the front, `CAB_BLOCK`
+ *  of it, its windows a dark band under the roof; behind it the chassis
+ *  bare, the rear wheels either side and the fifth wheel on it where the
+ *  hitch is (`LORRY_RIG`), under a box's nose. Its middle on the origin,
+ *  ahead +y, its base on z = 0; the bucket's colour is the cab's. */
+export const CAB_BLOCK = 0.095;
+const TYRE: Shade = [0.12, 0.12, 0.13];
+const [CAB_FRONT, HITCH] = [CAB.l / 2, -CAB.l / 3];
+export const LORRY_SHAPE = shape([
+  [box(CAB.w - 0.05, CAB.l, 0.03), [0, 0, 0.03], CHASSIS],
+  [box(CAB.w, 0.055, 0.05), [0, HITCH, 0.025], TYRE],
+  [box(CAB.w - 0.06, 0.07, 0.012), [0, HITCH, 0.05], [0.2, 0.2, 0.22]],
+  [box(CAB.w, CAB_BLOCK, CAB.h - 0.07), [0, CAB_FRONT - CAB_BLOCK / 2, 0.02 + (CAB.h - 0.07) / 2], WHITE],
+  [box(CAB.w - 0.006, CAB_BLOCK - 0.006, 0.04), [0, CAB_FRONT - CAB_BLOCK / 2, CAB.h - 0.03], [0.22, 0.25, 0.3]],
+  [box(CAB.w, CAB_BLOCK, 0.012), [0, CAB_FRONT - CAB_BLOCK / 2, CAB.h - 0.006], WHITE],
+]);
 
 /** The tug: a tugmaster, low and short, its one-seat cab off to one side
  *  at the front, the fifth wheel behind it that lifts a box's nose. Its
