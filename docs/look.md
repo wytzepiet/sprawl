@@ -151,7 +151,7 @@ The code is `client/src/engine/town/`:
   street is as wide as a straight one; but never on the diagonal from a
   building to a road, so a building's corner by a street stays square),
   then every corner rounded a little, a kerb's corner rather than a
-  shore's (`soften`, tighter since 2026-10-11). So a street's pavement is its sidewalk,
+  shore's (`soften`, tighter since 2026-10-11); a building that touches a street only on the diagonal is paved through to it, unless a tile beside them both is paved already (its corner then stays square), and grass shut in smaller than half a tile is paved. So a street's pavement is its sidewalk,
   a town centre is paved shop to shop, a suburb is green with a sidewalk
   round each block, and the grass left between blocks has soft edges. Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.

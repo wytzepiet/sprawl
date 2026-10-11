@@ -36,19 +36,19 @@ const SPOT_OUT: f64 = 0.47;
 const LANE: f64 = 0.11;
 /// A kerb bay along the kerb: how far a parked car's middle is from its
 /// street's middle line, wholly off the road, and how far apart the bays
-/// are along it, a car and a little; and the middle of the lane beside it
+/// are along it, a car and room to get in and out (a bay's length); and the middle of the lane beside it
 /// (`LANE_OFFSET` in the client's `roadGeometry.ts`). The client paves
 /// them from the same numbers (`town/surface.ts`).
 const KERB: f64 = 0.305;
-const ALONG_PITCH: f64 = 0.36;
+const ALONG_PITCH: f64 = 0.42;
 const KERB_LANE: f64 = 0.1;
 /// A bay square to the kerb: its middle this far from the street's middle
 /// line, the car's tail at the road's edge, so a strip of pavement is left
-/// between it and the building; how far apart, a car and a little; and the
+/// between it and the building; how far apart, a car and a door's swing (a bay's width); and the
 /// radius a car turns into it on, the tightest it turns (`TIGHTEST` in
 /// `paths.ts`).
 const SQUARE: f64 = 0.37;
-const SQUARE_PITCH: f64 = 0.2;
+const SQUARE_PITCH: f64 = 0.27;
 const TURN: f64 = 0.45;
 /// Bays keep within a building's walls, this far in from its tiles' edges
 /// (`INSET` in the client's `footprint.ts`).
@@ -1185,7 +1185,7 @@ mod tests {
     }
 
     /// Flats park along the kerb before them: evenly along it within their
-    /// walls, four along two tiles, wholly off the
+    /// walls, three along two tiles, wholly off the
     /// road on its side, facing the way the lane beside them runs. A car
     /// coming along that lane pulls into the far one and backs into the
     /// near one; a car coming the other way parks across the road in one,
@@ -1196,8 +1196,8 @@ mod tests {
         let flats = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::Apartment).unwrap();
         let mut at: Vec<[f64; 2]> = world.lot_mut(flats).unwrap().spots.iter().map(|s| s.pose.at).collect();
         at.sort_by(|a, b| a[0].total_cmp(&b[0]));
-        assert_eq!(at.len(), 4, "four along two tiles, within its walls: {at:?}");
-        for (bay, x) in at.iter().zip([2.46, 2.82, 3.18, 3.54]) {
+        assert_eq!(at.len(), 3, "three along two tiles, within its walls: {at:?}");
+        for (bay, x) in at.iter().zip([2.58, 3.0, 3.42]) {
             assert!((bay[0] - x).abs() < 1e-9 && (bay[1] - (0.5 + KERB)).abs() < 1e-9, "a bay at {bay:?}");
         }
         assert!(world.lot_mut(flats).unwrap().spots.iter().all(|s| s.pose.heading.abs() < 1e-9), "facing east, the way the lane on that side runs");
@@ -1211,7 +1211,7 @@ mod tests {
         // into from the lane past it.
         let mut bays = Vec::new();
         let mut cars = Vec::new();
-        for _ in 0..4 {
+        for _ in 0..at.len() {
             let a = car(&mut world);
             cars.push(a);
             let ways = world.ways_to(shop, west).unwrap();
@@ -1258,7 +1258,7 @@ mod tests {
         assert_eq!(world.backs_out(a), 0);
     }
 
-    /// Anything but a home parks nose in, square to the kerb: three bays a
+    /// Anything but a home parks nose in, square to the kerb: two bays a
     /// tile within its walls, close to the road. A car swings out to
     /// the road's middle and turns in round the tightest a car turns, from
     /// either way along the street, and backs out round into the lane and
@@ -1269,8 +1269,8 @@ mod tests {
         let shop = world.place_on_street(GridCoord { x: 2, y: 1 }, BuildingKind::Shop).unwrap();
         let mut at: Vec<[f64; 2]> = world.lot_mut(shop).unwrap().spots.iter().map(|s| s.pose.at).collect();
         at.sort_by(|a, b| a[0].total_cmp(&b[0]));
-        assert_eq!(at.len(), 3, "three bays to a tile, within its walls: {at:?}");
-        for (bay, x) in at.iter().zip([2.3, 2.5, 2.7]) {
+        assert_eq!(at.len(), 2, "two bays to a tile, within its walls: {at:?}");
+        for (bay, x) in at.iter().zip([2.365, 2.635]) {
             assert!((bay[0] - x).abs() < 1e-9 && (bay[1] - (0.5 + SQUARE)).abs() < 1e-9, "a bay at {bay:?}");
         }
         let car = |world: &mut World| world.insert_at(GameObject::Car(crate::protocol::Car::new(0, Default::default())), None);
@@ -1305,7 +1305,7 @@ mod tests {
         world.place_road_path(&cross);
         let shop = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Shop).unwrap();
         let at: Vec<[f64; 2]> = world.lot_mut(shop).unwrap().spots.iter().map(|s| s.pose.at).collect();
-        assert_eq!(at.len(), 3, "one side's bays: {at:?}");
+        assert_eq!(at.len(), 2, "one side's bays: {at:?}");
         assert!(at.iter().all(|p| (p[1] - at[0][1]).abs() < 1e-9) || at.iter().all(|p| (p[0] - at[0][0]).abs() < 1e-9), "all on one side: {at:?}");
     }
 

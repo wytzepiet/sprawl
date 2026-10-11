@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { parseTown, type Town } from "./grid";
 import { facts } from "./facts";
 import { dress } from "./dressing";
-import { asphalt } from "./surface";
+import { asphalt, pavement } from "./surface";
 import { CAR } from "../objects/roadGeometry";
 import type { Polygon } from "./footprint";
 
@@ -26,6 +26,27 @@ function onAsphalt(t: Town) {
 }
 
 describe("asphalt and pavement", () => {
+  test("whatever is paved and touches on the diagonal is paved through", () => {
+    // Two diagonal streets side by side, laid apart, each joined only
+    // along itself; a house a diagonal step off one.
+    const t = town(["..........", ".=.=......", "..=.=.....", "...=.=....", "....=.=...", ".....=.=..", "......=.=.", ".....H....", ".........."]);
+    const along = (c0: number, r0: number, c1: number, r1: number) => c1 - c0 === r1 - r0 && Math.abs(c1 - c0) === 1;
+    const apart = { ...t, linked: (c0: number, r0: number, c1: number, r1: number) => t.linked(c0, r0, c1, r1) && along(c0, r0, c1, r1) };
+    const paved = pavement(apart);
+    expect(paved.length).toBe(1);
+    expect(paved[0].length).toBe(1);
+  });
+
+  test("a building's corner by a street stays square", () => {
+    const t = town(["......", ".====.", ".=SS..", ".=SS..", "......"]);
+    const paved = pavement(t);
+    // Its far corner, beside nothing paved, is square: the pavement
+    // reaches the tile's corner but for the kerb's rounding.
+    const on = (p: number[]) => paved.some(([o]) => within(p, o));
+    expect(on([3.95, 3.95])).toBe(true);
+    expect(on([4.05, 4.05])).toBe(false);
+  });
+
   test("every car the town parks stands on asphalt, wheels and all", () => {
     for (const name of ["06-shops", "17-driveways", "12-diagonal", "24-yards"]) {
       const t = fixture(name);
