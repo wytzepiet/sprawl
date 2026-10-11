@@ -111,27 +111,42 @@ The code is `client/src/engine/town/`:
   read as plots pasted on, and whether the town wants gardens at all is
   open (the mayor, 2026-10-04); open ground is the land. A straight street before homes, shops or open ground has
   a tree on its verge every third tile; through roads, junctions, bends,
-  diagonals and industrial streets stay bare. A street before homes and
-  shops is parked along both kerbs (fileparkeren), straight or diagonal,
-  wholly off the road beside it, nothing marking where they stand, in the strip
-  the rows' setback leaves, clear of junctions, bends, ends
-  and trees, with a gap here and there. Drawn only, for now: the cars the
-  simulation parks come with `parking.md` step 1. A depot's yard has lorry
+  diagonals and industrial streets stay bare, and so does a verge with
+  bays. Cars are parked where the game parks them (`kerb_bays` in
+  `lots.rs`, mirrored by `baysAt` in `surface.ts`): along the kerb before
+  a block of flats, nose in before a shop, an office or a big box, where
+  the street runs straight past, with a gap here and there; not before
+  homes, which park on their drives (2026-10-11: the kerb cars once drawn
+  before homes were cars the game never parked). A depot's yard has lorry
   bays along the hall wall across from its street, three to a tile, a door
   behind each and lorries backed up to most. One brush paints the
   building, and its yard comes with it.
   Every house has a drive in from the road to its door, straight or on
   the diagonal where its street is a diagonal step away, as the game
-  puts its door (`front` in `dressing.ts`), an arm of the street with its curves, and on it,
+  puts its door (`Town.door`), an arm of the street with its curves, and on it,
   where the game parks them (`lots.rs`),
-  its two cars side by side, nose to the house and wholly in front of it,
-  and no kerb car across its mouth (the mayor, 2026-10-03). The street's
-  trees stand between two plots, where no drive comes out. The
-  road and the drives are one asphalt (`asphalt` in
-  `dressing.ts`), its corners rounded in and out, so a drive reads as
-  the road carried on. The kerb is not the road, and is not drawn: the
-  cars beside the road are enough (2026-10-02, the mayor). A street
-  behind a building is just a street (the mayor, 2026-10-02). The pavement is
+  its two cars side by side, nose to the house and wholly in front of it
+  (the mayor, 2026-10-03). The street's
+  trees stand between two plots, where no drive comes out. A street
+  behind a building is just a street (the mayor, 2026-10-02).
+- **Two surfaces: pavement, and asphalt cut into it** (`town/surface.ts`,
+  2026-10-11). Nothing that drives or parks stands on pavement.
+  Everything driven on is one asphalt, decided a tile at a time from the
+  tile and its neighbours (`surfaceAt`): a road's links; a drive from a
+  door to its street, a house's or a yard's gate; a yard's tile, run on
+  into the rest of its yard and under its building's wall, where the
+  docks are, and short of every other edge by a kerb's strip, so the
+  sidewalk runs on between a yard and its street and the gate crosses it;
+  a harbour all through, its trailer park and apron, a strip of quay at
+  the water; and a row of bays where the server lays them, a lane along
+  the kerb before flats, a forecourt nose in before shops, its cars'
+  noses over a last strip of pavement at the wall. Each tile's asphalt is
+  one outline, its corners rounded in and out, carried over the seam
+  where the next tile carries it on, so a street flows into a yard or a
+  forecourt as one shape. The pavement is cut to it, a kerb stone where
+  they meet (`kerbs.ts`), and the game draws it as it draws its road
+  tiles (`roads.ts`). A yard's lines are painted on its asphalt. The
+  pavement is
   ground: every road, yard and building but a house makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal

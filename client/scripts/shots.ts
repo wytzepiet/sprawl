@@ -5,6 +5,8 @@
  *   bun run shots --keep   the same, then leave the stack up at localhost:4810
  *   bun run shots --sandbox   each fixture in the sandbox instead, with no server
  *   bun run shots 20-block    only these fixtures, by name
+ *   FIXTURES=<dir> bun run shots   the fixtures in that directory alone, so a
+ *                             late one is not built past the map's edge
  *
  * A stack of its own beside the game's — server on 4811, client on 4810 — so
  * it never touches the running game or its world. The server builds
@@ -40,7 +42,7 @@ rmSync(`${ROOT}/.dev/fixtures.db`, { force: true });
 const env = { ...process.env, SPRAWL_PORT: String(SERVER_PORT), SPRAWL_CLIENT_PORT: String(CLIENT_PORT) };
 const server = sandbox ? null : Bun.spawn(["cargo", "run", "-q"], {
   cwd: `${ROOT}/server`,
-  env: { ...env, SPRAWL_FIXTURES: "fixtures", SPRAWL_DB: `${ROOT}/.dev/fixtures.db` },
+  env: { ...env, SPRAWL_FIXTURES: process.env.FIXTURES ?? "fixtures", SPRAWL_DB: `${ROOT}/.dev/fixtures.db` },
   stdout: Bun.file(`${ROOT}/.dev/fixtures-server.log`),
   stderr: Bun.file(`${ROOT}/.dev/fixtures-server.log`),
 });
