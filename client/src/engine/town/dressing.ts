@@ -77,9 +77,11 @@ const DOCK_OUT = 0.9;
 const DOCK_REACH = 1.4;
 const TAIL = DOCK_OUT + 0.49;
 /** A depot's canopy, each side: from the hall's wall to just past the
- *  last row, and across from just past the cabs, which stand out in the
- *  light, to the yard's side; its posts under the front edge. */
-const CANOPY = { s: [-INSET, 1.68], side: [0.97, 1.48], post: 1.64 };
+ *  last row, and across from the cabs' backs, which stand out in the
+ *  light, over the boxes and the lines between them to the hall's wall
+ *  line, a building's inset in from the yard's side, so the lines' ends
+ *  show past it; its posts under the front edge. */
+const CANOPY = { s: [-INSET, 1.68], side: [0.9, 1.5 - INSET], post: 1.64 };
 
 /** A number in [0, 1) that is the same for the same tile and salt. */
 function hash(c: number, r: number, salt: number) {
