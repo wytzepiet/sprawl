@@ -803,7 +803,7 @@ mod tests {
         world.finish(farm);
         assert_eq!(world.door_of(farm).map(|d| d.0), Some(door), "the stub is the farm's door");
         assert!(world.road_node_at(door).is_none(), "and no road on its tile");
-        world.open_door(farm);
+        world.orient(farm);
         tractor(&world, farm);
         assert!(!tiles(&world, farm).is_empty(), "the farm claimed no land");
     }

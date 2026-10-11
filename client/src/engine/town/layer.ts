@@ -4,8 +4,7 @@ import type { Theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
 import { asphalt } from "./dressing";
-import { defaultJoins, type Pt } from "./footprint";
-import { formOf } from "./mass";
+import type { Pt } from "./footprint";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type Tile, type Town } from "./grid";
 import { PROP_KINDS, type Paint } from "./roof";
@@ -34,8 +33,9 @@ export interface Snapshot {
   box: Bounds;
   /** The chunks to draw. */
   todo: string[];
-  /** Every built tile: x, y, its building, and the building's kind. */
-  buildings: [number, number, number, Tile["kind"]][];
+  /** Every built tile: x, y, its building, the building's kind, and
+   *  whether it is the building's yard. */
+  buildings: [number, number, number, Tile["kind"], boolean][];
   /** Every road tile: x, y, its node, whether a road rather than a street,
    *  and the nodes it leads to and from. */
   roads: [number, number, number, boolean, number[], number[]][];
@@ -91,7 +91,7 @@ export function drawChunks(s: Snapshot): Drawing {
   const WATER: Tile = { kind: "water", storeys: 0 };
   const WOOD: Tile = { kind: "wood", storeys: 0 };
   const tiles = new Map<string, Tile>();
-  for (const [x, y, id, kind] of s.buildings) tiles.set(`${x},${y}`, { kind, storeys: storeysOf(kind as never), id });
+  for (const [x, y, id, kind, yard] of s.buildings) tiles.set(`${x},${y}`, { kind, storeys: storeysOf(kind as never), id, yard });
   const roads = new Map<string, { id: number; road: boolean; outgoing: number[]; incoming: number[] }>();
   for (const [x, y, id, road, outgoing, incoming] of s.roads) {
     roads.set(`${x},${y}`, { id, road, outgoing, incoming });
@@ -130,21 +130,12 @@ export function drawChunks(s: Snapshot): Drawing {
     const [a, b] = [road(c0, r0), road(c1, r1)];
     return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
   };
-  const kinJoin = defaultJoins({ w, h, tile, linked, through: () => false });
   const whole: Town = {
     w,
     h,
     tile,
     linked,
     through: (c, r) => !!road(c, r)?.road,
-    // A building is joined in itself, and to its own kind beside it as
-    // a fixture's are, so shops side by side are a terrace; a home stands
-    // alone (`kin`), and a kind with a yard apart, its yard its own.
-    joins: (c0, r0, c1, r1) => {
-      const [a, b] = [tile(c0, r0), tile(c1, r1)];
-      if (a.id === undefined || b.id === undefined) return false;
-      return a.id === b.id || (!formOf(a).yard && kinJoin(c0, r0, c1, r1));
-    },
     // Turned half round, so the way to the street is too.
     door: (c, r) => turned(doors.get(`${x1 - c},${y1 - r}`)),
     at: (c, r) => [x1 - c, y1 - r],

@@ -236,6 +236,29 @@ its neighbours, and a fixture may still draw any shape.
 kind's size is to mean something in play, and then as size variants
 placed whole before any free shape. The code last lived at `34a0320`.
 
+## The look's own yards: car parks, loading bays, the quiet end (2026-10-02 to 2026-10-11)
+
+**What.** The town grid worked out a building's yard from the streets
+round it (`facts.ts`): tiles beside a street in one run from its quiet
+end (a depot's docks) or its busy one (a supermarket's car park, three
+cars to a tile of shop), until it held enough; and a supermarket two
+tiles each way took deliveries in a lorry-sized corner cut from it, the
+corner picked by which side had a street (`sketches/loading-bay.svg`).
+
+**Why shelved.** The server lays a building's lot out by its own rule,
+by the way it faces, and the two disagreed: a street laid beside a
+standing building moved the drawn yard while the cars kept parking in
+the old one, and a supermarket's car park was drawn where the game
+parked nobody (its customers stand at the kerb). The yards cut L-shapes
+out of buildings, joined on the diagonal across the gap, which drew the
+diagonal walls the playtest found. A yard is now the server's, drawn
+where its lot is (`look.md` §Facts), and a supermarket is a box.
+
+**To bring back.** A car park as the server's own lot, laid out as
+aisles for both (`parking.md` §3.9, `look.md` §Into the game step 5);
+a loading bay as a stop of `network.md`. Never the look's guess again.
+The code last lived at `a501124`.
+
 ## Pedestrians, transit, walkability
 
 **What.** People on the map: walkers on sidewalks, buses and trams with

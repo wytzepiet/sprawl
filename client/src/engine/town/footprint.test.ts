@@ -39,14 +39,11 @@ describe("a building's plan is one exact polygon", () => {
     expect(ring.length).toBeLessThanOrEqual(8);
   });
 
-  test("a house alone turns only where a diagonal street runs past its corner", () => {
-    // Turned, a corner points along the tile's middle line.
+  test("a house alone stands square, whatever runs past its corner", () => {
+    // Turned, a corner would point along the tile's middle line.
     const turned = (map: string[]) => plans(map)[0].polygons[0][0].some(([x]) => Math.abs(x - 0.5) < 1e-9);
-    expect(turned(["=....", "H=...", "..=..", "....."])).toBe(true);
+    expect(turned(["=....", "H=...", "..=..", "....."])).toBe(false);
     expect(turned(["=====", "H....", "....."])).toBe(false);
-    // Beside a street's bend or dead end, square to the straight part.
-    expect(turned(["H....", "===..", "...=.", "....="])).toBe(false);
-    expect(turned([".H...", ".=...", "..=..", "...=."])).toBe(false);
   });
 
   test("houses side by side stand apart, each with walls all round", () => {
