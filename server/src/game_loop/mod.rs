@@ -2016,12 +2016,19 @@ mod tests {
             let (_, street) = world.door_of(*world.occupied.get(&(x, y)).unwrap()).expect("placed with a door");
             world.objects.get(street).unwrap().position.unwrap()
         };
+        // Its street taken up, its door moves to the next street tile
+        // along, on the diagonal; that one taken up too, it has none.
         let street = street_of(&world, 24, -1);
         act(&mut world, Do::Step(Tool::Demolish, street, street));
+        let next = street_of(&world, 24, -1);
+        assert_ne!(next, street, "the door stayed on the street that went");
+        act(&mut world, Do::Step(Tool::Demolish, next, next));
+        let other = street_of(&world, 24, -1);
+        act(&mut world, Do::Step(Tool::Demolish, other, other));
         assert!(world.street_of(*world.occupied.get(&(24, -1)).unwrap()).is_none(), "the street went");
         act(&mut world, Do::Step(Tool::Street, at(street.x - 1, street.y), street));
         act(&mut world, Do::Step(Tool::Street, street, at(street.x + 1, street.y)));
-        assert!(world.street_of(*world.occupied.get(&(24, -1)).unwrap()).is_some(), "the street came back");
+        assert_eq!(street_of(&world, 24, -1), street, "the street came back");
     }
 
     /// Where the season's quarry and sawmill stand, past the town's forty
@@ -2420,7 +2427,7 @@ mod tests {
         let at = GridCoord { x: 100, y: 1 };
         let facing = world.site_for(at, BuildingKind::Apartment).unwrap();
         let flats = world.place_building(at, BuildingKind::Apartment, facing).unwrap();
-        world.open_door(flats);
+        world.orient(flats);
         calls::turn(&mut world, &mut events, flats, 0);
         assert!(world.calls.iter().any(|c| c.at == flats && c.good == Good::Stone && c.answered_by.is_none()), "the flats never called for stone");
         assert_eq!(quarry(&mut world), [false; 0], "it opened during the opening");
@@ -2515,7 +2522,7 @@ mod tests {
         let x = HARBOUR_X - 12;
         let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
         let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
-        world.open_door(depot);
+        world.orient(depot);
         assert!(building_of(&world, depot).site.is_none(), "the first depot is a site");
         assert!(building_of(&world, depot).stocks.values().all(|s| s.level == 0.0), "the depot stood stocked");
         let mut events = EventQueue::new();

@@ -133,10 +133,10 @@ impl World {
         // from is laid, and nothing on the building's tile.
         if let Some(id) = self.claimed_plot_at(to) {
             self.place_road_of(from, road, true);
-            self.set_door(id, Some(crate::protocol::Door { tile: to, street: from }));
+            self.door_through(id, from, to);
             // Reached, as by a survey road: a depot's fleet and a farm's
             // land come with the door, not with the first call.
-            self.open_door(id);
+            self.orient(id);
             return;
         }
 
@@ -160,7 +160,9 @@ impl World {
             && !node.outgoing.contains(&from_id) {
                 node.outgoing.push(from_id);
             }
-
+        // A new arm on a door's street may make its drive a hairpin.
+        self.unsettle_round(from);
+        self.unsettle_round(to);
     }
 
     /// Lay a street along a path, both ways, with no player-input checks:
@@ -229,6 +231,11 @@ impl World {
         for (x, y) in [(a, b), (b, a)] {
             if self.edges.contains_key(&(x, y)) {
                 self.remove_edge(x, y);
+            }
+        }
+        for n in [a, b] {
+            if let Some(at) = self.objects.get(n).and_then(|e| e.position) {
+                self.unsettle_round(at);
             }
         }
     }

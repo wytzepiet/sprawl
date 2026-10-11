@@ -62,7 +62,14 @@ impl World {
     pub fn settle(&mut self) -> Vec<EntityId> {
         let mut touched = Vec::new();
         let mut lines = BTreeSet::new();
-        for b in std::mem::take(&mut self.unsettled) {
+        // Each changed building's door first: where it is decides
+        // whether it is reached at all.
+        let mut changed = std::mem::take(&mut self.unsettled);
+        for &b in &changed {
+            self.orient(b);
+        }
+        changed.append(&mut self.unsettled);
+        for b in changed {
             let kind = match self.objects.get(b).map(|e| &e.object) {
                 Some(GameObject::Building(b)) => Some(b.kind),
                 _ => None,

@@ -1,4 +1,4 @@
-import { BLUEPRINTS, FACINGS, lie, plot } from "../blueprints";
+import { BLUEPRINTS, FACINGS, lie, plot, yardOf } from "../blueprints";
 import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Tool } from "../generated";
 
 /**
@@ -154,20 +154,15 @@ function nearestStreet(h: Hand, t: GridCoord): number {
 }
 
 /** `World::driveway_for`: the street a plot's drive would run from, and
- *  the tile it runs onto: ahead of a yard, or any side of a building that
- *  keeps none; straight before diagonal; never at a hairpin. */
+ *  the tile it runs onto (`enters`); straight before diagonal; never at a
+ *  hairpin. */
 function drivewayFor(h: Hand, tiles: GridCoord[], kind: BuildingKind, facing: number): Placing["door"] {
-  const lot = yardOf(tiles, kind, facing);
-  const entrances = lot ?? tiles;
-  const [fx, fy] = lot ? FACINGS[facing % 4] : [0, 0];
   const candidates: [number, GridCoord, GridCoord][] = [];
-  for (const t of entrances)
+  for (const t of tiles)
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++) {
         const n = { x: t.x + dx, y: t.y + dy };
-        if (!mayEnter(tiles, entrances, n, t)) continue;
-        if (lot && dx * fx + dy * fy <= 0) continue;
-        candidates.push([+(dx !== 0 && dy !== 0), t, n]);
+        if (enters(tiles, kind, facing, n, t)) candidates.push([+(dx !== 0 && dy !== 0), t, n]);
       }
   candidates.sort((a, b) => a[0] - b[0]);
   for (const [, t, n] of candidates) {
@@ -238,31 +233,33 @@ function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boole
   // A road may end on a plot, never start on one.
   if (h.occupied.has(key(from.x, from.y))) return false;
   const into = h.occupied.get(key(to.x, to.y));
-  if (into && !mayEnter(into.tiles, yardOf(into.tiles, into.kind, into.facing) ?? into.tiles, from, to)) return false;
+  if (into && !facings(into.kind, into.facing).some((f) => enters(into.tiles, into.kind, f, from, to))) return false;
   if (connected(h, from, to)) return false;
   if (dx !== 0 && dy !== 0 && connected(h, { x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy })) return false;
   if (oneWay) return !tooSharp(h, from, dx, dy, true);
   return !tooSharp(h, from, dx, dy, false) && (!!into || !tooSharp(h, to, -dx, -dy, false));
 }
 
-/** `World::may_enter`: onto an entrance from off the plot, beside it, or
- *  on the diagonal only outward from a corner. */
-function mayEnter(tiles: GridCoord[], entrances: GridCoord[], from: GridCoord, to: GridCoord): boolean {
+/** `World::enters`: may a drive run from `from` onto `to` of a plot
+ *  lying this way: off the plot onto it, beside it, or on the diagonal
+ *  only outward from a corner; onto its yard, from ahead of it, if its
+ *  kind keeps one. */
+function enters(tiles: GridCoord[], kind: BuildingKind, facing: number, from: GridCoord, to: GridCoord): boolean {
   const on = (x: number, y: number) => tiles.some((t) => t.x === x && t.y === y);
-  if (!entrances.some((t) => t.x === to.x && t.y === to.y) || !on(to.x, to.y) || on(from.x, from.y)) return false;
   const [dx, dy] = [from.x - to.x, from.y - to.y];
-  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
-  return dx === 0 || dy === 0 || (!on(to.x + dx, to.y) && !on(to.x, to.y + dy));
+  if (!on(to.x, to.y) || on(from.x, from.y) || Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
+  if (dx && dy && (on(to.x + dx, to.y) || on(to.x, to.y + dy))) return false;
+  const yard = yardOf(tiles, kind, facing);
+  if (!yard) return true;
+  const [fx, fy] = FACINGS[facing % 4];
+  return yard.some((t) => t.x === to.x && t.y === to.y) && dx * fx + dy * fy > 0;
 }
 
-/** `World::yard_of`. */
-export function yardOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoord[] | null {
-  const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
-  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
-  const { lot } = lie(kind, facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]);
-  if (!lot) return null;
-  const [[lx, ly], [lw, ld]] = lot;
-  return tiles.filter((t) => t.x >= x0 + lx && t.x < x0 + lx + lw && t.y >= y0 + ly && t.y < y0 + ly + ld);
+/** `World::facings`: the ways a building may turn to find its street,
+ *  its own first. */
+function facings(kind: BuildingKind, facing: number): number[] {
+  const { quay, lot } = BLUEPRINTS[kind];
+  return quay || !lot[1] ? [facing] : [0, 2, 1, 3].map((k) => (facing + k) % 4);
 }
 
 const land = (g: TerrainType | undefined) => g === "Grass" || g === "Forest";

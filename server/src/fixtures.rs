@@ -163,7 +163,7 @@ pub fn build(world: &mut World, dir: &Path) {
                     continue;
                 }
                 let quay = crate::blueprint::blueprint(kind).quay;
-                let facing = (0..4).find(|&f| world.driveway_for(&tiles, kind, f, false).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())).unwrap_or(2);
+                let facing = (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())).unwrap_or(2);
                 world.raise(kind, tiles, facing);
             }
         }
