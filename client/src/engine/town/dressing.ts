@@ -139,7 +139,7 @@ export function pavement(town: Town): Polygon[] {
   const kin = defaultJoins(townOf(tiles, () => false));
   const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   const paved = townOf(tiles, () => false, [], (c, r, x, y) => (x === c || y === r || road(c, r) === road(x, y)) && kin(c, r, x, y));
-  return soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3);
+  return soften(footprints(paved, 0).flatMap((m) => m.polygons), 0.3);
 }
 
 /** How round the asphalt's corners are, in and out. */

@@ -8,14 +8,6 @@ import { CAR, HALF_W } from "../objects/roadGeometry";
 const town = (map: string[]) => parseTown(map.join("\n"));
 
 describe("facts and dressing", () => {
-  test("a shed's end nearest the street is its office", () => {
-    const t = town(["======", "=FFF..", "=FFF..", "......"]);
-    const f = facts(t);
-    expect(f.head(1, 1)).toBe(true);
-    expect(f.head(3, 1)).toBe(false);
-    expect(f.town.tile(1, 1).storeys).toBe(t.tile(1, 1).storeys + 2);
-  });
-
   test("a depot's yard is the rows on its street side, as the server lays its lot", () => {
     const t = town(["......", "======", ".DDD..", ".DDD..", ".DDD..", ".DDD..", "......"]);
     const f = facts(t);
@@ -59,7 +51,7 @@ describe("facts and dressing", () => {
     const t = town(["=.....", "======", "=MM...", "=MM...", "=....."]);
     const f = facts(t);
     expect([1, 2].every((c) => [2, 3].every((r) => !f.yard(c, r)))).toBe(true);
-    const [mass] = footprints(f.town, f.head);
+    const [mass] = footprints(f.town);
     expect(mass.polygons.length).toBe(1);
     expect(mass.polygons[0][0].length).toBe(4);
   });

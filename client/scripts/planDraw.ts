@@ -68,12 +68,12 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
     box(dock.x + ux * cab, dock.y + uy * cab, dock.angle, CAB.l, CAB.w, "#475c94");
   }
 
-  // The buildings: each part its kind's colour, a head lighter; the roof's
+  // The buildings: each part its kind's colour; the roof's
   // faces' edges, ridges and hips, thin and light.
   for (const { mass, polygon, outline } of plans(fs)) {
     for (const part of mass.parts) {
       const base = BLUEPRINTS[part.tile.kind as BuildingKind]?.color ?? "#888888";
-      const rgb = [1, 3, 5].map((k) => parseInt(base.slice(k, k + 2), 16) / 255).map((v) => (part.head ? v + (1 - v) * 0.45 : v));
+      const rgb = [1, 3, 5].map((k) => parseInt(base.slice(k, k + 2), 16) / 255);
       fill(mass.parts.length === 1 ? outline : intersect(part.polygons, outline), hex({ r: rgb[0], g: rgb[1], b: rgb[2] }));
     }
     const { pitch, height } = slope(mass.tile);

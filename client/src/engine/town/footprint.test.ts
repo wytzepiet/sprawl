@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseTown, townOf } from "./grid";
 import { footprints } from "./footprint";
 
-const plans = (map: string[]) => footprints(parseTown(map.join("\n")), () => false);
+const plans = (map: string[]) => footprints(parseTown(map.join("\n")));
 
 describe("a building's plan is one exact polygon", () => {
   test("a row stepping on the diagonal is one building", () => {
@@ -57,12 +57,12 @@ describe("a building's plan is one exact polygon", () => {
     const open = { kind: "open" as const, storeys: 0 };
     const row = [open, flat(1), flat(1), flat(2), flat(2), open];
     const town = townOf([row.map(() => open), row, row.map(() => open)], () => false);
-    expect(footprints(town, () => false).length).toBe(2);
+    expect(footprints(town).length).toBe(2);
   });
 
   test("tiles not joined stand apart, however close", () => {
     const t = parseTown(["......", ".SSS..", "......"].join("\n"));
     const apart = townOf([0, 1, 2].map((r) => [0, 1, 2, 3, 4, 5].map((c) => t.tile(c, r))), () => false, [], () => false);
-    expect(footprints(apart, () => false).length).toBe(3);
+    expect(footprints(apart).length).toBe(3);
   });
 });

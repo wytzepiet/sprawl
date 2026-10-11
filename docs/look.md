@@ -35,8 +35,8 @@ game about streets wants.
 A building's look is decided by what it is next to, the way Townscaper's
 pieces are, and the same holds for open ground: nothing is drawn per
 situation. The town is a grid; a pre-pass works out the few facts a tile
-cannot see from its neighbours (which building it is part of, a shed's
-office end, and to come, a courtyard closed in by buildings); and then
+cannot see from its neighbours (which building it is part of, a
+yard, and to come, a courtyard closed in by buildings); and then
 every tile's look is a function of its neighbourhood and those facts. The
 terrain is drawn the same way already. A first try drew situations one
 at a time from SVG pieces, and was deleted: a town has more situations
@@ -88,14 +88,12 @@ The code is `client/src/engine/town/`:
   lighter, drawn in from the edge. Tried and dropped (2026-09-30): the cap
   on every flat roof, and quirks on roofs (plant rooms, chimneys,
   rooflights), too small for the map: big lines only.
-- **A shed is a business park's** (14-business, Lage Weide): its office
-  at its street end, the whole end across, a couple of storeys over the
-  hall and lighter, found from the building's tiles, its long way and the
-  end with most street round it; a workshop of a tile or three is a hall
-  alone.
+- **A shed is a hall**, one height, one colour. Tried and dropped
+  (2026-10-11): an office raised at its street end, the whole end across,
+  two storeys up and lighter. With no windows or door it read as an
+  unexplained second building, half a depot in another colour.
 - **Facts, then looks** (`town/facts.ts`): a pre-pass works out what a
-  tile cannot see from its neighbours, once for the whole town: a shed's
-  office end; a courtyard, open ground that no street and no map edge
+  tile cannot see from its neighbours, once for the whole town: a courtyard, open ground that no street and no map edge
   reaches; and a yard, where a kind keeps one (`mass.ts`): the tiles the
   server lays its lot in, the rows on its door's side its whole width,
   so the rest is a rectangle; a depot's docks along the hall's wall

@@ -53,8 +53,8 @@ const KIT = {
 const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
 /** Every building's plan as it stands: its masses, a polygon at a time. */
-export function* plans({ town, head }: Facts) {
-  for (const mass of footprints(town, head)) {
+export function* plans({ town }: Facts) {
+  for (const mass of footprints(town)) {
     for (const polygon of mass.polygons) yield { mass, polygon, outline: [polygon] };
   }
 }
@@ -128,14 +128,10 @@ export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known 
     const top = eaves(mass.tile);
     const { pitch, height } = slope(mass.tile);
     const reach = height / pitch;
-    /** A part's colour, a shade toward white at a row's head, and below
-     *  `dim` one a shade darker, above it a shade toward white. */
-    const tint = (part: (typeof mass.parts)[number], dim = 1): RGB => {
-      let [a, b] = part.head ? [0.55, 0.45] : [1, 0];
-      if (dim < 1) [a, b] = [a * dim, b * dim];
-      else [a, b] = [a * (2 - dim), b * (2 - dim) + dim - 1];
-      return paint(part.tile, a, b);
-    };
+    /** A part's colour: below `dim` one a shade darker, above it a shade
+     *  toward white. */
+    const tint = (part: (typeof mass.parts)[number], dim = 1): RGB =>
+      dim < 1 ? paint(part.tile, dim, 0) : paint(part.tile, 2 - dim, dim - 1);
     /** A region, coloured by the parts it lies in. */
     const cover = (region: Polygon[], z: (p: Pt) => number, dim = 1) => {
       for (const part of mass.parts) {

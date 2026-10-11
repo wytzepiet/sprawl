@@ -30,7 +30,7 @@ export interface Mass {
   tile: Tile;
   storeys: number;
   polygons: Polygon[];
-  parts: { tile: Tile; head: boolean; polygons: Polygon[] }[];
+  parts: { tile: Tile; polygons: Polygon[] }[];
 }
 
 /** How far every side facing out stands in from the tile's edge: the
@@ -241,7 +241,7 @@ function plan(town: Town, width: number) {
 }
 
 /** Every building's plan, a mass for each of its heights. */
-export function footprints(town: Town, head: (c: number, r: number) => boolean, inset = INSET): Mass[] {
+export function footprints(town: Town, inset = INSET): Mass[] {
   const { pieces, building } = plan(town, 1 - 2 * inset);
   const byBuilding = new Map<number, typeof pieces>();
   for (const p of pieces) {
@@ -258,19 +258,18 @@ export function footprints(town: Town, head: (c: number, r: number) => boolean, 
     for (const storeys of new Set(ps.map((p) => tileOf(p).storeys))) {
       const mine = ps.filter((p) => tileOf(p).storeys === storeys);
       const shape = and(whole(mine.map((p) => p.ring)), plan);
-      const byColour = new Map<string, { tile: Tile; head: boolean; rings: Pt[][] }>();
+      const byColour = new Map<string, { tile: Tile; rings: Pt[][] }>();
       for (const p of mine) {
-        const h = head(...p.at);
-        // A part a kind, a head, and in the game a building, so each
-        // house of a row wears its own tint, and one held in hand blue.
-        const key = `${tileOf(p).kind}:${h}:${tileOf(p).id ?? ""}`;
-        (byColour.get(key) ?? byColour.set(key, { tile: tileOf(p), head: h, rings: [] }).get(key)!).rings.push(p.ring);
+        // A part a kind, and in the game a building, so each house of a
+        // row wears its own tint, and one held in hand blue.
+        const key = `${tileOf(p).kind}:${tileOf(p).id ?? ""}`;
+        (byColour.get(key) ?? byColour.set(key, { tile: tileOf(p), rings: [] }).get(key)!).rings.push(p.ring);
       }
       masses.push({
         tile: tileOf(mine[0]),
         storeys,
         polygons: polygons(shape),
-        parts: [...byColour.values()].map((e) => ({ tile: e.tile, head: e.head, polygons: polygons(and(whole(e.rings), shape)) })),
+        parts: [...byColour.values()].map((e) => ({ tile: e.tile, polygons: polygons(and(whole(e.rings), shape)) })),
       });
     }
   }
