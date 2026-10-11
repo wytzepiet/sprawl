@@ -112,9 +112,10 @@ export function mountBuilding(
   // meets the water as a quay: a link span from the quay's edge down onto
   // the ferry's land end, under a gantry on two towers that lifts it; two
   // dolphins either side of the ferry, out along it, that it lies between,
-  // a walkway out to those on one side; bollards along the quay. On the
-  // other side, inland, the terminal: the harbour master's and the
-  // ticket office. And in its park the boxes standing in their slots.
+  // a walkway out to those on one side; bollards along the quay. In the
+  // corner on the quay across the lane from the tug's stand, the
+  // terminal: the harbour master's and the ticket office. And in its park,
+  // either side of the lane, the boxes standing in their slots.
   if (BLUEPRINTS[data.kind].quay) {
     const out = [-dx, -dy];
     const deep = dx === 0 ? bh : bw;
@@ -135,8 +136,8 @@ export function mountBuilding(
     }
     at("walk", [0.1, DOLPHINS.out[1] - 0.08, 0.025], BOARDS, DOLPHINS.across, DOLPHINS.out[1] / 2 - 0.04, KERB_Z - 0.005);
     for (let a = -wide / 2 + 0.2; a < wide / 2 - 0.1; a += 0.42) if (Math.abs(a) > SPAN.across / 2 + 0.1 && Math.abs(a - DOLPHINS.across) > 0.12) at("bollard", [0.05, 0.05, 0.05], IRON, a, -0.07, KERB_Z);
-    at("terminal", [0.36, 0.4, 0.17], hex(BLUEPRINTS[data.kind].material), -(wide / 2 - 0.32), -0.32, KERB_Z);
-    at("roof", [0.4, 0.44, 0.025], TOWER, -(wide / 2 - 0.32), -0.32, KERB_Z + 0.17);
+    at("terminal", [0.36, 0.26, 0.17], hex(BLUEPRINTS[data.kind].material), -(wide / 2 - 0.32), -0.18, KERB_Z);
+    at("roof", [0.4, 0.3, 0.025], TOWER, -(wide / 2 - 0.32), -0.18, KERB_Z + 0.17);
     for (const { pose, trailer } of data.park) if (trailer) boxes.push(placeBox(pool, trailer, pose, KERB_Z));
   }
 

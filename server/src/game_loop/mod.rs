@@ -1059,7 +1059,7 @@ mod tests {
         let mut world = World::new();
         for y in -10..60 {
             for x in -4..300 {
-                let sea = x >= HARBOUR_X - 2 && y >= 4;
+                let sea = x >= HARBOUR_X - 2 && y >= 3;
                 if sea || y < 14 {
                     world.terrain.insert((x, y), if sea { TerrainType::Sea } else { TerrainType::Grass });
                 }
@@ -1213,7 +1213,7 @@ mod tests {
         let mut world = World::new();
         for y in -30..41 {
             for x in -60..100 {
-                world.terrain.insert((x, y), if y >= 4 { TerrainType::Sea } else { TerrainType::Grass });
+                world.terrain.insert((x, y), if y >= 3 { TerrainType::Sea } else { TerrainType::Grass });
             }
         }
         world
@@ -1234,7 +1234,7 @@ mod tests {
         assert!(world.occupied.is_empty() && no.sub.contains("sea"), "{no:?}");
         assert!(hand(&mut world, ClientMessage::Place { kind: BuildingKind::Harbour, at: at(9, 2), facing: None }).is_none(), "the coast refused it");
         let id = world.occupied[&(9, 2)];
-        assert!((8..11).all(|x| (1..4).all(|y| world.occupied.get(&(x, y)) == Some(&id))), "the harbour is not its whole plot");
+        assert!((8..11).all(|x| (1..3).all(|y| world.occupied.get(&(x, y)) == Some(&id))), "the harbour is not its whole plot");
         assert!(world.door_of(id).is_some(), "its street does not reach it");
         assert!(world.berth(id).is_some(), "it does not berth");
         let mut events = EventQueue::new();
@@ -1242,8 +1242,8 @@ mod tests {
         assert!(world.lines.contains_key(&id), "no ferry line");
         // One tap is the harbour gone, whole.
         let mut intersections = IntersectionRegistry::new();
-        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Demolish, from: at(8, 3), to: at(8, 3) }, 0);
-        assert!((8..11).all(|x| (1..4).all(|y| !world.occupied.contains_key(&(x, y)))), "part of the harbour stands");
+        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Demolish, from: at(8, 2), to: at(8, 2) }, 0);
+        assert!((8..11).all(|x| (1..3).all(|y| !world.occupied.contains_key(&(x, y)))), "part of the harbour stands");
         settle_and_wake(&mut world, &mut events);
     }
 
@@ -2368,8 +2368,8 @@ mod tests {
     fn a_real_coast_is_called_at_as_often_as_ever() {
         let mut world = World::new();
         world.terrain = crate::terrain::generate(7);
-        world.place_road_path(&(-6..10).map(|x| GridCoord { x, y: 31 }).collect::<Vec<_>>());
-        let harbour = world.place_on_street(GridCoord { x: 1, y: 32 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
+        world.place_road_path(&(-6..10).map(|x| GridCoord { x, y: 32 }).collect::<Vec<_>>());
+        let harbour = world.place_on_street(GridCoord { x: 1, y: 33 }, BuildingKind::Harbour).expect("seed 7's north coast takes a harbour");
         let mut events = EventQueue::new();
         let mut intersections = IntersectionRegistry::new();
         settle_and_wake(&mut world, &mut events);

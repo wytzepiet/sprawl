@@ -99,44 +99,88 @@ pub fn deck_pose(ship: Pose, k: usize) -> Pose {
 
 pub use crate::shipping::water::{Berth, BERTH};
 
+/// The park, in from the ramp up the lane: a dock's row each side of it,
+/// a box's width apart, the last just in from the gate. The harbour is
+/// two tiles deep, so the gate's middle is 1.5 in.
+const DOCK_ROWS: [f64; 4] = [0.55, 0.85, 1.15, 1.45];
+/// A docked lorry's cab, out from the lane's middle: its box behind it
+/// reaches to the harbour's side, and the cab stands clear of the lane.
+const DOCK_OUT: f64 = 0.9;
+/// How far past a dock's mouth a lorry or the tug pulls up to back in.
+const PAST: f64 = 0.5;
+
 impl Berth {
-    /// On the quay apron, half a tile in from the ramp.
-    fn apron(&self) -> [f64; 2] {
-        plus(self.ramp(), ahead(self.landward(), 0.5))
+    /// A point `s` in from the ramp up the lane, and `side` out from its
+    /// middle (positive to the terminal's side).
+    fn at(&self, s: f64, side: f64) -> [f64; 2] {
+        plus(plus(self.ramp(), ahead(self.landward(), s)), ahead(self.landward() + std::f64::consts::FRAC_PI_2, side))
     }
-    /// Where the tug waits: on the apron beside the ramp.
+    /// How far a point is in from the ramp, up the lane.
+    fn up(&self, p: [f64; 2]) -> f64 {
+        let r = self.ramp();
+        let l = self.landward();
+        (p[0] - r[0]) * l.cos() + (p[1] - r[1]) * l.sin()
+    }
+    /// In the lane, half a tile in from the ramp.
+    fn apron(&self) -> [f64; 2] {
+        self.at(0.5, 0.0)
+    }
+    /// Where the tug waits: in the corner on the quay across the lane
+    /// from the terminal, clear of the docks, facing the land.
     fn rest(&self) -> Pose {
-        Pose { at: plus(self.apron(), ahead(self.landward() + std::f64::consts::FRAC_PI_2, 0.8)), heading: self.landward() }
+        Pose { at: self.at(0.2, -DOCK_OUT), heading: self.landward() }
+    }
+    /// The point in the lane a dock's row is backed into from, going
+    /// toward the gate: past its mouth, short of the street.
+    fn past(&self, s: f64) -> [f64; 2] {
+        self.at((s + PAST).min(1.9), 0.0)
+    }
+    /// The harbour's park as its yard lays it (`lots.rs`): the lane from
+    /// the gate down to the ramp, its points in order, each dock's mouth
+    /// and its stop point past it toward the ramp; and the docks, both
+    /// sides of each row, a docked lorry's cab facing the lane, with the
+    /// lane points of its mouth and its stop. Nothing stands in the lane:
+    /// what comes off the ferry drives up it to the gate.
+    pub fn park(&self) -> (Vec<[f64; 2]>, Vec<(Pose, usize, usize)>) {
+        let mut stations: Vec<(f64, usize, bool)> = DOCK_ROWS.iter().enumerate().flat_map(|(i, &s)| [(s, i, true), (s - PAST, i, false)]).collect();
+        stations.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let mut rows = [(0, 0); DOCK_ROWS.len()];
+        for (k, &(_, i, mouth)) in stations.iter().enumerate() {
+            if mouth {
+                rows[i].0 = k;
+            } else {
+                rows[i].1 = k;
+            }
+        }
+        let lane = stations.iter().map(|&(s, ..)| self.at(s, 0.0)).collect();
+        let docks = DOCK_ROWS
+            .iter()
+            .zip(rows)
+            .flat_map(|(&s, (mouth, stop))| {
+                [1.0, -1.0].map(|side: f64| {
+                    let at = self.at(s, side * DOCK_OUT);
+                    let toward = self.at(s, 0.0);
+                    (Pose { at, heading: (toward[1] - at[1]).atan2(toward[0] - at[0]) }, mouth, stop)
+                })
+            })
+            .collect();
+        (lane, docks)
     }
 }
 
 impl World {
-    /// The berth a kind's plot would have here this way round: a tile of
-    /// the sea behind its building's back face, the middle one first, with
-    /// `BERTH` tiles of sea straight out from it. None where the back is
-    /// on land, on a lake, or on water too narrow for the ferry.
+    /// The berth a kind's plot would have here this way round: the tile of
+    /// the sea behind the middle of its back, in line with its lane, with
+    /// `BERTH` tiles of sea straight out from it. None where that is
+    /// land, a lake, or water too narrow for the ferry.
     pub fn berth_at(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<Berth> {
-        // The building as it lies on the grid, its size already turned
-        // with the facing.
-        let (pos, p) = World::lie(tiles, kind, facing);
-        let ((bx, by), (gw, gh)) = p.building;
         let (dx, dy) = FACINGS[facing as usize % 4];
-        let building = GridCoord { x: pos.x + bx as i32, y: pos.y + by as i32 };
-        // The back face is the row of the building furthest from the lot,
-        // and the quay is one step further out from it.
-        let mut back: Vec<GridCoord> = if dx == 0 {
-            let y = if dy < 0 { building.y + gh as i32 } else { building.y - 1 };
-            (0..gw as i32).map(|i| GridCoord { x: building.x + i, y }).collect()
-        } else {
-            let x = if dx < 0 { building.x + gw as i32 } else { building.x - 1 };
-            (0..gh as i32).map(|i| GridCoord { x, y: building.y + i }).collect()
-        };
-        let mid = back[back.len() / 2];
-        back.sort_by_key(|t| ((t.x - mid.x).abs() + (t.y - mid.y).abs(), t.x, t.y));
-        let out = (-dx, -dy);
-        back.into_iter()
-            .map(|quay| Berth { quay, out })
-            .find(|b| (0..BERTH).all(|n| self.terrain.get(&(b.tile(n).x, b.tile(n).y)) == Some(&TerrainType::Sea)))
+        let gate = World::gate_of(tiles, kind, facing)?;
+        // Straight back from the gate, through the plot, to the water.
+        let (_, (w, h)) = World::bounds(tiles);
+        let deep = if dx == 0 { h } else { w } as i32;
+        let b = Berth { quay: GridCoord { x: gate.x - dx * deep, y: gate.y - dy * deep }, out: (-dx, -dy) };
+        (0..BERTH).all(|n| self.terrain.get(&(b.tile(n).x, b.tile(n).y)) == Some(&TerrainType::Sea)).then_some(b)
     }
 
     /// A standing harbour's berth.
@@ -569,26 +613,26 @@ impl World {
         Shunt { path, started: now, ends: now + ms, backs_from, to }
     }
 
-    /// With a box off the ferry, down the ramp and into a free dock from
-    /// the quay side; with one out of the park, backing it up the ramp
-    /// onto the deck, the sea end first so the land end stays clear. None
-    /// where there is nowhere to take it yet: it waits with it.
+    /// With a box off the ferry, down the ramp and up the lane past a
+    /// free dock, and backing it in; with one out of the park, pulling it
+    /// out into the lane toward the gate and backing it down the lane and
+    /// up the ramp onto the deck, the sea end first so the land end stays
+    /// clear. None where there is nowhere to take it yet: it waits with it.
     fn onward(&self, tug: EntityId, harbour: EntityId, berth: Berth, now: GameTime) -> Option<Shunt> {
         let here = self.spot_of(tug)?;
         let GameObject::Building(ref h) = self.objects.get(harbour)?.object else { return None };
         let ship = berth.moored();
         let tug_at = |p: Pose| plus(p.at, ahead(p.heading, TUG_BOX));
-        let behind = |p: Pose| plus(p.at, ahead(p.heading, -0.5));
         let outbound = self.hitched_of(tug)?.outbound;
         if !outbound {
             let i = self.free_dock(harbour)?;
             let p = h.park[i].pose;
-            return Some(Self::shunt(vec![here.at, berth.ramp(), berth.apron(), behind(p), tug_at(p)], usize::MAX, Place::Park(i), now));
+            return Some(Self::shunt(vec![here.at, berth.ramp(), berth.past(berth.up(p.at)), tug_at(p)], 2, Place::Park(i), now));
         }
         let (ferry, _) = self.berthed(harbour)?;
         let k = self.deck_room(ferry)?;
         let p = h.park.iter().map(|s| s.pose).min_by(|a, b| dist(a.at, here.at).total_cmp(&dist(b.at, here.at)))?;
-        Some(Self::shunt(vec![here.at, behind(p), berth.apron(), berth.ramp(), tug_at(deck_pose(ship, k))], 0, Place::Deck(k), now))
+        Some(Self::shunt(vec![here.at, berth.past(berth.up(p.at)), berth.apron(), berth.ramp(), tug_at(deck_pose(ship, k))], 1, Place::Deck(k), now))
     }
 
     /// The tug's next box, and the move to it.
@@ -717,14 +761,14 @@ mod tests {
     use super::*;
     use crate::protocol::TerrainType;
 
-    /// Grass either side of a street along y = 0, and the sea from y = 5
+    /// Grass either side of a street along y = 0, and the sea from y = 3
     /// south of it; the map ends at y = 41, a chunk and more out, and
     /// further than that to the sides.
     fn coast() -> World {
         let mut world = World::new();
         for y in -8..41 {
             for x in -60..100 {
-                world.terrain.insert((x, y), if y >= 4 { TerrainType::Sea } else { TerrainType::Grass });
+                world.terrain.insert((x, y), if y >= 3 { TerrainType::Sea } else { TerrainType::Grass });
             }
         }
         world.place_road_path(&(-4..40).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
@@ -738,7 +782,7 @@ mod tests {
         assert!(world.place_on_street(GridCoord { x: 10, y: -1 }, BuildingKind::Harbour).is_none());
         let harbour = world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Harbour).expect("the coast takes a harbour");
         let berth = world.berth(harbour).unwrap();
-        assert_eq!((berth.quay.y, berth.out), (4, (0, 1)), "the quay is the water behind the back face: {berth:?}");
+        assert_eq!((berth.quay.y, berth.out), (3, (0, 1)), "the quay is the water behind the back face: {berth:?}");
         // The way out is straight out from the moored ferry and on over the
         // map's edge, all of it on the water.
         world.commission(harbour, 0);
@@ -751,6 +795,32 @@ mod tests {
         let m = berth.moored();
         let end = plus(m.at, ahead(m.heading, FERRY_LENGTH / 2.0));
         assert!((end[0] - berth.ramp()[0]).abs() < 1e-9 && (end[1] - berth.ramp()[1]).abs() < 1e-9);
+    }
+
+    /// Every tile of the harbour is used and its lane is clear: its
+    /// eight docks stand either side of the lane from the gate to the
+    /// ramp, every box wholly on the harbour and wholly out of the lane,
+    /// and the tug waits off it too.
+    #[test]
+    fn the_park_keeps_the_lane_to_the_ramp_clear() {
+        let mut world = coast();
+        let harbour = world.place_on_street(GridCoord { x: 10, y: 1 }, BuildingKind::Harbour).unwrap();
+        let berth = world.berth(harbour).unwrap();
+        let gate = world.door_of(harbour).unwrap().0;
+        assert_eq!((gate.x, berth.quay.x), (11, 11), "the gate and the ramp are not in line");
+        world.lot_mut(harbour).unwrap();
+        let GameObject::Building(ref b) = world.objects.get(harbour).unwrap().object else { panic!() };
+        assert_eq!(b.park.len(), 8);
+        let lane = berth.ramp()[0];
+        // A box, half its length and half its width, from its middle.
+        let (l, w) = (0.23, 0.085);
+        for slot in &b.park {
+            let [x, y] = slot.pose.at;
+            let (hx, hy) = (slot.pose.heading.cos().abs() * l + slot.pose.heading.sin().abs() * w, slot.pose.heading.sin().abs() * l + slot.pose.heading.cos().abs() * w);
+            assert!(x - hx >= 10.0 && x + hx <= 13.0 && y - hy >= 1.0 && y + hy <= 3.0, "a box off the harbour at {:?}", slot.pose.at);
+            assert!((x - lane).abs() - hx >= 0.5, "a box in the lane at {:?}", slot.pose.at);
+        }
+        assert!((berth.rest().at[0] - lane).abs() >= 0.5, "the tug waits in the lane");
     }
 
     #[test]

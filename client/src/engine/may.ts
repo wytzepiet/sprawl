@@ -1,4 +1,4 @@
-import { BLUEPRINTS, FACINGS, lie, plot, yardOf } from "../blueprints";
+import { BLUEPRINTS, FACINGS, gateOf, plot, yardOf } from "../blueprints";
 import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Tool } from "../generated";
 
 /**
@@ -66,17 +66,16 @@ const BERTH = 6;
  *  `BERTH` of sea straight out, else the best of what is there: some
  *  sea, a lake, or land. */
 function behind(h: Hand, tiles: GridCoord[], kind: BuildingKind, facing: number): "berth" | "sea" | "lake" | "land" {
+  const gate = gateOf(tiles, kind, facing);
+  if (!gate) return "land";
   const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
-  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
-  const [[bx, by], [gw, gh]] = lie(kind, facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]).building;
   const [dx, dy] = FACINGS[facing % 4];
-  const back: GridCoord[] = dx === 0
-    ? Array.from({ length: gw }, (_, i) => ({ x: x0 + bx + i, y: dy < 0 ? y0 + by + gh : y0 + by - 1 }))
-    : Array.from({ length: gh }, (_, i) => ({ x: dx < 0 ? x0 + bx + gw : x0 + bx - 1, y: y0 + by + i }));
+  const deep = dx === 0 ? Math.max(...ys) - Math.min(...ys) + 1 : Math.max(...xs) - Math.min(...xs) + 1;
+  const q = { x: gate.x - dx * deep, y: gate.y - dy * deep };
   const sea = (t: GridCoord) => h.ground(t.x, t.y) === "Sea";
-  if (back.some((q) => Array.from({ length: BERTH }, (_, n) => ({ x: q.x - dx * n, y: q.y - dy * n })).every(sea))) return "berth";
-  if (back.some(sea)) return "sea";
-  return back.some((q) => h.ground(q.x, q.y) === "Water") ? "lake" : "land";
+  if (Array.from({ length: BERTH }, (_, n) => ({ x: q.x - dx * n, y: q.y - dy * n })).every(sea)) return "berth";
+  if (sea(q)) return "sea";
+  return h.ground(q.x, q.y) === "Water" ? "lake" : "land";
 }
 
 /** `World::fit`: may a kind be placed round a tile facing this way, and
@@ -249,6 +248,11 @@ function enters(tiles: GridCoord[], kind: BuildingKind, facing: number, from: Gr
   const [dx, dy] = [from.x - to.x, from.y - to.y];
   if (!on(to.x, to.y) || on(from.x, from.y) || Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
   if (dx && dy && (on(to.x + dx, to.y) || on(to.x, to.y + dy))) return false;
+  // A harbour is entered only by its gate, in line with its ramp.
+  if (BLUEPRINTS[kind].quay) {
+    const gate = gateOf(tiles, kind, facing);
+    if (!gate || gate.x !== to.x || gate.y !== to.y) return false;
+  }
   const yard = yardOf(tiles, kind, facing);
   if (!yard) return true;
   const [fx, fy] = FACINGS[facing % 4];

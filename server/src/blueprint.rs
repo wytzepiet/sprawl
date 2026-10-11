@@ -220,14 +220,18 @@ static BLUEPRINTS: LazyLock<Vec<(BuildingKind, Blueprint)>> = LazyLock::new(|| {
             farm: true,
             ..row(Industry, 0, 4, (3, 2), (2, 2), &[(Timber, 8)], vec![shift(6, 15, 4)])
         }),
-        // The door: an apron on the quay that the tug crosses, the ramp
-        // behind it, and a trailer park on the street side, its docks the
-        // slots boxes stand in, with the tug that shunts them. Two hands drive the tug and work the ramp, dawn to late.
-        // Built from nothing: it is where timber first comes in.
+        // The door: all yard, three tiles along the quay and two in, no
+        // building. Down its middle a lane from the gate on the street to
+        // the ramp, kept clear for what comes off the ferry; either side
+        // of it the trailer park, four docks a side, the slots boxes stand
+        // in; in the corners on the quay the tug's stand and the terminal
+        // (`world/sea.rs`). Two hands drive the tug and work the ramp,
+        // dawn to late. Built from nothing: it is where timber first comes
+        // in.
         (Harbour, Blueprint {
             vehicles: &[CarRole::Tug],
             quay: true,
-            ..row(Industry, 0, 2, (3, 1), (3, 2), &[], vec![shift(6, 22, 2)])
+            ..row(Industry, 0, 2, (3, 0), (3, 2), &[], vec![shift(6, 22, 2)])
         }),
         // Four hands, seven to four, felling and sawing the forest round it:
         // with woods all round, a box of timber a shift and a half, a house
@@ -260,8 +264,8 @@ pub fn check() {
         assert!(!b.farm || b.vehicles.contains(&CarRole::Tractor), "{kind:?} farms without a tractor");
         // A harbour has a park for the ferry's boxes and a tug to shunt them.
         assert!(!b.quay || (b.lot.1 > 0 && b.vehicles.contains(&CarRole::Tug)), "{kind:?} has a quay and nowhere to land a box");
-        // Placed whole round the tile tapped, whichever way the sea turns it.
-        assert!(!b.quay || plot(*kind, 0).size == plot(*kind, 1).size, "{kind:?} has a quay and a plot that is not square");
+        // Its lane runs down its middle from the gate to the ramp.
+        assert!(!b.quay || b.size.0 % 2 == 1, "{kind:?} has a quay and no middle tile for its ramp");
         assert!(b.makes.is_none_or(|g| b.shelves.iter().any(|&(s, _)| s == g)), "{kind:?} makes what it has no shelf for");
         // A depot's van brings every material a site takes.
         for &(good, _) in b.materials {

@@ -57,16 +57,16 @@ describe("the hand's rule, as the server's", () => {
   });
 
   // The server's `a_harbour_is_placed_whole_with_its_street`: grass to
-  // y = 3, the sea from y = 4.
+  // y = 2, the sea from y = 3.
   test("a harbour with its back on the sea, and nowhere else", () => {
-    const coast = hand(() => {}, (_x, y): TerrainType => (y >= 4 ? "Sea" : "Grass"));
+    const coast = hand(() => {}, (_x, y): TerrainType => (y >= 3 ? "Sea" : "Grass"));
     expect(fit(coast, "Harbour", at(9, 2), 0).why).toBe(null);
     expect(fit(coast, "Harbour", at(9, 2), 2).why).toBe("No berth: its back is not on the sea");
     // Held on the coast, it is placed round the tile beside that fits.
     const p = placing(coast, "Harbour", at(9, 3), null);
     expect([p.at, p.facing, p.why]).toEqual([at(9, 2), 0, null]);
     expect(placing(coast, "Harbour", at(9, -10), null).why).toBe("No berth: its back is not on the sea");
-    const lake = hand(() => {}, (_x, y): TerrainType => (y >= 4 ? "Water" : "Grass"));
+    const lake = hand(() => {}, (_x, y): TerrainType => (y >= 3 ? "Water" : "Grass"));
     expect(placing(lake, "Harbour", at(9, 2), null).why).toBe("A lake: the ferry comes only by sea");
   });
 });

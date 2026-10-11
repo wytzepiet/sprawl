@@ -514,44 +514,53 @@ impl World {
         let u_gate = if along_x { dpos[0] - lot.x as f64 } else { dpos[1] - lot.y as f64 };
         let mirrored = u_gate > w / 2.0;
         let world_at = move |u: f64, v: f64| grid_at(if mirrored { w - u } else { u }, v);
-        let u_gate = if mirrored { w - u_gate } else { u_gate };
 
-        let n = ((w - 2.0 * BAY_MARGIN) / BAY_W + 1e-9).floor() as usize;
-        let us: Vec<f64> = (0..n).map(|i| BAY_MARGIN + BAY_W / 2.0 + i as f64 * BAY_W).collect();
-        let lane_v = 0.5;
-        let dock_v = d + WALL - crate::car::tail(crate::protocol::CarRole::Truck);
-        // Stations along the lane, in order from the door: each dock's
-        // mouth, and its stop point half a lorry beyond.
-        let mut stations: Vec<(f64, usize, bool)> = Vec::new();
-        for (i, &u) in us.iter().enumerate() {
-            stations.push((u, i, true));
-            stations.push((u + 0.5, i, false));
-        }
-        stations.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-        let mut lane = vec![door];
-        let mut bays = vec![(0usize, 0usize); n];
-        for &(u, i, mouth) in &stations {
-            let id = node(self, world_at(u, lane_v));
-            if mouth {
-                bays[i].0 = lane.len();
-            } else {
-                bays[i].1 = lane.len();
+        // The lane's points from the door, and each dock: where a docked
+        // lorry stands, and the lane points of its mouth and its stop. A
+        // harbour's are its park, down the lane to its ramp (`Berth::park`).
+        let (points, docks) = match self.berth_at(tiles, kind, facing) {
+            Some(berth) => berth.park(),
+            None => {
+                let n = ((w - 2.0 * BAY_MARGIN) / BAY_W + 1e-9).floor() as usize;
+                let dock_v = d + WALL - crate::car::tail(crate::protocol::CarRole::Truck);
+                // Stations along the lane, in order from the door: each
+                // dock's mouth, and its stop point half a lorry beyond.
+                let mut stations: Vec<(f64, usize, bool)> = (0..n)
+                    .flat_map(|i| {
+                        let u = BAY_MARGIN + BAY_W / 2.0 + i as f64 * BAY_W;
+                        [(u, i, true), (u + 0.5, i, false)]
+                    })
+                    .collect();
+                stations.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                let at = |i: usize, mouth: bool| stations.iter().position(|&(_, j, m)| j == i && m == mouth).unwrap();
+                let docks = (0..n)
+                    .map(|i| {
+                        let u = BAY_MARGIN + BAY_W / 2.0 + i as f64 * BAY_W;
+                        let (p, out) = (world_at(u, dock_v), world_at(u, dock_v - 1.0));
+                        (Pose { at: p, heading: (out[1] - p[1]).atan2(out[0] - p[0]) }, at(i, true), at(i, false))
+                    })
+                    .collect::<Vec<_>>();
+                (stations.iter().map(|&(u, ..)| world_at(u, 0.5)).collect(), docks)
             }
+        };
+        let mut lane = vec![door];
+        for &p in &points {
+            let id = node(self, p);
             lane.push(id);
         }
-        let _ = u_gate;
         for pair in lane.windows(2) {
             edge(self, pair[0], pair[1]);
             edge(self, pair[1], pair[0]);
         }
         let mut spots = Vec::new();
-        for (i, &u) in us.iter().enumerate() {
-            let at = world_at(u, dock_v);
-            let out = world_at(u, dock_v - 1.0);
-            let id = node(self, at);
-            edge(self, lane[bays[i].0], id);
-            edge(self, id, lane[bays[i].0]);
-            spots.push(Spot { node: id, pose: Pose { at, heading: (out[1] - at[1]).atan2(out[0] - at[0]) }, windows: Vec::new() });
+        let mut bays = Vec::new();
+        for (pose, mouth, stop) in docks {
+            let (mouth, stop) = (mouth + 1, stop + 1);
+            let id = node(self, pose.at);
+            edge(self, lane[mouth], id);
+            edge(self, id, lane[mouth]);
+            spots.push(Spot { node: id, pose, windows: Vec::new() });
+            bays.push((mouth, stop));
         }
         Some(Lot { gate, shape: Default::default(), spots, way: Way::Yard { lane, bays, street }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), stats: Stats::default() })
     }

@@ -98,6 +98,10 @@ impl World {
         if dx != 0 && dy != 0 && (on(to.x + dx, to.y) || on(to.x, to.y + dy)) {
             return false;
         }
+        // A harbour is entered only by its gate, in line with its ramp.
+        if crate::blueprint::blueprint(kind).quay && Self::gate_of(tiles, kind, facing) != Some(to) {
+            return false;
+        }
         match Self::yard_of(tiles, kind, facing) {
             Some(yard) => {
                 let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
@@ -176,6 +180,22 @@ impl World {
         let (o, p) = Self::lie(tiles, kind, facing);
         let ((lx, ly), ls) = p.lot?;
         Some(Self::footprint(GridCoord { x: o.x + lx as i32, y: o.y + ly as i32 }, ls).filter(|t| tiles.contains(t)).collect())
+    }
+
+    /// A harbour's gate: the middle tile of its front, the one way in,
+    /// where its lane starts down to the ramp (`World::berth_at`).
+    pub fn gate_of(tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<GridCoord> {
+        if !Self::works(tiles, kind) {
+            return None;
+        }
+        let (o, (w, h)) = Self::bounds(tiles);
+        let (w, h) = (w as i32, h as i32);
+        Some(match crate::blueprint::FACINGS[facing as usize % 4] {
+            (0, -1) => GridCoord { x: o.x + w / 2, y: o.y },
+            (0, _) => GridCoord { x: o.x + w / 2, y: o.y + h - 1 },
+            (-1, _) => GridCoord { x: o.x, y: o.y + h / 2 },
+            _ => GridCoord { x: o.x + w - 1, y: o.y + h / 2 },
+        })
     }
 
     /// Does a building on these tiles work: does it hold the smallest of

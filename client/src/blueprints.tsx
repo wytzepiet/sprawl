@@ -97,6 +97,17 @@ export function yardOf(tiles: GridCoord[], kind: BuildingKind, facing: number): 
   return tiles.filter((t) => t.x >= x0 + lx && t.x < x0 + lx + lw && t.y >= y0 + ly && t.y < y0 + ly + ld);
 }
 
+/** A harbour's gate: the middle tile of its front, the one way in, where
+ *  its lane starts down to the ramp. Mirrors `World::gate_of`. */
+export function gateOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoord | null {
+  if (!works(tiles, kind)) return null;
+  const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
+  const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  const [mx, my] = [x0 + Math.floor((x1 - x0 + 1) / 2), y0 + Math.floor((y1 - y0 + 1) / 2)];
+  const [dx, dy] = FACINGS[facing % 4];
+  return dx === 0 ? { x: mx, y: dy < 0 ? y0 : y1 } : { x: dx < 0 ? x0 : x1, y: my };
+}
+
 /** Where a building stands and how big it is, in tiles: the middle and
  *  size of its bounds, its yard left out. */
 export function standing(b: Building): { at: [number, number]; size: [number, number] } {
@@ -127,7 +138,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     shape: "box",
     heights: [0.5],
     materials: {}, tab: "trade",
-    size: [3, 1],
+    size: [3, 0],
     lot: [3, 2],
     quay: true,
   },

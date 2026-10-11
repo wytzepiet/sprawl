@@ -1,4 +1,4 @@
-# A ferry harbour: its trailer park on the street side, the apron and the ramp on the quay, the berth behind it
+# A ferry harbour: a lane from the street down to the ramp, its trailer park either side, the berth behind it
 ≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈
 ≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈
 ≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈
@@ -6,7 +6,7 @@
 ≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈
 ≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈
 ≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈≈
-________PPP_________≈≈
+________≈≈≈_________≈≈
 ........PPP.......___≈
 ........PPP..........≈
 ======================

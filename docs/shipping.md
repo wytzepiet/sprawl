@@ -233,10 +233,14 @@ is late, visibly, and the planner replans what was booked on it.
 What runs, as of 2026-10-10 (`world/sea.rs`, `haul.rs`), and where it
 parted from the direction above.
 
-- **The harbour** is a kind like any other: a terminal row on the quay
-  and a trailer park on the street side, 3 by 3, with its back to the
-  sea and six tiles of open sea straight out behind it, which is the
-  berth. It costs no timber: it is where timber first comes in. Its
+- **The harbour** is a kind like any other, all yard, 3 along the quay
+  and 2 in, with its back to the sea and six tiles of open sea straight
+  out behind the middle of it, which is the berth. Down its middle a
+  lane runs from its gate, the one way in, to the ramp, and nothing
+  stands in it: what comes off the ferry drives straight up it to the
+  street. Either side of the lane is the trailer park, four docks a
+  side, and in the corners on the quay the tug's stand and the
+  terminal. It costs no timber: it is where timber first comes in. Its
   street is the town's way out: a road that reaches a harbour is joined,
   and one that reaches none is drawn red. The edge, its lorries and the
   port's call-driven ship are gone.
@@ -272,10 +276,11 @@ parted from the direction above.
   what it brought, moves along to the box it came for, hooks it, and
   drives home: drop and hook. The tug only takes a dock nobody holds.
 - **The tug** shunts one box at a time: to the box, then with it. Off
-  the ferry it backs bobtail up the ramp, tows the box down it and into
-  a free dock from the quay side, so the box stands with its hitch to the
-  lane for a lorry; onto the ferry it backs a box out of its dock and up
-  the ramp, the box leading, to the deck's free slot nearest the sea end.
+  the ferry it backs bobtail up the ramp, tows the box down it and up
+  the lane past a free dock and backs it in, so the box stands with its
+  hitch to the lane for a lorry; onto the ferry it pulls a box out of its
+  dock into the lane and backs it down the lane and up the ramp, the box
+  leading, to the deck's free slot nearest the sea end.
   It starts only what it can finish before the ferry sails.
 - **A depot keeps one box**, on its lorry's hitch, not a stack in the
   yard: a lorry home from the harbour unloads onto the shelf and keeps
