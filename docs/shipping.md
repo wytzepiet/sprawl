@@ -54,21 +54,20 @@ There is no trucking company (`shelved.md`, haulers); a depot is its own
 haulier.
 
 A lorry drives to the harbour, hitches a full box from the yard, drives it
-home and unloads it into the depot's stock; the empty stays at the depot.
-Imports are as fast as the town's lorries and the road from the harbour
-make them, which is the traffic game.
+home, backs it under the depot's canopy and unloads it into stock, and
+drives off bobtail. Imports are as fast as the town's lorries and the road
+from the harbour make them, which is the traffic game.
 
-**Empties ride back, and are filled when they can be.** Real shipping moves
-about a fifth of its boxes empty, and tries hard not to. Here, the next
-time a lorry drives to the harbour it takes an empty with it, drop and
-hook: it drops the box in the yard and hitches the next full one, so an
-empty costs no trip of its own. If the depot has something to export the
-empty is filled with it first and goes back full (a street turn, in the
-trade). A town that buys and sells carries something both ways on every
-trip; a town that only buys drives empties about, and a depot whose lorry
-never goes back gathers a stack of them, in sight. Exports are the same in
-reverse. Later the world may charge less for what rides in a box that
-would have gone back empty, as lines sell their backhaul cheap.
+**A box is only ever full** (2026-10-11; supersedes the empties of the
+first direction, which rode back and were filled by street turns). The
+world makes a box loaded on the ferry for an import; a depot makes one
+when an export is ready, and its lorry pulls it out from under the
+canopy; a maker's yard loads one for a lorry that comes bobtail. A box is
+gone once it is unloaded into a depot or carried off by the ferry. A lorry
+with nothing to take drives to the harbour bobtail. Why: a box is drawn
+by what is in it, and an empty has nothing in it, so a tank drew as a
+tipper; and needing an empty to export was not fun. With boxes only ever
+full a box's look never changes.
 
 **Everything comes boxed at first.** Crates and timber in boxes, fuel in
 tank boxes, gravel and cement in lined bulk boxes, on the same sailings
@@ -282,18 +281,19 @@ parted from the direction above.
   dock into the lane and backs it down the lane and up the ramp, the box
   leading, to the deck's free slot nearest the sea end.
   It starts only what it can finish before the ferry sails.
-- **A depot keeps one box**, on its lorry's hitch, not a stack in the
-  yard: a lorry home from the harbour unloads onto the shelf and keeps
-  the empty, and takes it back on its next trip, filled with what is sold
-  if there is anything. A lorry fetches only a box its depot has room for
-  whole, so no box waits half unloaded on a hitch.
+- **The depot's canopy bay.** A roof on posts over the docks on the
+  depot's yard side (`town/draw.ts`, `canopies`). A lorry home from the
+  harbour backs its box fully under it; the box is unloaded into stock
+  there and is gone, and the lorry drives off bobtail. For an export it
+  backs in bobtail and pulls out with a full box. A lorry fetches only a
+  box its depot has room for whole.
 - **Lorries are bought.** A depot comes with one and can import three
   more, forty coins each (`BuyLorry`): throughput at the border is a
   thing the mayor buys and can see, and four lorries through one
   junction is a jam they made.
-- **The street turn.** A lorry with an empty, from a depot that sells a
-  good, fills it at a maker's yard (a farm, a sawmill) and takes it
-  straight to the harbour, and hooks an empty there for the next.
+- **A maker's load.** A bobtail lorry, from a depot that sells a good
+  or is short of it, fetches a box of it from a maker's yard (a farm, a
+  sawmill): home while the depot is short, else straight to the harbour.
 - **The lorry** is tapped (`Send`) or has standing orders (`Standing`).
   With either it goes when a box for its depot, or for the town, stands
   in a park, or when its depot has something to sell. The first lorry is
@@ -330,8 +330,7 @@ parted from the direction above.
   silver tank between two end frames; timber loose in an open tipper,
   logs as far along it as the box is full (a heap, for stone or gravel,
   is ready for a loose good to use). Each in its good's colour as the
-  panels have it (`GOODS`). An empty, which has no class, is the tipper
-  bare and pale. Seen from above, so all of it is on the top.
+  panels have it (`GOODS`). Seen from above, so all of it is on the top.
 - **Lanes** (2026-10-10, the design above, `shipping/lanes.rs`): a
   line's ways are reserved on the map as lanes, one way in open water,
   the way back a tile clear of the way out on its left, so ferries pass

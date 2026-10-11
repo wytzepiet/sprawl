@@ -244,9 +244,8 @@ wait at the anchorage when early, cut their dwell to half when late,
 and load and land by `boards`. The land side is rates: each harbour's
 tug moves `tug` boxes an hour (one at a time, only what it can finish
 before the ship sails) and its depot's lorries make `dray` round trips
-an hour, drop and hook, as `haul.rs` does: an export filled from the
-empty the depot kept, or a spare empty out, and an import home. The
-world keeps `EMPTIES` standing in each yard. The company's rule runs
+an hour, drop and hook, as `haul.rs` does: an export out and an import
+home, either or both; a box is only ever full. The company's rule runs
 as in the game will: a harbour standing gets the world's ferry, and a
 line to its nearest by sea where the sea beats the road, once its
 forecast (the scenario's demand from and to harbours it would reach by
@@ -290,7 +289,6 @@ purple), the harbours, and a dot every ten minutes for each ship.
 | `via_world` | boxes between two harbours that went by the world (must be 0) |
 | `missed` | box-departures a ship sailed without, deck full or the tug out of time |
 | `util` | boxes aboard at each sailing ÷ slots, mean over lines |
-| `empties` | empty box-rides ÷ all box-rides |
 | `berth_wait`, `wait_max` | ships off a harbour, in all and the longest |
 | `block_wait` | ships held at a junction's mouth that is not a berth's, in all |
 | `head_on`, `crossed` | minutes two ships were in one stretch of narrow water going opposite ways, or in one crossing on crossing ways (must be 0) |

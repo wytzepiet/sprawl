@@ -328,22 +328,21 @@ function body(g: CanvasRenderingContext2D, p: Stand, l: number, w: number, fill:
   g.restore();
 }
 
-/** A box, `k` of a box's length: its good's colour, or hollow if it is empty. */
+/** A box, `k` of a box's length, in its good's colour. */
 function box(g: CanvasRenderingContext2D, p: Stand, t: Load, k = 1) {
-  const full = t.good && t.units > 0;
   const l = TRAILER.l * k;
   g.save();
   g.translate(p.at[0], p.at[1]);
   g.rotate(p.heading);
-  g.fillStyle = full ? GOODS[t.good!].color : "rgba(255,255,255,0.7)";
+  g.fillStyle = GOODS[t.good].color;
   g.fillRect(-l / 2, -TRAILER.w / 2, l, TRAILER.w);
   g.strokeStyle = INK;
-  g.lineWidth = full ? 0.02 : 0.035;
+  g.lineWidth = 0.02;
   g.strokeRect(-l / 2, -TRAILER.w / 2, l, TRAILER.w);
   g.restore();
 }
 
-/** Where a box stands in a park or on a deck, empty or not. */
+/** Where a box stands in a park or on a deck, a box in it or not. */
 function dock(g: CanvasRenderingContext2D, p: Stand, colour = "rgba(255,255,255,0.8)") {
   g.save();
   g.translate(p.at[0], p.at[1]);
@@ -425,7 +424,7 @@ function grid(g: CanvasRenderingContext2D, view: View, x0: number, x1: number, y
   }
 }
 
-/** The key, in the bottom left: the clock, each good's box, an empty, the
+/** The key, in the bottom left: the clock, each good's box, the
  *  vehicles by role; and each ferry's state. */
 function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntry, Car][], byId: Map<number, GameObjectEntry>, height: number) {
   const day = world.now / world.dayMs;
@@ -444,7 +443,6 @@ function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntr
   });
   const keys: [string, (x: number, y: number) => void][] = [
     ...(Object.keys(GOODS) as (keyof typeof GOODS)[]).map((good): [string, (x: number, y: number) => void] => [GOODS[good].label, (x, y) => swatch(g, x, y, GOODS[good].color)]),
-    ["empty", (x, y) => swatch(g, x, y, "rgba(255,255,255,0.7)", 2)],
     ["lorry", (x, y) => swatch(g, x, y, css(LIVERY.cab))],
     ["tractor", (x, y) => swatch(g, x, y, css(LIVERY.tractor))],
     ["tug", (x, y) => swatch(g, x, y, css(TUG))],

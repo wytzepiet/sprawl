@@ -10,7 +10,7 @@ mountain for stone: half a unit an hour each with thirty tiles of it in
 reach, nothing in the open; a yard of six boxes) and the ferry harbour.
 Goods are crates, fuel, timber and stone. A maker's yard needs no vehicle
 of its own: a depot's lorry fetches a load from it, a box's worth or what
-its shelf has room for, or fills an empty there for the world.
+its shelf has room for, or a box for the world.
 
 What each kind is built from is its row's `materials`, a material each
 and how much (`Blueprint::materials`, which a draft's bill reads):

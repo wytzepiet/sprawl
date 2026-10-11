@@ -84,7 +84,8 @@ pictures, at least), and its documents say what was built.
 4. **The ferry harbour as the only door** (`shipping.md` §Harbours): the
    edge, the generated roads and the fog go; the ferry on a timetable, its
    deck as what fits; settlers drive off; the tug; the trailer park; the
-   town's lorries hitch boxes; empties ride back, filled with exports.
+   town's lorries hitch boxes; exports go out the same way (empties
+   were built, then deleted 2026-10-11: a box is only ever full).
 5. **Drafts** (`game.md` §Undo): built, then replaced by placing at once
    and undo after the player's playtest (`shelved.md`).
 6. **Goods and materials** (`buildings.md`): goods split from needs; the

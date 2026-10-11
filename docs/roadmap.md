@@ -54,8 +54,8 @@ each playable on its own.
    company's ferry on a timetable, its deck as many cars and trailers as
    fit, carrying settlers in their cars and the world's trailers. The
    town's lorries hitch a trailer in the park and fetch it to a depot;
-   empties go back with the next trip, filled with an export when there
-   is one. No outside vehicle drives the town. The road's edge, the generated roads
+   a box is only ever full, and the lorry goes back bobtail or with an
+   export. No outside vehicle drives the town. The road's edge, the generated roads
    and the fog go (`shelved.md`, 2026-09-23).
 2. Undo (`game.md` §Undo): every placement and demolition done at once,
    and the last few minutes taken back with what they paid. (Drafts were

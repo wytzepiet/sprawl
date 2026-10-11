@@ -6,7 +6,7 @@ import type { Leg } from "./Leg";
 /**
  * A box with an order, where it is: the shipments list and its pins.
  */
-export type Shipment = { order: number, trailer: number, good: Good | null, units: number, to: number | null, outbound: boolean, leg: Leg, 
+export type Shipment = { order: number, trailer: number, good: Good, units: number, to: number | null, outbound: boolean, leg: Leg, 
 /**
  * What it is on or in: the ferry, the lorry, the harbour, the depot.
  */

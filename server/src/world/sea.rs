@@ -65,9 +65,6 @@ const HITCH_MS: GameTime = crate::haul::COUPLE_MS;
 pub const TUG_BOX: f64 = 0.32;
 pub const CAB_BOX: f64 = 0.262;
 
-/// Empties the world keeps standing in a harbour's park.
-pub const EMPTIES: usize = 2;
-
 /// The starter pack's order: the world's gift, paid for by nobody.
 pub const GIFT: u64 = 0;
 /// The starter pack, the first harbour's first sailing: timber for the
@@ -281,7 +278,7 @@ impl World {
             if first && k == 0 {
                 for good in STARTER {
                     let id = self.objects.reserve_id();
-                    ferry.booked.push(Trailer { id, good: Some(good), units: good.per_box(), to: None, outbound: false, order: Some(GIFT) });
+                    ferry.booked.push(Trailer { id, good, units: good.per_box(), to: None, outbound: false, order: GIFT });
                 }
             }
             self.insert_at(GameObject::Car(ferry), None);
@@ -378,30 +375,21 @@ impl World {
         }
     }
 
-    /// Leaving the world: the booked boxes that fit go on the deck; then
-    /// empties, enough that the park will have `EMPTIES` standing, for the
-    /// town's lorries to fill with what it sells, as lines bring empties
-    /// to where the exports are; and the settlers waiting to come take
-    /// what room is left, two cars a slot.
+    /// Leaving the world: the booked boxes that fit go on the deck, and
+    /// the settlers waiting to come take what room is left, two cars a
+    /// slot.
     fn board(&mut self, ferry: EntityId, harbour: EntityId) {
         let waiting: Vec<EntityId> = self.waiting_settlers(harbour);
-        let parked = match self.objects.get(harbour).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.park.iter().filter(|s| s.trailer.is_some_and(|t| t.empty())).count(),
-            _ => 0,
-        };
-        let ids: Vec<u64> = (0..EMPTIES).map(|_| self.objects.reserve_id()).collect();
         let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) else { return };
         c.deck.resize(DECK, None);
-        let aboard = c.deck.iter().flatten().filter(|t| t.empty() && !t.outbound).count();
-        let empties = ids.into_iter().take(EMPTIES.saturating_sub(parked + aboard)).map(|id| Trailer { id, good: None, units: 0.0, to: None, outbound: false, order: None });
-        let mut boxes = std::mem::take(&mut c.booked).into_iter().chain(empties);
+        let mut boxes = std::mem::take(&mut c.booked).into_iter();
         for slot in c.deck.iter_mut().filter(|s| s.is_none()) {
             match boxes.next() {
                 Some(t) => *slot = Some(t),
                 None => break,
             }
         }
-        c.booked = boxes.filter(|t| !t.empty()).collect();
+        c.booked = boxes.collect();
         let room = 2 * c.deck.iter().filter(|s| s.is_none()).count();
         c.passengers = waiting.into_iter().take(room).collect();
     }
@@ -536,7 +524,7 @@ impl World {
     }
 
     /// Time to sail: what went out on the deck is the world's, and paid
-    /// for, as it casts off; the empties go back for nothing. Settlers
+    /// for, as it casts off. Settlers
     /// still aboard ride back to wait for the next.
     fn cast_off(&mut self, events: &mut EventQueue, ferry: EntityId, now: GameTime) {
         let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return };
@@ -548,9 +536,7 @@ impl World {
         for slot in c.deck.iter_mut() {
             if slot.is_some_and(|t| t.outbound) {
                 let t = slot.take().unwrap();
-                if let Some(good) = t.good.filter(|_| t.units > 0.0) {
-                    sold.push((good, t.units));
-                }
+                sold.push((t.good, t.units));
             }
         }
         c.passengers.clear();
@@ -761,9 +747,9 @@ impl World {
                 // A box from the world landed: the town pays for what is in
                 // it, unless it is the world's gift; and the lorries that
                 // fetch for the town hear of it.
-                if let Some(good) = t.good.filter(|_| t.units > 0.0 && !t.outbound) {
-                    if t.order != Some(GIFT) {
-                        crate::economy::landed(self, harbour, good, t.units, now);
+                if !t.outbound {
+                    if t.order != GIFT {
+                        crate::economy::landed(self, harbour, t.good, t.units, now);
                     }
                     crate::haul::call_lorries(self, events);
                 }

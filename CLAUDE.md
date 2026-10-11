@@ -102,7 +102,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   headless for days in under a second each, with the game's own routing,
   timetable and company rule (`server/src/shipping/`), and prints a page
   a day and a row of metrics: delivered, transit, lateness against the
-  quoted ETA, transfers, missed, berth waits, empties, coins, a hash.
+  quoted ETA, transfers, missed, berth waits, coins, a hash.
   `SCENARIO=two` runs one; `SVG=1` draws each into `.dev/scenarios/`.
   Change the network's rules here first, against the numbers
   (docs/plan-sea.md §The harness comes first).

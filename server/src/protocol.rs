@@ -419,31 +419,28 @@ impl Good {
 /// A box: a trailer off the ferry, the world's, which the town's lorries
 /// haul. Never an entity: a value that stands in one place at a time, on
 /// a ferry's deck, in a yard's slot, on a hitch, or booked beyond the sea
-/// (`World::booked`). docs/shipping.md §Boxes and lorries.
+/// (`World::booked`). A box is only ever full: the world makes it loaded
+/// for an import, a depot or a maker when an export is ready, and it is
+/// gone once unloaded into a depot's stock or carried off by the ferry.
+/// docs/shipping.md §Boxes and lorries.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Trailer {
     /// Its number, for following it wherever it is.
     #[ts(type = "number")]
     pub id: u64,
-    /// What is in it; None, or no units, is an empty.
-    pub good: Option<Good>,
+    pub good: Good,
     pub units: f64,
     /// The depot it is bound for; None is the town's, for whichever depot's
     /// lorry comes first, or the world's, going back.
     #[ts(type = "number | null")]
     pub to: Option<EntityId>,
-    /// Going out: dropped at a harbour for the ferry, an export or an empty.
+    /// Going out: an export, dropped at a harbour for the ferry.
     pub outbound: bool,
-    /// The shipment it is part of: an order, a top-up, the starter pack.
-    #[ts(type = "number | null")]
-    pub order: Option<u64>,
-}
-
-impl Trailer {
-    pub fn empty(&self) -> bool {
-        self.good.is_none() || self.units <= 0.0
-    }
+    /// The shipment it is part of: an order, a top-up, an export, the
+    /// starter pack.
+    #[ts(type = "number")]
+    pub order: u64,
 }
 
 /// A dock of a harbour's trailer park: where a box stands in it, a
@@ -522,7 +519,7 @@ pub struct Shipment {
     pub order: u64,
     #[ts(type = "number")]
     pub trailer: u64,
-    pub good: Option<Good>,
+    pub good: Good,
     pub units: f64,
     #[ts(type = "number | null")]
     pub to: Option<EntityId>,

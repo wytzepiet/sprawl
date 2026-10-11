@@ -113,13 +113,12 @@ function doing(depot: number, car: Car | null, at: { x: number; y: number } | nu
   const box = car.hitched;
   if (car.trip) {
     const home = car.trip.destination === depot;
-    const what = !box ? "" : box.units > 0 && box.good ? load(box) : "an empty";
-    const words = home ? (box && box.units > 0 ? `bringing ${what} home` : box ? "coming home with an empty" : "coming home") : box ? `taking ${what} to the harbour` : "on its way to the harbour";
+    const words = home ? (box ? `bringing ${load(box)} home` : "coming home") : box ? `taking ${load(box)} to the harbour` : "on its way to the harbour";
     return { words, eta: car.trip.eta };
   }
   if (atHarbour(at)) return { words: "at the harbour, hitching up", eta: null };
-  if (box && box.units > 0 && !box.outbound) return { words: `unloading ${load(box)}`, eta: null };
-  return { words: box && box.units > 0 ? `in the yard with ${load(box)}` : box ? "in the yard, an empty on the hitch" : "in the yard", eta: null };
+  if (box && !box.outbound) return { words: `unloading ${load(box)}`, eta: null };
+  return { words: box ? `in the yard with ${load(box)}` : "in the yard", eta: null };
 }
 
 /**

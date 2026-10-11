@@ -254,7 +254,8 @@ says beside it what it takes against what the depots hold (`game.md`
    into the harbour's trailer park. The player taps the town's one lorry
    to fetch them, and the camera follows it from the harbour to the
    depot the first time, so the player learns that shipments can be
-   followed. The crates stack, and the empties wait for the next trip.
+   followed. The box is unloaded under the depot's canopy, and the lorry
+   drives off bobtail.
 5. Build.
 
 Four beats, each teaching one thing: ships come here, things are kept

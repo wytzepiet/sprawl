@@ -6,7 +6,7 @@ import type { Car, Trailer, Trip } from "../../generated";
 
 const near = (a: number[], b: number[], d = 1e-6) => expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(d);
 const car = (c: Partial<Car>): Car => ({ owner: 1, trip: null, role: "Private", spot: null, stocks: {}, run: null, sail: null, hitched: null, load: null, deck: [], passengers: [], shunt: null, booked: [], due: 0, ...c });
-const box: Trailer = { id: 9, good: "Timber", units: 20, to: null, outbound: false, order: null };
+const box: Trailer = { id: 9, good: "Timber", units: 20, to: null, outbound: false, order: 1 };
 
 test("a vehicle is where the server's state has it, and what it carries with it", () => {
   // Parked: in its spot; a lorry's box straight behind its cab.

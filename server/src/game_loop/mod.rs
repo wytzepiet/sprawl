@@ -2572,8 +2572,7 @@ mod tests {
         let berthed = now;
         assert!(sailed, "it never sailed in");
         assert!(berthed <= FIRST_CALL + 100, "the first ferry berthed at {berthed}, due at {FIRST_CALL}");
-        assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| !t.empty()).count(), 6, "the starter pack is not aboard");
-        assert_eq!(car_of(&world, ferry).deck.iter().flatten().filter(|t| t.empty()).count(), crate::world::sea::EMPTIES, "the world sent no empties");
+        assert_eq!(car_of(&world, ferry).deck.iter().flatten().count(), 6, "the starter pack is not aboard");
         // The tug unloads while it is in, and it sails on time.
         let mut shunted = false;
         while car_of(&world, ferry).spot.is_some() {
@@ -2592,7 +2591,7 @@ mod tests {
         let until = now + day / 12;
         while stock(&world) == 0.0 && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
         assert!(stock(&world) > 0.0, "the tapped lorry brought nothing home in two hours");
-        assert!(car_of(&world, lorry).hitched.is_some_and(|t| t.empty()), "the empty did not stay on the hitch");
+        assert!(car_of(&world, lorry).hitched.is_none(), "the box was not gone into stock");
         assert!(world.lumps.iter().any(|l| l.building == depot && l.units > 0.0), "no lump for the unload");
         assert_eq!(opening(&mut world, now), [true, true, true, true, false], "the box fetched");
 

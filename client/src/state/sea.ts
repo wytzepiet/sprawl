@@ -147,5 +147,5 @@ export function legWords(s: Shipment): { words: string; eta: number | null } {
   }
 }
 
-/** A box's load in words: "20 timber", "an empty". */
-export const load = (s: { good: Shipment["good"]; units: number }) => (s.good && s.units > 0 ? `${Math.round(s.units)} ${GOODS[s.good].label}` : "an empty");
+/** A box's load in words: "20 timber". */
+export const load = (s: { good: Shipment["good"]; units: number }) => `${Math.round(s.units)} ${GOODS[s.good].label}`;

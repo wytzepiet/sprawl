@@ -38,8 +38,7 @@ rules, flat:
 - **Vehicles** as small oriented shapes, by role: cars, lorries with or
   without a box, tankers, tippers, tractors, the tug; ships as hulls their
   length in tiles, with what is on their deck drawn on it.
-- **Boxes** in yards and on decks, stacked, a colour per good; empties
-  hollow.
+- **Boxes** in yards and on decks, stacked, a colour per good.
 - **Fields** by stage, lanes at sea faintly by their use, and pins for
   shipments on their way.
 
@@ -67,7 +66,7 @@ A building, a vehicle, a box that has no flat drawing is not finished.
   difference. Each role its shape and livery: cars in their colour, a
   lorry's cab and box, a van, a tractor, the tug, the ferry's hull with
   its fifteen slots and what is on them. Boxes by their good's colour
-  (`GOODS`), empties hollow. The 3D boxes are coloured by `sea.ts`'s own
+  (`GOODS`). The 3D boxes are coloured by `sea.ts`'s own
   table, which does not yet agree (crates red there, green here).
 - **`bun run flat x,y[,r]`** (`client/scripts/flat.ts`): listens on the
   game's socket as a client does, so it draws what a player would see,

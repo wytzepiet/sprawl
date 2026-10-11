@@ -255,7 +255,7 @@ fn free_vehicle(world: &mut World, facility: EntityId, role: CarRole) -> Option<
     stable(world, facility);
     let car = fleet_of(world, facility).into_iter().find(|&car| {
         world.claims.get(&car).is_none_or(|&b| b == facility)
-            && matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.run.is_none() && !(role == CarRole::Truck && c.hitched.is_some_and(|t| !t.empty())))
+            && matches!(world.objects.get(car).map(|e| &e.object), Some(GameObject::Car(c)) if c.role == role && c.trip.is_none() && c.run.is_none() && !(role == CarRole::Truck && c.hitched.is_some()))
     })?;
     Some((car, door))
 }

@@ -87,18 +87,17 @@ export function Timetable(props: { sailing: Sailing }) {
 export function HarbourPanel(props: { id: number; depots: DepotLine[] }) {
   const b = building(props.id);
   const sailing = () => sailingOf(props.id);
-  /** The park's boxes, by good, and its empties. */
+  /** The park's boxes, by good. */
   const park = () => {
-    const by = new Map<Good | null, { boxes: number; units: number; out: number }>();
+    const by = new Map<Good, { boxes: number; units: number; out: number }>();
     for (const slot of b()?.park ?? []) {
       const t = slot.trailer;
       if (!t) continue;
-      const g = t.units > 0 ? t.good : null;
-      const e = by.get(g) ?? { boxes: 0, units: 0, out: 0 };
+      const e = by.get(t.good) ?? { boxes: 0, units: 0, out: 0 };
       e.boxes++;
       e.units += t.units;
       if (t.outbound) e.out++;
-      by.set(g, e);
+      by.set(t.good, e);
     }
     return [...by.entries()];
   };
@@ -118,11 +117,9 @@ export function HarbourPanel(props: { id: number; depots: DepotLine[] }) {
             <For each={park()}>
               {([good, e]) => (
                 <span class="inline-flex items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-2.5 text-[13px]" style={{ background: "rgb(var(--ink) / 0.07)" }}>
-                  <Show when={good} fallback={<span class="grid h-[22px] w-[22px] place-items-center rounded-full text-[11px]" style={{ border: "1.5px dashed rgb(var(--ink) / 0.4)" }}>∅</span>}>
-                    {(g) => <GoodDot good={g()} />}
-                  </Show>
+                  <GoodDot good={good} />
                   <b class="tabular-nums">{e.boxes}×</b>
-                  <span class="soft">{good ? `${Math.round(e.units)} ${GOODS[good].label}` : "empty"}{e.out ? ", going out" : ""}</span>
+                  <span class="soft">{`${Math.round(e.units)} ${GOODS[good].label}`}{e.out ? ", going out" : ""}</span>
                 </span>
               )}
             </For>

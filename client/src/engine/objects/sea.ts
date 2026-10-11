@@ -86,9 +86,8 @@ function faces(outlines: [number, number, number][][]): MeshGeometry {
  * Crates ride in a dry van, ribbed across its roof, its doors at the back
  * pale; fuel in a silver tank in a frame of its colour; timber loose in an
  * open tipper, logs in it as far along as it is full, and stone heaped in
- * one, a ridge along it. An empty is that
- * tipper bare and pale, its floor seen. A shape's colours are its own: its
- * bucket is white.
+ * one, a ridge along it. A box is only ever full, so its look never
+ * changes. A shape's colours are its own: its bucket is white.
  */
 const { w: W, l: L, h: H } = TRAILER;
 const BED = 0.045;
@@ -160,7 +159,6 @@ export function heap(c: Rgb): Shape {
 
 type Drawn = { key: string; geo: Shape };
 const TIPPER: Drawn = { key: "box_tipper", geo: tipper([0.36, 0.38, 0.42], [0.52, 0.53, 0.55]) };
-const EMPTY: Drawn = { key: "box_empty", geo: tipper([0.86, 0.86, 0.84], [0.76, 0.76, 0.74]) };
 const colour = (g: Good) => hex(GOODS[g].color);
 /** Each good's box, and a loose good's load in it. */
 const BOXES: Record<Good, { body: Drawn; load?: Drawn }> = {
@@ -174,7 +172,6 @@ const BOXES: Record<Good, { body: Drawn; load?: Drawn }> = {
  *  along as the box is full. Their base on z = 0. A box `k` as long (a
  *  van's, `motion.ts`) holds `k` as much. */
 export function boxShape(t: Pick<Trailer, "good" | "units">, k = 1): (Drawn & { scale: [number, number, number] })[] {
-  if (!t.good || t.units <= 0) return [{ ...EMPTY, scale: [1, k, 1] }];
   const { body, load } = BOXES[t.good];
   const full = Math.min(1, t.units / (GOODS[t.good].box * k));
   return [{ ...body, scale: [1, k, 1] }, ...(load ? [{ ...load, scale: [1, k * full, 1] as [number, number, number] }] : [])];

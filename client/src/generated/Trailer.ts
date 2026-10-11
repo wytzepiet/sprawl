@@ -5,27 +5,27 @@ import type { Good } from "./Good";
  * A box: a trailer off the ferry, the world's, which the town's lorries
  * haul. Never an entity: a value that stands in one place at a time, on
  * a ferry's deck, in a yard's slot, on a hitch, or booked beyond the sea
- * (`World::booked`). docs/shipping.md §Boxes and lorries.
+ * (`World::booked`). A box is only ever full: the world makes it loaded
+ * for an import, a depot or a maker when an export is ready, and it is
+ * gone once unloaded into a depot's stock or carried off by the ferry.
+ * docs/shipping.md §Boxes and lorries.
  */
 export type Trailer = { 
 /**
  * Its number, for following it wherever it is.
  */
-id: number, 
-/**
- * What is in it; None, or no units, is an empty.
- */
-good: Good | null, units: number, 
+id: number, good: Good, units: number, 
 /**
  * The depot it is bound for; None is the town's, for whichever depot's
  * lorry comes first, or the world's, going back.
  */
 to: number | null, 
 /**
- * Going out: dropped at a harbour for the ferry, an export or an empty.
+ * Going out: an export, dropped at a harbour for the ferry.
  */
 outbound: boolean, 
 /**
- * The shipment it is part of: an order, a top-up, the starter pack.
+ * The shipment it is part of: an order, a top-up, an export, the
+ * starter pack.
  */
-order: number | null, };
+order: number, };

@@ -57,9 +57,9 @@ shipping company's ferry calls on a timetable: the settlers drive their
 cars off the ramp into town, and the world's trailers are towed off into
 the trailer park, where they wait for the town's own lorries to fetch
 them to a depot. No outside vehicle drives the town's roads; the boxes
-are the world's and the lorries the town's, and an empty goes back with
-the next trip, filled with an export if there is one. What the town
-sells leaves the same way. The ferry's deck is the door's size, and the
+are the world's and the lorries the town's, and a box is only ever full:
+it is gone once unloaded at a depot, and the lorry drives off bobtail.
+What the town sells leaves the same way, in a box loaded at the depot. The ferry's deck is the door's size, and the
 door grows: more sailings, a bigger ferry, then the container port, a
 building of its own with cranes and container ships and the trade board
 (the Exchange), then berths for tankers and bulkers that land fuel or

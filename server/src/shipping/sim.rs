@@ -4,9 +4,9 @@
 //! (`voyage.rs`), and load and land boxes by `lines.rs`'s decision,
 //! the game's own; the land side is rates: each harbour's tug moves `tug`
 //! boxes an hour between the deck and the yard, and its depot's lorries
-//! make `dray` round trips an hour, drop and hook, an export or an empty
-//! in and an import out. The world keeps `EMPTIES` standing in each
-//! yard, as the game's ferry does. The company's rule runs as in the
+//! make `dray` round trips an hour, drop and hook, an export in and an
+//! import out, either or both; a box is only ever full, as in the game.
+//! The company's rule runs as in the
 //! game: a harbour standing gets the world's ferry and a line to the
 //! nearest harbour already standing, sized by the forecast (the demand
 //! between the two); a backlog left behind adds a sailing.
@@ -19,7 +19,7 @@
 //! ```text
 //! harbour A docks=9 dray=4/h tug=4/h day=0   # stands on day 0
 //! line A B ships=2 slots=15 dwell=1.25h  # a line besides the company's
-//! demand W->A crates 3/day from=0  # `empty` for empties; W is the world
+//! demand W->A crates 3/day from=0  # W is the world
 //! stay 0.5h                        # at the world, beyond the edge
 //! days 10
 //! expect delivered >= 0.95        # any metric in the table; hours bare
@@ -35,7 +35,7 @@ use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 
 use crate::engine::GameTime;
 use crate::protocol::{GridCoord, Good, DAY_MS};
-use crate::world::sea::{DECK, DWELL, EMPTIES};
+use crate::world::sea::{DECK, DWELL};
 
 use super::lanes::{Gate, Kind, Lanes};
 use super::voyage::Voyage;
@@ -67,7 +67,7 @@ struct LineSpec {
 struct Demand {
     from: char,
     to: char,
-    good: Option<Good>,
+    good: Good,
     per_day: f64,
     from_day: u64,
 }
@@ -99,12 +99,11 @@ fn duration(s: &str) -> GameTime {
     (n.parse::<f64>().unwrap_or_else(|_| panic!("not a duration: {s}")) * unit as f64).round() as GameTime
 }
 
-fn good(s: &str) -> Option<Good> {
+fn good(s: &str) -> Good {
     match s {
-        "crates" => Some(Good::Crates),
-        "fuel" => Some(Good::Fuel),
-        "timber" => Some(Good::Timber),
-        "empty" => None,
+        "crates" => Good::Crates,
+        "fuel" => Good::Fuel,
+        "timber" => Good::Timber,
         _ => panic!("no good {s}"),
     }
 }
@@ -188,7 +187,7 @@ impl Scenario {
 struct Box {
     from: Call,
     to: Call,
-    good: Option<Good>,
+    good: Good,
     ready: GameTime,
     quoted: Option<GameTime>,
     landed: Option<GameTime>,
@@ -199,7 +198,7 @@ struct Box {
 
 impl Box {
     fn units(&self) -> f64 {
-        self.good.map_or(0.0, |g| g.per_box())
+        self.good.per_box()
     }
 }
 
@@ -207,10 +206,8 @@ impl Box {
 struct Yard {
     at_berth: Option<usize>,
     yard: Vec<usize>,
-    /// Exports at the depot, waiting for an empty and a lorry.
+    /// Exports at the depot, waiting for a lorry.
     depot: VecDeque<usize>,
-    /// Empties at the depot.
-    empties: u32,
     /// The box the tug has, and which way.
     tug: Option<(usize, bool)>,
     standing: bool,
@@ -290,7 +287,6 @@ pub struct Sim<'a> {
     missed: u32,
     /// Per line: boxes aboard at each sailing, and sailings.
     filled: Vec<(usize, usize)>,
-    rides: (u32, u32),
 }
 
 /// The numbers a scenario is judged by, by name.
@@ -336,7 +332,6 @@ impl<'a> Sim<'a> {
             flow_to_line: 0,
             missed: 0,
             filled: Vec::new(),
-            rides: (0, 0),
         };
         for (p, port) in s.ports.iter().enumerate() {
             sim.at(port.day * DAY, Ev::Stand(p));
@@ -523,13 +518,9 @@ impl<'a> Sim<'a> {
     fn board(&mut self, ship: usize, b: usize) {
         self.ships[ship].deck.push(b);
         self.boxes[b].rides += 1;
-        self.rides.1 += 1;
-        if self.boxes[b].good.is_none() {
-            self.rides.0 += 1;
-        }
     }
 
-    fn new_box(&mut self, from: Call, to: Call, good: Option<Good>) -> usize {
+    fn new_box(&mut self, from: Call, to: Call, good: Good) -> usize {
         let conns = self.conns();
         let quoted = earliest(&conns, from, to, self.now).map(|j| j.arrives);
         self.boxes.push(Box { from, to, good, ready: self.now, quoted, landed: None, rides: 0, via_world: false, by_road: false });
@@ -696,18 +687,6 @@ impl<'a> Sim<'a> {
                     !go
                 });
                 self.beyond = waiting;
-                // The world keeps empties standing at the next harbour.
-                let n = self.lines[line].calls.len();
-                let next = self.lines[line].calls[(self.ships[s].at + 1) % n];
-                if let Call::Harbour(p) = next {
-                    let standing = self.ports[p as usize].yard.iter().chain(&self.ships[s].deck).filter(|&&b| self.boxes[b].good.is_none() && self.boxes[b].to == next).count();
-                    for _ in standing..EMPTIES {
-                        if self.ships[s].deck.len() < slots {
-                            let b = self.new_box(Call::World, next, None);
-                            self.board(s, b);
-                        }
-                    }
-                }
             }
         }
         self.filled[line].0 += self.ships[s].deck.len();
@@ -715,7 +694,7 @@ impl<'a> Sim<'a> {
         let opened = &mut self.opened[line];
         opened.2.get_or_insert(self.now);
         if self.now >= opened.0 + TRIAL * DAY {
-            opened.3.push((self.ships[s].at, self.ships[s].deck.iter().filter(|&&b| self.boxes[b].good.is_some()).count()));
+            opened.3.push((self.ships[s].at, self.ships[s].deck.len()));
         }
         // Out by the junctions on its way; it holds the berth it leaves
         // until it is clear of the approach. Early for its next call, it
@@ -795,37 +774,18 @@ impl<'a> Sim<'a> {
         self.tug(p);
     }
 
-    /// A lorry's round trip, drop and hook: it brings an export, filled
-    /// at the depot from the empty it kept, or an empty the depot has no
-    /// use for; and takes an import home, or an empty for an export.
+    /// A lorry's round trip, drop and hook: it brings an export from the
+    /// depot while the yard has a dock for it, and takes an import home,
+    /// where it is unloaded and gone.
     fn dray(&mut self, p: usize) {
         let here = Call::Harbour(p as u64);
         let docks = self.s.ports[p].docks;
-        let import = self.ports[p].yard.iter().position(|&b| self.boxes[b].to == here && self.boxes[b].good.is_some());
         let y = &mut self.ports[p];
-        if y.yard.len() < docks {
-            if y.empties > 0 && let Some(b) = y.depot.pop_front() {
-                y.empties -= 1;
-                y.yard.push(b);
-            } else if y.empties > 1 && import.is_some() {
-                y.empties -= 1;
-                let b = self.new_box(here, Call::World, None);
-                self.ports[p].yard.push(b);
-            }
+        if y.yard.len() < docks && let Some(b) = y.depot.pop_front() {
+            y.yard.push(b);
         }
-        let y = &mut self.ports[p];
-        let import = y.yard.iter().position(|&b| self.boxes[b].to == here && self.boxes[b].good.is_some());
-        let empty = y.yard.iter().position(|&b| self.boxes[b].to == here && self.boxes[b].good.is_none());
-        match (import, empty) {
-            (Some(i), _) => {
-                y.yard.remove(i);
-                y.empties += 1;
-            }
-            (None, Some(i)) if !y.depot.is_empty() && y.empties == 0 => {
-                y.yard.remove(i);
-                y.empties += 1;
-            }
-            _ => {}
+        if let Some(i) = y.yard.iter().position(|&b| self.boxes[b].to == here) {
+            y.yard.remove(i);
         }
         y.peak = y.peak.max(y.yard.len());
         self.at(self.now + (HOUR as f64 / self.s.ports[p].dray) as GameTime, Ev::Dray(p));
@@ -888,7 +848,7 @@ impl<'a> Sim<'a> {
         let mut stranded: BTreeMap<Call, usize> = BTreeMap::new();
         for &b in &self.ports[p].yard {
             let to = self.boxes[b].to;
-            if self.boxes[b].good.is_some() && to != here && to != Call::World && earliest(&conns, here, to, self.now).is_none() {
+            if to != here && to != Call::World && earliest(&conns, here, to, self.now).is_none() {
                 *stranded.entry(to).or_default() += 1;
             }
         }
@@ -913,8 +873,8 @@ impl<'a> Sim<'a> {
             }
         }
         let day = self.now / DAY;
-        let landed = self.boxes.iter().filter(|b| b.landed.is_some() && b.good.is_some()).count();
-        let made = self.boxes.iter().filter(|b| b.good.is_some()).count();
+        let landed = self.boxes.iter().filter(|b| b.landed.is_some()).count();
+        let made = self.boxes.len();
         let yards: Vec<String> = self.s.ports.iter().zip(&self.ports).filter(|(_, y)| y.standing).map(|(p, y)| format!("{}{}+{}", p.letter, y.yard.len(), y.depot.len())).collect();
         let at_sea: usize = self.ships.iter().map(|s| s.deck.len()).sum();
         self.pages.push(format!("  day {day}: {landed}/{made} landed, {at_sea} aboard, {} beyond, yards {}, {} ships, berth wait {:.1}h", self.beyond.len(), yards.join(" "), self.ships.len(), hours(self.berth_wait)));
@@ -922,16 +882,16 @@ impl<'a> Sim<'a> {
 
     pub fn metrics(&self) -> Metrics {
         let end = self.now;
-        let full: Vec<&Box> = self.boxes.iter().filter(|b| b.good.is_some()).collect();
-        let due = full.iter().filter(|b| b.quoted.is_some_and(|q| q <= end)).count();
-        let landed: Vec<&&Box> = full.iter().filter(|b| b.landed.is_some()).collect();
+        let all: Vec<&Box> = self.boxes.iter().collect();
+        let due = all.iter().filter(|b| b.quoted.is_some_and(|q| q <= end)).count();
+        let landed: Vec<&&Box> = all.iter().filter(|b| b.landed.is_some()).collect();
         let transit: Vec<f64> = landed.iter().map(|b| hours(b.landed.unwrap() - b.ready)).collect();
         let late: Vec<f64> = landed.iter().filter_map(|b| Some((b.landed? as f64 - b.quoted? as f64) / HOUR as f64)).collect();
         let quoted: Vec<f64> = landed.iter().filter_map(|b| Some(hours(b.quoted? - b.ready))).collect();
         let transfers = mean(&landed.iter().map(|b| b.rides.saturating_sub(1) as f64).collect::<Vec<_>>());
         // The lines between harbours: how soon each first sailed, how its
         // forecast compares with what it carried a day after its trial,
-        // and how many of those sailings left with no full box aboard.
+        // and how many of those sailings left with no box aboard.
         let links: Vec<(&Line, &(GameTime, f64, Option<GameTime>, Vec<(usize, usize)>))> = self.lines.iter().zip(&self.opened).filter(|(l, _)| !l.calls.contains(&Call::World)).collect();
         let first_sailing = links.iter().map(|(_, o)| o.2.map_or(f64::INFINITY, |t| hours(t - o.0))).fold(0.0, f64::max);
         let forecast_ratio = links.iter().filter(|(_, o)| !o.3.is_empty()).map(|(_, o)| {
@@ -951,8 +911,8 @@ impl<'a> Sim<'a> {
             })
             .collect();
         let near_empty = if after.is_empty() { 0.0 } else { after.iter().filter(|&&n| n == 0).count() as f64 / after.len() as f64 };
-        let coins_out: f64 = landed.iter().filter(|b| b.from == Call::World).map(|b| crate::economy::import(b.good.unwrap(), b.units())).sum::<f64>() + 0.0;
-        let coins_in: f64 = landed.iter().filter(|b| b.to == Call::World).map(|b| crate::economy::export(b.good.unwrap(), b.units())).sum::<f64>() + 0.0;
+        let coins_out: f64 = landed.iter().filter(|b| b.from == Call::World).map(|b| crate::economy::import(b.good, b.units())).sum::<f64>() + 0.0;
+        let coins_in: f64 = landed.iter().filter(|b| b.to == Call::World).map(|b| crate::economy::export(b.good, b.units())).sum::<f64>() + 0.0;
         let calls: u32 = self.ports.iter().map(|y| y.calls).sum();
         let (head_on, crossed, flips) = self.junctions_seen();
         let util: Vec<f64> = self.filled.iter().zip(&self.lines).filter(|(f, _)| f.1 > 0).map(|(f, l)| f.0 as f64 / (f.1 * l.slots) as f64).collect();
@@ -974,7 +934,6 @@ impl<'a> Sim<'a> {
             ("missed", self.missed as f64),
             ("util", mean(&util)),
             ("util_min", util.iter().copied().fold(f64::INFINITY, f64::min).min(1.0)),
-            ("empties", if self.rides.1 == 0 { 0.0 } else { self.rides.0 as f64 / self.rides.1 as f64 }),
             ("berth_wait", hours(self.berth_wait)),
             ("wait_max", hours(self.wait_max)),
             ("block_wait", hours(self.block_wait)),
@@ -988,7 +947,7 @@ impl<'a> Sim<'a> {
             ("loaded_per_call", if calls == 0 { 0.0 } else { self.ports.iter().map(|y| y.loaded).sum::<u32>() as f64 / calls as f64 }),
             ("coins_in", coins_in),
             ("coins_out", coins_out),
-            ("boxes", full.len() as f64),
+            ("boxes", all.len() as f64),
         ])
     }
 
@@ -1083,7 +1042,7 @@ fn scenarios_meet_their_expectations() {
     let only = std::env::var("SCENARIO").ok();
     let mut names: Vec<String> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()?.file_name().to_str()?.strip_suffix(".txt").map(String::from)).collect();
     names.sort();
-    let columns = ["delivered", "transit", "transit_p90", "late_p90", "stretch", "transfers", "missed", "util", "empties", "berth_wait", "yard_peak", "landed_per_call", "coins_in", "coins_out"];
+    let columns = ["delivered", "transit", "transit_p90", "late_p90", "stretch", "transfers", "missed", "util", "berth_wait", "yard_peak", "landed_per_call", "coins_in", "coins_out"];
     let mut table = vec![format!("{:<12} {}  hash", "scenario", columns.iter().map(|c| format!("{:>8}", &c[..c.len().min(8)])).collect::<Vec<_>>().join(" "))];
     let mut failed = Vec::new();
     for name in names.iter().filter(|n| only.as_ref().is_none_or(|o| o == *n)) {
