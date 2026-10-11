@@ -86,15 +86,23 @@ bays; and cruising when every bay near is taken.
 Square bays, 2026-10-06 (the mayor: perpendicular for everything but
 housing, and set back so they sit astride the street's tile and the
 building's). Flats keep the bays along the kerb; everything else parks
-nose in, square to the street, four bays a tile, each 0.55 from the
-street's middle, in the building's setback (`SQUARE`). A car turns
+nose in, square to the street, three bays a tile within its walls, each 0.37 from the
+street's middle, its tail at the road's edge (`SQUARE`; 0.55 in the setback until 2026-10-11). A car turns
 square at the tightest a car turns (0.45) only by starting from the
 road's middle, so it swings out there, turns in round the arc and goes
 straight in at the last, from either way along the street; and backs
 out round the same arc into its lane and drives on, through the
 give-way line (`kerb_bays`, tested against `driver.ts`: in at about
 84°, a few degrees off square, no snap). An office of twelve parks
-seven to eight at its own frontage and the rest at its door.
+eight at its own frontage and the rest at its door.
+
+A building parks along as much kerb as it needs, not every side a street
+passes (2026-10-11): as many bays as its long side holds, on its door's
+side first, then on the sides with a street all along them, the fullest
+first, until it has them. So anything that parks at the kerb is placed
+only where a street runs all along one of its sides (`World::fit`,
+"No street along a whole side, for its parking"); a house parks on its
+drive and a yard in itself, and neither needs one.
 
 Turning in gives way too: a car turns off the street when nobody is
 moving toward it from the other way (`clear_to_turn_in`), and from the

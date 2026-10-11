@@ -1,5 +1,5 @@
 import type { BuildingKind, GridCoord } from "../../generated";
-import { FACINGS, plot, yardOf } from "../../blueprints";
+import { FACINGS, kerbed, plot, yardOf } from "../../blueprints";
 
 /**
  * The town as the look sees it: a grid of tiles, each one kind of thing,
@@ -149,8 +149,8 @@ const EIGHT: [number, number][] = [...SIDES, ...CORNERS];
  * way from its tile to its street: a house's on the first side a street
  * runs straight past, or else on the diagonal where a drive meets its
  * street square, not at a hairpin; a yard's gate from a street ahead of
- * it (`World::enters`), beside first. Any other building's door is no
- * drive, and is left out.
+ * it (`World::enters`), beside first; anything else's on the first side a
+ * street runs past, the side it parks on first (`baysOf`).
  */
 function doorsOf(town: Town): Map<string, [number, number]> {
   const doors = new Map<string, [number, number]>();
@@ -167,6 +167,17 @@ function doorsOf(town: Town): Map<string, [number, number]> {
         SIDES.find(([fx, fy]) => street(c + fx, r + fy) && (town.linked(c + fx, r + fy, c + fx - fy, r + fy + fx) || town.linked(c + fx, r + fy, c + fx + fy, r + fy - fx))) ??
         CORNERS.find(([fx, fy]) => street(c + fx, r + fy) && square(c + fx, r + fy, fx, fy));
       if (door) doors.set(`${c},${r}`, door);
+    }
+  }
+  // One that parks at the kerb: the first street beside it, its tiles and
+  // ways in the server's order, which is this frame's turned half round.
+  const kerbside = new Set<number>();
+  for (let r = town.h - 1; r >= 0; r--) {
+    for (let c = town.w - 1; c >= 0; c--) {
+      const t = town.tile(c, r);
+      if (!isBuilt(t) || !kerbed(t.kind as BuildingKind) || t.id === undefined || kerbside.has(t.id)) continue;
+      const way = ([[1, 0], [0, 1], [0, -1], [-1, 0]] as [number, number][]).find(([dx, dy]) => street(c + dx, r + dy));
+      if (way) doors.set(`${c},${r}`, way), kerbside.add(t.id);
     }
   }
   for (const id of yarded) {

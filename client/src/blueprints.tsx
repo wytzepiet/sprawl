@@ -49,6 +49,18 @@ export interface Blueprint {
 /** The four ways a plot can lie: which side the lot and street are on. */
 export const FACINGS: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
+/** A kind that parks at the kerb before it: neither a house's drive nor a
+ *  yard. Mirrors `lots::kerbed`. */
+export const kerbed = (kind: BuildingKind) => kind !== "House" && BLUEPRINTS[kind].lot[1] === 0;
+
+/** A building's tiles that face the way (dx, dy), nothing of its own
+ *  beyond them, in order along that side. Mirrors `lots::side_of`. */
+export function sideOf(tiles: GridCoord[], [dx, dy]: [number, number]): GridCoord[] {
+  const on = (x: number, y: number) => tiles.some((t) => t.x === x && t.y === y);
+  const along = (t: GridCoord) => t.x * Math.abs(dy) + t.y * Math.abs(dx);
+  return tiles.filter((t) => !on(t.x + dx, t.y + dy)).sort((a, b) => along(a) - along(b));
+}
+
 export interface Plot {
   size: [number, number];
   building: [[number, number], [number, number]];

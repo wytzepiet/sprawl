@@ -1,4 +1,4 @@
-import { BLUEPRINTS, FACINGS, gateOf, plot, yardOf } from "../blueprints";
+import { BLUEPRINTS, FACINGS, gateOf, kerbed, plot, sideOf, yardOf } from "../blueprints";
 import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType, Tool } from "../generated";
 
 /**
@@ -103,6 +103,8 @@ export function fit(h: Hand, kind: BuildingKind, at: GridCoord, facing: number):
     return p(null, door);
   }
   if (!door) return p(BLUEPRINTS[kind].lot[1] > 0 ? "No street before its yard" : "No street beside it");
+  // One that parks at the kerb needs a street all along one side, for its bays.
+  if (kerbed(kind) && !FACINGS.some((d) => streetAlong(h, sideOf(tiles, d), d))) return p("No street along a whole side, for its parking");
   return p(null, door);
 }
 
@@ -211,6 +213,13 @@ function tooSharp(h: Hand, at: GridCoord, dx: number, dy: number, outgoingOnly: 
     const p = h.at.get(id);
     return !!p && (p.x - at.x) * dx + (p.y - at.y) * dy > 0;
   });
+}
+
+/** `World::street_along`: a street tile before each of these tiles on the
+ *  side (dx, dy), each joined to the next. */
+function streetAlong(h: Hand, run: GridCoord[], [dx, dy]: [number, number]): boolean {
+  const out = run.map((t) => ({ x: t.x + dx, y: t.y + dy }));
+  return out.length > 0 && out.every((t) => nodeAt(h, t) && !nodeAt(h, t)!.node.road) && out.every((t, i) => i === 0 || connected(h, out[i - 1], t));
 }
 
 function connected(h: Hand, a: GridCoord, b: GridCoord): boolean {

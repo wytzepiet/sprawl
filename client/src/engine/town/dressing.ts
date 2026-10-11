@@ -62,15 +62,6 @@ export interface Dressing {
 /** A lorry bay's depth: a lorry and a little. */
 const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
 
-/** Where a car stands in a bay at the kerb, as the server has it
- *  (`lots.rs`): along the kerb, its middle this far from its street's
- *  middle line (`KERB`), two to a tile a quarter either side of the
- *  middle (`BAY_AT`); nose in, this far (`SQUARE`), four to a tile. */
-const KERB = 0.305;
-const BAY_AT = 0.25;
-const SQUARE = 0.55;
-const SQUARE_AT = [-0.3, -0.1, 0.1, 0.3];
-
 /** A number in [0, 1) that is the same for the same tile and salt. */
 function hash(c: number, r: number, salt: number) {
   let s = (c * 374761393 + r * 668265263 + salt * 1013904223) | 0;
@@ -194,15 +185,10 @@ function park(town: Town): Car[] {
   const cars: Car[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      for (const { side: [sx, sy], square, halves } of baysAt(town, c, r)) {
-        const [ux, uy] = [Math.abs(sy), Math.abs(sx)];
-        const out = square ? SQUARE : KERB;
-        for (const a of square ? SQUARE_AT : halves.map((s) => s * BAY_AT)) {
-          const [x, y] = [c + 0.5 + ux * a + sx * out, r + 0.5 + uy * a + sy * out];
-          const [hx, hy] = [Math.round(x * 100), Math.round(y * 100)];
-          if (hash(hx, hy, 11) < 0.35) continue;
-          cars.push({ x, y, angle: square ? Math.atan2(sy, sx) : Math.atan2(uy, ux), colour: Math.floor(hash(hx, hy, 13) * 8) });
-        }
+      for (const { x, y, angle } of baysAt(town, c, r)) {
+        const [hx, hy] = [Math.round(x * 100), Math.round(y * 100)];
+        if (hash(hx, hy, 11) < 0.35) continue;
+        cars.push({ x, y, angle, colour: Math.floor(hash(hx, hy, 13) * 8) });
       }
     }
   }

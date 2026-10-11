@@ -448,8 +448,9 @@ impl World {
     /// May a kind be placed round `at` facing this way, and if not, why,
     /// in the words the hand's preview says it in (`may.ts` `fit`): open
     /// land under the whole plot, or a road's dead end it stands over;
-    /// a street before its front, its yard's if it keeps one; and a
-    /// harbour's back on open sea, which brings its own street.
+    /// a street before its front, its yard's if it keeps one, or all along
+    /// one side for one that parks at the kerb; and a harbour's back on
+    /// open sea, which brings its own street.
     pub fn fit(&self, kind: BuildingKind, at: GridCoord, facing: u8) -> Result<Vec<GridCoord>, &'static str> {
         let tiles = Self::plot_at(kind, at, facing);
         for &t in &tiles {
@@ -472,7 +473,11 @@ impl World {
                 None => Err("No berth: its back is not on the sea"),
             };
         }
+        // A building that parks at the kerb needs a street all along one
+        // side, where its bays go (`kerb_bays`).
+        use crate::world::lots::{kerbed, side_of, SIDES};
         match self.driveway_for(&tiles, kind, facing) {
+            Some(_) if kerbed(kind) && !SIDES.iter().any(|&d| self.street_along(&side_of(&tiles, d), d)) => Err("No street along a whole side, for its parking"),
             Some(_) => Ok(tiles),
             None if crate::blueprint::blueprint(kind).lot.1 > 0 => Err("No street before its yard"),
             None => Err("No street beside it"),

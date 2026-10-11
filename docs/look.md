@@ -112,7 +112,7 @@ The code is `client/src/engine/town/`:
   diagonals and industrial streets stay bare, and so does a verge with
   bays. Cars are parked where the game parks them (`kerb_bays` in
   `lots.rs`, mirrored by `baysAt` in `surface.ts`): along the kerb before
-  a block of flats, nose in before a shop, an office or a big box, where
+  a block of flats, nose in before a shop, an office or a big box, as many as its long side holds, on its door's side first and others only if that is short, evenly within its walls, where
   the street runs straight past, with a gap here and there; not before
   homes, which park on their drives (2026-10-11: the kerb cars once drawn
   before homes were cars the game never parked). A depot's yard has lorry
@@ -137,8 +137,8 @@ The code is `client/src/engine/town/`:
   sidewalk runs on between a yard and its street and the gate crosses it;
   a harbour all through, its trailer park and apron, a strip of quay at
   the water; and a row of bays where the server lays them, a lane along
-  the kerb before flats, a forecourt nose in before shops, its cars'
-  noses over a last strip of pavement at the wall. Each tile's asphalt is
+  the kerb before flats, a forecourt nose in before shops, the cars close
+  to the road and a strip of pavement between them and the wall. Each tile's asphalt is
   one outline, its corners rounded in and out, carried over the seam
   where the next tile carries it on, so a street flows into a yard or a
   forecourt as one shape. The pavement is cut to it, a kerb stone where
@@ -150,8 +150,8 @@ The code is `client/src/engine/town/`:
   straight lines, a diagonal as far out as a straight edge, so a diagonal
   street is as wide as a straight one; but never on the diagonal from a
   building to a road, so a building's corner by a street stays square),
-  then every corner rounded as the
-  terrain rounds a shore (`soften`). So a street's pavement is its sidewalk,
+  then every corner rounded a little, a kerb's corner rather than a
+  shore's (`soften`, tighter since 2026-10-11). So a street's pavement is its sidewalk,
   a town centre is paved shop to shop, a suburb is green with a sidewalk
   round each block, and the grass left between blocks has soft edges. Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
