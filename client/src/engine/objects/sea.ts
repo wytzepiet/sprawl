@@ -157,8 +157,23 @@ export function heap(c: Rgb): Shape {
   return shape([[faces([[p(1, -1), p(1, 1), r(1), r(-1)], [p(-1, 1), p(-1, -1), r(-1), r(1)], [p(1, 1), p(-1, 1), r(1)], [p(-1, -1), p(1, -1), r(-1)]]), [0, 0, 0], shade(c)]]);
 }
 
+/** A dropside flatbed: a deck, sides and a tail a hand high, and a
+ *  headboard behind the cab; what it carries is open to the sky. */
+function flatbed(sides: Shade, deck: Shade): Shape {
+  const side = (w: number, l: number, x: number, y: number, h: number): Part => [box(w, l, h), [x, y, BED + h / 2], sides];
+  return shape([
+    chassis(),
+    [box(W, L, 0.012), [0, 0, BED + 0.006], deck],
+    side(WALL, L, (W - WALL) / 2, 0, 0.035),
+    side(WALL, L, -(W - WALL) / 2, 0, 0.035),
+    side(INSIDE.w, WALL, 0, -(L - WALL) / 2, 0.035),
+    side(INSIDE.w, WALL, 0, (L - WALL) / 2, RIM + 0.04),
+  ]);
+}
+
 type Drawn = { key: string; geo: Shape };
 const TIPPER: Drawn = { key: "box_tipper", geo: tipper([0.36, 0.38, 0.42], [0.52, 0.53, 0.55]) };
+const FLATBED: Drawn = { key: "rigid_flatbed", geo: flatbed([0.36, 0.38, 0.42], [0.46, 0.4, 0.34]) };
 const colour = (g: Good) => hex(GOODS[g].color);
 /** Each good's box, and a loose good's load in it. */
 const BOXES: Record<Good, { body: Drawn; load?: Drawn }> = {
@@ -168,14 +183,25 @@ const BOXES: Record<Good, { body: Drawn; load?: Drawn }> = {
   Stone: { body: TIPPER, load: { key: "load_Stone", geo: heap(colour("Stone")) } },
 };
 
+export type BoxPart = Drawn & { scale: [number, number, number] };
+
 /** A box's parts, each with its scale: the body whole, a load as far
- *  along as the box is full. Their base on z = 0. A box `k` as long (a
- *  van's, `motion.ts`) holds `k` as much. */
-export function boxShape(t: Pick<Trailer, "good" | "units">, k = 1): (Drawn & { scale: [number, number, number] })[] {
+ *  along as the box is full. Their base on z = 0. */
+export function boxShape(t: Pick<Trailer, "good" | "units">): BoxPart[] {
   const { body, load } = BOXES[t.good];
-  const full = Math.min(1, t.units / (GOODS[t.good].box * k));
-  return [{ ...body, scale: [1, k, 1] }, ...(load ? [{ ...load, scale: [1, k * full, 1] as [number, number, number] }] : [])];
+  return [{ ...body, scale: [1, 1, 1] }, ...(load ? [loaded(load, t, 1)] : [])];
 }
+
+/** A rigid lorry's body behind its cab, `k` of a box long and holding
+ *  `k` as much (`VAN_BOX` in `motion.ts`): a builder's load, timber or
+ *  stone, stacked or heaped on a dropside flatbed, there to be seen; a
+ *  shop's in the closed box, or the tank, a box of it is. */
+export function rigidShape(t: Pick<Trailer, "good" | "units">, k: number): BoxPart[] {
+  const { body, load } = BOXES[t.good];
+  return [{ ...(load ? FLATBED : body), scale: [1, k, 1] }, ...(load ? [loaded(load, t, k)] : [])];
+}
+
+const loaded = (load: Drawn, t: Pick<Trailer, "good" | "units">, k: number): BoxPart => ({ ...load, scale: [1, k * Math.min(1, t.units / (GOODS[t.good].box * k)), 1] });
 
 /** A lorry's tractor, CAB long: the cab-over cab at the front, `CAB_BLOCK`
  *  of it, its windows a dark band under the roof; behind it the chassis

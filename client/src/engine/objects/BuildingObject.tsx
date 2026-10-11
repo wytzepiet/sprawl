@@ -4,6 +4,7 @@ import type { InstancePool } from "../InstancePool";
 import { boxGeometry } from "./buildings";
 import { BLUEPRINTS, FACINGS, standing } from "../../blueprints";
 import { placeBox } from "./CarObject";
+import { boxShape } from "./sea";
 import { KERB_Z } from "../town/draw";
 import { INSET } from "../town/footprint";
 import { eaves } from "../town/mass";
@@ -138,7 +139,7 @@ export function mountBuilding(
     for (let a = -wide / 2 + 0.2; a < wide / 2 - 0.1; a += 0.42) if (Math.abs(a) > SPAN.across / 2 + 0.1 && Math.abs(a - DOLPHINS.across) > 0.12) at("bollard", [0.05, 0.05, 0.05], IRON, a, -0.07, KERB_Z);
     at("terminal", [0.36, 0.26, 0.17], hex(BLUEPRINTS[data.kind].material), -(wide / 2 - 0.32), -0.18, KERB_Z);
     at("roof", [0.4, 0.3, 0.025], TOWER, -(wide / 2 - 0.32), -0.18, KERB_Z + 0.17);
-    for (const { pose, trailer } of data.park) if (trailer) boxes.push(placeBox(pool, trailer, pose, KERB_Z));
+    for (const { pose, trailer } of data.park) if (trailer) boxes.push(placeBox(pool, boxShape(trailer), pose, KERB_Z));
   }
 
   // A site going up: its slab, the walls rising on it as its materials

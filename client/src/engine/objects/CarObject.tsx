@@ -13,9 +13,9 @@ import type { Theme } from "../theme";
 import type { Strip } from "./strip";
 import { field, FIELD_Z, leaves } from "./BuildingObject";
 import { CAR, ROAD_Z, VAN } from "./roadGeometry";
-import { behind, boxShape, DECK_Z, deckPose, FERRY_SHAPE, LORRY_SHAPE, shunting, TUG, TUG_SHAPE } from "./sea";
+import { behind, boxShape, type BoxPart, DECK_Z, rigidShape, deckPose, FERRY_SHAPE, LORRY_SHAPE, shunting, TUG, TUG_SHAPE } from "./sea";
 import type { Drive, Pose } from "./driver";
-import { aboard, ahead, carried, colourOf, driveOf, LIVERY, type Load, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
+import { aboard, ahead, carried, colourOf, driveOf, LIVERY, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
 import { getEntity } from "../../state/gameObjects";
 import type { Building, Car, GameObjectEntry } from "../../generated";
 import type { Pose as Stand } from "../../generated/Pose";
@@ -64,9 +64,9 @@ function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look):
 /** A box (`sea.ts`) standing at a pose, its base at `z`, `k` of a box's
  *  length; moved, or taken away. A box is the world's: no building's look
  *  is on it. */
-export function placeBox(pool: InstancePool, t: Load, p: Stand, z: number, k = 1) {
+export function placeBox(pool: InstancePool, shape: BoxPart[], p: Stand, z: number) {
   const placed = (q: Stand): [[number, number, number], [number, number, number]] => [[q.at[0], q.at[1], z], [0, 0, q.heading - Math.PI / 2]];
-  const parts = boxShape(t, k).map(({ key, geo, scale }) => {
+  const parts = shape.map(({ key, geo, scale }) => {
     const k = paint(pool, key, geo, WHITE, SOLID);
     return { key: k, id: pool.addInstance(k, ...placed(p), scale) };
   });
@@ -150,7 +150,8 @@ export function mountCar(
 
 /** A lorry, parked or on the move: the cab, and the box on its hitch if
  *  it has one, as `driver.ts` steers them; a bobtail cab alone, without.
- *  A van the same, rigid, its box short (`vanParts`) and its load in it. */
+ *  A van the same, rigid, its body short (`vanParts`): a flatbed with a
+ *  builder's load on it, or a shop's in a closed box (`rigidShape`). */
 function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext, look: Look): () => void {
   const cab = paint(pool, "lorry_cab", LORRY_SHAPE, LIVERY.cab, look);
   const stand = (p: Pose): Stand => ({ at: [p.x, p.y], heading: p.heading });
@@ -165,7 +166,7 @@ function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext
   const first = pose();
   const a = pool.addInstance(cab, ...placed(first.body));
   const load = carried(car);
-  const box = load && placeBox(pool, load, first.box, GROUND, van ? VAN_BOX : 1);
+  const box = load && placeBox(pool, van ? rigidShape(load, VAN_BOX) : boxShape(load), first.box, GROUND);
   carPoses.set(id, first.body.at);
   parts.set(id, [{ key: cab, id: a }, ...(box ? box.parts : [])]);
   const stop = drive && ctx.beforeRender(() => {
@@ -200,7 +201,7 @@ function mountFerry(id: number, car: Car, pool: InstancePool, ctx: EngineContext
     const i = pool.addInstance(key, ...at(p));
     return { move: (q: Stand) => pool.updateInstance(key, i, ...at(q)), remove: () => pool.removeInstance(key, i) };
   };
-  const on = aboard(car).map(({ k, d, box, settler: who }) => ({ k, d, it: (box ? (p: Stand) => placeBox(pool, box, p, DECK_Z) : settler(who!))(ahead(deckPose(p0, k), d)) }));
+  const on = aboard(car).map(({ k, d, box, settler: who }) => ({ k, d, it: (box ? (p: Stand) => placeBox(pool, boxShape(box), p, DECK_Z) : settler(who!))(ahead(deckPose(p0, k), d)) }));
   carPoses.set(id, p0.at);
   parts.set(id, [{ key: hull, id: h }]);
   const stop = sail && ctx.beforeRender(() => {
@@ -227,7 +228,7 @@ function mountTug(id: number, car: Car, pool: InstancePool, ctx: EngineContext):
   const p0 = move ? move(simNow()) : { tug: car.spot!, box: behind(car.spot!) };
   const placed = (q: Stand): [[number, number, number], [number, number, number]] => [[q.at[0], q.at[1], GROUND], [0, 0, q.heading - Math.PI / 2]];
   const t = pool.addInstance(key, ...placed(p0.tug));
-  const box = car.hitched && placeBox(pool, car.hitched, p0.box, GROUND);
+  const box = car.hitched && placeBox(pool, boxShape(car.hitched), p0.box, GROUND);
   carPoses.set(id, p0.tug.at);
   parts.set(id, [{ key, id: t }, ...(box ? box.parts : [])]);
   const stop = move && ctx.beforeRender(() => {

@@ -118,9 +118,10 @@ export function carried(car: Car): Load | null {
 }
 
 /** A van is a small rigid lorry, VAN long: a lorry's tractor at the front,
- *  and on its chassis from behind the cab a box built and painted as a box
- *  is (`sea.ts`), the rest of the length; `VAN_BOX` of a box's length, so
- *  it holds that share of one. */
+ *  and on its chassis from behind the cab its body (`rigidShape` in
+ *  `sea.ts`), the rest of the length: a flatbed for a builder's load, a
+ *  box for a shop's; `VAN_BOX` of a box's length, so it holds that share
+ *  of one. */
 export const VAN_BOX = (VAN.l - CAB_BLOCK) / TRAILER.l;
 export const vanParts = (middle: Stand): { body: Stand; box: Stand } => ({ body: ahead(middle, (VAN.l - CAB.l) / 2), box: ahead(middle, -CAB_BLOCK / 2) });
 
