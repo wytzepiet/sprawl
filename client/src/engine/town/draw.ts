@@ -23,6 +23,14 @@ export type Colour = { r: number; g: number; b: number };
 
 /** A dock's door: dark, in any light. */
 const DOOR: Colour = { r: 0.22, g: 0.24, b: 0.3 };
+/** A depot's canopy: a sheet-metal roof, pale, on posts a shade under it;
+ *  its underside over a box's roof (`TRAILER.h`) and under the hall's
+ *  eaves, and a fascia's depth thick. */
+const CANOPY: Colour = { r: 0.78, g: 0.78, b: 0.77 };
+const POST: Colour = { r: 0.5, g: 0.5, b: 0.5 };
+const CANOPY_Z = 0.3;
+const FASCIA = 0.035;
+const POST_W = 0.03;
 /** A quay's wall, stone a shade under the paving, and its capping, a
  *  shade over it. */
 const QUAY: Colour = { r: 0.6, g: 0.58, b: 0.54 };
@@ -93,6 +101,17 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
     doors.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
   }
   add("doors", doors, DOOR);
+  // A depot's canopy over its docks: a slab, and a post at each end of
+  // its front edge.
+  const canopy: MeshGeometry = { positions: [], normals: [], indices: [] };
+  const posts: MeshGeometry = { positions: [], normals: [], indices: [] };
+  for (const { roof, posts: feet } of dressing.canopies) {
+    cuboid(canopy, roof, CANOPY_Z, CANOPY_Z + FASCIA);
+    const h = POST_W / 2;
+    for (const [x, y] of feet) cuboid(posts, [[x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h]], KERB_Z, CANOPY_Z);
+  }
+  add("canopy", canopy, CANOPY);
+  add("canopyPosts", posts, POST);
   // Each wound as the sheets' outlines are.
   add("lines", flatPolygons([...dressing.yardLines, ...marks].map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
   return { pieces, dressing, props: mass.props };
@@ -127,6 +146,23 @@ function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeom
     });
   }
   return { wall, cap };
+}
+
+/** A block over a quad on the plan, from z0 up to z1: its top and its
+ *  four sides; its bottom is the shade under it. */
+function cuboid(g: MeshGeometry, quad: Pt[], z0: number, z1: number) {
+  // The map's frame is the plan's turned half round.
+  const p = ([x, y]: Pt, z: number) => [-x, -y, z];
+  face(g, quad.map((q) => p(q, z1)), [0, 0, 1]);
+  const [cx, cy] = [quad.reduce((s, q) => s + q[0], 0) / 4, quad.reduce((s, q) => s + q[1], 0) / 4];
+  quad.forEach((a, i) => {
+    const b = quad[(i + 1) % 4];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let n = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
+    if (n[0] * (a[0] - cx) + n[1] * (a[1] - cy) < 0) n = [-n[0], -n[1]];
+    face(g, [p(a, z0), p(b, z0), p(b, z1), p(a, z1)], [-n[0], -n[1], 0]);
+  });
+  face(g, quad.map((q) => p(q, z0)), [0, 0, -1]);
 }
 
 /** A flat quad, its corners in order round it, facing `n`: wound as the

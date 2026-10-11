@@ -40,6 +40,15 @@ export interface Dock {
   lorry: boolean;
 }
 
+/** A depot's canopy over its docks, a tile of it: a flat roof from the
+ *  wall `from` along (ux, uy) `len`, out over the bays (`ox`, `oy`) to
+ *  `CANOPY_DEPTH`, and the posts under its front edge where its run ends,
+ *  each a point on the ground. */
+export interface Canopy {
+  roof: Pt[];
+  posts: Pt[];
+}
+
 /** A parked car: where its middle is, which way it points (radians from
  *  +x, y down), and which of a handful of colours. */
 export interface Car {
@@ -55,12 +64,19 @@ export interface Dressing {
   trees: Tree[];
   cars: Car[];
   docks: Dock[];
+  canopies: Canopy[];
   /** The lines between the bays of yards, painted on their asphalt. */
   yardLines: Pt[][];
 }
 
 /** A lorry bay's depth: a lorry and a little. */
 const DOCK_DEPTH = TRAILER.l + CAB.l + 0.08;
+/** How far a depot's canopy reaches out from its wall: over a box backed
+ *  up to the door (the server's `WALL` is 0.06 nearer the yard than the
+ *  drawn wall, and the box's tail stands 0.09 short of it), its cab out
+ *  in the light. Its posts stand in from its ends, clear of the bays. */
+export const CANOPY_DEPTH = 0.64;
+const POST_IN = 0.06;
 
 /** A number in [0, 1) that is the same for the same tile and salt. */
 function hash(c: number, r: number, salt: number) {
@@ -104,7 +120,7 @@ export function dress(town: Town, facts: Facts): Dressing {
   return {
     trees: trees.filter((t) => !onDrive(t)),
     cars: [...park(town), ...drives.cars],
-    docks: lorries.docks, yardLines: lorries.lines,
+    docks: lorries.docks, canopies: lorries.canopies, yardLines: lorries.lines,
   };
 }
 
@@ -148,15 +164,25 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[] } {
 }
 
 /** A depot's docks: wherever its yard meets its hall, a row of lorry bays
- *  along the hall's wall, some with a lorry backed up to the door. */
-function docks(town: Town, facts: Facts): { docks: Dock[]; lines: Pt[][] } {
-  const out: Dock[] = [], lines: Pt[][] = [];
+ *  along the hall's wall, some with a lorry backed up to the door; and a
+ *  depot's, under a canopy, where a box is unloaded into stock and gone,
+ *  or loaded for the world (docs/shipping.md §Boxes and lorries). */
+function docks(town: Town, facts: Facts): { docks: Dock[]; canopies: Canopy[]; lines: Pt[][] } {
+  const out: Dock[] = [], canopies: Canopy[] = [], lines: Pt[][] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       for (const [dc, dr] of facts.docks(c, r)) {
         // The wall, and along it (ux, uy); out of the bays is (-dc, -dr).
         const [wx, wy] = [c + 0.5 + dc * (0.5 + INSET), r + 0.5 + dr * (0.5 + INSET)];
         const [ux, uy] = [-dr, dc];
+        if (town.tile(c, r).kind === "Depot") {
+          // The run goes on along the wall, or ends at the hall's corner,
+          // its wall INSET in from the tile's edge.
+          const on = (s: number) => facts.docks(c + s * ux, r + s * uy).some(([a, b]) => a === dc && b === dr);
+          const [t0, t1] = [on(-1) ? -0.5 : -0.5 + INSET, on(1) ? 0.5 : 0.5 - INSET];
+          const posts = [...(on(-1) ? [] : [t0 + POST_IN]), ...(on(1) ? [] : [t1 - POST_IN])].map((t): Pt => [wx + ux * t - dc * (CANOPY_DEPTH - POST_IN), wy + uy * t - dr * (CANOPY_DEPTH - POST_IN)]);
+          canopies.push({ roof: strip(wx, wy, ux, uy, t0, t1, -dc, -dr, 0, CANOPY_DEPTH), posts });
+        }
         for (let k = 0; k <= DOCKS; k++) {
           const t = k / DOCKS - 0.5;
           lines.push(strip(wx, wy, ux, uy, t - 0.008, t + 0.008, -dc, -dr, 0, DOCK_DEPTH));
@@ -168,7 +194,7 @@ function docks(town: Town, facts: Facts): { docks: Dock[]; lines: Pt[][] } {
       }
     }
   }
-  return { docks: out, lines };
+  return { docks: out, canopies, lines };
 }
 
 /** A strip along the line from (x0, y0) along (ux, uy) for `len`, on the
