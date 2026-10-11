@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Pt } from "./driver";
+import { drawnPath } from "./drawnPath";
+import { LANE_OFFSET } from "./roadGeometry";
 
 /** A drive sampled finely from end to end: the most any body moves, and
  *  turns, from one sample to the next. */
@@ -76,4 +78,73 @@ test("a lorry leaving a yard by a hairpin at its door drives it, not a loop", ()
   const d = driveTrip(out, LORRY_RIG)!;
   expect(turning(d)).toBeLessThan(3.2);
   expect(jolts(d).move).toBeLessThan(2.5);
+});
+
+test("whatever the way, a vehicle keeps to it: near it, as far as it, and never a jump", () => {
+  // Ways at random, a few hundred, made as the server makes them: lot
+  // nodes at either end, where they are, at any angle, from a hand's
+  // width apart to a tile (a yard's lane meeting its door, a drive, a kerb
+  // bay's swing); streets between, a tile a step, square or diagonal, on
+  // their lane. So tight corners, hairpins through a door, and U-turns
+  // round a block. Cars, lorries, and cars backing out.
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const pick = <T,>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
+  for (let n = 0; n < 300; n++) {
+    let [x, y, h] = [0, 0, Math.floor(rand() * 8) * (Math.PI / 4)];
+    const route: Pt[] = [[x, y]];
+    const [fromLot, toLot] = [Math.floor(rand() * 4), Math.floor(rand() * 4)];
+    const streets = 2 + Math.floor(rand() * 6);
+    const lorry = rand() < 0.5;
+    // A car backing out of its drive backs one edge, and drives off
+    // forward the way its nose points, or round to one side of it.
+    const backsOut = !lorry && rand() < 0.3 ? 1 : 0;
+    for (let k = 0; k < fromLot + streets + toLot; k++) {
+      const lot = k < fromLot || k >= fromLot + streets;
+      if (k === 1 && backsOut) h += Math.PI + pick([Math.PI / 2, -Math.PI / 2, Math.PI / 4, -Math.PI / 4]);
+      else if (k > 0) h += lot ? pick([0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2]) : pick([0, 0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2]);
+      const l = lot ? pick([0.05, 0.3, 0.5, 1]) : h % (Math.PI / 2) ? Math.SQRT2 : 1;
+      [x, y] = [x + Math.cos(h) * l, y + Math.sin(h) * l];
+      route.push([x, y]);
+    }
+    const len = route.length;
+    const t = { route_positions: route, from_lot: Math.max(fromLot, backsOut), to_lot: toLot, backing: backsOut ? ([[0, 1]] as [number, number][]) : [] };
+    const d = driveTrip(t, lorry ? LORRY_RIG : CAR_RIG);
+    if (!d) continue;
+    // The way as it is drawn, each part on its own.
+    const drawn: Pt[] = [];
+    for (const [i, j] of backsOut ? [[0, 1], [1, len - 1]] : [[0, len - 1]]) {
+      const p = drawnPath(route.slice(i, j + 1).map(([x, y]) => ({ x, y })), LANE_OFFSET, Math.max(t.from_lot - i, i > 0 ? 1 : 0), Math.max(j + 1 - (len - toLot), j < len - 1 ? 1 : 0));
+      if (p) drawn.push(...p.points.map((q): Pt => [q.x, q.y]));
+    }
+    const off = (q: Pt) => {
+      let best = Infinity;
+      for (let i = 1; i < drawn.length; i++) {
+        const [a, b] = [drawn[i - 1], drawn[i]];
+        const [ex, ey] = [b[0] - a[0], b[1] - a[1]];
+        const u = Math.max(0, Math.min(1, ((q[0] - a[0]) * ex + (q[1] - a[1]) * ey) / (ex * ex + ey * ey || 1)));
+        best = Math.min(best, Math.hypot(q[0] - a[0] - ex * u, q[1] - a[1] - ey * u));
+      }
+      return best;
+    };
+    let [travel, stray, box] = [0, 0, 0];
+    let prev = d.at(0);
+    for (let s = 0.01; s <= d.length; s += 0.01) {
+      const p = d.at(s);
+      const step = Math.hypot(p.body.x - prev.body.x, p.body.y - prev.body.y);
+      travel += step;
+      stray = Math.max(stray, off([p.body.x, p.body.y]));
+      if (p.trailer && prev.trailer) box = Math.max(box, Math.hypot(p.trailer.x - prev.trailer.x, p.trailer.y - prev.trailer.y));
+      // A hundredth of a tile on, the body never more than two and a half.
+      expect(step).toBeLessThan(0.025);
+      prev = p;
+    }
+    // Never a jump of its box; never further from its way than a little
+    // over a lane; never further driven than the way is long, and a bit
+    // for the nose swinging out of its corners:
+    // a driver who lost the way and went round a loop would be all three.
+    expect(box).toBeLessThan(0.04);
+    expect(stray).toBeLessThan(0.35);
+    expect(travel).toBeLessThan(1.15 * d.length + 0.15);
+  }
 });
