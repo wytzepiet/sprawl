@@ -15,6 +15,9 @@ pub const MIN_GAP: f64 = 0.5;
 pub const MIN_TURN_SPEED: f64 = 0.5;
 pub const ACCELERATION: f64 = 0.45;
 pub const DECELERATION: f64 = 0.4;
+/// Braking for a stop the driver plans: a tile and a half a second
+/// squared, under two metres a second lost each second.
+pub const HALT: f64 = 0.15;
 pub const INTERSECTION_STOP_MARGIN: f64 = 0.4;
 /// How far a vehicle reaches ahead of and behind the point the simulation
 /// moves. A car is 0.29 tiles about its middle; a lorry is a cab-over
@@ -50,6 +53,11 @@ pub enum Obstacle {
         accel: f64,
     },
     MustStop {
+        distance: f64,
+    },
+    /// A stop the driver plans: where the gear changes, or at the end of
+    /// the way, braking gently all the way in (`HALT`).
+    Halt {
         distance: f64,
     },
 }
