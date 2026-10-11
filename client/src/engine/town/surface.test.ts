@@ -74,9 +74,10 @@ describe("asphalt and pavement", () => {
     const gate = t.door!(1, 2) ? 1 : t.door!(2, 2) ? 2 : 3;
     expect(t.door!(gate, 2)).toEqual([0, -1]);
     for (const c of [1, 2, 3]) expect(on([c + 0.5, 1.9])).toBe(c === gate);
-    // Its lorries stand on it.
+    // Its gate is the middle of its front, and its lorries stand on it.
+    expect(gate).toBe(2);
     const { docks } = dress(t, facts(t));
-    expect(docks.length).toBe(9);
+    expect(docks.length).toBe(8);
     expect(docks.every((d) => [0.05, 0.6].every((out) => on([d.x + Math.cos(d.angle) * out, d.y + Math.sin(d.angle) * out])))).toBe(true);
   });
 

@@ -85,10 +85,11 @@ impl World {
     /// the diagonal only outward from a corner, both tiles beside the
     /// entrance on `from`'s side off the plot (a diagonal into the middle
     /// of an edge would cut the neighbouring tile at a sharp angle). A
-    /// yard is entered only from ahead of it, the street side its kind
-    /// lays it on (`blueprint::lie`), so the yard is always where its
-    /// street is. Pure geometry, so the hand's preview asks the same
-    /// (`may.ts` `enters`).
+    /// yard is entered only by its gate, the middle of its front, from
+    /// ahead of it, the street side its kind lays it on
+    /// (`blueprint::lie`), so the yard is always where its street is and
+    /// its lane runs straight in (`lots::park`). Pure geometry, so the
+    /// hand's preview asks the same (`may.ts` `enters`).
     pub fn enters(tiles: &[GridCoord], kind: BuildingKind, facing: u8, from: GridCoord, to: GridCoord) -> bool {
         let on = |x: i32, y: i32| tiles.contains(&GridCoord { x, y });
         let (dx, dy) = (from.x - to.x, from.y - to.y);
@@ -98,11 +99,8 @@ impl World {
         if dx != 0 && dy != 0 && (on(to.x + dx, to.y) || on(to.x, to.y + dy)) {
             return false;
         }
-        // A harbour is entered only by its gate, in line with its ramp.
-        if crate::blueprint::blueprint(kind).quay && Self::gate_of(tiles, kind, facing) != Some(to) {
-            return false;
-        }
         match Self::yard_of(tiles, kind, facing) {
+            Some(_) if Self::gate_of(tiles, kind, facing) != Some(to) => false,
             Some(yard) => {
                 let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
                 yard.contains(&to) && dx * fx + dy * fy > 0

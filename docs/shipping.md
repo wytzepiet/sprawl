@@ -281,8 +281,11 @@ parted from the direction above.
   dock into the lane and backs it down the lane and up the ramp, the box
   leading, to the deck's free slot nearest the sea end.
   It starts only what it can finish before the ferry sails.
-- **The depot's canopy bay.** A roof on posts over the docks on the
-  depot's yard side (`town/draw.ts`, `canopies`). A lorry home from the
+- **The depot's canopy bay.** The depot's yard is laid as the
+  harbour's park (`lots::park`): a lane straight in from a gate in the
+  middle of its front, rows of docks either side. Over each side a roof
+  on posts, from the hall's wall over the boxes, the cabs out in the
+  light (`town/dressing.ts`, `canopies`). A lorry home from the
   harbour backs its box fully under it; the box is unloaded into stock
   there and is gone, and the lorry drives off bobtail. For an export it
   backs in bobtail and pulls out with a full box. A lorry fetches only a

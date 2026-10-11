@@ -10,8 +10,9 @@
 //! drive, side by side: a car drives in nose first and backs out onto
 //! the street. The drive is the lot's, not a road: from the street node
 //! the building's door opens onto (`Building::door`) to its tile. A depot,
-//! a farm and a port keep a yard: docks against its wall that a lorry
-//! backs into. Everything else parks at the kerb before it: bays along
+//! a farm and a port keep a yard, laid alike (`park`): a lane straight in
+//! from a gate in the middle of its front, and docks either side that a
+//! lorry backs into. Everything else parks at the kerb before it: bays along
 //! the streets its tiles front, two to a tile a side, a car pulling in
 //! from the lane beside them, or across the road coming the other way,
 //! and out ahead. A car that finds no place
@@ -134,11 +135,10 @@ enum Way {
     /// backing straight to the street; the door is the lot's node on the
     /// door's tile.
     Driveway { door: EntityId, street: EntityId },
-    /// A depot's yard: a two-way lane from the door along the front,
-    /// and docks against the building's wall, each a spot, entered by
-    /// backing in from the stop point beyond its mouth and left forward.
-    /// `lane` runs from the door outward; a bay is (mouth, stop) as
-    /// indices on it. A harbour's lane runs down to its ramp, and on
+    /// A yard (`park`): a two-way lane straight in from the door, its
+    /// gate, and docks either side of it, each a spot, entered by backing
+    /// in from the stop point beyond its mouth and left forward. `lane`
+    /// runs from the door inward; a bay is (mouth, stop) as indices on it. A harbour's lane runs down to its ramp, and on
     /// from it onto the moored ferry's deck: `seats` are where a settler's
     /// car stands aboard, two to a slot, each with the node at the land
     /// end of its deck lane it drives off by.
@@ -193,16 +193,56 @@ pub struct Ways {
     bays: HashMap<EntityId, Vec<EntityId>>,
 }
 
-/// Docks are 0.3 wide against the wall, a margin of 0.4 at either end of
-/// the yard, and a lorry stands with its tail at the wall, which is this
-/// far inside the building's tile.
-const BAY_W: f64 = 0.3;
-/// How far past a dock's mouth a lorry stops to back into it: far enough
-/// that its trailer swings round into the dock in one sweep, as a driver
-/// sets up, not in an S (`reverse` in the client's `driver.ts`).
-const STOP: f64 = 0.95;
-const BAY_MARGIN: f64 = 0.4;
-const WALL: f64 = 0.14;
+/// A yard's docks, in rows in from its back up the lane, a box's width
+/// apart, the last just in from the gate: a yard is two tiles deep, so the
+/// gate's middle is 1.5 in.
+pub const DOCK_ROWS: [f64; 4] = [0.55, 0.85, 1.15, 1.45];
+/// A docked lorry's cab, out from the lane's middle: its box behind it
+/// reaches to the yard's side, and the cab stands clear of the lane.
+pub const DOCK_OUT: f64 = 0.9;
+/// How far out from the lane's middle a docked box reaches: a side of the
+/// yard narrower than this has no docks.
+const DOCK_REACH: f64 = 1.4;
+/// How far past a dock's mouth, toward the back, a lorry or the tug pulls
+/// up to back in.
+pub const PAST: f64 = 0.5;
+
+/// A yard's park, a harbour's and a depot's alike: a lane straight in
+/// from the gate to the yard's back, and off it, on each of `sides`, a
+/// row of docks, a docked lorry's cab facing the lane and its box behind
+/// it out to the yard's side. A lorry drives in past a dock's mouth, pulls
+/// up `PAST` beyond it and backs in; it leaves forward, up the lane to the
+/// gate: a right angle in from the street, the dock, a right angle out,
+/// and never a hairpin. `at(s, side)` is a point `s` in from the back and
+/// `side` out from the lane's middle. The lane's points in order from the
+/// gate, each dock's mouth and its stop; and the docks, both sides of each
+/// row, with the lane points of their mouth and stop.
+pub fn park(at: impl Fn(f64, f64) -> [f64; 2], sides: &[f64]) -> (Vec<[f64; 2]>, Vec<(Pose, usize, usize)>) {
+    let mut stations: Vec<(f64, usize, bool)> = DOCK_ROWS.iter().enumerate().flat_map(|(i, &s)| [(s, i, true), (s - PAST, i, false)]).collect();
+    stations.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut rows = [(0, 0); DOCK_ROWS.len()];
+    for (k, &(_, i, mouth)) in stations.iter().enumerate() {
+        if mouth {
+            rows[i].0 = k;
+        } else {
+            rows[i].1 = k;
+        }
+    }
+    let lane = stations.iter().map(|&(s, ..)| at(s, 0.0)).collect();
+    let docks = DOCK_ROWS
+        .iter()
+        .zip(rows)
+        .flat_map(|(&s, (mouth, stop))| {
+            let at = &at;
+            sides.iter().map(move |&side| {
+                let p = at(s, side * DOCK_OUT);
+                let toward = at(s, 0.0);
+                (Pose { at: p, heading: (toward[1] - p[1]).atan2(toward[0] - p[0]) }, mouth, stop)
+            })
+        })
+        .collect();
+    (lane, docks)
+}
 
 pub struct Lot {
     /// Its door's tile and the street node it opens onto, and the
@@ -591,37 +631,18 @@ impl World {
                 _ => [lot.x as f64 + v, lot.y as f64 + u],
             }
         };
+        // The lane's middle along the frontage: the gate's, the door's tile.
         let dpos = self.node_pos(door)?;
         let u_gate = if along_x { dpos[0] - lot.x as f64 } else { dpos[1] - lot.y as f64 };
-        let mirrored = u_gate > w / 2.0;
-        let world_at = move |u: f64, v: f64| grid_at(if mirrored { w - u } else { u }, v);
 
-        // The lane's points from the door, and each dock: where a docked
-        // lorry stands, and the lane points of its mouth and its stop. A
-        // harbour's are its park, down the lane to its ramp (`Berth::park`).
+        // The park (`park`): a harbour's down its lane to the ramp
+        // (`Berth::park`); anything else's in from the gate to the hall,
+        // docks on each side the yard reaches far enough.
         let (points, docks) = match self.berth_at(tiles, kind, facing) {
             Some(berth) => berth.park(),
             None => {
-                let n = ((w - 2.0 * BAY_MARGIN) / BAY_W + 1e-9).floor() as usize;
-                let dock_v = d + WALL - crate::car::tail(crate::protocol::CarRole::Truck);
-                // Stations along the lane, in order from the door: each
-                // dock's mouth, and its stop point `STOP` beyond.
-                let mut stations: Vec<(f64, usize, bool)> = (0..n)
-                    .flat_map(|i| {
-                        let u = BAY_MARGIN + BAY_W / 2.0 + i as f64 * BAY_W;
-                        [(u, i, true), (u + STOP, i, false)]
-                    })
-                    .collect();
-                stations.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-                let at = |i: usize, mouth: bool| stations.iter().position(|&(_, j, m)| j == i && m == mouth).unwrap();
-                let docks = (0..n)
-                    .map(|i| {
-                        let u = BAY_MARGIN + BAY_W / 2.0 + i as f64 * BAY_W;
-                        let (p, out) = (world_at(u, dock_v), world_at(u, dock_v - 1.0));
-                        (Pose { at: p, heading: (out[1] - p[1]).atan2(out[0] - p[0]) }, at(i, true), at(i, false))
-                    })
-                    .collect::<Vec<_>>();
-                (stations.iter().map(|&(u, ..)| world_at(u, 0.5)).collect(), docks)
+                let sides: Vec<f64> = [1.0, -1.0].into_iter().filter(|&s| (if s > 0.0 { w - u_gate } else { u_gate }) >= DOCK_REACH).collect();
+                park(|s, side| grid_at(u_gate + side, d - s), &sides)
             }
         };
         let mut lane = vec![door];
@@ -1326,15 +1347,21 @@ mod tests {
         assert!(world.fit(BuildingKind::Office, GridCoord { x: 2, y: 1 }, 0).is_ok());
     }
 
-    /// A depot's lot is a yard: docks against the wall, a lorry backing
-    /// into its own from beyond its mouth and leaving forward, and nothing
-    /// beside it joins its slab.
+    /// A depot's lot is a yard, laid as a harbour's park: a gate in the
+    /// middle of its front, a lane straight in from it, docks either side,
+    /// a lorry backing into its own from beyond its mouth, deeper in, and
+    /// leaving forward; and nothing beside it joins its slab.
     #[test]
     fn a_depot_has_docks_a_lorry_backs_into() {
         let mut world = street();
         let depot = world.place_on_street(GridCoord { x: 4, y: 1 }, BuildingKind::Depot).unwrap();
         let shop = world.place_on_street(GridCoord { x: 7, y: 1 }, BuildingKind::Shop).unwrap();
-        assert_eq!(world.lot_mut(depot).unwrap().spots.len(), 7, "seven docks across three tiles");
+        assert_eq!(world.lot_mut(depot).unwrap().spots.len(), 8, "four rows of docks either side of the lane");
+        let b = match world.objects.get(depot).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.clone(),
+            _ => unreachable!(),
+        };
+        assert_eq!(world.door_of(depot).map(|d| d.0), World::gate_of(&b.tiles, b.kind, b.facing), "the door is the gate");
         world.lot_mut(shop).unwrap();
         // One of the depot's own lorries, in its dock since the depot was reached.
         let lorry = world.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == depot && c.role == crate::protocol::CarRole::Truck)).map(|e| e.id).unwrap();
@@ -1344,8 +1371,10 @@ mod tests {
         assert_eq!(world.reverse_tail(lorry), 2, "the last two edges are driven backwards");
         let n = way.len();
         let (stop, mouth, dock) = (world.node_pos(way[n - 3]).unwrap(), world.node_pos(way[n - 2]).unwrap(), world.node_pos(way[n - 1]).unwrap());
-        assert!((stop[1] - mouth[1]).abs() < 1e-9 && (stop[0] - mouth[0]).abs() > 0.4, "the stop point is on the lane beyond the mouth: {stop:?} {mouth:?}");
-        assert!((dock[0] - mouth[0]).abs() < 1e-9 && dock[1] > mouth[1] + 0.5, "the dock is straight in from the mouth: {dock:?}");
+        let gate = world.door_of(depot).unwrap().0;
+        assert!((stop[0] - mouth[0]).abs() < 1e-9 && (mouth[0] - gate.x as f64 - 0.5).abs() < 1e-9, "the lane runs straight in from the gate: {stop:?} {mouth:?}");
+        assert!(stop[1] > mouth[1] + 0.4, "the stop point is beyond the mouth, deeper in: {stop:?} {mouth:?}");
+        assert!((dock[1] - mouth[1]).abs() < 1e-9 && (dock[0] - mouth[0]).abs() > 0.5, "the dock is straight out from the mouth: {dock:?}");
         world.park_in_lot(depot, lorry, 0);
         let out = world.way_out(lorry).unwrap();
         assert_eq!(out[0], way[n - 1], "out of the dock");

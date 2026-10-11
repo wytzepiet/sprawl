@@ -121,8 +121,11 @@ props. Sketches, to be argued:
   of it. The size is the bays the kind needs.
 - **Supermarket**: a car park on its busy side; a service link down its
   quiet side to a dock at the back (as built today by hand, `facts.ts`).
-- **Depot**: an aisle across its yard, docks along the hall's wall off
-  it, room to turn in the yard's area.
+- **Depot**: laid as the harbour's park (`lots::park`, 2026-10-11): a
+  gate in the middle of its front, a lane straight in to the hall, rows
+  of docks either side of it, backed into from past the mouth, deeper
+  in, and left forward: a right angle in, the dock, a right angle out,
+  never a hairpin. A sawmill's, a quarry's and a farm's the same.
 - **Ferry port**: from the street, an entry link to a check-in node;
   from there a queue link of four lanes one way to the ramp node, merging
   onto the ramp; the berth at the ramp, the ferry its prop; an exit link

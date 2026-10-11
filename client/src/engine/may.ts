@@ -250,20 +250,18 @@ function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boole
 
 /** `World::enters`: may a drive run from `from` onto `to` of a plot
  *  lying this way: off the plot onto it, beside it, or on the diagonal
- *  only outward from a corner; onto its yard, from ahead of it, if its
- *  kind keeps one. */
+ *  only outward from a corner; onto its yard's gate, from ahead of it,
+ *  if its kind keeps one. */
 function enters(tiles: GridCoord[], kind: BuildingKind, facing: number, from: GridCoord, to: GridCoord): boolean {
   const on = (x: number, y: number) => tiles.some((t) => t.x === x && t.y === y);
   const [dx, dy] = [from.x - to.x, from.y - to.y];
   if (!on(to.x, to.y) || on(from.x, from.y) || Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
   if (dx && dy && (on(to.x + dx, to.y) || on(to.x, to.y + dy))) return false;
-  // A harbour is entered only by its gate, in line with its ramp.
-  if (BLUEPRINTS[kind].quay) {
-    const gate = gateOf(tiles, kind, facing);
-    if (!gate || gate.x !== to.x || gate.y !== to.y) return false;
-  }
   const yard = yardOf(tiles, kind, facing);
   if (!yard) return true;
+  // A yard is entered only by its gate, so its lane runs straight in.
+  const gate = gateOf(tiles, kind, facing);
+  if (!gate || gate.x !== to.x || gate.y !== to.y) return false;
   const [fx, fy] = FACINGS[facing % 4];
   return yard.some((t) => t.x === to.x && t.y === to.y) && dx * fx + dy * fy > 0;
 }

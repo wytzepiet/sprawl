@@ -96,8 +96,9 @@ The code is `client/src/engine/town/`:
   tile cannot see from its neighbours, once for the whole town: a courtyard, open ground that no street and no map edge
   reaches; and a yard, where a kind keeps one (`mass.ts`): the tiles the
   server lays its lot in, the rows on its door's side its whole width,
-  so the rest is a rectangle; a depot's docks along the hall's wall
-  behind it. Its yard turns when its door does: kept while its street
+  so the rest is a rectangle; a depot's docks either side of a lane
+  straight in from its gate, the middle of its front, under a canopy
+  each side (`dressing.ts`). Its yard turns when its door does: kept while its street
   stands, moved to the side that has one when it goes. The rest is
   building. A supermarket is a box: its car park on the busy corner and
   its loading bay cut from a corner were the look's own guesses, which

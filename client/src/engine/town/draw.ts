@@ -21,8 +21,6 @@ export interface Piece {
 /** A colour as plain numbers: a theme's, or one of the town's own. */
 export type Colour = { r: number; g: number; b: number };
 
-/** A dock's door: dark, in any light. */
-const DOOR: Colour = { r: 0.22, g: 0.24, b: 0.3 };
 /** A depot's canopy: a sheet-metal roof, pale, on posts a shade under it;
  *  its underside over a box's roof (`TRAILER.h`) and under the hall's
  *  eaves, and a fascia's depth thick. */
@@ -67,7 +65,7 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
 
 /**
  * The town grid's town, drawn: the pavement, the
- * buildings, and a door behind every dock; the roads are `drawRoads`.
+ * buildings, and a canopy over a depot's docks; the roads are `drawRoads`.
  * Geometry alone, in the same frame, and the lines painted on the yards'
  * asphalt: the docks', and the game's own `marks`, a harbour's trailer
  * park's slots. The trees the dressing plants are the caller's to plant
@@ -89,18 +87,6 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   const dressing = dress(town, known);
   const mass = townMesh(town, paint, undefined, known);
   add("mass", mass, null);
-  // A door in the wall behind every dock, just proud of it.
-  const doors: MeshGeometry = { positions: [], normals: [], indices: [] };
-  for (const dock of dressing.docks) {
-    const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];
-    const [dx, dy, half] = [dock.x + ux * 0.004, dock.y + uy * 0.004, 0.11];
-    const b0 = doors.positions.length / 3;
-    for (const [x, y, z] of [[dx - uy * half, dy + ux * half, 0.03], [dx + uy * half, dy - ux * half, 0.03], [dx + uy * half, dy - ux * half, 0.22], [dx - uy * half, dy + ux * half, 0.22]]) {
-      doors.positions.push(-x, -y, z), doors.normals.push(-ux, -uy, 0);
-    }
-    doors.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
-  }
-  add("doors", doors, DOOR);
   // A depot's canopy over its docks: a slab, and a post at each end of
   // its front edge.
   const canopy: MeshGeometry = { positions: [], normals: [], indices: [] };

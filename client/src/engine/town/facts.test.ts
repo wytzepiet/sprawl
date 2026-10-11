@@ -17,11 +17,18 @@ describe("facts and dressing", () => {
       expect([4, 5].some((r) => f.yard(c, r))).toBe(false);
     }
     expect(f.town.tile(2, 2).kind).toBe("paved");
-    // Docks along the hall's wall behind the yard, three to a tile, out
-    // toward the street.
-    const { docks } = dress(t, f);
-    expect(docks.length).toBe(9);
-    expect(docks.every((d) => Math.abs(d.angle + Math.PI / 2) < 1e-9 && Math.abs(d.y - 4 - 0.2) < 1e-9)).toBe(true);
+    // Docks either side of the lane in from the gate, the middle of its
+    // front, four rows of them, each box's tail out at the yard's side
+    // and the way out of it toward the lane; and over each side a canopy.
+    const { docks, canopies } = dress(t, f);
+    expect(t.door!(2, 2)).toEqual([0, -1]);
+    expect(docks.length).toBe(8);
+    for (const d of docks) {
+      expect(Math.abs(Math.abs(d.x - 2.5) - 1.39)).toBeLessThan(1e-9);
+      expect(Math.abs(Math.cos(d.angle) + Math.sign(d.x - 2.5))).toBeLessThan(1e-9);
+      expect([3.45, 3.15, 2.85, 2.55].some((y) => Math.abs(d.y - y) < 1e-9)).toBe(true);
+    }
+    expect(canopies.length).toBe(2);
   });
 
   test("a depot whose street runs behind it has its yard there", () => {

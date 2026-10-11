@@ -1,5 +1,5 @@
 import type { BuildingKind, GridCoord } from "../../generated";
-import { FACINGS, kerbed, plot, yardOf } from "../../blueprints";
+import { FACINGS, gateOf, kerbed, plot, yardOf } from "../../blueprints";
 
 /**
  * The town as the look sees it: a grid of tiles, each one kind of thing,
@@ -149,7 +149,7 @@ const EIGHT: [number, number][] = [...SIDES, ...CORNERS];
  * way from its tile to its street: a house's on the first side a street
  * runs straight past, or else on the diagonal where a drive meets its
  * street square, not at a hairpin; a yard's gate from a street ahead of
- * it (`World::enters`), beside first; anything else's on the first side a
+ * it, by its gate (`World::enters`), beside first; anything else's on the first side a
  * street runs past, the side it parks on first (`baysOf`).
  */
 function doorsOf(town: Town): Map<string, [number, number]> {
@@ -191,11 +191,12 @@ function doorsOf(town: Town): Map<string, [number, number]> {
     });
     if (facing === undefined) continue;
     const [fx, fy] = FACINGS[facing];
+    const gate = gateOf(run, kind, facing);
     const on = (x: number, y: number) => run.some((q) => q.x === x && q.y === y);
     const enters = ({ x, y }: GridCoord, [dx, dy]: [number, number]) =>
       dx * fx + dy * fy > 0 && !on(x + dx, y + dy) && street(x + dx, y + dy) && (!dx || !dy || (!on(x + dx, y) && !on(x, y + dy) && square(x + dx, y + dy, dx, dy)));
     for (const way of EIGHT) {
-      const q = marked.find((q) => enters(q, way));
+      const q = marked.find((q) => q.x === gate?.x && q.y === gate.y && enters(q, way));
       if (!q) continue;
       doors.set(`${q.x},${q.y}`, way);
       break;

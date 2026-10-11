@@ -105,15 +105,7 @@ pub fn seats(ship: Pose, k: usize) -> [Pose; 2] {
     [-0.15, 0.15].map(|d| Pose { at: plus(p.at, ahead(p.heading, d)), heading: p.heading })
 }
 
-/// The park, in from the ramp up the lane: a dock's row each side of it,
-/// a box's width apart, the last just in from the gate. The harbour is
-/// two tiles deep, so the gate's middle is 1.5 in.
-const DOCK_ROWS: [f64; 4] = [0.55, 0.85, 1.15, 1.45];
-/// A docked lorry's cab, out from the lane's middle: its box behind it
-/// reaches to the harbour's side, and the cab stands clear of the lane.
-const DOCK_OUT: f64 = 0.9;
-/// How far past a dock's mouth a lorry or the tug pulls up to back in.
-const PAST: f64 = 0.5;
+use crate::world::lots::{DOCK_OUT, PAST};
 
 impl Berth {
     /// A point `s` in from the ramp up the lane, and `side` out from its
@@ -141,36 +133,12 @@ impl Berth {
     fn past(&self, s: f64) -> [f64; 2] {
         self.at((s + PAST).min(1.9), 0.0)
     }
-    /// The harbour's park as its yard lays it (`lots.rs`): the lane from
-    /// the gate down to the ramp, its points in order, each dock's mouth
-    /// and its stop point past it toward the ramp; and the docks, both
-    /// sides of each row, a docked lorry's cab facing the lane, with the
-    /// lane points of its mouth and its stop. Nothing stands in the lane:
-    /// what comes off the ferry drives up it to the gate.
+    /// The harbour's park as its yard lays it (`lots::park`), in from the
+    /// ramp: the lane from the gate down to the ramp, and the trailer park
+    /// either side of it. Nothing stands in the lane: what comes off the
+    /// ferry drives up it to the gate.
     pub fn park(&self) -> (Vec<[f64; 2]>, Vec<(Pose, usize, usize)>) {
-        let mut stations: Vec<(f64, usize, bool)> = DOCK_ROWS.iter().enumerate().flat_map(|(i, &s)| [(s, i, true), (s - PAST, i, false)]).collect();
-        stations.sort_by(|a, b| b.0.total_cmp(&a.0));
-        let mut rows = [(0, 0); DOCK_ROWS.len()];
-        for (k, &(_, i, mouth)) in stations.iter().enumerate() {
-            if mouth {
-                rows[i].0 = k;
-            } else {
-                rows[i].1 = k;
-            }
-        }
-        let lane = stations.iter().map(|&(s, ..)| self.at(s, 0.0)).collect();
-        let docks = DOCK_ROWS
-            .iter()
-            .zip(rows)
-            .flat_map(|(&s, (mouth, stop))| {
-                [1.0, -1.0].map(|side: f64| {
-                    let at = self.at(s, side * DOCK_OUT);
-                    let toward = self.at(s, 0.0);
-                    (Pose { at, heading: (toward[1] - at[1]).atan2(toward[0] - at[0]) }, mouth, stop)
-                })
-            })
-            .collect();
-        (lane, docks)
+        crate::world::lots::park(|s, side| self.at(s, side), &[1.0, -1.0])
     }
 }
 
