@@ -139,21 +139,53 @@ export function straight(body: Pose, rig: Rig): Pose | undefined {
 
 /**
  * The way a trailer's axle is backed from one pose to another, each its
- * place and the way it is moving: a quintic, leaving and arriving along
- * those ways and straight there, so the cab's angle to its trailer grows
- * from nothing and is nothing again at the end. Points a step apart.
+ * place and the way it is moving, its cab's angle to it `bend`, and its
+ * hitch `hitch` ahead of the axle: a quintic, leaving and arriving along
+ * those ways and straight there. Of the ways it could lean out at either
+ * end, the one the cab follows most gently and ends most nearly in line
+ * on, as a driver swings wide to keep off a jackknife. Points a step
+ * apart.
  */
-export function reverse(from: Pose, to: Pose): Pt[] {
+export function reverse(from: Pose, to: Pose, hitch: number, bend = 0): Pt[] {
   const chord = Math.hypot(to.x - from.x, to.y - from.y);
   if (chord < 1e-6) return [[from.x, from.y]];
-  const m = chord * 1.2;
-  const [v0, v1] = [[Math.cos(from.heading) * m, Math.sin(from.heading) * m], [Math.cos(to.heading) * m, Math.sin(to.heading) * m]];
-  const n = Math.max(2, Math.ceil((chord * 1.6) / (STEP / 2)));
-  return Array.from({ length: n + 1 }, (_, i): Pt => {
-    const t = i / n, t3 = t * t * t, t4 = t3 * t, t5 = t4 * t;
-    const [h0, h1, h4, h5] = [1 - 10 * t3 + 15 * t4 - 6 * t5, t - 6 * t3 + 8 * t4 - 3 * t5, -4 * t3 + 7 * t4 - 3 * t5, 10 * t3 - 15 * t4 + 6 * t5];
-    return [h0 * from.x + h1 * v0[0] + h4 * v1[0] + h5 * to.x, h0 * from.y + h1 * v0[1] + h4 * v1[1] + h5 * to.y];
-  });
+  const curve = (m0: number, m1: number, n: number) => {
+    const [v0, v1] = [[Math.cos(from.heading) * m0, Math.sin(from.heading) * m0], [Math.cos(to.heading) * m1, Math.sin(to.heading) * m1]];
+    return Array.from({ length: n + 1 }, (_, i): Pt => {
+      const t = i / n, t3 = t * t * t, t4 = t3 * t, t5 = t4 * t;
+      const [h0, h1, h4, h5] = [1 - 10 * t3 + 15 * t4 - 6 * t5, t - 6 * t3 + 8 * t4 - 3 * t5, -4 * t3 + 7 * t4 - 3 * t5, 10 * t3 - 15 * t4 + 6 * t5];
+      return [h0 * from.x + h1 * v0[0] + h4 * v1[0] + h5 * to.x, h0 * from.y + h1 * v0[1] + h4 * v1[1] + h5 * to.y];
+    });
+  };
+  /** How the cab follows: the fastest it turns, a radian a tile, and how
+   *  far out of line with its trailer it ends, each weighed. */
+  const roughness = (pts: Pt[]) => {
+    let cab = from.heading + Math.PI + bend;
+    let worst = 0;
+    let at: Pt = [pts[0][0] - Math.cos(from.heading) * hitch, pts[0][1] - Math.sin(from.heading) * hitch];
+    for (let i = 1; i < pts.length; i++) {
+      const [a, b] = [pts[i - 1], pts[i]];
+      const way = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      const next: Pt = [b[0] - Math.cos(way) * hitch, b[1] - Math.sin(way) * hitch];
+      const moved = Math.hypot(next[0] - at[0], next[1] - at[1]);
+      if (moved > 1e-9) {
+        const h = Math.atan2(at[1] - next[1], at[0] - next[0]);
+        worst = Math.max(worst, Math.abs(wrap(h - cab)) / Math.hypot(b[0] - a[0], b[1] - a[1]));
+        cab = h;
+      }
+      at = next;
+    }
+    return worst + 20 * Math.abs(wrap(cab - (to.heading + Math.PI)));
+  };
+  const leans = [0.6, 0.9, 1.2, 1.6, 2.1];
+  let best = [1.2, 1.2], least = Infinity;
+  for (const a of leans) {
+    for (const b of leans) {
+      const r = roughness(curve(a * chord, b * chord, 60));
+      if (r < least) (least = r), (best = [a, b]);
+    }
+  }
+  return curve(best[0] * chord, best[1] * chord, Math.max(2, Math.ceil((chord * 1.6) / (STEP / 2))));
 }
 
 /**
@@ -235,7 +267,7 @@ export function drive(parts: Part[], rig: Rig, start?: Pose, end?: Pose): Drive 
         : { ...along({ x: points[points.length - 1][0], y: points[points.length - 1][1], heading: route.heading(points.length - 2) }, tr.axle + rig.axle) };
       let hitch: Pt = [cab.x, cab.y];
       const out = [{ u: 0, ...pose() }];
-      const way = reverse({ ...trailer, heading: trailer.heading + Math.PI }, aim);
+      const way = reverse({ ...trailer, heading: trailer.heading + Math.PI }, aim, tr.axle, wrap(cab.heading - trailer.heading));
       for (let i = 1; i < way.length; i++) {
         const [a, b] = [way[i - 1], way[i]];
         trailer = { x: b[0], y: b[1], heading: Math.atan2(a[1] - b[1], a[0] - b[0]) };

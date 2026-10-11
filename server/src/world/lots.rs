@@ -298,15 +298,30 @@ impl World {
 
     /// A lorry in one dock of a yard moves along to another: drop and hook,
     /// out of the dock it dropped a box in and back under the box it came
-    /// for, a few metres along the same yard.
-    pub fn redock(&mut self, building: EntityId, car: EntityId, i: usize, now: GameTime) {
-        if self.lot_mut(building).is_none() {
-            return;
+    /// for, along the same lane, never out to the street. Toward the lane's
+    /// far end it pulls out that way and stops past the dock's mouth, as it
+    /// came in; toward the door it pulls out that way, on past the mouth,
+    /// and backs down the lane and round into the dock. The way, and how
+    /// many of its last edges are backed; the dock is held from now.
+    pub fn redock(&mut self, building: EntityId, car: EntityId, j: usize, now: GameTime) -> Option<(Vec<EntityId>, usize)> {
+        self.lot_mut(building)?;
+        let lot = &self.lots[&building];
+        let Way::Yard { lane, bays, .. } = &lot.way else { return None };
+        let Claim::Spot(i) = self.claim_of(building, car)? else { return None };
+        let ((mi, _), (mj, sj)) = (bays[i], *bays.get(j)?);
+        let mut way = vec![lot.spots[i].node];
+        if sj > mi {
+            way.extend(&lane[mi..=sj]);
+        } else {
+            let at = self.node_pos(lane[mj])?;
+            let far = |k: &usize| self.node_pos(lane[*k]).is_some_and(|p| ((p[0] - at[0]).powi(2) + (p[1] - at[1]).powi(2)).sqrt() >= 0.45);
+            let k = (0..mj).rev().find(far).unwrap_or(0);
+            way.extend(lane[k..=mi].iter().rev());
         }
+        way.extend([lane[mj], lot.spots[j].node]);
         self.release_spot(car);
-        self.hold(building, car, Claim::Spot(i), now, GameTime::MAX);
-        let pose = self.pose_of(building, car, Claim::Spot(i));
-        self.set_spot(car, pose);
+        self.hold(building, car, Claim::Spot(j), now, GameTime::MAX);
+        Some((way, 2))
     }
 
     /// The tug lets go of the dock it held, and stands where it stands.

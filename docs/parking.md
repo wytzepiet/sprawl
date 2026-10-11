@@ -48,10 +48,24 @@ onto it; a lorry still backs into its dock. A kerb bay will be the same:
 a few nodes and a change of gear.
 
 Pulling out, 2026-10-06. Backing is a walking pace (`REVERSE_SPEED`,
-a fifth of a tile a second) and a car all but stops where its gear
-changes (`GEAR_SPEED`); it used to back out at lot speed and drive off
-at once, the turn of the wheel and the change of direction in one
-instant. Where a lot's way out meets the street is a **give-way line**:
+a fifth of a tile a second); it used to back out at lot speed and drive
+off at once, the turn of the wheel and the change of direction in one
+instant.
+
+Changes of gear, 2026-10-11. A vehicle stops on the node where its gear
+changes, stands there `CUSP_MS`, and pulls away the other way; a trip
+ends with a stop on its last node, not an arrival at speed. Each
+stretch between changes of gear is measured on its own, so a cusp is a
+point, not a rounded corner. The trip says where each cusp falls by its
+progress (`Trip::cusps`), where the vehicle stood (`leaves`) and where
+it will stand (`stands`), and the client's drive (`driver.ts`) fits each
+part to that, starts from the one and eases onto the other: no jump
+leaving, at a cusp, or parking. A lorry backs its box on a way planned
+from where it stands to its bay (`reverse`), the cab following its
+hitch; a dock's stop point is far enough past its mouth (`STOP`) that
+the box swings in in one sweep. A lorry moving from one dock of a yard
+to another drives it along the lane (`World::redock`), never out to the
+street and never in a jump. `bun run jolt` counts what still jumps. Where a lot's way out meets the street is a **give-way line**:
 the car waits at it until nobody is coming who could not stop for it
 (`gap_at`), then holds the street node (`World::pulling_out`) until its
 tail is clear, and anyone coming either way, or turning in, stops short

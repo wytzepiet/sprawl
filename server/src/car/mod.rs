@@ -6,8 +6,8 @@ pub const CRUISE_SPEED: f64 = 1.5;
 /// What a vehicle drives in a lot: a manoeuvring pace, under twenty
 /// kilometres an hour.
 pub const LOT_SPEED: f64 = 0.4;
-/// Backing, a brisk walk: under two metres a second.
-pub const REVERSE_SPEED: f64 = 0.15;
+/// Backing, about nine kilometres an hour: two and a half metres a second.
+pub const REVERSE_SPEED: f64 = 0.2;
 /// Where the gear changes the vehicle stops, and stands this long before
 /// it pulls the other way, as a driver does.
 pub const CUSP_MS: u64 = 500;

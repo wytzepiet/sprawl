@@ -184,6 +184,19 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
     v
 }
 
+/// A manoeuvre within a lot, by a way given, all of it lot nodes, its last
+/// `backs` edges backed: a lorry from one dock of a yard to another.
+pub fn manoeuvre(world: &mut World, events: &mut EventQueue, car_id: EntityId, building: EntityId, route: Vec<EntityId>, backs: usize, leaves: Option<crate::protocol::Pose>, now: GameTime) -> bool {
+    let n = route.len();
+    let owner = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() && n >= 4 && backs < n => c.owner,
+        _ => return false,
+    };
+    // Lot nodes all: the first two its way out, the rest its way in.
+    launch(world, events, car_id, owner, building, route, 2, n - 2, vec![[n - 1 - backs, n - 1]], [Vec::new(), Vec::new()], leaves, now);
+    true
+}
+
 /// The stretches of a route of `n` nodes between its changes of gear, as
 /// `(i, j)`: from node i to node j, each driven one way.
 pub fn parts(backing: &[[usize; 2]], n: usize) -> Vec<(usize, usize)> {

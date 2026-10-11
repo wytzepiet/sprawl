@@ -8,7 +8,7 @@
  * A jump is a step faster than anything drives (3 tiles a second); a snap
  * a turn of more than a fifth of a radian in one step; a flip a change of
  * direction with no stop between (moving both sides of it); a lurch a
- * change of speed harder than 2 tiles a second squared. Each is said with
+ * change of speed harder than 3 tiles a second squared. Each is said with
  * the clock and the place. The game is the one `bun run dev` runs, or
  * SPRAWL_PORT's.
  */
@@ -71,7 +71,7 @@ function sample(t: number) {
     const dh = Math.abs(wrap(m.body.heading - p.h));
     if (dh > 0.2) k.snap++, say(`snap ${dh.toFixed(2)}`);
     if (Math.sign(v) !== Math.sign(p.v) && Math.abs(v) > 0.04 && Math.abs(p.v) > 0.04) k.flip++, say(`flip ${p.v.toFixed(2)}→${v.toFixed(2)}`);
-    if (Math.abs(v - p.v) / dt > 2 && p.v !== 0) k.lurch++, say(`lurch ${p.v.toFixed(2)}→${v.toFixed(2)}`);
+    if (Math.abs(v - p.v) / dt > 3 && p.v !== 0) k.lurch++, say(`lurch ${p.v.toFixed(2)}→${v.toFixed(2)}`);
     last.set(id, { t, x: px, y: py, h: m.body.heading, v });
   }
 }

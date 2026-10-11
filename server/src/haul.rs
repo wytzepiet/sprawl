@@ -404,8 +404,12 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
             let selling = wants_empty(world, depot);
             match waiting_for(world, depot, lorry).filter(|&(h, _)| h == harbour).or_else(|| selling.then(|| empty_at(world, harbour).map(|i| (harbour, i))).flatten()) {
                 Some((_, i)) if i != dock => {
-                    world.redock(harbour, lorry, i, now);
-                    events.wake(COUPLE_MS, lorry);
+                    let leaves = car(world, lorry).and_then(|c| c.spot);
+                    world.aims.insert(lorry, (harbour, i));
+                    let moved = world.redock(harbour, lorry, i, now).is_some_and(|(way, backs)| crate::car::spawn::manoeuvre(world, events, lorry, harbour, way, backs, leaves, now));
+                    if !moved {
+                        go_home(world, events, lorry, harbour, now);
+                    }
                 }
                 _ => go_home(world, events, lorry, harbour, now),
             }
