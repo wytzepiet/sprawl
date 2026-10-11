@@ -53,21 +53,26 @@ impl World {
     /// result[i] = arc length of segment from route[i-1] to route[i].
     /// result[0] = 0.0 (no segment before first node). The street part of
     /// the route is driven on its lane; the lot nodes at either end are
-    /// where they are.
-    pub fn compute_segment_lengths(&self, route: &[EntityId], from_lot: usize, to_lot: usize) -> Vec<f64> {
+    /// where they are. Each stretch between changes of gear (`backing`) is
+    /// measured on its own, as the client draws it: a change of gear is a
+    /// point the vehicle stops at, not a corner it rounds, and is where it
+    /// is, not on a lane.
+    pub fn compute_segment_lengths(&self, route: &[EntityId], from_lot: usize, to_lot: usize, backing: &[[usize; 2]]) -> Vec<f64> {
         let centers = self.route_positions(route);
-        let mut positions = bezier::offset_positions(&centers, bezier::LANE_OFFSET);
-        for i in (0..from_lot).chain(centers.len().saturating_sub(to_lot)..centers.len()) {
-            positions[i] = centers[i];
-        }
+        let n = centers.len();
         let mut lengths = vec![0.0]; // index 0 unused
-        for i in 1..route.len() {
-            if i < positions.len() {
-                lengths.push(bezier::segment_length(&positions, i - 1));
-            } else {
-                lengths.push(1.0);
+        if n == route.len() {
+            for (i, j) in crate::car::spawn::parts(backing, n) {
+                let mut positions = bezier::offset_positions(&centers[i..=j], bezier::LANE_OFFSET);
+                for k in i..=j {
+                    if k < from_lot || k >= n - to_lot || (k == i && i > 0) || (k == j && j + 1 < n) {
+                        positions[k - i] = centers[k];
+                    }
+                }
+                lengths.extend((i..j).map(|k| bezier::segment_length(&positions, k - i)));
             }
         }
+        lengths.resize(route.len().max(1), 1.0);
         lengths
     }
 }

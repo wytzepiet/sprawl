@@ -650,7 +650,9 @@ fn try_reroute(
 
     // Set up new route
     world.register_car_route(car_id, &new_route);
-    let segment_lengths = world.compute_segment_lengths(&new_route, 0, to_lot);
+    let backing = crate::car::spawn::backing(0, world.reverse_tail(car_id), new_route.len());
+    let stands = world.pose_held(car_id);
+    let segment_lengths = world.compute_segment_lengths(&new_route, 0, to_lot, &backing);
     let total: f64 = segment_lengths.iter().sum();
     let route_positions = world.route_positions(&new_route);
 
@@ -658,7 +660,6 @@ fn try_reroute(
         world.update_position(car_id, pos);
     }
 
-    let backing = crate::car::spawn::backing(0, world.reverse_tail(car_id), new_route.len());
     let arriving = world.kerb_stretch(car_id);
     if let Some(entry) = world.objects.get_mut(car_id)
         && let GameObject::Car(ref mut car) = entry.object
@@ -668,6 +669,9 @@ fn try_reroute(
         t.route_positions = route_positions;
         t.from_lot = 0;
         t.to_lot = to_lot;
+        t.cusps = crate::car::spawn::cusps(&backing, &segment_lengths);
+        t.leaves = None;
+        t.stands = stands;
         t.backing = backing;
         t.stretches[1] = arriving;
         t.segment_lengths = segment_lengths;

@@ -22,8 +22,8 @@ pub fn start_trip(
     now: GameTime,
     until: GameTime,
 ) -> bool {
-    let (owner, role) = match world.objects.get(car_id).map(|e| &e.object) {
-        Some(GameObject::Car(c)) if c.trip.is_none() => (c.owner, c.role),
+    let (owner, role, leaves) = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() => (c.owner, c.role, c.spot),
         _ => return false,
     };
     let out = world.way_out(car_id).unwrap_or_default();
@@ -66,7 +66,7 @@ pub fn start_trip(
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
     let stretches = [leaving, world.kerb_stretch(car_id)];
-    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, stretches, now);
+    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, stretches, leaves, now);
     true
 }
 
@@ -81,10 +81,12 @@ fn launch(
     to_lot: usize,
     backing: Vec<[usize; 2]>,
     stretches: [Vec<EntityId>; 2],
+    leaves: Option<crate::protocol::Pose>,
     now: GameTime,
 ) {
+    let stands = world.pose_held(car_id);
     let first_edge = (route[0], route[1]);
-    let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot);
+    let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot, &backing);
     let total_len: f64 = segment_lengths.iter().sum();
     // The lot's edges are the ones into and out of it: as many at each end
     // as there are lot nodes there, since the street node closes each run.
@@ -108,6 +110,9 @@ fn launch(
             route_positions,
             from_lot,
             to_lot,
+            cusps: cusps(&backing, &segment_lengths),
+            leaves,
+            stands,
             backing,
             progress: 0.0,
             speed: 0.0,
@@ -156,6 +161,23 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
         v.push([len - 1 - into, len - 1]);
     }
     v
+}
+
+/// The stretches of a route of `n` nodes between its changes of gear, as
+/// `(i, j)`: from node i to node j, each driven one way.
+pub fn parts(backing: &[[usize; 2]], n: usize) -> Vec<(usize, usize)> {
+    let mut cuts: Vec<usize> = backing.iter().flatten().copied().filter(|&k| k > 0 && k + 1 < n).collect();
+    cuts.extend([0, n.saturating_sub(1)]);
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts.windows(2).map(|w| (w[0], w[1])).collect()
+}
+
+/// How far along the route each change of gear is, as its physics measures
+/// it: where a vehicle stops and pulls away the other way.
+pub fn cusps(backing: &[[usize; 2]], segment_lengths: &[f64]) -> Vec<f64> {
+    let n = segment_lengths.len();
+    parts(backing, n).iter().skip(1).map(|&(i, _)| segment_lengths[1..=i].iter().sum()).collect()
 }
 
 /// Find the cumulative distance to the start of an edge in a trip's route.

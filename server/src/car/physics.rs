@@ -129,7 +129,7 @@ impl Obstacle {
             let slack = if target_speed > 0.0 { 0.05 } else { 0.0 };
             if my_speed > target_speed + slack {
                 -(my_speed * my_speed) / 0.02
-            } else if my_speed < target_speed - 0.05 {
+            } else if my_speed < target_speed - (0.1 * target_speed).min(0.05) {
                 ACCELERATION
             } else {
                 0.0
@@ -138,7 +138,10 @@ impl Obstacle {
             -((my_speed * my_speed - target_speed * target_speed) / (2.0 * distance))
         } else {
             let max_speed = (target_speed * target_speed + 2.0 * DECELERATION * distance).sqrt();
-            if my_speed < CRUISE_SPEED.min(max_speed) - 0.05 {
+            let top = CRUISE_SPEED.min(max_speed);
+            // Held a little under a limit: a twentieth of a tile a second,
+            // or for a crawl a tenth of it, which would be most of a crawl.
+            if my_speed < top - (0.1 * top).min(0.05) {
                 ACCELERATION
             } else {
                 0.0

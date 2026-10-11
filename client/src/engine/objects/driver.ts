@@ -10,14 +10,19 @@
  * follows the trailer it is backing.
  *
  * Forward the lead is the cab's rear axle; backing, the rearmost axle, the
- * trailer's on a lorry. The whole drive is worked out once, step by step,
- * and kept by the distance along the route of the point the server moves,
- * so it is the same whenever it is looked at, and always where the server
- * has the vehicle.
+ * trailer's on a lorry. A drive is in parts, one at each change of gear,
+ * driven one after the other from where the last left the vehicle, so a
+ * change of gear is a stop and a turn of the wheel, never a jump. Each
+ * part is fitted to the stretch of the server's distance it covers, so
+ * the vehicle is at each change of gear when the server has it there; it
+ * starts from where it stood and ends where it will stand, eased onto it
+ * over the last stretch. The whole drive is worked out once, step by step,
+ * and kept by distance, so it is the same whenever it is looked at.
  */
 
 import { drawnPath } from "./drawnPath";
 import { CAB, CAR, LANE_OFFSET, TRAILER } from "./roadGeometry";
+import type { Pose as Stand } from "../../generated/Pose";
 
 export type Pt = [number, number];
 
@@ -43,21 +48,29 @@ export interface Drive {
   at(s: number): { body: Pose; trailer?: Pose };
 }
 
+/** A stretch of a drive in one gear: the route its lead follows, and the
+ *  distances along the whole, by the server's measure, it runs between. */
+export interface Part {
+  points: Pt[];
+  backing: boolean;
+  from: number;
+  to: number;
+}
+
 /** How far ahead along the route the driver looks. */
 const LOOK = 0.35;
 /** Full lock: the tightest the lead axle turns, as a curvature (1/tiles). */
 const LOCK = 1 / 0.3;
 /** How fast the wheel turns: curvature gained per tile driven. */
 const WHEEL = 8;
-/** How far the lead may stray from its route before it is put back on
- *  it: where a route turns tighter than a car can. */
-const STRAY = 0.1;
 /** A step of the drive, in tiles. */
 const STEP = 0.02;
+/** How far before its end a drive is eased onto where it will stand. */
+const SETTLE = 0.8;
 
-/** A polyline measured: each point's distance along it, the point at any
- *  distance (straight on past either end), and the distance of the point
- *  on it nearest to a point, searched near a guess. */
+/** A polyline measured: the point at any distance (straight on past either
+ *  end), and the distance of the point on it nearest to a point, searched
+ *  near a guess. */
 function measure(points: Pt[]) {
   const d = [0];
   for (let i = 1; i < points.length; i++) d.push(d[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
@@ -66,6 +79,16 @@ function measure(points: Pt[]) {
     const [a, b] = [points[i], points[i + 1]];
     const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
     return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+  };
+  /** The first point at or past a distance along. */
+  const index = (s: number) => {
+    let lo = 1, hi = points.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (d[mid] < s) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
   };
   const at = (s: number): Pt => {
     if (s <= 0) {
@@ -81,19 +104,8 @@ function measure(points: Pt[]) {
     const t = (s - d[i - 1]) / (d[i] - d[i - 1] || 1);
     return [points[i - 1][0] + (points[i][0] - points[i - 1][0]) * t, points[i - 1][1] + (points[i][1] - points[i - 1][1]) * t];
   };
-  /** The first point at or past a distance along. */
-  const index = (s: number) => {
-    let lo = 1, hi = points.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (d[mid] < s) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  };
-  /** The distance along of the nearest point, from `back` behind where it
-   *  was last to `reach` ahead of it; past either end, on the straight run
-   *  on. */
+  /** The distance along of the nearest point, from `back` behind a guess
+   *  to `reach` ahead of it; past either end, on the straight run on. */
   const near = (p: Pt, guess: number, back: number, reach: number) => {
     const [from, to] = [guess - back, guess + reach];
     let best = guess, bd = Infinity;
@@ -114,114 +126,161 @@ function measure(points: Pt[]) {
     }
     return Math.max(from, Math.min(to, best));
   };
-  return { length, d, at, near, heading: (i: number) => Math.atan2(dir(i)[1], dir(i)[0]) };
+  return { length, at, near, heading: (i: number) => Math.atan2(dir(i)[1], dir(i)[0]) };
 }
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+const along = (p: Pose, d: number): Pose => ({ x: p.x + Math.cos(p.heading) * d, y: p.y + Math.sin(p.heading) * d, heading: p.heading });
+
+/** A body standing at `body`, its trailer straight behind it. */
+export function straight(body: Pose, rig: Rig): Pose | undefined {
+  return rig.trailer && { ...along(body, -(rig.axle + rig.trailer.middle)), heading: body.heading };
+}
 
 /**
- * The drive along a route in parts, each driven forward or backing, one
- * after the other: each starts as the one before left the vehicle.
+ * The way a trailer's axle is backed from one pose to another, each its
+ * place and the way it is moving: a quintic, leaving and arriving along
+ * those ways and straight there, so the cab's angle to its trailer grows
+ * from nothing and is nothing again at the end. Points a step apart.
  */
-export function drive(parts: { points: Pt[]; backing: boolean }[], rig: Rig): Drive {
+export function reverse(from: Pose, to: Pose): Pt[] {
+  const chord = Math.hypot(to.x - from.x, to.y - from.y);
+  if (chord < 1e-6) return [[from.x, from.y]];
+  const m = chord * 1.2;
+  const [v0, v1] = [[Math.cos(from.heading) * m, Math.sin(from.heading) * m], [Math.cos(to.heading) * m, Math.sin(to.heading) * m]];
+  const n = Math.max(2, Math.ceil((chord * 1.6) / (STEP / 2)));
+  return Array.from({ length: n + 1 }, (_, i): Pt => {
+    const t = i / n, t3 = t * t * t, t4 = t3 * t, t5 = t4 * t;
+    const [h0, h1, h4, h5] = [1 - 10 * t3 + 15 * t4 - 6 * t5, t - 6 * t3 + 8 * t4 - 3 * t5, -4 * t3 + 7 * t4 - 3 * t5, 10 * t3 - 15 * t4 + 6 * t5];
+    return [h0 * from.x + h1 * v0[0] + h4 * v1[0] + h5 * to.x, h0 * from.y + h1 * v0[1] + h4 * v1[1] + h5 * to.y];
+  });
+}
+
+/**
+ * A drive in parts, each driven forward or backing, one after the other:
+ * each starts as the one before left the vehicle, the first from `start`
+ * (else standing on its route, pointing along it, or away from it if it
+ * starts backing), and the last eased onto `end`, if it is given.
+ */
+export function drive(parts: Part[], rig: Rig, start?: Pose, end?: Pose): Drive {
   const table: { s: number; body: Pose; trailer?: Pose }[] = [];
 
-  // The state: the cab's rear axle and heading, the trailer's axle; at the
-  // start, standing on the route pointing along it, or away from it if it
-  // starts backing.
+  // The state: the cab's rear axle and heading, the trailer's axle.
   const [p0, p1] = [parts[0].points[0], parts[0].points[1]];
   const h0 = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]) + (parts[0].backing ? Math.PI : 0);
-  let cab: Pose = { x: p0[0] - Math.cos(h0) * rig.axle, y: p0[1] - Math.sin(h0) * rig.axle, heading: h0 };
-  let trailer: Pose | undefined = rig.trailer && {
-    x: cab.x - Math.cos(h0) * rig.trailer.axle,
-    y: cab.y - Math.sin(h0) * rig.trailer.axle,
-    heading: h0,
-  };
-  const record = (s: number) => {
-    const body = { x: cab.x + Math.cos(cab.heading) * rig.axle, y: cab.y + Math.sin(cab.heading) * rig.axle, heading: cab.heading };
-    const t = trailer && rig.trailer && {
-      x: cab.x - Math.cos(trailer.heading) * rig.trailer.middle,
-      y: cab.y - Math.sin(trailer.heading) * rig.trailer.middle,
-      heading: trailer.heading,
-    };
-    if (!table.length || s > table[table.length - 1].s) table.push({ s, body, trailer: t });
-  };
+  const first = start ?? { x: p0[0], y: p0[1], heading: h0 };
+  let cab: Pose = along(first, -rig.axle);
+  let trailer: Pose | undefined = rig.trailer && { ...along(cab, -rig.trailer.axle), heading: cab.heading };
+  const pose = () => ({
+    body: along(cab, rig.axle),
+    trailer: trailer && rig.trailer && { x: cab.x - Math.cos(trailer.heading) * rig.trailer.middle, y: cab.y - Math.sin(trailer.heading) * rig.trailer.middle, heading: trailer.heading },
+  });
 
-  /** Steer `lead` along `route` until the server's point is `end` along
-   *  it, the lead ahead of that point by `ahead` (behind it if negative),
-   *  moving `sign` (1 forward, -1 backing) along its own heading; `follow`
-   *  moves the other bodies after it. */
-  const steer = (route: Pt[], offset: number, end: number, getLead: () => Pose, setLead: (p: Pose) => void, sign: number, ahead: number, follow: () => void) => {
+  /** Steer `lead` along `route` until its nearest point on the route is
+   *  `ahead` past the route's end (short of it if negative), moving `sign`
+   *  (1 forward, -1 backing) along its own heading; `follow` moves the
+   *  other bodies after it. Says each pose and how far the lead has gone. */
+  const steer = (route: Pt[], getLead: () => Pose, setLead: (p: Pose) => void, sign: number, ahead: number, follow: () => void) => {
     const path = measure(route);
+    const target = path.length + ahead;
+    const out = [{ u: 0, ...pose() }];
     let s = path.near([getLead().x, getLead().y], ahead, 1, 1);
-    let k = 0;
-    for (let n = 0; n < (end + 2) / STEP && s - ahead < end; n++) {
+    /** The curvature the driver wants: toward a point a little ahead. */
+    const wants = () => {
       const lead = getLead();
       const travel = sign > 0 ? lead.heading : lead.heading + Math.PI;
-      const [px, py] = path.at(s);
-      if (Math.hypot(px - lead.x, py - lead.y) > STRAY) {
-        // Strayed, where the route turns tighter than a car can (a lot's
-        // aisle, a driveway): put back on it, pointing along it, a step on.
-        const [qx, qy] = path.at(s + STEP);
-        const along = Math.atan2(qy - py, qx - px);
-        setLead({ x: qx, y: qy, heading: sign > 0 ? along : along - Math.PI });
-        k = 0;
-        follow();
-        s += STEP;
-        record(offset + s - ahead);
-        continue;
-      }
-      const [tx, ty] = path.at(s + LOOK);
+      const [tx, ty] = path.at(Math.min(s + LOOK, target + LOOK));
       const dist = Math.hypot(tx - lead.x, ty - lead.y);
       const alpha = wrap(Math.atan2(ty - lead.y, tx - lead.x) - travel);
-      const want = Math.max(-LOCK, Math.min(LOCK, (2 * Math.sin(alpha)) / Math.max(dist, 1e-6)));
+      return { lead, travel, want: Math.max(-LOCK, Math.min(LOCK, (2 * Math.sin(alpha)) / Math.max(dist, 1e-6))) };
+    };
+    // Standing, the wheel is turned where it is wanted before it moves off.
+    let [k, u] = [wants().want, 0];
+    for (let n = 0; n < (path.length + 2) / STEP * 3 && s < target; n++) {
+      const { lead, travel, want } = wants();
       k += Math.max(-WHEEL * STEP, Math.min(WHEEL * STEP, want - k));
-      const heading = travel + k * STEP;
-      setLead({ x: lead.x + Math.cos(heading) * STEP, y: lead.y + Math.sin(heading) * STEP, heading: sign > 0 ? heading : heading - Math.PI });
+      // The last step only as far as the end.
+      const step = Math.min(STEP, Math.max(target - s, 1e-4));
+      const heading = travel + k * step;
+      setLead({ x: lead.x + Math.cos(heading) * step, y: lead.y + Math.sin(heading) * step, heading: sign > 0 ? heading : heading - Math.PI });
       follow();
+      u += step;
       // Never back, and no further on than the lead has driven, or a
-      // little more round the inside of a bend: never running ahead of it.
-      s = path.near([getLead().x, getLead().y], s, 0, 2 * STEP);
-      record(offset + s - ahead);
+      // little more round the inside of a bend.
+      s = path.near([getLead().x, getLead().y], s, 0, 2 * step);
+      out.push({ u, ...pose() });
     }
+    return out;
   };
 
-  let offset = 0;
-  for (const { points, backing } of parts) {
-    const end = measure(points).length;
+  const last = (all: Part[], points: Pt[]) => all[all.length - 1].points === points;
+  for (const { points, backing, from, to } of parts) {
+    let driven;
     if (!backing) {
       // Forward: the cab's rear axle leads, the trailer trails its hitch.
-      steer(points, offset, end, () => cab, (p) => (cab = p), 1, -rig.axle, () => {
+      driven = steer(points, () => cab, (p) => (cab = p), 1, -rig.axle, () => {
         if (!trailer || !rig.trailer) return;
         const dx = cab.x - trailer.x, dy = cab.y - trailer.y, l = Math.hypot(dx, dy) || 1;
         trailer = { x: cab.x - (dx / l) * rig.trailer.axle, y: cab.y - (dy / l) * rig.trailer.axle, heading: Math.atan2(dy, dx) };
       });
     } else if (trailer && rig.trailer) {
-      // Backing a lorry: the trailer's axle leads, as far beyond the
-      // server's point as it stands behind the cab's middle. The hitch
-      // rides the trailer's nose; the cab points the way its rear axle, on
-      // the hitch, is moving: backwards.
+      // Backing a lorry: the trailer's axle leads, on a way planned from
+      // where it stands to where it must end (`reverse`). The hitch rides
+      // the trailer's nose; the cab points the way its rear axle, on the
+      // hitch, is moving: backwards.
       const tr = rig.trailer;
+      const route = measure(points);
+      const aim = last(parts, points) && end
+        ? { ...along(end, -(rig.axle + tr.axle)), heading: end.heading + Math.PI }
+        : { ...along({ x: points[points.length - 1][0], y: points[points.length - 1][1], heading: route.heading(points.length - 2) }, tr.axle + rig.axle) };
       let hitch: Pt = [cab.x, cab.y];
-      steer(points, offset, end, () => trailer!, (p) => (trailer = p), -1, tr.axle + rig.axle, () => {
-        const t = trailer!;
-        const next: Pt = [t.x + Math.cos(t.heading) * tr.axle, t.y + Math.sin(t.heading) * tr.axle];
+      const out = [{ u: 0, ...pose() }];
+      const way = reverse({ ...trailer, heading: trailer.heading + Math.PI }, aim);
+      for (let i = 1; i < way.length; i++) {
+        const [a, b] = [way[i - 1], way[i]];
+        trailer = { x: b[0], y: b[1], heading: Math.atan2(a[1] - b[1], a[0] - b[0]) };
+        const next: Pt = [b[0] + Math.cos(trailer.heading) * tr.axle, b[1] + Math.sin(trailer.heading) * tr.axle];
         const mx = hitch[0] - next[0], my = hitch[1] - next[1];
         cab = Math.hypot(mx, my) > 1e-9 ? { x: next[0], y: next[1], heading: Math.atan2(my, mx) } : { ...cab, x: next[0], y: next[1] };
         hitch = next;
-      });
+        out.push({ u: out[out.length - 1].u + Math.hypot(b[0] - a[0], b[1] - a[1]), ...pose() });
+      }
+      driven = out;
     } else {
       // Backing a car: its rear axle leads.
-      steer(points, offset, end, () => cab, (p) => (cab = p), -1, rig.axle, () => {});
+      driven = steer(points, () => cab, (p) => (cab = p), -1, rig.axle, () => {});
     }
-    offset += end;
+    // Fitted to the stretch of the server's distance it covers.
+    const whole = driven[driven.length - 1].u || 1;
+    for (const { u, body, trailer } of driven) {
+      const s = from + (u / whole) * (to - from);
+      if (!table.length || s > table[table.length - 1].s) table.push({ s, body, trailer });
+    }
   }
 
-  const length = table.length ? table[table.length - 1].s : 0;
+  // Eased onto where it will stand: what is left between where the drive
+  // ends and that, taken out a little at a time over the last stretch.
+  const final = table[table.length - 1];
+  if (end && final) {
+    const t = straight(end, rig);
+    const off = (a: Pose, b: Pose) => ({ x: b.x - a.x, y: b.y - a.y, heading: wrap(b.heading - a.heading) });
+    const [db, dt] = [off(final.body, end), final.trailer && t && off(final.trailer, t)];
+    const from = Math.max(parts[parts.length - 1].from, final.s - SETTLE);
+    const nudge = (p: Pose, d: Pose, w: number): Pose => ({ x: p.x + d.x * w, y: p.y + d.y * w, heading: p.heading + d.heading * w });
+    for (const e of table) {
+      if (e.s <= from) continue;
+      const x = (e.s - from) / (final.s - from || 1);
+      const w = x * x * (3 - 2 * x);
+      e.body = nudge(e.body, db, w);
+      if (e.trailer && dt) e.trailer = nudge(e.trailer, dt, w);
+    }
+  }
+
+  const length = final ? final.s : 0;
   return {
     length,
     at(s) {
-      if (!table.length) return { body: { x: p0[0], y: p0[1], heading: h0 } };
+      if (!table.length) return { body: first };
       let lo = 0, hi = table.length - 1;
       while (lo < hi) {
         const mid = (lo + hi) >> 1;
@@ -242,20 +301,43 @@ export const CAR_RIG: Rig = { axle: CAR.l / 3 };
  *  cab's middle; the trailer's axle and middle behind the hitch. */
 export const LORRY_RIG: Rig = { axle: CAB.l / 3, trailer: { axle: TRAILER.axle, middle: TRAILER.l / 2 - TRAILER.overhang } };
 
+/** What of a trip the drive is made from (`Trip`, or a recording of one). */
+export interface Driven {
+  route_positions: Pt[];
+  from_lot: number;
+  to_lot: number;
+  backing: [number, number][];
+  /** The server's distance at each change of gear, and in all; without
+   *  them, the drawn route's own. */
+  cusps?: number[];
+  total_route_length?: number;
+  leaves?: Stand | null;
+  stands?: Stand | null;
+}
+
+const pose = (p: Stand | null | undefined): Pose | undefined => p ? { x: p.at[0], y: p.at[1], heading: p.heading } : undefined;
+
 /** A trip as the server sends it, driven: in parts at each change of
  *  gear (`backing`, stretches of edges `[a, b)` driven backwards), each
  *  part's route drawn as a street route is, its lot nodes where they are
  *  and so its ends where the gear changes. */
-export function driveTrip(route: Pt[], fromLot: number, toLot: number, backing: [number, number][], rig: Rig): Drive | null {
+export function driveTrip(t: Driven, rig: Rig): Drive | null {
+  const { route_positions: route, from_lot: fromLot, to_lot: toLot, backing } = t;
   const n = route.length;
   const cuts = [...new Set([0, ...backing.flat(), n - 1])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
-  const parts: { points: Pt[]; backing: boolean }[] = [];
+  const drawn: { points: Pt[]; backing: boolean }[] = [];
   for (let c = 1; c < cuts.length; c++) {
     const [i, j] = [cuts[c - 1], cuts[c]];
     const nodes = route.slice(i, j + 1).map(([x, y]) => ({ x, y }));
     const fl = Math.max(fromLot - i, i > 0 ? 1 : 0), tl = Math.max(j + 1 - (n - toLot), j < n - 1 ? 1 : 0);
-    const drawn = drawnPath(nodes, LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
-    if (drawn) parts.push({ points: drawn.points.map((p): Pt => [p.x, p.y]), backing: backing.some(([a, b]) => a <= i && i < b) });
+    const d = drawnPath(nodes, LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
+    if (d) drawn.push({ points: d.points.map((p): Pt => [p.x, p.y]), backing: backing.some(([a, b]) => a <= i && i < b) });
   }
-  return parts.length ? drive(parts, rig) : null;
+  if (!drawn.length) return null;
+  // Where each part starts and ends, by the server's distance; or by its
+  // own length, where the server's are not to be had.
+  const own = drawn.map((p) => measure(p.points).length);
+  const server = t.cusps && t.total_route_length !== undefined && t.cusps.length === drawn.length - 1 ? [0, ...t.cusps, t.total_route_length] : null;
+  const bounds = server ?? own.reduce((b, l) => [...b, b[b.length - 1] + l], [0]);
+  return drive(drawn.map((p, k) => ({ ...p, from: bounds[k], to: bounds[k + 1] })), rig, pose(t.leaves), pose(t.stands));
 }

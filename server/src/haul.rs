@@ -405,7 +405,7 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
             match waiting_for(world, depot, lorry).filter(|&(h, _)| h == harbour).or_else(|| selling.then(|| empty_at(world, harbour).map(|i| (harbour, i))).flatten()) {
                 Some((_, i)) if i != dock => {
                     world.redock(harbour, lorry, i, now);
-                    events.wake(SERVICE_MS, lorry);
+                    events.wake(COUPLE_MS, lorry);
                 }
                 _ => go_home(world, events, lorry, harbour, now),
             }
@@ -417,12 +417,15 @@ fn at_harbour(world: &mut World, events: &mut EventQueue, lorry: EntityId, depot
             // A box for the town is the depot's once its lorry has it.
             let to = if t.empty() { None } else { Some(t.to.unwrap_or(depot)) };
             set_load(world, lorry, Some(Trailer { to, outbound: false, ..t }));
-            world.aims.remove(&lorry);
-            events.wake(SERVICE_MS, lorry);
+            go_home(world, events, lorry, harbour, now);
         }
         _ => go_home(world, events, lorry, harbour, now),
     }
 }
+
+/// Coupling to a box or dropping one: a few seconds' work for a driver,
+/// a moment to watch.
+pub const COUPLE_MS: GameTime = 400;
 
 fn go_home(world: &mut World, events: &mut EventQueue, lorry: EntityId, harbour: EntityId, now: GameTime) {
     world.aims.remove(&lorry);

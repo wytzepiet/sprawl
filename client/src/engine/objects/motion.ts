@@ -1,5 +1,5 @@
 import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
-import { CAR_RIG, driveTrip, LORRY_RIG, type Drive, type Pose, type Pt, type Rig } from "./driver";
+import { CAR_RIG, driveTrip, LORRY_RIG, straight, type Drive, type Pose, type Rig } from "./driver";
 import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
 import { CAB, TRAILER, VAN } from "./roadGeometry";
@@ -58,17 +58,14 @@ export function driveOf(id: number, car: Car): Drive | null {
   const t = car.trip;
   if (!t) return void drives.delete(id), null;
   const rig = rigOf(car);
-  const route = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, rig]);
+  const route = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, t.cusps, t.leaves, t.stands, rig]);
   let me = drives.get(id);
-  if (me?.route !== route) drives.set(id, (me = { route, drive: driveTrip(t.route_positions as Pt[], t.from_lot, t.to_lot, t.backing, rig) }));
+  if (me?.route !== route) drives.set(id, (me = { route, drive: driveTrip(t, rig) }));
   return me.drive;
 }
 
 /** A parked lorry's box, straight behind its cab. */
-export function straightBehind(p: Pose): Pose {
-  const back = LORRY_RIG.axle + LORRY_RIG.trailer!.middle;
-  return { x: p.x - Math.cos(p.heading) * back, y: p.y - Math.sin(p.heading) * back, heading: p.heading };
-}
+export const straightBehind = (p: Pose): Pose => straight(p, LORRY_RIG)!;
 
 /** A tractor on its run over the land (a ferry's is `sailing`): the
  *  planned tiles, centre to centre with no lane, on the same rounded path

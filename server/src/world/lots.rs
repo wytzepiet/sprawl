@@ -194,6 +194,10 @@ pub struct Ways {
 /// the yard, and a lorry stands with its tail at the wall, which is this
 /// far inside the building's tile.
 const BAY_W: f64 = 0.3;
+/// How far past a dock's mouth a lorry stops to back into it: far enough
+/// that its trailer swings round into the dock in one sweep, as a driver
+/// sets up, not in an S (`reverse` in the client's `driver.ts`).
+const STOP: f64 = 0.95;
 const BAY_MARGIN: f64 = 0.4;
 const WALL: f64 = 0.14;
 
@@ -583,11 +587,11 @@ impl World {
                 let n = ((w - 2.0 * BAY_MARGIN) / BAY_W + 1e-9).floor() as usize;
                 let dock_v = d + WALL - crate::car::tail(crate::protocol::CarRole::Truck);
                 // Stations along the lane, in order from the door: each
-                // dock's mouth, and its stop point half a lorry beyond.
+                // dock's mouth, and its stop point `STOP` beyond.
                 let mut stations: Vec<(f64, usize, bool)> = (0..n)
                     .flat_map(|i| {
                         let u = BAY_MARGIN + BAY_W / 2.0 + i as f64 * BAY_W;
-                        [(u, i, true), (u + 0.5, i, false)]
+                        [(u, i, true), (u + STOP, i, false)]
                     })
                     .collect();
                 stations.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
@@ -724,6 +728,12 @@ impl World {
             (_, Claim::Spot(i)) => Some(lot.spots[i].pose),
             (_, Claim::Door) => None,
         }
+    }
+
+    /// Where the car will stand at the place it holds: its spot's pose.
+    pub fn pose_held(&self, car: EntityId) -> Option<Pose> {
+        let building = *self.claims.get(&car)?;
+        self.pose_of(building, car, self.claim_of(building, car)?)
     }
 
     fn claim_of(&self, building: EntityId, car: EntityId) -> Option<Claim> {

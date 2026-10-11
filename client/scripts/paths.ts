@@ -5,19 +5,16 @@
  * --paths` draws them, every bend tighter than a car can turn marked.
  */
 import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
-import { CAR_RIG, driveTrip, LORRY_RIG, type Pose } from "../src/engine/objects/driver";
+import { CAR_RIG, driveTrip, LORRY_RIG, type Driven, type Pose } from "../src/engine/objects/driver";
 
 type Pt = [number, number];
 
 /** A trip as the server sent it: its route's points, in the game's tiles,
  *  how many at either end are in a lot, and the stretches backed down. */
-export interface Recorded {
+export interface Recorded extends Omit<Driven, "route_positions"> {
   car: number;
   role: string;
   route: Pt[];
-  from_lot: number;
-  to_lot: number;
-  backing: [number, number][];
 }
 
 /** A car turns no tighter than this, in tiles (5.5 m). */
@@ -63,7 +60,7 @@ const box = (p: Pose, l: number, w: number): Pt[] => {
 export const trace = (trips: Recorded[]) =>
   trips.map((t) => {
     const lorry = t.role === "Truck";
-    const d = driveTrip(t.route, t.from_lot, t.to_lot, t.backing, lorry ? LORRY_RIG : CAR_RIG);
+    const d = driveTrip({ ...t, route_positions: t.route }, lorry ? LORRY_RIG : CAR_RIG);
     if (!d) return { points: [], tight: [], strobe: [] };
     const points: Pt[] = [], strobe: Pt[][] = [];
     for (let s = 0; s <= d.length; s += 0.02) {

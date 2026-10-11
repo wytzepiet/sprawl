@@ -55,6 +55,8 @@ pub struct World {
     /// leaving the street there until it is parked. The street waits for it
     /// (`car::simulation`, `gap_at`), unless it stands still too long.
     pub manoeuvres: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
+    /// Vehicles standing where their gear changes, and until when.
+    pub cusps: HashMap<EntityId, crate::engine::GameTime>,
     pub terrain_seed: u32,
     /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
     /// starts counting afresh.
@@ -163,6 +165,7 @@ impl World {
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             manoeuvres: HashMap::new(),
+            cusps: HashMap::new(),
             terrain_seed: 0,
             books: HashMap::new(),
             town: Default::default(),
@@ -205,6 +208,7 @@ impl World {
             car_segment: HashMap::new(),
             node_cars: HashMap::new(),
             manoeuvres: HashMap::new(),
+            cusps: HashMap::new(),
             terrain_seed,
             books: HashMap::new(),
             town: Default::default(),

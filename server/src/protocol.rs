@@ -625,6 +625,18 @@ pub struct Trip {
     /// lorry backing into its dock. Each end of one is a change of gear.
     #[serde(default)]
     pub backing: Vec<[usize; 2]>,
+    /// How far along the route each change of gear is, by `progress`: the
+    /// client drives each stretch between them to fit exactly.
+    #[serde(default)]
+    pub cusps: Vec<f64>,
+    /// Where it stood when it set out, and where it will stand at the end:
+    /// a spot's own pose, which a route's first and last edges need not
+    /// point along. The client's drive starts from the one and ends on the
+    /// other, so leaving and parking are no jump.
+    #[serde(default)]
+    pub leaves: Option<Pose>,
+    #[serde(default)]
+    pub stands: Option<Pose>,
     /// Cumulative distance along the route.
     pub progress: f64,
     pub speed: f64,
