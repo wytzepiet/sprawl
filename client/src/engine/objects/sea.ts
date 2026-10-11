@@ -173,7 +173,7 @@ function flatbed(sides: Shade, deck: Shade): Shape {
 
 type Drawn = { key: string; geo: Shape };
 const TIPPER: Drawn = { key: "box_tipper", geo: tipper([0.36, 0.38, 0.42], [0.52, 0.53, 0.55]) };
-const FLATBED: Drawn = { key: "rigid_flatbed", geo: flatbed([0.36, 0.38, 0.42], [0.46, 0.4, 0.34]) };
+const FLATBED: Drawn = { key: "rigid_flatbed", geo: flatbed([0.36, 0.38, 0.42], [0.5, 0.51, 0.52]) };
 const colour = (g: Good) => hex(GOODS[g].color);
 /** Each good's box, and a loose good's load in it. */
 const BOXES: Record<Good, { body: Drawn; load?: Drawn }> = {
