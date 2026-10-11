@@ -295,6 +295,39 @@ export function drive(parts: Part[], rig: Rig, start?: Pose, end?: Pose): Drive 
   };
 }
 
+/**
+ * How far along a drive in runs a vehicle is, a time into it: each run
+ * from a stand to a stand, gathering way at an even `push` up to its
+ * `top` and losing it the same way, and `cusp` seconds standing between
+ * runs. Its whole time, `secs`.
+ */
+export function paced(runs: { length: number; top: number }[], push: number, cusp: number) {
+  const time = ({ length: l, top }: { length: number; top: number }) => (l < (top * top) / push ? 2 * Math.sqrt(l / push) : l / top + top / push);
+  const along = ({ length: l, top }: { length: number; top: number }, t: number) => {
+    const whole = time({ length: l, top });
+    const v = Math.min(top, Math.sqrt(l * push));
+    const ramp = v / push;
+    if (t < ramp) return 0.5 * push * t * t;
+    if (t > whole - ramp) return l - 0.5 * push * (whole - t) ** 2;
+    return 0.5 * v * ramp + v * (t - ramp);
+  };
+  const secs = runs.reduce((a, r) => a + time(r), 0) + cusp * Math.max(0, runs.length - 1);
+  return {
+    secs,
+    at(t: number) {
+      let s = 0;
+      for (const r of runs) {
+        const w = time(r);
+        if (t <= w) return s + along(r, Math.max(0, t));
+        t -= w + cusp;
+        s += r.length;
+        if (t < 0) return s;
+      }
+      return s;
+    },
+  };
+}
+
 /** A car's rear axle stands a third of its length behind its middle. */
 export const CAR_RIG: Rig = { axle: CAR.l / 3 };
 /** A lorry: the cab's rear axle, and the hitch on it, a little behind the

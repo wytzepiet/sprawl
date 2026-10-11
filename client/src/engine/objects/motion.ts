@@ -146,7 +146,7 @@ export function moment(id: number, car: Car, now: number): Moment | null {
       return { body, deck: aboard(car).map(({ k, d, box, settler }) => ({ at: ahead(deckPose(body, k), d), box, settler })) };
     }
     case "Tug": {
-      const p = car.shunt ? shunting(car.shunt)(now) : car.spot && { tug: car.spot, box: behind(car.spot) };
+      const p = car.shunt && car.spot ? shunting(car.shunt, car.spot, !!car.hitched)(now) : car.spot && { tug: car.spot, box: behind(car.spot) };
       return p ? { body: p.tug, box: car.hitched ? p.box : undefined } : null;
     }
   }

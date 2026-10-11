@@ -1,6 +1,8 @@
 import { boxGeometry as box } from "./buildings";
 import type { MeshGeometry, P } from "../geometry";
 import { CAB, TRAILER } from "./roadGeometry";
+import { drawnPath } from "./drawnPath";
+import { drive, paced, type Pt, type Rig } from "./driver";
 import { hex, rgb, type Rgb } from "../rgb";
 import { GOODS } from "../../blueprints";
 import type { Good, Sail, Shunt, Trailer } from "../../generated";
@@ -208,9 +210,10 @@ export const TUG_SHAPE = shape([
   [box(0.1, 0.08, 0.012), [0, -0.07, 0.076], CHASSIS],
 ]);
 /** A box's middle behind the tug's (`TUG_BOX` in `world/sea.rs`), and how
- *  long the tug stands hitching or dropping at the end of a move. */
+ *  long the tug stands coupling or dropping at the end of a move
+ *  (`COUPLE_MS` in `haul.rs`). */
 const TUG_BOX = 0.32;
-const HITCH_MS = 2500;
+const HITCH_MS = 400;
 
 /**
  * The ferry: a double-ended car ferry, as small islands' are, the same
@@ -297,82 +300,57 @@ export function sailing(s: Sail): (now: number) => Pose {
 }
 const REACH = 0.4;
 
+/** The tug as it steers: its rear axle a little behind its middle, the
+ *  fifth wheel on it, and a box's axle and middle behind that, the box's
+ *  middle `TUG_BOX` behind the tug's. */
+const TUG_RIG: Rig = { axle: 0.06, trailer: { axle: 0.3, middle: TUG_BOX - 0.06 } };
+/** How it goes (`TUG_FORWARD`, `TUG_BACKING`, `TUG_PUSH` in
+ *  `world/sea.rs`): tiles a second forward and backing, tiles a second
+ *  gained or lost each second, and a moment standing where it changes
+ *  gear (`CUSP_MS`). */
+const [FORWARD, BACKING, PUSH, CUSP_S] = [1.0, 0.4, 0.6, 0.5];
+
+const moves = new WeakMap<Shunt, (now: number) => { tug: Pose; box: Pose }>();
 /**
- * A tug on a move (`Shunt`): along its path at a steady pace over the
- * move's time less the hitching at its end, each run one way, forwards or
- * backing, eased in and out so it stops where it turns back. It faces the
- * way it goes, or backing the other way, the facing turned smoothly
- * through each corner; and the box on its hitch, if any, trails it on the
- * path it took (leads it, backing), its hitch on the tug, so it swings
- * behind it as a trailer does.
+ * A tug on a move (`Shunt`), from where it stood: its path in runs, one
+ * at each change of gear, each rounded through its corners and driven as
+ * any vehicle steers (`driver.ts`), the box on its hitch, if any, a
+ * trailer behind it or led backing; ending where the server has it
+ * stand. Each run gathers way and loses it, stopping where it changes
+ * gear, and the whole is fitted to the move's time less the coupling at
+ * its end.
  */
-export function shunting(s: Shunt): (now: number) => { tug: Pose; box: Pose } {
-  // Its segments, each from a point, the way it runs and whether backing;
-  // a point twice is no segment.
-  const segs = s.path.slice(1).flatMap((q, i) => {
-    const p = s.path[i];
-    return Math.hypot(q[0] - p[0], q[1] - p[1]) > 1e-6 ? [{ p, way: Math.atan2(q[1] - p[1], q[0] - p[0]), len: Math.hypot(q[0] - p[0], q[1] - p[1]), back: i >= s.backs_from }] : [];
-  });
-  if (!segs.length) segs.push({ p: s.path[0], way: 0, len: 0, back: false });
-  const n = segs.length;
-  const pts = segs.map((g) => g.p);
-  const at = [0];
-  for (const g of segs) at.push(at[at.length - 1] + g.len);
-  const total = at[n];
-  const backs = (i: number) => segs[i].back;
-  const way = (i: number) => segs[i].way;
-  const seg = (d: number) => {
-    let i = 0;
-    while (i < n - 1 && at[i + 1] <= d) i++;
-    return i;
-  };
-  // The runs one way: [from, to] along the path.
-  const runs: [number, number][] = [];
-  for (let i = 0; i < n; i++) {
-    if (i && backs(i) === backs(i - 1)) runs[runs.length - 1][1] = at[i + 1];
-    else runs.push([at[i], at[i + 1]]);
+export function shunting(s: Shunt, from: Pose, hitched: boolean): (now: number) => { tug: Pose; box: Pose } {
+  const known = moves.get(s);
+  if (known) return known;
+  const n = s.path.length;
+  const cuts = [...new Set([0, Math.min(Math.max(s.backs_from, 0), n - 1), n - 1])].sort((a, b) => a - b);
+  const runs: { points: Pt[]; backing: boolean }[] = [];
+  for (let c = 1; c < cuts.length; c++) {
+    const d = drawnPath(s.path.slice(cuts[c - 1], cuts[c] + 1).map(([x, y]) => ({ x, y })), 0, 0, 0);
+    if (d) runs.push({ points: d.points.map((p): Pt => [p.x, p.y]), backing: cuts[c - 1] >= s.backs_from });
   }
-  /** A point along the path, straight on past either end. */
-  const point = (d: number): [number, number] => {
-    const i = seg(Math.min(Math.max(d, 0), total));
-    const t = d - at[i];
-    return [pts[i][0] + Math.cos(way(i)) * t, pts[i][1] + Math.sin(way(i)) * t];
+  const pose = (p: Pose) => ({ x: p.at[0], y: p.at[1], heading: p.heading });
+  const stand = (p: { x: number; y: number; heading: number }): Pose => ({ at: [p.x, p.y], heading: p.heading });
+  if (!runs.length) {
+    const still = () => ({ tug: s.stands, box: behind(s.stands) });
+    moves.set(s, still);
+    return still;
+  }
+  const lengths = runs.map((r) => r.points.slice(1).reduce((l, p, i) => l + Math.hypot(p[0] - r.points[i][0], p[1] - r.points[i][1]), 0));
+  const bounds = lengths.reduce((b, l) => [...b, b[b.length - 1] + l], [0]);
+  const drv = drive(runs.map((r, k) => ({ ...r, from: bounds[k], to: bounds[k + 1] })), hitched ? TUG_RIG : { axle: TUG_RIG.axle }, pose(from), pose(s.stands));
+  const pace = paced(lengths.map((l, k) => ({ length: l, top: runs[k].backing ? BACKING : FORWARD })), PUSH, CUSP_S);
+  const window = Math.max(0.001, (s.ends - s.started - HITCH_MS) / 1000);
+  const move = (now: number) => {
+    const t = (Math.min(Math.max(0, (now - s.started) / 1000), window) / window) * pace.secs;
+    const p = drv.at(pace.at(t));
+    const tug = stand(p.body);
+    return { tug, box: p.trailer ? stand(p.trailer) : behind(tug) };
   };
-  /** The facing at a distance: the segments' facings over a short reach
-   *  round it, averaged, so a corner is turned through, not snapped. */
-  const facing = (d: number) => {
-    const [lo, hi] = [d - TURN, d + TURN];
-    let [x, y] = [0, 0];
-    for (let i = 0; i < n; i++) {
-      const w = Math.max(0, Math.min(hi, i === n - 1 ? Infinity : at[i + 1]) - Math.max(lo, i === 0 ? -Infinity : at[i]));
-      const f = way(i) + (backs(i) ? Math.PI : 0);
-      x += w * Math.cos(f), y += w * Math.sin(f);
-    }
-    return Math.atan2(y, x);
-  };
-  const moving = Math.max(1, s.ends - s.started - HITCH_MS);
-  return (now) => {
-    let d = (Math.min(Math.max(0, now - s.started), moving) / moving) * total;
-    const [a, b] = runs.find(([, b]) => d <= b) ?? runs[runs.length - 1];
-    if (b > a) {
-      // Eased: a steady pace in the middle of the run, slowing to a stop
-      // over its first and last RAMP.
-      const r = Math.min(0.5, RAMP / (b - a));
-      const u = (d - a) / (b - a);
-      const v = 1 / (1 - r);
-      const e = u < r ? (v * u * u) / (2 * r) : u > 1 - r ? 1 - (v * (1 - u) * (1 - u)) / (2 * r) : v * (u - r / 2);
-      d = a + (b - a) * e;
-    }
-    const tug = point(d), heading = facing(d);
-    // Behind the tug on its path: the way it came, or backing, where it goes.
-    // Off the end of this run, straight behind it.
-    const k = d + (backs(seg(d)) ? TUG_BOX : -TUG_BOX);
-    const box = k >= a && k <= b ? point(k) : behind({ at: tug, heading }).at;
-    return { tug: { at: tug, heading }, box: { at: box, heading: Math.atan2(tug[1] - box[1], tug[0] - box[0]) } };
-  };
+  moves.set(s, move);
+  return move;
 }
-const TURN = 0.12;
-const RAMP = 0.3;
 
 /** A box's place behind a tug standing still. */
 export const behind = (p: Pose, d = TUG_BOX): Pose => ({ at: [p.at[0] - Math.cos(p.heading) * d, p.at[1] - Math.sin(p.heading) * d], heading: p.heading });

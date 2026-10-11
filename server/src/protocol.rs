@@ -483,6 +483,9 @@ pub struct Shunt {
     pub backs_from: usize,
     /// What it does at the end: hitch the box there, or drop its own.
     pub to: Place,
+    /// Where it stands at the end, and which way: its box, if it has one,
+    /// straight behind it, in the slot or the dock.
+    pub stands: Pose,
 }
 
 /// Where a tug's move ends: a slot of the ferry's deck, a dock of the

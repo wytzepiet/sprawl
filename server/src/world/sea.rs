@@ -51,10 +51,15 @@ pub const DWELL: GameTime = DAY_MS as GameTime * 5 / 96;
 pub const FIRST_CALL: GameTime = DAY_MS as GameTime / 48;
 /// A settler's car rolls off every few seconds.
 pub const ROLL_MS: GameTime = 4_000;
-/// The tug: a little over a tile a second, and a few seconds to hitch or
-/// drop a box.
-const TUG_SPEED: f64 = 1.2 / 1000.0;
-const HITCH_MS: GameTime = 2_500;
+/// The tug: a tile a second on a run forward, under half that backing,
+/// gathering way and losing it at an even push, so it stops where it
+/// changes gear and stands there a moment (`car::CUSP_MS`); and a moment
+/// to couple or drop a box at the end (`haul::COUPLE_MS`). The client
+/// plays a move on the same terms (`shunting` in `sea.ts`).
+pub const TUG_FORWARD: f64 = 1.0;
+pub const TUG_BACKING: f64 = 0.4;
+pub const TUG_PUSH: f64 = 0.6;
+const HITCH_MS: GameTime = crate::haul::COUPLE_MS;
 /// A box's middle behind the tug's, and behind a docked lorry's cab: half
 /// of each and the coupling.
 pub const TUG_BOX: f64 = 0.32;
@@ -80,10 +85,6 @@ fn plus(a: [f64; 2], b: [f64; 2]) -> [f64; 2] {
 
 fn dist(a: [f64; 2], b: [f64; 2]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
-}
-
-fn length(path: &[[f64; 2]]) -> f64 {
-    path.windows(2).map(|w| ((w[1][0] - w[0][0]).powi(2) + (w[1][1] - w[0][1]).powi(2)).sqrt()).sum()
 }
 
 /// A box on deck slot `k` of a ferry standing at `ship`: across its lanes
@@ -579,13 +580,8 @@ impl World {
                 events.wake(s.ends - now, tug);
                 return;
             }
-            let rest = self.berth(harbour).map(|b| b.rest());
             if let Some(GameObject::Car(c)) = self.objects.get_mut(tug).map(|e| &mut e.object) {
-                // Back at its place it faces the land, ready for the next.
-                c.spot = Some(match (s.to, rest) {
-                    (Place::Rest, Some(rest)) => rest,
-                    _ => end_pose(&s),
-                });
+                c.spot = Some(s.stands);
                 c.shunt = None;
             }
             self.arrive(events, tug, harbour, s.to, now);
@@ -606,11 +602,30 @@ impl World {
         events.wake(ends - now, tug);
     }
 
-    /// A move: along a path, a tile and a bit a second, with the time to
-    /// hitch or drop at the end.
-    fn shunt(path: Vec<[f64; 2]>, backs_from: usize, to: Place, now: GameTime) -> Shunt {
-        let ms = (length(&path) / TUG_SPEED) as GameTime + HITCH_MS;
-        Shunt { path, started: now, ends: now + ms, backs_from, to }
+    /// A move: along a path, forward and then backing from `backs_from`,
+    /// to stand at its end facing `heading`, with the time to hitch or drop
+    /// there. From the ferry's deck it drives off by the ramp first.
+    fn shunt(berth: Berth, mut path: Vec<[f64; 2]>, mut backs_from: usize, heading: f64, to: Place, now: GameTime) -> Shunt {
+        if berth.up(path[0]) < -0.05 && path.get(1) != Some(&berth.ramp()) {
+            path.insert(1, berth.ramp());
+            if backs_from >= 1 && backs_from != usize::MAX {
+                backs_from += 1;
+            }
+        }
+        // Each run one way, and how long it takes: gathering way and
+        // losing it, a moment standing between.
+        let mut runs: Vec<(f64, bool)> = Vec::new();
+        for (i, w) in path.windows(2).enumerate() {
+            let (l, back) = (dist(w[0], w[1]), i >= backs_from);
+            match runs.last_mut() {
+                Some(r) if r.1 == back => r.0 += l,
+                _ => runs.push((l, back)),
+            }
+        }
+        let secs: f64 = runs.iter().map(|&(l, back)| run_secs(l, if back { TUG_BACKING } else { TUG_FORWARD })).sum();
+        let ms = (secs * 1000.0) as GameTime + runs.len().saturating_sub(1) as GameTime * crate::car::CUSP_MS + HITCH_MS;
+        let stands = Pose { at: *path.last().unwrap(), heading };
+        Shunt { path, started: now, ends: now + ms, backs_from, to, stands }
     }
 
     /// With a box off the ferry, down the ramp and up the lane past a
@@ -627,12 +642,12 @@ impl World {
         if !outbound {
             let i = self.free_dock(harbour)?;
             let p = h.park[i].pose;
-            return Some(Self::shunt(vec![here.at, berth.ramp(), berth.past(berth.up(p.at)), tug_at(p)], 2, Place::Park(i), now));
+            return Some(Self::shunt(berth, vec![here.at, berth.ramp(), berth.past(berth.up(p.at)), tug_at(p)], 2, p.heading, Place::Park(i), now));
         }
         let (ferry, _) = self.berthed(harbour)?;
         let k = self.deck_room(ferry)?;
         let p = h.park.iter().map(|s| s.pose).min_by(|a, b| dist(a.at, here.at).total_cmp(&dist(b.at, here.at)))?;
-        Some(Self::shunt(vec![here.at, berth.past(berth.up(p.at)), berth.apron(), berth.ramp(), tug_at(deck_pose(ship, k))], 1, Place::Deck(k), now))
+        Some(Self::shunt(berth, vec![here.at, berth.past(berth.up(p.at)), berth.apron(), berth.ramp(), tug_at(deck_pose(ship, k))], 1, ship.heading, Place::Deck(k), now))
     }
 
     /// The tug's next box, and the move to it.
@@ -653,7 +668,7 @@ impl World {
             // bringing a box out always has somewhere to drop it.
             let off = (0..deck.len()).find(|&k| deck[k].is_some_and(|t| !t.outbound));
             if let (Some(k), true) = (off, self.free_docks(harbour).len() >= 2) {
-                let s = Self::shunt(vec![here.at, berth.apron(), berth.ramp(), tug_at(deck_pose(ship, k))], 1, Place::Deck(k), now);
+                let s = Self::shunt(berth, vec![here.at, berth.apron(), berth.ramp(), tug_at(deck_pose(ship, k))], 1, ship.heading, Place::Deck(k), now);
                 if done_by(&s) <= due {
                     return Some(s);
                 }
@@ -662,14 +677,16 @@ impl World {
             if let (Some(i), Some(_)) = (out, self.deck_room(ferry)) {
                 let p = h.park[i].pose;
                 let front = plus(p.at, ahead(p.heading, TUG_BOX + 0.6));
-                let s = Self::shunt(vec![here.at, front, tug_at(p)], 1, Place::Park(i), now);
+                let s = Self::shunt(berth, vec![here.at, front, tug_at(p)], 1, p.heading, Place::Park(i), now);
                 if done_by(&s) <= due {
                     return Some(s);
                 }
             }
         }
+        // Back to its corner, facing the land: up the lane past it and
+        // backed in.
         let rest = berth.rest();
-        (dist(here.at, rest.at) > 0.05).then(|| Self::shunt(vec![here.at, rest.at], usize::MAX, Place::Rest, now))
+        (dist(here.at, rest.at) > 0.05).then(|| Self::shunt(berth, vec![here.at, berth.at(0.95, -0.45), berth.at(0.55, -DOCK_OUT), rest.at], 1, rest.heading, Place::Rest, now))
     }
 
     /// The deck's free slot nearest the sea end.
@@ -747,13 +764,10 @@ impl World {
     }
 }
 
-/// Where a tug stands at the end of a move: at its last point, facing the
-/// way it went, or back the way it came if it was backing.
-fn end_pose(s: &Shunt) -> Pose {
-    let n = s.path.len();
-    let (a, b) = (s.path[n.saturating_sub(2)], s.path[n - 1]);
-    let heading = (b[1] - a[1]).atan2(b[0] - a[0]);
-    Pose { at: b, heading: if s.backs_from < n - 1 { heading + std::f64::consts::PI } else { heading } }
+/// How long a run of `l` takes from a stand to a stand, at up to `top`,
+/// gathering way and losing it at `TUG_PUSH`.
+fn run_secs(l: f64, top: f64) -> f64 {
+    if l < top * top / TUG_PUSH { 2.0 * (l / TUG_PUSH).sqrt() } else { l / top + top / TUG_PUSH }
 }
 
 #[cfg(test)]

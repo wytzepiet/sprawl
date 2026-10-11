@@ -222,7 +222,7 @@ function mountFerry(id: number, car: Car, pool: InstancePool, ctx: EngineContext
  *  its last one ended; the box on its hitch behind it. */
 function mountTug(id: number, car: Car, pool: InstancePool, ctx: EngineContext): () => void {
   const key = paint(pool, "tug", TUG_SHAPE, TUG, SOLID);
-  const move = car.shunt ? shunting(car.shunt) : null;
+  const move = car.shunt && car.spot ? shunting(car.shunt, car.spot, !!car.hitched) : null;
   if (!move && !car.spot) return () => {};
   const p0 = move ? move(simNow()) : { tug: car.spot!, box: behind(car.spot!) };
   const placed = (q: Stand): [[number, number, number], [number, number, number]] => [[q.at[0], q.at[1], GROUND], [0, 0, q.heading - Math.PI / 2]];
