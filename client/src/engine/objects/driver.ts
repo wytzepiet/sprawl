@@ -63,6 +63,10 @@ const LOOK = 0.35;
 const LOCK = 1 / 0.3;
 /** How fast the wheel turns: curvature gained per tile driven. */
 const WHEEL = 8;
+/** The farthest a lead axle is let stray from its way, and the least of
+ *  its own driving its progress along the way keeps up with. */
+const KEEP = 0.2;
+const PACE = 0.93;
 /** A step of the drive, in tiles. */
 const STEP = 0.02;
 /** How far before its end a drive is eased onto where it will stand. */
@@ -217,6 +221,11 @@ export function drive(parts: Part[], rig: Rig, start?: Pose, end?: Pose): Drive 
     const target = path.length + ahead;
     const out = [{ u: 0, ...pose() }];
     let s = path.near([getLead().x, getLead().y], ahead, 1, 1);
+    const s0 = s;
+    // A lead that starts off its way (out of a change of gear, round a
+    // corner) is let start there, and brought within `KEEP` as it goes.
+    const [qx, qy] = path.at(s);
+    let keep = Math.max(KEEP, Math.hypot(getLead().x - qx, getLead().y - qy));
     /** The curvature the driver wants: toward a point a little ahead. */
     const wants = () => {
       const lead = getLead();
@@ -234,12 +243,22 @@ export function drive(parts: Part[], rig: Rig, start?: Pose, end?: Pose): Drive 
       // The last step only as far as the end.
       const step = Math.min(STEP, Math.max(target - s, 1e-4));
       const heading = travel + k * step;
-      setLead({ x: lead.x + Math.cos(heading) * step, y: lead.y + Math.sin(heading) * step, heading: sign > 0 ? heading : heading - Math.PI });
-      follow();
+      let [x, y] = [lead.x + Math.cos(heading) * step, lead.y + Math.sin(heading) * step];
       u += step;
       // Never back, and no further on than the lead has driven, or a
-      // little more round the inside of a bend.
-      s = path.near([getLead().x, getLead().y], s, 0, 2 * step);
+      // little more round the inside of a bend; and never falling behind
+      // it, all but as far as it has driven (`PACE`): a lead that missed a
+      // corner is not left to find it again.
+      s = Math.max(path.near([x, y], s, 0, 2 * step), Math.min(target, s0 + PACE * u - KEEP));
+      // Kept within `KEEP` of the way: what would take it further is taken
+      // back a little each step, so a driver who overshoots comes back to
+      // it, never off round a circle of their own.
+      const [px, py] = path.at(s);
+      const off = Math.hypot(x - px, y - py);
+      keep = Math.max(KEEP, Math.min(keep, off) - step / 2);
+      if (off > keep) [x, y] = [px + ((x - px) * keep) / off, py + ((y - py) * keep) / off];
+      setLead({ x, y, heading: sign > 0 ? heading : heading - Math.PI });
+      follow();
       out.push({ u, ...pose() });
     }
     return out;
