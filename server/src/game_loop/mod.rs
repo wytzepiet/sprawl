@@ -12,7 +12,7 @@ use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
 use crate::network::{ClientId, Command};
 use crate::persistence;
-use crate::protocol::{Build, BuildingKind, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Lump, News, ServerMessage, StateUpdate, Tool, GridCoord};
+use crate::protocol::{Build, BuildingKind, CarRole, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Lump, News, ServerMessage, StateUpdate, Tool, GridCoord};
 use crate::world::chunk_of;
 use crate::world::World;
 
@@ -98,6 +98,18 @@ pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
     settle_and_wake(&mut world, &mut events);
     for id in world.resident_ids() {
         wake_resident(&world, &mut events, id);
+    }
+    // And every working vehicle standing still: the wake it was waiting on
+    // is not saved, and one standing at a door it delivered to would stand
+    // there for good, holding its place and never free for a call.
+    let standing: Vec<EntityId> = world
+        .objects
+        .iter()
+        .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none()))
+        .map(|e| e.id)
+        .collect();
+    for id in standing {
+        events.wake(0, id);
     }
 
     let mut tick_interval = interval(Duration::from_millis(STEP_MS));
