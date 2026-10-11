@@ -1,8 +1,8 @@
 import { isBuilt, townOf, type Tile, type Town } from "./grid";
-import { DOCKS, PARKED, type Facts } from "./facts";
+import { DOCKS, type Facts } from "./facts";
 import { formOf } from "./mass";
 import { buildRoadGeometry, CAB, CAR, HALF_W, TRAILER, type ArmInfo } from "../objects/roadGeometry";
-import { footprints, INSET, intersect, shrink, soften, subtract, unite, type Polygon } from "./footprint";
+import { defaultJoins, footprints, INSET, intersect, shrink, soften, subtract, unite, type Polygon } from "./footprint";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -112,11 +112,10 @@ export function dress(town: Town, facts: Facts): Dressing {
   const clear = (x: number, y: number) =>
     trees.every((t) => Math.hypot(t.x - x, t.y - y) > 0.2 * t.scale + CAR.w / 2) && drives.mouths.every(([mx, my]) => Math.hypot(mx - x, my - y) > (BAY + DRIVE) / 2);
   const cars = [...park(town, facts).filter((car) => clear(car.x, car.y)), ...drives.cars];
-  const lorries = docks(town, facts), lots = carParks(town, facts);
-  const service = facts.services;
+  const lorries = docks(town, facts);
   return {
-    trees, cars: [...cars, ...lots.cars],
-    docks: [...lorries.docks, ...service.map((s) => ({ ...s.dock, lorry: true }))], yardLines: [...lorries.lines, ...lots.lines],
+    trees, cars,
+    docks: lorries.docks, yardLines: lorries.lines,
   };
 }
 
@@ -129,15 +128,17 @@ export function dress(town: Town, facts: Facts): Dressing {
  */
 export function pavement(town: Town): Polygon[] {
   // Paving drawn as a stand-in building: every road, paved tile and
-  // building's plot, a house's too.
-  const PAVING: Tile = { kind: "House", storeys: 1 };
-  const paved = townOf(
-    Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
-      const t = town.tile(c, r);
-      return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
-    })),
-    () => false,
-  );
+  // building's plot, a house's too, as one row of shops would be; joined
+  // on the diagonal only from road to road, so a diagonal street is
+  // paved along, and a building's corner by a street stays square.
+  const PAVING: Tile = { kind: "Shop", storeys: 1 };
+  const tiles = Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
+    const t = town.tile(c, r);
+    return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
+  }));
+  const kin = defaultJoins(townOf(tiles, () => false));
+  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  const paved = townOf(tiles, () => false, [], (c, r, x, y) => (x === c || y === r || road(c, r) === road(x, y)) && kin(c, r, x, y));
   return soften(footprints(paved, () => false, 0).flatMap((m) => m.polygons), 0.3);
 }
 
@@ -201,17 +202,22 @@ const SIDES: [number, number][] = [[0, 1], [0, -1], [1, 0], [-1, 0]];
  *  its front. */
 export function front(town: Town, c: number, r: number): [number, number] | undefined {
   if (town.tile(c, r).kind !== "House") return undefined;
-  // The game's door where it says, beside its street: one on a
-  // diagonal is no drive drawn yet.
-  if (town.door) {
-    const d = town.door(c, r);
-    return d && SIDES.find(([fx, fy]) => fx === d[0] && fy === d[1]);
-  }
-  return SIDES.find(([fx, fy]) => {
-    const [x, y] = [c + fx, r + fy];
-    return town.tile(x, y).kind === "road" && !town.through(x, y) && (town.linked(x, y, x - fy, y + fx) || town.linked(x, y, x + fy, y - fx));
-  });
+  // The game's door where it says, beside its street or on the diagonal.
+  if (town.door) return town.door(c, r);
+  // A fixture's: a street running straight past a side, or else one on
+  // the diagonal a drive meets square, not at a hairpin, as the server
+  // would find it (`World::driveway_for`).
+  const road = (x: number, y: number) => town.tile(x, y).kind === "road" && !town.through(x, y);
+  return (
+    SIDES.find(([fx, fy]) => road(c + fx, r + fy) && (town.linked(c + fx, r + fy, c + fx - fy, r + fy + fx) || town.linked(c + fx, r + fy, c + fx + fy, r + fy - fx))) ??
+    CORNERS.find(([fx, fy]) => {
+      const [x, y] = [c + fx, r + fy];
+      return road(x, y) && EIGHT.every(([dx, dy]) => !town.linked(x, y, x + dx, y + dy) || dx * fx + dy * fy >= 0) && EIGHT.some(([dx, dy]) => town.linked(x, y, x + dx, y + dy));
+    })
+  );
 }
+
+const CORNERS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 /** A tile's asphalt: whether it is a through road, and the ways its arms
  *  go, each carried on into a tile of its own kind or not (`roadShape`).
@@ -230,7 +236,7 @@ export function waysAt(town: Town, c: number, r: number): { through: boolean; wa
       if ((dc || dr) && town.linked(c, r, c + dc, r + dr)) ways.push([dc, dr, town.through(c + dc, r + dr) === through]);
     }
   }
-  for (const [dc, dr] of SIDES) {
+  for (const [dc, dr] of [...SIDES, ...CORNERS]) {
     const back = front(town, c + dc, r + dr);
     if (back && back[0] === -dc && back[1] === -dr) ways.push([dc, dr, !through]);
   }
@@ -266,18 +272,20 @@ const DRIVE_OUT = 0.47;
  * nose to the house; one now and then, the other out. By house and the
  * way to its street, and the drive's ground, which no tree stands on.
  */
-function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[]; arms: [number, number, number, number][] } {
-  const strips: Pt[][] = [], cars: Car[] = [], mouths: Pt[] = [], arms: [number, number, number, number][] = [];
+function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[] } {
+  const strips: Pt[][] = [], cars: Car[] = [], mouths: Pt[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const toward = front(town, c, r);
       if (!toward) continue;
-      const [fx, fy] = toward;
+      // To its street's middle, a tile away or on the diagonal, and the
+      // way there (fx, fy).
+      const len = Math.hypot(toward[0], toward[1]);
+      const [fx, fy] = [toward[0] / len, toward[1] / len];
       const [x0, y0] = [c + 0.5, r + 0.5];
-      arms.push([c, r, fx, fy]);
       // From the front wall out across the pavement to the road's edge.
-      strips.push(strip(x0, y0, -fy, fx, -DRIVE / 2, DRIVE / 2, fx, fy, 0.5 - INSET, 1 - HALF_W + 0.02));
-      mouths.push([x0 + fx * (1 - KERB), y0 + fy * (1 - KERB)]);
+      strips.push(strip(x0, y0, -fy, fx, -DRIVE / 2, DRIVE / 2, fx, fy, 0.5 - INSET, len - HALF_W + 0.02));
+      mouths.push([x0 + fx * (len - KERB), y0 + fy * (len - KERB)]);
       const one = hash(c, r, 41) < 0.25;
       for (const side of [-1, 1]) {
         if (one && side === (hash(c, r, 42) < 0.5 ? -1 : 1)) continue;
@@ -285,39 +293,7 @@ function driveways(town: Town): { strips: Pt[][]; cars: Car[]; mouths: Pt[]; arm
       }
     }
   }
-  return { strips, cars, mouths, arms };
-}
-
-/** A car park: on each tile, an aisle along its street between two rows
- *  of bays, nose in, one backing onto the pavement and one onto the shop,
- *  most of them taken. */
-function carParks(town: Town, facts: Facts): { cars: Car[]; lines: Pt[][] } {
-  const cars: Car[] = [], lines: Pt[][] = [];
-  const ROW = 0.35, ACROSS = PARKED / 2;
-  for (let r = 0; r < town.h; r++) {
-    for (let c = 0; c < town.w; c++) {
-      if (facts.yard(c, r) !== "cars") continue;
-      const toStreet = [[0, -1], [0, 1], [-1, 0], [1, 0]].find(([dc, dr]) => town.tile(c + dc, r + dr).kind === "road");
-      if (!toStreet) continue;
-      // Toward the street (nx, ny), and along it (ux, uy).
-      const [nx, ny] = toStreet;
-      const [ux, uy] = [-ny, nx];
-      const [x0, y0] = [c + 0.5, r + 0.5];
-      for (const side of [1, -1]) {
-        for (let k = 0; k <= ACROSS; k++) {
-          const t = k / ACROSS - 0.5;
-          lines.push(strip(x0, y0, ux, uy, t - 0.008, t + 0.008, nx * side, ny * side, 0.5 - ROW, 0.5));
-          if (k === ACROSS) continue;
-          const m = t + 0.5 / ACROSS;
-          const [x, y] = [x0 + ux * m + nx * side * (0.5 - ROW / 2), y0 + uy * m + ny * side * (0.5 - ROW / 2)];
-          const h = hash(Math.round(x * 100), Math.round(y * 100), 19);
-          if (h < 0.25) continue;
-          cars.push({ x, y, angle: Math.atan2(ny * side, nx * side), colour: Math.floor(hash(Math.round(x * 100), Math.round(y * 100), 23) * 8) });
-        }
-      }
-    }
-  }
-  return { cars, lines };
+  return { strips, cars, mouths };
 }
 
 /** A depot's docks: wherever its yard meets its hall, a row of lorry bays
@@ -383,8 +359,8 @@ function park(town: Town, facts: Facts): Car[] {
           for (const side of [-1, 1]) {
             const [nx, ny] = [-uy * side, ux * side];
             const [x, y] = [x0 + ux * t + nx * KERB, y0 + uy * t + ny * KERB];
-            // Only before homes, shops and a supermarket's own front (not
-            // its car park's), and a gap now and then.
+            // Only before homes, shops and a supermarket, its customers at the
+            // kerb as the game parks them, and a gap now and then.
             const [fc, fr] = [Math.floor(x + nx * 0.4), Math.floor(y + ny * 0.4)];
             const front = town.tile(fc, fr);
             if (!isBuilt(front) || facts.yard(fc, fr) || (formOf(front).family !== "street" && front.kind !== "Supermarket")) continue;

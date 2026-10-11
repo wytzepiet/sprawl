@@ -13,7 +13,7 @@ import { CHUNK, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./
 import type { TownApi } from "./townWorker";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
-import { BLUEPRINTS } from "../blueprints";
+import { BLUEPRINTS, yardOf } from "../blueprints";
 import { KERB_Z } from "./town/draw";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
@@ -26,7 +26,7 @@ import { RoadTiles } from "./roads";
 import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
 import type { RGB } from "./town/mass";
-import type { Building, BuildingKind, GameObjectEntry, RoadNode, TerrainType } from "../generated";
+import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType } from "../generated";
 import type { Placing } from "./may";
 import type { Pose } from "../generated/Pose";
 import type { Pt } from "./town/footprint";
@@ -209,14 +209,16 @@ export class TownLayer {
         if (b.door) g.doors.push([b.door.tile.x, b.door.tile.y, b.door.street.x - b.door.tile.x, b.door.street.y - b.door.tile.y]);
         for (const p of b.park) for (const side of [-1, 1]) slotLine(marks, p.pose, side);
         // A site is its ground, paved, until it stands (`BuildingObject`).
+        const yard = yardTiles(b.tiles, b.kind, b.facing);
         for (const t of b.tiles) {
-          g.buildings.push([t.x, t.y, e.id, b.site ? "paved" : b.kind]);
+          g.buildings.push([t.x, t.y, e.id, b.site ? "paved" : b.kind, yard.has(`${t.x},${t.y}`)]);
           grow(g.built, t.x, t.y);
         }
       }
     });
     if (held) {
-      for (const t of held.tiles) g.buildings.push([t.x, t.y, HELD, held.kind]);
+      const yard = yardTiles(held.tiles, held.kind, held.facing);
+      for (const t of held.tiles) g.buildings.push([t.x, t.y, HELD, held.kind, yard.has(`${t.x},${t.y}`)]);
       if (held.door) g.doors.push([held.door.tile.x, held.door.tile.y, held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
     }
     g.marks = [...marks.values()];
@@ -498,6 +500,9 @@ function slotLine(marks: Map<string, Snapshot["marks"][number]>, { at: [x, y], h
 }
 /** A slot's width: the docks' spacing (`BAY_W` in the server's `lots.rs`). */
 const SLOT = 0.3;
+
+/** A building's yard, as the server lays its lot out, by tile. */
+const yardTiles = (tiles: GridCoord[], kind: BuildingKind, facing: number) => new Set((yardOf(tiles, kind, facing) ?? []).map((t) => `${t.x},${t.y}`));
 
 /** Every building's door, by its tile: the way on the map to its street. */
 function doorsOf(each: (f: (e: GameObjectEntry) => void) => void): Map<string, [number, number]> {

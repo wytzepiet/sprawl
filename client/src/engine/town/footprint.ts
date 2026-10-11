@@ -1,6 +1,6 @@
 import ClipperLib from "clipper-lib";
 import { isBuilt, type Tile, type Town } from "./grid";
-import { kin } from "./mass";
+import { alone, kin } from "./mass";
 
 /**
  * The ground plans of a town's buildings, drawn as roads are: a building
@@ -149,13 +149,14 @@ function tidy(ring: Pt[]): Pt[] {
 }
 
 /** Tiles of one kind joined as the look would, with no strokes to say:
- *  beside each other, and on the diagonal unless the block is solid there
+ *  beside each other, and on the diagonal (not a kind placed whole) unless the block is solid there
  *  (both tiles beside the pair are the kind too) or a street runs between. */
 export function defaultJoins(town: Town) {
   return (c: number, r: number, x: number, y: number) => {
     const a = town.tile(c, r);
     if (!kin(a, town.tile(x, y))) return false;
     if (x === c || y === r) return true;
+    if (alone(a)) return false;
     if (town.linked(x, r, c, y)) return false;
     return !(kin(a, town.tile(x, r)) && kin(a, town.tile(c, y)));
   };
@@ -196,10 +197,6 @@ function plan(town: Town, width: number) {
     const links = linksOf(c, r);
     return !links.length || links.some(([dx, dy]) => !dx || !dy);
   };
-  /** Does a diagonal street run past one of its corners, from the tile
-   *  on one side of that corner to the tile on the other? */
-  const onDiagonal = (c: number, r: number) =>
-    [[1, 1], [1, -1], [-1, 1], [-1, -1]].some(([sx, sy]) => town.linked(c + sx, r, c, r + sy));
   const pieces: { at: Pt; ring: Pt[] }[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
@@ -218,10 +215,6 @@ function plan(town: Town, width: number) {
           const step = has(sx, -sy) || has(-sx, sy);
           if (step && !(has(sx, 0) && has(0, sy))) ring = cut(ring, [sx, sy, sx * mx + sy * my + h * Math.SQRT2]);
         }
-        // A tile standing alone faces its street: turned a quarter over
-        // where one runs diagonally past a corner, as big as it was.
-        const d = h * Math.SQRT2;
-        if (!links.length && onDiagonal(c, r)) ring = [[mx, my - d], [mx + d, my], [mx, my + d], [mx - d, my]];
         pieces.push({ at: [c, r], ring });
       }
       // Each join once, as a band on to the next tile's middle, wound as

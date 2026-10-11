@@ -48,8 +48,12 @@ The code is `client/src/engine/town/`:
 
 - **The town is a grid of tiles**, each one kind (a building's kind, or
   road, water, wood, open ground) and some storeys, and the road links
-  between tiles. Nothing about lots, driveways, facings or who owns what:
-  those are the simulation's, and the look reads none of them.
+  between tiles. Where a building's door is and where its yard lies are
+  the simulation's (`World::orient`): the look is told each building's
+  door and which of its tiles are yard (`Tile.yard`, laid out by the
+  same rule as the server's lot, `yardOf` beside `blueprint::lie`), and
+  works out nothing of either itself, so what is drawn is where the cars
+  go (2026-10-11).
 - **A building is drawn as a road is** (`town/footprint.ts`): its tiles
   and the joins between them, as the brush stroke ran (`Town.joins`), and
   its plan one thick line through them: a square of the building's width
@@ -57,8 +61,7 @@ The code is `client/src/engine/town/`:
   steps on the diagonal, its corner there is cut on the band's edge, so a
   row two wide is one clean band too), a band of that
   width along each join, beside or diagonal, so a diagonal row is as thick
-  as a straight one, a house standing alone turned a quarter over where a
-  diagonal street runs past its corner (not beside a bend or dead end), and the square between four tiles
+  as a straight one, and the square between four tiles
   joined all round,
   so a block is solid. Tiles not joined stand apart: a stroke along a
   street is one row, separate clicks are detached houses, and a stroke
@@ -69,7 +72,11 @@ The code is `client/src/engine/town/`:
   kind, beside, and on the diagonal unless the block is solid there or a
   street runs between. This replaced corner rules that had to guess, from
   the tiles alone, a staircase from an L. Not yet: a diagonal row's
-  distance from a diagonal street, which the corner rules kept.
+  distance from a diagonal street, which the corner rules kept. A kind
+  placed whole stands alone and square (`alone` in `mass.ts`): a home, a
+  supermarket, anything with a yard joins only its own tiles, and never
+  on the diagonal; a house beside a diagonal street stands square too,
+  where it was once turned a quarter over (2026-10-11).
 - **Roofs are exact** (`town/roof.ts`): every wall raises a roof face
   climbing in from it, and the roof over a point is the lowest face there,
   flat beyond its reach, so ridges, hips and valleys fall where faces meet.
@@ -89,19 +96,16 @@ The code is `client/src/engine/town/`:
 - **Facts, then looks** (`town/facts.ts`): a pre-pass works out what a
   tile cannot see from its neighbours, once for the whole town: a shed's
   office end; a courtyard, open ground that no street and no map edge
-  reaches; and a yard, where a kind keeps one (`mass.ts`): as much of the
-  building's own ground as the yard must hold, street tiles in one run
-  from its quiet end or its busy one. A depot's is at the quiet end, a
-  dock for every two tiles, its office at the busy end; a supermarket's
-  car park is on the busy corner, three cars to a tile of shop. The rest
-  is building. A supermarket whose shop is two tiles each way also takes its
-  deliveries, in a corner cut from it a lorry long and wide, the lorry
-  backed in along the wall with its tail to the door: the back corner if
-  a street runs behind, else down a side street, else at the front
-  corner beside the car park (`sketches/loading-bay.svg`, D to F, the
-  mayor, 2026-10-02). The lorry stands in the shop's own tiles, never on
-  a road. Everything drawn is a function of a tile, its neighbours and
-  these facts.
+  reaches; and a yard, where a kind keeps one (`mass.ts`): the tiles the
+  server lays its lot in, the rows on its door's side its whole width,
+  so the rest is a rectangle; a depot's docks along the hall's wall
+  behind it. Its yard turns when its door does: kept while its street
+  stands, moved to the side that has one when it goes. The rest is
+  building. A supermarket is a box: its car park on the busy corner and
+  its loading bay cut from a corner were the look's own guesses, which
+  the game never parked in and which moved whenever a street came, and
+  went (2026-10-11; `shelved.md`). Everything drawn is a function of a
+  tile, its neighbours and these facts.
 - **The free ground is dressed** (`town/dressing.ts`) by the same rule.
   No gardens, for now: lawns under and behind houses and in courtyards
   read as plots pasted on, and whether the town wants gardens at all is
@@ -114,11 +118,11 @@ The code is `client/src/engine/town/`:
   and trees, with a gap here and there. Drawn only, for now: the cars the
   simulation parks come with `parking.md` step 1. A depot's yard has lorry
   bays along the hall wall across from its street, three to a tile, a door
-  behind each and lorries backed up to most; a car park has an aisle
-  along its street between two rows of bays, ten cars to a tile, most
-  taken. One brush paints the building, and its yard comes with it.
-  Every house on a straight street has a drive straight in from the road
-  to its front wall, an arm of the street with its curves, and on it,
+  behind each and lorries backed up to most. One brush paints the
+  building, and its yard comes with it.
+  Every house has a drive in from the road to its door, straight or on
+  the diagonal where its street is a diagonal step away, as the game
+  puts its door (`front` in `dressing.ts`), an arm of the street with its curves, and on it,
   where the game parks them (`lots.rs`),
   its two cars side by side, nose to the house and wholly in front of it,
   and no kerb car across its mouth (the mayor, 2026-10-03). The street's
@@ -131,7 +135,9 @@ The code is `client/src/engine/town/`:
   ground: every road, yard and building but a house makes paved ground, shaped by the
   buildings' own rule run on it at full size (the terrain's corners in
   straight lines, a diagonal as far out as a straight edge, so a diagonal
-  street is as wide as a straight one), then every corner rounded as the
+  street is as wide as a straight one; but never on the diagonal from a
+  building to a road, so a building's corner by a street stays square),
+  then every corner rounded as the
   terrain rounds a shore (`soften`). So a street's pavement is its sidewalk,
   a town centre is paved shop to shop, a suburb is green with a sidewalk
   round each block, and the grass left between blocks has soft edges. Where a tree stands comes
@@ -199,8 +205,10 @@ shape the player paints, not from a choice. A supermarket of one tile is
 a corner shop, its customers at the kerb; of two or three, it gives its
 busy corner to a car park; once the shop itself is two tiles each way, a
 loading bay cut from a corner; past that the car park grows,
-three cars to a tile of shop (`18-supermarkets`). Built: the
-supermarket. To come, the same way: a depot from a lock-up with a van to
+three cars to a tile of shop. Built for the supermarket, and taken out
+2026-10-11 (`shelved.md`): buildings are placed whole now, a kind one
+size, and a car park the look drew where the game parked nobody. To
+come, if stages return, the same way: a depot from a lock-up with a van to
 a yard of docks, a petrol station from a kiosk and a pump at the kerb to
 a canopy over a row of pumps. The server's buildings come in one size a
 kind for now; the stages mean something in play when a building's

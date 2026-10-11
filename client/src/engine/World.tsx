@@ -177,7 +177,7 @@ export default function World() {
     }
     if (entry.object.kind !== "Building") return undefined;
     const b = entry.object.data as Building;
-    return JSON.stringify([b.kind, b.tiles, b.door, !b.site, b.park.map((s) => s.pose)]);
+    return JSON.stringify([b.kind, b.tiles, b.facing, b.door, !b.site, b.park.map((s) => s.pose)]);
   }
 
   setOpsListener(processOps);

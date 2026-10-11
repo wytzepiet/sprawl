@@ -1,10 +1,12 @@
-import type { BuildingKind } from "../../generated";
+import type { BuildingKind, GridCoord } from "../../generated";
+import { FACINGS, plot, yardOf } from "../../blueprints";
 
 /**
  * The town as the look sees it: a grid of tiles, each one kind of thing,
- * built up some storeys, and the road links between them. Nothing about who
- * owns what, where a car parks or which way a door faces: those are the
- * simulation's, and the look is decided by the neighbours alone.
+ * built up some storeys, and the road links between them. Where a car
+ * parks and which way a door faces are the simulation's: the look is
+ * told a building's door and which of its tiles are its yard, and decides
+ * the rest from the neighbours alone.
  *
  * Coordinates are the fixture's: column east, row south, the tile (c, r)
  * running from c to c + 1 and r to r + 1.
@@ -15,8 +17,11 @@ export interface Tile {
   /** A building's kind, or the ground's. */
   kind: BuildingKind | Ground;
   storeys: number;
-  /** In the game, which building it is. */
+  /** Which building it is. */
   id?: number;
+  /** Part of its building's yard, as the server lays it out
+   *  (`World::yard_of`): paved, its docks against the building. */
+  yard?: boolean;
 }
 
 export interface Town {
@@ -60,8 +65,9 @@ export const isBuilt = (t: Tile) => !GROUND.has(t.kind);
 export const storeysOf = (kind: BuildingKind) => STOREYS[kind] ?? 1;
 
 export function tileOf(ch: string): Tile {
-  const kind = LETTERS[ch];
-  if (kind) return { kind, storeys: storeysOf(kind) };
+  // A building's letter, its yard's small, as `/map` writes the game's.
+  const kind = LETTERS[ch.toUpperCase()];
+  if (kind) return ch === ch.toUpperCase() ? { kind, storeys: storeysOf(kind) } : { kind, storeys: storeysOf(kind), yard: true };
   const ground: Ground = ch === "=" || ch === "#" ? "road" : ch === "~" || ch === "≈" ? "water" : ch === "T" ? "wood" : ch === ":" ? "paved" : "open";
   return { kind: ground, storeys: 0 };
 }
@@ -76,12 +82,37 @@ const OPEN: Tile = { kind: "open", storeys: 0 };
 export function parseTown(text: string): Town & { rows: string[] } {
   const rows = text.split("\n").filter((l) => l.trim() && !l.startsWith("#")).map((l) => l.replace(/\s/g, ""));
   const w = Math.max(...rows.map((r) => r.length));
-  // A house is a tile, as the server raises a fixture's (`fixtures.rs`):
-  // each its own building. A run of any other letter is one.
-  const tiles = rows.map((row, r) => Array.from({ length: w }, (_, c) => {
-    const t = tileOf(row[c] ?? ".");
-    return t.kind === "House" ? { ...t, id: r * w + c } : t;
-  }));
+  const tiles = rows.map((row) => Array.from({ length: w }, (_, c) => tileOf(row[c] ?? ".")));
+  // Each building as the server raises a fixture's (`fixtures.rs`): a
+  // kind a tile big a building a tile, any other a run of its letter,
+  // beside or diagonal; its yard where its small letters are, or else
+  // toward the first side with a street.
+  let next = 0;
+  for (let r = 0; r < rows.length; r++) {
+    for (let c = 0; c < w; c++) {
+      const t = tiles[r][c];
+      if (!isBuilt(t) || t.id !== undefined) continue;
+      const kind = t.kind as BuildingKind;
+      const id = next++;
+      t.id = id;
+      const run: GridCoord[] = [{ x: c, y: r }];
+      const [pw, ph] = plot(kind, 0).size;
+      for (let i = 0; i < run.length && pw * ph > 1; i++) {
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            const [x, y] = [run[i].x + dc, run[i].y + dr];
+            const n = tiles[y]?.[x];
+            if (n?.kind === kind && n.id === undefined) (n.id = id), run.push({ x, y });
+          }
+        }
+      }
+      const road = (x: number, y: number) => tiles[y]?.[x]?.kind === "road";
+      const fronts = (f: number) => yardOf(run, kind, f)?.some((q) => road(q.x + FACINGS[f][0], q.y + FACINGS[f][1]));
+      if (run.some((q) => tiles[q.y][q.x].yard)) continue;
+      const facing = [0, 1, 2, 3].find(fronts);
+      for (const q of facing === undefined ? [] : yardOf(run, kind, facing)!) tiles[q.y][q.x].yard = true;
+    }
+  }
   return townOf(tiles, (c, r) => rows[r]?.[c] === "#", rows);
 }
 

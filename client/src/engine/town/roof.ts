@@ -52,12 +52,10 @@ const KIT = {
 } as const;
 const PLANT = { margin: 0.05, room: [0.26, 0.2, 0.1], ac: 0.12, acHigh: 0.05, vent: 0.045, ventHigh: 0.05 } as const;
 
-/** Every building's plan as it stands: its masses, and the loading bay cut
- *  from each, its corners square. */
-export function* plans({ town, head, services }: Facts) {
-  const cuts = services.map((s): Polygon => [s.cut]);
+/** Every building's plan as it stands: its masses, a polygon at a time. */
+export function* plans({ town, head }: Facts) {
   for (const mass of footprints(town, head)) {
-    for (const polygon of subtract(mass.polygons, cuts)) yield { mass, polygon, outline: [polygon] };
+    for (const polygon of mass.polygons) yield { mass, polygon, outline: [polygon] };
   }
 }
 

@@ -15,6 +15,7 @@
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
 //! M supermarket  D depot  P harbour  W sawmill  Q quarry
+//! d  (any letter small) that building's yard, as `/map` writes the game's
 //! ```
 //!
 //! A building's letters are its tiles: a kind bigger than a tile is one
@@ -50,7 +51,7 @@ pub static PLACED: OnceLock<Vec<Placed>> = OnceLock::new();
 
 fn building(c: char) -> Option<BuildingKind> {
     use BuildingKind::*;
-    Some(match c {
+    Some(match c.to_ascii_uppercase() {
         'H' => House,
         'A' => Apartment,
         'S' => Shop,
@@ -163,7 +164,15 @@ pub fn build(world: &mut World, dir: &Path) {
                     continue;
                 }
                 let quay = crate::blueprint::blueprint(kind).quay;
-                let facing = (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())).unwrap_or(2);
+                // Its yard where its small letters are, as `/map` writes
+                // a game's; else toward the first street it has.
+                let mut marked: Vec<GridCoord> = run.iter().filter(|&&(c, r)| char_at(c, r).is_ascii_lowercase()).map(|&(c, r)| at(c, r)).collect();
+                marked.sort_by_key(|t| (t.x, t.y));
+                let yard = |f: u8| World::yard_of(&tiles, kind, f).map(|mut y| { y.sort_by_key(|t| (t.x, t.y)); y });
+                let facing = (0..4)
+                    .find(|&f| !marked.is_empty() && yard(f).as_ref() == Some(&marked))
+                    .or_else(|| (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())))
+                    .unwrap_or(2);
                 world.raise(kind, tiles, facing);
             }
         }
@@ -205,10 +214,12 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
             let road = world.road_node_at(GridCoord { x: tx, y: ty }).and_then(|id| world.objects.get(id));
             let built = world.occupied.get(&(tx, ty)).and_then(|&id| world.objects.get(id));
             out.push(match (road.map(|e| &e.object), built.map(|e| &e.object)) {
-                // A building is its letter on every tile, its driveway
-                // included, which is road on its own tile; its yard is
-                // worked out from its shape, as the town grid does.
-                (_, Some(GameObject::Building(b))) => letter(b.kind),
+                // A building is its letter on every tile, its yard's in
+                // small letters, where the game lays its lot.
+                (_, Some(GameObject::Building(b))) => match World::yard_of(&b.tiles, b.kind, b.facing) {
+                    Some(yard) if yard.contains(&GridCoord { x: tx, y: ty }) => letter(b.kind).to_ascii_lowercase(),
+                    _ => letter(b.kind),
+                },
                 (Some(GameObject::RoadNode(n)), _) => if n.road { '#' } else { '=' },
                 _ => match world.terrain.get(&(tx, ty)) {
                     Some(TerrainType::Sea | TerrainType::Water) => '~',
