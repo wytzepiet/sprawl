@@ -138,8 +138,11 @@ enum Way {
     /// and docks against the building's wall, each a spot, entered by
     /// backing in from the stop point beyond its mouth and left forward.
     /// `lane` runs from the door outward; a bay is (mouth, stop) as
-    /// indices on it.
-    Yard { lane: Vec<EntityId>, bays: Vec<(usize, usize)>, street: EntityId },
+    /// indices on it. A harbour's lane runs down to its ramp, and on
+    /// from it onto the moored ferry's deck: `seats` are where a settler's
+    /// car stands aboard, two to a slot, each with the node at the land
+    /// end of its deck lane it drives off by.
+    Yard { lane: Vec<EntityId>, bays: Vec<(usize, usize)>, street: EntityId, seats: Vec<[EntityId; 2]> },
     /// Bays at the kerb, a spot each; the door for a car with no bay.
     Kerb { door: EntityId, street: EntityId, bays: Vec<KerbWay> },
 }
@@ -615,6 +618,27 @@ impl World {
             edge(self, pair[0], pair[1]);
             edge(self, pair[1], pair[0]);
         }
+        // Aboard: each seat, along its deck lane to the land end, and off
+        // over the ramp onto the lane's end.
+        let mut seats = Vec::new();
+        if let Some(berth) = self.berth_at(tiles, kind, facing) {
+            let ship = berth.moored();
+            let ends: Vec<EntityId> = (0..crate::world::sea::LANES)
+                .map(|l| {
+                    let p = crate::world::sea::deck_pose(ship, l);
+                    let id = node(self, [p.at[0] + p.heading.cos() * 0.35, p.at[1] + p.heading.sin() * 0.35]);
+                    edge(self, id, *lane.last().unwrap());
+                    id
+                })
+                .collect();
+            for k in 0..crate::world::sea::DECK {
+                for at in crate::world::sea::seats(ship, k) {
+                    let id = node(self, at.at);
+                    edge(self, id, ends[k % crate::world::sea::LANES]);
+                    seats.push([id, ends[k % crate::world::sea::LANES]]);
+                }
+            }
+        }
         let mut spots = Vec::new();
         let mut bays = Vec::new();
         for (pose, mouth, stop) in docks {
@@ -625,7 +649,7 @@ impl World {
             spots.push(Spot { node: id, pose, windows: Vec::new() });
             bays.push((mouth, stop));
         }
-        Some(Lot { gate, shape: Default::default(), spots, way: Way::Yard { lane, bays, street }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), stats: Stats::default() })
+        Some(Lot { gate, shape: Default::default(), spots, way: Way::Yard { lane, bays, street, seats }, nodes: Vec::new(), edges: Vec::new(), doorway: Vec::new(), stats: Stats::default() })
     }
 
     /// Take a building's lot out of the world; whoever was parked in it is
@@ -900,7 +924,7 @@ impl World {
             (Way::Driveway { street, .. }, Claim::Spot(i)) => vec![lot.spots[i].node, *street],
             (Way::Driveway { door, street }, Claim::Door) => vec![*door, *street],
             // Out of the dock forward, back along the lane to the door.
-            (Way::Yard { lane, bays, street }, Claim::Spot(i)) => {
+            (Way::Yard { lane, bays, street, .. }, Claim::Spot(i)) => {
                 let mut v = vec![lot.spots[i].node];
                 v.extend(lane[..=bays[i].0].iter().rev());
                 v.push(*street);
@@ -913,6 +937,15 @@ impl World {
             }
             (Way::Kerb { door, street, .. }, Claim::Door) => vec![*door, *street],
         })
+    }
+
+    /// The way off a harbour's moored ferry from a seat on its deck: along
+    /// its deck lane, over the ramp, up the lane to the gate, and the
+    /// street node last.
+    pub fn way_off(&mut self, harbour: EntityId, seat: usize) -> Option<Vec<EntityId>> {
+        let Lot { way: Way::Yard { lane, street, seats, .. }, .. } = self.lot_mut(harbour)? else { return None };
+        let [at, end] = *seats.get(seat)?;
+        Some([at, end].into_iter().chain(lane.iter().rev().copied()).chain([*street]).collect())
     }
 
     /// The ways from a node to a building, claiming nothing: the street

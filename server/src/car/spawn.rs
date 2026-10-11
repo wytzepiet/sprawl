@@ -22,11 +22,32 @@ pub fn start_trip(
     now: GameTime,
     until: GameTime,
 ) -> bool {
-    let (owner, role, leaves) = match world.objects.get(car_id).map(|e| &e.object) {
-        Some(GameObject::Car(c)) if c.trip.is_none() => (c.owner, c.role, c.spot),
-        _ => return false,
+    let leaves = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) => c.spot,
+        _ => None,
     };
     let out = world.way_out(car_id).unwrap_or_default();
+    depart(world, events, car_id, out, leaves, from_node, dest_building, now, until)
+}
+
+/// A trip out by a given way: lot nodes, the street node last, from where
+/// the car stands (`leaves`).
+#[allow(clippy::too_many_arguments)]
+pub fn depart(
+    world: &mut World,
+    events: &mut EventQueue,
+    car_id: EntityId,
+    out: Vec<EntityId>,
+    leaves: Option<crate::protocol::Pose>,
+    from_node: EntityId,
+    dest_building: EntityId,
+    now: GameTime,
+    until: GameTime,
+) -> bool {
+    let (owner, role) = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() => (c.owner, c.role),
+        _ => return false,
+    };
     let backs_out = world.backs_out(car_id);
     let leaving = world.kerb_stretch(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);

@@ -100,6 +100,14 @@ pub fn deck_pose(ship: Pose, k: usize) -> Pose {
 
 pub use crate::shipping::water::{Berth, BERTH};
 
+/// Where a settler's car stands in deck slot `k`, two to a slot, one
+/// either side of its middle along it, facing the land (`aboard` in the
+/// client's `motion.ts`).
+pub fn seats(ship: Pose, k: usize) -> [Pose; 2] {
+    let p = deck_pose(ship, k);
+    [-0.15, 0.15].map(|d| Pose { at: plus(p.at, ahead(p.heading, d)), heading: p.heading })
+}
+
 /// The park, in from the ramp up the lane: a dock's row each side of it,
 /// a box's width apart, the last just in from the gate. The harbour is
 /// two tiles deep, so the gate's middle is 1.5 in.
@@ -439,11 +447,18 @@ impl World {
         }
     }
 
-    /// The next settler drives off the ramp and home.
+    /// The next settler drives off the ramp and home: from its seat on the
+    /// deck, the free slots' from the sea end, two to a slot, counted from
+    /// the last aboard, so the first is at the land end and nobody moves
+    /// as those before them leave.
     fn roll_off(&mut self, events: &mut EventQueue, ferry: EntityId, harbour: EntityId, now: GameTime) {
         let Some(street) = self.street_of(harbour) else { return };
+        let Some(berth) = self.berth(harbour) else { return };
         let Some(GameObject::Car(c)) = self.objects.get(ferry).map(|e| &e.object) else { return };
         let Some(&car) = c.passengers.first() else { return };
+        let j = c.passengers.len() - 1;
+        let free: Vec<usize> = (0..DECK).rev().filter(|&k| c.deck.get(k).is_none_or(|s| s.is_none())).collect();
+        let seat = free.get(j >> 1).map(|&k| (k, seats(berth.moored(), k)[j & 1]));
         let home = match self.objects.get(car).map(|e| &e.object) {
             Some(GameObject::Car(c)) => self.objects.get(c.owner).and_then(|e| match e.object {
                 GameObject::Resident(ref r) => Some(r.home),
@@ -454,7 +469,14 @@ impl World {
         // Off the deck once it is away, or at once if home is gone; one the
         // street does not let out yet tries again with the next. Whoever is
         // still aboard when the ferry sails waits for the next sailing.
-        let drove = home.is_some_and(|home| crate::car::spawn::start_trip(self, events, car, street, home, now, GameTime::MAX));
+        let off = seat.and_then(|(k, at)| Some((self.way_off(harbour, 2 * k + (j & 1))?, at)));
+        let drove = home.is_some_and(|home| match off {
+            Some((out, at)) => {
+                self.update_position(car, GridCoord { x: at.at[0].floor() as i32, y: at.at[1].floor() as i32 });
+                crate::car::spawn::depart(self, events, car, out, Some(at), street, home, now, GameTime::MAX)
+            }
+            None => crate::car::spawn::start_trip(self, events, car, street, home, now, GameTime::MAX),
+        });
         if drove || home.is_none() {
             if let Some(GameObject::Car(c)) = self.objects.get_mut(ferry).map(|e| &mut e.object) {
                 c.passengers.remove(0);

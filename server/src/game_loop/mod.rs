@@ -2611,9 +2611,24 @@ mod tests {
         settle_and_wake(&mut world, &mut events);
         let settlers = world.household(house);
         assert_eq!(settlers.len(), 2, "nobody moved in");
-        // They come on the next ferry, and drive home.
+        // They come on the next ferry, and drive home: off the deck from
+        // where each stood aboard, over the ramp and up the lane.
         let until = now + turn + DWELL + day / 6;
-        while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {}
+        let berth = world.berth(harbour).unwrap();
+        let mut rolled = 0;
+        while settlers.iter().any(|&id| at_of(&world, id) != Some(house)) && step(&mut world, &mut events, &mut intersections, &mut now, until) {
+            for &id in &settlers {
+                let Some(GameObject::Resident(r)) = world.objects.get(id).map(|e| &e.object) else { continue };
+                if let Some(t) = car_of(&world, r.car).trip.filter(|t| t.progress == 0.0 && t.route_positions.len() > 3) {
+                    let start = t.leaves.expect("a settler leaves from its seat");
+                    assert_eq!(start.at, t.route_positions[0]);
+                    let up = |p: [f64; 2]| (p[0] - berth.ramp()[0]) * berth.landward().cos() + (p[1] - berth.ramp()[1]) * berth.landward().sin();
+                    assert!(up(start.at) < -0.3, "a settler set off from {:?}, not the deck", start.at);
+                    rolled += 1;
+                }
+            }
+        }
+        assert!(rolled > 0, "no settler was seen rolling off the deck");
         assert!(settlers.iter().all(|&id| at_of(&world, id) == Some(house)), "the settlers never got home");
         // The opening done, and paid; standing orders were given above, so
         // the trunk's first is done as it opens, and the next waits on a
