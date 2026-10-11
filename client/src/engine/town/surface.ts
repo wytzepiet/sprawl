@@ -83,9 +83,11 @@ const SQUARE = 0.37;
 const SQUARE_PITCH = 0.27;
 const ROOM = 0.02;
 
-/** How many bays a side `len` tiles long holds, within its walls
- *  (`bays_along`). */
-const baysAlong = (len: number, square: boolean) => Math.max(0, Math.floor((len - 2 * INSET) / (square ? SQUARE_PITCH : ALONG_PITCH) + 1e-9));
+/** How far in from a side's ends its bays keep (`WALL_INSET`). */
+const BAY_INSET = 0.2;
+
+/** How many bays a side `len` tiles long holds (`bays_along`). */
+const baysAlong = (len: number, square: boolean) => Math.max(0, Math.floor((len - 2 * BAY_INSET) / (square ? SQUARE_PITCH : ALONG_PITCH) + 1e-9));
 
 /** A car's bay at the kerb: where its middle is, which way it faces
  *  (radians from +x, y down), and the street tile it is before, the way

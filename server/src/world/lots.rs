@@ -51,8 +51,8 @@ const KERB_LANE: f64 = 0.1;
 const SQUARE: f64 = 0.37;
 const SQUARE_PITCH: f64 = 0.27;
 const TURN: f64 = 0.45;
-/// Bays keep within a building's walls, this far in from its tiles' edges
-/// (`INSET` in the client's `footprint.ts`).
+/// Bays keep this far in from the ends of a building's side
+/// (`BAY_INSET` in the client's `surface.ts`).
 const WALL_INSET: f64 = 0.2;
 
 /// How many bays a side `len` tiles long holds, within its walls.
