@@ -243,6 +243,9 @@ export class TownLayer {
     if (this.previewing || !this.heldDirty) return;
     this.heldDirty = false;
     const held = this.held;
+    // Let go, the town's own is shown again once it is drawn as it now
+    // stands, a building placed standing in it.
+    if (!held && (this.drawing || this.stale.size)) return void (this.heldDirty = true);
     if (!held) return this.unhold();
     const started = performance.now();
     const todo = new Set<string>();
@@ -355,7 +358,7 @@ export class TownLayer {
         perfCount("town.draws");
         perfCount("town.drawMs", took);
         if (import.meta.env.DEV && took > SLOW_MS) console.warn(`[town] ${todo.length} chunks drawn in ${took.toFixed(0)} ms, off the main thread`);
-        if (this.stale.size) this.settle();
+        if (this.stale.size || this.heldDirty) this.settle();
       });
   }
 

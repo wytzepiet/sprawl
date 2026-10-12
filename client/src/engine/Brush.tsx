@@ -5,7 +5,7 @@ import { Dots } from "./dots";
 import { underGlass } from "./glass";
 import { projector, screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
-import { aim, held, hold, isRoad, setAim, setTool, tool, turn } from "../ui/buildMode";
+import { aim, held, hold, isRoad, setAim, setPlaced, setTool, tool, turn } from "../ui/buildMode";
 import { fit, fits, hand, may, mayStart, placing, snap, STEPS, type Hand } from "./may";
 import { BLUEPRINTS, GoodIcon, GOODS } from "../blueprints";
 import type { Building, Good, GridCoord, TerrainType, Tool } from "../generated";
@@ -133,6 +133,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     const p = aim();
     if (!p || p.why) return;
     send({ type: "Place", data: { kind: p.kind, at: p.at, facing: p.facing } });
+    setPlaced(p);
     if (!shift) hold(null);
   };
 

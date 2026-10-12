@@ -1,4 +1,4 @@
-import { onCleanup, createEffect, on } from "solid-js";
+import { onCleanup, createEffect, createMemo, on } from "solid-js";
 import { perfCount } from "./PerfReport";
 import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
@@ -23,7 +23,8 @@ import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
-import { aim } from "../ui/buildMode";
+import { aim, placed, setPlaced } from "../ui/buildMode";
+import { news } from "../state/sea";
 
 interface MountedEntry {
   kind: string;
@@ -50,8 +51,9 @@ export default function World() {
   const hasRoad = (x: number, y: number) =>
     getObjectsAt(x, y).some((o) => o.object.kind === "RoadNode");
 
-  /** Trees give way to anything built — a road, or any tile of a plot. */
-  const isBuilt = (x: number, y: number) => hasRoad(x, y) || builtTiles.has(`${x},${y}`);
+  /** Trees give way to anything built — a road, or any tile of a plot,
+   *  or of the building in hand or just let go. */
+  const isBuilt = (x: number, y: number) => hasRoad(x, y) || builtTiles.has(`${x},${y}`) || inHand.has(`${x},${y}`);
 
   /**
    * Every tile under a building and whose it is, mirroring the server's
@@ -60,12 +62,16 @@ export default function World() {
    * and a road landing on its far side would not be seen to reach it.
    */
   const builtTiles = new Map<string, number>();
+  /** The tiles of the building in hand, or of the one let go until the
+   *  server's word on it comes back (`placed`). */
+  let inHand = new Set<string>();
 
   /** Claim a building's tiles, returning the keys so they can be
    *  released. */
   function cover(entry: GameObjectEntry): string[] {
     if (entry.object.kind !== "Building" || !entry.position) return [];
     const b = entry.object.data as Building;
+    if (placed()?.tiles.some((t) => b.tiles.some((u) => u.x === t.x && u.y === t.y))) setPlaced(null);
     const keys = b.tiles.map((t) => {
       const key = `${t.x},${t.y}`;
       builtTiles.set(key, entry.id);
@@ -90,8 +96,19 @@ export default function World() {
   const town = new TownLayer(ctx, casters()!, theme, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
 
   createEffect(on(theme, () => (terrain.markAllDirty(), town.repaint()), { defer: true }));
-  // The building in hand, drawn where it would stand.
-  createEffect(() => town.hold(aim()));
+  // The building in hand, or let go until the server answers, drawn where
+  // it would stand, and the trees out of its way.
+  const standing = () => aim() ?? placed();
+  createEffect(() => town.hold(standing()));
+  const footprint = createMemo(() => {
+    const p = standing();
+    return p && !p.why ? p.tiles.map((t) => `${t.x},${t.y}`) : [];
+  }, [], { equals: (a, b) => a.join() === b.join() });
+  createEffect(on(footprint, (keys, was: string[] = []) => {
+    inHand = new Set(keys);
+    for (const k of [...was, ...keys]) terrain.markTrees(...(k.split(",").map(Number) as [number, number]));
+  }));
+  createEffect(on(news, () => setPlaced(null), { defer: true }));
   if (import.meta.env.DEV) Object.assign(window, { sprawlHeldMs: town.previewMs });
 
   function mount(entry: GameObjectEntry): (() => void) | null {
