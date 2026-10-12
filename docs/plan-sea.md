@@ -189,7 +189,7 @@ never names `World` or `EventQueue`:
   capped at 15. `Berth` moved here from `world/sea.rs`.
   `route(&Water, from: &Berth, to: End::Berth | End::Edge)` is A* over
   tiles (eight ways, no corner cutting, +3 tiles a step at clearance 1,
-  +1 at 2), pulled tight along lines of sight that keep as far off land
+  +1 at 2), pulled tight (until grid lanes, stage 5) along lines of sight that keep as far off land
   as the tiles they replace (up to 3), its corners rounded to arcs of
   `ROUNDING` (4 tiles) where they fit on the water and the legs have
   room, tighter where not; it starts and ends at the moored ferry's
@@ -577,7 +577,8 @@ Each stage leaves the game playable and the suite green
     or across a lane, +10). A crossing tile slips no diagonal step: its
     corners count. The way out keeps the coast off its left too (the
     search charges the coast two tiles to the left), so the way back has
-    room there, and lines of sight keep four tiles off land, not three.
+    room there, and lines of sight keep four tiles off land, not three
+    (lines of sight went with grid lanes, below).
     Junctions are patches of tiles: a berth's approach (its first and
     last `BERTH` tiles, and crossings that touch it, so it runs until the
     lanes part), narrow water, crossings; crossings and narrow water two
