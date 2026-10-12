@@ -21,7 +21,6 @@ use std::collections::BTreeMap;
 
 use crate::blueprint::blueprint;
 
-use crate::calls::SERVICE_MS;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::protocol::{CarRole, EntityId, GameObject, Good, Leg, Rule, Sailing, Sea, Shipment, Trailer};
@@ -296,9 +295,9 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
         return go_home(world, events, lorry, at, now);
     }
     crate::economy::refilled(world, lorry, now);
-    // Home, backed under the canopy. A box from the harbour is unloaded
-    // into stock and is gone; what does not fit the shelf is stacked in
-    // the yard over its line. The lorry drives off bobtail.
+    // Home, backed under the canopy. A box from the harbour is dropped,
+    // unloaded into stock and gone; what does not fit the shelf is stacked
+    // in the yard over its line. The lorry is bobtail, and thinks on.
     if let Some(t) = hitched.filter(|t| !t.outbound) {
         let left = crate::economy::delivered(world, depot, t.good, t.units);
         if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object)
@@ -309,9 +308,8 @@ pub fn lorry_wake(world: &mut World, events: &mut EventQueue, lorry: EntityId, n
         set_load(world, lorry, None);
         world.lumps.push(crate::protocol::Lump { building: depot, coins: 0.0, gdp: 0.0, at: now, good: Some(t.good), units: t.units });
         crate::calls::turn(world, events, depot, now);
-        events.wake(SERVICE_MS, lorry);
-        return;
     }
+    let hitched = car(world, lorry).and_then(|c| c.hitched);
     let Some(b) = building(world, depot) else { return };
     let (standing, sent) = (b.standing, world.sent.contains(&lorry));
     if !(standing || sent || b.selling.first().is_some()) {

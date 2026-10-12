@@ -559,8 +559,9 @@ pub fn handle_car_wake_up(
             leave_crossed(world, events, car_id, &trip, old_ri, ri);
             crate::resident::arrival_readout(world, owner, trip.destination, trip.eta, now);
             park_car(world, intersections, events, car_id, trip.destination);
-            // A lorry at a harbour only couples or drops a box: a moment.
-            if role == CarRole::Truck && world.harbours.contains_key(&trip.destination) {
+            // A lorry only couples or drops a box, wherever it stops: a
+            // moment. The box is the load, not the lorry.
+            if role == CarRole::Truck {
                 events.wake(crate::haul::COUPLE_MS, car_id);
             } else if role != CarRole::Private {
                 events.wake(crate::calls::SERVICE_MS, car_id);

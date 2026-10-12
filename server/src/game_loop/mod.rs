@@ -2664,4 +2664,46 @@ mod tests {
         assert_eq!(trunk(&mut world, now)[3], (Key::Sell, true), "the box sold");
         let _ = before;
     }
+
+    /// One lorry, its depot a short street from the harbour, fetches the
+    /// starter pack under standing orders: each box is dropped under the
+    /// canopy and the lorry is off again at once, and the six are home
+    /// within eight hours of the first ferry sailing. A round trip is two
+    /// drives, each ending in a backing into a dock; it once also stood
+    /// ten minutes at the depot, a van's unloading, and the six took more
+    /// than eight hours.
+    #[test]
+    fn one_lorry_fetches_the_starter_pack_in_eight_hours() {
+        let mut world = street();
+        let harbour = harbour_of(&world);
+        let x = HARBOUR_X - 12;
+        let facing = world.site_for(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
+        let depot = world.place_building(GridCoord { x, y: 1 }, BuildingKind::Depot, facing).unwrap();
+        world.orient(depot);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        let ferry = world.ferry_of(harbour).unwrap();
+        let lorry = crate::haul::lorry_of(&world, depot).unwrap();
+        let (day, mut now) = (DAY_MS as u64, 0);
+        while car_of(&world, ferry).spot.is_none() && step(&mut world, &mut events, &mut intersections, &mut now, day) {}
+        while car_of(&world, ferry).spot.is_some() && step(&mut world, &mut events, &mut intersections, &mut now, day) {}
+        crate::haul::set_standing(&mut world, &mut events, depot, true);
+        let (sailed, hour) = (now, day / 24);
+        let home = |w: &World| w.lumps.iter().filter(|l| l.building == depot && l.units > 0.0).count();
+        let mut parked_home = None;
+        while home(&world) < 6 && step(&mut world, &mut events, &mut intersections, &mut now, sailed + 8 * hour) {
+            let c = car_of(&world, lorry);
+            match (c.trip.is_none() && world.claims.get(&lorry) == Some(&depot), parked_home) {
+                (true, None) => parked_home = Some(now),
+                (false, Some(at)) => {
+                    assert!(now - at <= 2 * crate::haul::COUPLE_MS, "the lorry stood {} ms at home", now - at);
+                    parked_home = None;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(home(&world), 6, "{} boxes home in eight hours", home(&world));
+        eprintln!("six boxes home in {:.2} hours", (now - sailed) as f64 / hour as f64);
+    }
 }
