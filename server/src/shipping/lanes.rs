@@ -416,17 +416,15 @@ mod tests {
             assert!(if berths[0] { gates[0].d0 == 0.0 } else { gates[0].d1 == len }, "{gates:?}\n{map}");
         }
         assert!(lanes.two_way(&w).is_empty(), "{map}");
-        // Out and back keep apart past the approach: never on one tile,
-        // and mostly a tile clear, where the search put them; pulled
-        // tight, the way back may cut in beside the way out.
+        // Out and back keep apart past the approach: a tile clear, a
+        // lane over, as the search put them.
         let at = |w: &[[f64; 2]], d: f64| crate::shipping::point_at(w, d).0;
         let len = crate::shipping::length(&out);
         let gaps: Vec<f64> = (12..(len as usize - 1))
             .map(|k| at(&out, k as f64))
             .map(|p| (0..(crate::shipping::length(&back) * 4.0) as usize).map(|j| at(&back, j as f64 / 4.0)).map(|q| (p[0] - q[0]).hypot(p[1] - q[1])).fold(f64::INFINITY, f64::min))
             .collect();
-        assert!(gaps.iter().all(|&g| g >= 0.9), "out and back {gaps:.2?} apart\n{map}");
-        assert!(gaps.iter().filter(|&&g| g >= 1.5).count() * 2 > gaps.len(), "out and back {gaps:.2?} apart\n{map}");
+        assert!(gaps.iter().all(|&g| g >= 1.5), "out and back {gaps:.2?} apart\n{map}");
         // Port to port: going out, the way back is on the left.
         let (p, heading) = crate::shipping::point_at(&out, len / 2.0);
         let left = [p[0] + 2.0 * heading.sin(), p[1] - 2.0 * heading.cos()];

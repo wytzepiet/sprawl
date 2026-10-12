@@ -26,10 +26,9 @@ const FAR: u8 = 15;
 const STEP: u32 = 10;
 const DIAGONAL: u32 = 14;
 const COAST: [u32; 3] = [0, 30, 10];
-/// What a turn costs, in tenths of a tile, by the square of its eighths:
-/// a 45° bend a tile, a 90° one four, so a way runs straight and
-/// steps over by a diagonal rather than a corner; a sharper turn is none
-/// a ship makes.
+/// What a turn costs by its angle (docs/shipping.md §The sea), in tenths
+/// of a tile an eighth: a 45° bend a tile, so a way runs straight rather
+/// than zig-zag; a turn sharper than 90° is none a ship makes.
 const BEND: u32 = 10;
 /// How tight a ship turns at a bend, in tiles, where there is room: a
 /// ferry's length and more. Never tighter than `TURN`: the class limit
@@ -187,7 +186,7 @@ impl Water {
                 let way = WAYS.iter().position(|&w| w == (dx * sign, dy * sign)).unwrap();
                 let (lx, ly) = WAYS[(way + 6) % 8];
                 let coast = |c: u8| COAST.get(c.max(1) as usize).copied().unwrap_or(0);
-                let step = (if dx != 0 && dy != 0 { DIAGONAL } else { STEP } + coast(c) + coast(self.clear(x + dx + 2 * lx, y + dy + 2 * ly)) + BEND * eighths * eighths) as i32 + lanes.step(x + dx, y + dy, way);
+                let step = (if dx != 0 && dy != 0 { DIAGONAL } else { STEP } + coast(c) + coast(self.clear(x + dx + 2 * lx, y + dy + 2 * ly)) + BEND * eighths) as i32 + lanes.step(x + dx, y + dy, way);
                 let g = g + step as u32;
                 if goal(x + dx, y + dy, (dx, dy)) {
                     if done.is_none_or(|d| g < d.0) {
@@ -276,8 +275,8 @@ impl Water {
 
     /// The way between a berth and another berth, or the map's edge,
     /// over the lanes laid so far: out from the berth straight along its
-    /// line, the cheapest way over the water, pulled tight and its corners
-    /// rounded, and straight in to the other berth along its line, or on to
+    /// line, the cheapest way over the water along rows, columns and
+    /// diagonals, its bends rounded, and straight in to the other berth along its line, or on to
     /// the edge itself. Sailed out from the berth, or, `toward_berth`, the
     /// other way: then lanes are read as a ship going that way meets them,
     /// so the way back runs beside the way out. Points in tiles, in the
