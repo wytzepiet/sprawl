@@ -97,3 +97,16 @@ describe("a one-way may merge at a shallow angle", () => {
     expect(may(h, "Street", at(5, -1), at(5, 0))).toBe(true);
   });
 });
+
+// `roads.rs`'s `a_divided_road_turns_right_only`, the hand's half.
+test("a one-way may be laid against a one-way, making a divided road; a two-way may not", () => {
+  const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground: (): TerrainType => "Grass" };
+  for (let x = 0; x < 10; x++) {
+    const id = x + 100;
+    h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true } });
+    h.at.set(id, { x, y: 0 });
+  }
+  expect(may(h, "OneWay", at(6, 0), at(5, 0))).toBe(true);
+  expect(may(h, "Street", at(6, 0), at(5, 0))).toBe(false);
+  expect(may(h, "OneWay", at(5, 0), at(6, 0))).toBe(false);
+});

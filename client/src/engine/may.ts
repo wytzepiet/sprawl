@@ -214,7 +214,8 @@ function tooSharp(h: Hand, at: GridCoord, dx: number, dy: number, arriving: bool
   if (!here) return false;
   return arms(here.node, false).some((id) => {
     const p = h.at.get(id);
-    if (!p || (p.x - at.x) * dx + (p.y - at.y) * dy <= 0) return false;
+    // The arm itself, there the other way already: a divided road.
+    if (!p || (p.x - at.x) * dx + (p.y - at.y) * dy <= 0 || (p.x - at.x === dx && p.y - at.y === dy)) return false;
     const out = here.node.outgoing.includes(id);
     const into = !!nodeAt(h, p)?.node.outgoing.includes(here.id);
     return (arriving && out) || (leaving && into);
@@ -233,6 +234,13 @@ function connected(h: Hand, a: GridCoord, b: GridCoord): boolean {
   return !!na && !!nb && (na.node.outgoing.includes(nb.id) || na.node.incoming.includes(nb.id));
 }
 
+/** `World::runs_one_way`: the road from one tile to the next runs there
+ *  and not back. */
+function runsOneWay(h: Hand, a: GridCoord, b: GridCoord): boolean {
+  const [na, nb] = [nodeAt(h, a), nodeAt(h, b)];
+  return !!na && !!nb && na.node.outgoing.includes(nb.id) && !nb.node.outgoing.includes(na.id);
+}
+
 /** `World::may_lay`. */
 function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boolean {
   const [dx, dy] = [to.x - from.x, to.y - from.y];
@@ -248,7 +256,8 @@ function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boole
   if (h.occupied.has(key(from.x, from.y))) return false;
   const into = h.occupied.get(key(to.x, to.y));
   if (into && !facings(into.kind, into.facing).some((f) => enters(into.tiles, into.kind, f, from, to))) return false;
-  if (connected(h, from, to)) return false;
+  // Joined already; but a one-way laid against a one-way makes a divided road.
+  if (connected(h, from, to) && !(oneWay && runsOneWay(h, to, from))) return false;
   if (dx !== 0 && dy !== 0 && connected(h, { x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy })) return false;
   // Out of `from` and in to `to`, and back too unless it is one way.
   return !tooSharp(h, from, dx, dy, !oneWay, true) && (!!into || !tooSharp(h, to, -dx, -dy, true, !oneWay));

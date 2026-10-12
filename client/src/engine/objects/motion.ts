@@ -2,8 +2,9 @@ import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
 import { CAR_RIG, driveTrip, LORRY_RIG, straight, type Drive, type Pose, type Rig } from "./driver";
 import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
-import { CAB, TRAILER, VAN } from "./roadGeometry";
-import type { Car, GridCoord, Trailer, Trip } from "../../generated";
+import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
+import type { Car, GridCoord, RoadNode, Trailer, Trip } from "../../generated";
+import { getObjectsAt } from "../../state/gameObjects";
 import type { Pose as Stand } from "../../generated/Pose";
 
 /**
@@ -60,8 +61,35 @@ export function driveOf(id: number, car: Car): Drive | null {
   const rig = rigOf(car);
   const route = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, t.cusps, t.leaves, t.stands, rig]);
   let me = drives.get(id);
-  if (me?.route !== route) drives.set(id, (me = { route, drive: driveTrip(t, rig) }));
+  if (me?.route !== route) drives.set(id, (me = { route, drive: driveTrip(t, rig, lanesOf(t.route_positions)) }));
   return me.drive;
+}
+
+/** Where a lane runs from the road's middle, by what kind of link it is
+ *  on: a two-way's to the right of the middle, a one-way's down it, a
+ *  divided road's a car's width clear of the median (`MEDIAN`). */
+const LANES = { t: LANE_OFFSET, o: 0, v: 0.13 };
+
+/** The lane at each node of a route: its links', the two either side of
+ *  it met halfway. Read off the road nodes the client holds, where it holds
+ *  them; else a two-way's. */
+function lanesOf(route: [number, number][]): number[] {
+  const link = route.slice(1).map(([x, y], k) => {
+    const [px, py] = route[k];
+    const [a, b] = [roadAt(px, py), roadAt(x, y)];
+    if (!a || !b) return LANES.t;
+    const [out, back] = [a.data.outgoing.includes(b.id), a.data.incoming.includes(b.id) || b.data.outgoing.includes(a.id)];
+    return out && a.data.incoming.includes(b.id) ? LANES.v : out && back ? LANES.t : LANES.o;
+  });
+  return route.map((_, k) => {
+    const near = [link[k - 1], link[k]].filter((l) => l !== undefined);
+    return near.length ? near.reduce((s, l) => s + l, 0) / near.length : LANES.t;
+  });
+}
+
+function roadAt(x: number, y: number): { id: number; data: RoadNode } | undefined {
+  const e = getObjectsAt(Math.floor(x), Math.floor(y)).find((o) => o.object.kind === "RoadNode");
+  return e && e.object.kind === "RoadNode" ? { id: e.id, data: e.object.data } : undefined;
 }
 
 /** A parked lorry's box, straight behind its cab. */

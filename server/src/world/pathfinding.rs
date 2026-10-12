@@ -6,14 +6,19 @@ use crate::protocol::EntityId;
 use crate::world::network::Segment;
 use crate::world::World;
 
+/// Where a search stands: at a junction, come in from the node before it
+/// (the junction itself where the search began). Turns are made at
+/// junctions, and which way a car came in says which ways it may go out.
+type At = (EntityId, EntityId);
+
 struct Node {
-    id: EntityId,
+    at: At,
     f: f64,
 }
 
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.at == other.at
     }
 }
 impl Eq for Node {}
@@ -31,14 +36,39 @@ impl PartialOrd for Node {
 }
 
 /// A leg of a journey: a stretch of road with nothing joining it along the
-/// way, named by where it comes out and the first step onto it — which is
-/// what tells apart two stretches that share both ends. The tiles between
-/// are the network's; nothing copies them until a route is laid out.
+/// way, named by where it comes out, the first step onto it — which is
+/// what tells apart two stretches that share both ends — and the last
+/// node before its end, which says which way it comes in there. The tiles
+/// between are the network's; nothing copies them until a route is laid
+/// out.
 #[derive(Clone, Copy)]
 struct Leg {
     to: EntityId,
     cost: f64,
     step: EntityId,
+    behind: EntityId,
+}
+
+/// May a car come in to `at` from `from` and go on to `to`? Never back the
+/// way it came, and never left or back across a divided road's median:
+/// off one, or onto its far side. Where the search begins it came from
+/// nowhere, and where it ends it goes nowhere.
+pub fn may_turn(world: &World, from: EntityId, at: EntityId, to: EntityId) -> bool {
+    if from == at || to == at {
+        return true;
+    }
+    if from == to {
+        return false;
+    }
+    if !world.divided(at, from) && !world.divided(at, to) {
+        return true;
+    }
+    let pos = |id: EntityId| world.objects.get(id).and_then(|e| e.position);
+    let (Some(a), Some(b), Some(c)) = (pos(from), pos(at), pos(to)) else { return true };
+    // The lanes keep to the right of the way, (-dy, dx) (`bezier.rs`):
+    // straight on or toward it is allowed.
+    let ((ix, iy), (ox, oy)) = ((b.x - a.x, b.y - a.y), (c.x - b.x, c.y - b.y));
+    ix * oy - iy * ox >= 0
 }
 
 /// Every way out from one place, searched as far as anyone has asked.
@@ -46,7 +76,8 @@ struct Leg {
 /// Searched over whole stretches of road rather than tile by tile: a junction
 /// is the only place a decision can be made, so everything between two of them
 /// is one move. On seed 7 that is a search over 73 stretches instead of 2719
-/// links.
+/// links. A junction is searched once for each way into it, since the way in
+/// says which turns are open (`may_turn`).
 ///
 /// Costed in time, not distance, which is what lets a longer fast road beat a
 /// shorter slow one and lets a jam push traffic elsewhere. Time is half what a
@@ -61,11 +92,13 @@ struct Leg {
 pub struct Routes<'w> {
     world: &'w World,
     start: EntityId,
-    /// Best cost known to each junction, and the leg that reached it: the
-    /// junction before, and the first step out of it.
-    cost: HashMap<EntityId, f64>,
-    via: HashMap<EntityId, (EntityId, EntityId)>,
-    settled: HashSet<EntityId>,
+    /// Best cost known to each junction by each way in, and the leg that
+    /// reached it: where that leg left from, and its first step.
+    cost: HashMap<At, f64>,
+    via: HashMap<At, (At, EntityId)>,
+    settled: HashSet<At>,
+    /// The ways in settled at each junction.
+    settled_at: HashMap<EntityId, Vec<At>>,
     open: BinaryHeap<Node>,
 }
 
@@ -77,14 +110,21 @@ impl<'w> Routes<'w> {
             cost: HashMap::new(),
             via: HashMap::new(),
             settled: HashSet::new(),
+            settled_at: HashMap::new(),
             open: BinaryHeap::new(),
         };
         // A car does not have to be standing at a junction — anyone arriving
         // from off the map joins wherever the road past the frontier reaches.
         // So the search starts at whichever junctions this stretch leads to,
         // already carrying the cost of reaching them.
+        let here = (start, start);
         for leg in junctions_from(world, start) {
-            routes.relax(start, leg);
+            if leg.to == start {
+                routes.cost.insert(here, 0.0);
+                routes.open.push(Node { at: here, f: 0.0 });
+            } else {
+                routes.relax(here, leg);
+            }
         }
         routes
     }
@@ -101,9 +141,9 @@ impl<'w> Routes<'w> {
         let (_, junction, exit) = self.reach(end)?;
         let mut legs: Vec<(EntityId, EntityId, EntityId)> = Vec::new();
         let mut at = junction;
-        while at != self.start {
+        while at != (self.start, self.start) {
             let &(from, step) = self.via.get(&at)?;
-            legs.push((from, step, at));
+            legs.push((from.0, step, at.0));
             at = from;
         }
         legs.reverse();
@@ -119,9 +159,10 @@ impl<'w> Routes<'w> {
         Some(route)
     }
 
-    /// The cost to `end`, the junction the last leg leaves from, and that
-    /// leg — named from the far end, so the route can be laid out.
-    fn reach(&mut self, end: EntityId) -> Option<(f64, EntityId, Leg)> {
+    /// The cost to `end`, the junction the last leg leaves from with the
+    /// way the search came in to it, and that leg — named from the far
+    /// end, so the route can be laid out.
+    fn reach(&mut self, end: EntityId) -> Option<(f64, At, Leg)> {
         let world = self.world;
         if self.start == end {
             return None;
@@ -136,6 +177,7 @@ impl<'w> Routes<'w> {
         // stretch has no record of its own, so it is charged its share of
         // the whole stretch's. On a loop there is a second way, round the
         // other side through its junction, which the search finds.
+        let here = (self.start, self.start);
         let mut direct = None;
         if let Some((seg, a, b)) = same_stretch(world, self.start, end)
             && seg.ways[usize::from(a > b)]
@@ -143,7 +185,7 @@ impl<'w> Routes<'w> {
             let share = run_length(world, &seg.nodes[a.min(b)..=a.max(b)]) / seg.length.max(1e-9);
             let cost = world.network.run_cost_ms(seg, a < b, CRUISE_SPEED) * share;
             let step = seg.nodes[if a < b { b - 1 } else { b + 1 }];
-            direct = Some((cost, self.start, Leg { to: self.start, cost, step }));
+            direct = Some((cost, here, Leg { to: self.start, cost, step, behind: self.start }));
             if !seg.is_ring() {
                 return direct;
             }
@@ -154,36 +196,40 @@ impl<'w> Routes<'w> {
         // way in, so the search runs on until nothing left in the queue could
         // beat the best way in found so far.
         let exits = junctions_into(world, end);
-        let way_in = |settled: &HashSet<EntityId>, cost: &HashMap<EntityId, f64>| -> Option<(f64, Leg)> {
+        let way_in = |routes: &Routes| -> Option<(f64, At, Leg)> {
             exits
                 .iter()
-                .filter(|exit| settled.contains(&exit.to))
-                .map(|exit| (cost[&exit.to] + exit.cost, *exit))
+                .flat_map(|exit| {
+                    routes.settled_at.get(&exit.to).into_iter().flatten().filter(|at| may_turn(world, at.1, at.0, exit.behind)).map(|&at| (routes.cost[&at] + exit.cost, at, *exit))
+                })
                 .min_by(|a, b| a.0.total_cmp(&b.0))
         };
         while let Some(top) = self.open.peek() {
-            if way_in(&self.settled, &self.cost).is_some_and(|(best, _)| top.f >= best) {
+            if way_in(self).is_some_and(|(best, _, _)| top.f >= best) {
                 break;
             }
             let current = self.open.pop().unwrap();
-            if current.f > self.cost[&current.id] + 1e-9 {
-                continue; // superseded by a cheaper way here
+            if current.f > self.cost[&current.at] + 1e-9 || !self.settled.insert(current.at) {
+                continue; // superseded by a cheaper way here, or settled
             }
-            self.settled.insert(current.id);
-            for leg in hops_from(world, current.id) {
-                self.relax(current.id, leg);
+            self.settled_at.entry(current.at.0).or_default().push(current.at);
+            for leg in hops_from(world, current.at.0) {
+                if may_turn(world, current.at.1, current.at.0, leg.step) {
+                    self.relax(current.at, leg);
+                }
             }
         }
-        let around = way_in(&self.settled, &self.cost).map(|(cost, exit)| (cost, exit.to, exit));
+        let around = way_in(self);
         direct.into_iter().chain(around).min_by(|a, b| a.0.total_cmp(&b.0))
     }
 
-    fn relax(&mut self, from: EntityId, leg: Leg) {
+    fn relax(&mut self, from: At, leg: Leg) {
         let cost = self.cost.get(&from).copied().unwrap_or(0.0) + leg.cost;
-        if self.cost.get(&leg.to).is_none_or(|&best| cost < best - 1e-9) {
-            self.cost.insert(leg.to, cost);
-            self.via.insert(leg.to, (from, leg.step));
-            self.open.push(Node { id: leg.to, f: cost });
+        let at = (leg.to, leg.behind);
+        if self.cost.get(&at).is_none_or(|&best| cost < best - 1e-9) {
+            self.cost.insert(at, cost);
+            self.via.insert(at, (from, leg.step));
+            self.open.push(Node { at, f: cost });
         }
     }
 }
@@ -202,17 +248,17 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
         .filter(|seg| seg.nodes.len() > 1)
         .filter_map(|seg| {
             let last = seg.nodes.len() - 1;
-            let (to, step, forward) = if seg.nodes[0] == at {
-                (seg.nodes[last], seg.nodes[1], true)
+            let (to, step, behind, forward) = if seg.nodes[0] == at {
+                (seg.nodes[last], seg.nodes[1], seg.nodes[last - 1], true)
             } else if seg.nodes[last] == at {
-                (seg.nodes[0], seg.nodes[last - 1], false)
+                (seg.nodes[0], seg.nodes[last - 1], seg.nodes[1], false)
             } else {
                 return None;
             };
             if !seg.ways[usize::from(!forward)] {
                 return None;
             }
-            Some(Leg { to, step, cost: world.network.run_cost_ms(seg, forward, CRUISE_SPEED) })
+            Some(Leg { to, step, behind, cost: world.network.run_cost_ms(seg, forward, CRUISE_SPEED) })
         })
         .collect()
 }
@@ -232,7 +278,7 @@ fn junctions_into(world: &World, to: EntityId) -> Vec<Leg> {
 
 fn stretch_ends(world: &World, node: EntityId, leaving: bool) -> Vec<Leg> {
     if world.network.is_junction(node) {
-        return vec![Leg { to: node, cost: 0.0, step: node }];
+        return vec![Leg { to: node, cost: 0.0, step: node, behind: node }];
     }
     world
         .network
@@ -252,10 +298,10 @@ fn stretch_ends(world: &World, node: EntityId, leaving: bool) -> Vec<Leg> {
             // coming in; and the other way about.
             let mut legs = Vec::new();
             if i > 0 && seg.ways[usize::from(leaving)] {
-                legs.push(Leg { to: seg.nodes[0], cost: part(0, i, !leaving), step: seg.nodes[i - 1] });
+                legs.push(Leg { to: seg.nodes[0], cost: part(0, i, !leaving), step: seg.nodes[i - 1], behind: seg.nodes[1] });
             }
             if i < last && seg.ways[usize::from(!leaving)] {
-                legs.push(Leg { to: seg.nodes[last], cost: part(i, last, leaving), step: seg.nodes[i + 1] });
+                legs.push(Leg { to: seg.nodes[last], cost: part(i, last, leaving), step: seg.nodes[i + 1], behind: seg.nodes[last - 1] });
             }
             legs
         })
@@ -326,10 +372,10 @@ mod tests {
         let mut g: HashMap<EntityId, f64> = HashMap::new();
         let mut came_from: HashMap<EntityId, EntityId> = HashMap::new();
         g.insert(start, 0.0);
-        open.push(Node { id: start, f: heuristic(start) });
+        open.push(Node { at: (start, start), f: heuristic(start) });
 
         while let Some(current) = open.pop() {
-            if current.id == end {
+            if current.at.0 == end {
                 let mut route = vec![end];
                 let mut node = end;
                 while let Some(&prev) = came_from.get(&node) {
@@ -339,8 +385,8 @@ mod tests {
                 route.reverse();
                 return Some(route);
             }
-            let here = *g.get(&current.id).unwrap_or(&f64::INFINITY);
-            let outgoing = match world.objects.get(current.id) {
+            let here = *g.get(&current.at.0).unwrap_or(&f64::INFINITY);
+            let outgoing = match world.objects.get(current.at.0) {
                 Some(e) => match &e.object {
                     GameObject::RoadNode(node) => node.outgoing.clone(),
                     _ => continue,
@@ -348,11 +394,11 @@ mod tests {
                 None => continue,
             };
             for neighbour in outgoing {
-                let cost = here + world.segment_length(current.id, neighbour);
+                let cost = here + world.segment_length(current.at.0, neighbour);
                 if g.get(&neighbour).is_none_or(|&best| cost < best) {
                     g.insert(neighbour, cost);
-                    came_from.insert(neighbour, current.id);
-                    open.push(Node { id: neighbour, f: cost + heuristic(neighbour) });
+                    came_from.insert(neighbour, current.at.0);
+                    open.push(Node { at: (neighbour, neighbour), f: cost + heuristic(neighbour) });
                 }
             }
         }

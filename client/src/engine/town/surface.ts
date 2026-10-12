@@ -3,7 +3,7 @@ import { BLUEPRINTS, FACINGS, kerbed, sideOf } from "../../blueprints";
 import { isBuilt, townOf, type Flow, type Tile, type Town } from "./grid";
 import { isYard } from "./mass";
 import { buildRoadGeometry, CAR, HALF_W, type ArmInfo } from "../objects/roadGeometry";
-import { area, defaultJoins, footprints, INSET, shrink, soften, type Polygon, type Pt } from "./footprint";
+import { area, defaultJoins, footprints, INSET, shrink, soften, subtract, type Polygon, type Pt } from "./footprint";
 
 /**
  * The town's ground is two surfaces. Pavement is the base: every road,
@@ -287,9 +287,13 @@ export function shapeOf(surface: Surface): Polygon[] {
   }
   for (const [x0, y0, x1, y1] of rects) parts.push([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]]);
   // All wound one way, so none is taken for a hole in another; grown a
-  // hair and drawn back, so no seam is left between them.
+  // hair and drawn back, so no seam is left between them. A divided road's
+  // median taken out of it after the rounding, which would close a gap so
+  // narrow: down the middle of each of its arms, the ground showing through.
   const wound = parts.map(([ring]) => [area(ring) < 0 ? [...ring].reverse() : ring]);
-  const out = soften(shrink(shrink(wound, -1e-3), 1e-3), ROUND);
+  const rounded = soften(shrink(shrink(wound, -1e-3), 1e-3), ROUND);
+  const cut = medians(ways);
+  const out = cut.length ? subtract(rounded, cut) : rounded;
   shapes.set(key, out);
   return out;
 }
@@ -342,13 +346,51 @@ export function paintOf({ ways }: Surface): (x: number, y: number) => number {
       marks.push((x, y) => LINE / 2 - segmentDistance(x, y, tip, wing));
     }
   }
+  // A divided road's two sides, each an arrow the way it runs, on the
+  // right of it (`bezier.rs`'s lanes), where it runs through.
+  if (!junction && roads.length === 2 && roads.every(([, , , flow]) => flow === "v")) {
+    for (const [dc, dr] of roads) {
+      const len = Math.hypot(dc, dr);
+      const [ux, uy] = [dc / len, dr / len];
+      const [cx, cy] = [0.5 - uy * SIDE, 0.5 + ux * SIDE];
+      const tip: Pt = [cx + ux * TIP * 0.8, cy + uy * TIP * 0.8];
+      for (const side of [1, -1]) {
+        const wing: Pt = [cx - ux * WING[0] * 0.8 - uy * WING[1] * 0.7 * side, cy - uy * WING[0] * 0.8 + ux * WING[1] * 0.7 * side];
+        marks.push((x, y) => LINE / 2 - segmentDistance(x, y, tip, wing));
+      }
+    }
+  }
   return (x, y) => marks.reduce((best, m) => Math.max(best, m(x, y)), -1);
 }
+
+/** How far a divided road's side runs from its middle (`motion.ts`). */
+const SIDE = 0.13;
 
 function segmentDistance(x: number, y: number, [ax, ay]: Pt, [bx, by]: Pt): number {
   const [ex, ey] = [bx - ax, by - ay];
   const t = Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey || 1)));
   return Math.hypot(x - ax - ex * t, y - ay - ey * t);
+}
+
+/** A divided road's median: this far either side of its middle. Its two
+ *  sides are driven this far out from the middle (`driver.ts`), a car's
+ *  width clear of it. */
+export const MEDIAN = 0.045;
+
+/** The medians down a tile's divided arms: from its middle, or at a
+ *  junction from short of it, so traffic crosses there; on past the seam. */
+function medians(ways: Way[]): Polygon[] {
+  const roads = ways.filter(([, , , flow]) => flow !== "d");
+  const junction = roads.length >= 3;
+  return roads
+    .filter(([, , , flow]) => flow === "v")
+    .map(([dc, dr]) => {
+      const len = Math.hypot(dc, dr);
+      const [ux, uy, nx, ny] = [dc / len, dr / len, (-dr / len) * MEDIAN, (dc / len) * MEDIAN];
+      const [a, b] = [junction ? CLEAR : -MEDIAN, len / 2 + RUN];
+      const ring: Pt[] = [[0.5 + ux * a + nx, 0.5 + uy * a + ny], [0.5 + ux * b + nx, 0.5 + uy * b + ny], [0.5 + ux * b - nx, 0.5 + uy * b - ny], [0.5 + ux * a - nx, 0.5 + uy * a - ny]];
+      return [area(ring) < 0 ? ring.reverse() : ring];
+    });
 }
 
 /** An edge of a tile's asphalt, as drawn for its instance (x and y the

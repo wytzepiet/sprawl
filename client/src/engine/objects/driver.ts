@@ -464,11 +464,12 @@ function ends(points: Pt[]): Pt[] {
   return [...drivable(points.slice(0, a + 1)), ...points.slice(a + 1, b), ...drivable(points.slice(b))];
 }
 
-/** A trip as the server sends it, driven: in parts at each change of
+/** A trip as the server sends it, driven, each node of it offset onto
+ *  its lane by `lanes` (or the two-way's): in parts at each change of
  *  gear (`backing`, stretches of edges `[a, b)` driven backwards), each
  *  part's route drawn as a street route is, its lot nodes where they are
  *  and so its ends where the gear changes. */
-export function driveTrip(t: Driven, rig: Rig): Drive | null {
+export function driveTrip(t: Driven, rig: Rig, lanes?: number[]): Drive | null {
   const { route_positions: route, from_lot: fromLot, to_lot: toLot, backing } = t;
   const n = route.length;
   const cuts = [...new Set([0, ...backing.flat(), n - 1])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
@@ -477,7 +478,7 @@ export function driveTrip(t: Driven, rig: Rig): Drive | null {
     const [i, j] = [cuts[c - 1], cuts[c]];
     const nodes = route.slice(i, j + 1).map(([x, y]) => ({ x, y }));
     const fl = Math.max(fromLot - i, i > 0 ? 1 : 0), tl = Math.max(j + 1 - (n - toLot), j < n - 1 ? 1 : 0);
-    const d = drawnPath(nodes, LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
+    const d = drawnPath(nodes, lanes ? lanes.slice(i, j + 1) : LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
     if (d) drawn.push({ points: ends(d.points.map((p): Pt => [p.x, p.y])), backing: backing.some(([a, b]) => a <= i && i < b) });
   }
   if (!drawn.length) return null;

@@ -13,8 +13,9 @@ import { FACINGS, gateOf, kerbed, plot, yardOf } from "../../blueprints";
  */
 export type Ground = "open" | "paved" | "road" | "water" | "wood";
 
-/** Which way a link is driven, from where it is seen: both ways, out, in. */
-export type Flow = "t" | "o" | "i";
+/** Which way a link is driven, from where it is seen: both ways, out, in,
+ *  or both ways on two one-ways a median apart, a divided road. */
+export type Flow = "t" | "o" | "i" | "v";
 
 export interface Tile {
   /** A building's kind, or the ground's. */
@@ -35,8 +36,8 @@ export interface Town {
   linked(c0: number, r0: number, c1: number, r1: number): boolean;
   /** A road tile on a through road. */
   through(c: number, r: number): boolean;
-  /** Which way traffic runs on the link from one road tile to the next:
-   *  both ways, out to it, or in from it. Unset, both. */
+  /** Which way traffic runs on the link from one road tile to the next
+   *  (`Flow`). Unset, both. */
   flow?(c0: number, r0: number, c1: number, r1: number): Flow;
   /** Two built tiles, beside or diagonal, joined into one building, as the
    *  brush stroke that painted them ran; unset, the look joins tiles of a
