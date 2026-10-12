@@ -56,6 +56,9 @@ pub struct Segment {
     /// In order, both ends included. A segment with no intersection anywhere on
     /// it — a ring road — starts and ends at the same node.
     pub nodes: Vec<EntityId>,
+    /// Whether it can be driven [along its nodes, against them]: a one-way
+    /// anywhere on it closes it the other way.
+    pub ways: [bool; 2],
 }
 
 impl Segment {
@@ -112,6 +115,8 @@ fn close_ring(mut nodes: Vec<EntityId>) -> Vec<EntityId> {
 pub struct RoadNetwork {
     /// Neighbours, and how far away each is.
     adj: HashMap<EntityId, HashMap<EntityId, f64>>,
+    /// Which ways each link can be driven, from to.
+    ways: HashSet<(EntityId, EntityId)>,
     component: HashMap<EntityId, ComponentId>,
     members: HashMap<ComponentId, HashSet<EntityId>>,
     next: ComponentId,
@@ -174,12 +179,13 @@ impl RoadNetwork {
         self.members.get(&c).into_iter().flatten().copied().collect()
     }
 
-    /// A road now joins these two. Returns every node whose network was
+    /// A road now runs from `a` to `b`. Returns every node whose network was
     /// joined to the world by it.
     pub fn link(&mut self, a: EntityId, b: EntityId, length: f64) -> Vec<EntityId> {
         if a == b {
             return Vec::new();
         }
+        self.ways.insert((a, b));
         let stale = self.take_segments_around(&[a, b]);
         self.adj.entry(a).or_default().insert(b, length);
         self.adj.entry(b).or_default().insert(a, length);
@@ -209,9 +215,19 @@ impl RoadNetwork {
         turning
     }
 
+    /// The road no longer runs from `a` to `b`, though it still runs back:
+    /// a two-way made one-way. The network is no smaller; its runs are.
+    pub fn close_way(&mut self, a: EntityId, b: EntityId) {
+        self.ways.remove(&(a, b));
+        let stale = self.take_segments_around(&[a, b]);
+        self.recontract(stale, None);
+    }
+
     /// The road between these two is gone. Returns every node whose network
     /// was cut off from the world by it.
     pub fn unlink(&mut self, a: EntityId, b: EntityId) -> Vec<EntityId> {
+        self.ways.remove(&(a, b));
+        self.ways.remove(&(b, a));
         let mut stale = self.take_segments_around(&[a, b]);
         if let Some(set) = self.adj.get_mut(&a) {
             set.remove(&b);
@@ -446,7 +462,11 @@ impl RoadNetwork {
                 .windows(2)
                 .map(|p| self.adj.get(&p[0]).and_then(|n| n.get(&p[1])).copied().unwrap_or(1.0))
                 .sum();
-            self.segments.insert(id, Segment { length, nodes });
+            let ways = [
+                nodes.windows(2).all(|p| self.ways.contains(&(p[0], p[1]))),
+                nodes.windows(2).all(|p| self.ways.contains(&(p[1], p[0]))),
+            ];
+            self.segments.insert(id, Segment { length, nodes, ways });
         }
     }
 

@@ -137,7 +137,9 @@ impl<'w> Routes<'w> {
         // the whole stretch's. On a loop there is a second way, round the
         // other side through its junction, which the search finds.
         let mut direct = None;
-        if let Some((seg, a, b)) = same_stretch(world, self.start, end) {
+        if let Some((seg, a, b)) = same_stretch(world, self.start, end)
+            && seg.ways[usize::from(a > b)]
+        {
             let share = run_length(world, &seg.nodes[a.min(b)..=a.max(b)]) / seg.length.max(1e-9);
             let cost = world.network.run_cost_ms(seg, a < b, CRUISE_SPEED) * share;
             let step = seg.nodes[if a < b { b - 1 } else { b + 1 }];
@@ -151,7 +153,7 @@ impl<'w> Routes<'w> {
         // destination's stretch may be settled first and still be the dearer
         // way in, so the search runs on until nothing left in the queue could
         // beat the best way in found so far.
-        let exits = junctions_from(world, end);
+        let exits = junctions_into(world, end);
         let way_in = |settled: &HashSet<EntityId>, cost: &HashMap<EntityId, f64>| -> Option<(f64, Leg)> {
             exits
                 .iter()
@@ -207,6 +209,9 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
             } else {
                 return None;
             };
+            if !seg.ways[usize::from(!forward)] {
+                return None;
+            }
             Some(Leg { to, step, cost: world.network.run_cost_ms(seg, forward, CRUISE_SPEED) })
         })
         .collect()
@@ -215,14 +220,25 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
 /// The junctions this node's own stretch leads to, with what it costs to get
 /// there from where it stands. A junction leads to itself, for nothing.
 fn junctions_from(world: &World, from: EntityId) -> Vec<Leg> {
-    if world.network.is_junction(from) {
-        return vec![Leg { to: from, cost: 0.0, step: from }];
+    stretch_ends(world, from, true)
+}
+
+/// The junctions this node's own stretch can be reached from, named from the
+/// node's side as `junctions_from` names them, costed the way they are
+/// driven: in.
+fn junctions_into(world: &World, to: EntityId) -> Vec<Leg> {
+    stretch_ends(world, to, false)
+}
+
+fn stretch_ends(world: &World, node: EntityId, leaving: bool) -> Vec<Leg> {
+    if world.network.is_junction(node) {
+        return vec![Leg { to: node, cost: 0.0, step: node }];
     }
     world
         .network
-        .segments_at(from)
+        .segments_at(node)
         .flat_map(|seg| {
-            let Some(i) = seg.nodes.iter().position(|&n| n == from) else { return Vec::new() };
+            let Some(i) = seg.nodes.iter().position(|&n| n == node) else { return Vec::new() };
             let last = seg.nodes.len() - 1;
             // Part of a stretch has no record of its own, so it is charged
             // its share of the whole stretch's — otherwise joining a road
@@ -232,12 +248,14 @@ fn junctions_from(world: &World, from: EntityId) -> Vec<Leg> {
                 let share = run_length(world, &seg.nodes[lo..=hi]) / seg.length.max(1e-9);
                 world.network.run_cost_ms(seg, forward, CRUISE_SPEED) * share
             };
+            // Toward the start is against the run when leaving, along it when
+            // coming in; and the other way about.
             let mut legs = Vec::new();
-            if i > 0 {
-                legs.push(Leg { to: seg.nodes[0], cost: part(0, i, false), step: seg.nodes[i - 1] });
+            if i > 0 && seg.ways[usize::from(leaving)] {
+                legs.push(Leg { to: seg.nodes[0], cost: part(0, i, !leaving), step: seg.nodes[i - 1] });
             }
-            if i < last {
-                legs.push(Leg { to: seg.nodes[last], cost: part(i, last, true), step: seg.nodes[i + 1] });
+            if i < last && seg.ways[usize::from(!leaving)] {
+                legs.push(Leg { to: seg.nodes[last], cost: part(i, last, leaving), step: seg.nodes[i + 1] });
             }
             legs
         })
@@ -407,6 +425,45 @@ mod tests {
                 (a - b).abs() < 1e-6,
                 "{from} -> {to}: by stretches {a}, tile by tile {b}",
             );
+        }
+        assert!(compared > 20, "only {compared} pairs were reachable; test proves little");
+    }
+
+    /// Every other row of the town made one-way, eastward, the rows between
+    /// left as they were: the search over stretches must keep to them as the
+    /// tile search does, which reads only what each node lets out.
+    #[test]
+    fn it_keeps_to_one_ways_as_the_tile_search_does() {
+        let mut world = a_town_of_streets();
+        for y in (7..98).step_by(14) {
+            for x in 0..97 {
+                let (Some(a), Some(b)) = (
+                    world.road_node_at(GridCoord { x, y }),
+                    world.road_node_at(GridCoord { x: x + 1, y }),
+                ) else {
+                    continue;
+                };
+                if let Some(GameObject::RoadNode(n)) = world.objects.get_mut(b).map(|e| &mut e.object) {
+                    n.outgoing.retain(|&o| o != a);
+                }
+                world.remove_edge(b, a);
+            }
+        }
+        let nodes: Vec<EntityId> = world.objects.roads().map(|e| e.id).collect();
+        let picks: Vec<EntityId> = (0..40).map(|i| nodes[i * nodes.len() / 40]).collect();
+        let mut compared = 0;
+        for (i, &from) in picks.iter().enumerate() {
+            let to = picks[(i + 17) % picks.len()];
+            let (mine, theirs) = (find_path(&world, from, to), find_path_tile_by_tile(&world, from, to));
+            assert_eq!(mine.is_some(), theirs.is_some(), "{from} -> {to}: one search found a way, the other none");
+            let (Some(mine), Some(theirs)) = (mine, theirs) else { continue };
+            compared += 1;
+            assert!(
+                mine.windows(2).all(|p| world.edges.contains_key(&(p[0], p[1]))),
+                "{from} -> {to}: the route runs the wrong way up a one-way",
+            );
+            let (a, b) = (total(&world, &mine), total(&world, &theirs));
+            assert!((a - b).abs() < 1e-6, "{from} -> {to}: by stretches {a}, tile by tile {b}");
         }
         assert!(compared > 20, "only {compared} pairs were reachable; test proves little");
     }

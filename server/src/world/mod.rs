@@ -441,7 +441,9 @@ impl World {
     /// so it only comes apart once the last direction is gone.
     pub fn remove_edge(&mut self, from: EntityId, to: EntityId) {
         self.edges.remove(&(from, to));
-        if !self.edges.contains_key(&(to, from)) {
+        if self.edges.contains_key(&(to, from)) {
+            self.network.close_way(from, to);
+        } else {
             let turning = self.network.unlink(from, to);
             self.mark_joined(turning.into_iter().chain([from, to]));
         }
