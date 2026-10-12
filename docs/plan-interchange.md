@@ -1,19 +1,20 @@
 # Interchange: a puzzle mode, and the roads it needs
 
-Status: brainstorm, 2026-10-12. Nothing built. A second way to play,
-Freeways-like, and the four road systems it forces into being: one-way
-lanes, priority, levels, lights. To be argued, then one-shot and played.
+Status: brainstorm, 2026-10-12, second pass with the player's answers.
+Nothing built. A second way to play, Freeways-like, and the road systems
+it forces into being: one-way and multi-lane roads, merging that feels
+right, priority, levels, lights, markings, a new road brush. To be one-shot
+and played.
 
 ## Why now, and not after the main game
 
-Every system this mode needs is already in `game.md` (§Roads: "priority
-over streets and levels for overpasses. One-way is a toggle") and
-`network.md` (lanes each way, merges, roundabouts, "a link has a level").
-The town needs them anyway. The puzzle is the cheapest bench to build them
-on: a level is a handful of tiles, a known demand, a number at the end, and
-nothing else moving. A lane change that jams shows in a minute, not after a
-day of town. So the mode does not compete with the main game; it is how
-its roads get built and tested, and it is fun on its own.
+Every road system here is already in `game.md` (§Roads: "priority over
+streets and levels for overpasses. One-way is a toggle") and `network.md`
+(lanes each way, merges, roundabouts, "a link has a level"). The town needs
+them anyway. The puzzle is the cheapest bench to build them on: a level is
+a handful of tiles, a known demand and a number at the end. A merge that
+jams shows in a minute, not after a day of town. The brush built for it is
+the candidate for the main game's.
 
 ## What Freeways is
 
@@ -27,79 +28,169 @@ its roads get built and tested, and it is fun on its own.
   concrete used and the complexity of the system.
 - High scores unlock photos of real interchanges; levels unlock in a tree.
 - From memory, unverified: roads are drawn one-way, freehand, in the drag's
-  direction. Starting a road on a road splits it, ending on one merges it,
-  and a road drawn across another is lifted over it. Cars yield where they
-  merge.
+  direction; a road drawn across another is lifted over it.
 
-What we take: edge gates, demands, live traffic, the jam as failure, the
-cost of material. What we change: the grid (our brush, our 8 directions),
-levels that form one connected map, and demands with a flow rate.
+Mini Motorways' lights are reported (by players) to switch at once when a
+car waits on the cross road. Its roundabouts are the early-game favourite,
+but only while their inflow stays in check.
 
-Mini Motorways for comparison: its lights are reported (by players) to
-switch at once when a car waits on the cross road. Opinion is split on
-whether they beat a four-way stop under load. Roundabouts are the
-early-game favourite there, but only while their inflow stays in check.
+## Where it runs: in the browser, the sim compiled to wasm
+
+The positions of the cars matter only to the one player, a level is small,
+and **Test** has to fast-forward ten minutes of traffic in a couple of
+seconds. Both say: run it on the player's machine. Not by writing a second
+sim in TypeScript, but by **compiling the server's own sim to wasm**, so the
+town and the puzzle drive the same cars.
+
+It is closer than it sounds:
+
+- **The sim is already plain Rust.** tokio, axum and rusqlite live only in
+  `main.rs`, `network/`, `game_loop/` and `persistence.rs`. The four
+  `Instant::now()` perf timers (`mountains.rs`, `world/mod.rs`,
+  `shipping/`) are the only other thing that won't run in wasm, and
+  they can go behind a clock passed in.
+- **The client already talks to the sim through one small interface:**
+  `Connection { send(ClientMessage), close() }` and
+  `onMessage(ServerMessage)` (`client/src/network/connection.ts`). A
+  **worker connection** that runs the wasm sim in a Web Worker and posts
+  the same messages, as msgpack bytes, is a drop-in. The renderer,
+  `driver.ts`, the trips, the brush: none of them knows.
+
+The work:
+
+1. **Split the crate.** `sim` (world, cars, junctions, terrain, protocol)
+   as a library with no IO; `server` as the binary that wraps it in
+   tokio, websockets and SQLite.
+2. **A `Game` that the loop only drives.** `game_loop::run` today
+   holds the world, the event queue and the junctions inside one async
+   function. Pull them out into `Game { command(msg), advance_to(t) ->
+   Vec<ServerMessage> }`. The tokio loop becomes a thin shell around it;
+   the wasm wrapper becomes another. This makes the server smaller, not
+   just different.
+3. **`sim-wasm`**: `wasm-bindgen` over `Game`; a `rand` seeded per level
+   so a layout always scores the same.
+4. **The worker connection** in the client, and a level loaded from a
+   fixture compiled in or fetched.
+
+What it buys beyond the puzzle: the puzzle can ship as a static page (a
+web link, itch.io) with no server at all. And later the main game's
+client can ask the wasm sim `may(tool, from, to)` instead of keeping its
+copy of the rules in `may.ts`.
+
+**Scores across players** (the percentile chart, below) need one small
+endpoint: it receives a layout, re-runs it with the same wasm sim on the
+server (the same code, the same seed, so the same number), and keeps the
+histogram per level. That makes cheating with a doctored score
+impossible. It is not needed to play; it can come last.
 
 ## The mode
 
-**A level** is a fixture (`server/fixtures/*.txt`, the existing text map)
-plus a header:
+### A level, and the map it is part of
 
-```
-TITLE="Clover"
-GATE A W 0,12 in+out      # a road at the west edge, row 12
-GATE B N 14,0 in
-GATE C E 31,12 out
-SINK S 20,20 House        # a building that eats/spawns cars
-WANT A->C 30/min
-WANT B->A 10/min
-WANT B->C 10/min
-PAR 140                    # asphalt for three stars
-```
+**The overworld is one map.** The terrain generator (`terrain.rs`: sea,
+water, beach, grass, forest, mountain with its cliffs) makes one landscape,
+and the levels are rectangles of it, say 32 × 24 tiles. A river crosses
+three levels because it is one river. The **macro network**, a handful of
+highways and towns on the overworld, set by hand per map, says what
+crosses each rectangle's edge: those crossings are the level's **gates**,
+and the flows along the macro routes are its **demands**. Neighbours agree
+by construction: level A's east gate *is* level B's west gate, carrying the
+same cars.
 
-Terrain, water, trees and pre-placed buildings come from the fixture as
-today. A **gate** is a stub of road at the edge that the level owns: a
-road you cannot demolish, that cars appear on and leave by. It is what a
-harbour exit is to the town (`network.rs` counts a network as joined when
-it reaches one), so gates are exits and the "joined" check works as is.
+**Taste in the terrain.** Not every level has a river. A level's character
+is what its rectangle happens to hold, so the map is laid out (seed, then
+hand-nudged) so that levels get one idea each: a plain crossroads, a river
+to bridge, a coast to squeeze along, a mountain to climb or go round, a
+forest that is dear to clear. Placed buildings (a town's edge, a factory,
+a harbour) are sources and sinks with their own flows.
 
-**A demand** spawns cars at its rate (Poisson, so they bunch like real
-traffic) on a trip from one gate (or building) to another. That is the one
-new kind of trip: node to node, no lot, no owner, gone on arrival. Today
-every trip is `start_trip(car, node, building)` (`car/spawn.rs:16`); the
-new one is smaller than that, not larger.
+Terrain and roads on one scale: `terrain.rs` already gives water a height
+of −1, ground 0 and mountain 2. Road levels use the same unit (see Levels),
+so a road at level 2 runs on a mountain's top as ground, a road at 0 over
+water is a bridge, and a slope climbs a cliff.
 
-**No mode flag.** A level world has no residents, no shops, no economy; it
-just has demands. The resident, call and economy wake-ups have nothing to
-wake. The car physics, the edge queues and the intersection manager carry
-over untouched.
+**A gate** is a stub of road at the edge, in any cross-section:
+two-way, one-way in, one-way out, a 2-lane one-way, a divided road, or two
+gates side by side. Gates are fixed; you build from them. A gate works
+as a harbour exit does today (`network.rs` counts a network as joined when
+it reaches one).
 
-**The loop:** traffic runs from the first second, and you build live, as
-in the town. A level is **solved** when, over a rolling three minutes
-of sim time, every demand is met (delivered ≥ 90% of asked) and no gate's
-spawn queue is backed up. Then it is scored:
+**A demand** spawns cars on a trip from one gate (or building) to
+another, at its rate, Poisson so they bunch. That is the one new kind of
+trip: node to node, no lot, no owner, gone at the far gate. Today every
+trip is `start_trip(car, node, building)` (`car/spawn.rs:16`); the new one
+is smaller. A level has no residents and no economy, so nothing wakes but
+cars: **no mode flag**.
 
-- **Asphalt**: tiles laid, a deck tile ×3, a slope ×2, a light +5. The
-  number on screen while you build, against par.
-- **Flow**: mean trip time over free-flow trip time. 1.0 is perfect.
-- Stars: ★ solved, ★★ under par, ★★★ under par with flow < 1.3.
-- **Jammed**: a gate's queue over N cars for 30 s. The level says so,
-  you fix it. Nothing resets on its own.
+### Playing a level
 
-**The map.** The levels are tiles of one big overworld. A level's east gate
-*is* its neighbour's west gate: the same highway, crossing the seam.
-Solving a level opens its neighbours through its gates. The map
-zoomed out shows every solved level as its own drawing, from the
-plan renderer (`bun run plan`, flat SVG, already exists). The finished map
-is a highway network you built interchange by interchange. Later, the
-demands can come from the overworld itself: route a few big flows across
-the map, and each level's demands are what passes through its tile. That
-gives demands a reason, and makes the map one thing, not a list.
+- **Build.** Cars already drive what you've built, slowly, for the
+  sight of it. Nothing is scored.
+- **Test.** The level resets its traffic and fast-forwards: the worker runs
+  the sim flat out and the client plays it back sped up (the clock
+  already has a speed; the driver extrapolates by it). It ends at ten sim
+  minutes, or at the first **gridlock**: a gate backed up past N cars
+  for 30 s, or a car that hasn't moved in a minute. A gridlock stops the
+  test, pans to where it jammed, and goes back to Build.
+- **Score**, if it got through: an **efficiency percentage**, the main
+  thing, with stars beside it.
 
-**Server shape.** One level per server world, loaded by `ResetWorld` from
-the level's fixture (it exists). Progress (stars, best asphalt, your
-layout) in a SQLite table, so going back to a level shows what you built.
-Single player only.
+**Efficiency**, proposed:
+
+    efficiency = flow × material
+    flow     = Σ free-flow trip time / Σ actual trip time   (≤ 1; a car
+               still waiting at its gate counts as having waited the whole test)
+    material = reference cost / your cost
+
+**Cost** is asphalt per tile, a deck tile ×3, a slope ×2, a light as N tiles
+of asphalt. The **reference** is our own solve, shipped with the level
+(it is also its test: `cargo test` asserts it solves). So 100% is "as good
+as ours", and beating us shows as 104%. To argue: whether going over 100 is
+a delight or a bug.
+
+**The chart**: a histogram of everyone's efficiency on the level, your bar
+lit, like Poly Bridge's. It needs the score endpoint. Until then it
+shows only your own attempts.
+
+### The map as a place
+
+Zoomed out, the overworld shows every solved level as what you built, and
+**cars drive across it for real**: one world holds the whole map, a car
+leaves level A's gate and is in level B at once, the same car. An
+unsolved level is its terrain, greyed, with its gates' stubs: its traffic
+stops at its edge, so the map fills with life as you solve it. A **test**
+runs the level alone: the same rectangle, with its gate flows from the
+macro network, nothing outside. The zoomed-out view needs a cheaper draw
+for the far zoom (cars as dots, roads as lines; `canvas.md`'s flat view is
+that idea).
+
+Solving a level opens the neighbours its gates lead to.
+
+## The brush (new, for this mode; the main game adopts it if it's better)
+
+Today's brush grew out of placing buildings. This one is made for drawing
+roads:
+
+- **The road palette: cross-sections, not names.** A row of small icons
+  drawn as what they are, keys 1–5: `→` one-way, `⇄` two-way,
+  `⇉` 2-lane one-way, `⇄|` divided, and later `⇉⇇` divided 2+2. The
+  icon is the road's section, so nothing needs reading.
+- **Drag to draw**, snapped to the 8 directions as now; a one-way runs the
+  way you drag. The ghost is the real road (lanes, markings) in white,
+  red where refused, with **+12** in asphalt by the cursor and the
+  running total against the reference at the top.
+- **The pen has a height.** Scroll (or Q/E) lifts it a level. The ghost
+  floats at its height with its shadow on the ground, and the decks above
+  the pen fade. Where a drag joins a road at another level, the tile next
+  to the join becomes the slope, ghosted as one; if it can't be (a
+  junction, or something else in the tile), it's red.
+- **Crossing a road at the same level makes an intersection**, as today.
+  A bridge is drawn deliberately, with the pen raised.
+- **Edit in place, not redraw.** Hover a stretch: an arrow to flip it,
+  +/− for lanes, a toggle for priority. Hover a junction: who gives way
+  (click an arm to make it major), a light.
+- **Erase by dragging** with the right button; **Z** undo (it exists:
+  `undo.rs`).
 
 ## The roads
 
@@ -108,195 +199,177 @@ Single player only.
 The router (`pathfinding.rs` `hops_from`, `junctions_from`) walks the
 **undirected** segments of `RoadNetwork` and never reads `outgoing`. A car
 can be routed the wrong way up a one-way and then find no edge to queue
-on. Fix first: a segment knows, per direction, whether it can be driven
-(each of its links has both directions or one), and the router skips the
-ones it can't. Small. Every later step relies on it.
+on. Fix first: a segment knows which ways it can be driven, and the router
+skips the ones it can't. Small. Everything else relies on it.
 
-### 1. One-way, one lane
+### 1. Cross-sections: a link has lanes each way
 
-Exists: `Tool::OneWay`, `outgoing`/`incoming` on `RoadNode`, chevrons on
-the client. Two changes.
+As `network.md` has it: a link has lanes forward, lanes back, and whether
+a **median** divides them. One-way 1 is (1, 0); two-way is (1, 1); a
+divided road is (1, 1, barrier); a 2-lane one-way is (2, 0). One-way
+already exists (`Tool::OneWay`, `outgoing`/`incoming`, chevrons).
 
-**Shallow joins.** The rule against a turn sharper than 90° is
-partly direction-aware already (`would_be_too_sharp`, `outgoing_only`).
-Make it entirely about **movements**: at a node, every pair (way in, way
-out) a car could actually take must turn 90° or less. A one-way that
-merges at 45° into a road it runs along offers only the gentle movement,
-so it is allowed. A two-way laid the same way would offer the hairpin back,
-so it isn't. The same rule in `may.ts` on the client, as always.
+**The divided road** is one link with a **concrete barrier** down the
+middle: two carriageways, a thin raised barrier between, no left turn and
+no U-turn across it, and a side road joins the near carriageway only.
+Drawing a one-way against an existing one-way on the same tiles makes it
+one. It keeps a node per tile, and "no turn across" is one line in the
+junction's movement rule.
 
-**Two opposing one-ways in one tile** (a dual carriageway, the middle open
-so you can't turn left across it). Two ways to model it:
+**Shallow joins.** The rule against a turn sharper than 90° is partly
+direction-aware (`would_be_too_sharp`, `outgoing_only`). Make it entirely
+about **movements**: at a node, every (way in, way out) a car could take
+must turn 90° or less. A one-way that joins at 45° offers only the gentle
+movement, so it's allowed; a two-way laid the same way would offer the
+hairpin, so it isn't. The same rule in `may.ts` (or, in the puzzle, asked of
+the wasm sim and not kept twice).
 
-- (a) two nodes in the tile, side by side;
-- (b) one link with **1 lane each way and a median** (`network.md`'s
-  "2 and 2, a median between", at 1 and 1). The node's wiring rule says
-  what it means: no U-turn, no left across the median, a side road
-  joins the near carriageway only.
+### 2. Markings
 
-**Pick (b).** It is `network.md`'s own design, it keeps a node per tile
-(and per level, below), and "no left across" is one more line in the
-junction's movement rule, not a second network. Drawing a one-way
-against an existing one-way on the same tiles turns that link into
-the divided 1+1. The renderer draws two narrow carriageways and a
-strip of verge.
+Painted into the baked road surface (`town/surface.ts`), where the
+chevrons and kerbs already come from:
 
-### 2. Priority
+- **Centre lines on every road**: dashed between lanes going the same
+  way, solid (or double) between the ways where overtaking is not a
+  thing; none on a one-lane one-way.
+- **Give-way**: shark's teeth across the minor arm at the junction's edge.
+  **Stop**: a solid line and STOP where it's a stop. At a 45° merge, teeth
+  where the joining lane meets the road.
+- **Lights**: a stop line per arm.
+- A barrier is geometry, not paint: a low concrete wall with a lit top.
+
+### 3. Merging that feels right
+
+Train-track merging (a lane change only at a node, waiting for a gap
+there) makes cars **stop** where real drivers ease off a little and slot
+in. The fix is one idea, used three times: the **virtual lead**.
+
+A car that is going to share road with another car ahead of the merge
+point projects it onto its own path by its distance to that point,
+and follows it as if it were already in front: the `LeadCar` obstacle the
+physics has today (`car/mod.rs`), with a car from another queue. Then:
+
+- **A merge at a node** (two arms into one exit): each car maps the
+  other by distance to the node; whoever is further ahead leads, the
+  other eases off to fall in behind. That's the zip. Neither stops unless
+  the road beyond is full. The intersection manager keeps **crossings**
+  only; a merge is no longer a conflict it grants.
+- **Priority**: a minor car maps major cars as virtual leads, and
+  majors don't map it. So a minor car slows to fit a gap and stops at
+  the teeth only if none comes. A major car never brakes for a minor one.
+- **A lane change** on a 2-lane link: a car that wants the other lane (for
+  its next turn, a few nodes ahead; or a free lane when its own is slow)
+  maps the car ahead in that lane as its lead and adjusts its speed to
+  fit the gap. Once it fits (a gap ahead and a gap behind,
+  by its speed), it moves across over about a tile: in both queues while
+  it does, then only the new one. The car behind it in the new lane
+  maps it once it signals, and makes room. That courtesy is what stops a
+  late change from becoming a stop.
+- **A lane that ends** (a 2-lane road becoming 1): the ending lane is a
+  merge into the other along the last tile, the same as above.
+
+This is the gap-acceptance-and-follow scheme real traffic sims use (IDM
+following, MOBIL lane changes), shrunk to what we have: one more source
+of leads, and a lateral position the client draws as a smooth S.
+
+In the DES, a car that is waiting for a gap wakes when the car it maps
+moves on, as followers already do.
+
+### 4. Priority
 
 The intersection manager is FIFO with a pluggable conflict `Rule`
-(`intersection/mod.rs`). That is a four-way stop, which is why every
-junction behaves the same today. Priority is a change to who gets
-granted, not to what conflicts:
+(`intersection/mod.rs`), which makes every junction a four-way stop.
+Priority changes who is granted, not what conflicts:
 
-- Each arm of a junction is **major** or **minor**, from the kinds that
-  meet there. A road (`#`) is major over a street; equal kinds stay FIFO
-  as today. In the puzzle, a toggle on the road tool.
-- A minor car is granted only if no conflicting major car is
-  registered and due within a gap time (`QUEUE_AHEAD` already registers
-  cars three nodes early, so the manager knows who is coming). It is the
-  give-way that cars leaving a lot already do (`gap_at`), at a junction.
-- Drawn as shark's teeth (or a stop line) across the minor arm's lane, at
-  the node's edge. Merges at a 45° on-ramp get the teeth too.
+- Each arm is **major** or **minor**, from the road kinds that meet
+  (a road over a street; equal kinds FIFO, as today) or the player's
+  toggle.
+- **Crossing** a major flow: a minor car is granted only if no conflicting
+  major car is registered and due within a gap time (`QUEUE_AHEAD`
+  already registers cars three nodes out). **Merging** into one: the
+  virtual lead, above.
+- **Roundabouts** fall out: a ring of one-way major road and minor arms.
 
-What falls out of this: **roundabouts** are a ring of one-way road
-with priority, plus minor arms. No roundabout code.
+A busy major road starves its side road. That's the puzzle: the answer is
+a light, a bridge or a better merge.
 
-Starvation is real (a busy major road locks a side road out for good). That
-is the puzzle working: the answer is a light, a bridge or a better merge.
-A long-waiting minor car does not cheat its way in.
+### 5. Levels: overpasses
 
-### 3. Levels: overpasses
+`World.roads` maps a tile to **one** node (`roads.rs:8`; about 80 uses in
+9 files). It becomes a tile and a **level** to a node. Uses that mean the
+ground (driveways, doors, buildings) keep a `road_node_at(coord)` for the
+ground level; the brush and the network use the level.
 
-The deepest change on the server is one line of the data model:
-`World.roads` maps a tile to **one** node (`roads.rs:8`, about 80 uses
-in 9 files). It becomes a tile and a **level** (0–3) to a node. Most
-uses are "the road on this tile" and mean level 0 (driveways, doors,
-buildings, terrain); those keep a `road_node_at(coord)` that means ground.
-The brush and the network use the level.
-
-**Rules:**
-
-- A node has a level; links join nodes of the same level, or a **slope**.
+- A node has a level, on terrain's scale (water −1, ground 0, mountain 2):
+  levels 0–3 over ground. Links join nodes of the same level, or a
+  **slope**.
 - A **slope tile** holds a node whose two arms leave in a straight line
-  (orthogonal or diagonal), one at level L, one at L+1. It cannot be a
-  junction, it cannot take a third arm, and nothing else may stand on
-  its tile at L or L+1. The whole rise is inside that one tile; every
-  other node is flat. That keeps the renderer simple (below) and gives a
-  grade you can read at a glance.
+  (orthogonal or diagonal), one at level L, one at L+1. It can't be a
+  junction, take a third arm, or share its tile with anything at L or
+  L+1. The whole rise is in that one tile; every other node is flat.
 - Two nodes may share a tile if their levels differ by at least 1. A slope
-  counts as both L and L+1. So a ramp from 1 to 2 may pass over a road at
-  0, but a ramp from 0 to 1 may not.
-- Diagonal links may cross (today's rule refuses an X between tiles)
-  if they are on different levels.
-- Buildings, driveways and gates are level 0 only.
-- A level costs: a deck tile is dearer than ground; in the town, it costs
-  the concrete and steel `game.md` already names.
+  counts as both of its levels. So a ramp from 1 to 2 can pass over a road
+  at 0, and a ramp from 0 to 1 can't.
+- Diagonal links may cross between tiles (refused today) if they are at
+  different levels.
+- Where a road stands above the ground (an overpass, or level 0 over
+  water) it is a **deck**: piers, a skirt, parapets. On a mountain at its
+  own level it is ground.
+- Buildings and gates sit at ground level.
 
-**The brush.** A level picker (keys 1–4, or a small dial on the toolbar)
-sets the level you draw at. When a drag starts on a road at another level,
-**the first tile you draw becomes the slope**; when it ends on one, the
-last tile does. If that tile can't be a slope (a turn, or a road already
-there), the ghost goes red, as any refused tile does. Worth trying after
-it plays: Freeways' way, where a road drawn across a road is lifted over
-it on its own, with slopes on the tiles either side if there is room.
+**Rendering.** A deck tile is **the same baked surface** the ground road
+gets (`town/surface.ts` → `roads.ts`) on a quad at its height, with a
+**skirt** extruded down from the surface's outline (the kerb code already
+has it) and a parapet on top, **piers** at tile centres to the ground
+(every other tile on a straight), and a slope as the quad tilted along
+it. Shadows come from the shadow map. A level is 0.35 of a tile high.
 
-**Rendering.** The ground roads are flat atlas tiles baked from each tile's
-links (`town/surface.ts` → `roads.ts`). A deck tile is **the same baked
-surface on a quad at its level's height**, with:
+**Cars** get a height: each route position gets a z (the node's level, the
+slope's rise in between), and `driver.ts` lifts the body.
 
-- a **skirt** extruded down from the surface's outline (the kerb code
-  already has the outline): the deck's edge, a parapet line on top;
-- **piers** at tile centres down to the ground, every tile, or every
-  other one on a straight;
-- the **slope** as the same quad tilted along its direction;
-- a **shadow** on whatever is under it, which the shadow map gives free.
+### 6. Lights
 
-Levels at 0.35 of a tile each, so three stack within a building's height.
-From above, a deck hides what runs under it. While the brush is at a
-lower level, the decks above go translucent.
+A third grant policy for the same manager: FIFO (stop), priority (give
+way), **signal**.
 
-**Cars** get a height: the server already sends `route_positions`, so
-each gets a z (the node's level, the slope's rise in between), and
-`driver.ts` lifts the body. The physics may ignore grade at first.
-
-### 4. Lanes: two-lane one-ways
-
-The headache, but bounded, if we follow `network.md`: **a car changes
-lane only at a node.**
-
-- A directed edge holds **one queue per lane** instead of one
-  (`segments.rs`). Following stays "the car ahead in my queue".
-- **Lane wiring by rule** at a node, never placed: straight on, lane to
-  lane; turns from the outside lanes; where 2 meet 1, the two merge.
-- **Lane choice**: a car looks a few nodes ahead on its route and wants a
-  lane that can make its next turn. At each node it moves to the wanted
-  lane **if there's a gap** there (`gap_at` again); if not, it stays and
-  tries at the next node. If it reaches its turn in the wrong lane, it
-  waits at the node for a gap. That's the real-life failure, and in the
-  puzzle it is the lesson: give weaving space.
-- **Merges**: 2 into 1 is two arms into one exit. The FIFO manager
-  already treats "same exit" as a conflict and grants in arrival order:
-  that is a **zip merge, for free**. With priority, the through lane is
-  major and the joining lane gives way.
-- **Client**: the lane offset is fixed today (`LANE_OFFSET`, 0.15 server /
-  0.1 client: worth making one number). It becomes per lane; a
-  change across a node is a smooth sideways S on that tile.
-  Roads draw at the width of their lanes, with dashed lines between.
-
-A two-lane two-way road (2 and 2) is the same machinery and should come
-free.
-
-### 5. Traffic lights
-
-Lights are a third grant policy for the same manager: FIFO (stop), priority
-(give way), **signal**.
-
-- **Phases are not set by hand.** From the conflict rule, group the
-  junction's movements into compatible sets (straight and right from
-  opposite arms, and so on). That is a small graph colouring on at
-  most eight arms.
-- **Adaptive**: a phase stays green while cars come; it ends after a
-  minimum green when another phase has waiting cars, or at a maximum. That is
-  what Mini Motorways' lights seem to do, and it's easy to read: you can
-  see why it changed.
-- **What the player decides** is one thing: an optional **main
-  direction** (click an arm), which gets the longer green, so a feeder
-  crosses an artery without starving it.
-- Drawn: a pole per arm, the lamp's colour live, stop lines.
-- In the puzzle a light costs asphalt points: cheaper than a bridge,
-  dearer than nothing. A junction of two big flows tempts you to buy one,
-  and the bridge is the better answer.
+- **Phases are found, not set**: group the junction's movements into sets
+  that don't conflict (a colouring on at most eight arms).
+- **Adaptive**: a phase holds while cars come, ends after a minimum green
+  when another has cars waiting, or at a maximum. You can see why it
+  changed.
+- **The player's one choice**: an optional main direction (click an arm),
+  which gets the longer green.
+- A pole per arm, the lamp live, a stop line. In the puzzle it costs as
+  some tiles of asphalt: cheaper than a bridge, and usually not as good.
 
 ## Order
 
-Each step is playable on its own.
+Each step playable.
 
 | # | What | Size | Notes |
 |---|---|---|---|
 | 0 | One-way routes in the router | S | A test that routes round a one-way. |
-| 1 | Puzzle MVP: gates, demands, node-to-node trips, jam, asphalt, score, 5 hand-made levels, a level list | M | Already a game with one-ways and at-grade junctions. |
-| 2 | Shallow joins by movement; priority and shark's teeth | S–M | Roundabouts fall out. |
-| 3 | Levels: data model, slope rule, brush, decks, piers, car height | L | Mostly client. The real interchange. |
-| 4 | Lanes: per-lane queues, wiring, choice, zip; dual carriageway | L | The sim's biggest change. |
-| 5 | The overworld: shared gates, unlocks, map of drawings, generated levels | M | |
-| 6 | Lights | M | |
+| 1 | The sim to wasm: crate split, `Game`, `sim-wasm`, the worker connection | M | The town still runs on the server, unchanged. |
+| 2 | Puzzle MVP: one hand-made rectangle, gates, demands, node-to-node trips, Build and Test, gridlock, efficiency | M | Already a game with what roads do today. |
+| 3 | The new brush; centre lines; shallow joins; divided road | M | |
+| 4 | The virtual lead: merges and priority, give-way markings | M | Roundabouts fall out. |
+| 5 | Levels: tile + level, slopes, decks, piers, car height | L | Mostly client. The real interchange. |
+| 6 | The overworld: one terrain, the macro network, levels cut from it, unlocks, the map with its cars | L | |
+| 7 | Lanes: 2-lane links, lane changes | L | The virtual lead already built in 4. |
+| 8 | Lights | M | |
+| 9 | Scores endpoint and the chart | S | |
 
-Levels before lanes: an interchange can't exist without grade separation,
-while it can work (if tightly) on one lane. Lanes are also the step most
-likely to need a second pass, so it should come after the fun is proven.
+Levels come before lanes: an interchange can't exist without grade
+separation, but it can work (if tightly) on one lane each way.
 
-Checks per step: the server tests, `cargo check`, `tsc`, and a fixture per
-new look (`bun run shots`, `bun run plan`). A **level is its own test**: a
-solved layout saved beside each hand-made level, asserted to solve in
-`cargo test`, so a change to the sim that breaks a level fails the suite.
+Checks per step: the server tests, `cargo check`, `tsc`, a fixture per new
+look (`bun run shots`, `bun run plan`), and the wasm build. A level's
+reference solve is its test.
 
-## Open, for the player
+## Open
 
-1. Live building, as in the town, or a build phase and a run phase? Live
-   is assumed; it's what the sim does anyway.
-2. Score: the three numbers above, or Freeways' single efficiency %?
-3. The dual carriageway as (b), a divided link, or should two one-ways in
-   a tile stay two separate roads you can see as two?
-4. Auto-bridging on crossing, or the level picker only, at first?
-5. Overworld demands: hand-set per level, or routed from big flows across
-   the map from the start?
+1. Efficiency over 100% when you beat the reference: delight or bug?
+2. One overworld map with the levels cut out of it (as above), or levels
+   made separately that only agree at their gates?
+3. The puzzle as its own page (a static build, shareable) or a mode inside
+   Sprawl's client? Wasm allows both; the first needs a second Vite entry.
