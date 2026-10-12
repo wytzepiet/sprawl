@@ -4,6 +4,7 @@ import type { Clock } from "./Clock";
 import type { Growth } from "./Growth";
 import type { Lump } from "./Lump";
 import type { Mission } from "./Mission";
+import type { Neighbour } from "./Neighbour";
 import type { Operation } from "./Operation";
 import type { Sea } from "./Sea";
 
@@ -19,7 +20,11 @@ sea: Sea,
 /**
  * The town's open missions, and those just finished.
  */
-missions: Array<Mission>, terrain_seed: number, 
+missions: Array<Mission>, 
+/**
+ * The mayors of the towns beyond the edge, and how they stand.
+ */
+neighbours: Array<Neighbour>, terrain_seed: number, 
 /**
  * The island's map, which the client keeps its camera inside.
  */

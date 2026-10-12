@@ -13,6 +13,7 @@ mod missions;
 mod mountains;
 mod needs;
 mod network;
+mod orders;
 mod persistence;
 mod protocol;
 mod resident;

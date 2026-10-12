@@ -284,6 +284,7 @@ fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock
         growth: crate::economy::growth(world, clk.now),
         sea: crate::haul::sea(world),
         missions: world.missions.shown(clk.now),
+        neighbours: crate::orders::neighbours(world),
         terrain_seed: world.terrain_seed,
         island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
     })

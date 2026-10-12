@@ -208,9 +208,11 @@ fn to_sell(world: &World, depot: EntityId) -> Option<(Good, f64)> {
 }
 
 /// A full box, made where it is loaded: an export at a depot or a
-/// maker's yard, or a maker's load for its depot.
+/// maker's yard, or a maker's load for its depot. An export goes to an
+/// order from beyond the edge first, if one wants it (`orders::bound`).
 fn new_box(world: &mut World, good: Good, units: f64, to: Option<EntityId>, outbound: bool) -> Trailer {
-    let (id, order) = (world.objects.reserve_id(), world.objects.reserve_id());
+    let id = world.objects.reserve_id();
+    let order = outbound.then(|| crate::orders::bound(world, good)).flatten().unwrap_or_else(|| world.objects.reserve_id());
     Trailer { id, good, units, to, outbound, order }
 }
 

@@ -950,6 +950,9 @@ pub struct StateUpdate {
     /// The town's open missions, and those just finished.
     #[serde(default)]
     pub missions: Vec<crate::missions::Mission>,
+    /// The mayors of the towns beyond the edge, and how they stand.
+    #[serde(default)]
+    pub neighbours: Vec<crate::orders::Neighbour>,
     #[ts(type = "number")]
     pub terrain_seed: u32,
     /// The island's map, which the client keeps its camera inside.
