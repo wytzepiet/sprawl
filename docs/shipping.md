@@ -349,6 +349,11 @@ parted from the direction above.
   approach, not beyond the edge. The lanes are drawn faint on the flat
   view and the minimap, so the sea's traffic can be read off the map:
   arrows the way a lane runs, two-way water dashed, crossings marked.
+  Lanes keep to the grid as roads do (2026-10-12, the player's call):
+  rows, columns and diagonals, bends of 45° steps rounded as a car
+  rounds a corner but as wide as a ship turns, close bends one sweep,
+  so a lane is a map feature you can read and the ship sails the lane
+  the map shows.
   Not built from the design: heading in the search state, the use stock
   that fades, following by tile, the berth as a lot.
 - **Seeing it**: `GET /sea` gives every shipment, timetable, park and

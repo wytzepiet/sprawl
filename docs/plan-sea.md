@@ -165,7 +165,8 @@ deleted):
   computed once per seed, and point-to-point A* on tiles, 8-way, octile
   heuristic, extra cost where clearance is under 3, then string-pulled to
   waypoints along lines of sight. Budget: 50 ms a route, paid once per
-  line.
+  line. (The string-pulling is gone: lanes keep to the grid, stage 5,
+  2026-10-12.)
 
 ## The harness comes first
 
@@ -616,6 +617,30 @@ Each stage leaves the game playable and the suite green
     `strait` (asserted now) and `crossing` (new) above; `congested` holds
     ships at the hub's mouth, 80 hours in eight days, none longer than
     0.7 hours.
+  - **Grid lanes** (2026-10-12, the player's call): lanes run along tile
+    rows, columns and exact diagonals and bend in 45° steps, as roads
+    do, so a lane reads as a map feature and the line a ship sails is
+    the line its lane holds: one truth for the map and the ship. The
+    any-angle pull (`pull`, its lines of sight, `OFFING`) is deleted. The
+    search charges a turn by its angle (a tile an eighth) and makes none
+    over 90°, and comes onto a berth's line no sharper than 90°. Each
+    bend is rounded as `drawnPath.ts` rounds a car's corner, a curve
+    drawn toward the corner, but reaching back far enough to be no
+    tighter than `ROUNDING` (4 tiles), never under `TURN` where it fits;
+    bends too close for two tiles of straight between are one sweep
+    (same way: one bend where the outer legs meet; a jog: one S). A ship
+    may clip a tile's corner on a bend (the player: smooth bends before
+    strict tiles): a lane is the tiles under its way a quarter tile
+    apart, so by an eighth of a tile at most. `every_seed` asserts every
+    straight is on the grid through tiles' middles, every sixteenth of a
+    tile of a way is within a quarter tile of its own lane, and out of a
+    junction no way sails over another lane. Measured: 1 way in 250
+    tighter than the class limit (was 6), 1.53 tiles; median 0.9 ms,
+    p90 7.1 ms, worst 16 ms (was 8.3, 26, 35). Scenarios: all
+    expectations met; hub's berth waits 34.7 → 4.6 h, new_port's missed
+    48 → 30 and transit 4.21 → 3.89, congested's berth waits 80 → 96 h,
+    the rest within a hundredth or two. The junction kinds and their
+    patching are unchanged.
 
 ### Stage 6: the container port
 
