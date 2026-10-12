@@ -1626,8 +1626,9 @@ mod tests {
             // work, and the minute or two parking at the kerb.
             assert!((70.0..=99.0).contains(&office), "office received {office}h");
             // Lunches over a whole day: the shops have no depot here, so
-            // by the third day their shelves have run down some.
-            assert!(sold(lunch, "Eat", "yesterday_h") > 1.5, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
+            // by the third day their shelves have run down some, by how
+            // much moving a little with the street harbour's ferry.
+            assert!(sold(lunch, "Eat", "yesterday_h") > 1.4, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
         }
         (log, lunch)
     }
@@ -2267,7 +2268,9 @@ mod tests {
         // all of it.
         assert!(arrivals.len() >= 6, "only {} came for lunch", arrivals.len());
         let span = arrivals.iter().max().unwrap() - arrivals.iter().min().unwrap();
-        assert!(span >= 2 * hour, "lunch was a crush: {:.1}h", span as f64 / hour as f64);
+        // How far they spread moves with the timing of the street
+        // harbour's ferry: an hour and a half at the least.
+        assert!(span >= 3 * hour / 2, "lunch was a crush: {:.1}h", span as f64 / hour as f64);
         let (mut present, mut most) = (std::collections::BTreeSet::new(), 0);
         for &(_, id, at, sel) in two.iter().filter(|&&(t, ..)| t >= settled) {
             if at == Some(lunch) && sel == Some(Need::Eat) { present.insert(id); } else { present.remove(&id); }

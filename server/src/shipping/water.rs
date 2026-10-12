@@ -141,9 +141,10 @@ impl Water {
     /// The tiles of the cheapest way from a tile, going `ahead`, to the
     /// goal, by A*: eight ways over the sea, never cutting a corner of
     /// land, dearer near the coast and at a turn (by the way the tile was
-    /// reached, so a guide, not a bound), never sharper than 90°.
-    /// `toward` is a lower bound on the cost left, in tenths of a tile.
-    fn search(&self, lanes: &Lanes, sign: i32, from: GridCoord, ahead: (i32, i32), goal: impl Fn(i32, i32) -> bool, toward: impl Fn(i32, i32) -> u32) -> Option<Vec<GridCoord>> {
+    /// reached, so a guide, not a bound), never sharper than 90°. The goal
+    /// says which tiles end it, by the way it comes onto them. `toward`
+    /// is a lower bound on the cost left, in tenths of a tile.
+    fn search(&self, lanes: &Lanes, sign: i32, from: GridCoord, ahead: (i32, i32), goal: impl Fn(i32, i32, (i32, i32)) -> bool, toward: impl Fn(i32, i32) -> u32) -> Option<Vec<GridCoord>> {
         let start = self.index(from.x, from.y).filter(|&i| self.clearance[i] > 0)?;
         let mut cost = vec![u32::MAX; self.clearance.len()];
         let mut came = vec![u32::MAX; self.clearance.len()];
@@ -152,7 +153,17 @@ impl Water {
         // Ties go to the way further along, so a straight run over open
         // water opens a line of tiles, not a fan.
         open.push(Reverse((toward(from.x, from.y), Reverse(0u32), start as u32)));
-        while let Some(Reverse((_, Reverse(g), i))) = open.pop() {
+        // The cheapest way onto the goal found so far: its cost, the tile
+        // it ends on and the one before.
+        let mut done: Option<(u32, usize, usize)> = None;
+        while let Some(Reverse((f, Reverse(g), i))) = open.pop() {
+            if let Some((_, end, before)) = done.filter(|d| d.0 <= f) {
+                let mut path = vec![end, before];
+                while *path.last().unwrap() != start {
+                    path.push(came[*path.last().unwrap()] as usize);
+                }
+                return Some(path.into_iter().rev().map(|at| GridCoord { x: self.x0 + at as i32 % self.w, y: self.y0 + at as i32 / self.w }).collect());
+            }
             let i = i as usize;
             if g > cost[i] {
                 continue;
@@ -160,16 +171,6 @@ impl Water {
             let (x, y) = (self.x0 + i as i32 % self.w, self.y0 + i as i32 / self.w);
             let came_by = if i == start { ahead } else { (x - (self.x0 + came[i] as i32 % self.w), y - (self.y0 + came[i] as i32 / self.w)) };
             let came_by = WAYS.iter().position(|&w| w == came_by).unwrap();
-            if goal(x, y) {
-                let mut path = vec![GridCoord { x, y }];
-                let mut at = i;
-                while at != start {
-                    at = came[at] as usize;
-                    path.push(GridCoord { x: self.x0 + at as i32 % self.w, y: self.y0 + at as i32 / self.w });
-                }
-                path.reverse();
-                return Some(path);
-            }
             for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
                 let Some(j) = self.index(x + dx, y + dy) else { continue };
                 let c = self.clearance[j];
@@ -188,7 +189,12 @@ impl Water {
                 let coast = |c: u8| COAST.get(c.max(1) as usize).copied().unwrap_or(0);
                 let step = (if dx != 0 && dy != 0 { DIAGONAL } else { STEP } + coast(c) + coast(self.clear(x + dx + 2 * lx, y + dy + 2 * ly)) + BEND * eighths * eighths) as i32 + lanes.step(x + dx, y + dy, way);
                 let g = g + step as u32;
-                if g < cost[j] {
+                if goal(x + dx, y + dy, (dx, dy)) {
+                    if done.is_none_or(|d| g < d.0) {
+                        done = Some((g, j, i));
+                        open.push(Reverse((g, Reverse(g), j as u32)));
+                    }
+                } else if g < cost[j] {
                     cost[j] = g;
                     came[j] = i as u32;
                     open.push(Reverse((g + toward(x + dx, y + dy), Reverse(g), j as u32)));
@@ -245,7 +251,9 @@ impl Water {
         while i + 1 < p.len() {
             let jog = i + 2 < p.len() && (turn(&p, i) + turn(&p, i + 1)).abs() < 1e-6 && 2.0 * reach(turn(&p, i)) + APART > dist(p[i], p[i + 1]);
             let j = if jog { i + 1 } else { i };
-            let (mut t, floor) = room(&p, i, j);
+            let (t, floor) = room(&p, i, j);
+            // Never back behind where the last bend ended.
+            let mut t = t.min(dist(*out.last().unwrap(), p[i]));
             loop {
                 if turn(&p, i).abs() < 1e-3 || t < (floor / 2.0).max(0.01) {
                     out.extend(&p[i..=j]);
@@ -282,12 +290,14 @@ impl Water {
         let tiles = match other {
             End::Berth(b) => {
                 let goal = b.tile(BERTH - 1);
-                self.search(lanes, sign, start, berth.out, |x, y| x == goal.x && y == goal.y, |x, y| {
+                // Onto the berth's line no sharper than a ship turns in.
+                let into = (-b.out.0, -b.out.1);
+                self.search(lanes, sign, start, berth.out, |x, y, (dx, dy)| x == goal.x && y == goal.y && dx * into.0 + dy * into.1 >= 0, |x, y| {
                     let (dx, dy) = ((x - goal.x).unsigned_abs(), (y - goal.y).unsigned_abs());
                     STEP * dx.max(dy) + (DIAGONAL - STEP) * dx.min(dy)
                 })?
             }
-            End::Edge => self.search(lanes, sign, start, berth.out, |x, y| x == self.x0 || y == self.y0 || x == x1 || y == y1, |x, y| STEP * (x - self.x0).min(x1 - x).min(y - self.y0).min(y1 - y) as u32)?,
+            End::Edge => self.search(lanes, sign, start, berth.out, |x, y, _| x == self.x0 || y == self.y0 || x == x1 || y == y1, |x, y| STEP * (x - self.x0).min(x1 - x).min(y - self.y0).min(y1 - y) as u32)?,
         };
         // A corner where the way turns: along a row, a column or a
         // diagonal between.
@@ -479,13 +489,19 @@ mod tests {
     #[test]
     #[ignore]
     fn every_seed_has_ways_over_the_sea() {
+        // How far a ship may stray off the tiles its lane reserves: those
+        // are the tiles under it a quarter tile apart, so a bend's arc may
+        // clip the corner of a tile between two of them, by an eighth of
+        // a tile at most; a quarter is that and room to spare, and still
+        // well inside the tile's width beside a lane where the next lane
+        // runs (docs/plan-sea.md, keep right).
+        const SLACK: f64 = 0.25;
         let mut wrong = Vec::new();
         let mut kinked = Vec::new();
         let mut times = Vec::new();
+        let (mut off_grid, mut off_lane) = (0, 0);
         // The tiles a way passes over, a quarter tile apart.
-        let under = |w: &[[f64; 2]]| -> Vec<(i32, i32)> {
-            (0..(crate::shipping::length(w) * 4.0) as usize).map(|k| crate::shipping::point_at(w, k as f64 / 4.0).0).map(|p| (p[0].floor() as i32, p[1].floor() as i32)).collect()
-        };
+        let under = |w: &[[f64; 2]]| -> Vec<(i32, i32)> { crate::shipping::lanes::under(w).into_iter().map(|(_, x, y, _)| (x, y)).collect() };
         for seed in 0..20 {
             let started = std::time::Instant::now();
             let water = Water::of(&crate::terrain::generate(seed));
@@ -554,6 +570,33 @@ mod tests {
                     }
                     let Some(way) = way else { break };
                     lanes.lay(&water, &way, if toward_berth { [berths[1], berths[0]] } else { berths });
+                    // Its straights run along rows, columns and diagonals
+                    // through the tiles' middles, as roads do; and all of
+                    // it, every sixteenth of a tile, is over its own lane.
+                    for w in way.windows(2) {
+                        let (dx, dy) = (w[1][0] - w[0][0], w[1][1] - w[0][1]);
+                        let l = dx.hypot(dy);
+                        let whole = |v: f64| (v - v.round()).abs() < 1e-6;
+                        let (mx, my) = (w[0][0] - 0.5, w[0][1] - 0.5);
+                        let on_grid = if dy.abs() < 1e-9 { whole(my) } else if dx.abs() < 1e-9 { whole(mx) } else { (dx.abs() - dy.abs()).abs() < 1e-9 && whole(mx) && whole(my) || (dx.abs() - dy.abs()).abs() < 1e-9 && whole(if dx * dy > 0.0 { mx - my } else { mx + my }) };
+                        if l > 1.0 && !on_grid {
+                            off_grid += 1;
+                            wrong.push(format!("seed {seed}: a way to {name} runs off the grid from {:?} to {:?}", w[0], w[1]));
+                        }
+                        let way = crate::shipping::lanes::way_of(dy.atan2(dx));
+                        let n = (l * 16.0).ceil().max(1.0) as usize;
+                        let near = |p: [f64; 2]| {
+                            let tiles = |v: f64| (v - SLACK).floor() as i32..=(v + SLACK).floor() as i32;
+                            tiles(p[0]).flat_map(|x| tiles(p[1]).map(move |y| (x, y))).any(|(x, y)| {
+                                let gap = |v: f64, t: i32| (t as f64 - v).max(v - t as f64 - 1.0).max(0.0);
+                                gap(p[0], x).hypot(gap(p[1], y)) <= SLACK && lanes.holds(x, y, way)
+                            })
+                        };
+                        if let Some(p) = (0..=n).map(|k| [w[0][0] + dx * k as f64 / n as f64, w[0][1] + dy * k as f64 / n as f64]).filter(|p| water.index(p[0].floor() as i32, p[1].floor() as i32).is_some()).find(|&p| !near(p)) {
+                            off_lane += 1;
+                            wrong.push(format!("seed {seed}: a way to {name} sails off its lane at {p:?}"));
+                        }
+                    }
                     let tight = tightest(&way);
                     if !water.afloat(&way) || tight < TURN / 2.0 {
                         wrong.push(format!("seed {seed}: a way to {name} crosses land or turns in {tight:.2} tiles"));
@@ -566,6 +609,12 @@ mod tests {
                     wrong.push(format!("seed {seed}: no way to {name}, or back"));
                     continue;
                 };
+                // Out of a junction, neither sails over the other's lane.
+                for w in [way, back] {
+                    if let Some((_, x, y, _)) = crate::shipping::lanes::under(w).into_iter().find(|&(_, x, y, h)| !lanes.its_own(x, y, h)) {
+                        wrong.push(format!("seed {seed}: a way to {name} sails over another lane at {x},{y}\n{}", lanes.draw(&water, (x, y), 12)));
+                    }
+                }
                 // Lanes are one-way in open water: past the berths'
                 // approaches the way back runs over none of the way out's
                 // water, but to cross it, where the two change sides.
@@ -600,6 +649,7 @@ mod tests {
         // A way pressed between a lane and the coast may kink: a few, and
         // never under the router's own floor.
         eprintln!("{} ways turn tighter than the class: {kinked:#?}", kinked.len());
+        eprintln!("{off_grid} legs off the grid, {off_lane} off their lanes");
         assert!(wrong.is_empty() && kinked.len() * 25 <= times.len(), "{wrong:#?}");
     }
 }

@@ -97,13 +97,20 @@ fn near(way: usize, k: usize) -> u16 {
 
 /// The tiles a way passes over, every quarter tile along it, with the
 /// way it goes there.
-fn under(way: &[[f64; 2]]) -> impl Iterator<Item = (f64, i32, i32, usize)> + '_ {
-    let len = super::length(way);
-    (0..=(len * 4.0) as usize).map(move |k| {
-        let d = k as f64 / 4.0;
-        let (p, heading) = super::point_at(way, d);
-        (d, p[0].floor() as i32, p[1].floor() as i32, way_of(heading))
-    })
+pub fn under(way: &[[f64; 2]]) -> Vec<(f64, i32, i32, usize)> {
+    let mut out = Vec::new();
+    let mut along = 0.0;
+    for w in way.windows(2) {
+        let l = (w[1][0] - w[0][0]).hypot(w[1][1] - w[0][1]);
+        let heading = way_of((w[1][1] - w[0][1]).atan2(w[1][0] - w[0][0]));
+        let n = (l * 4.0).ceil().max(1.0) as usize;
+        out.extend((0..=n).map(|k| {
+            let t = k as f64 / n as f64;
+            (along + l * t, (w[0][0] + (w[1][0] - w[0][0]) * t).floor() as i32, (w[0][1] + (w[1][1] - w[0][1]) * t).floor() as i32, heading)
+        }));
+        along += l;
+    }
+    out
 }
 
 /// The lanes of a map, over the bounds of its water: each tile's mark,
@@ -183,6 +190,7 @@ impl Lanes {
         let len = super::length(way);
         let approach = |d: f64| (berths[0] && d < BERTH as f64) || (berths[1] && d > len - BERTH as f64);
         let marks: Vec<(usize, u16)> = under(way)
+            .into_iter()
             .filter_map(|(d, x, y, w)| {
                 let i = self.index(x, y)?;
                 let m = self.marks[i] & 0xff;
@@ -308,6 +316,19 @@ impl Lanes {
             out.push(piece(d, len, LaneKind::OneWay));
         }
         out
+    }
+
+    /// Does a tile hold a lane going within 45° of `way`.
+    #[cfg(test)]
+    pub fn holds(&self, x: i32, y: i32, way: usize) -> bool {
+        self.mark(x, y) & near(way, 0) != 0
+    }
+
+    /// Is a tile a ship going `way` sails over its own: a junction, or no
+    /// lane on it but going its way.
+    #[cfg(test)]
+    pub fn its_own(&self, x: i32, y: i32, way: usize) -> bool {
+        self.junctions.contains_key(&self.index(x, y).unwrap_or(usize::MAX)) || self.mark(x, y) & 0xff & !near(way, 0) == 0
     }
 
     /// The junction a tile is part of, and its kind.

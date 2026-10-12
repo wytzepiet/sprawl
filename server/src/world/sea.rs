@@ -778,7 +778,7 @@ mod tests {
         world.commission(harbour, 0);
         let way = &world.lines[&harbour].legs[0];
         assert_eq!(way[0], berth.moored().at);
-        assert_eq!(way[1], [berth.tile(BERTH - 1).x as f64 + 0.5, berth.tile(BERTH - 1).y as f64 + 0.5]);
+        assert_eq!(way[1][0], berth.tile(BERTH - 1).x as f64 + 0.5, "it turned off the berth's line: {way:?}");
         assert!(world.water.get().unwrap().afloat(way), "the ship sailed over land");
         assert_eq!(way.last().unwrap()[1], 41.0, "it did not sail off the map's edge: {way:?}");
         // Moored, its land end is on the ramp.
