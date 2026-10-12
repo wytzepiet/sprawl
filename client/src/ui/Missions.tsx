@@ -140,17 +140,14 @@ const WAY: Record<Compass, string> = { North: "north", East: "east", South: "sou
 
 /** A town's crest, drawn by the one function that draws a mayor. */
 export function Crest(props: { n: Neighbour; size: number }) {
-  return (
-    <canvas
-      class="shrink-0"
-      style={{ width: `${props.size}px`, height: `${props.size}px` }}
-      ref={(c) => {
-        const k = devicePixelRatio || 1;
-        c.width = c.height = Math.round(props.size * k);
-        crest(c.getContext("2d")!, props.n, c.width / 2, c.height / 2, c.width / 2 - k);
-      }}
-    />
-  );
+  let c!: HTMLCanvasElement;
+  // Drawn once it is on the page: a canvas drawn before has no font yet.
+  createEffect(() => {
+    const k = devicePixelRatio || 1;
+    c.width = c.height = Math.round(props.size * k);
+    crest(c.getContext("2d")!, props.n, c.width / 2, c.height / 2, c.width / 2 - k);
+  });
+  return <canvas ref={c} class="shrink-0" style={{ width: `${props.size}px`, height: `${props.size}px` }} />;
 }
 
 /** A mayor who writes: their crest, who and where, and how they stand
@@ -197,7 +194,7 @@ function Steps(props: { m: Mission; open: boolean; brief: boolean; reward?: bool
     <ol class="mt-1">
       <Index each={props.m.steps}>
         {(s, i) => (
-          <li classList={{ "py-1": !props.brief || i === at(), hidden: (props.brief && (i !== at() || !props.open)) || (!many() && !props.open && s().done) }}>
+          <li classList={{ "py-1": !props.brief || i === at(), hidden: (props.brief && (i !== at() || !props.open)) || (!many() && !props.open && s().done && !props.reward) }}>
             <div class="flex items-center gap-2" classList={{ "opacity-45": i > at() && at() >= 0 }}>
               <span
                 class="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-colors duration-500"

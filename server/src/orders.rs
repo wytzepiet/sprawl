@@ -295,7 +295,7 @@ pub fn write(world: &mut World, now: GameTime) -> Option<Mission> {
         steps: vec![Step {
             goal: Goal::Delivered { good, units, sailed: 0.0 },
             title: format!("{} to {}", boxes(count, good), w.town),
-            text: format!("{}, mayor of {}: {letter}\n\nSell {} from a depot: the next boxes out are marked for {}, and sail with the ferry to the edge. The coins land as each sails.", w.name, w.town, named(good), w.town),
+            text: format!("{}, mayor of {}: {letter}\n\nSell {} from a depot: the next boxes out are marked for {}, and the coins land as each sails.", w.name, w.town, named(good), w.town),
             done: false,
             at: None,
         }],
