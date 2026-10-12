@@ -274,7 +274,7 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
         }
         Act::Cut(links) => {
             for l in &links {
-                crate::game_loop::lay(world, *l);
+                crate::game::lay(world, *l);
             }
             say(format!("Undone: {} put back", tiles(&links)), "for nothing".into(), 0)
         }
@@ -296,7 +296,7 @@ fn rests_on(world: &World, links: &[Link], after: EntityId) -> Option<&'static s
 fn take_up(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, links: &[Link], now: GameTime) {
     for l in links.iter().rev() {
         if let Some((a, b)) = world.link_between(l.from, l.to) {
-            crate::game_loop::handle_link_demolish(world, events, intersections, a, b, now);
+            crate::game::handle_link_demolish(world, events, intersections, a, b, now);
         }
     }
 }

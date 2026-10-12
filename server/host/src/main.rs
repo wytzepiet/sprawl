@@ -1,27 +1,9 @@
-mod blueprint;
-mod calls;
-mod card;
-mod car;
-mod economy;
-mod engine;
-mod fixtures;
 mod game_loop;
-mod haul;
 mod health;
-mod intersection;
-mod missions;
-mod mountains;
-mod needs;
 mod network;
 mod persistence;
-mod protocol;
-mod resident;
-mod shipping;
-mod terrain;
-mod tree;
-mod undo;
-mod world;
 
+use sprawl::{blueprint, fixtures, needs};
 use axum::Router;
 use tokio::sync::mpsc;
 use tower_http::cors::CorsLayer;

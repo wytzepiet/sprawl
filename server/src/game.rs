@@ -1,57 +1,37 @@
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use tokio::sync::mpsc;
-use tokio::time::{Instant, interval, Duration};
 
 use crate::car::simulation::{handle_car_wake_up, park_at_home};
 use crate::car::ACCELERATION;
 use crate::resident::handle_resident_wake;
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
-use crate::engine::tracked::Tracked;
 use crate::intersection::IntersectionRegistry;
-use crate::network::{ClientId, Command};
-use crate::persistence;
 use crate::protocol::{Build, BuildingKind, CarRole, ChunkBounds, ChunkCoord, ClientMessage, Clock, DAY_MS, EntityId, GameObject, GameObjectEntry, Operation, OwnerId, Lump, News, ServerMessage, StateUpdate, Tool, GridCoord};
 use crate::world::chunk_of;
 use crate::world::World;
 
+pub type ClientId = u64;
+
+/// What the game knows of one who is watching: who they are and what they
+/// have been sent. What it has to say to them waits in the outbox until
+/// whatever carries it (a socket, a worker's port) takes it.
 struct ClientState {
     /// Who is playing. Several sockets can share one.
     owner: OwnerId,
-    sender: mpsc::UnboundedSender<ServerMessage>,
     subscribed: Option<ChunkBounds>,
     known: HashSet<EntityId>,
     known_chunks: HashSet<ChunkCoord>,
 }
 
-fn db_path() -> PathBuf {
-    std::env::var("SPRAWL_DB").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("sprawl.db"))
-}
-
-/// The seed a fresh world gets. Set SPRAWL_SEED to get the same map back every
-/// time — the point of a test world is that what you saw yesterday is still
-/// there today, so a change in behaviour is a change in the code.
-fn new_seed() -> u32 {
-    std::env::var("SPRAWL_SEED")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or_else(rand::random::<u32>)
-}
-const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
-/// How far one tick may overrun before the loop says so: a quarter of a
-/// second is twenty-five ticks of lag, well past anything a debug build
-/// takes for one, and short enough to be seen the moment it starts.
-const BEHIND: Duration = Duration::from_millis(250);
 /// Simulated milliseconds per step. Fixed: speed adds steps rather than making
 /// them longer, so running fast cannot change what the simulation does.
-const STEP_MS: GameTime = 10;
+pub const STEP_MS: GameTime = 10;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
 
 /// What a save does not keep, rebuilt from what it does, as the game
 /// opens it.
-fn restore(world: &mut World) {
+pub fn restore(world: &mut World) {
     world.rebuild_edges();
     world.rebuild_node_cars();
     world.rebuild_occupied();
@@ -60,223 +40,195 @@ fn restore(world: &mut World) {
     world.doors_from_drives();
 }
 
-pub async fn run(mut commands: mpsc::UnboundedReceiver<Command>) {
-    let db_path = db_path();
-    let fixtures = std::env::var("SPRAWL_FIXTURES").ok();
-    // Fixtures are built fresh on every start, at noon, standing still: the
-    // same pictures every time, lit the same way.
-    let (mut world, mut sim_time) = if fixtures.is_some() { (World::new(), DAY_MS as GameTime / 2) } else { load_world(&db_path) };
-    let mut events: EventQueue = EventQueue::new();
-    let mut intersections = IntersectionRegistry::new();
-    let mut clients: HashMap<ClientId, ClientState> = HashMap::new();
+/// The game, whole and without a clock on the wall: a world, what is due in
+/// it, its junctions, and who is watching. Whatever drives it (the server's
+/// loop, a browser's worker) calls `tick` as often as it likes and carries
+/// the outbox to the clients.
+pub struct Game {
+    pub world: World,
+    pub events: EventQueue,
+    pub intersections: IntersectionRegistry,
+    pub now: GameTime,
+    pub speed: u32,
+    clients: HashMap<ClientId, ClientState>,
+    outbox: Vec<(ClientId, ServerMessage)>,
+    /// The world a reset starts again from: the server's makes a new island,
+    /// a level its own map.
+    fresh: Box<dyn FnMut() -> World + Send>,
+}
 
-    // Terrain is derived from the seed, so it is regenerated on every start
-    // rather than persisted. A fresh world is the bare island: no road is
-    // born with the map.
-    let fresh = world.objects.is_empty();
-    if let Some(dir) = &fixtures {
-        crate::fixtures::build(&mut world, std::path::Path::new(dir));
-    } else {
-        if fresh {
-            world.terrain_seed = new_seed();
+impl Game {
+    /// A world laid out, brought to life: whatever is standing gets its
+    /// people, the day is due to turn, and everyone thinks once.
+    pub fn new(world: World, now: GameTime, speed: u32, fresh: Box<dyn FnMut() -> World + Send>) -> Self {
+        let mut game = Game {
+            world,
+            events: EventQueue::new(),
+            intersections: IntersectionRegistry::new(),
+            now,
+            speed,
+            clients: HashMap::new(),
+            outbox: Vec::new(),
+            fresh,
+        };
+        game.events.set_now(now);
+        game.wake_all();
+        game
+    }
+
+    /// Trips do not survive a save, so a loaded world is entirely people
+    /// standing still until they think, and working vehicles waiting on a
+    /// wake that was not saved: one standing at a door it delivered to would
+    /// stand there for good, holding its place and never free for a call.
+    fn wake_all(&mut self) {
+        self.world.resettle();
+        settle_and_wake(&mut self.world, &mut self.events);
+        for id in self.world.resident_ids() {
+            wake_resident(&self.world, &mut self.events, id);
         }
-        world.terrain = crate::terrain::generate(world.terrain_seed);
-        println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
-        world.raise_mountains();
+        let standing: Vec<EntityId> = self
+            .world
+            .objects
+            .iter()
+            .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none()))
+            .map(|e| e.id)
+            .collect();
+        for id in standing {
+            self.events.wake(0, id);
+        }
     }
 
-    // Rebuild edges/indices and schedule car spawns for loaded buildings
-    if !world.objects.is_empty() && fixtures.is_none() {
-        restore(&mut world);
-        println!("loaded {} objects from db", world.objects.len());
-    }
-    // Whatever is standing gets its people, whether it was just laid out or
-    // loaded from a save written before anyone lived here, and the day is
-    // due to turn. Then everyone thinks once — trips do not survive a save,
-    // so a loaded world is entirely people standing still until they do.
-    world.resettle();
-    settle_and_wake(&mut world, &mut events);
-    for id in world.resident_ids() {
-        wake_resident(&world, &mut events, id);
-    }
-    // And every working vehicle standing still: the wake it was waiting on
-    // is not saved, and one standing at a door it delivered to would stand
-    // there for good, holding its place and never free for a call.
-    let standing: Vec<EntityId> = world
-        .objects
-        .iter()
-        .filter(|e| matches!(e.object, GameObject::Car(ref c) if c.role != CarRole::Private && c.trip.is_none()))
-        .map(|e| e.id)
-        .collect();
-    for id in standing {
-        events.wake(0, id);
+    fn clock(&self) -> Clock {
+        clock(self.now, self.speed)
     }
 
-    let mut tick_interval = interval(Duration::from_millis(STEP_MS));
-    let mut last_persist = Instant::now();
-    let mut speed: u32 = if fixtures.is_some() { 0 } else { 1 };
+    fn send(&mut self, to: ClientId, msg: ServerMessage) {
+        self.outbox.push((to, msg));
+    }
 
-    loop {
-        tick_interval.tick().await;
-        let mut now: GameTime = sim_time;
+    /// Everything said since last asked, and to whom.
+    pub fn take_outbox(&mut self) -> Vec<(ClientId, ServerMessage)> {
+        std::mem::take(&mut self.outbox)
+    }
 
-        while let Ok(cmd) = commands.try_recv() {
-            match cmd {
-                Command::PlayerAction { client_id, message } => {
-                    if let ClientMessage::Ping = &message {
-                        if let Some(cs) = clients.get(&client_id) {
-                            let _ = cs.sender.send(ServerMessage::Pong(now));
-                        }
-                        continue;
-                    }
-                    if let ClientMessage::SetSpeed(s) = &message {
-                        speed = (*s).min(MAX_SPEED);
-                        println!("speed: {speed} steps/tick");
-                        // Paused, nothing goes dirty and no update would ever be
-                        // sent — so clients would keep extrapolating cars against
-                        // a stopped world. Push the new clock instead of waiting.
-                        let clk = clock(now, speed);
-                        for cs in clients.values() {
-                            let _ = cs.sender.send(state_update(&world, vec![], vec![], clk));
-                        }
-                        continue;
-                    }
-                    if let ClientMessage::SetChunks(bounds) = &message {
-                        handle_set_chunks(&world, &mut clients, client_id, *bounds, clock(now, speed));
-                    } else if let ClientMessage::ResetWorld = &message {
-                        // Send deletes for each client's known set, then clear.
-                        // Terrain is regenerated below, so drop the known chunks
-                        // too or the client keeps the old seed's tiles.
-                        for cs in clients.values_mut() {
-                            let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
-                            if !ops.is_empty() {
-                                let _ = cs.sender.send(state_update(&world, ops, vec![], clock(now, speed)));
-                            }
-                            for coord in cs.known_chunks.drain() {
-                                let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
-                            }
-                        }
-                        world = World::new();
-                        events = EventQueue::new();
-                        intersections = IntersectionRegistry::new();
-                        let _ = std::fs::remove_file(&db_path);
-                        let seed = new_seed();
-                        world.terrain_seed = seed;
-                        world.terrain = crate::terrain::generate(seed);
-                        world.raise_mountains();
-                        world.resettle();
-                        settle_and_wake(&mut world, &mut events);
-                        // Re-send subscribed chunks for all connected clients
-                        let subs: Vec<_> = clients.iter()
-                            .filter_map(|(id, cs)| cs.subscribed.map(|b| (*id, b)))
-                            .collect();
-                        for (cid, bounds) in subs {
-                            handle_set_chunks(&world, &mut clients, cid, bounds, clock(now, speed));
-                        }
-                        println!("reset: world cleared, terrain regenerated");
-                    } else {
-                        let Some(owner) = clients.get(&client_id).map(|cs| cs.owner) else { continue };
-                        // What the hand did, said to its owner alone: an
-                        // undo, or a building refused.
-                        if let Some(reply) = handle_player_action(&mut world, &mut events, &mut intersections, owner, message, now) {
-                            for cs in clients.values().filter(|cs| cs.owner == owner) {
-                                let _ = cs.sender.send(ServerMessage::News(vec![reply.clone()]));
-                            }
-                        }
-                    }
+    pub fn connect(&mut self, id: ClientId, owner: OwnerId) {
+        self.send(id, ServerMessage::Welcome(owner));
+        // Objects come with the first SetChunks.
+        let update = state_update(&self.world, vec![], vec![], self.clock());
+        self.send(id, update);
+        self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::new(), known: HashSet::new() });
+    }
+
+    pub fn disconnect(&mut self, id: ClientId) {
+        self.clients.remove(&id);
+    }
+
+    /// A message from a client, done.
+    pub fn command(&mut self, client_id: ClientId, message: ClientMessage) {
+        match message {
+            ClientMessage::Ping => self.send(client_id, ServerMessage::Pong(self.now)),
+            ClientMessage::SetSpeed(s) => {
+                self.speed = s.min(MAX_SPEED);
+                // Paused, nothing goes dirty and no update would ever be
+                // sent — so clients would keep extrapolating cars against
+                // a stopped world. Push the new clock instead of waiting.
+                let ids: Vec<ClientId> = self.clients.keys().copied().collect();
+                for id in ids {
+                    let update = state_update(&self.world, vec![], vec![], self.clock());
+                    self.send(id, update);
                 }
-                Command::ClientConnect { id, owner, sender } => {
-                    let _ = sender.send(ServerMessage::Welcome(owner));
-                    // Send empty update with terrain_seed; objects come via SetViewport
-                    let _ = sender.send(state_update(&world, vec![], vec![], clock(now, speed)));
-                    clients.insert(id, ClientState {
-                        owner,
-                        sender,
-                        subscribed: None,
-                        known_chunks: HashSet::new(),
-                        known: HashSet::new(),
-                    });
-                }
-                Command::Inspect { query, reply } => {
-                    use crate::network::Ask;
-                    let v = match query {
-                        Ask::Resident(id) => crate::resident::inspect(&world, id, now),
-                        Ask::Residents => crate::resident::inspect_all(&world, now),
-                        Ask::Demand => crate::resident::demand(&world, now),
-                        Ask::Lot(id) => world.inspect_lot(id, now),
-                        Ask::Card(id) => crate::card::card(&world, id, now),
-                        Ask::Town => crate::economy::town(&world, now),
-                        Ask::Sea => crate::haul::inspect(&world, now),
-                        Ask::Map { x, y, r } => crate::fixtures::draw(&world, x, y, r).into(),
-                        Ask::Call(id) => {
-                            // Its shelf, emptied: a depot fetches, a maker
-                            // is full again by tomorrow, anything else
-                            // calls for stock.
-                            if let Some(GameObject::Building(b)) = world.objects.get_mut(id).map(|e| &mut e.object) {
-                                for need in crate::economy::shelves(b.kind) {
-                                    if let Some(stock) = b.stocks.get_mut(&need) {
-                                        stock.level = 0.0;
-                                    }
-                                }
-                            }
-                            crate::calls::turn(&mut world, &mut events, id, now);
-                            serde_json::json!({ "calls": world.calls.iter().map(|c| serde_json::json!({ "kind": format!("{:?}", c.kind), "good": c.good, "at": c.at, "answered_by": c.answered_by })).collect::<Vec<_>>() })
-                        }
-                    };
-                    let _ = reply.send(serde_json::to_string_pretty(&v).unwrap_or_default());
-                }
-                Command::ClientDisconnect { id } => {
-                    clients.remove(&id);
+            }
+            ClientMessage::SetChunks(bounds) => {
+                let clk = self.clock();
+                handle_set_chunks(&self.world, &mut self.clients, &mut self.outbox, client_id, bounds, clk);
+            }
+            ClientMessage::ResetWorld => {
+                let world = (self.fresh)();
+                self.replace(world);
+            }
+            message => {
+                let Some(owner) = self.clients.get(&client_id).map(|cs| cs.owner) else { return };
+                // What the hand did, said to its owner alone: an undo, or a
+                // building refused.
+                if let Some(reply) = handle_player_action(&mut self.world, &mut self.events, &mut self.intersections, owner, message, self.now) {
+                    let to: Vec<ClientId> = self.clients.iter().filter(|(_, cs)| cs.owner == owner).map(|(&id, _)| id).collect();
+                    for id in to {
+                        self.send(id, ServerMessage::News(vec![reply.clone()]));
+                    }
                 }
             }
         }
+    }
+
+    /// Another world in this one's place, the clock kept: every client is
+    /// told to forget what it knew, terrain included, and is sent what it
+    /// looks at afresh.
+    pub fn replace(&mut self, world: World) {
+        let clk = self.clock();
+        let ids: Vec<ClientId> = self.clients.keys().copied().collect();
+        for id in &ids {
+            let cs = self.clients.get_mut(id).unwrap();
+            let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
+            let chunks: Vec<ChunkCoord> = cs.known_chunks.drain().collect();
+            if !ops.is_empty() {
+                let update = state_update(&self.world, ops, vec![], clk);
+                self.outbox.push((*id, update));
+            }
+            for coord in chunks {
+                self.outbox.push((*id, ServerMessage::UnloadChunk(coord)));
+            }
+        }
+        self.world = world;
+        self.events = EventQueue::new();
+        self.events.set_now(self.now);
+        self.intersections = IntersectionRegistry::new();
+        self.wake_all();
+        for id in ids {
+            if let Some(bounds) = self.clients.get(&id).and_then(|cs| cs.subscribed) {
+                handle_set_chunks(&self.world, &mut self.clients, &mut self.outbox, id, bounds, clk);
+            }
+        }
+    }
+
+    /// One tick of the loop: what the commands built settles, then one step
+    /// per unit of speed, each the same length as at speed 1, so a
+    /// fast-forwarded hour is the same hour. What changed goes out. How many
+    /// wakes it took.
+    pub fn tick(&mut self) -> u32 {
         // Whatever the commands built, reached, cut off or took away
         // settles once for the batch: the road brush sends a command a tile.
-        settle_and_wake(&mut world, &mut events);
-
-        // One step per unit of speed, each the same length as at speed 1, so a
-        // fast-forwarded hour is the same hour — just less wall time spent on it.
-        let started = Instant::now();
-        let mut wakes = 0u32;
-        for _ in 0..speed {
-            now += STEP_MS;
-            events.set_now(now);
-            while let Some(id) = events.pop_due() {
-                handle_wake(&mut world, &mut events, &mut intersections, id, now);
-                wakes += 1;
-            }
+        settle_and_wake(&mut self.world, &mut self.events);
+        let mut wakes = 0;
+        for _ in 0..self.speed {
+            wakes += self.step();
         }
-        // A tick that overruns is the clock falling behind the wall, and every
-        // command queued behind it. Said out loud the moment it happens, so a
-        // wake storm or a dear arrival shows in the log rather than in the fan.
-        let took = started.elapsed();
-        if took >= BEHIND {
-            eprintln!("behind: {wakes} wakes took {} ms at speed {speed}", took.as_millis());
-        }
-        sim_time = now;
-        // Published for /health, which is how anything outside this loop can
-        // tell the difference between a live world and a socket that outlived
-        // it.
-        crate::health::SIM_TIME.store(sim_time, std::sync::atomic::Ordering::Relaxed);
-
         // Before the flush, which takes the lumps a mission reads.
-        crate::missions::check(&mut world, now);
-        flush_dirty(&mut world, &mut clients, clock(now, speed));
+        crate::missions::check(&mut self.world, self.now);
+        let clk = self.clock();
+        flush_dirty(&mut self.world, &mut self.clients, &mut self.outbox, clk);
+        wakes
+    }
 
-        if last_persist.elapsed() >= PERSIST_INTERVAL {
-            persist(&mut world, &db_path, sim_time);
-            last_persist = Instant::now();
+    /// One step of simulated time, and everything due in it. How many wakes.
+    pub fn step(&mut self) -> u32 {
+        self.now += STEP_MS;
+        self.events.set_now(self.now);
+        let mut wakes = 0;
+        while let Some(id) = self.events.pop_due() {
+            handle_wake(&mut self.world, &mut self.events, &mut self.intersections, id, self.now);
+            wakes += 1;
         }
+        wakes
     }
 }
 
-fn clock(now: GameTime, speed: u32) -> Clock {
+pub fn clock(now: GameTime, speed: u32) -> Clock {
     Clock { now, speed, day_ms: DAY_MS }
 }
 
 /// Every update carries the ambient world state alongside its ops, so a client
 /// never has to ask for the seed or the island's extent separately.
-fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock) -> ServerMessage {
+pub fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock) -> ServerMessage {
     ServerMessage::Update(StateUpdate {
         ops,
         lumps,
@@ -287,62 +239,6 @@ fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock
         terrain_seed: world.terrain_seed,
         island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
     })
-}
-
-fn load_world(db_path: &Path) -> (World, GameTime) {
-    let (entries, meta) = persistence::load(db_path);
-    // A new town opens at nine in the morning, so the opening, and its
-    // first ferry, are played by daylight rather than in the dark.
-    let sim_time = if entries.is_empty() { meta.sim_time.max(DAY_MS as GameTime * 9 / 24) } else { meta.sim_time };
-    let mut world = if entries.is_empty() {
-        World::new()
-    } else {
-        // What the city has served, and what the mayor has, outlive a
-        // restart; a fresh world keeps its stake.
-        let mut world = World::from_loaded(Tracked::load(entries, meta.next_id), meta.terrain_seed);
-        world.gdp = meta.gdp;
-        world.treasury = meta.treasury;
-        world.build = crate::tree::Build::load(meta.taken);
-        if !meta.missions.is_empty() {
-            world.missions.list = meta.missions;
-        }
-        world
-    };
-    // SPRAWL_ALL: the whole tree and a bottomless treasury, to test any building.
-    if std::env::var("SPRAWL_ALL").is_ok() {
-        world.build = crate::tree::Build::all();
-        world.treasury = 1_000_000.0;
-    }
-    (world, sim_time)
-}
-
-fn persist(world: &mut World, db_path: &Path, sim_time: GameTime) {
-    let (changed_ids, removed_ids) = world.objects.drain_persist_dirty();
-    if changed_ids.is_empty() && removed_ids.is_empty() {
-        return;
-    }
-
-    let changed: Vec<_> = changed_ids
-        .iter()
-        .filter_map(|id| world.objects.get(*id))
-        .cloned()
-        .collect();
-
-    persistence::save(
-        db_path,
-        &changed,
-        &removed_ids,
-        persistence::Meta {
-            next_id: world.objects.next_id(),
-            terrain_seed: world.terrain_seed,
-            sim_time,
-            gdp: world.gdp,
-            treasury: world.treasury,
-            taken: world.build.taken(),
-            missions: world.missions.list.clone(),
-        },
-    );
-    println!("persisted {} changed, {} removed", changed.len(), removed_ids.len());
 }
 
 /// What a player asked of the town, done. What it has to say back to
@@ -380,10 +276,9 @@ fn handle_player_action(
             let (level, _) = crate::economy::level(world.gdp);
             world.build.take(cell, level);
         }
-        ClientMessage::SetSpeed(_) => unreachable!("handled in run()"),
-        ClientMessage::ResetWorld => unreachable!("handled in run()"),
-        ClientMessage::SetChunks(_) => unreachable!("handled in run()"),
-        ClientMessage::Ping => {}
+        ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ping => {
+            unreachable!("handled by Game::command")
+        }
     }
     None
 }
@@ -802,6 +697,7 @@ fn wake_resident(world: &World, events: &mut EventQueue, id: EntityId) {
 fn handle_set_chunks(
     world: &World,
     clients: &mut HashMap<ClientId, ClientState>,
+    outbox: &mut Vec<(ClientId, ServerMessage)>,
     client_id: ClientId,
     bounds: ChunkBounds,
     clk: Clock,
@@ -820,7 +716,7 @@ fn handle_set_chunks(
     // island is seen from the first minute: there is no fog.
     for &coord in visible_chunks.iter() {
         if cs.known_chunks.insert(coord) {
-            let _ = cs.sender.send(ServerMessage::TerrainChunk(world.terrain_chunk(coord)));
+            outbox.push((client_id, ServerMessage::TerrainChunk(world.terrain_chunk(coord))));
         }
     }
     let dropped: Vec<ChunkCoord> = cs.known_chunks
@@ -830,7 +726,7 @@ fn handle_set_chunks(
         .collect();
     for coord in dropped {
         cs.known_chunks.remove(&coord);
-        let _ = cs.sender.send(ServerMessage::UnloadChunk(coord));
+        outbox.push((client_id, ServerMessage::UnloadChunk(coord)));
     }
 
     // Enter: in view but not known
@@ -854,20 +750,21 @@ fn handle_set_chunks(
     cs.known = in_view;
 
     if !ops.is_empty() {
-        let _ = cs.sender.send(state_update(world, ops, vec![], clk));
+        outbox.push((client_id, state_update(world, ops, vec![], clk)));
     }
 }
 
 fn flush_dirty(
     world: &mut World,
     clients: &mut HashMap<ClientId, ClientState>,
+    outbox: &mut Vec<(ClientId, ServerMessage)>,
     clk: Clock,
 ) {
     // The news, to every player, wherever they are looking.
     let news = std::mem::take(&mut world.news);
     if !news.is_empty() {
-        for cs in clients.values() {
-            let _ = cs.sender.send(ServerMessage::News(news.clone()));
+        for &id in clients.keys() {
+            outbox.push((id, ServerMessage::News(news.clone())));
         }
     }
     let (changed, removed) = world.objects.drain_dirty();
@@ -898,7 +795,7 @@ fn flush_dirty(
         }
     }
 
-    for cs in clients.values_mut() {
+    for (&client_id, cs) in clients.iter_mut() {
         if cs.subscribed.is_none() {
             continue;
         }
@@ -937,7 +834,7 @@ fn flush_dirty(
         let lumps: Vec<Lump> = lumps.iter().filter(|(c, _)| cs.known_chunks.contains(c)).map(|(_, s)| *s).collect();
 
         if !ops.is_empty() || !lumps.is_empty() {
-            let _ = cs.sender.send(state_update(world, ops, lumps, clk));
+            outbox.push((client_id, state_update(world, ops, lumps, clk)));
         }
     }
 }
@@ -952,6 +849,7 @@ mod tests {
     /// with it, on purpose.
     const WAKE_BUDGET: u64 = 120;
     use super::*;
+    use std::time::Instant;
     use crate::calls;
     use crate::protocol::{BuildingKind, Good, GridCoord, TerrainType};
 

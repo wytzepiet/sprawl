@@ -31,7 +31,13 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 
 ## Structure
 
-- `server/` — Rust (DES, WebSocket, SQLite)
+- `server/` — Rust, a workspace of three:
+  - `server/` itself, the `sprawl` library: the game (DES, world, cars,
+    town) as `game::Game`, with no clock on the wall and no IO.
+  - `server/host/` — the server binary: `Game` on a tokio loop, over
+    WebSocket, saved to SQLite. `cargo run` in `server/` runs it.
+  - `server/web/` — `Game` for a Web Worker, built for wasm
+    (`cargo build -p sprawl-web --target wasm32-unknown-unknown`).
 - `client/` — SolidJS 1.x + Babylon Lite (Vite), WebGPU only. Lite is our
   fork, read from its source beside this repo: clone
   `github.com/wytzepiet/Babylon-Lite` (branch `sprawl`) to `../Babylon-Lite`
