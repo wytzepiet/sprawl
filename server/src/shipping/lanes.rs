@@ -172,13 +172,6 @@ impl Lanes {
         }
     }
 
-    /// May a ship going `way` sail over a tile: no lane runs against it
-    /// there, unless the water is shared.
-    pub fn open(&self, x: i32, y: i32, way: usize) -> bool {
-        let m = self.mark(x, y);
-        m & near(way, 4) == 0 || matches!(Self::kind(m), Some(Kind::Berth | Kind::TwoWay))
-    }
-
     /// A way reserved as its lane: each tile it passes marked with the way
     /// it goes; a berth's approach for `BERTH` tiles at an end that is one
     /// (`berths`: its start, its end); two-way where a lane already runs
