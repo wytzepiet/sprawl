@@ -176,7 +176,7 @@ export class TerrainChunks {
    *  (`requestBuild`): for every chunk whose tiles, skirt and all, take it
    *  in. Nothing else of the land. */
   markTile(x: number, y: number): void {
-    this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
+    this.markTrees(x, y);
     if (this.typeAt(x, y) !== "Forest" && !this.ashore(x, y, (x, y) => this.typeAt(x, y))) return;
     for (const dy of [-CHUNK_SKIRT, 0, CHUNK_SKIRT]) {
       for (const dx of [-CHUNK_SKIRT, 0, CHUNK_SKIRT]) {
@@ -186,6 +186,12 @@ export class TerrainChunks {
         if (this.tiles.has(key)) this.invalidate(key);
       }
     }
+  }
+
+  /** The trees on a tile planted again, nothing else: a building in hand
+   *  moves them, and the town's drawing of it covers the ground. */
+  markTrees(x: number, y: number): void {
+    this.dirtyTrees.add(`${floorDiv(x, CHUNK_SIZE)},${floorDiv(y, CHUNK_SIZE)}`);
   }
 
   /** Rebuild every chunk — used when the theme changes all terrain colours. */

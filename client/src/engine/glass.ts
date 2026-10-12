@@ -250,6 +250,28 @@ const HALVE_WGSL = /* wgsl */ `
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
 
+/** The panes as last read, in CSS pixels, with their rounding, and a key
+ *  that changes when any of them moves: an overlay at rest draws again. */
+const glazed: { x: number; y: number; w: number; h: number; r: number }[] = [];
+let glazedKey = "";
+export const glazedAt = () => glazedKey;
+
+/**
+ * Take the glass out of a flat overlay over the page, the hand's dots and
+ * the plot in hand: the glass is drawn in the frame, under the page, so
+ * what an overlay draws would lie on it. `ctx` is in CSS pixels.
+ */
+export function underGlass(ctx: CanvasRenderingContext2D) {
+  if (!glazed.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  for (const p of glazed) ctx.roundRect(p.x, p.y, p.w, p.h, p.r);
+  ctx.fill();
+  ctx.restore();
+}
+
 /** The glass task, after the scene, and how to read the page's panes. */
 export function createGlass(engine: EngineContext, scene: SceneContext) {
   const device = engine._device;
@@ -358,6 +380,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
     }
     data.fill(0);
     runs = [];
+    glazed.length = 0;
     let i = 0;
     let key = "";
     for (const panes of byRun.values()) {
@@ -371,6 +394,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
         if (fade <= 0.002) continue;
         let cached = radii.get(el);
         if (!cached || cached.key !== el.className) radii.set(el, (cached = { key: el.className, r: parseFloat(style.borderTopLeftRadius) || 0 }));
+        glazed.push({ x: r.left, y: r.top, w: r.width, h: r.height, r: Math.min(cached.r, r.width / 2, r.height / 2) });
         const [hx, hy] = [(r.width / 2) * dpr, (r.height / 2) * dpr];
         const o = i * 12;
         data[o] = (r.left + r.width / 2) * dpr;
@@ -413,6 +437,7 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
     touch.glow = touch.down ? touch.glow + (1 - touch.glow) * Math.min(1, dt * 14) : touch.glow * Math.exp(-dt * 3.5);
     if (touch.glow < 0.005) touch.glow = 0;
     data.set([touch.x * dpr, touch.y * dpr, touch.glow, GLOW * dpr], o + 24);
+    glazedKey = key;
     seen = key + light.tint.join() + (touch.glow ? touch.glow.toFixed(3) : "");
     return seen;
   };

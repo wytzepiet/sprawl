@@ -44,6 +44,12 @@ export const isRoad = (t: Tool | null) => (ROADS as readonly unknown[]).includes
 const [aim, setAim] = createSignal<Placing | null>(null);
 export { aim, setAim };
 
+/** A building let go, from then until the server's word on it comes
+ *  back, the building or a refusal: the trees under it make way at once,
+ *  as they do under one in hand. */
+const [placed, setPlaced] = createSignal<Placing | null>(null);
+export { placed, setPlaced };
+
 /** The pointer over the build menu's place while a building is held:
  *  letting go there puts it back. */
 const [overCancel, setOverCancel] = createSignal(false);

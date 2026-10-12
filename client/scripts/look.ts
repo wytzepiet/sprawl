@@ -7,6 +7,7 @@
  *   --ui                      with the toolbar, cards and pins, as played
  *   --select 117              with the card of thing 117 open (and --ui)
  *   --menu                    with the build menu open (and --ui)
+ *   --size 1024x768           the window, with --ui (1280x860 by default)
  *   --hold Depot@5,86[,1]     with a depot in hand over that tile, as if
  *                             dragged there, turned that way or left to
  *                             turn itself (and --ui)
@@ -49,9 +50,10 @@ const word = (name: string) => {
 };
 const held = word("--hold")?.match(/^(\w+)@(-?\d+),(-?\d+)(?:,(\d))?$/);
 const menu = args.includes("--menu") && !!args.splice(args.indexOf("--menu"), 1);
+const size = word("--size")?.split("x").map(Number) ?? [1280, 860];
 const ui = (args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1)) || chosen >= 0 || !!held || menu;
 const browser = await launch();
-const page = ui ? await open(browser, { width: 1280, height: 860 }) : await browser.newPage({ viewport: VIEW });
+const page = ui ? await open(browser, { width: size[0], height: size[1] }) : await browser.newPage({ viewport: VIEW });
 // As that player.
 if (process.env.PLAYER) await page.addInitScript((p) => localStorage.setItem("sprawl.player", p), process.env.PLAYER);
 page.on("pageerror",(e) => console.log(`page error: ${e.message}`));
