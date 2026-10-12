@@ -70,3 +70,30 @@ describe("the hand's rule, as the server's", () => {
     expect(placing(lake, "Harbour", at(9, 2), null).why).toBe("A lake: the ferry comes only by sea");
   });
 });
+
+// `roads.rs`'s `a_one_way_may_merge_at_a_shallow_angle`.
+describe("a one-way may merge at a shallow angle", () => {
+  /** A one-way street east along y = 0. */
+  function eastward(): Hand {
+    const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground: (): TerrainType => "Grass" };
+    for (let x = 0; x < 10; x++) {
+      const id = x + 100;
+      h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true } });
+      h.at.set(id, { x, y: 0 });
+    }
+    return h;
+  }
+  test("on and off a one-way, and never against it", () => {
+    const h = eastward();
+    expect(may(h, "OneWay", at(4, -1), at(5, 0))).toBe(true);
+    expect(may(h, "Street", at(4, -1), at(5, 0))).toBe(false);
+    expect(may(h, "OneWay", at(5, 0), at(6, -1))).toBe(true);
+    expect(may(h, "OneWay", at(6, -1), at(5, 0))).toBe(false);
+    expect(may(h, "OneWay", at(5, 0), at(4, -1))).toBe(false);
+  });
+  test("never onto a two-way at a shallow angle; square on, anything", () => {
+    const h = street();
+    expect(may(h, "OneWay", at(4, -1), at(5, 0))).toBe(false);
+    expect(may(h, "Street", at(5, -1), at(5, 0))).toBe(true);
+  });
+});

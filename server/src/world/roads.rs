@@ -45,24 +45,19 @@ impl World {
         }
     }
 
-    /// Check if adding a connection in direction (dx, dy) at `coord` would create
-    /// an angle sharper than 90° with existing connections.
-    pub(super) fn would_be_too_sharp(&self, coord: GridCoord, dx: i32, dy: i32, outgoing_only: bool) -> bool {
-        let id = match self.road_node_at(coord) {
-            Some(id) => id,
-            None => return false,
-        };
-        for nid in self.arms_of(id, outgoing_only) {
-            if let Some(neighbor) = self.objects.get(nid)
-                && let Some(npos) = neighbor.position {
-                    let ndx = npos.x - coord.x;
-                    let ndy = npos.y - coord.y;
-                    if ndx * dx + ndy * dy > 0 {
-                        return true;
-                    }
-                }
-        }
-        false
+    /// Would a new arm at `coord`, toward (dx, dy), give a car a turn
+    /// sharper than a right angle: in by one arm and out by another within
+    /// ninety degrees of it. Only the turns a car can make count, so a
+    /// one-way may join a road at a shallow angle, a merge, as long as
+    /// nothing could turn back along it. `arriving`: cars come in to
+    /// `coord` along the new arm; `leaving`: they go out along it.
+    pub(super) fn would_turn_sharply(&self, coord: GridCoord, dx: i32, dy: i32, arriving: bool, leaving: bool) -> bool {
+        let Some(id) = self.road_node_at(coord) else { return false };
+        self.arms_of(id, false).into_iter().any(|nid| {
+            let Some(npos) = self.objects.get(nid).and_then(|n| n.position) else { return false };
+            let ahead = (npos.x - coord.x) * dx + (npos.y - coord.y) * dy > 0;
+            ahead && ((arriving && self.edges.contains_key(&(id, nid))) || (leaving && self.edges.contains_key(&(nid, id))))
+        })
     }
 
     /// Check if two nodes at the given coords are connected as outgoing.
@@ -117,12 +112,9 @@ impl World {
         if dx.abs() == 1 && dy.abs() == 1 && self.are_connected(GridCoord { x: from.x + dx, y: from.y }, GridCoord { x: from.x, y: from.y + dy }) {
             return false;
         }
-        if one_way {
-            !self.would_be_too_sharp(from, dx, dy, true)
-        } else {
-            // Into a building, nothing stands on its tile to turn from.
-            !self.would_be_too_sharp(from, dx, dy, false) && (into_building || !self.would_be_too_sharp(to, -dx, -dy, false))
-        }
+        // Out of `from` and in to `to`, and the other way too unless it is
+        // one way. Into a building, nothing stands on its tile to turn from.
+        !self.would_turn_sharply(from, dx, dy, !one_way, true) && (into_building || !self.would_turn_sharply(to, -dx, -dy, true, !one_way))
     }
 
     pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
@@ -307,5 +299,49 @@ impl World {
     pub(super) fn unique_connection_count(&self, node_id: EntityId) -> usize {
         let unique: HashSet<EntityId> = self.arms_of(node_id, false).into_iter().collect();
         unique.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::TerrainType;
+
+    /// Grass, and a one-way street east along y = 0.
+    fn eastward() -> World {
+        let mut world = World::new();
+        for y in -4..5 {
+            for x in -2..12 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        world.place_one_way_of(&(0..10).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>(), false);
+        world
+    }
+
+    const fn at(x: i32, y: i32) -> GridCoord {
+        GridCoord { x, y }
+    }
+
+    /// A one-way may join a road at a shallow angle, an on-ramp, where
+    /// nothing could turn back along it; and leave one so, an off-ramp.
+    /// A two-way may not: a car could turn back along it, sharper than a
+    /// right angle. Nor may a one-way that could only be joined by such a
+    /// turn.
+    #[test]
+    fn a_one_way_may_merge_at_a_shallow_angle() {
+        let world = eastward();
+        assert!(world.may_lay(at(4, -1), at(5, 0), true), "an on-ramp from behind");
+        assert!(!world.may_lay(at(4, -1), at(5, 0), false), "a two-way ramp offers the turn back");
+        assert!(world.may_lay(at(5, 0), at(6, -1), true), "an off-ramp ahead");
+        assert!(!world.may_lay(at(6, -1), at(5, 0), true), "a ramp joining against the traffic");
+        assert!(!world.may_lay(at(5, 0), at(4, -1), true), "a ramp leaving back the way the road came");
+        // On a two-way street, no ramp at all: a turn back is always there.
+        let mut both = World::new();
+        both.terrain = world.terrain.clone();
+        both.place_road_path(&(0..10).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
+        assert!(!both.may_lay(at(4, -1), at(5, 0), true));
+        // Square on, any road joins any.
+        assert!(both.may_lay(at(5, -1), at(5, 0), false));
     }
 }

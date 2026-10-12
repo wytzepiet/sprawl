@@ -168,7 +168,7 @@ function drivewayFor(h: Hand, tiles: GridCoord[], kind: BuildingKind, facing: nu
   candidates.sort((a, b) => a[0] - b[0]);
   for (const [, t, n] of candidates) {
     const street = nodeAt(h, n);
-    if (street && !street.node.road && !h.occupied.has(key(n.x, n.y)) && !tooSharp(h, n, t.x - n.x, t.y - n.y, false)) return { tile: t, street: n };
+    if (street && !street.node.road && !h.occupied.has(key(n.x, n.y)) && !tooSharp(h, n, t.x - n.x, t.y - n.y, true, true)) return { tile: t, street: n };
   }
   return null;
 }
@@ -205,13 +205,19 @@ function arms(node: RoadNode, outgoingOnly: boolean): number[] {
   return outgoingOnly ? node.outgoing : [...node.outgoing, ...node.incoming];
 }
 
-/** Would an arm this way meet one already here at sharper than a right angle? */
-function tooSharp(h: Hand, at: GridCoord, dx: number, dy: number, outgoingOnly: boolean): boolean {
+/** `World::would_turn_sharply`: would a new arm here this way give a car
+ *  a turn sharper than a right angle, in by one arm and out by another
+ *  within ninety degrees of it; `arriving`, cars come in along the new
+ *  arm, `leaving`, they go out along it. Only turns a car can make count. */
+function tooSharp(h: Hand, at: GridCoord, dx: number, dy: number, arriving: boolean, leaving: boolean): boolean {
   const here = nodeAt(h, at);
   if (!here) return false;
-  return arms(here.node, outgoingOnly).some((id) => {
+  return arms(here.node, false).some((id) => {
     const p = h.at.get(id);
-    return !!p && (p.x - at.x) * dx + (p.y - at.y) * dy > 0;
+    if (!p || (p.x - at.x) * dx + (p.y - at.y) * dy <= 0) return false;
+    const out = here.node.outgoing.includes(id);
+    const into = !!nodeAt(h, p)?.node.outgoing.includes(here.id);
+    return (arriving && out) || (leaving && into);
   });
 }
 
@@ -244,8 +250,8 @@ function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boole
   if (into && !facings(into.kind, into.facing).some((f) => enters(into.tiles, into.kind, f, from, to))) return false;
   if (connected(h, from, to)) return false;
   if (dx !== 0 && dy !== 0 && connected(h, { x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy })) return false;
-  if (oneWay) return !tooSharp(h, from, dx, dy, true);
-  return !tooSharp(h, from, dx, dy, false) && (!!into || !tooSharp(h, to, -dx, -dy, false));
+  // Out of `from` and in to `to`, and back too unless it is one way.
+  return !tooSharp(h, from, dx, dy, !oneWay, true) && (!!into || !tooSharp(h, to, -dx, -dy, true, !oneWay));
 }
 
 /** `World::enters`: may a drive run from `from` onto `to` of a plot

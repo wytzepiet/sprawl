@@ -76,7 +76,7 @@ impl World {
     /// street is itself diagonal, so a plot squarely beside one cannot be
     /// connected at all.
     fn driveway_reaches(&self, from: GridCoord, to: GridCoord) -> bool {
-        !self.would_be_too_sharp(from, to.x - from.x, to.y - from.y, false)
+        !self.would_turn_sharply(from, to.x - from.x, to.y - from.y, true, true)
     }
 
     /// The one rule for where a driveway may run onto a plot lying this
