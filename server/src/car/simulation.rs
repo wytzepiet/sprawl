@@ -671,9 +671,12 @@ pub fn handle_car_wake_up(
             if let Some(from_dir) = arm(world, trip.route[k], trip.route[k - 1])
                 && let Some(to_dir) = arm(world, trip.route[k], trip.route[k + 1])
             {
+                // Off a priority road onto it, or across it, a car gives
+                // way to whoever is on it.
+                let major = world.is_road(trip.route[k]) && world.is_road(trip.route[k - 1]);
                 intersections
                     .get_or_create(trip.route[k])
-                    .register(car_id, from_dir, to_dir, now);
+                    .register_ranked(car_id, from_dir, to_dir, major, now);
             }
             // Holding the junction and going nowhere: after a few seconds
             // of that, wave the others through and queue again. Standing

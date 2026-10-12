@@ -73,6 +73,11 @@ impl World {
         self.edges.contains_key(&(a, b)) && !self.edges.contains_key(&(b, a))
     }
 
+    /// A through road, which has priority over the streets that meet it.
+    pub fn is_road(&self, id: EntityId) -> bool {
+        matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road)
+    }
+
     /// Two one-ways side by side, the one each way, a median between: a
     /// divided road. Nothing turns left or back across the median.
     pub fn divided(&self, a: EntityId, b: EntityId) -> bool {
@@ -155,6 +160,19 @@ impl World {
 
         let from_id = self.place_road_of(from, road, true);
         let to_id = self.place_road_of(to, road, true);
+        // A through road drawn across a street makes the tiles it crosses
+        // its own, so it keeps its priority there; unless a building stands
+        // beside the street, which fronts it.
+        if road {
+            for (id, at) in [(from_id, from), (to_id, to)] {
+                let fronted = (-1..=1).any(|dy| (-1..=1).any(|dx| self.occupied.contains_key(&(at.x + dx, at.y + dy))));
+                if !fronted
+                    && let Some(GameObject::RoadNode(node)) = self.objects.get_mut(id).map(|e| &mut e.object)
+                {
+                    node.road = true;
+                }
+            }
+        }
 
         if let Some(entry) = self.objects.get_mut(from_id)
             && let GameObject::RoadNode(ref mut node) = entry.object

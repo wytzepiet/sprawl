@@ -15,6 +15,8 @@ struct QueueEntry {
     car_id: EntityId,
     from: Dir,
     to: Dir,
+    /// Coming in on a priority road: it goes before anyone on a minor one.
+    major: bool,
     /// When it was granted passage; meaningless while it waits.
     since: GameTime,
 }
@@ -78,10 +80,16 @@ impl IntersectionManager {
 
     /// Add a car to the queue. Returns true if newly registered.
     pub fn register(&mut self, car_id: EntityId, from: Dir, to: Dir, now: GameTime) -> bool {
+        self.register_ranked(car_id, from, to, false, now)
+    }
+
+    /// Add a car to the queue, coming in on a priority road (`major`) or
+    /// not. Returns true if newly registered.
+    pub fn register_ranked(&mut self, car_id: EntityId, from: Dir, to: Dir, major: bool, now: GameTime) -> bool {
         let already = self.queue.iter().any(|e| e.car_id == car_id)
             || self.passing.iter().any(|e| e.car_id == car_id);
         if !already {
-            self.queue.push_back(QueueEntry { car_id, from, to, since: now });
+            self.queue.push_back(QueueEntry { car_id, from, to, major, since: now });
             self.grant_passage(now);
             return true;
         }
@@ -104,15 +112,21 @@ impl IntersectionManager {
         self.passing.iter().any(|e| e.car_id == car_id)
     }
 
-    /// Grant passage to cars at the front of the queue that don't conflict with passing cars.
+    /// Grant passage to cars at the front of the queue that don't conflict
+    /// with passing cars: those on a priority road first, in the order they
+    /// came, then the rest. The first that must wait holds everyone behind
+    /// it, so nobody on a minor road slips in before a car on the major
+    /// one, nor before anyone who came before them. Where no road has
+    /// priority, or every one does, that is first come, first served.
     fn grant_passage(&mut self, now: GameTime) -> Vec<EntityId> {
         let mut newly_granted = Vec::new();
-        while let Some(front) = self.queue.front() {
-            let dominated = self.passing.iter().any(|p| (self.rule)((front.from, front.to), (p.from, p.to)));
+        while let Some(i) = self.queue.iter().position(|e| e.major).or((!self.queue.is_empty()).then_some(0)) {
+            let next = self.queue[i];
+            let dominated = self.passing.iter().any(|p| (self.rule)((next.from, next.to), (p.from, p.to)));
             if dominated {
                 break;
             }
-            let mut entry = self.queue.pop_front().unwrap();
+            let mut entry = self.queue.remove(i).unwrap();
             entry.since = now;
             newly_granted.push(entry.car_id);
             self.passing.push(entry);
@@ -213,5 +227,42 @@ impl IntersectionRegistry {
 
     pub fn remove_node(&mut self, node_id: EntityId) {
         self.managers.remove(&node_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const W: Dir = (-1, 0);
+    const E: Dir = (1, 0);
+    const N: Dir = (0, -1);
+    const S: Dir = (0, 1);
+
+    /// A car on the priority road goes first, though it came second; the
+    /// one on the side street waits until it is through. Without priority
+    /// it is first come, first served.
+    #[test]
+    fn the_priority_road_goes_first() {
+        let mut j = IntersectionManager::new(paths_conflict);
+        j.register_ranked(1, S, N, false, 0);
+        assert!(j.has_passage(1), "alone, the side street goes");
+        j.clear(1, 10);
+
+        let mut j = IntersectionManager::new(paths_conflict);
+        // Both arrive while the junction is held, the side street first,
+        // and both are bound west, so only one may go.
+        j.register_ranked(9, N, S, true, 0);
+        j.register_ranked(1, S, W, false, 1);
+        j.register_ranked(2, E, W, true, 2);
+        assert!(!j.has_passage(1) && !j.has_passage(2));
+        assert_eq!(j.clear(9, 3), vec![2], "the priority road's car, not the side street's");
+        assert_eq!(j.clear(2, 4), vec![1], "then the side street");
+
+        let mut j = IntersectionManager::new(paths_conflict);
+        j.register_ranked(9, N, S, false, 0);
+        j.register_ranked(1, S, W, false, 1);
+        j.register_ranked(2, E, W, false, 2);
+        assert_eq!(j.clear(9, 3), vec![1], "no priority: in the order they came");
     }
 }

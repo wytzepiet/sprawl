@@ -9,6 +9,8 @@ export interface LevelConnection extends Connection {
   test(): void;
   finish(): void;
   build(): void;
+  /** Our own solve, laid. */
+  solve(): void;
 }
 
 export function connectLevel(name: string, text: string, onMessage: (msg: ServerMessage) => void, onLevel: (s: LevelState) => void): LevelConnection {
@@ -29,5 +31,6 @@ export function connectLevel(name: string, text: string, onMessage: (msg: Server
     test: () => post({ type: "test" }),
     finish: () => post({ type: "finish" }),
     build: () => post({ type: "build" }),
+    solve: () => post({ type: "solve" }),
   };
 }

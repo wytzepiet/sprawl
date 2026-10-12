@@ -90,7 +90,8 @@ function LevelList(props: { go: (name: string) => void }) {
 
 const TOOLS: { tool: Tool; key: string; label: string; icon: string }[] = [
   { tool: "Street", key: "1", label: "Two-way road", icon: "⇄" },
-  { tool: "OneWay", key: "2", label: "One-way road: runs the way you drag", icon: "→" },
+  { tool: "OneWay", key: "2", label: "One-way road: runs the way you drag. Against another, a divided road", icon: "→" },
+  { tool: "Road", key: "3", label: "Priority road: whoever joins or crosses it gives way", icon: "⇶" },
   { tool: "Demolish", key: "E", label: "Eraser (or hold Shift)", icon: "⌫" },
 ];
 

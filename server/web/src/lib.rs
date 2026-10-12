@@ -77,6 +77,14 @@ impl Web {
         self.game.tick();
     }
 
+    /// Our own solve, laid by the hand: for development, and for a player
+    /// who asks to see it.
+    pub fn solve(&mut self) {
+        for step in self.level.solve_steps(&self.game.world) {
+            self.game.command(ME, ClientMessage::Build(step));
+        }
+    }
+
     /// Back to building.
     pub fn build(&mut self) {
         self.level.build_again();

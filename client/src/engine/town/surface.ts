@@ -316,10 +316,37 @@ const WING: [number, number] = [0.07, 0.1];
  * a one-way's tile has an arrow at its middle, the way it runs. Drives
  * are painted nothing.
  */
-export function paintOf({ ways }: Surface): (x: number, y: number) => number {
+export function paintOf({ through, ways }: Surface): (x: number, y: number) => number {
   const roads = ways.filter(([, , , flow]) => flow !== "d");
   const marks: ((x: number, y: number) => number)[] = [];
   const junction = roads.length >= 3;
+  // Where a street meets a priority road, shark's teeth across the street's
+  // way in: a row of triangles pointing at whoever must give way.
+  if (through && junction) {
+    for (const [dc, dr, on, flow] of roads) {
+      if (on || flow === "o") continue;
+      const len = Math.hypot(dc, dr);
+      const [ux, uy] = [dc / len, dr / len];
+      // Across the way in: the whole of a one-way, the right half of a
+      // two-way as its traffic comes in (`bezier.rs`'s side, of -u).
+      const [lo, hi] = flow === "i" ? [-HALF_W, HALF_W] : [0, HALF_W];
+      const n = Math.max(1, Math.floor((hi - lo) / TOOTH[0]));
+      const base = (hi - lo) / n;
+      for (let k = 0; k < n; k++) {
+        const [a, b] = [lo + k * base + base * 0.12, lo + (k + 1) * base - base * 0.12];
+        marks.push((x, y) => {
+          const [px, py] = [x - 0.5, y - 0.5];
+          const along = px * ux + py * uy - CLEAR;
+          const across = px * uy - py * ux;
+          // Its base at CLEAR, its point out along the arm.
+          const t = (across - a) / (b - a);
+          const half = (b - a) / 2;
+          const reach = TOOTH[1] * (1 - Math.abs(2 * t - 1));
+          return Math.min(along, reach - along, half - Math.abs(across - (a + b) / 2));
+        });
+      }
+    }
+  }
   for (const [dc, dr, , flow] of roads) {
     if ((flow ?? "t") !== "t") continue;
     const len = Math.hypot(dc, dr);
@@ -362,6 +389,9 @@ export function paintOf({ ways }: Surface): (x: number, y: number) => number {
   }
   return (x, y) => marks.reduce((best, m) => Math.max(best, m(x, y)), -1);
 }
+
+/** A give-way tooth: its base across, and how far it reaches along. */
+const TOOTH: [number, number] = [0.105, 0.13];
 
 /** How far a divided road's side runs from its middle (`motion.ts`). */
 const SIDE = 0.13;

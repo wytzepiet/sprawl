@@ -12,7 +12,8 @@ export type ToWorker =
   | { type: "msg"; bytes: Uint8Array }
   | { type: "test" }
   | { type: "finish" }
-  | { type: "build" };
+  | { type: "build" }
+  | { type: "solve" };
 
 export type FromWorker = { type: "out"; msgs: Uint8Array[] } | { type: "level"; json: string };
 
@@ -53,5 +54,6 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
   else if (m.type === "test") web.test();
   else if (m.type === "finish") web.finish();
   else if (m.type === "build") web.build();
+  else if (m.type === "solve") web.solve();
   if (m.type !== "msg") flush(true);
 };

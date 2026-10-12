@@ -16,7 +16,7 @@
 //! ```
 //!
 //! After the map, our own solve: the map again, each row behind a `%`,
-//! with `=` on every tile of road it lays. Its tiles are the level's par,
+//! with `=` on every tile of road it lays, `#` of priority road. Its tiles are the level's par,
 //! and it is the level's test: it must carry the traffic.
 //!
 //! A gate is a stub of road from its edge tile out past the map's edge,
@@ -177,6 +177,9 @@ pub struct Level {
     /// Our own solve's tiles of road, laid between every two beside each
     /// other or on a diagonal no tile beside both already joins.
     solution: Vec<GridCoord>,
+    /// Those of its tiles that are priority road (`#`): a link is one
+    /// where both its ends are.
+    priority: Vec<GridCoord>,
     phase: Phase,
     rng: SmallRng,
     seed: u64,
@@ -290,11 +293,14 @@ impl Level {
             .iter()
             .filter_map(|&(a, b, n)| Some(Want { from: index(a)?, to: index(b)?, per_min: n }))
             .collect();
-        let mut solution = Vec::new();
+        let (mut solution, mut priority) = (Vec::new(), Vec::new());
         for (row, line) in solve.iter().enumerate() {
             for (col, &c) in line.iter().enumerate() {
-                if c == '=' {
+                if c == '=' || c == '#' {
                     solution.push(at(col as i32, row as i32));
+                }
+                if c == '#' {
+                    priority.push(at(col as i32, row as i32));
                 }
             }
         }
@@ -311,6 +317,7 @@ impl Level {
             par,
             par_flow: 1.0,
             solution,
+            priority,
             phase: Phase::Build,
             rng: SmallRng::seed_from_u64(seed),
             seed,
@@ -353,7 +360,8 @@ impl Level {
                 let b = GridCoord { x: a.x + dx, y: a.y + dy };
                 let beside = dx != 0 && dy != 0 && (road(GridCoord { x: a.x + dx, y: a.y }) || road(GridCoord { x: a.x, y: a.y + dy }));
                 if road(b) && !beside && !world.are_connected(a, b) && !steps.iter().any(|s: &Build| s.from == b && s.to == a) {
-                    steps.push(Build { tool: Tool::Street, from: a, to: b });
+                    let tool = if self.priority.contains(&a) && self.priority.contains(&b) { Tool::Road } else { Tool::Street };
+                    steps.push(Build { tool, from: a, to: b });
                 }
             }
         }
