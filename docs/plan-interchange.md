@@ -69,18 +69,26 @@ The work:
      `game_loop`, `persistence`, `health`, `rand::random` for a new seed.
    - `web`: a `cdylib`, `wasm-bindgen` over `Game`, built for the worker.
 
-   Not a split of roads from town inside `sim`. Cars park at buildings and
-   trips end at lots, so that line runs through the middle of the car
-   sim. Draw it only when wasm size or build time forces it, and when it
-   is clear where it falls. A `server` feature on one crate instead is
-   rejected: `cfg` on every IO line is a flag that controls behaviour.
+   Then **`traffic` carved out of `sim`**, as the puzzle's node-to-node
+   trip needs it: roads, the network, routing, the edge queues, junctions,
+   cars driving. The seam is **arrival**: traffic reports "car X reached
+   its stop", and the town decides what that means (park it, wake its
+   driver); the puzzle despawns it. The test of the seam is that
+   `traffic` compiles without the town. Where lots fall (driving into a
+   bay is traffic, whose bay it is is town) is decided while carving.
+   The puzzle then builds on `traffic` alone, and every road system it
+   grows is the town's the day it lands.
+
+   One crate with a `server` feature instead was weighed and dropped:
+   the boundary would be a `cfg` on every IO line, enforced by nothing,
+   where three crates make the compiler enforce it.
 2. **A `Game` that the loop only drives.** `game_loop::run` today
    holds the world, the event queue and the junctions inside one async
    function. Pull them out into `Game { command(msg), advance_to(t) ->
    Vec<ServerMessage> }`. The tokio loop becomes a thin shell around it;
    the wasm wrapper becomes another. This makes the server smaller, not
    just different.
-3. **`sim-wasm`**: `wasm-bindgen` over `Game`; a `rand` seeded per level
+3. **`web`**: `wasm-bindgen` over `Game`; a `rand` seeded per level
    so a layout always scores the same.
 4. **The worker connection** in the client, and a level loaded from a
    fixture compiled in or fetched.
@@ -179,6 +187,14 @@ that idea).
 
 Solving a level opens the neighbours its gates lead to.
 
+**The camera** (Freeways' is fixed; ours isn't): zoom and pan, clamped to
+the level's rectangle plus a margin of a few tiles, so you see a little of
+each neighbour past the edge. A solved neighbour is live, its cars coming
+and going through your gates; a locked one lies under **fog**, its
+terrain dimmed and soft-edged, its gates' stubs showing through. Because
+the overworld is one world, the margin is free: it is the same map drawn
+a bit further. Zoom out past the level and it becomes the overworld view.
+
 ## The brush (new, for this mode; the main game adopts it if it's better)
 
 Today's brush grew out of placing buildings. This one is made for drawing
@@ -222,12 +238,16 @@ a **median** divides them. One-way 1 is (1, 0); two-way is (1, 1); a
 divided road is (1, 1, barrier); a 2-lane one-way is (2, 0). One-way
 already exists (`Tool::OneWay`, `outgoing`/`incoming`, chevrons).
 
-**The divided road** is one link with a **concrete barrier** down the
-middle: two carriageways, a thin raised barrier between, no left turn and
-no U-turn across it, and a side road joins the near carriageway only.
-Drawing a one-way against an existing one-way on the same tiles makes it
-one. It keeps a node per tile, and "no turn across" is one line in the
-junction's movement rule.
+**The divided road** is one link with a **grass median**: two
+one-lane carriageways with a strip of verge between, so it reads as two
+roads, not one road with a line. Drawing a one-way against an existing
+one-way on the same tiles makes it one. The rules: straight across and
+right turns at a junction, no left and no U-turn across the median, and a
+side road joins the near carriageway only. It keeps a node per tile, and
+"no turn across" is one line in the junction's movement rule. Where it
+meets an undivided road, the carriageways taper together on that tile.
+(A barrier median is the same link with a different look, for the
+motorway sections later.)
 
 **Shallow joins.** The rule against a turn sharper than 90° is partly
 direction-aware (`would_be_too_sharp`, `outgoing_only`). Make it entirely
@@ -285,8 +305,39 @@ This is the gap-acceptance-and-follow scheme real traffic sims use (IDM
 following, MOBIL lane changes), shrunk to what we have: one more source
 of leads, and a lateral position the client draws as a smooth S.
 
-In the DES, a car that is waiting for a gap wakes when the car it maps
-moves on, as followers already do.
+**It must keep the DES cheap.** What makes many cars cheap today: a car
+holds one acceleration between wakes, so where it is in between is
+arithmetic, on the server and the client alike; it wakes when an obstacle
+it knows about needs a decision (`wake_time`) or its stretch ends; and
+when its acceleration changes it wakes the one car behind it
+(`car_behind_on_edge`), 50 ms later for brake lights and 150 for a gap.
+Nobody polls. The virtual lead keeps every one of those:
+
+- **Following one more car is the same arithmetic.** A virtual lead is a
+  `LeadCar` obstacle whose distance is taken along a different queue.
+- **Who to wake on a change becomes a short list, not one car.** A car
+  that maps another registers as its **shadow**; when the lead changes
+  its acceleration, it wakes the car behind it *and* its shadows. A car
+  is shadowed by at most one or two others at a time, so a wake stays
+  O(1).
+- **Finding the lead is O(1).** The other car is at the head of the other
+  arm's queue (a merge at a node) or the nearest in the neighbouring
+  lane's queue (ordered by position, so a short search).
+- **A merge window, entered once.** A car wakes once when it comes
+  within merge range, as it already wakes at the end of a stretch; on the
+  major road with no merge ahead nothing changes.
+- **The order is settled once.** Who leads at a merge is fixed when the
+  second car enters the window (by when each would reach the point),
+  and never flips. Two cars that kept re-deciding would wake each other
+  forever; this is the zip, decided.
+- **Lane changes only when the route asks.** A car changes lane for its
+  next turn or a lane that ends, never to overtake, at first. That bounds
+  changes to about one per car per junction. Overtaking can come later if
+  it is worth its wakes.
+- **Measured, not hoped.** The town test already asserts wakes per
+  resident against a budget. The puzzle gets the same: a level heavy with
+  merges and lane changes, its wakes per car-minute asserted within a
+  margin of a level with none.
 
 ### 4. Priority
 
@@ -362,8 +413,8 @@ Each step playable.
 | # | What | Size | Notes |
 |---|---|---|---|
 | 0 | One-way routes in the router | S | A test that routes round a one-way. |
-| 1 | The sim to wasm: crate split, `Game`, `sim-wasm`, the worker connection | M | The town still runs on the server, unchanged. |
-| 2 | Puzzle MVP: one hand-made rectangle, gates, demands, node-to-node trips, Build and Test, gridlock, efficiency | M | Already a game with what roads do today. |
+| 1 | The sim to wasm: `sim`, `server`, `web` crates, `Game`, the worker connection | M | The town still runs on the server, unchanged. |
+| 2 | `traffic` carved from `sim` at arrival; puzzle MVP: one hand-made rectangle, the camera, gates, demands, node-to-node trips, Build and Test, gridlock, efficiency | M | Already a game with what roads do today. |
 | 3 | The new brush; centre lines; shallow joins; divided road | M | |
 | 4 | The virtual lead: merges and priority, give-way markings | M | Roundabouts fall out. |
 | 5 | Levels: tile + level, slopes, decks, piers, car height | L | Mostly client. The real interchange. |
@@ -381,8 +432,13 @@ reference solve is its test.
 
 ## Open
 
-1. Efficiency over 100% when you beat the reference: delight or bug?
-2. One overworld map with the levels cut out of it (as above), or levels
-   made separately that only agree at their gates?
-3. The puzzle as its own page (a static build, shareable) or a mode inside
-   Sprawl's client? Wasm allows both; the first needs a second Vite entry.
+Defaults taken unless the player says otherwise:
+
+- Efficiency may go over 100% when you beat the reference.
+- One overworld, the levels cut from it.
+- A mode inside Sprawl's client (a route of its own), so it shares the
+  renderer; a static build of it alone is a second Vite entry later.
+
+Still open:
+
+1. The macro network's first map: how many levels, which towns.
