@@ -7,6 +7,9 @@ import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN
 import type { Rgb } from "../engine/rgb";
 import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Trailer } from "../generated";
 import type { Pose as Stand } from "../generated/Pose";
+import type { Compass } from "../generated/Compass";
+import type { Neighbour } from "../generated/Neighbour";
+import { crest } from "./crest";
 
 /**
  * The game drawn flat, on a 2D canvas: the browser's (the minimap) or
@@ -27,6 +30,10 @@ export interface World {
   ground(cx: number, cy: number): Uint8Array | undefined;
   /** The sea's lanes (`Sea.lanes`), drawn faint on the water. */
   lanes?: Lane[];
+  /** The towns beyond the edge, each a pin on the view's edge its way. */
+  neighbours?: Neighbour[];
+  /** The town a box is marked for, by the box's order. */
+  marked?: (order: number) => Neighbour | undefined;
   now: number;
   dayMs: number;
 }
@@ -190,6 +197,8 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     }
   }
 
+  // Boxes in a park marked for a town beyond the edge: its crest on them.
+  const crested: [Stand, Neighbour][] = [];
   // Buildings: their tiles in their kind's colour, outlined; a site an
   // outline, filled from the bottom as its timber comes; the drive from
   // the street to the door.
@@ -221,6 +230,8 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     for (const slot of b.park) {
       dock(g, slot.pose);
       if (slot.trailer) box(g, slot.pose, slot.trailer);
+      const town = slot.trailer && world.marked?.(slot.trailer.order);
+      if (town) crested.push([slot.pose, town]);
     }
   }
 
@@ -244,11 +255,37 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     vehicle(g, e.id, car, m);
   }
 
+  // Upright, in pixels: the crests on marked boxes, and each town beyond
+  // the edge a pin on the view's edge its way, as the map lies: north up,
+  // east to the right.
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  for (const [p, n] of crested) crest(g, n, ...screen(p.at[0], p.at[1]), Math.max(4, S * 0.16));
+  const r = Math.max(7, Math.min(view.w, view.h) / 34);
+  const edge: Record<Compass, [number, number, number]> = {
+    North: [view.w / 2, r + 4, -Math.PI / 2],
+    South: [view.w / 2, view.h - r - 4, Math.PI / 2],
+    East: [view.w - r - 4, view.h / 2, 0],
+    West: [r + 4, view.h / 2, Math.PI],
+  };
+  for (const n of world.neighbours ?? []) {
+    const [px, py, out] = edge[n.toward];
+    crest(g, n, px, py, r);
+    if (!labels) continue;
+    const name = `${n.town}${n.writes ? "" : " (silent)"}`;
+    const [lx, ly] = n.toward === "North" ? [px, py + r + 9] : n.toward === "South" ? [px, py - r - 9] : [px - Math.cos(out) * (r + 4), py + r + 9];
+    g.font = "11px sans-serif";
+    g.textAlign = n.toward === "East" ? "right" : n.toward === "West" ? "left" : "center";
+    g.textBaseline = "middle";
+    g.lineWidth = 3;
+    g.strokeStyle = "rgba(255,255,255,0.85)";
+    g.strokeText(name, lx, ly);
+    g.fillStyle = INK;
+    g.fillText(name, lx, ly);
+  }
   if (!labels) return;
 
   // Labels, upright, in pixels: buildings' kinds and ids; vehicles' ids,
   // close enough to read; what each ferry has aboard.
-  g.setTransform(1, 0, 0, 1, 0, 0);
   const text = (s: string, x: number, y: number, size: number, colour = INK, align: CanvasTextAlign = "center") => {
     g.font = `${size}px sans-serif`;
     g.textAlign = align;

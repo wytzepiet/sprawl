@@ -278,7 +278,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         setIsland(msg.data.island);
         setGrowth(msg.data.growth);
         hearSea(msg.data.sea);
-        hearMissions(msg.data.missions);
+        hearMissions(msg.data.missions, msg.data.neighbours);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
         break;

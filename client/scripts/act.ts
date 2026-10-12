@@ -89,8 +89,10 @@ let ops: Op[] = [];
 const trips = new Map<string, Recorded>();
 const PLAYER = process.env.PLAYER ?? "4242";
 /** The town's missions, as the last update had them. */
-type Mission = { title: string; finished: number | null; reward: { data: number }; steps: { title: string; text: string; done: boolean; at: number | null }[] };
+type Mission = { key: unknown; title: string; finished: number | null; due: number | null; reward: { data: number | { coins: number; standing: number } }; steps: { title: string; text: string; done: boolean; at: number | null }[] };
 let missions: Mission[] = [];
+/** The mayors beyond the edge, and how they stand. */
+let neighbours: { name: string; town: string; toward: string; standing: number; writes: boolean }[] = [];
 /** News heard since the last command said what it saw. */
 const told: string[] = [];
 const ws = new WebSocket(`ws://localhost:${PORT}/ws?player=${PLAYER}`);
@@ -102,6 +104,7 @@ ws.onmessage = (e) => {
   if (msg.type !== "Update") return;
   clock = msg.data.clock;
   missions = msg.data.missions ?? [];
+  neighbours = msg.data.neighbours ?? [];
   if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
   for (const op of msg.data.ops as Op[]) {
     const trip = op.op === "Upsert" && op.data.object.kind === "Car" && op.data.object.data.trip;
@@ -146,26 +149,30 @@ function changes(batch: Op[]): string[] {
     ...(roads(gone) ? [`- ${roads(gone)} road tiles`] : []), ...rest(gone).map((s) => `- ${s}`),
   ];
 }
+/** What a mission pays: coins, and for an order standing with its mayor. */
+const pays = (m: Mission) => (typeof m.reward.data === "number" ? `+${m.reward.data} coins` : `+${m.reward.data.coins} coins as it sails, +${m.reward.data.standing} standing`);
+const lapsed = (m: Mission) => m.finished !== null && m.steps.some((s) => !s.done);
 /** What became of the missions over a command: opened, steps done, finished. */
 function progress(before: Mission[]): string[] {
   const out: string[] = [];
   for (const m of missions) {
-    const was = before.find((b) => b.title === m.title);
-    if (!was) out.push(`mission opened: ${m.title}`);
+    const was = before.find((b) => JSON.stringify(b.key) === JSON.stringify(m.key));
+    if (!was) out.push(`mission opened: ${m.title}${m.steps.length === 1 ? `: ${m.steps[0].title}` : ""}`);
     m.steps.forEach((s, i) => s.done && !was?.steps[i]?.done && out.push(`mission ${m.title}: ${s.title} done`));
-    if (m.finished !== null && was?.finished == null) out.push(`mission finished: ${m.title}, +${m.reward.data} coins`);
+    if (m.finished !== null && was?.finished == null) out.push(lapsed(m) ? `mission lapsed: ${m.title}, ${m.steps[0].title}` : `mission finished: ${m.title}, ${pays(m)}`);
   }
   return out;
 }
 /** Every mission, its steps, and what the one at hand says. */
 function listed(): string[] {
-  return missions.flatMap((m) => {
+  const mayors = neighbours.map((n) => `${n.name} of ${n.town}, ${n.toward.toLowerCase()}: standing ${n.standing}${n.writes ? "" : ", silent"}`);
+  return mayors.concat(missions.flatMap((m) => {
     const at = m.steps.findIndex((s) => !s.done);
     return [
-      `${m.title}${m.finished !== null ? " (finished)" : ""}, +${m.reward.data} coins`,
+      `${m.title}${lapsed(m) ? " (lapsed)" : m.finished !== null ? " (finished)" : ""}, ${pays(m)}${m.due !== null && m.finished === null ? `, due at ${m.due} ms` : ""}`,
       ...m.steps.map((s, i) => `  [${s.done ? "x" : " "}] ${s.title}${s.at !== null ? ` (#${s.at})` : ""}${i === at ? `: ${s.text.replace(/\n\n/g, " ")}` : ""}`),
     ];
-  });
+  }));
 }
 
 /** The trips seen, kept for `bun run plan --paths`, and their bends

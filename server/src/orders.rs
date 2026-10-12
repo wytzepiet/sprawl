@@ -91,7 +91,7 @@ const WHO: [Who; 4] = [
         looks: "an old fisherman, white beard, oilskin hat, pipe",
         goods: &[Good::Crates, Good::Fuel],
         boxes: 1,
-        price: 1.5,
+        price: 1.25,
         trust: 1.0,
         voice: [
             "The boats are in and the larder isn't. Could you spare {n} of {good}? No great hurry, the fish keep.",
@@ -107,7 +107,7 @@ const WHO: [Who; 4] = [
         looks: "a miner, dark hair cropped short, soot on one cheek, lamp helmet under her arm",
         goods: &[Good::Timber],
         boxes: 2,
-        price: 2.0,
+        price: 1.5,
         trust: 0.0,
         voice: [
             "We're short of {good} before winter. Can you send {n}?",
@@ -123,7 +123,7 @@ const WHO: [Who; 4] = [
         looks: "a farmer, round red cheeks, straw hat, a sprig of wheat",
         goods: &[Good::Stone, Good::Timber],
         boxes: 2,
-        price: 1.75,
+        price: 1.5,
         trust: 0.0,
         voice: [
             "Hello from Fernhollow! The cows have kicked the barn down again. {n} of {good} would put it right!",
@@ -139,7 +139,7 @@ const WHO: [Who; 4] = [
         looks: "a lord, grey whiskers, a chain of office, monocle",
         goods: &[Good::Crates, Good::Timber, Good::Stone, Good::Fuel],
         boxes: 4,
-        price: 2.5,
+        price: 2.0,
         trust: 0.0,
         voice: [
             "Port Aldra has heard well of you. We require {n} of {good}, and pay accordingly.",
@@ -205,14 +205,17 @@ pub fn neighbours(world: &World) -> Vec<Neighbour> {
         .collect()
 }
 
-/// What the town can send: goods a maker in town makes, or a depot holds
-/// over its line to sell; and, one step further, goods a building it has
-/// not built would make.
+/// What the town can send: goods a maker in town makes and the depots
+/// have two boxes of, or a depot holds over its line to sell; and, one
+/// step further, goods a kind of building not built yet would make.
 pub fn sourceable(world: &World) -> (Vec<Good>, Vec<Good>) {
     let mut now = Vec::new();
+    let mut built = Vec::new();
+    let kept = |good: Good| crate::missions::depots(world).map(|(_, b)| b.stocks.get(&good).map_or(0.0, |s| s.level)).sum::<f64>();
     for e in world.objects.iter() {
         let GameObject::Building(ref b) = e.object else { continue };
-        let made = blueprint(b.kind).makes.filter(|_| b.site.is_none() && world.street_of(e.id).is_some());
+        built.push(b.kind);
+        let made = blueprint(b.kind).makes.filter(|&g| b.site.is_none() && world.street_of(e.id).is_some() && kept(g) >= 2.0 * g.per_box());
         let over = b.rules.iter().filter(|(g, r)| r.sell.is_some_and(|line| b.stocks.get(g).is_some_and(|s| s.level > line))).map(|(&g, _)| g);
         for g in made.into_iter().chain(over) {
             if !now.contains(&g) {
@@ -220,7 +223,7 @@ pub fn sourceable(world: &World) -> (Vec<Good>, Vec<Good>) {
             }
         }
     }
-    let further = BuildingKind::ALL.iter().filter(|&&k| world.build.may_place(k)).filter_map(|&k| blueprint(k).makes).filter(|g| !now.contains(g)).collect();
+    let further = BuildingKind::ALL.iter().filter(|&&k| world.build.may_place(k) && !built.contains(&k)).filter_map(|&k| blueprint(k).makes).filter(|g| !now.contains(g)).collect();
     (now, further)
 }
 
@@ -236,7 +239,8 @@ fn boxes(n: u32, good: Good) -> String {
 /// may come with it. At most `OPEN` at once, one a `GAP`, and none before
 /// the opening is done.
 pub fn post(world: &mut World, harbour: EntityId, now: GameTime) {
-    for m in world.missions.list.iter_mut().filter(|m| m.finished.is_none() && m.due.is_some_and(|d| d <= now)) {
+    // One whose last box has sailed is filled, if not yet read as filled.
+    for m in world.missions.list.iter_mut().filter(|m| m.finished.is_none() && !m.steps[0].done && m.due.is_some_and(|d| d <= now)) {
         m.finished = Some(now);
         let (w, Goal::Delivered { good, .. }) = (who(m.from.unwrap_or(Mayor::Tam)), m.steps[0].goal) else { continue };
         world.news.push(News { text: format!("{} of {} gave up waiting", w.name, w.town), sub: format!("for {}: standing falls", named(good)), at: harbour });
@@ -260,16 +264,18 @@ pub fn post(world: &mut World, harbour: EntityId, now: GameTime) {
 
 /// The next letter: from whoever has written least, of those who write
 /// and want something the town can send, Tam before Mira before Bess
-/// before Port Aldra. Every third reaches one step further, for a good a
-/// building not yet built would make, where the mayor wants one.
+/// before Port Aldra. Every third reaches one step further, for a good
+/// another building would make, where a mayor wants one, and so does the
+/// first, while the town makes nothing to spare. Otherwise nobody asks
+/// what the town cannot send now: no letter is better than one that
+/// lapses.
 pub fn write(world: &mut World, now: GameTime) -> Option<Mission> {
     let (can, further) = sourceable(world);
-    let written = orders(world).count();
-    let stretch = written % 3 == 2 || can.is_empty();
-    let (first, then) = if stretch { (&further, &can) } else { (&can, &further) };
+    let stretch = orders(world).count() % 3 == 2 || can.is_empty();
+    let sets = if stretch { vec![&further, &can] } else { vec![&can] };
     let mut by: Vec<(usize, Mayor)> = WHO.iter().filter(|w| writes(world, w.mayor) && !open(world).any(|m| m.from == Some(w.mayor))).map(|w| (orders(world).filter(|m| m.from == Some(w.mayor)).count(), w.mayor)).collect();
     by.sort();
-    let (w, good) = [first, then].into_iter().find_map(|goods| {
+    let (w, good) = sets.into_iter().find_map(|goods| {
         by.iter().find_map(|&(n, mayor)| {
             let w = who(mayor);
             let wanted: Vec<Good> = w.goods.iter().copied().filter(|g| goods.contains(g)).collect();
@@ -313,13 +319,14 @@ pub fn bound(world: &World, good: Good) -> Option<u64> {
 }
 
 /// A box went out on the ferry: if it was marked for an open order, it is
-/// counted to it and its mayor's coins are what it fetches. None, and the
-/// world buys it.
+/// counted to it and its mayor's coins are what it fetches, and the last
+/// fills it. None, and the world buys it.
 pub fn sailed(world: &mut World, t: &Trailer) -> Option<f64> {
     let m = world.missions.list.iter_mut().find(|m| m.key == Key::Order(t.order) && m.finished.is_none())?;
     let (Goal::Delivered { units, sailed, .. }, Reward::Order { coins, .. }) = (&mut m.steps[0].goal, m.reward) else { return None };
     *sailed += t.units;
     let paid = coins * t.units / *units;
+    m.steps[0].done = *sailed >= *units - 1e-6;
     world.missions.stir();
     Some(paid)
 }

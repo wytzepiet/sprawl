@@ -4,4 +4,4 @@
  * What finishing a mission pays. Coins for now; XP once the level means
  * something.
  */
-export type Reward = { "kind": "Coins", "data": number };
+export type Reward = { "kind": "Coins", "data": number } | { "kind": "Order", "data": { coins: number, standing: number, } };

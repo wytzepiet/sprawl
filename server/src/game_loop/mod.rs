@@ -962,6 +962,8 @@ mod tests {
     enum Do {
         Step(Tool, GridCoord, GridCoord),
         Place(BuildingKind, GridCoord),
+        /// A box of a good sold from a depot.
+        Sell(EntityId, Good),
     }
 
     /// The hand's act done, as the loop does it; a building refused is a
@@ -971,6 +973,7 @@ mod tests {
             Do::Step(tool, from, to) => {
                 take_step(world, events, intersections, Build { tool, from, to }, now);
             }
+            Do::Sell(depot, good) => crate::haul::sell(world, events, depot, good),
             Do::Place(kind, at) => {
                 if let Some(no) = place(world, events, intersections, 0, kind, at, None, now) {
                     panic!("{kind:?} at {at:?} refused: {}", no.sub);
@@ -1785,6 +1788,9 @@ mod tests {
             let stuck = world.objects.iter().filter(|e| matches!(e.object, GameObject::Car(ref c) if c.trip.as_ref().is_some_and(|t| now > t.eta + DAY_MS as u64))).count();
             assert_eq!(stuck, 0, "day {day}: {stuck} cars a day past their due time — the street has gridlocked");
             println!("day {day}: {} claims lapsed so far", intersections.lapses);
+            // The missions read, as the tick reads them: letters come only
+            // once the opening is done.
+            crate::missions::check(&mut world, now);
             each_day(&world, day, wakes);
             let steps = hand(&world, day);
             if !steps.is_empty() {
@@ -2097,16 +2103,29 @@ mod tests {
         let sawmill = build(&mut world, SAWMILL_X, BuildingKind::Sawmill, 1);
         let mut stood = 0;
         // Each midnight, a block of flats across the street, and a side
-        // street beside it.
-        let hand = |_: &World, day: u64| -> Steps {
+        // street beside it; and the letters read, and a box sold from the
+        // depot for each box an order still wants that is not on its way,
+        // while the depot keeps a box back for the sites.
+        let hand = |world: &World, day: u64| -> Steps {
             let x = 112 + 4 * (day as i32 - 1);
             let at = |x, y| GridCoord { x, y };
-            vec![
+            let mut steps = vec![
                 Do::Place(BuildingKind::Apartment, at(x + 1, -1)),
                 Do::Step(Tool::Street, at(x + 2, 0), at(x + 2, -1)),
                 Do::Step(Tool::Street, at(x + 2, -1), at(x + 2, -2)),
                 Do::Step(Tool::Street, at(x + 2, -2), at(x + 2, -3)),
-            ]
+            ];
+            let depot = world.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Depot)).map(|e| e.id).unwrap();
+            let boxes = crate::haul::boxes(world);
+            let queued = |g: Good| building_of(world, depot).selling.iter().filter(|&&s| s == g).count() as f64;
+            for m in world.missions.list.iter().filter(|m| m.finished.is_none()) {
+                let (crate::missions::Key::Order(id), crate::missions::Goal::Delivered { good, units, sailed }) = (m.key, m.steps[0].goal) else { continue };
+                let going: f64 = boxes.iter().filter(|(t, ..)| t.outbound && t.order == id).map(|(t, ..)| t.units).sum();
+                let wanted = ((units - sailed - going) / good.per_box()).ceil() - queued(good);
+                let spare = (building_of(world, depot).stocks[&good].level / good.per_box()).floor() - 1.0 - queued(good);
+                steps.extend((0..wanted.min(spare).max(0.0) as usize).map(|_| Do::Sell(depot, good)));
+            }
+            steps
         };
         let mut empty_since: std::collections::BTreeMap<(EntityId, String), u64> = Default::default();
         let mut stood_empty = |what: (EntityId, String), empty: bool, day: u64| -> u64 {
@@ -2221,6 +2240,32 @@ mod tests {
         });
         let sold = world.town.season().map(|p| p.sold.get(&Good::Crates).copied().unwrap_or(0.0)).sum::<f64>();
         println!("the season: treasury {:.1}, crates sold to the world for {sold:.1}, {stood} sites stood", world.treasury);
+        // The order board: what the towns beyond the edge asked, what was
+        // sent, and what they paid.
+        let orders: Vec<_> = world.missions.list.iter().filter(|m| matches!(m.key, crate::missions::Key::Order(_))).collect();
+        // Paid, and over what the world would have paid for the same boxes.
+        let (paid, over): (f64, f64) = orders
+            .iter()
+            .map(|m| match (m.steps[0].goal, m.reward) {
+                (crate::missions::Goal::Delivered { good, units, sailed }, crate::missions::Reward::Order { coins, .. }) => {
+                    let paid = coins * sailed.min(units) / units;
+                    (paid, paid - crate::economy::export(good, sailed.min(units)))
+                }
+                _ => (0.0, 0.0),
+            })
+            .fold((0.0, 0.0), |(a, b), (c, d)| (a + c, b + d));
+        let filled = orders.iter().filter(|m| m.steps[0].done).count();
+        let lapsed = orders.iter().filter(|m| m.finished.is_some() && !m.steps[0].done).count();
+        println!(
+            "orders: {} letters, {filled} filled, {lapsed} lapsed; {paid:.0} coins paid, {over:.0} over the world's price: {:.0}% of the treasury",
+            orders.len(),
+            100.0 * over / world.treasury
+        );
+        for n in crate::orders::neighbours(&world) {
+            let theirs: Vec<_> = orders.iter().filter(|m| m.from == Some(n.mayor)).map(|m| { let sent = match m.steps[0].goal { crate::missions::Goal::Delivered { sailed, .. } => sailed, _ => 0.0 }; format!("{}{}", m.steps[0].title, if m.steps[0].done { String::new() } else if m.finished.is_some() { format!(" (lapsed, {sent:.0} sent)") } else { " (open)".into() }) }).collect();
+            println!("  {} of {}: standing {:.1}; {}", n.name, n.town, n.standing, theirs.join(", "));
+        }
+        assert!(filled > 0, "the town filled no orders");
 
         assert!(sold > 0.0, "the farm never sold a harvest to the world");
         assert!(world.treasury > 0.0, "the town ran out of coins");
@@ -2513,6 +2558,195 @@ mod tests {
     fn missions(world: &mut World, now: GameTime) -> Vec<(crate::missions::Key, Vec<bool>, bool)> {
         crate::missions::check(world, now);
         world.missions.list.iter().map(|m| (m.key, m.steps.iter().map(|s| s.done).collect(), m.finished.is_some())).collect()
+    }
+
+    /// A letter written and opened, as a ferry brings it.
+    fn letter(world: &mut World, now: GameTime) -> crate::missions::Mission {
+        let m = crate::orders::write(world, now).expect("nobody wrote");
+        world.missions.list.push(m.clone());
+        m
+    }
+
+    /// The good an order asks for.
+    fn asked(m: &crate::missions::Mission) -> Good {
+        match m.steps[0].goal {
+            crate::missions::Goal::Delivered { good, .. } => good,
+            _ => panic!("{} is not an order", m.title),
+        }
+    }
+
+    /// An order finished: filled, or lapsed.
+    fn close(world: &mut World, key: crate::missions::Key, filled: bool, now: GameTime) {
+        let m = world.missions.list.iter_mut().find(|m| m.key == key).unwrap();
+        m.steps[0].done = filled;
+        m.finished = Some(now);
+    }
+
+    /// A letter asks only for what the town can send: what a maker in
+    /// town makes, what a depot holds over a line to sell, or, one step
+    /// further, what a building not yet built would make. Fuel has no
+    /// maker, so nobody asks for it until a depot sells it.
+    #[test]
+    fn orders_ask_only_for_what_the_town_can_send() {
+        use crate::orders::{sourceable, GAP};
+        let mut world = street();
+        opening_done(&mut world);
+        let depot = build(&mut world, HARBOUR_X - 12, BuildingKind::Depot, 1);
+        let asks = |world: &mut World, from: u64| -> Vec<Good> {
+            (0..9)
+                .map(|n| {
+                    let (can, further) = sourceable(world);
+                    let m = letter(world, (from + n) * GAP);
+                    assert!(can.contains(&asked(&m)) || further.contains(&asked(&m)), "{} asked for {:?}: the town can send {can:?}, and {further:?} a step on", m.title, asked(&m));
+                    close(world, m.key, true, (from + n) * GAP);
+                    asked(&m)
+                })
+                .collect()
+        };
+        // A town that makes nothing: the first letters reach a step on.
+        let first = asks(&mut world, 0);
+        assert!(!first.contains(&Good::Fuel), "asked for fuel nobody can make: {first:?}");
+        assert_eq!(first[0], Good::Crates, "Tam writes first, for the crates a farm would make");
+        // A farm stands: crates are made in town.
+        build(&mut world, 20, BuildingKind::Farm, 1);
+        assert_eq!(sourceable(&world).0, [Good::Crates]);
+        // And the depot sells fuel over a line it is over: Tam asks for it.
+        if let Some(GameObject::Building(b)) = world.objects.get_mut(depot).map(|e| &mut e.object) {
+            b.rules.get_mut(&Good::Fuel).unwrap().sell = Some(10.0);
+        }
+        let then = asks(&mut world, 9);
+        assert!(then.contains(&Good::Fuel), "nobody asked for the fuel the depot sells: {then:?}");
+    }
+
+    /// At most three orders stand open, a letter comes no oftener than a
+    /// third of a day, and none before the opening is done. One not
+    /// filled lapses as a ferry comes in after its day, and its mayor
+    /// thinks a little less of the town; a box still marked for it sails
+    /// for the world.
+    #[test]
+    fn orders_come_three_at_most_and_lapse_without_harm() {
+        use crate::orders::{post, standing, Mayor, GAP, LASTS, OPEN};
+        let mut world = street();
+        let harbour = harbour_of(&world);
+        post(&mut world, harbour, 0);
+        assert!(world.missions.list.iter().all(|m| !matches!(m.key, crate::missions::Key::Order(_))), "a letter came before the opening was done");
+        opening_done(&mut world);
+        let open = |w: &World| w.missions.list.iter().filter(|m| matches!(m.key, crate::missions::Key::Order(_)) && m.finished.is_none()).count();
+        let mut most = 0;
+        // A ferry every tenth of a day, for three days.
+        for call in 0..30 {
+            post(&mut world, harbour, call * DAY_MS as u64 / 10);
+            most = most.max(open(&world));
+            assert!(open(&world) <= OPEN, "{} open at call {call}", open(&world));
+        }
+        assert_eq!(most, OPEN, "the board never filled");
+        let opened: Vec<GameTime> = world.missions.list.iter().filter(|m| matches!(m.key, crate::missions::Key::Order(_))).map(|m| m.opened).collect();
+        assert!(opened.windows(2).all(|w| w[1] - w[0] >= GAP), "letters came closer than a third of a day: {opened:?}");
+        // Tam's first lapsed after its two days, nothing filled: standing
+        // fell from where it started, and the news said so.
+        let tam = world.missions.list.iter().find(|m| m.from == Some(Mayor::Tam)).unwrap().clone();
+        assert!(tam.finished.is_some_and(|f| f >= tam.opened + LASTS), "Tam's order never lapsed");
+        assert!(standing(&world, Mayor::Tam) < 1.0, "a lapsed order cost no standing");
+        assert!(world.news.iter().any(|n| n.text.contains("gave up")), "no news of it");
+        // A box marked for it after all sails for the world.
+        let crate::missions::Key::Order(id) = tam.key else { unreachable!() };
+        let t = crate::protocol::Trailer { id: 1, good: asked(&tam), units: 10.0, to: None, outbound: true, order: id };
+        assert_eq!(crate::orders::sailed(&mut world, &t), None, "a lapsed order took a box");
+    }
+
+    /// Port Aldra writes only once the town stands well with someone
+    /// else: until then, the letters are Tam's, Mira's and Bess's.
+    #[test]
+    fn port_aldra_is_silent_until_the_town_stands_well() {
+        use crate::orders::{standing, Mayor, GAP, GOOD};
+        let mut world = street();
+        opening_done(&mut world);
+        build(&mut world, 20, BuildingKind::Farm, 1);
+        build(&mut world, HARBOUR_X - 12, BuildingKind::Depot, 1);
+        let mut t = 0;
+        // Every order but Tam's lapses: the town keeps to one friend.
+        while standing(&world, Mayor::Tam) < GOOD {
+            assert!(t < 30 * GAP, "Tam never wrote enough to stand at {GOOD}");
+            let m = letter(&mut world, t);
+            assert_ne!(m.from, Some(Mayor::Aldra), "Port Aldra wrote while Tam stood at {}", standing(&world, Mayor::Tam));
+            close(&mut world, m.key, m.from == Some(Mayor::Tam), t);
+            t += GAP;
+        }
+        let from: Vec<_> = (0..4)
+            .map(|_| {
+                let m = letter(&mut world, t);
+                close(&mut world, m.key, true, t);
+                t += GAP;
+                m.from.unwrap()
+            })
+            .collect();
+        assert!(from.contains(&Mayor::Aldra), "Port Aldra never wrote: {from:?}");
+    }
+
+    /// An order filled the way a player fills it: a box of what it asks
+    /// sold from the depot is marked for its town, rides the lorry to the
+    /// park and the ferry to the edge, and the mayor's coins land at the
+    /// harbour as it casts off, once; the mayor's standing rises, once.
+    #[test]
+    fn an_order_filled_pays_coins_and_standing_once() {
+        use crate::missions::Reward;
+        use crate::orders::{post, standing, Mayor};
+        let mut world = street();
+        let harbour = harbour_of(&world);
+        let depot = build(&mut world, HARBOUR_X - 12, BuildingKind::Depot, 1);
+        let mut events = EventQueue::new();
+        let mut intersections = IntersectionRegistry::new();
+        settle_and_wake(&mut world, &mut events);
+        opening_done(&mut world);
+        post(&mut world, harbour, 0);
+        let order = world.missions.list.last().unwrap().clone();
+        assert_eq!((order.from, asked(&order)), (Some(Mayor::Tam), Good::Crates), "Tam's letter, for crates");
+        let (crate::missions::Key::Order(id), Reward::Order { coins, .. }) = (order.key, order.reward) else { panic!("not an order") };
+        let before = (world.treasury, standing(&world, Mayor::Tam));
+        crate::haul::sell(&mut world, &mut events, depot, Good::Crates);
+        let mut now = 0;
+        let mut marked = false;
+        let finished = |w: &World| w.missions.list.iter().any(|m| m.key == order.key && m.finished.is_some());
+        while !finished(&world) && step(&mut world, &mut events, &mut intersections, &mut now, DAY_MS as u64) {
+            crate::missions::check(&mut world, now);
+            marked |= crate::haul::boxes(&world).iter().any(|(t, ..)| t.order == id && t.outbound);
+        }
+        assert!(marked, "no box was marked for Saltmere");
+        assert!(finished(&world), "the order was never filled");
+        let paid = world.lumps.iter().filter(|l| l.building == harbour && l.coins > 0.0).map(|l| l.coins).sum::<f64>();
+        assert!((paid - coins).abs() < 1e-6, "Tam paid {paid}, the letter said {coins}");
+        assert!((world.treasury - before.0 - coins).abs() < 1e-6, "the purse moved by {}", world.treasury - before.0);
+        assert_eq!(standing(&world, Mayor::Tam), before.1 + 1.0, "standing rose by other than a point");
+        // A day on, nothing more for it.
+        let treasury = world.treasury;
+        let until = now + DAY_MS as u64;
+        while step(&mut world, &mut events, &mut intersections, &mut now, until) {
+            crate::missions::check(&mut world, now);
+        }
+        let crates_sold: f64 = world.town.season().map(|p| p.sold.get(&Good::Crates).copied().unwrap_or(0.0)).sum();
+        assert!((crates_sold - coins).abs() < 1e-6, "crates sold for {crates_sold} in all");
+        assert!(world.treasury <= treasury + 1e-6, "paid again: {} more", world.treasury - treasury);
+        assert_eq!(standing(&world, Mayor::Tam), before.1 + 1.0, "standing rose again");
+    }
+
+    /// The board outlives a restart: the orders open and done, who wrote
+    /// them, and so how each mayor stands.
+    #[test]
+    fn the_order_board_survives_a_restart() {
+        let mut world = street();
+        opening_done(&mut world);
+        let filled = letter(&mut world, 0);
+        close(&mut world, filled.key, true, 10);
+        letter(&mut world, 20);
+        let path = std::env::temp_dir().join(format!("sprawl-orders-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        crate::persistence::save(&path, &[], &[], crate::persistence::Meta { missions: world.missions.list.clone(), next_id: world.objects.next_id(), ..Default::default() });
+        let (_, meta) = crate::persistence::load(&path);
+        let _ = std::fs::remove_file(&path);
+        let mut again = street();
+        again.missions.list = meta.missions;
+        assert_eq!(serde_json::to_string(&again.missions.list).unwrap(), serde_json::to_string(&world.missions.list).unwrap());
+        assert_eq!(serde_json::to_string(&crate::orders::neighbours(&again)).unwrap(), serde_json::to_string(&crate::orders::neighbours(&world)).unwrap());
     }
 
     /// The opening's steps done.
