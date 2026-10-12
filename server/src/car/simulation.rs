@@ -479,7 +479,10 @@ pub fn handle_car_wake_up(
     // stops on the node: stopped on it, it has reached it, though a stop
     // computed to the node may leave it a hair short.
     let gear = |k: usize| k + 1 < trip.route.len() && trip.backing.iter().any(|&[a, b]| (a == k && k > 0) || b == k);
-    let stops_at = |k: usize| gear(k) || k + 1 == trip.route.len();
+    // A trip to a road rather than a building ends off the map: it drives
+    // off the end of its road and is gone, rather than pulling up there.
+    let drives_off = matches!(world.objects.get(trip.destination).map(|e| &e.object), Some(GameObject::RoadNode(_)));
+    let stops_at = |k: usize| gear(k) || (k + 1 == trip.route.len() && !drives_off);
     let mut cur_progress = cur_progress;
     if stops_at(ri) && cur_speed < 1e-3 && seg_start + trip.segment_lengths[ri] - cur_progress < 0.01 {
         cur_progress = cur_progress.max(seg_start + trip.segment_lengths[ri] + 1e-9);

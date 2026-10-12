@@ -496,12 +496,7 @@ impl World {
     /// are asked for: at startup, after the terrain is made, so no player
     /// waits on them.
     pub fn raise_mountains(&self) -> &crate::mountains::Peaks {
-        self.peaks.get_or_init(|| {
-            let started = std::time::Instant::now();
-            let peaks = crate::mountains::Peaks::new(&self.terrain, self.terrain_seed);
-            println!("mountains: worn in {:.1}s", started.elapsed().as_secs_f32());
-            peaks
-        })
+        self.peaks.get_or_init(|| crate::mountains::Peaks::new(&self.terrain, self.terrain_seed))
     }
 
     /// Every entity in the given chunks.

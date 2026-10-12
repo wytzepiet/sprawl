@@ -219,6 +219,26 @@ impl World {
         self.open_doors_along(&expanded);
     }
 
+    /// Lay a one-way along a path, the way it runs, with no player-input
+    /// checks: a level's gates. Free, as a fixture's roads are.
+    pub fn place_one_way_of(&mut self, path: &[GridCoord], road: bool) {
+        let ids: Vec<_> = path.iter().map(|&c| self.place_road_of(c, road, false)).collect();
+        for pair in ids.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            if let Some(GameObject::RoadNode(node)) = self.objects.get_mut(a).map(|e| &mut e.object)
+                && !node.outgoing.contains(&b)
+            {
+                node.outgoing.push(b);
+            }
+            if let Some(GameObject::RoadNode(node)) = self.objects.get_mut(b).map(|e| &mut e.object)
+                && !node.incoming.contains(&a)
+            {
+                node.incoming.push(a);
+            }
+            self.insert_edge(a, b);
+        }
+    }
+
     /// Two road nodes let go of each other, both ways: the link and the
     /// edges along it.
     pub fn unlink_roads(&mut self, a: EntityId, b: EntityId) {

@@ -1,46 +1,91 @@
-//! The game for a Web Worker: one `Game`, driven by the worker's own timer,
-//! taking and giving msgpack, the bytes the server's socket carries, so the
-//! client cannot tell one from the other.
+//! A level for a Web Worker: one `Game` and the `Level` that drives it,
+//! ticked by the worker's own timer, taking and giving msgpack, the bytes
+//! the server's socket carries, so the client draws it as it draws the town.
 
 use sprawl::game::Game;
-use sprawl::protocol::{ClientMessage, OwnerId};
-use sprawl::world::World;
+use sprawl::level::{Level, Phase};
+use sprawl::protocol::{ClientMessage, DAY_MS, OwnerId};
 use wasm_bindgen::prelude::*;
 
 /// The one client a worker serves.
 const ME: u64 = 1;
+/// How fast a test plays: steps a tick.
+const TEST_SPEED: u32 = 12;
 
 #[wasm_bindgen]
 pub struct Web {
     game: Game,
+    level: Level,
 }
 
 #[wasm_bindgen]
 impl Web {
-    /// A world from a fixture's text, at noon, running.
+    /// A level from its name and text, at noon, its traffic running.
     #[wasm_bindgen(constructor)]
-    pub fn new(fixture: String) -> Web {
-        let make = move || {
-            let mut world = World::new();
-            sprawl::fixtures::build_text(&mut world, &fixture);
-            world
-        };
-        let world = make();
-        let mut game = Game::new(world, sprawl::protocol::DAY_MS as u64 / 2, 1, Box::new(make));
+    pub fn new(name: String, text: String) -> Web {
+        let (level, world) = Level::build(&name, &text);
+        let again = move || Level::build(&name, &text).1;
+        let mut game = Game::new(world, DAY_MS as u64 / 2, 1, Box::new(again));
         game.connect(ME, OwnerId::default());
-        Web { game }
+        Web { game, level }
     }
 
-    /// A message from the client, as the socket would carry it.
+    /// A message from the client, as the socket would carry it. A step
+    /// off the map or onto a gate is not taken.
     pub fn send(&mut self, bytes: &[u8]) {
-        if let Ok(msg) = rmp_serde::from_slice::<ClientMessage>(bytes) {
-            self.game.command(ME, msg);
+        let Ok(msg) = rmp_serde::from_slice::<ClientMessage>(bytes) else { return };
+        if let ClientMessage::Build(step) = &msg
+            && !self.level.allows(&self.game.world, step)
+        {
+            return;
+        }
+        // Speed is the level's to set while it tests.
+        if matches!(msg, ClientMessage::SetSpeed(_)) && self.level.phase() == Phase::Test {
+            return;
+        }
+        self.game.command(ME, msg);
+    }
+
+    /// One tick: as many steps as the speed says, the level setting off
+    /// whoever is due before each. How many wakes.
+    pub fn tick(&mut self) -> u32 {
+        let level = &mut self.level;
+        let wakes = self.game.tick_with(|game| level.step(game));
+        if self.level.phase() != Phase::Test && self.game.speed == TEST_SPEED {
+            self.game.command(ME, ClientMessage::SetSpeed(1));
+        }
+        wakes
+    }
+
+    /// Start a test: the roads cleared, the clock run fast.
+    pub fn test(&mut self) {
+        self.level.test(&mut self.game);
+        if self.level.phase() == Phase::Test {
+            self.game.command(ME, ClientMessage::SetSpeed(TEST_SPEED));
         }
     }
 
-    /// One tick, as the server's loop takes one every step. How many wakes.
-    pub fn tick(&mut self) -> u32 {
-        self.game.tick()
+    /// The rest of the test at once, nothing drawn until it is over.
+    pub fn finish(&mut self) {
+        while self.level.phase() == Phase::Test {
+            for _ in 0..100 {
+                self.level.step(&mut self.game);
+                self.game.step();
+            }
+        }
+        self.game.command(ME, ClientMessage::SetSpeed(1));
+        self.game.tick();
+    }
+
+    /// Back to building.
+    pub fn build(&mut self) {
+        self.level.build_again();
+        self.game.command(ME, ClientMessage::SetSpeed(1));
+    }
+
+    /// The level as the client shows it, as JSON.
+    pub fn state(&self) -> String {
+        serde_json::to_string(&self.level.state(&self.game)).unwrap_or_default()
     }
 
     /// What the game said since last asked, a message each.

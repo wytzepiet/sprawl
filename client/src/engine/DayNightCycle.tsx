@@ -28,7 +28,10 @@ import { linear, lerp, mul, rgb, scale, tuple, type Rgb } from "./rgb";
 // ---------------------------------------------------------------------------
 
 const pinned = import.meta.env.DEV ? new URLSearchParams(location.search).get("t") : null;
-const PINNED = pinned === null ? null : Number(pinned);
+let PINNED = pinned === null ? null : Number(pinned);
+/** Light the world for this time of day whatever the clock says: a puzzle
+ *  is played in one light. `?t=` still wins, in development. */
+export const pinTimeOfDay = (t: number | null) => (PINNED = pinned === null ? t : PINNED);
 /** The time of day the world is lit for: the simulation's, or in
  *  development the one `?t=` holds it at. */
 export const shownTimeOfDay = () => PINNED ?? simTimeOfDay();

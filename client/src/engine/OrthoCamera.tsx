@@ -32,6 +32,9 @@ const ZOOM_LERP_SPEED = 0.35;
 
 /** Chunks of unsurveyed ground the camera is allowed to see past the frontier. */
 const PAN_MARGIN_CHUNKS = 1;
+/** Tiles past a level's edge the camera may see: a glimpse of its
+ *  neighbours. */
+const LEVEL_MARGIN = 5;
 
 /**
  * Keep `v` inside [lo, hi] allowing for a viewport of half-width `half`. When
@@ -47,7 +50,20 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
  *  the last frame; and a way to send it somewhere, for the minimap. */
 export const eye = { x: 0, y: 0, halfW: 15, halfH: 15, go(_x: number, _y: number) {} };
 
-export function OrthoCamera() {
+/** Ground the camera keeps over, in tiles, corners inclusive. */
+export interface Bounds {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
+ * The camera over the map. Over the island, it keeps to its chunks; given
+ * `bounds` (a level), it keeps to those, opens over their middle with all
+ * of them in view, and zooms no further out than a margin past them.
+ */
+export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
   const { scene, canvas, beforeRender, afterRender } = useEngine();
   const { send, island } = useGame();
 
@@ -127,15 +143,30 @@ export function OrthoCamera() {
    * Hold the view over the island's map plus a margin: past it there is
    * nothing to see.
    */
+  let framed = false;
   function clampToIsland() {
-    const b = island();
-    if (b.max_cx < b.min_cx) return; // not heard yet
-
-    const m = PAN_MARGIN_CHUNKS;
-    const minX = (b.min_cx - m) * CHUNK_SIZE;
-    const maxX = (b.max_cx + 1 + m) * CHUNK_SIZE;
-    const minY = (b.min_cy - m) * CHUNK_SIZE;
-    const maxY = (b.max_cy + 1 + m) * CHUNK_SIZE;
+    let minX: number, maxX: number, minY: number, maxY: number;
+    const level = props.bounds?.();
+    if (level) {
+      const m = LEVEL_MARGIN;
+      [minX, maxX, minY, maxY] = [level.x0 - m, level.x1 + 1 + m, level.y0 - m, level.y1 + 1 + m];
+      // A level opens with all of it in view, and is never lost from it.
+      const fit = Math.max((level.y1 + 1 - level.y0) / 2, (level.x1 + 1 - level.x0) / 2 / aspect()) * 1.15;
+      if (!framed) {
+        framed = true;
+        targetCamX = camera.position.x = (level.x0 + level.x1 + 1) / 2;
+        targetCamY = camera.position.y = (level.y0 + level.y1 + 1) / 2;
+        targetViewHalf = viewHalf = fit;
+        aim(camera.position.x, camera.position.y);
+        updateProjection();
+      }
+      targetViewHalf = Math.min(targetViewHalf, fit + LEVEL_MARGIN / 2);
+    } else {
+      const b = island();
+      if (b.max_cx < b.min_cx) return; // not heard yet
+      const m = PAN_MARGIN_CHUNKS;
+      [minX, maxX, minY, maxY] = [(b.min_cx - m) * CHUNK_SIZE, (b.max_cx + 1 + m) * CHUNK_SIZE, (b.min_cy - m) * CHUNK_SIZE, (b.max_cy + 1 + m) * CHUNK_SIZE];
+    }
 
     targetCamX = clampAxis(targetCamX, minX, maxX, targetViewHalf * aspect());
     targetCamY = clampAxis(targetCamY, minY, maxY, targetViewHalf);

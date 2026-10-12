@@ -5,7 +5,7 @@ import {
   onCleanup,
   type ParentProps,
 } from "solid-js";
-import { createConnection } from "../network/connection";
+import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
@@ -19,6 +19,7 @@ import type { Building,
   Operation,
   Lump,
   TerrainChunk,
+  ServerMessage,
 } from "../generated";
 
 function posKey(x: number, y: number): string {
@@ -249,7 +250,11 @@ interface GameContext {
 
 const Ctx = createContext<GameContext>();
 
-export function GameProvider(props: ParentProps & { wsUrl: string }) {
+/** Opens the line to the game: a socket to the server, or a worker running
+ *  a level in the browser. Told where to send what the game says. */
+export type Connect = (onMessage: (msg: ServerMessage) => void) => Connection;
+
+export function GameProvider(props: ParentProps & { connect: Connect }) {
   const [terrainSeed, setTerrainSeed] = createSignal(0);
   const [growth, setGrowth] = createSignal<Growth>({
     level: 0,
@@ -269,8 +274,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
     max_cy: -1,
   });
 
-  const wsUrl = props.wsUrl;
-  const { send, close } = createConnection(wsUrl, (msg) => {
+  const { send, close } = props.connect((msg) => {
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);

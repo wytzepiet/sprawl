@@ -108,7 +108,7 @@ pub fn build(world: &mut World, dir: &Path) {
 
 /// One fixture's text built into the world with its north-west corner at
 /// `x0`: its size, and its title.
-fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, String) {
+pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, String) {
     let (notes, rows): (Vec<&str>, Vec<&str>) = text.lines().partition(|l| l.starts_with('#'));
     let rows: Vec<Vec<char>> = rows.iter().map(|r| r.chars().filter(|c| !c.is_whitespace()).collect()).filter(|r: &Vec<char>| !r.is_empty()).collect();
     let w = rows.iter().map(Vec::len).max().unwrap_or(0) as i32;

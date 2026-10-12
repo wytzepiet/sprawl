@@ -7,7 +7,7 @@ import { Highlight } from "./Highlight";
 import World from "./World";
 import BuildModeToolbar from "../ui/BuildModeToolbar";
 import TimeControls from "../ui/TimeControls";
-import { GameProvider } from "../state/gameObjects";
+import { GameProvider, type Connect } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
 import PerfReport from "./PerfReport";
@@ -56,10 +56,10 @@ function SceneInner() {
   );
 }
 
-export default function Scene(props: { wsUrl: string }) {
+export default function Scene(props: { connect: Connect }) {
   return (
     <ThemeProvider>
-      <GameProvider wsUrl={props.wsUrl}>
+      <GameProvider connect={props.connect}>
         <SceneInner />
       </GameProvider>
     </ThemeProvider>

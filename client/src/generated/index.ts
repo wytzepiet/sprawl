@@ -45,3 +45,7 @@ export type { Mission } from "./Mission";
 export type { Step } from "./Step";
 export type { Goal } from "./Goal";
 export type { Key } from "./Key";
+export type { GateView } from "./GateView";
+export type { LevelState } from "./LevelState";
+export type { Phase } from "./Phase";
+export type { WantView } from "./WantView";

@@ -195,11 +195,18 @@ impl Game {
     /// fast-forwarded hour is the same hour. What changed goes out. How many
     /// wakes it took.
     pub fn tick(&mut self) -> u32 {
+        self.tick_with(|_| {})
+    }
+
+    /// A tick with something done before each step: a level setting off
+    /// whoever is due.
+    pub fn tick_with(&mut self, mut before: impl FnMut(&mut Game)) -> u32 {
         // Whatever the commands built, reached, cut off or took away
         // settles once for the batch: the road brush sends a command a tile.
         settle_and_wake(&mut self.world, &mut self.events);
         let mut wakes = 0;
         for _ in 0..self.speed {
+            before(self);
             wakes += self.step();
         }
         // Before the flush, which takes the lumps a mission reads.
@@ -327,7 +334,7 @@ fn place(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
 }
 
 /// A step of the hand, built. Whether the step was taken.
-fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, Build { tool, from, to }: Build, now: GameTime) -> bool {
+pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, Build { tool, from, to }: Build, now: GameTime) -> bool {
     // Said out loud: a click that does nothing is the kind of bug
     // that otherwise takes an afternoon to find.
     if !may(world, tool, from, to) {

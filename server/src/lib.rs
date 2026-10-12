@@ -8,6 +8,7 @@ pub mod fixtures;
 pub mod game;
 pub mod haul;
 pub mod intersection;
+pub mod level;
 pub mod missions;
 pub mod mountains;
 pub mod needs;

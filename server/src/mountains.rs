@@ -99,10 +99,16 @@ impl Peaks {
             }
             ranges.push(range);
         }
-        // The ranges worn side by side, the biggest first, a thread a core.
+        // The ranges worn side by side, the biggest first, a thread a core;
+        // where there are no threads to have (a browser), one after another.
         ranges.sort_by_key(|r| std::cmp::Reverse(r.len()));
-        let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
         let next = std::sync::atomic::AtomicUsize::new(0);
+        let Ok(threads) = std::thread::available_parallelism().map(|n| n.get()) else {
+            for range in &ranges {
+                peaks.raise(range, &rock, &ground);
+            }
+            return peaks;
+        };
         let worn: Vec<Peaks> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..threads)
                 .map(|_| {

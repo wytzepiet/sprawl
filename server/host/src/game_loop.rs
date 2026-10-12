@@ -32,7 +32,9 @@ fn new_seed() -> u32 {
 fn island(world: &mut World) {
     world.terrain = sprawl::terrain::generate(world.terrain_seed);
     println!("terrain: {} tiles from seed {}", world.terrain.len(), world.terrain_seed);
+    let started = std::time::Instant::now();
     world.raise_mountains();
+    println!("mountains: worn in {:.1}s", started.elapsed().as_secs_f32());
 }
 
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
