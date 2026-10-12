@@ -7,7 +7,7 @@ import { grain } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, PAVED_Z, RIM } from "./town/draw";
-import { keyOf, runsOn, shapeOf, type Surface } from "./town/surface";
+import { keyOf, paintOf, runsOn, shapeOf, type Surface } from "./town/surface";
 import { ROAD_Z } from "./objects/roadGeometry";
 
 /**
@@ -31,8 +31,9 @@ const SPAN = 1.5;
 /** How far a kerb running on into the next tile is carried past its end. */
 const RUN_ON = 0.5;
 
-/** A road shape's two channels: how far inside its outline, and its kerbs. */
-function bake(surface: Surface): [Float32Array, Float32Array] {
+/** A road shape's channels: how far inside its outline, its kerbs, and
+ *  its paint (`paintOf`). */
+function bake(surface: Surface): Float32Array[] {
   const flat = flatPolygons(shapeOf(surface), 0);
   const density = SLOT / SPAN;
   // How far inside the road's outline, and its kerbs.
@@ -50,7 +51,11 @@ function bake(surface: Surface): [Float32Array, Float32Array] {
   });
   // As far in as the kerb rounds over or the edge crumbles.
   const kerbed = kerbDistances(kerbs, ORIGIN, ORIGIN, density, SLOT, SLOT, Math.max(RIM, CRUMBLE) + 2 / density);
-  return [outline, kerbed];
+  // The paint, in the road frame: the tile's own, turned half round.
+  const paint = paintOf(surface);
+  const painted = new Float32Array(SLOT * SLOT);
+  for (let j = 0; j < SLOT; j++) for (let i = 0; i < SLOT; i++) painted[j * SLOT + i] = paint(-(ORIGIN + (i + 0.5) / density), -(ORIGIN + (j + 0.5) / density));
+  return [outline, kerbed, painted];
 }
 
 /** Asphalt: its grain over this many tiles, tilting its facing this far;
@@ -65,6 +70,10 @@ const GLINT_TILT = 0.4;
  *  beats how far in it is, so the edge breaks up as asphalt's does. */
 const CRUMBLE = 0.035;
 const CHIPS = 4;
+/** Road paint's colour, before the light, and how soft its edge is, in
+ *  tiles. */
+const PAINT = "0.97, 0.96, 0.92";
+const PAINT_SOFT = 0.005;
 /** Two more random bytes of the same texel, a whole number of texels on. */
 const [other1, other2] = ["0.3789, 0.1602", "0.0898, 0.5898"];
 
@@ -101,10 +110,15 @@ let roadCrumbleBy = 0.5 * roadGrainAt + 0.5 * textureSample(roadGrain, roadGrain
 let roadSlotN = floor(input.vRoadSlot + 0.5);
 let roadUv = (vec2f(roadSlotN - material.roadGrid.x * floor(roadSlotN / material.roadGrid.x), floor(roadSlotN / material.roadGrid.x)) + (input.vRoad - ${n(ORIGIN)}) / ${n(SPAN)}) / material.roadGrid;
 let roadTexel = 1. / (material.roadGrid * ${n(SLOT)});
-let roadD = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv, 0.).rg;
+let roadAt = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv, 0.);
+let roadD = roadAt.rg;
 if (roadD.r < 0.) { discard; }
 if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
             CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = roadGlinting;
+// The paint: white, worn a little by the grain, laid over before the tint
+// is, so it is undone here.
+let roadPaint = smoothstep(-${n(PAINT_SOFT)}, ${n(PAINT_SOFT)}, roadAt.b) * (0.8 + 0.2 * roadGrainAt);
+baseColor = mix(baseColor, vec3f(${PAINT}) / max(material.townTint.rgb, vec3f(0.05)), roadPaint);
 N = normalize(N - vec3f(roadBump * ${n(BUMP)}, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
 let roadTx = vec2f(roadTexel.x, 0.);
 let roadTy = vec2f(0., roadTexel.y);
@@ -140,7 +154,7 @@ export class RoadTiles {
     private scene: SceneContext,
     private colour: (through: boolean) => Rgb,
   ) {
-    this.atlas = new Atlas(engine, SLOT, () => this.kinds.forEach((kind) => markMeshRenderableDirty(kind.mesh)));
+    this.atlas = new Atlas(engine, SLOT, () => this.kinds.forEach((kind) => markMeshRenderableDirty(kind.mesh)), 4);
     this.kinds = [false, true].map((through): Kind => {
       // The square over the slot's span, at the road's height: through
       // roads over the streets that meet them, a street's end running on

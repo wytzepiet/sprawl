@@ -151,7 +151,7 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
       const m = LEVEL_MARGIN;
       [minX, maxX, minY, maxY] = [level.x0 - m, level.x1 + 1 + m, level.y0 - m, level.y1 + 1 + m];
       // A level opens with all of it in view, and is never lost from it.
-      const fit = Math.max((level.y1 + 1 - level.y0) / 2, (level.x1 + 1 - level.x0) / 2 / aspect()) * 1.15;
+      const fit = Math.max((level.y1 + 1 - level.y0) / 2, (level.x1 + 1 - level.x0) / 2 / aspect()) * 1.25;
       if (!framed) {
         framed = true;
         targetCamX = camera.position.x = (level.x0 + level.x1 + 1) / 2;

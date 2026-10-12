@@ -273,9 +273,9 @@ impl Level {
                 let path: Vec<GridCoord> = (0..=STUB).map(|k| at(col + dc * k, row + dr * k)).collect();
                 let way = gates_said.get(&c).copied().unwrap_or(Way::Both);
                 match way {
-                    Way::Both => world.place_road_path_of(&path, true),
-                    Way::Out => world.place_one_way_of(&path, true),
-                    Way::In => world.place_one_way_of(&path.iter().rev().copied().collect::<Vec<_>>(), true),
+                    Way::Both => world.place_road_path_of(&path, false),
+                    Way::Out => world.place_one_way_of(&path, false),
+                    Way::In => world.place_one_way_of(&path.iter().rev().copied().collect::<Vec<_>>(), false),
                 }
                 let end = path[path.len() - 1];
                 if let Some(node) = world.road_node_at(end) {

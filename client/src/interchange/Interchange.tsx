@@ -117,6 +117,8 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
   };
   window.addEventListener("keydown", onKey);
   onCleanup(() => window.removeEventListener("keydown", onKey));
+  // A script's hand on the level (`bun run look`-style photographs).
+  if (import.meta.env.DEV) Object.assign(window, { sprawlLevel: { line: () => line, state } });
 
   return (
     <ThemeProvider>
@@ -181,8 +183,9 @@ function Frame(props: { state: () => LevelState | null }) {
     g.setLineDash([]);
     // Each gate's label, out past its end.
     for (const gate of s.gates) {
-      const [dx, dy] = [gate.end_x - gate.x, gate.end_y - gate.y];
-      const at = p.at(gate.end_x + 0.5 + Math.sign(dx) * 0.9, gate.end_y + 0.5 + Math.sign(dy) * 0.9, 0);
+      // Just past the map's edge, beside the road, so it hides no car.
+      const [dx, dy] = [Math.sign(gate.end_x - gate.x), Math.sign(gate.end_y - gate.y)];
+      const at = p.at(gate.x + 0.5 + dx * 1.1 + dy * 1.1, gate.y + 0.5 + dy * 1.1 + dx * 1.1, 0);
       const r = 15;
       g.fillStyle = "#2f3d38";
       g.beginPath();
