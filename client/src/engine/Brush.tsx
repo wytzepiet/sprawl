@@ -2,6 +2,7 @@ import { createEffect, createMemo, For, on, onCleanup, Show } from "solid-js";
 import { render } from "solid-js/web";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
+import { underGlass } from "./glass";
 import { projector, screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { aim, held, hold, isRoad, setAim, setTool, tool, turn } from "../ui/buildMode";
@@ -304,6 +305,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     }
     if (p.why) g.fill();
     g.stroke();
+    underGlass(g);
   });
   document.body.appendChild(label);
 
