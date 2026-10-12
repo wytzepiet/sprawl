@@ -58,9 +58,22 @@ It is closer than it sounds:
 
 The work:
 
-1. **Split the crate.** `sim` (world, cars, junctions, terrain, protocol)
-   as a library with no IO; `server` as the binary that wraps it in
-   tokio, websockets and SQLite.
+1. **Split the crate into a workspace of three.** The line is IO, the
+   one boundary the code already keeps: only `undo.rs` reaches into
+   `game_loop` (for `lay` and `handle_link_demolish`, which move into
+   `sim` with the rest of the build).
+   - `sim`: protocol, engine, world, cars, junctions, terrain, town.
+     No tokio, no SQLite. Its randomness is already seeded `SmallRng`.
+     The town tests and the ts-rs bindings live here.
+   - `server`: the binary. `main`, `network/`, the tokio shell of
+     `game_loop`, `persistence`, `health`, `rand::random` for a new seed.
+   - `web`: a `cdylib`, `wasm-bindgen` over `Game`, built for the worker.
+
+   Not a split of roads from town inside `sim`. Cars park at buildings and
+   trips end at lots, so that line runs through the middle of the car
+   sim. Draw it only when wasm size or build time forces it, and when it
+   is clear where it falls. A `server` feature on one crate instead is
+   rejected: `cfg` on every IO line is a flag that controls behaviour.
 2. **A `Game` that the loop only drives.** `game_loop::run` today
    holds the world, the event queue and the junctions inside one async
    function. Pull them out into `Game { command(msg), advance_to(t) ->
