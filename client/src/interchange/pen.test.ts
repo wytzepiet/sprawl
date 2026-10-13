@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { decode, encode } from "@msgpack/msgpack";
 import init, { Web } from "../wasm/sprawl_web.js";
 import { hand, type Hand } from "../engine/may";
-import type { Build, GameObjectEntry, GridCoord, RoadNode, ServerMessage, Tool } from "../generated";
+import type { ClientMessage, GameObjectEntry, GridCoord, RoadNode, ServerMessage, Tool } from "../generated";
 import { Pen } from "./pen";
 
 /**
@@ -39,7 +39,7 @@ class Table {
     priority: () => false,
     inside: (t) => t.x >= this.bounds.x0 && t.x <= this.bounds.x1 && t.y >= this.bounds.y0 && t.y <= this.bounds.y1,
     ground: () => "Grass",
-    send: (data) => this.send(data),
+    send: (msg) => this.send(msg),
     lift: (levels) => (this.pen = levels),
   });
 
@@ -51,8 +51,8 @@ class Table {
     this.hear();
   }
 
-  send(data: Build) {
-    this.web.send(encode({ type: "Build", data }));
+  send(msg: ClientMessage) {
+    this.web.send(encode(msg));
     this.hear();
   }
 
@@ -235,9 +235,10 @@ describe("one-ways side by side", () => {
     const t = new Table();
     t.drag("OneWay", [2, 5], [12, 5]);
     t.drag("OneWay", [12, 5], [2, 5]);
-    expect(t.drag("Street", [5, 1], [5, 9])).toBe(4);
-    expect(t.drag("OneWay", [9, 1], [9, 9])).toBe(4);
+    t.drag("Street", [5, 1], [5, 9]);
+    t.drag("OneWay", [9, 1], [9, 9]);
     expect(t.broken()).toEqual([]);
+    for (const x of [5, 9]) for (let y = 6; y <= 9; y++) expect(t.on(x, y)).toHaveLength(0);
   });
 
   test("one of a pair taken up: the other back to the middle", () => {
@@ -375,5 +376,25 @@ describe("one-ways side by side", () => {
     t.drag("OneWay", [14, 5], [10, 5]);
     expect(t.drag("OneWay", [4, 5], [12, 5])).toBe(0);
     expect(t.broken()).toEqual([]);
+  });
+
+  test("the pen raised mid-drag: the tile it is on climbs, and on, a level up", () => {
+    const t = new Table();
+    t.tool = "Street";
+    t.hand.press({ x: 2, y: -5 }, 2.5, -4.5);
+    for (let x = 3; x <= 5; x++) t.hand.step({ x, y: -5 });
+    t.hand.climb(1)!();
+    for (let x = 6; x <= 9; x++) t.hand.step({ x, y: -5 });
+    t.hand.release();
+    expect(t.broken()).toEqual([]);
+    expect([2, 3, 4, 5, 6, 7].map((x) => t.on(x, 5)[0]?.h)).toEqual([0, 0, 0, 1, 2, 2]);
+  });
+
+  test("raised after it is let go: the drag's end is the slope", () => {
+    const t = new Table();
+    t.drag("Street", [2, 5], [8, 5]);
+    t.hand.climb(1)!();
+    expect(t.broken()).toEqual([]);
+    expect([6, 7, 8].map((x) => t.on(x, 5)[0]?.h)).toEqual([0, 0, 1]);
   });
 });

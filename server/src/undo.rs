@@ -15,7 +15,7 @@
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::intersection::IntersectionRegistry;
-use crate::protocol::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Tool, DAY_MS};
+use crate::protocol::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Stroke, Tool, DAY_MS};
 use crate::world::World;
 use crate::world::decks::Side;
 
@@ -40,15 +40,6 @@ pub struct Link {
     pub wide: bool,
 }
 
-impl Link {
-    /// The same road between the same places, whichever way it is told.
-    fn same(&self, other: &Link) -> bool {
-        let flip = |l: &Link| (l.to, l.from, [l.up[1], l.up[0]], [l.sides[1], l.sides[0]]);
-        let it = (self.from, self.to, self.up, self.sides);
-        it == (other.from, other.to, other.up, other.sides) || it == flip(other)
-    }
-}
-
 /// What an action cost: coins out of the purse, and stone off each
 /// depot's shelf.
 #[derive(Debug, Clone, Default)]
@@ -58,7 +49,7 @@ pub struct Paid {
 }
 
 impl Paid {
-    fn add(&mut self, more: Paid) {
+    pub fn add(&mut self, more: Paid) {
         self.coins += more.coins;
         for (depot, units) in more.stone {
             match self.stone.iter_mut().find(|(d, _)| *d == depot) {
@@ -118,6 +109,34 @@ pub enum Act {
     Razed(EntityId, Building),
     /// Road taken up in one tap or drag.
     Cut(Vec<Link>),
+    /// A drag of road drawn as a whole (`draw.rs`): the drag, as last
+    /// sent, and each of its steps as laid.
+    Drawn { stroke: Stroke, steps: Vec<Laid> },
+}
+
+/// A step of a drawn drag, as laid: its link, the nodes at its ends,
+/// whether it was laid new or ran along a road already there, and what it
+/// paid.
+#[derive(Debug, Clone)]
+pub struct Laid {
+    pub link: Link,
+    pub nodes: [EntityId; 2],
+    pub fresh: bool,
+    pub paid: Paid,
+}
+
+/// Steps of a drawn drag taken back, newest first: what each laid taken
+/// up, and what it paid given back; what was given back, said.
+pub(crate) fn take_back(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, steps: &[Laid], now: GameTime) -> String {
+    let mut paid = Paid::default();
+    for step in steps.iter().rev() {
+        let [a, b] = step.nodes;
+        if step.fresh && (world.edges.contains_key(&(a, b)) || world.edges.contains_key(&(b, a))) {
+            crate::game::handle_link_demolish(world, events, intersections, a, b, now);
+        }
+        paid.add(step.paid.clone());
+    }
+    refund(world, &paid, now)
 }
 
 #[derive(Debug, Clone)]
@@ -180,19 +199,6 @@ pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);
     let top = history.last_mut().filter(|d| now.saturating_sub(d.at) <= WINDOW);
     let carried = match (top.map(|d| &mut d.act), &taken) {
-        // The same drag of road, carried on (`Build::on`).
-        (Some(Act::Laid { links, paid: was }), None) if road && step.on => {
-            let first = was.coins == 0.0;
-            links.push(link);
-            was.add(paid.clone());
-            Some(first)
-        }
-        // A step of the drag taken up again as it goes, to be laid
-        // otherwise (`pen.ts`): no longer the drag's.
-        (Some(Act::Laid { links, .. }), Some(Act::Cut(cut))) if step.on => {
-            links.retain(|l| !cut.iter().any(|c| c.same(l)));
-            Some(false)
-        }
         (Some(Act::Cut(links)), Some(Act::Cut(more))) if step.from != step.to && more.len() == 1 && links.last().is_some_and(|l| l.from == step.from || l.to == step.from) => {
             links.extend(more.iter().copied());
             Some(false)
@@ -249,6 +255,7 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
         Act::Placed { laid, .. } => rests_on(world, laid, done.after),
         Act::Razed(_, b) => (!b.tiles.iter().all(|&t| world.may_stand(t))).then_some("Something stands where it stood"),
         Act::Cut(links) => links.iter().any(|l| world.occupied.contains_key(&(l.to.x, l.to.y)) || world.occupied.contains_key(&(l.from.x, l.from.y))).then_some("Something stands where it ran"),
+        Act::Drawn { steps, .. } => rests_on(world, &steps.iter().filter(|s| s.fresh).map(|s| s.link).collect::<Vec<_>>(), done.after),
     };
     if let Some(why) = refused {
         return say("Can't undo".into(), why.into(), 0);
@@ -304,6 +311,11 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
                 crate::game::lay(world, *l);
             }
             say(format!("Undone: {} put back", tiles(&links)), "for nothing".into(), 0)
+        }
+        Act::Drawn { steps, .. } => {
+            let laid: Vec<Link> = steps.iter().filter(|s| s.fresh).map(|s| s.link).collect();
+            let back = take_back(world, events, intersections, &steps, now);
+            say(format!("Undone: {}", tiles(&laid)), back, 0)
         }
     }
 }

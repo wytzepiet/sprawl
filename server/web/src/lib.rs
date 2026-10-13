@@ -31,13 +31,19 @@ impl Web {
     }
 
     /// A message from the client, as the socket would carry it. A step
-    /// off the map or onto a gate is not taken.
+    /// off the map or onto a gate is not taken; a drag stops at the map's
+    /// edge.
     pub fn send(&mut self, bytes: &[u8]) {
-        let Ok(msg) = rmp_serde::from_slice::<ClientMessage>(bytes) else { return };
+        let Ok(mut msg) = rmp_serde::from_slice::<ClientMessage>(bytes) else { return };
         if let ClientMessage::Build(step) = &msg
             && !self.level.allows(&self.game.world, step)
         {
             return;
+        }
+        // A drag off the map stops at its edge.
+        if let ClientMessage::Draw(stroke) = &mut msg {
+            let on = stroke.tiles.iter().take_while(|s| self.level.inside(s.at)).count();
+            stroke.tiles.truncate(on);
         }
         // Speed is the level's to set while it tests.
         if matches!(msg, ClientMessage::SetSpeed(_)) && self.level.phase() == Phase::Test {

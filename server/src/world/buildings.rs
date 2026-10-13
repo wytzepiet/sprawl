@@ -239,7 +239,7 @@ impl World {
     /// A street laid, taken up or cut on this tile: whatever has its door
     /// onto it, and whatever beside it has none, is oriented again at the
     /// settle (`orient`).
-    pub(super) fn unsettle_round(&mut self, tile: GridCoord) {
+    pub(crate) fn unsettle_round(&mut self, tile: GridCoord) {
         for (dx, dy) in (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy))) {
             let Some(&b) = self.occupied.get(&(tile.x + dx, tile.y + dy)) else { continue };
             let door = match self.objects.get(b).map(|e| &e.object) {

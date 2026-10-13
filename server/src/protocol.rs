@@ -35,12 +35,46 @@ pub struct Build {
     /// it.
     #[serde(default)]
     pub road: bool,
-    /// It carries on the hand's last step, the same drag: the tile they
-    /// share is one the drag passes through, and turns there only as it
-    /// did (`World::drawn`). A drag joins the roads it meets only where it
-    /// starts and where it ends.
+}
+
+/// A drag of road, the whole of it so far (`draw.rs`): sent again as it
+/// goes on, and laid as a whole, the server keeping what it laid of it
+/// before where that still stands as planned.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Stroke {
+    /// Which drag this is: the same as the last sent, that drag drawn on;
+    /// another, a new one.
+    pub id: u32,
+    /// Street, OneWay or Wide.
+    pub tool: Tool,
+    /// The road laid has priority (`RoadNode::road`).
     #[serde(default)]
-    pub on: bool,
+    pub road: bool,
+    /// The tiles the drag has been through, the first where it was
+    /// pressed, each a step from the one before; and with each, the pen's
+    /// height, in half-levels, as the drag reached it.
+    pub tiles: Vec<Spot>,
+    /// Where on the first tile it was pressed: the road there it starts
+    /// on, its height and side; none, at the pen's height in the middle.
+    #[serde(default)]
+    #[ts(optional)]
+    pub start: Option<Stand>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct Spot {
+    pub at: GridCoord,
+    pub want: u8,
+}
+
+/// Where on a tile a road stands: its height and side.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct Stand {
+    pub h: u8,
+    pub side: [i8; 2],
 }
 
 /// What the mayor's hand holds.
@@ -885,6 +919,8 @@ impl ChunkBounds {
 pub enum ClientMessage {
     /// A step of a road or the demolisher, built as it is sent.
     Build(Build),
+    /// A drag of road, the whole of it so far (`draw.rs`).
+    Draw(Stroke),
     /// A building placed whole round `at`, its front this way
     /// (`blueprint::FACINGS`); none, the first way it fits.
     Place { kind: BuildingKind, at: GridCoord, facing: Option<u8> },

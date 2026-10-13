@@ -198,22 +198,23 @@ const hhmm = (t: number) => `${String(Math.floor(t * 24)).padStart(2, "0")}:${St
 send("SetChunks", bounds);
 changes(await settled());
 
-/** A drag through these tiles with this in hand, a step at a time as the
- *  brush takes them, straight or diagonal; a road starts from its first
- *  tile, the demolisher's tap, one tile alone, takes what stands there. */
+/** A drag through these tiles with this in hand, straight or diagonal: a
+ *  road sent whole, as the brush sends it; the demolisher a step at a
+ *  time, its tap, one tile alone, taking what stands there. */
 function stroke(tool: unknown, pts: Pt[]) {
-  if (pts.length === 1) send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
-  let on = false;
+  if (pts.length === 1) return send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
+  const tiles = [{ at: at(pts[0]), want: 0 }];
   for (let i = 1; i < pts.length; i++) {
     let [x, y] = pts[i - 1];
     const [tx, ty] = pts[i];
     while (x !== tx || y !== ty) {
-      const [nx, ny] = [x + Math.sign(tx - x), y + Math.sign(ty - y)];
-      send("Build", { tool, from: { x, y }, to: { x: nx, y: ny }, on });
-      on = true;
-      [x, y] = [nx, ny];
+      [x, y] = [x + Math.sign(tx - x), y + Math.sign(ty - y)];
+      if (tool === "Demolish") send("Build", { tool, from: tiles[tiles.length - 1].at, to: { x, y } });
+      tiles.push({ at: { x, y }, want: 0 });
     }
   }
+  // A road, the drag whole, planned by the game (`draw.rs`).
+  if (tool !== "Demolish") send("Draw", { id: Math.floor(Math.random() * 2 ** 30), tool, road: false, tiles });
 }
 const at = ([x, y]: Pt) => ({ x, y });
 

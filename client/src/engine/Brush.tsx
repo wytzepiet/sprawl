@@ -7,7 +7,7 @@ import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { aim, held, hold, isRoad, priority, setAim, setPriority, setTool, tool, turn } from "../ui/buildMode";
 import { fit, fits, hand, mayAt, mayStart, placing, snap, STEPS, type Hand } from "./may";
 import { BLUEPRINTS, GoodIcon, GOODS } from "../blueprints";
-import type { Building, Good, GridCoord, TerrainType, Tool } from "../generated";
+import type { Building, Good, GridCoord, Stroke, TerrainType, Tool } from "../generated";
 
 /**
  * The mayor's hand on the map. A road or the demolisher is laid as the
@@ -39,8 +39,9 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   let current: GridCoord | null = null;
   /** The tile pressed on, while the hand is down. */
   let pressed: GridCoord | null = null;
-  /** Has the drag taken a step yet: the next carries it on. */
-  let stepped = false;
+  /** The drag of road so far, sent whole each step (`Stroke`). */
+  let stroke: Stroke | null = null;
+  let drags = Math.floor(Math.random() * 2 ** 30);
   let prevWorld: { wx: number; wy: number } | null = null;
   let accDx = 0;
   let accDy = 0;
@@ -50,12 +51,15 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     const w = pick(e);
     return { x: Math.floor(w.wx), y: Math.floor(w.wy) };
   };
-  /** A step sent; `on`, carrying on the drag (`Build::on`): one action
-   *  to undo, and it joins the roads it meets only where it starts and
-   *  ends. */
-  const step = (from: GridCoord, to: GridCoord, on = false) => {
+  /** A step of the hand: a drag of road on a tile, sent whole, the game
+   *  planning it (`server/src/draw.rs`); the demolisher's, a step. */
+  const step = (from: GridCoord, to: GridCoord) => {
     const t = tool();
-    if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority(), on } });
+    if (t === "Street" || t === "OneWay" || t === "Wide") {
+      stroke ??= { id: ++drags, tool: t, road: priority(), tiles: [{ at: from, want: 0 }] };
+      stroke.tiles.push({ at: to, want: 0 });
+      send({ type: "Draw", data: stroke });
+    } else if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority() } });
   };
 
   // The world as the hand sees it, read again when something is built.
@@ -150,7 +154,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     // The demolisher's tap waits for the hand to come up where it went
     // down: a drag cuts only what it crosses, not the point it starts from.
     pressed = current;
-    stepped = false;
+    stroke = null;
     dots.grab(current, { x: prevWorld.wx, y: prevWorld.wy });
     draw();
   };
@@ -185,8 +189,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
       if (newDist >= dist) break; // would move away from pointer
       if (!allowed(cur, sector)) break; // refused: wait here
 
-      step(cur, next, stepped);
-      stepped = true;
+      step(cur, next);
       dots.step(next);
       cur = next;
     }

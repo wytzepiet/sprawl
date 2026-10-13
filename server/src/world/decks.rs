@@ -47,7 +47,7 @@ pub const SIDE_OFFSET: f64 = 0.17;
 
 /// How far a step goes toward a side: positive toward it, zero across it,
 /// along the run of a road on that side.
-fn toward((dx, dy): (i32, i32), side: Side) -> i32 {
+pub(crate) fn toward((dx, dy): (i32, i32), side: Side) -> i32 {
     dx * side[0] as i32 + dy * side[1] as i32
 }
 
@@ -60,7 +60,7 @@ pub fn other(side: Side) -> Side {
 /// its next tile): across the way from the one's edge to the other's,
 /// straight on or round a bend; one arm, across it. In small whole steps,
 /// either way round.
-fn across(arms: &[(i32, i32)]) -> Option<Side> {
+pub(crate) fn across(arms: &[(i32, i32)]) -> Option<Side> {
     let (x, y) = match arms {
         [a] => (-a.1, a.0),
         [a, b] => (-(b.1 - a.1), b.0 - a.0),
@@ -150,7 +150,7 @@ impl World {
     }
 
     /// The steps from a node to each of these, by their tiles.
-    fn steps_to(&self, id: EntityId, arms: &[EntityId]) -> Option<Vec<(i32, i32)>> {
+    pub(crate) fn steps_to(&self, id: EntityId, arms: &[EntityId]) -> Option<Vec<(i32, i32)>> {
         let at = self.objects.get(id)?.position?;
         arms.iter().map(|&n| self.objects.get(n)?.position.map(|p| (p.x - at.x, p.y - at.y))).collect()
     }

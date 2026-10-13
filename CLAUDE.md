@@ -88,7 +88,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.
 - **Does it still hold?** `cd server && cargo test && cargo check`, then
-  `cd client && bunx tsc --noEmit -p .`. Nothing runs these but you, so run
+  `cd client && bunx tsc --noEmit -p . && bun test` (`bun run wasm` first
+  after changing the server: `pen.test.ts` plays drags against it). Nothing runs these but you, so run
   them before you push. The suite takes about ten seconds: the test profile
   is optimised (`[profile.test]` in `Cargo.toml`, assertions and overflow
   checks still on) and the town tests skip the ticks nothing is due at. A

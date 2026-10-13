@@ -49,3 +49,6 @@ export type { GateView } from "./GateView";
 export type { LevelState } from "./LevelState";
 export type { Phase } from "./Phase";
 export type { WantView } from "./WantView";
+export type { Stroke } from "./Stroke";
+export type { Spot } from "./Spot";
+export type { Stand } from "./Stand";

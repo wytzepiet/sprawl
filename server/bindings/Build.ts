@@ -23,11 +23,4 @@ sides?: [[number, number], [number, number]],
  * crosses it gives way. Along a road already there, it gains or loses
  * it.
  */
-road: boolean, 
-/**
- * It carries on the hand's last step, the same drag: the tile they
- * share is one the drag passes through, and turns there only as it
- * did (`World::drawn`). A drag joins the roads it meets only where it
- * starts and where it ends.
- */
-on: boolean, };
+road: boolean, };

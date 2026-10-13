@@ -2,6 +2,7 @@ pub mod blueprint;
 pub mod calls;
 pub mod card;
 pub mod car;
+pub mod draw;
 pub mod economy;
 pub mod engine;
 pub mod fixtures;

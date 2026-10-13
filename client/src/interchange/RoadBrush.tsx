@@ -13,10 +13,7 @@ import { Pen } from "./pen";
  * The road brush, made for drawing roads and nothing else: the pointer
  * and the dots over the pen (`pen.ts`), which decides each step. A drag
  * lays the road in hand a step at a time, straight or diagonal toward the
- * pointer; with Shift held, the eraser. Each step waits for the world to
- * come back with the last, so the pen decides on the roads as they are,
- * as its tests do (`pen.test.ts`); a step refused, which changes nothing,
- * waits no longer than `WAIT`.
+ * pointer; with Shift held, the eraser.
  *
  * The dots show where a drag may start and, while dragging, the steps the
  * tile underfoot allows (`dots.ts`), as the town's brush does.
@@ -46,7 +43,7 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     priority,
     inside,
     ground: props.ground,
-    send: (data) => send({ type: "Build", data }),
+    send,
     lift: setPen,
   });
 
@@ -58,7 +55,6 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
 
   createEffect(on(builtVersion, () => {
     world = hand(eachEntity, props.ground);
-    heard();
     draw();
   }));
   createEffect(on([tool, pen, priority], () => draw(), { defer: true }));
@@ -78,10 +74,8 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   });
 
   function draw() {
-    // What ↑ and ↓ do now: make the end of the road last laid the slope,
-    // where it may be one; else move the pen.
-    const [up, down] = [hold.climb(1), hold.climb(-1)];
-    setClimb({ up: pen() < 3 ? up ?? free(1) : null, down: pen() > 0 ? down ?? free(-1) : null });
+    // What ↑ and ↓ do now (`Pen::climb`).
+    setClimb({ up: hold.climb(1), down: hold.climb(-1) });
     const starts: [number, number][] = [];
     const nexts: [number, number][] = [];
     const [x0, y0, x1, y1] = viewBox();
@@ -96,81 +90,45 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0 || using() === null) return;
-    if (letGo) release();
     const at = tileOf(e);
     prevWorld = pick(e);
     hold.press(at, prevWorld.wx, prevWorld.wy);
-    lead = at;
-    trail = [];
     accDx = 0;
     accDy = 0;
     dots.grab(at, { x: prevWorld.wx, y: prevWorld.wy });
     draw();
   };
 
-  /** The tiles the pointer has led the drag through, the pen not yet
-   *  there, and the last of them; whether a step is out, not yet heard
-   *  back; and whether the drag is let go of, to be finished first. */
-  let trail: GridCoord[] = [];
-  let lead: GridCoord | null = null;
-  let waiting: ReturnType<typeof setTimeout> | null = null;
-  let letGo = false;
-  const heard = () => {
-    if (waiting) clearTimeout(waiting);
-    waiting = null;
-    advance();
-  };
-  /** The pen's next step along the trail, if none is out; then wait. A
-   *  step refused, the rest of the trail is dropped, and the pointer leads
-   *  on from where the pen stands. Nothing left, and let go: done. */
-  const advance = () => {
-    if (waiting || !hold.current) return;
-    const next = trail.shift();
-    if (next && hold.step(next)) {
-      dots.step(next);
-      draw();
-      waiting = setTimeout(heard, WAIT);
-    } else if (next) {
-      trail = [];
-      lead = hold.current;
-    } else if (letGo) release();
-  };
-  const release = () => {
-    if (hold.current) dots.release();
-    hold.release();
-    prevWorld = lead = null;
-    trail = [];
-    letGo = false;
-    draw();
-  };
-
   const onPointerMove = (e: PointerEvent) => {
-    if (!hold.current || !prevWorld || letGo) return;
+    if (!hold.current || !prevWorld) return;
     const w = pick(e);
     dots.pull({ x: w.wx, y: w.wy });
     accDx += w.wx - prevWorld.wx;
     accDy += w.wy - prevWorld.wy;
     prevWorld = w;
     if (Math.max(Math.abs(accDx), Math.abs(accDy)) < 0.1) return;
-    // The trail led on toward the pointer, the way it moves, straight or
-    // diagonal.
+    // On toward the pointer, the way it moves, straight or diagonal, as
+    // far as the pen may go.
     const [sx, sy] = STEPS[snap(accDx, accDy)];
-    for (let i = 0; i < 50 && lead; i++) {
-      const dist = Math.max(Math.abs(w.wx - (lead.x + 0.5)), Math.abs(w.wy - (lead.y + 0.5)));
-      const next: GridCoord = { x: lead.x + sx, y: lead.y + sy };
+    const was = hold.current;
+    for (let i = 0; i < 50; i++) {
+      const cur = hold.current!;
+      const dist = Math.max(Math.abs(w.wx - (cur.x + 0.5)), Math.abs(w.wy - (cur.y + 0.5)));
+      const next: GridCoord = { x: cur.x + sx, y: cur.y + sy };
       const newDist = Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5)));
-      if (dist < 0.6 || newDist >= dist) break;
-      trail.push(next);
-      lead = next;
+      if (dist < 0.6 || newDist >= dist || !hold.step(next)) break;
+      dots.step(next);
     }
+    if (hold.current !== was) draw();
     accDx = 0;
     accDy = 0;
-    advance();
   };
 
   const onPointerUp = () => {
-    letGo = true;
-    advance();
+    if (hold.current) dots.release();
+    hold.release();
+    prevWorld = null;
+    draw();
   };
 
   const onKey = (e: KeyboardEvent) => {
@@ -194,7 +152,6 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     window.removeEventListener("keyup", onKey);
     stopWatch();
     stopTick();
-    if (waiting) clearTimeout(waiting);
     setTool(null);
     setClimb({ up: free(1), down: free(-1) });
   });
@@ -202,6 +159,3 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   return dots.el;
 }
 
-/** How long a step waits to be heard back before the next goes anyway: a
- *  step refused changes nothing, and nothing comes back. */
-const WAIT = 150;

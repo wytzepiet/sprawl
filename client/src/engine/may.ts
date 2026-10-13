@@ -258,17 +258,6 @@ export function nodesOn(h: Hand, t: GridCoord): [number, Node][] {
 
 export const edge = (a: Node, b: Node) => a.node.outgoing.includes(b.id) || b.node.incoming.includes(a.id);
 
-/** The hand as it would be with these two roads not joined: a step laid
- *  for now, weighed as if it were not. */
-export function unlinked(h: Hand, a: number, b: number): Hand {
-  const cut = (n: { id: number; node: RoadNode }) => {
-    const other = n.id === a ? b : n.id === b ? a : null;
-    return other === null ? n : { id: n.id, node: { ...n.node, outgoing: n.node.outgoing.filter((o) => o !== other), incoming: n.node.incoming.filter((i) => i !== other) } };
-  };
-  const all = <K>(m: Map<K, { id: number; node: RoadNode }>) => new Map([...m].map(([k, n]) => [k, cut(n)]));
-  return { ...h, roads: all(h.roads), decks: h.decks && all(h.decks) };
-}
-
 /** `decks::across`: the way across a road through a tile by these arms,
  *  in small whole steps, either way round. */
 export function across(arms: [number, number][]): Side | undefined {
@@ -316,7 +305,7 @@ export function sidesBeside(h: Hand, t: GridCoord, height: number): Side[] {
 /** `World::bend_of`: the steps of the road a road on this side follows
  *  round a bend, the one beside it or that moves over for it; straight
  *  on, none. */
-export function bendOf(h: Hand, t: GridCoord, height: number, side: Side): [number, number][] | undefined {
+function bendOf(h: Hand, t: GridCoord, height: number, side: Side): [number, number][] | undefined {
   const beside = nodeIn(h, t, height, otherSide(side)) ?? movesOver(h, t, height, side);
   if (!beside) return undefined;
   const steps = stepsOf(h, t, beside);

@@ -485,14 +485,24 @@ What runs, and where; the rest of the order above is still to come.
   street is right in, right out. What a car may do follows from the
   links; it never turns back. Roads are drawn a node at a time
   (`Town::roadsOn`), each its own curve through where it stands.
-- **A drag joins only at its ends** (`World::drawn`, `Build.on`,
-  `RoadNode::banned`): where it starts it branches off what is there,
+- **A drag is laid whole** (`server/src/draw.rs`, `Stroke`): the hand
+  sends the drag so far at each tile, and the game plans it from end to
+  end, each tile with the next in sight, keeping what it laid before
+  where the plan still says so. Heights, sides, what it joins are the
+  game's; the brush (`interchange/pen.ts`) only collects the tiles and
+  hints where it may go. One drag, one undo. `pen.test.ts` plays drags
+  through the brush against the game in wasm, and checks after each what
+  may never be.
+- **A drag joins only at its ends** (`RoadNode::banned`): where it starts
+  it branches off what is there,
   where it is let go it joins what is there; between, it turns only as
   it went. Straight over a road, a crossing with no turns; up to a road
   and on along it, that one turn; a full crossroads is drawn up to the
   road and away from it, two drags. A one-way that meets a one-way and
-  goes on against it runs beside it (the brush holds that step until the
-  next says which). No paint says which turns a junction has: the
+  goes on against it runs beside it: on the side it is on, else, come
+  along it, on its right, else on the side it came from; along a pair,
+  into the one running its way; into a pair from the side, right in and
+  there it ends. No paint says which turns a junction has: the
   asphalt is worn, two wheel tracks down each lane along the curve its
   cars drive (`wearOf`), so through a junction only the ways its cars
   may go are worn.
