@@ -491,10 +491,14 @@ What runs, and where; the rest of the order above is still to come.
   drawn with it on has it, and drawn along again, gains or loses it.
   The town's Road is a street drawn with it.
 - **Overpasses** (`world/decks.rs`, `client/src/engine/decks.ts`): node
-  heights in half-levels, slopes, clearance, decks drawn, those above
-  the pen as glass, cars lifted. Changing the pen's height (↑ ↓) makes
-  the end of the road last drawn the slope to it, where it may be one;
-  where not, the pen stays.
+  heights in half-levels, slopes, clearance. A slope is its tile: it
+  climbs, eased, from the edge it comes in by to the edge it goes out by,
+  the tiles either side level (`decks.ts`'s `rise`). A deck's road is a
+  road tile like the ground's, lifted in the shader; its concrete is its
+  outline carried down and up a parapet, so its sides bend with it; cars
+  lifted. Changing the pen's height (↑ ↓) makes the end of the road last
+  drawn the slope to it, where it may be one; where not, the next tile
+  drawn is.
 
 - **Merging** eases in: cars bound for the same exit from equal roads
   are let through together and follow each other onto the road out
