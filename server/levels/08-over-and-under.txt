@@ -1,5 +1,5 @@
 # Over and under
-# Two busy roads cross. Raise one over the other (R, and draw): the tile after the climb is the slope.
+# Two busy roads cross. Raise one over the other: at the end of a road, ↑ makes it the slope up, ↓ the slope down.
 @at 3 2
 @gate 1 both
 @gate 2 both
