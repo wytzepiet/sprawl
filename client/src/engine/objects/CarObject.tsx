@@ -56,8 +56,16 @@ export function paint(pool: InstancePool, name: string, geo: MeshGeometry, colou
   return key;
 }
 
-/** A car's bucket, its colour its own, parked or not (`mountCar`). */
-function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look): string {
+/** A car's colour where a level gives it one (`setCarColour`): the
+ *  interchange's cars in the colour of the gate they are bound for. */
+let carColour: ((car: Car) => Rgb | null) | null = null;
+export const setCarColour = (f: typeof carColour) => (carColour = f);
+
+/** A car's bucket, its colour its own, or the level's for it, parked or
+ *  not (`mountCar`). */
+function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look, car?: Car): string {
+  const given = car && carColour?.(car);
+  if (given) return paint(pool, `car_x${[given.r, given.g, given.b].map((v) => Math.round(v * 255)).join("_")}${parked ? "p" : ""}`, carGeo, given, look, CLEAR_COAT);
   const c = colourOf(id);
   return paint(pool, `car_c${c}${parked ? "p" : ""}`, carGeo, PALETTE[c], look, CLEAR_COAT);
 }
@@ -94,7 +102,7 @@ export function mountCar(
   // Parked cars in buckets of their own: a bucket where one car moves is
   // drawn into the shadow map every frame, and one that stands still is not.
   const parked = !car.trip && !car.run;
-  const bucket = van ? paint(pool, "tractor" + (parked ? "p" : ""), vanGeo, LIVERY.tractor, look) : carBucket(pool, entry.id, parked, look);
+  const bucket = van ? paint(pool, "tractor" + (parked ? "p" : ""), vanGeo, LIVERY.tractor, look) : carBucket(pool, entry.id, parked, look, car);
   const z = CAR_Z;
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,

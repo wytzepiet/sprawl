@@ -523,11 +523,12 @@ What runs, and where; the rest of the order above is still to come.
   cars take turns at the corner, as at a junction (`car::simulation`'s
   gates): claimed from the link before it, the stop line at the corner,
   let go once the car's tail is past it. A level apart, one passes over.
-- **Flows** (F, `interchange/demand.ts`): what the level asks for, over
-  the map, as Freeways shows it: an arrow from each gate to each it sends
-  cars to, as wide as how many a minute, in the gate's colour (its badges
-  too), bent to its right so the two ways between two gates pass each
-  other, dashed while no road joins them. On when a level opens.
+- **Gates' signs and colours**: each gate has a road sign in its own
+  colour (its number, in or out, how many wait), and every car is in the
+  colour of the gate it is bound for. Holding a sign down draws where its
+  cars go (`interchange/demand.ts`): a faint curve to each gate, in that
+  gate's colour, with dots streaming along it, as many a second as cars
+  come a minute; dashed while no road joins them.
 - **The look tool** (V): nothing in hand, no streaks, every deck solid.
 - **Priority**: a through road is let through first at a junction.
   Priority is the hand's, not a kind of road (`Build.road`): any road

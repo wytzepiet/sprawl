@@ -1,5 +1,5 @@
 import "../app.css";
-import { createSignal, For, Show, onCleanup } from "solid-js";
+import { createSignal, For, Index, Show, onCleanup } from "solid-js";
 import Canvas, { Registered, useEngine } from "../engine/Canvas";
 import { OrthoCamera, type Bounds } from "../engine/OrthoCamera";
 import DayNightLights, { DayNightProvider, pinTimeOfDay } from "../engine/DayNightCycle";
@@ -17,7 +17,8 @@ import { best, keep, keepLayout, layoutOf } from "./progress";
 import { LEVELS, neighbours, type LevelText } from "./levels";
 import Map, { isOpen } from "./Map";
 import { drawFlow } from "./flow";
-import { drawDemand, gateColour } from "./demand";
+import { drawDemand, gateColour, gateRgb } from "./demand";
+import { setCarColour } from "../engine/objects/CarObject";
 
 /**
  * Interchange: the puzzle. A level is a piece of map with roads coming in
@@ -51,8 +52,6 @@ const TOOLS: { tool: Tool; key: string; name: string; label: string; glyph: stri
 ];
 /** The empty hand's arrow (`BuildModeToolbar`'s). */
 const LOOK = "M4 2.5l16 8-7 2-2.6 7.5z";
-/** Two ways between two places, bent past each other. */
-const FLOWS = "M3 15c3-6 8-8 13-8V4l5 4.5-5 4.5V10c-4 0-8 1.6-10.5 6.2zM21 9.5c-3 6-8 8-13 8v3L3 16l5-4.5v3c4 0 8-1.6 10.5-6.2z";
 /** The priority road's sign, a diamond in a diamond. */
 const DIAMOND = "M12 1 23 12 12 23 1 12zM12 4.2 19.8 12 12 19.8 4.2 12z";
 const DIAMOND_IN = "M12 6.8 17.2 12 12 17.2 6.8 12z";
@@ -70,14 +69,24 @@ function Glyph(props: { d: string; fill?: string }) {
   );
 }
 
-/** What the level asks for, shown over the map (`demand.ts`): when a
- *  level opens, and on F. */
-const [demand, setDemand] = createSignal(true);
+/** The gate whose sign is held down: where its cars go is drawn
+ *  (`demand.ts`); and where each gate's sign stands on the screen. */
+const [held, setHeld] = createSignal<string | null>(null);
+type SignAt = { label: string; sx: number; sy: number; ins: boolean; outs: boolean; waiting: number; colour: string };
+const [signs, setSigns] = createSignal<SignAt[]>([]);
 
 function Play(props: { level: LevelText; back: () => void; next: () => void }) {
   const [state, setState] = createSignal<LevelState | null>(null);
   let line: LevelConnection | null = null;
-  setDemand(true);
+  // Each car in the colour of the gate it is bound for: the one nearest
+  // where its route ends.
+  setCarColour((car) => {
+    const [s, end] = [state(), car.trip?.route_positions.at(-1)];
+    if (!s || !end) return null;
+    const near = s.gates.reduce((a, b) => (Math.hypot(a.end_x + 0.5 - end[0], a.end_y + 0.5 - end[1]) <= Math.hypot(b.end_x + 0.5 - end[0], b.end_y + 0.5 - end[1]) ? a : b));
+    return gateRgb(s, near.label);
+  });
+  onCleanup(() => setCarColour(null));
   pinTimeOfDay(0.42);
   setPen(0);
   setPriority(false);
@@ -98,7 +107,6 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
     if (t) setTool(t.tool);
     else if (key === "v") setTool(null);
     else if (key === "p") setPriority(!priority());
-    else if (key === "f") setDemand(!demand());
     else if (e.key === "ArrowUp" || e.key === "PageUp") climb().up?.(), e.preventDefault();
     else if (e.key === "ArrowDown" || e.key === "PageDown") climb().down?.(), e.preventDefault();
     else if (e.key === "Escape") props.back();
@@ -127,9 +135,55 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
           </Canvas>
           <Glass />
           <Hud level={props.level} state={state} line={() => line} back={props.back} next={props.next} />
+          <Signs />
         </DayNightProvider>
       </GameProvider>
     </ThemeProvider>
+  );
+}
+
+/**
+ * Each gate's sign, a road sign in its colour, its number, and whether
+ * cars come in or go out by it, and how many wait there. Held down, where
+ * its cars go is drawn over the map (`demand.ts`). Its own element over the
+ * map, so a press on it lays no road.
+ */
+function Signs() {
+  const up = () => setHeld(null);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
+  onCleanup(() => (window.removeEventListener("pointerup", up), window.removeEventListener("pointercancel", up), setHeld(null)));
+  return (
+    <Index each={signs()}>
+      {(g) => (
+        <div
+          class="fixed z-[60] flex flex-col items-center select-none"
+          style={{ left: `${g().sx}px`, top: `${g().sy}px`, transform: `translate(-50%, -50%) scale(${held() === g().label ? 1.12 : 1})`, transition: "transform 120ms", cursor: "pointer", "touch-action": "none" }}
+          title={g().outs ? "Hold to see where its cars go" : "Cars leave the map here"}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (g().ins) setHeld(g().label);
+          }}
+        >
+          <div
+            class="flex h-8 w-8 items-center justify-center rounded-[7px] text-[16px] font-bold text-white"
+            style={{ background: g().colour, border: "2.5px solid white", "box-shadow": `0 0 0 1.5px ${g().colour}, 0 2px 5px rgba(0,0,0,0.3)` }}
+          >
+            {g().label}
+          </div>
+          <div class="h-2 w-[3px]" style={{ background: "#4a4f55" }} />
+          <div class="rounded-full px-1.5 text-[10px] font-semibold leading-4 text-white" style={{ background: "rgba(47,61,56,0.85)" }}>
+            {g().ins && g().outs ? "in · out" : g().ins ? "in" : "out"}
+          </div>
+          <Show when={g().waiting > 1}>
+            <div class="mt-0.5 text-[11px] font-semibold" style={{ color: g().waiting > 5 ? "#C2361F" : "#B7791F" }}>
+              {g().waiting} waiting
+            </div>
+          </Show>
+        </div>
+      )}
+    </Index>
   );
 }
 
@@ -174,32 +228,17 @@ function Frame(props: { state: () => LevelState | null }) {
     g.setLineDash([]);
     // While building, the way the one-ways run.
     if (s.phase === "Build" && tool() !== null) drawFlow(g, (x, y, z) => p.at(x, y, z), performance.now() / 1000);
-    // What the level asks for.
-    if (demand()) drawDemand(g, (x, y, z) => p.at(x, y, z), s);
-    // Each gate's label, out past its end.
-    for (const gate of s.gates) {
-      // Just past the map's edge, beside the road, so it hides no car.
+    // Where the held sign's cars go.
+    const from = held();
+    if (from) drawDemand(g, (x, y, z) => p.at(x, y, z), s, from, performance.now() / 1000);
+    // Where each gate's sign stands: just past the map's edge, beside the
+    // road, so it hides no car (`Signs`).
+    const at = s.gates.map((gate): SignAt => {
       const [dx, dy] = [Math.sign(gate.end_x - gate.x), Math.sign(gate.end_y - gate.y)];
-      const at = p.at(gate.x + 0.5 + dx * 1.1 + dy * 1.1, gate.y + 0.5 + dy * 1.1 + dx * 1.1, 0);
-      const r = 15;
-      g.fillStyle = demand() ? gateColour(s, gate.label) : "#2f3d38";
-      g.beginPath();
-      g.arc(at.sx, at.sy, r, 0, Math.PI * 2);
-      g.fill();
-      g.fillStyle = "white";
-      g.font = "600 15px system-ui, sans-serif";
-      g.textAlign = "center";
-      g.textBaseline = "middle";
-      g.fillText(gate.label, at.sx, at.sy + 0.5);
-      g.font = "600 11px system-ui, sans-serif";
-      const way = gate.ins && gate.outs ? "in · out" : gate.ins ? "in" : "out";
-      g.fillStyle = "#2f3d38";
-      g.fillText(way, at.sx, at.sy + r + 10);
-      if (gate.waiting > 1) {
-        g.fillStyle = gate.waiting > 5 ? "#C2361F" : "#B7791F";
-        g.fillText(`${gate.waiting} waiting`, at.sx, at.sy + r + 24);
-      }
-    }
+      const q = p.at(gate.x + 0.5 + dx * 1.1 + dy * 1.1, gate.y + 0.5 + dy * 1.1 + dx * 1.1, 0);
+      return { label: gate.label, sx: Math.round(q.sx), sy: Math.round(q.sy), ins: gate.ins, outs: gate.outs, waiting: gate.waiting, colour: gateColour(s, gate.label) };
+    });
+    if (JSON.stringify(at) !== JSON.stringify(signs())) setSigns(at);
     // Each junction's lights: a lamp before each way in, on its side of
     // the road, green where its phase is (`intersection::phases_of`).
     eachEntity((e) => {
@@ -275,7 +314,7 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
             {(w) => (
               <div class="flex items-center justify-between text-[13px]">
                 <span class="flex items-center gap-1.5 font-semibold">
-                  <Badge colour={demand() ? gateColour(s()!, w.from) : undefined}>{w.from}</Badge>→<Badge colour={demand() ? gateColour(s()!, w.to) : undefined}>{w.to}</Badge>
+                  <Badge colour={gateColour(s()!, w.from)}>{w.from}</Badge>→<Badge colour={gateColour(s()!, w.to)}>{w.to}</Badge>
                   <span class="soft font-normal">{w.per_min} cars/min</span>
                 </span>
                 <Show when={s()?.phase !== "Build"} fallback={<span style={{ color: w.joined ? "#2E7D4F" : "#C2361F" }}>{w.joined ? "joined" : "no road"}</span>}>
@@ -355,18 +394,6 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
           Priority
           <KeyCap>P</KeyCap>
         </button>
-        {/* What the level asks for, over the map. */}
-        <button
-          class="press relative flex h-11 items-center gap-1.5 rounded-full px-3 cursor-pointer text-[13px] font-semibold"
-          classList={{ soft: !demand() }}
-          style={demand() ? dark : {}}
-          title="Flows: an arrow from each gate to each it sends cars to, as wide as how many a minute; dashed while no road joins them (F)"
-          onClick={() => setDemand(!demand())}
-        >
-          <Glyph d={FLOWS} />
-          Flows
-          <KeyCap>F</KeyCap>
-        </button>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         {/* The pen's height: the road drawn after a change climbs to it. */}
         <div class="flex items-center gap-0.5" title="How high you draw: the end of the road you last drew becomes the slope up or down (↑ ↓); greyed where it can't be one">
@@ -416,7 +443,7 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
   );
 }
 
-/** A gate's label, in its arrows' colour while they are shown. */
+/** A gate's label, in its colour. */
 function Badge(props: { children: string; colour?: string }) {
   return <span class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold" style={props.colour ? { background: props.colour, color: "white" } : { background: "rgb(var(--ink))", color: "rgb(var(--glass))" }}>{props.children}</span>;
 }
