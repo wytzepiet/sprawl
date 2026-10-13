@@ -15,6 +15,11 @@ destination: number,
  */
 eta: number, route_positions: Array<[number, number]>, 
 /**
+ * How high each node of the route stands (`RoadNode::height`): the
+ * client lifts the car over a deck, and finds which node it is on.
+ */
+route_heights: Array<number>, 
+/**
  * How many nodes at either end of the route are in a lot rather than on
  * the street: the spot pulled out of, the spot driven into. Lot nodes
  * are drawn where they are, not offset onto a lane.

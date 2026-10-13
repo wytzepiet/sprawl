@@ -48,3 +48,8 @@ export { aim, setAim };
  *  letting go there puts it back. */
 const [overCancel, setOverCancel] = createSignal(false);
 export { overCancel, setOverCancel };
+
+/** How high the hand draws road, in levels: 0 the ground, up to 3. The
+ *  decks above it are seen through (`decks.ts`). */
+const [pen, setPen] = createSignal(0);
+export { pen, setPen };

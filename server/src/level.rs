@@ -145,7 +145,8 @@ pub struct LevelState {
     pub test_ms: u64,
     #[ts(type = "number")]
     pub test_total_ms: u64,
-    /// Tiles of asphalt the player has laid, and what our own solve took.
+    /// What the player's roads cost, in tiles of ground road (`Level::cost`),
+    /// and what our own solve's did.
     pub cost: u32,
     pub par: u32,
     /// Trips' time on empty roads over the time they took, 0 to 1.
@@ -174,9 +175,10 @@ pub struct Level {
     par: u32,
     /// The flow our own solve gets.
     par_flow: f64,
-    /// Our own solve's tiles of road, laid between every two beside each
-    /// other or on a diagonal no tile beside both already joins.
-    solution: Vec<GridCoord>,
+    /// Our own solve's tiles of road and their heights, laid between every
+    /// two beside each other, or on a diagonal no tile beside both already
+    /// joins, that a road may join: the same level, or a slope's ends.
+    solution: Vec<(GridCoord, u8)>,
     /// Those of its tiles that are priority road (`#`): a link is one
     /// where both its ends are.
     priority: Vec<GridCoord>,
@@ -245,7 +247,16 @@ impl Level {
         // The map without its gates' digits, laid as a fixture; the
         // digits found, by column and row.
         let map: Vec<&str> = text.lines().filter(|l| !l.trim().starts_with('@') && !l.starts_with('%')).collect();
-        let solve: Vec<Vec<char>> = text.lines().filter_map(|l| l.strip_prefix('%')).map(|r| r.chars().collect()).collect();
+        // Our solve: the ground's rows, then a block of rows for each
+        // height above it that has any (`%^2` and its row, a level up).
+        let solve: Vec<(u8, Vec<char>)> = text
+            .lines()
+            .filter_map(|l| l.strip_prefix('%'))
+            .map(|r| match r.strip_prefix('^') {
+                Some(rest) => (rest[..1].parse().unwrap_or(0), rest[1..].chars().collect()),
+                None => (0, r.chars().collect()),
+            })
+            .collect();
         let rows: Vec<Vec<char>> = map
             .iter()
             .filter(|l| !l.starts_with('#'))
@@ -294,17 +305,20 @@ impl Level {
             .filter_map(|&(a, b, n)| Some(Want { from: index(a)?, to: index(b)?, per_min: n }))
             .collect();
         let (mut solution, mut priority) = (Vec::new(), Vec::new());
-        for (row, line) in solve.iter().enumerate() {
+        let mut rows_at: HashMap<u8, i32> = HashMap::new();
+        for (height, line) in &solve {
+            let row = rows_at.entry(*height).or_insert(0);
             for (col, &c) in line.iter().enumerate() {
                 if c == '=' || c == '#' {
-                    solution.push(at(col as i32, row as i32));
+                    solution.push((at(col as i32, *row), *height));
                 }
                 if c == '#' {
-                    priority.push(at(col as i32, row as i32));
+                    priority.push(at(col as i32, *row));
                 }
             }
+            *row += 1;
         }
-        let par = solution.len() as u32;
+        let par = solution.iter().map(|&(_, h)| if h == 0 { 1 } else if h % 2 == 1 { 2 } else { 3 }).sum();
         let seed = name.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
         let n = wants.len();
         let level = Level {
@@ -341,27 +355,32 @@ impl Level {
     /// Whether the player may take this step: on the map, and not into a
     /// gate's stub.
     pub fn allows(&self, world: &World, step: &Build) -> bool {
-        let fixed = |t: GridCoord| world.road_node_at(t).is_some_and(|id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if !n.laid));
+        let [hf, ht] = step.up.unwrap_or_default();
+        let fixed = |t: GridCoord, h: u8| h == 0 && world.road_node_at(t).is_some_and(|id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if !n.laid));
         match step.tool {
             // A level's own road stays; a road of the player's may be cut
             // from it.
-            Tool::Demolish if step.from == step.to => !fixed(step.to),
-            Tool::Demolish => !(fixed(step.from) && fixed(step.to)),
+            Tool::Demolish if step.from == step.to => !fixed(step.to, ht),
+            Tool::Demolish => !(fixed(step.from, hf) && fixed(step.to, ht)),
             _ => self.inside(step.from) && self.inside(step.to),
         }
     }
 
     /// Our own solve, laid: the steps the hand would take.
     pub fn solve_steps(&self, world: &World) -> Vec<Build> {
-        let road = |t: GridCoord| self.solution.contains(&t) || self.gates.iter().any(|g| g.edge == t);
+        let road = |t: GridCoord, h: u8| self.solution.contains(&(t, h)) || (h == 0 && self.gates.iter().any(|g| g.edge == t));
+        let joins = |a: u8, b: u8| a.abs_diff(b) <= 1 && !(a == b && a % 2 == 1);
         let mut steps = Vec::new();
-        for &a in &self.solution {
+        for &(a, ha) in &self.solution {
             for (dx, dy) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
                 let b = GridCoord { x: a.x + dx, y: a.y + dy };
-                let beside = dx != 0 && dy != 0 && (road(GridCoord { x: a.x + dx, y: a.y }) || road(GridCoord { x: a.x, y: a.y + dy }));
-                if road(b) && !beside && !world.are_connected(a, b) && !steps.iter().any(|s: &Build| s.from == b && s.to == a) {
-                    let tool = if self.priority.contains(&a) && self.priority.contains(&b) { Tool::Road } else { Tool::Street };
-                    steps.push(Build { tool, from: a, to: b });
+                for hb in ha.saturating_sub(1)..=ha + 1 {
+                    let beside = dx != 0 && dy != 0 && (road(GridCoord { x: a.x + dx, y: a.y }, ha) || road(GridCoord { x: a.x, y: a.y + dy }, ha));
+                    let done = steps.iter().any(|s: &Build| s.from == b && s.to == a && s.up.unwrap_or_default() == [hb, ha]);
+                    if road(b, hb) && joins(ha, hb) && !beside && !done && world.link_between_at(a, ha, b, hb).is_none() {
+                        let tool = if ha == 0 && hb == 0 && self.priority.contains(&a) && self.priority.contains(&b) { Tool::Road } else { Tool::Street };
+                        steps.push(Build { tool, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]) });
+                    }
                 }
             }
         }
@@ -504,9 +523,21 @@ impl Level {
         }
     }
 
-    /// Tiles of asphalt the player has laid.
+    /// What the player's roads cost, in tiles of ground road: a slope's
+    /// tile two, a deck's three, for the concrete and steel under them.
     pub fn cost(world: &World) -> u32 {
-        world.objects.roads().filter(|e| matches!(e.object, GameObject::RoadNode(ref n) if n.laid)).count() as u32
+        world
+            .objects
+            .roads()
+            .filter_map(|e| match e.object {
+                GameObject::RoadNode(ref n) if n.laid => Some(match n.height {
+                    0 => 1,
+                    h if h % 2 == 1 => 2,
+                    _ => 3,
+                }),
+                _ => None,
+            })
+            .sum()
     }
 
     /// Time on empty roads over time taken, every car due counted: those
@@ -635,7 +666,7 @@ mod tests {
 
     fn lay(game: &mut Game, level: &Level, path: &[(i32, i32)]) {
         for p in path.windows(2) {
-            let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 } };
+            let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 }, up: None };
             assert!(level.allows(&game.world, &step), "{step:?} refused");
             crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
         }
@@ -705,9 +736,9 @@ mod tests {
     #[test]
     fn nothing_is_built_off_the_map_or_on_a_gate() {
         let (level, game) = play(CROSSING);
-        let off = Build { tool: Tool::Street, from: GridCoord { x: 0, y: 0 }, to: GridCoord { x: -1, y: 0 } };
+        let off = Build { tool: Tool::Street, from: GridCoord { x: 0, y: 0 }, to: GridCoord { x: -1, y: 0 }, up: None };
         assert!(!level.allows(&game.world, &off));
-        let gate = Build { tool: Tool::Demolish, from: GridCoord { x: 9, y: -1 }, to: GridCoord { x: 9, y: -1 } };
+        let gate = Build { tool: Tool::Demolish, from: GridCoord { x: 9, y: -1 }, to: GridCoord { x: 9, y: -1 }, up: None };
         assert!(!level.allows(&game.world, &gate));
     }
 }

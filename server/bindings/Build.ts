@@ -7,4 +7,9 @@ import type { Tool } from "./Tool";
  * tap, from and to the same tile. A drag is its steps, each built as it
  * is sent.
  */
-export type Build = { tool: Tool, from: GridCoord, to: GridCoord, };
+export type Build = { tool: Tool, from: GridCoord, to: GridCoord, 
+/**
+ * How high each end stands, in half-levels (`RoadNode::height`);
+ * none, both on the ground.
+ */
+up?: [number, number], };

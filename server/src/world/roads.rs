@@ -25,6 +25,7 @@ impl World {
                 joined: false,
                 road,
                 laid,
+                height: 0,
             }),
             Some(coord),
         );
@@ -250,6 +251,11 @@ impl World {
         self.open_doors_along(&expanded);
     }
 
+    /// A ground node for the mayor's road, or the one there.
+    pub(super) fn place_ground(&mut self, coord: GridCoord, road: bool) -> EntityId {
+        self.place_road_of(coord, road, true)
+    }
+
     /// Lay a one-way along a path, the way it runs, with no player-input
     /// checks: a level's gates. Free, as a fixture's roads are.
     pub fn place_one_way_of(&mut self, path: &[GridCoord], road: bool) {
@@ -315,9 +321,14 @@ impl World {
                 }
         }
 
+        let height = self.height_of(id);
         self.objects.remove(id);
         self.unindex(id, pos);
-        self.roads.remove(&(pos.x, pos.y));
+        if height == 0 {
+            self.roads.remove(&(pos.x, pos.y));
+        } else {
+            self.decks.remove(&(pos.x, pos.y, height));
+        }
         self.unsettle_round(pos);
     }
 

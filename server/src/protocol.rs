@@ -20,6 +20,11 @@ pub struct Build {
     pub tool: Tool,
     pub from: GridCoord,
     pub to: GridCoord,
+    /// How high each end stands, in half-levels (`RoadNode::height`);
+    /// none, both on the ground.
+    #[serde(default)]
+    #[ts(optional)]
+    pub up: Option<[u8; 2]>,
 }
 
 /// What the mayor's hand holds.
@@ -56,6 +61,11 @@ pub struct RoadNode {
     /// survey's own roads, and driveways, are free.
     #[serde(default)]
     pub laid: bool,
+    /// How high it stands, in half-levels: 0 the ground, 2 a level up, 4
+    /// two, 6 three; odd, a slope between the level below and the one
+    /// above (`world/decks.rs`).
+    #[serde(default)]
+    pub height: u8,
 }
 
 /// What stands on a plot. The kind follows from the footprint the layout chose,
@@ -615,6 +625,10 @@ pub struct Trip {
     #[ts(skip)]
     pub route: Vec<EntityId>,
     pub route_positions: Vec<[f64; 2]>,
+    /// How high each node of the route stands (`RoadNode::height`): the
+    /// client lifts the car over a deck, and finds which node it is on.
+    #[serde(default)]
+    pub route_heights: Vec<u8>,
     /// How many nodes at either end of the route are in a lot rather than on
     /// the street: the spot pulled out of, the spot driven into. Lot nodes
     /// are drawn where they are, not offset onto a lane.

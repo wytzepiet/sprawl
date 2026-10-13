@@ -100,6 +100,7 @@ fn launch(
         + segment_lengths[segment_lengths.len() - to_lot..].iter().sum::<f64>();
     let street_len = total_len - lot_len;
     let route_positions = world.route_positions(&route);
+    let route_heights = route.iter().map(|&n| world.height_of(n)).collect();
     let route_nodes = route.clone();
 
     if let Some(start_pos) = world.objects.get(route_nodes[0]).and_then(|e| e.position) {
@@ -114,6 +115,7 @@ fn launch(
             eta: now + promised,
             route,
             route_positions,
+            route_heights,
             from_lot,
             to_lot,
             cusps: cusps(&backing, &segment_lengths),

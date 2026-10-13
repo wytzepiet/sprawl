@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { fit, hand, may, placing, type Hand } from "./may";
+import { fit, hand, may, mayAt, placing, type Hand } from "./may";
 import type { BuildingKind, TerrainType } from "../generated";
 
 /** The server's test street (`game_loop` tests): grass, and a street along
@@ -16,7 +16,7 @@ function street(): Hand & { wet: Set<string> } {
   for (let x = -6; x < 20; x++) {
     const id = x + 100;
     const arms = [id - 1, id + 1].filter((n) => n >= 94 && n < 120);
-    h.roads.set(`${x},0`, { id, node: { outgoing: arms, incoming: [], joined: true, road: false, laid: false } });
+    h.roads.set(`${x},0`, { id, node: { outgoing: arms, incoming: [], joined: true, road: false, laid: false, height: 0 } });
     h.at.set(id, { x, y: 0 });
   }
   return h;
@@ -78,7 +78,7 @@ describe("a one-way may merge at a shallow angle", () => {
     const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground: (): TerrainType => "Grass" };
     for (let x = 0; x < 10; x++) {
       const id = x + 100;
-      h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true } });
+      h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true, height: 0 } });
       h.at.set(id, { x, y: 0 });
     }
     return h;
@@ -103,10 +103,56 @@ test("a one-way may be laid against a one-way, making a divided road; a two-way 
   const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground: (): TerrainType => "Grass" };
   for (let x = 0; x < 10; x++) {
     const id = x + 100;
-    h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true } });
+    h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true, height: 0 } });
     h.at.set(id, { x, y: 0 });
   }
   expect(may(h, "OneWay", at(6, 0), at(5, 0))).toBe(true);
   expect(may(h, "Street", at(6, 0), at(5, 0))).toBe(false);
   expect(may(h, "OneWay", at(5, 0), at(6, 0))).toBe(false);
+});
+
+// `decks.rs`'s tests, the hand's half.
+describe("roads above the ground", () => {
+  /** Grass, a two-way street along y = 0, and a way to lay a two-way
+   *  link between two tiles at heights, as the server would. */
+  function ground() {
+    const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), decks: new Map(), ground: (): TerrainType => "Grass" };
+    let next = 1000;
+    const node = (x: number, y: number, height: number) => {
+      const k = height ? `${x},${y},${height}` : `${x},${y}`;
+      const map = height ? h.decks! : h.roads;
+      let n = map.get(k);
+      if (!n) map.set(k, (n = { id: next++, node: { outgoing: [], incoming: [], joined: true, road: false, laid: true, height } })), h.at.set(n.id, { x, y });
+      return n;
+    };
+    const link = (x0: number, y0: number, h0: number, x1: number, y1: number, h1: number) => {
+      const [a, b] = [node(x0, y0, h0), node(x1, y1, h1)];
+      a.node.outgoing.push(b.id);
+      b.node.outgoing.push(a.id);
+    };
+    for (let x = 0; x < 11; x++) link(x, 0, 0, x + 1, 0, 0);
+    const lay = (path: [number, number, number][]) => {
+      for (let i = 1; i < path.length; i++) {
+        const [[x0, y0, h0], [x1, y1, h1]] = [path[i - 1], path[i]];
+        expect(mayAt(h, "Street", at(x0, y0), h0, at(x1, y1), h1)).toBe(true);
+        link(x0, y0, h0, x1, y1, h1);
+      }
+    };
+    return { h, lay };
+  }
+  test("an overpass climbs over a road", () => {
+    const { lay } = ground();
+    lay([[5, -3, 0], [5, -2, 1], [5, -1, 2], [5, 0, 2], [5, 1, 2], [5, 2, 1], [5, 3, 0]]);
+  });
+  test("a slope runs straight and clear", () => {
+    const { h, lay } = ground();
+    expect(mayAt(h, "Street", at(5, -1), 1, at(5, 0), 1)).toBe(false);
+    expect(mayAt(h, "Street", at(5, -1), 0, at(5, 0), 2)).toBe(false);
+    expect(mayAt(h, "Street", at(5, -1), 2, at(5, 0), 1)).toBe(false);
+    expect(mayAt(h, "Street", at(5, -1), 3, at(5, 0), 4)).toBe(true);
+    lay([[3, -3, 0], [3, -2, 1], [3, -1, 2]]);
+    expect(mayAt(h, "Street", at(3, -2), 1, at(4, -2), 2)).toBe(false);
+    expect(mayAt(h, "Street", at(3, -2), 1, at(2, -2), 0)).toBe(false);
+    expect(mayAt(h, "Street", at(3, -1), 2, at(4, -1), 2)).toBe(true);
+  });
 });

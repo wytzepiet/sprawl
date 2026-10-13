@@ -200,8 +200,10 @@ export class TownLayer {
     const g: Gathered = { buildings: [], roads: [], doors: [], marks: [], byId: new Map(), built: [Infinity, Infinity, -Infinity, -Infinity] };
     const marks = new Map<string, Snapshot["marks"][number]>();
     this.entities((e) => {
+      // The ground's roads: what is above it is drawn as decks (`decks.ts`).
       if (e.object.kind === "RoadNode" && e.position) {
         const n = e.object.data as RoadNode;
+        if (n.height) return;
         g.roads.push([e.position.x, e.position.y, e.id, n.road, n.outgoing, n.incoming]);
       } else if (e.object.kind === "Building") {
         const b = e.object.data as Building;
@@ -386,7 +388,7 @@ export class TownLayer {
       for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
     };
     this.entities((e) => {
-      if (e.object.kind === "RoadNode" && e.position) nodes.set(`${e.position.x},${e.position.y}`, { ...e.object.data, id: e.id });
+      if (e.object.kind === "RoadNode" && e.position && !e.object.data.height) nodes.set(`${e.position.x},${e.position.y}`, { ...e.object.data, id: e.id });
       else if (e.object.kind === "Building") raise(e.id, e.object.data as Building);
     });
     // And the building held, its drive on its street.

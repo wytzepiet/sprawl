@@ -15,4 +15,10 @@ road: boolean,
  * Laid by the mayor, so it counts against the build's road tiles. The
  * survey's own roads, and driveways, are free.
  */
-laid: boolean, };
+laid: boolean, 
+/**
+ * How high it stands, in half-levels: 0 the ground, 2 a level up, 4
+ * two, 6 three; odd, a slope between the level below and the one
+ * above (`world/decks.rs`).
+ */
+height: number, };

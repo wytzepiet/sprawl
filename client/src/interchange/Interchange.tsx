@@ -9,7 +9,7 @@ import { GameProvider } from "../state/gameObjects";
 import { ThemeProvider } from "../engine/theme";
 import Glass from "../ui/Glass";
 import { projector } from "../engine/view";
-import { setTool, tool } from "../ui/buildMode";
+import { pen, setPen, setTool, tool } from "../ui/buildMode";
 import type { LevelState, Tool } from "../generated";
 import { connectLevel, type LevelConnection } from "./connection";
 import { RoadBrush } from "./RoadBrush";
@@ -99,7 +99,8 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
   const [state, setState] = createSignal<LevelState | null>(null);
   let line: LevelConnection | null = null;
   pinTimeOfDay(0.42);
-  onCleanup(() => pinTimeOfDay(null));
+  setPen(0);
+  onCleanup(() => (pinTimeOfDay(null), setPen(0)));
   const bounds = (): Bounds | null => {
     const s = state();
     return s && { x0: s.min_x, y0: s.min_y, x1: s.max_x, y1: s.max_y };
@@ -112,6 +113,8 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const t = TOOLS.find((t) => t.key.toLowerCase() === e.key.toLowerCase());
     if (t) setTool(t.tool);
+    else if (e.key.toLowerCase() === "r") setPen(Math.min(3, pen() + 1));
+    else if (e.key.toLowerCase() === "f") setPen(Math.max(0, pen() - 1));
     else if (e.key === "Escape") props.back();
     else if (e.key === " " && state()?.phase === "Build") line?.test(), e.preventDefault();
     else if (e.key.toLowerCase() === "z") line?.send({ type: "Undo" });
@@ -274,6 +277,13 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
             </button>
           )}
         </For>
+        <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
+        {/* The pen's height: the road drawn after a change climbs to it. */}
+        <div class="flex items-center gap-0.5" title="How high you draw: the next tile climbs to it (R up, F down)">
+          <button class="press soft h-9 w-7 rounded-full cursor-pointer" onClick={() => setPen(Math.max(0, pen() - 1))}>▼</button>
+          <span class="w-14 text-center text-[13px] font-semibold tabular-nums">{pen() === 0 ? "Ground" : `Level ${pen()}`}</span>
+          <button class="press soft h-9 w-7 rounded-full cursor-pointer" onClick={() => setPen(Math.min(3, pen() + 1))}>▲</button>
+        </div>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         <Show when={s()?.phase === "Build"} fallback={<Show when={s()?.phase === "Test"}><button class={button} style={dark} onClick={() => props.line()?.finish()}>Skip to the end</button></Show>}>
           <button class={button} style={dark} onClick={() => props.line()?.test()} title="Space">Test</button>

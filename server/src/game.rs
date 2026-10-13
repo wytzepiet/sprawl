@@ -322,8 +322,8 @@ fn place(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
     let after = world.objects.next_id();
     let mut laid = Vec::new();
     for (from, to) in world.stub(kind, &tiles, facing) {
-        if take_step(world, events, intersections, Build { tool: Tool::Street, from, to }, now) {
-            laid.push(crate::undo::Link { from, to, one_way: false, road: false });
+        if take_step(world, events, intersections, Build { tool: Tool::Street, from, to, up: None }, now) {
+            laid.push(crate::undo::Link { from, to, one_way: false, road: false, up: [0, 0] });
         }
     }
     let id = world.raise(kind, tiles, facing);
@@ -334,30 +334,34 @@ fn place(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
 }
 
 /// A step of the hand, built. Whether the step was taken.
-pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, Build { tool, from, to }: Build, now: GameTime) -> bool {
+pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, step: Build, now: GameTime) -> bool {
+    let Build { tool, from, to, .. } = step;
+    let [hf, ht] = step.up.unwrap_or_default();
     // Said out loud: a click that does nothing is the kind of bug
     // that otherwise takes an afternoon to find.
-    if !may(world, tool, from, to) {
-        println!("refused: {tool:?} from {from:?} to {to:?}");
+    if !may_step(world, step) {
+        println!("refused: {tool:?} from {from:?} to {to:?} at {:?}", step.up);
         return false;
     }
     match tool {
         Tool::Street | Tool::OneWay | Tool::Road => {
-            let laid = lay(world, crate::undo::Link { from, to, one_way: tool == Tool::OneWay, road: tool == Tool::Road });
+            let laid = lay(world, crate::undo::Link { from, to, one_way: tool == Tool::OneWay, road: tool == Tool::Road, up: [hf, ht] });
             crate::economy::paved(world, to, laid, now);
         }
         Tool::Demolish => {
-            // A tap takes everything on the tile: a building whole, or its
-            // road and all its links, the cars on it rerouted. A drag cuts
-            // only the road between the two tiles.
+            // A tap takes everything at the tile and height: a building
+            // whole, or its road and all its links, the cars on it
+            // rerouted. A drag cuts only the road between the two tiles.
             if from == to {
-                if let Some(id) = world.road_node_at(to) {
+                if let Some(id) = world.node_at(to, ht) {
                     handle_road_demolish(world, events, intersections, id, now);
                 }
-                if let Some(&id) = world.occupied.get(&(to.x, to.y)) {
+                if ht == 0
+                    && let Some(&id) = world.occupied.get(&(to.x, to.y))
+                {
                     world.remove_building(id);
                 }
-            } else if let Some((a, b)) = world.link_between(from, to) {
+            } else if let Some((a, b)) = world.link_between_at(from, hf, to, ht) {
                 handle_link_demolish(world, events, intersections, a, b, now);
             }
         }
@@ -365,11 +369,15 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut
     true
 }
 
-/// A road laid between two tiles, its edges with it: how many tiles of
-/// it are new.
-pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road }: crate::undo::Link) -> u32 {
-    let (from_id, to_id) = (world.road_node_at(from), world.road_node_at(to));
+/// A road laid between two tiles, at their heights, its edges with it:
+/// how many tiles of it are new.
+pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road, up: [hf, ht] }: crate::undo::Link) -> u32 {
     let laid = world.laid;
+    if hf != 0 || ht != 0 {
+        world.place_road_at(from, hf, to, ht, one_way, road);
+        return world.laid.saturating_sub(laid);
+    }
+    let (from_id, to_id) = (world.road_node_at(from), world.road_node_at(to));
     world.handle_place_road(from, to, one_way, road);
     if let (Some(f), Some(t)) = (world.road_node_at(from), world.road_node_at(to))
         && (from_id.is_none() || to_id.is_none() || !world.edges.contains_key(&(f, t)))
@@ -388,21 +396,27 @@ pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road
 /// works out the same where it draws the hand's dots
 /// (`client/src/engine/may.ts`): a change here is a change there.
 pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
+    may_step(world, Build { tool, from, to, up: None })
+}
+
+/// `may`, at the heights the step gives.
+pub fn may_step(world: &World, Build { tool, from, to, up }: Build) -> bool {
+    let [hf, ht] = up.unwrap_or_default();
     match tool {
         Tool::Street | Tool::OneWay | Tool::Road => {
             let one_way = tool == Tool::OneWay;
             // Into a building is its door: nothing is laid on its tile, and
             // a through road is no door, nothing fronting onto one.
-            let door = world.occupied.contains_key(&(to.x, to.y));
+            let door = ht == 0 && world.occupied.contains_key(&(to.x, to.y));
             // Each end that is not standing yet is a tile laid.
-            let new_tiles = world.road_node_at(from).is_none() as u32 + (!door && world.road_node_at(to).is_none()) as u32;
+            let new_tiles = world.node_at(from, hf).is_none() as u32 + (!door && world.node_at(to, ht).is_none()) as u32;
             !(door && tool == Tool::Road)
                 && world.build.may_draw(one_way, tool == Tool::Road)
                 && world.laid + new_tiles <= world.build.road_tiles()
-                && world.may_lay(from, to, one_way)
+                && world.may_lay_at(from, hf, to, ht, one_way)
         }
-        Tool::Demolish if from == to => world.road_node_at(to).is_some() || world.occupied.contains_key(&(to.x, to.y)),
-        Tool::Demolish => world.link_between(from, to).is_some(),
+        Tool::Demolish if from == to => world.node_at(to, ht).is_some() || (ht == 0 && world.occupied.contains_key(&(to.x, to.y))),
+        Tool::Demolish => world.link_between_at(from, hf, to, ht).is_some(),
     }
 }
 
@@ -569,6 +583,7 @@ fn try_reroute(
     let segment_lengths = world.compute_segment_lengths(&new_route, 0, to_lot, &backing);
     let total: f64 = segment_lengths.iter().sum();
     let route_positions = world.route_positions(&new_route);
+    let route_heights = new_route.iter().map(|&n| world.height_of(n)).collect();
 
     if let Some(pos) = world.objects.get(new_route[0]).and_then(|e| e.position) {
         world.update_position(car_id, pos);
@@ -581,6 +596,7 @@ fn try_reroute(
     {
         t.route = new_route;
         t.route_positions = route_positions;
+        t.route_heights = route_heights;
         t.from_lot = 0;
         t.to_lot = to_lot;
         t.cusps = crate::car::spawn::cusps(&backing, &segment_lengths);
@@ -873,7 +889,7 @@ mod tests {
     fn does(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, d: Do, now: GameTime) {
         match d {
             Do::Step(tool, from, to) => {
-                take_step(world, events, intersections, Build { tool, from, to }, now);
+                take_step(world, events, intersections, Build { tool, from, to, up: None }, now);
             }
             Do::Place(kind, at) => {
                 if let Some(no) = place(world, events, intersections, 0, kind, at, None, now) {
@@ -1032,7 +1048,7 @@ mod tests {
                 let mut probe = street();
                 probe.build = crate::tree::Build::all();
                 let edges = probe.edges.len();
-                take_step(&mut probe, &mut events, &mut intersections, Build { tool: Tool::Street, from, to }, 0);
+                take_step(&mut probe, &mut events, &mut intersections, Build { tool: Tool::Street, from, to, up: None }, 0);
                 assert_eq!(probe.edges.len() != edges, allowed, "step {dx},{dy}");
             }
         }
@@ -1056,7 +1072,7 @@ mod tests {
         let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, &mut intersections, 1, message, 0);
         let mut said = Vec::new();
         for y in 0..4 {
-            said.extend(hand(&mut world, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1) })));
+            said.extend(hand(&mut world, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1), up: None })));
         }
         assert_eq!(world.roads.len(), roads + 4, "the side street was not laid");
         assert!(world.treasury < treasury, "the third and fourth tiles were not bought express");
@@ -1092,7 +1108,7 @@ mod tests {
         if let Some(GameObject::Building(b)) = world.objects.get_mut(house).map(|e| &mut e.object) {
             b.site.as_mut().unwrap().get_mut(&Good::Timber).unwrap().level = 2.0;
         }
-        hand(&mut world, ClientMessage::Build(Build { tool: Tool::Demolish, from: at(12, 1), to: at(12, 1) }));
+        hand(&mut world, ClientMessage::Build(Build { tool: Tool::Demolish, from: at(12, 1), to: at(12, 1), up: None }));
         assert!(world.objects.get(shop).is_none(), "the shop stands");
         assert!(hand(&mut world, ClientMessage::Undo).unwrap().text.contains("stands again"));
         let again = world.occupied[&(12, 1)];
@@ -1114,7 +1130,7 @@ mod tests {
         let at = |x, y| GridCoord { x, y };
         let mut hand = |world: &mut World, owner, message, now| handle_player_action(world, &mut events, &mut intersections, owner, message, now);
         for y in 0..3 {
-            hand(&mut world, 1, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1) }), 0);
+            hand(&mut world, 1, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1), up: None }), 0);
         }
         assert!(hand(&mut world, 2, ClientMessage::Place { kind: BuildingKind::House, at: at(11, 3), facing: None }, 0).is_none());
         let roads = world.roads.len();
@@ -1124,7 +1140,7 @@ mod tests {
         hand(&mut world, 2, ClientMessage::Undo, 0);
         hand(&mut world, 1, ClientMessage::Undo, 0);
         assert!(world.road_node_at(at(10, 3)).is_none());
-        hand(&mut world, 1, ClientMessage::Build(Build { tool: Tool::Street, from: at(20, 0), to: at(20, 1) }), 0);
+        hand(&mut world, 1, ClientMessage::Build(Build { tool: Tool::Street, from: at(20, 0), to: at(20, 1), up: None }), 0);
         assert_eq!(hand(&mut world, 1, ClientMessage::Undo, crate::undo::WINDOW + 1).unwrap().text, "Nothing to undo");
     }
 
@@ -1163,7 +1179,7 @@ mod tests {
         assert!(world.lines.contains_key(&id), "no ferry line");
         // One tap is the harbour gone, whole.
         let mut intersections = IntersectionRegistry::new();
-        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Demolish, from: at(8, 2), to: at(8, 2) }, 0);
+        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Demolish, from: at(8, 2), to: at(8, 2), up: None }, 0);
         assert!((8..11).all(|x| (1..3).all(|y| !world.occupied.contains_key(&(x, y)))), "part of the harbour stands");
         settle_and_wake(&mut world, &mut events);
     }
@@ -1179,8 +1195,8 @@ mod tests {
         let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
         world.raise(BuildingKind::Depot, vec![at(30, 1)], 2);
-        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(31, 2), to: at(30, 1) }, 0);
-        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(30, 2), to: at(30, 1) }, 0);
+        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(31, 2), to: at(30, 1), up: None }, 0);
+        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(30, 2), to: at(30, 1), up: None }, 0);
     }
 
     /// One tap of the demolisher takes a house, its drive with it: the
@@ -1247,7 +1263,7 @@ mod tests {
         let mut intersections = IntersectionRegistry::new();
         let at = |x, y| GridCoord { x, y };
         let treasury = world.treasury;
-        let mut hand = |world: &mut World, from, to| take_step(world, &mut events, &mut intersections, Build { tool: Tool::Street, from, to }, 0);
+        let mut hand = |world: &mut World, from, to| take_step(world, &mut events, &mut intersections, Build { tool: Tool::Street, from, to, up: None }, 0);
         hand(&mut world, at(10, 0), at(10, 1));
         hand(&mut world, at(10, 1), at(10, 2));
         assert_eq!(stone(&world), 0.0, "two tiles took {} stone", 2.0 - stone(&world));
@@ -1623,7 +1639,7 @@ mod tests {
             // Onto the plot: a road that ends on one is a driveway.
             (GridCoord { x: 10, y: 2 }, GridCoord { x: 10, y: 3 }),
         ] {
-            take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from, to }, 0);
+            take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from, to, up: None }, 0);
         }
         assert!(world.street_of(home).is_some(), "the driveway formed itself");
 

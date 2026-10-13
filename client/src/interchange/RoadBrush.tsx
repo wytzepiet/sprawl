@@ -3,8 +3,8 @@ import { useEngine } from "../engine/Canvas";
 import { Dots } from "../engine/dots";
 import { screenToWorld, viewExtent, rectOf } from "../engine/view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
-import { setTool, tool } from "../ui/buildMode";
-import { hand, may, mayStart, snap, STEPS, type Hand } from "../engine/may";
+import { pen, setTool, tool } from "../ui/buildMode";
+import { hand, mayAt, mayStart, nodesOn, snap, STEPS, type Hand } from "../engine/may";
 import type { GridCoord, TerrainType, Tool } from "../generated";
 import type { Bounds } from "../engine/OrthoCamera";
 
@@ -14,6 +14,12 @@ import type { Bounds } from "../engine/OrthoCamera";
  * pointer, a one-way running the way the drag goes; with Shift held, or
  * the eraser in hand, it pulls up what it crosses, and a tap takes the
  * tile. Only on the level's map, and never its own roads: the gates.
+ *
+ * The pen has a height (`pen`, in levels). A drag starts on the road at
+ * the pen's height on the tile pressed, or the one there nearest it; each
+ * step goes on at its height, or, short of the pen's, climbs toward it:
+ * the tile after a change of height is the slope. A step onto a road
+ * already there at a height it may join takes that one.
  *
  * The dots show where a drag may start and, while dragging, the steps the
  * tile underfoot allows (`dots.ts`), as the town's brush does.
@@ -25,6 +31,8 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   const { send } = useGame();
   if (tool() === null) setTool("Street");
   let current: GridCoord | null = null;
+  /** How high the drag stands at `current`, in half-levels. */
+  let height = 0;
   let pressed: GridCoord | null = null;
   let prevWorld: { wx: number; wy: number } | null = null;
   let accDx = 0;
@@ -38,9 +46,32 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     const w = pick(e);
     return { x: Math.floor(w.wx), y: Math.floor(w.wy) };
   };
-  const step = (from: GridCoord, to: GridCoord) => {
+  const step = (from: GridCoord, hf: number, to: GridCoord, ht: number) => {
     const t = using();
-    if (t !== null) send({ type: "Build", data: { tool: t, from, to } });
+    if (t !== null) send({ type: "Build", data: { tool: t, from, to, ...(hf || ht ? { up: [hf, ht] as [number, number] } : {}) } });
+  };
+  /** Where a drag pressed on this tile stands: on the road at the pen's
+   *  height, or the one there nearest it, or at the pen's height. */
+  const startAt = (t: GridCoord) => {
+    const want = pen() * 2;
+    const on = world ? nodesOn(world, t).map(([h]) => h) : [];
+    return on.includes(want) || !on.length ? want : on.sort((a, b) => Math.abs(a - want) - Math.abs(b - want))[0];
+  };
+  /** The height a step from `at` (standing at `h`) to `to` would take:
+   *  the road there it may join, at the height it goes on at or climbs to;
+   *  null where it may not go. The eraser takes whatever road joins them. */
+  const stepTo = (at: GridCoord, h: number, to: GridCoord): number | null => {
+    const t = using();
+    if (!world || t === null) return null;
+    const want = pen() * 2;
+    const there = nodesOn(world, to).map(([g]) => g);
+    if (t === "Demolish") {
+      const ok = there.filter((g) => mayAt(world!, t, at, h, to, g));
+      return ok.length ? ok.sort((a, b) => Math.abs(a - h) - Math.abs(b - h))[0] : null;
+    }
+    const plan = h === want ? want : h + Math.sign(want - h);
+    const options = [plan, ...there.filter((g) => Math.abs(g - h) <= 1 && g !== plan).sort((a, b) => Math.abs(a - want) - Math.abs(b - want))];
+    return options.find((g) => allowedStep(t, at, h, to, g)) ?? null;
   };
 
   let world: Hand | null = null;
@@ -48,7 +79,7 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     world = hand(eachEntity, props.ground);
     draw();
   }));
-  createEffect(on(tool, () => draw(), { defer: true }));
+  createEffect(on([tool, pen], () => draw(), { defer: true }));
 
   const inside = (t: GridCoord) => {
     const b = props.bounds();
@@ -57,17 +88,14 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   /** One of the level's own roads: a gate's. */
   const fixed = (t: GridCoord) => world?.roads.get(`${t.x},${t.y}`)?.node.laid === false;
   /** The level's rule over the world's: the server's (`Level::allows`). */
-  const allowedStep = (t: Tool, from: GridCoord, to: GridCoord) => {
+  const allowedStep = (t: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number) => {
     if (!world) return false;
-    if (t === "Demolish") return (from.x === to.x && from.y === to.y ? !fixed(to) : !(fixed(from) && fixed(to))) && may(world, t, from, to);
-    return inside(from) && inside(to) && may(world, t, from, to);
+    if (t === "Demolish") return (from.x === to.x && from.y === to.y ? !(fixed(to) && !ht) : !(fixed(from) && fixed(to) && !hf && !ht)) && mayAt(world, t, from, hf, to, ht);
+    return inside(from) && inside(to) && mayAt(world, t, from, hf, to, ht);
   };
-  const allowed = (at: GridCoord, i: number) => {
-    const t = using();
-    return t !== null && allowedStep(t, at, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] });
-  };
+  const allowed = (at: GridCoord, i: number) => stepTo(at, height, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] }) !== null;
   const mayStartHere = (t: Tool, at: GridCoord) =>
-    !!world && mayStart(world, t, at) && (t === "Demolish" ? !fixed(at) || STEPS.some(([dx, dy]) => allowedStep(t, at, { x: at.x + dx, y: at.y + dy })) : inside(at));
+    !!world && (pen() > 0 && t !== "Demolish" ? inside(at) : mayStart(world, t, at) && (t === "Demolish" ? !fixed(at) || STEPS.some(([dx, dy]) => allowedStep(t, at, 0, { x: at.x + dx, y: at.y + dy }, 0)) : inside(at)));
 
   const viewBox = () => {
     const rect = rectOf(canvas);
@@ -99,6 +127,7 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0 || using() === null) return;
     current = tileOf(e);
+    height = startAt(current);
     prevWorld = pick(e);
     accDx = 0;
     accDy = 0;
@@ -125,10 +154,12 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
       const next: GridCoord = { x: cur.x + sx, y: cur.y + sy };
       const newDist = Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5)));
       if (newDist >= dist) break;
-      if (!allowed(cur, sector)) break;
-      step(cur, next);
+      const h = stepTo(cur, height, next);
+      if (h === null) break;
+      step(cur, height, next, h);
       dots.step(next);
       cur = next;
+      height = h;
     }
     if (cur !== current) {
       current = cur;
@@ -139,7 +170,7 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   };
 
   const onPointerUp = () => {
-    if (pressed && current === pressed && using() === "Demolish" && !fixed(pressed)) step(pressed, pressed);
+    if (pressed && current === pressed && using() === "Demolish" && !(fixed(pressed) && !height)) step(pressed, height, pressed, height);
     pressed = null;
     if (current) dots.release();
     current = null;
