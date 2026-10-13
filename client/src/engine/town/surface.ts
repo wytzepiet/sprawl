@@ -325,20 +325,6 @@ function wayAt({ pts }: Path, k: number): [number, number] {
   return [(q[0] - p[0]) / len, (q[1] - p[1]) / len];
 }
 
-/** A band along a path, `width(k)` either side of it at point k. */
-function band(path: Path, width: (k: number) => number, from = 0, to = path.pts.length - 1): Polygon {
-  const left: Pt[] = [], right: Pt[] = [];
-  for (let k = from; k <= to; k++) {
-    const [ux, uy] = wayAt(path, k);
-    const [x, y] = path.pts[k];
-    const w = width(k);
-    left.push([x - uy * w, y + ux * w]);
-    right.push([x + uy * w, y - ux * w]);
-  }
-  const ring = [...left, ...right.reverse()];
-  return [area(ring) < 0 ? ring.reverse() : ring];
-}
-
 /** Where a point is from a path: how far from it, to its left (negative
  *  to its right), how far along, and how wide the road is there. */
 function near(path: Path, x: number, y: number): { side: number; along: number; half: number; d: number } {
@@ -367,19 +353,44 @@ const carried = ({ through, ways }: Surface): Way[] => ways.map(([dc, dr, on, fl
 /** The road arms of a tile, drives left out. */
 const roadsOf = (ways: Way[]) => ways.filter(([, , , flow]) => flow !== "d");
 
-/** Two arms beside each other round a tile, less than half a turn
- *  apart: a car turns from one to the other along a curve. */
-function turns(roads: Way[]): [Way, Way][] {
-  const angle = ([dc, dr]: Way) => Math.atan2(dr, dc);
-  const round = [...roads].sort((p, q) => angle(p) - angle(q));
-  const out: [Way, Way][] = [];
-  if (round.length < 3) return out;
-  for (let i = 0; i < round.length; i++) {
-    const [p, q] = [round[i], round[(i + 1) % round.length]];
-    const gap = (angle(q) - angle(p) + 2 * Math.PI) % (2 * Math.PI);
-    if (gap < Math.PI - 1e-6) out.push([p, q]);
+/** The lanes of an arm a car comes in by (`into`) or goes out by, each
+ *  as where it runs from its way's middle, to the right of the way it is
+ *  driven (`bezier.rs`'s (-dy, dx)), and its half-width: a two-way's one
+ *  each way, to the right; a one-way's one, down the middle, its whole
+ *  road; a road of two's two. */
+type Lane = [number, number];
+const LANE = HALF_W / 2;
+function lanesOf(flow: Flow | "d" | undefined, into: boolean): Lane[] {
+  switch (flow ?? "t") {
+    case "t":
+      return [[LANE, LANE]];
+    case "o":
+      return into ? [] : [[0, THIN]];
+    case "i":
+      return into ? [[0, THIN]] : [];
+    case "O":
+      return into ? [] : [[LANE, LANE], [-LANE, LANE]];
+    case "I":
+      return into ? [[LANE, LANE], [-LANE, LANE]] : [];
+    default:
+      return [];
   }
-  return out;
+}
+
+/** A lane along a path, `lane(t)` (where it runs and how wide) a share t
+ *  of the way. */
+function strip(path: Path, lane: (t: number) => Lane): Polygon {
+  const n = path.pts.length;
+  const left: Pt[] = [], right: Pt[] = [];
+  for (let k = 0; k < n; k++) {
+    const [ux, uy] = wayAt(path, k);
+    const [x, y] = path.pts[k];
+    const [o, h] = lane(n > 1 ? k / (n - 1) : 0);
+    left.push([x - uy * (o - h), y + ux * (o - h)]);
+    right.push([x - uy * (o + h), y + ux * (o + h)]);
+  }
+  const ring = [...left, ...right.reverse()];
+  return [area(ring) < 0 ? ring.reverse() : ring];
 }
 
 /** A tile's road from one arm to another with no other: its one path. */
@@ -418,8 +429,36 @@ export function shapeOf(surface: Surface): Polygon[] {
     const ring: Pt[] = [[p[0] + ux * a + nx, p[1] + uy * a + ny], [p[0] + ux * b + nx, p[1] + uy * b + ny], [p[0] + ux * b - nx, p[1] + uy * b - ny], [p[0] + ux * a - nx, p[1] + uy * a - ny]];
     parts.push([area(ring) < 0 ? ring.reverse() : ring]);
   };
-  if (run) {
-    parts.push(band(run, (k) => run.half[k]));
+  if (roads.length >= 2) {
+    // Each lane a car drives through, from the way it comes in by to the
+    // way it goes out by, along its curve; a lane nothing drives through,
+    // its own way to where the road stands, and no further.
+    const used = new Set<string>();
+    for (const a of roads) {
+      for (const b of roads) {
+        if (a === b) continue;
+        const ins = lanesOf(a[3], true), outs = lanesOf(b[3], false);
+        if (!ins.length || !outs.length) continue;
+        const path = pathOf(p, a, b, false);
+        for (const [i, l] of ins.entries()) {
+          for (const [j, m] of outs.entries()) {
+            used.add(`${roads.indexOf(a)}i${i}`).add(`${roads.indexOf(b)}o${j}`);
+            parts.push(strip(path, (t) => [l[0] + (m[0] - l[0]) * smooth(t), l[1] + (m[1] - l[1]) * smooth(t)]));
+          }
+        }
+      }
+    }
+    for (const [k, w] of roads.entries()) {
+      const { at } = seamOf(p, w);
+      for (const into of [true, false]) {
+        for (const [i, l] of lanesOf(w[3], into).entries()) {
+          if (used.has(`${k}${into ? "i" : "o"}${i}`)) continue;
+          const pts: Pt[] = into ? [at, p] : [p, at];
+          parts.push(strip({ pts, half: [], at: [0, 1], seams: [0, 1] }, () => l));
+        }
+      }
+    }
+    for (const w of carried(surface).filter(([, , on]) => on)) arm(w, seamOf(p, w).len / 2 - 0.05, RUN);
     for (const d of ways.filter(([, , , flow]) => flow === "d")) arm(d, -HALF_W, d[2] ? RUN : 0);
   } else {
     const geoArms: ArmInfo[] = ways.map((w) => {
@@ -433,10 +472,6 @@ export function shapeOf(surface: Surface): Polygon[] {
       const g = geo.positions;
       const at = (i: number): Pt => [p[0] - g[3 * i], p[1] - g[3 * i + 1]];
       for (let i = 0; i < geo.indices.length; i += 3) parts.push([[at(geo.indices[i]), at(geo.indices[i + 1]), at(geo.indices[i + 2])]]);
-    }
-    for (const [a, b] of turns(roads)) {
-      const turn = pathOf(p, a, b, false);
-      parts.push(band(turn, (k) => turn.half[k]));
     }
     for (const w of carried(surface).filter(([, , on]) => on)) arm(w, seamOf(p, w).len / 2 - 0.05, RUN);
   }
