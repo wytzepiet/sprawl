@@ -9,6 +9,8 @@ import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, PAVED_Z, RIM } from "./town/draw";
 import { keyOf, paintOf, runsOn, shapeOf, type Surface } from "./town/surface";
 import { ROAD_Z } from "./objects/roadGeometry";
+import type { Lift } from "./decks";
+import type { MeshGeometry } from "./geometry";
 
 /**
  * Asphalt tiles, every one the same square, its asphalt drawn on it: a
@@ -80,15 +82,21 @@ const [other1, other2] = ["0.3789, 0.1602", "0.0898, 0.5898"];
 const n = (x: number) => x.toFixed(4);
 
 // A pixel's place on its tile's road frame, and its tile's slot; then, in
-// the slot, whether it is on the road and how far inside the kerbs.
-function roadPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
+// the slot, whether it is on the road and how far inside the kerbs. A deck's
+// tile is lifted (`decks.ts`'s `Lift`): up to its height, and a slope's
+// eased up across it, its facing tilted with it.
+function roadPlugin(engine: EngineContext, atlas: Atlas, lifted: boolean): MaterialPlugin {
   return {
     name: "Road",
     priority: 210,
-    getAttributes: () => [{ name: "roadSlot", type: "f32", perInstance: true }],
+    getAttributes: () => [
+      { name: "roadSlot", type: "f32", perInstance: true },
+      ...(lifted ? [{ name: "roadLift", type: "vec4<f32>" as const, perInstance: true }] : []),
+    ],
     getVaryings: () => [
       { name: "vRoad", type: "vec2f" },
       { name: "vRoadSlot", type: "f32" },
+      { name: "vRoadTilt", type: "vec2f" },
     ],
     getSamplers: () => [
       { texture: "roadAtlas", sampler: "roadAtlasSampler" },
@@ -99,7 +107,16 @@ function roadPlugin(engine: EngineContext, atlas: Atlas): MaterialPlugin {
     writeUbo: (data, offsets) => data.set(atlas.grid, offsets.get("roadGrid")! / 4),
     getCustomCode: (stage) =>
       stage === "vertex"
-        ? { CUSTOM_VERTEX_MAIN_END: `out.vRoad = position.xy; out.vRoadSlot = roadSlot;` }
+        ? {
+            ...(lifted
+              ? {
+                  CUSTOM_VERTEX_UPDATE_WORLDPOS: `let roadU = clamp(dot(position.xy + vec2f(0.5), roadLift.yz) + 0.5, 0., 1.);
+finalWorld[3][2] = finalWorld[3][2] + roadLift.x + roadLift.w * roadU * roadU * (3. - 2. * roadU);
+let roadTiltBy = roadLift.yz * roadLift.w * 6. * roadU * (1. - roadU) * step(0.0001, roadU) * step(roadU, 0.9999);`,
+                }
+              : {}),
+            CUSTOM_VERTEX_MAIN_END: `out.vRoad = position.xy; out.vRoadSlot = roadSlot; out.vRoadTilt = ${lifted ? "roadTiltBy" : "vec2f(0.)"};`,
+          }
         : {
             CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadGrainUv = input.worldPos.xy / ${n(GRAIN_SPAN)};
 let roadGrainAt = textureSample(roadGrain, roadGrainSampler, roadGrainUv).r;
@@ -119,7 +136,7 @@ if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
 // is, so it is undone here.
 let roadPaint = smoothstep(-${n(PAINT_SOFT)}, ${n(PAINT_SOFT)}, roadAt.b) * (0.8 + 0.2 * roadGrainAt);
 baseColor = mix(baseColor, vec3f(${PAINT}) / max(material.townTint.rgb, vec3f(0.05)), roadPaint);
-N = normalize(N - vec3f(roadBump * ${n(BUMP)}, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
+N = normalize(N - vec3f(roadBump * ${n(BUMP)} + input.vRoadTilt, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
 let roadTx = vec2f(roadTexel.x, 0.);
 let roadTy = vec2f(0., roadTexel.y);
 let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
@@ -132,21 +149,41 @@ if (roadD.g >= 0. && roadD.g < ${n(RIM)} && roadDx * roadDx + roadDy * roadDy > 
   };
 }
 
-/** One kind of road's tiles: a square each, where and in which slot. */
+/** One kind of road's tiles: a square each, where and in which slot, and
+ *  a deck's how it is lifted. */
 interface Kind {
   mesh: Mesh;
   material: TownMaterial;
   matrices: Float32Array;
   slots: Float32Array;
+  lifts: Float32Array | null;
   keys: string[];
   dirty: boolean;
 }
 
-/** The road tiles, by tile, each a street or a through road. */
+/** A square over a slot's span, at a height, cut `n` by `n`: a deck's
+ *  bends with its slope. */
+function square(z: number, n: number): MeshGeometry {
+  const g: MeshGeometry = { positions: [], normals: [], indices: [] };
+  const at = (k: number) => ORIGIN + (SPAN * k) / n;
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) g.positions.push(at(i), at(j), z), g.normals.push(0, 0, 1);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const [a, b, c, d] = [j * (n + 1) + i, j * (n + 1) + i + 1, (j + 1) * (n + 1) + i + 1, (j + 1) * (n + 1) + i];
+      g.indices.push(a, c, b, a, d, c);
+    }
+  }
+  return g;
+}
+/** How finely a deck's square is cut. */
+const DECK_CUTS = 12;
+
+/** The road tiles, by tile: a street or a through road, on the ground or
+ *  lifted onto a deck. */
 export class RoadTiles {
   private atlas: Atlas;
-  private kinds: [Kind, Kind];
-  private at = new Map<string, { through: boolean; index: number }>();
+  private kinds: Kind[];
+  private at = new Map<string, { kind: number; index: number }>();
 
   /** `colour` paints a street's road, or a through road's. */
   constructor(
@@ -155,36 +192,38 @@ export class RoadTiles {
     private colour: (through: boolean) => Rgb,
   ) {
     this.atlas = new Atlas(engine, SLOT, () => this.kinds.forEach((kind) => markMeshRenderableDirty(kind.mesh)), 4);
-    this.kinds = [false, true].map((through): Kind => {
+    // Street, through, deck street, deck through (`kindOf`).
+    this.kinds = [0, 1, 2, 3].map((k): Kind => {
+      const [through, deck] = [k % 2 === 1, k >= 2];
       // The square over the slot's span, at the road's height: through
       // roads over the streets that meet them, a street's end running on
-      // under one.
+      // under one. With the bevel's data, as every town material rounds
+      // creases; a square has none.
       const z = ROAD_Z + PAVED_Z + (through ? 0.001 : 0);
-      const [a, b] = [ORIGIN, ORIGIN + SPAN];
-      // With the bevel's data, as every town material rounds creases; a
-      // square has none.
-      const square = bevelled({ positions: [a, a, z, b, a, z, b, b, z, a, b, z], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
-      const mesh = meshOf(engine, `roads_${through ? "through" : "street"}`, square);
-      giveBevel(engine, mesh, square);
+      const geo = bevelled(square(z, deck ? DECK_CUTS : 1));
+      const mesh = meshOf(engine, `roads_${deck ? "deck_" : ""}${through ? "through" : "street"}`, geo);
+      giveBevel(engine, mesh, geo);
       // Worn to a sheen by traffic, and the stones in it glint (`townShine`).
-      const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas)], 0.7);
+      const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas, deck)], 0.7);
       mesh.material = material;
       mesh.receiveShadows = true;
-      const [matrices, slots] = [new Float32Array(64 * 16), new Float32Array(64)];
+      const [matrices, slots, lifts] = [new Float32Array(64 * 16), new Float32Array(64), deck ? new Float32Array(64 * 4) : null];
       setThinInstances(mesh, matrices, 64);
       setMeshAttribute(engine, mesh, "roadSlot", slots);
+      if (lifts) setMeshAttribute(engine, mesh, "roadLift", lifts);
       setThinInstanceCount(mesh, 0);
-      return { mesh, material, matrices, slots, keys: [], dirty: false };
-    }) as [Kind, Kind];
+      return { mesh, material, matrices, slots, lifts, keys: [], dirty: false };
+    });
     this.atlas.upload();
     for (const kind of this.kinds) show(scene, kind.mesh);
   }
 
-  /** The tile at (x, y) asphalt of this shape, in place of whatever was. */
-  set(key: string, x: number, y: number, surface: Surface) {
+  /** The tile at (x, y) asphalt of this shape, in place of whatever was;
+   *  a deck's lifted so (`decks.ts`). */
+  set(key: string, x: number, y: number, surface: Surface, lift?: Lift) {
     this.delete(key);
-    const through = surface.through;
-    const kind = this.kinds[+through];
+    const k = +surface.through + (lift ? 2 : 0);
+    const kind = this.kinds[k];
     const index = kind.keys.length;
     if ((index + 1) * 16 > kind.matrices.length) {
       const capacity = Math.max(64, (index + 1) * 2);
@@ -192,13 +231,19 @@ export class RoadTiles {
       m.set(kind.matrices);
       s.set(kind.slots);
       [kind.matrices, kind.slots] = [m, s];
+      if (kind.lifts) {
+        const l = new Float32Array(capacity * 4);
+        l.set(kind.lifts);
+        kind.lifts = l;
+      }
       setThinInstances(kind.mesh, kind.matrices, capacity);
     }
     kind.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x + 1, y + 1, 0, 1], index * 16);
     kind.slots[index] = this.atlas.slotOf(keyOf(surface), () => bake(surface));
+    if (kind.lifts && lift) kind.lifts.set(lift, index * 4);
     kind.keys.push(key);
     kind.dirty = true;
-    this.at.set(key, { through, index });
+    this.at.set(key, { kind: k, index });
   }
 
   /** Every tile with a road. */
@@ -211,11 +256,12 @@ export class RoadTiles {
     const was = this.at.get(key);
     if (!was) return;
     this.at.delete(key);
-    const kind = this.kinds[+was.through];
+    const kind = this.kinds[was.kind];
     const last = kind.keys.length - 1;
     if (was.index !== last) {
       kind.matrices.copyWithin(was.index * 16, last * 16, last * 16 + 16);
       kind.slots[was.index] = kind.slots[last];
+      kind.lifts?.copyWithin(was.index * 4, last * 4, last * 4 + 4);
       kind.keys[was.index] = kind.keys[last];
       this.at.get(kind.keys[last])!.index = was.index;
     }
@@ -226,11 +272,12 @@ export class RoadTiles {
   /** Every tile drawn as it now is, in the colours of now. */
   flush() {
     this.atlas.upload();
-    this.kinds.forEach((kind, through) => {
+    this.kinds.forEach((kind, k) => {
       if (!kind.dirty) return;
       kind.dirty = false;
-      setTint(kind.material, this.colour(!!through));
+      setTint(kind.material, this.colour(k % 2 === 1));
       setMeshAttribute(this.engine, kind.mesh, "roadSlot", kind.slots);
+      if (kind.lifts) setMeshAttribute(this.engine, kind.mesh, "roadLift", kind.lifts);
       setThinInstanceCount(kind.mesh, kind.keys.length);
     });
   }

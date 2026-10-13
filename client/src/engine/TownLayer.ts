@@ -18,6 +18,7 @@ import { KERB_Z } from "./town/draw";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
 import { surfacesAt } from "./town/surface";
+import { Decks, liftOf, type DeckPiece } from "./decks";
 import { storeysOf, type Flow, type RoadView, type Tile, type Town } from "./town/grid";
 import type { Box } from "./town/clip";
 import { kerbField, kerbPlugin, unkerb, type KerbField } from "./kerbs";
@@ -32,6 +33,9 @@ import type { Pose } from "../generated/Pose";
 import type { Pt } from "./town/footprint";
 import { TRAILER } from "./objects/roadGeometry";
 
+/** How many roads one tile may hold: the ground's two side by side, and
+ *  the decks' over them. */
+const ROADS_A_TILE = 8;
 /** Ground round what is built the town is drawn over: its pavement and
  *  its trees. */
 const TOWN_MARGIN = 4;
@@ -84,6 +88,9 @@ export class TownLayer {
   private stale = new Set<string>();
   /** The road tiles, and the tiles to draw again. */
   private roads: RoadTiles;
+  /** The decks' road tiles, by key, and the concrete under them. */
+  private decks = new Map<string, DeckPiece>();
+  private concrete: Decks;
   private dirty = new Set<string>();
   private frame: number | null = null;
   private tints: Tints;
@@ -124,6 +131,7 @@ export class TownLayer {
     const bevel: Bevel = { width: 0.05, soft: null };
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF]), "building", bevel);
     this.roads = new RoadTiles(ctx.engine, ctx.scene, () => this.theme().road);
+    this.concrete = new Decks(ctx.engine, ctx.scene, casters);
   }
 
   /** A piece's material, made once for its name and colour. */
@@ -367,14 +375,24 @@ export class TownLayer {
    *  side by side, each its own: `x,y#0` and `x,y#1`. */
   private retile() {
     const world = this.world();
+    let decked = false;
     for (const key of this.dirty) {
       const [x, y] = key.split(",").map(Number);
       const surfaces = surfacesAt(world, -x, -y);
-      for (let i = 0; i < 2; i++) {
-        if (surfaces[i]) this.roads.set(`${key}#${i}`, x, y, surfaces[i]);
-        else this.roads.delete(`${key}#${i}`);
+      for (let i = 0; i < ROADS_A_TILE; i++) {
+        const k = `${key}#${i}`;
+        const s = surfaces[i];
+        decked ||= this.decks.has(k) || !!s?.height;
+        this.decks.delete(k);
+        if (!s) {
+          this.roads.delete(k);
+          continue;
+        }
+        this.roads.set(k, x, y, s, s.height ? liftOf(s) : undefined);
+        if (s.height) this.decks.set(k, { x, y, surface: s });
       }
     }
+    if (decked) this.concrete.rebuild(this.decks.values());
     this.dirty.clear();
     this.roads.flush();
   }
@@ -394,14 +412,11 @@ export class TownLayer {
       for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
     };
     this.entities((e) => {
-      if (e.object.kind === "RoadNode" && e.position && e.object.data.height <= 1) {
+      if (e.object.kind === "RoadNode" && e.position) {
         const n = { ...e.object.data, id: e.id };
-        // A slope off the ground: the ground's road runs level to its
-        // tile's edge (`decks::rise`), drawn as an arm to it.
-        byId.set(e.id, { n, x: e.position.x, y: e.position.y });
-        if (n.height) return;
         const k = `${e.position.x},${e.position.y}`;
-        if (!n.side?.[0] && !n.side?.[1]) nodes.set(k, n);
+        byId.set(e.id, { n, x: e.position.x, y: e.position.y });
+        if (!n.height && !n.side?.[0] && !n.side?.[1]) nodes.set(k, n);
         (onTile.get(k) ?? onTile.set(k, []).get(k)!).push(n);
       }
       else if (e.object.kind === "Building") raise(e.id, e.object.data as Building);
@@ -411,7 +426,9 @@ export class TownLayer {
     if (held) raise(HELD, held);
     if (held?.door) doors.set(`${held.door.tile.x},${held.door.tile.y}`, [held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
     const key = (c: number, r: number) => `${-c},${-r}`;
-    const road = (c: number, r: number) => (built.has(key(c, r)) ? undefined : nodes.get(key(c, r)) ?? onTile.get(key(c, r))?.[0]);
+    // The tile's road on the ground, for what the ground asks of it; a tile
+    // with only a deck over it is a road tile too, so its deck is drawn.
+    const road = (c: number, r: number) => (built.has(key(c, r)) ? undefined : nodes.get(key(c, r)) ?? onTile.get(key(c, r))?.find((n) => !n.height));
     const flowOf = (a: RoadNode & { id: number }, b: RoadNode & { id: number }): Flow => {
       if (a.wide.includes(b.id)) return "O";
       if (b.wide.includes(a.id)) return "I";
@@ -427,7 +444,7 @@ export class TownLayer {
     return {
       w: Infinity,
       h: Infinity,
-      tile: (c, r) => built.get(key(c, r)) ?? (road(c, r) ? { kind: "road", storeys: 0 } : { kind: "open", storeys: 0 }),
+      tile: (c, r) => built.get(key(c, r)) ?? (onTile.has(key(c, r)) ? { kind: "road", storeys: 0 } : { kind: "open", storeys: 0 }),
       linked: (c0, r0, c1, r1) => {
         const [a, b] = [road(c0, r0), road(c1, r1)];
         return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
@@ -438,16 +455,16 @@ export class TownLayer {
       roadsOn: (c, r): RoadView[] =>
         built.has(key(c, r))
           ? []
-          : (onTile.get(key(c, r)) ?? []).map((n) => ({
-              shift: shiftOf(n),
-              through: n.road,
-              light: n.light != null,
-              arms: [...new Set([...n.outgoing, ...n.incoming])].flatMap((id) => {
+          : (onTile.get(key(c, r)) ?? []).map((n) => {
+              const arms = [...new Set([...n.outgoing, ...n.incoming])].flatMap((id) => {
                 const o = byId.get(id);
                 if (!o || Math.abs(o.x + c) > 1 || Math.abs(o.y + r) > 1) return [];
-                return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: o.n.road }];
-              }),
-            })),
+                return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: o.n.road, height: o.n.height }];
+              });
+              // A slope climbs toward its arm above it.
+              const up = n.height % 2 ? arms.find((a) => a.height > n.height) : undefined;
+              return { shift: shiftOf(n), through: n.road, light: n.light != null, arms, height: n.height, climb: up && ([up.dc, up.dr] as [number, number]) };
+            }),
       door: (c, r) => turned(doors.get(key(c, r))),
     };
   }
@@ -528,6 +545,7 @@ export class TownLayer {
     for (const key of [...this.chunks.keys()]) this.drop(key);
     this.unhold();
     this.roads.dispose();
+    this.concrete.dispose();
     this.stopTints();
     this.worker.terminate();
     this.heldWorker.terminate();

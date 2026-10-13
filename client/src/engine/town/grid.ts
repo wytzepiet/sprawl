@@ -25,6 +25,10 @@ export interface RoadView {
   shift: [number, number];
   through: boolean;
   light: boolean;
+  /** How high it stands, in half-levels; a slope, the way to the arm it
+   *  climbs to. */
+  height?: number;
+  climb?: [number, number];
   arms: { dc: number; dr: number; flow: Flow; shift: [number, number]; through: boolean }[];
 }
 

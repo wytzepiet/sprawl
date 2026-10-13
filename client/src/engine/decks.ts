@@ -1,25 +1,23 @@
-import { markMeshRenderableDirty, type EngineContext, type Mesh, type SceneContext } from "@babylonjs/lite";
+import type { EngineContext, Mesh, SceneContext } from "@babylonjs/lite";
 import { drop, meshOf, show, type MeshGeometry } from "./geometry";
-import { setTint, townMaterial, type TownMaterial } from "./material";
+import { setTint, townMaterial } from "./material";
 import { rgb } from "./rgb";
-import { buildRoadGeometry, HALF_W, ROAD_Z, type ArmInfo } from "./objects/roadGeometry";
-import { PAVED_Z } from "./town/draw";
+import { ROAD_Z } from "./objects/roadGeometry";
+import { flatPolygons, PAVED_Z } from "./town/draw";
+import { runsOn, shapeOf, type Surface } from "./town/surface";
+import { area, type Pt } from "./town/footprint";
 import type { Casters } from "./DayNightCycle";
-import type { GameObjectEntry, RoadNode } from "../generated";
-import { spot } from "./may";
 
 /**
- * Roads above the ground (`server/src/world/decks.rs`): each link with an
- * end in the air a ribbon of asphalt from node to node at their heights,
- * its concrete sides hanging under it and a parapet along each; a
- * junction or a bend on a deck its road's own shape (`buildRoadGeometry`)
- * laid over the ribbons; a pier under every node a level or more up. A
- * slope is its tile: the road climbs from the edge it comes in by to the
- * edge it goes out by, the tiles either side of it level (`rise`), as the
- * cars do; the ground's own half of a link to one is the ground's road.
- *
- * Drawn a mesh a level, so the levels above where the hand is can be seen
- * through, as glass, to what is under them.
+ * Roads above the ground (`server/src/world/decks.rs`). A deck's road is
+ * a road tile like the ground's, drawn by the same hand (`roads.ts`), its
+ * shape and paint its tile's, lifted to its height (`liftOf`); a slope's
+ * eased up across its own tile, from the edge it comes in by at the level
+ * below to the edge it goes out by at the level above. Under it, here: its
+ * concrete, the road's own outline carried down a deck's thickness and up
+ * a parapet's, the parapet round every edge that does not run on into
+ * the next tile's road; the deck's underside, which casts its shadow; and
+ * a pier under every node a level or more up.
  */
 
 /** How high a half-level is: a level is a storey and a bit. */
@@ -29,131 +27,87 @@ const DECK = 0.09;
 const PARAPET: [number, number] = [0.045, 0.03];
 /** A pier's side. */
 const PIER = 0.14;
-const ASPHALT = rgb(0.21, 0.2, 0.22);
 const CONCRETE = rgb(0.74, 0.73, 0.7);
+/** How finely an edge is cut, so its concrete bends with an eased slope. */
+const STEP = 0.06;
 
 /** How high a road's surface stands at a height, in half-levels. */
 export const deckZ = (height: number) => ROAD_Z + PAVED_Z + height * HALF_LEVEL;
 
+const ease = (u: number) => u * u * (3 - 2 * u);
+
 /** How high, in half-levels, a road stands a share `f` of the way from a
- *  node at `ha` to one at `hb`: a slope (an odd height) climbs on its own
- *  tile's half of the link, from the other's level at the seam, and the
- *  other's half is level. */
+ *  node at `ha` to one at `hb`: a slope (an odd height) climbs, eased,
+ *  across its own tile, from the level below at one edge to the level
+ *  above at the other; the other's half of the link is level. */
 export function rise(ha: number, hb: number, f: number): number {
-  if (ha % 2) return f < 0.5 ? ha + (hb - ha) * 2 * f : hb;
-  if (hb % 2) return f < 0.5 ? ha : ha + (hb - ha) * (2 * f - 1);
+  const slope = (h: number, toward: number, d: number) => h - 1 + 2 * ease(toward > h ? 0.5 + d : 0.5 - d);
+  if (ha % 2) return f < 0.5 ? slope(ha, hb, f) : hb;
+  if (hb % 2) return f < 0.5 ? ha : slope(hb, ha, 1 - f);
   return ha + (hb - ha) * f;
 }
 
-/** How much of a level above the hand shows: a ghost of it. */
-const GHOST = 0.28;
+/** How a road tile at (x, y) is lifted: how high its low end stands above
+ *  the ground's road, in tiles; the way it climbs, in the world's frame,
+ *  scaled to a share of its run a tile; and how much it climbs. A level
+ *  deck climbs none; a slope two half-levels, from the arm it climbs away
+ *  from to the one it climbs to (`Surface::climb`). */
+export type Lift = [number, number, number, number];
+export function liftOf({ height = 0, climb }: Surface): Lift {
+  if (!(height % 2) || !climb) return [height * HALF_LEVEL, 0, 0, 0];
+  const len2 = climb[0] * climb[0] + climb[1] * climb[1];
+  // The tile's frame is the world's turned half round.
+  return [(height - 1) * HALF_LEVEL, -climb[0] / len2, -climb[1] / len2, 2 * HALF_LEVEL];
+}
 
-interface Level {
-  /** Its top's and its sides' materials, solid and seen through. */
-  solid: TownMaterial[];
-  ghost: TownMaterial[];
-  meshes: Mesh[];
-  seen: boolean;
+/** How high a lifted tile's road stands over a point of it, in its road
+ *  frame (its middle at -0.5, -0.5): `roads.ts`'s shader, here. */
+export function liftAt([z0, dx, dy, dz]: Lift, x: number, y: number): number {
+  const u = Math.max(0, Math.min(1, (x + 0.5) * dx + (y + 0.5) * dy + 0.5));
+  return ROAD_Z + PAVED_Z + z0 + dz * ease(u);
+}
+
+/** A deck's road tile, where it is. */
+export interface DeckPiece {
+  x: number;
+  y: number;
+  surface: Surface;
 }
 
 export class Decks {
-  private levels: Level[] = [];
+  private mesh: Mesh | null = null;
+  private material = townMaterial([], 0.95);
 
   constructor(
     private engine: EngineContext,
     private scene: SceneContext,
     private casters: Casters | undefined,
-  ) {}
-
-  /** Every deck drawn again from the road nodes. */
-  rebuild(each: (f: (e: GameObjectEntry) => void) => void) {
-    const nodes = new Map<number, { x: number; y: number; n: RoadNode }>();
-    each((e) => {
-      if (e.object.kind !== "RoadNode" || !e.position) return;
-      const [x, y] = spot(e.position, e.object.data.side);
-      nodes.set(e.id, { x, y, n: e.object.data });
-    });
-    // By the level each piece belongs to: a link's, its higher end's.
-    const geos = [0, 1, 2, 3].map(() => ({ top: empty(), side: empty() }));
-    const levelOf = (h: number) => Math.ceil(h / 2);
-    const seen = new Set<string>();
-    for (const [id, a] of nodes) {
-      const arms = [...new Set([...a.n.outgoing, ...a.n.incoming])].filter((o) => nodes.has(o));
-      for (const o of arms) {
-        const b = nodes.get(o)!;
-        if (!a.n.height && !b.n.height) continue;
-        const k = id < o ? `${id},${o}` : `${o},${id}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        const g = geos[levelOf(Math.max(a.n.height, b.n.height))];
-        // Half a link a tile, from its node to the seam: the ground's half
-        // is the ground's road.
-        const seam = rise(a.n.height, b.n.height, 0.5);
-        const mid: V3 = [(a.x + b.x) / 2, (a.y + b.y) / 2, deckZ(seam)];
-        for (const [p, q] of [[a, mid], [b, mid]] as const) {
-          if (p.n.height || seam) ribbon(g.top, g.side, [p.x, p.y, deckZ(p.n.height)], q, widthOf(a.n, id, b.n, o));
-        }
-      }
-      if (!a.n.height) continue;
-      const g = geos[levelOf(a.n.height)];
-      // A junction's, a bend's or an end's shape over the ribbons; a slope
-      // and a straight run need none.
-      const ways = arms.map((o) => ({ angle: Math.atan2(nodes.get(o)!.y - a.y, nodes.get(o)!.x - a.x), hw: widthOf(a.n, id, nodes.get(o)!.n, o) }));
-      const straight = ways.length === 2 && Math.abs(Math.abs(ways[0].angle - ways[1].angle) - Math.PI) < 1e-6;
-      if (a.n.height % 2 === 0 && !straight) cap(g.top, g.side, ways, [a.x, a.y, deckZ(a.n.height)]);
-      if (a.n.height >= 2) pier(g.side, [a.x, a.y], deckZ(a.n.height) - DECK);
-    }
-    this.clear();
-    const made = (ghost: boolean) =>
-      ([[ASPHALT, 0.75], [CONCRETE, 0.95]] as const).map(([colour, rough]) => {
-        const m = townMaterial([], rough);
-        setTint(m, colour);
-        if (ghost) Object.assign(m, { alpha: GHOST, alphaBlend: true });
-        return m;
-      });
-    this.levels = geos.map((g, level) => {
-      const [solid, ghost] = [made(false), made(true)];
-      const meshes = ([g.top, g.side] as MeshGeometry[]).flatMap((geo, i) => {
-        if (!geo.indices.length) return [];
-        const mesh = meshOf(this.engine, `deck_${level}_${i}`, geo);
-        mesh.material = solid[i];
-        mesh.receiveShadows = true;
-        show(this.scene, mesh);
-        this.casters?.add(mesh);
-        return [mesh];
-      });
-      return { solid, ghost, meshes, seen: false };
-    });
+  ) {
+    setTint(this.material, CONCRETE);
   }
 
-  /** The hand is at this level: those above it are seen through, and
-   *  cast no shadow. */
-  seeThroughAbove(level: number) {
-    this.levels.forEach((l, i) => {
-      const seen = i > level;
-      if (l.seen === seen) return;
-      l.seen = seen;
-      for (const mesh of l.meshes) {
-        const kind = mesh.name.endsWith("_0") ? 0 : 1;
-        mesh.material = (seen ? l.ghost : l.solid)[kind];
-        if (seen) this.casters?.remove(mesh);
-        else this.casters?.add(mesh);
-        markMeshRenderableDirty(mesh);
-      }
-    });
+  /** The concrete under every deck tile drawn again. */
+  rebuild(pieces: Iterable<DeckPiece>) {
+    const g: MeshGeometry = { positions: [], normals: [], indices: [] };
+    for (const { x, y, surface } of pieces) concrete(g, surface, x + 1, y + 1);
+    this.clear();
+    if (!g.indices.length) return;
+    this.mesh = meshOf(this.engine, "deck_concrete", g);
+    this.mesh.material = this.material;
+    this.mesh.receiveShadows = true;
+    show(this.scene, this.mesh);
+    this.casters?.add(this.mesh);
   }
 
   private clear() {
-    for (const l of this.levels) for (const m of l.meshes) (this.casters?.remove(m), drop(this.scene, m));
-    this.levels = [];
+    if (this.mesh) (this.casters?.remove(this.mesh), drop(this.scene, this.mesh));
+    this.mesh = null;
   }
 
   dispose() {
     this.clear();
   }
 }
-
-const empty = (): MeshGeometry => ({ positions: [], normals: [], indices: [] });
 
 type V3 = [number, number, number];
 
@@ -170,51 +124,60 @@ function quad(g: MeshGeometry, a: V3, b: V3, c: V3, d: V3) {
   g.indices.push(i, i + 2, i + 1, i, i + 3, i + 2);
 }
 
-/** How wide a link's deck is either side of its middle: a one-way's of
- *  one lane thin, as on the ground (`surface.ts`). */
-const THIN = 0.13;
-function widthOf(a: RoadNode, aId: number, b: RoadNode, bId: number): number {
-  const [out, back] = [a.outgoing.includes(bId), b.outgoing.includes(aId)];
-  return out !== back && !a.wide.includes(bId) && !b.wide.includes(aId) ? THIN : HALF_W;
-}
-
-/** A link's deck from one node's middle to the other's: its road on top,
- *  its sides hanging under it, and a parapet along each edge. */
-function ribbon(top: MeshGeometry, side: MeshGeometry, a: V3, b: V3, hw: number) {
-  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-  const [nx, ny] = [-(b[1] - a[1]) / len, (b[0] - a[0]) / len];
-  const at = (p: V3, s: number, dz = 0): V3 => [p[0] + nx * hw * s, p[1] + ny * hw * s, p[2] + dz];
-  quad(top, at(a, -1), at(b, -1), at(b, 1), at(a, 1));
-  for (const s of [1, -1]) {
-    // The side: from the road's edge down the deck's thickness, facing out.
-    const [p, q] = s > 0 ? [a, b] : [b, a];
-    quad(side, at(p, s), at(q, s), at(q, s, -DECK), at(p, s, -DECK));
-    // The parapet: a low wall on the edge.
-    const inner = (pt: V3, dz: number): V3 => [pt[0] + nx * (hw - PARAPET[1]) * s, pt[1] + ny * (hw - PARAPET[1]) * s, pt[2] + dz];
-    quad(side, at(q, s, PARAPET[0]), at(p, s, PARAPET[0]), inner(p, PARAPET[0]), inner(q, PARAPET[0]));
-    quad(side, at(q, s), at(p, s), at(p, s, PARAPET[0]), at(q, s, PARAPET[0]));
-    quad(side, inner(p, 0), inner(q, 0), inner(q, PARAPET[0]), inner(p, PARAPET[0]));
+/** A ring cut so no edge is longer than `STEP`. */
+function finer(ring: Pt[]): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const [a, b] = [ring[i], ring[(i + 1) % ring.length]];
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / STEP));
+    for (let k = 0; k < n; k++) out.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
   }
+  return out;
 }
 
-/** A deck node's road shape, as a ground junction's is, over the ribbons;
- *  its rim hanging down. */
-function cap(top: MeshGeometry, side: MeshGeometry, ways: { angle: number; hw: number }[], [x, y, z]: V3) {
-  const arms: ArmInfo[] = ways.map(({ angle: a, hw }) => ({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway", hw }));
-  const geo = buildRoadGeometry(arms, HALF_W, 0);
-  if (!geo) return;
-  const i0 = top.positions.length / 3;
-  for (let i = 0; i < geo.positions.length; i += 3) top.positions.push(x + geo.positions[i], y + geo.positions[i + 1], z + 0.002), top.normals.push(0, 0, 1);
-  for (let i = 0; i < geo.indices.length; i += 3) top.indices.push(i0 + geo.indices[i], i0 + geo.indices[i + 1], i0 + geo.indices[i + 2]);
-  void side;
-}
-
-/** A square pier from the ground up to the deck's underside. */
-function pier(side: MeshGeometry, [x, y]: [number, number], z: number) {
-  const r = PIER / 2;
-  const c: [number, number][] = [[x - r, y - r], [x + r, y - r], [x + r, y + r], [x - r, y + r]];
-  for (let k = 0; k < 4; k++) {
-    const [p, q] = [c[k], c[(k + 1) % 4]];
-    quad(side, [p[0], p[1], 0], [q[0], q[1], 0], [q[0], q[1], z], [p[0], p[1], z]);
+/** A deck tile's concrete, placed at (ox, oy): its road's outline in the
+ *  tile's frame, as `roads.ts` draws it, carried down to the underside and
+ *  up a parapet where it does not run on; the underside; and a pier under
+ *  its node, a level or more up. */
+function concrete(g: MeshGeometry, surface: Surface, ox: number, oy: number) {
+  const lift = liftOf(surface);
+  const past = runsOn(surface);
+  // The road frame: the tile's turned half round, its middle at -0.5.
+  const top = ([x, y]: Pt, dz = 0): V3 => [ox - x, oy - y, liftAt(lift, -x, -y) + dz];
+  const polys = shapeOf(surface).map((poly) => poly.map(finer));
+  for (const [k, ring] of polys.flatMap((poly) => poly.map((ring, k) => [k, ring] as const))) {
+    // Inward is to the left of an outline wound one way, of a hole the other.
+    const turn = (area(ring) > 0) === (k === 0) ? 1 : -1;
+    for (let i = 0; i < ring.length; i++) {
+      const [a, b] = [ring[i], ring[(i + 1) % ring.length]];
+      if (past([-a[0], -a[1]], [-b[0], -b[1]])) continue;
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      const [nx, ny] = [(-(b[1] - a[1]) / len) * turn * PARAPET[1], ((b[0] - a[0]) / len) * turn * PARAPET[1]];
+      const [ai, bi]: Pt[] = [[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny]];
+      // The side, from under the deck up to the parapet's top, facing out;
+      // the parapet's top; its face to the road.
+      quad(g, top(b, -DECK), top(a, -DECK), top(a, PARAPET[0]), top(b, PARAPET[0]));
+      quad(g, top(b, PARAPET[0]), top(a, PARAPET[0]), top(ai, PARAPET[0]), top(bi, PARAPET[0]));
+      quad(g, top(bi, PARAPET[0]), top(ai, PARAPET[0]), top(ai), top(bi));
+    }
+  }
+  // The underside, a deck's thickness down, as the road above it lies.
+  const under = flatPolygons(polys, 0);
+  const b0 = g.positions.length / 3;
+  for (let i = 0; i < under.positions.length; i += 3) {
+    const [x, y] = [under.positions[i], under.positions[i + 1]];
+    g.positions.push(ox + x, oy + y, liftAt(lift, x, y) - DECK);
+    g.normals.push(0, 0, 1);
+  }
+  for (const i of under.indices) g.indices.push(b0 + i);
+  // A pier under a level's node, from the ground up.
+  if ((surface.height ?? 0) >= 2 && !((surface.height ?? 0) % 2)) {
+    const [x, y, z] = top([0.5 + (surface.shift?.[0] ?? 0), 0.5 + (surface.shift?.[1] ?? 0)], -DECK);
+    const r = PIER / 2;
+    const c: [number, number][] = [[x - r, y - r], [x + r, y - r], [x + r, y + r], [x - r, y + r]];
+    for (let k = 0; k < 4; k++) {
+      const [p, q] = [c[k], c[(k + 1) % 4]];
+      quad(g, [p[0], p[1], 0], [q[0], q[1], 0], [q[0], q[1], z], [p[0], p[1], z]);
+    }
   }
 }

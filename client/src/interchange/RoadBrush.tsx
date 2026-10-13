@@ -31,8 +31,8 @@ import type { Bounds } from "../engine/OrthoCamera";
  * into the slope to the new height, where it may be one: the road ends
  * there, nothing else joins it, it came to it on the level, and the tile
  * has room for a slope. The next step goes on from it at the new height.
- * Where it may not be, the pen keeps its height; with no road laid, the
- * pen alone changes.
+ * Where it may not be, the pen alone changes, and the next tile drawn is
+ * the slope; straight after a slope, neither.
  *
  * The dots show where a drag may start and, while dragging, the steps the
  * tile underfoot allows (`dots.ts`), as the town's brush does.
@@ -116,12 +116,17 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     if (current && current.x === to.x && current.y === to.y) place = up;
     setPen((h + by) / 2);
   };
-  /** What ↑ and ↓ do now. */
+  /** What ↑ and ↓ do now: make the end of the last road laid the slope,
+   *  where it may be one; else move the pen, and the next tile drawn is
+   *  the slope; but not straight after a slope, which is never two. */
   const offerClimb = () => {
     const linked = !!world && !!last && !!nodeIn(world, last.to, last.pt.h, last.pt.s);
-    if (!linked) return setClimb({ up: pen() < 3 ? free(1) : null, down: pen() > 0 ? free(-1) : null });
-    const [up, down] = [slopeTo(1), slopeTo(-1)];
-    setClimb({ up: up === null ? null : () => makeSlope(1, up), down: down === null ? null : () => makeSlope(-1, down) });
+    const [up, down] = linked ? [slopeTo(1), slopeTo(-1)] : [null, null];
+    const sloped = linked && last!.pt.h % 2 === 1;
+    setClimb({
+      up: up !== null ? () => makeSlope(1, up) : pen() < 3 && !sloped ? free(1) : null,
+      down: down !== null ? () => makeSlope(-1, down) : pen() > 0 && !sloped ? free(-1) : null,
+    });
   };
   /** Where a drag pressed here, at this point of the tile, stands: on the
    *  road at the pen's height, or the one there nearest it, the nearer

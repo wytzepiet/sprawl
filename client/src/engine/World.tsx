@@ -23,8 +23,7 @@ import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
-import { aim, pen, tool } from "../ui/buildMode";
-import { Decks } from "./decks";
+import { aim } from "../ui/buildMode";
 
 interface MountedEntry {
   kind: string;
@@ -93,21 +92,6 @@ export default function World(props: { brush?: (ground: (x: number, y: number) =
   const town = new TownLayer(ctx, casters()!, theme, eachEntity, (x, y) => terrain.typeAt(x, y), lookOf);
 
   createEffect(on(theme, () => (terrain.markAllDirty(), town.repaint()), { defer: true }));
-  // The roads above the ground, drawn again a frame after any road changes.
-  const decks = new Decks(ctx.engine, ctx.scene, casters());
-  let decksDue = false;
-  const redeck = () => {
-    if (decksDue) return;
-    decksDue = true;
-    requestAnimationFrame(() => {
-      decksDue = false;
-      decks.rebuild(eachEntity);
-      decks.seeThroughAbove(seen());
-    });
-  };
-  // Building, the levels above the pen are seen through; looking, none.
-  const seen = () => (tool() === null ? Infinity : pen());
-  createEffect(() => decks.seeThroughAbove(seen()));
   // The building in hand, drawn where it would stand.
   createEffect(() => town.hold(aim()));
   if (import.meta.env.DEV) Object.assign(window, { sprawlHeldMs: town.previewMs });
@@ -165,7 +149,6 @@ export default function World(props: { brush?: (ground: (x: number, y: number) =
         if (entry?.object.kind === "RoadNode" && entry.position) roadAt.set(key, entry.position);
         else roadAt.delete(key);
       }
-      if (entry?.object.kind === "RoadNode" || roadAt.has(key) || (!entry && was !== undefined)) redeck();
       if (!entry) continue;
       const cleanup = mount(entry);
       if (cleanup) mounted.set(key, { kind: entry.object.kind, cleanup, covers: same ? existing!.covers : entry.object.kind === "Building" ? cover(entry) : undefined });
@@ -216,7 +199,6 @@ export default function World(props: { brush?: (ground: (x: number, y: number) =
     mounted.clear();
     town.dispose();
     terrain.dispose();
-    decks.dispose();
   });
 
   const ground = (x: number, y: number) => terrain.typeAt(x, y);

@@ -45,6 +45,10 @@ export interface Surface {
   /** How far the road stands moved from the tile's middle: one of two
    *  sharing it side by side. */
   shift?: Pt;
+  /** How high it stands, in half-levels (`RoadNode::height`); and, a
+   *  slope, the way to the arm it climbs to (`decks.ts`). */
+  height?: number;
+  climb?: Pt;
 }
 
 /** How round the asphalt's corners are, in and out. */
@@ -223,9 +227,9 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
       arms: EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr)).map(([dc, dr]) => ({ dc, dr, flow: town.flow?.(c, r, c + dc, r + dr) ?? "t", shift: [0, 0], through: town.through(c + dc, r + dr) })),
     },
   ];
-  return views.map(({ shift, through, light, arms }) => {
+  return views.map(({ shift, through, light, arms, height = 0, climb }) => {
     const own: Way[] = arms.map(({ dc, dr, flow, shift: there, through: on }) => [dc, dr, on === through, flow, there]);
-    if (shift[0] || shift[1]) return { through, light, ways: own, rects: [], shift };
+    if (shift[0] || shift[1] || height) return { through, light, ways: own, rects: [], shift, height, climb };
     // The middle's: out to the doors that open onto it, and its bays.
     for (const [dc, dr] of EIGHT) {
       const back = drive(town, c + dc, r + dr);
