@@ -168,17 +168,26 @@ fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f
             let at = if out_of_lot { at.max(trip.segment_lengths[1..=trip.from_lot].iter().sum()) } else { at };
             let mine = at - trip.segment_lengths[1..k].iter().sum::<f64>();
             let behind = |o: EntityId| position_on(world, o, edge, now).is_some_and(|p| p < mine);
+            // Ahead of whoever is behind it: at a merge, two cars granted
+            // the junction together join the road out in the order they
+            // stand, and the one behind follows the one ahead.
             let cars = &world.edges[&edge].cars;
-            let i = match cars.back() {
-                Some(&last) if out_of_lot && behind(last) => cars.iter().position(|&o| behind(o)).unwrap(),
-                _ => cars.len(),
-            };
+            let i = cars.iter().position(|&o| behind(o)).unwrap_or(cars.len());
             world.edges.get_mut(&edge).unwrap().cars.insert(i, car_id);
         }
         if world.network.is_junction(trip.route[k]) {
             break;
         }
     }
+}
+
+/// Is this car coming to a junction by another arm than `mine`, not yet
+/// through it: a car merging from the side.
+fn from_another_arm(world: &World, car_id: EntityId, junction: EntityId, mine: EntityId) -> bool {
+    let Some(GameObject::Car(c)) = world.objects.get(car_id).map(|e| &e.object) else { return false };
+    let Some(t) = c.trip.as_ref() else { return false };
+    let Some(i) = t.route.iter().position(|&n| n == junction) else { return false };
+    i > 0 && i >= t.route_index && t.route[i - 1] != mine
 }
 
 /// Where a car is on its route, measured from the start of one of its
@@ -724,7 +733,11 @@ pub fn handle_car_wake_up(
             obstacles.push(obs);
         }
     }
-    // Also check the next edge — we may be pre-registered there
+    // Also check the next edge — we may be pre-registered there. At a
+    // merge the car ahead there came from another arm; its distance to the
+    // road out against ours is the gap to keep, and one ahead in the queue
+    // but behind on the road is let go first, at the line.
+    let mut give_way = false;
     if ri + 1 < trip.route.len() {
         let next_edge: EdgeKey = (trip.route[ri], trip.route[ri + 1]);
         if let Some(next_seg) = world.edges.get(&next_edge)
@@ -732,10 +745,9 @@ pub fn handle_car_wake_up(
             && my_pos > 0
         {
             let lead_id = next_seg.cars[my_pos - 1];
-            if let Some(obs) =
-                lead_car_obstacle(world, &trip, role, next_edge, cur_progress, lead_id, now)
-            {
-                obstacles.push(obs);
+            match lead_car_obstacle(world, &trip, role, next_edge, cur_progress, lead_id, now) {
+                Some(obs) => obstacles.push(obs),
+                None => give_way = world.is_intersection(next_edge.0) && from_another_arm(world, lead_id, next_edge.0, trip.route[ri - 1]),
             }
         }
     }
@@ -794,6 +806,9 @@ pub fn handle_car_wake_up(
     if held(world, car_id, trip.route[ri]) {
         obstacles.push(Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) });
         turn_ahead = true;
+    }
+    if give_way {
+        obstacles.push(Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) });
     }
 
     // Scan forward nodes
@@ -882,6 +897,14 @@ pub fn handle_car_wake_up(
     if accel_changed {
         let delay = if new_accel < 0.0 { 50 } else { 150 };
         if let Some(behind) = world.car_behind_on_edge(current_edge, car_id) {
+            events.wake(delay, behind);
+        }
+        // And whoever follows it onto the road out of the junction ahead:
+        // at a merge, a car from the other arm.
+        if ri + 1 < trip.route.len()
+            && let Some(behind) = world.car_behind_on_edge((trip.route[ri], trip.route[ri + 1]), car_id)
+            && from_another_arm(world, behind, trip.route[ri], trip.route[ri - 1])
+        {
             events.wake(delay, behind);
         }
         // Cross-edge: front car on previous edge

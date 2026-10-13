@@ -55,6 +55,23 @@ pub fn paths_conflict((w_from, w_to): (Dir, Dir), (p_from, p_to): (Dir, Dir)) ->
     (p_from > 0.0 && p_from < w_to) || (p_to > 0.0 && p_to <= w_to)
 }
 
+/// Right-hand traffic, as `paths_conflict`, but two cars bound for the
+/// same exit from different arms do not exclude each other: they merge,
+/// the one behind following the one ahead on the road out
+/// (`car::simulation`'s `join_run`), easing in rather than stopping.
+pub fn paths_cross((w_from, w_to): (Dir, Dir), (p_from, p_to): (Dir, Dir)) -> bool {
+    if w_from == p_from {
+        return false;
+    }
+    let base = dir_angle(w_from);
+    let tau = std::f64::consts::TAU;
+    let ccw = |d: Dir| (dir_angle(d) - base).rem_euclid(tau);
+    let w_to = ccw(w_to);
+    let p_from = ccw(p_from);
+    let p_to = ccw(p_to);
+    (p_from > 0.0 && p_from < w_to) || (p_to > 0.0 && p_to < w_to - 1e-9)
+}
+
 /// FIFO intersection manager. Cars with non-crossing paths can go simultaneously.
 ///
 /// Two separate lists:
@@ -122,7 +139,9 @@ impl IntersectionManager {
         let mut newly_granted = Vec::new();
         while let Some(i) = self.queue.iter().position(|e| e.major).or((!self.queue.is_empty()).then_some(0)) {
             let next = self.queue[i];
-            let dominated = self.passing.iter().any(|p| (self.rule)((next.from, next.to), (p.from, p.to)));
+            // A merge is no conflict between equals; onto a priority road
+            // from a minor one it is: the minor gives way.
+            let dominated = self.passing.iter().any(|p| (self.rule)((next.from, next.to), (p.from, p.to)) || (next.to == p.to && next.major != p.major));
             if dominated {
                 break;
             }
@@ -186,7 +205,7 @@ impl IntersectionRegistry {
     }
 
     pub fn get_or_create(&mut self, node_id: EntityId) -> &mut IntersectionManager {
-        self.get_or_create_with(node_id, paths_conflict)
+        self.get_or_create_with(node_id, paths_cross)
     }
 
     /// A junction that keeps its own rule (a sea's: `shipping::lanes`).
