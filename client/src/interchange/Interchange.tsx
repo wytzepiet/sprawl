@@ -9,7 +9,7 @@ import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
 import { ThemeProvider } from "../engine/theme";
 import Glass from "../ui/Glass";
 import { projector } from "../engine/view";
-import { pen, setPen, setTool, tool } from "../ui/buildMode";
+import { pen, priority, setPen, setPriority, setTool, tool } from "../ui/buildMode";
 import type { LevelState, Tool } from "../generated";
 import { connectLevel, type LevelConnection } from "./connection";
 import { RoadBrush } from "./RoadBrush";
@@ -38,21 +38,34 @@ export default function Interchange() {
   );
 }
 
-const TOOLS: { tool: Tool; key: string; label: string; icon: string }[] = [
-  { tool: "Street", key: "1", label: "Two-way road", icon: "⇄" },
-  { tool: "OneWay", key: "2", label: "One-way road: runs the way you drag. Against another, a divided road", icon: "→" },
-  { tool: "Wide", key: "3", label: "Two-lane one-way: cars keep right to turn right, left to turn left", icon: "⇉" },
-  { tool: "Road", key: "4", label: "Priority road: whoever joins or crosses it gives way", icon: "⇶" },
-  { tool: "Light", key: "L", label: "Traffic lights: tap a junction (again to take them away)", icon: "◉" },
-  { tool: "Demolish", key: "E", label: "Eraser (or hold Shift)", icon: "⌫" },
+/** The palette: each tool its name, its key, what it does, and its
+ *  picture (a path in a 24 square, its holes cut even-odd). */
+const TOOLS: { tool: Tool; key: string; name: string; label: string; glyph: string }[] = [
+  { tool: "Street", key: "1", name: "Two-way", label: "A road both ways", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
+  { tool: "OneWay", key: "2", name: "One-way", label: "Runs the way you drag; laid back against another, a divided road", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
+  { tool: "Wide", key: "3", name: "Two lanes", label: "One-way, two lanes: cars keep right to turn right, left to turn left", glyph: "M1.5 2h2v20h-2zM20.5 2h2v20h-2zM8 4l3.5 5H9v12H7V9H4.5zM16 4l3.5 5H17v12h-2V9h-2.5z" },
+  { tool: "Light", key: "L", name: "Lights", label: "Tap a junction for traffic lights, again to take them away", glyph: "M8 1.5h8A1.5 1.5 0 0 1 17.5 3v18a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 21V3A1.5 1.5 0 0 1 8 1.5zM12 3.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 9.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 15.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z" },
+  { tool: "Demolish", key: "E", name: "Eraser", label: "Takes up road (or hold Shift)", glyph: "M14.5 2.5 21.5 9.5 11 20H6.5L2.5 16zM4.6 16 7.1 18.5h3.1l2.3-2.3-5.6-5.6zM13 20.5h8.5V22H13z" },
 ];
+/** The priority road's sign, a diamond in a diamond. */
+const DIAMOND = "M12 1 23 12 12 23 1 12zM12 4.2 19.8 12 12 19.8 4.2 12z";
+const DIAMOND_IN = "M12 6.8 17.2 12 12 17.2 6.8 12z";
+
+function Glyph(props: { d: string; fill?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} fill="currentColor" fill-rule="evenodd" aria-hidden="true">
+      <path d={props.d} fill={props.fill} />
+    </svg>
+  );
+}
 
 function Play(props: { level: LevelText; back: () => void; next: () => void }) {
   const [state, setState] = createSignal<LevelState | null>(null);
   let line: LevelConnection | null = null;
   pinTimeOfDay(0.42);
   setPen(0);
-  onCleanup(() => (pinTimeOfDay(null), setPen(0)));
+  setPriority(false);
+  onCleanup(() => (pinTimeOfDay(null), setPen(0), setPriority(false)));
   const bounds = (): Bounds | null => {
     const s = state();
     return s && { x0: s.min_x, y0: s.min_y, x1: s.max_x, y1: s.max_y };
@@ -65,6 +78,7 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const t = TOOLS.find((t) => t.key.toLowerCase() === e.key.toLowerCase());
     if (t) setTool(t.tool);
+    else if (e.key.toLowerCase() === "p") setPriority(!priority());
     else if (e.key.toLowerCase() === "r") setPen(Math.min(3, pen() + 1));
     else if (e.key.toLowerCase() === "f") setPen(Math.max(0, pen() - 1));
     else if (e.key === "Escape") props.back();
@@ -255,7 +269,7 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
           </span>
         </div>
         <div class="soft mt-2 text-[11px] leading-snug">
-          Drag to draw · Shift to erase · R/F raise or lower · Z undo · Space test · right-drag to pan
+          Drag to draw · Shift to erase · P priority · R/F raise or lower · Z undo · Space test · right-drag to pan
         </div>
         <Show when={s()?.phase === "Build" && (s()?.cost ?? 0) > 0}>
           <button class="press soft mt-2 text-[12px] underline cursor-pointer" onClick={() => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" })}>
@@ -264,6 +278,15 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
         </Show>
       </div>
 
+      {/* What the hand holds, said over the palette. */}
+      <Show when={TOOLS.find((t) => t.tool === tool())}>
+        {(t) => (
+          <div class="ink pointer-events-none fixed bottom-[84px] left-1/2 z-50 -translate-x-1/2 whitespace-nowrap text-[13px] select-none" style={{ "text-shadow": "0 1px 3px rgb(255 255 255 / 0.8)" }}>
+            <span class="font-semibold">{t().name}{t().tool !== "Light" && t().tool !== "Demolish" && priority() ? ", priority" : ""}</span>
+            <span class="soft"> · {t().label}</span>
+          </div>
+        )}
+      </Show>
       {/* The road palette. */}
       <div data-glass="bar" class="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-full p-1.5 select-none">
         <For each={TOOLS}>
@@ -272,13 +295,28 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
               class="press flex h-11 w-11 flex-col items-center justify-center rounded-full cursor-pointer"
               classList={{ soft: tool() !== t.tool }}
               style={tool() === t.tool ? dark : {}}
-              title={`${t.label} (${t.key})`}
+              title={`${t.name}: ${t.label} (${t.key})`}
               onClick={() => setTool(t.tool)}
             >
-              <span class="text-lg leading-none">{t.icon}</span>
+              <Glyph d={t.glyph} />
             </button>
           )}
         </For>
+        <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
+        {/* Priority: whatever road is drawn with it on has it. */}
+        <button
+          class="press flex h-11 items-center gap-1.5 rounded-full px-3 cursor-pointer text-[13px] font-semibold"
+          classList={{ soft: !priority() }}
+          style={priority() ? dark : {}}
+          title="Priority: whoever joins or crosses a road drawn with it gives way. Draw along a road to give it priority, or take it (P)"
+          onClick={() => setPriority(!priority())}
+        >
+          <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden="true">
+            <path d={DIAMOND} fill="currentColor" fill-rule="evenodd" />
+            <path d={DIAMOND_IN} fill={priority() ? "#E0B443" : "currentColor"} />
+          </svg>
+          Priority
+        </button>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         {/* The pen's height: the road drawn after a change climbs to it. */}
         <div class="flex items-center gap-0.5" title="How high you draw: the next tile climbs to it (R up, F down)">

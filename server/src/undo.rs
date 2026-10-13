@@ -162,8 +162,8 @@ pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act
     if step.tool == Tool::Light {
         return None;
     }
-    let road = matches!(step.tool, Tool::Street | Tool::OneWay | Tool::Road | Tool::Wide);
-    let link = Link { from: step.from, to: step.to, one_way: matches!(step.tool, Tool::OneWay | Tool::Wide), road: step.tool == Tool::Road, up: step.up.unwrap_or_default(), wide: step.tool == Tool::Wide };
+    let road = matches!(step.tool, Tool::Street | Tool::OneWay | Tool::Wide);
+    let link = Link { from: step.from, to: step.to, one_way: matches!(step.tool, Tool::OneWay | Tool::Wide), road: step.road, up: step.up.unwrap_or_default(), wide: step.tool == Tool::Wide };
     let express = paid.coins;
     let history = world.undo.entry(owner).or_default();
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);

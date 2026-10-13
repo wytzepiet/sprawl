@@ -25,6 +25,11 @@ pub struct Build {
     #[serde(default)]
     #[ts(optional)]
     pub up: Option<[u8; 2]>,
+    /// The road laid has priority (`RoadNode::road`): whoever joins or
+    /// crosses it gives way. Along a road already there, it gains or loses
+    /// it.
+    #[serde(default)]
+    pub road: bool,
 }
 
 /// What the mayor's hand holds.
@@ -35,8 +40,6 @@ pub enum Tool {
     Street,
     /// A street one way, `from` to `to`.
     OneWay,
-    /// A road: a through route nothing fronts onto.
-    Road,
     /// Whatever stands on `to`, a building whole; a drag cuts the road
     /// between its tiles.
     Demolish,

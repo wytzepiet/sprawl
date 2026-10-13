@@ -136,10 +136,16 @@ impl World {
         lanes
     }
 
-    /// Give a node priority: a through road's.
-    pub fn make_road(&mut self, id: EntityId) {
-        if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(id).map(|e| &mut e.object) {
-            n.road = true;
+    /// The road between two nodes given priority, or its priority taken:
+    /// both ends made through road's, or each end that no other through
+    /// road reaches made a street's, so the rest of a priority road it
+    /// runs off keeps it.
+    pub fn set_priority(&mut self, a: EntityId, b: EntityId, road: bool) {
+        for (n, other) in [(a, b), (b, a)] {
+            let kept = road || self.arms_of(n, false).into_iter().any(|m| m != other && self.is_road(m));
+            if let Some(GameObject::RoadNode(node)) = self.objects.get_mut(n).map(|e| &mut e.object) {
+                node.road = kept && (road || node.road);
+            }
         }
     }
 

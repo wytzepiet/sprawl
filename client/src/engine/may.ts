@@ -185,23 +185,24 @@ export function snap(dx: number, dy: number): number {
   return ((Math.round((Math.atan2(dy, dx) * 4) / Math.PI) % 8) + 8) % 8;
 }
 
-/** May the hand take this step with this tool: the world's rule. */
-export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolean {
+/** May the hand take this step with this tool, and priority or not
+ *  (`Build.road`): the world's rule. */
+export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord, road = false): boolean {
   if (tool === "Light") return mayAt(h, tool, from, 0, to, 0);
   if (tool === "Demolish") {
     if (from.x === to.x && from.y === to.y) return h.roads.has(key(to.x, to.y)) || h.occupied.has(key(to.x, to.y));
     return Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1 && connected(h, from, to);
   }
   // Into a building is its door, and a through road is no door.
-  if (tool === "Road" && h.occupied.has(key(to.x, to.y))) return false;
+  if (road && h.occupied.has(key(to.x, to.y))) return false;
   return mayLay(h, from, to, tool === "OneWay" || tool === "Wide");
 }
 
 /** May a drag start here: a tap that does something, or a step out. */
-export function mayStart(h: Hand, tool: Tool, at: GridCoord): boolean {
-  if (may(h, tool, at, at)) return true;
+export function mayStart(h: Hand, tool: Tool, at: GridCoord, road = false): boolean {
+  if (mayAt(h, tool, at, 0, at, 0, road)) return true;
   // What is taken away is taken where it stands; lights go where they go.
-  return tool !== "Demolish" && tool !== "Light" && STEPS.some(([dx, dy]) => may(h, tool, at, { x: at.x + dx, y: at.y + dy }));
+  return tool !== "Demolish" && tool !== "Light" && STEPS.some(([dx, dy]) => mayAt(h, tool, at, 0, { x: at.x + dx, y: at.y + dy }, 0, road));
 }
 
 const nodeAt = (h: Hand, t: GridCoord) => h.roads.get(key(t.x, t.y));
@@ -255,7 +256,7 @@ function slopeTakes(h: Hand, at: GridCoord, height: number, [dx, dy]: [number, n
 /** `World::may_lay_at`, and the demolisher at a height: the hand's step
  *  from one tile at one height to the next at another. On the ground,
  *  `may`. */
-export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number): boolean {
+export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number, road = false): boolean {
   // Lights, on a junction or off one: a tap.
   if (tool === "Light") {
     const n = nodeAtH(h, to, ht);
@@ -268,12 +269,14 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
   }
   const oneWay = tool === "OneWay" || tool === "Wide";
   const [dx, dy] = [to.x - from.x, to.y - from.y];
-  // Along a one-way the way it runs, the other one-way tool: a lane more,
-  // or less; the priority road's: priority (`game::may_step`).
+  // Along a road, priority it has not, or has and the hand not; along a
+  // one-way the way it runs, the other one-way tool: a lane more, or less
+  // (`game::may_step`).
   const [na, nb] = [nodeAtH(h, from, hf), nodeAtH(h, to, ht)];
-  if (na && nb && edge(na, nb) && !edge(nb, na) && (tool === "Road" || (oneWay && na.node.wide.includes(nb.id) !== (tool === "Wide")))) return true;
+  if (na && nb && (edge(na, nb) || edge(nb, na)) && (na.node.road && nb.node.road) !== road) return true;
+  if (oneWay && na && nb && edge(na, nb) && !edge(nb, na) && na.node.wide.includes(nb.id) !== (tool === "Wide")) return true;
   if ((dx === 0 && dy === 0) || Math.abs(dx) > 1 || Math.abs(dy) > 1 || hf > TOP || ht > TOP) return false;
-  if (hf === 0 && ht === 0) return may(h, tool, from, to) && roomAt(h, from, 0) && roomAt(h, to, 0);
+  if (hf === 0 && ht === 0) return may(h, tool, from, to, road) && roomAt(h, from, 0) && roomAt(h, to, 0);
   if (Math.abs(hf - ht) > 1 || (hf === ht && hf % 2 === 1)) return false;
   if (!roomAt(h, from, hf) || !roomAt(h, to, ht)) return false;
   for (const [t, height] of [[from, hf], [to, ht]] as const) {

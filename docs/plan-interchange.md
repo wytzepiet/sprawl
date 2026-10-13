@@ -461,13 +461,16 @@ What runs, and where; the rest of the order above is still to come.
 - **The client** (`client/src/interchange/`): `/interchange` is the map of
   levels (`@at`), each opening its neighbours; a level keeps what was
   built on it. The camera keeps to the map, fog past it, the gates
-  labelled. The road brush: two-way, one-way, priority road, eraser
-  (Shift), the pen's height (R, F); Space tests, Z undoes.
+  labelled. The road brush: two-way, one-way, two lanes, lights, eraser
+  (Shift), priority (P), the pen's height (R, F); Space tests, Z undoes.
 - **Paint**: dashed centre lines, one-way arrows, shark's teeth.
 - **Shallow joins**: the turn rule is about the turns a car can make.
 - **The divided road**: a one-way laid against a one-way, grass between,
   right turns only (`World::divided`, `pathfinding::may_turn`).
 - **Priority**: a through road is let through first at a junction.
+  Priority is the hand's, not a kind of road (`Build.road`): any road
+  drawn with it on has it, and drawn along again, gains or loses it.
+  The town's Road is a street drawn with it.
 - **Overpasses** (`world/decks.rs`, `client/src/engine/decks.ts`): node
   heights in half-levels, slopes, clearance, decks drawn and hatched
   above the pen, cars lifted.

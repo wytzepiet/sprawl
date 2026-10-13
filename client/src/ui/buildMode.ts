@@ -34,7 +34,7 @@ export const turn = (by: number) => {
 export const inHand = () => tool() !== null || held() !== null;
 
 /** The tools that lay road. */
-export const ROADS = ["Street", "OneWay", "Road"] as const;
+export const ROADS = ["Street", "OneWay", "Wide"] as const;
 export const isRoad = (t: Tool | null) => (ROADS as readonly unknown[]).includes(t);
 
 /** Where the building in hand would be placed if let go now, which way
@@ -53,3 +53,9 @@ export { overCancel, setOverCancel };
  *  decks above it are seen through (`decks.ts`). */
 const [pen, setPen] = createSignal(0);
 export { pen, setPen };
+
+/** Whether the road the hand lays has priority (`Build.road`): whoever
+ *  joins or crosses it gives way. Drawn along a road, it gives it that, or
+ *  takes it. */
+const [priority, setPriority] = createSignal(false);
+export { priority, setPriority };

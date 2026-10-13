@@ -4,8 +4,8 @@ import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
-import { aim, held, hold, isRoad, setAim, setTool, tool, turn } from "../ui/buildMode";
-import { fit, fits, hand, may, mayStart, placing, snap, STEPS, type Hand } from "./may";
+import { aim, held, hold, isRoad, priority, setAim, setPriority, setTool, tool, turn } from "../ui/buildMode";
+import { fit, fits, hand, mayAt, mayStart, placing, snap, STEPS, type Hand } from "./may";
 import { BLUEPRINTS, GoodIcon, GOODS } from "../blueprints";
 import type { Building, Good, GridCoord, TerrainType, Tool } from "../generated";
 
@@ -50,7 +50,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   };
   const step = (from: GridCoord, to: GridCoord) => {
     const t = tool();
-    if (t !== null) send({ type: "Build", data: { tool: t, from, to } });
+    if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority() } });
   };
 
   // The world as the hand sees it, read again when something is built.
@@ -67,10 +67,10 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     aimAt();
   }));
   // And drawn again when another tool or building is taken up, or turned.
-  createEffect(on([tool, held], () => (draw(), aimAt()), { defer: true }));
+  createEffect(on([tool, held, priority], () => (draw(), aimAt()), { defer: true }));
   const allowed = (at: GridCoord, i: number) => {
     const t = tool();
-    return !!world && t !== null && may(world, t, at, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] });
+    return !!world && t !== null && mayAt(world, t, at, 0, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] }, 0, priority());
   };
 
   /** The tiles the view covers. */
@@ -99,7 +99,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     const [x0, y0, x1, y1] = viewBox();
     const start = !world ? null
       : h ? (at: GridCoord) => (h.facing === null ? fits(world!, h.kind, at) : !fit(world!, h.kind, at, h.facing).why)
-      : t !== null ? (at: GridCoord) => mayStart(world!, t, at)
+      : t !== null ? (at: GridCoord) => mayStart(world!, t, at, priority())
       : null;
     if (start) {
       if (current && t !== null) for (const [i, [dx, dy]] of STEPS.entries()) if (allowed(current, i)) nexts.push([current.x + dx, current.y + dy]);
@@ -109,13 +109,13 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     dots.aim(starts, nexts, current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
   }
 
-  /** What road stands at a tile, as the tool that lays it. */
-  const toolAt = (at: GridCoord): Tool | null => {
+  /** What road stands at a tile, as the tool that lays it, and whether
+   *  it has priority. */
+  const toolAt = (at: GridCoord): [Tool, boolean] | null => {
     const n = world?.roads.get(`${at.x},${at.y}`)?.node;
     if (!n) return null;
-    if (n.road) return "Road";
     const oneWay = n.outgoing.some((o) => !n.incoming.includes(o)) || n.incoming.some((i) => !n.outgoing.includes(i));
-    return oneWay ? "OneWay" : "Street";
+    return [oneWay ? "OneWay" : "Street", n.road];
   };
   // The eyedropper: with the bare hand, Alt on a road picks up what laid
   // it, before the camera or the picker see the press, so the same drag
@@ -123,7 +123,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   const onEyedrop = (e: PointerEvent) => {
     if (e.button !== 0 || !e.altKey || tool() !== null || held() !== null) return;
     const t = toolAt(tileOf(e));
-    if (t) setTool(t);
+    if (t) (setPriority(t[1]), setTool(t[0]));
   };
 
   /** Let go with a building in hand: placed, if it may stand there, and

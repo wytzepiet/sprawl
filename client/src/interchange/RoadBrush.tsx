@@ -3,7 +3,7 @@ import { useEngine } from "../engine/Canvas";
 import { Dots } from "../engine/dots";
 import { screenToWorld, viewExtent, rectOf } from "../engine/view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
-import { pen, setTool, tool } from "../ui/buildMode";
+import { pen, priority, setTool, tool } from "../ui/buildMode";
 import { hand, mayAt, mayStart, nodesOn, snap, STEPS, type Hand } from "../engine/may";
 import type { GridCoord, TerrainType, Tool } from "../generated";
 import type { Bounds } from "../engine/OrthoCamera";
@@ -48,7 +48,7 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   };
   const step = (from: GridCoord, hf: number, to: GridCoord, ht: number) => {
     const t = using();
-    if (t !== null) send({ type: "Build", data: { tool: t, from, to, ...(hf || ht ? { up: [hf, ht] as [number, number] } : {}) } });
+    if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority(), ...(hf || ht ? { up: [hf, ht] as [number, number] } : {}) } });
   };
   /** Where a drag pressed on this tile stands: on the road at the pen's
    *  height, or the one there nearest it, or at the pen's height. */
@@ -79,7 +79,7 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     world = hand(eachEntity, props.ground);
     draw();
   }));
-  createEffect(on([tool, pen], () => draw(), { defer: true }));
+  createEffect(on([tool, pen, priority], () => draw(), { defer: true }));
 
   const inside = (t: GridCoord) => {
     const b = props.bounds();
@@ -91,11 +91,11 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   const allowedStep = (t: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number) => {
     if (!world) return false;
     if (t === "Demolish") return (from.x === to.x && from.y === to.y ? !(fixed(to) && !ht) : !(fixed(from) && fixed(to) && !hf && !ht)) && mayAt(world, t, from, hf, to, ht);
-    return inside(from) && inside(to) && mayAt(world, t, from, hf, to, ht);
+    return inside(from) && inside(to) && mayAt(world, t, from, hf, to, ht, priority());
   };
   const allowed = (at: GridCoord, i: number) => stepTo(at, height, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] }) !== null;
   const mayStartHere = (t: Tool, at: GridCoord) =>
-    !!world && (t === "Light" ? nodesOn(world, at).some(([h]) => mayAt(world!, t, at, h, at, h)) : pen() > 0 && t !== "Demolish" ? inside(at) : mayStart(world, t, at) && (t === "Demolish" ? !fixed(at) || STEPS.some(([dx, dy]) => allowedStep(t, at, 0, { x: at.x + dx, y: at.y + dy }, 0)) : inside(at)));
+    !!world && (t === "Light" ? nodesOn(world, at).some(([h]) => mayAt(world!, t, at, h, at, h)) : pen() > 0 && t !== "Demolish" ? inside(at) : mayStart(world, t, at, priority()) && (t === "Demolish" ? !fixed(at) || STEPS.some(([dx, dy]) => allowedStep(t, at, 0, { x: at.x + dx, y: at.y + dy }, 0)) : inside(at)));
 
   const viewBox = () => {
     const rect = rectOf(canvas);

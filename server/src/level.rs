@@ -426,12 +426,14 @@ impl Level {
         let road = |t: GridCoord, h: u8| self.solution.contains(&(t, h)) || (h == 0 && self.gates.iter().any(|g| g.edge == t));
         let joins = |a: u8, b: u8| a.abs_diff(b) <= 1 && !(a == b && a % 2 == 1);
         let arrow = |t: GridCoord, h: u8| self.arrows.iter().find(|(at, _)| *at == (t, h)).map(|&(_, w)| w);
+        // The overlay's priority is the ground's.
+        let priority = |a: GridCoord, ha: u8, b: GridCoord, hb: u8| ha == 0 && hb == 0 && self.priority.contains(&a) && self.priority.contains(&b);
         let mut steps = Vec::new();
         // One-ways first, each on to the tile it points at.
         for &((a, ha), (dx, dy)) in &self.arrows {
             let b = GridCoord { x: a.x + dx, y: a.y + dy };
             if let Some(hb) = (ha.saturating_sub(1)..=ha + 1).find(|&hb| road(b, hb) && joins(ha, hb)) {
-                steps.push(Build { tool: Tool::OneWay, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]) });
+                steps.push(Build { tool: Tool::OneWay, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]), road: priority(a, ha, b, hb) });
             }
         }
         for &(a, ha) in &self.solution {
@@ -446,22 +448,13 @@ impl Level {
                     let beside = dx != 0 && dy != 0 && (road(GridCoord { x: a.x + dx, y: a.y }, ha) || road(GridCoord { x: a.x, y: a.y + dy }, ha));
                     let done = steps.iter().any(|s: &Build| s.from == b && s.to == a && s.up.unwrap_or_default() == [hb, ha]);
                     if road(b, hb) && joins(ha, hb) && !beside && !done && world.link_between_at(a, ha, b, hb).is_none() {
-                        let tool = if ha == 0 && hb == 0 && self.priority.contains(&a) && self.priority.contains(&b) { Tool::Road } else { Tool::Street };
-                        steps.push(Build { tool, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]) });
+                        steps.push(Build { tool: Tool::Street, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]), road: priority(a, ha, b, hb) });
                     }
                 }
             }
         }
-        // A one-way the overlay makes priority: the priority road's tool
-        // along it.
-        for &((a, ha), (dx, dy)) in &self.arrows {
-            let b = GridCoord { x: a.x + dx, y: a.y + dy };
-            if ha == 0 && self.priority.contains(&a) && self.priority.contains(&b) {
-                steps.push(Build { tool: Tool::Road, from: a, to: b, up: None });
-            }
-        }
         for &(at, h) in &self.lights {
-            steps.push(Build { tool: Tool::Light, from: at, to: at, up: (h > 0).then_some([h, h]) });
+            steps.push(Build { tool: Tool::Light, from: at, to: at, up: (h > 0).then_some([h, h]), road: false });
         }
         steps
     }
@@ -489,20 +482,20 @@ impl Level {
                 continue;
             }
             let tool = if back && !divided {
-                if ra && rb { Tool::Road } else { Tool::Street }
+                Tool::Street
             } else if world.is_wide(a, b) {
                 Tool::Wide
             } else {
                 Tool::OneWay
             };
-            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]) });
+            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]), road: ra && rb });
         }
         // And the lights, once their junctions stand.
         for e in world.objects.roads() {
             if let (Some(p), GameObject::RoadNode(n)) = (e.position, &e.object)
                 && n.light.is_some()
             {
-                steps.push(Build { tool: Tool::Light, from: p, to: p, up: (n.height > 0).then_some([n.height, n.height]) });
+                steps.push(Build { tool: Tool::Light, from: p, to: p, up: (n.height > 0).then_some([n.height, n.height]), road: false });
             }
         }
         steps
@@ -790,7 +783,7 @@ mod tests {
 
     fn lay(game: &mut Game, level: &Level, path: &[(i32, i32)]) {
         for p in path.windows(2) {
-            let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 }, up: None };
+            let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 }, up: None, road: false };
             assert!(level.allows(&game.world, &step), "{step:?} refused");
             crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
         }
@@ -884,7 +877,7 @@ mod tests {
         let run = |tool: Tool| {
             let (mut level, mut game) = play(text);
             for x in (1..=9).rev() {
-                let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x - 1, y: -1 }, up: None };
+                let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x - 1, y: -1 }, up: None, road: false };
                 assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
             }
             level.test(&mut game);
@@ -921,9 +914,33 @@ mod tests {
     #[test]
     fn nothing_is_built_off_the_map_or_on_a_gate() {
         let (level, game) = play(CROSSING);
-        let off = Build { tool: Tool::Street, from: GridCoord { x: 0, y: 0 }, to: GridCoord { x: -1, y: 0 }, up: None };
+        let off = Build { tool: Tool::Street, from: GridCoord { x: 0, y: 0 }, to: GridCoord { x: -1, y: 0 }, up: None, road: false };
         assert!(!level.allows(&game.world, &off));
-        let gate = Build { tool: Tool::Demolish, from: GridCoord { x: 9, y: -1 }, to: GridCoord { x: 9, y: -1 }, up: None };
+        let gate = Build { tool: Tool::Demolish, from: GridCoord { x: 9, y: -1 }, to: GridCoord { x: 9, y: -1 }, up: None, road: false };
         assert!(!level.allows(&game.world, &gate));
+    }
+
+    /// Priority is the hand's, whatever road it draws: a one-way laid with
+    /// it has it, and drawn along again without it, loses it, all but
+    /// where it runs off another priority road.
+    #[test]
+    fn any_road_may_have_priority() {
+        let (_, mut game) = play(CROSSING);
+        let road = |game: &Game, x| game.world.is_road(game.world.road_node_at(GridCoord { x, y: -1 }).unwrap());
+        let mut step = |game: &mut Game, tool, x, priority| {
+            let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x + 1, y: -1 }, up: None, road: priority };
+            assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+        };
+        for x in 0..9 {
+            step(&mut game, Tool::OneWay, x, true);
+        }
+        assert!((0..=9).all(|x| road(&game, x)), "a one-way with priority");
+        step(&mut game, Tool::OneWay, 4, false);
+        assert!(road(&game, 4) && road(&game, 5), "both ends run on along priority road");
+        for x in 0..9 {
+            step(&mut game, Tool::OneWay, x, false);
+        }
+        assert!((0..=9).all(|x| !road(&game, x)), "drawn again without it, it has none");
+        assert!(game.world.edges.contains_key(&(game.world.road_node_at(GridCoord { x: 3, y: -1 }).unwrap(), game.world.road_node_at(GridCoord { x: 4, y: -1 }).unwrap())), "and is still there");
     }
 }

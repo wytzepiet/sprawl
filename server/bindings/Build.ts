@@ -12,4 +12,10 @@ export type Build = { tool: Tool, from: GridCoord, to: GridCoord,
  * How high each end stands, in half-levels (`RoadNode::height`);
  * none, both on the ground.
  */
-up?: [number, number], };
+up?: [number, number], 
+/**
+ * The road laid has priority (`RoadNode::road`): whoever joins or
+ * crosses it gives way. Along a road already there, it gains or loses
+ * it.
+ */
+road: boolean, };

@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, indexArray, on, Show } from "solid-js";
 import { follow, LOOSE } from "../engine/spring";
-import { held, hold, setTool, tool } from "./buildMode";
+import { held, hold, priority, setPriority, setTool, tool } from "./buildMode";
 import { BLUEPRINTS, GoodIcon } from "../blueprints";
 import { useGame } from "../state/gameObjects";
 import type { Tool } from "../generated";
@@ -30,7 +30,14 @@ const cx = (j: number) => 30 + SLOT * j;
 const SLOTS = ["select", "roads", "build", "demolish", "undo"] as const;
 const at = (s: (typeof SLOTS)[number]) => SLOTS.indexOf(s);
 
-const road = (t: Tool) => ROAD_KINDS.find((r) => r.id === t)!;
+/** The roads on the shelf: a road is a street with priority. */
+type Kind = (typeof ROAD_KINDS)[number]["id"];
+const kind = (): Kind | null => {
+  const t = tool();
+  return t === "Street" && priority() ? "Road" : t === "Street" || t === "OneWay" ? t : null;
+};
+const take = (k: Kind) => (setPriority(k === "Road"), setTool(k === "Road" ? "Street" : k));
+const road = (k: Kind) => ROAD_KINDS.find((r) => r.id === k)!;
 /** What a road takes, said under its "i". */
 const ROAD_ABOUT = "Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price.";
 
@@ -53,13 +60,13 @@ function Glyph(props: { d: string; size: number }) {
  */
 export default function BuildModeToolbar() {
   const { send } = useGame();
-  const [lastRoad, setLastRoad] = createSignal<Tool>("Street");
-  createEffect(() => { const t = tool(); if (t !== null && t !== "Demolish") setLastRoad(t); });
+  const [lastRoad, setLastRoad] = createSignal<Kind>("Street");
+  createEffect(() => { const k = kind(); if (k) setLastRoad(k); });
   const roadInHand = () => tool() !== null && tool() !== "Demolish";
 
   // The road shelf, open or not, and the road whose card is.
   const [shelf, setShelf] = createSignal(false);
-  const [about, setAbout] = createSignal<Tool | null>(null);
+  const [about, setAbout] = createSignal<Kind | null>(null);
   const open = (o: boolean) => { setAbout(null); setShelf(o); };
   // Whatever takes up another tool puts the shelf and the menu away, and
   // a press anywhere else.
@@ -83,10 +90,10 @@ export default function BuildModeToolbar() {
     if (key === "X") return setTool("Demolish");
     if (key === "B") return hold(null), setMenuOpen(!menuOpen());
     if (key !== "R") return;
-    if (!roadInHand()) return setTool(lastRoad());
+    if (!roadInHand()) return take(lastRoad());
     // Again: the next road.
-    const i = ROAD_KINDS.findIndex((r) => r.id === tool());
-    setTool(ROAD_KINDS[(i + 1) % ROAD_KINDS.length].id);
+    const i = ROAD_KINDS.findIndex((r) => r.id === kind());
+    take(ROAD_KINDS[(i + 1) % ROAD_KINDS.length].id);
   };
   window.addEventListener("keydown", onKey);
 
@@ -95,7 +102,7 @@ export default function BuildModeToolbar() {
   const lit = () => held() !== null || tool() !== null;
   const bead = () => {
     const h = held(), t = tool();
-    return h ? BLUEPRINTS[h.kind].color : t === null ? undefined : t === "Demolish" ? DEMOLISH_COLOR : road(t).color;
+    return h ? BLUEPRINTS[h.kind].color : t === null ? undefined : t === "Demolish" ? DEMOLISH_COLOR : road(kind() ?? "Street").color;
   };
   // The bead slides on a spring, and is drawn out by its own speed: long
   // and thin as it goes, round again as it lands.
@@ -108,7 +115,7 @@ export default function BuildModeToolbar() {
   const rows = () => {
     const i = ROAD_KINDS.findIndex((r) => r.id === about());
     return ROAD_KINDS.map((r, k) => ({
-      t: r.id as Tool, open: shelf(), info: shelf() && k === i,
+      t: r.id as Kind, open: shelf(), info: shelf() && k === i,
       w: shelf() && k === i ? 300 : 240,
       h: shelf() && k === i ? cardHeight : 44,
       x: cx(at("roads")),
@@ -171,7 +178,7 @@ export default function BuildModeToolbar() {
               class="absolute overflow-hidden rounded-[22px]"
               style={{ left: `${m.r().x - 22}px`, bottom: `${m.bottom()}px`, width: `${m.w()}px`, height: `${m.h()}px`, opacity: m.fade(), "pointer-events": m.r().open ? "auto" : "none" }}
             >
-              <button onClick={() => { setTool(m.r().t); open(false); }} class="absolute left-0 top-0 h-11 right-11 flex items-center gap-2.5 text-left cursor-pointer">
+              <button onClick={() => { take(m.r().t); open(false); }} class="absolute left-0 top-0 h-11 right-11 flex items-center gap-2.5 text-left cursor-pointer">
                 <span class="grid w-11 h-11 shrink-0 place-items-center text-white"><Glyph d={road(m.r().t).glyph} size={17} /></span>
                 <span class="ink text-[15px] font-semibold whitespace-nowrap">{road(m.r().t).label}</span>
                 <span class="soft inline-flex items-center gap-0.5 serif italic font-light text-[15px] whitespace-nowrap" title="Built of a stone a tile">
@@ -211,7 +218,7 @@ export default function BuildModeToolbar() {
             const d = () => (s === "select" ? SELECT : s === "roads" ? road(lastRoad()).glyph : s === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : BUILD) : s === "demolish" ? DEMOLISH : UNDO);
             const act = () =>
               s === "select" ? setTool(null)
-              : s === "roads" ? setTool(lastRoad())
+              : s === "roads" ? take(lastRoad())
               : s === "build" ? (hold(null), setTool(null), setMenuOpen(!menuOpen()))
               : s === "demolish" ? setTool("Demolish")
               : undo();
