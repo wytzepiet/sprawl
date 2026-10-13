@@ -48,6 +48,8 @@ const TOOLS: { tool: Tool; key: string; name: string; label: string; glyph: stri
   { tool: "Light", key: "4", name: "Lights", label: "Tap a junction for traffic lights, again to take them away", glyph: "M8 1.5h8A1.5 1.5 0 0 1 17.5 3v18a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 21V3A1.5 1.5 0 0 1 8 1.5zM12 3.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 9.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 15.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z" },
   { tool: "Demolish", key: "X", name: "Bulldozer", label: "Takes up road; hold Shift for it with any tool", glyph: "M3.5 16.5h11a2.25 2.25 0 0 1 0 4.5h-11a2.25 2.25 0 0 1 0-4.5zM5 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM9 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM13 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM4 12h11v3.5H4zM5.5 6.5h5l1.2 4.5H5.5zM6.7 7.7h3l.6 2.3H6.7zM15.5 13h2.5v1.5h-2.5zM18.5 10l3-1v12.5h-3z" },
 ];
+/** The empty hand's arrow (`BuildModeToolbar`'s). */
+const LOOK = "M4 2.5l16 8-7 2-2.6 7.5z";
 /** The priority road's sign, a diamond in a diamond. */
 const DIAMOND = "M12 1 23 12 12 23 1 12zM12 4.2 19.8 12 12 19.8 4.2 12z";
 const DIAMOND_IN = "M12 6.8 17.2 12 12 17.2 6.8 12z";
@@ -86,6 +88,7 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const t = TOOLS.find((t) => t.key.toLowerCase() === key);
     if (t) setTool(t.tool);
+    else if (key === "v") setTool(null);
     else if (key === "p") setPriority(!priority());
     else if (e.key === "ArrowUp" || e.key === "PageUp") climb().up?.(), e.preventDefault();
     else if (e.key === "ArrowDown" || e.key === "PageDown") climb().down?.(), e.preventDefault();
@@ -161,7 +164,7 @@ function Frame(props: { state: () => LevelState | null }) {
     g.stroke();
     g.setLineDash([]);
     // While building, the way the one-ways run.
-    if (s.phase === "Build") drawFlow(g, (x, y, z) => p.at(x, y, z), performance.now() / 1000);
+    if (s.phase === "Build" && tool() !== null) drawFlow(g, (x, y, z) => p.at(x, y, z), performance.now() / 1000);
     // Each gate's label, out past its end.
     for (const gate of s.gates) {
       // Just past the map's edge, beside the road, so it hides no car.
@@ -279,7 +282,7 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
           </span>
         </div>
         <div class="soft mt-2 text-[11px] leading-snug">
-          Drag to draw · 1–4 roads and lights · X bulldoze (or hold Shift) · P priority · ↑↓ height · Z undo · Space test · right-drag to pan
+          V look · drag to draw · 1–4 roads and lights · X bulldoze (or hold Shift) · P priority · ↑↓ height · Z undo · Space test · right-drag to pan
         </div>
         <Show when={s()?.phase === "Build" && (s()?.cost ?? 0) > 0}>
           <button class="press soft mt-2 text-[12px] underline cursor-pointer" onClick={() => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" })}>
@@ -299,6 +302,18 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
       </Show>
       {/* The road palette. */}
       <div data-glass="bar" class="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-full p-1.5 select-none">
+        {/* The empty hand: the roads as they are, no building. */}
+        <button
+          class="press relative flex h-11 w-11 flex-col items-center justify-center rounded-full cursor-pointer"
+          classList={{ soft: tool() !== null }}
+          style={tool() === null ? dark : {}}
+          title="Look: the roads as they are, every level solid, nothing in hand (V)"
+          onClick={() => setTool(null)}
+        >
+          <Glyph d={LOOK} />
+          <KeyCap>V</KeyCap>
+        </button>
+        <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         <For each={TOOLS}>
           {(t) => (
             <button

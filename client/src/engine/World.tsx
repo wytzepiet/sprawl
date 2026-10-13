@@ -23,7 +23,7 @@ import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
 import { TownLayer } from "./TownLayer";
 import { Brush } from "./Brush";
-import { aim, pen } from "../ui/buildMode";
+import { aim, pen, tool } from "../ui/buildMode";
 import { Decks } from "./decks";
 
 interface MountedEntry {
@@ -102,10 +102,12 @@ export default function World(props: { brush?: (ground: (x: number, y: number) =
     requestAnimationFrame(() => {
       decksDue = false;
       decks.rebuild(eachEntity);
-      decks.seeThroughAbove(pen());
+      decks.seeThroughAbove(seen());
     });
   };
-  createEffect(() => decks.seeThroughAbove(pen()));
+  // Building, the levels above the pen are seen through; looking, none.
+  const seen = () => (tool() === null ? Infinity : pen());
+  createEffect(() => decks.seeThroughAbove(seen()));
   // The building in hand, drawn where it would stand.
   createEffect(() => town.hold(aim()));
   if (import.meta.env.DEV) Object.assign(window, { sprawlHeldMs: town.previewMs });
