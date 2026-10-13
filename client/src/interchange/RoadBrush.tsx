@@ -100,42 +100,46 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     const at = tileOf(e);
     prevWorld = pick(e);
     hold.press(at, prevWorld.wx, prevWorld.wy);
+    lead = at;
+    trail = [];
     accDx = 0;
     accDy = 0;
     dots.grab(at, { x: prevWorld.wx, y: prevWorld.wy });
     draw();
   };
 
-  /** The way the drag heads, and whether a step is out, not yet heard
-   *  back. */
-  let heading: [number, number] | null = null;
+  /** The tiles the pointer has led the drag through, the pen not yet
+   *  there, and the last of them; whether a step is out, not yet heard
+   *  back; and whether the drag is let go of, to be finished first. */
+  let trail: GridCoord[] = [];
+  let lead: GridCoord | null = null;
   let waiting: ReturnType<typeof setTimeout> | null = null;
-  /** Let go, and the drag not yet where the pointer was: it is finished,
-   *  then let go. */
   let letGo = false;
   const heard = () => {
     if (waiting) clearTimeout(waiting);
     waiting = null;
     advance();
   };
-  /** A step toward the pointer, if it is a tile or more off the way the
-   *  drag heads and none is out; then wait. None left, and let go: done. */
+  /** The pen's next step along the trail, if none is out; then wait. A
+   *  step refused, the rest of the trail is dropped, and the pointer leads
+   *  on from where the pen stands. Nothing left, and let go: done. */
   const advance = () => {
-    const [cur, w] = [hold.current, prevWorld];
-    if (waiting || !cur) return;
-    const dist = w ? Math.max(Math.abs(w.wx - (cur.x + 0.5)), Math.abs(w.wy - (cur.y + 0.5))) : 0;
-    const next: GridCoord | null = heading && { x: cur.x + heading[0], y: cur.y + heading[1] };
-    const newDist = w && next ? Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5))) : Infinity;
-    if (next && dist >= 0.6 && newDist < dist && hold.step(next)) {
+    if (waiting || !hold.current) return;
+    const next = trail.shift();
+    if (next && hold.step(next)) {
       dots.step(next);
       draw();
       waiting = setTimeout(heard, WAIT);
+    } else if (next) {
+      trail = [];
+      lead = hold.current;
     } else if (letGo) release();
   };
   const release = () => {
     if (hold.current) dots.release();
     hold.release();
-    prevWorld = heading = null;
+    prevWorld = lead = null;
+    trail = [];
     letGo = false;
     draw();
   };
@@ -148,7 +152,17 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     accDy += w.wy - prevWorld.wy;
     prevWorld = w;
     if (Math.max(Math.abs(accDx), Math.abs(accDy)) < 0.1) return;
-    heading = STEPS[snap(accDx, accDy)] as [number, number];
+    // The trail led on toward the pointer, the way it moves, straight or
+    // diagonal.
+    const [sx, sy] = STEPS[snap(accDx, accDy)];
+    for (let i = 0; i < 50 && lead; i++) {
+      const dist = Math.max(Math.abs(w.wx - (lead.x + 0.5)), Math.abs(w.wy - (lead.y + 0.5)));
+      const next: GridCoord = { x: lead.x + sx, y: lead.y + sy };
+      const newDist = Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5)));
+      if (dist < 0.6 || newDist >= dist) break;
+      trail.push(next);
+      lead = next;
+    }
     accDx = 0;
     accDy = 0;
     advance();

@@ -361,4 +361,19 @@ describe("one-ways side by side", () => {
     t.drag("OneWay", [3, 6], [4, 5], [6, 5], [7, 4], [8, 5], [11, 5], [12, 6]);
     expect(t.broken()).toEqual([]);
   });
+
+  test("on into a one-way's end, its way: joined, not beside it", () => {
+    const t = new Table();
+    t.drag("OneWay", [10, 5], [14, 5]);
+    expect(t.drag("OneWay", [4, 5], [10, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    for (let x = 4; x <= 14; x++) expect(t.on(x, 5)).toHaveLength(1);
+  });
+
+  test("on into a one-way's end, against it: beside it", () => {
+    const t = new Table();
+    t.drag("OneWay", [14, 5], [10, 5]);
+    expect(t.drag("OneWay", [4, 5], [12, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+  });
 });

@@ -414,6 +414,41 @@ function movesOf(surface: Surface, p: Pt, roads: Way[]): [Way, Way, Path][] {
   ));
 }
 
+/** Each lane through a tile, from the lane it comes in by (`l`) to the one
+ *  it goes out by (`m`), along its own curve (`laneOf`), its half-width
+ *  going from the one's to the other's. */
+function lanesThrough(surface: Surface, p: Pt, roads: Way[]): { a: Way; b: Way; l: Lane; m: Lane; i: number; j: number; path: Path }[] {
+  return movesOf(surface, p, roads).flatMap(([a, b]) =>
+    lanesOf(a[3], true).flatMap((l, i) => lanesOf(b[3], false).map((m, j) => ({ a, b, l, m, i, j, path: laneOf(p, a, l, b, m) }))),
+  );
+}
+
+/** A lane's curve across a tile, as a car keeps to it: from where it
+ *  crosses the one seam to where it crosses the other, each beside its
+ *  road's middle by the lane's offset, pulled toward where the two lanes'
+ *  ways meet; straight on, or nearly, straight. Its half-width goes from
+ *  the one lane's to the other's. */
+function laneOf(p: Pt, a: Way, l: Lane, b: Way, m: Lane): Path {
+  const [sa, sb] = [seamOf(p, a), seamOf(p, b)];
+  // Driven in by a, against its way out; out by b, along it.
+  const [ia, ob]: Pt[] = [[-sa.u[0], -sa.u[1]], sb.u];
+  const A: Pt = [sa.at[0] - ia[1] * l[0], sa.at[1] + ia[0] * l[0]];
+  const B: Pt = [sb.at[0] - ob[1] * m[0], sb.at[1] + ob[0] * m[0]];
+  const cross = ia[0] * ob[1] - ia[1] * ob[0];
+  const s = Math.abs(cross) < 0.2 ? NaN : ((B[0] - A[0]) * ob[1] - (B[1] - A[1]) * ob[0]) / cross;
+  const C: Pt = Number.isFinite(s) && s > 0 ? [A[0] + ia[0] * s, A[1] + ia[1] * s] : [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+  const pts: Pt[] = [], half: number[] = [];
+  for (let k = 0; k <= CURVE; k++) {
+    const t = k / CURVE;
+    const [u, v, w] = [(1 - t) * (1 - t), 2 * t * (1 - t), t * t];
+    pts.push([u * A[0] + v * C[0] + w * B[0], u * A[1] + v * C[1] + w * B[1]]);
+    half.push(l[1] + (m[1] - l[1]) * smooth(t));
+  }
+  const at = [0];
+  for (let k = 1; k < pts.length; k++) at.push(at[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
+  return { pts, half, at, seams: [0, at[CURVE]] };
+}
+
 /** A tile's road from one arm to another with no other: its one path. */
 const runOf = (p: Pt, roads: Way[]): Path | null => (roads.length === 2 ? pathOf(p, roads[0], roads[1]) : null);
 
@@ -455,13 +490,9 @@ export function shapeOf(surface: Surface): Polygon[] {
     // way it goes out by, along its curve; a lane nothing drives through,
     // its own way to where the road stands, and no further.
     const used = new Set<string>();
-    for (const [a, b, path] of movesOf(surface, p, roads)) {
-      for (const [i, l] of lanesOf(a[3], true).entries()) {
-        for (const [j, m] of lanesOf(b[3], false).entries()) {
-          used.add(`${roads.indexOf(a)}i${i}`).add(`${roads.indexOf(b)}o${j}`);
-          parts.push(strip(path, (t) => [l[0] + (m[0] - l[0]) * smooth(t), l[1] + (m[1] - l[1]) * smooth(t)]));
-        }
-      }
+    for (const { a, b, i, j, path } of lanesThrough(surface, p, roads)) {
+      used.add(`${roads.indexOf(a)}i${i}`).add(`${roads.indexOf(b)}o${j}`);
+      parts.push(strip(path, (t) => [0, path.half[Math.round(t * (path.half.length - 1))]]));
     }
     for (const [k, w] of roads.entries()) {
       const { at } = seamOf(p, w);
@@ -636,25 +667,19 @@ export function paintOf(surface: Surface): (x: number, y: number) => number {
 /**
  * Where a tile's road is worn, from nothing to one: two tracks down each
  * lane, where its cars' wheels run, along the curve they drive
- * (`movesOf`). Through a junction, only the ways its cars may go are
+ * (`laneOf`). Through a junction, only the ways its cars may go are
  * worn, so its turns are seen without a line of paint.
  */
 export function wearOf(surface: Surface): (x: number, y: number) => number {
   const p = pointOf(surface);
   const roads = roadsOf(surface.ways);
   const tracks: ((x: number, y: number) => number)[] = [];
-  for (const [a, b, path] of roads.length >= 2 ? movesOf(surface, p, roads) : []) {
-    const total = path.at[path.at.length - 1] || 1;
-    for (const l of lanesOf(a[3], true)) {
-      for (const m of lanesOf(b[3], false)) {
-        tracks.push((x, y) => {
-          const n = near(path, x, y);
-          const o = l[0] + (m[0] - l[0]) * smooth(n.along / total);
-          const d = Math.min(Math.abs(n.side - o - WHEELS), Math.abs(n.side - o + WHEELS));
-          return Math.exp(-((d / TRACK) ** 2));
-        });
-      }
-    }
+  for (const { path } of roads.length >= 2 ? lanesThrough(surface, p, roads) : []) {
+    tracks.push((x, y) => {
+      const n = near(path, x, y);
+      const d = Math.min(Math.abs(n.side - WHEELS), Math.abs(n.side + WHEELS));
+      return Math.exp(-((d / TRACK) ** 2));
+    });
   }
   return (x, y) => tracks.reduce((most, t) => Math.max(most, t(x, y)), 0);
 }

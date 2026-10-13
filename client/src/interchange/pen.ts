@@ -234,10 +234,19 @@ export class Pen {
     const there = nodesOn(w, to).filter(([g, n]) => g === h && sided({ h: g, s: n.node.side ?? MIDDLE })).map(([, n]) => n.node.side!);
     const m = nodeAtH(w, to, h);
     const fromNode = nodeIn(w, at, p.h, p.s);
-    // Beside a one-way in the middle, only along it: come in across it,
-    // the drag joins it, unless it goes on against it (`joined`).
+    // Beside a one-way in the middle, only along it and against it: come
+    // in across it, the drag joins it, unless it goes on against it
+    // (`joined`); going its way, the drag runs on into it.
     const along = (s: Side) => bendOf(w, to, h, s)?.some(([x, y]) => x === back[0] && y === back[1]) ?? toward(back, s) === 0;
-    const beside = there.length ? there : m && !(fromNode && edge(fromNode, m)) ? sidesBeside(w, to, h).filter(along) : [];
+    const against = !!m && [...m.node.outgoing, ...m.node.incoming].some((id) => {
+      const o = w.at.get(id);
+      const n = o && nodesOn(w, o).find(([, x]) => x.id === id)?.[1];
+      if (!o || !n) return false;
+      const [ox, oy] = [o.x - to.x, o.y - to.y];
+      // Out toward where the drag comes from, or in from where it goes.
+      return (edge(m, n) && toward(back, [ox, oy]) > 0) || (edge(n, m) && toward(d, [ox, oy]) > 0);
+    });
+    const beside = there.length ? there : m && against && !(fromNode && edge(fromNode, m)) ? sidesBeside(w, to, h).filter(along) : [];
     const came = this.came ? ([this.came.x - at.x, this.came.y - at.y] as [number, number]) : null;
     const rank = (s: Side) => (sided(p) ? -toward(p.s, s) : there.length && toward(back, s) > 0 ? -1 : came && toward(came, s) ? -toward(came, s) : -toward(right, s));
     const follow = fromNode ? nodesOn(w, to).filter(([g, n]) => g === h && (edge(fromNode, n) || edge(n, fromNode))).map(([, n]) => n.node.side ?? MIDDLE) : [];
