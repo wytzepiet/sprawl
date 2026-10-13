@@ -178,3 +178,33 @@ mod tests {
         assert_eq!(lake.placing(BuildingKind::Harbour, at(9, 2), None).why.as_deref(), Some("A lake: the ferry comes only by sea"));
     }
 }
+#[cfg(test)]
+mod bench {
+    use super::*;
+
+    /// The dots for a view a hundred tiles by sixty over a grid of streets,
+    /// each tool's: what the town's server answers as the view moves.
+    /// `cargo test starts_over_a_view -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn starts_over_a_view() {
+        let mut world = World::new();
+        for y in -40..40 {
+            for x in -60..60 {
+                world.terrain.insert((x, y), crate::protocol::TerrainType::Grass);
+            }
+        }
+        for k in -5..5 {
+            world.place_road_path(&(-60..60).map(|x| GridCoord { x, y: k * 8 }).collect::<Vec<_>>());
+            world.place_road_path(&(-40..40).map(|y| GridCoord { x: k * 12, y }).collect::<Vec<_>>());
+        }
+        let view = Area { x0: -50, y0: -30, x1: 50, y1: 30 };
+        let hands = [Tool::Street, Tool::OneWay, Tool::Demolish].map(|tool| Holding::Tool { tool, road: false, want: 0 });
+        for hand in hands.into_iter().chain([Holding::Building { kind: crate::protocol::BuildingKind::House, facing: None }]) {
+            let t = std::time::Instant::now();
+            let n = starts(&world, hand, view).len();
+            eprintln!("{hand:?}: {n} tiles in {:?}", t.elapsed());
+            assert!(t.elapsed().as_millis() < 250, "{hand:?}: {:?}", t.elapsed());
+        }
+    }
+}

@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use crate::car::CRUISE_SPEED;
-use crate::protocol::EntityId;
+use crate::protocol::{EntityId, GridCoord};
 use crate::world::network::Segment;
 use crate::world::World;
 
@@ -49,6 +49,13 @@ struct Leg {
     behind: EntityId,
 }
 
+/// Is the turn through `at`, in from `from` and out to `to`, a right angle
+/// or gentler: the one turn a car makes (`may_turn`), and what a road may
+/// be built to offer (`World::leads_nowhere`).
+pub fn shallow(from: GridCoord, at: GridCoord, to: GridCoord) -> bool {
+    (from.x - at.x) * (to.x - at.x) + (from.y - at.y) * (to.y - at.y) <= 0
+}
+
 /// May a car come in to `at` from `from` and go on to `to`? Never back the
 /// way it came. Where the search begins it came from nowhere, and where it
 /// ends it goes nowhere.
@@ -62,9 +69,8 @@ pub fn may_turn(world: &World, from: EntityId, at: EntityId, to: EntityId) -> bo
     // it came in; nor where no drag drew the turn (`draw.rs`).
     let pos = |id: EntityId| world.objects.get(id).and_then(|e| e.position);
     let (Some(f), Some(a), Some(t)) = (pos(from), pos(at), pos(to)) else { return false };
-    let shallow = (f.x - a.x) * (t.x - a.x) + (f.y - a.y) * (t.y - a.y) <= 0;
     let drawn = !matches!(world.objects.get(at).map(|e| &e.object), Some(crate::protocol::GameObject::RoadNode(n)) if n.banned.contains(&[from, to]));
-    f != t && shallow && drawn
+    f != t && shallow(f, a, t) && drawn
 }
 
 /// Every way out from one place, searched as far as anyone has asked.

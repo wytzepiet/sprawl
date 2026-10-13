@@ -78,18 +78,13 @@ impl World {
     /// `on`: the way the drag goes on from there, if it does: its cars go
     /// on along it, if that is no sharp turn.
     pub(super) fn leads_nowhere(&self, id: EntityId, (dx, dy): (i32, i32), arriving: bool, leaving: bool, on: Option<(i32, i32)>) -> bool {
-        if on.is_some_and(|(x, y)| x * dx + y * dy <= 0) {
+        let Some(at) = self.objects.get(id).and_then(|e| e.position) else { return false };
+        let new = GridCoord { x: at.x + dx, y: at.y + dy };
+        let shallow = |p: GridCoord| super::pathfinding::shallow(p, at, new);
+        if on.is_some_and(|(x, y)| shallow(GridCoord { x: at.x + x, y: at.y + y })) {
             return false;
         }
-        let Some(at) = self.objects.get(id).and_then(|e| e.position) else { return false };
-        let arms: Vec<(EntityId, bool)> = self
-            .arms_of(id, false)
-            .into_iter()
-            .filter_map(|nid| {
-                let p = self.objects.get(nid)?.position?;
-                Some((nid, (p.x - at.x) * dx + (p.y - at.y) * dy <= 0))
-            })
-            .collect();
+        let arms: Vec<(EntityId, bool)> = self.arms_of(id, false).into_iter().filter_map(|nid| Some((nid, shallow(self.objects.get(nid)?.position?)))).collect();
         let none = |out: bool| {
             let ways: Vec<bool> = arms.iter().filter(|&&(n, _)| if out { self.edges.contains_key(&(id, n)) } else { self.edges.contains_key(&(n, id)) }).map(|&(_, shallow)| shallow).collect();
             !ways.is_empty() && !ways.contains(&true)

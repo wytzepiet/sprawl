@@ -80,7 +80,7 @@ pub fn may_start(world: &World, tool: Tool, road: bool, want: u8, at: GridCoord)
         let stroke = Stroke { id: 0, tool, road, tiles: tiles.iter().map(|&at| Spot { at, want }).collect(), start: None };
         let mut froms = on.clone();
         froms.extend(starts(world, &stroke, &tiles));
-        plan(world, &stroke, &tiles, 1, &froms).is_some()
+        plan(world, &stroke, &tiles, 1, &dedup(froms)).is_some()
     })
 }
 

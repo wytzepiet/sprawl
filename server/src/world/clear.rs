@@ -161,16 +161,17 @@ impl<'a> Drawn<'a> {
         }
         for (i, &(ai, qi, si, wi)) in arms.iter().enumerate() {
             for &(aj, qj, sj, wj) in &arms[i + 1..] {
+                // Every other point of the curve: four pieces.
                 let curve = track(qi, p, qj, 0.0, 0.0);
                 let n = (TRACK_POINTS - 1) as f64;
                 // Its height: the seam's at either end, the node's halfway.
                 let height = |t: f64| if t <= 0.5 { si + (h - si) * t * 2.0 } else { h + (sj - h) * (t * 2.0 - 1.0) };
-                for k in 0..TRACK_POINTS - 1 {
-                    let (t0, t1) = (k as f64 / n, (k + 1) as f64 / n);
+                for k in (0..TRACK_POINTS - 1).step_by(2) {
+                    let (t0, t1) = (k as f64 / n, (k + 2) as f64 / n);
                     let (h0, h1) = (height(t0), height(t1));
                     let (half, link) = if t1 <= 0.5 { (wi, [id, ai]) } else { (wj, [id, aj]) };
                     let pt = |c: [f32; 2]| [p[0] + c[0] as f64, p[1] + c[1] as f64];
-                    out.push(Piece { a: pt(curve[k]), b: pt(curve[k + 1]), ha: h0, hb: h1, half, link });
+                    out.push(Piece { a: pt(curve[k]), b: pt(curve[k + 2]), ha: h0, hb: h1, half, link });
                 }
             }
         }
@@ -204,7 +205,7 @@ fn seam(a: u8, b: u8) -> f64 {
 /// height; not where their links meet, nor where two diagonal links cross
 /// at a corner.
 fn clash(world: &Drawn, p: &Piece, q: &Piece) -> bool {
-    if p.link.iter().any(|n| q.link.contains(n)) || across(world, p.link, q.link) {
+    if p.link.iter().any(|n| q.link.contains(n)) {
         return false;
     }
     let (d, s, t) = nearest(p.a, p.b, q.a, q.b);
@@ -212,7 +213,34 @@ fn clash(world: &Drawn, p: &Piece, q: &Piece) -> bool {
         return false;
     }
     let (hp, hq) = (p.ha + (p.hb - p.ha) * s, q.ha + (q.hb - q.ha) * t);
-    (hp - hq).abs() < LEVEL - EPS
+    (hp - hq).abs() < LEVEL - EPS && !across(world, p.link, q.link)
+}
+
+/// A node's road, piece by piece, and the box it all lies in, widths and
+/// all.
+struct Shape {
+    pieces: Vec<Piece>,
+    lo: [f64; 2],
+    hi: [f64; 2],
+}
+
+impl Shape {
+    fn of(pieces: Vec<Piece>) -> Shape {
+        let (mut lo, mut hi) = ([f64::MAX; 2], [f64::MIN; 2]);
+        for p in &pieces {
+            for k in 0..2 {
+                lo[k] = lo[k].min(p.a[k].min(p.b[k]) - p.half);
+                hi[k] = hi[k].max(p.a[k].max(p.b[k]) + p.half);
+            }
+        }
+        Shape { pieces, lo, hi }
+    }
+
+    /// Does any piece of one run into any of the other.
+    fn clashes(&self, other: &Shape, world: &Drawn) -> bool {
+        let apart = (0..2).any(|k| self.lo[k] > other.hi[k] || other.lo[k] > self.hi[k]);
+        !apart && self.pieces.iter().any(|p| other.pieces.iter().any(|q| clash(world, p, q)))
+    }
 }
 
 /// Are two links the two diagonals of one square of four tiles.
@@ -257,15 +285,18 @@ impl World {
         }
         changed.sort_unstable();
         changed.dedup();
-        let mut cache: HashMap<EntityId, Vec<Piece>> = HashMap::new();
-        for &c in &changed {
-            let Some(at) = drawn.tile(c) else { continue };
-            let mine = cache.entry(c).or_insert_with(|| drawn.pieces(c)).clone();
-            for o in drawn.near(at).into_iter().filter(|&o| o != c) {
-                let theirs = cache.entry(o).or_insert_with(|| drawn.pieces(o));
-                if mine.iter().any(|p| theirs.iter().any(|q| clash(&drawn, p, q))) {
-                    return false;
-                }
+        let near: Vec<(EntityId, Vec<EntityId>)> = changed.iter().filter_map(|&c| Some((c, drawn.near(drawn.tile(c)?).into_iter().filter(|&o| o != c).collect()))).collect();
+        // Nothing else near: nothing to run into.
+        if near.iter().all(|(_, os)| os.iter().all(|&o| drawn.new_end(o).is_some())) {
+            return true;
+        }
+        let mut shapes: HashMap<EntityId, Shape> = HashMap::new();
+        for (c, os) in near {
+            for id in std::iter::once(c).chain(os.iter().copied()) {
+                shapes.entry(id).or_insert_with(|| Shape::of(drawn.pieces(id)));
+            }
+            if os.iter().any(|o| shapes[&c].clashes(&shapes[o], &drawn)) {
+                return false;
             }
         }
         true
@@ -277,32 +308,35 @@ impl World {
     pub fn clashing(&self) -> Vec<[EntityId; 2]> {
         let sketch = Sketch::default();
         let drawn = Drawn::new(self, &sketch);
-        let mut cache: HashMap<EntityId, Vec<Piece>> = HashMap::new();
+        let shapes: HashMap<EntityId, Shape> = self.objects.roads().map(|e| (e.id, Shape::of(drawn.pieces(e.id)))).collect();
         let mut out = Vec::new();
-        for c in self.objects.roads().map(|e| e.id).collect::<Vec<_>>() {
+        for (&c, mine) in &shapes {
             let Some(at) = drawn.tile(c) else { continue };
-            let mine = cache.entry(c).or_insert_with(|| drawn.pieces(c)).clone();
             for o in drawn.near(at).into_iter().filter(|&o| o > c) {
-                let theirs = cache.entry(o).or_insert_with(|| drawn.pieces(o));
-                if mine.iter().any(|p| theirs.iter().any(|q| clash(&drawn, p, q))) {
+                if shapes.get(&o).is_some_and(|theirs| mine.clashes(theirs, &drawn)) {
                     out.push([c, o]);
                 }
             }
         }
+        out.sort_unstable();
         out
     }
 
     /// The nodes on a tile that move over to the other side when a road is
     /// laid on this side at this height: those in the middle less than a
-    /// level from it, where the other side at their height is free.
+    /// level from it, narrow enough to share their tile, a lane beside a
+    /// lane, where the other side at their height is free.
     pub(crate) fn moving_over(&self, at: GridCoord, height: u8, side: Side) -> Vec<(EntityId, Side)> {
         if side == MIDDLE {
             return Vec::new();
         }
         let away = [-side[0], -side[1]];
+        let sketch = Sketch::default();
+        let drawn = Drawn::new(self, &sketch);
+        let narrow = |id: EntityId| self.arms_of(id, false).into_iter().all(|a| drawn.half(id, a) == LANE);
         self.nodes_on(at)
             .into_iter()
-            .filter(|&(h, id)| self.side_of(id) == MIDDLE && (h as f64 - height as f64).abs() < LEVEL && self.node_in(at, h, away).is_none())
+            .filter(|&(h, id)| self.side_of(id) == MIDDLE && (h as f64 - height as f64).abs() < LEVEL && self.node_in(at, h, away).is_none() && narrow(id))
             .map(|(_, id)| (id, away))
             .collect()
     }
