@@ -474,7 +474,12 @@ What runs, and where; the rest of the order above is still to come.
   (`interchange/flow.ts`). Priority is not a colour: a priority road has white edge lines,
   carried on through its junctions, in blocks across a side road's mouth,
   and the side road has shark's teeth.
-- **Shallow joins**: the turn rule is about the turns a car can make.
+- **Shallow joins**: no car turns sharper than a right angle
+  (`pathfinding::may_turn`), so a road may meet another at 45 degrees and
+  its cars go on the shallow way; it is refused only where they could go
+  nowhere else (`World::leads_nowhere`): a hairpin, a ramp against the
+  traffic. The junction is drawn with the shallow turns only. A drive
+  still meets its street square or not at all.
 - **Roads side by side** (`world/decks.rs`, `RoadNode::side`): a tile
   holds two one-ways as it holds roads stacked, each its own nodes moved
   to a side, a thin road beside the other. A one-way drawn along a

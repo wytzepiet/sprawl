@@ -397,4 +397,14 @@ describe("one-ways side by side", () => {
     expect(t.broken()).toEqual([]);
     expect([6, 7, 8].map((x) => t.on(x, 5)[0]?.h)).toEqual([0, 0, 1]);
   });
+
+  test("a street onto a street at 45 degrees, and a one-way", () => {
+    const t = new Table();
+    t.drag("Street", [2, 5], [12, 5]);
+    t.drag("Street", [2, 1], [6, 5]);
+    t.drag("OneWay", [12, 1], [8, 5]);
+    expect(t.broken()).toEqual([]);
+    expect(t.on(5, 4)).toHaveLength(1);
+    expect(t.on(9, 4)).toHaveLength(1);
+  });
 });

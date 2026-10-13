@@ -293,8 +293,8 @@ impl World {
         if dx != 0 && dy != 0 && self.crossed(GridCoord { x: from.x + dx, y: from.y }, GridCoord { x: from.x, y: from.y + dy }, hf + ht) {
             return false;
         }
-        !self.node_in(from, hf, sf).is_some_and(|id| self.turns_sharply(id, (dx, dy), !one_way, true))
-            && !self.node_in(to, ht, st).is_some_and(|id| self.turns_sharply(id, (-dx, -dy), true, !one_way))
+        !self.node_in(from, hf, sf).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true))
+            && !self.node_in(to, ht, st).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way))
     }
 
     /// Would a slope here take an arm this way to a node at `other`: it has
@@ -326,22 +326,6 @@ impl World {
             self.nodes_on(b).into_iter().any(|(hb, nb)| {
                 (self.edges.contains_key(&(na, nb)) || self.edges.contains_key(&(nb, na))) && (ha + hb).abs_diff(twice) < 4
             })
-        })
-    }
-
-    /// `would_turn_sharply`, of a node by its id.
-    pub(super) fn turns_sharply(&self, id: EntityId, (dx, dy): (i32, i32), arriving: bool, leaving: bool) -> bool {
-        let Some(at) = self.objects.get(id).and_then(|e| e.position) else { return false };
-        self.arms_of(id, false).into_iter().any(|nid| {
-            let Some(npos) = self.objects.get(nid).and_then(|n| n.position) else { return false };
-            // An arm to the tile the new one goes to: turning from the one
-            // onto the other is going back, which no car does
-            // (`pathfinding::may_turn`).
-            if (npos.x - at.x, npos.y - at.y) == (dx, dy) {
-                return false;
-            }
-            let ahead = (npos.x - at.x) * dx + (npos.y - at.y) * dy > 0;
-            ahead && ((arriving && self.edges.contains_key(&(id, nid))) || (leaving && self.edges.contains_key(&(nid, id))))
         })
     }
 

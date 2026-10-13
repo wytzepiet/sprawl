@@ -381,4 +381,17 @@ mod tests {
             other => panic!("the drag is not one action: {other:?}"),
         }
     }
+
+    /// A street joining another at 45 degrees: its cars turn the shallow
+    /// way, and none turns sharper than a right angle.
+    #[test]
+    fn a_junction_at_45_degrees_turns_the_shallow_way() {
+        let mut f = Field::new();
+        let row: Vec<(i32, i32)> = (0..9).map(|x| (x, 0)).collect();
+        f.drag(Tool::Street, &row);
+        f.drag(Tool::Street, &[(1, 4), (2, 3), (3, 2), (4, 1), (5, 0)]);
+        assert!(f.world.road_node_at(GridCoord { x: 4, y: 1 }).is_some(), "the diagonal was not laid");
+        assert!(f.turn((4, 1), (5, 0), (6, 0)) && f.turn((6, 0), (5, 0), (4, 1)), "the shallow turns are not there");
+        assert!(!f.turn((4, 1), (5, 0), (4, 0)) && !f.turn((4, 0), (5, 0), (4, 1)), "a car turns sharper than a right angle");
+    }
 }

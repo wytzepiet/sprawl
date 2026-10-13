@@ -387,19 +387,38 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
     const crossed = nodesOn(h, p).some(([hp, np]) => nodesOn(h, q).some(([hq, nq]) => (edge(np, nq) || edge(nq, np)) && Math.abs(hp + hq - (hf + ht)) < 4));
     if (crossed) return false;
   }
-  return !(na && tooSharpNode(h, na, from, dx, dy, !oneWay, true)) && !(nb && tooSharpNode(h, nb, to, -dx, -dy, true, !oneWay));
+  return !(na && leadsNowhere(h, na, from, dx, dy, !oneWay, true)) && !(nb && leadsNowhere(h, nb, to, -dx, -dy, true, !oneWay));
+}
+
+/** `World::leads_nowhere`: would a new arm here this way lead nowhere,
+ *  its cars, coming in along it (`arriving`) or going out (`leaving`),
+ *  with roads to turn onto there and every one a turn sharper than a
+ *  right angle, which no car makes. */
+function leadsNowhere(h: Hand, here: Node, at: GridCoord, dx: number, dy: number, arriving: boolean, leaving: boolean): boolean {
+  const byId = (id: number) => [nodeAt(h, h.at.get(id) ?? at), ...[...(h.decks?.values() ?? [])]].find((n) => n?.id === id);
+  const ways = arms(here.node, false).flatMap((id) => {
+    const p = h.at.get(id);
+    if (!p || (p.x - at.x === dx && p.y - at.y === dy)) return [];
+    const out = here.node.outgoing.includes(id);
+    const into = !!byId(id)?.node.outgoing.includes(here.id) || here.node.incoming.includes(id);
+    return [{ out, into, shallow: (p.x - at.x) * dx + (p.y - at.y) * dy <= 0 }];
+  });
+  const none = (out: boolean) => {
+    const these = ways.filter((w) => (out ? w.out : w.into));
+    return these.length > 0 && !these.some((w) => w.shallow);
+  };
+  return (arriving && none(true)) || (leaving && none(false));
 }
 
 /** `World::would_turn_sharply`: would a new arm here this way give a car
  *  a turn sharper than a right angle, in by one arm and out by another
  *  within ninety degrees of it; `arriving`, cars come in along the new
- *  arm, `leaving`, they go out along it. Only turns a car can make count. */
+ *  arm, `leaving`, they go out along it. A drive may not. */
 function tooSharp(h: Hand, at: GridCoord, dx: number, dy: number, arriving: boolean, leaving: boolean): boolean {
   const here = nodeAt(h, at);
   return !!here && tooSharpNode(h, here, at, dx, dy, arriving, leaving);
 }
 
-/** `World::turns_sharply`: the same, of a node at any height. */
 function tooSharpNode(h: Hand, here: Node, at: GridCoord, dx: number, dy: number, arriving: boolean, leaving: boolean): boolean {
   const byId = (id: number) => [nodeAt(h, h.at.get(id) ?? at), ...[...(h.decks?.values() ?? [])]].find((n) => n?.id === id);
   return arms(here.node, false).some((id) => {
@@ -442,7 +461,8 @@ function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boole
   if (connected(h, from, to)) return false;
   if (dx !== 0 && dy !== 0 && connected(h, { x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy })) return false;
   // Out of `from` and in to `to`, and back too unless it is one way.
-  return !tooSharp(h, from, dx, dy, !oneWay, true) && (!!into || !tooSharp(h, to, -dx, -dy, true, !oneWay));
+  const [nf, nt] = [nodeAt(h, from), nodeAt(h, to)];
+  return !(nf && leadsNowhere(h, nf, from, dx, dy, !oneWay, true)) && (!!into || !(nt && leadsNowhere(h, nt, to, -dx, -dy, true, !oneWay)));
 }
 
 /** `World::enters`: may a drive run from `from` onto `to` of a plot

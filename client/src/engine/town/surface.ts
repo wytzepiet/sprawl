@@ -406,11 +406,13 @@ function strip(path: Path, lane: (t: number) => Lane): Polygon {
 
 /** The ways through a junction its cars may go, each from the arm it
  *  comes in by to the one it goes out by, and its path: every turn its
- *  lanes allow, but those not drawn (`Surface::banned`). */
+ *  lanes allow, but those not drawn (`Surface::banned`) and those sharper
+ *  than a right angle, which no car makes (`pathfinding::may_turn`). */
 function movesOf(surface: Surface, p: Pt, roads: Way[]): [Way, Way, Path][] {
   const banned = new Set(surface.banned);
+  const sharp = (a: Way, b: Way) => a[0] * b[0] + a[1] * b[1] > 0;
   return roads.flatMap((a) => roads.flatMap((b): [Way, Way, Path][] =>
-    a === b || banned.has(`${a[0]},${a[1]}>${b[0]},${b[1]}`) || !lanesOf(a[3], true).length || !lanesOf(b[3], false).length ? [] : [[a, b, pathOf(p, a, b, false)]],
+    a === b || sharp(a, b) || banned.has(`${a[0]},${a[1]}>${b[0]},${b[1]}`) || !lanesOf(a[3], true).length || !lanesOf(b[3], false).length ? [] : [[a, b, pathOf(p, a, b, false)]],
   ));
 }
 

@@ -52,10 +52,9 @@ impl World {
 
     /// Would a new arm at `coord`, toward (dx, dy), give a car a turn
     /// sharper than a right angle: in by one arm and out by another within
-    /// ninety degrees of it. Only the turns a car can make count, so a
-    /// one-way may join a road at a shallow angle, a merge, as long as
-    /// nothing could turn back along it. `arriving`: cars come in to
-    /// `coord` along the new arm; `leaving`: they go out along it.
+    /// ninety degrees of it. A driveway may not (`driveway_reaches`).
+    /// `arriving`: cars come in to `coord` along the new arm; `leaving`:
+    /// they go out along it.
     pub(super) fn would_turn_sharply(&self, coord: GridCoord, dx: i32, dy: i32, arriving: bool, leaving: bool) -> bool {
         let Some(id) = self.road_node_at(coord) else { return false };
         self.arms_of(id, false).into_iter().any(|nid| {
@@ -68,6 +67,31 @@ impl World {
             let ahead = (npos.x - coord.x) * dx + (npos.y - coord.y) * dy > 0;
             ahead && ((arriving && self.edges.contains_key(&(id, nid))) || (leaving && self.edges.contains_key(&(nid, id))))
         })
+    }
+
+    /// Would a new arm at node `id`, toward (dx, dy), lead nowhere: its
+    /// cars, coming in along it (`arriving`) or going out along it
+    /// (`leaving`), with roads to turn onto there and every one of them a
+    /// turn sharper than a right angle, which no car makes
+    /// (`pathfinding::may_turn`). A road may meet another at any angle as
+    /// long as its cars can go on the shallow way; a hairpin, they cannot.
+    pub(super) fn leads_nowhere(&self, id: EntityId, (dx, dy): (i32, i32), arriving: bool, leaving: bool) -> bool {
+        let Some(at) = self.objects.get(id).and_then(|e| e.position) else { return false };
+        let arms: Vec<(EntityId, bool)> = self
+            .arms_of(id, false)
+            .into_iter()
+            .filter_map(|nid| {
+                let p = self.objects.get(nid)?.position?;
+                let (x, y) = (p.x - at.x, p.y - at.y);
+                // An arm to the tile the new one goes to is that road itself.
+                ((x, y) != (dx, dy)).then_some((nid, x * dx + y * dy <= 0))
+            })
+            .collect();
+        let none = |out: bool| {
+            let ways: Vec<bool> = arms.iter().filter(|&&(n, _)| if out { self.edges.contains_key(&(id, n)) } else { self.edges.contains_key(&(n, id)) }).map(|&(_, shallow)| shallow).collect();
+            !ways.is_empty() && !ways.contains(&true)
+        };
+        (arriving && none(true)) || (leaving && none(false))
     }
 
     /// Does the road from `a` to `b` have two lanes?
@@ -202,7 +226,8 @@ impl World {
         }
         // Out of `from` and in to `to`, and the other way too unless it is
         // one way. Into a building, nothing stands on its tile to turn from.
-        !self.would_turn_sharply(from, dx, dy, !one_way, true) && (into_building || !self.would_turn_sharply(to, -dx, -dy, true, !one_way))
+        !self.road_node_at(from).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true))
+            && (into_building || !self.road_node_at(to).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way)))
     }
 
     pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
@@ -437,11 +462,12 @@ mod tests {
         GridCoord { x, y }
     }
 
-    /// A one-way may join a road at a shallow angle, an on-ramp, where
-    /// nothing could turn back along it; and leave one so, an off-ramp.
-    /// A two-way may not: a car could turn back along it, sharper than a
-    /// right angle. Nor may a one-way that could only be joined by such a
-    /// turn.
+    /// A road may join another at a shallow angle as long as its cars can
+    /// go on the shallow way: a one-way on-ramp from behind, an off-ramp
+    /// ahead, a one-way onto a two-way street, turning the shallow way. Not
+    /// one whose cars could only turn back, sharper than a right angle: a
+    /// ramp against the traffic, or a two-way ramp, whose way out no car
+    /// could reach.
     #[test]
     fn a_one_way_may_merge_at_a_shallow_angle() {
         let world = eastward();
@@ -450,11 +476,11 @@ mod tests {
         assert!(world.may_lay(at(5, 0), at(6, -1), true), "an off-ramp ahead");
         assert!(!world.may_lay(at(6, -1), at(5, 0), true), "a ramp joining against the traffic");
         assert!(!world.may_lay(at(5, 0), at(4, -1), true), "a ramp leaving back the way the road came");
-        // On a two-way street, no ramp at all: a turn back is always there.
+        // Onto a two-way street, a one-way, its cars turning the shallow way.
         let mut both = World::new();
         both.terrain = world.terrain.clone();
         both.place_road_path(&(0..10).map(|x| GridCoord { x, y: 0 }).collect::<Vec<_>>());
-        assert!(!both.may_lay(at(4, -1), at(5, 0), true));
+        assert!(both.may_lay(at(4, -1), at(5, 0), true));
         // Square on, any road joins any.
         assert!(both.may_lay(at(5, -1), at(5, 0), false));
     }

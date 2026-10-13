@@ -91,9 +91,9 @@ describe("a one-way may merge at a shallow angle", () => {
     expect(may(h, "OneWay", at(6, -1), at(5, 0))).toBe(false);
     expect(may(h, "OneWay", at(5, 0), at(4, -1))).toBe(false);
   });
-  test("never onto a two-way at a shallow angle; square on, anything", () => {
+  test("onto a two-way at a shallow angle, a one-way, its cars turning the shallow way; square on, anything", () => {
     const h = street();
-    expect(may(h, "OneWay", at(4, -1), at(5, 0))).toBe(false);
+    expect(may(h, "OneWay", at(4, -1), at(5, 0))).toBe(true);
     expect(may(h, "Street", at(5, -1), at(5, 0))).toBe(true);
   });
 });
