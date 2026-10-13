@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { decode, encode } from "@msgpack/msgpack";
 import init, { Web } from "../wasm/sprawl_web.js";
-import { hand, type Hand } from "../engine/may";
 import type { ClientMessage, GameObjectEntry, GridCoord, RoadNode, ServerMessage, Tool } from "../generated";
-import { Pen } from "./pen";
+import { Pen, type Place } from "./pen";
+import type { Side } from "./tiles";
 
 /**
  * Drags played through the pen (`pen.ts`) against the game itself, the
@@ -28,24 +28,18 @@ type Entry = GameObjectEntry & { object: { kind: "RoadNode"; data: RoadNode } };
 class Table {
   web = new Web("field", FIELD);
   entities = new Map<number, GameObjectEntry>();
-  world!: Hand;
   tool: Tool = "OneWay";
   pen = 0;
-  bounds: { x0: number; y0: number; x1: number; y1: number };
   hand = new Pen({
-    world: () => this.world,
+    roads: (t) => this.roads().filter((e) => e.position!.x === t.x && e.position!.y === t.y).map((e): Place => ({ h: e.object.data.height, s: e.object.data.side as Side })),
     tool: () => this.tool,
     want: () => this.pen * 2,
     priority: () => false,
-    inside: (t) => t.x >= this.bounds.x0 && t.x <= this.bounds.x1 && t.y >= this.bounds.y0 && t.y <= this.bounds.y1,
-    ground: () => "Grass",
     send: (msg) => this.send(msg),
     lift: (levels) => (this.pen = levels),
   });
 
   constructor() {
-    const s = JSON.parse(this.web.state());
-    this.bounds = { x0: s.min_x, y0: s.min_y, x1: s.max_x, y1: s.max_y };
     // What a client is sent is what it looks at, as the camera asks.
     this.web.send(encode({ type: "SetChunks", data: { min_cx: -4, min_cy: -4, max_cx: 4, max_cy: 4 } }));
     this.hear();
@@ -60,13 +54,13 @@ class Table {
     this.web.tick();
     for (const bytes of this.web.drain() as Uint8Array[]) {
       const msg = decode(bytes) as ServerMessage;
+      if (msg.type === "Hint") this.hand.hear(msg.data);
       if (msg.type !== "Update") continue;
       for (const op of msg.data.ops) {
         if (op.op === "Upsert") this.entities.set(op.data.id, op.data);
         else this.entities.delete(op.data);
       }
     }
-    this.world = hand((f) => this.entities.forEach(f), () => "Grass");
   }
 
   /** A drag through these tiles, corner to corner, a step at a time; how

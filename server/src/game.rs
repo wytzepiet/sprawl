@@ -147,6 +147,11 @@ impl Game {
                 let world = (self.fresh)();
                 self.replace(world);
             }
+            ClientMessage::Ask(ask) => {
+                let Some(owner) = self.clients.get(&client_id).map(|cs| cs.owner) else { return };
+                let hint = crate::hint::answer(&self.world, owner, ask);
+                self.send(client_id, ServerMessage::Hint(hint));
+            }
             message => {
                 let Some(owner) = self.clients.get(&client_id).map(|cs| cs.owner) else { return };
                 // What the hand did, said to its owner alone: an undo, or a
@@ -285,7 +290,7 @@ fn handle_player_action(
             let (level, _) = crate::economy::level(world.gdp);
             world.build.take(cell, level);
         }
-        ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ping => {
+        ClientMessage::SetSpeed(_) | ClientMessage::ResetWorld | ClientMessage::SetChunks(_) | ClientMessage::Ping | ClientMessage::Ask(_) => {
             unreachable!("handled by Game::command")
         }
     }
@@ -419,9 +424,8 @@ pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road
 
 /// May the mayor's hand take this step with this tool: the build's gate
 /// (what it has opened, how much road is left to lay), and the world's
-/// own rule for the step. The one rule a step is refused by. The client
-/// works out the same where it draws the hand's dots
-/// (`client/src/engine/may.ts`): a change here is a change there.
+/// own rule for the step. The one rule a step is refused by, and the
+/// hand's dots are drawn by (`hint.rs`).
 pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
     may_step(world, Build { tool, from, to, up: None, sides: None, road: false })
 }
@@ -437,6 +441,20 @@ pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }:
     let [hf, ht] = up.unwrap_or_default();
     let [sf, st] = sides.unwrap_or_default();
     let (a, b) = (world.node_in(from, hf, sf), world.node_in(to, ht, st));
+    // A level's: on its map, and its own roads stay; a road of the
+    // player's may be cut from one.
+    if let Some((lo, hi)) = world.frame {
+        let inside = |t: GridCoord| (lo.x..=hi.x).contains(&t.x) && (lo.y..=hi.y).contains(&t.y);
+        let fixed = |t: GridCoord, h: u8| h == 0 && world.road_node_at(t).is_some_and(|id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if !n.laid));
+        let ok = match tool {
+            Tool::Demolish if from == to => !fixed(to, ht),
+            Tool::Demolish => !(fixed(from, hf) && fixed(to, ht)),
+            _ => inside(from) && inside(to),
+        };
+        if !ok {
+            return false;
+        }
+    }
     match tool {
         Tool::Street | Tool::OneWay | Tool::Wide => {
             let one_way = matches!(tool, Tool::OneWay | Tool::Wide);
@@ -1076,7 +1094,7 @@ mod tests {
     /// The rule says what the hand will do: a house may be placed
     /// beside the street and not on it; a street may be drawn off the
     /// street and not along it again, nor onto water; demolishing finds
-    /// what stands. The client's dots (`may.ts`) answer the same.
+    /// what stands. The hand's dots (`hint.rs`) answer the same.
     #[test]
     fn the_rule_of_where_the_hand_may_go_is_what_it_does() {
         let mut world = street();

@@ -25,7 +25,7 @@
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::intersection::IntersectionRegistry;
-use crate::protocol::{Build, EntityId, GameObject, GridCoord, News, OwnerId, Stroke, Tool};
+use crate::protocol::{Build, EntityId, GameObject, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
 use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};
 use crate::world::decks::{across, other, toward, Side, MIDDLE};
 use crate::world::World;
@@ -39,6 +39,49 @@ pub struct Place {
 }
 
 type Step = (i32, i32);
+
+/// The eight steps from a tile, as the hand numbers them: east, and on
+/// round toward +y.
+pub const STEPS: [Step; 8] = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)];
+
+/// Where a drag may go on from its last tile (`hint.rs`): for each of the
+/// eight steps, where it would stand on the tile it steps to, as the plan
+/// would lay it now; none where it may not. From where it stands as laid,
+/// or, a drag only pressed, from where it may start.
+pub fn reach(world: &World, owner: OwnerId, stroke: &Stroke) -> Vec<Option<Stand>> {
+    let n = stroke.tiles.len();
+    let Some(&last) = stroke.tiles.last() else { return vec![None; 8] };
+    let laid = world.undo.get(&owner).and_then(|h| h.last()).and_then(|d| match &d.act {
+        Act::Drawn { stroke: was, steps } if was.id == stroke.id && steps.len() + 1 == n => steps.last().map(|s| place_of(world, s.nodes[1])),
+        _ => None,
+    });
+    if n > 1 && laid.is_none() {
+        return vec![None; 8];
+    }
+    STEPS
+        .iter()
+        .map(|&(dx, dy)| {
+            let mut on = stroke.clone();
+            on.tiles.push(Spot { at: GridCoord { x: last.at.x + dx, y: last.at.y + dy }, want: last.want });
+            let tiles: Vec<GridCoord> = on.tiles.iter().map(|s| s.at).collect();
+            let froms = laid.map_or_else(|| starts(world, &on, &tiles), |p| vec![p]);
+            plan(world, &on, &tiles, n, &froms).map(|(_, p)| Stand { h: p.h, side: p.s })
+        })
+        .collect()
+}
+
+/// May a drag with this tool start on this tile: a step out of it, from
+/// anywhere on it, at the pen's height or on a road there.
+pub fn may_start(world: &World, tool: Tool, road: bool, want: u8, at: GridCoord) -> bool {
+    let on: Vec<Place> = world.nodes_on(at).into_iter().map(|(_, id)| place_of(world, id)).collect();
+    STEPS.iter().any(|&(dx, dy)| {
+        let tiles = [at, GridCoord { x: at.x + dx, y: at.y + dy }];
+        let stroke = Stroke { id: 0, tool, road, tiles: tiles.iter().map(|&at| Spot { at, want }).collect(), start: None };
+        let mut froms = on.clone();
+        froms.extend(starts(world, &stroke, &tiles));
+        plan(world, &stroke, &tiles, 1, &froms).is_some()
+    })
+}
 
 /// A drag drawn on, or a new one: laid as planned, what stands of it as
 /// it was kept. Says so the first time the drag buys stone express.

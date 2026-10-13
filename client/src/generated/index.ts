@@ -52,3 +52,8 @@ export type { WantView } from "./WantView";
 export type { Stroke } from "./Stroke";
 export type { Spot } from "./Spot";
 export type { Stand } from "./Stand";
+export type { Ask } from "./Ask";
+export type { Holding } from "./Holding";
+export type { Area } from "./Area";
+export type { Hint } from "./Hint";
+export type { Placing } from "./Placing";

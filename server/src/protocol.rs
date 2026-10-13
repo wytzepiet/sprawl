@@ -77,6 +77,73 @@ pub struct Stand {
     pub side: [i8; 2],
 }
 
+/// What the hand asks before it acts, to show where it may (`hint.rs`):
+/// answered with a `Hint`, to the asking client alone.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "type", content = "data")]
+pub enum Ask {
+    /// Which tiles in this area a drag with the tool in hand may start
+    /// from, or the building in hand stand round.
+    Starts { hand: Holding, area: Area },
+    /// Where a drag may go on from the last tile of this one: for a road,
+    /// the drag as drawn so far; for the eraser, the tile it is on and
+    /// where on it it stands (`Stroke::start`).
+    Reach(Stroke),
+    /// Where the building in hand, held over this tile, would be placed.
+    Placing { kind: BuildingKind, at: GridCoord, facing: Option<u8> },
+}
+
+/// What the hand holds, for `Ask::Starts`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "type", content = "data")]
+pub enum Holding {
+    /// A tool, with priority or not, the pen at this height in half-levels.
+    Tool { tool: Tool, road: bool, want: u8 },
+    /// A building, turned this way, or left to find its way.
+    Building { kind: BuildingKind, facing: Option<u8> },
+}
+
+/// Tiles from one corner to the other, both in.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Area {
+    pub x0: i32,
+    pub y0: i32,
+    pub x1: i32,
+    pub y1: i32,
+}
+
+/// The game's answer to an `Ask`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "type", content = "data")]
+pub enum Hint {
+    Starts { hand: Holding, area: Area, tiles: Vec<GridCoord> },
+    /// For the drag `id`, `len` tiles long: the eight steps on from its
+    /// last tile (east, then on round toward +y), each where it would
+    /// stand, or none where it may not go.
+    Reach { id: u32, len: u32, ways: Vec<Option<Stand>> },
+    Placing(Placing),
+}
+
+/// A building held over the map: where letting go would place it, the
+/// way it would face, its door if it has one, and, if it may not go
+/// there, why, in words.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Placing {
+    pub kind: BuildingKind,
+    /// The tile it is placed round.
+    pub at: GridCoord,
+    pub tiles: Vec<GridCoord>,
+    pub facing: u8,
+    /// The tile its drive runs onto, and the street it runs from.
+    pub door: Option<Door>,
+    pub why: Option<String>,
+}
+
 /// What the mayor's hand holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -921,6 +988,8 @@ pub enum ClientMessage {
     Build(Build),
     /// A drag of road, the whole of it so far (`draw.rs`).
     Draw(Stroke),
+    /// Where the hand may go (`hint.rs`).
+    Ask(Ask),
     /// A building placed whole round `at`, its front this way
     /// (`blueprint::FACINGS`); none, the first way it fits.
     Place { kind: BuildingKind, at: GridCoord, facing: Option<u8> },
@@ -1066,6 +1135,8 @@ pub enum ServerMessage {
     /// than it was asked: a box a rule bought, stone bought express. And
     /// what the hand did, to its player alone: an undo, a building refused.
     News(Vec<News>),
+    /// The answer to an `Ask`.
+    Hint(Hint),
 }
 
 /// A line of news, and the building a tap on it goes to.

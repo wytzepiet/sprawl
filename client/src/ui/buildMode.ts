@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import type { BuildingKind, Tool } from "../generated";
-import type { Placing } from "../engine/may";
+import type { Placing } from "../generated";
 
 /** What the mayor's hand holds: a kind of road or the demolisher; `null`
  *  is the bare hand, which selects. A drag with a tool lays it a step at
@@ -38,8 +38,8 @@ export const ROADS = ["Street", "OneWay", "Wide"] as const;
 export const isRoad = (t: Tool | null) => (ROADS as readonly unknown[]).includes(t);
 
 /** Where the building in hand would be placed if let go now, which way
- *  it would face, and why it may not, if it may not (`may.ts`
- *  `placing`). The brush sets it; the town draws it, and the hand's label
+ *  it would face, and why it may not, if it may not, as the game says
+ *  (`World::placing`). The brush sets it; the town draws it, and the hand's label
  *  says it. */
 const [aim, setAim] = createSignal<Placing | null>(null);
 export { aim, setAim };

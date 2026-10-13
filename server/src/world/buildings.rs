@@ -1,7 +1,16 @@
 use crate::protocol::{
-    Building, BuildingKind, EntityId, GameObject, GridCoord, TerrainType,
+    Building, BuildingKind, Door, EntityId, GameObject, GridCoord, Placing, TerrainType,
 };
 use crate::world::World;
+
+/// What lies behind a harbour's back, best first.
+#[derive(Clone, Copy)]
+enum Behind {
+    Berth,
+    Sea,
+    Lake,
+    Land,
+}
 
 impl World {
     /// Tiles a footprint of this size covers when placed at `pos`.
@@ -88,8 +97,7 @@ impl World {
     /// yard is entered only by its gate, the middle of its front, from
     /// ahead of it, the street side its kind lays it on
     /// (`blueprint::lie`), so the yard is always where its street is and
-    /// its lane runs straight in (`lots::park`). Pure geometry, so the
-    /// hand's preview asks the same (`may.ts` `enters`).
+    /// its lane runs straight in (`lots::park`).
     pub fn enters(tiles: &[GridCoord], kind: BuildingKind, facing: u8, from: GridCoord, to: GridCoord) -> bool {
         let on = |x: i32, y: i32| tiles.contains(&GridCoord { x, y });
         let (dx, dy) = (from.x - to.x, from.y - to.y);
@@ -437,14 +445,14 @@ impl World {
 
     /// The plot a kind placed round `at` facing this way stands on: its
     /// whole footprint, building and yard, laid round the tile as the
-    /// hand holds it (`client/src/engine/may.ts` `plotAt`).
+    /// hand holds it (`World::placing`).
     pub fn plot_at(kind: BuildingKind, at: GridCoord, facing: u8) -> Vec<GridCoord> {
         let (w, h) = crate::blueprint::plot(kind, facing).size;
         Self::footprint(GridCoord { x: at.x - w as i32 / 2, y: at.y - h as i32 / 2 }, (w, h)).collect()
     }
 
     /// May a kind be placed round `at` facing this way, and if not, why,
-    /// in the words the hand's preview says it in (`may.ts` `fit`): open
+    /// in the words the hand's preview says it in (`World::placing`): open
     /// land under the whole plot, or a road's dead end it stands over;
     /// a street before its front, its yard's if it keeps one, or all along
     /// one side for one that parks at the kerb; and a harbour's back on
@@ -466,9 +474,11 @@ impl World {
             }
         }
         if crate::blueprint::blueprint(kind).quay {
-            return match self.berth_at(&tiles, kind, facing) {
-                Some(_) => Ok(tiles),
-                None => Err("No berth: its back is not on the sea"),
+            return match self.behind(&tiles, kind, facing) {
+                Behind::Berth => Ok(tiles),
+                Behind::Sea => Err("The water behind is too narrow: the ferry needs 6 tiles of open sea straight out"),
+                Behind::Lake => Err("A lake: the ferry comes only by sea"),
+                Behind::Land => Err("No berth: its back is not on the sea"),
             };
         }
         // A building that parks at the kerb needs a street all along one
@@ -552,6 +562,76 @@ impl World {
         }
         let inland: Vec<GridCoord> = (0..STUB).map(|k| GridCoord { x: front.x + ahead.0 * k, y: front.y + ahead.1 * k }).take_while(|&t| open(t)).collect();
         steps(&inland)
+    }
+
+    /// What lies behind a harbour's back on these tiles facing this way:
+    /// a berth (`berth_at`), else the best of what is there.
+    fn behind(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Behind {
+        if self.berth_at(tiles, kind, facing).is_some() {
+            return Behind::Berth;
+        }
+        let Some(gate) = World::gate_of(tiles, kind, facing) else { return Behind::Land };
+        let (dx, dy) = crate::blueprint::FACINGS[facing as usize % 4];
+        let (_, (w, h)) = World::bounds(tiles);
+        let deep = if dx == 0 { h } else { w } as i32;
+        match self.terrain.get(&(gate.x - dx * deep, gate.y - dy * deep)) {
+            Some(TerrainType::Sea) => Behind::Sea,
+            Some(TerrainType::Water) => Behind::Lake,
+            _ => Behind::Land,
+        }
+    }
+
+    /// How a kind held at a tile would be placed: turned the way the hand
+    /// turned it, or, left to itself, the first way it fits, and where none
+    /// does, toward the nearest street, a harbour toward the sea, so the
+    /// reason shown is the one that matters; round the tile itself, or one
+    /// beside it that fits, as the coast a harbour backs onto and the street
+    /// a depot's yard must front are a tile from where the eye puts them.
+    pub fn placing(&self, kind: BuildingKind, at: GridCoord, facing: Option<u8>) -> Placing {
+        const NEAR: [(i32, i32); 9] = [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
+        let tried: Vec<Placing> = NEAR.iter().map(|&(dx, dy)| self.turned(kind, GridCoord { x: at.x + dx, y: at.y + dy }, facing)).collect();
+        let mut p = tried.iter().find(|p| p.why.is_none()).unwrap_or(&tried[0]).clone();
+        if !self.build.may_place(kind) {
+            p.why = Some("Not yet opened on the tree".into());
+        }
+        p
+    }
+
+    fn turned(&self, kind: BuildingKind, at: GridCoord, facing: Option<u8>) -> Placing {
+        if let Some(f) = facing {
+            return self.placed_as(kind, at, f);
+        }
+        let all: Vec<Placing> = (0..4).map(|f| self.placed_as(kind, at, f)).collect();
+        if let Some(ok) = all.iter().find(|p| p.why.is_none()) {
+            return ok.clone();
+        }
+        let quay = crate::blueprint::blueprint(kind).quay;
+        let rank = |p: &Placing| if quay { self.behind(&p.tiles, kind, p.facing) as u32 } else { self.nearest_street(Self::front(&p.tiles, p.facing)) };
+        all.into_iter().min_by_key(rank).expect("four ways round")
+    }
+
+    /// A kind placed round a tile facing this way, as it would stand.
+    fn placed_as(&self, kind: BuildingKind, at: GridCoord, facing: u8) -> Placing {
+        let (tiles, why) = match self.fit(kind, at, facing) {
+            Ok(tiles) => (tiles, None),
+            Err(why) => (Self::plot_at(kind, at, facing), Some(why.to_string())),
+        };
+        let door = why.is_none().then(|| self.driveway_for(&tiles, kind, facing)).flatten().and_then(|(id, tile)| Some(Door { tile, street: self.objects.get(id)?.position? }));
+        Placing { kind, at, tiles, facing, door, why }
+    }
+
+    /// The tile one out from the middle of a plot's front.
+    fn front(tiles: &[GridCoord], facing: u8) -> GridCoord {
+        let (o, (w, h)) = Self::bounds(tiles);
+        let (dx, dy) = crate::blueprint::FACINGS[facing as usize % 4];
+        let (mx, my) = (o.x as f64 + (w as f64 - 1.0) / 2.0, o.y as f64 + (h as f64 - 1.0) / 2.0);
+        let (hw, hh) = ((w as f64 - 1.0) / 2.0 + 1.0, (h as f64 - 1.0) / 2.0 + 1.0);
+        GridCoord { x: (mx + dx as f64 * hw).round() as i32, y: (my + dy as f64 * hh).round() as i32 }
+    }
+
+    /// Steps to the nearest street tile from this one, as far as eight.
+    fn nearest_street(&self, t: GridCoord) -> u32 {
+        (0..=8).find(|&r| (-r..=r).any(|dy| (-r..=r).any(|dx| (dx as i32).abs().max((dy as i32).abs()) == r && self.road_node_at(GridCoord { x: t.x + dx, y: t.y + dy }).is_some()))).map_or(99, |r| r as u32)
     }
 
     /// The first way round a kind fits at `at`, if any does.

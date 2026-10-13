@@ -375,6 +375,7 @@ impl Level {
         let par = solution.iter().map(|&(_, h)| if h == 0 { 1 } else if h % 2 == 1 { 2 } else { 3 }).sum::<u32>() + lights.len() as u32 * LIGHT_COST;
         let seed = name.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
         let n = wants.len();
+        world.frame = Some((at(w - 1, h - 1), at(0, 0)));
         let level = Level {
             name: name.to_string(),
             title,
@@ -406,20 +407,6 @@ impl Level {
 
     pub fn inside(&self, t: GridCoord) -> bool {
         (self.min.x..=self.max.x).contains(&t.x) && (self.min.y..=self.max.y).contains(&t.y)
-    }
-
-    /// Whether the player may take this step: on the map, and not into a
-    /// gate's stub.
-    pub fn allows(&self, world: &World, step: &Build) -> bool {
-        let [hf, ht] = step.up.unwrap_or_default();
-        let fixed = |t: GridCoord, h: u8| h == 0 && world.road_node_at(t).is_some_and(|id| matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if !n.laid));
-        match step.tool {
-            // A level's own road stays; a road of the player's may be cut
-            // from it.
-            Tool::Demolish if step.from == step.to => !fixed(step.to, ht),
-            Tool::Demolish => !(fixed(step.from, hf) && fixed(step.to, ht)),
-            _ => self.inside(step.from) && self.inside(step.to),
-        }
     }
 
     /// Our own solve, laid: the steps the hand would take.
@@ -839,10 +826,10 @@ mod tests {
         }
     }
 
-    fn lay(game: &mut Game, level: &Level, path: &[(i32, i32)]) {
+    fn lay(game: &mut Game, path: &[(i32, i32)]) {
         for p in path.windows(2) {
             let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 }, up: None, sides: None, road: false };
-            assert!(level.allows(&game.world, &step), "{step:?} refused");
+            assert!(crate::game::may_step(&game.world, step), "{step:?} refused");
             crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
         }
     }
@@ -867,7 +854,7 @@ mod tests {
     fn a_straight_road_carries_the_traffic_and_scores() {
         let (mut level, mut game) = play(CROSSING);
         // Gate 1 stands at column 0, the map's x 9; gate 2 at x 0.
-        lay(&mut game, &level, &(0..=9).rev().map(|x| (x, -1)).collect::<Vec<_>>());
+        lay(&mut game, &(0..=9).rev().map(|x| (x, -1)).collect::<Vec<_>>());
         assert!(level.state(&game).wants[0].joined);
         level.test(&mut game);
         run(&mut level, &mut game, TEST_MS + 1000);
@@ -892,7 +879,7 @@ mod tests {
             let name = path.file_stem().unwrap().to_string_lossy().into_owned();
             let (mut level, mut game) = play(&std::fs::read_to_string(&path).unwrap());
             for step in level.solve_steps(&game.world) {
-                assert!(level.allows(&game.world, &step), "{name}: {step:?} refused by the level");
+                assert!(crate::game::may_step(&game.world, step), "{name}: {step:?} refused by the level");
                 assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{name}: {step:?} refused by the world");
             }
             let s = level.state(&game);
@@ -918,9 +905,9 @@ mod tests {
             crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
         }
         let written = Level::layout(&game.world);
-        let (again, mut fresh) = play(&text);
+        let (_, mut fresh) = play(&text);
         for step in &written {
-            assert!(again.allows(&fresh.world, step));
+            assert!(crate::game::may_step(&fresh.world, *step));
             assert!(crate::game::take_step(&mut fresh.world, &mut fresh.events, &mut fresh.intersections, *step, fresh.now), "{step:?}");
         }
         assert_eq!(Level::cost(&fresh.world), Level::cost(&game.world));
@@ -971,11 +958,11 @@ mod tests {
 
     #[test]
     fn nothing_is_built_off_the_map_or_on_a_gate() {
-        let (level, game) = play(CROSSING);
+        let (_, game) = play(CROSSING);
         let off = Build { tool: Tool::Street, from: GridCoord { x: 0, y: 0 }, to: GridCoord { x: -1, y: 0 }, up: None, sides: None, road: false };
-        assert!(!level.allows(&game.world, &off));
+        assert!(!crate::game::may_step(&game.world, off));
         let gate = Build { tool: Tool::Demolish, from: GridCoord { x: 9, y: -1 }, to: GridCoord { x: 9, y: -1 }, up: None, sides: None, road: false };
-        assert!(!level.allows(&game.world, &gate));
+        assert!(!crate::game::may_step(&game.world, gate));
     }
 
     /// Priority is the hand's, whatever road it draws: a one-way laid with

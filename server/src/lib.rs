@@ -8,6 +8,7 @@ pub mod engine;
 pub mod fixtures;
 pub mod game;
 pub mod haul;
+pub mod hint;
 pub mod intersection;
 pub mod level;
 pub mod missions;

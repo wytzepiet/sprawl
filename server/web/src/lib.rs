@@ -30,21 +30,9 @@ impl Web {
         Web { game, level }
     }
 
-    /// A message from the client, as the socket would carry it. A step
-    /// off the map or onto a gate is not taken; a drag stops at the map's
-    /// edge.
+    /// A message from the client, as the socket would carry it.
     pub fn send(&mut self, bytes: &[u8]) {
-        let Ok(mut msg) = rmp_serde::from_slice::<ClientMessage>(bytes) else { return };
-        if let ClientMessage::Build(step) = &msg
-            && !self.level.allows(&self.game.world, step)
-        {
-            return;
-        }
-        // A drag off the map stops at its edge.
-        if let ClientMessage::Draw(stroke) = &mut msg {
-            let on = stroke.tiles.iter().take_while(|s| self.level.inside(s.at)).count();
-            stroke.tiles.truncate(on);
-        }
+        let Ok(msg) = rmp_serde::from_slice::<ClientMessage>(bytes) else { return };
         // Speed is the level's to set while it tests.
         if matches!(msg, ClientMessage::SetSpeed(_)) && self.level.phase() == Phase::Test {
             return;
@@ -101,9 +89,7 @@ impl Web {
     pub fn load(&mut self, json: &str) {
         let steps: Vec<sprawl::protocol::Build> = serde_json::from_str(json).unwrap_or_default();
         for step in steps {
-            if self.level.allows(&self.game.world, &step) {
-                self.game.command(ME, ClientMessage::Build(step));
-            }
+            self.game.command(ME, ClientMessage::Build(step));
         }
     }
 

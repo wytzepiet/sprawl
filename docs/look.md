@@ -324,7 +324,7 @@ Built 2026-10-04, steps 1 to 4: one command and a toolbar, a building
 its tiles, the rings gone, and the game drawn by the town grid, a road
 an instance a tile and the town round what is built drawn whole. The
 same day: the hand builds only what can work, and shows where with dots
-it works out itself (`engine/may.ts`, the server's rule mirrored), on a
+the game works out for it (`server/src/hint.rs`), on a
 canvas of their own that runs together like liquid as it drags
 (`engine/dots.ts`), the grid gone; houses drawn in a row are linked, a
 row (`Building::joined`); a drive is the building's door, not a road

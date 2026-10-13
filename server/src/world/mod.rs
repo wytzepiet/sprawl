@@ -82,6 +82,9 @@ pub struct World {
     /// Tiles of road the mayor has laid, against the build's allowance.
     /// Derived at startup from the nodes' own flag, like every other index.
     pub laid: u32,
+    /// A level's map, corner to corner: no road is laid off it, and the
+    /// roads it came with (`RoadNode::laid` false) stay.
+    pub frame: Option<(GridCoord, GridCoord)>,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
     /// The mountains' heights, eroded, made from the terrain the first time
@@ -179,6 +182,7 @@ impl World {
             news: Vec::new(),
             build: Default::default(),
             laid: 0,
+            frame: None,
             terrain: HashMap::new(),
             peaks: Default::default(),
             water: Default::default(),
@@ -223,6 +227,7 @@ impl World {
             news: Vec::new(),
             build: Default::default(),
             laid: 0,
+            frame: None,
             terrain: HashMap::new(),
             peaks: Default::default(),
             water: Default::default(),

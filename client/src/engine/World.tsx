@@ -35,7 +35,7 @@ interface MountedEntry {
 
 /** The town as the server has it, drawn; and the hand over it: the
  *  town's brush, or the one given (a level's). */
-export default function World(props: { brush?: (ground: (x: number, y: number) => TerrainType | undefined) => JSX.Element }) {
+export default function World(props: { brush?: () => JSX.Element }) {
   const pool = useInstancePool();
   const ctx = useEngine();
   const { casters } = useDayNight();
@@ -201,6 +201,5 @@ export default function World(props: { brush?: (ground: (x: number, y: number) =
     terrain.dispose();
   });
 
-  const ground = (x: number, y: number) => terrain.typeAt(x, y);
-  return <>{props.brush ? props.brush(ground) : <Brush ground={ground} />}</>;
+  return <>{props.brush ? props.brush() : <Brush />}</>;
 }

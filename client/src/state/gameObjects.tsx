@@ -10,8 +10,12 @@ import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
 import { hearMissions } from "./missions";
+import type { Place } from "../engine/pen";
+import type { Side } from "../engine/tiles";
 import type { Building,
   GameObjectEntry,
+  GridCoord,
+  Hint,
   ClientMessage,
   ChunkBounds,
   Growth,
@@ -123,6 +127,22 @@ export function getObjectsAt(x: number, y: number): GameObjectEntry[] {
   return (spatial.get(posKey(x, y)) ?? [])
     .map((id) => entities.get(String(id)))
     .filter((e): e is GameObjectEntry => !!e);
+}
+
+/** Where each road on a tile stands: its height and side. */
+export function roadsAt(t: GridCoord): Place[] {
+  return getObjectsAt(t.x, t.y).flatMap((e) => (e.object.kind === "RoadNode" ? [{ h: e.object.data.height, s: e.object.data.side as Side }] : []));
+}
+
+// --- The game's answers to the hand (`Ask`) ---
+
+type HintListener = (h: Hint) => void;
+const hintListeners = new Set<HintListener>();
+/** Told each answer to the hand's asks while listening; stop with what
+ *  this returns. */
+export function listenHints(fn: HintListener): () => void {
+  hintListeners.add(fn);
+  return () => void hintListeners.delete(fn);
 }
 
 // --- Ops listener for ECS ---
@@ -304,6 +324,9 @@ export function GameProvider(props: ParentProps & { connect: Connect }) {
         break;
       case "Pong":
         syncClock(msg.data);
+        break;
+      case "Hint":
+        for (const f of hintListeners) f(msg.data);
         break;
     }
   });

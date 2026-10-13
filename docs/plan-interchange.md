@@ -95,8 +95,9 @@ The work:
 
 What it buys beyond the puzzle: the puzzle can ship as a static page (a
 web link, itch.io) with no server at all. And later the main game's
-client can ask the wasm sim `may(tool, from, to)` instead of keeping its
-copy of the rules in `may.ts`.
+client can ask the wasm sim where the hand may go instead of keeping
+a copy of the rules. (Since done the other way: both ask the game, the
+town's over the socket, `hint.rs`.)
 
 **Scores across players** (the percentile chart, below) need one small
 endpoint: it receives a layout, re-runs it with the same wasm sim on the
@@ -254,8 +255,8 @@ direction-aware (`would_be_too_sharp`, `outgoing_only`). Make it entirely
 about **movements**: at a node, every (way in, way out) a car could take
 must turn 90° or less. A one-way that joins at 45° offers only the gentle
 movement, so it's allowed; a two-way laid the same way would offer the
-hairpin, so it isn't. The same rule in `may.ts` (or, in the puzzle, asked of
-the wasm sim and not kept twice).
+hairpin, so it isn't. The hand's dots ask the game the same rule
+(`hint.rs`), not kept twice.
 
 ### 2. Markings
 
@@ -494,8 +495,8 @@ What runs, and where; the rest of the order above is still to come.
   sends the drag so far at each tile, and the game plans it from end to
   end, each tile with the next in sight, keeping what it laid before
   where the plan still says so. Heights, sides, what it joins are the
-  game's; the brush (`interchange/pen.ts`) only collects the tiles and
-  hints where it may go. One drag, one undo. `pen.test.ts` plays drags
+  game's; the brush (`engine/pen.ts`) only collects the tiles and
+  asks where it may go. One drag, one undo. `pen.test.ts` plays drags
   through the brush against the game in wasm, and checks after each what
   may never be.
 - **A drag joins only at its ends** (`RoadNode::banned`): where it starts

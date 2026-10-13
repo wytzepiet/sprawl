@@ -3,18 +3,18 @@ import { render } from "solid-js/web";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { projector, screenToWorld, viewExtent, rectOf } from "./view";
-import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
-import { aim, held, hold, isRoad, priority, setAim, setPriority, setTool, tool, turn } from "../ui/buildMode";
-import { fit, fits, hand, mayAt, mayStart, placing, snap, STEPS, type Hand } from "./may";
+import { builtVersion, eachEntity, getObjectsAt, listenHints, roadsAt, useGame } from "../state/gameObjects";
+import { aim, held, hold, priority, setAim, setPriority, setTool, tool, turn } from "../ui/buildMode";
+import { snap, STEPS } from "./tiles";
+import { Pen } from "./pen";
 import { BLUEPRINTS, GoodIcon, GOODS } from "../blueprints";
-import type { Building, Good, GridCoord, Stroke, TerrainType, Tool } from "../generated";
+import type { Area, Building, Good, GridCoord, Tool } from "../generated";
 
 /**
- * The mayor's hand on the map. A road or the demolisher is laid as the
- * drag goes, a step from one tile to the next, each sent as it is taken
- * (`Build { tool, from, to }`), straight or diagonal toward the pointer;
- * the demolisher's tap takes everything at its tile, a building whole,
- * and its drag cuts only the road it crosses.
+ * The mayor's hand on the map. A road, the demolisher or lights go by the
+ * pen (`pen.ts`): a drag of road laid as it goes, straight or diagonal
+ * toward the pointer; the demolisher's tap takes everything at its tile,
+ * a building whole, and its drag cuts only the road it crosses.
  *
  * A building in hand, dragged from the build menu, is placed whole where
  * it is let go (`Place`): shown where it would stand as the town would be
@@ -23,26 +23,24 @@ import type { Building, Good, GridCoord, Stroke, TerrainType, Tool } from "../ge
  * beside it, what it is built of against what the town has, or why it
  * may not go there.
  *
- * Where the hand may go is worked out here (`may.ts`) and shown by the
- * dots (`dots.ts`): one on every tile in view a drag may start from, or a
- * building may stand round, and while dragging the steps the tile it is
- * on allows. A step refused is not taken: the drag waits there, straining.
+ * Where the hand may go is the game's to say (`server/src/hint.rs`), and
+ * the dots show it (`dots.ts`): one on every tile in view a drag may start
+ * from, or a building may stand round, and while dragging the steps the
+ * tile it is on allows. A step not allowed, or not yet answered, is not
+ * taken: the drag waits there, straining.
  *
  * Alt with the bare hand is the eyedropper: it picks up the road it
  * presses on, and a drag from there lays more of it.
  */
-export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
+export function Brush() {
   const { scene, canvas, afterRender } = useEngine();
   const dots = new Dots(scene, canvas);
   const stopTick = afterRender(() => dots.frame());
   const { send } = useGame();
-  let current: GridCoord | null = null;
-  /** The tile pressed on, while the hand is down. */
-  let pressed: GridCoord | null = null;
-  /** The drag of road so far, sent whole each step (`Stroke`). */
-  let stroke: Stroke | null = null;
-  let drags = Math.floor(Math.random() * 2 ** 30);
-  let prevWorld: { wx: number; wy: number } | null = null;
+  const pen = new Pen({ roads: roadsAt, tool, want: () => 0, priority, send, lift: () => {} });
+  /** Where the pointer is while dragging, and the way it last went. */
+  let pointer: { wx: number; wy: number } | null = null;
+  let heading = 0;
   let accDx = 0;
   let accDy = 0;
 
@@ -51,78 +49,83 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     const w = pick(e);
     return { x: Math.floor(w.wx), y: Math.floor(w.wy) };
   };
-  /** A step of the hand: a drag of road on a tile, sent whole, the game
-   *  planning it (`server/src/draw.rs`); the demolisher's, a step. */
-  const step = (from: GridCoord, to: GridCoord) => {
-    const t = tool();
-    if (t === "Street" || t === "OneWay" || t === "Wide") {
-      stroke ??= { id: ++drags, tool: t, road: priority(), tiles: [{ at: from, want: 0 }] };
-      stroke.tiles.push({ at: to, want: 0 });
-      send({ type: "Draw", data: stroke });
-    } else if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority() } });
-  };
 
-  // The world as the hand sees it, read again when something is built.
-  let world: Hand | null = null;
   /** The tile under the pointer, while it is over the map. */
   let hover: GridCoord | null = null;
+  /** Where the building in hand would stand there, asked of the game. */
   const aimAt = () => {
     const h = held();
-    setAim(world && hover && h ? placing(world, h.kind, hover, h.facing) : null);
+    if (!hover || !h) return setAim(null);
+    send({ type: "Ask", data: { type: "Placing", data: { kind: h.kind, at: hover, facing: h.facing } } });
   };
-  createEffect(on(builtVersion, () => {
-    world = hand(eachEntity, props.ground);
+  /** The tiles in view the building in hand may stand round, as the game
+   *  last said, and what they were asked of. */
+  let fits: GridCoord[] = [];
+  let fitsAsked = "";
+  const fitsKey = (kind: string, facing: number | null, a: Area) => [kind, facing, a.x0, a.y0, a.x1, a.y1].join();
+
+  /** The drag on toward the pointer, as far as the pen may go now. */
+  const advance = () => {
+    if (!pointer) return;
+    for (const t of pen.pull(pointer.wx, pointer.wy, heading)) dots.step(t);
     draw();
-    aimAt();
-  }));
-  // And drawn again when another tool or building is taken up, or turned.
-  createEffect(on([tool, held, priority], () => (draw(), aimAt()), { defer: true }));
-  const allowed = (at: GridCoord, i: number) => {
-    const t = tool();
-    return !!world && t !== null && mayAt(world, t, at, 0, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] }, 0, priority());
   };
+  const stopHints = listenHints((h) => {
+    const p = held();
+    if (h.type === "Placing") {
+      if (p && hover && h.data.kind === p.kind) setAim(h.data);
+    } else if (h.type === "Starts" && h.data.hand.type === "Building") {
+      if (fitsKey(h.data.hand.data.kind, h.data.hand.data.facing, h.data.area) === fitsAsked) (fits = h.data.tiles), draw();
+    } else if (pen.hear(h)) {
+      if (h.type === "Reach") advance();
+      else draw();
+    }
+  });
 
   /** The tiles the view covers. */
-  const viewBox = () => {
+  const viewBox = (): Area => {
     const rect = rectOf(canvas);
     const mid = screenToWorld(scene, canvas, { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 });
     const { halfW, halfH } = viewExtent(scene, canvas);
     const half = Math.max(halfW, halfH);
-    return [Math.floor(mid.wx - half), Math.floor(mid.wy - half), Math.ceil(mid.wx + half), Math.ceil(mid.wy + half)];
+    return { x0: Math.floor(mid.wx - half), y0: Math.floor(mid.wy - half), x1: Math.ceil(mid.wx + half), y1: Math.ceil(mid.wy + half) };
   };
-  // Drawn again when the view moves on a tile.
-  let drawnOver = "";
+  /** Where the hand may start, asked of the game for the view; `afresh`,
+   *  again, something having been built. */
+  const ask = (afresh = false) => {
+    const [a, h] = [viewBox(), held()];
+    if (h) {
+      const key = fitsKey(h.kind, h.facing, a);
+      if (key !== fitsAsked || afresh) send({ type: "Ask", data: { type: "Starts", data: { hand: { type: "Building", data: { kind: h.kind, facing: h.facing } }, area: a } } });
+      fitsAsked = key;
+    } else pen.view(a, afresh);
+    draw();
+  };
+  createEffect(on(builtVersion, () => (ask(true), aimAt())));
+  // And again when another tool or building is taken up, or turned.
+  createEffect(on([tool, held, priority], () => (ask(), aimAt()), { defer: true }));
   let frames = 0;
   const stopWatch = afterRender(() => {
-    if ((tool() === null && held() === null) || current || ++frames % 15) return;
-    if (viewBox().join() !== drawnOver) draw();
+    if ((tool() !== null || held() !== null) && !pen.current && ++frames % 15 === 0) ask();
   });
 
   /** Tell the dots what to show: the starts in view while nothing is
    *  pressed, the steps out of the tile underfoot while dragging; with a
    *  building in hand, every tile it may stand round. */
   function draw() {
-    const t = tool(), h = held();
-    const starts: [number, number][] = [];
-    const nexts: [number, number][] = [];
-    const [x0, y0, x1, y1] = viewBox();
-    const start = !world ? null
-      : h ? (at: GridCoord) => (h.facing === null ? fits(world!, h.kind, at) : !fit(world!, h.kind, at, h.facing).why)
-      : t !== null ? (at: GridCoord) => mayStart(world!, t, at, priority())
-      : null;
-    if (start) {
-      if (current && t !== null) for (const [i, [dx, dy]] of STEPS.entries()) if (allowed(current, i)) nexts.push([current.x + dx, current.y + dy]);
-      drawnOver = [x0, y0, x1, y1].join();
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (start({ x, y })) starts.push([x, y]);
-    }
-    dots.aim(starts, nexts, current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
+    const current = pen.current;
+    const starts = held() ? fits : tool() !== null ? pen.starts : [];
+    const nexts: [number, number][] = current ? STEPS.flatMap(([dx, dy], i) => (pen.allowed(i) ? [[current.x + dx, current.y + dy] as [number, number]] : [])) : [];
+    const a = viewBox();
+    dots.aim(starts.map((t) => [t.x, t.y]), nexts, current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (a.x0 + a.x1) / 2, y: (a.y0 + a.y1) / 2 });
   }
 
   /** What road stands at a tile, as the tool that lays it, and whether
    *  it has priority. */
   const toolAt = (at: GridCoord): [Tool, boolean] | null => {
-    const n = world?.roads.get(`${at.x},${at.y}`)?.node;
-    if (!n) return null;
+    const e = getObjectsAt(at.x, at.y).find((e) => e.object.kind === "RoadNode");
+    if (e?.object.kind !== "RoadNode") return null;
+    const n = e.object.data;
     const oneWay = n.outgoing.some((o) => !n.incoming.includes(o)) || n.incoming.some((i) => !n.outgoing.includes(i));
     return [oneWay ? "OneWay" : "Street", n.road];
   };
@@ -145,70 +148,40 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   };
 
   const onPointerDown = (e: PointerEvent) => {
-    if (e.button !== 0 || held() !== null) return;
-    if (tool() === null) return;
-    current = tileOf(e);
-    prevWorld = pick(e);
+    if (e.button !== 0 || held() !== null || tool() === null) return;
+    pointer = pick(e);
+    const at = { x: Math.floor(pointer.wx), y: Math.floor(pointer.wy) };
+    pen.press(at, pointer.wx, pointer.wy);
     accDx = 0;
     accDy = 0;
-    // The demolisher's tap waits for the hand to come up where it went
-    // down: a drag cuts only what it crosses, not the point it starts from.
-    pressed = current;
-    stroke = null;
-    dots.grab(current, { x: prevWorld.wx, y: prevWorld.wy });
+    dots.grab(at, { x: pointer.wx, y: pointer.wy });
     draw();
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!current || !prevWorld) {
+    if (!pen.current || !pointer) {
       const at = tileOf(e);
       if (at.x !== hover?.x || at.y !== hover?.y) (hover = at), aimAt();
       return;
     }
     const w = pick(e);
     dots.pull({ x: w.wx, y: w.wy });
-    accDx += w.wx - prevWorld.wx;
-    accDy += w.wy - prevWorld.wy;
-    prevWorld = w;
-
+    accDx += w.wx - pointer.wx;
+    accDy += w.wy - pointer.wy;
+    pointer = w;
     // Need enough accumulated movement to determine direction
     if (Math.max(Math.abs(accDx), Math.abs(accDy)) < 0.1) return;
-
-    const sector = snap(accDx, accDy);
-    const [sx, sy] = STEPS[sector];
-    let cur = current!;
-
-    for (let i = 0; i < 50; i++) {
-      const cx = cur.x + 0.5;
-      const cy = cur.y + 0.5;
-      const dist = Math.max(Math.abs(w.wx - cx), Math.abs(w.wy - cy));
-      if (dist < 0.6) break;
-
-      const next: GridCoord = { x: cur.x + sx, y: cur.y + sy };
-      const newDist = Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5)));
-      if (newDist >= dist) break; // would move away from pointer
-      if (!allowed(cur, sector)) break; // refused: wait here
-
-      step(cur, next);
-      dots.step(next);
-      cur = next;
-    }
-    if (cur !== current) {
-      current = cur;
-      draw();
-    }
-
+    heading = snap(accDx, accDy);
     accDx = 0;
     accDy = 0;
+    advance();
   };
 
   const onPointerUp = (e: PointerEvent) => {
     if (held() !== null && e.button === 0 && touches.size < 2) return place(e.shiftKey);
-    if (pressed && current === pressed && tool() === "Demolish") step(pressed, pressed);
-    pressed = null;
-    if (current) dots.release();
-    current = null;
-    prevWorld = null;
+    if (pen.current) dots.release();
+    pen.release();
+    pointer = null;
     draw();
   };
 
@@ -333,6 +306,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     canvas.removeEventListener("pointercancel", onTouchUp);
     canvas.removeEventListener("wheel", onWheel, { capture: true });
     window.removeEventListener("keydown", onKey, { capture: true });
+    stopHints();
     stopWatch();
     stopTick();
   });

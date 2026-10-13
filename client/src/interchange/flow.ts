@@ -1,6 +1,6 @@
 import { eachEntity } from "../state/gameObjects";
 import { deckZ, heightAlong } from "../engine/decks";
-import { spot } from "../engine/may";
+import { spot } from "../engine/tiles";
 import { LANE_OFFSET } from "../engine/objects/roadGeometry";
 import type { RoadNode } from "../generated";
 

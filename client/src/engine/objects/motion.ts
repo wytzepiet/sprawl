@@ -3,7 +3,7 @@ import { CAR_RIG, driveTrip, LORRY_RIG, straight, type Drive, type Pose, type Ri
 import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
 import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
-import { spot } from "../may";
+import { spot } from "../tiles";
 import type { Car, GridCoord, RoadNode, Trailer, Trip } from "../../generated";
 import { getObjectsAt } from "../../state/gameObjects";
 import type { Pose as Stand } from "../../generated/Pose";

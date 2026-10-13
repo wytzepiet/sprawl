@@ -129,7 +129,7 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
             <DayNightLights>
               <Registered>
                 <InstancePoolProvider>
-                  <World brush={(ground) => <RoadBrush ground={ground} bounds={bounds} />} />
+                  <World brush={RoadBrush} />
                 </InstancePoolProvider>
               </Registered>
             </DayNightLights>

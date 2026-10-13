@@ -293,7 +293,7 @@ function seamOf(p: Pt, [dc, dr, , , there]: Way): { at: Pt; u: Pt; len: number }
 
 /** How wide a road is either side of its middle, by how it is driven: a
  *  lane one way is thin; two of them side by side on a tile stand
- *  `SIDE_OFFSET` from its middle (`may.ts`), grass between them. */
+ *  `SIDE_OFFSET` from its middle (`tiles.ts`), grass between them. */
 const THIN = 0.13;
 const halfOf = (flow?: Flow | "d") => (flow === "o" || flow === "i" ? THIN : HALF_W);
 
