@@ -50,25 +50,16 @@ struct Leg {
 }
 
 /// May a car come in to `at` from `from` and go on to `to`? Never back the
-/// way it came, and never left or back across a divided road's median:
-/// off one, or onto its far side. Where the search begins it came from
-/// nowhere, and where it ends it goes nowhere.
+/// way it came. Where the search begins it came from nowhere, and where it
+/// ends it goes nowhere.
 pub fn may_turn(world: &World, from: EntityId, at: EntityId, to: EntityId) -> bool {
     if from == at || to == at {
         return true;
     }
-    if from == to {
-        return false;
-    }
-    if !world.divided(at, from) && !world.divided(at, to) {
-        return true;
-    }
+    // Never back the way it came: to the node it came from, or to the one
+    // beside it on that tile, a road the other way side by side.
     let pos = |id: EntityId| world.objects.get(id).and_then(|e| e.position);
-    let (Some(a), Some(b), Some(c)) = (pos(from), pos(at), pos(to)) else { return true };
-    // The lanes keep to the right of the way, (-dy, dx) (`bezier.rs`):
-    // straight on or toward it is allowed.
-    let ((ix, iy), (ox, oy)) = ((b.x - a.x, b.y - a.y), (c.x - b.x, c.y - b.y));
-    ix * oy - iy * ox >= 0
+    from != to && pos(from) != pos(to)
 }
 
 /// Every way out from one place, searched as far as anyone has asked.

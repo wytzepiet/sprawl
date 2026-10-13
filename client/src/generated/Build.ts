@@ -14,6 +14,11 @@ export type Build = { tool: Tool, from: GridCoord, to: GridCoord,
  */
 up?: [number, number], 
 /**
+ * Which side of its tile each end stands (`RoadNode::side`); none,
+ * both in the middle.
+ */
+sides?: [[number, number], [number, number]], 
+/**
  * The road laid has priority (`RoadNode::road`): whoever joins or
  * crosses it gives way. Along a road already there, it gains or loses
  * it.

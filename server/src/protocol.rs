@@ -25,6 +25,11 @@ pub struct Build {
     #[serde(default)]
     #[ts(optional)]
     pub up: Option<[u8; 2]>,
+    /// Which side of its tile each end stands (`RoadNode::side`); none,
+    /// both in the middle.
+    #[serde(default)]
+    #[ts(optional)]
+    pub sides: Option<[[i8; 2]; 2]>,
     /// The road laid has priority (`RoadNode::road`): whoever joins or
     /// crosses it gives way. Along a road already there, it gains or loses
     /// it.
@@ -82,6 +87,11 @@ pub struct RoadNode {
     #[serde(default)]
     #[ts(type = "Array<number>")]
     pub wide: Vec<EntityId>,
+    /// Which side of its tile it stands: the step across its road it is
+    /// moved by, or none, the middle. Two one-ways share a tile side by
+    /// side, each a thin road beside the other (`world/decks.rs`).
+    #[serde(default)]
+    pub side: [i8; 2],
 }
 
 /// A junction's lights between phases, none green.

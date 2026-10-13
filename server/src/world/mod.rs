@@ -118,8 +118,9 @@ pub struct World {
     /// check, every bend, every site the placer tries — and a chunk's
     /// entity set was being walked for each answer. Derived at load.
     pub roads: HashMap<(i32, i32), EntityId>,
-    /// The road nodes above the ground, by tile and height (`decks.rs`).
-    pub decks: HashMap<(i32, i32, u8), EntityId>,
+    /// Every other road node on a tile, above the ground or beside its
+    /// middle (`decks.rs`).
+    pub decks: HashMap<(i32, i32), Vec<EntityId>>,
     /// Every harbour, and the street node it is reached by: a way out of
     /// the town, so what reaches it is joined. Derived by `mark_harbours`,
     /// never saved.
@@ -249,8 +250,8 @@ impl World {
             if let Some(pos) = entry.position {
                 world.spatial.entry(chunk_of(pos)).or_default().insert(entry.id);
                 match entry.object {
-                    GameObject::RoadNode(ref n) if n.height > 0 => {
-                        world.decks.insert((pos.x, pos.y, n.height), entry.id);
+                    GameObject::RoadNode(ref n) if n.height > 0 || n.side != decks::MIDDLE => {
+                        world.decks.entry((pos.x, pos.y)).or_default().push(entry.id);
                     }
                     GameObject::RoadNode(_) => {
                         world.roads.insert((pos.x, pos.y), entry.id);

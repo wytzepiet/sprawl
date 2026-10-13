@@ -14,8 +14,17 @@
 //! slope from the ground may not. Links crossing on the diagonal, between
 //! tiles, keep the same clearance where they cross.
 //!
-//! The ground's nodes are `roads`, as they always were, and everything the
-//! town does with a tile's road is the ground's. The rest are `decks`.
+//! Two one-ways may share a tile side by side, as roads share it stacked:
+//! each a node of its own, moved a little to one side of the tile's middle
+//! (`RoadNode::side`), a thin road beside the other. A one-way running
+//! straight through a tile moves over when another is laid beside it, and
+//! back when that one goes. A road on a side is joined along its run, one
+//! way, or from its own side, a road merging into it or branching off it;
+//! never from the other side, which the road beside it is in the way of.
+//!
+//! The ground's middle nodes are `roads`, as they always were, and
+//! everything the town does with a tile's road is theirs. The rest, above
+//! the ground or beside the middle, are `decks`.
 
 use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode, TerrainType};
 
@@ -24,6 +33,25 @@ use super::World;
 /// The highest a road stands: three levels up.
 pub const TOP: u8 = 6;
 
+/// Which side of its tile a node stands: the step across its road it is
+/// moved by; `MIDDLE`, not moved.
+pub type Side = [i8; 2];
+pub const MIDDLE: Side = [0, 0];
+
+/// How far from its tile's middle a node on a side stands, in tiles.
+pub const SIDE_OFFSET: f64 = 0.17;
+
+/// How far a step goes toward a side: positive toward it, zero across it,
+/// along the run of a road on that side.
+fn toward((dx, dy): (i32, i32), side: Side) -> i32 {
+    dx * side[0] as i32 + dy * side[1] as i32
+}
+
+/// The other side.
+pub fn other(side: Side) -> Side {
+    [-side[0], -side[1]]
+}
+
 /// How far apart two nodes on one tile must stand: a level, and a level
 /// more for each that is a slope, which reaches up or down half of one.
 fn clearance(a: u8, b: u8) -> u8 {
@@ -31,17 +59,23 @@ fn clearance(a: u8, b: u8) -> u8 {
 }
 
 impl World {
-    /// The road node on a tile at a height.
+    /// The middle road node on a tile at a height.
     pub fn node_at(&self, coord: GridCoord, height: u8) -> Option<EntityId> {
-        if height == 0 { self.road_node_at(coord) } else { self.decks.get(&(coord.x, coord.y, height)).copied() }
+        self.node_in(coord, height, MIDDLE)
+    }
+
+    /// The road node on a tile at a height and side.
+    pub fn node_in(&self, coord: GridCoord, height: u8, side: Side) -> Option<EntityId> {
+        if height == 0 && side == MIDDLE {
+            return self.road_node_at(coord);
+        }
+        self.decks.get(&(coord.x, coord.y))?.iter().copied().find(|&id| self.height_of(id) == height && self.side_of(id) == side)
     }
 
     /// Every road node on a tile, and how high it stands.
     pub fn nodes_on(&self, coord: GridCoord) -> Vec<(u8, EntityId)> {
-        let mut out: Vec<(u8, EntityId)> = (1..=TOP).filter_map(|h| Some((h, *self.decks.get(&(coord.x, coord.y, h))?))).collect();
-        if let Some(g) = self.road_node_at(coord) {
-            out.insert(0, (0, g));
-        }
+        let mut out: Vec<(u8, EntityId)> = self.road_node_at(coord).map(|g| (0, g)).into_iter().collect();
+        out.extend(self.decks.get(&(coord.x, coord.y)).into_iter().flatten().map(|&id| (self.height_of(id), id)));
         out
     }
 
@@ -52,52 +86,142 @@ impl World {
         }
     }
 
-    /// Is there room on this tile for a road at this height: its own node
-    /// there already, or every other a level clear of it; and above the
-    /// ground, nothing built under it and no mountain.
-    pub fn room_at(&self, coord: GridCoord, height: u8) -> bool {
-        if self.node_at(coord, height).is_some() {
+    pub fn side_of(&self, id: EntityId) -> Side {
+        match self.objects.get(id).map(|e| &e.object) {
+            Some(GameObject::RoadNode(n)) => n.side,
+            _ => MIDDLE,
+        }
+    }
+
+    /// Is there room on this tile for a road at this height and side: its
+    /// own node there already, or every other a level clear of it, or at
+    /// its height on the other side; and above the ground, nothing built
+    /// under it and no mountain. A middle node that would move over to
+    /// make room (`moves_over`) is not in the way.
+    pub fn room_at(&self, coord: GridCoord, height: u8, side: Side) -> bool {
+        if self.node_in(coord, height, side).is_some() {
             return true;
         }
         if height > 0 && (self.occupied.contains_key(&(coord.x, coord.y)) || self.terrain.get(&(coord.x, coord.y)) == Some(&TerrainType::Mountain)) {
             return false;
         }
-        self.nodes_on(coord).into_iter().all(|(h, _)| h.abs_diff(height) >= clearance(h, height))
+        self.nodes_on(coord).into_iter().all(|(h, id)| {
+            let beside = side != MIDDLE && h == height && (self.side_of(id) == other(side) || Some(id) == self.moves_over(coord, height, side));
+            beside || h.abs_diff(height) >= clearance(h, height)
+        })
     }
 
-    /// Lay a road node on a tile at a height above the ground, or find the
-    /// one there. The mayor's.
-    pub(super) fn place_deck_of(&mut self, coord: GridCoord, height: u8, road: bool) -> EntityId {
-        if let Some(id) = self.node_at(coord, height) {
+    /// The middle node on a tile that moves over to the other side when a
+    /// node is laid on this one: a one-way running straight through, or
+    /// ending, along the run across the side, with one lane.
+    pub fn moves_over(&self, coord: GridCoord, height: u8, side: Side) -> Option<EntityId> {
+        if side == MIDDLE || self.node_in(coord, height, other(side)).is_some() {
+            return None;
+        }
+        let id = self.node_at(coord, height)?;
+        let arms = self.arms_of(id, false);
+        let along = arms.iter().all(|&n| {
+            let Some(p) = self.objects.get(n).and_then(|e| e.position) else { return false };
+            let one_way = self.edges.contains_key(&(id, n)) != self.edges.contains_key(&(n, id));
+            one_way && toward((p.x - coord.x, p.y - coord.y), side) == 0 && !self.is_wide(id, n) && !self.is_wide(n, id)
+        });
+        (along && arms.len() <= 2).then_some(id)
+    }
+
+    /// A node moved to another side of its tile, or back to its middle, its
+    /// links with it: indexed where it now stands, and its edges as long as
+    /// they now are.
+    pub(super) fn move_to(&mut self, id: EntityId, side: Side) {
+        let Some(at) = self.objects.get(id).and_then(|e| e.position) else { return };
+        let was = self.side_of(id);
+        let height = self.height_of(id);
+        if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(id).map(|e| &mut e.object) {
+            n.side = side;
+        }
+        if height == 0 && was == MIDDLE {
+            self.roads.remove(&(at.x, at.y));
+            self.decks.entry((at.x, at.y)).or_default().push(id);
+        } else if height == 0 && side == MIDDLE {
+            if let Some(v) = self.decks.get_mut(&(at.x, at.y)) {
+                v.retain(|&n| n != id);
+            }
+            self.roads.insert((at.x, at.y), id);
+        }
+        for (a, b) in self.edges_involving(id) {
+            let len = self.segment_length(a, b);
+            if let Some(seg) = self.edges.get_mut(&(a, b)) {
+                seg.length = len;
+            }
+        }
+    }
+
+    /// A road on a side with nothing beside it any more goes back to the
+    /// middle of its tile.
+    pub(super) fn settle_sides(&mut self, coord: GridCoord) {
+        for (h, id) in self.nodes_on(coord) {
+            let side = self.side_of(id);
+            if side != MIDDLE && self.node_in(coord, h, other(side)).is_none() && self.node_at(coord, h).is_none() {
+                self.move_to(id, MIDDLE);
+            }
+        }
+    }
+
+    /// Lay a road node on a tile at a height and side, or find the one
+    /// there; a one-way in the middle there moves over to the other side.
+    /// The mayor's.
+    pub(super) fn place_node_of(&mut self, coord: GridCoord, height: u8, side: Side, road: bool) -> EntityId {
+        if height == 0 && side == MIDDLE {
+            return self.place_ground(coord, road);
+        }
+        if let Some(id) = self.node_in(coord, height, side) {
             return id;
         }
+        if let Some(beside) = self.moves_over(coord, height, side) {
+            self.move_to(beside, other(side));
+        }
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![] }),
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![], side }),
             Some(coord),
         );
-        self.decks.insert((coord.x, coord.y, height), id);
+        self.decks.entry((coord.x, coord.y)).or_default().push(id);
         self.laid += 1;
+        self.unsettle_round(coord);
         id
     }
 
-    /// May a road be laid from one tile at one height to the next at
-    /// another, above the ground: the ground's rule (`may_lay`) where both
-    /// ends are on it.
-    pub fn may_lay_at(&self, from: GridCoord, hf: u8, to: GridCoord, ht: u8, one_way: bool) -> bool {
+    /// May a road be laid from one tile at one height and side to the next
+    /// at another: the ground's rule (`may_lay`) where both ends are in the
+    /// ground's middles.
+    pub fn may_lay_at(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool) -> bool {
         let (dx, dy) = (to.x - from.x, to.y - from.y);
         if (dx, dy) == (0, 0) || dx.abs() > 1 || dy.abs() > 1 || hf > TOP || ht > TOP {
             return false;
         }
+        let middles = sf == MIDDLE && st == MIDDLE;
         // On the ground, the ground's rule, and a slope's clearance over it.
-        if hf == 0 && ht == 0 {
-            return self.may_lay(from, to, one_way) && self.room_at(from, 0) && self.room_at(to, 0);
+        if hf == 0 && ht == 0 && middles {
+            return self.may_lay(from, to, one_way) && self.room_at(from, 0, MIDDLE) && self.room_at(to, 0, MIDDLE);
         }
         // Level, or a slope's end: never two slopes, never a level's jump.
         if hf.abs_diff(ht) > 1 || (hf == ht && hf % 2 == 1) {
             return false;
         }
-        if !self.room_at(from, hf) || !self.room_at(to, ht) {
+        if !self.room_at(from, hf, sf) || !self.room_at(to, ht, st) {
             return false;
+        }
+        // A road on a side: along its run one way, and on along its own
+        // side, not across to the other; or, once it is there, out toward
+        // its side, a road joining it.
+        for (at, h, side, way, there) in [(from, hf, sf, (dx, dy), st), (to, ht, st, (-dx, -dy), sf)] {
+            if side == MIDDLE {
+                continue;
+            }
+            match toward(way, side) {
+                0 if !one_way || (there != MIDDLE && there != side) => return false,
+                0 => {}
+                t if t < 0 || self.node_in(at, h, side).is_none() => return false,
+                _ => {}
+            }
         }
         // Where an end is on the ground, it is the ground's: not into a
         // building, not over water.
@@ -107,35 +231,29 @@ impl World {
                 return false;
             }
         }
-        let (a, b) = (self.node_at(from, hf), self.node_at(to, ht));
-        if let (Some(a), Some(b)) = (a, b) {
-            let joined = self.edges.contains_key(&(a, b)) || self.edges.contains_key(&(b, a));
-            // Joined already; but a one-way laid against a one-way makes a
-            // divided road.
-            if joined && !(one_way && self.edges.contains_key(&(b, a)) && !self.edges.contains_key(&(a, b))) {
-                return false;
-            }
+        if self.link_between_at(from, hf, sf, to, ht, st).is_some() {
+            return false;
         }
         // A slope runs straight through: one arm down, one up.
-        if !self.slope_takes(from, hf, (dx, dy), ht) || !self.slope_takes(to, ht, (-dx, -dy), hf) {
+        if !self.slope_takes(from, hf, sf, (dx, dy), ht) || !self.slope_takes(to, ht, st, (-dx, -dy), hf) {
             return false;
         }
         // Crossing a link on the other diagonal, a level clear of it.
         if dx != 0 && dy != 0 && self.crossed(GridCoord { x: from.x + dx, y: from.y }, GridCoord { x: from.x, y: from.y + dy }, hf + ht) {
             return false;
         }
-        !self.node_at(from, hf).is_some_and(|id| self.turns_sharply(id, (dx, dy), !one_way, true))
-            && !self.node_at(to, ht).is_some_and(|id| self.turns_sharply(id, (-dx, -dy), true, !one_way))
+        !self.node_in(from, hf, sf).is_some_and(|id| self.turns_sharply(id, (dx, dy), !one_way, true))
+            && !self.node_in(to, ht, st).is_some_and(|id| self.turns_sharply(id, (-dx, -dy), true, !one_way))
     }
 
     /// Would a slope here take an arm this way to a node at `other`: it has
     /// none yet, or the one it has is straight behind and at the other end
     /// of the climb. Not a slope, anything may join it.
-    fn slope_takes(&self, at: GridCoord, height: u8, way: (i32, i32), other: u8) -> bool {
+    fn slope_takes(&self, at: GridCoord, height: u8, side: Side, way: (i32, i32), other: u8) -> bool {
         if height % 2 == 0 {
             return true;
         }
-        let Some(id) = self.node_at(at, height) else { return true };
+        let Some(id) = self.node_in(at, height, side) else { return true };
         let arms = self.arms_of(id, false);
         let mut unique: Vec<EntityId> = arms.clone();
         unique.sort_unstable();
@@ -165,20 +283,18 @@ impl World {
         let Some(at) = self.objects.get(id).and_then(|e| e.position) else { return false };
         self.arms_of(id, false).into_iter().any(|nid| {
             let Some(npos) = self.objects.get(nid).and_then(|n| n.position) else { return false };
-            if (npos.x - at.x, npos.y - at.y) == (dx, dy) {
-                return false;
-            }
             let ahead = (npos.x - at.x) * dx + (npos.y - at.y) * dy > 0;
             ahead && ((arriving && self.edges.contains_key(&(id, nid))) || (leaving && self.edges.contains_key(&(nid, id))))
         })
     }
 
-    /// Lay a road from one tile at one height to the next at another, its
-    /// edges with it: the ground's way where both ends are on it. Unchecked:
-    /// `may_lay_at` says whether it may be.
-    pub fn place_road_at(&mut self, from: GridCoord, hf: u8, to: GridCoord, ht: u8, one_way: bool, road: bool) {
-        let a = if hf == 0 { self.place_ground(from, road) } else { self.place_deck_of(from, hf, road) };
-        let b = if ht == 0 { self.place_ground(to, road) } else { self.place_deck_of(to, ht, road) };
+    /// Lay a road from one tile at one height and side to the next at
+    /// another, its edges with it. Unchecked: `may_lay_at` says whether it
+    /// may be.
+    #[allow(clippy::too_many_arguments)]
+    pub fn place_road_at(&mut self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool, road: bool) {
+        let a = self.place_node_of(from, hf, sf, road);
+        let b = self.place_node_of(to, ht, st, road);
         if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(a).map(|e| &mut e.object)
             && !n.outgoing.contains(&b)
         {
@@ -201,9 +317,10 @@ impl World {
         }
     }
 
-    /// The road joining two tiles at these heights, if any: its two nodes.
-    pub fn link_between_at(&self, a: GridCoord, ha: u8, b: GridCoord, hb: u8) -> Option<(EntityId, EntityId)> {
-        let (na, nb) = (self.node_at(a, ha)?, self.node_at(b, hb)?);
+    /// The road joining two tiles at these heights and sides, if any: its
+    /// two nodes.
+    pub fn link_between_at(&self, a: GridCoord, ha: u8, sa: Side, b: GridCoord, hb: u8, sb: Side) -> Option<(EntityId, EntityId)> {
+        let (na, nb) = (self.node_in(a, ha, sa)?, self.node_in(b, hb, sb)?);
         (self.edges.contains_key(&(na, nb)) || self.edges.contains_key(&(nb, na))).then_some((na, nb))
     }
 }
@@ -230,8 +347,8 @@ mod tests {
     fn lay(world: &mut World, path: &[(i32, i32, u8)]) {
         for p in path.windows(2) {
             let ((x0, y0, h0), (x1, y1, h1)) = (p[0], p[1]);
-            assert!(world.may_lay_at(at(x0, y0), h0, at(x1, y1), h1, false), "{:?} refused", p);
-            world.place_road_at(at(x0, y0), h0, at(x1, y1), h1, false, false);
+            assert!(world.may_lay_at(at(x0, y0), h0, MIDDLE, at(x1, y1), h1, MIDDLE, false), "{:?} refused", p);
+            world.place_road_at(at(x0, y0), h0, MIDDLE, at(x1, y1), h1, MIDDLE, false, false);
         }
     }
 
@@ -256,14 +373,14 @@ mod tests {
     fn a_slope_runs_straight_and_clear() {
         let mut world = grass();
         world.place_road_path(&(0..12).map(|x| at(x, 0)).collect::<Vec<_>>());
-        assert!(!world.may_lay_at(at(5, -1), 1, at(5, 0), 1, false), "two slopes in a row");
-        assert!(!world.may_lay_at(at(5, -1), 0, at(5, 0), 2, false), "a level in one step");
-        assert!(!world.may_lay_at(at(5, -1), 2, at(5, 0), 1, false), "a slope from the ground's road's own tile");
-        assert!(world.may_lay_at(at(5, -1), 3, at(5, 0), 4, false), "a slope from the first level over it");
+        assert!(!world.may_lay_at(at(5, -1), 1, MIDDLE, at(5, 0), 1, MIDDLE, false), "two slopes in a row");
+        assert!(!world.may_lay_at(at(5, -1), 0, MIDDLE, at(5, 0), 2, MIDDLE, false), "a level in one step");
+        assert!(!world.may_lay_at(at(5, -1), 2, MIDDLE, at(5, 0), 1, MIDDLE, false), "a slope from the ground's road's own tile");
+        assert!(world.may_lay_at(at(5, -1), 3, MIDDLE, at(5, 0), 4, MIDDLE, false), "a slope from the first level over it");
         lay(&mut world, &[(3, -3, 0), (3, -2, 1), (3, -1, 2)]);
-        assert!(!world.may_lay_at(at(3, -2), 1, at(4, -2), 2, false), "a third arm on a slope");
-        assert!(!world.may_lay_at(at(3, -2), 1, at(2, -2), 0, false), "a bend in a slope");
-        assert!(world.may_lay_at(at(3, -1), 2, at(4, -1), 2, false), "a junction on the level");
+        assert!(!world.may_lay_at(at(3, -2), 1, MIDDLE, at(4, -2), 2, MIDDLE, false), "a third arm on a slope");
+        assert!(!world.may_lay_at(at(3, -2), 1, MIDDLE, at(2, -2), 0, MIDDLE, false), "a bend in a slope");
+        assert!(world.may_lay_at(at(3, -1), 2, MIDDLE, at(4, -1), 2, MIDDLE, false), "a junction on the level");
     }
 
     /// Diagonals may cross between tiles only a level apart.
@@ -271,8 +388,8 @@ mod tests {
     fn diagonals_cross_a_level_apart() {
         let mut world = grass();
         lay(&mut world, &[(4, 0, 0), (5, 1, 0)]);
-        assert!(!world.may_lay_at(at(5, 0), 0, at(4, 1), 0, false));
+        assert!(!world.may_lay_at(at(5, 0), 0, MIDDLE, at(4, 1), 0, MIDDLE, false));
         lay(&mut world, &[(3, -1, 2), (4, -1, 2), (5, 0, 2)]);
-        assert!(world.may_lay_at(at(5, 0), 2, at(4, 1), 2, false));
+        assert!(world.may_lay_at(at(5, 0), 2, MIDDLE, at(4, 1), 2, MIDDLE, false));
     }
 }

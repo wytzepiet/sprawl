@@ -32,14 +32,8 @@ impl World {
 
     /// Get the Euclidean distance between two road nodes (used for A* pathfinding).
     pub fn segment_length(&self, from: EntityId, to: EntityId) -> f64 {
-        let a = self.objects.get(from).and_then(|e| e.position);
-        let b = self.objects.get(to).and_then(|e| e.position);
-        match (a, b) {
-            (Some(a), Some(b)) => {
-                let dx = (b.x - a.x) as f64;
-                let dy = (b.y - a.y) as f64;
-                (dx * dx + dy * dy).sqrt()
-            }
+        match (self.node_pos(from), self.node_pos(to)) {
+            (Some(a), Some(b)) => ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt(),
             _ => 1.0,
         }
     }

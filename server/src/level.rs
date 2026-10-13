@@ -46,6 +46,7 @@ use crate::engine::GameTime;
 use crate::game::Game;
 use crate::protocol::{Build, Car, CarRole, EntityId, GameObject, GridCoord, Tool};
 use crate::world::World;
+use crate::world::decks::MIDDLE;
 
 /// How long a test runs, in simulated time.
 pub const TEST_MS: GameTime = 4 * 60_000;
@@ -433,7 +434,7 @@ impl Level {
         for &((a, ha), (dx, dy)) in &self.arrows {
             let b = GridCoord { x: a.x + dx, y: a.y + dy };
             if let Some(hb) = (ha.saturating_sub(1)..=ha + 1).find(|&hb| road(b, hb) && joins(ha, hb)) {
-                steps.push(Build { tool: Tool::OneWay, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]), road: priority(a, ha, b, hb) });
+                steps.push(Build { tool: Tool::OneWay, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]), sides: None, road: priority(a, ha, b, hb) });
             }
         }
         for &(a, ha) in &self.solution {
@@ -447,14 +448,14 @@ impl Level {
                 for hb in ha.saturating_sub(1)..=ha + 1 {
                     let beside = dx != 0 && dy != 0 && (road(GridCoord { x: a.x + dx, y: a.y }, ha) || road(GridCoord { x: a.x, y: a.y + dy }, ha));
                     let done = steps.iter().any(|s: &Build| s.from == b && s.to == a && s.up.unwrap_or_default() == [hb, ha]);
-                    if road(b, hb) && joins(ha, hb) && !beside && !done && world.link_between_at(a, ha, b, hb).is_none() {
-                        steps.push(Build { tool: Tool::Street, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]), road: priority(a, ha, b, hb) });
+                    if road(b, hb) && joins(ha, hb) && !beside && !done && world.link_between_at(a, ha, MIDDLE, b, hb, MIDDLE).is_none() {
+                        steps.push(Build { tool: Tool::Street, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]), sides: None, road: priority(a, ha, b, hb) });
                     }
                 }
             }
         }
         for &(at, h) in &self.lights {
-            steps.push(Build { tool: Tool::Light, from: at, to: at, up: (h > 0).then_some([h, h]), road: false });
+            steps.push(Build { tool: Tool::Light, from: at, to: at, up: (h > 0).then_some([h, h]), sides: None, road: false });
         }
         steps
     }
@@ -475,27 +476,26 @@ impl Level {
                 continue;
             }
             let back = world.edges.contains_key(&(b, a));
-            // A two-way once, from its lower end; a one-way, or a divided
-            // road's side, the way it runs.
-            let divided = world.divided(a, b);
-            if back && !divided && a > b {
+            // A two-way once, from its lower end; a one-way the way it runs.
+            if back && a > b {
                 continue;
             }
-            let tool = if back && !divided {
+            let tool = if back {
                 Tool::Street
             } else if world.is_wide(a, b) {
                 Tool::Wide
             } else {
                 Tool::OneWay
             };
-            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]), road: ra && rb });
+            let sides = [world.side_of(a), world.side_of(b)];
+            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]), sides: (sides != [MIDDLE; 2]).then_some(sides), road: ra && rb });
         }
         // And the lights, once their junctions stand.
         for e in world.objects.roads() {
             if let (Some(p), GameObject::RoadNode(n)) = (e.position, &e.object)
                 && n.light.is_some()
             {
-                steps.push(Build { tool: Tool::Light, from: p, to: p, up: (n.height > 0).then_some([n.height, n.height]), road: false });
+                steps.push(Build { tool: Tool::Light, from: p, to: p, up: (n.height > 0).then_some([n.height, n.height]), sides: None, road: false });
             }
         }
         steps
@@ -783,7 +783,7 @@ mod tests {
 
     fn lay(game: &mut Game, level: &Level, path: &[(i32, i32)]) {
         for p in path.windows(2) {
-            let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 }, up: None, road: false };
+            let step = Build { tool: Tool::Street, from: GridCoord { x: p[0].0, y: p[0].1 }, to: GridCoord { x: p[1].0, y: p[1].1 }, up: None, sides: None, road: false };
             assert!(level.allows(&game.world, &step), "{step:?} refused");
             crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
         }
@@ -877,7 +877,7 @@ mod tests {
         let run = |tool: Tool| {
             let (mut level, mut game) = play(text);
             for x in (1..=9).rev() {
-                let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x - 1, y: -1 }, up: None, road: false };
+                let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x - 1, y: -1 }, up: None, sides: None, road: false };
                 assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
             }
             level.test(&mut game);
@@ -914,9 +914,9 @@ mod tests {
     #[test]
     fn nothing_is_built_off_the_map_or_on_a_gate() {
         let (level, game) = play(CROSSING);
-        let off = Build { tool: Tool::Street, from: GridCoord { x: 0, y: 0 }, to: GridCoord { x: -1, y: 0 }, up: None, road: false };
+        let off = Build { tool: Tool::Street, from: GridCoord { x: 0, y: 0 }, to: GridCoord { x: -1, y: 0 }, up: None, sides: None, road: false };
         assert!(!level.allows(&game.world, &off));
-        let gate = Build { tool: Tool::Demolish, from: GridCoord { x: 9, y: -1 }, to: GridCoord { x: 9, y: -1 }, up: None, road: false };
+        let gate = Build { tool: Tool::Demolish, from: GridCoord { x: 9, y: -1 }, to: GridCoord { x: 9, y: -1 }, up: None, sides: None, road: false };
         assert!(!level.allows(&game.world, &gate));
     }
 
@@ -928,7 +928,7 @@ mod tests {
         let (_, mut game) = play(CROSSING);
         let road = |game: &Game, x| game.world.is_road(game.world.road_node_at(GridCoord { x, y: -1 }).unwrap());
         let mut step = |game: &mut Game, tool, x, priority| {
-            let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x + 1, y: -1 }, up: None, road: priority };
+            let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x + 1, y: -1 }, up: None, sides: None, road: priority };
             assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
         };
         for x in 0..9 {

@@ -17,6 +17,7 @@ use crate::engine::GameTime;
 use crate::intersection::IntersectionRegistry;
 use crate::protocol::{Build, Building, BuildingKind, EntityId, GameObject, Good, GridCoord, News, OwnerId, Tool, DAY_MS};
 use crate::world::World;
+use crate::world::decks::Side;
 
 /// How long an action may be taken back: five minutes of play, a quarter
 /// of the town's day. Long enough to see a slip for what it is; short
@@ -33,6 +34,8 @@ pub struct Link {
     pub road: bool,
     /// How high each end stands (`RoadNode::height`).
     pub up: [u8; 2],
+    /// Which side of its tile each end stands (`RoadNode::side`).
+    pub sides: [Side; 2],
     /// Two lanes, one way.
     pub wide: bool,
 }
@@ -126,33 +129,32 @@ pub fn doomed(world: &World, step: Build) -> Option<Act> {
             && let Some(GameObject::Building(b)) = world.occupied.get(&(to.x, to.y)).and_then(|&id| world.objects.get(id)).map(|e| &e.object) {
             return Some(Act::Razed(world.occupied[&(to.x, to.y)], b.clone()));
         }
-        let node = world.node_at(to, h1)?;
-        let GameObject::RoadNode(ref n) = world.objects.get(node)?.object else { return None };
-        let mut arms: Vec<EntityId> = n.outgoing.iter().chain(&n.incoming).copied().collect();
+        let node = world.node_in(to, h1, step.sides.unwrap_or_default()[1])?;
+        let mut arms = world.arms_of(node, false);
         arms.sort_unstable();
         arms.dedup();
-        let links = arms
-            .into_iter()
-            .filter_map(|arm| {
-                let at = world.objects.get(arm)?.position?;
-                let h = world.height_of(arm);
-                let (out, inn) = (n.outgoing.contains(&arm), n.incoming.contains(&arm));
-                Some(match (out, inn) {
-                    (true, false) => Link { from: to, to: at, one_way: true, road: n.road, up: [h1, h], wide: n.wide.contains(&arm) },
-                    (false, true) => Link { from: at, to, one_way: true, road: n.road, up: [h, h1], wide: world.is_wide(arm, node) },
-                    _ => Link { from: to, to: at, one_way: false, road: n.road, up: [h1, h], wide: false },
-                })
-            })
-            .collect();
-        return Some(Act::Cut(links));
+        return Some(Act::Cut(arms.into_iter().filter_map(|arm| link_of(world, node, arm)).collect()));
     }
-    let (a, b) = world.link_between_at(from, h0, to, h1)?;
-    let road = matches!(world.objects.get(a).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road);
-    Some(Act::Cut(vec![match (world.edges.contains_key(&(a, b)), world.edges.contains_key(&(b, a))) {
-        (true, false) => Link { from, to, one_way: true, road, up: [h0, h1], wide: world.is_wide(a, b) },
-        (false, true) => Link { from: to, to: from, one_way: true, road, up: [h1, h0], wide: world.is_wide(b, a) },
-        _ => Link { from, to, one_way: false, road, up: [h0, h1], wide: false },
-    }]))
+    let [s0, s1] = step.sides.unwrap_or_default();
+    let (a, b) = world.link_between_at(from, h0, s0, to, h1, s1)?;
+    Some(Act::Cut(vec![link_of(world, a, b)?]))
+}
+
+/// The road between two nodes as it stands: the way it runs, from the one
+/// it runs from; its priority, heights, sides and lanes.
+fn link_of(world: &World, a: EntityId, b: EntityId) -> Option<Link> {
+    let at = |id: EntityId| world.objects.get(id).and_then(|e| e.position);
+    let (out, back) = (world.edges.contains_key(&(a, b)), world.edges.contains_key(&(b, a)));
+    let (a, b) = if back && !out { (b, a) } else { (a, b) };
+    Some(Link {
+        from: at(a)?,
+        to: at(b)?,
+        one_way: out != back,
+        road: world.is_road(a) && world.is_road(b),
+        up: [world.height_of(a), world.height_of(b)],
+        sides: [world.side_of(a), world.side_of(b)],
+        wide: world.is_wide(a, b),
+    })
 }
 
 /// A step of the hand, taken: on to the player's last action if it
@@ -163,7 +165,7 @@ pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act
         return None;
     }
     let road = matches!(step.tool, Tool::Street | Tool::OneWay | Tool::Wide);
-    let link = Link { from: step.from, to: step.to, one_way: matches!(step.tool, Tool::OneWay | Tool::Wide), road: step.road, up: step.up.unwrap_or_default(), wide: step.tool == Tool::Wide };
+    let link = Link { from: step.from, to: step.to, one_way: matches!(step.tool, Tool::OneWay | Tool::Wide), road: step.road, up: step.up.unwrap_or_default(), sides: step.sides.unwrap_or_default(), wide: step.tool == Tool::Wide };
     let express = paid.coins;
     let history = world.undo.entry(owner).or_default();
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);
@@ -305,7 +307,7 @@ fn rests_on(world: &World, links: &[Link], after: EntityId) -> Option<&'static s
 /// The links taken up, newest first, as the demolisher would.
 fn take_up(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, links: &[Link], now: GameTime) {
     for l in links.iter().rev() {
-        if let Some((a, b)) = world.link_between_at(l.from, l.up[0], l.to, l.up[1]) {
+        if let Some((a, b)) = world.link_between_at(l.from, l.up[0], l.sides[0], l.to, l.up[1], l.sides[1]) {
             crate::game::handle_link_demolish(world, events, intersections, a, b, now);
         }
     }

@@ -28,6 +28,7 @@ impl World {
                 height: 0,
                 light: None,
                 wide: vec![],
+                side: super::decks::MIDDLE,
             }),
             Some(coord),
         );
@@ -58,22 +59,9 @@ impl World {
         let Some(id) = self.road_node_at(coord) else { return false };
         self.arms_of(id, false).into_iter().any(|nid| {
             let Some(npos) = self.objects.get(nid).and_then(|n| n.position) else { return false };
-            // The arm itself, already there the other way: a one-way laid
-            // against a one-way. Turning back along it is a U-turn, which
-            // a divided road has none of.
-            if (npos.x - coord.x, npos.y - coord.y) == (dx, dy) {
-                return false;
-            }
             let ahead = (npos.x - coord.x) * dx + (npos.y - coord.y) * dy > 0;
             ahead && ((arriving && self.edges.contains_key(&(id, nid))) || (leaving && self.edges.contains_key(&(nid, id))))
         })
-    }
-
-    /// Does the road between these two tiles run from the one to the other
-    /// and not back?
-    fn runs_one_way(&self, a: GridCoord, b: GridCoord) -> bool {
-        let (Some(a), Some(b)) = (self.road_node_at(a), self.road_node_at(b)) else { return false };
-        self.edges.contains_key(&(a, b)) && !self.edges.contains_key(&(b, a))
     }
 
     /// Does the road from `a` to `b` have two lanes?
@@ -154,12 +142,6 @@ impl World {
         matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road)
     }
 
-    /// Two one-ways side by side, the one each way, a median between: a
-    /// divided road. Nothing turns left or back across the median.
-    pub fn divided(&self, a: EntityId, b: EntityId) -> bool {
-        matches!(self.objects.get(a).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.outgoing.contains(&b) && n.incoming.contains(&b))
-    }
-
     /// Check if two nodes at the given coords are connected as outgoing.
     pub fn are_connected(&self, a: GridCoord, b: GridCoord) -> bool {
         let a_id = match self.road_node_at(a) {
@@ -206,9 +188,7 @@ impl World {
         if into_building && !self.may_enter_plot(from, to) {
             return false;
         }
-        // Joined already; but a one-way laid against a one-way makes the
-        // two a divided road.
-        if self.are_connected(from, to) && !(one_way && self.runs_one_way(to, from)) {
+        if self.are_connected(from, to) {
             return false;
         }
         if dx.abs() == 1 && dy.abs() == 1 && self.are_connected(GridCoord { x: from.x + dx, y: from.y }, GridCoord { x: from.x, y: from.y + dy }) {
@@ -396,14 +376,15 @@ impl World {
                 }
         }
 
-        let height = self.height_of(id);
+        let middle = self.height_of(id) == 0 && self.side_of(id) == super::decks::MIDDLE;
         self.objects.remove(id);
         self.unindex(id, pos);
-        if height == 0 {
+        if middle {
             self.roads.remove(&(pos.x, pos.y));
-        } else {
-            self.decks.remove(&(pos.x, pos.y, height));
+        } else if let Some(v) = self.decks.get_mut(&(pos.x, pos.y)) {
+            v.retain(|&n| n != id);
         }
+        self.settle_sides(pos);
         self.unsettle_round(pos);
     }
 
@@ -470,29 +451,49 @@ mod tests {
         assert!(both.may_lay(at(5, -1), at(5, 0), false));
     }
 
-    /// A one-way laid against a one-way makes a divided road: driven both
-    /// ways, the two sides a median apart. Off it and onto it only to the
-    /// right; on a plain street, any way.
+    /// A one-way laid back along a one-way goes beside it, the other on the
+    /// other side of their tiles: two thin roads side by side. A street
+    /// joins the one on its own side, in and out to the right; the other
+    /// is out of its reach. Either side may run either way; and when the
+    /// one goes, the other is back in the middle.
     #[test]
-    fn a_divided_road_turns_right_only() {
+    fn one_ways_go_side_by_side() {
+        use super::super::decks::{MIDDLE, Side};
         let mut world = eastward();
-        assert!(world.may_lay(at(6, 0), at(5, 0), true), "a one-way back along it");
-        assert!(!world.may_lay(at(6, 0), at(5, 0), false), "but no two-way over it");
+        const NORTH: Side = [0, -1];
+        const SOUTH: Side = [0, 1];
+        assert!(!world.may_lay(at(6, 0), at(5, 0), true), "not into the same middles");
         for x in (1..10).rev() {
-            world.handle_place_road(at(x, 0), at(x - 1, 0), true, false);
-            let (a, b) = (world.road_node_at(at(x, 0)).unwrap(), world.road_node_at(at(x - 1, 0)).unwrap());
-            world.insert_edge(a, b);
+            assert!(world.may_lay_at(at(x, 0), 0, NORTH, at(x - 1, 0), 0, NORTH, true), "westward at {x}, beside it");
+            world.place_road_at(at(x, 0), 0, NORTH, at(x - 1, 0), 0, NORTH, true, false);
         }
-        let (a, b) = (world.road_node_at(at(4, 0)).unwrap(), world.road_node_at(at(5, 0)).unwrap());
-        assert!(world.divided(a, b));
-        // A street off its middle, toward +y: the right of the way east.
-        world.place_road_path(&(0..4).map(|y| at(5, y)).collect::<Vec<_>>());
-        let node = |x, y| world.road_node_at(at(x, y)).unwrap();
-        let route = |from, to| crate::world::pathfinding::Routes::from(&world, from).route_to(to);
-        assert!(route(node(0, 0), node(5, 3)).is_some(), "right off it, eastward");
-        assert!(route(node(9, 0), node(5, 3)).is_none(), "no left off it, westward");
-        assert!(route(node(5, 3), node(9, 0)).is_some(), "right onto its near side, eastward");
-        assert!(route(node(5, 3), node(0, 0)).is_none(), "no left across it, westward");
-        assert!(route(node(0, 0), node(9, 0)).is_some(), "straight along it");
+        assert!(world.road_node_at(at(5, 0)).is_none(), "nothing in the middle");
+        let east = |w: &World, x| w.node_in(at(x, 0), 0, SOUTH).unwrap();
+        let west = |w: &World, x| w.node_in(at(x, 0), 0, NORTH).unwrap();
+        assert!(world.edges.contains_key(&(east(&world, 4), east(&world, 5))), "the eastward road, moved over, still runs");
+        assert!(!world.may_lay_at(at(5, 1), 0, MIDDLE, at(5, 0), 0, NORTH, false), "not across the near road to the far one");
+        assert!(!world.may_lay_at(at(5, 0), 0, SOUTH, at(6, 0), 0, NORTH, true), "not from one side to the other");
+        // A street from the south, onto the near side.
+        world.place_road_path(&(1..4).map(|y| at(5, y)).collect::<Vec<_>>());
+        assert!(world.may_lay_at(at(5, 1), 0, MIDDLE, at(5, 0), 0, SOUTH, false));
+        world.place_road_at(at(5, 1), 0, MIDDLE, at(5, 0), 0, SOUTH, false, false);
+        let street = world.road_node_at(at(5, 3)).unwrap();
+        let route = |w: &World, from, to| crate::world::pathfinding::Routes::from(w, from).route_to(to);
+        assert!(route(&world, east(&world, 0), street).is_some(), "right off it");
+        assert!(route(&world, street, east(&world, 9)).is_some(), "right onto it");
+        assert!(route(&world, west(&world, 9), street).is_none(), "the far side has no way to it");
+        assert!(route(&world, street, west(&world, 0)).is_none(), "nor it to the far side");
+        // On the wrong side: a pair that keeps left is still a pair.
+        let mut left = eastward();
+        for x in (1..10).rev() {
+            assert!(left.may_lay_at(at(x, 0), 0, SOUTH, at(x - 1, 0), 0, SOUTH, true));
+            left.place_road_at(at(x, 0), 0, SOUTH, at(x - 1, 0), 0, SOUTH, true, false);
+        }
+        assert_eq!(left.side_of(left.nodes_on(at(5, 0)).into_iter().map(|(_, id)| id).find(|&id| left.arms_of(id, true).iter().any(|&n| left.objects.get(n).and_then(|e| e.position) == Some(at(6, 0)))).unwrap()), NORTH);
+        // One side gone: the other is back in the middle.
+        let gone = west(&world, 2);
+        world.demolish_node(gone);
+        assert!(world.road_node_at(at(2, 0)).is_some(), "the eastward road back in the middle");
+        assert!(world.node_in(at(2, 0), 0, SOUTH).is_none());
     }
 }

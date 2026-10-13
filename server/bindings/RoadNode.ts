@@ -31,4 +31,10 @@ light: number | null,
  * The neighbours the road out to has two lanes, one way: a two-lane
  * one-way (`Tool::Wide`).
  */
-wide: Array<number>, };
+wide: Array<number>, 
+/**
+ * Which side of its tile it stands: the step across its road it is
+ * moved by, or none, the middle. Two one-ways share a tile side by
+ * side, each a thin road beside the other (`world/decks.rs`).
+ */
+side: [number, number], };
