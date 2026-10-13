@@ -108,14 +108,17 @@ function roadPlugin(engine: EngineContext, atlas: Atlas, lifted: boolean): Mater
     getCustomCode: (stage) =>
       stage === "vertex"
         ? {
-            ...(lifted
-              ? {
-                  CUSTOM_VERTEX_UPDATE_WORLDPOS: `let roadU = clamp(dot(position.xy + vec2f(0.5), roadLift.yz) + 0.5, 0., 1.);
-finalWorld[3][2] = finalWorld[3][2] + roadLift.x + roadLift.w * roadU * roadU * (3. - 2. * roadU);
-let roadTiltBy = roadLift.yz * roadLift.w * 6. * roadU * (1. - roadU) * step(0.0001, roadU) * step(roadU, 0.9999);`,
-                }
-              : {}),
-            CUSTOM_VERTEX_MAIN_END: `out.vRoad = position.xy; out.vRoadSlot = roadSlot; out.vRoadTilt = ${lifted ? "roadTiltBy" : "vec2f(0.)"};`,
+            // Lifted after the world is placed, where the thin instance's
+            // own matrix has been applied.
+            CUSTOM_VERTEX_MAIN_END: `out.vRoad = position.xy; out.vRoadSlot = roadSlot;${
+              lifted
+                ? `
+let roadU = clamp(dot(position.xy + vec2f(0.5), roadLift.yz) + 0.5, 0., 1.);
+out.worldPos.z = out.worldPos.z + roadLift.x + roadLift.w * roadU * roadU * (3. - 2. * roadU);
+out.clipPos = scene.viewProjection * vec4f(out.worldPos, 1.);
+out.vRoadTilt = roadLift.yz * roadLift.w * 6. * roadU * (1. - roadU);`
+                : " out.vRoadTilt = vec2f(0.);"
+            }`,
           }
         : {
             CUSTOM_FRAGMENT_MAIN_BEGIN: `let roadGrainUv = input.worldPos.xy / ${n(GRAIN_SPAN)};
