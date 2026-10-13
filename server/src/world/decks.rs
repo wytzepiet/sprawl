@@ -13,7 +13,8 @@
 //! the others: a slope counts as the levels at both its ends. So a slope
 //! from the first level to the second may pass over a ground road, and a
 //! slope from the ground may not. Links crossing on the diagonal, between
-//! tiles, keep the same clearance where they cross.
+//! tiles, cross over each other a level apart; within a level, they cross
+//! at the corner, and their cars take turns there (`World::crossing_of`).
 //!
 //! Two one-ways may share a tile side by side, as roads share it stacked:
 //! each a node of its own, moved a little to one side of the tile's middle
@@ -73,6 +74,9 @@ pub(crate) fn across(arms: &[(i32, i32)]) -> Option<Side> {
 fn gcd(a: i32, b: i32) -> i32 {
     if b == 0 { a } else { gcd(b, a % b) }
 }
+
+/// Crossings' ids (`World::crossing_of`): apart from every entity's.
+pub const CROSSINGS: EntityId = 1 << 62;
 
 /// How far apart two nodes on one tile must stand: a level, and a level
 /// more for each that is a slope, which reaches up or down half of one.
@@ -296,10 +300,6 @@ impl World {
         if !self.slope_takes(from, hf, sf, (dx, dy), ht) || !self.slope_takes(to, ht, st, (-dx, -dy), hf) {
             return false;
         }
-        // Crossing a link on the other diagonal, a level clear of it.
-        if dx != 0 && dy != 0 && self.crossed(GridCoord { x: from.x + dx, y: from.y }, GridCoord { x: from.x, y: from.y + dy }, hf + ht) {
-            return false;
-        }
         !self.node_in(from, hf, sf).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true, None))
             && !self.node_in(to, ht, st).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way, goes_on))
     }
@@ -326,14 +326,22 @@ impl World {
         }
     }
 
-    /// Is there a link between these two tiles whose middle stands within a
-    /// level of `twice` (the sum of a link's two heights)?
-    fn crossed(&self, a: GridCoord, b: GridCoord, twice: u8) -> bool {
-        self.nodes_on(a).into_iter().any(|(ha, na)| {
-            self.nodes_on(b).into_iter().any(|(hb, nb)| {
-                (self.edges.contains_key(&(na, nb)) || self.edges.contains_key(&(nb, na))) && (ha + hb).abs_diff(twice) < 4
-            })
-        })
+    /// Where the diagonal link between two nodes crosses one on the other
+    /// diagonal, within a level of it: the crossing, which cars on either
+    /// take turns at as at a junction (`car::simulation`'s gates), known by
+    /// the corner they cross over and the lower of their heights there. A
+    /// link a level clear of the other passes over it.
+    pub fn crossing_of(&self, a: EntityId, b: EntityId) -> Option<EntityId> {
+        let (p, q) = (self.objects.get(a)?.position?, self.objects.get(b)?.position?);
+        let (dx, dy) = (q.x - p.x, q.y - p.y);
+        if dx.abs() != 1 || dy.abs() != 1 {
+            return None;
+        }
+        let twice = self.height_of(a) + self.height_of(b);
+        let (c, d) = (GridCoord { x: p.x + dx, y: p.y }, GridCoord { x: p.x, y: p.y + dy });
+        let other = self.nodes_on(c).into_iter().flat_map(|(hc, nc)| self.nodes_on(d).into_iter().map(move |(hd, nd)| (hc + hd, nc, nd))).find(|&(sum, nc, nd)| (self.edges.contains_key(&(nc, nd)) || self.edges.contains_key(&(nd, nc))) && sum.abs_diff(twice) < 4)?;
+        let (x, y) = (p.x.min(q.x) as i64 + (1 << 20), p.y.min(q.y) as i64 + (1 << 20));
+        Some(CROSSINGS | ((x as u64) << 30) | ((y as u64) << 8) | twice.min(other.0) as u64)
     }
 
     /// Lay a road from one tile at one height and side to the next at
@@ -446,13 +454,19 @@ mod tests {
         assert_eq!(route.len(), 9, "up two levels, over, down two");
     }
 
-    /// Diagonals may cross between tiles only a level apart.
+    /// Diagonals cross between tiles: on one level at a crossing, which
+    /// their cars take turns at; a level apart, one over the other.
     #[test]
-    fn diagonals_cross_a_level_apart() {
+    fn diagonals_cross_at_a_crossing_or_a_level_apart() {
         let mut world = grass();
         lay(&mut world, &[(4, 0, 0), (5, 1, 0)]);
-        assert!(!world.may_lay_at(at(5, 0), 0, MIDDLE, at(4, 1), 0, MIDDLE, false));
-        lay(&mut world, &[(3, -1, 2), (4, -1, 2), (5, 0, 2)]);
-        assert!(world.may_lay_at(at(5, 0), 2, MIDDLE, at(4, 1), 2, MIDDLE, false));
+        assert!(world.may_lay_at(at(5, 0), 0, MIDDLE, at(4, 1), 0, MIDDLE, false));
+        lay(&mut world, &[(5, 0, 0), (4, 1, 0)]);
+        let node = |world: &World, x, y, h| world.node_at(at(x, y), h).unwrap();
+        let crossing = world.crossing_of(node(&world, 4, 0, 0), node(&world, 5, 1, 0));
+        assert!(crossing.is_some() && crossing == world.crossing_of(node(&world, 4, 1, 0), node(&world, 5, 0, 0)), "the two do not cross at one crossing");
+        lay(&mut world, &[(6, -1, 2), (6, 0, 2), (7, 1, 2)]);
+        lay(&mut world, &[(6, 1, 0), (7, 0, 0)]);
+        assert_eq!(world.crossing_of(node(&world, 6, 1, 0), node(&world, 7, 0, 0)), None, "a level apart, they cross");
     }
 }

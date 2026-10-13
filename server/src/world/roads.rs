@@ -232,9 +232,6 @@ impl World {
         if self.are_connected(from, to) {
             return false;
         }
-        if dx.abs() == 1 && dy.abs() == 1 && self.are_connected(GridCoord { x: from.x + dx, y: from.y }, GridCoord { x: from.x, y: from.y + dy }) {
-            return false;
-        }
         // Out of `from` and in to `to`, and the other way too unless it is
         // one way. Into a building, nothing stands on its tile to turn from.
         !self.road_node_at(from).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true, None))

@@ -140,19 +140,6 @@ class Table {
       // it at most (`World::may_lay_at`).
       if ((n.side[0] || n.side[1]) && arms.length > 3) out.push(`${p.x},${p.y}(${n.side}): a road on a side with ${arms.length} arms`);
     }
-    // Two links over one tile corner, crossing at one level.
-    const links = roads.flatMap((e) => e.object.data.outgoing.map((o) => [e, byId.get(o)!] as const)).filter(([, b]) => b);
-    for (const [a, b] of links) {
-      const [p, q] = [a.position!, b.position!];
-      if (p.x === q.x || p.y === q.y) continue;
-      const crossing = links.find(([c, d]) => {
-        const [r, s] = [c.position!, d.position!];
-        const corner = (r.x === p.x && r.y === q.y && s.x === q.x && s.y === p.y) || (s.x === p.x && s.y === q.y && r.x === q.x && r.y === p.y);
-        const twice = a.object.data.height + b.object.data.height;
-        return corner && Math.abs(c.object.data.height + d.object.data.height - twice) < 4;
-      });
-      if (crossing) out.push(`${p.x},${p.y}-${q.x},${q.y}: crosses a link over the same corner`);
-    }
     return [...new Set(out)];
   }
 }
@@ -414,5 +401,13 @@ describe("one-ways side by side", () => {
     expect(t.drag("OneWay", [3, 8], [9, 2])).toBe(0);
     expect(t.broken()).toEqual([]);
     expect(t.on(9, 2)).toHaveLength(1);
+  });
+
+  test("two diagonals across each other: an X, no junction", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 2], [8, 8]);
+    expect(t.drag("OneWay", [2, 8], [8, 2])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    expect(t.on(8, 2)).toHaveLength(1);
   });
 });

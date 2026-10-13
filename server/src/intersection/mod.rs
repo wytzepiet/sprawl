@@ -442,6 +442,19 @@ pub fn track(from: [f64; 2], at: [f64; 2], to: [f64; 2], lane_in: f64, lane_out:
     })
 }
 
+/// A lane's way straight from `a` to `b` (where each stands, in tiles from
+/// where it is seen), beside the road's middle by the lane's offset, to the
+/// right of the way it is driven: across a crossing.
+pub fn straight(a: [f64; 2], b: [f64; 2], lane: f64) -> Track {
+    let (x, y) = (b[0] - a[0], b[1] - a[1]);
+    let l = x.hypot(y).max(1e-9);
+    let (ox, oy) = (-y / l * lane, x / l * lane);
+    std::array::from_fn(|k| {
+        let t = k as f64 / (TRACK_POINTS - 1) as f64;
+        [(a[0] + x * t + ox) as f32, (a[1] + y * t + oy) as f32]
+    })
+}
+
 /// How near two tracks come.
 fn apart(a: &Track, b: &Track) -> f32 {
     let mut near = f32::MAX;

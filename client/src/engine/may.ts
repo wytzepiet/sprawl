@@ -382,11 +382,6 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
   }
   if (na && nb && (edge(na, nb) || edge(nb, na))) return false;
   if (!slopeTakes(h, from, hf, sf, [dx, dy], ht) || !slopeTakes(h, to, ht, st, [-dx, -dy], hf)) return false;
-  if (dx !== 0 && dy !== 0) {
-    const [p, q] = [{ x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy }];
-    const crossed = nodesOn(h, p).some(([hp, np]) => nodesOn(h, q).some(([hq, nq]) => (edge(np, nq) || edge(nq, np)) && Math.abs(hp + hq - (hf + ht)) < 4));
-    if (crossed) return false;
-  }
   // A drag that may go on from `to` may lead its cars on (`World::leads_nowhere`).
   return !(na && leadsNowhere(h, na, from, dx, dy, !oneWay, true)) && !(nb && leadsNowhere(h, nb, to, -dx, -dy, !goesOn, !oneWay && !goesOn));
 }
@@ -460,7 +455,6 @@ function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean, goesOn
   const into = h.occupied.get(key(to.x, to.y));
   if (into && !facings(into.kind, into.facing).some((f) => enters(into.tiles, into.kind, f, from, to))) return false;
   if (connected(h, from, to)) return false;
-  if (dx !== 0 && dy !== 0 && connected(h, { x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy })) return false;
   // Out of `from` and in to `to`, and back too unless it is one way.
   const [nf, nt] = [nodeAt(h, from), nodeAt(h, to)];
   return !(nf && leadsNowhere(h, nf, from, dx, dy, !oneWay, true)) && (!!into || !(nt && leadsNowhere(h, nt, to, -dx, -dy, !goesOn, !oneWay && !goesOn)));

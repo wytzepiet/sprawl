@@ -754,6 +754,64 @@ fn clear(game: &mut Game) {
 
 #[cfg(test)]
 mod tests {
+
+    /// Two flows across each other on an X of diagonals, no junction where
+    /// they cross: their cars take turns at the crossing, never two in it
+    /// at once, and both get through.
+    #[test]
+    fn cars_take_turns_where_diagonals_cross() {
+        let text = [
+            "# Cross", "@gate 1 in", "@gate 2 out", "@gate 3 in", "@gate 4 out", "@want 1 2 20", "@want 3 4 20",
+            "....3....", ".........", ".........", ".........", "2.......1", ".........", ".........", ".........", "....4....",
+        ]
+        .join("\n");
+        let (mut level, world) = Level::build("cross", &text);
+        let mut game = Game::new(world, 0, 1, Box::new(World::new));
+        let at = |x: i32, y: i32| crate::protocol::Spot { at: GridCoord { x, y }, want: 0 };
+        // 1 to 2 along the middle row (the map is read mirrored, 1 on the
+        // west), up over the corner and back; 3 to 4
+        // down the middle column, across the same corner the other way.
+        for (id, tiles) in [
+            (1, vec![at(0, -4), at(1, -4), at(2, -4), at(3, -4), at(4, -3), at(5, -3), at(6, -3), at(7, -3), at(8, -4)]),
+            (2, vec![at(4, 0), at(4, -1), at(4, -2), at(3, -3), at(4, -4), at(4, -5), at(4, -6), at(4, -7), at(4, -8)]),
+        ] {
+            for n in 2..=tiles.len() {
+                let stroke = crate::protocol::Stroke { id, tool: Tool::OneWay, road: false, tiles: tiles[..n].to_vec(), start: None };
+                crate::draw::draw(&mut game.world, &mut game.events, &mut game.intersections, 1, stroke, 0);
+            }
+        }
+        let node = |x, y| game.world.road_node_at(GridCoord { x, y }).expect("the roads were not laid");
+        assert!(game.world.crossing_of(node(3, -4), node(4, -3)).is_some(), "the diagonals do not cross");
+        level.test(&mut game);
+        let corner = [4.0, -3.0];
+        let mut both = 0;
+        while level.phase == Phase::Test {
+            level.step(&mut game);
+            game.step();
+            // Where each car is, along the edge it is on.
+            let near: Vec<EntityId> = game
+                .world
+                .objects
+                .iter()
+                .filter_map(|e| match e.object {
+                    GameObject::Car(ref c) => {
+                        let t = c.trip.as_ref()?;
+                        let (a, b) = (t.route_positions.get(t.route_index.checked_sub(1)?)?, t.route_positions.get(t.route_index)?);
+                        let f = t.seg_fraction;
+                        let p = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+                        ((p[0] - corner[0]).hypot(p[1] - corner[1]) < 0.2).then_some(e.id)
+                    }
+                    _ => None,
+                })
+                .collect();
+            both += (near.len() > 1) as u32;
+        }
+        let wants = level.state(&game).wants;
+        assert_eq!(level.phase, Phase::Done, "the crossing jammed: {}", level.message);
+        assert!(wants.iter().all(|w| w.delivered > 40), "a flow did not get through: {:?}", wants.iter().map(|w| w.delivered).collect::<Vec<_>>());
+        assert_eq!(both, 0, "two cars were in the crossing at once");
+    }
+
     use super::*;
 
     const CROSSING: &str = "# Crossing

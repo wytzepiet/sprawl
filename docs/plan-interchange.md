@@ -518,6 +518,11 @@ What runs, and where; the rest of the order above is still to come.
   they merge. So two one-ways bending round opposite corners of one tile,
   or a diagonal past a loop, keep out of each other's way, and a left
   turn still waits for the oncoming. Ships keep their own rule.
+- **Diagonals cross** (`World::crossing_of`): two diagonal links across
+  the same corner on one level make an X with no junction, no turns; their
+  cars take turns at the corner, as at a junction (`car::simulation`'s
+  gates): claimed from the link before it, the stop line at the corner,
+  let go once the car's tail is past it. A level apart, one passes over.
 - **Flows** (F, `interchange/demand.ts`): what the level asks for, over
   the map, as Freeways shows it: an arrow from each gate to each it sends
   cars to, as wide as how many a minute, in the gate's colour (its badges
