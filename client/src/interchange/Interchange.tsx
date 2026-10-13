@@ -254,6 +254,14 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
             <span class="soft text-sm"> / {s()?.par ?? 0} par</span>
           </span>
         </div>
+        <div class="soft mt-2 text-[11px] leading-snug">
+          Drag to draw · Shift to erase · R/F raise or lower · Z undo · Space test · right-drag to pan
+        </div>
+        <Show when={s()?.phase === "Build" && (s()?.cost ?? 0) > 0}>
+          <button class="press soft mt-2 text-[12px] underline cursor-pointer" onClick={() => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" })}>
+            Start over
+          </button>
+        </Show>
       </div>
 
       {/* The road palette. */}

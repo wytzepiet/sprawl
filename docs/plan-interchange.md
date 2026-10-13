@@ -471,7 +471,24 @@ What runs, and where; the rest of the order above is still to come.
   heights in half-levels, slopes, clearance, decks drawn and hatched
   above the pen, cars lifted.
 
-Not yet: the virtual lead (merges still stop and go, first come first
-served), lanes, lights, the scores endpoint and its chart, the overworld
-as one terrain with shared gates and cars crossing between levels (the
-map's levels are made separately), auto-bridging, edit in place.
+- **Merging** eases in: cars bound for the same exit from equal roads
+  are let through together and follow each other onto the road out
+  (`intersection::paths_cross`, `join_run`); onto a priority road the
+  minor still gives way. Not the shadow list of §3: the road out's queue
+  is the virtual lead, and its car behind is woken as its own road's is.
+- **Lights** (`intersection::Signal`): phases from the arms, adaptive
+  with a gap-out, all red between, ticking on the junction's own wake.
+- **Two lanes** (`Tool::Wide`, `EdgeSegment`'s lanes, `World::lanes_for`):
+  a car's lane chosen per stretch for its turn ahead; lanes change at
+  junctions only, not along a stretch (§4's lane change is still to
+  come); gates `in2`/`out2`.
+- **The map of levels** and **kept layouts** (`Map.tsx`, `progress.ts`,
+  `Level::layout`).
+
+Not yet: lane changes along a stretch, the scores endpoint and its
+chart, the overworld as one terrain with shared gates and cars crossing
+between levels (the map's levels are made separately, and their gates do
+not yet agree), auto-bridging, flipping a one-way in place. The sim is
+not yet the same from run to run on different machines: some of what it
+decides follows a `HashMap`'s order, which is random per process natively
+and fixed in wasm; a score checked on the server needs that gone first.
