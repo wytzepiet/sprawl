@@ -2,7 +2,7 @@ import type { BuildingKind, GridCoord } from "../../generated";
 import { BLUEPRINTS, FACINGS, kerbed, sideOf } from "../../blueprints";
 import { isBuilt, townOf, type Flow, type Tile, type Town } from "./grid";
 import { isYard } from "./mass";
-import { buildRoadGeometry, CAR, HALF_W, LANE_OFFSET, type ArmInfo } from "../objects/roadGeometry";
+import { buildRoadGeometry, CAR, HALF_W, type ArmInfo } from "../objects/roadGeometry";
 import { area, defaultJoins, footprints, INSET, shrink, soften, subtract, type Polygon, type Pt } from "./footprint";
 
 /**
@@ -451,23 +451,11 @@ export function shapeOf(surface: Surface): Polygon[] {
 const LINE = 0.028;
 const DASH = 0.26;
 const CLEAR = 0.32;
-/** A one-way's arrow, small: its tip this far ahead of its middle, its
- *  wings this far back and out, drawn this thin. */
-const TIP = 0.055;
-const WING: [number, number] = [0.045, 0.06];
-const ARROW_LINE = 0.026;
 /** A priority road's edge lines: this far in from its edge, this wide;
  *  across a side road's mouth, in blocks this long. */
 const EDGE_IN = 0.06;
 const EDGE_LINE = 0.03;
 const BLOCK = 0.07;
-
-/** A chevron at a point, pointing along a way. */
-function chevron([cx, cy]: Pt, [ux, uy]: [number, number], k = 1): (x: number, y: number) => number {
-  const tip: Pt = [cx + ux * TIP * k, cy + uy * TIP * k];
-  const wings = [1, -1].map((s): Pt => [cx - ux * WING[0] * k - uy * WING[1] * k * s, cy - uy * WING[0] * k + ux * WING[1] * k * s]);
-  return (x, y) => ARROW_LINE / 2 - Math.min(segmentDistance(x, y, tip, wings[0]), segmentDistance(x, y, tip, wings[1]));
-}
 
 /** A dash's distance in, `s` along from a seam: dashes centred on seams. */
 const dashed = (s: number, dash: number) => dash / 2 - Math.abs((((s + dash) % (2 * dash)) + 2 * dash) % (2 * dash) - dash);
@@ -475,9 +463,9 @@ const dashed = (s: number, dash: number) => dash / 2 - Math.abs((((s + dash) % (
 /**
  * A tile's paint, as a distance in its own frame: how far inside a line
  * a point is, negative outside. Along a road that runs through, the
- * paint follows the curve its cars drive: a two-way's dashed middle, a
- * small arrow on a one-way's, one in each lane of a road of two, one each
- * side of a divided road. At a junction, a two-way's middle is dashed
+ * paint follows the curve its cars drive: a two-way's dashed middle, and
+ * the line between a road of two's lanes; which way a one-way runs is
+ * not painted (`interchange/flow.ts` shows it while building). At a junction, a two-way's middle is dashed
  * along each arm from short of the middle; at lights, a stop line across
  * each way in. A priority road has a solid line along each edge, carried
  * on through its junctions, in blocks across a side road's mouth; the
@@ -500,22 +488,6 @@ export function paintOf({ through, ways, light }: Surface): (x: number, y: numbe
         if (!["t", "O", "I"].includes(flowAt(n.along) ?? "t")) return -1;
         return Math.min(LINE / 2 - Math.abs(n.side), dashed(fromSeam(n.along), DASH));
       });
-    }
-    // The arrows, the way it runs: halfway along; on a road of two, a
-    // quarter of the way, between its middle line's dashes.
-    const flows = [a[3], b[3]];
-    const two = flows.every((f) => f === "O" || f === "I");
-    const k = run.at.findIndex((s) => s >= run.seams[0] + (run.seams[1] - run.seams[0]) * (two ? 0.25 : 0.5));
-    const [ux, uy] = wayAt(run, k);
-    const [cx, cy] = run.pts[k];
-    const toB = b[3] === "o" || b[3] === "O";
-    if (two || flows.every((f) => f === "o" || f === "i")) {
-      const way: [number, number] = toB ? [ux, uy] : [-ux, -uy];
-      for (const l of two ? [LANE_OFFSET, -LANE_OFFSET] : [0]) marks.push(chevron([cx - way[1] * l, cy + way[0] * l], way, two ? 0.85 : 1));
-    }
-    // A divided road's: each side the way it runs, on its right.
-    if (flows.every((f) => f === "v")) {
-      for (const way of [[ux, uy], [-ux, -uy]] as [number, number][]) marks.push(chevron([cx - way[1] * SIDE, cy + way[0] * SIDE], way, 0.9));
     }
     // A priority road's edges, where it runs on as one.
     if (through && (a[2] || b[2])) {
@@ -610,11 +582,6 @@ const STOP = 0.05;
 /** A give-way tooth: its base across, and how far it reaches along. */
 const TOOTH: [number, number] = [0.105, 0.13];
 
-function segmentDistance(x: number, y: number, [ax, ay]: Pt, [bx, by]: Pt): number {
-  const [ex, ey] = [bx - ax, by - ay];
-  const t = Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey || 1)));
-  return Math.hypot(x - ax - ex * t, y - ay - ey * t);
-}
 
 /** An edge of a tile's asphalt, as drawn for its instance (x and y the
  *  other way, its middle at -0.5, -0.5), that is wholly past the seam

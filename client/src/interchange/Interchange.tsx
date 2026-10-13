@@ -16,6 +16,7 @@ import { RoadBrush } from "./RoadBrush";
 import { best, keep, keepLayout, layoutOf } from "./progress";
 import { LEVELS, neighbours, type LevelText } from "./levels";
 import Map, { isOpen } from "./Map";
+import { drawFlow } from "./flow";
 
 /**
  * Interchange: the puzzle. A level is a piece of map with roads coming in
@@ -159,6 +160,8 @@ function Frame(props: { state: () => LevelState | null }) {
     g.closePath();
     g.stroke();
     g.setLineDash([]);
+    // While building, the way the one-ways run.
+    if (s.phase === "Build") drawFlow(g, (x, y, z) => p.at(x, y, z), performance.now() / 1000);
     // Each gate's label, out past its end.
     for (const gate of s.gates) {
       // Just past the map's edge, beside the road, so it hides no car.

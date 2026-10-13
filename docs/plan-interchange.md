@@ -469,8 +469,9 @@ What runs, and where; the rest of the order above is still to come.
   curve; a junction's corners are filled along the turns. A one-way of one
   lane is thin, a divided road two thin ones with grass between, and a
   road goes from one width to the next within the tile where they meet.
-  Dashed centre lines, a small arrow on a one-way, one a lane on a road of
-  two. Priority is not a colour: a priority road has white edge lines,
+  Dashed centre lines; no arrows on the road: while building, chevrons
+  glide along each one-way the way its cars go, a stream a lane
+  (`interchange/flow.ts`). Priority is not a colour: a priority road has white edge lines,
   carried on through its junctions, in blocks across a side road's mouth,
   and the side road has shark's teeth.
 - **Shallow joins**: the turn rule is about the turns a car can make.
