@@ -85,7 +85,7 @@ const CHIPS = 4;
 const PAINT = "0.97, 0.96, 0.92";
 const PAINT_SOFT = 0.005;
 /** How much darker the wheels wear the asphalt. */
-const WEAR = 0.2;
+const WEAR = 0.17;
 /** Two more random bytes of the same texel, a whole number of texels on. */
 const [other1, other2] = ["0.3789, 0.1602", "0.0898, 0.5898"];
 

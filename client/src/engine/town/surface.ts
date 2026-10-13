@@ -661,8 +661,8 @@ export function wearOf(surface: Surface): (x: number, y: number) => number {
 
 /** A car's wheels, this far either side of its lane's middle; the track
  *  each wears, about this wide. */
-const WHEELS = 0.035;
-const TRACK = 0.014;
+const WHEELS = 0.04;
+const TRACK = 0.026;
 
 /** A stop line's width along its way. */
 const STOP = 0.05;
