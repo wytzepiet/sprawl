@@ -4,7 +4,7 @@ import { Dots } from "../engine/dots";
 import { screenToWorld, viewExtent, rectOf } from "../engine/view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { free, pen, priority, setClimb, setPen, setTool, tool } from "../ui/buildMode";
-import { hand, MIDDLE, mayAt, mayStart, nodeAtH, sidesBeside, nodeIn, nodesOn, otherSide, snap, spot, STEPS, TOP, toward, type Hand, type Side } from "../engine/may";
+import { bendOf, hand, MIDDLE, mayAt, mayStart, nodeAtH, sidesBeside, nodeIn, nodesOn, otherSide, snap, spot, STEPS, TOP, toward, type Hand, type Side } from "../engine/may";
 import type { GridCoord, TerrainType, Tool } from "../generated";
 import type { Bounds } from "../engine/OrthoCamera";
 
@@ -63,23 +63,26 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     const w = pick(e);
     return { x: Math.floor(w.wx), y: Math.floor(w.wy) };
   };
-  const send_ = (tool: Tool, from: GridCoord, pf: Place, to: GridCoord, pt: Place, road = priority()) =>
+  /** A step sent; `on`, carrying on the drag's last, so the tile they
+   *  share is one it passes through, turning there only as it went
+   *  (`World::drawn`). */
+  const send_ = (tool: Tool, from: GridCoord, pf: Place, to: GridCoord, pt: Place, road = priority(), on = false) =>
     send({
       type: "Build",
       data: {
-        tool, from, to, road,
+        tool, from, to, road, on,
         ...(pf.h || pt.h ? { up: [pf.h, pt.h] as [number, number] } : {}),
         ...(sided(pf) || sided(pt) ? { sides: [pf.s, pt.s] as [Side, Side] } : {}),
       },
     });
   /** The last step of road laid: its end is what a change of height makes
    *  a slope. */
-  let last: { from: GridCoord; pf: Place; to: GridCoord; pt: Place } | null = null;
-  const step = (from: GridCoord, pf: Place, to: GridCoord, pt: Place) => {
+  let last: { from: GridCoord; pf: Place; to: GridCoord; pt: Place; on: boolean } | null = null;
+  const step = (from: GridCoord, pf: Place, to: GridCoord, pt: Place, on = came !== null) => {
     const t = using();
     if (t === null) return;
-    send_(t, from, pf, to, pt);
-    if (t !== "Demolish" && t !== "Light" && (from.x !== to.x || from.y !== to.y)) last = { from, pf, to, pt };
+    send_(t, from, pf, to, pt, priority(), on);
+    if (t !== "Demolish" && t !== "Light" && (from.x !== to.x || from.y !== to.y)) last = { from, pf, to, pt, on };
   };
 
   const edge = (a: { id: number; node: { outgoing: number[]; incoming: number[] } }, b: { id: number; node: { incoming: number[] } }) => a.node.outgoing.includes(b.id) || b.node.incoming.includes(a.id);
@@ -103,17 +106,17 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
    *  and laid again, as it ran, with what it had; and the pen at the
    *  level it leads to. */
   const makeSlope = (by: 1 | -1, h: number) => {
-    const { from, pf, to, pt } = last!;
+    const { from, pf, to, pt, on } = last!;
     const [f, t] = [nodeAtH(world!, from, pf.h)!, nodeAtH(world!, to, pt.h)!];
     const road = f.node.road && t.node.road;
     const [out, back] = [edge(f, t), edge(t, f)];
     const wide = f.node.wide.includes(t.id) || t.node.wide.includes(f.id);
     const up: Place = { h, s: MIDDLE };
     send_("Demolish", from, pf, to, pt, false);
-    if (out && back) send_("Street", from, pf, to, up, road);
-    else if (out) send_(wide ? "Wide" : "OneWay", from, pf, to, up, road);
+    if (out && back) send_("Street", from, pf, to, up, road, on);
+    else if (out) send_(wide ? "Wide" : "OneWay", from, pf, to, up, road, on);
     else send_(wide ? "Wide" : "OneWay", to, up, from, pf, road);
-    last = { from, pf, to, pt: up };
+    last = { from, pf, to, pt: up, on };
     if (current && current.x === to.x && current.y === to.y) place = up;
     setPen((h + by) / 2);
   };
@@ -154,11 +157,16 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     const there = nodesOn(world!, to).filter(([g, n]) => g === h && sided({ h: g, s: n.node.side ?? MIDDLE })).map(([, n]) => n.node.side!);
     const m = nodeAtH(world!, to, h);
     const fromNode = nodeIn(world!, at, p.h, p.s);
-    const beside = there.length ? there : m && !(fromNode && edge(fromNode, m)) ? sidesBeside(world!, to, h) : [];
+    // Beside a one-way in the middle, only along it: come in across it,
+    // the drag joins it, unless it goes on against it (`hold`).
+    const along = (s: Side) => bendOf(world!, to, h, s)?.some(([x, y]) => x === back[0] && y === back[1]) ?? toward(back, s) === 0;
+    const beside = there.length ? there : m && !(fromNode && edge(fromNode, m)) ? sidesBeside(world!, to, h).filter(along) : [];
     const came_ = came ? ([came.x - at.x, came.y - at.y] as [number, number]) : null;
     const rank = (s: Side) =>
       sided(p) ? -toward(p.s, s) : there.length && toward(back, s) > 0 ? -1 : came_ && toward(came_, s) ? -toward(came_, s) : -toward(right, s);
-    return [...[...beside].sort((a, b) => rank(a) - rank(b)), MIDDLE];
+    // Along a road already there, that road first.
+    const follow = fromNode ? nodesOn(world!, to).filter(([g, n]) => g === h && (edge(fromNode, n) || edge(n, fromNode))).map(([, n]) => n.node.side ?? MIDDLE) : [];
+    return [...follow, ...[...beside].sort((a, b) => rank(a) - rank(b)), MIDDLE];
   };
   /** Where a drag starting on a one-way in the middle of its tile and
    *  stepping off it beside the next tile's stands: beside it here too,
@@ -167,6 +175,29 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     if (sided(p) || !sided(q)) return null;
     const s = sidesBeside(world!, at, p.h).find((c) => toward(c, q.s) > 0);
     return s && allowedStep(t, at, { h: p.h, s }, to, q) ? { h: p.h, s } : null;
+  };
+  /** A one-way's step onto a one-way it joins in the middle of its tile,
+   *  held until the drag's next step says how: on the way that one runs,
+   *  joined; against it, beside it (`besideFor`). Let go there, joined. */
+  let held: { from: GridCoord; pf: Place; to: GridCoord; pt: Place; on: boolean } | null = null;
+  const holds = (t: Tool, to: GridCoord, q: Place) => {
+    const n = t === "OneWay" && !sided(q) ? nodeIn(world!, to, q.h, q.s) : undefined;
+    return !!n && [...n.node.outgoing, ...n.node.incoming].some((id) => n.node.outgoing.includes(id) !== n.node.incoming.includes(id)) && sidesBeside(world!, to, q.h).length > 0;
+  };
+  /** Where on the held step's tile the drag stands, going on to `to`
+   *  against the one-way there: beside it, on the right of the way it
+   *  goes; none, where it goes on with it, or may not go beside. */
+  const besideFor = (t: Tool, h: NonNullable<typeof held>, to: GridCoord): Place | null => {
+    const at = h.to;
+    const n = nodeIn(world!, at, h.pt.h, h.pt.s)!;
+    const against = nodesOn(world!, to).some(([, o]) => edge(o, n));
+    if (!against) return null;
+    const right: Side = [-(to.y - at.y), to.x - at.x];
+    for (const s of sidesBeside(world!, at, h.pt.h).sort((a, b) => toward(right, b) - toward(right, a))) {
+      const q: Place = { h: h.pt.h, s };
+      if (allowedStep(t, h.from, h.pf, at, q)) return q;
+    }
+    return null;
   };
   /** Where a step from `at` (on `p`) to `to` would stand: the road there
    *  it may join, at the height it goes on at or climbs to and the side
@@ -208,6 +239,10 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     if (!world) return false;
     const ground = !pf.h && !pt.h && !sided(pf) && !sided(pt);
     if (t === "Demolish") return (from.x === to.x && from.y === to.y ? !(fixed(to) && ground) : !(fixed(from) && fixed(to) && ground)) && mayAt(world, t, from, pf.h, to, pt.h, false, [pf.s, pt.s]);
+    // Along a road already there, the way it runs: the drag passes, and
+    // turns as it goes (`World::drawn`).
+    const [a, b] = [nodeIn(world, from, pf.h, pf.s), nodeIn(world, to, pt.h, pt.s)];
+    if (a && b && (edge(a, b) || (t === "Street" && edge(b, a)))) return true;
     return inside(from) && inside(to) && mayAt(world, t, from, pf.h, to, pt.h, priority(), [pf.s, pt.s]);
   };
   const allowed = (at: GridCoord, i: number) => stepTo(at, place, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] }) !== null;
@@ -273,11 +308,20 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
       const next: GridCoord = { x: cur.x + sx, y: cur.y + sy };
       const newDist = Math.max(Math.abs(w.wx - (next.x + 0.5)), Math.abs(w.wy - (next.y + 0.5)));
       if (newDist >= dist) break;
+      const t = using();
+      // The held step, now the drag goes on: beside the one-way it met,
+      // where it goes on against it.
+      if (held && t !== null) {
+        const q = besideFor(t, held, next);
+        if (q) [held.pt, place] = [q, q];
+        step(held.from, held.pf, held.to, held.pt, held.on);
+        held = null;
+      }
       const q = stepTo(cur, place, next);
       if (q === null) break;
-      const t = using();
       if (came === null && t !== null) place = splitAt(t, cur, place, next, q) ?? place;
-      step(cur, place, next, q);
+      if (t !== null && holds(t, next, q)) held = { from: cur, pf: place, to: next, pt: q, on: came !== null };
+      else step(cur, place, next, q);
       dots.step(next);
       came = cur;
       cur = next;
@@ -292,6 +336,8 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   };
 
   const onPointerUp = () => {
+    if (held) step(held.from, held.pf, held.to, held.pt, held.on);
+    held = null;
     if (pressed && current === pressed && using() === "Demolish" && !(fixed(pressed) && !place.h && !sided(place))) step(pressed, place, pressed, place);
     // Lights: a tap on a junction, where it was pressed.
     if (pressed && current === pressed && using() === "Light" && world && mayAt(world, "Light", pressed, place.h, pressed, place.h, false, [place.s, place.s])) step(pressed, place, pressed, place);

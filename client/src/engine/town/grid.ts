@@ -31,6 +31,9 @@ export interface RoadView {
   climb?: [number, number];
   run?: [number, number, number, number];
   arms: { dc: number; dr: number; flow: Flow; shift: [number, number]; through: boolean }[];
+  /** The turns not drawn through it (`RoadNode::banned`), from one arm's
+   *  way to another's, `"dc,dr>dc,dr"`. */
+  banned?: string[];
 }
 
 export interface Tile {

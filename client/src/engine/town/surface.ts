@@ -52,6 +52,9 @@ export interface Surface {
   height?: number;
   climb?: Pt;
   run?: [number, number, number, number];
+  /** The turns not drawn through it, from one arm's way to another's,
+   *  `"dc,dr>dc,dr"`: no lane is laid for them. */
+  banned?: string[];
 }
 
 /** How round the asphalt's corners are, in and out. */
@@ -230,9 +233,10 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
       arms: EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr)).map(([dc, dr]) => ({ dc, dr, flow: town.flow?.(c, r, c + dc, r + dr) ?? "t", shift: [0, 0], through: town.through(c + dc, r + dr) })),
     },
   ];
-  return views.map(({ shift, through, light, arms, height = 0, climb, run }) => {
+  return views.map(({ shift, through, light, arms, height = 0, climb, run, banned }) => {
     const own: Way[] = arms.map(({ dc, dr, flow, shift: there, through: on }) => [dc, dr, on === through, flow, there]);
-    if (shift[0] || shift[1] || height) return { through, light, ways: own, rects: [], shift, height, climb, run };
+    const turns = banned?.length ? { banned } : {};
+    if (shift[0] || shift[1] || height) return { through, light, ways: own, rects: [], shift, height, climb, run, ...turns };
     // The middle's: out to the doors that open onto it, and its bays.
     for (const [dc, dr] of EIGHT) {
       const back = drive(town, c + dc, r + dr);
@@ -243,7 +247,7 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
       const mine = bays.filter((b) => b.side[0] === sx && b.side[1] === sy);
       if (mine.length) rects.push(bayRect(town, c, r, mine));
     }
-    return { through, light, ways: own, rects };
+    return { through, light, ways: own, rects, ...turns };
   });
 }
 
@@ -268,11 +272,11 @@ function yardRect(town: Town, c: number, r: number): Rect {
 }
 
 /** The key a surface's shape is known by: the same parts, the same shape. */
-export function keyOf({ through, ways, rects, light, shift }: Surface): string {
+export function keyOf({ through, ways, rects, light, shift, banned = [] }: Surface): string {
   const at = (p?: Pt) => (p && (p[0] || p[1]) ? `@${p.map((v) => +v.toFixed(3)).join(";")}` : "");
   const w = ways.map(([dc, dr, on, flow, there]) => `${dc}${dr}${on ? "+" : ""}${flow ?? ""}${at(there)}`).sort();
   const q = rects.map((rect) => `[${rect.map((v) => +v.toFixed(3)).join(",")}]`).sort();
-  return [...w, ...q, light ? "L" : "", through ? "T" : "", at(shift)].join(",");
+  return [...w, ...q, ...[...banned].sort().map((b) => `!${b}`), light ? "L" : "", through ? "T" : "", at(shift)].join(",");
 }
 
 /** Where a surface's road stands in its tile: the middle, moved by its
@@ -400,6 +404,16 @@ function strip(path: Path, lane: (t: number) => Lane): Polygon {
   return [area(ring) < 0 ? ring.reverse() : ring];
 }
 
+/** The ways through a junction its cars may go, each from the arm it
+ *  comes in by to the one it goes out by, and its path: every turn its
+ *  lanes allow, but those not drawn (`Surface::banned`). */
+function movesOf(surface: Surface, p: Pt, roads: Way[]): [Way, Way, Path][] {
+  const banned = new Set(surface.banned);
+  return roads.flatMap((a) => roads.flatMap((b): [Way, Way, Path][] =>
+    a === b || banned.has(`${a[0]},${a[1]}>${b[0]},${b[1]}`) || !lanesOf(a[3], true).length || !lanesOf(b[3], false).length ? [] : [[a, b, pathOf(p, a, b, false)]],
+  ));
+}
+
 /** A tile's road from one arm to another with no other: its one path. */
 const runOf = (p: Pt, roads: Way[]): Path | null => (roads.length === 2 ? pathOf(p, roads[0], roads[1]) : null);
 
@@ -441,17 +455,11 @@ export function shapeOf(surface: Surface): Polygon[] {
     // way it goes out by, along its curve; a lane nothing drives through,
     // its own way to where the road stands, and no further.
     const used = new Set<string>();
-    for (const a of roads) {
-      for (const b of roads) {
-        if (a === b) continue;
-        const ins = lanesOf(a[3], true), outs = lanesOf(b[3], false);
-        if (!ins.length || !outs.length) continue;
-        const path = pathOf(p, a, b, false);
-        for (const [i, l] of ins.entries()) {
-          for (const [j, m] of outs.entries()) {
-            used.add(`${roads.indexOf(a)}i${i}`).add(`${roads.indexOf(b)}o${j}`);
-            parts.push(strip(path, (t) => [l[0] + (m[0] - l[0]) * smooth(t), l[1] + (m[1] - l[1]) * smooth(t)]));
-          }
+    for (const [a, b, path] of movesOf(surface, p, roads)) {
+      for (const [i, l] of lanesOf(a[3], true).entries()) {
+        for (const [j, m] of lanesOf(b[3], false).entries()) {
+          used.add(`${roads.indexOf(a)}i${i}`).add(`${roads.indexOf(b)}o${j}`);
+          parts.push(strip(path, (t) => [l[0] + (m[0] - l[0]) * smooth(t), l[1] + (m[1] - l[1]) * smooth(t)]));
         }
       }
     }
@@ -622,8 +630,32 @@ export function paintOf(surface: Surface): (x: number, y: number) => number {
       });
     }
   }
+  // A junction that turns its traffic only some ways, some turn not
+  // drawn or a one-way's lane among them, dotted, so where each goes is
+  // seen: a road straight through, its edges carried across; a turn, the
+  // line its cars drive.
+  if (junction && (surface.banned?.length || roads.some(([, , , f]) => f === "o" || f === "i"))) {
+    for (const [a, b, path] of movesOf(surface, p, roads)) {
+      const straight = a[0] === -b[0] && a[1] === -b[1];
+      // Each road straight through once, by its edges.
+      if (straight && (a[0] > b[0] || (a[0] === b[0] && a[1] > b[1])) && movesOf(surface, p, [b, a]).length) continue;
+      const total = path.at[path.at.length - 1] || 1;
+      const lines = straight
+        ? [() => [halfOf(a[3]) - EDGE_IN, halfOf(b[3]) - EDGE_IN] as Pt].flatMap((w) => [1, -1].map((e) => (t: number) => e * (w()[0] + (w()[1] - w()[0]) * t)))
+        : lanesOf(a[3], true).flatMap((l) => lanesOf(b[3], false).map((m) => (t: number) => l[0] + (m[0] - l[0]) * t));
+      for (const at of lines) {
+        marks.push((x, y) => {
+          const n = near(path, x, y);
+          return Math.min(LINE / 2 - Math.abs(n.side - at(smooth(n.along / total))), dashed(n.along, DOT));
+        });
+      }
+    }
+  }
   return (x, y) => marks.reduce((best, m) => Math.max(best, m(x, y)), -1);
 }
+
+/** A guide line's dots: each and the gap after it this long. */
+const DOT = 0.05;
 
 /** A stop line's width along its way. */
 const STOP = 0.05;

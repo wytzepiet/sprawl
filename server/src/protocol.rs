@@ -35,6 +35,12 @@ pub struct Build {
     /// it.
     #[serde(default)]
     pub road: bool,
+    /// It carries on the hand's last step, the same drag: the tile they
+    /// share is one the drag passes through, and turns there only as it
+    /// did (`World::drawn`). A drag joins the roads it meets only where it
+    /// starts and where it ends.
+    #[serde(default)]
+    pub on: bool,
 }
 
 /// What the mayor's hand holds.
@@ -92,6 +98,12 @@ pub struct RoadNode {
     /// side, each a thin road beside the other (`world/decks.rs`).
     #[serde(default)]
     pub side: [i8; 2],
+    /// The turns no drag drew through it: from one neighbour to another
+    /// (`World::drawn`). A drag passing over a road joins it only as it
+    /// went; everywhere else, every turn the links allow.
+    #[serde(default)]
+    #[ts(type = "Array<[number, number]>")]
+    pub banned: Vec<[EntityId; 2]>,
 }
 
 /// A junction's lights between phases, none green.

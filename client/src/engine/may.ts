@@ -305,7 +305,7 @@ export function sidesBeside(h: Hand, t: GridCoord, height: number): Side[] {
 /** `World::bend_of`: the steps of the road a road on this side follows
  *  round a bend, the one beside it or that moves over for it; straight
  *  on, none. */
-function bendOf(h: Hand, t: GridCoord, height: number, side: Side): [number, number][] | undefined {
+export function bendOf(h: Hand, t: GridCoord, height: number, side: Side): [number, number][] | undefined {
   const beside = nodeIn(h, t, height, otherSide(side)) ?? movesOver(h, t, height, side);
   if (!beside) return undefined;
   const steps = stepsOf(h, t, beside);
@@ -373,7 +373,7 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
     const along = bend ? bend.some(([x, y]) => x === w[0] && y === w[1]) : toward(w, side) === 0;
     if (along) {
       if (!oneWay || (!isMiddle(there) && toward(there, side) <= 0)) return false;
-    } else if (bend || toward(w, side) < 0 || !n) return false;
+    } else if (bend || toward(w, side) < 0 || (!oneWay && !n)) return false;
   }
   for (const [t, height] of [[from, hf], [to, ht]] as const) {
     const g = h.ground(t.x, t.y);

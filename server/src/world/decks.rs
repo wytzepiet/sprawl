@@ -222,7 +222,7 @@ impl World {
             self.move_to(beside, other(side));
         }
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![], side }),
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![], side, banned: vec![] }),
             Some(coord),
         );
         self.decks.entry((coord.x, coord.y)).or_default().push(id);
@@ -255,7 +255,8 @@ impl World {
         }
         // A road on a side: along its run one way, on to the road on its
         // own side or the middle, not across to the other; or, straight
-        // on and once it is there, out toward its side, a road joining it.
+        // on, out toward its side: a road joining it, or a one-way come in
+        // from that side to turn and run on beside the other.
         for (at, h, side, way, there) in [(from, hf, sf, (dx, dy), st), (to, ht, st, (-dx, -dy), sf)] {
             if side == MIDDLE {
                 continue;
@@ -267,7 +268,7 @@ impl World {
                 if !one_way || crossed {
                     return false;
                 }
-            } else if bend.is_some() || toward(way, side) < 0 || self.node_in(at, h, side).is_none() {
+            } else if bend.is_some() || toward(way, side) < 0 || (!one_way && self.node_in(at, h, side).is_none()) {
                 return false;
             }
         }

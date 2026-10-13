@@ -485,6 +485,16 @@ What runs, and where; the rest of the order above is still to come.
   street is right in, right out. What a car may do follows from the
   links; it never turns back. Roads are drawn a node at a time
   (`Town::roadsOn`), each its own curve through where it stands.
+- **A drag joins only at its ends** (`World::drawn`, `Build.on`,
+  `RoadNode::banned`): where it starts it branches off what is there,
+  where it is let go it joins what is there; between, it turns only as
+  it went. Straight over a road, a crossing with no turns; up to a road
+  and on along it, that one turn; a full crossroads is drawn up to the
+  road and away from it, two drags. A one-way that meets a one-way and
+  goes on against it runs beside it (the brush holds that step until the
+  next says which). A junction that turns its traffic only some ways is
+  dotted: a road straight through, its edges carried across; each turn,
+  the line its cars drive. A junction open every way stays plain.
 - **The look tool** (V): nothing in hand, no streaks, every deck solid.
 - **Priority**: a through road is let through first at a junction.
   Priority is the hand's, not a kind of road (`Build.road`): any road

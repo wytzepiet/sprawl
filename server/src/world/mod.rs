@@ -138,6 +138,10 @@ pub struct World {
     pub unsettled: BTreeSet<EntityId>,
     /// What each player did lately, to take back (`undo.rs`). Not saved.
     pub undo: HashMap<crate::protocol::OwnerId, Vec<crate::undo::Done>>,
+    /// Each player's last step of road: the node it came from, the one it
+    /// reached, and whether the link between was new (`World::drawn`).
+    /// Not saved.
+    pub hands: HashMap<crate::protocol::OwnerId, (EntityId, EntityId, bool)>,
     /// The town's missions (`missions.rs`). Saved.
     pub missions: crate::missions::Missions,
 }
@@ -198,6 +202,7 @@ impl World {
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
             undo: HashMap::new(),
+            hands: HashMap::new(),
             missions: Default::default(),
         }
     }
@@ -242,6 +247,7 @@ impl World {
             people: HashMap::new(),
             unsettled: BTreeSet::new(),
             undo: HashMap::new(),
+            hands: HashMap::new(),
             missions: Default::default(),
             objects,
         };

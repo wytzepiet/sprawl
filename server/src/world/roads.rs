@@ -29,6 +29,7 @@ impl World {
                 light: None,
                 wide: vec![],
                 side: super::decks::MIDDLE,
+                banned: vec![],
             }),
             Some(coord),
         );
@@ -85,6 +86,35 @@ impl World {
         if let Some(seg) = self.edges.get_mut(&(a, b)) {
             seg.lanes = if wide { 2 } else { 1 };
         }
+    }
+
+    /// A step of a player's drag of road, from node `a` to `b`, laid;
+    /// `fresh`, the link between them new. Carried `on` from the step
+    /// before it, the drag passes through `a`: it turns there as it went,
+    /// in by the way it came and out to `b`, and its new arms turn to no
+    /// other road there, nor any other road to them. A drag joins what it
+    /// meets where it starts and where it ends, and nowhere between: over
+    /// a road it crosses, alongside it, it runs on.
+    pub fn drawn(&mut self, owner: crate::protocol::OwnerId, on: bool, a: EntityId, b: EntityId, fresh: bool) {
+        if on
+            && let Some(&(p, at, came)) = self.hands.get(&owner)
+            && at == a
+        {
+            let others: HashSet<EntityId> = self.arms_of(a, false).into_iter().filter(|&o| o != p && o != b).collect();
+            if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(a).map(|e| &mut e.object) {
+                for (x, new) in [(p, came), (b, fresh)] {
+                    for &o in others.iter().filter(|_| new) {
+                        for t in [[x, o], [o, x]] {
+                            if !n.banned.contains(&t) {
+                                n.banned.push(t);
+                            }
+                        }
+                    }
+                }
+            }
+            self.unsettle_round(self.objects.get(a).and_then(|e| e.position).expect("a laid node stands somewhere"));
+        }
+        self.hands.insert(owner, (a, b, fresh));
     }
 
     /// The lane a car keeps on the edge into each node of a route. On a
@@ -343,6 +373,7 @@ impl World {
             if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(x).map(|e| &mut e.object) {
                 n.outgoing.retain(|&o| o != y);
                 n.incoming.retain(|&i| i != y);
+                n.banned.retain(|t| !t.contains(&y));
             }
         }
         for (x, y) in [(a, b), (b, a)] {
@@ -378,6 +409,7 @@ impl World {
                 && let GameObject::RoadNode(ref mut node) = entry.object {
                     node.outgoing.retain(|&x| x != id);
                     node.incoming.retain(|&x| x != id);
+                    node.banned.retain(|t| !t.contains(&id));
                 }
         }
 

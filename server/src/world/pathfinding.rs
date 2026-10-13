@@ -58,8 +58,10 @@ pub fn may_turn(world: &World, from: EntityId, at: EntityId, to: EntityId) -> bo
     }
     // Never back the way it came: to the node it came from, or to the one
     // beside it on that tile, a road the other way side by side.
+    // Nor where no drag drew the turn (`World::drawn`).
     let pos = |id: EntityId| world.objects.get(id).and_then(|e| e.position);
-    from != to && pos(from) != pos(to)
+    let drawn = !matches!(world.objects.get(at).map(|e| &e.object), Some(crate::protocol::GameObject::RoadNode(n)) if n.banned.contains(&[from, to]));
+    from != to && pos(from) != pos(to) && drawn
 }
 
 /// Every way out from one place, searched as far as anyone has asked.

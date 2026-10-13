@@ -50,7 +50,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   };
   const step = (from: GridCoord, to: GridCoord) => {
     const t = tool();
-    if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority() } });
+    if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority(), on: false } });
   };
 
   // The world as the hand sees it, read again when something is built.
