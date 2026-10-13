@@ -87,8 +87,8 @@ const PAINT_SOFT = 0.005;
 /** Where the wheels wear the asphalt: how much darker, how much of its
  *  grain's bumps they grind away, and how far they polish it toward a
  *  gloss (`townShine`). */
-const WEAR = 0.12;
-const SMOOTHED = 0.8;
+const WEAR = 0.15;
+const SMOOTHED = 1;
 const POLISH = 0.45;
 /** Two more random bytes of the same texel, a whole number of texels on. */
 const [other1, other2] = ["0.3789, 0.1602", "0.0898, 0.5898"];
@@ -158,7 +158,7 @@ if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
 let roadPaint = smoothstep(-${n(PAINT_SOFT)}, ${n(PAINT_SOFT)}, roadAt.b) * (0.8 + 0.2 * roadGrainAt);
 // Worn where the wheels run, under the paint: a little darker, its grain
 // ground down smoother, polished to a sheen.
-let roadWorn = roadAt.a * (0.45 + 0.55 * roadCrumbleBy) * (1. - roadPaint);
+let roadWorn = roadAt.a * (0.75 + 0.25 * roadCrumbleBy) * (1. - roadPaint);
 townShine = max(roadGlinting * (1. - roadWorn), ${n(POLISH)} * roadWorn);
 baseColor = baseColor * (1. - ${n(WEAR)} * roadWorn);
 baseColor = mix(baseColor, vec3f(${PAINT}) / max(material.townTint.rgb, vec3f(0.05)), roadPaint);
