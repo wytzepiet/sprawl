@@ -501,6 +501,23 @@ mod tests {
             n.outgoing.push(e9);
         }
         assert!(back.may_lay_at(at(9, 0), 0, MIDDLE, at(8, 0), 0, NORTH, true), "back along the road it came in by");
+        // Round a bend: east, then south; and back beside it all the way,
+        // outside the bend, the one there moving in.
+        let mut bend = World::new();
+        bend.terrain = world.terrain.clone();
+        bend.place_one_way_of(&[at(0, 0), at(1, 0), at(2, 0), at(3, 0), at(3, 1), at(3, 2), at(3, 3)], false);
+        let (east, out): (Side, Side) = ([1, 0], [1, -1]);
+        let back = [(at(3, 3), east), (at(3, 2), east), (at(3, 1), east), (at(3, 0), out), (at(2, 0), NORTH), (at(1, 0), NORTH), (at(0, 0), NORTH)];
+        for w in back.windows(2) {
+            let ((a, sa), (b, sb)) = (w[0], w[1]);
+            assert!(bend.may_lay_at(a, 0, sa, b, 0, sb, true), "back beside it from {a:?} to {b:?}");
+            bend.place_road_at(a, 0, sa, b, 0, sb, true, false);
+        }
+        assert!(bend.road_node_at(at(3, 0)).is_none(), "the corner is two roads");
+        assert!(bend.node_in(at(3, 0), 0, [-1, 1]).is_some(), "the first inside the bend");
+        let r = |w: &World, from, to| crate::world::pathfinding::Routes::from(w, from).route_to(to);
+        assert!(r(&bend, bend.node_in(at(3, 3), 0, east).unwrap(), bend.node_in(at(0, 0), 0, NORTH).unwrap()).is_some(), "the way back drives");
+        assert!(r(&bend, bend.node_in(at(0, 0), 0, SOUTH).unwrap(), bend.node_in(at(3, 3), 0, [-1, 0]).unwrap()).is_some(), "and the way out");
         // On the wrong side: a pair that keeps left is still a pair.
         let mut left = eastward();
         for x in (1..10).rev() {

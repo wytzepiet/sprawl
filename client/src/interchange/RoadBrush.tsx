@@ -4,7 +4,7 @@ import { Dots } from "../engine/dots";
 import { screenToWorld, viewExtent, rectOf } from "../engine/view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
 import { free, pen, priority, setClimb, setPen, setTool, tool } from "../ui/buildMode";
-import { hand, MIDDLE, mayAt, mayStart, movesOver, nodeAtH, nodeIn, nodesOn, otherSide, snap, spot, STEPS, TOP, toward, type Hand, type Side } from "../engine/may";
+import { hand, MIDDLE, mayAt, mayStart, nodeAtH, sidesBeside, nodeIn, nodesOn, otherSide, snap, spot, STEPS, TOP, toward, type Hand, type Side } from "../engine/may";
 import type { GridCoord, TerrainType, Tool } from "../generated";
 import type { Bounds } from "../engine/OrthoCamera";
 
@@ -143,23 +143,30 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     return { h: n.node.height, s: n.node.side ?? MIDDLE };
   };
   /** The sides a step from `at` (on `p`) to `to` at height `h` may take,
-   *  the likeliest first: on along a road on a side; onto a road on a
-   *  side from its own side; beside a one-way there, on the side the drag
-   *  came from, else on the right; else the middle. */
+   *  the likeliest first: on along the side it is on; onto a road on a
+   *  side from that road's own side; beside a one-way there, on the side
+   *  the drag came from, else on the right; else the middle. A side is a
+   *  tile's way across the road through it, straight on or round a bend. */
   const sidesFor = (at: GridCoord, p: Place, to: GridCoord, h: number): Side[] => {
     const d: [number, number] = [to.x - at.x, to.y - at.y];
     const right: Side = [-d[1], d[0]];
-    const from = came ? toward([came.x - at.x, came.y - at.y], right) : 0;
-    const first: Side = from < 0 ? otherSide(right) : right;
-    const there = nodesOn(world!, to).filter(([g]) => g === h).map(([, n]) => n.node.side ?? MIDDLE);
-    const out: Side[] = [];
-    if (sided(p) && toward(d, p.s) === 0) out.push(p.s);
-    for (const s of there) if (toward([at.x - to.x, at.y - to.y], s) > 0) out.push(s);
+    const back: [number, number] = [at.x - to.x, at.y - to.y];
+    const there = nodesOn(world!, to).filter(([g, n]) => g === h && sided({ h: g, s: n.node.side ?? MIDDLE })).map(([, n]) => n.node.side!);
     const m = nodeAtH(world!, to, h);
     const fromNode = nodeIn(world!, at, p.h, p.s);
-    if (there.some((s) => s[0] || s[1]) || (m && !(fromNode && edge(fromNode, m)) && movesOver(world!, to, h, first))) out.push(first, otherSide(first));
-    out.push(MIDDLE);
-    return out;
+    const beside = there.length ? there : m && !(fromNode && edge(fromNode, m)) ? sidesBeside(world!, to, h) : [];
+    const came_ = came ? ([came.x - at.x, came.y - at.y] as [number, number]) : null;
+    const rank = (s: Side) =>
+      sided(p) ? -toward(p.s, s) : there.length && toward(back, s) > 0 ? -1 : came_ && toward(came_, s) ? -toward(came_, s) : -toward(right, s);
+    return [...[...beside].sort((a, b) => rank(a) - rank(b)), MIDDLE];
+  };
+  /** Where a drag starting on a one-way in the middle of its tile and
+   *  stepping off it beside the next tile's stands: beside it here too,
+   *  on the side it goes on, so the two roads end side by side. */
+  const splitAt = (t: Tool, at: GridCoord, p: Place, to: GridCoord, q: Place): Place | null => {
+    if (sided(p) || !sided(q)) return null;
+    const s = sidesBeside(world!, at, p.h).find((c) => toward(c, q.s) > 0);
+    return s && allowedStep(t, at, { h: p.h, s }, to, q) ? { h: p.h, s } : null;
   };
   /** Where a step from `at` (on `p`) to `to` would stand: the road there
    *  it may join, at the height it goes on at or climbs to and the side
@@ -268,6 +275,8 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
       if (newDist >= dist) break;
       const q = stepTo(cur, place, next);
       if (q === null) break;
+      const t = using();
+      if (came === null && t !== null) place = splitAt(t, cur, place, next, q) ?? place;
       step(cur, place, next, q);
       dots.step(next);
       came = cur;

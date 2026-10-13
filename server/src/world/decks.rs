@@ -17,11 +17,14 @@
 //!
 //! Two one-ways may share a tile side by side, as roads share it stacked:
 //! each a node of its own, moved a little to one side of the tile's middle
-//! (`RoadNode::side`), a thin road beside the other. A one-way running
-//! straight through a tile moves over when another is laid beside it, and
-//! back when that one goes. A road on a side is joined along its run, one
-//! way, or from its own side, a road merging into it or branching off it;
-//! never from the other side, which the road beside it is in the way of.
+//! (`RoadNode::side`), a thin road beside the other: across the way they
+//! run, straight on; round a bend, the one inside it and the other out.
+//! A one-way running through a tile moves over when another is laid
+//! beside it, and back when that one goes. A road on a side is joined
+//! along its run, one way, to the road on its own side or the middle; or,
+//! straight on, from its own side, a road merging into it or branching off
+//! it; never from the other side, which the road beside it is in the way
+//! of.
 //!
 //! The ground's middle nodes are `roads`, as they always were, and
 //! everything the town does with a tile's road is theirs. The rest, above
@@ -51,6 +54,24 @@ fn toward((dx, dy): (i32, i32), side: Side) -> i32 {
 /// The other side.
 pub fn other(side: Side) -> Side {
     [-side[0], -side[1]]
+}
+
+/// The way across a road through a tile by these arms (each the step to
+/// its next tile): across the way from the one's edge to the other's,
+/// straight on or round a bend; one arm, across it. In small whole steps,
+/// either way round.
+fn across(arms: &[(i32, i32)]) -> Option<Side> {
+    let (x, y) = match arms {
+        [a] => (-a.1, a.0),
+        [a, b] => (-(b.1 - a.1), b.0 - a.0),
+        _ => return None,
+    };
+    let g = gcd(x.abs(), y.abs()).max(1);
+    Some([(x / g) as i8, (y / g) as i8])
+}
+
+fn gcd(a: i32, b: i32) -> i32 {
+    if b == 0 { a } else { gcd(b, a % b) }
 }
 
 /// How far apart two nodes on one tile must stand: a level, and a level
@@ -120,13 +141,33 @@ impl World {
             return None;
         }
         let id = self.node_at(coord, height)?;
-        let arms = self.arms_of(id, false);
-        let along = arms.iter().all(|&n| {
-            let Some(p) = self.objects.get(n).and_then(|e| e.position) else { return false };
-            let one_way = self.edges.contains_key(&(id, n)) != self.edges.contains_key(&(n, id));
-            one_way && toward((p.x - coord.x, p.y - coord.y), side) == 0 && !self.is_wide(id, n) && !self.is_wide(n, id)
-        });
-        (along && arms.len() <= 2).then_some(id)
+        let mut arms = self.arms_of(id, false);
+        arms.sort_unstable();
+        arms.dedup();
+        let one_lane = arms.iter().all(|&n| (self.edges.contains_key(&(id, n)) != self.edges.contains_key(&(n, id))) && !self.is_wide(id, n) && !self.is_wide(n, id));
+        let way = across(&self.steps_to(id, &arms)?)?;
+        (one_lane && (side == way || side == other(way))).then_some(id)
+    }
+
+    /// The steps from a node to each of these, by their tiles.
+    fn steps_to(&self, id: EntityId, arms: &[EntityId]) -> Option<Vec<(i32, i32)>> {
+        let at = self.objects.get(id)?.position?;
+        arms.iter().map(|&n| self.objects.get(n)?.position.map(|p| (p.x - at.x, p.y - at.y))).collect()
+    }
+
+    /// The run a road on this side of a tile follows round a bend: the
+    /// steps of the road beside it, or of the one that moves over for it,
+    /// where those bend. Straight on, none: its run is across its side.
+    fn bend_of(&self, coord: GridCoord, height: u8, side: Side) -> Option<Vec<(i32, i32)>> {
+        let beside = self.node_in(coord, height, other(side)).or_else(|| self.moves_over(coord, height, side))?;
+        let mut arms = self.arms_of(beside, false);
+        arms.sort_unstable();
+        arms.dedup();
+        let steps = self.steps_to(beside, &arms)?;
+        match steps.as_slice() {
+            [a, b] if (a.0 + b.0, a.1 + b.1) != (0, 0) => Some(steps),
+            _ => None,
+        }
     }
 
     /// A node moved to another side of its tile, or back to its middle, its
@@ -212,18 +253,22 @@ impl World {
         if !self.room_at(from, hf, sf) || !self.room_at(to, ht, st) {
             return false;
         }
-        // A road on a side: along its run one way, and on along its own
-        // side, not across to the other; or, once it is there, out toward
-        // its side, a road joining it.
+        // A road on a side: along its run one way, on to the road on its
+        // own side or the middle, not across to the other; or, straight
+        // on and once it is there, out toward its side, a road joining it.
         for (at, h, side, way, there) in [(from, hf, sf, (dx, dy), st), (to, ht, st, (-dx, -dy), sf)] {
             if side == MIDDLE {
                 continue;
             }
-            match toward(way, side) {
-                0 if !one_way || (there != MIDDLE && there != side) => return false,
-                0 => {}
-                t if t < 0 || self.node_in(at, h, side).is_none() => return false,
-                _ => {}
+            let bend = self.bend_of(at, h, side);
+            let along = bend.as_ref().map_or(toward(way, side) == 0, |steps| steps.contains(&way));
+            if along {
+                let crossed = there != MIDDLE && toward((there[0] as i32, there[1] as i32), side) <= 0;
+                if !one_way || crossed {
+                    return false;
+                }
+            } else if bend.is_some() || toward(way, side) < 0 || self.node_in(at, h, side).is_none() {
+                return false;
             }
         }
         // Where an end is on the ground, it is the ground's: not into a

@@ -258,22 +258,58 @@ export function nodesOn(h: Hand, t: GridCoord): [number, Node][] {
 
 const edge = (a: Node, b: Node) => a.node.outgoing.includes(b.id) || b.node.incoming.includes(a.id);
 
+/** `decks::across`: the way across a road through a tile by these arms,
+ *  in small whole steps, either way round. */
+export function across(arms: [number, number][]): Side | undefined {
+  const [x, y] = arms.length === 1 ? [-arms[0][1], arms[0][0]] : arms.length === 2 ? [-(arms[1][1] - arms[0][1]), arms[1][0] - arms[0][0]] : [NaN, NaN];
+  if (Number.isNaN(x)) return undefined;
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  const g = gcd(Math.abs(x), Math.abs(y)) || 1;
+  return [x / g, y / g];
+}
+
+/** A node's arms, by the steps to their tiles, in the server's order. */
+function stepsOf(h: Hand, t: GridCoord, n: Node): [number, number][] {
+  const ids = [...new Set([...n.node.outgoing, ...n.node.incoming])].sort((a, b) => a - b);
+  return ids.flatMap((id) => {
+    const p = h.at.get(id);
+    return p ? [[p.x - t.x, p.y - t.y] as [number, number]] : [];
+  });
+}
+
 /** `World::moves_over`: the middle node on a tile that moves over to the
- *  other side when a node is laid on this one: a one-way running straight
- *  through, or ending, along the run across the side, with one lane. */
+ *  other side when a node is laid on this one: a one-way running through,
+ *  straight on or round a bend, or ending, across the side, one lane. */
 export function movesOver(h: Hand, t: GridCoord, height: number, side: Side): Node | undefined {
   if (isMiddle(side) || nodeIn(h, t, height, otherSide(side))) return undefined;
   const m = nodeIn(h, t, height);
   if (!m) return undefined;
   const ids = [...new Set([...m.node.outgoing, ...m.node.incoming])];
   const byId = (id: number) => nodesOn(h, h.at.get(id) ?? t).find(([, n]) => n.id === id)?.[1];
-  const along = ids.every((id) => {
-    const [p, n] = [h.at.get(id), byId(id)];
-    if (!p || !n) return false;
-    const oneWay = edge(m, n) !== edge(n, m);
-    return oneWay && toward([p.x - t.x, p.y - t.y], side) === 0 && !m.node.wide.includes(id) && !n.node.wide.includes(m.id);
+  const oneLane = ids.every((id) => {
+    const n = byId(id);
+    return !!n && edge(m, n) !== edge(n, m) && !m.node.wide.includes(id) && !n.node.wide.includes(m.id);
   });
-  return along && ids.length <= 2 ? m : undefined;
+  const way = across(stepsOf(h, t, m));
+  return oneLane && way && (same(side, way) || same(side, otherSide(way))) ? m : undefined;
+}
+
+/** The sides a road may be laid on beside the one-way in the middle of a
+ *  tile, the one there moving over: across it, either way. */
+export function sidesBeside(h: Hand, t: GridCoord, height: number): Side[] {
+  const m = nodeIn(h, t, height);
+  const way = m && across(stepsOf(h, t, m));
+  return way ? [way, otherSide(way)].filter((s) => movesOver(h, t, height, s)) : [];
+}
+
+/** `World::bend_of`: the steps of the road a road on this side follows
+ *  round a bend, the one beside it or that moves over for it; straight
+ *  on, none. */
+function bendOf(h: Hand, t: GridCoord, height: number, side: Side): [number, number][] | undefined {
+  const beside = nodeIn(h, t, height, otherSide(side)) ?? movesOver(h, t, height, side);
+  if (!beside) return undefined;
+  const steps = stepsOf(h, t, beside);
+  return steps.length === 2 && (steps[0][0] + steps[1][0] || steps[0][1] + steps[1][1]) ? steps : undefined;
 }
 
 /** `World::room_at`. */
@@ -327,13 +363,17 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
   const on = hf % 2 === 1 && ht % 2 === 1 && Math.abs(hf - ht) === 2;
   if ((Math.abs(hf - ht) > 1 && !on) || (hf === ht && hf % 2 === 1)) return false;
   if (!roomAt(h, from, hf, sf) || !roomAt(h, to, ht, st)) return false;
-  // A road on a side: along its run one way, on along its own side; or,
-  // once there, out toward its side (`World::may_lay_at`).
-  for (const [side, way, there, n] of [[sf, [dx, dy], st, na], [st, [-dx, -dy], sf, nb]] as const) {
+  // A road on a side: along its run one way, on to the road on its own
+  // side or the middle; or, straight on and once there, out toward its
+  // side (`World::may_lay_at`).
+  for (const [at, height, side, way, there, n] of [[from, hf, sf, [dx, dy], st, na], [to, ht, st, [-dx, -dy], sf, nb]] as const) {
     if (isMiddle(side)) continue;
-    const t = toward(way as [number, number], side);
-    if (t === 0 && (!oneWay || (!isMiddle(there) && !same(there, side)))) return false;
-    if (t < 0 || (t > 0 && !n)) return false;
+    const w = way as [number, number];
+    const bend = bendOf(h, at, height, side);
+    const along = bend ? bend.some(([x, y]) => x === w[0] && y === w[1]) : toward(w, side) === 0;
+    if (along) {
+      if (!oneWay || (!isMiddle(there) && toward(there, side) <= 0)) return false;
+    } else if (bend || toward(w, side) < 0 || !n) return false;
   }
   for (const [t, height] of [[from, hf], [to, ht]] as const) {
     const g = h.ground(t.x, t.y);
