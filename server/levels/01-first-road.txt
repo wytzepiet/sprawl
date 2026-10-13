@@ -1,5 +1,6 @@
 # First road
 # Join the road coming in to the one going out.
+@at 0 1
 @gate 1 in
 @gate 2 out
 @want 1 2 15

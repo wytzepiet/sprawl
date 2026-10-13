@@ -1,5 +1,6 @@
 # Merge
 # Two roads in, one road out.
+@at 3 1
 @gate 1 in
 @gate 2 in
 @gate 3 out

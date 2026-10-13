@@ -85,6 +85,22 @@ impl Web {
         }
     }
 
+    /// The player's roads, as steps to lay them again (`Level::layout`),
+    /// as JSON.
+    pub fn layout(&self) -> String {
+        serde_json::to_string(&Level::layout(&self.game.world)).unwrap_or_default()
+    }
+
+    /// Roads written down by `layout`, laid again.
+    pub fn load(&mut self, json: &str) {
+        let steps: Vec<sprawl::protocol::Build> = serde_json::from_str(json).unwrap_or_default();
+        for step in steps {
+            if self.level.allows(&self.game.world, &step) {
+                self.game.command(ME, ClientMessage::Build(step));
+            }
+        }
+    }
+
     /// Back to building.
     pub fn build(&mut self) {
         self.level.build_again();

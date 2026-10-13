@@ -13,7 +13,9 @@ import { pen, setPen, setTool, tool } from "../ui/buildMode";
 import type { LevelState, Tool } from "../generated";
 import { connectLevel, type LevelConnection } from "./connection";
 import { RoadBrush } from "./RoadBrush";
-import { best, keep } from "./progress";
+import { best, keep, keepLayout, layoutOf } from "./progress";
+import { LEVELS, neighbours, type LevelText } from "./levels";
+import Map, { isOpen } from "./Map";
 
 /**
  * Interchange: the puzzle. A level is a piece of map with roads coming in
@@ -21,22 +23,6 @@ import { best, keep } from "./progress";
  * draw the roads between, then test them. The level runs in the browser,
  * on the game's own simulation (`server/src/level.rs`, `server/web`).
  */
-
-export interface LevelText {
-  name: string;
-  title: string;
-  notes: string[];
-  text: string;
-}
-
-export const LEVELS: LevelText[] = Object.entries(
-  import.meta.glob<string>("../../../server/levels/*.txt", { query: "?raw", import: "default", eager: true }),
-)
-  .map(([path, text]) => {
-    const notes = text.split("\n").filter((l) => l.startsWith("#")).map((l) => l.replace(/^#\s*/, ""));
-    return { name: path.split("/").pop()!.replace(/\.txt$/, ""), title: notes[0] ?? "", notes: notes.slice(1), text };
-  })
-  .sort((a, b) => a.name.localeCompare(b.name));
 
 export default function Interchange() {
   const params = new URLSearchParams(location.search);
@@ -46,45 +32,9 @@ export default function Interchange() {
     setPlaying(name);
   };
   return (
-    <Show when={LEVELS.find((l) => l.name === playing())} keyed fallback={<LevelList go={go} />}>
-      {(level) => <Play level={level} back={() => go(null)} next={() => {
-        const i = LEVELS.findIndex((l) => l.name === level.name);
-        go(LEVELS[i + 1]?.name ?? null);
-      }} />}
+    <Show when={LEVELS.find((l) => l.name === playing() && isOpen(l))} keyed fallback={<Map go={go} />}>
+      {(level) => <Play level={level} back={() => go(null)} next={() => go(neighbours(level).find((n) => best(n.name) === null)?.name ?? null)} />}
     </Show>
-  );
-}
-
-/** Every level, in order, each open once the one before it is solved. */
-function LevelList(props: { go: (name: string) => void }) {
-  const open = (i: number) => i === 0 || best(LEVELS[i - 1].name) !== null;
-  return (
-    <div class="min-h-screen w-full overflow-auto" style={{ background: "linear-gradient(160deg,#dfe9d6,#c9dccb)" }}>
-      <div class="mx-auto max-w-3xl px-6 py-14">
-        <h1 class="serif text-5xl font-light" style={{ color: "#2f3d38" }}>Interchange</h1>
-        <p class="mt-3 max-w-xl text-[15px]" style={{ color: "#2f3d38b8" }}>
-          Roads come in at the edges of each map, and their traffic wants to get across. Join them, with as little asphalt as you can, and keep it moving.
-        </p>
-        <div class="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <For each={LEVELS}>
-            {(l, i) => (
-              <button
-                disabled={!open(i())}
-                onClick={() => props.go(l.name)}
-                class="press flex items-center justify-between rounded-2xl bg-white/80 px-5 py-4 text-left shadow-sm disabled:cursor-not-allowed disabled:opacity-40"
-                style={{ color: "#2f3d38", cursor: open(i()) ? "pointer" : undefined }}
-              >
-                <span>
-                  <span class="text-[11px] font-bold uppercase tracking-widest opacity-60">{i() + 1}</span>
-                  <span class="serif ml-3 text-xl">{l.title}</span>
-                </span>
-                <Show when={best(l.name)}>{(b) => <span class="text-[15px] font-semibold tabular-nums">{b().toFixed(1)}%</span>}</Show>
-              </button>
-            )}
-          </For>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -126,7 +76,7 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
 
   return (
     <ThemeProvider>
-      <GameProvider connect={(on) => (line = connectLevel(props.level.name, props.level.text, on, hear))}>
+      <GameProvider connect={(on) => (line = connectLevel(props.level.name, props.level.text, layoutOf(props.level.name), on, hear, (json) => keepLayout(props.level.name, json)))}>
         <DayNightProvider>
           <Canvas>
             <OrthoCamera bounds={bounds} />

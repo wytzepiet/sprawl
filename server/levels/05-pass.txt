@@ -1,5 +1,6 @@
 # The pass
 # One way through the mountains, both ways along it.
+@at 1 0
 @gate 1 both
 @gate 2 both
 @want 1 2 12

@@ -13,6 +13,7 @@
 //! @gate 2 out       and leave here (a one-way, outward)
 //! @gate 3 both      a two-way: in and out
 //! @want 1 2 12      twelve cars a minute from 1 to 2
+//! @at 2 1           where it lies on the map of levels (the client's)
 //! ```
 //!
 //! After the map, our own solve: the map again, each row behind a `%`,
@@ -387,6 +388,38 @@ impl Level {
         steps
     }
 
+    /// The player's roads, as the steps that would lay them again: every
+    /// link with a laid end, the way it runs, at its heights.
+    pub fn layout(world: &World) -> Vec<Build> {
+        let mut steps = Vec::new();
+        let node = |id: EntityId| match world.objects.get(id).map(|e| (e.position, &e.object)) {
+            Some((Some(p), GameObject::RoadNode(n))) => Some((p, n.height, n.road, n.laid)),
+            _ => None,
+        };
+        let mut edges: Vec<_> = world.edges.keys().copied().collect();
+        edges.sort_unstable();
+        for (a, b) in edges {
+            let (Some((pa, ha, ra, la)), Some((pb, hb, rb, lb))) = (node(a), node(b)) else { continue };
+            if !la && !lb {
+                continue;
+            }
+            let back = world.edges.contains_key(&(b, a));
+            // A two-way once, from its lower end; a one-way, or a divided
+            // road's side, the way it runs.
+            let divided = world.divided(a, b);
+            if back && !divided && a > b {
+                continue;
+            }
+            let tool = if back && !divided {
+                if ra && rb { Tool::Road } else { Tool::Street }
+            } else {
+                Tool::OneWay
+            };
+            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]) });
+        }
+        steps
+    }
+
     pub fn phase(&self) -> Phase {
         self.phase
     }
@@ -731,6 +764,25 @@ mod tests {
             assert!((s.efficiency - 100.0).abs() < 0.5, "{name}: its own solve scores {:.1}", s.efficiency);
             assert!(s.par_flow > 0.5, "{name}: its own solve flows at {:.2}", s.par_flow);
         }
+    }
+
+    /// What the player built, written down and laid again on a fresh
+    /// level, is the same roads.
+    #[test]
+    fn a_layout_lays_again_as_it_was() {
+        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/levels/08-over-and-under.txt")).unwrap();
+        let (level, mut game) = play(&text);
+        for step in level.solve_steps(&game.world) {
+            crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now);
+        }
+        let written = Level::layout(&game.world);
+        let (again, mut fresh) = play(&text);
+        for step in &written {
+            assert!(again.allows(&fresh.world, step));
+            assert!(crate::game::take_step(&mut fresh.world, &mut fresh.events, &mut fresh.intersections, *step, fresh.now), "{step:?}");
+        }
+        assert_eq!(Level::cost(&fresh.world), Level::cost(&game.world));
+        assert_eq!(fresh.world.edges.len(), game.world.edges.len());
     }
 
     #[test]

@@ -29,3 +29,29 @@ export function keep(name: string, efficiency: number) {
     // Private windows and full storage: the best lives as long as the tab.
   }
 }
+
+/** What the player built on each level, as the steps to lay it again
+ *  (`Level::layout`), kept in this browser so a level comes back as it
+ *  was left. */
+const LAYOUTS = "interchange.layout.";
+
+export function layoutOf(name: string): string | null {
+  try {
+    return localStorage.getItem(LAYOUTS + name);
+  } catch {
+    return null;
+  }
+}
+
+export function keepLayout(name: string, json: string) {
+  try {
+    localStorage.setItem(LAYOUTS + name, json);
+  } catch {
+    // As with the bests: kept as long as the tab, at worst.
+  }
+  setLayouts((v) => v + 1);
+}
+
+/** Moves when any layout is kept, for what draws them. */
+const [layouts, setLayouts] = createSignal(0);
+export { layouts };

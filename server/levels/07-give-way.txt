@@ -1,5 +1,6 @@
 # Give way
 # A busy road, and a lane off it. Draw the busy one as a priority road (⇶): whoever joins it gives way.
+@at 2 2
 @gate 1 both
 @gate 2 both
 @gate 3 both

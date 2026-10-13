@@ -1,5 +1,6 @@
 # Fork
 # One road in, and the cars on it want two places.
+@at 2 0
 @gate 1 in
 @gate 2 out
 @gate 3 out

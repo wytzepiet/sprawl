@@ -1,6 +1,7 @@
 # Crossroads
 # Two roads that both want to go straight on.
 # Where they cross, they take turns.
+@at 2 1
 @gate 1 both
 @gate 2 both
 @gate 3 both

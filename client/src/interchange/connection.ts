@@ -13,15 +13,23 @@ export interface LevelConnection extends Connection {
   solve(): void;
 }
 
-export function connectLevel(name: string, text: string, onMessage: (msg: ServerMessage) => void, onLevel: (s: LevelState) => void): LevelConnection {
+export function connectLevel(
+  name: string,
+  text: string,
+  layout: string | null,
+  onMessage: (msg: ServerMessage) => void,
+  onLevel: (s: LevelState) => void,
+  onLayout: (json: string) => void,
+): LevelConnection {
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   const post = (m: ToWorker) => worker.postMessage(m);
   worker.onmessage = (e: MessageEvent<FromWorker>) => {
     const m = e.data;
     if (m.type === "out") for (const bytes of m.msgs) onMessage(decode(bytes) as ServerMessage);
+    else if (m.type === "layout") onLayout(m.json);
     else onLevel(JSON.parse(m.json) as LevelState);
   };
-  post({ type: "open", name, text });
+  post({ type: "open", name, text, layout });
   return {
     send(msg: ClientMessage) {
       post({ type: "msg", bytes: encode(msg) });

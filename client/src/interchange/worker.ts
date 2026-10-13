@@ -8,18 +8,19 @@
 import init, { Web } from "../wasm/sprawl_web.js";
 
 export type ToWorker =
-  | { type: "open"; name: string; text: string }
+  | { type: "open"; name: string; text: string; layout: string | null }
   | { type: "msg"; bytes: Uint8Array }
   | { type: "test" }
   | { type: "finish" }
   | { type: "build" }
   | { type: "solve" };
 
-export type FromWorker = { type: "out"; msgs: Uint8Array[] } | { type: "level"; json: string };
+export type FromWorker = { type: "out"; msgs: Uint8Array[] } | { type: "level"; json: string } | { type: "layout"; json: string };
 
 let web: Web | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
 let lastState = "";
+let lastLayout = "";
 let ticks = 0;
 
 const post = (m: FromWorker) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(m);
@@ -34,6 +35,11 @@ function flush(force = false) {
     const json = web.state();
     if (json !== lastState) post({ type: "level", json }), (lastState = json);
   }
+  // What the player has built, to keep, whenever it changes.
+  if (force || ticks % 30 === 0) {
+    const json = web.layout();
+    if (json !== lastLayout) post({ type: "layout", json }), (lastLayout = json);
+  }
 }
 
 self.onmessage = async (e: MessageEvent<ToWorker>) => {
@@ -41,6 +47,8 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
   if (m.type === "open") {
     await init();
     web = new Web(m.name, m.text);
+    if (m.layout) web.load(m.layout);
+    lastLayout = web.layout();
     flush(true);
     clearInterval(timer);
     timer = setInterval(() => {
