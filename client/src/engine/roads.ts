@@ -84,8 +84,12 @@ const CHIPS = 4;
  *  tiles. */
 const PAINT = "0.97, 0.96, 0.92";
 const PAINT_SOFT = 0.005;
-/** How much darker the wheels wear the asphalt. */
-const WEAR = 0.17;
+/** Where the wheels wear the asphalt: how much darker, how much of its
+ *  grain's bumps they grind away, and how far they polish it toward a
+ *  gloss (`townShine`). */
+const WEAR = 0.12;
+const SMOOTHED = 0.8;
+const POLISH = 0.45;
 /** Two more random bytes of the same texel, a whole number of texels on. */
 const [other1, other2] = ["0.3789, 0.1602", "0.0898, 0.5898"];
 
@@ -149,14 +153,16 @@ let roadAt = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv, 0.);
 let roadD = roadAt.rg;
 if (roadD.r < 0.) { discard; }
 if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
-            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `townShine = roadGlinting;
-// The paint: white, worn a little by the grain, laid over before the tint
+            CUSTOM_FRAGMENT_UPDATE_DIFFUSE: `// The paint: white, worn a little by the grain, laid over before the tint
 // is, so it is undone here.
 let roadPaint = smoothstep(-${n(PAINT_SOFT)}, ${n(PAINT_SOFT)}, roadAt.b) * (0.8 + 0.2 * roadGrainAt);
-// Worn where the wheels run: a little darker, under the paint.
-baseColor = baseColor * (1. - ${n(WEAR)} * roadAt.a * (0.45 + 0.55 * roadCrumbleBy) * (1. - roadPaint));
+// Worn where the wheels run, under the paint: a little darker, its grain
+// ground down smoother, polished to a sheen.
+let roadWorn = roadAt.a * (0.45 + 0.55 * roadCrumbleBy) * (1. - roadPaint);
+townShine = max(roadGlinting * (1. - roadWorn), ${n(POLISH)} * roadWorn);
+baseColor = baseColor * (1. - ${n(WEAR)} * roadWorn);
 baseColor = mix(baseColor, vec3f(${PAINT}) / max(material.townTint.rgb, vec3f(0.05)), roadPaint);
-N = normalize(N - vec3f(roadBump * ${n(BUMP)} + input.vRoadTilt, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
+N = normalize(N - vec3f(roadBump * ${n(BUMP)} * (1. - ${n(SMOOTHED)} * roadWorn) + input.vRoadTilt, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting * (1. - roadWorn), 0.));
 let roadTx = vec2f(roadTexel.x, 0.);
 let roadTy = vec2f(0., roadTexel.y);
 let roadDx = textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv + roadTx, 0.).g - textureSampleLevel(roadAtlas, roadAtlasSampler, roadUv - roadTx, 0.).g;
