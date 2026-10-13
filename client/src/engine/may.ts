@@ -297,7 +297,8 @@ function slopeTakes(h: Hand, at: GridCoord, height: number, side: Side, [dx, dy]
   if (arms.length > 1) return false;
   const p = h.at.get(arms[0]);
   const armHeight = [...(h.decks?.values() ?? [])].find((d) => d.id === arms[0])?.node.height ?? 0;
-  return !!p && p.x - at.x === -dx && p.y - at.y === -dy && armHeight !== other;
+  // Its other arm, straight behind or round a bend, at the climb's other end.
+  return !!p && !(p.x - at.x === dx && p.y - at.y === dy) && armHeight !== other;
 }
 
 /** `World::may_lay_at`, and the demolisher at a height and side: the

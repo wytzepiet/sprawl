@@ -94,7 +94,7 @@ function roadPlugin(engine: EngineContext, atlas: Atlas, lifted: boolean): Mater
       ...(lifted
         ? [
             { name: "roadLift", type: "vec4<f32>" as const, perInstance: true, buffer: "roadLifts" },
-            { name: "roadClimb", type: "vec2<f32>" as const, perInstance: true, buffer: "roadLifts" },
+            { name: "roadClimb", type: "vec4<f32>" as const, perInstance: true, buffer: "roadLifts" },
           ]
         : []),
     ],
@@ -118,10 +118,10 @@ function roadPlugin(engine: EngineContext, atlas: Atlas, lifted: boolean): Mater
             CUSTOM_VERTEX_MAIN_END: `out.vRoad = position.xy; out.vRoadSlot = roadSlot;${
               lifted
                 ? `
-let roadU = clamp(dot(position.xy + vec2f(0.5), roadClimb) + 0.5, 0., 1.);
+let roadU = clamp(dot(position.xy + vec2f(0.5), roadClimb.xy) + roadClimb.z, 0., 1.);
 out.worldPos.z = out.worldPos.z + roadLift.x + roadU * (roadLift.y + roadU * (roadLift.z + roadU * roadLift.w));
 out.clipPos = scene.viewProjection * vec4f(out.worldPos, 1.);
-out.vRoadTilt = roadClimb * (roadLift.y + roadU * (2. * roadLift.z + 3. * roadU * roadLift.w));`
+out.vRoadTilt = roadClimb.xy * (roadLift.y + roadU * (2. * roadLift.z + 3. * roadU * roadLift.w));`
                 : " out.vRoadTilt = vec2f(0.);"
             }`,
           }
@@ -184,7 +184,7 @@ function square(z: number, n: number): MeshGeometry {
   return g;
 }
 /** A deck's lift, in floats a tile (`decks.ts`'s `Lift`). */
-const LIFT = 6;
+const LIFT = 8;
 /** How finely a deck's square is cut. */
 const DECK_CUTS = 12;
 

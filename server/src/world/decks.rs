@@ -3,8 +3,8 @@
 //! A road node has a height in half-levels (`RoadNode::height`): 0 the
 //! ground, 2 a level up, 4 two, 6 three. An odd height is a slope, a tile
 //! whose road climbs from the level below at the edge it comes in by to
-//! the one above at the edge it goes out by: it runs straight through, one
-//! arm down and one up, and nothing else joins it. Links join nodes of the
+//! the one above at the edge it goes out by: one arm down and one up,
+//! straight on or round a bend, and nothing else joins it. Links join nodes of the
 //! same even height, a slope to the level at either end of it, or a slope
 //! to the next slope on, so a road climbs several levels over as many
 //! tiles, on and on.
@@ -250,8 +250,8 @@ impl World {
     }
 
     /// Would a slope here take an arm this way to a node at `other`: it has
-    /// none yet, or the one it has is straight behind and at the other end
-    /// of the climb. Not a slope, anything may join it.
+    /// none yet, or the one it has is at the other end of the climb; it
+    /// may bend, as any road may. Not a slope, anything may join it.
     fn slope_takes(&self, at: GridCoord, height: u8, side: Side, way: (i32, i32), other: u8) -> bool {
         if height % 2 == 0 {
             return true;
@@ -265,7 +265,7 @@ impl World {
             [] => true,
             [arm] => {
                 let Some(p) = self.objects.get(*arm).and_then(|e| e.position) else { return false };
-                (p.x - at.x, p.y - at.y) == (-way.0, -way.1) && self.height_of(*arm) != other
+                (p.x - at.x, p.y - at.y) != way && self.height_of(*arm) != other
             }
             _ => false,
         }
@@ -389,7 +389,10 @@ mod tests {
         assert!(world.may_lay_at(at(5, -1), 3, MIDDLE, at(5, 0), 4, MIDDLE, false), "a slope from the first level over it");
         lay(&mut world, &[(3, -3, 0), (3, -2, 1), (3, -1, 2)]);
         assert!(!world.may_lay_at(at(3, -2), 1, MIDDLE, at(4, -2), 2, MIDDLE, false), "a third arm on a slope");
-        assert!(!world.may_lay_at(at(3, -2), 1, MIDDLE, at(2, -2), 0, MIDDLE, false), "a bend in a slope");
+        assert!(!world.may_lay_at(at(3, -2), 1, MIDDLE, at(2, -2), 0, MIDDLE, false), "a third arm on a slope");
+        lay(&mut world, &[(7, -4, 0), (7, -3, 1)]);
+        assert!(!world.may_lay_at(at(7, -3), 1, MIDDLE, at(8, -3), 0, MIDDLE, false), "a slope's two arms at one level");
+        assert!(world.may_lay_at(at(7, -3), 1, MIDDLE, at(8, -3), 2, MIDDLE, false), "a slope round a bend");
         assert!(world.may_lay_at(at(3, -1), 2, MIDDLE, at(4, -1), 2, MIDDLE, false), "a junction on the level");
     }
 
