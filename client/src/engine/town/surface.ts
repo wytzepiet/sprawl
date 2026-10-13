@@ -632,16 +632,18 @@ export function paintOf(surface: Surface): (x: number, y: number) => number {
   }
   // A junction that turns its traffic only some ways, some turn not
   // drawn or a one-way's lane among them, dotted, so where each goes is
-  // seen: a road straight through, its edges carried across; a turn, the
-  // line its cars drive.
+  // seen: a road driven both ways through it, straight on or round, its
+  // edges and its middle carried across; driven one way, its lane's line.
   if (junction && (surface.banned?.length || roads.some(([, , , f]) => f === "o" || f === "i"))) {
-    for (const [a, b, path] of movesOf(surface, p, roads)) {
-      const straight = a[0] === -b[0] && a[1] === -b[1];
-      // Each road straight through once, by its edges.
-      if (straight && (a[0] > b[0] || (a[0] === b[0] && a[1] > b[1])) && movesOf(surface, p, [b, a]).length) continue;
+    const moves = movesOf(surface, p, roads);
+    for (const [a, b, path] of moves) {
+      const back = moves.some(([c, d]) => c === b && d === a);
+      // A road driven both ways, once.
+      if (back && roads.indexOf(a) > roads.indexOf(b)) continue;
       const total = path.at[path.at.length - 1] || 1;
-      const lines = straight
-        ? [() => [halfOf(a[3]) - EDGE_IN, halfOf(b[3]) - EDGE_IN] as Pt].flatMap((w) => [1, -1].map((e) => (t: number) => e * (w()[0] + (w()[1] - w()[0]) * t)))
+      const [ha, hb] = [halfOf(a[3]) - EDGE_IN, halfOf(b[3]) - EDGE_IN];
+      const lines: ((t: number) => number)[] = back
+        ? [(t) => ha + (hb - ha) * t, (t) => -(ha + (hb - ha) * t), () => 0]
         : lanesOf(a[3], true).flatMap((l) => lanesOf(b[3], false).map((m) => (t: number) => l[0] + (m[0] - l[0]) * t));
       for (const at of lines) {
         marks.push((x, y) => {
