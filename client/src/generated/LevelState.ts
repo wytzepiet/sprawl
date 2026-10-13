@@ -19,22 +19,26 @@ test_ms: number, test_total_ms: number,
  * What the player's roads cost, in tiles of ground road (`Level::cost`),
  * and what our own solve's did.
  */
-cost: number, par: number, 
+cost: number, 
+/**
+ * None on an open level, which has no solve of ours.
+ */
+par: number | null, 
 /**
  * Trips' time on empty roads over the time they took, 0 to 1.
  */
 flow: number, 
 /**
- * Par over cost.
+ * Par over cost; on an open level, none.
  */
-material: number, 
+material: number | null, 
 /**
- * The flow our own solve gets.
+ * The flow our own solve gets; on an open level, none.
  */
-par_flow: number, 
+par_flow: number | null, 
 /**
  * Flow and material against our own solve's, as a percentage: a
- * hundred is as good as ours.
+ * hundred is as good as ours. On an open level, the flow alone.
  */
 efficiency: number, gates: Array<GateView>, wants: Array<WantView>, 
 /**

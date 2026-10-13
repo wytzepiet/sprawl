@@ -17,12 +17,15 @@
 //! @at 2 1           where it lies on the map of levels (the client's)
 //! ```
 //!
-//! After the map, our own solve: the map again, each row behind a `%`,
-//! with `=` on every tile of road it lays, `#` of priority road, `*` a
-//! junction with lights, and `<` `>` `^` `v` a one-way, the way it runs
-//! as the map is read, on to the tile it points at. Rows behind `%#` are
-//! an overlay: its `#` tiles are priority road, one-ways among them. Its tiles are the level's par,
-//! and it is the level's test: it must carry the traffic.
+//! After the map, our own solve, if the level has one: the map again, each
+//! row behind a `%`, with `=` on every tile of road it lays, `#` of
+//! priority road, `*` a junction with lights, and `<` `>` `^` `v` a
+//! one-way, the way it runs as the map is read, on to the tile it points
+//! at. Rows behind `%#` are an overlay: its `#` tiles are priority road,
+//! one-ways among them. Its tiles are the level's par, and it is the
+//! level's test: it must carry the traffic. A level with none is open:
+//! nothing to measure against but the traffic itself, so it scores the
+//! flow alone, and the asphalt is the player's own to keep down.
 //!
 //! A gate is a stub of road from its edge tile out past the map's edge,
 //! two tiles beyond it: cars appear at its far end and leave from there.
@@ -163,15 +166,16 @@ pub struct LevelState {
     /// What the player's roads cost, in tiles of ground road (`Level::cost`),
     /// and what our own solve's did.
     pub cost: u32,
-    pub par: u32,
+    /// None on an open level, which has no solve of ours.
+    pub par: Option<u32>,
     /// Trips' time on empty roads over the time they took, 0 to 1.
     pub flow: f64,
-    /// Par over cost.
-    pub material: f64,
-    /// The flow our own solve gets.
-    pub par_flow: f64,
+    /// Par over cost; on an open level, none.
+    pub material: Option<f64>,
+    /// The flow our own solve gets; on an open level, none.
+    pub par_flow: Option<f64>,
     /// Flow and material against our own solve's, as a percentage: a
-    /// hundred is as good as ours.
+    /// hundred is as good as ours. On an open level, the flow alone.
     pub efficiency: f64,
     pub gates: Vec<GateView>,
     pub wants: Vec<WantView>,
@@ -187,9 +191,8 @@ pub struct Level {
     max: GridCoord,
     gates: Vec<Gate>,
     wants: Vec<Want>,
-    par: u32,
-    /// The flow our own solve gets.
-    par_flow: f64,
+    /// What our own solve costs and how it flows; none, an open level.
+    par: Option<(u32, f64)>,
     /// Our own solve's tiles of road and their heights, laid between every
     /// two beside each other, or on a diagonal no tile beside both already
     /// joins, that a road may join: the same level, or a slope's ends.
@@ -222,10 +225,11 @@ pub struct Level {
 }
 
 impl Level {
-    /// A level from its text, built into a fresh world, its own solve
-    /// tested to know what a hundred is.
+    /// A level from its text, built into a fresh world, its own solve, if
+    /// it has one, tested to know what a hundred is.
     pub fn build(name: &str, text: &str) -> (Level, World) {
         let (mut level, world) = Level::parse(name, text);
+        let Some((par, _)) = level.par else { return (level, world) };
         let (mut reference, world_r) = Level::parse(name, text);
         let mut game = Game::new(world_r, 0, 1, Box::new(World::new));
         for step in reference.solve_steps(&game.world) {
@@ -236,7 +240,7 @@ impl Level {
             reference.step(&mut game);
             game.step();
         }
-        level.par_flow = if reference.phase == Phase::Done { reference.done_flow } else { 1.0 };
+        level.par = Some((par, if reference.phase == Phase::Done { reference.done_flow } else { 1.0 }));
         (level, world)
     }
 
@@ -373,6 +377,7 @@ impl Level {
             *row += 1;
         }
         let par = solution.iter().map(|&(_, h)| if h == 0 { 1 } else if h % 2 == 1 { 2 } else { 3 }).sum::<u32>() + lights.len() as u32 * LIGHT_COST;
+        let par = (!solution.is_empty()).then_some((par, 1.0));
         let seed = name.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
         let n = wants.len();
         world.frame = Some((at(w - 1, h - 1), at(0, 0)));
@@ -384,7 +389,6 @@ impl Level {
             gates,
             wants,
             par,
-            par_flow: 1.0,
             solution,
             priority,
             lights,
@@ -680,7 +684,7 @@ impl Level {
             Phase::Done => self.done_flow,
             _ => self.flow(game),
         };
-        let material = if cost == 0 { 0.0 } else { self.par as f64 / cost as f64 };
+        let material = self.par.map(|(par, _)| if cost == 0 { 0.0 } else { par as f64 / cost as f64 });
         LevelState {
             name: self.name.clone(),
             title: self.title.clone(),
@@ -692,11 +696,15 @@ impl Level {
             test_ms: if testing { (game.now - self.started).min(TEST_MS) } else { 0 },
             test_total_ms: TEST_MS,
             cost,
-            par: self.par,
+            par: self.par.map(|(par, _)| par),
             flow,
             material,
-            par_flow: self.par_flow,
-            efficiency: if self.phase == Phase::Done { 100.0 * flow / self.par_flow.max(1e-9) * material } else { 0.0 },
+            par_flow: self.par.map(|(_, f)| f),
+            efficiency: match (self.phase, self.par) {
+                (Phase::Done, Some((_, par_flow))) => 100.0 * flow / par_flow.max(1e-9) * material.unwrap_or(0.0),
+                (Phase::Done, None) => 100.0 * flow,
+                _ => 0.0,
+            },
             gates: self
                 .gates
                 .iter()
@@ -878,21 +886,49 @@ mod tests {
         for path in names {
             let name = path.file_stem().unwrap().to_string_lossy().into_owned();
             let (mut level, mut game) = play(&std::fs::read_to_string(&path).unwrap());
+            if level.par.is_none() {
+                continue;
+            }
             for step in level.solve_steps(&game.world) {
                 assert!(crate::game::may_step(&game.world, step), "{name}: {step:?} refused by the level");
                 assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{name}: {step:?} refused by the world");
             }
             let s = level.state(&game);
             assert!(s.wants.iter().all(|w| w.joined), "{name}: the solve leaves a want with no road");
-            assert_eq!(s.cost, s.par, "{name}: the solve costs other than its par");
+            assert_eq!(Some(s.cost), s.par, "{name}: the solve costs other than its par");
             level.test(&mut game);
             run(&mut level, &mut game, TEST_MS + 1000);
             let s = level.state(&game);
             assert_eq!(s.phase, Phase::Done, "{name}: {} at {:?}", s.message, s.jam);
             eprintln!("{name}: efficiency {:.1}, flow {:.2}, cost {}", s.efficiency, s.flow, s.cost);
             assert!((s.efficiency - 100.0).abs() < 0.5, "{name}: its own solve scores {:.1}", s.efficiency);
-            assert!(s.par_flow > 0.5, "{name}: its own solve flows at {:.2}", s.par_flow);
+            assert!(s.par_flow.is_some_and(|f| f > 0.5), "{name}: its own solve flows at {:?}", s.par_flow);
         }
+    }
+
+    /// An open level, with no solve of ours to prove it, is at least fair:
+    /// its gates stand on the map's edge, and none asks more of its lanes
+    /// than a lane carries, sixty cars a minute.
+    #[test]
+    fn every_open_level_asks_no_more_than_its_lanes_carry() {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/levels");
+        let mut open = 0;
+        for path in std::fs::read_dir(dir).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "txt")) {
+            let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+            let (level, game) = play(&std::fs::read_to_string(&path).unwrap());
+            if level.par.is_some() {
+                continue;
+            }
+            open += 1;
+            for (i, g) in level.gates.iter().enumerate() {
+                assert!(level.inside(g.edge) && !level.inside(g.end), "{name}: gate {} is not on the edge", g.label);
+                let node = game.world.road_node_at(g.edge).unwrap_or_else(|| panic!("{name}: gate {} has no road", g.label));
+                let lanes = game.world.edges.iter().filter(|(k, _)| k.0 == node || k.1 == node).map(|(_, s)| s.lanes).max().unwrap_or(1) as f64;
+                let asked: f64 = level.wants.iter().filter(|w| w.from == i || w.to == i).map(|w| w.per_min).sum();
+                assert!(asked <= 60.0 * lanes, "{name}: gate {} asks {asked} a minute of {lanes} lanes", g.label);
+            }
+        }
+        assert!(open > 0);
     }
 
     /// What the player built, written down and laid again on a fresh

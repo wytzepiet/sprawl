@@ -330,7 +330,9 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
           <span class="soft text-[12px] font-bold uppercase tracking-widest">Asphalt</span>
           <span class="tabular-nums">
             <span class="text-xl font-semibold">{s()?.cost ?? 0}</span>
-            <span class="soft text-sm"> / {s()?.par ?? 0} par</span>
+            <Show when={s()?.par != null}>
+              <span class="soft text-sm"> / {s()?.par} par</span>
+            </Show>
           </span>
         </div>
         <div class="soft mt-2 text-[11px] leading-snug">
@@ -426,7 +428,7 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
               <div class="mt-2 h-1.5 overflow-hidden rounded-full" style={{ background: "rgb(var(--ink) / 0.1)" }}>
                 <div class="h-full rounded-full" style={{ width: pct(t().test_ms / t().test_total_ms), background: "#7B77E0" }} />
               </div>
-              <div class="soft mt-2 text-[13px]">Flow so far {pct(t().flow / Math.max(1e-9, t().par_flow))} of par</div>
+              <div class="soft mt-2 text-[13px]">Flow so far {flowOf(t())}</div>
             </Show>
             <Show when={t().phase === "Jammed"}>
               <div class="text-[12px] font-bold uppercase tracking-widest" style={{ color: "#C2361F" }}>Jammed</div>
@@ -434,11 +436,11 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
               <button class={`${button} mt-3`} style={dark} onClick={() => props.line()?.build()}>Back to building</button>
             </Show>
             <Show when={t().phase === "Done"}>
-              <div class="soft text-[12px] font-bold uppercase tracking-widest">Efficiency</div>
+              <div class="soft text-[12px] font-bold uppercase tracking-widest">{t().par === null ? "Flow" : "Efficiency"}</div>
               <div class="serif text-6xl font-light tabular-nums">{t().efficiency.toFixed(1)}<span class="text-3xl">%</span></div>
               <div class="soft mt-2 space-y-0.5 text-[13px]">
-                <div class="flex justify-between"><span>Flow</span><span class="tabular-nums">{pct(t().flow / Math.max(1e-9, t().par_flow))} of par</span></div>
-                <div class="flex justify-between"><span>Asphalt</span><span class="tabular-nums">{t().cost} for a par of {t().par}</span></div>
+                <div class="flex justify-between"><span>Flow</span><span class="tabular-nums">{flowOf(t())}</span></div>
+                <div class="flex justify-between"><span>Asphalt</span><span class="tabular-nums">{t().par === null ? t().cost : `${t().cost} for a par of ${t().par}`}</span></div>
                 <Show when={best(props.level.name)}>{(b) => <div class="flex justify-between"><span>Your best</span><span class="tabular-nums">{b().toFixed(1)}%</span></div>}</Show>
               </div>
               <div class="mt-3 flex gap-2">
@@ -452,6 +454,10 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
     </>
   );
 }
+
+/** The flow, against our own solve's where the level has one; an open
+ *  level's, as it is: how near its trips came to empty roads. */
+const flowOf = (s: LevelState) => (s.par_flow === null ? pct(s.flow) : `${pct(s.flow / Math.max(1e-9, s.par_flow))} of par`);
 
 /** A gate's label, in its colour. */
 function Badge(props: { children: string; colour?: string }) {
