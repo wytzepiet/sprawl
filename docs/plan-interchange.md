@@ -511,6 +511,13 @@ What runs, and where; the rest of the order above is still to come.
   asphalt is worn, two wheel tracks down each lane along the curve its
   cars drive (`wearOf`), so through a junction only the ways its cars
   may go are worn.
+- **Right of way from the lanes' shapes** (`intersection::track`): a car
+  at a junction gives its way through, its lane's curve from seam to seam
+  as the client draws it (`laneOf`), and gives way to those whose ways
+  come within a car's width of its own; from one arm they follow, to one
+  they merge. So two one-ways bending round opposite corners of one tile,
+  or a diagonal past a loop, keep out of each other's way, and a left
+  turn still waits for the oncoming. Ships keep their own rule.
 - **The look tool** (V): nothing in hand, no streaks, every deck solid.
 - **Priority**: a through road is let through first at a junction.
   Priority is the hand's, not a kind of road (`Build.road`): any road

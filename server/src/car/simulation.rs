@@ -397,6 +397,18 @@ fn arm(world: &World, junction: EntityId, toward: EntityId) -> Option<(i32, i32)
     (m > 1e-9).then(|| ((dx / m).round() as i32, (dy / m).round() as i32))
 }
 
+/// A car's way through a junction, from one node to another, as it
+/// drives it (`intersection::track`): in its lane, the right one of a road
+/// both ways, the middle of a one-way.
+fn track_through(world: &World, from: EntityId, at: EntityId, to: EntityId) -> Option<crate::intersection::Track> {
+    let lane = |a: EntityId, b: EntityId| if world.edges.contains_key(&(a, b)) && world.edges.contains_key(&(b, a)) { LANE } else { 0.0 };
+    Some(crate::intersection::track(world.node_pos(from)?, world.node_pos(at)?, world.node_pos(to)?, lane(from, at), lane(at, to)))
+}
+
+/// How far a road both ways keeps its lanes from its middle, in tiles: as
+/// the client draws them.
+const LANE: f64 = 0.11;
+
 /// A junction's arms, if it has lights: the way to each neighbour.
 fn light_arms(world: &World, junction: EntityId) -> Option<Vec<(i32, i32)>> {
     let Some(GameObject::RoadNode(n)) = world.objects.get(junction).map(|e| &e.object) else { return None };
@@ -723,7 +735,7 @@ pub fn handle_car_wake_up(
                     junction.set_signal(lit.as_deref(), now);
                     events.wake(crate::intersection::SIGNAL_TICK, trip.route[k]);
                 }
-                junction.register_ranked(car_id, from_dir, to_dir, major, now);
+                junction.register_ranked(car_id, from_dir, to_dir, track_through(world, trip.route[k - 1], trip.route[k], trip.route[k + 1]), major, now);
             }
             // Holding the junction and going nowhere: after a few seconds
             // of that, wave the others through and queue again. Standing

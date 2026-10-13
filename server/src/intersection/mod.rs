@@ -10,11 +10,24 @@ pub type Dir = (i32, i32);
 /// (`paths_conflict`); the sea has its own (`shipping::lanes`).
 pub type Rule = fn(waiting: (Dir, Dir), passing: (Dir, Dir)) -> bool;
 
+/// A car's way through a junction, as it drives it: points along its lane
+/// from the seam it comes in by to the one it goes out by, in tiles from
+/// the junction (`track`).
+pub type Track = [[f32; 2]; TRACK_POINTS];
+pub const TRACK_POINTS: usize = 9;
+
+/// How near two cars' tracks may come before they are in each other's
+/// way: a car's width, and a little.
+const CLEAR: f32 = 0.15;
+
 #[derive(Clone, Copy)]
 struct QueueEntry {
     car_id: EntityId,
     from: Dir,
     to: Dir,
+    /// Its way through, if it is a car on the road; a ship, none, and its
+    /// junction's rule says who crosses whom.
+    track: Option<Track>,
     /// Coming in on a priority road: it goes before anyone on a minor one.
     major: bool,
     /// When it was granted passage; meaningless while it waits.
@@ -154,12 +167,12 @@ impl IntersectionManager {
 
     /// Add a car to the queue. Returns true if newly registered.
     pub fn register(&mut self, car_id: EntityId, from: Dir, to: Dir, now: GameTime) -> bool {
-        self.register_ranked(car_id, from, to, false, now)
+        self.register_ranked(car_id, from, to, None, false, now)
     }
 
-    /// Add a car to the queue, coming in on a priority road (`major`) or
-    /// not. Returns true if newly registered.
-    pub fn register_ranked(&mut self, car_id: EntityId, from: Dir, to: Dir, major: bool, now: GameTime) -> bool {
+    /// Add a car to the queue, its way through (`track`), coming in on a
+    /// priority road (`major`) or not. Returns true if newly registered.
+    pub fn register_ranked(&mut self, car_id: EntityId, from: Dir, to: Dir, track: Option<Track>, major: bool, now: GameTime) -> bool {
         let already = self.queue.iter().any(|e| e.car_id == car_id)
             || self.passing.iter().any(|e| e.car_id == car_id);
         if !already {
@@ -168,7 +181,7 @@ impl IntersectionManager {
             {
                 signal.last = now;
             }
-            self.queue.push_back(QueueEntry { car_id, from, to, major, since: now });
+            self.queue.push_back(QueueEntry { car_id, from, to, track, major, since: now });
             self.grant_passage(now);
             return true;
         }
@@ -208,7 +221,7 @@ impl IntersectionManager {
             let green = signal.phases.get(signal.phase).cloned().unwrap_or_default();
             while let Some(i) = self.queue.iter().position(|e| green.contains(&e.from)) {
                 let next = self.queue[i];
-                if self.passing.iter().any(|p| (self.rule)((next.from, next.to), (p.from, p.to))) {
+                if self.passing.iter().any(|p| self.crosses(&next, p)) {
                     break;
                 }
                 let mut entry = self.queue.remove(i).unwrap();
@@ -222,7 +235,7 @@ impl IntersectionManager {
             let next = self.queue[i];
             // A merge is no conflict between equals; onto a priority road
             // from a minor one it is: the minor gives way.
-            let dominated = self.passing.iter().any(|p| (self.rule)((next.from, next.to), (p.from, p.to)) || (next.to == p.to && next.major != p.major));
+            let dominated = self.passing.iter().any(|p| self.crosses(&next, p) || (next.to == p.to && next.major != p.major));
             if dominated {
                 break;
             }
@@ -232,6 +245,17 @@ impl IntersectionManager {
             self.passing.push(entry);
         }
         newly_granted
+    }
+
+    /// Does a car waiting cross one passing: their ways through, where both
+    /// are known, coming within `CLEAR` of each other, but for two from
+    /// one arm, which follow each other in, and two to one, which merge;
+    /// else the junction's rule.
+    fn crosses(&self, waiting: &QueueEntry, passing: &QueueEntry) -> bool {
+        match (&waiting.track, &passing.track) {
+            (Some(a), Some(b)) => waiting.from != passing.from && waiting.to != passing.to && apart(a, b) < CLEAR,
+            _ => (self.rule)((waiting.from, waiting.to), (passing.from, passing.to)),
+        }
     }
 
     /// Lights at this junction, with these arms; or none. Lights already
@@ -390,8 +414,88 @@ impl IntersectionRegistry {
     }
 }
 
+/// A lane's way through a junction at `at`, from the one at `from` to the
+/// one at `to` (where each stands, in tiles), as a car keeps to it: from
+/// where it crosses the one seam to where it crosses the other, each beside
+/// its road's middle by the lane's offset (to the right of the way it is
+/// driven), pulled toward where the two lanes' ways meet; straight on, or
+/// nearly, straight. The client draws the same (`surface.ts`'s `laneOf`).
+pub fn track(from: [f64; 2], at: [f64; 2], to: [f64; 2], lane_in: f64, lane_out: f64) -> Track {
+    let unit = |p: [f64; 2]| {
+        let (x, y) = (p[0] - at[0], p[1] - at[1]);
+        let l = x.hypot(y).max(1e-9);
+        [x / l, y / l]
+    };
+    let seam = |p: [f64; 2]| [(p[0] - at[0]) / 2.0, (p[1] - at[1]) / 2.0];
+    let (ua, ub) = (unit(from), unit(to));
+    let (ia, ob) = ([-ua[0], -ua[1]], ub);
+    let (sa, sb) = (seam(from), seam(to));
+    let a = [sa[0] - ia[1] * lane_in, sa[1] + ia[0] * lane_in];
+    let b = [sb[0] - ob[1] * lane_out, sb[1] + ob[0] * lane_out];
+    let cross = ia[0] * ob[1] - ia[1] * ob[0];
+    let s = ((b[0] - a[0]) * ob[1] - (b[1] - a[1]) * ob[0]) / cross;
+    let c = if cross.abs() >= 0.2 && s > 0.0 { [a[0] + ia[0] * s, a[1] + ia[1] * s] } else { [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0] };
+    std::array::from_fn(|k| {
+        let t = k as f64 / (TRACK_POINTS - 1) as f64;
+        let (u, v, w) = ((1.0 - t) * (1.0 - t), 2.0 * t * (1.0 - t), t * t);
+        [(u * a[0] + v * c[0] + w * b[0]) as f32, (u * a[1] + v * c[1] + w * b[1]) as f32]
+    })
+}
+
+/// How near two tracks come.
+fn apart(a: &Track, b: &Track) -> f32 {
+    let mut near = f32::MAX;
+    for p in a.windows(2) {
+        for q in b.windows(2) {
+            near = near.min(between(p[0], p[1], q[0], q[1]));
+        }
+    }
+    near
+}
+
+/// How near two segments come: none if they cross.
+fn between(a: [f32; 2], b: [f32; 2], c: [f32; 2], d: [f32; 2]) -> f32 {
+    let side = |p: [f32; 2], q: [f32; 2], r: [f32; 2]| (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+    if side(a, b, c) * side(a, b, d) < 0.0 && side(c, d, a) * side(c, d, b) < 0.0 {
+        return 0.0;
+    }
+    let to = |p: [f32; 2], a: [f32; 2], b: [f32; 2]| {
+        let (ex, ey) = (b[0] - a[0], b[1] - a[1]);
+        let t = (((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / (ex * ex + ey * ey).max(1e-12)).clamp(0.0, 1.0);
+        (p[0] - a[0] - ex * t).hypot(p[1] - a[1] - ey * t)
+    };
+    to(a, c, d).min(to(b, c, d)).min(to(c, a, b)).min(to(d, a, b))
+}
+
 #[cfg(test)]
 mod tests {
+    use super::{apart, track, CLEAR};
+
+    /// Ways through a junction at the origin, by the neighbours' steps and
+    /// whether each road runs both ways (its lane on the right).
+    fn way(from: (i32, i32), to: (i32, i32), two_way: bool) -> super::Track {
+        let lane = if two_way { 0.11 } else { 0.0 };
+        track([from.0 as f64, from.1 as f64], [0.0, 0.0], [to.0 as f64, to.1 as f64], lane, lane)
+    }
+
+    /// Tracks cross where cars would, and pass where they would not.
+    #[test]
+    fn tracks_cross_where_cars_would() {
+        let (w, e, n, s) = ((-1, 0), (1, 0), (0, -1), (0, 1));
+        // Two one-ways each bending round its own corner of one tile.
+        assert!(apart(&way(w, n, false), &way(s, e, false)) > CLEAR, "two bends in opposite corners meet");
+        // Straight across each other.
+        assert!(apart(&way(w, e, true), &way(s, n, true)) < CLEAR, "a crossroads does not cross");
+        // Two ways of a road both ways, side by side.
+        assert!(apart(&way(w, e, true), &way(e, w, true)) > CLEAR, "a road's two lanes meet");
+        // A left turn across the oncoming lane.
+        assert!(apart(&way(w, n, true), &way(e, w, true)) < CLEAR, "a left turn misses the oncoming");
+        // Two right turns from opposite arms.
+        assert!(apart(&way(w, s, true), &way(e, n, true)) > CLEAR, "two right turns meet");
+        // A diagonal past a one-way's bend.
+        assert!(apart(&way((-1, 1), (1, -1), false), &way(n, w, false)) > CLEAR, "a diagonal meets a bend it passes");
+    }
+
     use super::*;
 
     const W: Dir = (-1, 0);
@@ -405,24 +509,24 @@ mod tests {
     #[test]
     fn the_priority_road_goes_first() {
         let mut j = IntersectionManager::new(paths_conflict);
-        j.register_ranked(1, S, N, false, 0);
+        j.register_ranked(1, S, N, None, false, 0);
         assert!(j.has_passage(1), "alone, the side street goes");
         j.clear(1, 10);
 
         let mut j = IntersectionManager::new(paths_conflict);
         // Both arrive while the junction is held, the side street first,
         // and both are bound west, so only one may go.
-        j.register_ranked(9, N, S, true, 0);
-        j.register_ranked(1, S, W, false, 1);
-        j.register_ranked(2, E, W, true, 2);
+        j.register_ranked(9, N, S, None, true, 0);
+        j.register_ranked(1, S, W, None, false, 1);
+        j.register_ranked(2, E, W, None, true, 2);
         assert!(!j.has_passage(1) && !j.has_passage(2));
         assert_eq!(j.clear(9, 3), vec![2], "the priority road's car, not the side street's");
         assert_eq!(j.clear(2, 4), vec![1], "then the side street");
 
         let mut j = IntersectionManager::new(paths_conflict);
-        j.register_ranked(9, N, S, false, 0);
-        j.register_ranked(1, S, W, false, 1);
-        j.register_ranked(2, E, W, false, 2);
+        j.register_ranked(9, N, S, None, false, 0);
+        j.register_ranked(1, S, W, None, false, 1);
+        j.register_ranked(2, E, W, None, false, 2);
         assert_eq!(j.clear(9, 3), vec![1], "no priority: in the order they came");
     }
 
