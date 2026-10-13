@@ -37,6 +37,8 @@ export type Rect = [number, number, number, number, number];
 export interface Surface {
   /** A through road's, drawn in its own colour over the streets. */
   through: boolean;
+  /** A junction with traffic lights: a stop line across each way in. */
+  light?: boolean;
   ways: Way[];
   rects: Rect[];
 }
@@ -220,7 +222,7 @@ export function surfaceAt(town: Town, c: number, r: number): Surface | null {
     const mine = bays.filter((b) => b.side[0] === sx && b.side[1] === sy);
     if (mine.length) rects.push(bayRect(town, c, r, mine));
   }
-  return { through, ways, rects };
+  return { through, ways, rects, light: town.light?.(c, r) };
 }
 
 /** A yard's tile, all asphalt, as the server's lot is, its lorries' lane
@@ -244,10 +246,10 @@ function yardRect(town: Town, c: number, r: number): Rect {
 }
 
 /** The key a surface's shape is known by: the same parts, the same shape. */
-export function keyOf({ ways, rects }: Surface): string {
+export function keyOf({ ways, rects, light }: Surface): string {
   const w = ways.map(([dc, dr, on, flow]) => `${dc}${dr}${on ? "+" : ""}${flow ?? ""}`).sort();
   const q = rects.map((rect) => `[${rect.map((v) => +v.toFixed(3)).join(",")}]`).sort();
-  return [...w, ...q].join(",");
+  return [...w, ...q, light ? "L" : ""].join(",");
 }
 
 /**
@@ -316,13 +318,28 @@ const WING: [number, number] = [0.07, 0.1];
  * a one-way's tile has an arrow at its middle, the way it runs. Drives
  * are painted nothing.
  */
-export function paintOf({ through, ways }: Surface): (x: number, y: number) => number {
+export function paintOf({ through, ways, light }: Surface): (x: number, y: number) => number {
   const roads = ways.filter(([, , , flow]) => flow !== "d");
   const marks: ((x: number, y: number) => number)[] = [];
   const junction = roads.length >= 3;
+  // At lights, a stop line across each way in.
+  if (light && junction) {
+    for (const [dc, dr, , flow] of roads) {
+      if (flow === "o") continue;
+      const len = Math.hypot(dc, dr);
+      const [ux, uy] = [dc / len, dr / len];
+      const [lo, hi] = flow === "i" ? [-HALF_W, HALF_W] : [0, HALF_W];
+      marks.push((x, y) => {
+        const [px, py] = [x - 0.5, y - 0.5];
+        const along = px * ux + py * uy - CLEAR;
+        const across = px * uy - py * ux;
+        return Math.min(along, STOP - along, (hi - lo) / 2 - 0.02 - Math.abs(across - (lo + hi) / 2));
+      });
+    }
+  }
   // Where a street meets a priority road, shark's teeth across the street's
   // way in: a row of triangles pointing at whoever must give way.
-  if (through && junction) {
+  if (through && junction && !light) {
     for (const [dc, dr, on, flow] of roads) {
       if (on || flow === "o") continue;
       const len = Math.hypot(dc, dr);
@@ -390,6 +407,8 @@ export function paintOf({ through, ways }: Surface): (x: number, y: number) => n
   return (x, y) => marks.reduce((best, m) => Math.max(best, m(x, y)), -1);
 }
 
+/** A stop line's width along its way. */
+const STOP = 0.05;
 /** A give-way tooth: its base across, and how far it reaches along. */
 const TOOTH: [number, number] = [0.105, 0.13];
 

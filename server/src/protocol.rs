@@ -40,6 +40,8 @@ pub enum Tool {
     /// Whatever stands on `to`, a building whole; a drag cuts the road
     /// between its tiles.
     Demolish,
+    /// Traffic lights at the junction on `to`, or none where it has them.
+    Light,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -66,7 +68,14 @@ pub struct RoadNode {
     /// above (`world/decks.rs`).
     #[serde(default)]
     pub height: u8,
+    /// Traffic lights, if the junction has them: which phase is green
+    /// (`intersection::phases_of`), or `ALL_RED` between phases.
+    #[serde(default)]
+    pub light: Option<u8>,
 }
+
+/// A junction's lights between phases, none green.
+pub const ALL_RED: u8 = u8::MAX;
 
 /// What stands on a plot. The kind follows from the footprint the layout chose,
 /// so a wide plot becomes an Apartment where a single tile becomes a House.

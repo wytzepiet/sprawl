@@ -72,6 +72,60 @@ pub fn paths_cross((w_from, w_to): (Dir, Dir), (p_from, p_to): (Dir, Dir)) -> bo
     (p_from > 0.0 && p_from < w_to) || (p_to > 0.0 && p_to < w_to - 1e-9)
 }
 
+/// A junction's traffic lights: its arms in phases, each green in turn.
+///
+/// Phases are found, not set: arms straight across from each other are
+/// green together, any other alone. Within a green phase the junction is
+/// as it is without lights, first come first served by the rule, so a
+/// left turn waits for the oncoming. The lights are adaptive: a phase
+/// holds while its cars come, and ends after `MIN_GREEN` once another has
+/// cars waiting and none has come to its own for `GAP`, or at `MAX_GREEN`
+/// whatever; then
+/// all red until the junction is clear (`CLEAR_MS` at most), and the next
+/// phase with cars waiting is green.
+#[derive(Clone, Debug)]
+pub struct Signal {
+    pub phases: Vec<Vec<Dir>>,
+    pub phase: usize,
+    since: GameTime,
+    clearing: bool,
+    /// When a car last came to the green: the green holds while they keep
+    /// coming.
+    last: GameTime,
+}
+
+impl Signal {
+    /// All red, between phases.
+    pub fn clearing(&self) -> bool {
+        self.clearing
+    }
+}
+
+pub const MIN_GREEN: GameTime = 5_000;
+/// How long a green waits for its next car before it gives way.
+pub const GAP: GameTime = 3_500;
+pub const MAX_GREEN: GameTime = 18_000;
+pub const CLEAR_MS: GameTime = 3_000;
+/// How often a light with traffic at it looks again.
+pub const SIGNAL_TICK: GameTime = 1_000;
+
+/// The phases of a junction with these arms: each with the one straight
+/// across from it, if there is one; else alone.
+pub fn phases_of(arms: &[Dir]) -> Vec<Vec<Dir>> {
+    let mut left: Vec<Dir> = arms.to_vec();
+    left.sort_unstable();
+    let mut phases = Vec::new();
+    while let Some(a) = left.first().copied() {
+        left.remove(0);
+        let mut phase = vec![a];
+        if let Some(i) = left.iter().position(|&b| b == (-a.0, -a.1)) {
+            phase.push(left.remove(i));
+        }
+        phases.push(phase);
+    }
+    phases
+}
+
 /// FIFO intersection manager. Cars with non-crossing paths can go simultaneously.
 ///
 /// Two separate lists:
@@ -84,6 +138,8 @@ pub struct IntersectionManager {
     queue: VecDeque<QueueEntry>,
     passing: Vec<QueueEntry>,
     rule: Rule,
+    /// Its lights, if it has them.
+    signal: Option<Signal>,
 }
 
 impl IntersectionManager {
@@ -92,6 +148,7 @@ impl IntersectionManager {
             queue: VecDeque::new(),
             passing: Vec::new(),
             rule,
+            signal: None,
         }
     }
 
@@ -106,6 +163,11 @@ impl IntersectionManager {
         let already = self.queue.iter().any(|e| e.car_id == car_id)
             || self.passing.iter().any(|e| e.car_id == car_id);
         if !already {
+            if let Some(signal) = &mut self.signal
+                && signal.phases.get(signal.phase).is_some_and(|green| green.contains(&from))
+            {
+                signal.last = now;
+            }
             self.queue.push_back(QueueEntry { car_id, from, to, major, since: now });
             self.grant_passage(now);
             return true;
@@ -137,6 +199,25 @@ impl IntersectionManager {
     /// priority, or every one does, that is first come, first served.
     fn grant_passage(&mut self, now: GameTime) -> Vec<EntityId> {
         let mut newly_granted = Vec::new();
+        // At lights, only those at a green arm, in the order they came: the
+        // lights are the priority.
+        if let Some(signal) = &self.signal {
+            if signal.clearing {
+                return newly_granted;
+            }
+            let green = signal.phases.get(signal.phase).cloned().unwrap_or_default();
+            while let Some(i) = self.queue.iter().position(|e| green.contains(&e.from)) {
+                let next = self.queue[i];
+                if self.passing.iter().any(|p| (self.rule)((next.from, next.to), (p.from, p.to))) {
+                    break;
+                }
+                let mut entry = self.queue.remove(i).unwrap();
+                entry.since = now;
+                newly_granted.push(entry.car_id);
+                self.passing.push(entry);
+            }
+            return newly_granted;
+        }
         while let Some(i) = self.queue.iter().position(|e| e.major).or((!self.queue.is_empty()).then_some(0)) {
             let next = self.queue[i];
             // A merge is no conflict between equals; onto a priority road
@@ -151,6 +232,56 @@ impl IntersectionManager {
             self.passing.push(entry);
         }
         newly_granted
+    }
+
+    /// Lights at this junction, with these arms; or none. Lights already
+    /// there keep their phase, if they still have it.
+    pub fn set_signal(&mut self, arms: Option<&[Dir]>, now: GameTime) {
+        match arms {
+            None => self.signal = None,
+            Some(arms) => {
+                let phases = phases_of(arms);
+                match &mut self.signal {
+                    Some(s) if s.phases == phases => {}
+                    _ => self.signal = Some(Signal { phases, phase: 0, since: now, clearing: false, last: now }),
+                }
+            }
+        }
+    }
+
+    pub fn signal(&self) -> Option<&Signal> {
+        self.signal.as_ref()
+    }
+
+
+    /// The lights look again: whether to end the green, or, all red and
+    /// clear, which phase is green next. The cars that lets through, and
+    /// when to look again (none while nobody is at the junction).
+    pub fn tick(&mut self, now: GameTime) -> (Vec<EntityId>, Option<GameTime>) {
+        let Some(signal) = &self.signal else { return (self.grant_passage(now), None) };
+        let waiting = |phase: &Vec<Dir>| self.queue.iter().any(|e| phase.contains(&e.from));
+        let elapsed = now.saturating_sub(signal.since);
+        let mut next = signal.clone();
+        if signal.clearing {
+            if self.passing.is_empty() || elapsed >= CLEAR_MS {
+                let n = next.phases.len();
+                next.phase = (1..=n).map(|k| (signal.phase + k) % n).find(|&p| waiting(&signal.phases[p])).unwrap_or((signal.phase + 1) % n);
+                next.since = now;
+                next.last = now;
+                next.clearing = false;
+            }
+        } else {
+            let others = signal.phases.iter().enumerate().any(|(i, p)| i != signal.phase && waiting(p));
+            let mine = waiting(&signal.phases[signal.phase]) || now.saturating_sub(signal.last) < GAP;
+            if others && ((elapsed >= MIN_GREEN && !mine) || elapsed >= MAX_GREEN) {
+                next.clearing = true;
+                next.since = now;
+            }
+        }
+        self.signal = Some(next);
+        let woken = self.grant_passage(now);
+        let busy = !self.queue.is_empty() || !self.passing.is_empty();
+        (woken, busy.then_some(SIGNAL_TICK))
     }
 
     /// Car has left the intersection. Remove from passing and grant new cars.
@@ -211,6 +342,16 @@ impl IntersectionRegistry {
     /// A junction that keeps its own rule (a sea's: `shipping::lanes`).
     pub fn get_or_create_with(&mut self, node_id: EntityId, rule: Rule) -> &mut IntersectionManager {
         self.managers.entry(node_id).or_insert_with(|| IntersectionManager::new(rule))
+    }
+
+    /// A junction's lights, if it has any.
+    pub fn signal(&self, node_id: EntityId) -> Option<&Signal> {
+        self.managers.get(&node_id).and_then(|m| m.signal())
+    }
+
+    /// The lights at a junction look again (`IntersectionManager::tick`).
+    pub fn tick(&mut self, node_id: EntityId, now: GameTime) -> (Vec<EntityId>, Option<GameTime>) {
+        self.managers.get_mut(&node_id).map_or((Vec::new(), None), |m| m.tick(now))
     }
 
     pub fn has_passage(&self, node_id: EntityId, car_id: EntityId) -> bool {
@@ -283,5 +424,31 @@ mod tests {
         j.register_ranked(1, S, W, false, 1);
         j.register_ranked(2, E, W, false, 2);
         assert_eq!(j.clear(9, 3), vec![1], "no priority: in the order they came");
+    }
+
+    /// Lights let one phase through, then, the other waiting and its own
+    /// empty after the shortest green, all red, then the other.
+    #[test]
+    fn the_lights_take_turns() {
+        let mut j = IntersectionManager::new(paths_cross);
+        j.set_signal(Some(&[W, E, N, S]), 0);
+        assert_eq!(j.signal().unwrap().phases.len(), 2, "east-west, and north-south");
+        let green = j.signal().unwrap().phases[0].clone();
+        let (go, stop) = if green.contains(&W) { (W, N) } else { (N, W) };
+        let opposite = |d: Dir| (-d.0, -d.1);
+        j.register(1, go, opposite(go), 0);
+        j.register(2, stop, opposite(stop), 0);
+        assert!(j.has_passage(1), "green");
+        assert!(!j.has_passage(2), "red");
+        j.clear(1, 1_000);
+        assert!(j.tick(2_000).0.is_empty(), "the shortest green still runs");
+        let mut t = 2_000;
+        let mut through = Vec::new();
+        while through.is_empty() && t < 20_000 {
+            t += SIGNAL_TICK;
+            through = j.tick(t).0;
+        }
+        assert_eq!(through, vec![2], "then the other phase");
+        assert!(t >= MIN_GREEN, "not before the shortest green");
     }
 }

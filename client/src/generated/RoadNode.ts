@@ -21,4 +21,9 @@ laid: boolean,
  * two, 6 three; odd, a slope between the level below and the one
  * above (`world/decks.rs`).
  */
-height: number, };
+height: number, 
+/**
+ * Traffic lights, if the junction has them: which phase is green
+ * (`intersection::phases_of`), or `ALL_RED` between phases.
+ */
+light: number | null, };

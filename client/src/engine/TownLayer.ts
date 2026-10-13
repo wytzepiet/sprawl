@@ -406,6 +406,7 @@ export class TownLayer {
         return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
       },
       through: (c, r) => !!road(c, r)?.road,
+      light: (c, r) => road(c, r)?.light != null,
       flow: (c0, r0, c1, r1) => {
         const [a, b] = [road(c0, r0)!, road(c1, r1)!];
         if (a.outgoing.includes(b.id) && a.incoming.includes(b.id)) return "v";

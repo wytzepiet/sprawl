@@ -190,7 +190,7 @@ export default function World(props: { brush?: (ground: (x: number, y: number) =
   function drawnOf(entry: GameObjectEntry): string | undefined {
     if (entry.object.kind === "RoadNode") {
       const n = entry.object.data as RoadNode;
-      return JSON.stringify([entry.position, n.road, n.outgoing, n.incoming]);
+      return JSON.stringify([entry.position, n.road, n.outgoing, n.incoming, n.light != null]);
     }
     if (entry.object.kind !== "Building") return undefined;
     const b = entry.object.data as Building;

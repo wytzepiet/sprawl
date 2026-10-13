@@ -157,6 +157,9 @@ pub fn doomed(world: &World, step: Build) -> Option<Act> {
 /// carries the same drag on, else an action of its own. Says so, the
 /// first time a drag of road has to buy its stone express.
 pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act>, paid: Paid, after: EntityId, now: GameTime) -> Option<News> {
+    if step.tool == Tool::Light {
+        return None;
+    }
     let road = matches!(step.tool, Tool::Street | Tool::OneWay | Tool::Road);
     let link = Link { from: step.from, to: step.to, one_way: step.tool == Tool::OneWay, road: step.tool == Tool::Road, up: step.up.unwrap_or_default() };
     let express = paid.coins;

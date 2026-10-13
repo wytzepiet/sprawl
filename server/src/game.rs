@@ -348,6 +348,14 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut
             let laid = lay(world, crate::undo::Link { from, to, one_way: tool == Tool::OneWay, road: tool == Tool::Road, up: [hf, ht] });
             crate::economy::paved(world, to, laid, now);
         }
+        Tool::Light => {
+            if let Some(id) = world.node_at(to, ht)
+                && let Some(GameObject::RoadNode(n)) = world.objects.get_mut(id).map(|e| &mut e.object)
+            {
+                n.light = if n.light.is_some() { None } else { Some(0) };
+                events.wake(0, id);
+            }
+        }
         Tool::Demolish => {
             // A tap takes everything at the tile and height: a building
             // whole, or its road and all its links, the cars on it
@@ -415,6 +423,7 @@ pub fn may_step(world: &World, Build { tool, from, to, up }: Build) -> bool {
                 && world.laid + new_tiles <= world.build.road_tiles()
                 && world.may_lay_at(from, hf, to, ht, one_way)
         }
+        Tool::Light => from == to && world.node_at(to, ht).is_some_and(|id| world.is_intersection(id)),
         Tool::Demolish if from == to => world.node_at(to, ht).is_some() || (ht == 0 && world.occupied.contains_key(&(to.x, to.y))),
         Tool::Demolish => world.link_between_at(from, hf, to, ht).is_some(),
     }
@@ -645,6 +654,8 @@ fn handle_wake(
         Some(GameObject::Resident(_)) => handle_resident_wake(world, events, id, now),
         // A building's wake is its turn: a farm whose crop has ripened.
         Some(GameObject::Building(_)) => crate::calls::turn(world, events, id, now),
+        // A junction's is its lights looking again.
+        Some(GameObject::RoadNode(_)) => crate::car::simulation::lights(world, events, intersections, id, now),
         // Midnight: every building takes its turn, and every line reads
         // the labour market again.
         None if id == MIDNIGHT => {

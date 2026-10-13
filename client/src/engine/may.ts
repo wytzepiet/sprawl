@@ -187,6 +187,7 @@ export function snap(dx: number, dy: number): number {
 
 /** May the hand take this step with this tool: the world's rule. */
 export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolean {
+  if (tool === "Light") return mayAt(h, tool, from, 0, to, 0);
   if (tool === "Demolish") {
     if (from.x === to.x && from.y === to.y) return h.roads.has(key(to.x, to.y)) || h.occupied.has(key(to.x, to.y));
     return Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1 && connected(h, from, to);
@@ -199,8 +200,8 @@ export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolea
 /** May a drag start here: a tap that does something, or a step out. */
 export function mayStart(h: Hand, tool: Tool, at: GridCoord): boolean {
   if (may(h, tool, at, at)) return true;
-  // What is taken away is taken where it stands.
-  return tool !== "Demolish" && STEPS.some(([dx, dy]) => may(h, tool, at, { x: at.x + dx, y: at.y + dy }));
+  // What is taken away is taken where it stands; lights go where they go.
+  return tool !== "Demolish" && tool !== "Light" && STEPS.some(([dx, dy]) => may(h, tool, at, { x: at.x + dx, y: at.y + dy }));
 }
 
 const nodeAt = (h: Hand, t: GridCoord) => h.roads.get(key(t.x, t.y));
@@ -255,6 +256,11 @@ function slopeTakes(h: Hand, at: GridCoord, height: number, [dx, dy]: [number, n
  *  from one tile at one height to the next at another. On the ground,
  *  `may`. */
 export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number): boolean {
+  // Lights, on a junction or off one: a tap.
+  if (tool === "Light") {
+    const n = nodeAtH(h, to, ht);
+    return from.x === to.x && from.y === to.y && !!n && new Set([...n.node.outgoing, ...n.node.incoming]).size > 2;
+  }
   if (tool === "Demolish") {
     if (from.x === to.x && from.y === to.y) return !!nodeAtH(h, to, ht) || (ht === 0 && h.occupied.has(key(to.x, to.y)));
     const [a, b] = [nodeAtH(h, from, hf), nodeAtH(h, to, ht)];

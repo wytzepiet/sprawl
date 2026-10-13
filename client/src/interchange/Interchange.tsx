@@ -5,7 +5,7 @@ import { OrthoCamera, type Bounds } from "../engine/OrthoCamera";
 import DayNightLights, { DayNightProvider, pinTimeOfDay } from "../engine/DayNightCycle";
 import { InstancePoolProvider } from "../engine/InstancePool";
 import World from "../engine/World";
-import { GameProvider } from "../state/gameObjects";
+import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
 import { ThemeProvider } from "../engine/theme";
 import Glass from "../ui/Glass";
 import { projector } from "../engine/view";
@@ -32,7 +32,7 @@ export default function Interchange() {
     setPlaying(name);
   };
   return (
-    <Show when={LEVELS.find((l) => l.name === playing() && isOpen(l))} keyed fallback={<Map go={go} />}>
+    <Show when={LEVELS.find((l) => l.name === playing() && (isOpen(l) || import.meta.env.DEV))} keyed fallback={<Map go={go} />}>
       {(level) => <Play level={level} back={() => go(null)} next={() => go(neighbours(level).find((n) => best(n.name) === null)?.name ?? null)} />}
     </Show>
   );
@@ -42,6 +42,7 @@ const TOOLS: { tool: Tool; key: string; label: string; icon: string }[] = [
   { tool: "Street", key: "1", label: "Two-way road", icon: "⇄" },
   { tool: "OneWay", key: "2", label: "One-way road: runs the way you drag. Against another, a divided road", icon: "→" },
   { tool: "Road", key: "3", label: "Priority road: whoever joins or crosses it gives way", icon: "⇶" },
+  { tool: "Light", key: "L", label: "Traffic lights: tap a junction (again to take them away)", icon: "◉" },
   { tool: "Demolish", key: "E", label: "Eraser (or hold Shift)", icon: "⌫" },
 ];
 
@@ -117,6 +118,7 @@ function Frame(props: { state: () => LevelState | null }) {
     g.clearRect(0, 0, innerWidth, innerHeight);
     if (!s) return;
     const p = projector(scene, canvas);
+    const projector_ = p;
     const corners = [[s.min_x, s.min_y], [s.max_x + 1, s.min_y], [s.max_x + 1, s.max_y + 1], [s.min_x, s.max_y + 1]].map(([x, y]) => p.at(x, y, 0));
     // The fog: the whole screen, less the map.
     g.fillStyle = "rgba(236,240,232,0.62)";
@@ -159,6 +161,31 @@ function Frame(props: { state: () => LevelState | null }) {
         g.fillText(`${gate.waiting} waiting`, at.sx, at.sy + r + 24);
       }
     }
+    // Each junction's lights: a lamp before each way in, on its side of
+    // the road, green where its phase is (`intersection::phases_of`).
+    eachEntity((e) => {
+      if (e.object.kind !== "RoadNode" || e.object.data.light == null || !e.position) return;
+      const at = e.position;
+      const arms = [...new Set([...e.object.data.outgoing, ...e.object.data.incoming])]
+        .map((id) => getEntity(id)?.position)
+        .filter((q): q is { x: number; y: number } => !!q)
+        .map((q): [number, number] => [Math.sign(q.x - at.x), Math.sign(q.y - at.y)])
+        .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const phases = phasesOf(arms);
+      const shown = e.object.data.light;
+      for (const [dx, dy] of arms) {
+        const green = shown !== ALL_RED && phases[shown]?.some(([px, py]) => px === dx && py === dy);
+        const p = projector_.at(at.x + 0.5 + dx * 0.42 + dy * 0.2, at.y + 0.5 + dy * 0.42 - dx * 0.2, 0.2);
+        g.fillStyle = "#1f1d22";
+        g.beginPath();
+        g.arc(p.sx, p.sy, 6, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = green ? "#3ad16b" : "#e2412f";
+        g.beginPath();
+        g.arc(p.sx, p.sy, 4, 0, Math.PI * 2);
+        g.fill();
+      }
+    });
     if (s.jam) {
       const at = p.at(s.jam[0] + 0.5, s.jam[1] + 0.5, 0);
       const t = performance.now() / 1000;
@@ -171,6 +198,22 @@ function Frame(props: { state: () => LevelState | null }) {
   });
   onCleanup(() => (stop(), el.remove()));
   return null;
+}
+
+/** A junction's lights between phases (`protocol::ALL_RED`). */
+const ALL_RED = 255;
+
+/** `intersection::phases_of`: the arms in their phases, each with the one
+ *  straight across from it, else alone; in the server's order. */
+function phasesOf(arms: [number, number][]): [number, number][][] {
+  const left = [...arms];
+  const phases: [number, number][][] = [];
+  while (left.length) {
+    const a = left.shift()!;
+    const i = left.findIndex(([x, y]) => x === -a[0] && y === -a[1]);
+    phases.push(i >= 0 ? [a, left.splice(i, 1)[0]] : [a]);
+  }
+  return phases;
 }
 
 const pct = (v: number) => `${(v * 100).toFixed(0)}%`;

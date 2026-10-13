@@ -62,7 +62,7 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
    *  null where it may not go. The eraser takes whatever road joins them. */
   const stepTo = (at: GridCoord, h: number, to: GridCoord): number | null => {
     const t = using();
-    if (!world || t === null) return null;
+    if (!world || t === null || t === "Light") return null;
     const want = pen() * 2;
     const there = nodesOn(world, to).map(([g]) => g);
     if (t === "Demolish") {
@@ -95,7 +95,7 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
   };
   const allowed = (at: GridCoord, i: number) => stepTo(at, height, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] }) !== null;
   const mayStartHere = (t: Tool, at: GridCoord) =>
-    !!world && (pen() > 0 && t !== "Demolish" ? inside(at) : mayStart(world, t, at) && (t === "Demolish" ? !fixed(at) || STEPS.some(([dx, dy]) => allowedStep(t, at, 0, { x: at.x + dx, y: at.y + dy }, 0)) : inside(at)));
+    !!world && (t === "Light" ? nodesOn(world, at).some(([h]) => mayAt(world!, t, at, h, at, h)) : pen() > 0 && t !== "Demolish" ? inside(at) : mayStart(world, t, at) && (t === "Demolish" ? !fixed(at) || STEPS.some(([dx, dy]) => allowedStep(t, at, 0, { x: at.x + dx, y: at.y + dy }, 0)) : inside(at)));
 
   const viewBox = () => {
     const rect = rectOf(canvas);
@@ -171,6 +171,8 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
 
   const onPointerUp = () => {
     if (pressed && current === pressed && using() === "Demolish" && !(fixed(pressed) && !height)) step(pressed, height, pressed, height);
+    // Lights: a tap on a junction, at the height pressed on.
+    if (pressed && current === pressed && using() === "Light" && world && mayAt(world, "Light", pressed, height, pressed, height)) step(pressed, height, pressed, height);
     pressed = null;
     if (current) dots.release();
     current = null;

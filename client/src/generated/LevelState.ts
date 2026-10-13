@@ -16,7 +16,8 @@ min_x: number, min_y: number, max_x: number, max_y: number, phase: Phase,
  */
 test_ms: number, test_total_ms: number, 
 /**
- * Tiles of asphalt the player has laid, and what our own solve took.
+ * What the player's roads cost, in tiles of ground road (`Level::cost`),
+ * and what our own solve's did.
  */
 cost: number, par: number, 
 /**

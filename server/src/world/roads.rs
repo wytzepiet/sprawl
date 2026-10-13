@@ -26,6 +26,7 @@ impl World {
                 road,
                 laid,
                 height: 0,
+                light: None,
             }),
             Some(coord),
         );

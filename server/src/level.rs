@@ -17,7 +17,8 @@
 //! ```
 //!
 //! After the map, our own solve: the map again, each row behind a `%`,
-//! with `=` on every tile of road it lays, `#` of priority road. Its tiles are the level's par,
+//! with `=` on every tile of road it lays, `#` of priority road, `*` a
+//! junction with lights. Its tiles are the level's par,
 //! and it is the level's test: it must carry the traffic.
 //!
 //! A gate is a stub of road from its edge tile out past the map's edge,
@@ -51,6 +52,8 @@ const JAM_QUEUE: usize = 8;
 /// How long the traffic may stand without anyone arriving, cars on the
 /// road, before it is called jammed.
 const JAM_STILL_MS: GameTime = 40_000;
+/// What a junction's lights cost, in tiles of road.
+pub const LIGHT_COST: u32 = 4;
 /// How far a gate's stub runs past the map's edge.
 const STUB: i32 = 2;
 
@@ -183,6 +186,8 @@ pub struct Level {
     /// Those of its tiles that are priority road (`#`): a link is one
     /// where both its ends are.
     priority: Vec<GridCoord>,
+    /// The junctions it puts lights at (`*`).
+    lights: Vec<(GridCoord, u8)>,
     phase: Phase,
     rng: SmallRng,
     seed: u64,
@@ -305,13 +310,16 @@ impl Level {
             .iter()
             .filter_map(|&(a, b, n)| Some(Want { from: index(a)?, to: index(b)?, per_min: n }))
             .collect();
-        let (mut solution, mut priority) = (Vec::new(), Vec::new());
+        let (mut solution, mut priority, mut lights) = (Vec::new(), Vec::new(), Vec::new());
         let mut rows_at: HashMap<u8, i32> = HashMap::new();
         for (height, line) in &solve {
             let row = rows_at.entry(*height).or_insert(0);
             for (col, &c) in line.iter().enumerate() {
-                if c == '=' || c == '#' {
+                if c == '=' || c == '#' || c == '*' {
                     solution.push((at(col as i32, *row), *height));
+                }
+                if c == '*' {
+                    lights.push((at(col as i32, *row), *height));
                 }
                 if c == '#' {
                     priority.push(at(col as i32, *row));
@@ -319,7 +327,7 @@ impl Level {
             }
             *row += 1;
         }
-        let par = solution.iter().map(|&(_, h)| if h == 0 { 1 } else if h % 2 == 1 { 2 } else { 3 }).sum();
+        let par = solution.iter().map(|&(_, h)| if h == 0 { 1 } else if h % 2 == 1 { 2 } else { 3 }).sum::<u32>() + lights.len() as u32 * LIGHT_COST;
         let seed = name.bytes().fold(7u64, |h, b| h.wrapping_mul(31).wrapping_add(b as u64));
         let n = wants.len();
         let level = Level {
@@ -333,6 +341,7 @@ impl Level {
             par_flow: 1.0,
             solution,
             priority,
+            lights,
             phase: Phase::Build,
             rng: SmallRng::seed_from_u64(seed),
             seed,
@@ -385,6 +394,9 @@ impl Level {
                 }
             }
         }
+        for &(at, h) in &self.lights {
+            steps.push(Build { tool: Tool::Light, from: at, to: at, up: (h > 0).then_some([h, h]) });
+        }
         steps
     }
 
@@ -416,6 +428,14 @@ impl Level {
                 Tool::OneWay
             };
             steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]) });
+        }
+        // And the lights, once their junctions stand.
+        for e in world.objects.roads() {
+            if let (Some(p), GameObject::RoadNode(n)) = (e.position, &e.object)
+                && n.light.is_some()
+            {
+                steps.push(Build { tool: Tool::Light, from: p, to: p, up: (n.height > 0).then_some([n.height, n.height]) });
+            }
         }
         steps
     }
@@ -557,17 +577,20 @@ impl Level {
     }
 
     /// What the player's roads cost, in tiles of ground road: a slope's
-    /// tile two, a deck's three, for the concrete and steel under them.
+    /// tile two, a deck's three, for the concrete and steel under them; a
+    /// junction's lights four.
     pub fn cost(world: &World) -> u32 {
         world
             .objects
             .roads()
             .filter_map(|e| match e.object {
-                GameObject::RoadNode(ref n) if n.laid => Some(match n.height {
-                    0 => 1,
-                    h if h % 2 == 1 => 2,
-                    _ => 3,
-                }),
+                GameObject::RoadNode(ref n) if n.laid || n.light.is_some() => Some(
+                    u32::from(n.laid) * match n.height {
+                        0 => 1,
+                        h if h % 2 == 1 => 2,
+                        _ => 3,
+                    } + if n.light.is_some() { LIGHT_COST } else { 0 },
+                ),
                 _ => None,
             })
             .sum()

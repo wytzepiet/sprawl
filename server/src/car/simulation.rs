@@ -397,6 +397,40 @@ fn arm(world: &World, junction: EntityId, toward: EntityId) -> Option<(i32, i32)
     (m > 1e-9).then(|| ((dx / m).round() as i32, (dy / m).round() as i32))
 }
 
+/// A junction's arms, if it has lights: the way to each neighbour.
+fn light_arms(world: &World, junction: EntityId) -> Option<Vec<(i32, i32)>> {
+    let Some(GameObject::RoadNode(n)) = world.objects.get(junction).map(|e| &e.object) else { return None };
+    n.light?;
+    let mut arms: Vec<(i32, i32)> = world.arms_of(junction, false).into_iter().filter_map(|a| arm(world, junction, a)).collect();
+    arms.sort_unstable();
+    arms.dedup();
+    Some(arms)
+}
+
+/// A junction's lights look again (`IntersectionManager::tick`): set up
+/// as its arms now are, or taken away; whoever the green lets through
+/// woken; the phase shown; and the next look, while anyone is there.
+pub fn lights(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, junction: EntityId, now: GameTime) {
+    let arms = light_arms(world, junction);
+    let manager = intersections.get_or_create(junction);
+    manager.set_signal(arms.as_deref(), now);
+    let (woken, next) = manager.tick(now);
+    let shown = manager.signal().map(|s| if s.clearing() { crate::protocol::ALL_RED } else { s.phase as u8 });
+    for car in woken {
+        events.wake(0, car);
+    }
+    if let Some(GameObject::RoadNode(n)) = world.objects.get(junction).map(|e| &e.object)
+        && n.light.is_some()
+        && n.light != shown
+        && let Some(GameObject::RoadNode(n)) = world.objects.get_mut(junction).map(|e| &mut e.object)
+    {
+        n.light = shown;
+    }
+    if let Some(ms) = next {
+        events.wake(ms, junction);
+    }
+}
+
 /// Compute gap to a lead car on a shared edge.
 fn lead_car_obstacle(
     world: &World,
@@ -683,9 +717,13 @@ pub fn handle_car_wake_up(
                 // Off a priority road onto it, or across it, a car gives
                 // way to whoever is on it.
                 let major = world.is_road(trip.route[k]) && world.is_road(trip.route[k - 1]);
-                intersections
-                    .get_or_create(trip.route[k])
-                    .register_ranked(car_id, from_dir, to_dir, major, now);
+                let lit = light_arms(world, trip.route[k]);
+                let junction = intersections.get_or_create(trip.route[k]);
+                if lit.is_some() {
+                    junction.set_signal(lit.as_deref(), now);
+                    events.wake(crate::intersection::SIGNAL_TICK, trip.route[k]);
+                }
+                junction.register_ranked(car_id, from_dir, to_dir, major, now);
             }
             // Holding the junction and going nowhere: after a few seconds
             // of that, wave the others through and queue again. Standing

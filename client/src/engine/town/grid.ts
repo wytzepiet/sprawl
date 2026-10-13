@@ -39,6 +39,8 @@ export interface Town {
   /** Which way traffic runs on the link from one road tile to the next
    *  (`Flow`). Unset, both. */
   flow?(c0: number, r0: number, c1: number, r1: number): Flow;
+  /** A junction with traffic lights. */
+  light?(c: number, r: number): boolean;
   /** Two built tiles, beside or diagonal, joined into one building, as the
    *  brush stroke that painted them ran; unset, the look joins tiles of a
    *  kind by its own rule (`footprint.ts`). */

@@ -16,7 +16,7 @@ function street(): Hand & { wet: Set<string> } {
   for (let x = -6; x < 20; x++) {
     const id = x + 100;
     const arms = [id - 1, id + 1].filter((n) => n >= 94 && n < 120);
-    h.roads.set(`${x},0`, { id, node: { outgoing: arms, incoming: [], joined: true, road: false, laid: false, height: 0 } });
+    h.roads.set(`${x},0`, { id, node: { outgoing: arms, incoming: [], joined: true, road: false, laid: false, height: 0, light: null } });
     h.at.set(id, { x, y: 0 });
   }
   return h;
@@ -78,7 +78,7 @@ describe("a one-way may merge at a shallow angle", () => {
     const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground: (): TerrainType => "Grass" };
     for (let x = 0; x < 10; x++) {
       const id = x + 100;
-      h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true, height: 0 } });
+      h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true, height: 0, light: null } });
       h.at.set(id, { x, y: 0 });
     }
     return h;
@@ -103,7 +103,7 @@ test("a one-way may be laid against a one-way, making a divided road; a two-way 
   const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground: (): TerrainType => "Grass" };
   for (let x = 0; x < 10; x++) {
     const id = x + 100;
-    h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true, height: 0 } });
+    h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true, height: 0, light: null } });
     h.at.set(id, { x, y: 0 });
   }
   expect(may(h, "OneWay", at(6, 0), at(5, 0))).toBe(true);
@@ -122,8 +122,8 @@ describe("roads above the ground", () => {
       const k = height ? `${x},${y},${height}` : `${x},${y}`;
       const map = height ? h.decks! : h.roads;
       let n = map.get(k);
-      if (!n) map.set(k, (n = { id: next++, node: { outgoing: [], incoming: [], joined: true, road: false, laid: true, height } })), h.at.set(n.id, { x, y });
-      return n;
+      if (!n) map.set(k, (n = { id: next++, node: { outgoing: [], incoming: [], joined: true, road: false, laid: true, height, light: null } })), h.at.set(n.id, { x, y });
+      return n!;
     };
     const link = (x0: number, y0: number, h0: number, x1: number, y1: number, h1: number) => {
       const [a, b] = [node(x0, y0, h0), node(x1, y1, h1)];
