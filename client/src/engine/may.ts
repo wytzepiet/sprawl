@@ -322,7 +322,9 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
   if (tool === "Wide" && !middles) return false;
   if ((dx === 0 && dy === 0) || Math.abs(dx) > 1 || Math.abs(dy) > 1 || hf > TOP || ht > TOP) return false;
   if (hf === 0 && ht === 0 && middles) return may(h, tool, from, to, road) && roomAt(h, from, 0) && roomAt(h, to, 0);
-  if (Math.abs(hf - ht) > 1 || (hf === ht && hf % 2 === 1)) return false;
+  // Level, a slope's end, or one slope on to the next (`World::may_lay_at`).
+  const on = hf % 2 === 1 && ht % 2 === 1 && Math.abs(hf - ht) === 2;
+  if ((Math.abs(hf - ht) > 1 && !on) || (hf === ht && hf % 2 === 1)) return false;
   if (!roomAt(h, from, hf, sf) || !roomAt(h, to, ht, st)) return false;
   // A road on a side: along its run one way, on along its own side; or,
   // once there, out toward its side (`World::may_lay_at`).

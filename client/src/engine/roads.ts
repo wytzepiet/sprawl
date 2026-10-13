@@ -91,7 +91,12 @@ function roadPlugin(engine: EngineContext, atlas: Atlas, lifted: boolean): Mater
     priority: 210,
     getAttributes: () => [
       { name: "roadSlot", type: "f32", perInstance: true },
-      ...(lifted ? [{ name: "roadLift", type: "vec4<f32>" as const, perInstance: true }] : []),
+      ...(lifted
+        ? [
+            { name: "roadLift", type: "vec4<f32>" as const, perInstance: true, buffer: "roadLifts" },
+            { name: "roadClimb", type: "vec2<f32>" as const, perInstance: true, buffer: "roadLifts" },
+          ]
+        : []),
     ],
     getVaryings: () => [
       { name: "vRoad", type: "vec2f" },
@@ -113,10 +118,10 @@ function roadPlugin(engine: EngineContext, atlas: Atlas, lifted: boolean): Mater
             CUSTOM_VERTEX_MAIN_END: `out.vRoad = position.xy; out.vRoadSlot = roadSlot;${
               lifted
                 ? `
-let roadU = clamp(dot(position.xy + vec2f(0.5), roadLift.yz) + 0.5, 0., 1.);
-out.worldPos.z = out.worldPos.z + roadLift.x + roadLift.w * roadU * roadU * (3. - 2. * roadU);
+let roadU = clamp(dot(position.xy + vec2f(0.5), roadClimb) + 0.5, 0., 1.);
+out.worldPos.z = out.worldPos.z + roadLift.x + roadU * (roadLift.y + roadU * (roadLift.z + roadU * roadLift.w));
 out.clipPos = scene.viewProjection * vec4f(out.worldPos, 1.);
-out.vRoadTilt = roadLift.yz * roadLift.w * 6. * roadU * (1. - roadU);`
+out.vRoadTilt = roadClimb * (roadLift.y + roadU * (2. * roadLift.z + 3. * roadU * roadLift.w));`
                 : " out.vRoadTilt = vec2f(0.);"
             }`,
           }
@@ -178,6 +183,8 @@ function square(z: number, n: number): MeshGeometry {
   }
   return g;
 }
+/** A deck's lift, in floats a tile (`decks.ts`'s `Lift`). */
+const LIFT = 6;
 /** How finely a deck's square is cut. */
 const DECK_CUTS = 12;
 
@@ -210,10 +217,10 @@ export class RoadTiles {
       const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas, deck)], 0.7);
       mesh.material = material;
       mesh.receiveShadows = true;
-      const [matrices, slots, lifts] = [new Float32Array(64 * 16), new Float32Array(64), deck ? new Float32Array(64 * 4) : null];
+      const [matrices, slots, lifts] = [new Float32Array(64 * 16), new Float32Array(64), deck ? new Float32Array(64 * LIFT) : null];
       setThinInstances(mesh, matrices, 64);
       setMeshAttribute(engine, mesh, "roadSlot", slots);
-      if (lifts) setMeshAttribute(engine, mesh, "roadLift", lifts);
+      if (lifts) setMeshAttribute(engine, mesh, "roadLifts", lifts);
       setThinInstanceCount(mesh, 0);
       return { mesh, material, matrices, slots, lifts, keys: [], dirty: false };
     });
@@ -235,7 +242,7 @@ export class RoadTiles {
       s.set(kind.slots);
       [kind.matrices, kind.slots] = [m, s];
       if (kind.lifts) {
-        const l = new Float32Array(capacity * 4);
+        const l = new Float32Array(capacity * LIFT);
         l.set(kind.lifts);
         kind.lifts = l;
       }
@@ -243,7 +250,7 @@ export class RoadTiles {
     }
     kind.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x + 1, y + 1, 0, 1], index * 16);
     kind.slots[index] = this.atlas.slotOf(keyOf(surface), () => bake(surface));
-    if (kind.lifts && lift) kind.lifts.set(lift, index * 4);
+    if (kind.lifts && lift) kind.lifts.set(lift, index * LIFT);
     kind.keys.push(key);
     kind.dirty = true;
     this.at.set(key, { kind: k, index });
@@ -264,7 +271,7 @@ export class RoadTiles {
     if (was.index !== last) {
       kind.matrices.copyWithin(was.index * 16, last * 16, last * 16 + 16);
       kind.slots[was.index] = kind.slots[last];
-      kind.lifts?.copyWithin(was.index * 4, last * 4, last * 4 + 4);
+      kind.lifts?.copyWithin(was.index * LIFT, last * LIFT, last * LIFT + LIFT);
       kind.keys[was.index] = kind.keys[last];
       this.at.get(kind.keys[last])!.index = was.index;
     }
@@ -280,7 +287,7 @@ export class RoadTiles {
       kind.dirty = false;
       setTint(kind.material, this.colour(k % 2 === 1));
       setMeshAttribute(this.engine, kind.mesh, "roadSlot", kind.slots);
-      if (kind.lifts) setMeshAttribute(this.engine, kind.mesh, "roadLift", kind.lifts);
+      if (kind.lifts) setMeshAttribute(this.engine, kind.mesh, "roadLifts", kind.lifts);
       setThinInstanceCount(kind.mesh, kind.keys.length);
     });
   }

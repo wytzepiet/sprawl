@@ -12,8 +12,9 @@ import type { Casters } from "./DayNightCycle";
  * Roads above the ground (`server/src/world/decks.rs`). A deck's road is
  * a road tile like the ground's, drawn by the same hand (`roads.ts`), its
  * shape and paint its tile's, lifted to its height (`liftOf`); a slope's
- * eased up across its own tile, from the edge it comes in by at the level
- * below to the edge it goes out by at the level above. Under it, here: its
+ * up across its own tile, from the edge it comes in by at the level below
+ * to the edge it goes out by at the level above, and slopes one after
+ * another as one climb, eased (`heightAlong`). Under it, here: its
  * concrete, the road's own outline carried down a deck's thickness and up
  * a parapet's, the parapet round every edge that does not run on into
  * the next tile's road; the deck's underside, which casts its shadow; and
@@ -36,35 +37,46 @@ export const deckZ = (height: number) => ROAD_Z + PAVED_Z + height * HALF_LEVEL;
 
 const ease = (u: number) => u * u * (3 - 2 * u);
 
-/** How high, in half-levels, a road stands a share `f` of the way from a
- *  node at `ha` to one at `hb`: a slope (an odd height) climbs, eased,
- *  across its own tile, from the level below at one edge to the level
- *  above at the other; the other's half of the link is level. */
-export function rise(ha: number, hb: number, f: number): number {
-  const slope = (h: number, toward: number, d: number) => h - 1 + 2 * ease(toward > h ? 0.5 + d : 0.5 - d);
-  if (ha % 2) return f < 0.5 ? slope(ha, hb, f) : hb;
-  if (hb % 2) return f < 0.5 ? ha : slope(hb, ha, 1 - f);
-  return ha + (hb - ha) * f;
+/** How high, in half-levels, a road stands along a run of nodes of these
+ *  heights, at `x` (node k at k, the edge between its tile and the next
+ *  at k + 0.5): a level node level to its tile's edges; a slope (an odd
+ *  height), with the slopes on either side of it, one climb, eased, from
+ *  the edge before the first to the edge after the last. */
+export function heightAlong(heights: number[], x: number): number {
+  const last = heights.length - 1;
+  const k = Math.max(0, Math.min(last, Math.round(x)));
+  if (!(heights[k] % 2)) return heights[k] ?? 0;
+  let [s, e] = [k, k];
+  while (s > 0 && heights[s - 1] % 2) s--;
+  while (e < last && heights[e + 1] % 2) e++;
+  const up = e < last ? heights[e + 1] > heights[e] : s > 0 ? heights[s - 1] < heights[s] : true;
+  const [from, to] = [heights[s] + (up ? -1 : 1), heights[e] + (up ? 1 : -1)];
+  return from + (to - from) * ease(Math.max(0, Math.min(1, (x - s + 0.5) / (e - s + 1))));
 }
 
-/** How a road tile at (x, y) is lifted: how high its low end stands above
- *  the ground's road, in tiles; the way it climbs, in the world's frame,
- *  scaled to a share of its run a tile; and how much it climbs. A level
- *  deck climbs none; a slope two half-levels, from the arm it climbs away
- *  from to the one it climbs to (`Surface::climb`). */
-export type Lift = [number, number, number, number];
-export function liftOf({ height = 0, climb }: Surface): Lift {
-  if (!(height % 2) || !climb) return [height * HALF_LEVEL, 0, 0, 0];
+/** How a road tile is lifted (`roads.ts`'s shader): its height above the
+ *  ground's road, in tiles, a cubic in how far across it is the way it
+ *  climbs (0 at the edge it climbs from, 1 at the one it climbs to), its
+ *  four terms; and that way, in the world's frame, scaled to a share of
+ *  its run a tile. A level deck is level; a slope its share of its run's
+ *  eased climb (`Surface::run`). */
+export type Lift = [number, number, number, number, number, number];
+export function liftOf({ height = 0, climb, run }: Surface): Lift {
+  if (!(height % 2) || !climb || !run) return [height * HALF_LEVEL, 0, 0, 0, 0, 0];
+  const [i, n, from, to] = run;
+  // ease((i + u) / n), its terms in u.
+  const [a, b] = [i / n, 1 / n];
+  const d = (to - from) * HALF_LEVEL;
   const len2 = climb[0] * climb[0] + climb[1] * climb[1];
   // The tile's frame is the world's turned half round.
-  return [(height - 1) * HALF_LEVEL, -climb[0] / len2, -climb[1] / len2, 2 * HALF_LEVEL];
+  return [from * HALF_LEVEL + d * (3 * a * a - 2 * a * a * a), d * (6 * a * b - 6 * a * a * b), d * (3 * b * b - 6 * a * b * b), d * -2 * b * b * b, -climb[0] / len2, -climb[1] / len2];
 }
 
 /** How high a lifted tile's road stands over a point of it, in its road
  *  frame (its middle at -0.5, -0.5): `roads.ts`'s shader, here. */
-export function liftAt([z0, dx, dy, dz]: Lift, x: number, y: number): number {
+export function liftAt([z0, z1, z2, z3, dx, dy]: Lift, x: number, y: number): number {
   const u = Math.max(0, Math.min(1, (x + 0.5) * dx + (y + 0.5) * dy + 0.5));
-  return ROAD_Z + PAVED_Z + z0 + dz * ease(u);
+  return ROAD_Z + PAVED_Z + z0 + u * (z1 + u * (z2 + u * z3));
 }
 
 /** A deck's road tile, where it is. */

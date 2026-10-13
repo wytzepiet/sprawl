@@ -1,5 +1,5 @@
 import { eachEntity } from "../state/gameObjects";
-import { deckZ, rise } from "../engine/decks";
+import { deckZ, heightAlong } from "../engine/decks";
 import { spot } from "../engine/may";
 import { LANE_OFFSET } from "../engine/objects/roadGeometry";
 import type { RoadNode } from "../generated";
@@ -40,10 +40,22 @@ export function drawFlow(g: CanvasRenderingContext2D, at: Project, seconds: numb
   const bezier = (p: number[], c: Node, q: number[], t: number) => [0, 1, 2].map((i) => (1 - t) * (1 - t) * p[i] + 2 * t * (1 - t) * [c.x, c.y, c.z][i] + t * t * q[i]);
   /** A point a share `s` along the link from a to b, on the curve a car
    *  drives: each half on its end's curve where that end has two arms; as
-   *  high as `rise` says, a slope climbing on its own tile. */
+   *  high as `heightAlong` says, a run of slopes one eased climb. */
   const point = (a: Node, b: Node, s: number): number[] => {
     const [x, y] = flat(a, b, s);
-    return [x, y, deckZ(rise(a.n.height ?? 0, b.n.height ?? 0, s))];
+    // The link with the run of slopes either side of it.
+    const chain = [a, b];
+    for (let i = 0; i < 8 && chain[0].n.height % 2; i++) {
+      const prev = near(chain[0]).find((o) => o.id !== chain[1].id);
+      if (!prev) break;
+      chain.unshift(prev);
+    }
+    for (let i = 0; i < 8 && chain[chain.length - 1].n.height % 2; i++) {
+      const next = near(chain[chain.length - 1]).find((o) => o.id !== chain[chain.length - 2].id);
+      if (!next) break;
+      chain.push(next);
+    }
+    return [x, y, deckZ(heightAlong(chain.map((c) => c.n.height ?? 0), chain.indexOf(a) + s))];
   };
   const flat = (a: Node, b: Node, s: number): number[] => {
     if (s >= 0.5) {

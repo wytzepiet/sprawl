@@ -2,11 +2,12 @@
 //!
 //! A road node has a height in half-levels (`RoadNode::height`): 0 the
 //! ground, 2 a level up, 4 two, 6 three. An odd height is a slope, a tile
-//! whose road climbs from the level below to the one above: it runs
-//! straight through, one arm down and one up, and nothing else joins it.
-//! Links join nodes of the same even height, or a slope to the level at
-//! either end of it, so a road climbs a level over two tiles' run, centre
-//! to centre, the way a car is driven.
+//! whose road climbs from the level below at the edge it comes in by to
+//! the one above at the edge it goes out by: it runs straight through, one
+//! arm down and one up, and nothing else joins it. Links join nodes of the
+//! same even height, a slope to the level at either end of it, or a slope
+//! to the next slope on, so a road climbs several levels over as many
+//! tiles, on and on.
 //!
 //! Several nodes may stand on one tile, as long as each is a level clear of
 //! the others: a slope counts as the levels at both its ends. So a slope
@@ -202,8 +203,10 @@ impl World {
         if hf == 0 && ht == 0 && middles {
             return self.may_lay(from, to, one_way) && self.room_at(from, 0, MIDDLE) && self.room_at(to, 0, MIDDLE);
         }
-        // Level, or a slope's end: never two slopes, never a level's jump.
-        if hf.abs_diff(ht) > 1 || (hf == ht && hf % 2 == 1) {
+        // Level, a slope's end, or one slope on to the next; never a
+        // level's jump.
+        let on = hf % 2 == 1 && ht % 2 == 1 && hf.abs_diff(ht) == 2;
+        if (hf.abs_diff(ht) > 1 && !on) || (hf == ht && hf % 2 == 1) {
             return false;
         }
         if !self.room_at(from, hf, sf) || !self.room_at(to, ht, st) {
@@ -379,7 +382,8 @@ mod tests {
     fn a_slope_runs_straight_and_clear() {
         let mut world = grass();
         world.place_road_path(&(0..12).map(|x| at(x, 0)).collect::<Vec<_>>());
-        assert!(!world.may_lay_at(at(5, -1), 1, MIDDLE, at(5, 0), 1, MIDDLE, false), "two slopes in a row");
+        assert!(!world.may_lay_at(at(5, -1), 1, MIDDLE, at(5, 0), 1, MIDDLE, false), "two slopes level with each other");
+        assert!(world.may_lay_at(at(5, -2), 1, MIDDLE, at(5, -1), 3, MIDDLE, false), "a slope on to the next");
         assert!(!world.may_lay_at(at(5, -1), 0, MIDDLE, at(5, 0), 2, MIDDLE, false), "a level in one step");
         assert!(!world.may_lay_at(at(5, -1), 2, MIDDLE, at(5, 0), 1, MIDDLE, false), "a slope from the ground's road's own tile");
         assert!(world.may_lay_at(at(5, -1), 3, MIDDLE, at(5, 0), 4, MIDDLE, false), "a slope from the first level over it");
@@ -387,6 +391,17 @@ mod tests {
         assert!(!world.may_lay_at(at(3, -2), 1, MIDDLE, at(4, -2), 2, MIDDLE, false), "a third arm on a slope");
         assert!(!world.may_lay_at(at(3, -2), 1, MIDDLE, at(2, -2), 0, MIDDLE, false), "a bend in a slope");
         assert!(world.may_lay_at(at(3, -1), 2, MIDDLE, at(4, -1), 2, MIDDLE, false), "a junction on the level");
+    }
+
+    /// A road climbs two levels on, slope after slope, over a road below,
+    /// and cars are routed along it.
+    #[test]
+    fn slopes_run_on_two_levels_up() {
+        let mut world = grass();
+        world.place_road_path(&(0..12).map(|x| at(x, 0)).collect::<Vec<_>>());
+        lay(&mut world, &[(5, -4, 0), (5, -3, 1), (5, -2, 3), (5, -1, 4), (5, 0, 4), (5, 1, 4), (5, 2, 3), (5, 3, 1), (5, 4, 0)]);
+        let route = crate::world::pathfinding::Routes::from(&world, world.road_node_at(at(5, -4)).unwrap()).route_to(world.road_node_at(at(5, 4)).unwrap()).unwrap();
+        assert_eq!(route.len(), 9, "up two levels, over, down two");
     }
 
     /// Diagonals may cross between tiles only a level apart.

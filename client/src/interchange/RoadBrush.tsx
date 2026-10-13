@@ -32,7 +32,8 @@ import type { Bounds } from "../engine/OrthoCamera";
  * there, nothing else joins it, it came to it on the level, and the tile
  * has room for a slope. The next step goes on from it at the new height.
  * Where it may not be, the pen alone changes, and the next tile drawn is
- * the slope; straight after a slope, neither.
+ * the slope. Raised by more than a level, the road climbs on, a slope a
+ * level one after another, one eased climb (`decks.ts`).
  *
  * The dots show where a drag may start and, while dragging, the steps the
  * tile underfoot allows (`dots.ts`), as the town's brush does.
@@ -117,15 +118,14 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
     setPen((h + by) / 2);
   };
   /** What ↑ and ↓ do now: make the end of the last road laid the slope,
-   *  where it may be one; else move the pen, and the next tile drawn is
-   *  the slope; but not straight after a slope, which is never two. */
+   *  where it may be one; else move the pen, and the road drawn next
+   *  climbs, on and on, a slope a level. */
   const offerClimb = () => {
     const linked = !!world && !!last && !!nodeIn(world, last.to, last.pt.h, last.pt.s);
     const [up, down] = linked ? [slopeTo(1), slopeTo(-1)] : [null, null];
-    const sloped = linked && last!.pt.h % 2 === 1;
     setClimb({
-      up: up !== null ? () => makeSlope(1, up) : pen() < 3 && !sloped ? free(1) : null,
-      down: down !== null ? () => makeSlope(-1, down) : pen() > 0 && !sloped ? free(-1) : null,
+      up: up !== null && pen() < 3 ? () => makeSlope(1, up) : pen() < 3 ? free(1) : null,
+      down: down !== null && pen() > 0 ? () => makeSlope(-1, down) : pen() > 0 ? free(-1) : null,
     });
   };
   /** Where a drag pressed here, at this point of the tile, stands: on the
@@ -174,7 +174,10 @@ export function RoadBrush(props: { ground: (x: number, y: number) => TerrainType
       const ok = there.filter((q) => mayAt(world!, t, at, p.h, to, q.h, false, [p.s, q.s]));
       return ok.length ? ok.sort((a, b) => Math.abs(a.h - p.h) - Math.abs(b.h - p.h))[0] : null;
     }
-    const plan = p.h === want ? want : p.h + Math.sign(want - p.h);
+    // Toward the pen's height: from a level, a slope; from a slope, the
+    // next slope on while a level or more is left to climb, else the level.
+    const by = Math.sign(want - p.h);
+    const plan = p.h === want ? want : p.h % 2 && Math.abs(want - p.h) > 1 ? p.h + 2 * by : p.h + by;
     const heights = [plan, ...[...new Set(there.map((q) => q.h))].filter((g) => Math.abs(g - p.h) <= 1 && g !== plan).sort((a, b) => Math.abs(a - want) - Math.abs(b - want))];
     for (const h of heights) for (const s of sidesFor(at, p, to, h)) if (allowedStep(t, at, p, to, { h, s })) return { h, s };
     return null;

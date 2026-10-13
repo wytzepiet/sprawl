@@ -29,6 +29,7 @@ export interface RoadView {
    *  climbs to. */
   height?: number;
   climb?: [number, number];
+  run?: [number, number, number, number];
   arms: { dc: number; dr: number; flow: Flow; shift: [number, number]; through: boolean }[];
 }
 

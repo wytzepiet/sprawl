@@ -435,6 +435,17 @@ export class TownLayer {
       const [out, back] = [a.outgoing.includes(b.id) || b.incoming.includes(a.id), b.outgoing.includes(a.id) || a.incoming.includes(b.id)];
       return out && back ? "t" : out ? "o" : "i";
     };
+    // A slope's run, the slopes one after another it climbs with: which of
+    // them it is from the low end, how many, and the heights from and to.
+    const runOf = (n: RoadNode & { id: number }): [number, number, number, number] => {
+      const next = (m: RoadNode & { id: number }, higher: boolean) =>
+        [...m.outgoing, ...m.incoming].map((id) => byId.get(id)?.n).find((o) => o && (higher ? o.height > m.height : o.height < m.height));
+      let [low, below] = [n, 0];
+      for (let o = next(low, false); o && o.height % 2; o = next(low, false)) [low, below] = [o, below + 1];
+      let [high, above] = [n, 0];
+      for (let o = next(high, true); o && o.height % 2; o = next(high, true)) [high, above] = [o, above + 1];
+      return [below, below + above + 1, low.height - 1, high.height + 1];
+    };
     // A road moved to a side of its tile, in the town's frame, turned.
     const shiftOf = ({ side }: RoadNode): [number, number] => {
       const [sx, sy] = side ?? [0, 0];
@@ -461,9 +472,9 @@ export class TownLayer {
                 if (!o || Math.abs(o.x + c) > 1 || Math.abs(o.y + r) > 1) return [];
                 return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: o.n.road, height: o.n.height }];
               });
-              // A slope climbs toward its arm above it.
+              // A slope climbs toward its arm above it, one of a run.
               const up = n.height % 2 ? arms.find((a) => a.height > n.height) : undefined;
-              return { shift: shiftOf(n), through: n.road, light: n.light != null, arms, height: n.height, climb: up && ([up.dc, up.dr] as [number, number]) };
+              return { shift: shiftOf(n), through: n.road, light: n.light != null, arms, height: n.height, climb: up && ([up.dc, up.dr] as [number, number]), run: up && runOf(n) };
             }),
       door: (c, r) => turned(doors.get(key(c, r))),
     };
