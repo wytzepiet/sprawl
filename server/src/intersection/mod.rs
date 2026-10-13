@@ -478,6 +478,21 @@ mod tests {
         track([from.0 as f64, from.1 as f64], [0.0, 0.0], [to.0 as f64, to.1 as f64], lane, lane)
     }
 
+    /// Cars on two bends round opposite corners of one junction go at
+    /// once; two crossing, one waits.
+    #[test]
+    fn cars_whose_ways_miss_go_at_once() {
+        let (w, e, n, s) = ((-1, 0), (1, 0), (0, -1), (0, 1));
+        let mut j = super::IntersectionManager::new(super::paths_cross);
+        j.register_ranked(1, w, n, Some(way(w, n, false)), false, 0);
+        j.register_ranked(2, s, e, Some(way(s, e, false)), false, 0);
+        assert!(j.has_passage(1) && j.has_passage(2), "two bends wait for each other");
+        let mut j = super::IntersectionManager::new(super::paths_cross);
+        j.register_ranked(1, w, e, Some(way(w, e, true)), false, 0);
+        j.register_ranked(2, s, n, Some(way(s, n, true)), false, 0);
+        assert!(j.has_passage(1) && !j.has_passage(2), "two crossing go together");
+    }
+
     /// Tracks cross where cars would, and pass where they would not.
     #[test]
     fn tracks_cross_where_cars_would() {
