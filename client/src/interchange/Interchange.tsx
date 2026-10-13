@@ -9,7 +9,7 @@ import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
 import { ThemeProvider } from "../engine/theme";
 import Glass from "../ui/Glass";
 import { projector } from "../engine/view";
-import { pen, priority, setPen, setPriority, setTool, tool } from "../ui/buildMode";
+import { climb, pen, priority, setPen, setPriority, setTool, tool } from "../ui/buildMode";
 import type { LevelState, Tool } from "../generated";
 import { connectLevel, type LevelConnection } from "./connection";
 import { RoadBrush } from "./RoadBrush";
@@ -87,8 +87,8 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
     const t = TOOLS.find((t) => t.key.toLowerCase() === key);
     if (t) setTool(t.tool);
     else if (key === "p") setPriority(!priority());
-    else if (e.key === "ArrowUp" || e.key === "PageUp") setPen(Math.min(3, pen() + 1)), e.preventDefault();
-    else if (e.key === "ArrowDown" || e.key === "PageDown") setPen(Math.max(0, pen() - 1)), e.preventDefault();
+    else if (e.key === "ArrowUp" || e.key === "PageUp") climb().up?.(), e.preventDefault();
+    else if (e.key === "ArrowDown" || e.key === "PageDown") climb().down?.(), e.preventDefault();
     else if (e.key === "Escape") props.back();
     else if (e.key === " " && state()?.phase === "Build") line?.test(), e.preventDefault();
     else if (key === "z") line?.send({ type: "Undo" });
@@ -331,10 +331,10 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
         </button>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         {/* The pen's height: the road drawn after a change climbs to it. */}
-        <div class="flex items-center gap-0.5" title="How high you draw: the next tile climbs to it (↑ up, ↓ down)">
-          <button class="press soft h-9 w-7 rounded-full cursor-pointer" onClick={() => setPen(Math.max(0, pen() - 1))}>▼</button>
+        <div class="flex items-center gap-0.5" title="How high you draw: the end of the road you last drew becomes the slope up or down (↑ ↓); greyed where it can't be one">
+          <button class="press soft h-9 w-7 rounded-full cursor-pointer disabled:opacity-25 disabled:cursor-default" disabled={!climb().down} onClick={() => climb().down?.()}>▼</button>
           <span class="w-14 text-center text-[13px] font-semibold tabular-nums">{pen() === 0 ? "Ground" : `Level ${pen()}`}</span>
-          <button class="press soft h-9 w-7 rounded-full cursor-pointer" onClick={() => setPen(Math.min(3, pen() + 1))}>▲</button>
+          <button class="press soft h-9 w-7 rounded-full cursor-pointer disabled:opacity-25 disabled:cursor-default" disabled={!climb().up} onClick={() => climb().up?.()}>▲</button>
         </div>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         <Show when={s()?.phase === "Build"} fallback={<Show when={s()?.phase === "Test"}><button class={button} style={dark} onClick={() => props.line()?.finish()}>Skip to the end</button></Show>}>

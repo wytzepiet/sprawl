@@ -54,6 +54,14 @@ export { overCancel, setOverCancel };
 const [pen, setPen] = createSignal(0);
 export { pen, setPen };
 
+/** The hand's height changed a level up or down (↑ ↓), or null where it
+ *  may not be: the road brush sets these, turning the end of the road it
+ *  last laid into the slope to the new level (`interchange/RoadBrush`).
+ *  With no brush, the pen alone. */
+const free = (by: number) => () => setPen(Math.max(0, Math.min(3, pen() + by)));
+const [climb, setClimb] = createSignal<{ up: (() => void) | null; down: (() => void) | null }>({ up: free(1), down: free(-1) });
+export { climb, setClimb, free };
+
 /** Whether the road the hand lays has priority (`Build.road`): whoever
  *  joins or crosses it gives way. Drawn along a road, it gives it that, or
  *  takes it. */

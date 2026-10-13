@@ -1,4 +1,4 @@
-import { markMaterialUboDirty, type EngineContext, type MaterialPlugin, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { markMeshRenderableDirty, type EngineContext, type Mesh, type SceneContext } from "@babylonjs/lite";
 import { drop, meshOf, show, type MeshGeometry } from "./geometry";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { rgb } from "./rgb";
@@ -17,7 +17,7 @@ import type { GameObjectEntry, RoadNode } from "../generated";
  * it, as the cars do.
  *
  * Drawn a mesh a level, so the levels above where the hand is can be seen
- * through, hatched, to what is under them.
+ * through, as glass, to what is under them.
  */
 
 /** How high a half-level is: a level is a storey and a bit. */
@@ -33,23 +33,15 @@ const CONCRETE = rgb(0.74, 0.73, 0.7);
 /** How high a road's surface stands at a height, in half-levels. */
 export const deckZ = (height: number) => ROAD_Z + PAVED_Z + height * HALF_LEVEL;
 
-/** Seen through: a level above the hand is drawn in stripes, the rest
- *  of it dropped, so what is under it shows between them. */
-const fade = (state: { value: number }): MaterialPlugin => ({
-  name: "DeckFade",
-  priority: 100,
-  getUniforms: () => ({ ubo: [{ name: "deckFade", type: "f32" }] }),
-  writeUbo: (data, offsets) => {
-    data[offsets.get("deckFade")! / 4] = state.value;
-  },
-  getCustomCode: (stage) =>
-    stage === "fragment" ? { CUSTOM_FRAGMENT_MAIN_BEGIN: `if (material.deckFade > 0.5 && fract((input.worldPos.x + input.worldPos.y) * 7.) < 0.62) { discard; }` } : null,
-});
+/** How much of a level above the hand shows: a ghost of it. */
+const GHOST = 0.28;
 
 interface Level {
-  materials: [TownMaterial, TownMaterial];
-  fade: { value: number };
+  /** Its top's and its sides' materials, solid and seen through. */
+  solid: TownMaterial[];
+  ghost: TownMaterial[];
   meshes: Mesh[];
+  seen: boolean;
 }
 
 export class Decks {
@@ -92,31 +84,42 @@ export class Decks {
       if (a.n.height >= 2) pier(g.side, [a.x, a.y], deckZ(a.n.height) - DECK);
     }
     this.clear();
+    const made = (ghost: boolean) =>
+      ([[ASPHALT, 0.75], [CONCRETE, 0.95]] as const).map(([colour, rough]) => {
+        const m = townMaterial([], rough);
+        setTint(m, colour);
+        if (ghost) Object.assign(m, { alpha: GHOST, alphaBlend: true });
+        return m;
+      });
     this.levels = geos.map((g, level) => {
-      const state = { value: 0 };
-      const materials: [TownMaterial, TownMaterial] = [townMaterial([fade(state)], 0.75), townMaterial([fade(state)], 0.95)];
-      setTint(materials[0], ASPHALT);
-      setTint(materials[1], CONCRETE);
+      const [solid, ghost] = [made(false), made(true)];
       const meshes = ([g.top, g.side] as MeshGeometry[]).flatMap((geo, i) => {
         if (!geo.indices.length) return [];
         const mesh = meshOf(this.engine, `deck_${level}_${i}`, geo);
-        mesh.material = materials[i];
+        mesh.material = solid[i];
         mesh.receiveShadows = true;
         show(this.scene, mesh);
         this.casters?.add(mesh);
         return [mesh];
       });
-      return { materials, fade: state, meshes };
+      return { solid, ghost, meshes, seen: false };
     });
   }
 
-  /** The hand is at this level: those above it are seen through. */
+  /** The hand is at this level: those above it are seen through, and
+   *  cast no shadow. */
   seeThroughAbove(level: number) {
     this.levels.forEach((l, i) => {
-      const value = i > level ? 1 : 0;
-      if (l.fade.value === value) return;
-      l.fade.value = value;
-      for (const m of l.materials) markMaterialUboDirty(m);
+      const seen = i > level;
+      if (l.seen === seen) return;
+      l.seen = seen;
+      for (const mesh of l.meshes) {
+        const kind = mesh.name.endsWith("_0") ? 0 : 1;
+        mesh.material = (seen ? l.ghost : l.solid)[kind];
+        if (seen) this.casters?.remove(mesh);
+        else this.casters?.add(mesh);
+        markMeshRenderableDirty(mesh);
+      }
     });
   }
 
