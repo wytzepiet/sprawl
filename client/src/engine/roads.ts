@@ -7,7 +7,7 @@ import { grain } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
 import { flatPolygons, PAVED_Z, RIM } from "./town/draw";
-import { keyOf, paintOf, runsOn, shapeOf, type Surface } from "./town/surface";
+import { keyOf, paintOf, runsOn, shapeOf, wearOf, type Surface } from "./town/surface";
 import { ROAD_Z } from "./objects/roadGeometry";
 import type { Lift } from "./decks";
 import type { MeshGeometry } from "./geometry";
@@ -33,8 +33,8 @@ const SPAN = 1.5;
 /** How far a kerb running on into the next tile is carried past its end. */
 const RUN_ON = 0.5;
 
-/** A road shape's channels: how far inside its outline, its kerbs, and
- *  its paint (`paintOf`). */
+/** A road shape's channels: how far inside its outline, its kerbs, its
+ *  paint (`paintOf`), and its wear (`wearOf`). */
 function bake(surface: Surface): Float32Array[] {
   const flat = flatPolygons(shapeOf(surface), 0);
   const density = SLOT / SPAN;
@@ -56,8 +56,16 @@ function bake(surface: Surface): Float32Array[] {
   // The paint, in the road frame: the tile's own, turned half round.
   const paint = paintOf(surface);
   const painted = new Float32Array(SLOT * SLOT);
-  for (let j = 0; j < SLOT; j++) for (let i = 0; i < SLOT; i++) painted[j * SLOT + i] = paint(-(ORIGIN + (i + 0.5) / density), -(ORIGIN + (j + 0.5) / density));
-  return [outline, kerbed, painted];
+  const wear = wearOf(surface);
+  const worn = new Float32Array(SLOT * SLOT);
+  for (let j = 0; j < SLOT; j++) {
+    for (let i = 0; i < SLOT; i++) {
+      const [x, y] = [-(ORIGIN + (i + 0.5) / density), -(ORIGIN + (j + 0.5) / density)];
+      painted[j * SLOT + i] = paint(x, y);
+      worn[j * SLOT + i] = wear(x, y);
+    }
+  }
+  return [outline, kerbed, painted, worn];
 }
 
 /** Asphalt: its grain over this many tiles, tilting its facing this far;
@@ -76,6 +84,8 @@ const CHIPS = 4;
  *  tiles. */
 const PAINT = "0.97, 0.96, 0.92";
 const PAINT_SOFT = 0.005;
+/** How much darker the wheels wear the asphalt. */
+const WEAR = 0.2;
 /** Two more random bytes of the same texel, a whole number of texels on. */
 const [other1, other2] = ["0.3789, 0.1602", "0.0898, 0.5898"];
 
@@ -143,6 +153,8 @@ if (roadD.g >= 0. && roadD.g < roadCrumbleBy * ${n(CRUMBLE)}) { discard; }`,
 // The paint: white, worn a little by the grain, laid over before the tint
 // is, so it is undone here.
 let roadPaint = smoothstep(-${n(PAINT_SOFT)}, ${n(PAINT_SOFT)}, roadAt.b) * (0.8 + 0.2 * roadGrainAt);
+// Worn where the wheels run: a little darker, under the paint.
+baseColor = baseColor * (1. - ${n(WEAR)} * roadAt.a * (0.45 + 0.55 * roadCrumbleBy) * (1. - roadPaint));
 baseColor = mix(baseColor, vec3f(${PAINT}) / max(material.townTint.rgb, vec3f(0.05)), roadPaint);
 N = normalize(N - vec3f(roadBump * ${n(BUMP)} + input.vRoadTilt, 0.) + vec3f((roadGlintWay - 0.5) * 2. * ${n(GLINT_TILT)} * roadGlinting, 0.));
 let roadTx = vec2f(roadTexel.x, 0.);

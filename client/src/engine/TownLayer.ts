@@ -446,20 +446,6 @@ export class TownLayer {
       for (let o = next(high, true); o && o.height % 2; o = next(high, true)) [high, above] = [o, above + 1];
       return [below, below + above + 1, low.height - 1, high.height + 1];
     };
-    // Where the junction `at` lets traffic from `from` go, the ways out
-    // of it in the town's frame, painted on the lane in: none where it may
-    // go every way there is, or, no turn banned, only straight on past a
-    // one-way that joins.
-    type At = { n: RoadNode & { id: number }; x: number; y: number };
-    const aheadOf = (from: At, at: At): [number, number][] | undefined => {
-      const others = [...new Set([...at.n.outgoing, ...at.n.incoming])].filter((id) => id !== from.n.id && byId.has(id)).map((id) => byId.get(id)!);
-      if (others.length < 2) return undefined;
-      const open = others.filter((o) => at.n.outgoing.includes(o.n.id) && (o.x !== from.x || o.y !== from.y));
-      const outs = open.filter((o) => !at.n.banned.some(([a, b]) => a === from.n.id && b === o.n.id));
-      const ways = outs.map((o): [number, number] => [at.x - o.x, at.y - o.y]);
-      const on = ways.length === 1 && ways[0][0] === from.x - at.x && ways[0][1] === from.y - at.y;
-      return outs.length === others.length || (on && outs.length === open.length) ? undefined : ways;
-    };
     // A road moved to a side of its tile, in the town's frame, turned.
     const shiftOf = ({ side }: RoadNode): [number, number] => {
       const [sx, sy] = side ?? [0, 0];
@@ -487,7 +473,7 @@ export class TownLayer {
               const arms = [...new Set([...n.outgoing, ...n.incoming])].flatMap((id) => {
                 const o = byId.get(id);
                 if (!o || Math.abs(o.x + c) > 1 || Math.abs(o.y + r) > 1) return [];
-                return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: o.n.road, height: o.n.height, ahead: n.outgoing.includes(id) ? aheadOf(here, o) : undefined }];
+                return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: o.n.road, height: o.n.height }];
               });
               // A slope climbs toward its arm above it, one of a run.
               const up = n.height % 2 ? arms.find((a) => a.height > n.height) : undefined;

@@ -492,11 +492,10 @@ What runs, and where; the rest of the order above is still to come.
   and on along it, that one turn; a full crossroads is drawn up to the
   road and away from it, two drags. A one-way that meets a one-way and
   goes on against it runs beside it (the brush holds that step until the
-  next says which). Where a lane runs into a junction that does not let
-  it go every way, an arrow on it before the junction, a head for each
-  way it may go; a turn bent off within its lane, the shaft kept to the
-  lane's other side when it only turns. A junction open every way, or a
-  road only going straight on past a one-way that joins, is unmarked.
+  next says which). No paint says which turns a junction has: the
+  asphalt is worn, two wheel tracks down each lane along the curve its
+  cars drive (`wearOf`), so through a junction only the ways its cars
+  may go are worn.
 - **The look tool** (V): nothing in hand, no streaks, every deck solid.
 - **Priority**: a through road is let through first at a junction.
   Priority is the hand's, not a kind of road (`Build.road`): any road
