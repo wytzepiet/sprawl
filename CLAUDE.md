@@ -190,7 +190,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `cd client && bun run wasm` after changing the server (`bun run dev`
   does it on start). A level is `server/levels/<name>.txt` (the format at
   the top of `server/src/level.rs`); `cargo test level` runs every
-  level's own solve and asserts it scores 100. `docs/plan-interchange.md`
+  level's own solve and asserts it scores 100. A new level file needs
+  Vite restarted to be listed (it is a glob import). `docs/plan-interchange.md`
   is what it is and what is built.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has

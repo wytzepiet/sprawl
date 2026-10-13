@@ -454,7 +454,8 @@ What runs, and where; the rest of the order above is still to come.
   Web Worker (`bun run wasm` in `client/` builds it). A trip may end on a
   road, driven off its end (`car::spawn::drive_through`).
 - **Levels** (`server/src/level.rs`, `server/levels/*.txt`): gates,
-  wants, our own solve (`%` rows, `%^h` for a height), Build and Test, a
+  wants, our own solve (`%` rows, arrows for one-ways, `%#` for priority,
+  `%^h` for a height), Build and Test, a
   jam called by a backed-up gate or a stopped road, efficiency as flow
   and asphalt against our solve's. Every level's solve is its test.
 - **The client** (`client/src/interchange/`): `/interchange` is the map of
@@ -482,6 +483,9 @@ What runs, and where; the rest of the order above is still to come.
   a car's lane chosen per stretch for its turn ahead; lanes change at
   junctions only, not along a stretch (§4's lane change is still to
   come); gates `in2`/`out2`.
+- **Ten levels**, a step each: a first road, round a hill, a crossroads,
+  a merge, passing, a fork, giving way, over and under, rush hour, a
+  roundabout.
 - **The map of levels** and **kept layouts** (`Map.tsx`, `progress.ts`,
   `Level::layout`).
 
