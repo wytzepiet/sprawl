@@ -194,7 +194,7 @@ export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord): boolea
   }
   // Into a building is its door, and a through road is no door.
   if (tool === "Road" && h.occupied.has(key(to.x, to.y))) return false;
-  return mayLay(h, from, to, tool === "OneWay");
+  return mayLay(h, from, to, tool === "OneWay" || tool === "Wide");
 }
 
 /** May a drag start here: a tap that does something, or a step out. */
@@ -266,8 +266,12 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
     const [a, b] = [nodeAtH(h, from, hf), nodeAtH(h, to, ht)];
     return Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1 && !!a && !!b && (edge(a, b) || edge(b, a));
   }
-  const oneWay = tool === "OneWay";
+  const oneWay = tool === "OneWay" || tool === "Wide";
   const [dx, dy] = [to.x - from.x, to.y - from.y];
+  // Along a one-way the way it runs, the other one-way tool: a lane more,
+  // or less (`game::may_step`).
+  const [na, nb] = [nodeAtH(h, from, hf), nodeAtH(h, to, ht)];
+  if (oneWay && na && nb && edge(na, nb) && !edge(nb, na) && na.node.wide.includes(nb.id) !== (tool === "Wide")) return true;
   if ((dx === 0 && dy === 0) || Math.abs(dx) > 1 || Math.abs(dy) > 1 || hf > TOP || ht > TOP) return false;
   if (hf === 0 && ht === 0) return may(h, tool, from, to) && roomAt(h, from, 0) && roomAt(h, to, 0);
   if (Math.abs(hf - ht) > 1 || (hf === ht && hf % 2 === 1)) return false;

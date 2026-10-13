@@ -61,7 +61,7 @@ export function driveOf(id: number, car: Car): Drive | null {
   const rig = rigOf(car);
   const route = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, t.cusps, t.leaves, t.stands, rig]);
   let me = drives.get(id);
-  if (me?.route !== route) drives.set(id, (me = { route, drive: driveTrip(t, rig, lanesOf(t.route_positions, t.route_heights ?? [])) }));
+  if (me?.route !== route) drives.set(id, (me = { route, drive: driveTrip(t, rig, lanesOf(t.route_positions, t.route_heights ?? [], t.lanes ?? [])) }));
   return me.drive;
 }
 
@@ -73,12 +73,14 @@ const LANES = { t: LANE_OFFSET, o: 0, v: 0.13 };
 /** The lane at each node of a route: its links', the two either side of
  *  it met halfway. Read off the road nodes the client holds, where it holds
  *  them; else a two-way's. */
-function lanesOf(route: [number, number][], heights: number[]): number[] {
+function lanesOf(route: [number, number][], heights: number[], lanes: number[]): number[] {
   const link = route.slice(1).map(([x, y], k) => {
     const [px, py] = route[k];
     const [a, b] = [roadAt(px, py, heights[k] ?? 0), roadAt(x, y, heights[k + 1] ?? 0)];
     if (!a || !b) return LANES.t;
     const [out, back] = [a.data.outgoing.includes(b.id), a.data.incoming.includes(b.id) || b.data.outgoing.includes(a.id)];
+    // A road of two lanes, one way: the right lane or the left (`lanes_for`).
+    if (out && a.data.wide.includes(b.id)) return lanes[k + 1] ? -LANE_OFFSET : LANE_OFFSET;
     return out && a.data.incoming.includes(b.id) ? LANES.v : out && back ? LANES.t : LANES.o;
   });
   return route.map((_, k) => {

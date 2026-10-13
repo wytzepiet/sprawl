@@ -33,6 +33,8 @@ pub struct Link {
     pub road: bool,
     /// How high each end stands (`RoadNode::height`).
     pub up: [u8; 2],
+    /// Two lanes, one way.
+    pub wide: bool,
 }
 
 /// What an action cost: coins out of the purse, and stone off each
@@ -136,9 +138,9 @@ pub fn doomed(world: &World, step: Build) -> Option<Act> {
                 let h = world.height_of(arm);
                 let (out, inn) = (n.outgoing.contains(&arm), n.incoming.contains(&arm));
                 Some(match (out, inn) {
-                    (true, false) => Link { from: to, to: at, one_way: true, road: n.road, up: [h1, h] },
-                    (false, true) => Link { from: at, to, one_way: true, road: n.road, up: [h, h1] },
-                    _ => Link { from: to, to: at, one_way: false, road: n.road, up: [h1, h] },
+                    (true, false) => Link { from: to, to: at, one_way: true, road: n.road, up: [h1, h], wide: n.wide.contains(&arm) },
+                    (false, true) => Link { from: at, to, one_way: true, road: n.road, up: [h, h1], wide: world.is_wide(arm, node) },
+                    _ => Link { from: to, to: at, one_way: false, road: n.road, up: [h1, h], wide: false },
                 })
             })
             .collect();
@@ -147,9 +149,9 @@ pub fn doomed(world: &World, step: Build) -> Option<Act> {
     let (a, b) = world.link_between_at(from, h0, to, h1)?;
     let road = matches!(world.objects.get(a).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road);
     Some(Act::Cut(vec![match (world.edges.contains_key(&(a, b)), world.edges.contains_key(&(b, a))) {
-        (true, false) => Link { from, to, one_way: true, road, up: [h0, h1] },
-        (false, true) => Link { from: to, to: from, one_way: true, road, up: [h1, h0] },
-        _ => Link { from, to, one_way: false, road, up: [h0, h1] },
+        (true, false) => Link { from, to, one_way: true, road, up: [h0, h1], wide: world.is_wide(a, b) },
+        (false, true) => Link { from: to, to: from, one_way: true, road, up: [h1, h0], wide: world.is_wide(b, a) },
+        _ => Link { from, to, one_way: false, road, up: [h0, h1], wide: false },
     }]))
 }
 
@@ -160,8 +162,8 @@ pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act
     if step.tool == Tool::Light {
         return None;
     }
-    let road = matches!(step.tool, Tool::Street | Tool::OneWay | Tool::Road);
-    let link = Link { from: step.from, to: step.to, one_way: step.tool == Tool::OneWay, road: step.tool == Tool::Road, up: step.up.unwrap_or_default() };
+    let road = matches!(step.tool, Tool::Street | Tool::OneWay | Tool::Road | Tool::Wide);
+    let link = Link { from: step.from, to: step.to, one_way: matches!(step.tool, Tool::OneWay | Tool::Wide), road: step.tool == Tool::Road, up: step.up.unwrap_or_default(), wide: step.tool == Tool::Wide };
     let express = paid.coins;
     let history = world.undo.entry(owner).or_default();
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);

@@ -278,7 +278,8 @@ impl World {
         for (id, outgoing) in &entries {
             for neighbor in outgoing {
                 let len = self.segment_length(*id, *neighbor);
-                self.edges.insert((*id, *neighbor), EdgeSegment::new(len));
+                let lanes = if self.is_wide(*id, *neighbor) { 2 } else { 1 };
+                self.edges.insert((*id, *neighbor), EdgeSegment::new(len, lanes));
                 self.network.link(*id, *neighbor, len);
             }
         }
@@ -296,7 +297,7 @@ impl World {
         {
             for w in trip.route.windows(2) {
                 if let Some(seg) = self.edges.get_mut(&(w[0], w[1])) {
-                    seg.cars.retain(|&id| id != car_id);
+                    seg.remove(car_id);
                 }
             }
             self.manoeuvres.retain(|_, (c, _)| *c != car_id);
@@ -408,13 +409,7 @@ impl World {
 
     /// Find the car behind a given car on the same edge.
     pub fn car_behind_on_edge(&self, edge: EdgeKey, car_id: EntityId) -> Option<EntityId> {
-        let seg = self.edges.get(&edge)?;
-        let pos = seg.car_position(car_id)?;
-        if pos + 1 < seg.cars.len() {
-            Some(seg.cars[pos + 1])
-        } else {
-            None
-        }
+        self.edges.get(&edge)?.behind(car_id)
     }
 
     /// Insert an edge for a directed connection between two nodes.
@@ -422,7 +417,8 @@ impl World {
     /// `edges` is what traffic reads.
     pub fn insert_edge(&mut self, from: EntityId, to: EntityId) {
         let len = self.segment_length(from, to);
-        self.edges.insert((from, to), EdgeSegment::new(len));
+        let lanes = if self.is_wide(from, to) { 2 } else { 1 };
+        self.edges.insert((from, to), EdgeSegment::new(len, lanes));
         let turning = self.network.link(from, to, len);
         self.mark_joined(turning.into_iter().chain([from, to]));
     }

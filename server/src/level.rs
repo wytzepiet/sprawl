@@ -12,6 +12,7 @@
 //! @gate 1 in        cars come in here (a one-way, inward)
 //! @gate 2 out       and leave here (a one-way, outward)
 //! @gate 3 both      a two-way: in and out
+//! @gate 4 in2       a one-way of two lanes, inward (`out2` outward)
 //! @want 1 2 12      twelve cars a minute from 1 to 2
 //! @at 2 1           where it lies on the map of levels (the client's)
 //! ```
@@ -76,6 +77,9 @@ enum Way {
     Out,
     Both,
 }
+
+/// A gate's lanes: one, or two (`in2`, `out2`).
+type Lanes = bool;
 
 struct Gate {
     label: char,
@@ -233,18 +237,19 @@ impl Level {
         world.treasury = f64::MAX / 4.0;
         world.missions.list.clear();
 
-        let mut gates_said: HashMap<char, Way> = HashMap::new();
+        let mut gates_said: HashMap<char, (Way, Lanes)> = HashMap::new();
         let mut wants_said: Vec<(char, char, f64)> = Vec::new();
         for line in text.lines().filter_map(|l| l.trim().strip_prefix('@')) {
             let words: Vec<&str> = line.split_whitespace().collect();
             match words.as_slice() {
                 ["gate", g, way, ..] => {
-                    let way = match *way {
+                    let wide = way.ends_with('2');
+                    let way = match way.trim_end_matches('2') {
                         "in" => Way::In,
                         "out" => Way::Out,
                         _ => Way::Both,
                     };
-                    gates_said.insert(g.chars().next().unwrap_or('?'), way);
+                    gates_said.insert(g.chars().next().unwrap_or('?'), (way, wide));
                 }
                 ["want", a, b, n, ..] => wants_said.push((a.chars().next().unwrap_or('?'), b.chars().next().unwrap_or('?'), n.parse().unwrap_or(0.0))),
                 _ => {}
@@ -291,11 +296,18 @@ impl Level {
                     (0, 1)
                 };
                 let path: Vec<GridCoord> = (0..=STUB).map(|k| at(col + dc * k, row + dr * k)).collect();
-                let way = gates_said.get(&c).copied().unwrap_or(Way::Both);
+                let (way, wide) = gates_said.get(&c).copied().unwrap_or((Way::Both, false));
+                let run: Vec<GridCoord> = if way == Way::In { path.iter().rev().copied().collect() } else { path.clone() };
                 match way {
                     Way::Both => world.place_road_path_of(&path, false),
-                    Way::Out => world.place_one_way_of(&path, false),
-                    Way::In => world.place_one_way_of(&path.iter().rev().copied().collect::<Vec<_>>(), false),
+                    _ => world.place_one_way_of(&run, false),
+                }
+                if wide && way != Way::Both {
+                    for p in run.windows(2) {
+                        if let (Some(a), Some(b)) = (world.road_node_at(p[0]), world.road_node_at(p[1])) {
+                            world.set_wide(a, b, true);
+                        }
+                    }
                 }
                 let end = path[path.len() - 1];
                 if let Some(node) = world.road_node_at(end) {
@@ -424,6 +436,8 @@ impl Level {
             }
             let tool = if back && !divided {
                 if ra && rb { Tool::Road } else { Tool::Street }
+            } else if world.is_wide(a, b) {
+                Tool::Wide
             } else {
                 Tool::OneWay
             };
@@ -806,6 +820,48 @@ mod tests {
         }
         assert_eq!(Level::cost(&fresh.world), Level::cost(&game.world));
         assert_eq!(fresh.world.edges.len(), game.world.edges.len());
+    }
+
+    /// A road of two lanes carries cars in both, side by side; where two
+    /// lanes become one, they fall in behind each other, never through.
+    #[test]
+    fn two_lanes_carry_side_by_side() {
+        let text = "# Two lanes\n@gate 1 in2\n@gate 2 out2\n@want 1 2 100\n..........\n1........2\n..........\n";
+        let run = |tool: Tool| {
+            let (mut level, mut game) = play(text);
+            for x in (1..=9).rev() {
+                let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x - 1, y: -1 }, up: None };
+                assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+            }
+            level.test(&mut game);
+            let (mut both, mut closest) = (false, f64::MAX);
+            while level.phase == Phase::Test {
+                level.step(&mut game);
+                game.step();
+                let node = |x| game.world.road_node_at(GridCoord { x, y: -1 }).unwrap();
+                let Some(seg) = game.world.edges.get(&(node(5), node(4))) else { continue };
+                both |= seg.all().any(|c| seg.lane_of(c) == Some(1)) && seg.all().any(|c| seg.lane_of(c) == Some(0));
+                // How close two cars in one lane come, by their progress.
+                for lane in 0..2 {
+                    let mut at: Vec<f64> = seg.all().filter(|&c| seg.lane_of(c) == Some(lane)).filter_map(|c| match game.world.objects.get(c).map(|e| &e.object) {
+                        Some(GameObject::Car(car)) => car.trip.as_ref().map(|t| crate::car::physics::catch_up(t.progress, t.speed, t.acceleration, (game.now - t.updated_at) as f64 / 1000.0).0 - t.segment_lengths[..t.route.iter().position(|&n| n == node(5)).unwrap_or(0) + 1].iter().sum::<f64>()),
+                        _ => None,
+                    }).collect();
+                    at.sort_by(f64::total_cmp);
+                    for w in at.windows(2) {
+                        closest = closest.min(w[1] - w[0]);
+                    }
+                }
+            }
+            (level.phase, both, closest)
+        };
+        let (phase, both, _) = run(Tool::Wide);
+        assert_eq!(phase, Phase::Done);
+        assert!(both, "cars side by side in the two lanes");
+        let (phase, _, closest) = run(Tool::OneWay);
+        assert_eq!(phase, Phase::Done);
+        let length = crate::car::nose(CarRole::Private) + crate::car::tail(CarRole::Private);
+        assert!(closest > length * 0.9, "two lanes into one: cars {closest:.2} apart");
     }
 
     #[test]

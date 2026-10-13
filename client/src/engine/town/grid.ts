@@ -14,8 +14,9 @@ import { FACINGS, gateOf, kerbed, plot, yardOf } from "../../blueprints";
 export type Ground = "open" | "paved" | "road" | "water" | "wood";
 
 /** Which way a link is driven, from where it is seen: both ways, out, in,
- *  or both ways on two one-ways a median apart, a divided road. */
-export type Flow = "t" | "o" | "i" | "v";
+ *  or both ways on two one-ways a median apart, a divided road; out or in
+ *  on two lanes (`O`, `I`). */
+export type Flow = "t" | "o" | "i" | "v" | "O" | "I";
 
 export interface Tile {
   /** A building's kind, or the ground's. */

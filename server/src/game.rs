@@ -323,7 +323,7 @@ fn place(world: &mut World, events: &mut EventQueue, intersections: &mut Interse
     let mut laid = Vec::new();
     for (from, to) in world.stub(kind, &tiles, facing) {
         if take_step(world, events, intersections, Build { tool: Tool::Street, from, to, up: None }, now) {
-            laid.push(crate::undo::Link { from, to, one_way: false, road: false, up: [0, 0] });
+            laid.push(crate::undo::Link { from, to, one_way: false, road: false, up: [0, 0], wide: false });
         }
     }
     let id = world.raise(kind, tiles, facing);
@@ -344,8 +344,9 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut
         return false;
     }
     match tool {
-        Tool::Street | Tool::OneWay | Tool::Road => {
-            let laid = lay(world, crate::undo::Link { from, to, one_way: tool == Tool::OneWay, road: tool == Tool::Road, up: [hf, ht] });
+        Tool::Street | Tool::OneWay | Tool::Road | Tool::Wide => {
+            let one_way = matches!(tool, Tool::OneWay | Tool::Wide);
+            let laid = lay(world, crate::undo::Link { from, to, one_way, road: tool == Tool::Road, up: [hf, ht], wide: tool == Tool::Wide });
             crate::economy::paved(world, to, laid, now);
         }
         Tool::Light => {
@@ -379,10 +380,13 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut
 
 /// A road laid between two tiles, at their heights, its edges with it:
 /// how many tiles of it are new.
-pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road, up: [hf, ht] }: crate::undo::Link) -> u32 {
+pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road, up: [hf, ht], wide }: crate::undo::Link) -> u32 {
     let laid = world.laid;
     if hf != 0 || ht != 0 {
         world.place_road_at(from, hf, to, ht, one_way, road);
+        if let (Some(a), Some(b)) = (world.node_at(from, hf), world.node_at(to, ht)) {
+            world.set_wide(a, b, wide);
+        }
         return world.laid.saturating_sub(laid);
     }
     let (from_id, to_id) = (world.road_node_at(from), world.road_node_at(to));
@@ -394,6 +398,9 @@ pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road
         if !one_way {
             world.insert_edge(t, f);
         }
+    }
+    if let (Some(f), Some(t)) = (world.road_node_at(from), world.road_node_at(to)) {
+        world.set_wide(f, t, wide);
     }
     world.laid.saturating_sub(laid)
 }
@@ -411,8 +418,16 @@ pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
 pub fn may_step(world: &World, Build { tool, from, to, up }: Build) -> bool {
     let [hf, ht] = up.unwrap_or_default();
     match tool {
-        Tool::Street | Tool::OneWay | Tool::Road => {
-            let one_way = tool == Tool::OneWay;
+        Tool::Street | Tool::OneWay | Tool::Road | Tool::Wide => {
+            let one_way = matches!(tool, Tool::OneWay | Tool::Wide);
+            // Along a one-way the way it runs, the other one-way tool: it
+            // gains its second lane, or loses it.
+            let lanes = world.node_at(from, hf).zip(world.node_at(to, ht)).is_some_and(|(a, b)| {
+                world.edges.contains_key(&(a, b)) && !world.edges.contains_key(&(b, a)) && world.is_wide(a, b) != (tool == Tool::Wide)
+            });
+            if one_way && lanes {
+                return true;
+            }
             // Into a building is its door: nothing is laid on its tile, and
             // a through road is no door, nothing fronting onto one.
             let door = ht == 0 && world.occupied.contains_key(&(to.x, to.y));
@@ -593,6 +608,8 @@ fn try_reroute(
     let total: f64 = segment_lengths.iter().sum();
     let route_positions = world.route_positions(&new_route);
     let route_heights = new_route.iter().map(|&n| world.height_of(n)).collect();
+    let lanes = world.lanes_for(&new_route);
+    let first_lane = lanes.get(1).copied().unwrap_or(0) as usize;
 
     if let Some(pos) = world.objects.get(new_route[0]).and_then(|e| e.position) {
         world.update_position(car_id, pos);
@@ -606,6 +623,7 @@ fn try_reroute(
         t.route = new_route;
         t.route_positions = route_positions;
         t.route_heights = route_heights;
+        t.lanes = lanes;
         t.from_lot = 0;
         t.to_lot = to_lot;
         t.cusps = crate::car::spawn::cusps(&backing, &segment_lengths);
@@ -633,8 +651,8 @@ fn try_reroute(
     });
     if let Some(edge) = first_edge
         && let Some(seg) = world.edges.get_mut(&edge)
-            && !seg.cars.contains(&car_id) {
-                seg.cars.push_back(car_id);
+            && !seg.contains(car_id) {
+                seg.push_back(car_id, first_lane);
             }
     events.wake(0, car_id);
     true

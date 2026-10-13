@@ -27,6 +27,7 @@ impl World {
                 laid,
                 height: 0,
                 light: None,
+                wide: vec![],
             }),
             Some(coord),
         );
@@ -73,6 +74,66 @@ impl World {
     fn runs_one_way(&self, a: GridCoord, b: GridCoord) -> bool {
         let (Some(a), Some(b)) = (self.road_node_at(a), self.road_node_at(b)) else { return false };
         self.edges.contains_key(&(a, b)) && !self.edges.contains_key(&(b, a))
+    }
+
+    /// Does the road from `a` to `b` have two lanes?
+    pub fn is_wide(&self, a: EntityId, b: EntityId) -> bool {
+        matches!(self.objects.get(a).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.wide.contains(&b))
+    }
+
+    /// The road from `a` to `b` has two lanes (or not).
+    pub fn set_wide(&mut self, a: EntityId, b: EntityId, wide: bool) {
+        if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(a).map(|e| &mut e.object) {
+            n.wide.retain(|&x| x != b);
+            if wide {
+                n.wide.push(b);
+            }
+        }
+        if let Some(seg) = self.edges.get_mut(&(a, b)) {
+            seg.lanes = if wide { 2 } else { 1 };
+        }
+    }
+
+    /// The lane a car keeps on the edge into each node of a route. On a
+    /// road of two lanes it is chosen for the stretch's end: the right lane
+    /// for a right turn at the junction there, the left for a left, the
+    /// emptier going straight on; where the road has one lane, that one.
+    /// Kept the length of the stretch: a car changes lanes at junctions.
+    pub fn lanes_for(&self, route: &[EntityId]) -> Vec<u8> {
+        let mut lanes = vec![0u8; route.len()];
+        let wide = |k: usize| self.edges.get(&(route[k - 1], route[k])).is_some_and(|s| s.lanes > 1);
+        let pos = |id: EntityId| self.objects.get(id).and_then(|e| e.position);
+        let mut k = 1;
+        while k < route.len() {
+            let mut j = k;
+            while j + 1 < route.len() && !self.network.is_junction(route[j]) {
+                j += 1;
+            }
+            if (k..=j).any(wide) {
+                let turn = (j + 1 < route.len()).then(|| (pos(route[j - 1]), pos(route[j]), pos(route[j + 1]))).and_then(|p| match p {
+                    (Some(a), Some(b), Some(c)) => Some((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)),
+                    _ => None,
+                });
+                // Toward the side the lanes keep to, (-dy, dx), is right.
+                let lane = match turn {
+                    Some(t) if t > 0 => 0,
+                    Some(t) if t < 0 => 1,
+                    _ => {
+                        let first = (k..=j).find(|&i| wide(i)).unwrap();
+                        let seg = &self.edges[&(route[first - 1], route[first])];
+                        let count = |l: usize| seg.all().filter(|&c| seg.lane_of(c) == Some(l)).count();
+                        u8::from(count(1) < count(0))
+                    }
+                };
+                for i in k..=j {
+                    if wide(i) {
+                        lanes[i] = lane;
+                    }
+                }
+            }
+            k = j + 1;
+        }
+        lanes
     }
 
     /// A through road, which has priority over the streets that meet it.

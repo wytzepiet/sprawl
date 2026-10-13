@@ -131,7 +131,7 @@ fn leave_crossed(
         let old_edge: EdgeKey = (trip.route[k - 1], trip.route[k]);
         let car_behind = world.car_behind_on_edge(old_edge, car_id);
         if let Some(seg) = world.edges.get_mut(&old_edge) {
-            seg.cars.retain(|&id| id != car_id);
+            seg.remove(car_id);
         }
         if let Some(behind) = car_behind {
             events.wake(0, behind);
@@ -158,7 +158,7 @@ fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f
             break;
         }
         let edge = (trip.route[k - 1], trip.route[k]);
-        if world.edges.get(&edge).is_some_and(|seg| !seg.cars.contains(&car_id)) {
+        if world.edges.get(&edge).is_some_and(|seg| !seg.contains(car_id)) {
             // Only a car out of a lot joins partway along; from a junction,
             // everyone on the run is ahead. It joins at the street node,
             // wherever along its way out it is: the way from a door is a
@@ -171,9 +171,9 @@ fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f
             // Ahead of whoever is behind it: at a merge, two cars granted
             // the junction together join the road out in the order they
             // stand, and the one behind follows the one ahead.
-            let cars = &world.edges[&edge].cars;
-            let i = cars.iter().position(|&o| behind(o)).unwrap_or(cars.len());
-            world.edges.get_mut(&edge).unwrap().cars.insert(i, car_id);
+            let lane = trip.lanes.get(k).copied().unwrap_or(0) as usize;
+            let behind: Vec<EntityId> = world.edges[&edge].all().filter(|&o| behind(o)).collect();
+            world.edges.get_mut(&edge).unwrap().insert_before(car_id, lane, |o| behind.contains(&o));
         }
         if world.network.is_junction(trip.route[k]) {
             break;
@@ -209,7 +209,7 @@ fn on_street(world: &World, node: EntityId) -> Vec<EntityId> {
         .into_iter()
         .flat_map(|n| [(n, node), (node, n)])
         .filter_map(|e| world.edges.get(&e))
-        .flat_map(|seg| seg.cars.iter().copied())
+        .flat_map(|seg| seg.all().collect::<Vec<_>>())
         .collect();
     cars.sort_unstable();
     cars.dedup();
@@ -761,10 +761,8 @@ pub fn handle_car_wake_up(
 
     // Lead car: check current edge deque
     if let Some(seg) = world.edges.get(&current_edge)
-        && let Some(my_pos) = seg.car_position(car_id)
-        && my_pos > 0
+        && let Some(lead_id) = seg.ahead(car_id)
     {
-        let lead_id = seg.cars[my_pos - 1];
         if let Some(obs) =
             lead_car_obstacle(world, &trip, role, current_edge, cur_progress, lead_id, now)
         {
@@ -779,13 +777,17 @@ pub fn handle_car_wake_up(
     if ri + 1 < trip.route.len() {
         let next_edge: EdgeKey = (trip.route[ri], trip.route[ri + 1]);
         if let Some(next_seg) = world.edges.get(&next_edge)
-            && let Some(my_pos) = next_seg.car_position(car_id)
-            && my_pos > 0
+            && let Some(lead_id) = next_seg.ahead(car_id)
         {
-            let lead_id = next_seg.cars[my_pos - 1];
             match lead_car_obstacle(world, &trip, role, next_edge, cur_progress, lead_id, now) {
                 Some(obs) => obstacles.push(obs),
-                None => give_way = world.is_intersection(next_edge.0) && from_another_arm(world, lead_id, next_edge.0, trip.route[ri - 1]),
+                None => {
+                    // A merge at a junction, from another arm; or where two
+                    // lanes become one, from the other lane, side by side.
+                    let lane_drop = world.edges.get(&current_edge).is_some_and(|s| s.lanes > 1 && s.contains(lead_id) && s.lane_of(lead_id) != s.lane_of(car_id))
+                        && world.edges.get(&next_edge).is_some_and(|s| s.lanes == 1);
+                    give_way = lane_drop || (world.is_intersection(next_edge.0) && from_another_arm(world, lead_id, next_edge.0, trip.route[ri - 1]));
+                }
             }
         }
     }
@@ -948,11 +950,10 @@ pub fn handle_car_wake_up(
         // Cross-edge: front car on previous edge
         if ri >= 2 {
             let prev_edge: EdgeKey = (trip.route[ri - 2], trip.route[ri - 1]);
-            if let Some(prev_seg) = world.edges.get(&prev_edge)
-                && let Some(&front_id) = prev_seg.cars.front()
-                && front_id != car_id
-            {
-                events.wake(delay, front_id);
+            if let Some(prev_seg) = world.edges.get(&prev_edge) {
+                for front_id in prev_seg.fronts().filter(|&f| f != car_id).collect::<Vec<_>>() {
+                    events.wake(delay, front_id);
+                }
             }
         }
     }

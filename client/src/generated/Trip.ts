@@ -20,6 +20,11 @@ eta: number, route_positions: Array<[number, number]>,
  */
 route_heights: Array<number>, 
 /**
+ * The lane kept on the edge into each node of the route
+ * (`World::lanes_for`): 0 the right, 1 the left of a road of two.
+ */
+lanes: Array<number>, 
+/**
  * How many nodes at either end of the route are in a lot rather than on
  * the street: the spot pulled out of, the spot driven into. Lot nodes
  * are drawn where they are, not offset onto a lane.

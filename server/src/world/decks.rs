@@ -72,7 +72,7 @@ impl World {
             return id;
         }
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None }),
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![] }),
             Some(coord),
         );
         self.decks.insert((coord.x, coord.y, height), id);

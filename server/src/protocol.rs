@@ -42,6 +42,8 @@ pub enum Tool {
     Demolish,
     /// Traffic lights at the junction on `to`, or none where it has them.
     Light,
+    /// A road of two lanes, one way, `from` to `to`.
+    Wide,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -72,6 +74,11 @@ pub struct RoadNode {
     /// (`intersection::phases_of`), or `ALL_RED` between phases.
     #[serde(default)]
     pub light: Option<u8>,
+    /// The neighbours the road out to has two lanes, one way: a two-lane
+    /// one-way (`Tool::Wide`).
+    #[serde(default)]
+    #[ts(type = "Array<number>")]
+    pub wide: Vec<EntityId>,
 }
 
 /// A junction's lights between phases, none green.
@@ -638,6 +645,10 @@ pub struct Trip {
     /// client lifts the car over a deck, and finds which node it is on.
     #[serde(default)]
     pub route_heights: Vec<u8>,
+    /// The lane kept on the edge into each node of the route
+    /// (`World::lanes_for`): 0 the right, 1 the left of a road of two.
+    #[serde(default)]
+    pub lanes: Vec<u8>,
     /// How many nodes at either end of the route are in a lot rather than on
     /// the street: the spot pulled out of, the spot driven into. Lot nodes
     /// are drawn where they are, not offset onto a lane.

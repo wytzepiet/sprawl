@@ -3,4 +3,4 @@
 /**
  * What the mayor's hand holds.
  */
-export type Tool = "Street" | "OneWay" | "Road" | "Demolish" | "Light";
+export type Tool = "Street" | "OneWay" | "Road" | "Demolish" | "Light" | "Wide";

@@ -26,4 +26,9 @@ height: number,
  * Traffic lights, if the junction has them: which phase is green
  * (`intersection::phases_of`), or `ALL_RED` between phases.
  */
-light: number | null, };
+light: number | null, 
+/**
+ * The neighbours the road out to has two lanes, one way: a two-lane
+ * one-way (`Tool::Wide`).
+ */
+wide: Array<number>, };

@@ -365,7 +365,8 @@ export function paintOf({ through, ways, light }: Surface): (x: number, y: numbe
     }
   }
   for (const [dc, dr, , flow] of roads) {
-    if ((flow ?? "t") !== "t") continue;
+    // A two-way's middle, and the line between a two-lane road's lanes.
+    if (!["t", "O", "I"].includes(flow ?? "t")) continue;
     const len = Math.hypot(dc, dr);
     const [ux, uy] = [dc / len, dr / len];
     const [from, to] = [junction ? CLEAR : 0, len / 2 + RUN];
@@ -379,15 +380,21 @@ export function paintOf({ through, ways, light }: Surface): (x: number, y: numbe
       return Math.min(LINE / 2 - across, DASH / 2 - Math.abs(q), s - from, to - s);
     });
   }
-  // A one-way's arrow, where it runs through and nothing joins it.
-  const out = roads.find(([, , , flow]) => flow === "o");
-  if (!junction && out && roads.every(([, , , flow]) => flow === "o" || flow === "i")) {
+  // A one-way's arrow, where it runs through and nothing joins it; on a
+  // road of two lanes, one in each.
+  const out = roads.find(([, , , flow]) => flow === "o" || flow === "O");
+  if (!junction && out && roads.every(([, , , flow]) => ["o", "i", "O", "I"].includes(flow ?? ""))) {
     const len = Math.hypot(out[0], out[1]);
     const [ux, uy] = [out[0] / len, out[1] / len];
-    const tip: Pt = [0.5 + ux * TIP, 0.5 + uy * TIP];
-    for (const side of [1, -1]) {
-      const wing: Pt = [0.5 - ux * WING[0] - uy * WING[1] * side, 0.5 - uy * WING[0] + ux * WING[1] * side];
-      marks.push((x, y) => LINE / 2 - segmentDistance(x, y, tip, wing));
+    const two = roads.some(([, , , flow]) => flow === "O" || flow === "I");
+    for (const lane of two ? [SIDE * 0.75, -SIDE * 0.75] : [0]) {
+      const [cx, cy] = [0.5 - uy * lane, 0.5 + ux * lane];
+      const k = two ? 0.75 : 1;
+      const tip: Pt = [cx + ux * TIP * k, cy + uy * TIP * k];
+      for (const side of [1, -1]) {
+        const wing: Pt = [cx - ux * WING[0] * k - uy * WING[1] * k * side, cy - uy * WING[0] * k + ux * WING[1] * k * side];
+        marks.push((x, y) => LINE / 2 - segmentDistance(x, y, tip, wing));
+      }
     }
   }
   // A divided road's two sides, each an arrow the way it runs, on the
