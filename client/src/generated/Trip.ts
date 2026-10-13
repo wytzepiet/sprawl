@@ -44,4 +44,12 @@ seg_fraction: number,
 /**
  * Arc length of the current segment (for extrapolation).
  */
-seg_length: number, };
+seg_length: number, 
+/**
+ * Precomputed arc length of each segment. segment_lengths[i] = length from
+ * route[i-1] to route[i]. Index 0 is unused (always 0.0). Sent, so the
+ * client can tell which stretch the progress is on and draw it on the
+ * same stretch of its own path, which it measures its own way: a car
+ * still backing on the server is drawn still backing.
+ */
+segment_lengths: Array<number>, };
