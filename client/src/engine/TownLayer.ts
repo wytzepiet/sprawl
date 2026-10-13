@@ -394,12 +394,15 @@ export class TownLayer {
       for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
     };
     this.entities((e) => {
-      if (e.object.kind === "RoadNode" && e.position && !e.object.data.height) {
+      if (e.object.kind === "RoadNode" && e.position && e.object.data.height <= 1) {
         const n = { ...e.object.data, id: e.id };
+        // A slope off the ground: the ground's road runs level to its
+        // tile's edge (`decks::rise`), drawn as an arm to it.
+        byId.set(e.id, { n, x: e.position.x, y: e.position.y });
+        if (n.height) return;
         const k = `${e.position.x},${e.position.y}`;
         if (!n.side?.[0] && !n.side?.[1]) nodes.set(k, n);
         (onTile.get(k) ?? onTile.set(k, []).get(k)!).push(n);
-        byId.set(e.id, { n, x: e.position.x, y: e.position.y });
       }
       else if (e.object.kind === "Building") raise(e.id, e.object.data as Building);
     });

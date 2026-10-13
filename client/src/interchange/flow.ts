@@ -1,5 +1,5 @@
 import { eachEntity } from "../state/gameObjects";
-import { deckZ } from "../engine/decks";
+import { deckZ, rise } from "../engine/decks";
 import { spot } from "../engine/may";
 import { LANE_OFFSET } from "../engine/objects/roadGeometry";
 import type { RoadNode } from "../generated";
@@ -39,8 +39,13 @@ export function drawFlow(g: CanvasRenderingContext2D, at: Project, seconds: numb
   const mid = (a: Node, b: Node): [number, number, number] => [(a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2];
   const bezier = (p: number[], c: Node, q: number[], t: number) => [0, 1, 2].map((i) => (1 - t) * (1 - t) * p[i] + 2 * t * (1 - t) * [c.x, c.y, c.z][i] + t * t * q[i]);
   /** A point a share `s` along the link from a to b, on the curve a car
-   *  drives: each half on its end's curve where that end has two arms. */
+   *  drives: each half on its end's curve where that end has two arms; as
+   *  high as `rise` says, a slope climbing on its own tile. */
   const point = (a: Node, b: Node, s: number): number[] => {
+    const [x, y] = flat(a, b, s);
+    return [x, y, deckZ(rise(a.n.height ?? 0, b.n.height ?? 0, s))];
+  };
+  const flat = (a: Node, b: Node, s: number): number[] => {
     if (s >= 0.5) {
       const next = near(b).filter((o) => o.id !== a.id);
       if (next.length === 1) return bezier(mid(a, b), b, mid(b, next[0]), s - 0.5);

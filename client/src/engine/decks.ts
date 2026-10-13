@@ -14,8 +14,9 @@ import { spot } from "./may";
  * its concrete sides hanging under it and a parapet along each; a
  * junction or a bend on a deck its road's own shape (`buildRoadGeometry`)
  * laid over the ribbons; a pier under every node a level or more up. A
- * slope is nothing of its own: the ribbons either side of it climb through
- * it, as the cars do.
+ * slope is its tile: the road climbs from the edge it comes in by to the
+ * edge it goes out by, the tiles either side of it level (`rise`), as the
+ * cars do; the ground's own half of a link to one is the ground's road.
  *
  * Drawn a mesh a level, so the levels above where the hand is can be seen
  * through, as glass, to what is under them.
@@ -33,6 +34,16 @@ const CONCRETE = rgb(0.74, 0.73, 0.7);
 
 /** How high a road's surface stands at a height, in half-levels. */
 export const deckZ = (height: number) => ROAD_Z + PAVED_Z + height * HALF_LEVEL;
+
+/** How high, in half-levels, a road stands a share `f` of the way from a
+ *  node at `ha` to one at `hb`: a slope (an odd height) climbs on its own
+ *  tile's half of the link, from the other's level at the seam, and the
+ *  other's half is level. */
+export function rise(ha: number, hb: number, f: number): number {
+  if (ha % 2) return f < 0.5 ? ha + (hb - ha) * 2 * f : hb;
+  if (hb % 2) return f < 0.5 ? ha : ha + (hb - ha) * (2 * f - 1);
+  return ha + (hb - ha) * f;
+}
 
 /** How much of a level above the hand shows: a ghost of it. */
 const GHOST = 0.28;
@@ -75,7 +86,13 @@ export class Decks {
         if (seen.has(k)) continue;
         seen.add(k);
         const g = geos[levelOf(Math.max(a.n.height, b.n.height))];
-        ribbon(g.top, g.side, [a.x, a.y, deckZ(a.n.height)], [b.x, b.y, deckZ(b.n.height)], widthOf(a.n, id, b.n, o));
+        // Half a link a tile, from its node to the seam: the ground's half
+        // is the ground's road.
+        const seam = rise(a.n.height, b.n.height, 0.5);
+        const mid: V3 = [(a.x + b.x) / 2, (a.y + b.y) / 2, deckZ(seam)];
+        for (const [p, q] of [[a, mid], [b, mid]] as const) {
+          if (p.n.height || seam) ribbon(g.top, g.side, [p.x, p.y, deckZ(p.n.height)], q, widthOf(a.n, id, b.n, o));
+        }
       }
       if (!a.n.height) continue;
       const g = geos[levelOf(a.n.height)];

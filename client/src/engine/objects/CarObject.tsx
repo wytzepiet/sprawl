@@ -20,7 +20,7 @@ import { getEntity } from "../../state/gameObjects";
 import type { Building, Car, GameObjectEntry } from "../../generated";
 import type { Pose as Stand } from "../../generated/Pose";
 import { carPoses, parts } from "../../state/selection";
-import { HALF_LEVEL } from "../decks";
+import { HALF_LEVEL, rise } from "../decks";
 
 const carGeo = carShape(CAR.w, CAR.l, CAR.h);
 const vanGeo = boxGeometry(VAN.w, VAN.l, VAN.h);
@@ -301,7 +301,7 @@ function liftOf(t: Car["trip"] & {}): (dist: number) => number {
     let k = 0;
     while (k < at.length - 2 && at[k + 1] < d) k++;
     const f = Math.max(0, Math.min(1, (d - at[k]) / Math.max(1e-9, at[k + 1] - at[k])));
-    return ((heights[k] ?? 0) + ((heights[k + 1] ?? 0) - (heights[k] ?? 0)) * f) * HALF_LEVEL;
+    return rise(heights[k] ?? 0, heights[k + 1] ?? 0, f) * HALF_LEVEL;
   };
 }
 
