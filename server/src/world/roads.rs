@@ -136,6 +136,13 @@ impl World {
         lanes
     }
 
+    /// Give a node priority: a through road's.
+    pub fn make_road(&mut self, id: EntityId) {
+        if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(id).map(|e| &mut e.object) {
+            n.road = true;
+        }
+    }
+
     /// A through road, which has priority over the streets that meet it.
     pub fn is_road(&self, id: EntityId) -> bool {
         matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road)

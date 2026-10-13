@@ -400,7 +400,14 @@ pub(crate) fn lay(world: &mut World, crate::undo::Link { from, to, one_way, road
         }
     }
     if let (Some(f), Some(t)) = (world.road_node_at(from), world.road_node_at(to)) {
-        world.set_wide(f, t, wide);
+        // A one-way already there: the other one-way tool sets its lanes;
+        // the priority road's makes it priority.
+        if world.edges.contains_key(&(f, t)) && !world.edges.contains_key(&(t, f)) && road {
+            world.make_road(f);
+            world.make_road(t);
+        } else {
+            world.set_wide(f, t, wide);
+        }
     }
     world.laid.saturating_sub(laid)
 }
@@ -426,6 +433,13 @@ pub fn may_step(world: &World, Build { tool, from, to, up }: Build) -> bool {
                 world.edges.contains_key(&(a, b)) && !world.edges.contains_key(&(b, a)) && world.is_wide(a, b) != (tool == Tool::Wide)
             });
             if one_way && lanes {
+                return true;
+            }
+            // Along a one-way, the priority road's tool: it has priority.
+            let along = world.node_at(from, hf).zip(world.node_at(to, ht)).is_some_and(|(a, b)| {
+                world.edges.contains_key(&(a, b)) && !world.edges.contains_key(&(b, a))
+            });
+            if tool == Tool::Road && along {
                 return true;
             }
             // Into a building is its door: nothing is laid on its tile, and

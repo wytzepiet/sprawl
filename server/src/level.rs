@@ -19,7 +19,9 @@
 //!
 //! After the map, our own solve: the map again, each row behind a `%`,
 //! with `=` on every tile of road it lays, `#` of priority road, `*` a
-//! junction with lights. Its tiles are the level's par,
+//! junction with lights, and `<` `>` `^` `v` a one-way, the way it runs
+//! as the map is read, on to the tile it points at. Rows behind `%#` are
+//! an overlay: its `#` tiles are priority road, one-ways among them. Its tiles are the level's par,
 //! and it is the level's test: it must carry the traffic.
 //!
 //! A gate is a stub of road from its edge tile out past the map's edge,
@@ -53,6 +55,10 @@ const JAM_QUEUE: usize = 8;
 /// How long the traffic may stand without anyone arriving, cars on the
 /// road, before it is called jammed.
 const JAM_STILL_MS: GameTime = 40_000;
+/// The solve's overlay of priority tiles, as its rows are read.
+const PRIORITY: u8 = u8::MAX;
+/// The highest a road stands (`decks.rs`).
+const TOP_H: u8 = crate::world::decks::TOP;
 /// What a junction's lights cost, in tiles of road.
 pub const LIGHT_COST: u32 = 4;
 /// How far a gate's stub runs past the map's edge.
@@ -192,6 +198,8 @@ pub struct Level {
     priority: Vec<GridCoord>,
     /// The junctions it puts lights at (`*`).
     lights: Vec<(GridCoord, u8)>,
+    /// Its one-way tiles (`<`, `>`, `^`, `v`), and the way each runs on.
+    arrows: Vec<((GridCoord, u8), (i32, i32))>,
     phase: Phase,
     rng: SmallRng,
     seed: u64,
@@ -263,9 +271,12 @@ impl Level {
         let solve: Vec<(u8, Vec<char>)> = text
             .lines()
             .filter_map(|l| l.strip_prefix('%'))
-            .map(|r| match r.strip_prefix('^') {
-                Some(rest) => (rest[..1].parse().unwrap_or(0), rest[1..].chars().collect()),
-                None => (0, r.chars().collect()),
+            .map(|r| match (r.strip_prefix('^'), r.strip_prefix('#')) {
+                (Some(rest), _) => (rest[..1].parse().unwrap_or(0), rest[1..].chars().collect()),
+                // The priority overlay: its `#` tiles are priority road,
+                // whatever their own row says.
+                (_, Some(rest)) => (PRIORITY, rest.chars().collect()),
+                _ => (0, r.chars().collect()),
             })
             .collect();
         let rows: Vec<Vec<char>> = map
@@ -322,13 +333,34 @@ impl Level {
             .iter()
             .filter_map(|&(a, b, n)| Some(Want { from: index(a)?, to: index(b)?, per_min: n }))
             .collect();
-        let (mut solution, mut priority, mut lights) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut solution, mut priority, mut lights, mut arrows) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let mut rows_at: HashMap<u8, i32> = HashMap::new();
         for (height, line) in &solve {
             let row = rows_at.entry(*height).or_insert(0);
+            if *height == PRIORITY {
+                for (col, &c) in line.iter().enumerate() {
+                    if c == '#' {
+                        priority.push(at(col as i32, *row));
+                    }
+                }
+                *row += 1;
+                continue;
+            }
             for (col, &c) in line.iter().enumerate() {
-                if c == '=' || c == '#' || c == '*' {
+                if "=#*<>^v".contains(c) {
                     solution.push((at(col as i32, *row), *height));
+                }
+                // A one-way, the way it runs as the map is read: the game's
+                // x runs the other way to the map's columns.
+                let way = match c {
+                    '>' => Some((-1, 0)),
+                    '<' => Some((1, 0)),
+                    '^' => Some((0, 1)),
+                    'v' => Some((0, -1)),
+                    _ => None,
+                };
+                if let Some(way) = way {
+                    arrows.push(((at(col as i32, *row), *height), way));
                 }
                 if c == '*' {
                     lights.push((at(col as i32, *row), *height));
@@ -354,6 +386,7 @@ impl Level {
             solution,
             priority,
             lights,
+            arrows,
             phase: Phase::Build,
             rng: SmallRng::seed_from_u64(seed),
             seed,
@@ -392,10 +425,23 @@ impl Level {
     pub fn solve_steps(&self, world: &World) -> Vec<Build> {
         let road = |t: GridCoord, h: u8| self.solution.contains(&(t, h)) || (h == 0 && self.gates.iter().any(|g| g.edge == t));
         let joins = |a: u8, b: u8| a.abs_diff(b) <= 1 && !(a == b && a % 2 == 1);
+        let arrow = |t: GridCoord, h: u8| self.arrows.iter().find(|(at, _)| *at == (t, h)).map(|&(_, w)| w);
         let mut steps = Vec::new();
+        // One-ways first, each on to the tile it points at.
+        for &((a, ha), (dx, dy)) in &self.arrows {
+            let b = GridCoord { x: a.x + dx, y: a.y + dy };
+            if let Some(hb) = (ha.saturating_sub(1)..=ha + 1).find(|&hb| road(b, hb) && joins(ha, hb)) {
+                steps.push(Build { tool: Tool::OneWay, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]) });
+            }
+        }
         for &(a, ha) in &self.solution {
             for (dx, dy) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
                 let b = GridCoord { x: a.x + dx, y: a.y + dy };
+                // A one-way's tiles join others only as its arrows say, or
+                // square on from a two-way's.
+                if (arrow(a, ha).is_some() || (0..=TOP_H).any(|h| arrow(b, h).is_some())) && (arrow(a, ha).is_some() && arrow(b, ha).is_some() || dx != 0 && dy != 0) {
+                    continue;
+                }
                 for hb in ha.saturating_sub(1)..=ha + 1 {
                     let beside = dx != 0 && dy != 0 && (road(GridCoord { x: a.x + dx, y: a.y }, ha) || road(GridCoord { x: a.x, y: a.y + dy }, ha));
                     let done = steps.iter().any(|s: &Build| s.from == b && s.to == a && s.up.unwrap_or_default() == [hb, ha]);
@@ -404,6 +450,14 @@ impl Level {
                         steps.push(Build { tool, from: a, to: b, up: (ha > 0 || hb > 0).then_some([ha, hb]) });
                     }
                 }
+            }
+        }
+        // A one-way the overlay makes priority: the priority road's tool
+        // along it.
+        for &((a, ha), (dx, dy)) in &self.arrows {
+            let b = GridCoord { x: a.x + dx, y: a.y + dy };
+            if ha == 0 && self.priority.contains(&a) && self.priority.contains(&b) {
+                steps.push(Build { tool: Tool::Road, from: a, to: b, up: None });
             }
         }
         for &(at, h) in &self.lights {
