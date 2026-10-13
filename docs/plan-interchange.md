@@ -518,6 +518,11 @@ What runs, and where; the rest of the order above is still to come.
   they merge. So two one-ways bending round opposite corners of one tile,
   or a diagonal past a loop, keep out of each other's way, and a left
   turn still waits for the oncoming. Ships keep their own rule.
+- **Flows** (F, `interchange/demand.ts`): what the level asks for, over
+  the map, as Freeways shows it: an arrow from each gate to each it sends
+  cars to, as wide as how many a minute, in the gate's colour (its badges
+  too), bent to its right so the two ways between two gates pass each
+  other, dashed while no road joins them. On when a level opens.
 - **The look tool** (V): nothing in hand, no streaks, every deck solid.
 - **Priority**: a through road is let through first at a junction.
   Priority is the hand's, not a kind of road (`Build.road`): any road
