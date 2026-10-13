@@ -268,7 +268,9 @@ impl World {
                 if !one_way || crossed {
                     return false;
                 }
-            } else if bend.is_some() || toward(way, side) < 0 || (!one_way && self.node_in(at, h, side).is_none()) {
+            } else if bend.is_some() || toward(way, side) < 0 || (!one_way && self.node_in(at, h, side).is_none()) || self.node_in(at, h, side).is_some_and(|id| self.unique_connection_count(id) > 2) {
+                // Off its run, a road on a side takes one road joining it,
+                // and that one ends there: nothing crosses the two.
                 return false;
             }
         }

@@ -40,6 +40,15 @@ pub struct Link {
     pub wide: bool,
 }
 
+impl Link {
+    /// The same road between the same places, whichever way it is told.
+    fn same(&self, other: &Link) -> bool {
+        let flip = |l: &Link| (l.to, l.from, [l.up[1], l.up[0]], [l.sides[1], l.sides[0]]);
+        let it = (self.from, self.to, self.up, self.sides);
+        it == (other.from, other.to, other.up, other.sides) || it == flip(other)
+    }
+}
+
 /// What an action cost: coins out of the purse, and stone off each
 /// depot's shelf.
 #[derive(Debug, Clone, Default)]
@@ -171,12 +180,18 @@ pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);
     let top = history.last_mut().filter(|d| now.saturating_sub(d.at) <= WINDOW);
     let carried = match (top.map(|d| &mut d.act), &taken) {
-        // The same drag of road, carried on from where it ended.
-        (Some(Act::Laid { links, paid: was }), None) if road && links.last().is_some_and(|l| l.to == step.from && l.one_way == link.one_way && l.road == link.road) => {
+        // The same drag of road, carried on (`Build::on`).
+        (Some(Act::Laid { links, paid: was }), None) if road && step.on => {
             let first = was.coins == 0.0;
             links.push(link);
             was.add(paid.clone());
             Some(first)
+        }
+        // A step of the drag taken up again as it goes, to be laid
+        // otherwise (`pen.ts`): no longer the drag's.
+        (Some(Act::Laid { links, .. }), Some(Act::Cut(cut))) if step.on => {
+            links.retain(|l| !cut.iter().any(|c| c.same(l)));
+            Some(false)
         }
         (Some(Act::Cut(links)), Some(Act::Cut(more))) if step.from != step.to && more.len() == 1 && links.last().is_some_and(|l| l.from == step.from || l.to == step.from) => {
             links.extend(more.iter().copied());

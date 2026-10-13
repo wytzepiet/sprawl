@@ -203,12 +203,14 @@ changes(await settled());
  *  tile, the demolisher's tap, one tile alone, takes what stands there. */
 function stroke(tool: unknown, pts: Pt[]) {
   if (pts.length === 1) send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
+  let on = false;
   for (let i = 1; i < pts.length; i++) {
     let [x, y] = pts[i - 1];
     const [tx, ty] = pts[i];
     while (x !== tx || y !== ty) {
       const [nx, ny] = [x + Math.sign(tx - x), y + Math.sign(ty - y)];
-      send("Build", { tool, from: { x, y }, to: { x: nx, y: ny } });
+      send("Build", { tool, from: { x, y }, to: { x: nx, y: ny }, on });
+      on = true;
       [x, y] = [nx, ny];
     }
   }

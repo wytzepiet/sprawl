@@ -256,7 +256,18 @@ export function nodesOn(h: Hand, t: GridCoord): [number, Node][] {
   return out;
 }
 
-const edge = (a: Node, b: Node) => a.node.outgoing.includes(b.id) || b.node.incoming.includes(a.id);
+export const edge = (a: Node, b: Node) => a.node.outgoing.includes(b.id) || b.node.incoming.includes(a.id);
+
+/** The hand as it would be with these two roads not joined: a step laid
+ *  for now, weighed as if it were not. */
+export function unlinked(h: Hand, a: number, b: number): Hand {
+  const cut = (n: { id: number; node: RoadNode }) => {
+    const other = n.id === a ? b : n.id === b ? a : null;
+    return other === null ? n : { id: n.id, node: { ...n.node, outgoing: n.node.outgoing.filter((o) => o !== other), incoming: n.node.incoming.filter((i) => i !== other) } };
+  };
+  const all = <K>(m: Map<K, { id: number; node: RoadNode }>) => new Map([...m].map(([k, n]) => [k, cut(n)]));
+  return { ...h, roads: all(h.roads), decks: h.decks && all(h.decks) };
+}
 
 /** `decks::across`: the way across a road through a tile by these arms,
  *  in small whole steps, either way round. */
@@ -373,7 +384,7 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
     const along = bend ? bend.some(([x, y]) => x === w[0] && y === w[1]) : toward(w, side) === 0;
     if (along) {
       if (!oneWay || (!isMiddle(there) && toward(there, side) <= 0)) return false;
-    } else if (bend || toward(w, side) < 0 || (!oneWay && !n)) return false;
+    } else if (bend || toward(w, side) < 0 || (!oneWay && !n) || (n && new Set([...n.node.outgoing, ...n.node.incoming]).size > 2)) return false;
   }
   for (const [t, height] of [[from, hf], [to, ht]] as const) {
     const g = h.ground(t.x, t.y);

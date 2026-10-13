@@ -39,6 +39,8 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   let current: GridCoord | null = null;
   /** The tile pressed on, while the hand is down. */
   let pressed: GridCoord | null = null;
+  /** Has the drag taken a step yet: the next carries it on. */
+  let stepped = false;
   let prevWorld: { wx: number; wy: number } | null = null;
   let accDx = 0;
   let accDy = 0;
@@ -48,9 +50,12 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     const w = pick(e);
     return { x: Math.floor(w.wx), y: Math.floor(w.wy) };
   };
-  const step = (from: GridCoord, to: GridCoord) => {
+  /** A step sent; `on`, carrying on the drag (`Build::on`): one action
+   *  to undo, and it joins the roads it meets only where it starts and
+   *  ends. */
+  const step = (from: GridCoord, to: GridCoord, on = false) => {
     const t = tool();
-    if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority(), on: false } });
+    if (t !== null) send({ type: "Build", data: { tool: t, from, to, road: priority(), on } });
   };
 
   // The world as the hand sees it, read again when something is built.
@@ -145,6 +150,7 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     // The demolisher's tap waits for the hand to come up where it went
     // down: a drag cuts only what it crosses, not the point it starts from.
     pressed = current;
+    stepped = false;
     dots.grab(current, { x: prevWorld.wx, y: prevWorld.wy });
     draw();
   };
@@ -179,7 +185,8 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
       if (newDist >= dist) break; // would move away from pointer
       if (!allowed(cur, sector)) break; // refused: wait here
 
-      step(cur, next);
+      step(cur, next, stepped);
+      stepped = true;
       dots.step(next);
       cur = next;
     }

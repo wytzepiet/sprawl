@@ -1126,7 +1126,7 @@ mod tests {
         let mut hand = |world: &mut World, message| handle_player_action(world, &mut events, &mut intersections, 1, message, 0);
         let mut said = Vec::new();
         for y in 0..4 {
-            said.extend(hand(&mut world, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1), up: None, sides: None, road: false, on: false })));
+            said.extend(hand(&mut world, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1), up: None, sides: None, road: false, on: y > 0 })));
         }
         assert_eq!(world.roads.len(), roads + 4, "the side street was not laid");
         assert!(world.treasury < treasury, "the third and fourth tiles were not bought express");
@@ -1225,7 +1225,7 @@ mod tests {
         let at = |x, y| GridCoord { x, y };
         let mut hand = |world: &mut World, owner, message, now| handle_player_action(world, &mut events, &mut intersections, owner, message, now);
         for y in 0..3 {
-            hand(&mut world, 1, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1), up: None, sides: None, road: false, on: false }), 0);
+            hand(&mut world, 1, ClientMessage::Build(Build { tool: Tool::Street, from: at(10, y), to: at(10, y + 1), up: None, sides: None, road: false, on: y > 0 }), 0);
         }
         assert!(hand(&mut world, 2, ClientMessage::Place { kind: BuildingKind::House, at: at(11, 3), facing: None }, 0).is_none());
         let roads = world.roads.len();
