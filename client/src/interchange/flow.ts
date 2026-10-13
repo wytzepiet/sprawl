@@ -5,19 +5,24 @@ import { LANE_OFFSET } from "../engine/objects/roadGeometry";
 import type { RoadNode } from "../generated";
 
 /**
- * The way the one-ways run, shown while the player builds: small chevrons
- * gliding along each, as its cars go (`car::bezier`'s curve through a
+ * The way the one-ways run, shown while the player builds: faint streaks
+ * of light gliding along each, as its cars go (`car::bezier`'s curve through a
  * node of two arms), one stream a lane: down the middle of a one-way, one
  * in each lane of a road of two, one down each side of a divided road.
  * The road itself carries no arrows; this is there when the choices are
  * being made, and gone while the test runs.
  */
 
-/** Chevrons this far apart along a lane, gliding at this many tiles a
- *  second; each this long and this wide, in tiles. */
-const APART = 0.55;
-const GLIDE = 0.6;
-const SIZE: [number, number] = [0.07, 0.08];
+/** Streaks this far apart along a lane, gliding at this many tiles a
+ *  second (a tile apart, so a streak runs on from one link to the next);
+ *  each this long and this wide, in tiles, fading from nothing at
+ *  its tail to this at its head, drawn round a bend in this many steps. */
+const APART = 1;
+const GLIDE = 0.7;
+const TRAIL = 0.45;
+const WIDTH = 0.03;
+const ALPHA = 0.32;
+const STEPS = 8;
 
 type Node = { id: number; x: number; y: number; z: number; n: RoadNode };
 type Project = (x: number, y: number, z: number) => { sx: number; sy: number };
@@ -45,11 +50,8 @@ export function drawFlow(g: CanvasRenderingContext2D, at: Project, seconds: numb
   // How many pixels a tile is, for the chevrons' size.
   const [o, e] = [at(0, 0, 0), at(1, 0, 0)];
   const px = Math.hypot(e.sx - o.sx, e.sy - o.sy);
-  g.strokeStyle = "rgba(255,255,255,0.85)";
-  g.lineWidth = Math.max(1.5, px * 0.025);
+  g.lineWidth = Math.max(1, px * WIDTH);
   g.lineCap = "round";
-  g.lineJoin = "round";
-  g.beginPath();
   for (const a of nodes.values()) {
     for (const id of a.n.outgoing) {
       const b = nodes.get(id);
@@ -57,21 +59,33 @@ export function drawFlow(g: CanvasRenderingContext2D, at: Project, seconds: numb
       if (!b || (b.n.outgoing.includes(a.id) && !a.n.incoming.includes(b.id))) continue;
       const lanes = a.n.incoming.includes(b.id) ? [SIDE] : a.n.wide.includes(b.id) ? [LANE_OFFSET, -LANE_OFFSET] : [0];
       const len = Math.hypot(b.x - a.x, b.y - a.y);
-      for (let d = (seconds * GLIDE) % APART; d < len; d += APART) {
-        const s = d / len;
-        const [p, q] = [point(a, b, s), point(a, b, Math.min(1, s + 0.02))];
-        const [ux, uy] = [(q[0] - p[0]) / Math.hypot(q[0] - p[0], q[1] - p[1]), (q[1] - p[1]) / Math.hypot(q[0] - p[0], q[1] - p[1])];
+      // A point on a lane, a distance along the link, on the screen.
+      const on = (d: number, lane: number) => {
+        const s = Math.max(0, Math.min(1, d / len));
+        const [p, q] = [point(a, b, Math.max(0, s - 0.01)), point(a, b, Math.min(1, s + 0.01))];
+        const l = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+        const c = point(a, b, s);
+        return at(c[0] - ((q[1] - p[1]) / l) * lane, c[1] + ((q[0] - p[0]) / l) * lane, c[2]);
+      };
+      for (let head = (seconds * GLIDE) % APART; head < len + TRAIL; head += APART) {
+        // Its tail and head, as much of it as is on this link.
+        const [d0, d1] = [Math.max(0, head - TRAIL), Math.min(len, head)];
+        if (d1 <= d0) continue;
         for (const lane of lanes) {
-          const [cx, cy] = [p[0] - uy * lane, p[1] + ux * lane];
-          const tip = at(cx + ux * SIZE[0] / 2, cy + uy * SIZE[0] / 2, p[2]);
-          const l = at(cx - ux * SIZE[0] / 2 - uy * SIZE[1] / 2, cy - uy * SIZE[0] / 2 + ux * SIZE[1] / 2, p[2]);
-          const r = at(cx - ux * SIZE[0] / 2 + uy * SIZE[1] / 2, cy - uy * SIZE[0] / 2 - ux * SIZE[1] / 2, p[2]);
-          g.moveTo(l.sx, l.sy);
-          g.lineTo(tip.sx, tip.sy);
-          g.lineTo(r.sx, r.sy);
+          const pts = Array.from({ length: STEPS + 1 }, (_, k) => on(d0 + ((d1 - d0) * k) / STEPS, lane));
+          // Its share of the fade, so a streak over a node is one.
+          const bright = (d: number) => (ALPHA * (d - head + TRAIL)) / TRAIL;
+          const [tail, tip] = [pts[0], pts[STEPS]];
+          const fade = g.createLinearGradient(tail.sx, tail.sy, tip.sx, tip.sy);
+          fade.addColorStop(0, `rgba(255,255,255,${bright(d0).toFixed(3)})`);
+          fade.addColorStop(1, `rgba(255,255,255,${bright(d1).toFixed(3)})`);
+          g.strokeStyle = fade;
+          g.beginPath();
+          g.moveTo(pts[0].sx, pts[0].sy);
+          for (const q of pts.slice(1)) g.lineTo(q.sx, q.sy);
+          g.stroke();
         }
       }
     }
   }
-  g.stroke();
 }
