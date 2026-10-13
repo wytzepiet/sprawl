@@ -59,6 +59,11 @@ impl World {
         let Some(id) = self.road_node_at(coord) else { return false };
         self.arms_of(id, false).into_iter().any(|nid| {
             let Some(npos) = self.objects.get(nid).and_then(|n| n.position) else { return false };
+            // An arm to the tile the new one goes to: going back, which no
+            // car does (`pathfinding::may_turn`).
+            if (npos.x - coord.x, npos.y - coord.y) == (dx, dy) {
+                return false;
+            }
             let ahead = (npos.x - coord.x) * dx + (npos.y - coord.y) * dy > 0;
             ahead && ((arriving && self.edges.contains_key(&(id, nid))) || (leaving && self.edges.contains_key(&(nid, id))))
         })
@@ -483,6 +488,19 @@ mod tests {
         assert!(route(&world, street, east(&world, 9)).is_some(), "right onto it");
         assert!(route(&world, west(&world, 9), street).is_none(), "the far side has no way to it");
         assert!(route(&world, street, west(&world, 0)).is_none(), "nor it to the far side");
+        // From a junction back along a one-way that came into it: beside it.
+        let mut back = eastward();
+        back.place_road_path(&(1..4).map(|y| at(9, y)).collect::<Vec<_>>());
+        let (e9, s9) = (back.road_node_at(at(9, 0)).unwrap(), back.road_node_at(at(9, 1)).unwrap());
+        back.insert_edge(e9, s9);
+        back.insert_edge(s9, e9);
+        if let Some(GameObject::RoadNode(n)) = back.objects.get_mut(e9).map(|e| &mut e.object) {
+            n.outgoing.push(s9);
+        }
+        if let Some(GameObject::RoadNode(n)) = back.objects.get_mut(s9).map(|e| &mut e.object) {
+            n.outgoing.push(e9);
+        }
+        assert!(back.may_lay_at(at(9, 0), 0, MIDDLE, at(8, 0), 0, NORTH, true), "back along the road it came in by");
         // On the wrong side: a pair that keeps left is still a pair.
         let mut left = eastward();
         for x in (1..10).rev() {

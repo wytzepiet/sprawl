@@ -361,7 +361,8 @@ function tooSharpNode(h: Hand, here: Node, at: GridCoord, dx: number, dy: number
   const byId = (id: number) => [nodeAt(h, h.at.get(id) ?? at), ...[...(h.decks?.values() ?? [])]].find((n) => n?.id === id);
   return arms(here.node, false).some((id) => {
     const p = h.at.get(id);
-    if (!p || (p.x - at.x) * dx + (p.y - at.y) * dy <= 0) return false;
+    // An arm to the tile the new one goes to: going back, which no car does.
+    if (!p || (p.x - at.x) * dx + (p.y - at.y) * dy <= 0 || (p.x - at.x === dx && p.y - at.y === dy)) return false;
     const out = here.node.outgoing.includes(id);
     const into = !!byId(id)?.node.outgoing.includes(here.id) || here.node.incoming.includes(id);
     return (arriving && out) || (leaving && into);

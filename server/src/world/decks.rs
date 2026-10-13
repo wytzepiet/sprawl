@@ -283,6 +283,12 @@ impl World {
         let Some(at) = self.objects.get(id).and_then(|e| e.position) else { return false };
         self.arms_of(id, false).into_iter().any(|nid| {
             let Some(npos) = self.objects.get(nid).and_then(|n| n.position) else { return false };
+            // An arm to the tile the new one goes to: turning from the one
+            // onto the other is going back, which no car does
+            // (`pathfinding::may_turn`).
+            if (npos.x - at.x, npos.y - at.y) == (dx, dy) {
+                return false;
+            }
             let ahead = (npos.x - at.x) * dx + (npos.y - at.y) * dy > 0;
             ahead && ((arriving && self.edges.contains_key(&(id, nid))) || (leaving && self.edges.contains_key(&(nid, id))))
         })
