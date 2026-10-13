@@ -394,4 +394,15 @@ mod tests {
         assert!(f.turn((4, 1), (5, 0), (6, 0)) && f.turn((6, 0), (5, 0), (4, 1)), "the shallow turns are not there");
         assert!(!f.turn((4, 1), (5, 0), (4, 0)) && !f.turn((4, 0), (5, 0), (4, 1)), "a car turns sharper than a right angle");
     }
+
+    /// Two one-ways bending through one tile, each round its own corner:
+    /// one junction, each turning only as it was drawn.
+    #[test]
+    fn two_bends_through_one_tile_keep_to_their_corners() {
+        let mut f = Field::new();
+        f.drag(Tool::OneWay, &[(0, 0), (1, 0), (2, 0), (2, -1), (2, -2)]);
+        f.drag(Tool::OneWay, &[(2, 2), (2, 1), (2, 0), (3, 0), (4, 0)]);
+        assert!(f.turn((1, 0), (2, 0), (2, -1)) && f.turn((2, 1), (2, 0), (3, 0)), "the bends are not driven");
+        assert!(!f.turn((1, 0), (2, 0), (3, 0)) && !f.turn((2, 1), (2, 0), (2, -1)), "a bend turns into the other");
+    }
 }
