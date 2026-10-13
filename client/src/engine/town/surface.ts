@@ -55,6 +55,9 @@ export interface Surface {
   /** The turns not drawn through it, from one arm's way to another's,
    *  `"dc,dr>dc,dr"`: no lane is laid for them. */
   banned?: string[];
+  /** An arm's way and where the junction it runs into lets its traffic
+   *  go, when not every way: painted on its lane, arrows. */
+  ahead?: [number, number, Pt[]][];
 }
 
 /** How round the asphalt's corners are, in and out. */
@@ -235,7 +238,8 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
   ];
   return views.map(({ shift, through, light, arms, height = 0, climb, run, banned }) => {
     const own: Way[] = arms.map(({ dc, dr, flow, shift: there, through: on }) => [dc, dr, on === through, flow, there]);
-    const turns = banned?.length ? { banned } : {};
+    const ahead = arms.flatMap(({ dc, dr, ahead }) => (ahead ? [[dc, dr, ahead] as [number, number, Pt[]]] : []));
+    const turns = { ...(banned?.length ? { banned } : {}), ...(ahead.length ? { ahead } : {}) };
     if (shift[0] || shift[1] || height) return { through, light, ways: own, rects: [], shift, height, climb, run, ...turns };
     // The middle's: out to the doors that open onto it, and its bays.
     for (const [dc, dr] of EIGHT) {
@@ -272,11 +276,12 @@ function yardRect(town: Town, c: number, r: number): Rect {
 }
 
 /** The key a surface's shape is known by: the same parts, the same shape. */
-export function keyOf({ through, ways, rects, light, shift, banned = [] }: Surface): string {
+export function keyOf({ through, ways, rects, light, shift, banned = [], ahead = [] }: Surface): string {
   const at = (p?: Pt) => (p && (p[0] || p[1]) ? `@${p.map((v) => +v.toFixed(3)).join(";")}` : "");
   const w = ways.map(([dc, dr, on, flow, there]) => `${dc}${dr}${on ? "+" : ""}${flow ?? ""}${at(there)}`).sort();
   const q = rects.map((rect) => `[${rect.map((v) => +v.toFixed(3)).join(",")}]`).sort();
-  return [...w, ...q, ...[...banned].sort().map((b) => `!${b}`), light ? "L" : "", through ? "T" : "", at(shift)].join(",");
+  const a = ahead.map(([dc, dr, outs]) => `^${dc},${dr}:${outs.map((o) => o.join(";")).sort().join("|")}`).sort();
+  return [...w, ...q, ...[...banned].sort().map((b) => `!${b}`), ...a, light ? "L" : "", through ? "T" : "", at(shift)].join(",");
 }
 
 /** Where a surface's road stands in its tile: the middle, moved by its
@@ -630,34 +635,66 @@ export function paintOf(surface: Surface): (x: number, y: number) => number {
       });
     }
   }
-  // A junction that turns its traffic only some ways, some turn not
-  // drawn or a one-way's lane among them, dotted, so where each goes is
-  // seen: a road driven both ways through it, straight on or round, its
-  // edges and its middle carried across; driven one way, its lane's line.
-  if (junction && (surface.banned?.length || roads.some(([, , , f]) => f === "o" || f === "i"))) {
-    const moves = movesOf(surface, p, roads);
-    for (const [a, b, path] of moves) {
-      const back = moves.some(([c, d]) => c === b && d === a);
-      // A road driven both ways, once.
-      if (back && roads.indexOf(a) > roads.indexOf(b)) continue;
-      const total = path.at[path.at.length - 1] || 1;
-      const [ha, hb] = [halfOf(a[3]) - EDGE_IN, halfOf(b[3]) - EDGE_IN];
-      const lines: ((t: number) => number)[] = back
-        ? [(t) => ha + (hb - ha) * t, (t) => -(ha + (hb - ha) * t), () => 0]
-        : lanesOf(a[3], true).flatMap((l) => lanesOf(b[3], false).map((m) => (t: number) => l[0] + (m[0] - l[0]) * t));
-      for (const at of lines) {
-        marks.push((x, y) => {
-          const n = near(path, x, y);
-          return Math.min(LINE / 2 - Math.abs(n.side - at(smooth(n.along / total))), dashed(n.along, DOT));
-        });
+  // Where a road runs on into a junction that does not let it go every
+  // way, an arrow on each lane in: a shaft, and a head for each way out,
+  // a turn bent off it and cut short to stay on its lane.
+  if (!junction) {
+    for (const [dc, dr, outs] of surface.ahead ?? []) {
+      const w = roads.find(([c, r]) => c === dc && r === dr);
+      if (!w) continue;
+      const { u: [ux, uy], len } = seamOf(p, w);
+      const reach = len / 2;
+      // Each way out, as far ahead and across the lane it goes: straight
+      // on, all ahead; a turn, as much ahead as across.
+      const ways = outs.map(([ex, ey]) => {
+        const l = Math.hypot(ex, ey);
+        const [ahead, across] = [(ex * ux + ey * uy) / l, (-ex * uy + ey * ux) / l];
+        const bent = Math.hypot(1 + ahead, across);
+        return [(1 + ahead) / bent, Math.abs(across) < 1e-6 ? 0 : across / bent];
+      });
+      // Turning only the one way, the shaft keeps to the lane's other side,
+      // so the turn has the lane's width to bend across.
+      const turns = new Set(ways.map(([, c]) => Math.sign(c)));
+      const lean = turns.size === 1 && !turns.has(0) ? -[...turns][0] : 0;
+      for (const [o, half] of lanesOf(w[3], false)) {
+        const room = half - ARROW[3] - HEAD[0] * Math.sin(HEAD[1]);
+        const shaft = lean * room * 0.6;
+        const at = (s: number, side = 0): Pt => [p[0] + ux * s - uy * (o + shaft + side), p[1] + uy * s + ux * (o + shaft + side)];
+        const tip = reach * ARROW[0];
+        const lines: [Pt, Pt][] = [[at(reach * ARROW[1]), at(tip)]];
+        for (const [ahead, across] of ways) {
+          // No wider than the lane leaves room for: on a narrow lane, a
+          // turn bent off less.
+          const long = ARROW[2];
+          const wide = across ? Math.max(0, room - Math.sign(across) * shaft) / long : 0;
+          const fc = Math.sign(across) * Math.min(Math.abs(across), wide);
+          const fa = fc === across ? ahead : Math.sqrt(1 - fc * fc);
+          const end = at(tip + fa * long, fc * long);
+          const [vx, vy] = [ux * fa - uy * fc, uy * fa + ux * fc];
+          lines.push([at(tip), end]);
+          for (const turn of [HEAD[1], -HEAD[1]]) {
+            const [c, sn] = [Math.cos(turn), Math.sin(turn)];
+            lines.push([end, [end[0] - (vx * c - vy * sn) * HEAD[0], end[1] - (vx * sn + vy * c) * HEAD[0]]]);
+          }
+        }
+        for (const [a, b] of lines) marks.push((x, y) => ARROW[3] / 2 - toSegment(x, y, a, b));
       }
     }
   }
   return (x, y) => marks.reduce((best, m) => Math.max(best, m(x, y)), -1);
 }
 
-/** A guide line's dots: each and the gap after it this long. */
-const DOT = 0.05;
+/** A lane's arrow, as shares of the way from the road's middle to its
+ *  seam: its shaft from the second to the first; how long a way out is
+ *  from there at most, and the line's width, in tiles. A head's two
+ *  strokes: how long, and how far each is turned from its way. */
+const ARROW = [0.5, 0.02, 0.17, 0.03];
+const HEAD = [0.07, 0.7];
+const toSegment = (x: number, y: number, a: Pt, b: Pt) => {
+  const [ex, ey] = [b[0] - a[0], b[1] - a[1]];
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (y - a[1]) * ey) / (ex * ex + ey * ey || 1)));
+  return Math.hypot(x - a[0] - ex * t, y - a[1] - ey * t);
+};
 
 /** A stop line's width along its way. */
 const STOP = 0.05;

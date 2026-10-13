@@ -30,7 +30,9 @@ export interface RoadView {
   height?: number;
   climb?: [number, number];
   run?: [number, number, number, number];
-  arms: { dc: number; dr: number; flow: Flow; shift: [number, number]; through: boolean }[];
+  /** Each arm: `ahead`, where the junction it runs into lets its
+   *  traffic go, the ways out from there, when not every way. */
+  arms: { dc: number; dr: number; flow: Flow; shift: [number, number]; through: boolean; ahead?: [number, number][] }[];
   /** The turns not drawn through it (`RoadNode::banned`), from one arm's
    *  way to another's, `"dc,dr>dc,dr"`. */
   banned?: string[];
