@@ -481,34 +481,49 @@ What runs, and where; the rest of the order above is still to come.
   nowhere else (`World::leads_nowhere`): a hairpin, a ramp against the
   traffic. The junction is drawn with the shallow turns only. A drive
   still meets its street square or not at all.
-- **Roads side by side** (`world/decks.rs`, `RoadNode::side`): a tile
-  holds two one-ways as it holds roads stacked, each its own nodes moved
-  to a side, a thin road beside the other. A one-way drawn along a
-  one-way's tiles goes beside it, on the side the drag came from, else
-  the right, the one there moving over, and back to the middle when its
-  partner goes. A road on a side is joined along its run or from its own
-  side, merging or branching; the other side is out of reach, so a side
-  street is right in, right out. What a car may do follows from the
-  links; it never turns back. Roads are drawn a node at a time
+- **Where roads may stand is one rule** (`world/clear.rs`): a node's
+  road is its lane curves as cars drive them (`intersection::track`), as
+  wide as they are drawn and as high as the node and its seams, and a
+  road may be laid where everything it touches stays its width apart on
+  the map or a level apart in height; links that meet at a node are a
+  junction, and two diagonals across one corner a crossing. Nothing else
+  says where roads may stand beside, over or across each other.
+- **Roads side by side** (`world/decks.rs`, `RoadNode::side`): nodes on
+  a tile at heights, and moved a little to one side of its middle, a
+  thin road beside another. A one-way drawn along a road that runs
+  against it goes beside it, the road there moving over, and back to the
+  middle when it would lie clear there. So two one-ways run side by side,
+  round bends, and part; a ramp climbs beside a road on its tiles and
+  keeps beside it until it is a level up; a road joins one on a side from
+  that side, and the other is out of reach. What a car may do follows
+  from the links; it never turns back. Roads are drawn a node at a time
   (`Town::roadsOn`), each its own curve through where it stands.
+- **The game says where the hand may go** (`server/src/hint.rs`): the
+  brush asks (`Ask`) and the game answers by the same rules it lays by:
+  the tiles in view a drag may start from or a building stand round, the
+  steps on from a drag's end (and where the eraser would stand), where a
+  held building goes and why not. The client keeps no copy of the rules;
+  the town asks its server, the puzzle its worker. The pen waits for each
+  answer before it steps (`engine/pen.ts`), the same pen in both.
 - **A drag is laid whole** (`server/src/draw.rs`, `Stroke`): the hand
   sends the drag so far at each tile, and the game plans it from end to
   end, each tile with the next in sight, keeping what it laid before
-  where the plan still says so. Heights, sides, what it joins are the
-  game's; the brush (`engine/pen.ts`) only collects the tiles and
-  asks where it may go. One drag, one undo. `pen.test.ts` plays drags
-  through the brush against the game in wasm, and checks after each what
-  may never be.
+  where the plan still says so, and judging each step with the next, as
+  a drag beside a road moves it over as it goes. The plan offers the
+  places a tile may stand in the order a hand means them, and the world's
+  rules pick. One drag, one undo. `pen.test.ts` plays drags through the
+  brush against the game in wasm, and checks after each what may never
+  be: no two roads running into each other (`World::clashing`).
 - **A drag joins only at its ends** (`RoadNode::banned`): where it starts
   it branches off what is there,
   where it is let go it joins what is there; between, it turns only as
   it went. Straight over a road, a crossing with no turns; up to a road
   and on along it, that one turn; a full crossroads is drawn up to the
   road and away from it, two drags. A one-way that meets a one-way and
-  goes on against it runs beside it: on the side it is on, else, come
-  along it, on its right, else on the side it came from; along a pair,
-  into the one running its way; into a pair from the side, right in and
-  there it ends. No paint says which turns a junction has: the
+  goes on against it runs beside it: on the side it is on, else on the
+  side it came from, else on its right; along a pair, into the one
+  running its way; into a pair from the side, right in and there it
+  ends. No paint says which turns a junction has: the
   asphalt is worn, two wheel tracks down each lane along the curve its
   cars drive (`wearOf`), so through a junction only the ways its cars
   may go are worn.

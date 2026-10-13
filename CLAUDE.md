@@ -186,6 +186,12 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the saved answer instead of the point; `bun run osm <name>` alone makes
   it again from the answer kept in `.dev/osm/`. What becomes what is at
   the top of `client/scripts/osm.ts`.
+- **Where the hand may go** is the game's to say, never the client's:
+  the brush asks (`Ask`, `server/src/hint.rs`) and the game answers by
+  the rules it builds by. Where roads may stand is one rule of their
+  shapes (`server/src/world/clear.rs`). `cargo test starts_over_a_view
+  -- --ignored --nocapture` times the dots for a large view, which the
+  town's server answers as the camera moves.
 - **Interchange, the puzzle:** `/interchange` on the dev client, the
   levels run in the browser on the sim compiled to wasm (`server/web`):
   `cd client && bun run wasm` after changing the server (`bun run dev`
