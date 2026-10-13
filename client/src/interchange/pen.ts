@@ -164,7 +164,7 @@ export class Pen {
     return here.some((p) =>
       there(p.h).some((q) => {
         const [a, b] = [nodeIn(w, at, p.h, p.s), nodeIn(w, to, q.h, q.s)];
-        return (a && b && (edge(a, b) || edge(b, a))) || mayAt(w, t, at, p.h, to, q.h, this.d.priority(), [p.s, q.s]);
+        return (a && b && (edge(a, b) || edge(b, a))) || mayAt(w, t, at, p.h, to, q.h, this.d.priority(), [p.s, q.s], true);
       }),
     );
   }

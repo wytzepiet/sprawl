@@ -407,4 +407,12 @@ describe("one-ways side by side", () => {
     expect(t.on(5, 4)).toHaveLength(1);
     expect(t.on(9, 4)).toHaveLength(1);
   });
+
+  test("a diagonal past a one-way's bend that turns back: it goes on past", () => {
+    const t = new Table();
+    t.drag("OneWay", [6, 2], [6, 5], [2, 5]);
+    expect(t.drag("OneWay", [3, 8], [9, 2])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    expect(t.on(9, 2)).toHaveLength(1);
+  });
 });

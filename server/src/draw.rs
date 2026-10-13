@@ -127,7 +127,10 @@ fn plan(world: &World, stroke: &Stroke, tiles: &[GridCoord], i: usize, froms: &[
         for h in heights(world, to, pf.h, stroke.tiles[i].want) {
             for s in sides(world, stroke.tool, tiles, i, h, pf) {
                 let pt = Place { h, s };
-                if follows(world, stroke.tool, from, pf, to, pt) || may(world, stroke, from, pf, to, pt) {
+                // Its cars go on as the drag does; at its end, as it may
+                // yet: straight on.
+                let on = Some(tiles.get(i + 1).map_or(step(from, to), |&n| step(to, n)));
+                if follows(world, stroke.tool, from, pf, to, pt) || may(world, stroke, from, pf, to, pt, on) {
                     return Some((pf, pt));
                 }
             }
@@ -240,11 +243,12 @@ fn follows(world: &World, tool: Tool, from: GridCoord, pf: Place, to: GridCoord,
     world.edges.contains_key(&(a, b)) && (tool == Tool::Street) == world.edges.contains_key(&(b, a))
 }
 
-/// May the step be laid (`game::may_step`).
-fn may(world: &World, stroke: &Stroke, from: GridCoord, pf: Place, to: GridCoord, pt: Place) -> bool {
+/// May the step be laid, the drag going on from it that way, if it does
+/// (`game::may_step_on`).
+fn may(world: &World, stroke: &Stroke, from: GridCoord, pf: Place, to: GridCoord, pt: Place, on: Option<Step>) -> bool {
     let up = (pf.h > 0 || pt.h > 0).then_some([pf.h, pt.h]);
     let sides = (pf.s != MIDDLE || pt.s != MIDDLE).then_some([pf.s, pt.s]);
-    crate::game::may_step(world, Build { tool: stroke.tool, from, to, up, sides, road: stroke.road })
+    crate::game::may_step_on(world, Build { tool: stroke.tool, from, to, up, sides, road: stroke.road }, on)
 }
 
 /// The turns the drag drew, on the tiles it passes through: its new links
@@ -404,5 +408,17 @@ mod tests {
         f.drag(Tool::OneWay, &[(2, 2), (2, 1), (2, 0), (3, 0), (4, 0)]);
         assert!(f.turn((1, 0), (2, 0), (2, -1)) && f.turn((2, 1), (2, 0), (3, 0)), "the bends are not driven");
         assert!(!f.turn((1, 0), (2, 0), (3, 0)) && !f.turn((2, 1), (2, 0), (2, -1)), "a bend turns into the other");
+    }
+
+    /// A diagonal past a one-way's bend, its cars arriving where the bend
+    /// only turns back sharp: the drag goes on, so they go on with it.
+    #[test]
+    fn a_diagonal_past_a_bend_that_turns_back() {
+        let mut f = Field::new();
+        f.drag(Tool::OneWay, &[(2, -2), (2, -1), (2, 0), (1, 0), (0, 0)]);
+        f.drag(Tool::OneWay, &[(0, 2), (1, 1), (2, 0), (3, -1), (4, -2)]);
+        assert!(f.world.road_node_at(GridCoord { x: 4, y: -2 }).is_some(), "the diagonal stopped at the bend");
+        assert!(f.turn((1, 1), (2, 0), (3, -1)) && f.turn((2, -1), (2, 0), (1, 0)), "the two do not go on");
+        assert!(!f.turn((1, 1), (2, 0), (1, 0)) && !f.turn((2, -1), (2, 0), (3, -1)), "the two turn into each other");
     }
 }

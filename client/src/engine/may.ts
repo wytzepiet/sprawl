@@ -189,7 +189,7 @@ export function snap(dx: number, dy: number): number {
 
 /** May the hand take this step with this tool, and priority or not
  *  (`Build.road`): the world's rule. */
-export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord, road = false): boolean {
+export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord, road = false, goesOn = false): boolean {
   if (tool === "Light") return mayAt(h, tool, from, 0, to, 0);
   if (tool === "Demolish") {
     if (from.x === to.x && from.y === to.y) return h.roads.has(key(to.x, to.y)) || h.occupied.has(key(to.x, to.y));
@@ -197,7 +197,7 @@ export function may(h: Hand, tool: Tool, from: GridCoord, to: GridCoord, road = 
   }
   // Into a building is its door, and a through road is no door.
   if (road && h.occupied.has(key(to.x, to.y))) return false;
-  return mayLay(h, from, to, tool === "OneWay" || tool === "Wide");
+  return mayLay(h, from, to, tool === "OneWay" || tool === "Wide", goesOn);
 }
 
 /** May a drag start here: a tap that does something, or a step out. */
@@ -340,7 +340,7 @@ function slopeTakes(h: Hand, at: GridCoord, height: number, side: Side, [dx, dy]
 /** `World::may_lay_at`, and the demolisher at a height and side: the
  *  hand's step from one tile at one height and side to the next at
  *  another. In the ground's middles, `may`. */
-export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number, road = false, [sf, st]: [Side, Side] = [MIDDLE, MIDDLE]): boolean {
+export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number, road = false, [sf, st]: [Side, Side] = [MIDDLE, MIDDLE], goesOn = false): boolean {
   const [na, nb] = [nodeIn(h, from, hf, sf), nodeIn(h, to, ht, st)];
   // Lights, on a junction or off one: a tap.
   if (tool === "Light") return from.x === to.x && from.y === to.y && !!nb && new Set([...nb.node.outgoing, ...nb.node.incoming]).size > 2;
@@ -358,7 +358,7 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
   if (oneWay && na && nb && edge(na, nb) && !edge(nb, na) && na.node.wide.includes(nb.id) !== (tool === "Wide")) return tool !== "Wide" || middles;
   if (tool === "Wide" && !middles) return false;
   if ((dx === 0 && dy === 0) || Math.abs(dx) > 1 || Math.abs(dy) > 1 || hf > TOP || ht > TOP) return false;
-  if (hf === 0 && ht === 0 && middles) return may(h, tool, from, to, road) && roomAt(h, from, 0) && roomAt(h, to, 0);
+  if (hf === 0 && ht === 0 && middles) return may(h, tool, from, to, road, goesOn) && roomAt(h, from, 0) && roomAt(h, to, 0);
   // Level, a slope's end, or one slope on to the next (`World::may_lay_at`).
   const on = hf % 2 === 1 && ht % 2 === 1 && Math.abs(hf - ht) === 2;
   if ((Math.abs(hf - ht) > 1 && !on) || (hf === ht && hf % 2 === 1)) return false;
@@ -387,7 +387,8 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
     const crossed = nodesOn(h, p).some(([hp, np]) => nodesOn(h, q).some(([hq, nq]) => (edge(np, nq) || edge(nq, np)) && Math.abs(hp + hq - (hf + ht)) < 4));
     if (crossed) return false;
   }
-  return !(na && leadsNowhere(h, na, from, dx, dy, !oneWay, true)) && !(nb && leadsNowhere(h, nb, to, -dx, -dy, true, !oneWay));
+  // A drag that may go on from `to` may lead its cars on (`World::leads_nowhere`).
+  return !(na && leadsNowhere(h, na, from, dx, dy, !oneWay, true)) && !(nb && leadsNowhere(h, nb, to, -dx, -dy, !goesOn, !oneWay && !goesOn));
 }
 
 /** `World::leads_nowhere`: would a new arm here this way lead nowhere,
@@ -444,7 +445,7 @@ function connected(h: Hand, a: GridCoord, b: GridCoord): boolean {
 }
 
 /** `World::may_lay`. */
-function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boolean {
+function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean, goesOn = false): boolean {
   const [dx, dy] = [to.x - from.x, to.y - from.y];
   if ((dx === 0 && dy === 0) || Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
   // Not over water, down onto a beach or up a mountain, unless a road
@@ -462,7 +463,7 @@ function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boole
   if (dx !== 0 && dy !== 0 && connected(h, { x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy })) return false;
   // Out of `from` and in to `to`, and back too unless it is one way.
   const [nf, nt] = [nodeAt(h, from), nodeAt(h, to)];
-  return !(nf && leadsNowhere(h, nf, from, dx, dy, !oneWay, true)) && (!!into || !(nt && leadsNowhere(h, nt, to, -dx, -dy, true, !oneWay)));
+  return !(nf && leadsNowhere(h, nf, from, dx, dy, !oneWay, true)) && (!!into || !(nt && leadsNowhere(h, nt, to, -dx, -dy, !goesOn, !oneWay && !goesOn)));
 }
 
 /** `World::enters`: may a drive run from `from` onto `to` of a plot

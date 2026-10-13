@@ -235,6 +235,13 @@ impl World {
     /// at another: the ground's rule (`may_lay`) where both ends are in the
     /// ground's middles.
     pub fn may_lay_at(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool) -> bool {
+        self.may_lay_at_on(from, hf, sf, to, ht, st, one_way, None)
+    }
+
+    /// `may_lay_at`, a drag going on from `to` that way, if it does
+    /// (`World::leads_nowhere`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn may_lay_at_on(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool, goes_on: Option<(i32, i32)>) -> bool {
         let (dx, dy) = (to.x - from.x, to.y - from.y);
         if (dx, dy) == (0, 0) || dx.abs() > 1 || dy.abs() > 1 || hf > TOP || ht > TOP {
             return false;
@@ -242,7 +249,7 @@ impl World {
         let middles = sf == MIDDLE && st == MIDDLE;
         // On the ground, the ground's rule, and a slope's clearance over it.
         if hf == 0 && ht == 0 && middles {
-            return self.may_lay(from, to, one_way) && self.room_at(from, 0, MIDDLE) && self.room_at(to, 0, MIDDLE);
+            return self.may_lay_on(from, to, one_way, goes_on) && self.room_at(from, 0, MIDDLE) && self.room_at(to, 0, MIDDLE);
         }
         // Level, a slope's end, or one slope on to the next; never a
         // level's jump.
@@ -293,8 +300,8 @@ impl World {
         if dx != 0 && dy != 0 && self.crossed(GridCoord { x: from.x + dx, y: from.y }, GridCoord { x: from.x, y: from.y + dy }, hf + ht) {
             return false;
         }
-        !self.node_in(from, hf, sf).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true))
-            && !self.node_in(to, ht, st).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way))
+        !self.node_in(from, hf, sf).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true, None))
+            && !self.node_in(to, ht, st).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way, goes_on))
     }
 
     /// Would a slope here take an arm this way to a node at `other`: it has

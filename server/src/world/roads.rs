@@ -75,7 +75,12 @@ impl World {
     /// turn sharper than a right angle, which no car makes
     /// (`pathfinding::may_turn`). A road may meet another at any angle as
     /// long as its cars can go on the shallow way; a hairpin, they cannot.
-    pub(super) fn leads_nowhere(&self, id: EntityId, (dx, dy): (i32, i32), arriving: bool, leaving: bool) -> bool {
+    /// `on`: the way the drag goes on from there, if it does: its cars go
+    /// on along it, if that is no sharp turn.
+    pub(super) fn leads_nowhere(&self, id: EntityId, (dx, dy): (i32, i32), arriving: bool, leaving: bool, on: Option<(i32, i32)>) -> bool {
+        if on.is_some_and(|(x, y)| x * dx + y * dy <= 0) {
+            return false;
+        }
         let Some(at) = self.objects.get(id).and_then(|e| e.position) else { return false };
         let arms: Vec<(EntityId, bool)> = self
             .arms_of(id, false)
@@ -195,6 +200,12 @@ impl World {
     /// mayor's hand is refused by and the map of where a road may go is
     /// drawn from.
     pub fn may_lay(&self, from: GridCoord, to: GridCoord, one_way: bool) -> bool {
+        self.may_lay_on(from, to, one_way, None)
+    }
+
+    /// `may_lay`, a drag going on from `to` that way, if it does
+    /// (`leads_nowhere`).
+    pub fn may_lay_on(&self, from: GridCoord, to: GridCoord, one_way: bool, on: Option<(i32, i32)>) -> bool {
         let (dx, dy) = (to.x - from.x, to.y - from.y);
         if (dx, dy) == (0, 0) || dx.abs() > 1 || dy.abs() > 1 {
             return false;
@@ -226,14 +237,11 @@ impl World {
         }
         // Out of `from` and in to `to`, and the other way too unless it is
         // one way. Into a building, nothing stands on its tile to turn from.
-        !self.road_node_at(from).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true))
-            && (into_building || !self.road_node_at(to).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way)))
+        !self.road_node_at(from).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true, None))
+            && (into_building || !self.road_node_at(to).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way, on)))
     }
 
     pub fn handle_place_road(&mut self, from: GridCoord, to: GridCoord, one_way: bool, road: bool) {
-        if !self.may_lay(from, to, one_way) {
-            return;
-        }
         // Into a building is its door, moved here: the street it runs
         // from is laid, and nothing on the building's tile.
         if let Some(id) = self.claimed_plot_at(to) {

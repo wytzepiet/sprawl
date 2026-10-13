@@ -751,8 +751,7 @@ mod tests {
             .unwrap();
         world.handle_place_road(GridCoord { x: 2, y: 1 }, GridCoord { x: 2, y: 0 }, false, false);
 
-        world.handle_place_road(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false, false);
-        assert!(world.road_node_at(GridCoord { x: 3, y: 0 }).is_none(), "the road stops at the door");
+        assert!(!world.may_lay(GridCoord { x: 2, y: 0 }, GridCoord { x: 3, y: 0 }, false), "the road stops at the door");
     }
 
     #[test]
