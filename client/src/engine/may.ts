@@ -303,28 +303,51 @@ export function sidesBeside(h: Hand, t: GridCoord, height: number): Side[] {
 }
 
 /** `World::keeps_clear`: would a road on this side of a tile, given an
- *  arm this way, keep clear of the one beside it: their ways out that the
- *  other has not not taking turns round the tile, each bending toward its
- *  own side, the other's judged once this one is through the tile. */
-function keepsClear(h: Hand, t: GridCoord, height: number, side: Side, way: [number, number]): boolean {
+ *  arm this way to a road on the `there` side of the next tile, keep clear
+ *  of the one beside it: where each crosses the tile's edge, halfway to the
+ *  road it runs to, never taking turns round the tile with the other's, and
+ *  their ways, edge in, by where each stands, to edge out, not touching. */
+function keepsClear(h: Hand, t: GridCoord, height: number, side: Side, way: [number, number], g: number, there: Side): boolean {
   const beside = nodeIn(h, t, height, otherSide(side)) ?? movesOver(h, t, height, side);
   if (!beside) return false;
+  const [me, them] = [spot(t, side), spot(t, otherSide(side))];
+  const half = (p: Pt, q: Pt): Pt => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+  // Where each road there stands once the new one is laid: on the next
+  // tile, a road on a side moves the middle one over too.
+  const far = { x: t.x + way[0], y: t.y + way[1] };
+  const moving = isMiddle(there) ? undefined : movesOver(h, far, g, there);
+  const pos = (id: number): Pt | undefined => {
+    if (id === moving?.id) return spot(far, otherSide(there));
+    const p = h.at.get(id);
+    const n = p && nodesOn(h, p).find(([, n]) => n.id === id)?.[1];
+    return n && spot(p, n.node.side ?? MIDDLE);
+  };
+  const edges = (n: Node, from: Pt) => [...new Set([...n.node.outgoing, ...n.node.incoming])].sort((a, b) => a - b).flatMap((id) => (pos(id) ? [half(from, pos(id)!)] : []));
   const mine = nodeIn(h, t, height, side);
-  const same = (a: [number, number], b: [number, number]) => a[0] === b[0] && a[1] === b[1];
-  const all = mine ? stepsOf(h, t, mine) : [];
-  if (!all.some((s) => same(s, way))) all.push(way);
-  const theirs0 = stepsOf(h, t, beside);
-  const only = (a: [number, number][], b: [number, number][]) => a.filter((s) => !b.some((o) => same(s, o)));
-  const [ours, theirs] = [only(all, theirs0), only(theirs0, all)];
-  const sum = (v: [number, number][]): [number, number] => v.reduce(([x, y], s) => [x + s[0], y + s[1]], [0, 0]);
-  return !alternate(ours, theirs) && toward(sum(ours), side) >= 0 && (all.length < 2 || toward(sum(theirs), side) <= 0);
+  const ours = mine ? edges(mine, me) : [];
+  const fresh = half(me, spot(far, there));
+  if (!ours.some((p) => Math.abs(p[0] - fresh[0]) + Math.abs(p[1] - fresh[1]) < 1e-6)) ours.push(fresh);
+  const theirs = edges(beside, them);
+  const path = (e: Pt[], at: Pt): Pt[] => (e.length === 2 ? [e[0], at, e[1]] : e.length === 1 ? [e[0], at] : [at]);
+  return !alternate(spot(t), ours, theirs) && !touch(path(ours, me), path(theirs, them));
 }
 
-/** `decks::alternate`: do two sets of ways out of a tile take turns round
- *  it: two roads through it whose ways cross. */
-function alternate(a: [number, number][], b: [number, number][]): boolean {
-  const all = [...a.map((s) => [Math.atan2(-s[1], s[0]), 1]), ...b.map((s) => [Math.atan2(-s[1], s[0]), 0])].sort((p, q) => p[0] - q[0]);
+type Pt = [number, number];
+
+/** `decks::alternate`: do two roads' points on a tile's edge take turns
+ *  round its middle: their ways cross. */
+function alternate(c: Pt, a: Pt[], b: Pt[]): boolean {
+  const angle = (p: Pt) => Math.atan2(-(p[1] - c[1]), p[0] - c[0]);
+  const all = [...a.map((p) => [angle(p), 1]), ...b.map((p) => [angle(p), 0])].sort((p, q) => p[0] - q[0]);
   return all.filter((p, i) => p[1] !== all[(i + 1) % all.length][1]).length > 2;
+}
+
+/** `decks::touch`: do two ways across a tile, each a line through its
+ *  points, touch. */
+function touch(a: Pt[], b: Pt[]): boolean {
+  const side = (p: Pt, q: Pt, r: Pt) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const segs = (v: Pt[]) => v.slice(1).map((q, i) => [v[i], q] as const);
+  return segs(a).some(([p, q]) => segs(b).some(([r, s]) => side(p, q, r) * side(p, q, s) <= 0 && side(r, s, p) * side(r, s, q) <= 0));
 }
 
 /** `World::room_at`. */
@@ -378,15 +401,13 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
   const on = hf % 2 === 1 && ht % 2 === 1 && Math.abs(hf - ht) === 2;
   if ((Math.abs(hf - ht) > 1 && !on) || (hf === ht && hf % 2 === 1)) return false;
   if (!roomAt(h, from, hf, sf) || !roomAt(h, to, ht, st)) return false;
-  // A road on a side: along its run one way, on to the road on its own
-  // side or the middle; or, straight on and once there, out toward its
-  // side (`World::may_lay_at`).
-  for (const [at, height, side, way, there, n] of [[from, hf, sf, [dx, dy], st, na], [to, ht, st, [-dx, -dy], sf, nb]] as const) {
+  // A road on a side: one way, but for a road joining it from its own
+  // side, clear of the one beside it (`World::may_lay_at`).
+  for (const [at, height, side, way, g, there, n] of [[from, hf, sf, [dx, dy], ht, st, na], [to, ht, st, [-dx, -dy], hf, sf, nb]] as const) {
     if (isMiddle(side)) continue;
     const w = way as [number, number];
     const joins = !!n && toward(w, side) > 0;
-    if ((!oneWay && !joins) || (n && new Set([...n.node.outgoing, ...n.node.incoming]).size > 2) || !keepsClear(h, at, height, side, w)) return false;
-    if (!isMiddle(there) && toward(there, side) <= 0) return false;
+    if ((!oneWay && !joins) || (n && new Set([...n.node.outgoing, ...n.node.incoming]).size > 2) || !keepsClear(h, at, height, side, w, g, there as Side)) return false;
   }
   for (const [t, height] of [[from, hf], [to, ht]] as const) {
     const g = h.ground(t.x, t.y);
@@ -407,7 +428,7 @@ function leadsNowhere(h: Hand, here: Node, at: GridCoord, dx: number, dy: number
   const byId = (id: number) => [nodeAt(h, h.at.get(id) ?? at), ...[...(h.decks?.values() ?? [])]].find((n) => n?.id === id);
   const ways = arms(here.node, false).flatMap((id) => {
     const p = h.at.get(id);
-    if (!p || (p.x - at.x === dx && p.y - at.y === dy)) return [];
+    if (!p) return [];
     const out = here.node.outgoing.includes(id);
     const into = !!byId(id)?.node.outgoing.includes(here.id) || here.node.incoming.includes(id);
     return [{ out, into, shallow: (p.x - at.x) * dx + (p.y - at.y) * dy <= 0 }];

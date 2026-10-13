@@ -21,10 +21,10 @@
 //! (`RoadNode::side`), a thin road beside the other. A one-way running
 //! through a tile moves over when another is laid beside it, and back when
 //! that one goes. Two on one tile keep clear of each other
-//! (`World::keeps_clear`): their ways through it never cross, and each
-//! bends, if it does, toward its own side. So they run on side by side,
-//! straight or round a bend, one inside it and the other out; and the one
-//! outside a bend may go on straight past it. A road joins one on a side
+//! (`World::keeps_clear`): drawn as they lie, edge to node to edge, their
+//! ways through it never cross. So they run on side by side, straight or
+//! round a bend, one inside it and the other out; and the one outside a
+//! bend may go on straight past it, or away round it. A road joins one on a side
 //! from that side, and ends there; never from the other side, which the
 //! road beside it is in the way of.
 //!
@@ -79,15 +79,27 @@ fn gcd(a: i32, b: i32) -> i32 {
 /// Crossings' ids (`World::crossing_of`): apart from every entity's.
 pub const CROSSINGS: EntityId = 1 << 62;
 
-/// Do two sets of ways out of a tile take turns round it, one of each and
-/// one of each again: two roads through it whose ways cross.
-fn alternate(a: &[(i32, i32)], b: &[(i32, i32)]) -> bool {
-    let angle = |(x, y): (i32, i32)| (-(y as f64)).atan2(x as f64);
-    let mut all: Vec<(f64, bool)> = a.iter().map(|&s| (angle(s), true)).chain(b.iter().map(|&s| (angle(s), false))).collect();
+/// Where a road on a side of a tile stands (`World::node_pos`).
+pub(crate) fn spot(at: GridCoord, side: Side) -> [f64; 2] {
+    let [sx, sy] = side.map(f64::from);
+    let by = if sx == 0.0 && sy == 0.0 { 0.0 } else { SIDE_OFFSET / (sx * sx + sy * sy).sqrt() };
+    [at.x as f64 + 0.5 + sx * by, at.y as f64 + 0.5 + sy * by]
+}
+
+/// Do two roads' points on a tile's edge take turns round its middle, one
+/// of each and one of each again: their ways cross.
+fn alternate(centre: [f64; 2], a: &[[f64; 2]], b: &[[f64; 2]]) -> bool {
+    let angle = |p: &[f64; 2]| (-(p[1] - centre[1])).atan2(p[0] - centre[0]);
+    let mut all: Vec<(f64, bool)> = a.iter().map(|p| (angle(p), true)).chain(b.iter().map(|p| (angle(p), false))).collect();
     all.sort_by(|p, q| p.0.total_cmp(&q.0));
-    // Round the tile, how often it changes from one set's to the other's.
     let changes = (0..all.len()).filter(|&i| all[i].1 != all[(i + 1) % all.len()].1).count();
     changes > 2
+}
+
+/// Do two ways across a tile, each a line through its points, touch.
+fn touch(a: &[[f64; 2]], b: &[[f64; 2]]) -> bool {
+    let side = |p: [f64; 2], q: [f64; 2], r: [f64; 2]| (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+    a.windows(2).any(|s| b.windows(2).any(|t| side(s[0], s[1], t[0]) * side(s[0], s[1], t[1]) <= 0.0 && side(t[0], t[1], s[0]) * side(t[0], t[1], s[1]) <= 0.0))
 }
 
 /// How far apart two nodes on one tile must stand: a level, and a level
@@ -165,34 +177,46 @@ impl World {
         (one_lane && (side == way || side == other(way))).then_some(id)
     }
 
-    /// Would a road on this side of a tile, given an arm this way, keep
-    /// clear of the one beside it: their ways through the tile not
-    /// crossing, the ways out each has that the other has not taking turns
-    /// round the tile; each bending, if it does, toward its own side, never
-    /// into the other's. Two side by side along one run share their ways
-    /// out, and keep clear round any bend; one may go on straight past the
-    /// other's bend, on the outside of it. With nothing beside it, a road
-    /// stands in the middle.
-    pub(crate) fn keeps_clear(&self, at: GridCoord, h: u8, side: Side, way: (i32, i32)) -> bool {
+    /// Would a road on this side of a tile, given an arm this way to a road
+    /// standing on the `there` side of the next tile, keep clear of the one
+    /// beside it, as they lie: where each crosses the tile's edge, halfway
+    /// to the road it runs to, never taking turns round the tile with the
+    /// other's; and their ways, each from where it crosses the edge in by
+    /// where it stands to where it crosses out, not touching.
+    /// So two run on side by side, straight or round a bend, one inside it
+    /// and the other out, and the one outside may go on past the other's
+    /// bend, or away round it. With nothing beside it, a road stands in the
+    /// middle.
+    pub(crate) fn keeps_clear(&self, at: GridCoord, h: u8, side: Side, way: (i32, i32), (g, there): (u8, Side)) -> bool {
         let Some(beside) = self.node_in(at, h, other(side)).or_else(|| self.moves_over(at, h, side)) else { return false };
-        let steps = |id: EntityId| {
+        let (me, them) = (spot(at, side), spot(at, other(side)));
+        let half = |p: [f64; 2], q: [f64; 2]| [(p[0] + q[0]) / 2.0, (p[1] + q[1]) / 2.0];
+        // Where each road there stands once the new one is laid: on the
+        // next tile, a road on a side moves the middle one over too.
+        let far = GridCoord { x: at.x + way.0, y: at.y + way.1 };
+        let moving = if there == MIDDLE { None } else { self.moves_over(far, g, there) };
+        let pos = |a: EntityId| if Some(a) == moving { Some(spot(far, other(there))) } else { self.node_pos(a) };
+        let edges = |id: EntityId, from: [f64; 2]| {
             let mut arms = self.arms_of(id, false);
             arms.sort_unstable();
             arms.dedup();
-            self.steps_to(id, &arms).unwrap_or_default()
+            arms.into_iter().filter_map(pos).map(|q| half(from, q)).collect::<Vec<_>>()
         };
-        let mut ours = self.node_in(at, h, side).map(steps).unwrap_or_default();
-        if !ours.contains(&way) {
-            ours.push(way);
+        let mut ours = self.node_in(at, h, side).map_or_else(Vec::new, |id| edges(id, me));
+        let new = half(me, spot(far, there));
+        if !ours.iter().any(|p| (p[0] - new[0]).abs() + (p[1] - new[1]).abs() < 1e-6) {
+            ours.push(new);
         }
-        let theirs = steps(beside);
-        // One way in so far, it is not yet known where it goes: the other's
-        // bend is judged against it once it has its way on.
-        let through = ours.len() >= 2;
-        let only = |a: &[(i32, i32)], b: &[(i32, i32)]| a.iter().copied().filter(|s| !b.contains(s)).collect::<Vec<_>>();
-        let (ours, theirs) = (only(&ours, &theirs), only(&theirs, &ours));
-        let sum = |v: &[(i32, i32)]| v.iter().fold((0, 0), |(x, y), s| (x + s.0, y + s.1));
-        !alternate(&ours, &theirs) && toward(sum(&ours), side) >= 0 && (!through || toward(sum(&theirs), side) <= 0)
+        let theirs = edges(beside, them);
+        let centre = [at.x as f64 + 0.5, at.y as f64 + 0.5];
+        // Each way as it runs: from where it crosses the edge in, by where
+        // it stands, to where it crosses out.
+        let path = |edge: &[[f64; 2]], at: [f64; 2]| match edge {
+            [a, b] => vec![*a, at, *b],
+            [a] => vec![*a, at],
+            _ => vec![at],
+        };
+        !alternate(centre, &ours, &theirs) && !touch(&path(&ours, me), &path(&theirs, them))
     }
 
     /// The steps from a node to each of these, by their tiles.
@@ -293,18 +317,14 @@ impl World {
         }
         // A road on a side keeps clear of the one beside it (`keeps_clear`),
         // one way, but for a road joining it from its own side, which ends
-        // there; and goes on to the road on its own side or the middle, not
-        // across to the other.
-        for (at, h, side, way, there) in [(from, hf, sf, (dx, dy), st), (to, ht, st, (-dx, -dy), sf)] {
+        // there.
+        for (at, h, side, way, there) in [(from, hf, sf, (dx, dy), (ht, st)), (to, ht, st, (-dx, -dy), (hf, sf))] {
             if side == MIDDLE {
                 continue;
             }
             let mine = self.node_in(at, h, side);
             let joins = mine.is_some() && toward(way, side) > 0;
-            if (!one_way && !joins) || mine.is_some_and(|id| self.unique_connection_count(id) > 2) || !self.keeps_clear(at, h, side, way) {
-                return false;
-            }
-            if there != MIDDLE && toward((there[0] as i32, there[1] as i32), side) <= 0 {
+            if (!one_way && !joins) || mine.is_some_and(|id| self.unique_connection_count(id) > 2) || !self.keeps_clear(at, h, side, way, there) {
                 return false;
             }
         }

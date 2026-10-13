@@ -87,9 +87,7 @@ impl World {
             .into_iter()
             .filter_map(|nid| {
                 let p = self.objects.get(nid)?.position?;
-                let (x, y) = (p.x - at.x, p.y - at.y);
-                // An arm to the tile the new one goes to is that road itself.
-                ((x, y) != (dx, dy)).then_some((nid, x * dx + y * dy <= 0))
+                Some((nid, (p.x - at.x) * dx + (p.y - at.y) * dy <= 0))
             })
             .collect();
         let none = |out: bool| {
@@ -502,6 +500,7 @@ mod tests {
         const NORTH: Side = [0, -1];
         const SOUTH: Side = [0, 1];
         assert!(!world.may_lay(at(6, 0), at(5, 0), true), "not into the same middles");
+        assert!(!world.may_lay_at(at(6, 0), 0, NORTH, at(5, 0), 0, SOUTH, true), "not across it from side to side");
         for x in (1..10).rev() {
             assert!(world.may_lay_at(at(x, 0), 0, NORTH, at(x - 1, 0), 0, NORTH, true), "westward at {x}, beside it");
             world.place_road_at(at(x, 0), 0, NORTH, at(x - 1, 0), 0, NORTH, true, false);

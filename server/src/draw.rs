@@ -224,7 +224,7 @@ fn beside(world: &World, at: GridCoord, h: u8, inn: Option<Step>, out: Option<St
         (None, None, None) => out.map_or(0, |o| toward(right(o), s)),
     };
     let s = if toward_s(way) > 0 { way } else { other(way) };
-    if world.moves_over(at, h, s).is_some() { vec![s] } else { Vec::new() }
+    [s, other(s)].into_iter().filter(|&s| world.moves_over(at, h, s).is_some()).collect()
 }
 
 /// Does a road run this way through a node: out by an arm that way, or in
@@ -440,5 +440,39 @@ mod tests {
         draw(&mut f.world, &mut f.events, &mut f.intersections, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side }) }, 0);
         assert!(f.world.road_node_at(GridCoord { x: 2, y: 0 }).is_some(), "the outer road could not go on past the bend");
         assert_eq!(pair(&f), 2, "the pair came apart");
+    }
+
+    #[test]
+    fn a_pair_parts_one_round_a_bend_and_one_down_a_diagonal() {
+        // Two pairs a row apart, and between them, from the lower pair's
+        // westbound road, one up a step and on east along the upper pair,
+        // and from the upper pair's westbound road, one on west and down a
+        // diagonal to the lower's. On the tile they share, each keeps to
+        // its own side, whichever is drawn first.
+        for up_first in [true, false] {
+            let mut f = Field::new();
+            f.drag(Tool::OneWay, &[(0, -4), (1, -4), (2, -4), (3, -4), (4, -4), (5, -4), (6, -4), (7, -4), (8, -4), (9, -4), (10, -4)]);
+            f.drag(Tool::OneWay, &[(10, -4), (9, -4), (8, -4), (7, -4), (6, -4), (5, -4), (4, -4), (3, -4), (2, -4), (1, -4), (0, -4)]);
+            let westbound = f.world.nodes_on(GridCoord { x: 4, y: -4 }).into_iter().map(|(_, id)| f.world.side_of(id)).find(|s| s[1] < 0).unwrap();
+            let up = |f: &mut Field| {
+                f.id += 1;
+                let tiles = [(4, -4), (4, -5), (5, -5), (6, -5), (7, -5), (8, -5), (9, -5)];
+                for n in 2..=tiles.len() {
+                    let spots = tiles[..n].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
+                    draw(&mut f.world, &mut f.events, &mut f.intersections, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side: westbound }) }, 0);
+                }
+            };
+            let down = |f: &mut Field| f.drag(Tool::OneWay, &[(9, -5), (8, -5), (7, -5), (6, -5), (5, -5), (4, -5), (3, -4)]);
+            if up_first {
+                up(&mut f);
+                down(&mut f);
+            } else {
+                down(&mut f);
+                up(&mut f);
+            }
+            for (x, y) in [(4, -5), (9, -5)] {
+                assert_eq!(f.world.nodes_on(GridCoord { x, y }).len(), 2, "({x}, {y}) not a pair, up first: {up_first}");
+            }
+        }
     }
 }

@@ -424,4 +424,26 @@ describe("one-ways side by side", () => {
     expect(t.on(2, 5)).toHaveLength(1);
     expect(t.on(4, 5)).toHaveLength(2);
   });
+
+  // Two pairs a row apart, and between them, from the lower pair's
+  // westbound road, one up a step and east along the upper pair, and from
+  // the upper pair's westbound road, one on west and down a diagonal to
+  // the lower's: on the tile they share, each keeps to its own side.
+  for (const first of ["up", "down"])
+    test(`a pair parting, one round a bend and one down a diagonal, ${first} first`, () => {
+      const t = new Table();
+      t.drag("OneWay", [0, 4], [10, 4]);
+      t.drag("OneWay", [10, 4], [0, 4]);
+      const up = () => {
+        // Pressed on the westbound road, on the north of its tile.
+        t.hand.press({ x: 4, y: -4 }, 4.5, -3.67);
+        expect([{ x: 4, y: -5 }, ...[5, 6, 7, 8, 9].map((x) => ({ x, y: -5 }))].every((s) => t.hand.step(s))).toBe(true);
+        t.hand.release();
+      };
+      const down = () => expect(t.drag("OneWay", [9, 5], [4, 5], [3, 4])).toBe(0);
+      for (const d of first === "up" ? [up, down] : [down, up]) d();
+      expect(t.broken()).toEqual([]);
+      expect(t.on(4, 5)).toHaveLength(2);
+      expect(t.on(9, 5)).toHaveLength(2);
+    });
 });
