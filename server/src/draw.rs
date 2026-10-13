@@ -163,8 +163,11 @@ fn starts(world: &World, stroke: &Stroke, tiles: &[GridCoord]) -> Vec<Place> {
 
 /// Where tile `i` of the drag stands, coming from one of `froms` on the
 /// tile before: the first of what may be that the world allows, alone or
-/// with the drag's next step where it is drawn already, and which of
-/// `froms` it came from; none, where nothing may.
+/// with the drag's next step, and which of `froms` it came from; none,
+/// where nothing may. The next step is where it is drawn already; at the
+/// drag's end, where it is likeliest to go: on along the road it goes
+/// beside, as a drag round the inside of a bend beside another must have
+/// that road's next stretch moved over to fit.
 fn plan(world: &World, stroke: &Stroke, tiles: &[GridCoord], i: usize, froms: &[Place]) -> Option<(Place, Place)> {
     let (from, to) = (tiles[i - 1], tiles[i]);
     for &pf in froms {
@@ -178,10 +181,19 @@ fn plan(world: &World, stroke: &Stroke, tiles: &[GridCoord], i: usize, froms: &[
                     return Some((pf, pt));
                 }
                 // Laid with the next, as a drag beside a road moves it over.
-                let Some(&next) = tiles.get(i + 1) else { continue };
-                let thens = heights(world, next, h, stroke.tiles[i + 1].want).into_iter().flat_map(|g| sides(world, stroke.tool, tiles, i + 1, g, pt).into_iter().map(move |s| (next, g, s)));
-                if thens.into_iter().any(|then| may(world, stroke, from, pf, to, pt, on, Some(then))) {
-                    return Some((pf, pt));
+                let ahead: Vec<GridCoord> = match tiles.get(i + 1) {
+                    Some(&next) => vec![next],
+                    None => world.moving_over(to, h, s).into_iter().flat_map(|(m, _)| world.arms_of(m, false)).filter_map(|a| world.objects.get(a)?.position).filter(|&t| t != from).collect(),
+                };
+                for next in ahead {
+                    let mut on_to = tiles.to_vec();
+                    on_to.truncate(i + 1);
+                    on_to.push(next);
+                    let want = stroke.tiles.get(i + 1).unwrap_or(&stroke.tiles[i]).want;
+                    let thens: Vec<End> = heights(world, next, h, want).into_iter().flat_map(|g| sides(world, stroke.tool, &on_to, i + 1, g, pt).into_iter().map(move |s| (next, g, s))).collect();
+                    if thens.into_iter().any(|then| may(world, stroke, from, pf, to, pt, on, Some(then))) {
+                        return Some((pf, pt));
+                    }
                 }
             }
         }
@@ -533,6 +545,24 @@ mod tests {
             for (x, y) in [(4, -5), (9, -5)] {
                 assert_eq!(f.world.nodes_on(GridCoord { x, y }).len(), 2, "({x}, {y}) not a pair, up first: {up_first}");
             }
+        }
+    }
+
+    /// A one-way round a corner, and one drawn back against it along the
+    /// same tiles: round the inside of the corner or the outside, as it
+    /// keeps to its own side, all the way round either way.
+    #[test]
+    fn a_pair_goes_round_a_corner_inside_or_out() {
+        for turn in [-1, 1] {
+            let mut f = Field::new();
+            let first: Vec<(i32, i32)> = (3..=9).rev().map(|x| (x, -8)).chain((1..7).map(|k| (3, -8 + turn * k))).collect();
+            f.drag(Tool::OneWay, &first);
+            let back: Vec<(i32, i32)> = first.iter().rev().copied().collect();
+            f.drag(Tool::OneWay, &back);
+            for &(x, y) in &first[1..first.len() - 1] {
+                assert_eq!(f.world.nodes_on(GridCoord { x, y }).len(), 2, "({x}, {y}) not a pair, turning {turn}");
+            }
+            assert!(f.world.clashing().is_empty(), "roads run into each other, turning {turn}");
         }
     }
 }

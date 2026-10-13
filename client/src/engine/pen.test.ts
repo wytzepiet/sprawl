@@ -151,6 +151,18 @@ describe("one-ways side by side", () => {
     expect(t.on(3, 8)).toHaveLength(2);
   });
 
+  // A one-way round a corner, then one back against it along the same
+  // tiles: the second goes round the inside of the corner or the outside,
+  // as it keeps to its own side, and either way all the way round.
+  for (const [name, path] of [["left", [[3, 2], [3, 8], [9, 8]]], ["right", [[9, 8], [3, 8], [3, 2]]]] as [string, [number, number][]][])
+    test(`a pair round a ${name}-hand corner, the second drawn on after`, () => {
+      const t = new Table();
+      expect(t.drag("OneWay", ...path)).toBe(0);
+      expect(t.drag("OneWay", ...[...path].reverse())).toBe(0);
+      expect(t.broken()).toEqual([]);
+      for (const [x, y] of [[3, 3], [3, 7], [3, 8], [4, 8], [8, 8]]) expect(t.on(x, y)).toHaveLength(2);
+    });
+
   test("a pair drawn on: the drag starts at one's end and goes on", () => {
     const t = new Table();
     t.drag("OneWay", [2, 5], [8, 5]);
