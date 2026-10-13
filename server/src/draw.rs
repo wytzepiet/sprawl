@@ -421,4 +421,24 @@ mod tests {
         assert!(f.turn((1, 1), (2, 0), (3, -1)) && f.turn((2, -1), (2, 0), (1, 0)), "the two do not go on");
         assert!(!f.turn((1, 1), (2, 0), (1, 0)) && !f.turn((2, -1), (2, 0), (3, -1)), "the two turn into each other");
     }
+
+    /// A pair round a bend: the one on the outside may go on straight
+    /// past the other's bend, keeping clear of it; the one on the inside
+    /// may not cut across it.
+    #[test]
+    fn the_outside_of_a_pair_goes_on_past_its_bend() {
+        let mut f = Field::new();
+        f.drag(Tool::OneWay, &[(8, 0), (7, 0), (6, 0), (5, 0), (4, 0), (4, 1), (4, 2), (4, 3)]);
+        f.drag(Tool::OneWay, &[(4, 3), (4, 2), (4, 1), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0)]);
+        let pair = |f: &Field| f.world.nodes_on(GridCoord { x: 4, y: 0 }).len();
+        assert_eq!(pair(&f), 2, "no pair round the bend");
+        // The westbound one, outside the bend, drawn on west.
+        let outer = f.world.nodes_on(GridCoord { x: 4, y: 0 }).into_iter().map(|(_, id)| id).find(|&id| f.world.arms_of(id, false).len() == 1 || f.world.side_of(id)[1] < 0).unwrap();
+        let side = f.world.side_of(outer);
+        f.id += 1;
+        let spots = [(4, 0), (3, 0), (2, 0)].iter().map(|&(x, y)| Spot { at: GridCoord { x, y }, want: 0 }).collect();
+        draw(&mut f.world, &mut f.events, &mut f.intersections, 1, Stroke { id: f.id, tool: Tool::OneWay, road: false, tiles: spots, start: Some(crate::protocol::Stand { h: 0, side }) }, 0);
+        assert!(f.world.road_node_at(GridCoord { x: 2, y: 0 }).is_some(), "the outer road could not go on past the bend");
+        assert_eq!(pair(&f), 2, "the pair came apart");
+    }
 }

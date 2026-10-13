@@ -302,14 +302,29 @@ export function sidesBeside(h: Hand, t: GridCoord, height: number): Side[] {
   return way ? [way, otherSide(way)].filter((s) => movesOver(h, t, height, s)) : [];
 }
 
-/** `World::bend_of`: the steps of the road a road on this side follows
- *  round a bend, the one beside it or that moves over for it; straight
- *  on, none. */
-function bendOf(h: Hand, t: GridCoord, height: number, side: Side): [number, number][] | undefined {
+/** `World::keeps_clear`: would a road on this side of a tile, given an
+ *  arm this way, keep clear of the one beside it: their ways out that the
+ *  other has not not taking turns round the tile, each bending toward its
+ *  own side, the other's judged once this one is through the tile. */
+function keepsClear(h: Hand, t: GridCoord, height: number, side: Side, way: [number, number]): boolean {
   const beside = nodeIn(h, t, height, otherSide(side)) ?? movesOver(h, t, height, side);
-  if (!beside) return undefined;
-  const steps = stepsOf(h, t, beside);
-  return steps.length === 2 && (steps[0][0] + steps[1][0] || steps[0][1] + steps[1][1]) ? steps : undefined;
+  if (!beside) return false;
+  const mine = nodeIn(h, t, height, side);
+  const same = (a: [number, number], b: [number, number]) => a[0] === b[0] && a[1] === b[1];
+  const all = mine ? stepsOf(h, t, mine) : [];
+  if (!all.some((s) => same(s, way))) all.push(way);
+  const theirs0 = stepsOf(h, t, beside);
+  const only = (a: [number, number][], b: [number, number][]) => a.filter((s) => !b.some((o) => same(s, o)));
+  const [ours, theirs] = [only(all, theirs0), only(theirs0, all)];
+  const sum = (v: [number, number][]): [number, number] => v.reduce(([x, y], s) => [x + s[0], y + s[1]], [0, 0]);
+  return !alternate(ours, theirs) && toward(sum(ours), side) >= 0 && (all.length < 2 || toward(sum(theirs), side) <= 0);
+}
+
+/** `decks::alternate`: do two sets of ways out of a tile take turns round
+ *  it: two roads through it whose ways cross. */
+function alternate(a: [number, number][], b: [number, number][]): boolean {
+  const all = [...a.map((s) => [Math.atan2(-s[1], s[0]), 1]), ...b.map((s) => [Math.atan2(-s[1], s[0]), 0])].sort((p, q) => p[0] - q[0]);
+  return all.filter((p, i) => p[1] !== all[(i + 1) % all.length][1]).length > 2;
 }
 
 /** `World::room_at`. */
@@ -369,11 +384,9 @@ export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: Grid
   for (const [at, height, side, way, there, n] of [[from, hf, sf, [dx, dy], st, na], [to, ht, st, [-dx, -dy], sf, nb]] as const) {
     if (isMiddle(side)) continue;
     const w = way as [number, number];
-    const bend = bendOf(h, at, height, side);
-    const along = bend ? bend.some(([x, y]) => x === w[0] && y === w[1]) : toward(w, side) === 0;
-    if (along) {
-      if (!oneWay || (!isMiddle(there) && toward(there, side) <= 0)) return false;
-    } else if (bend || toward(w, side) < 0 || (!oneWay && !n) || (n && new Set([...n.node.outgoing, ...n.node.incoming]).size > 2)) return false;
+    const joins = !!n && toward(w, side) > 0;
+    if ((!oneWay && !joins) || (n && new Set([...n.node.outgoing, ...n.node.incoming]).size > 2) || !keepsClear(h, at, height, side, w)) return false;
+    if (!isMiddle(there) && toward(there, side) <= 0) return false;
   }
   for (const [t, height] of [[from, hf], [to, ht]] as const) {
     const g = h.ground(t.x, t.y);

@@ -410,4 +410,18 @@ describe("one-ways side by side", () => {
     expect(t.broken()).toEqual([]);
     expect(t.on(8, 2)).toHaveLength(1);
   });
+
+  test("the outer road of a pair round a bend, drawn on past it", () => {
+    const t = new Table();
+    t.drag("OneWay", [8, 5], [4, 5], [4, 9]);
+    t.drag("OneWay", [4, 9], [4, 5], [8, 5]);
+    expect(t.on(4, 5)).toHaveLength(2);
+    // Pressed on the outer one, in the corner away from the bend, and on.
+    t.hand.press({ x: 4, y: -5 }, 4.2, -4.2);
+    expect([3, 2].every((x) => t.hand.step({ x, y: -5 }))).toBe(true);
+    t.hand.release();
+    expect(t.broken()).toEqual([]);
+    expect(t.on(2, 5)).toHaveLength(1);
+    expect(t.on(4, 5)).toHaveLength(2);
+  });
 });
