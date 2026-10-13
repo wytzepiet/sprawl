@@ -52,6 +52,8 @@ const TOOLS: { tool: Tool; key: string; name: string; label: string; glyph: stri
 ];
 /** The empty hand's arrow (`BuildModeToolbar`'s). */
 const LOOK = "M4 2.5l16 8-7 2-2.6 7.5z";
+/** A bin: everything taken up. */
+const CLEAR = "M9 3h6l1 2h4v2H4V5h4zM6 8h12l-1 13H7zM9.5 10.5v8h1.5v-8zM13 10.5v8h1.5v-8z";
 /** The priority road's sign, a diamond in a diamond. */
 const DIAMOND = "M12 1 23 12 12 23 1 12zM12 4.2 19.8 12 12 19.8 4.2 12z";
 const DIAMOND_IN = "M12 6.8 17.2 12 12 17.2 6.8 12z";
@@ -378,6 +380,14 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
             </button>
           )}
         </For>
+        {/* Every road built here taken up, the level as it began. */}
+        <button
+          class="press soft relative flex h-11 w-11 items-center justify-center rounded-full cursor-pointer"
+          title="Clear: take up every road you built here"
+          onClick={() => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" })}
+        >
+          <Glyph d={CLEAR} />
+        </button>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         {/* Priority: whatever road is drawn with it on has it. */}
         <button
