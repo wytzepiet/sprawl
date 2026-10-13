@@ -163,6 +163,22 @@ describe("one-ways side by side", () => {
       for (const [x, y] of [[3, 3], [3, 7], [3, 8], [4, 8], [8, 8]]) expect(t.on(x, y)).toHaveLength(2);
     });
 
+  // A two-way street split into a divided road: a one-way out of its end,
+  // and one back in beside it along the same tiles, both joined to it.
+  for (const outFirst of [true, false])
+    test(`a street split into a pair, the way ${outFirst ? "out" : "in"} first`, () => {
+      const t = new Table();
+      t.drag("Street", [2, 5], [6, 5]);
+      const out = (): number => t.drag("OneWay", [6, 5], [12, 5]);
+      const back = (): number => t.drag("OneWay", [12, 5], [6, 5]);
+      for (const d of outFirst ? [out, back] : [back, out]) expect(d()).toBe(0);
+      expect(t.broken()).toEqual([]);
+      for (let x = 7; x <= 11; x++) expect(t.on(x, 5)).toHaveLength(2);
+      const end = t.on(6, 5)[0];
+      expect(t.on(6, 5)).toHaveLength(1);
+      expect(new Set([...end.n.outgoing, ...end.n.incoming]).size).toBe(3);
+    });
+
   test("a pair drawn on: the drag starts at one's end and goes on", () => {
     const t = new Table();
     t.drag("OneWay", [2, 5], [8, 5]);

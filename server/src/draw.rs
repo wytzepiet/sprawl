@@ -565,4 +565,29 @@ mod tests {
             assert!(f.world.clashing().is_empty(), "roads run into each other, turning {turn}");
         }
     }
+
+    /// A street split into a divided road: a one-way out of its end and
+    /// one back in beside it along the same tiles, drawn either first, both
+    /// joined to the street's end.
+    #[test]
+    fn a_street_splits_into_a_pair() {
+        for out_first in [true, false] {
+            let mut f = Field::new();
+            f.drag(Tool::Street, &[(2, -5), (3, -5), (4, -5), (5, -5), (6, -5)]);
+            let out: Vec<(i32, i32)> = (6..=12).map(|x| (x, -5)).collect();
+            let back: Vec<(i32, i32)> = out.iter().rev().copied().collect();
+            for path in if out_first { [&out, &back] } else { [&back, &out] } {
+                f.drag(Tool::OneWay, path);
+            }
+            let end = f.node(6, -5);
+            let mut arms = f.world.arms_of(end, false);
+            arms.sort_unstable();
+            arms.dedup();
+            assert_eq!(arms.len(), 3, "the street's end joins both, out first: {out_first}");
+            for x in 7..=11 {
+                assert_eq!(f.world.nodes_on(GridCoord { x, y: -5 }).len(), 2, "({x}, -5) not a pair, out first: {out_first}");
+            }
+            assert!(f.world.clashing().is_empty(), "roads run into each other, out first: {out_first}");
+        }
+    }
 }

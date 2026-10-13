@@ -11,7 +11,8 @@
 //! from or to.
 //!
 //! Two roads keep clear where, all along them, they are their widths apart
-//! on the map or a level apart in height. Roads joined need not: two
+//! on the map, give or take their kerbs touching, or a level apart in
+//! height. Roads joined need not: two
 //! links that meet at a node are a junction there, whatever their angle
 //! (`World::leads_nowhere` says which angles cars may take). Nor two
 //! diagonal links across one corner: there they cross, their cars taking
@@ -35,6 +36,9 @@ pub(crate) const LANE: f64 = 0.13;
 pub(crate) const ROAD: f64 = 0.22;
 /// How far apart in height two roads must be to pass, in half-levels.
 const LEVEL: f64 = 2.0;
+/// How far two roads' edges may run into each other, in tiles: kerbs
+/// may touch where two lanes bend to meet a road, as they do drawn.
+const TOUCH: f64 = 0.02;
 const EPS: f64 = 1e-6;
 
 /// One end of a link: a tile, a height, a side.
@@ -209,7 +213,7 @@ fn clash(world: &Drawn, p: &Piece, q: &Piece) -> bool {
         return false;
     }
     let (d, s, t) = nearest(p.a, p.b, q.a, q.b);
-    if d >= p.half + q.half - EPS {
+    if d >= p.half + q.half - TOUCH {
         return false;
     }
     let (hp, hq) = (p.ha + (p.hb - p.ha) * s, q.ha + (q.hb - q.ha) * t);
