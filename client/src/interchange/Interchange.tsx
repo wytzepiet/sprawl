@@ -44,12 +44,17 @@ const TOOLS: { tool: Tool; key: string; name: string; label: string; glyph: stri
   { tool: "Street", key: "1", name: "Two-way", label: "A road both ways", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
   { tool: "OneWay", key: "2", name: "One-way", label: "Runs the way you drag; laid back against another, a divided road", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
   { tool: "Wide", key: "3", name: "Two lanes", label: "One-way, two lanes: cars keep right to turn right, left to turn left", glyph: "M1.5 2h2v20h-2zM20.5 2h2v20h-2zM8 4l3.5 5H9v12H7V9H4.5zM16 4l3.5 5H17v12h-2V9h-2.5z" },
-  { tool: "Light", key: "L", name: "Lights", label: "Tap a junction for traffic lights, again to take them away", glyph: "M8 1.5h8A1.5 1.5 0 0 1 17.5 3v18a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 21V3A1.5 1.5 0 0 1 8 1.5zM12 3.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 9.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 15.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z" },
-  { tool: "Demolish", key: "E", name: "Eraser", label: "Takes up road (or hold Shift)", glyph: "M14.5 2.5 21.5 9.5 11 20H6.5L2.5 16zM4.6 16 7.1 18.5h3.1l2.3-2.3-5.6-5.6zM13 20.5h8.5V22H13z" },
+  { tool: "Light", key: "4", name: "Lights", label: "Tap a junction for traffic lights, again to take them away", glyph: "M8 1.5h8A1.5 1.5 0 0 1 17.5 3v18a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 21V3A1.5 1.5 0 0 1 8 1.5zM12 3.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 9.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zM12 15.8a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z" },
+  { tool: "Demolish", key: "X", name: "Bulldozer", label: "Takes up road; hold Shift for it with any tool", glyph: "M3.5 16.5h11a2.25 2.25 0 0 1 0 4.5h-11a2.25 2.25 0 0 1 0-4.5zM5 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM9 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM13 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM4 12h11v3.5H4zM5.5 6.5h5l1.2 4.5H5.5zM6.7 7.7h3l.6 2.3H6.7zM15.5 13h2.5v1.5h-2.5zM18.5 10l3-1v12.5h-3z" },
 ];
 /** The priority road's sign, a diamond in a diamond. */
 const DIAMOND = "M12 1 23 12 12 23 1 12zM12 4.2 19.8 12 12 19.8 4.2 12z";
 const DIAMOND_IN = "M12 6.8 17.2 12 12 17.2 6.8 12z";
+
+/** A button's key, small in its corner. */
+function KeyCap(props: { children: string }) {
+  return <span class="absolute -right-0.5 -top-0.5 rounded-md px-1 text-[9px] font-bold leading-[14px]" style={{ background: "rgb(var(--ink) / 0.12)" }}>{props.children}</span>;
+}
 
 function Glyph(props: { d: string; fill?: string }) {
   return (
@@ -75,15 +80,17 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
     if (s.phase === "Done") keep(props.level.name, s.efficiency);
   };
   const onKey = (e: KeyboardEvent) => {
+    const key = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && key === "z") return line?.send({ type: "Undo" }), e.preventDefault();
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const t = TOOLS.find((t) => t.key.toLowerCase() === e.key.toLowerCase());
+    const t = TOOLS.find((t) => t.key.toLowerCase() === key);
     if (t) setTool(t.tool);
-    else if (e.key.toLowerCase() === "p") setPriority(!priority());
-    else if (e.key.toLowerCase() === "r") setPen(Math.min(3, pen() + 1));
-    else if (e.key.toLowerCase() === "f") setPen(Math.max(0, pen() - 1));
+    else if (key === "p") setPriority(!priority());
+    else if (e.key === "ArrowUp" || e.key === "PageUp") setPen(Math.min(3, pen() + 1)), e.preventDefault();
+    else if (e.key === "ArrowDown" || e.key === "PageDown") setPen(Math.max(0, pen() - 1)), e.preventDefault();
     else if (e.key === "Escape") props.back();
     else if (e.key === " " && state()?.phase === "Build") line?.test(), e.preventDefault();
-    else if (e.key.toLowerCase() === "z") line?.send({ type: "Undo" });
+    else if (key === "z") line?.send({ type: "Undo" });
   };
   window.addEventListener("keydown", onKey);
   onCleanup(() => window.removeEventListener("keydown", onKey));
@@ -269,7 +276,7 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
           </span>
         </div>
         <div class="soft mt-2 text-[11px] leading-snug">
-          Drag to draw · Shift to erase · P priority · R/F raise or lower · Z undo · Space test · right-drag to pan
+          Drag to draw · 1–4 roads and lights · X bulldoze (or hold Shift) · P priority · ↑↓ height · Z undo · Space test · right-drag to pan
         </div>
         <Show when={s()?.phase === "Build" && (s()?.cost ?? 0) > 0}>
           <button class="press soft mt-2 text-[12px] underline cursor-pointer" onClick={() => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" })}>
@@ -292,20 +299,21 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
         <For each={TOOLS}>
           {(t) => (
             <button
-              class="press flex h-11 w-11 flex-col items-center justify-center rounded-full cursor-pointer"
+              class="press relative flex h-11 w-11 flex-col items-center justify-center rounded-full cursor-pointer"
               classList={{ soft: tool() !== t.tool }}
               style={tool() === t.tool ? dark : {}}
               title={`${t.name}: ${t.label} (${t.key})`}
               onClick={() => setTool(t.tool)}
             >
               <Glyph d={t.glyph} />
+              <KeyCap>{t.key}</KeyCap>
             </button>
           )}
         </For>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         {/* Priority: whatever road is drawn with it on has it. */}
         <button
-          class="press flex h-11 items-center gap-1.5 rounded-full px-3 cursor-pointer text-[13px] font-semibold"
+          class="press relative flex h-11 items-center gap-1.5 rounded-full px-3 cursor-pointer text-[13px] font-semibold"
           classList={{ soft: !priority() }}
           style={priority() ? dark : {}}
           title="Priority: whoever joins or crosses a road drawn with it gives way. Draw along a road to give it priority, or take it (P)"
@@ -316,10 +324,11 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
             <path d={DIAMOND_IN} fill={priority() ? "#E0B443" : "currentColor"} />
           </svg>
           Priority
+          <KeyCap>P</KeyCap>
         </button>
         <div class="mx-1 h-6 w-px" style={{ background: "rgb(var(--ink) / 0.15)" }} />
         {/* The pen's height: the road drawn after a change climbs to it. */}
-        <div class="flex items-center gap-0.5" title="How high you draw: the next tile climbs to it (R up, F down)">
+        <div class="flex items-center gap-0.5" title="How high you draw: the next tile climbs to it (↑ up, ↓ down)">
           <button class="press soft h-9 w-7 rounded-full cursor-pointer" onClick={() => setPen(Math.max(0, pen() - 1))}>▼</button>
           <span class="w-14 text-center text-[13px] font-semibold tabular-nums">{pen() === 0 ? "Ground" : `Level ${pen()}`}</span>
           <button class="press soft h-9 w-7 rounded-full cursor-pointer" onClick={() => setPen(Math.min(3, pen() + 1))}>▲</button>

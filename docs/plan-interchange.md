@@ -461,9 +461,18 @@ What runs, and where; the rest of the order above is still to come.
 - **The client** (`client/src/interchange/`): `/interchange` is the map of
   levels (`@at`), each opening its neighbours; a level keeps what was
   built on it. The camera keeps to the map, fog past it, the gates
-  labelled. The road brush: two-way, one-way, two lanes, lights, eraser
-  (Shift), priority (P), the pen's height (R, F); Space tests, Z undoes.
-- **Paint**: dashed centre lines, one-way arrows, shark's teeth.
+  labelled. The road brush: two-way, one-way, two lanes, lights (1–4), the
+  bulldozer (X, or Shift held), priority (P), the pen's height (↑ ↓);
+  Space tests, Z undoes.
+- **The road's shape and paint** (`town/surface.ts`): a road through a
+  tile is a band along the curve its cars drive, its paint along the same
+  curve; a junction's corners are filled along the turns. A one-way of one
+  lane is thin, a divided road two thin ones with grass between, and a
+  road goes from one width to the next within the tile where they meet.
+  Dashed centre lines, a small arrow on a one-way, one a lane on a road of
+  two. Priority is not a colour: a priority road has white edge lines,
+  carried on through its junctions, in blocks across a side road's mouth,
+  and the side road has shark's teeth.
 - **Shallow joins**: the turn rule is about the turns a car can make.
 - **The divided road**: a one-way laid against a one-way, grass between,
   right turns only (`World::divided`, `pathfinding::may_turn`).

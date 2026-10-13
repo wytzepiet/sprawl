@@ -2,7 +2,7 @@ import type { BuildingKind, GridCoord } from "../../generated";
 import { BLUEPRINTS, FACINGS, kerbed, sideOf } from "../../blueprints";
 import { isBuilt, townOf, type Flow, type Tile, type Town } from "./grid";
 import { isYard } from "./mass";
-import { buildRoadGeometry, CAR, HALF_W, type ArmInfo } from "../objects/roadGeometry";
+import { buildRoadGeometry, CAR, HALF_W, LANE_OFFSET, type ArmInfo } from "../objects/roadGeometry";
 import { area, defaultJoins, footprints, INSET, shrink, soften, subtract, type Polygon, type Pt } from "./footprint";
 
 /**
@@ -246,22 +246,138 @@ function yardRect(town: Town, c: number, r: number): Rect {
 }
 
 /** The key a surface's shape is known by: the same parts, the same shape. */
-export function keyOf({ ways, rects, light }: Surface): string {
+export function keyOf({ through, ways, rects, light }: Surface): string {
   const w = ways.map(([dc, dr, on, flow]) => `${dc}${dr}${on ? "+" : ""}${flow ?? ""}`).sort();
   const q = rects.map((rect) => `[${rect.map((v) => +v.toFixed(3)).join(",")}]`).sort();
-  return [...w, ...q, light ? "L" : ""].join(",");
+  return [...w, ...q, light ? "L" : "", through ? "T" : ""].join(",");
 }
+
+/** How wide a road is either side of its middle, by how it is driven:
+ *  a lane one way is thin; two thin one-ways back to back, grass between
+ *  them, a divided road, each side `SIDE` out from its middle. */
+const THIN = 0.13;
+export const SIDE = 0.17;
+const SIDE_HALF = 0.12;
+/** A divided road's median: this far either side of its middle. */
+export const MEDIAN = SIDE - SIDE_HALF;
+const halfOf = (flow?: Flow | "d") => (flow === "o" || flow === "i" ? THIN : flow === "v" ? SIDE + SIDE_HALF : HALF_W);
+
+/** A road through a tile from one arm to another as a car drives it
+ *  (`bezier.rs`): from the one seam to the other, a curve pulled toward
+ *  the tile's middle, run on past a seam where the road runs on. Sampled:
+ *  each point, how wide the road is there either side, its median, and
+ *  how far along. `seams` are how far along each seam is. */
+interface Path {
+  pts: Pt[];
+  half: number[];
+  median: number[];
+  at: number[];
+  seams: [number, number];
+}
+const CURVE = 16;
+const smooth = (t: number) => t * t * (3 - 2 * t);
+function pathOf([ac, ar, aOn, aFlow]: Way, [bc, br, bOn, bFlow]: Way): Path {
+  const [la, lb] = [Math.hypot(ac, ar), Math.hypot(bc, br)];
+  const sa: Pt = [0.5 + ac / 2, 0.5 + ar / 2];
+  const sb: Pt = [0.5 + bc / 2, 0.5 + br / 2];
+  const [ha, hb] = [halfOf(aFlow), halfOf(bFlow)];
+  const [ma, mb] = [aFlow === "v" ? MEDIAN : 0, bFlow === "v" ? MEDIAN : 0];
+  const pts: Pt[] = [], half: number[] = [], median: number[] = [];
+  const push = (p: Pt, h: number, m: number) => (pts.push(p), half.push(h), median.push(m));
+  if (aOn) push([sa[0] + (ac / la) * RUN, sa[1] + (ar / la) * RUN], ha, ma);
+  for (let k = 0; k <= CURVE; k++) {
+    const t = k / CURVE;
+    const [u, v, w] = [(1 - t) * (1 - t), 2 * t * (1 - t), t * t];
+    const e = smooth(t);
+    push([u * sa[0] + v * 0.5 + w * sb[0], u * sa[1] + v * 0.5 + w * sb[1]], ha + (hb - ha) * e, ma + (mb - ma) * e);
+  }
+  if (bOn) push([sb[0] + (bc / lb) * RUN, sb[1] + (br / lb) * RUN], hb, mb);
+  const at = [0];
+  for (let k = 1; k < pts.length; k++) at.push(at[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
+  const first = aOn ? 1 : 0;
+  return { pts, half, median, at, seams: [at[first], at[first + CURVE]] };
+}
+
+/** The way a path runs at point k, and its left (`(-uy, ux)`). */
+function wayAt({ pts }: Path, k: number): [number, number] {
+  const [p, q] = [pts[Math.max(0, k - 1)], pts[Math.min(pts.length - 1, k + 1)]];
+  const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+  return [(q[0] - p[0]) / len, (q[1] - p[1]) / len];
+}
+
+/** A band along a path, `width(k)` either side of it at point k. */
+function band(path: Path, width: (k: number) => number, from = 0, to = path.pts.length - 1): Polygon {
+  const left: Pt[] = [], right: Pt[] = [];
+  for (let k = from; k <= to; k++) {
+    const [ux, uy] = wayAt(path, k);
+    const [x, y] = path.pts[k];
+    const w = width(k);
+    left.push([x - uy * w, y + ux * w]);
+    right.push([x + uy * w, y - ux * w]);
+  }
+  const ring = [...left, ...right.reverse()];
+  return [area(ring) < 0 ? ring.reverse() : ring];
+}
+
+/** Where a point is from a path: how far from it, to its left (negative
+ *  to its right), how far along, and how wide the road is there. */
+function near(path: Path, x: number, y: number): { side: number; along: number; half: number; d: number } {
+  let best = { side: 0, along: 0, half: 0, d: Infinity };
+  for (let k = 0; k + 1 < path.pts.length; k++) {
+    const [a, b] = [path.pts[k], path.pts[k + 1]];
+    const [ex, ey] = [b[0] - a[0], b[1] - a[1]];
+    const len2 = ex * ex + ey * ey || 1;
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (y - a[1]) * ey) / len2));
+    const [px, py] = [a[0] + ex * t, a[1] + ey * t];
+    const d = Math.hypot(x - px, y - py);
+    if (d < best.d) {
+      const len = Math.sqrt(len2);
+      const side = ((x - a[0]) * -ey + (y - a[1]) * ex) / len;
+      best = { side, along: path.at[k] + (path.at[k + 1] - path.at[k]) * t, half: path.half[k] + (path.half[k + 1] - path.half[k]) * t, d };
+    }
+  }
+  return best;
+}
+
+/** A tile's arms as its asphalt is laid: one runs on over the seam into
+ *  the next tile where that is the same kind of road, and every one of a
+ *  priority road's does, drawn as it is over whatever meets it. */
+const carried = ({ through, ways }: Surface): Way[] => ways.map(([dc, dr, on, flow]) => [dc, dr, on || (through && flow !== "d"), flow]);
+
+/** The road arms of a tile, drives left out. */
+const roadsOf = (ways: Way[]) => ways.filter(([, , , flow]) => flow !== "d");
+
+/** Two arms beside each other round a tile, less than half a turn
+ *  apart: a car turns from one to the other along a curve. */
+function turns(roads: Way[]): [Way, Way][] {
+  const angle = ([dc, dr]: Way) => Math.atan2(dr, dc);
+  const round = [...roads].sort((p, q) => angle(p) - angle(q));
+  const out: [Way, Way][] = [];
+  if (round.length < 3) return out;
+  for (let i = 0; i < round.length; i++) {
+    const [p, q] = [round[i], round[(i + 1) % round.length]];
+    const gap = (angle(q) - angle(p) + 2 * Math.PI) % (2 * Math.PI);
+    if (gap < Math.PI - 1e-6) out.push([p, q]);
+  }
+  return out;
+}
+
+/** A tile's road from one arm to another with no other: its one path. */
+const runOf = (roads: Way[]): Path | null => (roads.length === 2 ? pathOf(roads[0], roads[1]) : null);
 
 /**
  * A tile's asphalt as one outline, its corners rounded in and out, in the
- * tile's own frame: the road's triangles for its arms, each arm carried
- * on over the seam where it runs on (from just short of it, where the
- * tile's own road already runs straight along the arm, so on a bend it
- * does not stand proud of the curve, to a little more than the rounding
- * past it); and its rectangles. The same parts are the same shape, so each
- * is worked out once; the tiles are drawn one over another, never united:
- * the union and the rounding are what cost, and done for a whole town at
- * once they cost seconds.
+ * tile's own frame. A road that runs through, from one arm to another, is
+ * a band along the curve a car drives (`pathOf`), as wide at each end as
+ * the road it meets there is, and between them going from the one width
+ * to the other; a divided road's median cut out of it. A junction is its
+ * arms, each as wide as its road, with the curves turning between them
+ * filled in; a dead end, its arm, rounded off. An arm is carried on over
+ * the seam where it runs on, so the tiles' outlines meet as one; and the
+ * rectangles. The same parts are the same shape, so each is worked out
+ * once; the tiles are drawn one over another, never united: the union
+ * and the rounding are what cost, and done for a whole town at once they
+ * cost seconds.
  */
 const shapes = new Map<string, Polygon[]>();
 export function shapeOf(surface: Surface): Polygon[] {
@@ -269,32 +385,61 @@ export function shapeOf(surface: Surface): Polygon[] {
   const known = shapes.get(key);
   if (known) return known;
   const { ways, rects } = surface;
-  const arms: ArmInfo[] = ways.map(([dc, dr]) => {
-    const a = Math.atan2(-dr, -dc);
-    return { angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" };
-  });
-  const geo = buildRoadGeometry(arms, HALF_W, 0);
+  const roads = roadsOf(carried(surface));
+  const run = runOf(roads);
   const parts: Polygon[] = [];
-  if (geo) {
-    // The geometry is the world's (x and y the other way); flat only.
-    const p = geo.positions;
-    const at = (i: number): Pt => [0.5 - p[3 * i], 0.5 - p[3 * i + 1]];
-    for (let i = 0; i < geo.indices.length; i += 3) parts.push([[at(geo.indices[i]), at(geo.indices[i + 1]), at(geo.indices[i + 2])]]);
-  }
-  for (const [dc, dr] of ways.filter(([, , on]) => on)) {
+  const cut: Polygon[] = [];
+  // An arm from the tile's middle out over its seam, where it runs on.
+  const arm = ([dc, dr, , flow]: Way, from: number, past: number) => {
     const len = Math.hypot(dc, dr);
-    const [ux, uy, nx, ny] = [dc / len, dr / len, -dr / len * HALF_W, dc / len * HALF_W];
-    const [a, b] = [len / 2 - 0.05, len / 2 + RUN];
-    parts.push([[[0.5 + ux * a + nx, 0.5 + uy * a + ny], [0.5 + ux * b + nx, 0.5 + uy * b + ny], [0.5 + ux * b - nx, 0.5 + uy * b - ny], [0.5 + ux * a - nx, 0.5 + uy * a - ny]]]);
+    const hw = halfOf(flow);
+    const [ux, uy, nx, ny] = [dc / len, dr / len, (-dr / len) * hw, (dc / len) * hw];
+    const [a, b] = [from, len / 2 + past];
+    const ring: Pt[] = [[0.5 + ux * a + nx, 0.5 + uy * a + ny], [0.5 + ux * b + nx, 0.5 + uy * b + ny], [0.5 + ux * b - nx, 0.5 + uy * b - ny], [0.5 + ux * a - nx, 0.5 + uy * a - ny]];
+    parts.push([area(ring) < 0 ? ring.reverse() : ring]);
+  };
+  if (run) {
+    parts.push(band(run, (k) => run.half[k]));
+    // The median, where there is one.
+    const on = run.median.map((m) => m > 1e-3);
+    const [from, to] = [on.indexOf(true), on.lastIndexOf(true)];
+    if (from >= 0) cut.push(band(run, (k) => run.median[k], from, to));
+    for (const d of ways.filter(([, , , flow]) => flow === "d")) arm(d, -HALF_W, d[2] ? RUN : 0);
+  } else {
+    const geoArms: ArmInfo[] = ways.map(([dc, dr, , flow]) => {
+      const a = Math.atan2(-dr, -dc);
+      return { angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway", hw: halfOf(flow) };
+    });
+    const geo = buildRoadGeometry(geoArms, HALF_W, 0);
+    if (geo) {
+      // The geometry is the world's (x and y the other way); flat only.
+      const p = geo.positions;
+      const at = (i: number): Pt => [0.5 - p[3 * i], 0.5 - p[3 * i + 1]];
+      for (let i = 0; i < geo.indices.length; i += 3) parts.push([[at(geo.indices[i]), at(geo.indices[i + 1]), at(geo.indices[i + 2])]]);
+    }
+    for (const [p, q] of turns(roads)) {
+      const turn = pathOf([p[0], p[1], false, p[3]], [q[0], q[1], false, q[3]]);
+      parts.push(band(turn, (k) => turn.half[k]));
+    }
+    for (const w of carried(surface).filter(([, , on]) => on)) arm(w, Math.hypot(w[0], w[1]) / 2 - 0.05, RUN);
+    // A divided arm's median, from short of the middle, so traffic
+    // crosses there; on past the seam.
+    if (roads.length >= 3) {
+      for (const [dc, dr] of roads.filter(([, , , flow]) => flow === "v")) {
+        const len = Math.hypot(dc, dr);
+        const [ux, uy, nx, ny] = [dc / len, dr / len, (-dr / len) * MEDIAN, (dc / len) * MEDIAN];
+        const [a, b] = [CLEAR, len / 2 + RUN];
+        const ring: Pt[] = [[0.5 + ux * a + nx, 0.5 + uy * a + ny], [0.5 + ux * b + nx, 0.5 + uy * b + ny], [0.5 + ux * b - nx, 0.5 + uy * b - ny], [0.5 + ux * a - nx, 0.5 + uy * a - ny]];
+        cut.push([area(ring) < 0 ? ring.reverse() : ring]);
+      }
+    }
   }
   for (const [x0, y0, x1, y1] of rects) parts.push([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]]);
   // All wound one way, so none is taken for a hole in another; grown a
-  // hair and drawn back, so no seam is left between them. A divided road's
-  // median taken out of it after the rounding, which would close a gap so
-  // narrow: down the middle of each of its arms, the ground showing through.
+  // hair and drawn back, so no seam is left between them. The median
+  // taken out after the rounding, which would close a gap so narrow.
   const wound = parts.map(([ring]) => [area(ring) < 0 ? [...ring].reverse() : ring]);
   const rounded = soften(shrink(shrink(wound, -1e-3), 1e-3), ROUND);
-  const cut = medians(ways);
   const out = cut.length ? subtract(rounded, cut) : rounded;
   shapes.set(key, out);
   return out;
@@ -306,29 +451,89 @@ export function shapeOf(surface: Surface): Polygon[] {
 const LINE = 0.028;
 const DASH = 0.26;
 const CLEAR = 0.32;
-/** A one-way's arrow: its tip this far ahead of the tile's middle, its
- *  wings this far back and out. */
-const TIP = 0.09;
-const WING: [number, number] = [0.07, 0.1];
+/** A one-way's arrow, small: its tip this far ahead of its middle, its
+ *  wings this far back and out, drawn this thin. */
+const TIP = 0.055;
+const WING: [number, number] = [0.045, 0.06];
+const ARROW_LINE = 0.026;
+/** A priority road's edge lines: this far in from its edge, this wide;
+ *  across a side road's mouth, in blocks this long. */
+const EDGE_IN = 0.06;
+const EDGE_LINE = 0.03;
+const BLOCK = 0.07;
+
+/** A chevron at a point, pointing along a way. */
+function chevron([cx, cy]: Pt, [ux, uy]: [number, number], k = 1): (x: number, y: number) => number {
+  const tip: Pt = [cx + ux * TIP * k, cy + uy * TIP * k];
+  const wings = [1, -1].map((s): Pt => [cx - ux * WING[0] * k - uy * WING[1] * k * s, cy - uy * WING[0] * k + ux * WING[1] * k * s]);
+  return (x, y) => ARROW_LINE / 2 - Math.min(segmentDistance(x, y, tip, wings[0]), segmentDistance(x, y, tip, wings[1]));
+}
+
+/** A dash's distance in, `s` along from a seam: dashes centred on seams. */
+const dashed = (s: number, dash: number) => dash / 2 - Math.abs((((s + dash) % (2 * dash)) + 2 * dash) % (2 * dash) - dash);
 
 /**
  * A tile's paint, as a distance in its own frame: how far inside a line
- * a point is, negative outside. A two-way road's middle is dashed along
- * each arm, from the tile's middle or, at a junction, from short of it;
- * a one-way's tile has an arrow at its middle, the way it runs. Drives
- * are painted nothing.
+ * a point is, negative outside. Along a road that runs through, the
+ * paint follows the curve its cars drive: a two-way's dashed middle, a
+ * small arrow on a one-way's, one in each lane of a road of two, one each
+ * side of a divided road. At a junction, a two-way's middle is dashed
+ * along each arm from short of the middle; at lights, a stop line across
+ * each way in. A priority road has a solid line along each edge, carried
+ * on through its junctions, in blocks across a side road's mouth; the
+ * side road's way in, shark's teeth. Drives are painted nothing.
  */
 export function paintOf({ through, ways, light }: Surface): (x: number, y: number) => number {
-  const roads = ways.filter(([, , , flow]) => flow !== "d");
+  const roads = roadsOf(ways);
   const marks: ((x: number, y: number) => number)[] = [];
   const junction = roads.length >= 3;
+  const run = runOf(roads);
+  if (run) {
+    const [a, b] = roads;
+    const mid = (run.seams[0] + run.seams[1]) / 2;
+    const flowAt = (along: number) => (along < mid ? a[3] : b[3]);
+    const fromSeam = (along: number) => (along < mid ? along - run.seams[0] : run.seams[1] - along);
+    // A two-way's middle, and the line between a road of two's lanes.
+    if ([a, b].some(([, , , f]) => ["t", "O", "I"].includes(f ?? "t"))) {
+      marks.push((x, y) => {
+        const n = near(run, x, y);
+        if (!["t", "O", "I"].includes(flowAt(n.along) ?? "t")) return -1;
+        return Math.min(LINE / 2 - Math.abs(n.side), dashed(fromSeam(n.along), DASH));
+      });
+    }
+    // The arrows, the way it runs: halfway along; on a road of two, a
+    // quarter of the way, between its middle line's dashes.
+    const flows = [a[3], b[3]];
+    const two = flows.every((f) => f === "O" || f === "I");
+    const k = run.at.findIndex((s) => s >= run.seams[0] + (run.seams[1] - run.seams[0]) * (two ? 0.25 : 0.5));
+    const [ux, uy] = wayAt(run, k);
+    const [cx, cy] = run.pts[k];
+    const toB = b[3] === "o" || b[3] === "O";
+    if (two || flows.every((f) => f === "o" || f === "i")) {
+      const way: [number, number] = toB ? [ux, uy] : [-ux, -uy];
+      for (const l of two ? [LANE_OFFSET, -LANE_OFFSET] : [0]) marks.push(chevron([cx - way[1] * l, cy + way[0] * l], way, two ? 0.85 : 1));
+    }
+    // A divided road's: each side the way it runs, on its right.
+    if (flows.every((f) => f === "v")) {
+      for (const way of [[ux, uy], [-ux, -uy]] as [number, number][]) marks.push(chevron([cx - way[1] * SIDE, cy + way[0] * SIDE], way, 0.9));
+    }
+    // A priority road's edges, where it runs on as one.
+    if (through && (a[2] || b[2])) {
+      marks.push((x, y) => {
+        const n = near(run, x, y);
+        if (!(n.along < mid ? a[2] : b[2])) return -1;
+        return EDGE_LINE / 2 - Math.abs(Math.abs(n.side) - (n.half - EDGE_IN));
+      });
+    }
+  }
   // At lights, a stop line across each way in.
   if (light && junction) {
     for (const [dc, dr, , flow] of roads) {
       if (flow === "o") continue;
       const len = Math.hypot(dc, dr);
       const [ux, uy] = [dc / len, dr / len];
-      const [lo, hi] = flow === "i" ? [-HALF_W, HALF_W] : [0, HALF_W];
+      const hw = halfOf(flow);
+      const [lo, hi] = flow === "i" ? [-hw, hw] : [0, hw];
       marks.push((x, y) => {
         const [px, py] = [x - 0.5, y - 0.5];
         const along = px * ux + py * uy - CLEAR;
@@ -337,78 +542,64 @@ export function paintOf({ through, ways, light }: Surface): (x: number, y: numbe
       });
     }
   }
-  // Where a street meets a priority road, shark's teeth across the street's
-  // way in: a row of triangles pointing at whoever must give way.
-  if (through && junction && !light) {
-    for (const [dc, dr, on, flow] of roads) {
-      if (on || flow === "o") continue;
-      const len = Math.hypot(dc, dr);
-      const [ux, uy] = [dc / len, dr / len];
-      // Across the way in: the whole of a one-way, the right half of a
-      // two-way as its traffic comes in (`bezier.rs`'s side, of -u).
-      const [lo, hi] = flow === "i" ? [-HALF_W, HALF_W] : [0, HALF_W];
-      const n = Math.max(1, Math.floor((hi - lo) / TOOTH[0]));
-      const base = (hi - lo) / n;
-      for (let k = 0; k < n; k++) {
-        const [a, b] = [lo + k * base + base * 0.12, lo + (k + 1) * base - base * 0.12];
-        marks.push((x, y) => {
-          const [px, py] = [x - 0.5, y - 0.5];
-          const along = px * ux + py * uy - CLEAR;
-          const across = px * uy - py * ux;
-          // Its base at CLEAR, its point out along the arm.
-          const t = (across - a) / (b - a);
-          const half = (b - a) / 2;
-          const reach = TOOTH[1] * (1 - Math.abs(2 * t - 1));
-          return Math.min(along, reach - along, half - Math.abs(across - (a + b) / 2));
-        });
+  if (through && junction) {
+    // The priority road through the junction: its edges carried on, in
+    // blocks on the side a road joins it from.
+    const main = roads.filter(([, , on]) => on);
+    if (main.length === 2) {
+      const path = pathOf([main[0][0], main[0][1], false, main[0][3]], [main[1][0], main[1][1], false, main[1][3]]);
+      const k = path.pts.length >> 1;
+      const [ux, uy] = wayAt(path, k);
+      const [cx, cy] = path.pts[k];
+      const joined = [1, -1].map((s) => roads.some(([dc, dr, on]) => !on && ((0.5 + dc / 2 - cx) * -uy + (0.5 + dr / 2 - cy) * ux) * s > 0));
+      marks.push((x, y) => {
+        const n = near(path, x, y);
+        const s = n.side >= 0 ? 0 : 1;
+        const line = EDGE_LINE / 2 - Math.abs(Math.abs(n.side) - (n.half - EDGE_IN));
+        return joined[s] ? Math.min(line, dashed(n.along, BLOCK)) : line;
+      });
+    }
+    // Where a street meets a priority road, shark's teeth across the
+    // street's way in: a row of triangles pointing at whoever must give way.
+    if (!light) {
+      for (const [dc, dr, on, flow] of roads) {
+        if (on || flow === "o") continue;
+        const len = Math.hypot(dc, dr);
+        const [ux, uy] = [dc / len, dr / len];
+        // Across the way in: the whole of a one-way, the right half of a
+        // two-way as its traffic comes in (`bezier.rs`'s side, of -u).
+        const hw = halfOf(flow);
+        const [lo, hi] = flow === "i" ? [-hw, hw] : [0, hw];
+        const n = Math.max(1, Math.floor((hi - lo) / TOOTH[0]));
+        const base = (hi - lo) / n;
+        for (let k = 0; k < n; k++) {
+          const [p, q] = [lo + k * base + base * 0.12, lo + (k + 1) * base - base * 0.12];
+          marks.push((x, y) => {
+            const [px, py] = [x - 0.5, y - 0.5];
+            const along = px * ux + py * uy - CLEAR;
+            const across = px * uy - py * ux;
+            // Its base at CLEAR, its point out along the arm.
+            const t = (across - p) / (q - p);
+            const reach = TOOTH[1] * (1 - Math.abs(2 * t - 1));
+            return Math.min(along, reach - along, (q - p) / 2 - Math.abs(across - (p + q) / 2));
+          });
+        }
       }
     }
   }
-  for (const [dc, dr, , flow] of roads) {
-    // A two-way's middle, and the line between a two-lane road's lanes.
-    if (!["t", "O", "I"].includes(flow ?? "t")) continue;
-    const len = Math.hypot(dc, dr);
-    const [ux, uy] = [dc / len, dr / len];
-    const [from, to] = [junction ? CLEAR : 0, len / 2 + RUN];
-    marks.push((x, y) => {
-      const [px, py] = [x - 0.5, y - 0.5];
-      const s = px * ux + py * uy;
-      const across = Math.abs(px * uy - py * ux);
-      // From the seam, so the next tile's dashes meet these there.
-      const seam = len / 2 - s;
-      const q = (((seam + DASH) % (2 * DASH)) + 2 * DASH) % (2 * DASH) - DASH;
-      return Math.min(LINE / 2 - across, DASH / 2 - Math.abs(q), s - from, to - s);
-    });
-  }
-  // A one-way's arrow, where it runs through and nothing joins it; on a
-  // road of two lanes, one in each.
-  const out = roads.find(([, , , flow]) => flow === "o" || flow === "O");
-  if (!junction && out && roads.every(([, , , flow]) => ["o", "i", "O", "I"].includes(flow ?? ""))) {
-    const len = Math.hypot(out[0], out[1]);
-    const [ux, uy] = [out[0] / len, out[1] / len];
-    const two = roads.some(([, , , flow]) => flow === "O" || flow === "I");
-    for (const lane of two ? [SIDE * 0.75, -SIDE * 0.75] : [0]) {
-      const [cx, cy] = [0.5 - uy * lane, 0.5 + ux * lane];
-      const k = two ? 0.75 : 1;
-      const tip: Pt = [cx + ux * TIP * k, cy + uy * TIP * k];
-      for (const side of [1, -1]) {
-        const wing: Pt = [cx - ux * WING[0] * k - uy * WING[1] * k * side, cy - uy * WING[0] * k + ux * WING[1] * k * side];
-        marks.push((x, y) => LINE / 2 - segmentDistance(x, y, tip, wing));
-      }
-    }
-  }
-  // A divided road's two sides, each an arrow the way it runs, on the
-  // right of it (`bezier.rs`'s lanes), where it runs through.
-  if (!junction && roads.length === 2 && roads.every(([, , , flow]) => flow === "v")) {
-    for (const [dc, dr] of roads) {
+  // At a junction, a two-way's middle, and the line between a road of
+  // two's lanes, along each arm from short of the middle.
+  if (junction) {
+    for (const [dc, dr, , flow] of roads) {
+      if (!["t", "O", "I"].includes(flow ?? "t")) continue;
       const len = Math.hypot(dc, dr);
       const [ux, uy] = [dc / len, dr / len];
-      const [cx, cy] = [0.5 - uy * SIDE, 0.5 + ux * SIDE];
-      const tip: Pt = [cx + ux * TIP * 0.8, cy + uy * TIP * 0.8];
-      for (const side of [1, -1]) {
-        const wing: Pt = [cx - ux * WING[0] * 0.8 - uy * WING[1] * 0.7 * side, cy - uy * WING[0] * 0.8 + ux * WING[1] * 0.7 * side];
-        marks.push((x, y) => LINE / 2 - segmentDistance(x, y, tip, wing));
-      }
+      marks.push((x, y) => {
+        const [px, py] = [x - 0.5, y - 0.5];
+        const s = px * ux + py * uy;
+        const across = Math.abs(px * uy - py * ux);
+        return Math.min(LINE / 2 - across, dashed(len / 2 - s, DASH), s - CLEAR, len / 2 + RUN - s);
+      });
     }
   }
   return (x, y) => marks.reduce((best, m) => Math.max(best, m(x, y)), -1);
@@ -419,34 +610,10 @@ const STOP = 0.05;
 /** A give-way tooth: its base across, and how far it reaches along. */
 const TOOTH: [number, number] = [0.105, 0.13];
 
-/** How far a divided road's side runs from its middle (`motion.ts`). */
-const SIDE = 0.13;
-
 function segmentDistance(x: number, y: number, [ax, ay]: Pt, [bx, by]: Pt): number {
   const [ex, ey] = [bx - ax, by - ay];
   const t = Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey || 1)));
   return Math.hypot(x - ax - ex * t, y - ay - ey * t);
-}
-
-/** A divided road's median: this far either side of its middle. Its two
- *  sides are driven this far out from the middle (`driver.ts`), a car's
- *  width clear of it. */
-export const MEDIAN = 0.045;
-
-/** The medians down a tile's divided arms: from its middle, or at a
- *  junction from short of it, so traffic crosses there; on past the seam. */
-function medians(ways: Way[]): Polygon[] {
-  const roads = ways.filter(([, , , flow]) => flow !== "d");
-  const junction = roads.length >= 3;
-  return roads
-    .filter(([, , , flow]) => flow === "v")
-    .map(([dc, dr]) => {
-      const len = Math.hypot(dc, dr);
-      const [ux, uy, nx, ny] = [dc / len, dr / len, (-dr / len) * MEDIAN, (dc / len) * MEDIAN];
-      const [a, b] = [junction ? CLEAR : -MEDIAN, len / 2 + RUN];
-      const ring: Pt[] = [[0.5 + ux * a + nx, 0.5 + uy * a + ny], [0.5 + ux * b + nx, 0.5 + uy * b + ny], [0.5 + ux * b - nx, 0.5 + uy * b - ny], [0.5 + ux * a - nx, 0.5 + uy * a - ny]];
-      return [area(ring) < 0 ? ring.reverse() : ring];
-    });
 }
 
 /** An edge of a tile's asphalt, as drawn for its instance (x and y the
@@ -455,8 +622,9 @@ function medians(ways: Way[]): Polygon[] {
  *  next tile covers, so no kerb. An edge that only reaches past it keeps
  *  its kerb, and the two tiles' kerbs meet over the seam; where a bend
  *  bulges out past its square, between its arms, it keeps its kerb too. */
-export const runsOn = ({ ways, rects }: Surface) => (a: number[], b: number[]) => {
-  const arm = ways.some(([dc, dr, on]) => {
+export const runsOn = (surface: Surface) => (a: number[], b: number[]) => {
+  const { rects } = surface;
+  const arm = carried(surface).some(([dc, dr, on]) => {
     if (!on) return false;
     const len = Math.hypot(dc, dr);
     const along = (p: number[]) => ((p[0] + 0.5) * -dc + (p[1] + 0.5) * -dr) / len;

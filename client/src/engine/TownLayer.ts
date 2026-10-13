@@ -123,7 +123,7 @@ export class TownLayer {
     this.stopTints = ctx.beforeRender(() => this.tints.upload());
     const bevel: Bevel = { width: 0.05, soft: null };
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF]), "building", bevel);
-    this.roads = new RoadTiles(ctx.engine, ctx.scene, (through) => (through ? this.theme().highway : this.theme().road));
+    this.roads = new RoadTiles(ctx.engine, ctx.scene, () => this.theme().road);
   }
 
   /** A piece's material, made once for its name and colour. */

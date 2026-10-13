@@ -25,7 +25,7 @@ import { ROAD_Z } from "./objects/roadGeometry";
 /** A slot's side in texels, over `SPAN` tiles from `ORIGIN` in a tile's
  *  road frame (x and y the other way, its middle at -0.5, -0.5): room for
  *  the widest shape, a diagonal run on past its seam, and its kerbs. */
-const SLOT = 48;
+const SLOT = 64;
 const ORIGIN = -1.25;
 const SPAN = 1.5;
 /** How far a kerb running on into the next tile is carried past its end. */

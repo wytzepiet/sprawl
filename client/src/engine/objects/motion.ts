@@ -3,6 +3,7 @@ import { CAR_RIG, driveTrip, LORRY_RIG, straight, type Drive, type Pose, type Ri
 import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
 import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
+import { SIDE } from "../town/surface";
 import type { Car, GridCoord, RoadNode, Trailer, Trip } from "../../generated";
 import { getObjectsAt } from "../../state/gameObjects";
 import type { Pose as Stand } from "../../generated/Pose";
@@ -67,8 +68,8 @@ export function driveOf(id: number, car: Car): Drive | null {
 
 /** Where a lane runs from the road's middle, by what kind of link it is
  *  on: a two-way's to the right of the middle, a one-way's down it, a
- *  divided road's a car's width clear of the median (`MEDIAN`). */
-const LANES = { t: LANE_OFFSET, o: 0, v: 0.13 };
+ *  divided road's down the middle of its side (`SIDE`). */
+const LANES = { t: LANE_OFFSET, o: 0, v: SIDE };
 
 /** The lane at each node of a route: its links', the two either side of
  *  it met halfway. Read off the road nodes the client holds, where it holds

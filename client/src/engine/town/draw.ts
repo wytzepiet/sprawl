@@ -59,7 +59,7 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
   return [
     { name: "street", geo: flatPolygons(street, ROAD_Z + PAVED_Z), colour: theme.road },
     // Over the streets that meet it: a street's end runs on under it.
-    { name: "through", geo: flatPolygons(through, ROAD_Z + PAVED_Z + 0.001), colour: theme.highway },
+    { name: "through", geo: flatPolygons(through, ROAD_Z + PAVED_Z + 0.001), colour: theme.road },
   ].filter((p) => p.geo.indices.length);
 }
 
