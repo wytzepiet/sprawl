@@ -467,7 +467,7 @@ What runs, and where; the rest of the order above is still to come.
 - **The road's shape and paint** (`town/surface.ts`): a road through a
   tile is a band along the curve its cars drive, its paint along the same
   curve; a junction's corners are filled along the turns. A one-way of one
-  lane is thin, a divided road two thin ones with grass between, and a
+  lane is thin, two side by side thin ones with grass between, and a
   road goes from one width to the next within the tile where they meet.
   Dashed centre lines; no arrows on the road: while building,
   glide, faint streaks of light, along each one-way the way its cars go, a stream a lane
@@ -475,8 +475,17 @@ What runs, and where; the rest of the order above is still to come.
   carried on through its junctions, in blocks across a side road's mouth,
   and the side road has shark's teeth.
 - **Shallow joins**: the turn rule is about the turns a car can make.
-- **The divided road**: a one-way laid against a one-way, grass between,
-  right turns only (`World::divided`, `pathfinding::may_turn`).
+- **Roads side by side** (`world/decks.rs`, `RoadNode::side`): a tile
+  holds two one-ways as it holds roads stacked, each its own nodes moved
+  to a side, a thin road beside the other. A one-way drawn along a
+  one-way's tiles goes beside it, on the side the drag came from, else
+  the right, the one there moving over, and back to the middle when its
+  partner goes. A road on a side is joined along its run or from its own
+  side, merging or branching; the other side is out of reach, so a side
+  street is right in, right out. What a car may do follows from the
+  links; it never turns back. Roads are drawn a node at a time
+  (`Town::roadsOn`), each its own curve through where it stands.
+- **The look tool** (V): nothing in hand, no streaks, every deck solid.
 - **Priority**: a through road is let through first at a junction.
   Priority is the hand's, not a kind of road (`Build.road`): any road
   drawn with it on has it, and drawn along again, gains or loses it.
