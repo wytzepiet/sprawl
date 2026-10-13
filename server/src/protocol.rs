@@ -826,6 +826,23 @@ pub struct Trip {
     #[serde(skip)]
     #[ts(skip)]
     pub stretches: [Vec<EntityId>; 2],
+    /// Its last change of lanes along a road of two (`car::simulation`):
+    /// for the client to slide it across while it lasts.
+    #[serde(default)]
+    pub shift: Option<Shift>,
+}
+
+/// A change of lanes: from one to the other, from `at` until `until`, in
+/// sim ms. While it lasts the car stands in both.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct Shift {
+    pub from: u8,
+    pub to: u8,
+    #[ts(type = "number")]
+    pub at: u64,
+    #[ts(type = "number")]
+    pub until: u64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]

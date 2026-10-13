@@ -130,8 +130,10 @@ impl Obstacle {
             // means holding whatever speed you have, and any speed at all
             // eventually carries you over the line. Cars were creeping through
             // junctions they were still queued at, at two hundredths of a tile
-            // a second, because that counted as close enough to stopped.
-            let slack = if target_speed > 0.0 { 0.05 } else { 0.0 };
+            // a second, because that counted as close enough to stopped; and
+            // into a car ahead all but standing, for the same reason. The
+            // slack is a tenth of the speed, as below it.
+            let slack = (0.1 * target_speed).min(0.05);
             if my_speed > target_speed + slack {
                 -(my_speed * my_speed) / 0.02
             } else if my_speed < target_speed - (0.1 * target_speed).min(0.05) {

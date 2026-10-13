@@ -42,6 +42,7 @@ pub fn tail(role: crate::protocol::CarRole) -> f64 {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum Obstacle {
     SpeedLimit {
         distance: f64,

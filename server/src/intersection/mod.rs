@@ -30,6 +30,9 @@ struct QueueEntry {
     track: Option<Track>,
     /// Coming in on a priority road: it goes before anyone on a minor one.
     major: bool,
+    /// The lane it goes out by, on a road of two: a merge gives way only
+    /// to whoever goes out in its own lane.
+    lane: u8,
     /// When it was granted passage; meaningless while it waits.
     since: GameTime,
 }
@@ -167,21 +170,26 @@ impl IntersectionManager {
 
     /// Add a car to the queue. Returns true if newly registered.
     pub fn register(&mut self, car_id: EntityId, from: Dir, to: Dir, now: GameTime) -> bool {
-        self.register_ranked(car_id, from, to, None, false, now)
+        self.register_ranked(car_id, from, to, 0, None, false, now)
     }
 
-    /// Add a car to the queue, its way through (`track`), coming in on a
-    /// priority road (`major`) or not. Returns true if newly registered.
-    pub fn register_ranked(&mut self, car_id: EntityId, from: Dir, to: Dir, track: Option<Track>, major: bool, now: GameTime) -> bool {
-        let already = self.queue.iter().any(|e| e.car_id == car_id)
-            || self.passing.iter().any(|e| e.car_id == car_id);
+    /// Add a car to the queue, the lane it goes out by, its way through
+    /// (`track`), coming in on a priority road (`major`) or not; already
+    /// there, its lane kept up to date, as it may change lanes on its way.
+    /// Returns true if newly registered.
+    pub fn register_ranked(&mut self, car_id: EntityId, from: Dir, to: Dir, lane: u8, track: Option<Track>, major: bool, now: GameTime) -> bool {
+        let mut already = false;
+        for e in self.queue.iter_mut().chain(self.passing.iter_mut()).filter(|e| e.car_id == car_id) {
+            e.lane = lane;
+            already = true;
+        }
         if !already {
             if let Some(signal) = &mut self.signal
                 && signal.phases.get(signal.phase).is_some_and(|green| green.contains(&from))
             {
                 signal.last = now;
             }
-            self.queue.push_back(QueueEntry { car_id, from, to, track, major, since: now });
+            self.queue.push_back(QueueEntry { car_id, from, to, track, major, lane, since: now });
             self.grant_passage(now);
             return true;
         }
@@ -233,9 +241,11 @@ impl IntersectionManager {
         }
         while let Some(i) = self.queue.iter().position(|e| e.major).or((!self.queue.is_empty()).then_some(0)) {
             let next = self.queue[i];
-            // A merge is no conflict between equals; onto a priority road
-            // from a minor one it is: the minor gives way.
-            let dominated = self.passing.iter().any(|p| self.crosses(&next, p) || (next.to == p.to && next.major != p.major));
+            // A merge is no conflict between equals: who goes first is the
+            // cars' own to settle (`car::simulation`'s merging). Onto a
+            // priority road from a minor one, into the same lane, it is:
+            // the minor gives way.
+            let dominated = self.passing.iter().any(|p| self.crosses(&next, p) || (next.to == p.to && next.lane == p.lane && next.major != p.major));
             if dominated {
                 break;
             }
@@ -497,12 +507,12 @@ mod tests {
     fn cars_whose_ways_miss_go_at_once() {
         let (w, e, n, s) = ((-1, 0), (1, 0), (0, -1), (0, 1));
         let mut j = super::IntersectionManager::new(super::paths_cross);
-        j.register_ranked(1, w, n, Some(way(w, n, false)), false, 0);
-        j.register_ranked(2, s, e, Some(way(s, e, false)), false, 0);
+        j.register_ranked(1, w, n, 0, Some(way(w, n, false)), false, 0);
+        j.register_ranked(2, s, e, 0, Some(way(s, e, false)), false, 0);
         assert!(j.has_passage(1) && j.has_passage(2), "two bends wait for each other");
         let mut j = super::IntersectionManager::new(super::paths_cross);
-        j.register_ranked(1, w, e, Some(way(w, e, true)), false, 0);
-        j.register_ranked(2, s, n, Some(way(s, n, true)), false, 0);
+        j.register_ranked(1, w, e, 0, Some(way(w, e, true)), false, 0);
+        j.register_ranked(2, s, n, 0, Some(way(s, n, true)), false, 0);
         assert!(j.has_passage(1) && !j.has_passage(2), "two crossing go together");
     }
 
@@ -537,24 +547,24 @@ mod tests {
     #[test]
     fn the_priority_road_goes_first() {
         let mut j = IntersectionManager::new(paths_conflict);
-        j.register_ranked(1, S, N, None, false, 0);
+        j.register_ranked(1, S, N, 0, None, false, 0);
         assert!(j.has_passage(1), "alone, the side street goes");
         j.clear(1, 10);
 
         let mut j = IntersectionManager::new(paths_conflict);
         // Both arrive while the junction is held, the side street first,
         // and both are bound west, so only one may go.
-        j.register_ranked(9, N, S, None, true, 0);
-        j.register_ranked(1, S, W, None, false, 1);
-        j.register_ranked(2, E, W, None, true, 2);
+        j.register_ranked(9, N, S, 0, None, true, 0);
+        j.register_ranked(1, S, W, 0, None, false, 1);
+        j.register_ranked(2, E, W, 0, None, true, 2);
         assert!(!j.has_passage(1) && !j.has_passage(2));
         assert_eq!(j.clear(9, 3), vec![2], "the priority road's car, not the side street's");
         assert_eq!(j.clear(2, 4), vec![1], "then the side street");
 
         let mut j = IntersectionManager::new(paths_conflict);
-        j.register_ranked(9, N, S, None, false, 0);
-        j.register_ranked(1, S, W, None, false, 1);
-        j.register_ranked(2, E, W, None, false, 2);
+        j.register_ranked(9, N, S, 0, None, false, 0);
+        j.register_ranked(1, S, W, 0, None, false, 1);
+        j.register_ranked(2, E, W, 0, None, false, 2);
         assert_eq!(j.clear(9, 3), vec![1], "no priority: in the order they came");
     }
 

@@ -415,8 +415,9 @@ impl World {
     }
 
     /// Find the car behind a given car on the same edge.
-    pub fn car_behind_on_edge(&self, edge: EdgeKey, car_id: EntityId) -> Option<EntityId> {
-        self.edges.get(&edge)?.behind(car_id)
+    /// The car behind this one on an edge, in each lane it stands in.
+    pub fn car_behind_on_edge(&self, edge: EdgeKey, car_id: EntityId) -> Vec<EntityId> {
+        self.edges.get(&edge).map_or_else(Vec::new, |s| s.behind(car_id))
     }
 
     /// Insert an edge for a directed connection between two nodes.

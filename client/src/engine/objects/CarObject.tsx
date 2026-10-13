@@ -14,8 +14,8 @@ import type { Strip } from "./strip";
 import { field, FIELD_Z, leaves } from "./BuildingObject";
 import { CAR, ROAD_Z, VAN } from "./roadGeometry";
 import { behind, boxShape, type BoxPart, DECK_Z, rigidShape, deckPose, FERRY_SHAPE, LORRY_SHAPE, shunting, TUG, TUG_SHAPE } from "./sea";
-import type { Drive, Pose } from "./driver";
-import { aboard, ahead, carried, colourOf, driveOf, LIVERY, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
+import type { Pose } from "./driver";
+import { aboard, ahead, carried, colourOf, driveOf, type Driving, LIVERY, PALETTE, running, straightBehind, travelled, VAN_BOX, vanParts, voyage } from "./motion";
 import { getEntity } from "../../state/gameObjects";
 import type { Building, Car, GameObjectEntry } from "../../generated";
 import type { Pose as Stand } from "../../generated/Pose";
@@ -257,7 +257,7 @@ function mountTug(id: number, car: Car, pool: InstancePool, ctx: EngineContext):
 
 /** Each car on a trip: where it is drawn along its drive, kept across the
  *  server's updates, which are just when its pedal changes. */
-const easing = new Map<number, { drive: Drive; x: number; v: number; then: number }>();
+const easing = new Map<number, { drive: Driving; x: number; v: number; then: number }>();
 
 /** A trip on the roads, driven as `driver.ts` steers it, at the distance
  *  the trip's physics puts it, eased: the drawn distance chases it as a
@@ -287,7 +287,7 @@ function follow(id: number, car: Car) {
         state.v = Math.max(0, state.v + (EASE * EASE * (goal - state.x) + 2 * EASE * (speed - state.v)) * dt);
         state.x += state.v * dt;
       }
-      return { ...drive.at(Math.min(state.x, drive.length)), lift: up(state.x) };
+      return { ...drive.at(state.x, now), lift: up(state.x) };
     },
   };
 }

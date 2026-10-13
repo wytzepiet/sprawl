@@ -992,6 +992,134 @@ mod tests {
         assert!(closest > length * 0.9, "two lanes into one: cars {closest:.2} apart");
     }
 
+    /// Lay a road along tiles, a step at a time, each step taken.
+    fn draw_road(game: &mut Game, tool: Tool, tiles: &[(i32, i32)]) {
+        for w in tiles.windows(2) {
+            let step = Build { tool, from: GridCoord { x: w[0].0, y: w[0].1 }, to: GridCoord { x: w[1].0, y: w[1].1 }, up: None, sides: None, road: false };
+            assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
+        }
+    }
+
+    /// Two cars in one lane of a road of two closer than their lengths: one
+    /// driving through the other, which a change of lanes must never make.
+    fn overlap(game: &Game) -> Option<String> {
+        let world = &game.world;
+        for (edge, seg) in world.edges.iter().filter(|(_, s)| s.lanes > 1) {
+            for lane in 0..2 {
+                let mut at: Vec<(f64, EntityId, CarRole)> = seg
+                    .lane(lane)
+                    .filter_map(|c| match world.objects.get(c).map(|e| &e.object) {
+                        Some(GameObject::Car(car)) => {
+                            let t = car.trip.as_ref()?;
+                            // On it, not yet coming to it by another road.
+                            let i = t.route_index;
+                            if (t.route[i - 1], t.route[i]) != *edge {
+                                return None;
+                            }
+                            let (p, _) = crate::car::physics::catch_up(t.progress, t.speed, t.acceleration, (game.now - t.updated_at) as f64 / 1000.0);
+                            Some((p - t.segment_lengths[1..i].iter().sum::<f64>(), c, car.role))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                at.sort_by(|a, b| a.0.total_cmp(&b.0));
+                for w in at.windows(2) {
+                    let ((p, a, ra), (q, b, rb)) = (w[0], w[1]);
+                    if q - p < crate::car::nose(ra) + crate::car::tail(rb) - 0.02 {
+                        let say = |c: EntityId| match world.objects.get(c).map(|e| &e.object) {
+                            Some(GameObject::Car(car)) => car.trip.as_ref().map(|t| format!("{c}: ri {} v {:.2} a {:.2} shift {:?} lanes {:?} at {} route {:?}", t.route_index, t.speed, t.acceleration, t.shift, t.lanes, t.updated_at, t.route)).unwrap_or_default(),
+                            _ => String::new(),
+                        };
+                        return Some(format!("cars {a} and {b} {:.2} apart in lane {lane} of {edge:?} at {}\n{}\n{}\nlanes {:?} {:?}\nat {at:?}", q - p, game.now, say(a), say(b), seg.lane(0).collect::<Vec<_>>(), seg.lane(1).collect::<Vec<_>>()));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// The cars on the road, with their trips.
+    fn trips(game: &Game) -> Vec<(EntityId, crate::protocol::Trip)> {
+        game.world.objects.iter().filter_map(|e| match &e.object {
+            GameObject::Car(c) => c.trip.clone().map(|t| (e.id, t)),
+            _ => None,
+        }).collect()
+    }
+
+    /// A busy road of two lanes with a road joining it from the side: the
+    /// cars joining come into the near lane, those on it change lanes,
+    /// round each other and out of the joining cars' way, and never into
+    /// each other; the traffic keeps moving.
+    #[test]
+    fn cars_change_lanes_to_let_others_merge() {
+        let text = "# Merge\n@gate 1 in2\n@gate 2 out2\n@gate 3 in\n@want 1 2 40\n@want 3 2 14\n....................\n....................\n....................\n1..................2\n....................\n....................\n..........3.........\n";
+        let (mut level, mut game) = play(text);
+        draw_road(&mut game, Tool::Wide, &(0..=19).rev().map(|x| (x, -3)).collect::<Vec<_>>());
+        draw_road(&mut game, Tool::OneWay, &[(9, -6), (9, -5), (9, -4), (9, -3)]);
+        let junction = game.world.road_node_at(GridCoord { x: 9, y: -3 }).unwrap();
+        level.test(&mut game);
+        let (mut changes, mut merged_into) = (std::collections::HashSet::new(), std::collections::HashSet::new());
+        while level.phase == Phase::Test {
+            level.step(&mut game);
+            game.step();
+            if let Some(o) = overlap(&game) {
+                panic!("{o}");
+            }
+            for (id, t) in trips(&game) {
+                if let Some(s) = t.shift {
+                    changes.insert((id, s.at));
+                }
+                // One from the side, short of the road: the lane it joins by.
+                if let Some(j) = t.route.iter().position(|&n| n == junction).filter(|&j| j > 0 && t.route_index <= j && t.route[j - 1] != t.route[0] && game.world.height_of(t.route[j - 1]) == 0) {
+                    if game.world.objects.get(t.route[j - 1]).and_then(|e| e.position) == Some(GridCoord { x: 9, y: -4 }) {
+                        merged_into.insert(t.lanes[j + 1]);
+                    }
+                }
+            }
+        }
+        assert_eq!(level.phase, Phase::Done, "{}", level.message);
+        assert_eq!(merged_into, std::collections::HashSet::from([0]), "joining from the right, into the right lane");
+        assert!(changes.len() > 10, "{} changes of lane", changes.len());
+    }
+
+    /// Cars bound for a turn off a road of two lanes get into the lane it
+    /// asks for before they come to it, keeping right as they may; on an
+    /// open road they keep right.
+    #[test]
+    fn cars_get_in_lane_and_keep_right() {
+        let text = "# Lanes\n@gate 1 in2\n@gate 2 out2\n@gate 3 out\n@want 1 2 20\n@want 1 3 20\n..............3.....\n....................\n....................\n1..................2\n....................\n";
+        let (mut level, mut game) = play(text);
+        draw_road(&mut game, Tool::Wide, &(0..=19).rev().map(|x| (x, -3)).collect::<Vec<_>>());
+        draw_road(&mut game, Tool::OneWay, &[(5, -3), (5, -2), (5, -1), (5, 0)]);
+        let junction = game.world.road_node_at(GridCoord { x: 5, y: -3 }).unwrap();
+        let out = game.world.road_node_at(GridCoord { x: 0, y: -3 }).unwrap();
+        level.test(&mut game);
+        let (mut turning, mut through) = (Vec::new(), Vec::new());
+        let mut seen = std::collections::HashSet::new();
+        while level.phase == Phase::Test {
+            level.step(&mut game);
+            game.step();
+            if let Some(o) = overlap(&game) {
+                panic!("{o}");
+            }
+            for (id, t) in trips(&game) {
+                let ri = t.route_index;
+                // Coming to the turn, its last edge before it; at the far end, the last edge.
+                if t.route.get(ri) == Some(&junction) && t.route.get(ri + 1).is_some_and(|&n| game.world.objects.get(n).and_then(|e| e.position).is_some_and(|p| p.y == -2)) && seen.insert((id, 0)) {
+                    turning.push(t.lanes[ri]);
+                }
+                if t.route.get(ri) == Some(&out) && seen.insert((id, 1)) {
+                    through.push(t.lanes[ri]);
+                }
+            }
+        }
+        assert_eq!(level.phase, Phase::Done, "{}", level.message);
+        let share = |v: &[u8], l: u8| v.iter().filter(|&&x| x == l).count() as f64 / v.len().max(1) as f64;
+        eprintln!("turning in lane 1: {:.2} of {}; through in lane 0: {:.2} of {}", share(&turning, 1), turning.len(), share(&through, 0), through.len());
+        assert!(share(&turning, 1) > 0.9, "into the left lane for the left turn");
+        assert!(share(&through, 0) > 0.8, "keeping right");
+    }
+
     #[test]
     fn nothing_is_built_off_the_map_or_on_a_gate() {
         let (_, game) = play(CROSSING);

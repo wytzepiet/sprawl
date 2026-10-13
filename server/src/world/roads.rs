@@ -110,11 +110,11 @@ impl World {
         }
     }
 
-    /// The lane a car keeps on the edge into each node of a route. On a
-    /// road of two lanes it is chosen for the stretch's end: the right lane
-    /// for a right turn at the junction there, the left for a left, the
-    /// emptier going straight on; where the road has one lane, that one.
-    /// Kept the length of the stretch: a car changes lanes at junctions.
+    /// The lane a car enters each stretch of a route by, on the edge into
+    /// each node of it, where the road has two: in from a road beside it,
+    /// the lane on that side, as a car joining a road takes the near lane;
+    /// straight on, the lane it was in; setting out, the emptier. It keeps
+    /// it along the stretch until it changes lanes (`car::simulation`).
     pub fn lanes_for(&self, route: &[EntityId]) -> Vec<u8> {
         let mut lanes = vec![0u8; route.len()];
         let wide = |k: usize| self.edges.get(&(route[k - 1], route[k])).is_some_and(|s| s.lanes > 1);
@@ -126,19 +126,22 @@ impl World {
                 j += 1;
             }
             if (k..=j).any(wide) {
-                let turn = (j + 1 < route.len()).then(|| (pos(route[j - 1]), pos(route[j]), pos(route[j + 1]))).and_then(|p| match p {
-                    (Some(a), Some(b), Some(c)) => Some((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)),
+                let side = match (k.checked_sub(2).map(|p| pos(route[p])), pos(route[k - 1]), pos(route[k])) {
+                    (Some(Some(p)), Some(at), Some(n)) => {
+                        // Toward the side the lanes keep to, (-dy, dx), is right.
+                        let (dx, dy) = (n.x - at.x, n.y - at.y);
+                        Some(-dy * (p.x - at.x) + dx * (p.y - at.y))
+                    }
                     _ => None,
-                });
-                // Toward the side the lanes keep to, (-dy, dx), is right.
-                let lane = match turn {
-                    Some(t) if t > 0 => 0,
-                    Some(t) if t < 0 => 1,
-                    _ => {
+                };
+                let lane = match side {
+                    Some(s) if s > 0 => 0,
+                    Some(s) if s < 0 => 1,
+                    Some(_) => lanes[k - 1],
+                    None => {
                         let first = (k..=j).find(|&i| wide(i)).unwrap();
                         let seg = &self.edges[&(route[first - 1], route[first])];
-                        let count = |l: usize| seg.all().filter(|&c| seg.lane_of(c) == Some(l)).count();
-                        u8::from(count(1) < count(0))
+                        u8::from(seg.lane(1).count() < seg.lane(0).count())
                     }
                 };
                 for i in k..=j {
@@ -150,6 +153,16 @@ impl World {
             k = j + 1;
         }
         lanes
+    }
+
+    /// The lane the turn at node `j` of a route asks for, coming to it on a
+    /// road of two: the right lane for a right turn, the left for a left;
+    /// straight on, or at the route's end, either.
+    pub fn turn_lane(&self, route: &[EntityId], j: usize) -> Option<u8> {
+        let pos = |id: EntityId| self.objects.get(id).and_then(|e| e.position);
+        let (a, b, c) = (pos(*route.get(j.checked_sub(1)?)?)?, pos(route[j])?, pos(*route.get(j + 1)?)?);
+        let t = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+        (t != 0).then_some(u8::from(t < 0))
     }
 
     /// The road between two nodes given priority, or its priority taken:

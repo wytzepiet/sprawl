@@ -567,17 +567,32 @@ What runs, and where; the rest of the order above is still to come.
   is the virtual lead, and its car behind is woken as its own road's is.
 - **Lights** (`intersection::Signal`): phases from the arms, adaptive
   with a gap-out, all red between, ticking on the junction's own wake.
-- **Two lanes** (`Tool::Wide`, `EdgeSegment`'s lanes, `World::lanes_for`):
-  a car's lane chosen per stretch for its turn ahead; lanes change at
-  junctions only, not along a stretch (§4's lane change is still to
-  come); gates `in2`/`out2`.
+- **Two lanes** (`Tool::Wide`, `EdgeSegment`'s lanes, `World::lanes_for`,
+  `car::simulation::change_lanes`); gates `in2`/`out2`. A car joining a
+  road of two from the side comes into the lane on its side, and the
+  junction ranks it only against cars going out by that lane. Along a
+  stretch a car changes lanes, event-driven, at whatever wakes it: into
+  the lane its turn at the end asks for (`World::turn_lane`), falling in
+  behind the car there and waiting short of the junction if it must; out
+  of the lane a car at the junction ahead waits to merge into; round a
+  slower car close ahead; and back to the right lane when that is clear.
+  A change takes a second and a half (`Trip::shift`, which the client
+  slides across, `motion.ts`): the car stands in both lanes' queues
+  meanwhile, and wakes once at its end. Where cars of the same rank come
+  into one lane from two arms, each follows the other as a virtual lead
+  (`merging_ahead`): one may go ahead of the other if the other can
+  brake to follow it, else the nearer goes first. A car looks for its
+  lead on every edge it is queued on, not the next one only, so none
+  sleeps into a queue standing a few tiles on. Not §3's settled order or
+  shadow list: positions are read off the trips, and those merging are
+  woken when a car changes its pedal.
 - **Ten levels**, a step each: a first road, round a hill, a crossroads,
   a merge, passing, a fork, giving way, over and under, rush hour, a
   roundabout.
 - **The map of levels** and **kept layouts** (`Map.tsx`, `progress.ts`,
   `Level::layout`).
 
-Not yet: lane changes along a stretch, the scores endpoint and its
+Not yet: the scores endpoint and its
 chart, the overworld as one terrain with shared gates and cars crossing
 between levels (the map's levels are made separately, and their gates do
 not yet agree), auto-bridging, flipping a one-way in place. The sim is

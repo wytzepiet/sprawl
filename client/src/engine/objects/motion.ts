@@ -53,17 +53,54 @@ export function travelled(t: Trip, now: number): [number, number] {
  *  bobtail cab, or a car. */
 export const rigOf = (car: Car): Rig => (car.role !== "Truck" ? CAR_RIG : car.hitched ? LORRY_RIG : { axle: LORRY_RIG.axle });
 
-/** Each vehicle's drive, kept while its trip's route is the same. */
-const drives = new Map<number, { route: string; drive: Drive | null }>();
-/** A vehicle's trip, driven as `driver.ts` steers it; none off a trip. */
-export function driveOf(id: number, car: Car): Drive | null {
+/** A trip's drive, by the distance along it and the moment: while it
+ *  changes lanes (`Trip.shift`), slid from the drive in the lane it left
+ *  to the one in the lane it takes, eased. */
+export interface Driving {
+  length: number;
+  at(s: number, now: number): ReturnType<Drive["at"]>;
+}
+
+/** Each vehicle's drive, kept while its trip's route is the same; and
+ *  while its lanes are, the drive in them, and the one before. */
+const drives = new Map<number, { route: string; lanes: string; drive: Drive | null; was: Drive | null; driving: Driving | null; trip: Trip }>();
+export function driveOf(id: number, car: Car): Driving | null {
   const t = car.trip;
   if (!t) return void drives.delete(id), null;
   const rig = rigOf(car);
   const route = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, t.cusps, t.leaves, t.stands, rig]);
+  const lanes = String(t.lanes ?? []);
+  const build = () => driveTrip(t, rig, lanesOf(t.route_positions, t.route_heights ?? [], t.lanes ?? []));
   let me = drives.get(id);
-  if (me?.route !== route) drives.set(id, (me = { route, drive: driveTrip(t, rig, lanesOf(t.route_positions, t.route_heights ?? [], t.lanes ?? [])) }));
-  return me.drive;
+  if (me?.route !== route) {
+    const drive = build();
+    const entry = { route, lanes, drive, was: null as Drive | null, driving: null as Driving | null, trip: t };
+    entry.driving = drive && {
+      get length() {
+        return entry.drive!.length;
+      },
+      at(s, now) {
+        const to = entry.drive!.at(Math.min(s, entry.drive!.length));
+        const sh = entry.trip.shift;
+        if (!entry.was || !sh || sh.from === sh.to || now >= sh.until) return to;
+        const u = Math.max(0, (now - sh.at) / Math.max(1, sh.until - sh.at));
+        const e = u * u * (3 - 2 * u);
+        const from = entry.was.at(Math.min(s, entry.was.length));
+        return { body: blend(from.body, to.body, e), trailer: to.trailer && from.trailer && blend(from.trailer, to.trailer, e) };
+      },
+    };
+    drives.set(id, (me = entry));
+  } else if (me.lanes !== lanes) {
+    [me.was, me.drive, me.lanes] = [me.drive, build() ?? me.drive, lanes];
+  }
+  me.trip = t;
+  return me.driving;
+}
+
+/** Part way from one pose to another. */
+function blend(a: Pose, b: Pose, e: number): Pose {
+  const turn = Math.atan2(Math.sin(b.heading - a.heading), Math.cos(b.heading - a.heading));
+  return { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e, heading: a.heading + turn * e };
 }
 
 /** Where a lane runs from the road's middle, by what kind of link it is
@@ -200,7 +237,7 @@ export function moment(id: number, car: Car, now: number): Moment | null {
   const drive = driveOf(id, car);
   const lorry = car.role === "Truck";
   if (drive) {
-    const p = drive.at(Math.min(travelled(car.trip!, now)[0], drive.length));
+    const p = drive.at(Math.min(travelled(car.trip!, now)[0], drive.length), now);
     return { body: stand(p.body), box: lorry && car.hitched ? stand(p.trailer ?? straightBehind(p.body)) : undefined };
   }
   if (!car.spot) return null;

@@ -2,7 +2,9 @@ use std::collections::VecDeque;
 
 use crate::protocol::EntityId;
 
-/// The cars on one directed edge, a queue a lane.
+/// The cars on one directed edge, a queue a lane. A car changing lanes
+/// stands in both for as long as it takes (`car::simulation`'s shifts), so
+/// whoever follows in either sees it.
 pub struct EdgeSegment {
     pub length: f64,
     /// How many lanes it has, its way: one, or two (`RoadNode::wide`).
@@ -34,16 +36,33 @@ impl EdgeSegment {
         self.find(car_id).is_some()
     }
 
-    /// The car ahead of this one in its lane.
-    pub fn ahead(&self, car_id: EntityId) -> Option<EntityId> {
-        let (lane, i) = self.find(car_id)?;
-        i.checked_sub(1).map(|j| self.queues[lane][j])
+    /// Each lane a car stands in, and where in it.
+    fn places(&self, car_id: EntityId) -> impl Iterator<Item = (usize, usize)> + '_ {
+        self.queues.iter().enumerate().filter_map(move |(lane, q)| Some((lane, q.iter().position(|&id| id == car_id)?)))
     }
 
-    /// The car behind this one in its lane.
-    pub fn behind(&self, car_id: EntityId) -> Option<EntityId> {
-        let (lane, i) = self.find(car_id)?;
-        self.queues[lane].get(i + 1).copied()
+    /// The car ahead of this one in each lane it stands in.
+    pub fn ahead(&self, car_id: EntityId) -> Vec<EntityId> {
+        self.places(car_id).filter_map(|(lane, i)| i.checked_sub(1).map(|j| self.queues[lane][j])).collect()
+    }
+
+    /// The car behind this one in each lane it stands in.
+    pub fn behind(&self, car_id: EntityId) -> Vec<EntityId> {
+        self.places(car_id).filter_map(|(lane, i)| self.queues[lane].get(i + 1).copied()).collect()
+    }
+
+    /// The cars in one lane, the front first.
+    pub fn lane(&self, lane: usize) -> impl Iterator<Item = EntityId> + '_ {
+        self.queues[lane.min(1)].iter().copied()
+    }
+
+    pub fn in_lane(&self, car_id: EntityId, lane: usize) -> bool {
+        self.queues[lane.min(1)].contains(&car_id)
+    }
+
+    /// Out of one lane, and still in any other it stands in.
+    pub fn leave_lane(&mut self, car_id: EntityId, lane: usize) {
+        self.queues[lane.min(1)].retain(|&id| id != car_id);
     }
 
     /// The last car into a lane.
