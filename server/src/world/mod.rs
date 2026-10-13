@@ -1,5 +1,6 @@
 pub mod bezier;
 mod buildings;
+pub mod clear;
 pub mod decks;
 
 pub mod fields;

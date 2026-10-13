@@ -432,12 +432,13 @@ pub fn may(world: &World, tool: Tool, from: GridCoord, to: GridCoord) -> bool {
 
 /// `may`, at the heights and sides the step gives.
 pub fn may_step(world: &World, step: Build) -> bool {
-    may_step_on(world, step, None)
+    may_step_on(world, step, None, None)
 }
 
 /// `may_step`, a drag going on from `to` that way, if it does
-/// (`World::leads_nowhere`).
-pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }: Build, on: Option<(i32, i32)>) -> bool {
+/// (`World::leads_nowhere`), and on to the road's next end, if it is known
+/// (`World::may_lay_at_on`).
+pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }: Build, on: Option<(i32, i32)>, then: Option<crate::world::clear::End>) -> bool {
     let [hf, ht] = up.unwrap_or_default();
     let [sf, st] = sides.unwrap_or_default();
     let (a, b) = (world.node_in(from, hf, sf), world.node_in(to, ht, st));
@@ -480,7 +481,7 @@ pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }:
                 && !(tool == Tool::Wide && (sf != MIDDLE || st != MIDDLE))
                 && world.build.may_draw(one_way, road)
                 && world.laid + new_tiles <= world.build.road_tiles()
-                && world.may_lay_at_on(from, hf, sf, to, ht, st, one_way, on)
+                && world.may_lay_at_on(from, hf, sf, to, ht, st, tool, on, then)
         }
         Tool::Light => from == to && b.is_some_and(|id| world.is_intersection(id)),
         Tool::Demolish if from == to => b.is_some() || (ht == 0 && world.occupied.contains_key(&(to.x, to.y))),

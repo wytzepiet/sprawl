@@ -7,15 +7,15 @@
 //! have changed, what was laid is taken back and laid again.
 //!
 //! Each tile of the drag stands somewhere on its tile (`Place`): a height,
-//! toward the pen's (a level, or a slope on to the next), and a side. A
-//! road already there, along the way the drag goes, is followed, nothing
-//! laid. A one-way run along a one-way that runs against it, going in along
-//! it or going on along it, goes beside it, on the right of the way it is
-//! drawn, the other moving over (`World::moves_over`); along a pair, on to
-//! the one on its right; into one from the side, the near one. A drag that
-//! starts on a one-way and sets off against it starts beside it. Anything
-//! else is the middle. Of what may be, the first the world allows
-//! (`game::may_step`); where nothing may, the drag stops there.
+//! toward the pen's (a level, or a slope on to the next), and a side. The
+//! plan offers the places a tile may stand in the order a hand would mean
+//! them (`sides`): along a road already there, followed, nothing laid; a
+//! one-way beside a road that runs against it, the road moving over
+//! (`World::moving_over`); into a road there; the middle; on along the
+//! side it is on. Of these, the first the world allows (`game::may_step`),
+//! judged with the drag's next step where it is drawn (`plan`); where
+//! nothing may, the drag stops there. Where roads may stand is the world's
+//! one rule of their shapes (`world/clear.rs`), not the plan's.
 //!
 //! The drag joins what it meets where it starts and where it ends: in
 //! between, it turns only as it went (`RoadNode::banned`): its new links
@@ -28,6 +28,7 @@ use crate::intersection::IntersectionRegistry;
 use crate::protocol::{Build, EntityId, GameObject, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
 use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};
 use crate::world::decks::{across, other, toward, Side, MIDDLE};
+use crate::world::clear::End;
 use crate::world::World;
 
 /// Where on its tile a drag stands: how high, in half-levels, and on which
@@ -148,22 +149,22 @@ fn place_of(world: &World, id: EntityId) -> Place {
 }
 
 /// Where the drag may start on its first tile, the likeliest first: where
-/// it was pressed; beside the one-way it was pressed on, if it sets off
-/// against it, before that.
+/// it was pressed; a one-way pressed in the middle, beside a road there it
+/// sets off against, before that.
 fn starts(world: &World, stroke: &Stroke, tiles: &[GridCoord]) -> Vec<Place> {
     let p = stroke.start.map_or(Place { h: stroke.tiles[0].want, s: MIDDLE }, |s| Place { h: s.h, s: s.side });
     let mut out = Vec::new();
-    if stroke.tool == Tool::OneWay && p.s == MIDDLE && tiles.len() > 1 {
-        let on = step(tiles[0], tiles[1]);
-        out.extend(beside(world, tiles[0], p.h, None, Some(on), None).into_iter().map(|s| Place { h: p.h, s }));
+    if stroke.tool == Tool::OneWay && p.s == MIDDLE {
+        out.extend(beside(world, tiles, 0, p.h, MIDDLE).into_iter().map(|s| Place { h: p.h, s }));
     }
     out.push(p);
     out
 }
 
 /// Where tile `i` of the drag stands, coming from one of `froms` on the
-/// tile before: the first of what may be that the world allows, and which
-/// of `froms` it came from; none, where nothing may.
+/// tile before: the first of what may be that the world allows, alone or
+/// with the drag's next step where it is drawn already, and which of
+/// `froms` it came from; none, where nothing may.
 fn plan(world: &World, stroke: &Stroke, tiles: &[GridCoord], i: usize, froms: &[Place]) -> Option<(Place, Place)> {
     let (from, to) = (tiles[i - 1], tiles[i]);
     for &pf in froms {
@@ -173,7 +174,13 @@ fn plan(world: &World, stroke: &Stroke, tiles: &[GridCoord], i: usize, froms: &[
                 // Its cars go on as the drag does; at its end, as it may
                 // yet: straight on.
                 let on = Some(tiles.get(i + 1).map_or(step(from, to), |&n| step(to, n)));
-                if follows(world, stroke.tool, from, pf, to, pt) || may(world, stroke, from, pf, to, pt, on) {
+                if follows(world, stroke.tool, from, pf, to, pt) || may(world, stroke, from, pf, to, pt, on, None) {
+                    return Some((pf, pt));
+                }
+                // Laid with the next, as a drag beside a road moves it over.
+                let Some(&next) = tiles.get(i + 1) else { continue };
+                let thens = heights(world, next, h, stroke.tiles[i + 1].want).into_iter().flat_map(|g| sides(world, stroke.tool, tiles, i + 1, g, pt).into_iter().map(move |s| (next, g, s)));
+                if thens.into_iter().any(|then| may(world, stroke, from, pf, to, pt, on, Some(then))) {
                     return Some((pf, pt));
                 }
             }
@@ -208,9 +215,13 @@ fn heights(world: &World, to: GridCoord, h: u8, want: u8) -> Vec<u8> {
     dedup(out)
 }
 
-/// The sides tile `i` may stand on at height `h`, the likeliest first:
-/// along a road already there, that road; a one-way, beside or into a
-/// one-way there (`beside`); the middle.
+/// The sides tile `i` may stand on at height `h`, coming from `pf` on the
+/// tile before, the likeliest first: along a road already there, that
+/// road; a one-way, beside a road there that runs against it (`beside`);
+/// into a road there, the one running its way first, then the nearest the
+/// side it is on; the middle; else on along the side it is on, as a ramp
+/// keeps beside the road it climbed beside until it is clear of it.
+/// Which may be, the world says.
 fn sides(world: &World, tool: Tool, tiles: &[GridCoord], i: usize, h: u8, pf: Place) -> Vec<Side> {
     let (from, to) = (tiles[i - 1], tiles[i]);
     let mut out = Vec::new();
@@ -222,52 +233,57 @@ fn sides(world: &World, tool: Tool, tiles: &[GridCoord], i: usize, h: u8, pf: Pl
         }
     }
     if tool == Tool::OneWay {
-        out.extend(beside(world, to, h, Some(step(from, to)), tiles.get(i + 1).map(|&n| step(to, n)), Some(pf.s)));
+        out.extend(beside(world, tiles, i, h, pf.s));
     }
-    out.push(MIDDLE);
+    let travel = tiles.get(i + 1).map_or(step(from, to), |&n| step(to, n));
+    let mut into: Vec<(EntityId, Side)> = world.nodes_on(to).into_iter().filter(|&(g, _)| g == h).map(|(_, id)| (id, world.side_of(id))).collect();
+    into.sort_by_key(|&(id, s)| (!runs(world, id, travel), -toward(wide(pf.s), s).signum()));
+    out.extend(into.into_iter().map(|(_, s)| s));
+    out.extend([MIDDLE, pf.s]);
     dedup(out)
 }
 
-/// Where on a tile a one-way stands among the one-ways there at height
-/// `h`, coming in by `inn` and going on by `out`, from a tile it stood on
-/// `came` on: among a pair, the one running its way, else the one on the
-/// side it is on or comes from; beside a one-way in the middle that runs
-/// against it, along it, the other moving over: on the side it is on,
-/// else, come along it, on its right, else, come across it, on the side
-/// it comes from, never across it. Nothing else.
-fn beside(world: &World, at: GridCoord, h: u8, inn: Option<Step>, out: Option<Step>, came: Option<Side>) -> Vec<Side> {
-    let on: Vec<(EntityId, Side)> = world.nodes_on(at).into_iter().filter(|&(g, _)| g == h).map(|(_, id)| (id, world.side_of(id))).collect();
+/// The free sides of tile `i` beside the roads there, within a level of
+/// `h`, that run against the drag, along the way it comes in or goes on:
+/// the side it is on (`came`) first, then the side it comes from, then its
+/// right. The road there moves over (`World::moving_over`).
+fn beside(world: &World, tiles: &[GridCoord], i: usize, h: u8, came: Side) -> Vec<Side> {
+    let at = tiles[i];
+    let inn = i.checked_sub(1).map(|j| step(tiles[j], at));
+    let out = tiles.get(i + 1).map(|&n| step(at, n));
     let back = inn.map(|(x, y)| (-x, -y));
-    let came = came.filter(|&s| s != MIDDLE);
-    // The side nearest: the one it is on, else the one it comes from.
-    let near = |s: Side| came.map_or(0, |c| toward((c[0] as i32, c[1] as i32), s)) * 2 + back.map_or(0, |b| toward(b, s));
-    let pair: Vec<(EntityId, Side)> = on.iter().copied().filter(|&(_, s)| s != MIDDLE).collect();
-    if !pair.is_empty() {
-        let travel = inn.or(out);
-        let mut pair = pair;
-        pair.sort_by_key(|&(id, s)| (!travel.is_some_and(|t| runs(world, id, t)), -near(s)));
-        return pair.into_iter().map(|(_, s)| s).collect();
+    let mut found = Vec::new();
+    for (g, m) in world.nodes_on(at) {
+        let mut arms = world.arms_of(m, false);
+        arms.sort_unstable();
+        arms.dedup();
+        let Some(steps) = world.steps_to(m, &arms).filter(|_| g.abs_diff(h) < 2) else { continue };
+        // Against it: come in along it, it runs out the way the drag came;
+        // or going on along it, it runs in from where the drag goes.
+        let in_along = back.filter(|b| steps.contains(b));
+        let against = match (in_along, out.filter(|o| steps.contains(o))) {
+            (Some(b), _) => runs(world, m, b),
+            (None, Some(o)) => runs(world, m, (-o.0, -o.1)),
+            _ => false,
+        };
+        let way = match world.side_of(m) {
+            MIDDLE => across(&steps),
+            s => Some(s),
+        };
+        if let Some(w) = way.filter(|_| against) {
+            found.extend([w, other(w)]);
+        }
     }
-    let Some(m) = world.node_at(at, h) else { return Vec::new() };
-    let mut arms = world.arms_of(m, false);
-    arms.sort_unstable();
-    arms.dedup();
-    let Some(steps) = world.steps_to(m, &arms) else { return Vec::new() };
-    // Against it: come in along it, it runs out the way the drag came; or
-    // going on along it, it runs in from where the drag goes.
-    let in_along = back.filter(|b| steps.contains(b));
-    let out_along = out.filter(|o| steps.contains(o));
-    let against = in_along.zip(inn).is_some_and(|(_, t)| runs(world, m, (-t.0, -t.1))) || (in_along.is_none() && out_along.is_some_and(|o| runs(world, m, (-o.0, -o.1))));
-    let Some(way) = across(&steps).filter(|_| against) else { return Vec::new() };
-    let right = |(x, y): Step| (-y, x);
-    let toward_s = |s: Side| match (came, in_along, back) {
-        (Some(c), _, _) => toward((c[0] as i32, c[1] as i32), s),
-        (None, Some(_), _) => toward(right(inn.unwrap()), s),
-        (None, None, Some(b)) => toward(b, s),
-        (None, None, None) => out.map_or(0, |o| toward(right(o), s)),
-    };
-    let s = if toward_s(way) > 0 { way } else { other(way) };
-    [s, other(s)].into_iter().filter(|&s| world.moves_over(at, h, s).is_some()).collect()
+    found.retain(|&s| s != MIDDLE && world.node_in(at, h, s).is_none());
+    let right = inn.or(out).map(|(x, y)| (-y, x));
+    let key = |s: Side| [toward(wide(came), s).signum(), back.map_or(0, |b| toward(b, s)).signum(), right.map_or(0, |r| toward(r, s)).signum()];
+    found.sort_by_key(|&s| std::cmp::Reverse(key(s)));
+    dedup(found)
+}
+
+/// A side as a step.
+fn wide(s: Side) -> Step {
+    (s[0] as i32, s[1] as i32)
 }
 
 /// Does a road run this way through a node: out by an arm that way, or in
@@ -286,12 +302,13 @@ fn follows(world: &World, tool: Tool, from: GridCoord, pf: Place, to: GridCoord,
     world.edges.contains_key(&(a, b)) && (tool == Tool::Street) == world.edges.contains_key(&(b, a))
 }
 
-/// May the step be laid, the drag going on from it that way, if it does
-/// (`game::may_step_on`).
-fn may(world: &World, stroke: &Stroke, from: GridCoord, pf: Place, to: GridCoord, pt: Place, on: Option<Step>) -> bool {
+/// May the step be laid, the drag going on from it that way, if it does,
+/// and to `then`, if that is known (`game::may_step_on`).
+#[allow(clippy::too_many_arguments)]
+fn may(world: &World, stroke: &Stroke, from: GridCoord, pf: Place, to: GridCoord, pt: Place, on: Option<Step>, then: Option<End>) -> bool {
     let up = (pf.h > 0 || pt.h > 0).then_some([pf.h, pt.h]);
     let sides = (pf.s != MIDDLE || pt.s != MIDDLE).then_some([pf.s, pt.s]);
-    crate::game::may_step_on(world, Build { tool: stroke.tool, from, to, up, sides, road: stroke.road }, on)
+    crate::game::may_step_on(world, Build { tool: stroke.tool, from, to, up, sides, road: stroke.road }, on, then)
 }
 
 /// The turns the drag drew, on the tiles it passes through: its new links

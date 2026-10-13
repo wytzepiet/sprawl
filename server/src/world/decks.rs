@@ -9,31 +9,27 @@
 //! to the next slope on, so a road climbs several levels over as many
 //! tiles, on and on.
 //!
-//! Several nodes may stand on one tile, as long as each is a level clear of
-//! the others: a slope counts as the levels at both its ends. So a slope
-//! from the first level to the second may pass over a ground road, and a
-//! slope from the ground may not. Links crossing on the diagonal, between
-//! tiles, cross over each other a level apart; within a level, they cross
-//! at the corner, and their cars take turns there (`World::crossing_of`).
-//!
-//! Two one-ways may share a tile side by side, as roads share it stacked:
-//! each a node of its own, moved a little to one side of the tile's middle
-//! (`RoadNode::side`), a thin road beside the other. A one-way running
-//! through a tile moves over when another is laid beside it, and back when
-//! that one goes. Two on one tile keep clear of each other
-//! (`World::keeps_clear`): drawn as they lie, edge to node to edge, their
-//! ways through it never cross. So they run on side by side, straight or
-//! round a bend, one inside it and the other out; and the one outside a
-//! bend may go on straight past it, or away round it. A road joins one on a side
-//! from that side, and ends there; never from the other side, which the
-//! road beside it is in the way of.
+//! Several nodes may stand on one tile, at heights, and moved a little to
+//! one side of its middle (`RoadNode::side`), a thin road beside another.
+//! Where they may stand is one rule (`clear.rs`): every road clear of every
+//! other, their widths apart on the map or a level apart in height, as they
+//! lie. So a slope from the first level to the second may pass over a
+//! ground road, and a slope from the ground may not; two one-ways run side
+//! by side, straight or round a bend, one inside it and the other out, and
+//! part; a ramp climbs beside a road on its tiles. A road in the middle of
+//! a tile moves over when another is laid beside it (`moving_over`), and
+//! back when it would lie clear there again (`settle_sides`). Links
+//! crossing on the diagonal, between tiles, cross over each other a level
+//! apart; within a level, they cross at the corner, and their cars take
+//! turns there (`World::crossing_of`).
 //!
 //! The ground's middle nodes are `roads`, as they always were, and
 //! everything the town does with a tile's road is theirs. The rest, above
 //! the ground or beside the middle, are `decks`.
 
-use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode, TerrainType};
+use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode, TerrainType, Tool};
 
+use super::clear::End;
 use super::World;
 
 /// The highest a road stands: three levels up.
@@ -86,28 +82,6 @@ pub(crate) fn spot(at: GridCoord, side: Side) -> [f64; 2] {
     [at.x as f64 + 0.5 + sx * by, at.y as f64 + 0.5 + sy * by]
 }
 
-/// Do two roads' points on a tile's edge take turns round its middle, one
-/// of each and one of each again: their ways cross.
-fn alternate(centre: [f64; 2], a: &[[f64; 2]], b: &[[f64; 2]]) -> bool {
-    let angle = |p: &[f64; 2]| (-(p[1] - centre[1])).atan2(p[0] - centre[0]);
-    let mut all: Vec<(f64, bool)> = a.iter().map(|p| (angle(p), true)).chain(b.iter().map(|p| (angle(p), false))).collect();
-    all.sort_by(|p, q| p.0.total_cmp(&q.0));
-    let changes = (0..all.len()).filter(|&i| all[i].1 != all[(i + 1) % all.len()].1).count();
-    changes > 2
-}
-
-/// Do two ways across a tile, each a line through its points, touch.
-fn touch(a: &[[f64; 2]], b: &[[f64; 2]]) -> bool {
-    let side = |p: [f64; 2], q: [f64; 2], r: [f64; 2]| (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
-    a.windows(2).any(|s| b.windows(2).any(|t| side(s[0], s[1], t[0]) * side(s[0], s[1], t[1]) <= 0.0 && side(t[0], t[1], s[0]) * side(t[0], t[1], s[1]) <= 0.0))
-}
-
-/// How far apart two nodes on one tile must stand: a level, and a level
-/// more for each that is a slope, which reaches up or down half of one.
-fn clearance(a: u8, b: u8) -> u8 {
-    2 + a % 2 + b % 2
-}
-
 impl World {
     /// The middle road node on a tile at a height.
     pub fn node_at(&self, coord: GridCoord, height: u8) -> Option<EntityId> {
@@ -143,82 +117,6 @@ impl World {
         }
     }
 
-    /// Is there room on this tile for a road at this height and side: its
-    /// own node there already, or every other a level clear of it, or at
-    /// its height on the other side; and above the ground, nothing built
-    /// under it and no mountain. A middle node that would move over to
-    /// make room (`moves_over`) is not in the way.
-    pub fn room_at(&self, coord: GridCoord, height: u8, side: Side) -> bool {
-        if self.node_in(coord, height, side).is_some() {
-            return true;
-        }
-        if height > 0 && (self.occupied.contains_key(&(coord.x, coord.y)) || self.terrain.get(&(coord.x, coord.y)) == Some(&TerrainType::Mountain)) {
-            return false;
-        }
-        self.nodes_on(coord).into_iter().all(|(h, id)| {
-            let beside = side != MIDDLE && h == height && (self.side_of(id) == other(side) || Some(id) == self.moves_over(coord, height, side));
-            beside || h.abs_diff(height) >= clearance(h, height)
-        })
-    }
-
-    /// The middle node on a tile that moves over to the other side when a
-    /// node is laid on this one: a one-way running straight through, or
-    /// ending, along the run across the side, with one lane.
-    pub fn moves_over(&self, coord: GridCoord, height: u8, side: Side) -> Option<EntityId> {
-        if side == MIDDLE || self.node_in(coord, height, other(side)).is_some() {
-            return None;
-        }
-        let id = self.node_at(coord, height)?;
-        let mut arms = self.arms_of(id, false);
-        arms.sort_unstable();
-        arms.dedup();
-        let one_lane = arms.iter().all(|&n| (self.edges.contains_key(&(id, n)) != self.edges.contains_key(&(n, id))) && !self.is_wide(id, n) && !self.is_wide(n, id));
-        let way = across(&self.steps_to(id, &arms)?)?;
-        (one_lane && (side == way || side == other(way))).then_some(id)
-    }
-
-    /// Would a road on this side of a tile, given an arm this way to a road
-    /// standing on the `there` side of the next tile, keep clear of the one
-    /// beside it, as they lie: where each crosses the tile's edge, halfway
-    /// to the road it runs to, never taking turns round the tile with the
-    /// other's; and their ways, each from where it crosses the edge in by
-    /// where it stands to where it crosses out, not touching.
-    /// So two run on side by side, straight or round a bend, one inside it
-    /// and the other out, and the one outside may go on past the other's
-    /// bend, or away round it. With nothing beside it, a road stands in the
-    /// middle.
-    pub(crate) fn keeps_clear(&self, at: GridCoord, h: u8, side: Side, way: (i32, i32), (g, there): (u8, Side)) -> bool {
-        let Some(beside) = self.node_in(at, h, other(side)).or_else(|| self.moves_over(at, h, side)) else { return false };
-        let (me, them) = (spot(at, side), spot(at, other(side)));
-        let half = |p: [f64; 2], q: [f64; 2]| [(p[0] + q[0]) / 2.0, (p[1] + q[1]) / 2.0];
-        // Where each road there stands once the new one is laid: on the
-        // next tile, a road on a side moves the middle one over too.
-        let far = GridCoord { x: at.x + way.0, y: at.y + way.1 };
-        let moving = if there == MIDDLE { None } else { self.moves_over(far, g, there) };
-        let pos = |a: EntityId| if Some(a) == moving { Some(spot(far, other(there))) } else { self.node_pos(a) };
-        let edges = |id: EntityId, from: [f64; 2]| {
-            let mut arms = self.arms_of(id, false);
-            arms.sort_unstable();
-            arms.dedup();
-            arms.into_iter().filter_map(pos).map(|q| half(from, q)).collect::<Vec<_>>()
-        };
-        let mut ours = self.node_in(at, h, side).map_or_else(Vec::new, |id| edges(id, me));
-        let new = half(me, spot(far, there));
-        if !ours.iter().any(|p| (p[0] - new[0]).abs() + (p[1] - new[1]).abs() < 1e-6) {
-            ours.push(new);
-        }
-        let theirs = edges(beside, them);
-        let centre = [at.x as f64 + 0.5, at.y as f64 + 0.5];
-        // Each way as it runs: from where it crosses the edge in, by where
-        // it stands, to where it crosses out.
-        let path = |edge: &[[f64; 2]], at: [f64; 2]| match edge {
-            [a, b] => vec![*a, at, *b],
-            [a] => vec![*a, at],
-            _ => vec![at],
-        };
-        !alternate(centre, &ours, &theirs) && !touch(&path(&ours, me), &path(&theirs, them))
-    }
-
     /// The steps from a node to each of these, by their tiles.
     pub(crate) fn steps_to(&self, id: EntityId, arms: &[EntityId]) -> Option<Vec<(i32, i32)>> {
         let at = self.objects.get(id)?.position?;
@@ -252,12 +150,11 @@ impl World {
         }
     }
 
-    /// A road on a side with nothing beside it any more goes back to the
-    /// middle of its tile.
+    /// A road on a side goes back to the middle of its tile where it
+    /// would lie clear there: what it moved over for has gone.
     pub(super) fn settle_sides(&mut self, coord: GridCoord) {
         for (h, id) in self.nodes_on(coord) {
-            let side = self.side_of(id);
-            if side != MIDDLE && self.node_in(coord, h, other(side)).is_none() && self.node_at(coord, h).is_none() {
+            if self.side_of(id) != MIDDLE && self.node_at(coord, h).is_none() && self.lies_clear(&super::clear::Sketch { links: Vec::new(), moves: vec![(id, MIDDLE)] }) {
                 self.move_to(id, MIDDLE);
             }
         }
@@ -273,8 +170,8 @@ impl World {
         if let Some(id) = self.node_in(coord, height, side) {
             return id;
         }
-        if let Some(beside) = self.moves_over(coord, height, side) {
-            self.move_to(beside, other(side));
+        for (id, side) in self.moving_over(coord, height, side) {
+            self.move_to(id, side);
         }
         let id = self.insert_at(
             GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![], side, banned: vec![] }),
@@ -290,61 +187,71 @@ impl World {
     /// at another: the ground's rule (`may_lay`) where both ends are in the
     /// ground's middles.
     pub fn may_lay_at(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool) -> bool {
-        self.may_lay_at_on(from, hf, sf, to, ht, st, one_way, None)
+        self.may_lay_at_on(from, hf, sf, to, ht, st, if one_way { Tool::OneWay } else { Tool::Street }, None, None)
     }
 
-    /// `may_lay_at`, a drag going on from `to` that way, if it does
-    /// (`World::leads_nowhere`).
+    /// `may_lay_at`, for a road drawn with this tool, a drag going on from
+    /// `to` that way, if it does (`World::leads_nowhere`), and on to `then`,
+    /// if it is known where: a step of a level, a slope's end, or one slope
+    /// on to the next; above the ground, nothing built under it and no
+    /// mountain; and the road, with the next step's, and any they move
+    /// over to make room (`moving_over`), clear of every road round them
+    /// (`lies_clear`). With the next step's, as a drag that goes on beside
+    /// a road moves that road over as it goes: a step is judged as the
+    /// drag will leave it, not as it is for a moment.
     #[allow(clippy::too_many_arguments)]
-    pub fn may_lay_at_on(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool, goes_on: Option<(i32, i32)>) -> bool {
+    pub fn may_lay_at_on(&self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, tool: Tool, goes_on: Option<(i32, i32)>, then: Option<End>) -> bool {
+        let one_way = tool != Tool::Street;
         let (dx, dy) = (to.x - from.x, to.y - from.y);
         if (dx, dy) == (0, 0) || dx.abs() > 1 || dy.abs() > 1 || hf > TOP || ht > TOP {
             return false;
         }
-        let middles = sf == MIDDLE && st == MIDDLE;
-        // On the ground, the ground's rule, and a slope's clearance over it.
-        if hf == 0 && ht == 0 && middles {
-            return self.may_lay_on(from, to, one_way, goes_on) && self.room_at(from, 0, MIDDLE) && self.room_at(to, 0, MIDDLE);
-        }
-        // Level, a slope's end, or one slope on to the next; never a
-        // level's jump.
-        let on = hf % 2 == 1 && ht % 2 == 1 && hf.abs_diff(ht) == 2;
-        if (hf.abs_diff(ht) > 1 && !on) || (hf == ht && hf % 2 == 1) {
-            return false;
-        }
-        if !self.room_at(from, hf, sf) || !self.room_at(to, ht, st) {
-            return false;
-        }
-        // A road on a side keeps clear of the one beside it (`keeps_clear`),
-        // one way, but for a road joining it from its own side, which ends
-        // there.
-        for (at, h, side, way, there) in [(from, hf, sf, (dx, dy), (ht, st)), (to, ht, st, (-dx, -dy), (hf, sf))] {
-            if side == MIDDLE {
-                continue;
+        if hf == 0 && ht == 0 && sf == MIDDLE && st == MIDDLE {
+            // On the ground, the ground's rule; into a building, its door,
+            // and no road on its tile.
+            if !self.may_lay_on(from, to, one_way, goes_on) {
+                return false;
             }
-            let mine = self.node_in(at, h, side);
-            let joins = mine.is_some() && toward(way, side) > 0;
-            if (!one_way && !joins) || mine.is_some_and(|id| self.unique_connection_count(id) > 2) || !self.keeps_clear(at, h, side, way, there) {
+            if self.claimed_plot_at(to).is_some() {
+                return true;
+            }
+        } else {
+            let on = hf % 2 == 1 && ht % 2 == 1 && hf.abs_diff(ht) == 2;
+            if (hf.abs_diff(ht) > 1 && !on) || (hf == ht && hf % 2 == 1) {
+                return false;
+            }
+            for (t, h) in [(from, hf), (to, ht)] {
+                let built = self.occupied.contains_key(&(t.x, t.y));
+                let wet = matches!(self.terrain.get(&(t.x, t.y)), Some(TerrainType::Water | TerrainType::Sea | TerrainType::Beach | TerrainType::Mountain));
+                let ground = h == 0 && wet && self.road_node_at(t).is_none();
+                let above = h > 0 && self.terrain.get(&(t.x, t.y)) == Some(&TerrainType::Mountain);
+                if built || ground || above {
+                    return false;
+                }
+            }
+            if self.link_between_at(from, hf, sf, to, ht, st).is_some() {
+                return false;
+            }
+            // A slope runs straight through: one arm down, one up.
+            if !self.slope_takes(from, hf, sf, (dx, dy), ht) || !self.slope_takes(to, ht, st, (-dx, -dy), hf) {
+                return false;
+            }
+            if self.node_in(from, hf, sf).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true, None))
+                || self.node_in(to, ht, st).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way, goes_on))
+            {
                 return false;
             }
         }
-        // Where an end is on the ground, it is the ground's: not into a
-        // building, not over water.
-        for (t, h) in [(from, hf), (to, ht)] {
-            let wet = matches!(self.terrain.get(&(t.x, t.y)), Some(TerrainType::Water | TerrainType::Sea | TerrainType::Beach | TerrainType::Mountain));
-            if h == 0 && ((wet && self.road_node_at(t).is_none()) || self.occupied.contains_key(&(t.x, t.y))) {
-                return false;
+        let half = if tool == Tool::OneWay { super::clear::LANE } else { super::clear::ROAD };
+        let ends: Vec<End> = [(from, hf, sf), (to, ht, st)].into_iter().chain(then).collect();
+        let mut moves: Vec<(EntityId, Side)> = Vec::new();
+        for &(t, h, side) in &ends {
+            if self.node_in(t, h, side).is_none() {
+                moves.extend(self.moving_over(t, h, side).into_iter().filter(|m| !moves.iter().any(|n| n.0 == m.0)).collect::<Vec<_>>());
             }
         }
-        if self.link_between_at(from, hf, sf, to, ht, st).is_some() {
-            return false;
-        }
-        // A slope runs straight through: one arm down, one up.
-        if !self.slope_takes(from, hf, sf, (dx, dy), ht) || !self.slope_takes(to, ht, st, (-dx, -dy), hf) {
-            return false;
-        }
-        !self.node_in(from, hf, sf).is_some_and(|id| self.leads_nowhere(id, (dx, dy), !one_way, true, None))
-            && !self.node_in(to, ht, st).is_some_and(|id| self.leads_nowhere(id, (-dx, -dy), true, !one_way, goes_on))
+        let links = ends.windows(2).map(|w| ([w[0], w[1]], half)).collect();
+        self.lies_clear(&super::clear::Sketch { links, moves })
     }
 
     /// Would a slope here take an arm this way to a node at `other`: it has
@@ -495,6 +402,32 @@ mod tests {
         lay(&mut world, &[(5, -4, 0), (5, -3, 1), (5, -2, 3), (5, -1, 4), (5, 0, 4), (5, 1, 4), (5, 2, 3), (5, 3, 1), (5, 4, 0)]);
         let route = crate::world::pathfinding::Routes::from(&world, world.road_node_at(at(5, -4)).unwrap()).route_to(world.road_node_at(at(5, 4)).unwrap()).unwrap();
         assert_eq!(route.len(), 9, "up two levels, over, down two");
+    }
+
+    /// A ramp beside a road, on its tiles: a one-way climbing away from one
+    /// it runs against, the two moved apart, which a level up would pass
+    /// over it and in the middle would run into it; and the road beside it
+    /// stays aside when something else on its tile goes.
+    #[test]
+    fn a_ramp_climbs_beside_a_road() {
+        let mut world = grass();
+        for x in 0..10 {
+            world.place_road_at(at(x, 0), 0, MIDDLE, at(x + 1, 0), 0, MIDDLE, true, false);
+        }
+        const NORTH: Side = [0, -1];
+        assert!(!world.may_lay_at(at(6, 0), 0, MIDDLE, at(5, 0), 1, MIDDLE, true), "a slope in the middle, into the road");
+        assert!(world.may_lay_at(at(7, 0), 0, NORTH, at(6, 0), 0, NORTH, true));
+        world.place_road_at(at(7, 0), 0, NORTH, at(6, 0), 0, NORTH, true, false);
+        assert!(world.may_lay_at(at(6, 0), 0, NORTH, at(5, 0), 1, NORTH, true), "a slope beside it");
+        world.place_road_at(at(6, 0), 0, NORTH, at(5, 0), 1, NORTH, true, false);
+        assert!(!world.may_lay_at(at(5, 0), 1, NORTH, at(4, 0), 2, MIDDLE, true), "over it before it is a level up");
+        assert!(world.may_lay_at(at(5, 0), 1, NORTH, at(4, 0), 2, NORTH, true), "up, beside it");
+        world.place_road_at(at(5, 0), 1, NORTH, at(4, 0), 2, NORTH, true, false);
+        assert!(world.may_lay_at(at(4, 0), 2, NORTH, at(3, 0), 2, MIDDLE, true), "and a level over it");
+        let ground = world.node_at(at(5, 0), 0).or_else(|| world.node_in(at(5, 0), 0, [0, 1])).unwrap();
+        assert_eq!(world.side_of(ground), [0, 1], "moved over for the slope");
+        world.settle_sides(at(5, 0));
+        assert_eq!(world.side_of(ground), [0, 1], "it stays aside while the slope stands");
     }
 
     /// Diagonals cross between tiles: on one level at a crossing, which

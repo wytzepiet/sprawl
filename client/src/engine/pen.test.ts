@@ -107,15 +107,9 @@ class Table {
     for (const [k, here] of tiles) {
       const places = here.map((e) => `${e.object.data.height}:${e.object.data.side}`);
       if (new Set(places).size !== places.length) out.push(`${k}: two roads in one place ${places}`);
-      for (const h of new Set(here.map((e) => e.object.data.height))) {
-        const level = here.filter((e) => e.object.data.height === h);
-        const sides = level.filter((e) => e.object.data.side[0] || e.object.data.side[1]);
-        if (sides.length && sides.length !== level.length) out.push(`${k}@${h}: a road in the middle beside one on a side`);
-        if (sides.length === 1) out.push(`${k}@${h}: a road on a side with none beside it`);
-        if (sides.length === 2 && (sides[0].object.data.side[0] !== -sides[1].object.data.side[0] || sides[0].object.data.side[1] !== -sides[1].object.data.side[1])) out.push(`${k}@${h}: two roads on sides not opposite ${sides.map((e) => e.object.data.side)}`);
-        if (sides.length > 2) out.push(`${k}@${h}: ${sides.length} roads on sides`);
-      }
     }
+    // Roads that run into each other, as the game judges it (`clear.rs`).
+    for (const [a, b] of JSON.parse(this.web.clashing()) as [number, number][]) out.push(`${at(a)?.x},${at(a)?.y} runs into ${at(b)?.x},${at(b)?.y}`);
     for (const e of roads) {
       const n = e.object.data;
       const p = e.position!;
@@ -369,6 +363,21 @@ describe("one-ways side by side", () => {
     t.hand.release();
     expect(t.broken()).toEqual([]);
     expect([2, 3, 4, 5, 6, 7].map((x) => t.on(x, 5)[0]?.h)).toEqual([0, 0, 0, 1, 2, 2]);
+  });
+
+  test("a ramp beside a road: a one-way climbing away along one against it", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [14, 5]);
+    t.hand.press({ x: 14, y: -5 }, 14.5, -4.5);
+    for (let x = 13; x >= 10; x--) expect(t.hand.step({ x, y: -5 })).toBe(true);
+    t.hand.climb(1)!();
+    for (let x = 9; x >= 5; x--) expect(t.hand.step({ x, y: -5 })).toBe(true);
+    t.hand.release();
+    expect(t.broken()).toEqual([]);
+    // Beside the road below while it climbs, then over it.
+    expect(t.on(10, 5).map((r) => r.h).sort()).toEqual([0, 1]);
+    expect(t.on(10, 5).every((r) => r.side[1] !== 0)).toBe(true);
+    expect(t.on(6, 5).map((r) => r.h).sort()).toEqual([0, 2]);
   });
 
   test("raised after it is let go: the drag's end is the slope", () => {

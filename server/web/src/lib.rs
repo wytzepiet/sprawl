@@ -99,6 +99,12 @@ impl Web {
         self.game.command(ME, ClientMessage::SetSpeed(1));
     }
 
+    /// Every two roads that run into each other (`World::clashing`): none,
+    /// ever; the drag tests check.
+    pub fn clashing(&self) -> String {
+        serde_json::to_string(&self.game.world.clashing()).unwrap_or_default()
+    }
+
     /// The level as the client shows it, as JSON.
     pub fn state(&self) -> String {
         serde_json::to_string(&self.level.state(&self.game)).unwrap_or_default()
