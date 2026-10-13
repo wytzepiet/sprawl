@@ -98,17 +98,21 @@ describe("a one-way may merge at a shallow angle", () => {
   });
 });
 
-// `roads.rs`'s `a_divided_road_turns_right_only`, the hand's half.
-test("a one-way may be laid against a one-way, making a divided road; a two-way may not", () => {
+// `roads.rs`'s `one_ways_go_side_by_side`, the hand's half.
+test("a one-way goes beside a one-way, on a side of their tiles, never into the same middles", () => {
   const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground: (): TerrainType => "Grass" };
   for (let x = 0; x < 10; x++) {
     const id = x + 100;
     h.roads.set(`${x},0`, { id, node: { outgoing: x < 9 ? [id + 1] : [], incoming: x > 0 ? [id - 1] : [], joined: true, road: false, laid: true, height: 0, light: null, wide: [], side: [0, 0] } });
     h.at.set(id, { x, y: 0 });
   }
-  expect(may(h, "OneWay", at(6, 0), at(5, 0))).toBe(true);
-  expect(may(h, "Street", at(6, 0), at(5, 0))).toBe(false);
-  expect(may(h, "OneWay", at(5, 0), at(6, 0))).toBe(false);
+  const [north, south]: [number, number][] = [[0, -1], [0, 1]];
+  expect(may(h, "OneWay", at(6, 0), at(5, 0))).toBe(false);
+  expect(mayAt(h, "OneWay", at(6, 0), 0, at(5, 0), 0, false, [north, north])).toBe(true);
+  expect(mayAt(h, "OneWay", at(6, 0), 0, at(5, 0), 0, false, [south, south])).toBe(true);
+  expect(mayAt(h, "Street", at(6, 0), 0, at(5, 0), 0, false, [north, north])).toBe(false);
+  expect(mayAt(h, "OneWay", at(6, 0), 0, at(5, 0), 0, false, [north, south])).toBe(false);
+  expect(mayAt(h, "OneWay", at(5, 1), 0, at(5, 0), 0, false, [[0, 0], north])).toBe(false);
 });
 
 // `decks.rs`'s tests, the hand's half.
@@ -119,7 +123,7 @@ describe("roads above the ground", () => {
     const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), decks: new Map(), ground: (): TerrainType => "Grass" };
     let next = 1000;
     const node = (x: number, y: number, height: number) => {
-      const k = height ? `${x},${y},${height}` : `${x},${y}`;
+      const k = height ? `${x},${y},${height},0,0` : `${x},${y}`;
       const map = height ? h.decks! : h.roads;
       let n = map.get(k);
       if (!n) map.set(k, (n = { id: next++, node: { outgoing: [], incoming: [], joined: true, road: false, laid: true, height, light: null, wide: [], side: [0, 0] } })), h.at.set(n.id, { x, y });

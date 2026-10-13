@@ -3,7 +3,7 @@ import { CAR_RIG, driveTrip, LORRY_RIG, straight, type Drive, type Pose, type Ri
 import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
 import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
-import { SIDE } from "../town/surface";
+import { spot } from "../may";
 import type { Car, GridCoord, RoadNode, Trailer, Trip } from "../../generated";
 import { getObjectsAt } from "../../state/gameObjects";
 import type { Pose as Stand } from "../../generated/Pose";
@@ -67,9 +67,10 @@ export function driveOf(id: number, car: Car): Drive | null {
 }
 
 /** Where a lane runs from the road's middle, by what kind of link it is
- *  on: a two-way's to the right of the middle, a one-way's down it, a
- *  divided road's down the middle of its side (`SIDE`). */
-const LANES = { t: LANE_OFFSET, o: 0, v: SIDE };
+ *  on: a two-way's to the right of the middle, a one-way's down it. A
+ *  road on a side of its tiles is a one-way, its nodes already moved over
+ *  (`route_positions`, `World::node_pos`). */
+const LANES = { t: LANE_OFFSET, o: 0 };
 
 /** The lane at each node of a route: its links', the two either side of
  *  it met halfway. Read off the road nodes the client holds, where it holds
@@ -82,7 +83,7 @@ function lanesOf(route: [number, number][], heights: number[], lanes: number[]):
     const [out, back] = [a.data.outgoing.includes(b.id), a.data.incoming.includes(b.id) || b.data.outgoing.includes(a.id)];
     // A road of two lanes, one way: the right lane or the left (`lanes_for`).
     if (out && a.data.wide.includes(b.id)) return lanes[k + 1] ? -LANE_OFFSET : LANE_OFFSET;
-    return out && a.data.incoming.includes(b.id) ? LANES.v : out && back ? LANES.t : LANES.o;
+    return out && back ? LANES.t : LANES.o;
   });
   return route.map((_, k) => {
     const near = [link[k - 1], link[k]].filter((l) => l !== undefined);
@@ -90,9 +91,19 @@ function lanesOf(route: [number, number][], heights: number[], lanes: number[]):
   });
 }
 
+/** The road node a route passes through here: of those on its tile at its
+ *  height, the one standing nearest, where two share it side by side. */
 function roadAt(x: number, y: number, height: number): { id: number; data: RoadNode } | undefined {
-  const e = getObjectsAt(Math.floor(x), Math.floor(y)).find((o) => o.object.kind === "RoadNode" && (o.object.data.height ?? 0) === height);
-  return e && e.object.kind === "RoadNode" ? { id: e.id, data: e.object.data } : undefined;
+  const t = { x: Math.floor(x), y: Math.floor(y) };
+  let best: { id: number; data: RoadNode } | undefined;
+  let near = Infinity;
+  for (const o of getObjectsAt(t.x, t.y)) {
+    if (o.object.kind !== "RoadNode" || (o.object.data.height ?? 0) !== height) continue;
+    const [sx, sy] = spot(t, o.object.data.side);
+    const d = Math.hypot(sx - x, sy - y);
+    if (d < near) [best, near] = [{ id: o.id, data: o.object.data }, d];
+  }
+  return best;
 }
 
 /** A parked lorry's box, straight behind its cab. */

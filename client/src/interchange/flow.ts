@@ -1,6 +1,6 @@
 import { eachEntity } from "../state/gameObjects";
 import { deckZ } from "../engine/decks";
-import { SIDE } from "../engine/town/surface";
+import { spot } from "../engine/may";
 import { LANE_OFFSET } from "../engine/objects/roadGeometry";
 import type { RoadNode } from "../generated";
 
@@ -8,7 +8,8 @@ import type { RoadNode } from "../generated";
  * The way the one-ways run, shown while the player builds: faint streaks
  * of light gliding along each, as its cars go (`car::bezier`'s curve through a
  * node of two arms), one stream a lane: down the middle of a one-way, one
- * in each lane of a road of two, one down each side of a divided road.
+ * in each lane of a road of two; a road on a side of its tiles is its
+ * own one-way, its nodes moved over.
  * The road itself carries no arrows; this is there when the choices are
  * being made, and gone while the test runs.
  */
@@ -30,7 +31,9 @@ type Project = (x: number, y: number, z: number) => { sx: number; sy: number };
 export function drawFlow(g: CanvasRenderingContext2D, at: Project, seconds: number) {
   const nodes = new Map<number, Node>();
   eachEntity((e) => {
-    if (e.object.kind === "RoadNode" && e.position) nodes.set(e.id, { id: e.id, x: e.position.x + 0.5, y: e.position.y + 0.5, z: deckZ(e.object.data.height ?? 0), n: e.object.data });
+    if (e.object.kind !== "RoadNode" || !e.position) return;
+    const [x, y] = spot(e.position, e.object.data.side);
+    nodes.set(e.id, { id: e.id, x, y, z: deckZ(e.object.data.height ?? 0), n: e.object.data });
   });
   const near = (a: Node) => [...new Set([...a.n.outgoing, ...a.n.incoming])].filter((o) => nodes.has(o)).map((o) => nodes.get(o)!);
   const mid = (a: Node, b: Node): [number, number, number] => [(a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2];
@@ -55,9 +58,9 @@ export function drawFlow(g: CanvasRenderingContext2D, at: Project, seconds: numb
   for (const a of nodes.values()) {
     for (const id of a.n.outgoing) {
       const b = nodes.get(id);
-      // One way: not driven back; a divided road's side is, as its other.
-      if (!b || (b.n.outgoing.includes(a.id) && !a.n.incoming.includes(b.id))) continue;
-      const lanes = a.n.incoming.includes(b.id) ? [SIDE] : a.n.wide.includes(b.id) ? [LANE_OFFSET, -LANE_OFFSET] : [0];
+      // One way: not driven back.
+      if (!b || b.n.outgoing.includes(a.id)) continue;
+      const lanes = a.n.wide.includes(b.id) ? [LANE_OFFSET, -LANE_OFFSET] : [0];
       const len = Math.hypot(b.x - a.x, b.y - a.y);
       // A point on a lane, a distance along the link, on the screen.
       const on = (d: number, lane: number) => {

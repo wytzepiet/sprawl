@@ -6,6 +6,7 @@ import { buildRoadGeometry, HALF_W, ROAD_Z, type ArmInfo } from "./objects/roadG
 import { PAVED_Z } from "./town/draw";
 import type { Casters } from "./DayNightCycle";
 import type { GameObjectEntry, RoadNode } from "../generated";
+import { spot } from "./may";
 
 /**
  * Roads above the ground (`server/src/world/decks.rs`): each link with an
@@ -57,7 +58,9 @@ export class Decks {
   rebuild(each: (f: (e: GameObjectEntry) => void) => void) {
     const nodes = new Map<number, { x: number; y: number; n: RoadNode }>();
     each((e) => {
-      if (e.object.kind === "RoadNode" && e.position) nodes.set(e.id, { x: e.position.x + 0.5, y: e.position.y + 0.5, n: e.object.data });
+      if (e.object.kind !== "RoadNode" || !e.position) return;
+      const [x, y] = spot(e.position, e.object.data.side);
+      nodes.set(e.id, { x, y, n: e.object.data });
     });
     // By the level each piece belongs to: a link's, its higher end's.
     const geos = [0, 1, 2, 3].map(() => ({ top: empty(), side: empty() }));
@@ -72,14 +75,14 @@ export class Decks {
         if (seen.has(k)) continue;
         seen.add(k);
         const g = geos[levelOf(Math.max(a.n.height, b.n.height))];
-        ribbon(g.top, g.side, [a.x, a.y, deckZ(a.n.height)], [b.x, b.y, deckZ(b.n.height)]);
+        ribbon(g.top, g.side, [a.x, a.y, deckZ(a.n.height)], [b.x, b.y, deckZ(b.n.height)], widthOf(a.n, id, b.n, o));
       }
       if (!a.n.height) continue;
       const g = geos[levelOf(a.n.height)];
       // A junction's, a bend's or an end's shape over the ribbons; a slope
       // and a straight run need none.
-      const ways = arms.map((o) => Math.atan2(nodes.get(o)!.y - a.y, nodes.get(o)!.x - a.x));
-      const straight = ways.length === 2 && Math.abs(Math.abs(ways[0] - ways[1]) - Math.PI) < 1e-6;
+      const ways = arms.map((o) => ({ angle: Math.atan2(nodes.get(o)!.y - a.y, nodes.get(o)!.x - a.x), hw: widthOf(a.n, id, nodes.get(o)!.n, o) }));
+      const straight = ways.length === 2 && Math.abs(Math.abs(ways[0].angle - ways[1].angle) - Math.PI) < 1e-6;
       if (a.n.height % 2 === 0 && !straight) cap(g.top, g.side, ways, [a.x, a.y, deckZ(a.n.height)]);
       if (a.n.height >= 2) pier(g.side, [a.x, a.y], deckZ(a.n.height) - DECK);
     }
@@ -150,19 +153,27 @@ function quad(g: MeshGeometry, a: V3, b: V3, c: V3, d: V3) {
   g.indices.push(i, i + 2, i + 1, i, i + 3, i + 2);
 }
 
+/** How wide a link's deck is either side of its middle: a one-way's of
+ *  one lane thin, as on the ground (`surface.ts`). */
+const THIN = 0.13;
+function widthOf(a: RoadNode, aId: number, b: RoadNode, bId: number): number {
+  const [out, back] = [a.outgoing.includes(bId), b.outgoing.includes(aId)];
+  return out !== back && !a.wide.includes(bId) && !b.wide.includes(aId) ? THIN : HALF_W;
+}
+
 /** A link's deck from one node's middle to the other's: its road on top,
  *  its sides hanging under it, and a parapet along each edge. */
-function ribbon(top: MeshGeometry, side: MeshGeometry, a: V3, b: V3) {
+function ribbon(top: MeshGeometry, side: MeshGeometry, a: V3, b: V3, hw: number) {
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
   const [nx, ny] = [-(b[1] - a[1]) / len, (b[0] - a[0]) / len];
-  const at = (p: V3, s: number, dz = 0): V3 => [p[0] + nx * HALF_W * s, p[1] + ny * HALF_W * s, p[2] + dz];
+  const at = (p: V3, s: number, dz = 0): V3 => [p[0] + nx * hw * s, p[1] + ny * hw * s, p[2] + dz];
   quad(top, at(a, -1), at(b, -1), at(b, 1), at(a, 1));
   for (const s of [1, -1]) {
     // The side: from the road's edge down the deck's thickness, facing out.
     const [p, q] = s > 0 ? [a, b] : [b, a];
     quad(side, at(p, s), at(q, s), at(q, s, -DECK), at(p, s, -DECK));
     // The parapet: a low wall on the edge.
-    const inner = (pt: V3, dz: number): V3 => [pt[0] + nx * (HALF_W - PARAPET[1]) * s, pt[1] + ny * (HALF_W - PARAPET[1]) * s, pt[2] + dz];
+    const inner = (pt: V3, dz: number): V3 => [pt[0] + nx * (hw - PARAPET[1]) * s, pt[1] + ny * (hw - PARAPET[1]) * s, pt[2] + dz];
     quad(side, at(q, s, PARAPET[0]), at(p, s, PARAPET[0]), inner(p, PARAPET[0]), inner(q, PARAPET[0]));
     quad(side, at(q, s), at(p, s), at(p, s, PARAPET[0]), at(q, s, PARAPET[0]));
     quad(side, inner(p, 0), inner(q, 0), inner(q, PARAPET[0]), inner(p, PARAPET[0]));
@@ -171,8 +182,8 @@ function ribbon(top: MeshGeometry, side: MeshGeometry, a: V3, b: V3) {
 
 /** A deck node's road shape, as a ground junction's is, over the ribbons;
  *  its rim hanging down. */
-function cap(top: MeshGeometry, side: MeshGeometry, ways: number[], [x, y, z]: V3) {
-  const arms: ArmInfo[] = ways.map((a) => ({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway" }));
+function cap(top: MeshGeometry, side: MeshGeometry, ways: { angle: number; hw: number }[], [x, y, z]: V3) {
+  const arms: ArmInfo[] = ways.map(({ angle: a, hw }) => ({ angle: a < 0 ? a + 2 * Math.PI : a, flow: "twoway", hw }));
   const geo = buildRoadGeometry(arms, HALF_W, 0);
   if (!geo) return;
   const i0 = top.positions.length / 3;

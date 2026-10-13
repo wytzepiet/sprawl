@@ -17,8 +17,8 @@ import { BLUEPRINTS, yardOf } from "../blueprints";
 import { KERB_Z } from "./town/draw";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
-import { surfaceAt } from "./town/surface";
-import { storeysOf, type Tile, type Town } from "./town/grid";
+import { surfacesAt } from "./town/surface";
+import { storeysOf, type Flow, type RoadView, type Tile, type Town } from "./town/grid";
 import type { Box } from "./town/clip";
 import { kerbField, kerbPlugin, unkerb, type KerbField } from "./kerbs";
 import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
@@ -27,7 +27,7 @@ import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
 import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType } from "../generated";
-import type { Placing } from "./may";
+import { SIDE_OFFSET, type Placing } from "./may";
 import type { Pose } from "../generated/Pose";
 import type { Pt } from "./town/footprint";
 import { TRAILER } from "./objects/roadGeometry";
@@ -167,7 +167,7 @@ export class TownLayer {
 
   /** Everything drawn again: the theme changed. */
   repaint() {
-    for (const key of this.roads.tiles()) this.dirty.add(key);
+    for (const key of this.roads.tiles()) this.dirty.add(key.split("#")[0]);
     for (const key of this.chunks.keys()) this.stale.add(key);
     this.settle();
   }
@@ -361,16 +361,19 @@ export class TownLayer {
       });
   }
 
-  /** The road on each tile that changed, the shape its arms make:
-   *  the world as a town in the fixture's frame round the map's origin,
-   *  asked about those tiles alone. */
+  /** The roads on each tile that changed, the shape each one's arms
+   *  make: the world as a town in the fixture's frame round the map's
+   *  origin, asked about those tiles alone. Two roads may share a tile,
+   *  side by side, each its own: `x,y#0` and `x,y#1`. */
   private retile() {
     const world = this.world();
     for (const key of this.dirty) {
       const [x, y] = key.split(",").map(Number);
-      const at = surfaceAt(world, -x, -y);
-      if (at) this.roads.set(key, x, y, at);
-      else this.roads.delete(key);
+      const surfaces = surfacesAt(world, -x, -y);
+      for (let i = 0; i < 2; i++) {
+        if (surfaces[i]) this.roads.set(`${key}#${i}`, x, y, surfaces[i]);
+        else this.roads.delete(`${key}#${i}`);
+      }
     }
     this.dirty.clear();
     this.roads.flush();
@@ -380,7 +383,10 @@ export class TownLayer {
    *  about the map's origin: column -x, row -y. A building's tiles carry
    *  which building and whether its yard, as the chunks' do. */
   private world(): Town {
+    // The ground's roads: the middle's by tile, every one by tile and by id.
     const nodes = new Map<string, RoadNode & { id: number }>();
+    const onTile = new Map<string, (RoadNode & { id: number })[]>();
+    const byId = new Map<number, { n: RoadNode & { id: number }; x: number; y: number }>();
     const built = new Map<string, Tile>();
     const doors = doorsOf(this.entities);
     const raise = (id: number, { tiles, kind, facing, site }: Pick<Building, "tiles" | "kind" | "facing"> & { site?: unknown }) => {
@@ -388,7 +394,13 @@ export class TownLayer {
       for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
     };
     this.entities((e) => {
-      if (e.object.kind === "RoadNode" && e.position && !e.object.data.height) nodes.set(`${e.position.x},${e.position.y}`, { ...e.object.data, id: e.id });
+      if (e.object.kind === "RoadNode" && e.position && !e.object.data.height) {
+        const n = { ...e.object.data, id: e.id };
+        const k = `${e.position.x},${e.position.y}`;
+        if (!n.side?.[0] && !n.side?.[1]) nodes.set(k, n);
+        (onTile.get(k) ?? onTile.set(k, []).get(k)!).push(n);
+        byId.set(e.id, { n, x: e.position.x, y: e.position.y });
+      }
       else if (e.object.kind === "Building") raise(e.id, e.object.data as Building);
     });
     // And the building held, its drive on its street.
@@ -396,7 +408,19 @@ export class TownLayer {
     if (held) raise(HELD, held);
     if (held?.door) doors.set(`${held.door.tile.x},${held.door.tile.y}`, [held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
     const key = (c: number, r: number) => `${-c},${-r}`;
-    const road = (c: number, r: number) => (built.has(key(c, r)) ? undefined : nodes.get(key(c, r)));
+    const road = (c: number, r: number) => (built.has(key(c, r)) ? undefined : nodes.get(key(c, r)) ?? onTile.get(key(c, r))?.[0]);
+    const flowOf = (a: RoadNode & { id: number }, b: RoadNode & { id: number }): Flow => {
+      if (a.wide.includes(b.id)) return "O";
+      if (b.wide.includes(a.id)) return "I";
+      const [out, back] = [a.outgoing.includes(b.id) || b.incoming.includes(a.id), b.outgoing.includes(a.id) || a.incoming.includes(b.id)];
+      return out && back ? "t" : out ? "o" : "i";
+    };
+    // A road moved to a side of its tile, in the town's frame, turned.
+    const shiftOf = ({ side }: RoadNode): [number, number] => {
+      const [sx, sy] = side ?? [0, 0];
+      const by = sx || sy ? SIDE_OFFSET / Math.hypot(sx, sy) : 0;
+      return [-sx * by, -sy * by];
+    };
     return {
       w: Infinity,
       h: Infinity,
@@ -407,14 +431,20 @@ export class TownLayer {
       },
       through: (c, r) => !!road(c, r)?.road,
       light: (c, r) => road(c, r)?.light != null,
-      flow: (c0, r0, c1, r1) => {
-        const [a, b] = [road(c0, r0)!, road(c1, r1)!];
-        if (a.outgoing.includes(b.id) && a.incoming.includes(b.id)) return "v";
-        if (a.wide.includes(b.id)) return "O";
-        if (b.wide.includes(a.id)) return "I";
-        const [out, back] = [a.outgoing.includes(b.id) || b.incoming.includes(a.id), b.outgoing.includes(a.id) || a.incoming.includes(b.id)];
-        return out && back ? "t" : out ? "o" : "i";
-      },
+      flow: (c0, r0, c1, r1) => flowOf(road(c0, r0)!, road(c1, r1)!),
+      roadsOn: (c, r): RoadView[] =>
+        built.has(key(c, r))
+          ? []
+          : (onTile.get(key(c, r)) ?? []).map((n) => ({
+              shift: shiftOf(n),
+              through: n.road,
+              light: n.light != null,
+              arms: [...new Set([...n.outgoing, ...n.incoming])].flatMap((id) => {
+                const o = byId.get(id);
+                if (!o || Math.abs(o.x + c) > 1 || Math.abs(o.y + r) > 1) return [];
+                return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: o.n.road }];
+              }),
+            })),
       door: (c, r) => turned(doors.get(key(c, r))),
     };
   }

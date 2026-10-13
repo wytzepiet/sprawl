@@ -13,7 +13,8 @@ import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, Terr
 export interface Hand {
   /** The ground's road on each tile. */
   roads: Map<string, { id: number; node: RoadNode }>;
-  /** The roads above it, by tile and height (`decks.rs`). */
+  /** The other roads on a tile, above it or beside its middle, by tile,
+   *  height and side (`decks.rs`). */
   decks?: Map<string, { id: number; node: RoadNode }>;
   /** Where each road node stands, by id. */
   at: Map<number, GridCoord>;
@@ -28,7 +29,8 @@ export function hand(each: (f: (e: GameObjectEntry) => void) => void, ground: Ha
   const h: Hand = { roads: new Map(), at: new Map(), occupied: new Map(), ground };
   each((e) => {
     if (e.object.kind === "RoadNode" && e.position) {
-      if (e.object.data.height) (h.decks ??= new Map()).set(`${e.position.x},${e.position.y},${e.object.data.height}`, { id: e.id, node: e.object.data });
+      const [sx, sy] = e.object.data.side ?? MIDDLE;
+      if (e.object.data.height || sx || sy) (h.decks ??= new Map()).set(`${e.position.x},${e.position.y},${e.object.data.height},${sx},${sy}`, { id: e.id, node: e.object.data });
       else h.roads.set(key(e.position.x, e.position.y), { id: e.id, node: e.object.data });
       h.at.set(e.id, e.position);
     } else if (e.object.kind === "Building") {
@@ -216,34 +218,79 @@ export const TOP = 6;
 
 type Node = { id: number; node: RoadNode };
 
-/** The road node on a tile at a height (`World::node_at`). */
-export const nodeAtH = (h: Hand, t: GridCoord, height: number): Node | undefined => (height ? h.decks?.get(`${t.x},${t.y},${height}`) : nodeAt(h, t));
+/** Which side of its tile a node stands (`decks::Side`): the step across
+ *  its road it is moved by; `MIDDLE`, not moved. */
+export type Side = [number, number];
+export const MIDDLE: Side = [0, 0];
+const same = (a: Side, b: Side) => a[0] === b[0] && a[1] === b[1];
+const isMiddle = (s: Side) => !s[0] && !s[1];
+export const otherSide = (s: Side): Side => [-s[0], -s[1]];
+/** How far from its tile's middle a node on a side stands, in tiles
+ *  (`decks::SIDE_OFFSET`). */
+export const SIDE_OFFSET = 0.17;
+/** Where a node on a side of a tile stands (`World::node_pos`). */
+export const spot = (t: GridCoord, [sx, sy]: Side = MIDDLE): [number, number] => {
+  const by = sx || sy ? SIDE_OFFSET / Math.hypot(sx, sy) : 0;
+  return [t.x + 0.5 + sx * by, t.y + 0.5 + sy * by];
+};
+
+/** How far a step goes toward a side (`decks::toward`). */
+export const toward = ([dx, dy]: [number, number], s: Side) => dx * s[0] + dy * s[1];
+
+/** The road node on a tile at a height and side (`World::node_in`). */
+export const nodeIn = (h: Hand, t: GridCoord, height: number, side: Side = MIDDLE): Node | undefined =>
+  height || !isMiddle(side) ? h.decks?.get(`${t.x},${t.y},${height},${side[0]},${side[1]}`) : nodeAt(h, t);
+
+/** The middle road node on a tile at a height (`World::node_at`). */
+export const nodeAtH = (h: Hand, t: GridCoord, height: number): Node | undefined => nodeIn(h, t, height);
 
 /** Every road node on a tile, and how high it stands. */
 export function nodesOn(h: Hand, t: GridCoord): [number, Node][] {
   const out: [number, Node][] = [];
   const g = nodeAt(h, t);
   if (g) out.push([0, g]);
-  for (let height = 1; height <= TOP; height++) {
-    const d = h.decks?.get(`${t.x},${t.y},${height}`);
-    if (d) out.push([height, d]);
+  for (const [k, d] of h.decks ?? []) {
+    const [x, y] = k.split(",", 2).map(Number);
+    if (x === t.x && y === t.y) out.push([d.node.height, d]);
   }
   return out;
 }
 
 const edge = (a: Node, b: Node) => a.node.outgoing.includes(b.id) || b.node.incoming.includes(a.id);
 
+/** `World::moves_over`: the middle node on a tile that moves over to the
+ *  other side when a node is laid on this one: a one-way running straight
+ *  through, or ending, along the run across the side, with one lane. */
+export function movesOver(h: Hand, t: GridCoord, height: number, side: Side): Node | undefined {
+  if (isMiddle(side) || nodeIn(h, t, height, otherSide(side))) return undefined;
+  const m = nodeIn(h, t, height);
+  if (!m) return undefined;
+  const ids = [...new Set([...m.node.outgoing, ...m.node.incoming])];
+  const byId = (id: number) => nodesOn(h, h.at.get(id) ?? t).find(([, n]) => n.id === id)?.[1];
+  const along = ids.every((id) => {
+    const [p, n] = [h.at.get(id), byId(id)];
+    if (!p || !n) return false;
+    const oneWay = edge(m, n) !== edge(n, m);
+    return oneWay && toward([p.x - t.x, p.y - t.y], side) === 0 && !m.node.wide.includes(id) && !n.node.wide.includes(m.id);
+  });
+  return along && ids.length <= 2 ? m : undefined;
+}
+
 /** `World::room_at`. */
-function roomAt(h: Hand, t: GridCoord, height: number): boolean {
-  if (nodeAtH(h, t, height)) return true;
+function roomAt(h: Hand, t: GridCoord, height: number, side: Side = MIDDLE): boolean {
+  if (nodeIn(h, t, height, side)) return true;
   if (height > 0 && (h.occupied.has(key(t.x, t.y)) || h.ground(t.x, t.y) === "Mountain")) return false;
-  return nodesOn(h, t).every(([other]) => Math.abs(other - height) >= 2 + (other % 2) + (height % 2));
+  const moving = movesOver(h, t, height, side);
+  return nodesOn(h, t).every(([other, n]) => {
+    const beside = !isMiddle(side) && other === height && (same(n.node.side ?? MIDDLE, otherSide(side)) || n.id === moving?.id);
+    return beside || Math.abs(other - height) >= 2 + (other % 2) + (height % 2);
+  });
 }
 
 /** `World::slope_takes`. */
-function slopeTakes(h: Hand, at: GridCoord, height: number, [dx, dy]: [number, number], other: number): boolean {
+function slopeTakes(h: Hand, at: GridCoord, height: number, side: Side, [dx, dy]: [number, number], other: number): boolean {
   if (height % 2 === 0) return true;
-  const here = nodeAtH(h, at, height);
+  const here = nodeIn(h, at, height, side);
   if (!here) return true;
   const arms = [...new Set([...here.node.outgoing, ...here.node.incoming])];
   if (arms.length === 0) return true;
@@ -253,46 +300,51 @@ function slopeTakes(h: Hand, at: GridCoord, height: number, [dx, dy]: [number, n
   return !!p && p.x - at.x === -dx && p.y - at.y === -dy && armHeight !== other;
 }
 
-/** `World::may_lay_at`, and the demolisher at a height: the hand's step
- *  from one tile at one height to the next at another. On the ground,
- *  `may`. */
-export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number, road = false): boolean {
+/** `World::may_lay_at`, and the demolisher at a height and side: the
+ *  hand's step from one tile at one height and side to the next at
+ *  another. In the ground's middles, `may`. */
+export function mayAt(h: Hand, tool: Tool, from: GridCoord, hf: number, to: GridCoord, ht: number, road = false, [sf, st]: [Side, Side] = [MIDDLE, MIDDLE]): boolean {
+  const [na, nb] = [nodeIn(h, from, hf, sf), nodeIn(h, to, ht, st)];
   // Lights, on a junction or off one: a tap.
-  if (tool === "Light") {
-    const n = nodeAtH(h, to, ht);
-    return from.x === to.x && from.y === to.y && !!n && new Set([...n.node.outgoing, ...n.node.incoming]).size > 2;
-  }
+  if (tool === "Light") return from.x === to.x && from.y === to.y && !!nb && new Set([...nb.node.outgoing, ...nb.node.incoming]).size > 2;
   if (tool === "Demolish") {
-    if (from.x === to.x && from.y === to.y) return !!nodeAtH(h, to, ht) || (ht === 0 && h.occupied.has(key(to.x, to.y)));
-    const [a, b] = [nodeAtH(h, from, hf), nodeAtH(h, to, ht)];
-    return Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1 && !!a && !!b && (edge(a, b) || edge(b, a));
+    if (from.x === to.x && from.y === to.y) return !!nb || (ht === 0 && h.occupied.has(key(to.x, to.y)));
+    return Math.abs(from.x - to.x) <= 1 && Math.abs(from.y - to.y) <= 1 && !!na && !!nb && (edge(na, nb) || edge(nb, na));
   }
   const oneWay = tool === "OneWay" || tool === "Wide";
   const [dx, dy] = [to.x - from.x, to.y - from.y];
+  const middles = isMiddle(sf) && isMiddle(st);
   // Along a road, priority it has not, or has and the hand not; along a
-  // one-way the way it runs, the other one-way tool: a lane more, or less
-  // (`game::may_step`).
-  const [na, nb] = [nodeAtH(h, from, hf), nodeAtH(h, to, ht)];
+  // one-way the way it runs, the other one-way tool: a lane more, or less,
+  // but not on a side (`game::may_step`).
   if (na && nb && (edge(na, nb) || edge(nb, na)) && (na.node.road && nb.node.road) !== road) return true;
-  if (oneWay && na && nb && edge(na, nb) && !edge(nb, na) && na.node.wide.includes(nb.id) !== (tool === "Wide")) return true;
+  if (oneWay && na && nb && edge(na, nb) && !edge(nb, na) && na.node.wide.includes(nb.id) !== (tool === "Wide")) return tool !== "Wide" || middles;
+  if (tool === "Wide" && !middles) return false;
   if ((dx === 0 && dy === 0) || Math.abs(dx) > 1 || Math.abs(dy) > 1 || hf > TOP || ht > TOP) return false;
-  if (hf === 0 && ht === 0) return may(h, tool, from, to, road) && roomAt(h, from, 0) && roomAt(h, to, 0);
+  if (hf === 0 && ht === 0 && middles) return may(h, tool, from, to, road) && roomAt(h, from, 0) && roomAt(h, to, 0);
   if (Math.abs(hf - ht) > 1 || (hf === ht && hf % 2 === 1)) return false;
-  if (!roomAt(h, from, hf) || !roomAt(h, to, ht)) return false;
+  if (!roomAt(h, from, hf, sf) || !roomAt(h, to, ht, st)) return false;
+  // A road on a side: along its run one way, on along its own side; or,
+  // once there, out toward its side (`World::may_lay_at`).
+  for (const [side, way, there, n] of [[sf, [dx, dy], st, na], [st, [-dx, -dy], sf, nb]] as const) {
+    if (isMiddle(side)) continue;
+    const t = toward(way as [number, number], side);
+    if (t === 0 && (!oneWay || (!isMiddle(there) && !same(there, side)))) return false;
+    if (t < 0 || (t > 0 && !n)) return false;
+  }
   for (const [t, height] of [[from, hf], [to, ht]] as const) {
     const g = h.ground(t.x, t.y);
     const wet = g === "Water" || g === "Sea" || g === "Beach" || g === "Mountain";
     if (height === 0 && ((wet && !nodeAt(h, t)) || h.occupied.has(key(t.x, t.y)))) return false;
   }
-  const [a, b] = [nodeAtH(h, from, hf), nodeAtH(h, to, ht)];
-  if (a && b && (edge(a, b) || edge(b, a)) && !(oneWay && edge(b, a) && !edge(a, b))) return false;
-  if (!slopeTakes(h, from, hf, [dx, dy], ht) || !slopeTakes(h, to, ht, [-dx, -dy], hf)) return false;
+  if (na && nb && (edge(na, nb) || edge(nb, na))) return false;
+  if (!slopeTakes(h, from, hf, sf, [dx, dy], ht) || !slopeTakes(h, to, ht, st, [-dx, -dy], hf)) return false;
   if (dx !== 0 && dy !== 0) {
     const [p, q] = [{ x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy }];
     const crossed = nodesOn(h, p).some(([hp, np]) => nodesOn(h, q).some(([hq, nq]) => (edge(np, nq) || edge(nq, np)) && Math.abs(hp + hq - (hf + ht)) < 4));
     if (crossed) return false;
   }
-  return !(a && tooSharpNode(h, a, from, dx, dy, !oneWay, true)) && !(b && tooSharpNode(h, b, to, -dx, -dy, true, !oneWay));
+  return !(na && tooSharpNode(h, na, from, dx, dy, !oneWay, true)) && !(nb && tooSharpNode(h, nb, to, -dx, -dy, true, !oneWay));
 }
 
 /** `World::would_turn_sharply`: would a new arm here this way give a car
@@ -309,8 +361,7 @@ function tooSharpNode(h: Hand, here: Node, at: GridCoord, dx: number, dy: number
   const byId = (id: number) => [nodeAt(h, h.at.get(id) ?? at), ...[...(h.decks?.values() ?? [])]].find((n) => n?.id === id);
   return arms(here.node, false).some((id) => {
     const p = h.at.get(id);
-    // The arm itself, there the other way already: a divided road.
-    if (!p || (p.x - at.x) * dx + (p.y - at.y) * dy <= 0 || (p.x - at.x === dx && p.y - at.y === dy)) return false;
+    if (!p || (p.x - at.x) * dx + (p.y - at.y) * dy <= 0) return false;
     const out = here.node.outgoing.includes(id);
     const into = !!byId(id)?.node.outgoing.includes(here.id) || here.node.incoming.includes(id);
     return (arriving && out) || (leaving && into);
@@ -329,13 +380,6 @@ function connected(h: Hand, a: GridCoord, b: GridCoord): boolean {
   return !!na && !!nb && (na.node.outgoing.includes(nb.id) || na.node.incoming.includes(nb.id));
 }
 
-/** `World::runs_one_way`: the road from one tile to the next runs there
- *  and not back. */
-function runsOneWay(h: Hand, a: GridCoord, b: GridCoord): boolean {
-  const [na, nb] = [nodeAt(h, a), nodeAt(h, b)];
-  return !!na && !!nb && na.node.outgoing.includes(nb.id) && !nb.node.outgoing.includes(na.id);
-}
-
 /** `World::may_lay`. */
 function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boolean {
   const [dx, dy] = [to.x - from.x, to.y - from.y];
@@ -351,8 +395,7 @@ function mayLay(h: Hand, from: GridCoord, to: GridCoord, oneWay: boolean): boole
   if (h.occupied.has(key(from.x, from.y))) return false;
   const into = h.occupied.get(key(to.x, to.y));
   if (into && !facings(into.kind, into.facing).some((f) => enters(into.tiles, into.kind, f, from, to))) return false;
-  // Joined already; but a one-way laid against a one-way makes a divided road.
-  if (connected(h, from, to) && !(oneWay && runsOneWay(h, to, from))) return false;
+  if (connected(h, from, to)) return false;
   if (dx !== 0 && dy !== 0 && connected(h, { x: from.x + dx, y: from.y }, { x: from.x, y: from.y + dy })) return false;
   // Out of `from` and in to `to`, and back too unless it is one way.
   return !tooSharp(h, from, dx, dy, !oneWay, true) && (!!into || !tooSharp(h, to, -dx, -dy, true, !oneWay));
