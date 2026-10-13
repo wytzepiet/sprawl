@@ -1,7 +1,7 @@
 # Interchange: a puzzle mode, and the roads it needs
 
-Status: brainstorm, 2026-10-12, second pass with the player's answers.
-Nothing built. A second way to play, Freeways-like, and the road systems
+Status: plan, 2026-10-12; the first passes built 2026-10-13 (§Built,
+at the end). What is still to come is the order's rest. A second way to play, Freeways-like, and the road systems
 it forces into being: one-way and multi-lane roads, merging that feels
 right, priority, levels, lights, markings, a new road brush. To be one-shot
 and played.
@@ -442,3 +442,36 @@ Defaults taken unless the player says otherwise:
 Still open:
 
 1. The macro network's first map: how many levels, which towns.
+
+## Built (2026-10-13)
+
+What runs, and where; the rest of the order above is still to come.
+
+- **One-way routes**: a segment knows which ways it can be driven, and the
+  search keeps to them (`network.rs`, `pathfinding.rs`).
+- **The sim as a library**: `server/` is the `sprawl` crate with
+  `game::Game`; `server/host/` the server; `server/web/` the game for a
+  Web Worker (`bun run wasm` in `client/` builds it). A trip may end on a
+  road, driven off its end (`car::spawn::drive_through`).
+- **Levels** (`server/src/level.rs`, `server/levels/*.txt`): gates,
+  wants, our own solve (`%` rows, `%^h` for a height), Build and Test, a
+  jam called by a backed-up gate or a stopped road, efficiency as flow
+  and asphalt against our solve's. Every level's solve is its test.
+- **The client** (`client/src/interchange/`): `/interchange` is the map of
+  levels (`@at`), each opening its neighbours; a level keeps what was
+  built on it. The camera keeps to the map, fog past it, the gates
+  labelled. The road brush: two-way, one-way, priority road, eraser
+  (Shift), the pen's height (R, F); Space tests, Z undoes.
+- **Paint**: dashed centre lines, one-way arrows, shark's teeth.
+- **Shallow joins**: the turn rule is about the turns a car can make.
+- **The divided road**: a one-way laid against a one-way, grass between,
+  right turns only (`World::divided`, `pathfinding::may_turn`).
+- **Priority**: a through road is let through first at a junction.
+- **Overpasses** (`world/decks.rs`, `client/src/engine/decks.ts`): node
+  heights in half-levels, slopes, clearance, decks drawn and hatched
+  above the pen, cars lifted.
+
+Not yet: the virtual lead (merges still stop and go, first come first
+served), lanes, lights, the scores endpoint and its chart, the overworld
+as one terrain with shared gates and cars crossing between levels (the
+map's levels are made separately), auto-bridging, edit in place.
