@@ -587,7 +587,8 @@ What runs, and where; the rest of the order above is still to come.
   motorway asks for its side, staying on it from either lane), so a
   bend or a ramp joining never stops it to get into one; it looks for the
   next lane asked for up to `GET_IN` ahead, through the junctions it goes
-  on through, and whoever is coming looks that far along its own way for
+  on through, and until it is in it means to stop short of that way out,
+  even where it cannot try just then (`exit_lane`); and whoever is coming looks that far along its own way for
   one signalling, queued there yet or not; where two lanes
   of an arm still go out in one, they zip (`merging_ahead`). Only the
   lane a turn asks for is worth stopping for: making room, overtaking and

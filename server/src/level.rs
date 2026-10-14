@@ -964,9 +964,11 @@ mod tests {
     /// lanes become one, they fall in behind each other, never through.
     #[test]
     fn two_lanes_carry_side_by_side() {
-        let text = "# Two lanes\n@gate 1 in2\n@gate 2 out2\n@want 1 2 100\n..........\n1........2\n..........\n";
-        let run = |tool: Tool| {
-            let (mut level, mut game) = play(text);
+        // Into one lane, as many as it carries a tile from the gate, each
+        // its gap behind the one ahead: a hundred a minute it carried only
+        // while cars out of the merge kept on closer than that.
+        let run = |tool: Tool, per_min: u32| {
+            let (mut level, mut game) = play(&format!("# Two lanes\n@gate 1 in2\n@gate 2 out2\n@want 1 2 {per_min}\n..........\n1........2\n..........\n"));
             for x in (1..=9).rev() {
                 let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x - 1, y: -1 }, up: None, sides: None, road: false };
                 assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
@@ -993,10 +995,10 @@ mod tests {
             }
             (level.phase, both, closest)
         };
-        let (phase, both, _) = run(Tool::Wide);
+        let (phase, both, _) = run(Tool::Wide, 100);
         assert_eq!(phase, Phase::Done);
         assert!(both, "cars side by side in the two lanes");
-        let (phase, _, closest) = run(Tool::OneWay);
+        let (phase, _, closest) = run(Tool::OneWay, 60);
         assert_eq!(phase, Phase::Done);
         let length = crate::car::nose(CarRole::Private) + crate::car::tail(CarRole::Private);
         assert!(closest > length * 0.9, "two lanes into one: cars {closest:.2} apart");

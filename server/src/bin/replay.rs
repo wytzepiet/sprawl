@@ -119,7 +119,8 @@ fn why(game: &Game, car: EntityId) -> Option<String> {
             format!("no passage at {} (through {through:?}, waiting {waiting:?})", pos(j))
         }
         Cause::Turn(o) => format!("car {o} turning across"),
-        Cause::GettingIn(o) => format!("getting into the other lane, car {o} in the way"),
+        Cause::GettingIn(Some(o)) => format!("getting into the other lane, car {o} in the way"),
+        Cause::GettingIn(None) => "to get into the other lane before its way out".to_string(),
         c => format!("{c:?}"),
     };
     Some(format!("{what}, {accel:+.2}"))

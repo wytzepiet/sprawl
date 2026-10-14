@@ -52,9 +52,9 @@ pub enum Cause {
     Merging(crate::protocol::EntityId),
     /// A car in the other lane it lets in ahead of it.
     LettingIn(crate::protocol::EntityId),
-    /// The lane its turn asks for, with no room in it yet: the car in the
-    /// way there.
-    GettingIn(crate::protocol::EntityId),
+    /// The lane its way out asks for, not yet got into: the car in the way
+    /// there, if it has tried.
+    GettingIn(Option<crate::protocol::EntityId>),
     /// A junction or crossing it has no passage at yet.
     Junction(crate::protocol::EntityId),
     /// A car turning into or out of a lot across its way.
