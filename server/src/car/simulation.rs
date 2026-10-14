@@ -254,6 +254,13 @@ const START: f64 = 0.02;
 /// How long a driver allows for seeing a car pull out and braking for it.
 const REACTION: f64 = 0.5;
 
+/// The gap a car going `vb` keeps behind one going `vf` to be safe: a
+/// margin, what it covers while it reacts, and what it takes to slow to
+/// it. A car cutting in or merging needs this much behind it.
+fn headway(vb: f64, vf: f64) -> f64 {
+    MIN_GAP + vb * REACTION + physics::braking_distance(vb, vf)
+}
+
 /// Is this car still turning between the street and a lot: pulling out
 /// of one and not yet back in its lane (backed out, not until it has
 /// pulled away from where it stopped on the street, to the next node), or
@@ -328,7 +335,7 @@ fn gap_at(world: &World, car_id: EntityId, trip: &Trip, now: GameTime) -> bool {
             // out ahead of it, as drivers in a queue do.
             let past = d < -(tail(c.role) + MIN_GAP);
             let on = d - nose(c.role) < MIN_GAP;
-            let coming = v >= 0.05 && d - nose(c.role) < MIN_GAP + v * REACTION + physics::braking_distance(v, 0.0);
+            let coming = v >= 0.05 && d - nose(c.role) < headway(v, 0.0);
             past || !(on || coming)
         })
     })
@@ -354,7 +361,7 @@ fn clear_to_turn_in(world: &World, car_id: EntityId, trip: &Trip, now: GameTime)
         }
         let (p, v) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
         let d = t.segment_lengths[1..=k].iter().sum::<f64>() - p;
-        v < 0.05 || d - nose(c.role) > MIN_GAP + v * REACTION + physics::braking_distance(v, 0.0) + 1.0
+        v < 0.05 || d - nose(c.role) > headway(v, 0.0) + 1.0
     })
 }
 
@@ -546,6 +553,14 @@ fn lead_car_obstacle(
         speed: lead_speed,
         accel: lead.acceleration,
     })
+}
+
+/// The lane a car signals for (`Trip::signal`), if it does.
+fn signalling(world: &World, car: EntityId) -> Option<u8> {
+    match world.objects.get(car).map(|e| &e.object) {
+        Some(GameObject::Car(c)) => c.trip.as_ref()?.signal,
+        _ => None,
+    }
 }
 
 /// Find the cumulative distance to the start of an edge for a trip.
@@ -795,12 +810,13 @@ pub fn handle_car_wake_up(
     let reached = cur_progress + nose(role) >= seg_start + 0.5 * trip.segment_lengths[ri];
 
     // === LANES ===
-    let lanes_were = (trip.lanes.clone(), trip.shift);
+    let lanes_were = (trip.lanes.clone(), trip.shift, trip.signal);
     let mut slotting = Vec::new();
+    trip.signal = None;
     if !waiting && !manoeuvring(world, car_id) {
         slotting = change_lanes(world, events, car_id, role, &mut trip, ri, cur_progress, cur_speed, now);
     }
-    let lanes_changed = (trip.lanes.clone(), trip.shift) != lanes_were;
+    let lanes_changed = (trip.lanes.clone(), trip.shift, trip.signal) != lanes_were;
 
     // === SCAN ===
     let current_edge: EdgeKey = (trip.route[ri - 1], trip.route[ri]);
@@ -866,6 +882,30 @@ pub fn handle_car_wake_up(
     // The car ahead, in each lane it stands in: two while it changes.
     for lead_id in world.edges.get(&current_edge).map_or_else(Vec::new, |s| s.ahead(car_id)) {
         obstacles.extend(lead_car_obstacle(world, &trip, role, current_edge, cur_progress, lead_id, now));
+    }
+    // A car ahead in the other lane, signalling for this car's: let in,
+    // where this car can drop back for it without braking hard; looked for
+    // as far as a car stops from cruising.
+    for k in ri..trip.route.len() {
+        if trip.segment_lengths[1..k].iter().sum::<f64>() - cur_progress > COURTESY {
+            break;
+        }
+        let edge: EdgeKey = (trip.route[k - 1], trip.route[k]);
+        let Some(seg) = world.edges.get(&edge).filter(|s| s.lanes > 1 && s.contains(car_id)) else { break };
+        let mine = trip.lanes[k];
+        for o in seg.lane(1 - mine as usize).filter(|&o| o != car_id && signalling(world, o) == Some(mine)) {
+            let Some(GameObject::Car(c)) = world.objects.get(o).map(|e| &e.object) else { continue };
+            let (Some(t), Some(mine_at)) = (c.trip.as_ref(), edge_start_dist(&trip, edge)) else { continue };
+            let Some(its_at) = edge_start_dist(t, edge) else { continue };
+            let (q, vo) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+            // Dropping back to the gap it needs to cut in (`headway`, as
+            // `room` asks), and a little more; not for one it is inside
+            // that already, or could only leave braking hard.
+            let room = (q - its_at) - (cur_progress - mine_at) - nose(role) - tail(c.role) - MIN_GAP - cur_speed * REACTION - 0.1;
+            if room >= -0.05 && physics::braking_distance(cur_speed, vo) <= room + 0.05 {
+                obstacles.push(Obstacle::LeadCar { distance: room.max(0.0), speed: vo, accel: t.acceleration });
+            }
+        }
     }
     // Also check the next edge — we may be pre-registered there. At a
     // merge the car ahead there came from another arm; its distance to the
@@ -961,7 +1001,7 @@ pub fn handle_car_wake_up(
     if give_way {
         obstacles.push(Obstacle::MustStop { distance: (entry_ri - INTERSECTION_STOP_MARGIN).max(0.0) });
     }
-    obstacles.extend(merging_ahead(world, car_id, &trip, role, ri, remaining, cur_speed, now));
+    obstacles.extend(merging_ahead(world, intersections, car_id, &trip, role, ri, remaining, cur_speed, now));
     obstacles.extend(slotting.iter().copied());
 
     // Scan forward nodes
@@ -1114,6 +1154,7 @@ pub fn handle_car_wake_up(
         if lanes_changed {
             t.lanes = trip.lanes.clone();
             t.shift = trip.shift;
+            t.signal = trip.signal;
         }
     }
 }
@@ -1129,14 +1170,16 @@ pub fn handle_car_wake_up(
 /// the lane's queue: one asleep on its way has not queued past the
 /// junction yet.
 #[allow(clippy::too_many_arguments)]
-fn merging_ahead(world: &World, car_id: EntityId, trip: &Trip, role: CarRole, ri: usize, remaining: f64, v: f64, now: GameTime) -> Vec<Obstacle> {
+fn merging_ahead(world: &World, intersections: &IntersectionRegistry, car_id: EntityId, trip: &Trip, role: CarRole, ri: usize, remaining: f64, v: f64, now: GameTime) -> Vec<Obstacle> {
     let Some(j) = merge_ahead(world, trip, ri) else { return Vec::new() };
     let d = remaining + trip.segment_lengths[ri + 1..=j].iter().sum::<f64>();
     // Can a car `back` short of the junction going `vb` follow one `front`
     // short of it going `vf`.
-    let follows = |back: f64, vb: f64, rb: CarRole, front: f64, vf: f64, rf: CarRole| back - front >= nose(rb) + tail(rf) + MIN_GAP + vb * REACTION + physics::braking_distance(vb, vf);
+    let follows = |back: f64, vb: f64, rb: CarRole, front: f64, vf: f64, rf: CarRole| back - front >= nose(rb) + tail(rf) + headway(vb, vf);
     merging_with(world, car_id, trip, ri, now)
         .into_iter()
+        // One the junction holds at its line is going nowhere yet.
+        .filter(|&(o, ..)| !intersections.held(trip.route[j], o))
         .filter(|&(o, dist, vo, _, ro)| !follows(dist, vo, ro, d, v, role) && (follows(d, v, role, dist, vo, ro) || (dist, o) < (d, car_id)))
         .map(|(_, dist, vo, ao, ro)| Obstacle::LeadCar { distance: (d - dist - nose(role) - tail(ro) - MIN_GAP).max(0.0), speed: vo, accel: ao })
         .collect()
@@ -1246,7 +1289,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
     let joining = merging_with(world, car_id, trip, ri, now).iter().any(|&(_, dist, ..)| dist < MAKE_ROOM / 2.0);
     let merging = |l: u8| to_end < MAKE_ROOM && end + 1 < len && trip.lanes[end + 1] == l && joining;
     let ahead = |l: u8| near[l as usize][0];
-    let slow = ahead(lane).filter(|&(d, vo, _)| d < OVERTAKE && vo < v - 0.1);
+    let slow = ahead(lane).filter(|&(d, vo, ..)| d < OVERTAKE && vo < v - 0.1);
     let to = if to_end < 0.8 {
         None
     } else if let Some(w) = want.filter(|&w| w != lane && to_end < GET_IN) {
@@ -1255,10 +1298,10 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
         Some(other)
     } else if v < 0.5 {
         None
-    } else if let Some((d, vo, _)) = slow.filter(|_| want.is_none_or(|w| w == other || to_end > GET_IN)) {
-        ahead(other).is_none_or(|(e, wo, _)| e > d + 1.0 || wo > vo + 0.2).then_some(other)
+    } else if let Some((d, vo, ..)) = slow.filter(|_| want.is_none_or(|w| w == other || to_end > GET_IN)) {
+        ahead(other).is_none_or(|(e, wo, ..)| e > d + 1.0 || wo > vo + 0.2).then_some(other)
     } else if lane == 1 && want != Some(1) && !merging(0) {
-        ahead(0).is_none_or(|(d, vo, _)| d > KEEP_RIGHT || vo >= v).then_some(0)
+        ahead(0).is_none_or(|(d, vo, ..)| d > KEEP_RIGHT || vo >= v).then_some(0)
     } else {
         None
     };
@@ -1269,9 +1312,21 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
         if want != Some(to) {
             return Vec::new();
         }
+        // And signals: whoever is coming along behind in that lane may
+        // drop back for it.
+        trip.signal = Some(to);
+        for b in coming(world, car_id, trip, ri, p, to as usize, now) {
+            events.wake(0, b);
+        }
         let mut hold = vec![Obstacle::MustStop { distance: (to_end - 1.0).max(0.0) }];
-        if let Some((d, vo, ro)) = ahead(to) {
-            hold.push(Obstacle::LeadCar { distance: (d - nose(role) - tail(ro) - MIN_GAP).max(0.0), speed: vo, accel: 0.0 });
+        // Behind the car ahead there, where it can fall in without braking
+        // hard; one beside it it lets go by.
+        if let Some((d, vo, ro, _)) = ahead(to)
+            && let gap = d - nose(role) - tail(ro) - MIN_GAP
+            && gap >= 0.0
+            && physics::braking_distance(v, vo) <= gap + 0.05
+        {
+            hold.push(Obstacle::LeadCar { distance: gap, speed: vo, accel: 0.0 });
         }
         return hold;
     }
@@ -1294,16 +1349,19 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
     Vec::new()
 }
 
+/// A car near another in a lane: how far along the road from it (ahead
+/// more than nothing, behind less), its speed, its kind, which.
+type Near = (f64, f64, CarRole, EntityId);
+
 /// The nearest car ahead in one lane of a car's way to node `end`, and
-/// the nearest behind: how far each is along the road from it (ahead more
-/// than nothing, behind less), its speed, its kind. Behind, on the edges it
+/// the nearest behind (`Near`). Behind, on the edges it
 /// has come along too: one there may not yet have queued where this car
 /// is, a junction back, until it wakes there.
 #[allow(clippy::too_many_arguments)]
-fn neighbours(world: &World, car_id: EntityId, trip: &Trip, ri: usize, end: usize, p: f64, lane: usize, now: GameTime) -> [Option<(f64, f64, CarRole)>; 2] {
+fn neighbours(world: &World, car_id: EntityId, trip: &Trip, ri: usize, end: usize, p: f64, lane: usize, now: GameTime) -> [Option<Near>; 2] {
     /// How many edges back it looks.
     const BACK: usize = 4;
-    let mut out: [Option<(f64, f64, CarRole)>; 2] = [None, None];
+    let mut out: [Option<Near>; 2] = [None, None];
     for k in ri.saturating_sub(BACK).max(1)..=end {
         let e = (trip.route[k - 1], trip.route[k]);
         let Some(seg) = world.edges.get(&e) else { continue };
@@ -1315,10 +1373,31 @@ fn neighbours(world: &World, car_id: EntityId, trip: &Trip, ri: usize, end: usiz
             let (q, vo) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
             let d = q - start - mine;
             let slot = usize::from(d <= 0.0);
-            if out[slot].is_none_or(|(n, _, _)| d.abs() < n.abs()) {
-                out[slot] = Some((d, vo, c.role));
+            if out[slot].is_none_or(|(n, ..)| d.abs() < n.abs()) {
+                out[slot] = Some((d, vo, c.role, o));
             }
         }
+    }
+    out
+}
+
+/// How far a car signalling looks back for someone to let it in, and how
+/// far ahead one looks for a car signalling: as far as it takes to stop
+/// from cruising, and the gap.
+const COURTESY: f64 = 6.0;
+
+/// The cars coming up behind one in a lane of its way, as far back as
+/// `COURTESY`.
+fn coming(world: &World, car_id: EntityId, trip: &Trip, ri: usize, p: f64, lane: usize, now: GameTime) -> Vec<EntityId> {
+    let mut out = Vec::new();
+    for k in (1..=ri).rev() {
+        if p - trip.segment_lengths[1..k].iter().sum::<f64>() > COURTESY + trip.segment_lengths[k] {
+            break;
+        }
+        let e = (trip.route[k - 1], trip.route[k]);
+        let Some(seg) = world.edges.get(&e) else { continue };
+        let mine = p - trip.segment_lengths[1..k].iter().sum::<f64>();
+        out.extend(seg.lane(lane).filter(|&o| o != car_id && position_on(world, o, e, now).is_some_and(|q| q < mine)));
     }
     out
 }
@@ -1326,7 +1405,7 @@ fn neighbours(world: &World, car_id: EntityId, trip: &Trip, ri: usize, end: usiz
 /// Is there room for a car going `v` between these two in a lane: the one
 /// ahead far enough not to be run into, the one behind far enough to slow
 /// to it.
-fn room(role: CarRole, v: f64, [ahead, behind]: [Option<(f64, f64, CarRole)>; 2]) -> bool {
-    ahead.is_none_or(|(d, vo, ro)| d - nose(role) - tail(ro) >= MIN_GAP + (v - vo).max(0.0) * 1.5)
-        && behind.is_none_or(|(d, vo, ro)| -d - nose(ro) - tail(role) >= MIN_GAP + vo * REACTION + physics::braking_distance(vo, v))
+fn room(role: CarRole, v: f64, [ahead, behind]: [Option<Near>; 2]) -> bool {
+    ahead.is_none_or(|(d, vo, ro, _)| d - nose(role) - tail(ro) >= MIN_GAP + (v - vo).max(0.0) * 1.5)
+        && behind.is_none_or(|(d, vo, ro, _)| -d - nose(ro) - tail(role) >= headway(vo, v))
 }

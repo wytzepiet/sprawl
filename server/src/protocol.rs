@@ -830,6 +830,10 @@ pub struct Trip {
     /// for the client to slide it across while it lasts.
     #[serde(default)]
     pub shift: Option<Shift>,
+    /// The lane it waits to get into, with no room there yet: whoever
+    /// comes along behind in it may drop back and let it in.
+    #[serde(default)]
+    pub signal: Option<u8>,
 }
 
 /// A change of lanes: from one to the other, from `at` until `until`, in

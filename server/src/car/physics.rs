@@ -135,7 +135,9 @@ impl Obstacle {
             // slack is a tenth of the speed, as below it.
             let slack = (0.1 * target_speed).min(0.05);
             if my_speed > target_speed + slack {
-                -(my_speed * my_speed) / 0.02
+                // Short of something standing, a stop at once; behind
+                // something moving, its speed in a moment, not a stop.
+                if target_speed > 0.0 { -(my_speed - target_speed) / 0.25 } else { -(my_speed * my_speed) / 0.02 }
             } else if my_speed < target_speed - (0.1 * target_speed).min(0.05) {
                 ACCELERATION
             } else {

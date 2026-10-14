@@ -392,6 +392,11 @@ impl IntersectionRegistry {
         self.managers.get(&node_id).is_some_and(|m| m.has_passage(car_id))
     }
 
+    /// Queued at a junction and not let through: held at its line.
+    pub fn held(&self, node_id: EntityId, car_id: EntityId) -> bool {
+        self.managers.get(&node_id).is_some_and(|m| m.queue.iter().any(|e| e.car_id == car_id))
+    }
+
     /// Remove a car from all intersections. Returns list of (node, woken_car) pairs.
     pub fn remove_car_from_all(&mut self, car_id: EntityId, now: GameTime) -> Vec<(EntityId, EntityId)> {
         let mut results = Vec::new();

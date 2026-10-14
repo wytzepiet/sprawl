@@ -573,7 +573,10 @@ What runs, and where; the rest of the order above is still to come.
   junction ranks it only against cars going out by that lane. Along a
   stretch a car changes lanes, event-driven, at whatever wakes it: into
   the lane its turn at the end asks for (`World::turn_lane`), falling in
-  behind the car there and waiting short of the junction if it must; out
+  behind the car there where it can without braking hard, else waiting
+  short of the junction and signalling (`Trip::signal`), when the first
+  car coming along that lane that can drop back for it without braking
+  hard does, to the gap `room` asks (`headway`); out
   of the lane a car at the junction ahead waits to merge into; round a
   slower car close ahead; and back to the right lane when that is clear.
   A change takes a second and a half (`Trip::shift`, which the client

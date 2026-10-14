@@ -73,4 +73,9 @@ seg_length: number,
  * Its last change of lanes along a road of two (`car::simulation`):
  * for the client to slide it across while it lasts.
  */
-shift: Shift | null, };
+shift: Shift | null, 
+/**
+ * The lane it waits to get into, with no room there yet: whoever
+ * comes along behind in it may drop back and let it in.
+ */
+signal: number | null, };

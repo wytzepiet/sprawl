@@ -137,6 +137,7 @@ fn launch(
             segment_lengths,
             stretches,
             shift: None,
+            signal: None,
         });
     }
 

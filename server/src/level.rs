@@ -1120,6 +1120,38 @@ mod tests {
         assert!(share(&through, 0) > 0.8, "keeping right");
     }
 
+    /// A road of two lanes with a turn off either side: cars cross from
+    /// lane to lane both ways to make their turns, one letting another in
+    /// ahead of it, and none waits for good for a gap that never comes,
+    /// nor drives into another.
+    #[test]
+    fn cars_let_each_other_in() {
+        let text = "# Lanes\n@gate 1 in2\n@gate 2 out2\n@gate 3 out\n@gate 4 out\n@want 1 2 15\n@want 1 3 15\n@want 1 4 15\n..............3.....\n....................\n....................\n1..................2\n....................\n....................\n..........4.........\n";
+        let (mut level, mut game) = play(text);
+        draw_road(&mut game, Tool::Wide, &(0..=19).rev().map(|x| (x, -3)).collect::<Vec<_>>());
+        draw_road(&mut game, Tool::OneWay, &[(5, -3), (5, -2), (5, -1), (5, 0)]);
+        draw_road(&mut game, Tool::OneWay, &[(9, -3), (9, -4), (9, -5), (9, -6)]);
+        level.test(&mut game);
+        let mut standing: std::collections::HashMap<EntityId, GameTime> = std::collections::HashMap::new();
+        while level.phase == Phase::Test {
+            level.step(&mut game);
+            game.step();
+            if let Some(o) = overlap(&game) {
+                panic!("{o}");
+            }
+            for (id, t) in trips(&game) {
+                let (_, v) = crate::car::physics::catch_up(t.progress, t.speed, t.acceleration, (game.now - t.updated_at) as f64 / 1000.0);
+                if v > 0.01 {
+                    standing.remove(&id);
+                } else {
+                    let since = *standing.entry(id).or_insert(game.now);
+                    assert!(game.now - since < 30_000, "car {id} standing since {since} at {:?}, lanes {:?}", game.world.objects.get(t.route[t.route_index]).and_then(|e| e.position), t.lanes);
+                }
+            }
+        }
+        assert_eq!(level.phase, Phase::Done, "{}", level.message);
+    }
+
     #[test]
     fn nothing_is_built_off_the_map_or_on_a_gate() {
         let (_, game) = play(CROSSING);
