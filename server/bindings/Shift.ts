@@ -2,6 +2,7 @@
 
 /**
  * A change of lanes: from one to the other, from `at` until `until`, in
- * sim ms. While it lasts the car stands in both.
+ * sim ms. While it lasts the car stands in both. It steers across from
+ * `along` its way, over `over` of it (the client's path bends there).
  */
-export type Shift = { from: number, to: number, at: number, until: number, };
+export type Shift = { from: number, to: number, at: number, until: number, along: number, over: number, };

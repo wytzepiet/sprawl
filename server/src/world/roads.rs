@@ -111,10 +111,11 @@ impl World {
     }
 
     /// The lane a car enters each stretch of a route by, on the edge into
-    /// each node of it, where the road has two: in from a road beside it,
+    /// each node of it, where the road has two: off a road of two, the lane
+    /// it was in, bend as the road may; in from a road of one beside it,
     /// the lane on that side, as a car joining a road takes the near lane;
-    /// straight on, the lane it was in; setting out, the emptier. It keeps
-    /// it along the stretch until it changes lanes (`car::simulation`).
+    /// setting out, the emptier. It keeps it until it changes lanes
+    /// (`car::simulation`), never inside a junction.
     pub fn lanes_for(&self, route: &[EntityId]) -> Vec<u8> {
         let mut lanes = vec![0u8; route.len()];
         let wide = |k: usize| self.edges.get(&(route[k - 1], route[k])).is_some_and(|s| s.lanes > 1);
@@ -135,6 +136,7 @@ impl World {
                     _ => None,
                 };
                 let lane = match side {
+                    _ if k >= 2 && wide(k - 1) => lanes[k - 1],
                     Some(s) if s > 0 => 0,
                     Some(s) if s < 0 => 1,
                     Some(_) => lanes[k - 1],
@@ -156,13 +158,17 @@ impl World {
     }
 
     /// The lane the turn at node `j` of a route asks for, coming to it on a
-    /// road of two: the right lane for a right turn, the left for a left;
-    /// straight on, or at the route's end, either.
+    /// road of two: the right lane for a right turn, the left for a left,
+    /// where the road splits there; straight on, where it only bends or
+    /// others join it, or at the route's end, either. A bend asked for a
+    /// lane, and cars stood waiting for one that took them nowhere else.
     pub fn turn_lane(&self, route: &[EntityId], j: usize) -> Option<u8> {
         let pos = |id: EntityId| self.objects.get(id).and_then(|e| e.position);
-        let (a, b, c) = (pos(*route.get(j.checked_sub(1)?)?)?, pos(route[j])?, pos(*route.get(j + 1)?)?);
+        let (from, at, to) = (*route.get(j.checked_sub(1)?)?, route[j], *route.get(j + 1)?);
+        let (a, b, c) = (pos(from)?, pos(at)?, pos(to)?);
         let t = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
-        (t != 0).then_some(u8::from(t < 0))
+        let splits = self.arms_of(at, true).into_iter().any(|o| o != from && o != to);
+        (t != 0 && splits).then_some(u8::from(t < 0))
     }
 
     /// The road between two nodes given priority, or its priority taken:

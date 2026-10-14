@@ -581,13 +581,17 @@ What runs, and where; the rest of the order above is still to come.
   queued ahead further on but not yet in the lane this one drives in there
   (`getting_in`: on its own stretch the lane it is in now, past a
   junction the lane it comes out in) is no car to follow but one to let in
-  or not; onto a road of two it gets into the lane it comes out of the
-  junction in before it, not inside it, and if it cannot, the cars from
-  its arm's other lane zip with it there (`merging_ahead`); out
+  or not; it keeps its lane through junctions, off a road of two onto
+  another, and a turn asks for a lane only where the road splits, so a
+  bend or a ramp joining never stops it to get into one; where two lanes
+  of an arm still go out in one, they zip (`merging_ahead`). Only the
+  lane a turn asks for is worth stopping for: making room, overtaking and
+  keeping right are taken when there is room or not at all. On screen the
+  path bends across from one lane to the other over the way the change
+  takes, and the car steers along it (`driveTrip`'s `Swerve`); out
   of the lane a car at the junction ahead waits to merge into; round a
   slower car close ahead; and back to the right lane when that is clear.
-  A change takes a second and a half (`Trip::shift`, which the client
-  slides across, `motion.ts`): the car stands in both lanes' queues
+  A change takes a second and a half (`Trip::shift`): the car stands in both lanes' queues
   meanwhile, and wakes once at its end. Where cars of the same rank come
   into one lane from two arms, each follows the other as a virtual lead
   (`merging_ahead`): one may go ahead of the other if the other can

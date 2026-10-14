@@ -148,3 +148,19 @@ test("whatever the way, a vehicle keeps to it: near it, as far as it, and never 
     expect(travel).toBeLessThan(1.15 * d.length + 0.15);
   }
 });
+
+test("a car changing lanes steers across, round no corner, and no jump", () => {
+  const road: [number, number][] = Array.from({ length: 11 }, (_, k) => [k, 0.5]);
+  const t = { route_positions: road, from_lot: 0, to_lot: 0, backing: [] as [number, number][] };
+  const [right, left] = [Array(11).fill(0.11), Array(11).fill(-0.11)];
+  const d = driveTrip(t, CAR_RIG, left, { lanes: right, along: 3, over: 1.5 })!;
+  const y = (s: number) => d.at(s).body.y;
+  // In the lane it left before it, in the lane it took after.
+  expect(y(2.5)).toBeCloseTo(0.5 + 0.11, 2);
+  expect(y(7)).toBeCloseTo(0.5 - 0.11, 2);
+  // Across by turning: headed off the road's way while it crosses.
+  const turned = Math.max(...Array.from({ length: 30 }, (_, k) => Math.abs(Math.sin(d.at(3 + k * 0.05).body.heading))));
+  expect(turned).toBeGreaterThan(0.05);
+  // And smoothly: never more than a step's worth sideways between steps.
+  for (let s = 2; s < 6; s += 0.02) expect(Math.abs(y(s + 0.02) - y(s))).toBeLessThan(0.02);
+});

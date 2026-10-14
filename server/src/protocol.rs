@@ -837,8 +837,9 @@ pub struct Trip {
 }
 
 /// A change of lanes: from one to the other, from `at` until `until`, in
-/// sim ms. While it lasts the car stands in both.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+/// sim ms. While it lasts the car stands in both. It steers across from
+/// `along` its way, over `over` of it (the client's path bends there).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq)]
 #[ts(export)]
 pub struct Shift {
     pub from: u8,
@@ -847,6 +848,8 @@ pub struct Shift {
     pub at: u64,
     #[ts(type = "number")]
     pub until: u64,
+    pub along: f64,
+    pub over: f64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]

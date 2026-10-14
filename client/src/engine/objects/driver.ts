@@ -464,12 +464,20 @@ function ends(points: Pt[]): Pt[] {
   return [...drivable(points.slice(0, a + 1)), ...points.slice(a + 1, b), ...drivable(points.slice(b))];
 }
 
+/** A change of lanes under way: the lane offsets it left, and where along
+ *  the way it steers across, over how far (`Trip.shift`). */
+export interface Swerve {
+  lanes: number[];
+  along: number;
+  over: number;
+}
+
 /** A trip as the server sends it, driven, each node of it offset onto
  *  its lane by `lanes` (or the two-way's): in parts at each change of
  *  gear (`backing`, stretches of edges `[a, b)` driven backwards), each
  *  part's route drawn as a street route is, its lot nodes where they are
  *  and so its ends where the gear changes. */
-export function driveTrip(t: Driven, rig: Rig, lanes?: number[]): Drive | null {
+export function driveTrip(t: Driven, rig: Rig, lanes?: number[], was?: Swerve): Drive | null {
   const { route_positions: route, from_lot: fromLot, to_lot: toLot, backing } = t;
   const n = route.length;
   const cuts = [...new Set([0, ...backing.flat(), n - 1])].filter((k) => k >= 0 && k < n).sort((a, b) => a - b);
@@ -478,8 +486,25 @@ export function driveTrip(t: Driven, rig: Rig, lanes?: number[]): Drive | null {
     const [i, j] = [cuts[c - 1], cuts[c]];
     const nodes = route.slice(i, j + 1).map(([x, y]) => ({ x, y }));
     const fl = Math.max(fromLot - i, i > 0 ? 1 : 0), tl = Math.max(j + 1 - (n - toLot), j < n - 1 ? 1 : 0);
-    const d = drawnPath(nodes, lanes ? lanes.slice(i, j + 1) : LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
-    if (d) drawn.push({ points: ends(d.points.map((p): Pt => [p.x, p.y])), backing: backing.some(([a, b]) => a <= i && i < b) });
+    const path = (offsets?: number[]) => drawnPath(nodes, offsets ? offsets.slice(i, j + 1) : LANE_OFFSET, Math.min(fl, nodes.length), Math.min(tl, nodes.length));
+    const d = path(lanes);
+    if (!d) continue;
+    let points: Pt[] = d.points.map((p) => [p.x, p.y]);
+    // Across from the lane it left: the path bends over from that lane's
+    // to this one's, and the driver steers along it as round a bend.
+    const left = was && path(was.lanes);
+    if (left && left.points.length === points.length) {
+      const before = drawn.reduce((s, p) => s + measure(p.points).length, 0);
+      let s = before;
+      points = points.map((p, k) => {
+        if (k > 0) s += Math.hypot(p[0] - points[k - 1][0], p[1] - points[k - 1][1]);
+        const u = Math.max(0, Math.min(1, (s - was.along) / was.over));
+        const e = u * u * (3 - 2 * u);
+        const o = left.points[k];
+        return [o.x + (p[0] - o.x) * e, o.y + (p[1] - o.y) * e];
+      });
+    }
+    drawn.push({ points: ends(points), backing: backing.some(([a, b]) => a <= i && i < b) });
   }
   if (!drawn.length) return null;
   // Where each part starts and ends, by the server's distance; or by its

@@ -851,6 +851,17 @@ pub fn handle_car_wake_up(
         slotting = change_lanes(world, events, car_id, role, &mut trip, ri, cur_progress, cur_speed, now);
     }
     let lanes_changed = (trip.lanes.clone(), trip.shift, trip.signal) != lanes_were;
+    // Into another lane, and so out of the junctions ahead by another: the
+    // passage it held there was for the lane it left. It asks again below.
+    if trip.shift != lanes_were.1 && trip.shift.is_some_and(|s| s.from != s.to) {
+        for k in ri..(ri + QUEUE_AHEAD).min(trip.route.len()) {
+            for g in gates(world, &trip.route, k) {
+                for woken in intersections.remove_car(g.id, car_id, now) {
+                    events.wake(0, woken);
+                }
+            }
+        }
+    }
 
     // === SCAN ===
     let current_edge: EdgeKey = (trip.route[ri - 1], trip.route[ri]);
@@ -1321,14 +1332,11 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
     let to_end = trip.segment_lengths[1..=end].iter().sum::<f64>() - p;
     let lane = trip.lanes[ri];
     let other = 1 - lane;
-    // The lane its turn at the end asks for; else, onto a road of two, the
-    // lane it comes out of the junction in, got into before it rather than
-    // taken inside it across whoever is beside it.
-    let turn = world.turn_lane(&trip.route, end);
-    let want = turn.or_else(|| (end + 1 < len && wide(end + 1)).then(|| trip.lanes[end + 1]));
-    // How far a change carries: on past junctions it goes straight through.
+    let want = world.turn_lane(&trip.route, end);
+    // How far a change carries: along the road of two, through whatever
+    // junctions it goes on through in it.
     let mut carry = ri;
-    while carry < len && wide(carry) && (carry == ri || !world.network.is_junction(trip.route[carry - 1]) || world.turn_lane(&trip.route, carry - 1).is_none()) {
+    while carry < len && wide(carry) {
         carry += 1;
     }
     let near = [0, 1].map(|l| neighbours(world, car_id, trip, ri, carry - 1, p, l, now));
@@ -1357,7 +1365,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
     if let Some(blocker) = in_the_way(role, v, near[to as usize]) {
         // No room in the lane its turn needs: it falls in behind the car
         // ahead there, and short of the junction it waits for a gap.
-        if turn != Some(to) {
+        if want != Some(to) {
             return Vec::new();
         }
         // Two side by side, each waiting for the other's lane, would wait
@@ -1400,7 +1408,10 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
             events.wake(0, b);
         }
     }
-    trip.shift = Some(Shift { from: lane, to, at: now, until: now + SHIFT_MS });
+    // Across over the way it covers meanwhile, and no shorter than a turn
+    // of the wheel allows.
+    let over = (v * SHIFT_MS as f64 / 1000.0).max(0.5);
+    trip.shift = Some(Shift { from: lane, to, at: now, until: now + SHIFT_MS, along: p, over });
     Vec::new()
 }
 
