@@ -37,7 +37,13 @@ const server = `localhost:${process.env.SPRAWL_PORT ?? 4801}`;
 const lite = new URL("../../Babylon-Lite/packages/babylon-lite/", import.meta.url).pathname;
 
 export default defineConfig({
-  plugins: [solidPlugin(), perfLog()],
+  // No hot swapping: an edit reloads the page. Solid's refresh remounts the
+  // component an edit touched, and here nearly every component hangs off the
+  // engine, its scene, the socket or a store made once at load — a remount
+  // tears the engine down under the rest, or builds on state the swap left
+  // behind, and the game goes blank. A reload costs a second and is always
+  // right; the server holds the game, so the page comes back as it was.
+  plugins: [solidPlugin({ hot: false }), perfLog()],
   resolve: { alias: { "@babylonjs/lite": `${lite}src/index.ts` } },
   server: {
     port,
@@ -51,7 +57,6 @@ export default defineConfig({
     // has to forward /ws to the game server or it dials itself.
     proxy: {
       "/ws": { target: `ws://${server}`, ws: true },
-      "/tree": { target: `http://${server}` },
       "/inspect": { target: `http://${server}` },
       "/town": { target: `http://${server}` },
     },

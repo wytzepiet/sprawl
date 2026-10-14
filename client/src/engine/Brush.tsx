@@ -1,33 +1,42 @@
-import { createEffect, createMemo, on, onCleanup } from "solid-js";
+import { createEffect, createMemo, For, on, onCleanup, Show } from "solid-js";
+import { render } from "solid-js/web";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
-import { screenToWorld, viewExtent, rectOf } from "./view";
+import { underGlass } from "./glass";
+import { projector, screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, useGame } from "../state/gameObjects";
-import { tree, unlocked } from "../state/tree";
-import { isRoad, setTool, tool } from "../ui/buildMode";
-import { affords, hand, may, mayStart, snap, STEPS, type Hand } from "./may";
-import type { GridCoord, TerrainType, Tool } from "../generated";
+import { aim, held, hold, isRoad, setAim, setPlaced, setTool, tool, turn } from "../ui/buildMode";
+import { fit, fits, hand, may, mayStart, placing, snap, STEPS, type Hand } from "./may";
+import { BLUEPRINTS, GoodIcon, GOODS } from "../blueprints";
+import type { Building, Good, GridCoord, TerrainType, Tool } from "../generated";
 
 /**
- * The mayor's hand on the map: whatever is held is laid as the drag goes,
- * a step from one tile to the next, each sent as it is taken
- * (`Build { tool, from, to }`), straight or diagonal toward the pointer.
- * A tap, or the first tile of a drag, paints that tile alone, and a road
- * needs two; the demolisher's tap clears everything at its tile, and its
- * drag cuts only what joins the tiles it crosses.
+ * The mayor's hand on the map. A road or the demolisher is laid as the
+ * drag goes, a step from one tile to the next, each sent as it is taken
+ * (`Build { tool, from, to }`), straight or diagonal toward the pointer;
+ * the demolisher's tap takes everything at its tile, a building whole,
+ * and its drag cuts only the road it crosses.
  *
- * And where it may go, worked out here (`may.ts`) and shown by the dots
- * (`dots.ts`): one on every tile in view a drag may start from, and
- * while dragging the steps the tile it is on allows. A step refused is not taken: the drag waits there, straining.
+ * A building in hand, dragged from the build menu, is placed whole where
+ * it is let go (`Place`): shown where it would stand as the town would be
+ * drawn with it (`TownLayer.hold`), turned to the nearest street or, a
+ * harbour, the sea, unless the hand turns it (R, the wheel, two fingers);
+ * beside it, what it is built of against what the town has, or why it
+ * may not go there.
  *
- * Alt with the bare hand is the eyedropper: it picks up what stands
- * where it presses, and a drag from there lays more of it.
+ * Where the hand may go is worked out here (`may.ts`) and shown by the
+ * dots (`dots.ts`): one on every tile in view a drag may start from, or a
+ * building may stand round, and while dragging the steps the tile it is
+ * on allows. A step refused is not taken: the drag waits there, straining.
+ *
+ * Alt with the bare hand is the eyedropper: it picks up the road it
+ * presses on, and a drag from there lays more of it.
  */
 export function Brush(props: { ground: (x: number, y: number) => TerrainType | undefined }) {
   const { scene, canvas, afterRender } = useEngine();
   const dots = new Dots(scene, canvas);
   const stopTick = afterRender(() => dots.frame());
-  const { send, growth } = useGame();
+  const { send } = useGame();
   let current: GridCoord | null = null;
   /** The tile pressed on, while the hand is down. */
   let pressed: GridCoord | null = null;
@@ -36,28 +45,33 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   let accDy = 0;
 
   const pick = (e: { clientX: number; clientY: number }) => screenToWorld(scene, canvas, e);
+  const tileOf = (e: { clientX: number; clientY: number }) => {
+    const w = pick(e);
+    return { x: Math.floor(w.wx), y: Math.floor(w.wy) };
+  };
   const step = (from: GridCoord, to: GridCoord) => {
-    const held = tool();
-    if (held !== null) send({ type: "Build", data: { tool: held, from, to } });
+    const t = tool();
+    if (t !== null) send({ type: "Build", data: { tool: t, from, to } });
   };
 
   // The world as the hand sees it, read again when something is built.
   let world: Hand | null = null;
+  /** The tile under the pointer, while it is over the map. */
+  let hover: GridCoord | null = null;
+  const aimAt = () => {
+    const h = held();
+    setAim(world && hover && h ? placing(world, h.kind, hover, h.facing) : null);
+  };
   createEffect(on(builtVersion, () => {
-    world = hand(eachEntity, props.ground, growth(), (want) => unlocked(tree(), growth().taken, want));
+    world = hand(eachEntity, props.ground);
     draw();
+    aimAt();
   }));
-  // And drawn again when what the build allows changes: what is taken,
-  // road left to lay, a tile of the held kind come within the purse.
-  const gate = createMemo(() => {
-    const [g, held] = [growth(), tool()];
-    const purse = held !== null && typeof held !== "string" && affords(g, held.Building);
-    return `${g.road_tiles_left},${g.taken.length},${tree() ? 1 : 0},${purse}`;
-  });
-  createEffect(on([gate, tool], () => draw(), { defer: true }));
+  // And drawn again when another tool or building is taken up, or turned.
+  createEffect(on([tool, held], () => (draw(), aimAt()), { defer: true }));
   const allowed = (at: GridCoord, i: number) => {
-    const held = tool();
-    return !!world && held !== null && may(world, held, at, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] });
+    const t = tool();
+    return !!world && t !== null && may(world, t, at, { x: at.x + STEPS[i][0], y: at.y + STEPS[i][1] });
   };
 
   /** The tiles the view covers. */
@@ -72,65 +86,77 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
   let drawnOver = "";
   let frames = 0;
   const stopWatch = afterRender(() => {
-    if (tool() === null || current || ++frames % 15) return;
+    if ((tool() === null && held() === null) || current || ++frames % 15) return;
     if (viewBox().join() !== drawnOver) draw();
   });
 
   /** Tell the dots what to show: the starts in view while nothing is
-   *  pressed, the steps out of the tile underfoot while dragging. */
+   *  pressed, the steps out of the tile underfoot while dragging; with a
+   *  building in hand, every tile it may stand round. */
   function draw() {
-    const held = tool();
+    const t = tool(), h = held();
     const starts: [number, number][] = [];
     const nexts: [number, number][] = [];
     const [x0, y0, x1, y1] = viewBox();
-    if (world && held !== null) {
-      world.growth = growth();
-      if (current) for (const [i, [dx, dy]] of STEPS.entries()) if (allowed(current, i)) nexts.push([current.x + dx, current.y + dy]);
+    const start = !world ? null
+      : h ? (at: GridCoord) => (h.facing === null ? fits(world!, h.kind, at) : !fit(world!, h.kind, at, h.facing).why)
+      : t !== null ? (at: GridCoord) => mayStart(world!, t, at)
+      : null;
+    if (start) {
+      if (current && t !== null) for (const [i, [dx, dy]] of STEPS.entries()) if (allowed(current, i)) nexts.push([current.x + dx, current.y + dy]);
       drawnOver = [x0, y0, x1, y1].join();
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (mayStart(world, held, { x, y })) starts.push([x, y]);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (start({ x, y })) starts.push([x, y]);
     }
     dots.aim(starts, nexts, current ? { x: current.x + 0.5, y: current.y + 0.5 } : { x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
   }
 
-  /** What stands at a tile, as the tool that lays it. */
+  /** What road stands at a tile, as the tool that lays it. */
   const toolAt = (at: GridCoord): Tool | null => {
-    const k = `${at.x},${at.y}`;
-    const b = world?.occupied.get(k);
-    if (b) return { Building: b.kind };
-    const n = world?.roads.get(k)?.node;
+    const n = world?.roads.get(`${at.x},${at.y}`)?.node;
     if (!n) return null;
     if (n.road) return "Road";
     const oneWay = n.outgoing.some((o) => !n.incoming.includes(o)) || n.incoming.some((i) => !n.outgoing.includes(i));
     return oneWay ? "OneWay" : "Street";
   };
-  // The eyedropper: with the bare hand, Alt on a thing picks up what laid
+  // The eyedropper: with the bare hand, Alt on a road picks up what laid
   // it, before the camera or the picker see the press, so the same drag
   // carries it on.
   const onEyedrop = (e: PointerEvent) => {
-    if (e.button !== 0 || !e.altKey || tool() !== null) return;
-    const w = pick(e);
-    const t = toolAt({ x: Math.floor(w.wx), y: Math.floor(w.wy) });
+    if (e.button !== 0 || !e.altKey || tool() !== null || held() !== null) return;
+    const t = toolAt(tileOf(e));
     if (t) setTool(t);
   };
 
+  /** Let go with a building in hand: placed, if it may stand there, and
+   *  the hand empty, unless Shift keeps it for another. */
+  const place = (shift: boolean) => {
+    const p = aim();
+    if (!p || p.why) return;
+    send({ type: "Place", data: { kind: p.kind, at: p.at, facing: p.facing } });
+    setPlaced(p);
+    if (!shift) hold(null);
+  };
+
   const onPointerDown = (e: PointerEvent) => {
-    if (e.button !== 0 || tool() === null) return;
-    const w = pick(e);
-    current = { x: Math.floor(w.wx), y: Math.floor(w.wy) };
-    prevWorld = w;
+    if (e.button !== 0 || held() !== null) return;
+    if (tool() === null) return;
+    current = tileOf(e);
+    prevWorld = pick(e);
     accDx = 0;
     accDy = 0;
-    // A tap paints or clears its tile at once, but the demolisher's waits
-    // for the hand to come up where it went down: a drag cuts only what
-    // it crosses, not the point it starts from.
+    // The demolisher's tap waits for the hand to come up where it went
+    // down: a drag cuts only what it crosses, not the point it starts from.
     pressed = current;
-    if (!isRoad(tool()) && tool() !== "Demolish") step(current, current);
-    dots.grab(current, { x: w.wx, y: w.wy });
+    dots.grab(current, { x: prevWorld.wx, y: prevWorld.wy });
     draw();
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!current || !prevWorld) return;
+    if (!current || !prevWorld) {
+      const at = tileOf(e);
+      if (at.x !== hover?.x || at.y !== hover?.y) (hover = at), aimAt();
+      return;
+    }
     const w = pick(e);
     dots.pull({ x: w.wx, y: w.wy });
     accDx += w.wx - prevWorld.wx;
@@ -168,7 +194,8 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     accDy = 0;
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: PointerEvent) => {
+    if (held() !== null && e.button === 0 && touches.size < 2) return place(e.shiftKey);
     if (pressed && current === pressed && tool() === "Demolish") step(pressed, pressed);
     pressed = null;
     if (current) dots.release();
@@ -177,19 +204,181 @@ export function Brush(props: { ground: (x: number, y: number) => TerrainType | u
     draw();
   };
 
+  // Turning a building in hand: R, the wheel, or two fingers twisting.
+  const onKey = (e: KeyboardEvent) => {
+    if (held() === null || e.ctrlKey || e.metaKey) return;
+    if (e.key === "r" || e.key === "R") turn(e.shiftKey ? -1 : 1);
+    else if (e.key === "Escape") hold(null);
+    else return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  };
+  let wheeled = 0;
+  const onWheel = (e: WheelEvent) => {
+    if (held() === null) return;
+    e.preventDefault();
+    // A notch a quarter turn, however fine the wheel.
+    const now = performance.now();
+    if (now - wheeled > 120) turn(e.deltaY > 0 ? 1 : -1), (wheeled = now);
+  };
+  const touches = new Map<number, { x: number; y: number }>();
+  let twist: number | null = null;
+  const angle = () => {
+    const [a, b] = [...touches.values()];
+    return Math.atan2(b.y - a.y, b.x - a.x);
+  };
+  const onTouchDown = (e: PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    twist = touches.size === 2 ? angle() : null;
+  };
+  const onTouchMove = (e: PointerEvent) => {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (twist === null || held() === null || touches.size !== 2) return;
+    // A quarter turn for every sixty degrees the fingers twist.
+    let d = angle() - twist;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    if (Math.abs(d) > Math.PI / 3) turn(d > 0 ? 1 : -1), (twist = angle());
+  };
+  const onTouchUp = (e: PointerEvent) => {
+    touches.delete(e.pointerId);
+    twist = null;
+  };
+
   canvas.addEventListener("pointerdown", onEyedrop, { capture: true });
+  canvas.addEventListener("pointerdown", onTouchDown, { capture: true });
   canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onTouchMove);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointerup", onTouchUp);
+  canvas.addEventListener("pointercancel", onTouchUp);
+  canvas.addEventListener("wheel", onWheel, { passive: false, capture: true });
+  window.addEventListener("keydown", onKey, { capture: true });
+  const onLeave = () => ((hover = null), aimAt());
+  canvas.addEventListener("pointerleave", onLeave);
+
+  // In development, the hand put in a pose a photograph cannot drag it
+  // into (`bun run look --hold`): a building held over a tile.
+  if (import.meta.env.DEV)
+    Object.assign(window, {
+      sprawlHold: (kind: Building["kind"] | null, x: number, y: number, facing: number | null = null) => {
+        if (held()?.kind !== kind || held()?.facing !== facing) hold(kind, facing);
+        hover = { x, y };
+        aimAt();
+      },
+    });
+
+  // Beside the building in hand: what it is, what it is built of against
+  // what the town has, and that it may be let go there or why not. Over
+  // a plot that may not stand, its tiles in red, flat on the ground.
+  const label = document.createElement("div");
+  label.className = "fixed inset-0 pointer-events-none";
+  const plot = document.createElement("canvas");
+  plot.style.cssText = "position:absolute;inset:0;width:100vw;height:100vh";
+  label.appendChild(plot);
+  const unrender = render(() => <HeldLabel />, label);
+  const stopLabel = afterRender(() => {
+    const p = aim();
+    const g = plot.getContext("2d")!;
+    const dpr = devicePixelRatio || 1;
+    const [w, h] = [Math.round(innerWidth * dpr), Math.round(innerHeight * dpr)];
+    if (plot.width !== w || plot.height !== h) [plot.width, plot.height] = [w, h];
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, innerWidth, innerHeight);
+    const tag = label.querySelector<HTMLElement>("[data-held]");
+    if (!p) return;
+    const project = projector(scene, canvas);
+    const xs = p.tiles.map((t) => t.x), ys = p.tiles.map((t) => t.y);
+    // Over the plot's far edge, clear of it.
+    const top = project.at((Math.min(...xs) + Math.max(...xs) + 1) / 2, Math.max(...ys) + 1.2, 0.6);
+    if (tag) [tag.style.left, tag.style.top] = [`${top.sx}px`, `${top.sy}px`];
+    g.fillStyle = p.why ? "rgba(216,67,47,0.42)" : "rgba(47,123,240,0.22)";
+    g.strokeStyle = p.why ? "rgba(216,67,47,0.9)" : "rgba(47,123,240,0.85)";
+    g.lineWidth = 2;
+    g.beginPath();
+    for (const t of p.tiles) {
+      const corners = [[t.x, t.y], [t.x + 1, t.y], [t.x + 1, t.y + 1], [t.x, t.y + 1]].map(([x, y]) => project.at(x, y, 0.05));
+      g.moveTo(corners[0].sx, corners[0].sy);
+      for (const c of corners.slice(1)) g.lineTo(c.sx, c.sy);
+      g.closePath();
+    }
+    if (p.why) g.fill();
+    g.stroke();
+    underGlass(g);
+  });
+  document.body.appendChild(label);
 
   onCleanup(() => {
+    stopLabel();
+    unrender();
+    label.remove();
+    canvas.removeEventListener("pointerleave", onLeave);
+    setAim(null);
     canvas.removeEventListener("pointerdown", onEyedrop, { capture: true });
+    canvas.removeEventListener("pointerdown", onTouchDown, { capture: true });
     canvas.removeEventListener("pointerdown", onPointerDown);
+    canvas.removeEventListener("pointermove", onTouchMove);
     canvas.removeEventListener("pointermove", onPointerMove);
     canvas.removeEventListener("pointerup", onPointerUp);
+    canvas.removeEventListener("pointerup", onTouchUp);
+    canvas.removeEventListener("pointercancel", onTouchUp);
+    canvas.removeEventListener("wheel", onWheel, { capture: true });
+    window.removeEventListener("keydown", onKey, { capture: true });
     stopWatch();
     stopTick();
   });
 
   return dots.el;
+}
+
+/** What the town has of a good: on its standing depots' shelves; or,
+ *  asked of none, how many depots stand. */
+function inTown(good: Good | null): number {
+  let n = 0;
+  eachEntity((e) => {
+    if (e.object.kind !== "Building") return;
+    const b = e.object.data;
+    if (b.kind === "Depot" && !b.site) n += good ? (b.stocks[good]?.level ?? 0) : 1;
+  });
+  return n;
+}
+
+/** The building in hand's tag: its name, what it takes against what the
+ *  town has, and whether it may be let go here, or why not. */
+function HeldLabel() {
+  const lines = createMemo(() => {
+    const p = aim();
+    builtVersion();
+    // The town's first depot stands at once, for nothing.
+    if (!p || (p.kind === "Depot" && !inTown(null))) return [];
+    return (Object.entries(BLUEPRINTS[p.kind].materials) as [Good, number][]).map(([good, n]) => ({ good, n, have: inTown(good) }));
+  });
+  return (
+    <Show when={aim()}>
+      {(p) => (
+        <div data-held data-glass="toast" class="ink absolute rounded-2xl px-3.5 py-2 text-[13px] whitespace-nowrap" style={{ transform: "translate(-50%,-100%)" }}>
+          <div class="flex items-center gap-2.5 font-semibold">
+            <span>{BLUEPRINTS[p().kind].label}</span>
+            <For each={lines()}>
+              {(l) => (
+                <span class="inline-flex items-center gap-1 font-medium" style={{ color: l.have >= l.n ? undefined : "#C2361F" }} title={`${l.n} ${GOODS[l.good].label}; ${Math.floor(l.have)} in the depots`}>
+                  <GoodIcon good={l.good} width="13" height="13" />
+                  {l.n}
+                  <span class="soft font-normal">/ {Math.floor(l.have)}</span>
+                </span>
+              )}
+            </For>
+            <Show when={!lines().length}>
+              <span class="soft font-normal italic">stands at once</span>
+            </Show>
+          </div>
+          <div class="text-[12px]" style={{ color: p().why ? "#C2361F" : "#2E7D4F" }}>
+            {p().why ?? (p().kind === "Harbour" && !p().door ? "The ferry berths here; a street comes with it" : "Let go to build")}
+          </div>
+        </div>
+      )}
+    </Show>
+  );
 }

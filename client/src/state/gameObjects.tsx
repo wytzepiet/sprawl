@@ -8,6 +8,8 @@ import {
 import { createConnection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
+import { hearSea, tell } from "./sea";
+import { hearMissions } from "./missions";
 import type { Building,
   GameObjectEntry,
   ClientMessage,
@@ -36,11 +38,6 @@ const [me, setMe] = createSignal(0);
 export { me };
 
 /**
- * Our own uncommitted entities. Kept as ops arrive rather than derived on
- * demand, since it decides whether the commit bar is on screen at all.
- */
-
-/**
  * What carries a pin: every building. Kept as ops arrive, with a version the
  * pin layer re-reads on; the entities map itself is deliberately not
  * reactive, and pins are the one view that wants a list. The version also
@@ -54,11 +51,11 @@ export function pinned(): GameObjectEntry[] {
   return [...pinnedEntries.values()];
 }
 /**
- * Coins and GDP that landed on buildings in view, for a moment: each lump floats up
- * over its building and is gone. Kept for a couple of seconds of wall time
+ * Coins, GDP and goods that landed on buildings in view, for a moment:
+ * each lump floats up over its building and is gone. Kept for a couple of seconds of wall time
  * and read by the lump layer; nothing else wants it.
  */
-const LUMP_MS = 2400;
+const LUMP_MS = 3200;
 const [lumps, setLumps] = createSignal<(Lump & { key: number; since: number })[]>([]);
 let lumpKey = 0;
 export function recentLumps() {
@@ -134,6 +131,11 @@ let opsListener: OpsListener | null = null;
 export function setOpsListener(fn: OpsListener | null) {
   opsListener = fn;
 }
+
+/** The ground of every chunk heard of, kept after it is out of view, since
+ *  it never changes: the minimap draws the island as far as it was seen. */
+const ground = new Map<string, Uint8Array>();
+export const groundOf = (cx: number, cy: number) => ground.get(`${cx},${cy}`);
 
 /** Terrain arrives per chunk rather than as entities, so it bypasses ops. */
 export interface TerrainListener {
@@ -237,8 +239,8 @@ interface GameContext {
   /** Who this client is. */
   me(): number;
   terrainSeed(): number;
-  /** Surveyed extent, in chunks. max < min means nothing is surveyed yet. */
-  revealedBounds(): ChunkBounds;
+  /** The island's map, in chunks: the camera stays over it. */
+  island(): ChunkBounds;
   /** The two dials: the city's level, and what the mayor has to spend. */
   growth(): Growth;
   send(msg: ClientMessage): boolean;
@@ -260,7 +262,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
     taken: [],
     road_tiles_left: 0,
   });
-  const [revealedBounds, setRevealedBounds] = createSignal<ChunkBounds>({
+  const [island, setIsland] = createSignal<ChunkBounds>({
     min_cx: 0,
     min_cy: 0,
     max_cx: -1,
@@ -273,8 +275,10 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
       case "Update":
         syncFromClock(msg.data.clock);
         if (msg.data.terrain_seed) setTerrainSeed(msg.data.terrain_seed);
-        setRevealedBounds(msg.data.revealed_bounds);
+        setIsland(msg.data.island);
         setGrowth(msg.data.growth);
+        hearSea(msg.data.sea);
+        hearMissions(msg.data.missions, msg.data.neighbours);
         // Many at once when the view travels: spread over frames, in order.
         void spread(applying(msg.data.ops, msg.data.lumps));
         break;
@@ -282,6 +286,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         console.error("[ws] server error:", msg.data.message);
         break;
       case "TerrainChunk":
+        ground.set(`${msg.data.coord.cx},${msg.data.coord.cy}`, msg.data.tiles);
         terrainListener?.setChunk(msg.data);
         break;
       case "UnloadChunk":
@@ -289,6 +294,9 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         break;
       case "Welcome":
         setMe(msg.data);
+        break;
+      case "News":
+        for (const n of msg.data) tell(n.text, n.sub, n.at, true);
         break;
       case "Pong":
         syncClock(msg.data);
@@ -299,7 +307,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
   onCleanup(close);
 
   return (
-    <Ctx.Provider value={{ me, terrainSeed, revealedBounds, growth, send, getObjectsAt }}>
+    <Ctx.Provider value={{ me, terrainSeed, island, growth, send, getObjectsAt }}>
       {props.children}
     </Ctx.Provider>
   );
@@ -311,7 +319,7 @@ export function OfflineGame(props: ParentProps) {
   const none = { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
   const growth = { level: 0, toward: 0, needed: 0, gdp: 0, treasury: 0, income: 0, imports: 0, taken: [], road_tiles_left: 0 };
   return (
-    <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, revealedBounds: () => none, growth: () => growth, send: () => true, getObjectsAt: () => [] }}>
+    <Ctx.Provider value={{ me: () => 0, terrainSeed: () => 0, island: () => none, growth: () => growth, send: () => true, getObjectsAt: () => [] }}>
       {props.children}
     </Ctx.Provider>
   );

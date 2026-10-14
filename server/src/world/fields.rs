@@ -707,7 +707,7 @@ mod tests {
                 // wide beside the plot and between the neighbours are
                 // slivers, and fall away; what is left is the block behind.
                 for x in [7, 10, 18, 21] {
-                    world.place_on_street(GridCoord { x, y: 1 }, BuildingKind::Warehouse).unwrap();
+                    world.place_on_street(GridCoord { x, y: 1 }, BuildingKind::Depot).unwrap();
                 }
                 world.tend(farm);
             }
@@ -800,9 +800,10 @@ mod tests {
         world.remove_building(first);
         world.place_road_path(&[GridCoord { x: door.x, y: 0 }, door]);
         let farm = world.place_building(pos, BuildingKind::Farm, facing).expect("a farm over the stub");
+        world.finish(farm);
         assert_eq!(world.door_of(farm).map(|d| d.0), Some(door), "the stub is the farm's door");
         assert!(world.road_node_at(door).is_none(), "and no road on its tile");
-        world.open_door(farm);
+        world.orient(farm);
         tractor(&world, farm);
         assert!(!tiles(&world, farm).is_empty(), "the farm claimed no land");
     }
@@ -813,6 +814,7 @@ mod tests {
     fn a_farm_reached_later_gets_its_tractor() {
         let mut world = land();
         let farm = world.place_building(GridCoord { x: 10, y: 4 }, BuildingKind::Farm, 0).expect("a farm off the street");
+        world.finish(farm);
         assert!(world.street_of(farm).is_none());
         assert!(world.objects.iter().all(|e| !matches!(e.object, GameObject::Car(ref c) if c.owner == farm)), "a tractor before any road");
         world.place_road_path(&(0..=3).map(|y| GridCoord { x: 11, y }).collect::<Vec<_>>());
@@ -821,18 +823,19 @@ mod tests {
         assert!(!tiles(&world, farm).is_empty(), "the farm claimed no land");
     }
 
-    /// The farm from the save of 2026-09-15: seed 7, a diagonal highway on
-    /// both flanks a tile off the plot, the farm placed beside it and
-    /// reached by a door drawn later. Its tractor stands in a dock,
+    /// The farm from the save of 2026-09-15: a diagonal highway on both
+    /// flanks a tile off the plot, on open grass, the farm placed beside
+    /// it and reached by a door drawn later. Its tractor stands in a dock,
     /// and its land, though both flanks are lane and not field, lies
     /// behind the barn across the lane.
     #[test]
     fn the_farm_by_the_diagonal_highway() {
         let mut world = World::new();
-        world.terrain = crate::terrain::generate(7);
+        world.terrain = (40..80).flat_map(|x| (30..60).map(move |y| ((x, y), TerrainType::Grass))).collect();
         world.place_road_path_of(&[(57, 46), (58, 45), (59, 44), (60, 43), (61, 42)].map(|(x, y)| GridCoord { x, y }), true);
         world.place_road_path_of(&[(61, 42), (62, 43), (62, 44), (63, 45), (64, 46), (65, 47)].map(|(x, y)| GridCoord { x, y }), true);
         let farm = world.place_building(GridCoord { x: 60, y: 45 }, BuildingKind::Farm, 0).expect("the farm");
+        world.finish(farm);
         assert!(world.street_of(farm).is_none(), "served before any door");
         world.place_road_path(&[GridCoord { x: 60, y: 43 }, GridCoord { x: 61, y: 44 }]);
         world.handle_place_road(GridCoord { x: 61, y: 44 }, GridCoord { x: 61, y: 45 }, false, false);
@@ -869,7 +872,7 @@ mod tests {
         let mut events = EventQueue::new();
         let tractor = tractor(&world, farm);
         let yard = |world: &World| match world.objects.get(farm).unwrap().object {
-            GameObject::Building(ref b) => b.stocks[&Need::Eat].level,
+            GameObject::Building(ref b) => b.stocks[&crate::protocol::Good::Crates].level,
             _ => unreachable!(),
         };
         let stages = |world: &World| -> Vec<Stage> { self::tiles(world, farm).iter().map(|t| t.stage).collect() };
@@ -928,7 +931,7 @@ mod tests {
             for t in b.land.iter_mut() {
                 (t.stage, t.since) = (Stage::Sown, 0);
             }
-            let s = b.stocks.get_mut(&Need::Eat).unwrap();
+            let s = b.stocks.get_mut(&crate::protocol::Good::Crates).unwrap();
             s.level = s.cap;
         }
         assert!(world.batch(farm, now).is_none(), "a harvest with no room in the yard");

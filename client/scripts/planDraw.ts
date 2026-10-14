@@ -8,7 +8,8 @@ import type { BuildingKind } from "../src/generated";
 import { parseTown, type Tile } from "../src/engine/town/grid";
 import { intersect, soften, unite, type Polygon, type Pt } from "../src/engine/town/footprint";
 import { facts } from "../src/engine/town/facts";
-import { asphalt, dress, FERRY, pavement } from "../src/engine/town/dressing";
+import { dress } from "../src/engine/town/dressing";
+import { asphalt, pavement } from "../src/engine/town/surface";
 import { plans, roofFaces } from "../src/engine/town/roof";
 import { slope } from "../src/engine/town/mass";
 import { CAB, CAR, TRAILER } from "../src/engine/objects/roadGeometry";
@@ -28,8 +29,8 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   const out: string[] = [];
   const f = (v: number) => +v.toFixed(3);
   const d = (poly: Polygon) => poly.map((ring) => "M" + ring.map(([x, y]) => `${f(x)} ${f(y)}`).join("L") + "Z").join("");
-  const fill = (polys: Polygon[], colour: string, extra = "") =>
-    polys.length && out.push(`<path fill-rule="evenodd" fill="${colour}" ${extra} d="${polys.map(d).join("")}"/>`);
+  const fill = (polys: Polygon[], colour: string, extra = `fill-rule="evenodd"`) =>
+    polys.length && out.push(`<path fill="${colour}" ${extra} d="${polys.map(d).join("")}"/>`);
   const line = (pts: Pt[], colour: string, w: number) =>
     out.push(`<polyline fill="none" stroke="${colour}" stroke-width="${w}" points="${pts.map(([x, y]) => `${f(x)},${f(y)}`).join(" ")}"/>`);
   /** A box `l` long along `angle`, `w` wide, its middle at (x, y). */
@@ -50,11 +51,11 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
   const fs = facts(town);
   const dressing = dress(town, fs);
 
-  // The asphalt: roads, and the drives and ramps leading off them, one
-  // surface.
+  // The asphalt: roads, drives, yards and bays, one surface, a piece a
+  // tile overlapping the next.
   const { street, through } = asphalt(town);
-  fill([...street, ...dressing.lanes.map((l): Polygon => [l])], hex(T.road));
-  fill(through, hex(T.highway));
+  fill(street, hex(T.road), `fill-rule="nonzero"`);
+  fill(through, hex(T.highway), `fill-rule="nonzero"`);
 
   // What stands on the ground: yard lines, lorries at docks, parked
   // cars.
@@ -68,18 +69,13 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
     box(dock.x + ux * trailer, dock.y + uy * trailer, dock.angle, TRAILER.l, TRAILER.w, "#e6e6e0");
     box(dock.x + ux * cab, dock.y + uy * cab, dock.angle, CAB.l, CAB.w, "#475c94");
   }
-  for (const ship of dressing.ships) {
-    box(ship.x, ship.y, ship.angle, FERRY.l, FERRY.w, "#f5f5f2");
-    const [ux, uy] = [Math.cos(ship.angle), Math.sin(ship.angle)];
-    box(ship.x + ux * 0.4, ship.y + uy * 0.4, ship.angle, FERRY.l * 0.5, FERRY.w * 0.75, "#2b6ba3");
-  }
 
-  // The buildings: each part its kind's colour, a head lighter; the roof's
+  // The buildings: each part its kind's colour; the roof's
   // faces' edges, ridges and hips, thin and light.
   for (const { mass, polygon, outline } of plans(fs)) {
     for (const part of mass.parts) {
       const base = BLUEPRINTS[part.tile.kind as BuildingKind]?.color ?? "#888888";
-      const rgb = [1, 3, 5].map((k) => parseInt(base.slice(k, k + 2), 16) / 255).map((v) => (part.head ? v + (1 - v) * 0.45 : v));
+      const rgb = [1, 3, 5].map((k) => parseInt(base.slice(k, k + 2), 16) / 255);
       fill(mass.parts.length === 1 ? outline : intersect(part.polygons, outline), hex({ r: rgb[0], g: rgb[1], b: rgb[2] }));
     }
     const { pitch, height } = slope(mass.tile);

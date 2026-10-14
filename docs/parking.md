@@ -48,10 +48,24 @@ onto it; a lorry still backs into its dock. A kerb bay will be the same:
 a few nodes and a change of gear.
 
 Pulling out, 2026-10-06. Backing is a walking pace (`REVERSE_SPEED`,
-a fifth of a tile a second) and a car all but stops where its gear
-changes (`GEAR_SPEED`); it used to back out at lot speed and drive off
-at once, the turn of the wheel and the change of direction in one
-instant. Where a lot's way out meets the street is a **give-way line**:
+a fifth of a tile a second); it used to back out at lot speed and drive
+off at once, the turn of the wheel and the change of direction in one
+instant.
+
+Changes of gear, 2026-10-11. A vehicle stops on the node where its gear
+changes, stands there `CUSP_MS`, and pulls away the other way; a trip
+ends with a stop on its last node, not an arrival at speed. Each
+stretch between changes of gear is measured on its own, so a cusp is a
+point, not a rounded corner. The trip says where each cusp falls by its
+progress (`Trip::cusps`), where the vehicle stood (`leaves`) and where
+it will stand (`stands`), and the client's drive (`driver.ts`) fits each
+part to that, starts from the one and eases onto the other: no jump
+leaving, at a cusp, or parking. A lorry backs its box on a way planned
+from where it stands to its bay (`reverse`), the cab following its
+hitch; a dock's stop point is far enough past its mouth (`STOP`) that
+the box swings in in one sweep. A lorry moving from one dock of a yard
+to another drives it along the lane (`World::redock`), never out to the
+street and never in a jump. `bun run jolt` counts what still jumps. Where a lot's way out meets the street is a **give-way line**:
 the car waits at it until nobody is coming who could not stop for it
 (`gap_at`), then holds the street node (`World::pulling_out`) until its
 tail is clear, and anyone coming either way, or turning in, stops short
@@ -86,15 +100,23 @@ bays; and cruising when every bay near is taken.
 Square bays, 2026-10-06 (the mayor: perpendicular for everything but
 housing, and set back so they sit astride the street's tile and the
 building's). Flats keep the bays along the kerb; everything else parks
-nose in, square to the street, four bays a tile, each 0.55 from the
-street's middle, in the building's setback (`SQUARE`). A car turns
+nose in, square to the street, two bays a tile within its walls, 0.27 apart (a car and a door's swing; 2026-10-11), each 0.37 from the
+street's middle, its tail at the road's edge (`SQUARE`; 0.55 in the setback until 2026-10-11). A car turns
 square at the tightest a car turns (0.45) only by starting from the
 road's middle, so it swings out there, turns in round the arc and goes
 straight in at the last, from either way along the street; and backs
 out round the same arc into its lane and drives on, through the
 give-way line (`kerb_bays`, tested against `driver.ts`: in at about
 84°, a few degrees off square, no snap). An office of twelve parks
-seven to eight at its own frontage and the rest at its door.
+five at its own frontage and the rest at its door.
+
+A building parks along as much kerb as it needs, not every side a street
+passes (2026-10-11): as many bays as its long side holds, on its door's
+side first, then on the sides with a street all along them, the fullest
+first, until it has them. So anything that parks at the kerb is placed
+only where a street runs all along one of its sides (`World::fit`,
+"No street along a whole side, for its parking"); a house parks on its
+drive and a yard in itself, and neither needs one.
 
 Turning in gives way too: a car turns off the street when nobody is
 moving toward it from the other way (`clear_to_turn_in`), and from the

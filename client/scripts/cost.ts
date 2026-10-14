@@ -16,7 +16,7 @@
  * the frame lost is its cost. Prints a table and writes it, with the numbers,
  * to `.dev/cost/`. Desktop Chrome's WebGPU, at the size the benchmark uses.
  */
-import { chromium } from "playwright-core";
+import { launch } from "./browser";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { CostReport } from "../src/engine/cost";
@@ -40,7 +40,7 @@ const only = text("--only");
 const q = text("--q");
 const views = (args.length ? args : ["0,0"]).map((a) => a.split(",").map(Number)).map(([x, y, half = 15]) => ({ x, y, half }));
 
-const browser = await chromium.launch({ channel: "chrome", args: ["--enable-unsafe-webgpu"] });
+const browser = await launch();
 const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, deviceScaleFactor: 2 });
 page.on("pageerror", (e) => console.log(`page error: ${e.message}`));
 await page.goto(`${CLIENT}/?t=${t}${q ? `&${q}` : ""}`);

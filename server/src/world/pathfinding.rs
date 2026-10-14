@@ -109,10 +109,12 @@ impl<'w> Routes<'w> {
         legs.reverse();
         let mut route = vec![self.start];
         for (from, step, to) in legs {
-            extend_route(&mut route, &between(stretch(self.world, from, step)?, from, to));
+            extend_route(&mut route, &along(self.world, from, step, to)?);
         }
         if exit.to != end {
-            extend_route(&mut route, &between(stretch(self.world, end, exit.step)?, exit.to, end));
+            let mut last = along(self.world, end, exit.step, exit.to)?;
+            last.reverse();
+            extend_route(&mut route, &last);
         }
         Some(route)
     }
@@ -132,12 +134,17 @@ impl<'w> Routes<'w> {
         }
         // Both ends of one stretch: no junction is involved at all. Part of a
         // stretch has no record of its own, so it is charged its share of
-        // the whole stretch's.
+        // the whole stretch's. On a loop there is a second way, round the
+        // other side through its junction, which the search finds.
+        let mut direct = None;
         if let Some((seg, a, b)) = same_stretch(world, self.start, end) {
             let share = run_length(world, &seg.nodes[a.min(b)..=a.max(b)]) / seg.length.max(1e-9);
             let cost = world.network.run_cost_ms(seg, a < b, CRUISE_SPEED) * share;
             let step = seg.nodes[if a < b { b - 1 } else { b + 1 }];
-            return Some((cost, self.start, Leg { to: self.start, cost, step }));
+            direct = Some((cost, self.start, Leg { to: self.start, cost, step }));
+            if !seg.is_ring() {
+                return direct;
+            }
         }
 
         // The last leg is a hop like any other: the far end of the
@@ -165,7 +172,8 @@ impl<'w> Routes<'w> {
                 self.relax(current.id, leg);
             }
         }
-        way_in(&self.settled, &self.cost).map(|(cost, exit)| (cost, exit.to, exit))
+        let around = way_in(&self.settled, &self.cost).map(|(cost, exit)| (cost, exit.to, exit));
+        direct.into_iter().chain(around).min_by(|a, b| a.0.total_cmp(&b.0))
     }
 
     fn relax(&mut self, from: EntityId, leg: Leg) {
@@ -189,7 +197,7 @@ fn hops_from(world: &World, at: EntityId) -> Vec<Leg> {
     world
         .network
         .segments_at(at)
-        .filter(|seg| !seg.is_ring() && seg.nodes.len() > 1)
+        .filter(|seg| seg.nodes.len() > 1)
         .filter_map(|seg| {
             let last = seg.nodes.len() - 1;
             let (to, step, forward) = if seg.nodes[0] == at {
@@ -213,7 +221,6 @@ fn junctions_from(world: &World, from: EntityId) -> Vec<Leg> {
     world
         .network
         .segments_at(from)
-        .filter(|seg| !seg.is_ring())
         .flat_map(|seg| {
             let Some(i) = seg.nodes.iter().position(|&n| n == from) else { return Vec::new() };
             let last = seg.nodes.len() - 1;
@@ -237,32 +244,33 @@ fn junctions_from(world: &World, from: EntityId) -> Vec<Leg> {
         .collect()
 }
 
-/// The stretch that leaves `at` by `step`.
-fn stretch(world: &World, at: EntityId, step: EntityId) -> Option<&Segment> {
-    world.network.segments_at(at).filter(|seg| !seg.is_ring()).find(|seg| {
-        let i = seg.nodes.iter().position(|&n| n == at);
-        i.is_some_and(|i| (i > 0 && seg.nodes[i - 1] == step) || seg.nodes.get(i + 1) == Some(&step))
+/// The tiles from `at` to `to`, leaving by `step`, both ends included.
+///
+/// Walked by the step rather than looked up by where the two ends stand,
+/// because a stretch can end where it began: a loop that leaves a junction
+/// and comes back to it holds that junction at both ends, and only the step
+/// says which.
+fn along(world: &World, at: EntityId, step: EntityId, to: EntityId) -> Option<Vec<EntityId>> {
+    world.network.segments_at(at).find_map(|seg| {
+        let n = &seg.nodes;
+        let (i, ahead) = (0..n.len()).find_map(|i| match (n[i] == at, n.get(i + 1) == Some(&step), i > 0 && n[i - 1] == step) {
+            (true, true, _) => Some((i, true)),
+            (true, _, true) => Some((i, false)),
+            _ => None,
+        })?;
+        let run: Vec<EntityId> = if ahead { n[i..].to_vec() } else { n[..=i].iter().rev().copied().collect() };
+        let end = run.iter().skip(1).position(|&x| x == to)? + 1;
+        Some(run[..=end].to_vec())
     })
 }
 
 /// Both on the same stretch, and where along it.
 fn same_stretch(world: &World, a: EntityId, b: EntityId) -> Option<(&Segment, usize, usize)> {
-    world.network.segments_at(a).filter(|s| !s.is_ring()).find_map(|seg| {
+    world.network.segments_at(a).find_map(|seg| {
         let i = seg.nodes.iter().position(|&n| n == a)?;
         let j = seg.nodes.iter().position(|&n| n == b)?;
         Some((seg, i, j))
     })
-}
-
-/// The tiles of a stretch from one of its nodes to another, in that order.
-fn between(seg: &Segment, from: EntityId, to: EntityId) -> Vec<EntityId> {
-    let a = seg.nodes.iter().position(|&n| n == from).unwrap_or(0);
-    let b = seg.nodes.iter().position(|&n| n == to).unwrap_or(0);
-    if a <= b {
-        seg.nodes[a..=b].to_vec()
-    } else {
-        seg.nodes[b..=a].iter().rev().copied().collect()
-    }
 }
 
 fn run_length(world: &World, nodes: &[EntityId]) -> f64 {
@@ -343,20 +351,33 @@ mod tests {
         })
     }
 
-    fn seed_seven() -> World {
-        let terrain = crate::terrain::generate(7);
+    /// A town of streets: a grid of them nine tiles by seven, every other
+    /// one broken off short, and two long diagonals across it, so a route
+    /// has junctions of every kind to find its way through.
+    fn a_town_of_streets() -> World {
         let mut world = World::new();
-        world.terrain = terrain.clone();
-        crate::road_gen::generate(&mut world, 7);
+        for y in -2..100 {
+            for x in -2..100 {
+                world.terrain.insert((x, y), TerrainType::Grass);
+            }
+        }
+        for (i, y) in (0..98).step_by(7).enumerate() {
+            world.place_road_path(&(0..if i % 2 == 0 { 98 } else { 60 }).map(|x| GridCoord { x, y }).collect::<Vec<_>>());
+        }
+        for (i, x) in (0..98).step_by(9).enumerate() {
+            world.place_road_path(&(if i % 2 == 0 { 0 } else { 30 }..98).map(|y| GridCoord { x, y }).collect::<Vec<_>>());
+        }
+        world.place_road_path(&(0..98).map(|k| GridCoord { x: k, y: k }).collect::<Vec<_>>());
+        world.place_road_path(&(0..98).map(|k| GridCoord { x: k, y: 97 - k }).collect::<Vec<_>>());
         world
     }
 
-    /// The claim in one test: over a real map, searching by stretches finds a
-    /// route of the same length as searching tile by tile, and one a car can
-    /// actually drive.
+    /// The claim in one test: over a town of streets, searching by
+    /// stretches finds a route of the same length as searching tile by
+    /// tile, and one a car can actually drive.
     #[test]
     fn it_finds_what_the_tile_search_finds() {
-        let world = seed_seven();
+        let world = a_town_of_streets();
         let nodes: Vec<EntityId> = world
             .objects
             .roads()
@@ -430,6 +451,33 @@ mod tests {
         assert!(joined_up(&world, &route), "route has a gap in it");
         let tile_by_tile = find_path_tile_by_tile(&world, from, to).unwrap();
         assert!((total(&world, &route) - total(&world, &tile_by_tile)).abs() < 1e-6);
+    }
+
+    /// A street that ends in a loop: out from one junction and back to it,
+    /// with nothing else joining it, so the whole loop is one stretch that
+    /// holds that junction at both ends. A door on the loop is reached, and
+    /// left, like a door anywhere else.
+    #[test]
+    fn a_loop_off_one_junction_is_driven() {
+        let mut world = straight_world();
+        let at = |x, y| GridCoord { x, y };
+        world.place_road_path(&(0..=3).map(|x| at(x, 0)).collect::<Vec<_>>());
+        let mut ring: Vec<GridCoord> = (3..=6).map(|x| at(x, 0)).collect();
+        ring.extend((1..=4).map(|y| at(6, y)));
+        ring.extend((3..6).rev().map(|x| at(x, 4)));
+        ring.extend((0..4).rev().map(|y| at(3, y)));
+        world.place_road_path(&ring);
+        let junction = world.road_node_at(at(3, 0)).unwrap();
+        assert!(world.network.segments_at(junction).any(|s| s.is_ring()), "the loop is one stretch, both ends at the junction");
+
+        let node = |x, y| world.road_node_at(at(x, y)).unwrap();
+        for (from, to) in [(node(0, 0), node(6, 2)), (node(6, 2), node(0, 0)), (node(5, 4), node(6, 1)), (node(3, 2), node(5, 0)), (junction, node(4, 4))] {
+            let route = find_path(&world, from, to).unwrap_or_else(|| panic!("{from} -> {to}: no way"));
+            assert_eq!((route.first(), route.last()), (Some(&from), Some(&to)));
+            assert!(joined_up(&world, &route), "{from} -> {to}: route has a gap in it");
+            let tile_by_tile = find_path_tile_by_tile(&world, from, to).unwrap();
+            assert!((total(&world, &route) - total(&world, &tile_by_tile)).abs() < 1e-6, "{from} -> {to}: the long way round");
+        }
     }
 
     /// Two ways round, one short and one long, with a stub at each end so both

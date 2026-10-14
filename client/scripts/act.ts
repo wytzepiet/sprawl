@@ -6,12 +6,21 @@
  *   bun run act road 10,4 20,4 20,9     a street through these tiles, stepping
  *                                       as the brush does, diagonals and all
  *       --road | --one-way              a through road, or one way
- *   bun run act build House 12,5        a building painted on this tile; more
- *       12,5 14,5 14,6                  tiles paint on through them, stepping
- *                                       as the brush does: one building as far
- *                                       as a kind that grows is painted
- *   bun run act demolish 12,5 14,5      whatever stands on the tiles, through
+ *   bun run act build House 12,5        a building placed whole round this
+ *       build Depot 12,5 0              tile, its front the first way it fits,
+ *                                       or this way (0 toward -y, 1 +x, 2 +y,
+ *                                       3 -x); a harbour brings its street
+ *   bun run act demolish 12,5 14,5      a tap takes what stands on a tile, a
+ *                                       building whole; more tiles, the road
+ *                                       a drag through them cuts
+ *   bun run act undo                    the hand's last action taken back
  *   bun run act speed 0                 sim steps per tick; 0 pauses
+ *   bun run act send 18                 depot 18's lorry to the harbour now
+ *   bun run act standing 18 on          its standing orders, on or off
+ *   bun run act order 18 Timber 2       two boxes of timber from the world
+ *   bun run act sell 18 Crates          a box of crates to the world
+ *   bun run act rule 18 Stone 20 40     its rule for stone: keep 20, fill to
+ *                                       40 (twice the keep if left out)
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
  *                                       day (0 midnight, 0.5 noon)
@@ -20,15 +29,21 @@
  *                                       .dev/paths.json, and every bend tighter
  *                                       than a car turns counted
  *   bun run act time                    the clock, as now and time of day
+ *   bun run act missions                the town's missions, each step ticked
+ *                                       or not, and what the one at hand says;
+ *                                       every command also says the steps it
+ *                                       saw done and the missions it saw open
  *   bun run act reset                   a new world
  *   bun run act - < steps.txt           one command a line; # comments
  *
  * Tiles are the game's own (x, y), as `bun run plan --live` numbers them;
  * on the map +x is to the left and +y up. Each command answers with what it
- * made and took away, and a command that changed nothing says so, since
- * the server refuses quietly (the build's gate, the purse, a tile already
- * taken; refusals of buildings are in `.dev/server.log`). The game is the
- * one `bun run dev` runs, or SPRAWL_PORT's.
+ * made and took away, and a command that changed nothing says so: a
+ * building refused and an undo say why, a road step refused is in
+ * `.dev/server.log`. The game is the
+ * one `bun run dev` runs, or SPRAWL_PORT's. The hand is a player of its
+ * own, PLAYER (the browser's is in its localStorage, `sprawl.player`), so
+ * its history to undo is its own and outlives the command.
  */
 import { decode, encode } from "@msgpack/msgpack";
 import { part, radii, TIGHTEST, trace, type Recorded } from "./paths";
@@ -72,17 +87,29 @@ let heard = Date.now();
 let ops: Op[] = [];
 /** Every trip seen, once each. */
 const trips = new Map<string, Recorded>();
-const ws = new WebSocket(`ws://localhost:${PORT}/ws`);
+const PLAYER = process.env.PLAYER ?? "4242";
+/** The town's missions, as the last update had them. */
+type Mission = { key: unknown; title: string; finished: number | null; due: number | null; reward: { data: number | { coins: number; standing: number } }; steps: { title: string; text: string; done: boolean; at: number | null }[] };
+let missions: Mission[] = [];
+/** The mayors beyond the edge, and how they stand. */
+let neighbours: { name: string; town: string; toward: string; standing: number; writes: boolean }[] = [];
+/** News heard since the last command said what it saw. */
+const told: string[] = [];
+const ws = new WebSocket(`ws://localhost:${PORT}/ws?player=${PLAYER}`);
 ws.binaryType = "arraybuffer";
 ws.onmessage = (e) => {
   const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as { type: string; data: any };
+  // The town spending of its own accord, as the news tells a player.
+  if (msg.type === "News") for (const n of msg.data) told.push(`news: ${n.text}, ${n.sub}`);
   if (msg.type !== "Update") return;
   clock = msg.data.clock;
+  missions = msg.data.missions ?? [];
+  neighbours = msg.data.neighbours ?? [];
   if (msg.data.ops.length) (heard = Date.now()), ops.push(...msg.data.ops);
   for (const op of msg.data.ops as Op[]) {
     const trip = op.op === "Upsert" && op.data.object.kind === "Car" && op.data.object.data.trip;
     if (!trip) continue;
-    const t: Recorded = { car: (op as any).data.id, role: (op as any).data.object.data.role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, backing: trip.backing };
+    const t: Recorded = { car: (op as any).data.id, role: (op as any).data.object.data.role, route: trip.route_positions, from_lot: trip.from_lot, to_lot: trip.to_lot, backing: trip.backing, cusps: trip.cusps, total_route_length: trip.total_route_length, leaves: trip.leaves, stands: trip.stands };
     trips.set(`${t.car}:${JSON.stringify(t.route)}`, t);
   }
 };
@@ -122,6 +149,32 @@ function changes(batch: Op[]): string[] {
     ...(roads(gone) ? [`- ${roads(gone)} road tiles`] : []), ...rest(gone).map((s) => `- ${s}`),
   ];
 }
+/** What a mission pays: coins, and for an order standing with its mayor. */
+const pays = (m: Mission) => (typeof m.reward.data === "number" ? `+${m.reward.data} coins` : `+${m.reward.data.coins} coins as it sails, +${m.reward.data.standing} standing`);
+const lapsed = (m: Mission) => m.finished !== null && m.steps.some((s) => !s.done);
+/** What became of the missions over a command: opened, steps done, finished. */
+function progress(before: Mission[]): string[] {
+  const out: string[] = [];
+  for (const m of missions) {
+    const was = before.find((b) => JSON.stringify(b.key) === JSON.stringify(m.key));
+    if (!was) out.push(`mission opened: ${m.title}${m.steps.length === 1 ? `: ${m.steps[0].title}` : ""}`);
+    m.steps.forEach((s, i) => s.done && !was?.steps[i]?.done && out.push(`mission ${m.title}: ${s.title} done`));
+    if (m.finished !== null && was?.finished == null) out.push(lapsed(m) ? `mission lapsed: ${m.title}, ${m.steps[0].title}` : `mission finished: ${m.title}, ${pays(m)}`);
+  }
+  return out;
+}
+/** Every mission, its steps, and what the one at hand says. */
+function listed(): string[] {
+  const mayors = neighbours.map((n) => `${n.name} of ${n.town}, ${n.toward.toLowerCase()}: standing ${n.standing}${n.writes ? "" : ", silent"}`);
+  return mayors.concat(missions.flatMap((m) => {
+    const at = m.steps.findIndex((s) => !s.done);
+    return [
+      `${m.title}${lapsed(m) ? " (lapsed)" : m.finished !== null ? " (finished)" : ""}, ${pays(m)}${m.due !== null && m.finished === null ? `, due at ${m.due} ms` : ""}`,
+      ...m.steps.map((s, i) => `  [${s.done ? "x" : " "}] ${s.title}${s.at !== null ? ` (#${s.at})` : ""}${i === at ? `: ${s.text.replace(/\n\n/g, " ")}` : ""}`),
+    ];
+  }));
+}
+
 /** The trips seen, kept for `bun run plan --paths`, and their bends
  *  tighter than a car turns, by where on the trip they are. */
 function watched(): string[] {
@@ -154,10 +207,9 @@ changes(await settled());
 
 /** A drag through these tiles with this in hand, a step at a time as the
  *  brush takes them, straight or diagonal; a road starts from its first
- *  tile, anything else paints or clears it first. */
+ *  tile, the demolisher's tap, one tile alone, takes what stands there. */
 function stroke(tool: unknown, pts: Pt[]) {
-  if (!pts.length) return;
-  if (tool !== "Street" && tool !== "OneWay" && tool !== "Road") send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
+  if (pts.length === 1) send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
   for (let i = 1; i < pts.length; i++) {
     let [x, y] = pts[i - 1];
     const [tx, ty] = pts[i];
@@ -172,7 +224,9 @@ const at = ([x, y]: Pt) => ({ x, y });
 
 /** What a command has to say beyond what it changed. */
 let report: string[] = [];
-for (const [verb, ...rest] of lines) {
+for (const line of lines) {
+  const before = missions;
+  const [verb, ...rest] = line;
   const flags = rest.filter((a) => a.startsWith("--"));
   const args = rest.filter((a) => !a.startsWith("--"));
   switch (verb) {
@@ -180,28 +234,52 @@ for (const [verb, ...rest] of lines) {
       stroke(flags.includes("--road") ? "Road" : flags.includes("--one-way") ? "OneWay" : "Street", args.map(tile));
       break;
     case "build":
-      stroke({ Building: args[0] }, args.slice(1).map(tile));
+      send("Place", { kind: args[0], at: at(tile(args[1])), facing: args[2] === undefined ? null : Number(args[2]) });
       break;
     case "demolish":
       stroke("Demolish", args.map(tile));
       break;
+    case "undo":
+      send("Undo");
+      break;
     case "speed":
       send("SetSpeed", Number(args[0]));
+      break;
+    // The border: a depot's lorry sent, its standing orders, boxes bought
+    // or a box sold. The sea's state is at /sea.
+    case "send":
+      send("Send", { depot: Number(args[0]) });
+      break;
+    case "standing":
+      send("Standing", { depot: Number(args[0]), on: args[1] !== "off" });
+      break;
+    case "order":
+      send("Order", { depot: Number(args[0]), good: args[1], boxes: Number(args[2] ?? 1) });
+      break;
+    case "sell":
+      send("Sell", { depot: Number(args[0]), good: args[1] });
+      break;
+    case "rule":
+      send("SetRule", { depot: Number(args[0]), good: args[1], rule: { keep: Number(args[2]), fill: Number(args[3] ?? 2 * Number(args[2])), sell: null } });
       break;
     case "reset":
       send("ResetWorld");
       break;
     case "time":
       break;
+    case "missions":
+      report = listed();
+      break;
     case "watch":
     case "run": {
       trips.clear();
+      // The clock as the server has it: a paused town sends no updates.
+      const now = async () => (await (await fetch(`http://localhost:${PORT}/health`)).json()).sim_time as number;
+      clock.now = await now();
       const to = flags.includes("--to") ? Number(rest[rest.indexOf("--to") + 1]) : undefined;
       const until = to !== undefined
         ? clock.now + (((to - timeOfDay() + 1) % 1) * clock.day_ms)
         : clock.now + (Number(args[0]) * clock.day_ms) / 24;
-      // The clock as the server has it: a paused town sends no updates.
-      const now = async () => (await (await fetch(`http://localhost:${PORT}/health`)).json()).sim_time as number;
       const was = clock.speed;
       send("SetSpeed", FULL);
       while ((clock.now = await now()) < until) await Bun.sleep(200);
@@ -213,9 +291,9 @@ for (const [verb, ...rest] of lines) {
     default:
       throw new Error(`no such command: ${verb}`);
   }
-  const said = [...changes(await settled()), ...report];
+  const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...told.splice(0), ...report];
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : ["time", "speed", "run", "watch"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch", "send", "standing", "order", "sell", "rule", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
 ws.close();

@@ -1,0 +1,12 @@
+# Quarry and sawmill: stone from the mountain, timber from the woods
+# A quarry at the mountain's foot, its yard of stone heaps on the street; a depot; a sawmill in the forest across the way.
+^^^^^^^^^^........TTTTTTTTTT
+^^^^^^^^^^^.......TTTTTTTTTT
+^^^^^^^^^^^.......TTTTTTTTTT
+.^^^^^^^^^........TTTTTTTTTT
+..^^QQ^^...DDD....TTTWWTTTTT
+...^QQ^....DDD....TTTWWTTTTT
+....QQ.....DDD....TTTWWTTTTT
+....QQ.....DDD.......WW.....
+============================
+............................

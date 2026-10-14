@@ -1,5 +1,5 @@
-# Supermarkets as they are drawn bigger: a corner shop at the kerb, a car park on its busy corner, then a service bay at the back
-# One tile, two, three, two by two, three by two, four by two: the shape decides what it has.
+# Supermarkets of every size a fixture may draw: each a box, its customers at the kerb
+# One tile, two, three, two by two, three by two, four by two: a box all through, square, no car park and no bay.
 ............................
 .............MM..MMM..MMMM..
 .M..MM..MMM..MM..MMM..MMMM..

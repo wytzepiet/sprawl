@@ -58,9 +58,9 @@ placed at it. What a player may do follows from whose stock is largest:
 - **Demolish only what is mostly yours**, and never a tile whose loss would
   disconnect another player's traffic from what it reaches. That makes
   griefing pointless: a road two towns depend on can be cut by neither.
-- **Drafts reserve.** A player's drafted roads and buildings hold their
-  tiles against everyone else until committed or discarded (`game.md`
-  §Drafts).
+- **Undo is per player.** Each player takes back only their own last
+  actions, and never one someone else has since built on (`game.md`
+  §Undo).
 - **No table of territory.** Ownership is derived from what drives, like
   every other index; a world reloaded settles the same claims from the same
   traffic.

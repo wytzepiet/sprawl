@@ -1,4 +1,4 @@
-use super::{ACCELERATION, CRUISE_SPEED, DECELERATION, MIN_TURN_SPEED, Obstacle};
+use super::{ACCELERATION, CRUISE_SPEED, DECELERATION, HALT, MIN_TURN_SPEED, Obstacle};
 
 /// Max speed allowed at a node given the cosine of the turn angle.
 pub fn turn_speed(cos_angle: f64) -> f64 {
@@ -71,17 +71,21 @@ pub fn time_to_reach(progress: f64, speed: f64, accel: f64, target: f64) -> Opti
 
 /// Distance needed to brake from `from_speed` to `to_speed` at DECELERATION.
 pub fn braking_distance(from_speed: f64, to_speed: f64) -> f64 {
+    braking_at(from_speed, to_speed, DECELERATION)
+}
+
+/// Distance needed to brake from one speed to another at `decel`.
+fn braking_at(from_speed: f64, to_speed: f64, decel: f64) -> f64 {
     if from_speed <= to_speed {
         return 0.0;
     }
-    let t = (from_speed - to_speed) / DECELERATION;
-    from_speed * t - 0.5 * DECELERATION * t * t
+    let t = (from_speed - to_speed) / decel;
+    from_speed * t - 0.5 * decel * t * t
 }
 
 /// When accelerating, how long until we must switch to braking to hit target speed at distance?
-fn time_to_start_braking(speed: f64, remaining: f64, target_speed: f64) -> f64 {
+fn time_to_start_braking(speed: f64, remaining: f64, target_speed: f64, d: f64) -> f64 {
     let a = ACCELERATION;
-    let d = DECELERATION;
     let qa = a * (a + d);
     let qb = 2.0 * speed * (a + d);
     let qc = speed * speed - target_speed * target_speed - 2.0 * d * remaining;
@@ -96,6 +100,7 @@ fn time_to_start_braking(speed: f64, remaining: f64, target_speed: f64) -> f64 {
 impl Obstacle {
     /// Required acceleration to handle this obstacle.
     pub fn required_accel(&self, my_speed: f64) -> f64 {
+        let decel = if matches!(self, Obstacle::Halt { .. }) { HALT } else { DECELERATION };
         let (distance, target_speed) = match *self {
             Obstacle::SpeedLimit { distance, speed } => (distance, speed),
             Obstacle::LeadCar {
@@ -115,10 +120,10 @@ impl Obstacle {
                 };
                 (distance, effective)
             }
-            Obstacle::MustStop { distance } => (distance, 0.0),
+            Obstacle::MustStop { distance } | Obstacle::Halt { distance } => (distance, 0.0),
         };
 
-        let brake_dist = braking_distance(my_speed, target_speed);
+        let brake_dist = braking_at(my_speed, target_speed, decel);
         if distance < 0.01 {
             // Some slack around the target keeps a car from hunting above and
             // below it. Around a *stop* there can be none: zero acceleration
@@ -129,7 +134,7 @@ impl Obstacle {
             let slack = if target_speed > 0.0 { 0.05 } else { 0.0 };
             if my_speed > target_speed + slack {
                 -(my_speed * my_speed) / 0.02
-            } else if my_speed < target_speed - 0.05 {
+            } else if my_speed < target_speed - (0.1 * target_speed).min(0.05) {
                 ACCELERATION
             } else {
                 0.0
@@ -137,8 +142,11 @@ impl Obstacle {
         } else if distance <= brake_dist + 0.01 {
             -((my_speed * my_speed - target_speed * target_speed) / (2.0 * distance))
         } else {
-            let max_speed = (target_speed * target_speed + 2.0 * DECELERATION * distance).sqrt();
-            if my_speed < CRUISE_SPEED.min(max_speed) - 0.05 {
+            let max_speed = (target_speed * target_speed + 2.0 * decel * distance).sqrt();
+            let top = CRUISE_SPEED.min(max_speed);
+            // Held a little under a limit: a twentieth of a tile a second,
+            // or for a crawl a tenth of it, which would be most of a crawl.
+            if my_speed < top - (0.1 * top).min(0.05) {
                 ACCELERATION
             } else {
                 0.0
@@ -148,12 +156,13 @@ impl Obstacle {
 
     /// Time (ms) until we need to re-evaluate for this obstacle.
     pub fn wake_time(&self, my_speed: f64, my_accel: f64) -> u64 {
+        let decel = if matches!(self, Obstacle::Halt { .. }) { HALT } else { DECELERATION };
         let (distance, target_speed) = match *self {
             Obstacle::SpeedLimit { distance, speed } => (distance, speed),
             Obstacle::LeadCar {
                 distance, speed, ..
             } => (distance, speed),
-            Obstacle::MustStop { distance } => (distance, 0.0),
+            Obstacle::MustStop { distance } | Obstacle::Halt { distance } => (distance, 0.0),
         };
 
         // Car is stopped or nearly stopped at/near the obstacle — wait for external wake.
@@ -164,7 +173,7 @@ impl Obstacle {
 
         let t = if my_accel > 0.0 {
             let time_to_cruise = (CRUISE_SPEED - my_speed).max(0.0) / my_accel;
-            let time_to_brake = time_to_start_braking(my_speed, distance, target_speed);
+            let time_to_brake = time_to_start_braking(my_speed, distance, target_speed, decel);
             time_to_cruise.min(time_to_brake)
         } else if my_accel < 0.0 {
             if my_speed > target_speed {
@@ -182,7 +191,7 @@ impl Obstacle {
             // holding a bend — was nine wakes in ten of a whole town. A lead
             // car is not fixed like that: the gap to one drifts while it is
             // held within the slack, so it is watched.
-            let brake_dist = braking_distance(my_speed, target_speed);
+            let brake_dist = braking_at(my_speed, target_speed, decel);
             if distance <= brake_dist && !matches!(self, Obstacle::LeadCar { .. }) {
                 return u64::MAX;
             }

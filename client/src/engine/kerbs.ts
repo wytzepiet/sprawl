@@ -1,6 +1,5 @@
 import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import { retire } from "./geometry";
-import type { Rgb } from "./rgb";
 import { RIM } from "./town/draw";
 import type { KerbTexels } from "./kerbLines";
 
@@ -54,11 +53,10 @@ const JOINT = 0.008;
 const JOINT_DEPTH = 0.6;
 const n = (x: number) => x.toFixed(4);
 
-/** Kerbs rounded from a sheet's kerb texture, on its material, its lines
- *  painted in `line` on a sheet of colour `sheet`. Its texture is let go
- *  with `unkerb`. The sheet's own frame is carried to every pixel: a sheet is
+/** Kerbs rounded from a sheet's kerb texture, on its material. Its
+ *  texture is let go with `unkerb`. The sheet's own frame is carried to every pixel: a sheet is
  *  moved, never turned, so its ways are the world's. */
-export function kerbPlugin(field: KerbField, line: Rgb, sheet: Rgb): MaterialPlugin {
+export function kerbPlugin(field: KerbField): MaterialPlugin {
   return {
     name: "Kerb",
     priority: 210,
@@ -71,7 +69,6 @@ export function kerbPlugin(field: KerbField, line: Rgb, sheet: Rgb): MaterialPlu
         { name: "kerbSize", type: "vec2<f32>" },
         { name: "kerbTexel", type: "vec2<f32>" },
         { name: "kerbWidth", type: "f32" },
-        { name: "kerbLine", type: "vec4<f32>" },
       ],
     }),
     writeUbo: (data, offsets) => {
@@ -80,9 +77,6 @@ export function kerbPlugin(field: KerbField, line: Rgb, sheet: Rgb): MaterialPlu
       data.set(field.size, at("kerbSize"));
       data.set([1 / field.texels[0], 1 / field.texels[1]], at("kerbTexel"));
       data[at("kerbWidth")] = RIM;
-      // The line's colour over the sheet's, so the sheet's light and glow
-      // come out the line's own.
-      data.set([line.r / Math.max(sheet.r, 1e-3), line.g / Math.max(sheet.g, 1e-3), line.b / Math.max(sheet.b, 1e-3), 1], at("kerbLine"));
     },
     getCustomCode: (stage) =>
       stage === "vertex"
@@ -94,7 +88,6 @@ let kerbTy = vec2f(0., material.kerbTexel.y);
 let kerbAt = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv, 0.);
 if (kerbAt.g < 0.) { discard; }
 if (kerbAt.a > ${n(CUT)}) { discard; }
-if (abs(kerbAt.b) < 1.) { baseColor *= material.kerbLine.rgb; }
 let kerbD = kerbAt.r;
 let kerbEdge = min(select(9., kerbD, kerbD >= 0.), ${n(CUT)} - kerbAt.a);
 let kerbBand = 1. - step(${n(BAND)}, kerbEdge);

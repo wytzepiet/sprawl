@@ -3,14 +3,29 @@ import type { ChunkBounds } from "./ChunkBounds";
 import type { Clock } from "./Clock";
 import type { Growth } from "./Growth";
 import type { Lump } from "./Lump";
+import type { Mission } from "./Mission";
+import type { Neighbour } from "./Neighbour";
 import type { Operation } from "./Operation";
+import type { Sea } from "./Sea";
 
 export type StateUpdate = { ops: Array<Operation>, 
 /**
  * Lumps that landed on buildings in view since the last update.
  */
-lumps: Array<Lump>, clock: Clock, growth: Growth, terrain_seed: number, 
+lumps: Array<Lump>, clock: Clock, growth: Growth, 
 /**
- * Extent of the surveyed world, which the client keeps its camera inside.
+ * Every shipment on its way and every harbour's timetable.
  */
-revealed_bounds: ChunkBounds, };
+sea: Sea, 
+/**
+ * The town's open missions, and those just finished.
+ */
+missions: Array<Mission>, 
+/**
+ * The mayors of the towns beyond the edge, and how they stand.
+ */
+neighbours: Array<Neighbour>, terrain_seed: number, 
+/**
+ * The island's map, which the client keeps its camera inside.
+ */
+island: ChunkBounds, };

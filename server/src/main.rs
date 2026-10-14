@@ -6,17 +6,21 @@ mod economy;
 mod engine;
 mod fixtures;
 mod game_loop;
+mod haul;
 mod health;
 mod intersection;
+mod missions;
 mod mountains;
 mod needs;
-mod road_gen;
 mod network;
+mod orders;
 mod persistence;
 mod protocol;
 mod resident;
+mod shipping;
 mod terrain;
 mod tree;
+mod undo;
 mod world;
 
 use axum::Router;
@@ -30,7 +34,6 @@ use network::AppState;
 async fn main() {
     needs::check();
     blueprint::check();
-    tree::check();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(game_loop::run(command_rx));
@@ -47,9 +50,9 @@ async fn main() {
         .route("/debug/lot/{id}", axum::routing::get(health::inspect_lot))
         .route("/debug/call/{id}", axum::routing::get(health::call))
         .route("/debug/blueprints", axum::routing::get(health::inspect_blueprints))
-        .route("/tree", axum::routing::get(health::tree))
         .route("/inspect/{id}", axum::routing::get(health::card))
         .route("/town", axum::routing::get(health::town))
+        .route("/sea", axum::routing::get(health::sea))
         .route("/map", axum::routing::get(health::map))
         .route("/fixtures", axum::routing::get(|| async { axum::Json(fixtures::PLACED.get().cloned().unwrap_or_default()) }))
         .layer(CorsLayer::permissive())

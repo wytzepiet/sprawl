@@ -14,10 +14,13 @@ import PerfReport from "./PerfReport";
 import Pins from "./Pins";
 import LumpLayer from "../ui/LumpLayer";
 import GrowthMeter from "../ui/GrowthMeter";
-import SkillTree from "../ui/SkillTree";
 import Card from "../ui/Card";
 import Board from "../ui/Board";
 import Glass from "../ui/Glass";
+import Shipments, { BoxPins } from "../ui/Shipments";
+import News from "../ui/News";
+import Missions from "../ui/Missions";
+import Minimap from "../ui/Minimap";
 
 function SceneInner() {
   return (
@@ -36,14 +39,18 @@ function SceneInner() {
           </Registered>
         </DayNightLights>
         <LumpLayer />
+        <BoxPins />
         <GrowthMeter />
         <Card />
         <Board />
-        <SkillTree />
       </Canvas>
       <Glass />
       <BuildModeToolbar />
       <TimeControls />
+      <Shipments />
+      <News />
+      <Missions />
+      <Minimap />
       {/* <DebugOverlay /> */}
     </DayNightProvider>
   );

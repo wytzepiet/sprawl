@@ -156,18 +156,9 @@ impl RoadNetwork {
             .is_some_and(|c| self.exit_count.get(c).copied().unwrap_or(0) > 0)
     }
 
-    /// Say whether a node stands beyond the survey. Returns every node whose
-    /// network was joined to the world, or cut off from it, by that.
-    /// A road node beyond the frontier: where the map ends.
-    pub fn is_exit(&self, node: EntityId) -> bool {
-        self.exits.contains(&node)
-    }
-
-    /// Every node standing beyond the survey.
-    pub fn exits(&self) -> impl Iterator<Item = EntityId> + '_ {
-        self.exits.iter().copied()
-    }
-
+    /// Say whether a node is a way out of the town: a harbour's street.
+    /// Returns every node whose network was joined to the world, or cut
+    /// off from it, by that.
     pub fn set_exit(&mut self, node: EntityId, exit: bool) -> Vec<EntityId> {
         let changed = if exit { self.exits.insert(node) } else { self.exits.remove(&node) };
         let Some(&c) = self.component.get(&node) else { return Vec::new() };

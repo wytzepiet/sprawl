@@ -11,8 +11,9 @@ pub struct GridCoord {
     pub y: i32,
 }
 
-/// A step of the mayor's hand: one tile to the next, or a tap, from and
-/// to the same tile. A drag is its steps, each built as it is sent.
+/// A step of the mayor's road or demolisher: one tile to the next, or a
+/// tap, from and to the same tile. A drag is its steps, each built as it
+/// is sent.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Build {
@@ -31,10 +32,8 @@ pub enum Tool {
     OneWay,
     /// A road: a through route nothing fronts onto.
     Road,
-    /// A kind of building: `to` painted, and joined to whatever of the
-    /// kind `from` is part of.
-    Building(BuildingKind),
-    /// Whatever stands on `to`.
+    /// Whatever stands on `to`, a building whole; a drag cuts the road
+    /// between its tiles.
     Demolish,
 }
 
@@ -45,8 +44,8 @@ pub struct RoadNode {
     pub outgoing: Vec<EntityId>,
     #[ts(type = "Array<number>")]
     pub incoming: Vec<EntityId>,
-    /// Part of a network that reaches beyond the survey — road immigrants can
-    /// come in by. Otherwise an island: drawn red, driven by nobody.
+    /// Part of a network that reaches a harbour, the door everything comes
+    /// in and goes out by. Otherwise an island: drawn red, driven by nobody.
     #[serde(default)]
     pub joined: bool,
     /// A road rather than a street. Buildings front streets only: no driveway
@@ -74,26 +73,31 @@ pub enum BuildingKind {
     /// Shopping for the whole street, with shelves that a warehouse keeps
     /// full. Placed by the mayor.
     Supermarket,
-    /// Where stock comes from: trucks that answer the shops' calls. Placed
-    /// by the mayor.
-    Warehouse,
-    /// Where food comes from: hands that fill a yard with crates, a van
-    /// that takes them to the shops, and a lorry for what nobody in town
-    /// buys. Placed by the mayor.
+    /// Where the town's goods are kept: a little of every class, a lorry
+    /// that fetches boxes from the harbour and vans that deliver to shops
+    /// and sites. Placed by the mayor.
+    Depot,
+    /// Where food comes from: hands that fill a yard with crates, and a
+    /// tractor on its land. A depot's lorry fetches them. Placed by the
+    /// mayor.
     Farm,
-    /// The second door: a depot on the coast, its shelves filled from
-    /// beyond the horizon by the world's ship and delivered by van.
-    /// Placed by the mayor, with its back to the water.
-    Port,
-    /// The world beyond the survey, standing where a road runs off the map.
-    /// Not placed by anyone: it appears at every road exit and moves with
-    /// the frontier. See `blueprint.rs`.
-    Edge,
+    /// The door: a ramp on the coast and a trailer park, where the world's
+    /// ferry lands settlers and boxes and takes boxes away
+    /// (`world/sea.rs`). Placed by the mayor, with its back to the sea.
+    Harbour,
+    /// Where timber comes from: hands felling the forest round it and
+    /// sawing it, the planks stacked in its yard for a depot's lorry.
+    /// Placed by the mayor, beside the woods.
+    Sawmill,
+    /// Where stone comes from: hands breaking the rock of the mountain
+    /// beside it, the stone heaped in its yard for a depot's lorry.
+    /// Placed by the mayor, at the mountain's foot.
+    Quarry,
 }
 
 impl BuildingKind {
     /// Every kind, in declaration order — the order of the blueprint table.
-    pub const ALL: [BuildingKind; 11] = [
+    pub const ALL: [BuildingKind; 12] = [
         BuildingKind::House,
         BuildingKind::Apartment,
         BuildingKind::Shop,
@@ -101,10 +105,11 @@ impl BuildingKind {
         BuildingKind::Factory,
         BuildingKind::GasStation,
         BuildingKind::Supermarket,
-        BuildingKind::Warehouse,
+        BuildingKind::Depot,
         BuildingKind::Farm,
-        BuildingKind::Port,
-        BuildingKind::Edge,
+        BuildingKind::Harbour,
+        BuildingKind::Sawmill,
+        BuildingKind::Quarry,
     ];
 }
 
@@ -132,7 +137,32 @@ pub struct Building {
     /// from before a stock existed gets it issued at load
     /// (`economy::open`).
     #[serde(default)]
-    pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
+    pub stocks: std::collections::BTreeMap<Good, crate::needs::Stock>,
+    /// Still going up: each material delivered toward it, of what its
+    /// row takes (`blueprint::Blueprint::materials`). A site has no door
+    /// for anyone but the vans bringing its materials; all in, it stands.
+    #[serde(default)]
+    pub site: Option<std::collections::BTreeMap<Good, crate::needs::Stock>>,
+    /// A harbour's trailer park: its docks, each where a box stands and
+    /// the box standing there, if any (`world/sea.rs`). The poses are its
+    /// lot's, laid when the lot is.
+    #[serde(default)]
+    pub park: Vec<Slot>,
+    /// A depot's top-up rules, by good (docs/trade.md §Top-up).
+    #[serde(default)]
+    pub rules: std::collections::BTreeMap<Good, Rule>,
+    /// A depot's lorry has standing orders: it fetches what lands for the
+    /// depot at the harbour and takes out what the rules sell, without
+    /// being sent. Off, it goes when the mayor taps it.
+    #[serde(default)]
+    pub standing: bool,
+    /// Boxes the mayor has sold from a depot and its lorry has yet to take
+    /// to the harbour, a good a box.
+    #[serde(default)]
+    pub selling: Vec<Good>,
+    /// Lorries bought for it beyond the one its row comes with.
+    #[serde(default)]
+    pub lorries: u8,
     /// A farm's land: the grass it claimed when a street reached it, each
     /// tile at a stage of the cycle the tractor drives it through
     /// (`world/fields.rs`). A tile built over is dropped.
@@ -143,11 +173,6 @@ pub struct Building {
     /// ground, so the last run's path is the field. Redrawn by the next.
     #[serde(default)]
     pub ruts: Vec<GridCoord>,
-    /// The tiles beside it, of other buildings of its kind, the hand drew
-    /// it on from or onto: a row of houses drawn as a row, each a home of
-    /// its own. Only a kind that never grows into one building keeps any.
-    #[serde(default)]
-    pub joined: Vec<GridCoord>,
     /// Where it is driven into: one of its tiles, and the street tile
     /// beside it the drive runs from. The drive is the building's, not a
     /// road: drawn as one, driven by the cars of its lot, and gone with it.
@@ -186,21 +211,39 @@ pub enum Stage {
     Cut,
 }
 
-/// What a vehicle does to a tile as it drives over it: a tractor's job
-/// on the land, or a ship's sailing over the water, which does nothing
-/// to it.
+/// What a tractor does to a tile as it drives over it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum Job {
     Plough,
     Seed,
     Harvest,
-    Sail,
 }
 
-/// A run off the roads: a tractor's over the land, a ship's over the
-/// water. The tiles it drives in order, doing its job to each as it
-/// arrives, standing on the first at `started` and reaching one more
+/// A ship's leg over the water (`shipping::water::route`): the way, in
+/// tiles, from the ferry's middle at one end to the other, and when it
+/// set out and arrives. It gathers way from a berth and comes into one
+/// at an even push (`ease`: the start is a berth, the end is), at full
+/// speed over the map's edge; `shipping::covered` says how far along it
+/// is at any moment, here and in the client. A leg is sailed in pieces
+/// where it stops at a junction's mouth (`shipping::voyage`); each piece
+/// is sent once.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Sail {
+    pub path: Vec<[f64; 2]>,
+    #[ts(type = "number")]
+    pub started: u64,
+    #[ts(type = "number")]
+    pub ends: u64,
+    pub ease: [bool; 2],
+    /// Its land end trails: it is sailing out from a berth, as a
+    /// double-ended ferry does, never turning.
+    pub astern: bool,
+}
+
+/// A tractor's run off the roads, over its farm's land. The tiles it
+/// drives in order, doing its job to each as it arrives, standing on the first at `started` and reaching one more
 /// every `pace` milliseconds. No route, no claims, no queue — and nothing
 /// that changes as it goes, so the run is sent once.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -215,19 +258,24 @@ pub struct Run {
 }
 
 impl Building {
-    /// One of a kind, founded: what it buys in full, what it makes not
-    /// yet made.
+    /// One of a kind, placed: a site waiting for its materials, or
+    /// standing at once where its row takes none (`economy::stand`).
     pub fn new(kind: BuildingKind, tiles: Vec<GridCoord>, facing: u8) -> Building {
-        use crate::economy::{makes, stocks};
+        let materials = crate::blueprint::blueprint(kind).materials;
         Building {
             kind,
             tiles,
             size: None,
             facing,
-            stocks: stocks(kind).into_iter().map(|(need, cap)| (need, if makes(kind, need) { crate::needs::Stock { level: 0.0, cap } } else { crate::needs::Stock::full(cap) })).collect(),
+            stocks: Default::default(),
+            site: (!materials.is_empty()).then(|| materials.iter().map(|&(g, n)| (g, crate::needs::Stock { level: 0.0, cap: n as f64 })).collect()),
+            park: Vec::new(),
+            rules: Default::default(),
+            standing: false,
+            selling: Vec::new(),
+            lorries: 0,
             land: Vec::new(),
             ruts: Vec::new(),
-            joined: Vec::new(),
             door: None,
         }
     }
@@ -252,9 +300,13 @@ pub enum CarRole {
     /// A farm's: out along the track to a ripe field and home with the
     /// crop, driven by a hand on shift. On the road it is a slow car.
     Tractor,
-    /// A port's: from the quay behind it over the water to the horizon,
-    /// and back with every shelf's worth at once. Never on a road.
-    Ship,
+    /// The world's ferry: in from the map's edge to a harbour's ramp on the
+    /// timetable, settlers and boxes on its deck, and away again. Never on
+    /// a road.
+    Ferry,
+    /// A harbour's tugmaster: shunts boxes between the ferry's deck and the
+    /// trailer park. Never on a road.
+    Tug,
 }
 
 /// Someone's car. It outlives its journeys: between trips it sits parked at a
@@ -285,16 +337,46 @@ pub struct Car {
     /// stop. A save from before cars had them gets them full.
     #[serde(default = "crate::needs::Bucket::driven")]
     pub stocks: std::collections::BTreeMap<crate::needs::Need, crate::needs::Stock>,
-    /// A tractor's run over its farm's land, or a ship's voyage, while
-    /// it is on one.
+    /// A tractor's run over its farm's land, while it is on one.
     #[serde(default)]
     pub run: Option<Run>,
+    /// A ship's leg, while it sails one.
+    #[serde(default)]
+    pub sail: Option<Sail>,
+    /// The box on its hitch: a lorry's, or a tug's.
+    #[serde(default)]
+    pub hitched: Option<Trailer>,
+    /// What it carries on a call, and how much: a van's load from its
+    /// depot to the caller's door, a lorry's from a maker's yard home.
+    /// Loaded as it sets out, landed at the end; on the vehicle, so it is
+    /// seen.
+    #[serde(default)]
+    pub load: Option<(Good, f64)>,
+    /// A ferry's deck, by slot (`world/sea.rs` DECK): boxes, and the cars
+    /// of settlers riding over, by id.
+    #[serde(default)]
+    pub deck: Vec<Option<Trailer>>,
+    #[serde(default)]
+    #[ts(type = "Array<number>")]
+    pub passengers: Vec<EntityId>,
+    /// A tug's move between two poses, while it makes one.
+    #[serde(default)]
+    pub shunt: Option<Shunt>,
+    /// A ferry's boxes booked beyond the sea, waiting for a sailing with
+    /// room on its deck.
+    #[serde(default)]
+    pub booked: Vec<Trailer>,
+    /// A ferry's next moment on the timetable: when it berths, while it is
+    /// away or at sea; when it casts off, while it is at the ramp.
+    #[serde(default)]
+    #[ts(type = "number")]
+    pub due: u64,
 }
 
 impl Car {
     /// A car as it arrives: parked out of sight, going nowhere, full.
     pub fn new(owner: EntityId, role: CarRole) -> Car {
-        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None }
+        Car { owner, trip: None, role, spot: None, away: 0, stocks: crate::needs::Bucket::driven(), run: None, sail: None, hitched: None, load: None, deck: Vec::new(), passengers: Vec::new(), shunt: None, booked: Vec::new(), due: 0 }
     }
 }
 
@@ -304,6 +386,218 @@ impl Car {
 pub struct Pose {
     pub at: [f64; 2],
     pub heading: f64,
+}
+
+/// A good: what a shelf, a yard or a box holds, and what the world
+/// prices. A resident's need draws one off a counter's shelf (`Need::good`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Good {
+    /// Food, boxed: what a shop serves meals from.
+    Crates,
+    /// What a pump fills a tank from. Liquid: it rides in a tank box.
+    Fuel,
+    /// What buildings are built from, the first material.
+    Timber,
+    /// Broken rock: what roads are laid on, and the masonry of the
+    /// bigger buildings. Bulk: it rides in a lined box.
+    Stone,
+}
+
+impl Good {
+    /// Units one box holds: a trailer of crates is a hundred, of timber
+    /// or stone twenty, a tank box fifty tanks.
+    pub fn per_box(self) -> f64 {
+        match self {
+            Good::Crates => 100.0,
+            Good::Fuel => 50.0,
+            Good::Timber | Good::Stone => 20.0,
+        }
+    }
+}
+
+/// A box: a trailer off the ferry, the world's, which the town's lorries
+/// haul. Never an entity: a value that stands in one place at a time, on
+/// a ferry's deck, in a yard's slot, on a hitch, or booked beyond the sea
+/// (`World::booked`). A box is only ever full: the world makes it loaded
+/// for an import, a depot or a maker when an export is ready, and it is
+/// gone once unloaded into a depot's stock or carried off by the ferry.
+/// docs/shipping.md §Boxes and lorries.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Trailer {
+    /// Its number, for following it wherever it is.
+    #[ts(type = "number")]
+    pub id: u64,
+    pub good: Good,
+    pub units: f64,
+    /// The depot it is bound for; None is the town's, for whichever depot's
+    /// lorry comes first, or the world's, going back.
+    #[ts(type = "number | null")]
+    pub to: Option<EntityId>,
+    /// Going out: an export, dropped at a harbour for the ferry.
+    pub outbound: bool,
+    /// The shipment it is part of: an order, a top-up, an export, the
+    /// starter pack.
+    #[ts(type = "number")]
+    pub order: u64,
+}
+
+/// A dock of a harbour's trailer park: where a box stands in it, a
+/// lorry's tail to the quay, and the box, if one is there.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Slot {
+    pub pose: Pose,
+    pub trailer: Option<Trailer>,
+}
+
+/// A depot's top-up rule for one good: keep above `keep`, fill up to
+/// `fill`, from the world on the next ferry; and sell what is over `sell`,
+/// a box at a time, when there is one.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Rule {
+    pub keep: f64,
+    pub fill: f64,
+    pub sell: Option<f64>,
+}
+
+/// A tug's move: along a path between two moments, a box on its hitch or
+/// not, forwards or backing (a box pushed up the ramp onto the deck leads
+/// the tug).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Shunt {
+    /// The way it goes, through these points in order; the box, if on the
+    /// hitch, trails the tug, or leads it backing.
+    pub path: Vec<[f64; 2]>,
+    #[ts(type = "number")]
+    pub started: u64,
+    #[ts(type = "number")]
+    pub ends: u64,
+    /// The point from which it is backing, to the end: none past the last.
+    pub backs_from: usize,
+    /// What it does at the end: hitch the box there, or drop its own.
+    pub to: Place,
+    /// Where it stands at the end, and which way: its box, if it has one,
+    /// straight behind it, in the slot or the dock.
+    pub stands: Pose,
+}
+
+/// Where a tug's move ends: a slot of the ferry's deck, a dock of the
+/// park, or its place by the ramp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Place {
+    Deck(usize),
+    Park(usize),
+    Rest,
+}
+
+/// Where a box is on its way, as the shipments list reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum Leg {
+    /// Ordered, waiting beyond the sea for its sailing.
+    Booked,
+    /// On a ferry's deck, at sea or at the berth.
+    Aboard,
+    /// In a harbour's trailer park.
+    Parked,
+    /// On a lorry's hitch, or a tug's.
+    Hauled,
+    /// In a depot's yard, waiting to be unloaded.
+    Yard,
+}
+
+/// A box with an order, where it is: the shipments list and its pins.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Shipment {
+    #[ts(type = "number")]
+    pub order: u64,
+    #[ts(type = "number")]
+    pub trailer: u64,
+    pub good: Good,
+    pub units: f64,
+    #[ts(type = "number | null")]
+    pub to: Option<EntityId>,
+    pub outbound: bool,
+    pub leg: Leg,
+    /// What it is on or in: the ferry, the lorry, the harbour, the depot.
+    #[ts(type = "number | null")]
+    pub carrier: Option<EntityId>,
+    /// Where that is on the map, to the tile, when it is on it.
+    pub at: Option<GridCoord>,
+    /// When it lands where it is going next: the ferry's berthing for a
+    /// box booked or at sea.
+    #[ts(type = "number | null")]
+    pub eta: Option<u64>,
+}
+
+/// A harbour's ferry, as its timetable reads.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Sailing {
+    #[ts(type = "number")]
+    pub harbour: EntityId,
+    #[ts(type = "number")]
+    pub ferry: EntityId,
+    /// When it next berths, or berthed; and when it casts off.
+    #[ts(type = "number")]
+    pub arrives: u64,
+    #[ts(type = "number")]
+    pub departs: u64,
+    /// At the ramp now.
+    pub berthed: bool,
+    /// Boxes and settlers aboard, and how many the deck holds.
+    pub boxes: u32,
+    pub settlers: u32,
+    pub deck: u32,
+    /// Boxes booked beyond the sea for this harbour.
+    pub booked: u32,
+    /// Households moved in and waiting beyond the sea for a sailing.
+    pub waiting: u32,
+    /// When a box booked now berths: the sailing from the world the ferry
+    /// has not yet left on.
+    #[ts(type = "number")]
+    pub lands: u64,
+    /// From casting off to berthing again, by the line's timetable.
+    #[ts(type = "number")]
+    pub turn: u64,
+}
+
+/// The sea's part of an update: every shipment on its way, every
+/// harbour's timetable, and the lanes its lines are laid as. Small, and
+/// summarised afresh each update.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Sea {
+    pub shipments: Vec<Shipment>,
+    pub sailings: Vec<Sailing>,
+    #[serde(default)]
+    pub lanes: Vec<Lane>,
+}
+
+/// A stretch of a line's way as it lies on the map (`shipping::lanes`):
+/// a lane, one way, the way the points run; or a junction between lanes.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Lane {
+    pub path: Vec<[f64; 2]>,
+    pub kind: LaneKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub enum LaneKind {
+    OneWay,
+    /// Shared both ways, one way at a time: a berth's approach, or water
+    /// too narrow for two lanes.
+    TwoWay,
+    /// Lanes crossing: ships whose ways cross take turns.
+    Crossing,
 }
 
 /// One journey: born when the driver pulls out, gone on arrival.
@@ -331,6 +625,18 @@ pub struct Trip {
     /// lorry backing into its dock. Each end of one is a change of gear.
     #[serde(default)]
     pub backing: Vec<[usize; 2]>,
+    /// How far along the route each change of gear is, by `progress`: the
+    /// client drives each stretch between them to fit exactly.
+    #[serde(default)]
+    pub cusps: Vec<f64>,
+    /// Where it stood when it set out, and where it will stand at the end:
+    /// a spot's own pose, which a route's first and last edges need not
+    /// point along. The client's drive starts from the one and ends on the
+    /// other, so leaving and parking are no jump.
+    #[serde(default)]
+    pub leaves: Option<Pose>,
+    #[serde(default)]
+    pub stands: Option<Pose>,
     /// Cumulative distance along the route.
     pub progress: f64,
     pub speed: f64,
@@ -512,22 +818,35 @@ impl ChunkBounds {
             .flat_map(move |cy| (self.min_cx..=self.max_cx).map(move |cx| ChunkCoord { cx, cy }))
     }
 
-    pub fn contains(&self, coord: ChunkCoord) -> bool {
-        coord.cx >= self.min_cx
-            && coord.cx <= self.max_cx
-            && coord.cy >= self.min_cy
-            && coord.cy <= self.max_cy
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
+    /// A step of a road or the demolisher, built as it is sent.
     Build(Build),
+    /// A building placed whole round `at`, its front this way
+    /// (`blueprint::FACINGS`); none, the first way it fits.
+    Place { kind: BuildingKind, at: GridCoord, facing: Option<u8> },
+    /// The player's last action taken back (`undo.rs`).
+    Undo,
     /// Spend a point on a node of the tree.
     Take(crate::tree::Cell),
     DespawnAllCars,
+    /// Buy boxes of a good from the world, for a depot, on the next ferry.
+    Order { #[ts(type = "number")] depot: EntityId, good: Good, boxes: u32 },
+    /// Set a depot's top-up rule for a good, or clear it.
+    SetRule { #[ts(type = "number")] depot: EntityId, good: Good, rule: Option<Rule> },
+    /// Give a depot's lorry standing orders, or take them away.
+    Standing { #[ts(type = "number")] depot: EntityId, on: bool },
+    /// Send a depot's lorry to the harbour now: the tap.
+    Send { #[ts(type = "number")] depot: EntityId },
+    /// Sell a box of a good from a depot to the world: the lorry takes it
+    /// to the harbour for the next ferry.
+    Sell { #[ts(type = "number")] depot: EntityId, good: Good },
+    /// Buy a depot another lorry from the world.
+    BuyLorry { #[ts(type = "number")] depot: EntityId },
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.
     SetSpeed(u32),
     ResetWorld,
@@ -608,6 +927,12 @@ pub struct Lump {
     pub gdp: f64,
     #[ts(type = "number")]
     pub at: u64,
+    /// Or goods landing: a box unloaded onto a depot's shelf; or, less
+    /// than none, leaving it: stone off its shelf for a road laid.
+    #[serde(default)]
+    pub good: Option<Good>,
+    #[serde(default)]
+    pub units: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -619,24 +944,46 @@ pub struct StateUpdate {
     pub lumps: Vec<Lump>,
     pub clock: Clock,
     pub growth: Growth,
+    /// Every shipment on its way and every harbour's timetable.
+    #[serde(default)]
+    pub sea: Sea,
+    /// The town's open missions, and those just finished.
+    #[serde(default)]
+    pub missions: Vec<crate::missions::Mission>,
+    /// The mayors of the towns beyond the edge, and how they stand.
+    #[serde(default)]
+    pub neighbours: Vec<crate::orders::Neighbour>,
     #[ts(type = "number")]
     pub terrain_seed: u32,
-    /// Extent of the surveyed world, which the client keeps its camera inside.
-    pub revealed_bounds: ChunkBounds,
+    /// The island's map, which the client keeps its camera inside.
+    pub island: ChunkBounds,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
-    /// Who you are. Drafts carry an owner, and the client needs this to tell
-    /// its own pending work from everyone else's.
+    /// Who you are.
     Welcome(#[ts(type = "number")] OwnerId),
     Update(StateUpdate),
     TerrainChunk(TerrainChunk),
     UnloadChunk(ChunkCoord),
     Error(ErrorMessage),
     Pong(#[ts(type = "number")] u64),
+    /// What the town did with the mayor's coins of its own accord, or more
+    /// than it was asked: a box a rule bought, stone bought express. And
+    /// what the hand did, to its player alone: an undo, a building refused.
+    News(Vec<News>),
+}
+
+/// A line of news, and the building a tap on it goes to.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct News {
+    pub text: String,
+    pub sub: String,
+    #[ts(type = "number")]
+    pub at: EntityId,
 }
 
 

@@ -1,5 +1,5 @@
 import type { JSX } from "solid-js";
-import type { Building, BuildingKind } from "./generated";
+import type { Building, BuildingKind, Good, GridCoord } from "./generated";
 
 /**
  * Every kind of building, one row each, as the client draws it: its colour,
@@ -12,7 +12,7 @@ import type { Building, BuildingKind } from "./generated";
  * silhouettes on a 24-unit grid — one shape, windows and doors cut out — so a
  * pin reads at a glance and still reads shrunk to a dot's neighbour.
  */
-export const TABS = ["homes", "shops", "work", "services"] as const;
+export const TABS = ["trade", "homes", "shops", "work", "services"] as const;
 export type Tab = (typeof TABS)[number];
 
 export interface Blueprint {
@@ -30,22 +30,36 @@ export interface Blueprint {
   shape: "gabled" | "sawtooth" | "box";
   /** Heights a box may be built at; one is picked per building and kept. */
   heights: number[];
-  /** What the mayor pays the world for one, in coins: its materials. */
-  price: number;
+  /** What it is built from, a material each and how much, which a
+   *  depot's vans bring to its site; none stands at once (`blueprint.rs`'s
+   *  `materials`). */
+  materials: Partial<Record<Good, number>>;
   /** Which shelf of the build menu it stands on. */
   tab: Tab;
   /** The building's own footprint in tiles, wide along its frontage. */
   size: [number, number];
   /** Its yard in tiles along the frontage and deep, on the street side; [0, 0] is none: it parks on its drive. */
   lot: [number, number];
-  /** A depot: its lot is a yard of docks, not a ring, and fuses with nobody. */
-  yard?: boolean;
-  /** A port: a quay along its back wall, out over the water, where its ship moors. */
+  /** A harbour: a quay along its back wall, out over the water, where the ferry berths. */
   quay?: boolean;
+  /** What its hands make into its yard, for a depot's lorry (`blueprint.rs`'s `makes`). */
+  makes?: Good;
 }
 
 /** The four ways a plot can lie: which side the lot and street are on. */
 export const FACINGS: [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+
+/** A kind that parks at the kerb before it: neither a house's drive nor a
+ *  yard. Mirrors `lots::kerbed`. */
+export const kerbed = (kind: BuildingKind) => kind !== "House" && BLUEPRINTS[kind].lot[1] === 0;
+
+/** A building's tiles that face the way (dx, dy), nothing of its own
+ *  beyond them, in order along that side. Mirrors `lots::side_of`. */
+export function sideOf(tiles: GridCoord[], [dx, dy]: [number, number]): GridCoord[] {
+  const on = (x: number, y: number) => tiles.some((t) => t.x === x && t.y === y);
+  const along = (t: GridCoord) => t.x * Math.abs(dy) + t.y * Math.abs(dx);
+  return tiles.filter((t) => !on(t.x + dx, t.y + dy)).sort((a, b) => along(a) - along(b));
+}
 
 export interface Plot {
   size: [number, number];
@@ -73,6 +87,39 @@ export function lie(kind: BuildingKind, facing: number, [w, h]: [number, number]
   }
 }
 
+/** Does a building on these tiles hold the smallest of its kind, one way
+ *  round or the other? Mirrors `World::works`. */
+function works(tiles: GridCoord[], kind: BuildingKind): boolean {
+  const [w, h] = plot(kind, 0).size;
+  const on = (x: number, y: number) => tiles.some((t) => t.x === x && t.y === y);
+  const holds = ([sw, sh]: number[]) => tiles.some((t) => Array.from({ length: sw * sh }, (_, i) => on(t.x + (i % sw), t.y + Math.floor(i / sw))).every(Boolean));
+  return holds([w, h]) || holds([h, w]);
+}
+
+/** A building's yard tiles, lying this way, if its kind keeps one and it
+ *  is big enough to work: the yard the server lays its lot in, drawn
+ *  where the server has it. Mirrors `World::yard_of`. */
+export function yardOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoord[] | null {
+  if (!works(tiles, kind)) return null;
+  const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
+  const [x0, y0] = [Math.min(...xs), Math.min(...ys)];
+  const { lot } = lie(kind, facing, [Math.max(...xs) - x0 + 1, Math.max(...ys) - y0 + 1]);
+  if (!lot) return null;
+  const [[lx, ly], [lw, ld]] = lot;
+  return tiles.filter((t) => t.x >= x0 + lx && t.x < x0 + lx + lw && t.y >= y0 + ly && t.y < y0 + ly + ld);
+}
+
+/** A harbour's gate: the middle tile of its front, the one way in, where
+ *  its lane starts down to the ramp. Mirrors `World::gate_of`. */
+export function gateOf(tiles: GridCoord[], kind: BuildingKind, facing: number): GridCoord | null {
+  if (!works(tiles, kind)) return null;
+  const xs = tiles.map((t) => t.x), ys = tiles.map((t) => t.y);
+  const [x0, y0, x1, y1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  const [mx, my] = [x0 + Math.floor((x1 - x0 + 1) / 2), y0 + Math.floor((y1 - y0 + 1) / 2)];
+  const [dx, dy] = FACINGS[facing % 4];
+  return dx === 0 ? { x: mx, y: dy < 0 ? y0 : y1 } : { x: dx < 0 ? x0 : x1, y: my };
+}
+
 /** Where a building stands and how big it is, in tiles: the middle and
  *  size of its bounds, its yard left out. */
 export function standing(b: Building): { at: [number, number]; size: [number, number] } {
@@ -93,6 +140,33 @@ const NOTABLE = 28;
 const SPECIAL = 45;
 
 export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
+  Harbour: {
+    label: "Harbour",
+    color: "#2B6CA3",
+    material: "#4E6A84",
+    // A quay with a crane over it: the mast, the jib, and the hook.
+    glyph: "M2 19h20v3H2zM6 3h3v16H6zM9 5h12v2.5H9zM17.5 7.5h2.5v5h-2.5zM16 12.5h5.5v2.5H16z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.5],
+    materials: {}, tab: "trade",
+    size: [3, 0],
+    lot: [3, 2],
+    quay: true,
+  },
+  Depot: {
+    label: "Depot",
+    color: "#A0714A",
+    material: "#7E6248",
+    // A wide shed: the roof, a loading door and two bays.
+    glyph: "M2 9.5 12 3l10 6.5V22H2zM5 12h14v2.5H5zM5 16h5v6H5zM14 16h5v6h-5z",
+    pinUntil: NOTABLE,
+    shape: "box",
+    heights: [0.6],
+    materials: { Timber: 10 }, tab: "trade",
+    size: [2, 2],
+    lot: [3, 2],
+  },
   House: {
     label: "House",
     color: "#E8566F",
@@ -102,7 +176,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "gabled",
     heights: [0],
-    price: 5, tab: "homes",
+    materials: { Timber: 4 }, tab: "homes",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -115,7 +189,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "box",
     heights: [0.85, 1.15, 1.5],
-    price: 15, tab: "homes",
+    materials: { Timber: 12, Stone: 8 }, tab: "homes",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -129,7 +203,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.45, 0.55],
-    price: 18, tab: "shops",
+    materials: { Timber: 4 }, tab: "shops",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -145,7 +219,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     // Tall, and worth varying: a few towers among them is what gives a
     // business district a skyline instead of a plateau.
     heights: [1.0, 1.45, 2.3],
-    price: 15, tab: "work",
+    materials: { Timber: 10, Stone: 6 }, tab: "work",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -158,7 +232,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: COMMON,
     shape: "sawtooth",
     heights: [0],
-    price: 25, tab: "work",
+    materials: { Timber: 14, Stone: 8 }, tab: "work",
     size: [2, 1],
     lot: [0, 0],
   },
@@ -171,7 +245,7 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.3],
-    price: 14, tab: "services",
+    materials: { Timber: 6, Stone: 4 }, tab: "services",
     size: [1, 1],
     lot: [0, 0],
   },
@@ -184,23 +258,9 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: SPECIAL,
     shape: "box",
     heights: [0.5],
-    price: 47, tab: "services",
+    materials: { Timber: 16, Stone: 10 }, tab: "services",
     size: [2, 2],
     lot: [0, 0],
-  },
-  Warehouse: {
-    label: "Warehouse",
-    color: "#A0714A",
-    material: "#7E6248",
-    // A wide shed: the roof, a loading door and two bays.
-    glyph: "M2 9.5 12 3l10 6.5V22H2zM5 12h14v2.5H5zM5 16h5v6H5zM14 16h5v6h-5z",
-    pinUntil: NOTABLE,
-    shape: "box",
-    heights: [0.6],
-    price: 56, tab: "services",
-    size: [2, 2],
-    lot: [2, 2],
-    yard: true,
   },
   Farm: {
     label: "Farm",
@@ -211,55 +271,105 @@ export const BLUEPRINTS: Record<BuildingKind, Blueprint> = {
     pinUntil: NOTABLE,
     shape: "box",
     heights: [0.4],
-    price: 40, tab: "work",
+    materials: { Timber: 8 }, tab: "work",
+    makes: "Crates",
     size: [3, 2],
     lot: [2, 2],
-    yard: true,
   },
-  Port: {
-    label: "Port",
-    color: "#2B6CA3",
-    material: "#4E6A84",
-    // A quay with a crane over it: the mast, the jib, and the hook.
-    glyph: "M2 19h20v3H2zM6 3h3v16H6zM9 5h12v2.5H9zM17.5 7.5h2.5v5h-2.5zM16 12.5h5.5v2.5H16z",
+  Sawmill: {
+    label: "Sawmill",
+    color: "#8A5A2B",
+    material: "#7A5A3A",
+    // A saw blade over a log: the teeth round, the log's rings below.
+    glyph: "M12 2l1.6 2.2 2.6-.8.4 2.7 2.7.4-.8 2.6L20.7 11l-2.2 1.6.8 2.6-2.7.4-.4 2.7-2.6-.8L12 19.7l-1.6-2.2-2.6.8-.4-2.7-2.7-.4.8-2.6L3.3 11l2.2-1.6-.8-2.6 2.7-.4.4-2.7 2.6.8zm0 5.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM3 20h18v2H3z",
     pinUntil: NOTABLE,
     shape: "box",
-    heights: [0.5],
-    price: 80, tab: "services",
-    size: [3, 2],
+    heights: [0.35],
+    materials: { Timber: 6 }, tab: "work",
+    makes: "Timber",
+    size: [2, 2],
     lot: [2, 2],
-    yard: true,
-    quay: true,
   },
-  Edge: {
-    label: "Beyond the edge",
-    color: "#6B7280",
-    material: "#6B7280",
-    // A road running off the map: a lane, and an arrow away down it.
-    glyph: "M3 3h3v18H3zm15 0h3v18h-3zM11 3h2v10h3l-4 5-4-5h3z",
-    pinUntil: 0,
+  Quarry: {
+    label: "Quarry",
+    color: "#7D7F86",
+    material: "#8C8A84",
+    // A rock face, benched, a pick across the heap below.
+    glyph: "M2 21 8 7l3 4 4-7 7 17zM9.5 13.5l2 2.5 2-3.5 2.5 5.5h-8zM3 22h18v1H3z",
+    pinUntil: NOTABLE,
     shape: "box",
-    heights: [0],
-    // Not for sale at any price, so it stands on no shelf of the menu.
-    price: Infinity, tab: "services",
-    size: [1, 1],
-    lot: [0, 0],
+    heights: [0.3],
+    materials: { Timber: 8 }, tab: "work",
+    makes: "Stone",
+    size: [2, 2],
+    lot: [2, 2],
   },
 };
 
-/**
- * Every kind the mayor may put down: everything with a price. The edge has
- * none — it is the world past the frontier, not a thing a town has — so it
- * never reaches the build menu. Mirrors the server's own reading of the
- * table.
- */
-export const KINDS = (Object.keys(BLUEPRINTS) as BuildingKind[]).filter((k) => Number.isFinite(BLUEPRINTS[k].price));
+/** Every kind the mayor may put down, the opening's first: the harbour, the depot. */
+export const KINDS = Object.keys(BLUEPRINTS) as BuildingKind[];
 
 /** The glyph for a kind, as an SVG that takes the current colour. */
 export function BuildingIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { kind: BuildingKind }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" {...props}>
       <path d={BLUEPRINTS[props.kind].glyph} />
+    </svg>
+  );
+}
+
+/**
+ * Every good, as the client shows it: its name, its colour, its glyph, and
+ * what the world trades it at (`economy.rs`): `price` a unit, `box` units
+ * to a box (`Good::per_box`), and a tenth over to buy, a tenth under to
+ * sell (`MARGIN`).
+ */
+export const GOODS: Record<Good, { label: string; color: string; glyph: string; price: number; box: number }> = {
+  Timber: {
+    label: "timber",
+    color: "#B07A3E",
+    // Three logs stacked, their ends ringed.
+    glyph: "M7 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM17 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM12 4.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z",
+    price: 1.0,
+    box: 20,
+  },
+  Crates: {
+    label: "crates",
+    color: "#5E9E52",
+    // A crate: its lid and two slats.
+    glyph: "M3 4h18v4H3zM4 9.5h16V21H4zm3 2.5v6.5h2V12zm4 0v6.5h2V12zm4 0v6.5h2V12z",
+    price: 0.2,
+    box: 100,
+  },
+  Stone: {
+    label: "stone",
+    color: "#737A83",
+    // A heap of broken rock, three stones on a pile.
+    glyph: "M2 21l3.5-6 4 1 2.5-5 4 2 2.5 3.5L22 21zM7 9.5l3-3 3.5 1.5L12 11l-4 .5zM14.5 6.5 17 4l3 2-1 3.5-3 .5z",
+    price: 0.5,
+    box: 20,
+  },
+  Fuel: {
+    label: "fuel",
+    color: "#D4513B",
+    // A jerrycan: its handle and spout.
+    glyph: "M8 2h6v3h-6zM5 6h11l3 3v13H5zm3 5v8h8v-8zM17 2.5l3 3-1.5 1.5-3-3z",
+    price: 1.0,
+    box: 50,
+  },
+};
+
+/** The world's margin each way (`economy::MARGIN`). */
+const MARGIN = 0.1;
+/** What a box of a good costs from the world, and fetches sold to it. */
+export const boxCost = (good: Good) => GOODS[good].box * GOODS[good].price * (1 + MARGIN);
+export const boxSale = (good: Good) => GOODS[good].box * GOODS[good].price * (1 - MARGIN);
+
+/** A good's glyph, as an SVG that takes the current colour. */
+export function GoodIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { good: Good }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true" {...props}>
+      <path d={GOODS[props.good].glyph} />
     </svg>
   );
 }

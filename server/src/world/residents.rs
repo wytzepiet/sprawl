@@ -15,7 +15,6 @@ impl World {
     /// household from beyond one is gone with it. The one pass that reads
     /// the whole world, and it runs once.
     pub fn resettle(&mut self) {
-        self.stand_edges();
         self.people.clear();
         let mut carless = Vec::new();
         for id in self.resident_ids() {
@@ -63,16 +62,23 @@ impl World {
     pub fn settle(&mut self) -> Vec<EntityId> {
         let mut touched = Vec::new();
         let mut lines = BTreeSet::new();
-        for b in std::mem::take(&mut self.unsettled) {
+        // Each changed building's door first: where it is decides
+        // whether it is reached at all.
+        let mut changed = std::mem::take(&mut self.unsettled);
+        for &b in &changed {
+            self.orient(b);
+        }
+        changed.append(&mut self.unsettled);
+        for b in changed {
             let kind = match self.objects.get(b).map(|e| &e.object) {
                 Some(GameObject::Building(b)) => Some(b.kind),
                 _ => None,
             };
-            // Built but not reached, or not built at all: nobody lives or
-            // works where no road goes. Losing your job is not losing your
+            // Built but not reached, still a site, or not built at all:
+            // nobody lives or works where no road goes, or in scaffolding. Losing your job is not losing your
             // home; losing your home is leaving, and the desk you held is
             // a vacancy.
-            let Some(kind) = kind.filter(|_| self.street_of(b).is_some()) else {
+            let Some(kind) = kind.filter(|_| self.open(b)) else {
                 for id in self.people.remove(&b).unwrap_or_default() {
                     let Some(GameObject::Resident(r)) = self.objects.get(id).map(|e| &e.object) else { continue };
                     if r.home == b {
@@ -130,7 +136,7 @@ impl World {
     /// Households are looked for nearest first, and the search stops where
     /// nobody farther could be nearer than what it has.
     fn hire(&mut self, line: EntityId, lines: &mut BTreeSet<EntityId>, touched: &mut Vec<EntityId>) {
-        let Some(e) = self.objects.get(line).filter(|_| self.street_of(line).is_some()) else { return };
+        let Some(e) = self.objects.get(line).filter(|_| self.open(line)) else { return };
         let (Some(at), GameObject::Building(b)) = (e.position, &e.object) else { return };
         let jobs = blueprint(b.kind).jobs as usize;
         // (the drive to this line, who)
@@ -187,7 +193,7 @@ impl World {
     /// A line a road reaches with a desk nobody holds.
     fn vacant(&self, line: EntityId) -> bool {
         match self.objects.get(line).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => self.street_of(line).is_some() && self.staff(line).len() < blueprint(b.kind).jobs as usize,
+            Some(GameObject::Building(b)) => self.open(line) && self.staff(line).len() < blueprint(b.kind).jobs as usize,
             _ => false,
         }
     }
@@ -198,11 +204,10 @@ impl World {
         Some(commute_h(from, self.objects.get(line)?.position?))
     }
 
-    /// Chunks around one, a ring at a time, nearest first, as far as the
-    /// survey goes: nothing stands beyond it.
+    /// Chunks around one, a ring at a time, nearest first, as far as
+    /// anything has been built: nothing stands beyond it.
     fn rings_from(&self, c: ChunkCoord) -> Vec<Vec<ChunkCoord>> {
-        let b = self.revealed_bounds;
-        let far = [c.cx - b.min_cx, b.max_cx - c.cx, c.cy - b.min_cy, b.max_cy - c.cy].into_iter().max().unwrap_or(0).max(0);
+        let far = self.built.iter().map(|b| (b.cx - c.cx).abs().max((b.cy - c.cy).abs())).max().unwrap_or(0);
         (0..=far)
             .map(|k| {
                 (-k..=k)
@@ -212,6 +217,11 @@ impl World {
                     .collect()
             })
             .collect()
+    }
+
+    /// Open to people: reached by a road, and standing, not a site.
+    fn open(&self, b: EntityId) -> bool {
+        self.street_of(b).is_some() && matches!(self.objects.get(b).map(|e| &e.object), Some(GameObject::Building(bd)) if bd.site.is_none())
     }
 
     /// A household, carless until the settle ends (`issue_car`).
@@ -506,6 +516,7 @@ mod tests {
         let home = world
             .place_building(GridCoord { x: 10, y: 3 }, BuildingKind::House, 2)
             .expect("land is land");
+        world.finish(home);
         assert!(world.street_of(home).is_none(), "dormant");
         assert!(world.settle().is_empty(), "nobody moves in off the road");
 

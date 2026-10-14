@@ -79,57 +79,79 @@ impl World {
         !self.would_be_too_sharp(from, to.x - from.x, to.y - from.y, false)
     }
 
-    /// How a kind's plot could lie at `pos`: the first facing whose whole
-    /// plot is open land and whose lot fronts a street, with that street and
-    /// the tile the driveway lands on. A kind with no lot fronts a street
-    /// on any side, facing it.
-    pub fn site_for(&self, pos: GridCoord, kind: BuildingKind) -> Option<(u8, EntityId, GridCoord)> {
-        // Every way round starts on this tile, and the ghost asks about it
-        // again on every frame the mayor drags a building over the map.
-        if !(self.is_buildable(pos) || self.is_driveway_stub(pos)) {
-            return None;
-        }
-        (0..4u8).find_map(|facing| self.site_facing(pos, kind, facing).map(|(street, door)| (facing, street, door)))
-    }
-
-    /// The one rule for where a driveway may run onto a plot: from a tile
-    /// off the plot onto one of its entrance tiles — the lot's, or the
-    /// building's own where there is no lot — either beside it, or, on the
-    /// diagonal, only outward from a corner of the plot: both tiles beside
-    /// the entrance on `from`'s side off the plot. A diagonal into the
-    /// middle of an edge would cut the neighbouring tile at a sharp angle.
-    /// Pure geometry, so the brush, the search and the preview all ask it.
-    pub fn may_enter(tiles: &[GridCoord], entrances: &[GridCoord], from: GridCoord, to: GridCoord) -> bool {
+    /// The one rule for where a driveway may run onto a plot lying this
+    /// way: from a tile off the plot onto one of its entrance tiles, the
+    /// yard's if its kind keeps one, else any of its own; beside it, or on
+    /// the diagonal only outward from a corner, both tiles beside the
+    /// entrance on `from`'s side off the plot (a diagonal into the middle
+    /// of an edge would cut the neighbouring tile at a sharp angle). A
+    /// yard is entered only by its gate, the middle of its front, from
+    /// ahead of it, the street side its kind lays it on
+    /// (`blueprint::lie`), so the yard is always where its street is and
+    /// its lane runs straight in (`lots::park`). Pure geometry, so the
+    /// hand's preview asks the same (`may.ts` `enters`).
+    pub fn enters(tiles: &[GridCoord], kind: BuildingKind, facing: u8, from: GridCoord, to: GridCoord) -> bool {
         let on = |x: i32, y: i32| tiles.contains(&GridCoord { x, y });
-        if !entrances.contains(&to) || !on(to.x, to.y) || on(from.x, from.y) {
-            return false;
-        }
         let (dx, dy) = (from.x - to.x, from.y - to.y);
-        if dx.abs() > 1 || dy.abs() > 1 {
+        if !on(to.x, to.y) || on(from.x, from.y) || dx.abs() > 1 || dy.abs() > 1 {
             return false;
         }
-        dx == 0 || dy == 0 || (!on(to.x + dx, to.y) && !on(to.x, to.y + dy))
+        if dx != 0 && dy != 0 && (on(to.x + dx, to.y) || on(to.x, to.y + dy)) {
+            return false;
+        }
+        match Self::yard_of(tiles, kind, facing) {
+            Some(_) if Self::gate_of(tiles, kind, facing) != Some(to) => false,
+            Some(yard) => {
+                let (fx, fy) = crate::blueprint::FACINGS[facing as usize % 4];
+                yard.contains(&to) && dx * fx + dy * fy > 0
+            }
+            None => true,
+        }
     }
 
-    /// May the mayor's road run from `from` onto the plot standing at `to`?
+    /// The ways a building may turn to find its street, the way it faces
+    /// first: a kind with a yard turns all the way round, the opposite
+    /// way first, which keeps its shape; a harbour stays with its back to
+    /// the sea; anything else has no front, its door on any side.
+    fn facings(kind: BuildingKind, facing: u8) -> Vec<u8> {
+        if crate::blueprint::blueprint(kind).quay || crate::blueprint::blueprint(kind).lot.1 == 0 {
+            return vec![facing];
+        }
+        [0, 2, 1, 3].iter().map(|k| (facing + k) % 4).collect()
+    }
+
+    /// May the mayor's road run from `from` onto the plot standing at
+    /// `to`, the building turned whichever way that takes?
     pub(super) fn may_enter_plot(&self, from: GridCoord, to: GridCoord) -> bool {
-        let Some(&b) = self.occupied.get(&(to.x, to.y)) else { return false };
-        let Some(entry) = self.objects.get(b) else { return false };
-        let (Some(pos), GameObject::Building(bd)) = (entry.position, &entry.object) else { return false };
-        let _ = pos;
-        let lot = Self::yard_of(&bd.tiles, bd.kind, bd.facing);
-        Self::may_enter(&bd.tiles, lot.as_deref().unwrap_or(&bd.tiles), from, to)
+        self.facing_through(from, to).is_some()
     }
 
-    /// The driveway a plot finds for itself: the best street tile a driveway
-    /// may run from, by `may_enter`, whose turn is not too sharp. Ahead of a
-    /// lot before beside it, and beside it only if asked — a plot never
-    /// chooses its facing by a flank, but one that already stands may open
-    /// out of one; straight before diagonal. A plot with no lot is entered
-    /// from any side, facing whichever street it finds.
-    pub fn driveway_for(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8, sides_too: bool) -> Option<(EntityId, GridCoord)> {
-        let lot = Self::yard_of(tiles, kind, facing);
-        self.driveway_between(tiles, lot.as_deref(), lot.as_ref().map(|_| facing), sides_too)
+    /// The way the building on `to` would face with its door on `to`
+    /// from `from`: the first of its `facings` that the step `enters`.
+    fn facing_through(&self, from: GridCoord, to: GridCoord) -> Option<u8> {
+        let &b = self.occupied.get(&(to.x, to.y))?;
+        let GameObject::Building(bd) = &self.objects.get(b)?.object else { return None };
+        Self::facings(bd.kind, bd.facing).into_iter().find(|&f| Self::enters(&bd.tiles, bd.kind, f, from, to))
+    }
+
+    /// The driveway a plot lying this way finds for itself: a street tile
+    /// a driveway may run from (`enters`), whose turn onto it is not too
+    /// sharp; straight before diagonal.
+    pub fn driveway_for(&self, tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<(EntityId, GridCoord)> {
+        let mut candidates: Vec<(bool, GridCoord, GridCoord)> = Vec::new();
+        for &t in tiles {
+            for (dx, dy) in (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy))) {
+                let n = GridCoord { x: t.x + dx, y: t.y + dy };
+                if Self::enters(tiles, kind, facing, n, t) {
+                    candidates.push((dx != 0 && dy != 0, t, n));
+                }
+            }
+        }
+        candidates.sort_by_key(|c| c.0);
+        candidates.into_iter().find_map(|(_, t, n)| {
+            let id = self.road_node_at(n)?;
+            (self.is_street(id) && self.driveway_reaches(n, t)).then_some((id, t))
+        })
     }
 
     /// The bounds of some tiles: their min corner, and how far they reach.
@@ -146,79 +168,47 @@ impl World {
         (origin, crate::blueprint::lie(kind, facing, size))
     }
 
-    /// A building's yard tiles, lying this way, if its kind keeps a yard.
+    /// A building's yard tiles, lying this way, if its kind keeps a yard
+    /// and it is big enough to work: one short of its smallest plot, as a
+    /// fixture may draw it, has no yard, as it has no door.
     pub fn yard_of(tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<Vec<GridCoord>> {
+        if !Self::works(tiles, kind) {
+            return None;
+        }
         let (o, p) = Self::lie(tiles, kind, facing);
         let ((lx, ly), ls) = p.lot?;
         Some(Self::footprint(GridCoord { x: o.x + lx as i32, y: o.y + ly as i32 }, ls).filter(|t| tiles.contains(t)).collect())
     }
 
-    /// Does a building on these tiles work: does it hold the smallest of
-    /// its kind (`blueprint::plot`), one way round or the other? One that
-    /// does not stands, and nothing is served there, as if no road reached.
-    pub fn works(tiles: &[GridCoord], kind: BuildingKind) -> bool {
-        let (w, h) = crate::blueprint::plot(kind, 0).size;
-        [(w, h), (h, w)].iter().any(|&size| tiles.iter().any(|&t| Self::footprint(t, size).all(|f| tiles.contains(&f))))
-    }
-
-    /// `driveway_for` on bare geometry: the building's tiles, its lot's,
-    /// and the way it faces if a lot decides that.
-    pub fn driveway_between(&self, tiles: &[GridCoord], lot: Option<&[GridCoord]>, facing: Option<u8>, sides_too: bool) -> Option<(EntityId, GridCoord)> {
-        let (fx, fy) = facing.map_or((0, 0), |f| crate::blueprint::FACINGS[f as usize % 4]);
-        let entrances = lot.unwrap_or(tiles);
-        let mut candidates: Vec<(u8, GridCoord, GridCoord)> = Vec::new();
-        for &t in entrances {
-            for dy in -1..=1 {
-                for dx in -1..=1 {
-                    let n = GridCoord { x: t.x + dx, y: t.y + dy };
-                    if !Self::may_enter(tiles, entrances, n, t) {
-                        continue;
-                    }
-                    let ahead = dx * fx + dy * fy;
-                    let rank = match (facing.is_some(), ahead) {
-                        (false, _) => 0,
-                        (true, a) if a > 0 => 0,
-                        (true, 0) if sides_too => 2,
-                        _ => continue,
-                    } + (dx != 0 && dy != 0) as u8;
-                    candidates.push((rank, t, n));
-                }
-            }
+    /// A harbour's gate: the middle tile of its front, the one way in,
+    /// where its lane starts down to the ramp (`World::berth_at`).
+    pub fn gate_of(tiles: &[GridCoord], kind: BuildingKind, facing: u8) -> Option<GridCoord> {
+        if !Self::works(tiles, kind) {
+            return None;
         }
-        candidates.sort_by_key(|c| c.0);
-        candidates.into_iter().find_map(|(_, t, n)| {
-            let id = self.road_node_at(n)?;
-            (self.is_street(id) && self.driveway_reaches(n, t)).then_some((id, t))
+        let (o, (w, h)) = Self::bounds(tiles);
+        let (w, h) = (w as i32, h as i32);
+        Some(match crate::blueprint::FACINGS[facing as usize % 4] {
+            (0, -1) => GridCoord { x: o.x + w / 2, y: o.y },
+            (0, _) => GridCoord { x: o.x + w / 2, y: o.y + h - 1 },
+            (-1, _) => GridCoord { x: o.x, y: o.y + h / 2 },
+            _ => GridCoord { x: o.x + w - 1, y: o.y + h / 2 },
         })
     }
 
-    /// The street and door a kind's plot would have at `pos` facing this
-    /// way, if it fits there.
-    pub fn site_facing(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<(EntityId, GridCoord)> {
-        if !self.fits(pos, kind, facing) {
-            return None;
-        }
-        let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, facing).size).collect();
-        self.driveway_for(&tiles, kind, facing, false)
-    }
-
-    /// Can a kind's plot stand here this way round: open ground under the
-    /// whole footprint, and, for a kind whose lorry is a ship, water
-    /// behind its back for the quay (`world/sea.rs`).
-    pub fn fits(&self, pos: GridCoord, kind: BuildingKind, facing: u8) -> bool {
-        let p = crate::blueprint::plot(kind, facing);
-        Self::footprint(pos, p.size).all(|t| self.is_buildable(t) || self.is_driveway_stub(t))
-            && (!crate::economy::ships(kind) || self.quay_at(&Self::footprint(pos, p.size).collect::<Vec<_>>(), kind, facing).is_some())
+    /// Does a building on these tiles work: does it hold the smallest of
+    /// its kind (`blueprint::plot`), one way round or the other? A placed
+    /// one always does; one a fixture draws short of it stands, with no
+    /// door and no yard, as if no road reached it.
+    fn works(tiles: &[GridCoord], kind: BuildingKind) -> bool {
+        let (w, h) = crate::blueprint::plot(kind, 0).size;
+        [(w, h), (h, w)].iter().any(|&size| tiles.iter().any(|&t| Self::footprint(t, size).all(|f| tiles.contains(&f))))
     }
 
     /// The street node a building is reached by: where every trip to it
     /// ends and from it starts, its lot taking the car the rest of the way.
     /// The edge stands on its road. `None` is a building no road reaches.
     pub fn street_of(&self, id: EntityId) -> Option<EntityId> {
-        if self.edge.contains(&id) {
-            let b = self.objects.get(id)?.position?;
-            return self.road_node_at(b);
-        }
         self.door_of(id).map(|(_, street)| street)
     }
 
@@ -236,80 +226,45 @@ impl World {
         self.is_street(street).then_some((door.tile, street))
     }
 
-    pub(super) fn set_door(&mut self, id: EntityId, door: Option<crate::protocol::Door>) {
+    /// A building's door and the way it faces, which lays its yard out:
+    /// set together, so the yard is always on its door's side.
+    pub(super) fn set_door(&mut self, id: EntityId, facing: u8, door: Option<crate::protocol::Door>) {
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
+            b.facing = facing;
             b.door = door;
         }
         self.unsettled.insert(id);
     }
 
-    /// A street node laid or taken up on this tile: whatever has its door
-    /// onto it is reached or cut off by it.
+    /// A street laid, taken up or cut on this tile: whatever has its door
+    /// onto it, and whatever beside it has none, is oriented again at the
+    /// settle (`orient`).
     pub(super) fn unsettle_round(&mut self, tile: GridCoord) {
         for (dx, dy) in (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy))) {
-            if let Some(&b) = self.occupied.get(&(tile.x + dx, tile.y + dy))
-                && matches!(self.objects.get(b).map(|e| &e.object), Some(GameObject::Building(bd)) if bd.door.is_some_and(|d| d.street == tile))
-            {
+            let Some(&b) = self.occupied.get(&(tile.x + dx, tile.y + dy)) else { continue };
+            let door = match self.objects.get(b).map(|e| &e.object) {
+                Some(GameObject::Building(bd)) => bd.door,
+                _ => continue,
+            };
+            if door.is_none_or(|d| d.street == tile) || self.door_of(b).is_none() {
                 self.unsettled.insert(b);
             }
         }
     }
 
-    /// What joins two tiles beside each other, for the demolisher to cut:
-    /// a road between them, a building's door onto its street, or a row of
-    /// houses drawn as one.
-    pub fn link_between(&self, a: GridCoord, b: GridCoord) -> Option<Link> {
-        if (a.x - b.x).abs() > 1 || (a.y - b.y).abs() > 1 || a == b {
+    /// The road joining two tiles beside each other, for the demolisher
+    /// to cut: its two nodes.
+    pub fn link_between(&self, a: GridCoord, b: GridCoord) -> Option<(EntityId, EntityId)> {
+        if (a.x - b.x).abs() > 1 || (a.y - b.y).abs() > 1 || a == b || !self.are_connected(a, b) {
             return None;
         }
-        if self.are_connected(a, b) {
-            return Some(Link::Road(self.road_node_at(a)?, self.road_node_at(b)?));
-        }
-        let (on_a, on_b) = (self.occupied.get(&(a.x, a.y)).copied(), self.occupied.get(&(b.x, b.y)).copied());
-        let door = |id: Option<EntityId>, tile: GridCoord, street: GridCoord| {
-            id.filter(|&id| matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(bd)) if bd.door == Some(crate::protocol::Door { tile, street })))
-        };
-        if let Some(id) = door(on_a, a, b).or(door(on_b, b, a)) {
-            return Some(Link::Door(id));
-        }
-        match (on_a, on_b) {
-            (Some(x), Some(y)) if x != y && self.joined_of(x).contains(&b) => Some(Link::Row(x, y)),
-            _ => None,
-        }
+        Some((self.road_node_at(a)?, self.road_node_at(b)?))
     }
 
-    /// A door shut: the building is cut off from its street until one is
-    /// drawn to it again, and its lot goes.
-    pub fn close_door(&mut self, id: EntityId) {
-        self.drop_lot(id);
-        self.set_door(id, None);
-    }
-
-    /// Two houses of a row let go of each other where they meet. One left
-    /// joined to nothing was the row's end, and goes, as a road's end
-    /// does when its last link is cut.
-    pub fn unlink(&mut self, a: EntityId, b: EntityId) {
-        let tiles = |w: &World, id| match w.objects.get(id).map(|e| &e.object) {
-            Some(GameObject::Building(bd)) => bd.tiles.clone(),
-            _ => Vec::new(),
-        };
-        let (ta, tb) = (tiles(self, a), tiles(self, b));
-        for (id, other) in [(a, tb), (b, ta)] {
-            if let Some(GameObject::Building(bd)) = self.objects.get_mut(id).map(|e| &mut e.object) {
-                bd.joined.retain(|t| !other.contains(t));
-            }
-        }
-        for id in [a, b] {
-            if self.joined_of(id).is_empty() {
-                self.remove_building(id);
-            }
-        }
-    }
-
-    /// A road's dead end under a building painted over it: the road goes,
+    /// A road's dead end under a building placed over it: the road goes,
     /// and the street it ended off becomes the building's door, if it
-    /// may be one. That is how the mayor says where a door goes before
-    /// the building is there.
+    /// may be one, the building turned to it. That is how the mayor says
+    /// where a door goes before the building is there.
     fn take_stub(&mut self, id: EntityId, tile: GridCoord) {
         let Some(node) = self.road_node_at(tile) else { return };
         let street = self.arms_of(node, false).first().and_then(|&a| self.objects.get(a)?.position);
@@ -317,12 +272,18 @@ impl World {
             self.remove_edge(edge.0, edge.1);
         }
         self.demolish_node(node);
-        // Whatever else the stub's street served is served again.
-        self.open_doors_along(&[tile]);
-        if let Some(street) = street
-            && self.road_node_at(street).is_some_and(|s| self.is_street(s) && self.driveway_reaches(street, tile))
-        {
-            self.set_door(id, Some(crate::protocol::Door { tile, street }));
+        if let Some(street) = street {
+            self.door_through(id, street, tile);
+        }
+    }
+
+    /// A door on `to` from the street on `from`, the building turned the
+    /// first of its ways that takes it; nothing where none does, or the
+    /// street may not be one.
+    pub(super) fn door_through(&mut self, id: EntityId, from: GridCoord, to: GridCoord) {
+        let street = self.road_node_at(from).is_some_and(|s| self.is_street(s) && self.driveway_reaches(from, to));
+        if let Some(facing) = self.facing_through(from, to).filter(|_| street) {
+            self.set_door(id, facing, Some(crate::protocol::Door { tile: to, street: from }));
         }
     }
 
@@ -334,38 +295,19 @@ impl World {
     pub fn all_buildings(&self) -> Vec<(EntityId, GridCoord)> {
         self.objects
             .iter()
-            .filter(|e| matches!(e.object, GameObject::Building(_)) && !self.edge.contains(&e.id))
+            .filter(|e| matches!(e.object, GameObject::Building(_)))
             .filter_map(|e| e.position.map(|p| (e.id, p)))
             .collect()
     }
 
-    /// Put a building on the map, road or no road.
-    ///
-    /// Everything that has to happen per building — occupancy, spatial
-    /// indexing across every chunk it touches, revealing the map — happens
-    /// here, so none of it can be forgotten at a call site. A building with
-    /// no road is dormant: it stands, and nothing serves it until one comes.
-    pub fn place_building(
-        &mut self,
-        pos: GridCoord,
-        kind: BuildingKind,
-        facing: u8,
-    ) -> Option<EntityId> {
-        if !self.fits(pos, kind, facing) {
-            return None;
-        }
+    /// A kind's smallest plot with its corner at `pos`, this way round, on
+    /// open land, road or no road: dormant till one comes.
+    #[cfg(test)]
+    pub fn place_building(&mut self, pos: GridCoord, kind: BuildingKind, facing: u8) -> Option<EntityId> {
         let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, facing).size).collect();
-        let id = self.insert_at(GameObject::Building(Building::new(kind, tiles.clone(), facing)), Some(pos));
-        for tile in &tiles {
-            self.take_stub(id, *tile);
-            self.occupied.insert((tile.x, tile.y), id);
-            // A footprint can straddle a chunk border, and clients subscribe by
-            // chunk — indexed only at its origin, a building would vanish for
-            // anyone looking at the other half.
-            self.spatial.entry(crate::world::chunk_of(*tile)).or_default().insert(id);
-        }
-        self.reveal_around(pos);
-        Some(id)
+        let open = tiles.iter().all(|&t| self.may_stand(t));
+        let quay = crate::blueprint::blueprint(kind).quay;
+        (open && (!quay || self.berth_at(&tiles, kind, facing).is_some())).then(|| self.raise(kind, tiles, facing))
     }
 
     /// The building on this tile, if any.
@@ -373,24 +315,64 @@ impl World {
         self.occupied.get(&(tile.x, tile.y)).copied()
     }
 
-    /// Give a building its door, if a street is beside it; nothing beside
-    /// it, nothing happens. A building whose door still stands keeps it.
-    pub fn open_door(&mut self, id: EntityId) -> bool {
+    /// A building placed by the mayor: a depot comes with its first rules
+    /// over it; the town's first depot, and anything built of nothing,
+    /// stands at once, and the rest are sites waiting for their timber.
+    pub fn founded(&mut self, id: EntityId) {
+        let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return };
+        let kind = b.kind;
+        let first_depot = crate::economy::depot(kind)
+            && !self.objects.iter().any(|e| e.id != id && matches!(e.object, GameObject::Building(ref o) if o.kind == kind && o.site.is_none()));
+        if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
+            if crate::economy::depot(kind) {
+                b.rules = crate::haul::first_rules();
+            }
+            if first_depot {
+                b.site = None;
+            }
+        }
+        let standing = matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_none());
+        if standing {
+            crate::economy::stand(self, id);
+        }
+    }
+
+    /// Where a building's door is, and so which way it faces and where
+    /// its yard lies: decided here and nowhere else, whenever the streets
+    /// round it change (`unsettle_round`, then `settle`). A door that
+    /// still stands is kept, however many streets come beside it, so a
+    /// building never turns while it works. One that is gone moves to the
+    /// first street it finds, the building turned the first of its
+    /// `facings` that has one: its own way, then about, then a side. None
+    /// anywhere, it has no door, and no road reaches it. Whether it is
+    /// reached.
+    pub fn orient(&mut self, id: EntityId) -> bool {
         let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return false };
-        if !Self::works(&b.tiles, b.kind) {
+        let (tiles, kind, facing, door) = (b.tiles.clone(), b.kind, b.facing, b.door);
+        if !Self::works(&tiles, kind) {
             return false;
         }
-        if self.door_of(id).is_none() {
-            let (tiles, kind, facing) = (b.tiles.clone(), b.kind, b.facing);
-            // It faces the way a street lets it: the way it was laid if a
-            // street is there, else the first that has one.
-            let facing = std::iter::once(facing).chain(0..4).find(|&f| self.driveway_for(&tiles, kind, f, false).is_some()).unwrap_or(facing);
-            if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
-                b.facing = facing;
+        let stands = match (door, self.door_of(id)) {
+            (Some(d), Some(_)) => Self::enters(&tiles, kind, facing, d.street, d.tile) && self.driveway_reaches(d.street, d.tile),
+            _ => false,
+        };
+        if !stands {
+            let quay = crate::blueprint::blueprint(kind).quay;
+            let found = Self::facings(kind, facing).into_iter().find_map(|f| {
+                if quay && self.berth_at(&tiles, kind, f).is_none() {
+                    return None;
+                }
+                let (street, tile) = self.driveway_for(&tiles, kind, f)?;
+                Some((f, crate::protocol::Door { tile, street: self.objects.get(street)?.position? }))
+            });
+            match found {
+                Some((f, door)) => self.set_door(id, f, Some(door)),
+                None if door.is_some() => self.set_door(id, facing, None),
+                None => {}
             }
-            let Some((street, tile)) = self.driveway_for(&tiles, kind, facing, true) else { return false };
-            let Some(street) = self.objects.get(street).and_then(|e| e.position) else { return false };
-            self.set_door(id, Some(crate::protocol::Door { tile, street }));
+            if found.is_none() {
+                return false;
+            }
         }
         // Reached: a depot's lorries come with it, and a farm claims its land.
         crate::calls::stable(self, id);
@@ -398,9 +380,8 @@ impl World {
         true
     }
 
-    /// Every dormant building beside any of these tiles gets its door.
-    /// Called for every road laid for real, so a road reaching a building
-    /// is all it takes.
+    /// Every building beside any of these tiles oriented at once: a
+    /// fixture's or a test's streets, laid with nobody settling after.
     pub fn open_doors_along(&mut self, tiles: &[GridCoord]) {
         let mut near: Vec<EntityId> = tiles
             .iter()
@@ -412,179 +393,201 @@ impl World {
         near.sort_unstable();
         near.dedup();
         for id in near {
-            self.open_door(id);
+            self.orient(id);
         }
     }
 
-    /// A building that can be driven to, or nothing: the placer works out
-    /// the facing itself, and the driveway goes in with it.
+    /// The first way round a kind's plot with its corner at `pos` stands
+    /// on open land with a street before it.
+    #[cfg(test)]
+    pub fn site_for(&self, pos: GridCoord, kind: BuildingKind) -> Option<u8> {
+        (0..4).find(|&f| {
+            let tiles: Vec<GridCoord> = Self::footprint(pos, crate::blueprint::plot(kind, f).size).collect();
+            tiles.iter().all(|&t| self.may_stand(t))
+                && (!crate::blueprint::blueprint(kind).quay || self.berth_at(&tiles, kind, f).is_some())
+                && self.driveway_for(&tiles, kind, f).is_some()
+        })
+    }
+
+    /// A building that can be driven to, or nothing: its corner at `pos`,
+    /// the first way round it fits with a street before it. Standing, and
+    /// stocked, as a town written by hand is.
+    #[cfg(test)]
     pub fn place_on_street(&mut self, pos: GridCoord, kind: BuildingKind) -> Option<EntityId> {
-        let (facing, _, _) = self.site_for(pos, kind)?;
-        let id = self.place_building(pos, kind, facing)?;
-        self.open_door(id);
+        let id = self.place_building(pos, kind, self.site_for(pos, kind)?)?;
+        self.finish(id);
         Some(id)
     }
 
-    /// A step of the mayor's brush: `to` painted with a kind, and joined to
-    /// the building of the kind on `from` beside it, if there is one: a
-    /// kind that grows takes the tile in, one a tile big stands a building
-    /// of its own linked to it (`Building::joined`), a row of houses. A tap,
-    /// or a step from anything else, is a building of its own. A step from
-    /// one building onto another of its kind joins the two, the older kept,
-    /// or links them. The building laid, if a tile was.
-    pub fn paint(&mut self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> Option<EntityId> {
-        if !self.may_paint(kind, from, to) {
-            return None;
+    /// A building as a town written by hand has it: standing, its timber
+    /// in, its shelves full but for what its own land fills.
+    pub fn finish(&mut self, id: EntityId) {
+        if matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::Building(b)) if b.site.is_some()) {
+            crate::economy::stand(self, id);
         }
-        let here = self.drawn_from(kind, from, to);
-        let grows = grows(kind);
-        if let (Some(a), Some(&b)) = (here, self.occupied.get(&(to.x, to.y))) {
-            if grows {
-                self.join(a.min(b), a.max(b));
-            } else {
-                self.link(a, from, b, to);
-            }
-            return None;
-        }
-        let id = match here.filter(|_| grows) {
-            Some(id) => {
-                if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
-                    b.tiles.push(to);
-                }
-                id
-            }
-            None => self.insert_at(GameObject::Building(Building::new(kind, vec![to], 2)), Some(to)),
-        };
-        self.take_stub(id, to);
-        self.occupy(id, to);
-        self.open_door(id);
-        if let Some(a) = here.filter(|_| !grows) {
-            self.link(a, from, id, to);
-        }
-        Some(id)
-    }
-
-    /// May a step of the brush paint `to` with a kind, from `from`: open
-    /// ground, or another building of the kind to join or link to the one
-    /// the step came from. The one rule, which the brush is refused by and
-    /// the client's dots mirror (`client/src/engine/may.ts`).
-    pub fn may_paint(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> bool {
-        match self.occupied.get(&(to.x, to.y)) {
-            Some(&there) => {
-                self.kind_at(there) == Some(kind)
-                    && self.drawn_from(kind, from, to).is_some_and(|here| here != there && (grows(kind) || !self.joined_of(here).contains(&to)))
-            }
-            None => self.is_buildable(to) || self.is_driveway_stub(to),
-        }
-    }
-
-    /// Would a building painted from `from` to `to` be reached: one already
-    /// standing there, joined or linked to; grown on to one of its kind;
-    /// or, new, on a tile a street may run a drive to. The mayor paints
-    /// only what can work; a town written as a fixture stands as written.
-    pub fn would_be_reached(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> bool {
-        self.occupied.contains_key(&(to.x, to.y))
-            || (grows(kind) && self.drawn_from(kind, from, to).is_some())
-            || self.road_node_at(to).is_some()
-            || self.driveway_between(&[to], None, None, true).is_some()
-    }
-
-    /// The building of the kind on `from` beside `to`: what a step to `to`
-    /// carries on from.
-    fn drawn_from(&self, kind: BuildingKind, from: GridCoord, to: GridCoord) -> Option<EntityId> {
-        let beside = (from.x - to.x).abs() <= 1 && (from.y - to.y).abs() <= 1 && from != to;
-        let id = *self.occupied.get(&(from.x, from.y))?;
-        (beside && self.kind_at(id) == Some(kind)).then_some(id)
-    }
-
-    fn joined_of(&self, id: EntityId) -> &[GridCoord] {
-        match self.objects.get(id).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => &b.joined,
-            _ => &[],
-        }
-    }
-
-    /// Two buildings linked where they meet: each keeps the other's tile.
-    fn link(&mut self, a: EntityId, at_a: GridCoord, b: EntityId, at_b: GridCoord) {
-        for (id, other) in [(a, at_b), (b, at_a)] {
-            if let Some(GameObject::Building(bd)) = self.objects.get_mut(id).map(|e| &mut e.object)
-                && !bd.joined.contains(&other)
-            {
-                bd.joined.push(other);
-            }
-        }
-    }
-
-    fn kind_at(&self, id: EntityId) -> Option<BuildingKind> {
-        match self.objects.get(id)?.object {
-            GameObject::Building(ref b) => Some(b.kind),
-            _ => None,
-        }
-    }
-
-    /// One building of a kind takes in another beside it: its tiles, and
-    /// the other is gone.
-    fn join(&mut self, keep: EntityId, gone: EntityId) {
-        let Some(GameObject::Building(b)) = self.objects.get(gone).map(|e| &e.object) else { return };
-        let tiles = b.tiles.clone();
-        self.remove_building(gone);
-        if let Some(GameObject::Building(b)) = self.objects.get_mut(keep).map(|e| &mut e.object) {
-            b.tiles.extend(&tiles);
-        }
-        for t in tiles {
-            self.occupy(keep, t);
-        }
-        self.drop_lot(keep);
-        self.open_door(keep);
-    }
-
-    /// A tile taken out of the building on it. A building cut in two is
-    /// two: the part with the tile it is known by keeps it, its people and
-    /// its stock, and every other part is a building of its own, new. The
-    /// last tile taken is the building gone.
-    pub fn unpaint(&mut self, tile: GridCoord) -> bool {
-        let Some(&id) = self.occupied.get(&(tile.x, tile.y)) else { return false };
-        let Some(GameObject::Building(b)) = self.objects.get(id).map(|e| &e.object) else { return false };
-        let (kind, facing) = (b.kind, b.facing);
-        let rest: Vec<GridCoord> = b.tiles.iter().copied().filter(|&t| t != tile).collect();
-        if rest.is_empty() {
-            // Its row lets go of it.
-            for t in b.joined.clone() {
-                if let Some(&other) = self.occupied.get(&(t.x, t.y))
-                    && let Some(GameObject::Building(o)) = self.objects.get_mut(other).map(|e| &mut e.object)
-                {
-                    o.joined.retain(|&j| j != tile);
+        if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
+            let kind = b.kind;
+            for (good, stock) in b.stocks.iter_mut() {
+                if !crate::economy::makes(kind, *good) {
+                    stock.level = stock.cap;
                 }
             }
-            self.remove_building(id);
-            return true;
         }
-        self.drop_lot(id);
-        self.occupied.remove(&(tile.x, tile.y));
-        // What is left may be too little of it to work.
+    }
+
+    /// The plot a kind placed round `at` facing this way stands on: its
+    /// whole footprint, building and yard, laid round the tile as the
+    /// hand holds it (`client/src/engine/may.ts` `plotAt`).
+    pub fn plot_at(kind: BuildingKind, at: GridCoord, facing: u8) -> Vec<GridCoord> {
+        let (w, h) = crate::blueprint::plot(kind, facing).size;
+        Self::footprint(GridCoord { x: at.x - w as i32 / 2, y: at.y - h as i32 / 2 }, (w, h)).collect()
+    }
+
+    /// May a kind be placed round `at` facing this way, and if not, why,
+    /// in the words the hand's preview says it in (`may.ts` `fit`): open
+    /// land under the whole plot, or a road's dead end it stands over;
+    /// a street before its front, its yard's if it keeps one, or all along
+    /// one side for one that parks at the kerb; and a harbour's back on
+    /// open sea, which brings its own street.
+    pub fn fit(&self, kind: BuildingKind, at: GridCoord, facing: u8) -> Result<Vec<GridCoord>, &'static str> {
+        let tiles = Self::plot_at(kind, at, facing);
+        for &t in &tiles {
+            if self.occupied.contains_key(&(t.x, t.y)) {
+                return Err("Something stands there");
+            }
+            if self.road_node_at(t).is_some() && !self.is_driveway_stub(t) {
+                return Err("A street runs through it");
+            }
+            match self.terrain.get(&(t.x, t.y)) {
+                Some(TerrainType::Grass | TerrainType::Forest) => {}
+                Some(TerrainType::Sea | TerrainType::Water) => return Err("Its plot runs into the water"),
+                Some(TerrainType::Beach) => return Err("On the beach: it stands on grass or forest"),
+                _ => return Err("Not on open land"),
+            }
+        }
+        if crate::blueprint::blueprint(kind).quay {
+            return match self.berth_at(&tiles, kind, facing) {
+                Some(_) => Ok(tiles),
+                None => Err("No berth: its back is not on the sea"),
+            };
+        }
+        // A building that parks at the kerb needs a street all along one
+        // side, where its bays go (`kerb_bays`).
+        use crate::world::lots::{kerbed, side_of, SIDES};
+        match self.driveway_for(&tiles, kind, facing) {
+            Some(_) if kerbed(kind) && !SIDES.iter().any(|&d| self.street_along(&side_of(&tiles, d), d)) => Err("No street along a whole side, for its parking"),
+            Some(_) => Ok(tiles),
+            None if crate::blueprint::blueprint(kind).lot.1 > 0 => Err("No street before its yard"),
+            None => Err("No street beside it"),
+        }
+    }
+
+    /// May a building stand on this tile: open land, or a road's dead end
+    /// it takes over as its door.
+    pub fn may_stand(&self, t: GridCoord) -> bool {
+        self.is_buildable(t) || self.is_driveway_stub(t)
+    }
+
+    /// The street a harbour placed on these tiles brings with it, from the
+    /// middle of its park's front: on to the nearest street in reach, with
+    /// as few bends as may be, or a short one straight inland where none
+    /// is. Nothing where a street already runs to its park. Its steps in
+    /// the order they are laid.
+    pub fn stub(&self, kind: BuildingKind, tiles: &[GridCoord], facing: u8) -> Vec<(GridCoord, GridCoord)> {
+        use std::cmp::Reverse;
+        use std::collections::HashMap;
+        /// How far it looks for a street to join, in tiles each way; and
+        /// how far it runs inland where there is none.
+        const REACH: i32 = 12;
+        const STUB: i32 = 4;
+        if self.driveway_for(tiles, kind, facing).is_some() {
+            return Vec::new();
+        }
+        let ahead = crate::blueprint::FACINGS[facing as usize];
+        let (o, size) = Self::bounds(tiles);
+        let mid = GridCoord { x: o.x + size.0 as i32 / 2, y: o.y + size.1 as i32 / 2 };
+        // One tile out from its front.
+        let out = if facing % 2 == 0 { size.1 } else { size.0 } as i32 / 2 + 1;
+        let front = GridCoord { x: mid.x + ahead.0 * out, y: mid.y + ahead.1 * out };
+        let street = |t: GridCoord| self.road_node_at(t).is_some();
+        let open = |t: GridCoord| (t.x - front.x).abs() <= REACH && (t.y - front.y).abs() <= REACH && self.is_buildable(t) && !tiles.contains(&t);
+        let steps = |path: &[GridCoord]| path.windows(2).map(|w| (w[0], w[1])).collect();
+        // Fewest bends, then fewest tiles: a step costs two, a bend five
+        // more. A state is a tile and the way in to it.
+        type State = (i32, i32, usize);
+        let mut came: HashMap<State, State> = HashMap::new();
+        let mut cost: HashMap<State, u32> = HashMap::new();
+        let mut heap = std::collections::BinaryHeap::new();
+        if open(front) || street(front) {
+            for d in 0..4 {
+                cost.insert((front.x, front.y, d), 0);
+                heap.push(Reverse((0, (front.x, front.y, d))));
+            }
+        }
+        while let Some(Reverse((c, here))) = heap.pop() {
+            let (x, y, d) = here;
+            if cost[&here] < c {
+                continue;
+            }
+            if street(GridCoord { x, y }) {
+                let mut path = vec![GridCoord { x, y }];
+                let mut k = here;
+                while let Some(&p) = came.get(&k) {
+                    path.push(GridCoord { x: p.0, y: p.1 });
+                    k = p;
+                }
+                path.reverse();
+                return steps(&path);
+            }
+            for (nd, &(dx, dy)) in crate::blueprint::FACINGS.iter().enumerate() {
+                let next = (x + dx, y + dy, nd);
+                let t = GridCoord { x: next.0, y: next.1 };
+                let nc = c + 2 + if nd == d { 0 } else { 5 };
+                if (open(t) || street(t)) && cost.get(&next).is_none_or(|&b| nc < b) {
+                    cost.insert(next, nc);
+                    came.insert(next, here);
+                    heap.push(Reverse((nc, next)));
+                }
+            }
+        }
+        let inland: Vec<GridCoord> = (0..STUB).map(|k| GridCoord { x: front.x + ahead.0 * k, y: front.y + ahead.1 * k }).take_while(|&t| open(t)).collect();
+        steps(&inland)
+    }
+
+    /// The first way round a kind fits at `at`, if any does.
+    pub fn facing_for(&self, kind: BuildingKind, at: GridCoord) -> Option<u8> {
+        (0..4).find(|&f| self.fit(kind, at, f).is_ok())
+    }
+
+    /// A building stood on its tiles, facing this way: a site, or
+    /// standing where it takes nothing or is the town's first depot, its
+    /// door open onto a street beside its front. The one way a building
+    /// comes, whoever asks: the hand placing it (`fit` first), a fixture,
+    /// an undone demolition (`raise_as`).
+    pub fn raise(&mut self, kind: BuildingKind, tiles: Vec<GridCoord>, facing: u8) -> EntityId {
+        let id = self.stand_up(Building::new(kind, tiles, facing));
+        self.founded(id);
+        self.orient(id);
+        id
+    }
+
+    /// A building put back as it stood when it was taken down: its stock,
+    /// its rules, a site or standing, as it was.
+    pub fn raise_as(&mut self, building: Building) -> EntityId {
+        let id = self.stand_up(building);
         self.unsettled.insert(id);
-        let mut parts = pieces(&rest);
-        let anchor = self.objects.get(id).and_then(|e| e.position).unwrap_or(tile);
-        let first = parts.iter().position(|p| p.contains(&anchor)).unwrap_or(0);
-        let kept = parts.remove(first);
-        if let Some(entry) = self.objects.get_mut(id) {
-            if !kept.contains(&anchor) {
-                entry.position = Some(kept[0]);
-            }
-            if let GameObject::Building(ref mut b) = entry.object {
-                b.tiles = kept.clone();
-            }
+        self.orient(id);
+        id
+    }
+
+    fn stand_up(&mut self, building: Building) -> EntityId {
+        let tiles = building.tiles.clone();
+        let id = self.insert_at(GameObject::Building(building), Some(tiles[0]));
+        for &t in &tiles {
+            self.take_stub(id, t);
+            self.occupy(id, t);
         }
-        self.reindex(id, &kept);
-        for part in parts {
-            let new = self.insert_at(GameObject::Building(Building::new(kind, part.clone(), facing)), Some(part[0]));
-            for &t in &part {
-                self.occupy(new, t);
-            }
-            self.open_door(new);
-        }
-        self.open_door(id);
-        true
+        id
     }
 
     /// The tile is the building's: occupancy, and every chunk it stands in
@@ -592,20 +595,7 @@ impl World {
     fn occupy(&mut self, id: EntityId, t: GridCoord) {
         self.occupied.insert((t.x, t.y), id);
         self.spatial.entry(crate::world::chunk_of(t)).or_default().insert(id);
-        self.reveal_around(t);
-    }
-
-    /// Index a building in exactly the chunks its tiles are in.
-    fn reindex(&mut self, id: EntityId, tiles: &[GridCoord]) {
-        let chunks: std::collections::HashSet<_> = tiles.iter().map(|&t| crate::world::chunk_of(t)).collect();
-        for (chunk, ids) in self.spatial.iter_mut() {
-            if !chunks.contains(chunk) {
-                ids.remove(&id);
-            }
-        }
-        for chunk in chunks {
-            self.spatial.entry(chunk).or_default().insert(id);
-        }
+        self.built.insert(crate::world::chunk_of(t));
     }
 
     /// The one way a building leaves.
@@ -637,14 +627,13 @@ impl World {
     }
 
     /// A save from when a drive was a road: the road node on a building's
-    /// tile, its own or the stub it was painted over, becomes its door,
+    /// tile, its own or the stub it was placed over, becomes its door,
     /// and goes. A car on its way over one is scrapped, and the settle
     /// that follows a load gives its owner another.
     pub fn doors_from_drives(&mut self) {
         let buildings: Vec<(EntityId, Vec<GridCoord>)> = self
             .objects
             .iter()
-            .filter(|e| !self.edge.contains(&e.id))
             .filter_map(|e| match e.object {
                 GameObject::Building(ref b) => Some((e.id, b.tiles.clone())),
                 _ => None,
@@ -654,16 +643,8 @@ impl World {
         for (id, tiles) in buildings {
             for tile in tiles {
                 let Some(node) = self.road_node_at(tile) else { continue };
-                if self.door_of(id).is_none()
-                    && let Some(street) = self.arms_of(node, false).first().and_then(|&a| self.objects.get(a)?.position)
-                {
-                    self.set_door(id, Some(crate::protocol::Door { tile, street }));
-                }
-                for edge in self.edges_involving(node) {
-                    self.remove_edge(edge.0, edge.1);
-                }
-                self.demolish_node(node);
                 gone.insert(node);
+                self.take_stub(id, tile);
             }
         }
         let stranded: Vec<EntityId> = self
@@ -692,47 +673,10 @@ impl World {
             for tile in b.tiles.clone() {
                 self.occupied.insert((tile.x, tile.y), id);
                 self.spatial.entry(crate::world::chunk_of(tile)).or_default().insert(id);
+                self.built.insert(crate::world::chunk_of(tile));
             }
         }
     }
-}
-
-/// Tiles in the pieces they fall into, each held together by tiles beside
-/// one another or on a diagonal: a building cut in two is two.
-fn pieces(tiles: &[GridCoord]) -> Vec<Vec<GridCoord>> {
-    let mut left: Vec<GridCoord> = tiles.to_vec();
-    let mut out = Vec::new();
-    while let Some(seed) = left.first().copied() {
-        let mut piece = vec![seed];
-        left.retain(|&t| t != seed);
-        let mut i = 0;
-        while i < piece.len() {
-            let p = piece[i];
-            let (near, far): (Vec<GridCoord>, Vec<GridCoord>) = left.iter().partition(|t| (t.x - p.x).abs() <= 1 && (t.y - p.y).abs() <= 1);
-            piece.extend(near);
-            left = far;
-            i += 1;
-        }
-        out.push(piece);
-    }
-    out
-}
-
-/// What joins two tiles beside each other (`World::link_between`).
-pub enum Link {
-    /// A road, between these two nodes, either way.
-    Road(EntityId, EntityId),
-    /// This building's door onto its street.
-    Door(EntityId),
-    /// Two houses of a row.
-    Row(EntityId, EntityId),
-}
-
-/// Does a kind grow into one building as it is painted, or stand a
-/// building a tile, linked to its row: a kind a tile big, a home or a
-/// shop of its own on each.
-fn grows(kind: BuildingKind) -> bool {
-    crate::blueprint::plot(kind, 0).size != (1, 1)
 }
 
 #[cfg(test)]
@@ -814,7 +758,7 @@ mod tests {
     #[test]
     fn takes_a_road_straight_on() {
         let world = world_with_road(&[(0, 1), (1, 1)]);
-        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_some());
+        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
     }
 
     /// The case the corner rule exists for: no perimeter tile is orthogonally
@@ -822,27 +766,27 @@ mod tests {
     #[test]
     fn takes_a_road_off_its_corner() {
         let world = world_with_road(&[(1, 1), (2, 2)]);
-        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_some());
+        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
     }
 
     #[test]
     fn corner_rule_reaches_past_a_wide_footprint() {
         // Footprint covers (0,0) and (1,0); the road only meets its far corner.
         let world = world_with_road(&[(2, 1), (3, 2)]);
-        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (2, 1)).collect::<Vec<_>>(), None, None, false).is_some());
+        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (2, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
     }
 
     #[test]
     fn no_road_in_reach_is_no_access() {
         let world = world_with_road(&[(5, 5), (6, 5)]);
-        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_none());
+        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
     }
 
     /// A road two tiles out is not access, diagonally or otherwise.
     #[test]
     fn diagonals_do_not_reach_two_tiles() {
         let world = world_with_road(&[(2, 2), (3, 3)]);
-        assert!(world.driveway_between(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_none());
+        assert!(world.driveway_for(&World::footprint(GridCoord { x: 0, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
     }
 
     fn diagonal_world() -> World {
@@ -855,14 +799,14 @@ mod tests {
     #[test]
     fn plot_in_the_elbow_of_a_diagonal_cannot_connect() {
         let world = diagonal_world();
-        assert!(world.driveway_between(&World::footprint(GridCoord { x: 1, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_none());
+        assert!(world.driveway_for(&World::footprint(GridCoord { x: 1, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_none());
     }
 
     /// The perpendicular of a diagonal is diagonal, so this one connects.
     #[test]
     fn plot_offset_diagonally_from_a_diagonal_connects() {
         let world = diagonal_world();
-        assert!(world.driveway_between(&World::footprint(GridCoord { x: 2, y: 0 }, (1, 1)).collect::<Vec<_>>(), None, None, false).is_some());
+        assert!(world.driveway_for(&World::footprint(GridCoord { x: 2, y: 0 }, (1, 1)).collect::<Vec<_>>(), BuildingKind::House, 0).is_some());
     }
 
     /// The reachability index is maintained edit by edit rather than rebuilt,
@@ -946,15 +890,15 @@ mod tests {
                 world.terrain.insert((x, y), TerrainType::Grass);
             }
         }
-        // The survey covers the middle; the street runs out past it.
-        world.reveal_around(GridCoord { x: 0, y: 0 });
+        // The street's far end is its way out.
         let street: Vec<GridCoord> = (0..130).map(|x| GridCoord { x, y: 0 }).collect();
         world.place_road_path(&street);
+        world.open_exit(world.road_node_at(GridCoord { x: 129, y: 0 }).unwrap());
         let joined = |world: &World, at: GridCoord| {
             let id = world.road_node_at(at).unwrap();
             matches!(world.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.joined)
         };
-        assert!(joined(&world, GridCoord { x: 0, y: 0 }), "the street reaches beyond the survey");
+        assert!(joined(&world, GridCoord { x: 0, y: 0 }), "the street reaches its way out");
 
         let lane: Vec<GridCoord> = (2..6).map(|y| GridCoord { x: 3, y }).collect();
         world.place_road_path(&lane);
@@ -967,8 +911,8 @@ mod tests {
         assert!(!joined(&world, GridCoord { x: 3, y: 5 }), "cut off again");
         assert!(joined(&world, GridCoord { x: 3, y: 0 }), "the street is unmoved");
 
-        // Cut the street inside the survey, between the town and the world:
-        // the whole town is an island, and the far end still reaches beyond.
+        // Cut the street between the town and its way out: the whole town
+        // is an island, and the far end still reaches beyond.
         lift_road(&mut world, GridCoord { x: 60, y: 0 });
         assert!(!joined(&world, GridCoord { x: 0, y: 0 }), "the town lost its way out");
         assert!(joined(&world, GridCoord { x: 100, y: 0 }), "the far end still reaches beyond");
@@ -1073,12 +1017,6 @@ mod tests {
         assert_eq!(tiles[5], GridCoord { x: 11, y: 12 });
     }
 
-    /// A stroke along a street with the brush, from tile to tile.
-    fn stroke(world: &mut World, kind: BuildingKind, tiles: &[(i32, i32)]) -> Vec<Option<EntityId>> {
-        let at: Vec<GridCoord> = tiles.iter().map(|&(x, y)| GridCoord { x, y }).collect();
-        (0..at.len()).map(|i| world.paint(kind, at[i.saturating_sub(1)], at[i])).collect()
-    }
-
     fn tiles_of(world: &World, id: EntityId) -> Vec<GridCoord> {
         match world.objects.get(id).map(|e| &e.object) {
             Some(GameObject::Building(b)) => b.tiles.clone(),
@@ -1086,85 +1024,82 @@ mod tests {
         }
     }
 
-    /// A kind that grows is one building as far as it is painted; a house
-    /// is a house a tile, however it was painted.
+    /// A building is placed whole, round the tile it is dropped on: every
+    /// tile of its plot its own, its yard before it on the street, and
+    /// its door open at once.
     #[test]
-    fn a_stroke_is_one_building_and_houses_are_a_tile_each() {
-        let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
-        let factory = stroke(&mut world, BuildingKind::Factory, &[(-4, 1), (-3, 1), (-2, 1)]);
-        assert!(factory.iter().all(|&id| id == factory[0]), "one factory: {factory:?}");
-        assert_eq!(tiles_of(&world, factory[0].unwrap()).len(), 3);
-        let houses = stroke(&mut world, BuildingKind::House, &[(1, 1), (2, 1), (3, 1)]);
-        assert_eq!(houses.iter().flatten().collect::<HashSet<_>>().len(), 3, "three houses: {houses:?}");
+    fn a_building_is_placed_whole_with_its_yard_on_the_street() {
+        let world_ = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
+        let mut world = world_;
+        // A depot is three by four: its yard two deep toward the street at
+        // y = 0, so facing -y (0), its middle two rows in.
+        let at = GridCoord { x: 0, y: 3 };
+        assert_eq!(world.facing_for(BuildingKind::Depot, at), Some(0));
+        let tiles = world.fit(BuildingKind::Depot, at, 0).expect("the depot fits by the street");
+        let id = world.raise(BuildingKind::Depot, tiles, 0);
+        assert_eq!(tiles_of(&world, id).len(), 12);
+        assert!(world.street_of(id).is_some(), "its door is open");
+        let yard = World::yard_of(&tiles_of(&world, id), BuildingKind::Depot, 0).unwrap();
+        assert!(yard.iter().all(|t| t.y <= 2), "its yard is not on the street side: {yard:?}");
     }
 
-    /// Smaller than its kind works in, a building stands and nothing is
-    /// served there: no driveway, as if no road came. Painted out to size,
-    /// it gets one.
+    /// A building keeps its door while it stands, whatever else comes
+    /// beside it; when its street goes, its door moves to whichever side
+    /// has one, the building turned so its yard is there, and its lot is
+    /// laid again where the yard now is.
     #[test]
-    fn a_building_too_small_does_not_work_until_it_is_painted_out() {
+    fn a_yard_turns_to_the_street_it_has() {
         let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
-        let depot = stroke(&mut world, BuildingKind::Warehouse, &[(0, 1)])[0].unwrap();
-        assert!(world.street_of(depot).is_none(), "one tile is no depot");
-        stroke(&mut world, BuildingKind::Warehouse, &[(0, 1), (1, 1), (1, 2), (0, 2), (0, 3), (1, 3), (1, 4), (0, 4)]);
-        assert_eq!(tiles_of(&world, depot).len(), 8);
-        assert!(world.street_of(depot).is_some(), "two by four is, and the street reaches it");
-    }
-
-    /// A building cut in two is two: the part with the tile it is known by
-    /// is still it, and the other is new.
-    #[test]
-    fn a_building_cut_in_two_is_two() {
-        let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
-        let factory = stroke(&mut world, BuildingKind::Factory, &[(-2, 1), (-1, 1), (0, 1), (1, 1), (2, 1)])[0].unwrap();
-        assert!(world.unpaint(GridCoord { x: 0, y: 1 }));
-        assert_eq!(tiles_of(&world, factory), vec![GridCoord { x: -2, y: 1 }, GridCoord { x: -1, y: 1 }]);
-        let other = world.occupied[&(2, 1)];
-        assert_ne!(other, factory);
-        assert_eq!(world.occupied[&(1, 1)], other);
-        assert!(world.street_of(other).is_some(), "the new one is reached too");
-        // The last tile taken is the building gone.
-        world.unpaint(GridCoord { x: 1, y: 1 });
-        world.unpaint(GridCoord { x: 2, y: 1 });
-        assert!(world.objects.get(other).is_none());
-    }
-
-    /// A step from one building onto another of its kind joins them, and
-    /// the older is kept.
-    #[test]
-    fn a_step_across_joins_two_into_the_older() {
-        let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
-        let a = stroke(&mut world, BuildingKind::Factory, &[(-2, 1), (-1, 1)])[0].unwrap();
-        let b = stroke(&mut world, BuildingKind::Factory, &[(1, 1), (0, 1)])[0].unwrap();
-        assert_ne!(a, b, "a tap starts a building of its own");
-        world.paint(BuildingKind::Factory, GridCoord { x: 0, y: 1 }, GridCoord { x: -1, y: 1 });
-        assert!(world.objects.get(b).is_none(), "the younger is taken in");
-        assert_eq!(tiles_of(&world, a).len(), 4);
-    }
-
-    fn joined(world: &World, x: i32) -> Vec<GridCoord> {
-        match world.objects.get(world.occupied[&(x, 1)]).map(|e| &e.object) {
-            Some(GameObject::Building(b)) => b.joined.clone(),
-            _ => Vec::new(),
+        let at = GridCoord { x: 0, y: 3 };
+        let tiles = world.fit(BuildingKind::Depot, at, 0).unwrap();
+        let id = world.raise(BuildingKind::Depot, tiles.clone(), 0);
+        world.finish(id);
+        let facing = |w: &World| match w.objects.get(id).map(|e| &e.object) {
+            Some(GameObject::Building(b)) => b.facing,
+            _ => unreachable!(),
+        };
+        let yard = |w: &World| World::yard_of(&tiles, BuildingKind::Depot, facing(w)).unwrap();
+        // A street along its back: the door it has stands, so nothing turns.
+        world.place_road_path(&(-6..=6).map(|x| GridCoord { x, y: 5 }).collect::<Vec<_>>());
+        world.settle();
+        assert_eq!(facing(&world), 0);
+        // Its own street taken up: it turns about, its yard to the back.
+        for x in -6..=6 {
+            lift_road(&mut world, GridCoord { x, y: 0 });
         }
+        world.settle();
+        assert_eq!(facing(&world), 2, "it turned to the street behind");
+        assert!(yard(&world).iter().all(|t| t.y >= 3), "its yard is at the back: {:?}", yard(&world));
+        let (door, street) = world.door_of(id).expect("reached from behind");
+        assert!(yard(&world).contains(&door) && world.objects.get(street).unwrap().position.unwrap().y == 5);
+        assert!(world.lot_mut(id).is_some(), "its lot is laid in the new yard");
+        // That one gone too, and a street down its side: it turns sideways.
+        for x in -6..=6 {
+            lift_road(&mut world, GridCoord { x, y: 5 });
+        }
+        world.place_road_path(&(-2..=7).map(|y| GridCoord { x: 2, y }).collect::<Vec<_>>());
+        world.settle();
+        assert_eq!(facing(&world), 1, "it turned to the side street");
+        // And none at all: no door, and so no yard to drive to.
+        for y in -2..=7 {
+            lift_road(&mut world, GridCoord { x: 2, y });
+        }
+        world.settle();
+        assert!(world.door_of(id).is_none() && world.street_of(id).is_none());
     }
 
-    /// Houses drawn in a row are linked, each a house of its own; one
-    /// tapped beside them is not, until the hand draws from one onto it;
-    /// one taken away lets go of its row.
+    /// Where it may not go, it says why: the words the hand's preview
+    /// shows under the pointer.
     #[test]
-    fn houses_drawn_in_a_row_are_linked_and_tapped_ones_are_not() {
+    fn a_plot_that_does_not_fit_says_why() {
         let mut world = world_with_road(&(-6..=6).map(|x| (x, 0)).collect::<Vec<_>>());
-        stroke(&mut world, BuildingKind::House, &[(1, 1), (2, 1)]);
-        let at = |x| GridCoord { x, y: 1 };
-        assert_eq!(joined(&world, 1), vec![at(2)]);
-        assert_eq!(joined(&world, 2), vec![at(1)]);
-        stroke(&mut world, BuildingKind::House, &[(3, 1)]);
-        assert!(joined(&world, 3).is_empty(), "a tap beside a house is a house apart");
-        assert_eq!(world.paint(BuildingKind::House, at(2), at(3)), None, "a link lays no house");
-        assert_eq!(joined(&world, 3), vec![at(2)]);
-        assert!(!world.may_paint(BuildingKind::House, at(2), at(3)), "nor links twice");
-        world.unpaint(at(2));
-        assert!(joined(&world, 1).is_empty() && joined(&world, 3).is_empty(), "a house gone lets go of its row");
+        assert_eq!(world.fit(BuildingKind::House, GridCoord { x: 0, y: 4 }, 2), Err("No street beside it"));
+        assert_eq!(world.fit(BuildingKind::Depot, GridCoord { x: 0, y: 3 }, 2), Err("No street before its yard"));
+        assert_eq!(world.fit(BuildingKind::House, GridCoord { x: 0, y: 0 }, 2), Err("A street runs through it"));
+        let house = world.fit(BuildingKind::House, GridCoord { x: 0, y: 1 }, 2).unwrap();
+        world.raise(BuildingKind::House, house, 2);
+        assert_eq!(world.fit(BuildingKind::Shop, GridCoord { x: 0, y: 1 }, 2), Err("Something stands there"));
+        world.terrain.insert((3, 1), TerrainType::Water);
+        assert_eq!(world.fit(BuildingKind::House, GridCoord { x: 3, y: 1 }, 2), Err("Its plot runs into the water"));
     }
 }

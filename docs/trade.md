@@ -1,6 +1,12 @@
 # Trade: depots, shipments, listings and contracts
 
-Status: direction, 2026-10-10. Nothing built. Replaces the price economy
+Status: direction, 2026-10-10. Built: coins at the border, GDP, the
+world's two prices (`economy.rs`), orders by hand and top-up rules on
+depots (keep, fill, sell) booking the ferry, with the world as the only
+source (`haul.rs`, `shipping.md` §Built); the order board, letters
+from the mayors of the towns beyond the edge, paid as their boxes sail
+(`orders.rs`, `missions.md` §Orders, 2026-10-12). Not built: the
+Exchange, listings, standing offers, contracts. Replaces the price economy
 of `economy.md` as the game's economy: what goes and what stays is at the
 end, and `shelved.md` has the price economy under that date. `game.md` is
 the short version; this is the detail.
@@ -161,8 +167,10 @@ hides. It is a thing on the map:
   morning, collect at the quay, unload at the north depot. The
   automation is the lorry; what is automated is what is driving.
 - **Rules live on buildings.** A depot's top-up shows over it as the
-  good and its level; the stack in its yard is the level. When it
-  reorders a ship sets out from the horizon.
+  good and its level; the stack in its yard is the level. Its rules buy
+  only once it has standing orders. When it reorders, its boxes are
+  booked on the next sailing, the news says what it bought, why and for
+  how much, and the ferry that brings them is on the map.
 - **Automation costs capacity.** A standing order needs a lorry, a berth
   slot, a contract. Automating more is building more, and three lorries
   on standing orders through one junction is a jam you made.
@@ -220,9 +228,24 @@ means topping up timber today.
 Roads take theirs too, gravel and asphalt and, over water or over each
 other, concrete and steel, but straight from the depots' stock as they
 are committed, with no lorry: a road is instant, and so the bigger the
-gravel depot, the more road can be laid in one go. Placing anything is a
-draft until it is committed, and the draft's bill says what it will take
-against what is in stock (`game.md` §Drafts).
+gravel depot, the more road can be laid in one go.
+
+As built (2026-10-10): a road tile takes a unit of stone, off the
+shelves of the depots nearest it as far as they hold any. What they lack
+the world sends on the spot, express, at twice the ferry's price, paid
+at the harbour as a lump; with no harbour yet there is no border to pay
+at, and the first street is free. A road is never refused for want of
+stone: refusing would make the network, the thing the player iterates
+on, wait on a ferry, and the opening's first street comes before its
+first stone. Laying it on credit (stock below zero, paid back by the
+next box) was the other way, and lost: every shelf would have to learn
+that it can be owed. Express is the rule the world already has, "I need
+it now is always possible and always dear", and it makes the lesson
+plain: about a coin a tile from the treasury, half that from a depot's
+stone, nothing from the town's own quarry. Demolition gives nothing back
+yet. A building in hand
+says beside it what it takes against what the depots hold (`game.md`
+§Buildings).
 
 ## The opening
 
@@ -233,7 +256,8 @@ against what is in stock (`game.md` §Drafts).
    into the harbour's trailer park. The player taps the town's one lorry
    to fetch them, and the camera follows it from the harbour to the
    depot the first time, so the player learns that shipments can be
-   followed. The crates stack, and the empties wait for the next trip.
+   followed. The box is unloaded under the depot's canopy, and the lorry
+   drives off bobtail.
 5. Build.
 
 Four beats, each teaching one thing: ships come here, things are kept
@@ -263,11 +287,14 @@ People stay in their own town; only goods cross its border.
    the seller's account, or through the seller's depot.
 2. Who drives a listing's shipment, the seller's lorries or the
    buyer's. Seller to begin with.
-3. The order board: what the world and computer towns want, so a single
-   player has goals and income. Ideas: orders drawn from what the town
-   makes, with one thing it lacks; big contracts announced days ahead
-   that every town on the island fills together; demand that softens
-   when everyone ships the same good.
+3. The order board. Built as letters from four mayors beyond the edge
+   (`missions.md` §Orders): drawn from what the town makes or sells,
+   every third from a building it lacks; a box sold while one wants
+   its good is marked for it and paid at the mayor's price, over the
+   world's, as it sails with the ferry. Still open: big contracts
+   announced days ahead that every town on the island fills together;
+   demand that softens when everyone ships the same good; ships toward
+   a town's own edge, if direction should ever cost.
 4. What a town wants from inside: whether houses climb a ladder of wants
    (Caesar III, Anno), and so what a night at home is worth in GDP
    (nothing yet).

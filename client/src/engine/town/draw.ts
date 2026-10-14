@@ -2,10 +2,10 @@ import earcut from "earcut";
 import type { MeshGeometry } from "../geometry";
 import type { Theme } from "../theme";
 import { ROAD_Z } from "../objects/roadGeometry";
-import { asphalt, dress, pavement, type Dressing } from "./dressing";
-import { soften } from "./footprint";
+import { dress, type Dressing } from "./dressing";
+import { asphalt, pavement } from "./surface";
 import { facts } from "./facts";
-import type { Polygon } from "./footprint";
+import { area, type Polygon, type Pt } from "./footprint";
 import type { Tile, Town } from "./grid";
 import type { RGB } from "./mass";
 import { townMesh, type Paint, type Prop } from "./roof";
@@ -21,17 +21,31 @@ export interface Piece {
 /** A colour as plain numbers: a theme's, or one of the town's own. */
 export type Colour = { r: number; g: number; b: number };
 
-/** A dock's door: dark, in any light. */
-const DOOR: Colour = { r: 0.22, g: 0.24, b: 0.3 };
-
-/** How round a port lane's corners are, as the asphalt's. */
-const LANE_ROUND = 0.05;
+/** A depot's canopy: a sheet-metal roof, pale, on posts a shade under it;
+ *  its underside over a box's roof (`TRAILER.h`) and under the hall's
+ *  eaves, and a fascia's depth thick. */
+const CANOPY: Colour = { r: 0.78, g: 0.78, b: 0.77 };
+const POST: Colour = { r: 0.5, g: 0.5, b: 0.5 };
+const CANOPY_Z = 0.3;
+const FASCIA = 0.035;
+const POST_W = 0.03;
+/** A quay's wall, stone a shade under the paving, and its capping, a
+ *  shade over it. */
+const QUAY: Colour = { r: 0.6, g: 0.58, b: 0.54 };
+const CAP: Colour = { r: 0.88, g: 0.86, b: 0.81 };
+/** How far down a quay's wall stands, past the water's surface; and how
+ *  broad its capping is, along the edge. */
+const QUAY_FOOT = -0.78;
+const CAP_W = 0.07;
 
 /** How far over the grass the roads lie. */
 export const PAVED_Z = 0.02;
 /** The paving's height: over the roads, which are cut into it, a kerb's
  *  step down to them (`kerbs.ts`). */
 export const KERB_Z = ROAD_Z + PAVED_Z + 0.012;
+/** The lines painted on a yard's asphalt, just over it: a worn white. */
+const LINE_Z = ROAD_Z + PAVED_Z + 0.002;
+const LINE: Colour = { r: 0.82, g: 0.81, b: 0.77 };
 
 /**
  * The town grid's roads, drawn: the asphalt of the streets and the drives
@@ -50,38 +64,102 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
 }
 
 /**
- * The town grid's town, drawn: the pavement, a port's lanes, the
- * buildings, and a door behind every dock; the roads are `drawRoads`.
- * Geometry alone, in the same frame. The yards' lines are the caller's to
- * paint on the pavement (`stripLines`), and the trees the dressing plants
- * its to plant (`treeInstances`), and what stands on its roofs the props'
+ * The town grid's town, drawn: the pavement, the
+ * buildings, and a canopy over a depot's docks; the roads are `drawRoads`.
+ * Geometry alone, in the same frame, and the lines painted on the yards'
+ * asphalt: the docks', and the game's own `marks`, a harbour's trailer
+ * park's slots. The trees the dressing plants are the caller's to plant
+ * (`treeInstances`), and what stands on its roofs the props'
  * (`props.ts`), as is what stands on it that moves, the
  * cars, lorries and ferries the dressing would put there: the game draws
  * its own, the sandbox the dressing's.
  */
-export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town)): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
+export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(town), marks: Pt[][] = []): { pieces: Piece[]; dressing: Dressing; props: Prop[] } {
   const pieces: Piece[] = [];
   const add = (name: string, geo: Piece["geo"], c: Colour | null) => {
     if (geo.indices.length) pieces.push({ name, geo, colour: c });
   };
-  add("pavement", flatPolygons(pavement(town), KERB_Z), theme.paved);
+  const paved = pavement(town);
+  add("pavement", flatPolygons(paved, KERB_Z), theme.paved);
+  const { wall, cap } = quay(town, paved);
+  add("quay", wall, QUAY);
+  add("quayCap", cap, CAP);
   const dressing = dress(town, known);
-  add("lanes", flatPolygons(soften(dressing.lanes.map((l): Polygon => [l]), LANE_ROUND), ROAD_Z + PAVED_Z), theme.road);
   const mass = townMesh(town, paint, undefined, known);
   add("mass", mass, null);
-  // A door in the wall behind every dock, just proud of it.
-  const doors: MeshGeometry = { positions: [], normals: [], indices: [] };
-  for (const dock of dressing.docks) {
-    const [ux, uy] = [Math.cos(dock.angle), Math.sin(dock.angle)];
-    const [dx, dy, half] = [dock.x + ux * 0.004, dock.y + uy * 0.004, 0.11];
-    const b0 = doors.positions.length / 3;
-    for (const [x, y, z] of [[dx - uy * half, dy + ux * half, 0.03], [dx + uy * half, dy - ux * half, 0.03], [dx + uy * half, dy - ux * half, 0.22], [dx - uy * half, dy + ux * half, 0.22]]) {
-      doors.positions.push(-x, -y, z), doors.normals.push(-ux, -uy, 0);
-    }
-    doors.indices.push(b0, b0 + 2, b0 + 1, b0, b0 + 3, b0 + 2, b0, b0 + 1, b0 + 2, b0, b0 + 2, b0 + 3);
+  // A depot's canopy over its docks: a slab, and a post at each end of
+  // its front edge.
+  const canopy: MeshGeometry = { positions: [], normals: [], indices: [] };
+  const posts: MeshGeometry = { positions: [], normals: [], indices: [] };
+  for (const { roof, posts: feet } of dressing.canopies) {
+    cuboid(canopy, roof, CANOPY_Z, CANOPY_Z + FASCIA);
+    const h = POST_W / 2;
+    for (const [x, y] of feet) cuboid(posts, [[x - h, y - h], [x + h, y - h], [x + h, y + h], [x - h, y + h]], KERB_Z, CANOPY_Z);
   }
-  add("doors", doors, DOOR);
+  add("canopy", canopy, CANOPY);
+  add("canopyPosts", posts, POST);
+  // Each wound as the sheets' outlines are.
+  add("lines", flatPolygons([...dressing.yardLines, ...marks].map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
   return { pieces, dressing, props: mass.props };
+}
+
+/**
+ * A quay: wherever the paving meets the water, its edge is a wall straight
+ * down into it, as a harbour's is, and along the top a capping of lighter
+ * stone. The terrain's coast steps back under it (`TerrainChunks`), so no
+ * beach, cliff or foam is left at its foot. Along each edge of the
+ * paving, a wall where the tile on one side of it is water and the other
+ * not, facing the water.
+ */
+function quay(town: Town, paved: Polygon[]): { wall: MeshGeometry; cap: MeshGeometry } {
+  const wall: MeshGeometry = { positions: [], normals: [], indices: [] };
+  const cap: MeshGeometry = { positions: [], normals: [], indices: [] };
+  const wet = ([x, y]: number[]) => town.tile(Math.floor(x), Math.floor(y)).kind === "water";
+  for (const ring of paved.flat()) {
+    ring.forEach((a, i) => {
+      const b = ring[(i + 1) % ring.length];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (len < 1e-6) return;
+      const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      let n = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
+      const at = (s: number) => [m[0] + n[0] * s, m[1] + n[1] * s];
+      if (wet(at(-0.08)) && !wet(at(0.08))) n = [-n[0], -n[1]];
+      else if (!wet(at(0.08)) || wet(at(-0.08))) return;
+      // The map's frame is the plan's turned half round.
+      const p = (q: number[], o: number, z: number): number[] => [-(q[0] - n[0] * o), -(q[1] - n[1] * o), z];
+      face(wall, [p(a, 0, KERB_Z), p(b, 0, KERB_Z), p(b, 0, QUAY_FOOT), p(a, 0, QUAY_FOOT)], [-n[0], -n[1], 0]);
+      face(cap, [p(a, 0, KERB_Z + 0.004), p(b, 0, KERB_Z + 0.004), p(b, CAP_W, KERB_Z + 0.004), p(a, CAP_W, KERB_Z + 0.004)], [0, 0, 1]);
+    });
+  }
+  return { wall, cap };
+}
+
+/** A block over a quad on the plan, from z0 up to z1: its top and its
+ *  four sides; its bottom is the shade under it. */
+function cuboid(g: MeshGeometry, quad: Pt[], z0: number, z1: number) {
+  // The map's frame is the plan's turned half round.
+  const p = ([x, y]: Pt, z: number) => [-x, -y, z];
+  face(g, quad.map((q) => p(q, z1)), [0, 0, 1]);
+  const [cx, cy] = [quad.reduce((s, q) => s + q[0], 0) / 4, quad.reduce((s, q) => s + q[1], 0) / 4];
+  quad.forEach((a, i) => {
+    const b = quad[(i + 1) % 4];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let n = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
+    if (n[0] * (a[0] - cx) + n[1] * (a[1] - cy) < 0) n = [-n[0], -n[1]];
+    face(g, [p(a, z0), p(b, z0), p(b, z1), p(a, z1)], [-n[0], -n[1], 0]);
+  });
+  face(g, quad.map((q) => p(q, z0)), [0, 0, -1]);
+}
+
+/** A flat quad, its corners in order round it, facing `n`: wound as the
+ *  front faces are, every triangle its own three vertices. */
+function face(g: MeshGeometry, [p0, p1, p2, p3]: number[][], n: number[]) {
+  for (const [a, b, c] of [[p0, p1, p2], [p0, p2, p3]]) {
+    const [u, v] = [[b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]];
+    const out = (u[1] * v[2] - u[2] * v[1]) * n[0] + (u[2] * v[0] - u[0] * v[2]) * n[1] + (u[0] * v[1] - u[1] * v[0]) * n[2];
+    for (const q of out < 0 ? [a, b, c] : [a, c, b]) g.positions.push(q[0], q[1], q[2]), g.normals.push(n[0], n[1], n[2]);
+    g.indices.push(g.indices.length, g.indices.length + 1, g.indices.length + 2);
+  }
 }
 
 /** Trees as instances of the forest's: a matrix and a colour each, in the
@@ -146,21 +224,6 @@ export function runsOn(g: MeshGeometry) {
   };
   return (a: number[], b: number[], out: number[]) => inside((a[0] + b[0]) / 2 + out[0] * 1e-3, (a[1] + b[1]) / 2 + out[1] * 1e-3);
 }
-
-/** An edge wholly past the seam along one of a road tile's arms that
- *  runs on into the next tile, as drawn for its instance (x and y the
- *  other way, its middle at -0.5, -0.5): the end of the overlap, which the
- *  next tile covers. An edge that only reaches past it keeps its rim, and
- *  the two tiles' rims meet over the seam; where a bend bulges out past
- *  its square, between its arms, it keeps its rim too. */
-export const pastSeam = (ways: [number, number, boolean][]) => (a: number[], b: number[]) =>
-  ways.some(([dc, dr, on]) => {
-    if (!on) return false;
-    const len = Math.hypot(dc, dr);
-    const along = (p: number[]) => ((p[0] + 0.5) * -dc + (p[1] + 0.5) * -dr) / len;
-    return Math.min(along(a), along(b)) > len / 2 - 0.01;
-  });
-
 
 /** Flat squares on some tiles, a little over the ground. */
 export function quadsAt(cells: [number, number][], z: number): MeshGeometry {

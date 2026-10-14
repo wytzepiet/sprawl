@@ -18,7 +18,7 @@ pub enum Command {
     ClientConnect {
         id: ClientId,
         /// Who is behind the socket. Outlives it, so a reload rejoins as the
-        /// same person and finds their drafts still standing.
+        /// same person and finds their history to undo.
         owner: OwnerId,
         sender: mpsc::UnboundedSender<ServerMessage>,
     },
@@ -45,6 +45,9 @@ pub enum Ask {
     Card(EntityId),
     /// The town's page: what it served and what crossed the door.
     Town,
+    /// Every shipment, every timetable, every harbour's park and every
+    /// box on a hitch: the sea as the server has it.
+    Sea,
     /// The tiles round a point as a fixture's text.
     Map { x: i32, y: i32, r: i32 },
 }
@@ -100,8 +103,11 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
             let mut lumps: Vec<Lump> = Vec::new();
             let mut clock = Clock { now: 0, speed: 1, day_ms: DAY_MS };
             let mut growth = Growth::default();
+            let mut sea = crate::protocol::Sea::default();
+            let mut missions = Vec::new();
+            let mut neighbours = Vec::new();
             let mut terrain_seed: u32 = 0;
-            let mut revealed_bounds = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
+            let mut island = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
             let mut has_update = false;
 
             for msg in buf.drain(..) {
@@ -112,8 +118,11 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                         lumps.extend(su.lumps);
                         clock = su.clock;
                         growth = su.growth.clone();
+                        sea = su.sea;
+                        missions = su.missions;
+                        neighbours = su.neighbours;
                         terrain_seed = su.terrain_seed;
-                        revealed_bounds = su.revealed_bounds;
+                        island = su.island;
                     }
                     other => {
                         let bytes = rmp_serde::to_vec_named(&other).unwrap();
@@ -130,8 +139,11 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                     lumps,
                     clock,
                     growth,
+                    sea,
+                    missions,
+                    neighbours,
                     terrain_seed,
-                    revealed_bounds,
+                    island,
                 });
                 let bytes = rmp_serde::to_vec_named(&merged).unwrap();
                 if sink.send(Message::Binary(bytes.into())).await.is_err() {

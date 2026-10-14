@@ -2,6 +2,7 @@ import type { SceneContext } from "@babylonjs/lite";
 import { snap, STEPS } from "./may";
 import { projector } from "./view";
 import { step, type Sprung } from "./spring";
+import { glazedAt, underGlass } from "./glass";
 
 /**
  * The hand's dots, drawn flat over the scene on canvases of their own: a
@@ -129,6 +130,8 @@ export class Dots {
   private sinceRead = READ;
 
   private last = performance.now();
+  /** Where the glass was when last drawn (`underGlass`). */
+  private glazed = "";
 
   constructor(private scene: SceneContext, private view: HTMLCanvasElement) {
     this.el = document.createElement("div");
@@ -269,8 +272,9 @@ export class Dots {
       [d.lean, d.lv] = [l.s, l.v];
     }
     if (alive) this.sense(dt);
-    if (alive || this.drawn) this.draw();
+    if (alive || this.drawn || this.glazed !== glazedAt()) this.draw();
     this.drawn = alive;
+    this.glazed = glazedAt();
   }
 
   /** Judge how light the ground is now and then, by the sky's colour, and
@@ -339,6 +343,7 @@ export class Dots {
       }
       ctx.fillStyle = `rgba(${colour}, ${START_ALPHA})`;
       ctx.fill(rest);
+      underGlass(ctx);
     }
 
     // The drag: every shape one colour, run together by the filter. With
@@ -402,6 +407,7 @@ export class Dots {
       }
     }
     ctx.fill();
+    underGlass(ctx);
   }
 }
 

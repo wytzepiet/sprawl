@@ -42,7 +42,8 @@ fn link(world: &World, id: EntityId) -> Value {
             CarRole::Van => "Van".into(),
             CarRole::Truck => "Lorry".into(),
             CarRole::Tractor => "Tractor".into(),
-            CarRole::Ship => "Ship".into(),
+            CarRole::Ferry => "Ferry".into(),
+            CarRole::Tug => "Tug".into(),
         }),
         _ => ("gone", "gone".into()),
     };
@@ -150,7 +151,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         .calls
         .iter()
         .filter(|call| call.at == id)
-        .map(|call| json!({ "what": format!("{:?}", call.kind), "since": hhmm(call.raised), "answered_by": call.answered_by.map(|c| link(world, c)) }))
+        .map(|call| json!({ "what": format!("{:?}", call.kind), "good": call.good, "since": hhmm(call.raised), "answered_by": call.answered_by.map(|c| link(world, c)) }))
         .collect();
     let served: Vec<Value> = bp
         .taps
@@ -160,13 +161,51 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
             json!({ "need": t.need, "hours_today": today })
         })
         .collect();
+    // Where an order can be sent and timber found: every depot, nearest
+    // first, on a harbour's card and a site's, and whether its street is
+    // joined to the harbour.
+    let here = world.objects.get(id).and_then(|e| e.position);
+    let mut depots: Vec<(i32, Value)> = Vec::new();
+    if b.kind == crate::protocol::BuildingKind::Harbour || b.site.is_some() {
+        for e in world.objects.iter() {
+            let GameObject::Building(ref d) = e.object else { continue };
+            let (Some(at), Some(here)) = (e.position, here) else { continue };
+            if !crate::economy::depot(d.kind) || d.site.is_some() {
+                continue;
+            }
+            let joined = world.street_of(e.id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined));
+            let tiles = (at.x - here.x).abs() + (at.y - here.y).abs();
+            depots.push((tiles, json!({ "depot": link(world, e.id), "tiles": tiles, "joined": joined, "standing": d.standing, "rules": d.rules, "stocks": d.stocks.iter().map(|(g, s)| (format!("{g:?}"), json!(s.level))).collect::<serde_json::Map<_, _>>() })));
+        }
+    }
+    depots.sort_by_key(|(t, _)| *t);
+    // Where a site's materials are made in town: every maker of one, its
+    // yard, nearest first.
+    let mut makers: Vec<(i32, Value)> = Vec::new();
+    if let (Some(site), Some(here)) = (&b.site, here) {
+        for e in world.objects.iter() {
+            let GameObject::Building(ref m) = e.object else { continue };
+            let (Some(good), Some(at)) = (crate::blueprint::blueprint(m.kind).makes, e.position) else { continue };
+            if m.site.is_none() && site.contains_key(&good) {
+                let tiles = (at.x - here.x).abs() + (at.y - here.y).abs();
+                makers.push((tiles, json!({ "maker": link(world, e.id), "kind": m.kind, "good": good, "level": m.stocks.get(&good).map_or(0.0, |s| s.level), "tiles": tiles })));
+            }
+        }
+    }
+    makers.sort_by_key(|(t, _)| *t);
     json!({
         "kind": "building",
         "id": id,
         "label": format!("{:?}", b.kind),
         "building_kind": b.kind,
         "reached": world.street_of(id).is_some(),
-        "stocks": b.stocks.iter().map(|(need, s)| json!({ "need": need, "full": s.level / s.cap })).collect::<Vec<_>>(),
+        "stocks": b.stocks.iter().map(|(good, s)| json!({ "need": good, "good": good, "full": s.level / s.cap, "level": s.level, "cap": s.cap })).collect::<Vec<_>>(),
+        "site": b.site,
+        "rules": b.rules,
+        "standing": b.standing,
+        "selling": b.selling,
+        "depots": depots.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
+        "makers": makers.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
         "here": here,
         "household": household,
         "staff": staff,

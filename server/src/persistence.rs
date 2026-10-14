@@ -3,6 +3,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::protocol::{GameObjectEntry, GameObject};
+
 use crate::tree::Cell;
 
 const SCHEMA: &str = "
@@ -15,6 +16,11 @@ CREATE TABLE IF NOT EXISTS objects (
 CREATE TABLE IF NOT EXISTS metadata (
     key TEXT PRIMARY KEY,
     value INTEGER NOT NULL
+);
+DROP TABLE IF EXISTS drafts;
+CREATE TABLE IF NOT EXISTS missions (
+    id INTEGER PRIMARY KEY,
+    data TEXT NOT NULL
 );
 ";
 
@@ -34,6 +40,8 @@ pub struct Meta {
     pub treasury: f64,
     /// The nodes of the tree taken, one metadata row each.
     pub taken: Vec<Cell>,
+    /// The town's missions, open and finished, a row each in order.
+    pub missions: Vec<crate::missions::Mission>,
 }
 
 /// A whole number of hundredths, which is what the metadata table can hold.
@@ -111,9 +119,20 @@ pub fn load(path: &Path) -> (Vec<GameObjectEntry>, Meta) {
         })
         .unwrap_or_default();
 
+    // A mission this build cannot read is dropped, and opens again if
+    // its row still exists.
+    let missions = conn
+        .prepare("SELECT data FROM missions ORDER BY id")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).filter_map(|json| serde_json::from_str(&json).ok()).collect())
+        })
+        .unwrap_or_default();
+
     (
         entries,
         Meta {
+            missions,
             next_id,
             terrain_seed,
             sim_time,
@@ -136,14 +155,7 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
         // them anyway. The parked car is; a save mid-journey keeps the
         // version last seen parked, and the driver self-heals home, or the
         // shelves the ship was fetching for call again.
-        if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.away > 0) {
-            continue;
-        }
-        // Nor is the edge: it is derived from where the roads run off the
-        // map, and it is stood again from the road graph on the way back in.
-        // Saved, it would be a building beyond the frontier revealing the
-        // ground around itself on every load.
-        if matches!(entry.object, GameObject::Building(ref b) if b.kind == crate::protocol::BuildingKind::Edge) {
+        if matches!(entry.object, GameObject::Car(ref c) if c.trip.is_some() || c.run.is_some() || c.sail.is_some() || c.away > 0) {
             continue;
         }
         let json = serde_json::to_string(entry).expect("failed to serialize");
@@ -161,6 +173,15 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
     for &id in removed {
         tx.execute("DELETE FROM objects WHERE id = ?1", [id])
             .expect("failed to delete object");
+    }
+
+    tx.execute("DELETE FROM missions", []).expect("failed to clear missions");
+    for (i, m) in meta.missions.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO missions (id, data) VALUES (?1, ?2)",
+            rusqlite::params![i as i64, serde_json::to_string(m).expect("failed to serialize")],
+        )
+        .expect("failed to save a mission");
     }
 
     let taken: Vec<(String, i64)> = meta.taken.iter().map(|c| (format!("taken:{},{}", c.x, c.y), 1)).collect();
@@ -187,7 +208,7 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Car, CarRole, GameObject, GridCoord, Job, Run};
+    use crate::protocol::{Car, CarRole, GameObject, GridCoord, Sail};
 
     /// A ship saved mid-voyage comes back as it was last seen at the quay:
     /// the wakes that time a voyage die with the process, so a saved one
@@ -197,13 +218,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("sprawl-journey-{}", std::process::id()));
         let _ = std::fs::remove_file(&dir);
         let quay = GridCoord { x: 5, y: 5 };
-        let mut ship = Car::new(1, CarRole::Ship);
+        let mut ship = Car::new(1, CarRole::Ferry);
         let moored = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(quay) };
         save(&dir, &[moored], &[], Meta::default());
-        ship.run = Some(Run { job: Job::Sail, path: vec![quay, GridCoord { x: 5, y: 6 }], started: 0, pace: 1 });
+        ship.sail = Some(Sail { path: vec![[5.5, 5.5], [5.5, 9.5]], started: 0, ends: 1, ease: [true, false], astern: true });
         let sailing = GameObjectEntry { id: 2, object: GameObject::Car(ship.clone()), position: Some(GridCoord { x: 5, y: 6 }) };
         save(&dir, &[sailing], &[], Meta::default());
-        ship.run = None;
+        ship.sail = None;
         ship.away = 7;
         let beyond = GameObjectEntry { id: 2, object: GameObject::Car(ship), position: None };
         save(&dir, &[beyond], &[], Meta::default());
@@ -211,6 +232,21 @@ mod tests {
         let _ = std::fs::remove_file(&dir);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].position, Some(quay), "the ship is not where it was last moored");
-        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.run.is_none() && c.away == 0));
+        assert!(matches!(loaded[0].object, GameObject::Car(ref c) if c.sail.is_none() && c.away == 0));
+    }
+
+    /// The town's missions outlive a restart, finished and open, with
+    /// their steps as they stood.
+    #[test]
+    fn missions_are_saved() {
+        let path = std::env::temp_dir().join(format!("sprawl-missions-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut missions = crate::missions::Missions::default().list;
+        missions[0].steps[1].done = true;
+        missions[0].finished = Some(7);
+        save(&path, &[], &[], Meta { missions: missions.clone(), ..Meta::default() });
+        let (_, meta) = load(&path);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(serde_json::to_string(&meta.missions).unwrap(), serde_json::to_string(&missions).unwrap());
     }
 }

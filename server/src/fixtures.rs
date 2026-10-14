@@ -10,16 +10,17 @@
 //! A fixture is a grid, one character a tile, top row north:
 //!
 //! ```text
-//! .  grass     ~  water     T  forest    _  beach     ^  mountain
+//! .  grass     ~  water     ≈  sea       T  forest    _  beach     ^  mountain
 //! :  paved (a yard or a car park; grass to the server, drawn by the sandbox)
 //! =  street    #  road (a through route)
 //! H house  A apartment  S shop  O office  F factory  G gas station
-//! M supermarket  D warehouse  P port
+//! M supermarket  D depot  P harbour  W sawmill  Q quarry
+//! d  (any letter small) that building's yard, as `/map` writes the game's
 //! ```
 //!
-//! A building's letters are its tiles, painted in one stroke as the mayor
-//! would: a kind that grows is one building as far as its letter runs, a
-//! house a house a tile. Lines starting with `#` are the fixture's
+//! A building's letters are its tiles: a kind bigger than a tile is one
+//! building as far as its letter runs, of whatever shape, which the hand
+//! cannot place but the look must draw; a house is a house a tile. Lines starting with `#` are the fixture's
 //! description; the first is its title.
 
 use std::path::Path;
@@ -50,7 +51,7 @@ pub static PLACED: OnceLock<Vec<Placed>> = OnceLock::new();
 
 fn building(c: char) -> Option<BuildingKind> {
     use BuildingKind::*;
-    Some(match c {
+    Some(match c.to_ascii_uppercase() {
         'H' => House,
         'A' => Apartment,
         'S' => Shop,
@@ -58,19 +59,22 @@ fn building(c: char) -> Option<BuildingKind> {
         'F' => Factory,
         'G' => GasStation,
         'M' => Supermarket,
-        'D' => Warehouse,
-        'P' => Port,
+        'D' => Depot,
+        'P' => Harbour,
+        'W' => Sawmill,
+        'Q' => Quarry,
         _ => return None,
     })
 }
 
 fn letter(kind: BuildingKind) -> char {
-    "HASOFGMDP".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
+    "HASOFGMDPWQ".chars().find(|&c| building(c) == Some(kind)).unwrap_or('?')
 }
 
 fn ground(c: char) -> TerrainType {
     match c {
         '~' => TerrainType::Water,
+        '≈' => TerrainType::Sea,
         'T' => TerrainType::Forest,
         '_' => TerrainType::Beach,
         '^' => TerrainType::Mountain,
@@ -132,39 +136,47 @@ pub fn build(world: &mut World, dir: &Path) {
             }
         }
 
-        // Painted as the mayor would: each run of a letter in one stroke,
-        // from tile to tile beside or diagonal, so a kind that grows is one
-        // building as far as its letter runs, and a house is a house a tile.
-        let mut painted = std::collections::HashSet::new();
+        // Each run of a letter, beside or diagonal, is one building, a
+        // kind one tile big a building a tile: a row of houses is houses.
+        // Its front faces the first street it has, its back the sea.
+        let mut built = std::collections::HashSet::new();
         for row in 0..h {
             for col in 0..w {
                 let Some(kind) = building(char_at(col, row)) else { continue };
-                if !painted.insert((col, row)) {
+                if !built.insert((col, row)) {
                     continue;
                 }
-                let mut stroke = vec![((col, row), (col, row))];
+                let mut run = vec![(col, row)];
                 let mut i = 0;
-                while i < stroke.len() {
-                    let ((c, r), from) = stroke[i];
-                    if world.paint(kind, at(from.0, from.1), at(c, r)).is_none() {
-                        println!("fixtures: {}: no room for {kind:?} at column {c}, row {r}", path.display());
-                    }
+                while i < run.len() && crate::blueprint::plot(kind, 0).size != (1, 1) {
+                    let (c, r) = run[i];
                     for (dc, dr) in [(1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)] {
                         let n = (c + dc, r + dr);
-                        if building(char_at(n.0, n.1)) == Some(kind) && painted.insert(n) {
-                            stroke.push((n, (c, r)));
+                        if building(char_at(n.0, n.1)) == Some(kind) && built.insert(n) {
+                            run.push(n);
                         }
                     }
                     i += 1;
                 }
+                let tiles: Vec<GridCoord> = run.iter().map(|&(c, r)| at(c, r)).collect();
+                if !tiles.iter().all(|&t| world.may_stand(t)) {
+                    println!("fixtures: {}: no room for {kind:?} at column {col}, row {row}", path.display());
+                    continue;
+                }
+                let quay = crate::blueprint::blueprint(kind).quay;
+                // Its yard where its small letters are, as `/map` writes
+                // a game's; else toward the first street it has.
+                let mut marked: Vec<GridCoord> = run.iter().filter(|&&(c, r)| char_at(c, r).is_ascii_lowercase()).map(|&(c, r)| at(c, r)).collect();
+                marked.sort_by_key(|t| (t.x, t.y));
+                let yard = |f: u8| World::yard_of(&tiles, kind, f).map(|mut y| { y.sort_by_key(|t| (t.x, t.y)); y });
+                let facing = (0..4)
+                    .find(|&f| !marked.is_empty() && yard(f).as_ref() == Some(&marked))
+                    .or_else(|| (0..4).find(|&f| world.driveway_for(&tiles, kind, f).is_some() && (!quay || world.berth_at(&tiles, kind, f).is_some())))
+                    .unwrap_or(2);
+                world.raise(kind, tiles, facing);
             }
         }
 
-        for row in [0, h] {
-            for col in [0, w] {
-                world.reveal_around(at(col, row));
-            }
-        }
         // Every network leads off the map: the first road of each, reading
         // west to east down the columns, is an exit, and everything it
         // reaches is joined. A real place cut out of a map is many.
@@ -179,6 +191,12 @@ pub fn build(world: &mut World, dir: &Path) {
         let title = notes.first().map(|n| n.trim_start_matches('#').trim().to_string()).unwrap_or_else(|| name.clone());
         placed.push(Placed { name, title, x: x0, y: 0, w, h });
         x0 += w + GAP;
+    }
+    // A town written by hand stands as written: no site waits for its
+    // materials.
+    let sites: Vec<_> = world.objects.iter().filter(|e| matches!(e.object, GameObject::Building(ref b) if b.site.is_some())).map(|e| e.id).collect();
+    for id in sites {
+        world.finish(id);
     }
     println!("fixtures: built {} from {}", placed.len(), dir.display());
     let _ = PLACED.set(placed);
@@ -196,10 +214,12 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
             let road = world.road_node_at(GridCoord { x: tx, y: ty }).and_then(|id| world.objects.get(id));
             let built = world.occupied.get(&(tx, ty)).and_then(|&id| world.objects.get(id));
             out.push(match (road.map(|e| &e.object), built.map(|e| &e.object)) {
-                // A building is its letter on every tile, its driveway
-                // included, which is road on its own tile; its yard is
-                // worked out from its shape, as the town grid does.
-                (_, Some(GameObject::Building(b))) => letter(b.kind),
+                // A building is its letter on every tile, its yard's in
+                // small letters, where the game lays its lot.
+                (_, Some(GameObject::Building(b))) => match World::yard_of(&b.tiles, b.kind, b.facing) {
+                    Some(yard) if yard.contains(&GridCoord { x: tx, y: ty }) => letter(b.kind).to_ascii_lowercase(),
+                    _ => letter(b.kind),
+                },
                 (Some(GameObject::RoadNode(n)), _) => if n.road { '#' } else { '=' },
                 _ => match world.terrain.get(&(tx, ty)) {
                     Some(TerrainType::Sea | TerrainType::Water) => '~',

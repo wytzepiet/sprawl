@@ -6,13 +6,14 @@ import { Atlas } from "./atlas";
 import { grain } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
-import { flatPolygons, PAVED_Z, pastSeam, RIM } from "./town/draw";
-import { roadShape } from "./town/dressing";
+import { flatPolygons, PAVED_Z, RIM } from "./town/draw";
+import { keyOf, runsOn, shapeOf, type Surface } from "./town/surface";
 import { ROAD_Z } from "./objects/roadGeometry";
 
 /**
- * Road tiles, every one the same square, the road drawn on it. Each shape
- * a tile's arms make is baked once into a slot of one shared texture: in
+ * Asphalt tiles, every one the same square, its asphalt drawn on it: a
+ * road's, a drive's, a yard's (`town/surface.ts`). Each shape a tile's
+ * asphalt takes is baked once into a slot of one shared texture: in
  * its first channel how far each point lies inside the road's outline,
  * negative beyond it, so a pixel off the road is dropped; in its second,
  * how far inside its kerbs, so the road rolls over them as the paving
@@ -29,14 +30,10 @@ const ORIGIN = -1.25;
 const SPAN = 1.5;
 /** How far a kerb running on into the next tile is carried past its end. */
 const RUN_ON = 0.5;
-type Ways = [number, number, boolean][];
-
-/** The key a road shape is baked under. */
-const keyOf = (ways: Ways) => ways.map(([dc, dr, on]) => `${dc}${dr}${on ? "+" : ""}`).sort().join(",");
 
 /** A road shape's two channels: how far inside its outline, and its kerbs. */
-function bake(ways: Ways): [Float32Array, Float32Array] {
-  const flat = flatPolygons(roadShape(ways), 0);
+function bake(surface: Surface): [Float32Array, Float32Array] {
+  const flat = flatPolygons(shapeOf(surface), 0);
   const density = SLOT / SPAN;
   // How far inside the road's outline, and its kerbs.
   const outline = coverage(flat, kerbDistances(kerbsOf(flat), ORIGIN, ORIGIN, density, SLOT, SLOT), ORIGIN, ORIGIN, density, SLOT, SLOT);
@@ -44,7 +41,7 @@ function bake(ways: Ways): [Float32Array, Float32Array] {
   // and one running on into it runs on past the road's end, so it rounds
   // over straight across the seam, as the next tile's own kerb does there,
   // not round its end.
-  const past = pastSeam(ways);
+  const past = runsOn(surface);
   const kerbs = kerbsOf(flat, (a, b) => !past(a, b)).map(({ a, b, inward }) => {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
     const [ux, uy] = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
@@ -169,9 +166,10 @@ export class RoadTiles {
     for (const kind of this.kinds) show(scene, kind.mesh);
   }
 
-  /** The tile at (x, y) a road of these arms, in place of whatever was. */
-  set(key: string, x: number, y: number, through: boolean, ways: Ways) {
+  /** The tile at (x, y) asphalt of this shape, in place of whatever was. */
+  set(key: string, x: number, y: number, surface: Surface) {
     this.delete(key);
+    const through = surface.through;
     const kind = this.kinds[+through];
     const index = kind.keys.length;
     if ((index + 1) * 16 > kind.matrices.length) {
@@ -183,7 +181,7 @@ export class RoadTiles {
       setThinInstances(kind.mesh, kind.matrices, capacity);
     }
     kind.matrices.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x + 1, y + 1, 0, 1], index * 16);
-    kind.slots[index] = this.atlas.slotOf(keyOf(ways), () => bake(ways));
+    kind.slots[index] = this.atlas.slotOf(keyOf(surface), () => bake(surface));
     kind.keys.push(key);
     kind.dirty = true;
     this.at.set(key, { through, index });

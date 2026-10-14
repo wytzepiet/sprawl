@@ -1,6 +1,5 @@
 import { createEffect, createSignal, For, on } from "solid-js";
 import { useGame } from "../state/gameObjects";
-import { setTreeOpen } from "./SkillTree";
 import { setBoardOpen } from "./Board";
 
 /** The level's ring, in its own 56-unit box. */
@@ -15,10 +14,9 @@ const DRIP_MS = 1600;
  *
  * The level is the town's GDP to date: the value it adds, landing as
  * each meal is served, each tank filled, each crop cut and each shift at
- * a desk worked. A tap opens the tree, where its points are spent.
- * The purse is the town's coins, stepped at the border: a harvest sold to
- * the world, a lorry of crates bought from it, a placement; a tap opens
- * the town's books. The coins are on the map first, so what comes into
+ * a desk worked. The purse is the town's coins, stepped at the border: a box
+ * sold to the world as the ferry casts off, a box bought from it as it
+ * lands; a tap opens the town's books. The coins are on the map first, so what comes into
  * the purse drips up out of it as it lands: an event you could have
  * watched, never a rate.
  */
@@ -48,7 +46,7 @@ export default function GrowthMeter() {
         {() => <div data-glass="meter" data-dye="#57A773" class="drip absolute right-[70px] top-3 h-7 w-[38px] rounded-[14px] pointer-events-none" />}
       </For>
 
-      <button onClick={() => setTreeOpen(true)} class="press ink absolute right-[168px] top-[-2px] grid h-14 w-14 place-items-center rounded-full cursor-pointer" title={`Level ${growth().level}: the skill tree (L)`}>
+      <div class="ink absolute right-[168px] top-[-2px] grid h-14 w-14 place-items-center rounded-full" title={`Level ${growth().level}`}>
         <svg class="absolute inset-0 -rotate-90" viewBox="0 0 56 56" aria-hidden="true">
           <circle cx="28" cy="28" r={R} fill="none" stroke="rgb(var(--ink) / 0.12)" stroke-width="3" />
           <circle
@@ -58,7 +56,7 @@ export default function GrowthMeter() {
           />
         </svg>
         <span class="serif text-[21px]">{growth().level}</span>
-      </button>
+      </div>
       <button onClick={() => setBoardOpen((o) => !o)} class="ink absolute right-0 top-0 flex h-[52px] w-[166px] items-baseline justify-end gap-1.5 pr-5 pt-[9px] cursor-pointer" title="The town's books">
         <span class="serif text-[28px] font-light tabular-nums" classList={{ "!text-red-500": low() }}>{Math.floor(treasury()).toLocaleString()}</span>
         <span class="soft text-xs font-semibold">coins</span>
@@ -68,7 +66,7 @@ export default function GrowthMeter() {
       </For>
       {/* What the day has done, beneath. */}
       <div class="soft serif italic absolute right-5 top-[58px] text-[13px] whitespace-nowrap">
-        {low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today`} · GDP {Math.floor(growth().gdp)}
+        {low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today`} · GDP today {Math.floor(growth().gdp)}
       </div>
     </div>
   );

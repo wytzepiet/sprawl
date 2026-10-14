@@ -1,8 +1,9 @@
 # Shipping: lines, boxes, yards and the sea
 
 Status: direction, 2026-10-10, argued at length and liked; the numbers are
-open. Nothing built but the port and the ship's voyage of `world/sea.rs`,
-which this replaces. Gathers what `trade.md` §Shipping said and the sea of
+open. The ferry harbour is built (§Built: the ferry harbour, at the end);
+the container port, lines between harbours, the planner, charters and the
+sea's lanes are not. Gathers what `trade.md` §Shipping said and the sea of
 `multiplayer.md` §2.1, brought up to date. `trade.md` keeps the money:
 coins, the world's prices, listings, contracts, top-up rules.
 
@@ -53,21 +54,20 @@ There is no trucking company (`shelved.md`, haulers); a depot is its own
 haulier.
 
 A lorry drives to the harbour, hitches a full box from the yard, drives it
-home and unloads it into the depot's stock; the empty stays at the depot.
-Imports are as fast as the town's lorries and the road from the harbour
-make them, which is the traffic game.
+home, backs it under the depot's canopy and unloads it into stock, and
+drives off bobtail. Imports are as fast as the town's lorries and the road
+from the harbour make them, which is the traffic game.
 
-**Empties ride back, and are filled when they can be.** Real shipping moves
-about a fifth of its boxes empty, and tries hard not to. Here, the next
-time a lorry drives to the harbour it takes an empty with it, drop and
-hook: it drops the box in the yard and hitches the next full one, so an
-empty costs no trip of its own. If the depot has something to export the
-empty is filled with it first and goes back full (a street turn, in the
-trade). A town that buys and sells carries something both ways on every
-trip; a town that only buys drives empties about, and a depot whose lorry
-never goes back gathers a stack of them, in sight. Exports are the same in
-reverse. Later the world may charge less for what rides in a box that
-would have gone back empty, as lines sell their backhaul cheap.
+**A box is only ever full** (2026-10-11; supersedes the empties of the
+first direction, which rode back and were filled by street turns). The
+world makes a box loaded on the ferry for an import; a depot makes one
+when an export is ready, and its lorry pulls it out from under the
+canopy; a maker's yard loads one for a lorry that comes bobtail. A box is
+gone once it is unloaded into a depot or carried off by the ferry. A lorry
+with nothing to take drives to the harbour bobtail. Why: a box is drawn
+by what is in it, and an empty has nothing in it, so a tank drew as a
+tipper; and needing an empty to export was not fun. With boxes only ever
+full a box's look never changes.
 
 **Everything comes boxed at first.** Crates and timber in boxes, fuel in
 tank boxes, gravel and cement in lined bulk boxes, on the same sailings
@@ -226,3 +226,136 @@ is late, visibly, and the planner replans what was booked on it.
    "the mayor never owns a ship".
 9. The sea's small numbers: the use stock's drain, the four costs of the
    search, the passing width; the ferry's deck and the first sailings.
+
+## Built: the ferry harbour
+
+What runs, as of 2026-10-10 (`world/sea.rs`, `haul.rs`), and where it
+parted from the direction above.
+
+- **The harbour** is a kind like any other, all yard, 3 along the quay
+  and 2 in, with its back to the sea and six tiles of open sea straight
+  out behind the middle of it, which is the berth. Down its middle a
+  lane runs from its gate, the one way in, to the ramp, and nothing
+  stands in it: what comes off the ferry drives straight up it to the
+  street. Either side of the lane is the trailer park, four docks a
+  side, and in the corners on the quay the tug's stand and the
+  terminal. It costs no timber: it is where timber first comes in. Its
+  street is the town's way out: a road that reaches a harbour is joined,
+  and one that reaches none is drawn red. The edge, its lorries and the
+  port's call-driven ship are gone.
+- **The quay is any paving at the water.** A built tile at the water's
+  edge is drawn as water under it: the beach, cliff and foam step back,
+  and the paving's edge is a stone wall straight down, capped
+  (`town/draw.ts`, `TerrainChunks.ts`). The berth is a link span from the
+  quay onto the ferry's land end under a gantry, two dolphins it lies
+  between, a walkway out to them and bollards along the quay
+  (`BuildingObject.tsx`). The rest of the shore stays rock and sand: only
+  what the town paves becomes quay.
+- **The ferry is double-ended**, as small island ferries are: it sails in
+  one end first, lands its ramp on the quay, and sails out the other end
+  first, so it never turns in the harbour and needs no room to. The
+  world's ferries, one a call every 3:20 at most (two where the edge is
+  far, passing at sea, one at the ramp at a time), on the line's
+  timetable: out along a
+  real way over the water to the map's edge and back (`shipping/`,
+  docs/plan-sea.md), an hour and a quarter at the ramp, half an hour
+  beyond the edge, the round on the company's clock (50 minutes times a
+  power of two: 3:20 on the test street, 6:40 from seed 7's home coast);
+  first call half an hour after the harbour stands, on time, the ferry
+  already on its way in when the harbour is built. It leaves the world
+  with what was booked for it and the settlers waiting to come, and
+  sails on time with whatever the tug got aboard; boxes it could not
+  land ride round again.
+- **The deck is the drawing**: fifteen slots, three lanes of five, a box
+  or two settlers' cars a slot. Settlers board when the ferry leaves the
+  world, roll off one every few seconds after it berths, and drive home
+  from the harbour's street.
+- **The park is the yard's docks.** A box stands in a dock where a
+  docked lorry's trailer would. A lorry backs into a free dock to drop
+  what it brought, moves along to the box it came for, hooks it, and
+  drives home: drop and hook. The tug only takes a dock nobody holds.
+- **The tug** shunts one box at a time: to the box, then with it. Off
+  the ferry it backs bobtail up the ramp, tows the box down it and up
+  the lane past a free dock and backs it in, so the box stands with its
+  hitch to the lane for a lorry; onto the ferry it pulls a box out of its
+  dock into the lane and backs it down the lane and up the ramp, the box
+  leading, to the deck's free slot nearest the sea end.
+  It starts only what it can finish before the ferry sails.
+- **The depot's canopy bay.** The depot's yard is laid as the
+  harbour's park (`lots::park`): a lane straight in from a gate in the
+  middle of its front, rows of docks either side. Over each side a roof
+  on posts, from the hall's wall over the boxes, the cabs out in the
+  light (`town/dressing.ts`, `canopies`). A lorry home from the
+  harbour backs its box fully under it; the box is unloaded into stock
+  there and is gone, and the lorry drives off bobtail. For an export it
+  backs in bobtail and pulls out with a full box. A lorry fetches only a
+  box its depot has room for whole.
+- **Lorries are bought.** A depot comes with one and can import three
+  more, forty coins each (`BuyLorry`): throughput at the border is a
+  thing the mayor buys and can see, and four lorries through one
+  junction is a jam they made.
+- **A maker's load.** A bobtail lorry, from a depot that sells a good
+  or is short of it, fetches a box of it from a maker's yard (a farm, a
+  sawmill): home while the depot is short, else straight to the harbour.
+- **The lorry** is tapped (`Send`) or has standing orders (`Standing`).
+  With either it goes when a box for its depot, or for the town, stands
+  in a park, or when its depot has something to sell. The first lorry is
+  tapped by hand; standing orders are one toggle on the depot.
+- **Coins** cross at the harbour: an import is paid as its box lands in
+  the park, an export as the ferry casts off with it, each a lump on the
+  harbour. Booking checks the treasury against what is already booked.
+- **The starter pack** is the first harbour's first sailing: three boxes
+  of timber, one of crates, one of fuel, every box the town's (for the
+  first depot's lorry to come), the world's gift. The town's first depot
+  stands at once; everything after it is a site.
+- **Rules** on a depot, a good each: keep above, fill up to, sell over.
+  Under the floor, counting what is booked, at sea, parked or on a hitch
+  for it, boxes enough to fill it are booked on the next sailing. Over the
+  sell line, what is over goes out a box at a time, once it is a quarter
+  of one. A new depot comes with rules for timber, crates and fuel.
+- **Stone** (2026-10-10): a bulk good, twenty to a box, carried in the
+  same box as everything else and drawn as a tipper heaped grey. The
+  starter pack brings one box of it, for the first streets. A depot's
+  first rules leave stone out: the opening teaches timber, and the first
+  site that takes stone, finding none, offers the order and the rule.
+- **The stalled site offers its fix.** A site's card lists each material
+  it waits on and where it is: on a van, in stock at a depot, in a
+  maker's yard, in the trailer park, at sea, booked. Where it is stuck,
+  the fix is one tap: a box in the park and no standing orders, "Send
+  the lorry"; nothing in town and nothing coming, "Order stone", with how
+  many boxes, when they land and what they cost; and a depot with no rule
+  for it, "Keep 20 in stock".
+- **Boxes per good**: a hundred crates, fifty tanks of fuel, twenty of
+  timber or stone. Nothing is boxed by class yet beyond the drawing: tank boxes
+  and lined bulk boxes are the same box.
+- **A box is drawn by what is in it** (`sea.ts`): crates in a dry van,
+  ribbed across the roof, its doors a pale band at the back; fuel in a
+  silver tank between two end frames; timber loose in an open tipper,
+  logs as far along it as the box is full (a heap, for stone or gravel,
+  is ready for a loose good to use). Each in its good's colour as the
+  panels have it (`GOODS`). Seen from above, so all of it is on the top.
+- **Lanes** (2026-10-10, the design above, `shipping/lanes.rs`): a
+  line's ways are reserved on the map as lanes, one way in open water,
+  the way back a tile clear of the way out on its left, so ferries pass
+  port to port; later ways take a lane going their way, so trunks form.
+  Water is shared both ways only where there is no room, within two
+  tiles of land, and on a berth's approach. Where lanes share or cross
+  water is a junction, taken as a road junction is, by the same manager
+  with its own rule: a crossing by the road's right-hand rule, narrow
+  water one way at a time (a convoy, then the other side, as Suez runs),
+  a berth's approach one ship at a time. A ship asks a braking distance
+  out and stops at the mouth when it may not go on, in sight, late on
+  its timetable; a ferry whose berth is taken waits at the mouth of the
+  approach, not beyond the edge. The lanes are drawn faint on the flat
+  view and the minimap, so the sea's traffic can be read off the map:
+  arrows the way a lane runs, two-way water dashed, crossings marked.
+  Lanes keep to the grid as roads do (2026-10-12, the player's call):
+  rows, columns and diagonals, bends of 45° steps rounded as a car
+  rounds a corner but as wide as a ship turns, close bends one sweep,
+  so a lane is a map feature you can read and the ship sails the lane
+  the map shows.
+  Not built from the design: heading in the search state, the use stock
+  that fades, following by tile, the berth as a lot.
+- **Seeing it**: `GET /sea` gives every shipment, timetable, park and
+  lorry; `bun run act send|standing|order|sell` work the border by hand;
+  `the_opening_from_the_harbour` plays the whole opening as a test.

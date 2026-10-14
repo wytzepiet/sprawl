@@ -31,8 +31,6 @@ impl World {
         self.roads.insert((coord.x, coord.y), id);
         self.laid += laid as u32;
         self.unsettle_round(coord);
-        let beyond = !self.revealed.contains(&crate::world::chunk_of(coord));
-        self.network.set_exit(id, beyond);
         id
     }
 
@@ -135,10 +133,10 @@ impl World {
         // from is laid, and nothing on the building's tile.
         if let Some(id) = self.claimed_plot_at(to) {
             self.place_road_of(from, road, true);
-            self.set_door(id, Some(crate::protocol::Door { tile: to, street: from }));
+            self.door_through(id, from, to);
             // Reached, as by a survey road: a depot's fleet and a farm's
             // land come with the door, not with the first call.
-            self.open_door(id);
+            self.orient(id);
             return;
         }
 
@@ -162,17 +160,20 @@ impl World {
             && !node.outgoing.contains(&from_id) {
                 node.outgoing.push(from_id);
             }
-
+        // A new arm on a door's street may make its drive a hairpin.
+        self.unsettle_round(from);
+        self.unsettle_round(to);
     }
 
     /// Lay a street along a path, both ways, with no player-input checks:
-    /// the survey's streets and test worlds.
+    /// test worlds.
+    #[cfg(test)]
     pub fn place_road_path(&mut self, path: &[GridCoord]) {
         self.place_road_path_of(path, false);
     }
 
     /// Lay a street or a road along a path and connect consecutive nodes
-    /// both ways. Free: the survey's roads are not the mayor's tiles.
+    /// both ways. Free: a fixture's roads are not the mayor's tiles.
     pub fn place_road_path_of(&mut self, path: &[GridCoord], road: bool) {
         if path.len() < 2 {
             return;
@@ -230,6 +231,11 @@ impl World {
         for (x, y) in [(a, b), (b, a)] {
             if self.edges.contains_key(&(x, y)) {
                 self.remove_edge(x, y);
+            }
+        }
+        for n in [a, b] {
+            if let Some(at) = self.objects.get(n).and_then(|e| e.position) {
+                self.unsettle_round(at);
             }
         }
     }

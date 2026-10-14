@@ -12,22 +12,15 @@ best. The milestones below remain the shape of the whole.
 
 ## Where we are (2026-10-10)
 
-Built: roads and streets, one-way, the tree as the build, buildings
-painted a tile at a time with the hand's dots, residents with needs and
-commutes, call-outs for stock with a warehouse and trucks from the edge,
-the supermarket, the farm with its land and tractor, the port filled by
-the world's ship on call, kerb parking before shops, offices and flats,
-day and night, the island's terrain, coast, trees and light. Milestone 0
-is done: nothing inside a town has a price, a buyer takes the nearest
-seller with stock by road, people stay in their own town, and coins move
-only when goods cross the border, bought from and sold to the world
-automatically until the player's trade replaces it.
-
-Decided on 2026-10-10 and not built: every trade across the border is
-the player's, by hand or by a rule on a depot; every shipment can be
-followed; depots keep everything; buildings are built from materials a
-lorry brings. Still to build from 2026-09-23: the harbour as the door
-with the world's ferry, sites, the tapped lorry.
+Built: roads and streets, one-way, buildings painted a tile at a time
+with the hand's dots, residents with needs and commutes, call-outs for
+stock, the supermarket, the farm with its land and tractor, the
+sawmill, kerb parking before shops, offices and flats, day and night,
+islands in one ocean, coast, trees and light. Milestone 0 is done, and
+most of milestones 1 and 2: the ferry harbour is the only door
+(`shipping.md` §Built), sites wait for their timber, the tapped lorry
+and its standing orders, orders by hand and top-up rules on depots,
+every shipment followable.
 
 Not built, unchanged: parking past the kerb, power, fire, hospital, the
 advisor, road speed and priority, levels, trains, multiplayer,
@@ -61,13 +54,12 @@ each playable on its own.
    company's ferry on a timetable, its deck as many cars and trailers as
    fit, carrying settlers in their cars and the world's trailers. The
    town's lorries hitch a trailer in the park and fetch it to a depot;
-   empties go back with the next trip, filled with an export when there
-   is one. No outside vehicle drives the town. The road's edge, the generated roads
+   a box is only ever full, and the lorry goes back bobtail or with an
+   export. No outside vehicle drives the town. The road's edge, the generated roads
    and the fog go (`shelved.md`, 2026-09-23).
-2. Drafts (`game.md` §Drafts): every placement and demolition a draft
-   until committed, blue and reserved, drawn on the map with its bill;
-   commit, undo, discard. A draft takes up space and is wired into
-   nothing.
+2. Undo (`game.md` §Undo): every placement and demolition done at once,
+   and the last few minutes taken back with what they paid. (Drafts were
+   built here first, and shelved: `shelved.md`.)
 3. The general depot, holding a little of every class, and sites: a
    placement waits for its materials, timber first, a lorry brings them
    from the depot, and it goes up as they land. A building's cost is a
@@ -102,7 +94,7 @@ over the horizon without you.
 - A sawmill by the forest and a quarry on the mountain: materials made
   in town, called for pickup, carried to the nearest depot with room.
 - The warehouse, the tank farm and the bulk yard: much of one class.
-- Charters: a tanker or a bulker for a shipload, landing at the
+- Charters (after the container port, `plan-sea.md`): a tanker or a bulker for a shipload, landing at the
   harbour's berth for its class, and the standing charter for a flow
   that recurs (`shipping.md`).
 - A full depot stops what fills it, and is seen.
@@ -127,7 +119,7 @@ the high street.
 ## Milestone 5: Other people (≈ 10 days)
 
 - Deployment: the server on a VPS, the client built, reconnects.
-- Several towns on one island, each with a build and a harbour; roads
+- Several towns on the islands, each with a build and a harbour; roads
   between them; `multiplayer.md` §4's claim.
 - The container port, which is the Exchange: cranes, a container yard,
   container ships, and the trade board it opens: listings, standing

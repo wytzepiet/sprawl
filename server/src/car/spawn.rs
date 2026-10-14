@@ -2,7 +2,6 @@ use crate::car::{nose, physics, tail, ACCELERATION, CRUISE_SPEED, LOT_SPEED, MIN
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::protocol::{EntityId, GameObject, Trip};
-use crate::world::pathfinding;
 use crate::world::World;
 
 /// Send a parked car out to a spot at a building, owner aboard. It leaves
@@ -23,11 +22,32 @@ pub fn start_trip(
     now: GameTime,
     until: GameTime,
 ) -> bool {
+    let leaves = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) => c.spot,
+        _ => None,
+    };
+    let out = world.way_out(car_id).unwrap_or_default();
+    depart(world, events, car_id, out, leaves, from_node, dest_building, now, until)
+}
+
+/// A trip out by a given way: lot nodes, the street node last, from where
+/// the car stands (`leaves`).
+#[allow(clippy::too_many_arguments)]
+pub fn depart(
+    world: &mut World,
+    events: &mut EventQueue,
+    car_id: EntityId,
+    out: Vec<EntityId>,
+    leaves: Option<crate::protocol::Pose>,
+    from_node: EntityId,
+    dest_building: EntityId,
+    now: GameTime,
+    until: GameTime,
+) -> bool {
     let (owner, role) = match world.objects.get(car_id).map(|e| &e.object) {
         Some(GameObject::Car(c)) if c.trip.is_none() => (c.owner, c.role),
         _ => return false,
     };
-    let out = world.way_out(car_id).unwrap_or_default();
     let backs_out = world.backs_out(car_id);
     let leaving = world.kerb_stretch(car_id);
     let from_node = out.last().copied().unwrap_or(from_node);
@@ -67,31 +87,7 @@ pub fn start_trip(
     let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
     let backing = backing(backs_out, backs_in, route.len());
     let stretches = [leaving, world.kerb_stretch(car_id)];
-    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, stretches, now);
-    true
-}
-
-/// A depot's lorry sets out for the edge of the map: out of its dock and
-/// along the roads to a node beyond the frontier, where it leaves the
-/// map for a while. No place is claimed at the far end; there is none.
-pub fn leave_for_edge(world: &mut World, events: &mut EventQueue, car_id: EntityId, from_node: EntityId, exit: EntityId, now: GameTime) -> bool {
-    let owner = match world.objects.get(car_id).map(|e| &e.object) {
-        Some(GameObject::Car(c)) if c.trip.is_none() => c.owner,
-        _ => return false,
-    };
-    let out = world.way_out(car_id).unwrap_or_default();
-    let backs_out = world.backs_out(car_id);
-    let leaving = world.kerb_stretch(car_id);
-    let from_node = out.last().copied().unwrap_or(from_node);
-    let path = match pathfinding::Routes::from(world, from_node).route_to(exit) {
-        Some(r) if r.len() >= 2 => r,
-        _ => return false,
-    };
-    let from_lot = out.len().saturating_sub(1);
-    let route: Vec<EntityId> = out[..from_lot].iter().copied().chain(path).collect();
-    world.release_spot(car_id);
-    let backing = backing(backs_out, 0, route.len());
-    launch(world, events, car_id, owner, owner, route, from_lot, 0, backing, [leaving, Vec::new()], now);
+    launch(world, events, car_id, owner, dest_building, route, from_lot, to_lot, backing, stretches, leaves, now);
     true
 }
 
@@ -106,10 +102,12 @@ fn launch(
     to_lot: usize,
     backing: Vec<[usize; 2]>,
     stretches: [Vec<EntityId>; 2],
+    leaves: Option<crate::protocol::Pose>,
     now: GameTime,
 ) {
+    let stands = world.pose_held(car_id);
     let first_edge = (route[0], route[1]);
-    let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot);
+    let segment_lengths = world.compute_segment_lengths(&route, from_lot, to_lot, &backing);
     let total_len: f64 = segment_lengths.iter().sum();
     // The lot's edges are the ones into and out of it: as many at each end
     // as there are lot nodes there, since the street node closes each run.
@@ -133,6 +131,9 @@ fn launch(
             route_positions,
             from_lot,
             to_lot,
+            cusps: cusps(&backing, &segment_lengths),
+            leaves,
+            stands,
             backing,
             progress: 0.0,
             speed: 0.0,
@@ -150,10 +151,13 @@ fn launch(
 
     // The driver's `at` points at the car for the whole ride; arrival points
     // it at the destination.
+    // A settler off the ferry, the first time they are anywhere: a
+    // mission may have waited for them.
     if let Some(entry) = world.objects.get_mut(owner)
         && let GameObject::Resident(ref mut r) = entry.object
+        && r.at.replace(car_id).is_none()
     {
-        r.at = Some(car_id);
+        world.missions.stir();
     }
 
     // The run it is setting off along starts here, so the first junction it
@@ -178,6 +182,36 @@ pub fn backing(out: usize, into: usize, len: usize) -> Vec<[usize; 2]> {
         v.push([len - 1 - into, len - 1]);
     }
     v
+}
+
+/// A manoeuvre within a lot, by a way given, all of it lot nodes, its last
+/// `backs` edges backed: a lorry from one dock of a yard to another.
+pub fn manoeuvre(world: &mut World, events: &mut EventQueue, car_id: EntityId, building: EntityId, route: Vec<EntityId>, backs: usize, leaves: Option<crate::protocol::Pose>, now: GameTime) -> bool {
+    let n = route.len();
+    let owner = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() && n >= 4 && backs < n => c.owner,
+        _ => return false,
+    };
+    // Lot nodes all: the first two its way out, the rest its way in.
+    launch(world, events, car_id, owner, building, route, 2, n - 2, vec![[n - 1 - backs, n - 1]], [Vec::new(), Vec::new()], leaves, now);
+    true
+}
+
+/// The stretches of a route of `n` nodes between its changes of gear, as
+/// `(i, j)`: from node i to node j, each driven one way.
+pub fn parts(backing: &[[usize; 2]], n: usize) -> Vec<(usize, usize)> {
+    let mut cuts: Vec<usize> = backing.iter().flatten().copied().filter(|&k| k > 0 && k + 1 < n).collect();
+    cuts.extend([0, n.saturating_sub(1)]);
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts.windows(2).map(|w| (w[0], w[1])).collect()
+}
+
+/// How far along the route each change of gear is, as its physics measures
+/// it: where a vehicle stops and pulls away the other way.
+pub fn cusps(backing: &[[usize; 2]], segment_lengths: &[f64]) -> Vec<f64> {
+    let n = segment_lengths.len();
+    parts(backing, n).iter().skip(1).map(|&(i, _)| segment_lengths[1..=i].iter().sum()).collect()
 }
 
 /// Find the cumulative distance to the start of an edge in a trip's route.

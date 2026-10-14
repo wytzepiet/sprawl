@@ -81,6 +81,8 @@ const MOVING_LINGER_MS = 100;
 /** Work that can wait (`budget.ts`) runs in each tick until this long after
  *  the tick began, leaving a 60 Hz frame room to spare. */
 const WORK_MS = 10;
+/** And at least this share of the time the last frame took. */
+const WORK_SHARE = 0.25;
 
 /** A list of callbacks run in order, each able to take itself off. */
 function hooks() {
@@ -173,7 +175,10 @@ export default function Canvas(props: ParentProps) {
       after.run();
       seen = where();
       if (seen !== was) lastMoved = now;
-      work(now + WORK_MS);
+      // A share of the clock, not of the frame: on a slow device a frame
+      // takes long, and work given a frame's fixed slice falls behind for
+      // good, the town and every update waiting on it.
+      work(performance.now() + Math.max(WORK_MS, delta * WORK_SHARE));
     };
     requestAnimationFrame(frame);
 

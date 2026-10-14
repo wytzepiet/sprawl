@@ -2,7 +2,7 @@ import { onCleanup } from "solid-js";
 import { attachFreeControl, createFreeCamera, disableOrthographicCamera, enableOrthographicCamera } from "@babylonjs/lite";
 import { useEngine } from "./Canvas";
 import { useGame } from "../state/gameObjects";
-import { tool } from "../ui/buildMode";
+import { held, inHand } from "../ui/buildMode";
 import { CHUNK_SIZE } from "./TerrainChunks";
 import { viewExtent, rectOf } from "./view";
 import { following, setFollowing, positionOf } from "../state/selection";
@@ -43,9 +43,13 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
   return Math.min(Math.max(v, lo + half), hi - half);
 }
 
+/** Where the camera looks and how much ground it sees either way, as of
+ *  the last frame; and a way to send it somewhere, for the minimap. */
+export const eye = { x: 0, y: 0, halfW: 15, halfH: 15, go(_x: number, _y: number) {} };
+
 export function OrthoCamera() {
   const { scene, canvas, beforeRender, afterRender } = useEngine();
-  const { send, revealedBounds } = useGame();
+  const { send, island } = useGame();
 
   const camera = createFreeCamera({ x: 0, y: 0, z: 10 }, { x: 0, y: 0, z: 0 });
   camera.nearPlane = 1;
@@ -120,13 +124,12 @@ export function OrthoCamera() {
   updateProjection();
 
   /**
-   * Hold the view inside the surveyed world plus a chunk of margin. Panning off
-   * into unsurveyed ground would only ever show empty grid, and the fog mask is
-   * finite — this is what keeps the camera inside it.
+   * Hold the view over the island's map plus a margin: past it there is
+   * nothing to see.
    */
-  function clampToSurveyed() {
-    const b = revealedBounds();
-    if (b.max_cx < b.min_cx) return; // nothing surveyed yet
+  function clampToIsland() {
+    const b = island();
+    if (b.max_cx < b.min_cx) return; // not heard yet
 
     const m = PAN_MARGIN_CHUNKS;
     const minX = (b.min_cx - m) * CHUNK_SIZE;
@@ -163,6 +166,12 @@ export function OrthoCamera() {
     targetViewHalf = newSize;
   }
 
+  eye.go = (x, y) => {
+    setFollowing(null);
+    targetCamX = x;
+    targetCamY = y;
+  };
+
   // The fixture shots point the camera from outside: straight to a place and
   // a zoom, no travel. Dev only.
   if (import.meta.env.DEV) {
@@ -181,9 +190,7 @@ export function OrthoCamera() {
   function sendViewportIfChanged() {
     const chunk = (v: number) => Math.floor(v / CHUNK_SIZE);
 
-    // A margin beyond the viewport: the fog fade is derived from which chunks
-    // exist, so without it the client cannot tell "unrevealed" from "not asked
-    // for yet" and paints a frontier along the edge of the screen.
+    // A margin beyond the viewport, so the ground is there before it is seen.
     const PAD = 2;
     const minCx = chunk(camera.position.x - viewHalf * aspect()) - PAD;
     const maxCx = chunk(camera.position.x + viewHalf * aspect()) + PAD;
@@ -220,8 +227,9 @@ export function OrthoCamera() {
       aim(camera.position.x, camera.position.y);
       updateProjection();
     }
-    clampToSurveyed();
+    clampToIsland();
     sendViewportIfChanged();
+    Object.assign(eye, { x: camera.position.x, y: camera.position.y, halfW: viewHalf * aspect(), halfH: viewHalf });
     if (perspective && !debugMode) lean(1);
   });
   const stopAfter = afterRender(() => {
@@ -260,7 +268,7 @@ export function OrthoCamera() {
   const onPointerDown = (e: PointerEvent) => {
     // A tool has the left button, so the right one always pans. Without it a
     // build mode is one you cannot move around in.
-    if (tool() !== null && e.button !== 2) return;
+    if (inHand() && e.button !== 2) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     canvas.setPointerCapture(e.pointerId);
 
@@ -342,7 +350,8 @@ export function OrthoCamera() {
   const preventContextMenu = (e: Event) => e.preventDefault();
 
   const onWheel = (e: WheelEvent) => {
-    if (debugMode) return;
+    // A building in hand is turned by the wheel (`Brush`).
+    if (debugMode || held()) return;
     e.preventDefault();
 
     zoomToward(targetViewHalf * (1 + e.deltaY * 0.001), e.clientX, e.clientY);

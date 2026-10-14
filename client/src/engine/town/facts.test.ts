@@ -2,71 +2,71 @@ import { describe, expect, test } from "bun:test";
 import { parseTown } from "./grid";
 import { facts } from "./facts";
 import { dress } from "./dressing";
+import { surfaceAt } from "./surface";
+import { footprints } from "./footprint";
 import { CAR, HALF_W } from "../objects/roadGeometry";
 
 const town = (map: string[]) => parseTown(map.join("\n"));
 
 describe("facts and dressing", () => {
-  test("a shed's end nearest the street is its office", () => {
-    const t = town(["======", "=FFF..", "=FFF..", "......"]);
+  test("a depot's yard is the rows on its street side, as the server lays its lot", () => {
+    const t = town(["......", "======", ".DDD..", ".DDD..", ".DDD..", ".DDD..", "......"]);
     const f = facts(t);
-    expect(f.head(1, 1)).toBe(true);
-    expect(f.head(3, 1)).toBe(false);
-    expect(f.town.tile(1, 1).storeys).toBe(t.tile(1, 1).storeys + 2);
+    for (const c of [1, 2, 3]) {
+      expect([2, 3].every((r) => f.yard(c, r) === "docks")).toBe(true);
+      expect([4, 5].some((r) => f.yard(c, r))).toBe(false);
+    }
+    expect(f.town.tile(2, 2).kind).toBe("paved");
+    // Docks either side of the lane in from the gate, the middle of its
+    // front, four rows of them, each box's tail out at the yard's side
+    // and the way out of it toward the lane; and over each side a canopy.
+    const { docks, canopies } = dress(t, f);
+    expect(t.door!(2, 2)).toEqual([0, -1]);
+    expect(docks.length).toBe(8);
+    for (const d of docks) {
+      expect(Math.abs(Math.abs(d.x - 2.5) - 1.39)).toBeLessThan(1e-9);
+      expect(Math.abs(Math.cos(d.angle) + Math.sign(d.x - 2.5))).toBeLessThan(1e-9);
+      expect([3.45, 3.15, 2.85, 2.55].some((y) => Math.abs(d.y - y) < 1e-9)).toBe(true);
+    }
+    expect(canopies.length).toBe(2);
   });
 
-  test("a depot gives up as much street-side ground as its docks need, the rest is depot", () => {
-    const t = town(["......", "======", "DDDD..", "DDDD..", "......"]);
+  test("a depot whose street runs behind it has its yard there", () => {
+    const t = town(["......", ".DDD..", ".DDD..", ".DDD..", ".DDD..", "======"]);
     const f = facts(t);
-    // Eight tiles need four docks: two tiles of yard, three docks each.
-    const yard = [0, 1, 2, 3].filter((c) => f.yard(c, 2));
-    expect(yard.length).toBe(2);
-    expect(f.yard(0, 3)).toBeUndefined();
-    expect(f.town.tile(yard[0], 2).kind).toBe("paved");
-    const { docks } = dress(t, f);
-    expect(docks.length).toBe(6);
-    expect(docks.every((d) => Math.abs(d.angle + Math.PI / 2) < 1e-9)).toBe(true);
+    expect(f.yard(2, 4)).toBe("docks");
+    expect(f.yard(2, 1)).toBeUndefined();
   });
 
-  test("a depot all on the street keeps its hall and has no yard", () => {
+  test("a depot short of its plot keeps its hall and has no yard", () => {
     const t = town(["......", "======", "DDDD..", "......"]);
     expect(facts(t).yard(0, 2)).toBeUndefined();
   });
 
-  test("a supermarket's car park takes its busy corner, and fills with cars", () => {
-    const t = town(["=.....", "======", "=MMM..", "=MMM..", "=....."]);
-    const f = facts(t);
-    // Six tiles need eighteen cars: two tiles of car park, from the corner.
-    expect(f.yard(1, 2)).toBe("cars");
-    expect(f.yard(2, 2)).toBe("cars");
-    expect(f.yard(3, 2)).toBeUndefined();
-    expect(dress(t, f).cars.length).toBeGreaterThan(8);
+  test("a house a diagonal step from its street has a drive to it on the diagonal", () => {
+    const t = town(["=.H..", ".=...", "..=..", "...=."]);
+    expect(t.door!(2, 0)).toEqual([-1, 1]);
+    expect(surfaceAt(t, 1, 1)!.ways.some(([dc, dr]) => dc === 1 && dr === -1)).toBe(true);
+    // Its cars stand on the drive, between the house and the street.
+    const cars = dress(t, facts(t)).cars.filter((c) => c.x > 1.5 && c.x < 3 && c.y > 0 && c.y < 1.5);
+    expect(cars.length).toBeGreaterThan(0);
   });
 
-  test("a supermarket two tiles each way takes deliveries in a corner cut from it, off the road", () => {
-    const big = town(["=.....", "======", "=MMM..", "=MMM..", "=MMM..", "=....."]);
-    const [service] = facts(big).services;
-    // The cut lies in the shop's tiles (x 1 to 4, y 2 to 5), and the
-    // lorry with it: its tail at the dock, a lorry long along its way.
-    const { x, y, angle } = service.dock;
-    const cab = [x + Math.cos(angle) * 0.65, y + Math.sin(angle) * 0.65];
-    for (const [px, py] of [...service.cut, [x, y], cab]) expect(px >= 1 && px <= 4 && py >= 2 && py <= 5).toBe(true);
-    expect(dress(big, facts(big)).docks.length).toBe(1);
-    const small = town(["=.....", "======", "=MM...", "=MM...", "=....."]);
-    expect(facts(small).services.length).toBe(0);
+  test("a supermarket is a box, all building, square", () => {
+    const t = town(["=.....", "======", "=MM...", "=MM...", "=....."]);
+    const f = facts(t);
+    expect([1, 2].every((c) => [2, 3].every((r) => !f.yard(c, r)))).toBe(true);
+    const [mass] = footprints(f.town);
+    expect(mass.polygons.length).toBe(1);
+    expect(mass.polygons[0][0].length).toBe(4);
   });
 
-  test("a ferry port: an exit road down its side, a yard for one sailing beside it, the terminal in the far corner", () => {
-    const t = town(["~~~~~~", "~~~~~~", ".PPPP.", ".PPPP.", "======"]);
+
+  test("a harbour is open ground all through: a trailer park, no building", () => {
+    const t = town(["~~~~~", "~~~~~", ".PPP.", ".PPP.", ".PPP.", "====="]);
     const f = facts(t);
-    // The exit down the side whose end reaches the street, quay to road.
-    expect([f.yard(4, 2), f.yard(4, 3)]).toEqual(["exit", "exit"]);
-    // Forty cars, eight to a tile: five tiles, the nearest the exit first.
-    expect([1, 2, 3].every((c) => f.yard(c, 2) === "ferry")).toBe(true);
-    expect([f.yard(3, 3), f.yard(2, 3), f.yard(1, 3)]).toEqual(["ferry", "ferry", undefined]);
-    // The ramp at the quay end of the exit.
-    expect(f.ferries).toEqual([{ to: [0, -1], side: [1, 0], x: 4.5, y: 2 }]);
-    expect(dress(t, f).ships.length).toBe(1);
+    for (let r = 2; r <= 4; r++) for (let c = 1; c <= 3; c++) expect(f.yard(c, r)).toBe("park");
+    expect(f.town.tile(2, 3).kind).toBe("paved");
   });
 
   test("a straight street before homes has trees every third tile, a through road none", () => {
@@ -76,12 +76,17 @@ describe("facts and dressing", () => {
     expect(dress(through, facts(through)).trees.length).toBe(0);
   });
 
-  test("a street before homes is parked along its kerbs, a through road not", () => {
-    const street = town(["HHHHHHHHHH", "==========", "HHHHHHHHHH"]);
+  test("a street is parked where the game parks: along the kerb before flats, nose in before shops, before homes not", () => {
+    const street = town(["AAAAAAAAAA", "==========", "SSSSSSSSSS", "..........", "=========="]);
     const cars = dress(street, facts(street)).cars;
-    expect(cars.length).toBeGreaterThan(4);
-    expect(cars.every((c) => Math.abs(c.y - 1.5) - CAR.w / 2 > HALF_W)).toBe(true);
-    const through = town(["HHHHHHHHHH", "##########", "HHHHHHHHHH"]);
+    const along = cars.filter((c) => c.y < 1.5), nosed = cars.filter((c) => c.y > 1.5);
+    expect(along.length).toBeGreaterThan(4);
+    expect(along.every((c) => Math.abs(c.y - 1.5) - CAR.w / 2 > HALF_W && Math.abs(Math.sin(c.angle)) < 1e-9)).toBe(true);
+    expect(nosed.length).toBeGreaterThan(4);
+    expect(nosed.every((c) => Math.abs(c.y - 1.87) < 1e-9 && Math.abs(c.angle - Math.PI / 2) < 1e-9)).toBe(true);
+    const homes = town(["HHHHHHHHHH", "==========", "HHHHHHHHHH"]);
+    expect(dress(homes, facts(homes)).cars.every((c) => Math.abs(c.y - 1.5) > 0.5)).toBe(true);
+    const through = town(["AAAAAAAAAA", "##########", "SSSSSSSSSS"]);
     expect(dress(through, facts(through)).cars.length).toBe(0);
   });
 });

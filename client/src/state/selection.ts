@@ -25,6 +25,8 @@ export function select(id: number | null) {
   setSubject(id);
   setFollowing(id);
 }
+// For `bun run look --select`, which photographs a card.
+(window as unknown as { sprawlSelect: typeof select }).sprawlSelect = select;
 
 /** Where every car is drawn this frame, by id — the cars' own record, so a
  *  click on the map can find the one under it without asking the scene. */
@@ -54,6 +56,8 @@ export function positionOf(id: number): [number, number] | null {
   if (e?.object.kind === "Building" && e.position) {
     return middle(e.object.data as Building);
   }
+  // A car not drawn as one, a ferry on its voyage: the tile it is on.
+  if (e?.object.kind === "Car" && e.position) return [e.position.x + 0.5, e.position.y + 0.5];
   return null;
 }
 

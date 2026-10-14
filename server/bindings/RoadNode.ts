@@ -2,8 +2,8 @@
 
 export type RoadNode = { outgoing: Array<number>, incoming: Array<number>, 
 /**
- * Part of a network that reaches beyond the survey — road immigrants can
- * come in by. Otherwise an island: drawn red, driven by nobody.
+ * Part of a network that reaches a harbour, the door everything comes
+ * in and goes out by. Otherwise an island: drawn red, driven by nobody.
  */
 joined: boolean, 
 /**

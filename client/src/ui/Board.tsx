@@ -1,15 +1,14 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { JSX } from "solid-js";
-import type { BuildingKind, Need } from "../generated";
-import { BLUEPRINTS } from "../blueprints";
+import type { BuildingKind, Good } from "../generated";
+import { BLUEPRINTS, GOODS } from "../blueprints";
 
 /** One day of the town's books: GDP, per kind of building it was added
  *  at, and coins across the border, per good. */
 interface TownPage {
   gdp: Partial<Record<BuildingKind, number>>;
-  sold: Partial<Record<Need, number>>;
-  bought: Partial<Record<Need, number>>;
-  built: number;
+  sold: Partial<Record<Good, number>>;
+  bought: Partial<Record<Good, number>>;
 }
 
 interface Town {
@@ -32,8 +31,7 @@ const num = (v: number) => `${v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}`;
 /**
  * The town's page: the two dials read back by building and by good. The
  * GDP added today, per kind of building, adds up to the level's step; the coins
- * that crossed the border, per good, in and out, and what the mayor
- * built, add up to the treasury's. Beside each line, the same a day over
+ * that crossed the border, per good, in and out, add up to the treasury's. Beside each line, the same a day over
  * the season. docs/trade.md.
  */
 export default function Board() {
@@ -87,24 +85,21 @@ export default function Board() {
           </Section>
 
           <Section title="Coins in at the border" today={sum(t().today.sold)} season={mean(t().season, (p) => sum(p.sold))}>
-            <For each={keys<Need>(t(), (p) => p.sold)}>
-              {(need) => <Line label={need} today={t().today.sold[need] ?? 0} season={mean(t().season, (p) => p.sold[need] ?? 0)} />}
+            <For each={keys<Good>(t(), (p) => p.sold)}>
+              {(good) => <Line label={GOODS[good].label} today={t().today.sold[good] ?? 0} season={mean(t().season, (p) => p.sold[good] ?? 0)} />}
             </For>
           </Section>
 
-          <Section title="Coins out at the border" today={-sum(t().today.bought) - t().today.built} season={-mean(t().season, (p) => sum(p.bought) + p.built)}>
-            <For each={keys<Need>(t(), (p) => p.bought)}>
-              {(need) => <Line label={need} today={-(t().today.bought[need] ?? 0)} season={-mean(t().season, (p) => p.bought[need] ?? 0)} />}
+          <Section title="Coins out at the border" today={-sum(t().today.bought)} season={-mean(t().season, (p) => sum(p.bought))}>
+            <For each={keys<Good>(t(), (p) => p.bought)}>
+              {(good) => <Line label={GOODS[good].label} today={-(t().today.bought[good] ?? 0)} season={-mean(t().season, (p) => p.bought[good] ?? 0)} />}
             </For>
-            <Show when={t().today.built > 0 || t().season.some((p) => p.built > 0)}>
-              <Line label="Built" today={-t().today.built} season={-mean(t().season, (p) => p.built)} />
-            </Show>
           </Section>
 
           <Section
             title="Treasury"
-            today={sum(t().today.sold) - sum(t().today.bought) - t().today.built}
-            season={mean(t().season, (p) => sum(p.sold) - sum(p.bought) - p.built)}
+            today={sum(t().today.sold) - sum(t().today.bought)}
+            season={mean(t().season, (p) => sum(p.sold) - sum(p.bought))}
           >
             <Line label="Holds" today={t().treasury} />
           </Section>

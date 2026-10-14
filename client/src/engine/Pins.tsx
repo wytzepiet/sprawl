@@ -163,7 +163,9 @@ export default function Pins() {
       const b = e.object.data as Building;
       const kind = b.kind;
       const where = seat({ kind, storeys: storeysOf(kind) });
-      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : BLUEPRINTS[kind].tab === "homes" ? null : where.painted ? "paint" : "plate";
+      // Homes say nothing, nor a site, nor a harbour, whose ground is all
+      // yard and no roof.
+      const look: Look | null = !reached(e) || subject() === e.id ? "marker" : BLUEPRINTS[kind].tab === "homes" || b.site || BLUEPRINTS[kind].quay ? null : where.painted ? "paint" : "plate";
       if (!look) continue;
       keep.add(e.id);
       const bucket = `${look}_${kind}`;

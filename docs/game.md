@@ -41,13 +41,14 @@ is reached only by sea.
 
 **The map is mostly sea.** Several islands of different sizes and
 different land, in one connected ocean that every coast can sail to,
-because ships are how towns reach each other and the world. Today's
-generator makes about half the map land, mostly one continent; the target
-is land well under a third of the map, a handful of islands, each with
-coast for a harbour and room for a starting town, some with forest, some
-with mountain, flat land on most, and no coast cut off from the open sea.
-Checked on the first twenty seeds, as `every_seed` checks the starting
-town now (`plan.md`).
+because ships are how towns reach each other and the world. Land is a
+sixth to a quarter of the map, in four to eight islands, the origin's the
+biggest, with the origin forty tiles in from its coast on open grass;
+each island has a character, most grass with some wood, some forest,
+some mountain, and lakes inland but none on the sea. Each island is a
+coast drawn round a centre and the map bent, so no sea is ever shut in
+(`terrain.rs`). `every_seed_is_islands_in_one_ocean` checks it on the
+first twenty seeds.
 
 **The door is the harbour**, built on the coast first, so every town
 starts on the coast and grows inland. It begins as a ferry harbour, a
@@ -56,9 +57,9 @@ shipping company's ferry calls on a timetable: the settlers drive their
 cars off the ramp into town, and the world's trailers are towed off into
 the trailer park, where they wait for the town's own lorries to fetch
 them to a depot. No outside vehicle drives the town's roads; the boxes
-are the world's and the lorries the town's, and an empty goes back with
-the next trip, filled with an export if there is one. What the town
-sells leaves the same way. The ferry's deck is the door's size, and the
+are the world's and the lorries the town's, and a box is only ever full:
+it is gone once unloaded at a depot, and the lorry drives off bobtail.
+What the town sells leaves the same way, in a box loaded at the depot. The ferry's deck is the door's size, and the
 door grows: more sailings, a bigger ferry, then the container port, a
 building of its own with cranes and container ships and the trade board
 (the Exchange), then berths for tankers and bulkers that land fuel or
@@ -82,49 +83,83 @@ Intersections are the skill ceiling: roundabouts, merges, interchanges are
 built from these three things, and your steel lorries share them with the
 school run.
 
-**Roads are instant.** A committed road is there at once, with no crew to
+**Roads are instant.** A road is laid as it is drawn, with no crew to
 wait for, because the network is the thing you iterate on: a shortcut, a
 junction drawn again, and the traffic answering in the same minute. A
 road that waited on a paving crew would also make a jam slow to fix, the
 crew stuck in the jam. What a road takes comes straight out of the depots' stock as it
-is committed: gravel for its base and asphalt for its top, and concrete
+is laid: gravel for its base and asphalt for its top, and concrete
 and steel for a bridge or an overpass, which is the big project you stock
-a big depot for. Until the quarry (`roadmap.md` milestone 3) a road costs
-only the build's tiles. Demolition gives back part of what a road took,
-so trying things is never punished.
+a big depot for. As built, a tile takes a unit of stone off the nearest
+depot's shelf, and what the depots lack the world sends express, dear,
+so a road is never refused (`trade.md` §Building materials). Demolition
+is to give back part of what a road took, so trying things is never
+punished; it does not yet.
 
-## Drafts
+## Undo
 
-**Everything you place or take away is a draft until you commit it.** A
-swipe of the finger is not a hundred tonnes of concrete, and a swipe of
-the demolisher is not half the town. A drafted road or building stands
-on its tiles, blue and translucent, and reserves them, so in a shared
-town nobody else builds there; it joins what it touches, so a house beside
-a drafted street is fine; and it does nothing yet: no traffic on it, nobody
-living in it, no call from it. A drafted demolition is a red tint on the
-real thing, which goes on working until the commit. Beside the draft
-stands its bill: each material it takes against what the depots hold,
-short in red, and the coins for anything that has to be bought in.
+**What the hand does is done at once, and the last few things it did can
+be taken back.** A road is laid as it is drawn and a building is a site
+the moment it is let go; there is no draft and no second step. Instead,
+an Undo button by the toolbar, and Ctrl or Cmd Z, take back the
+player's last action: everything one drag of road laid, a building
+placed, or a demolition. Pressed again, the one before, and so on back.
 
-**Commit** makes it real in one stroke: roads first, then buildings, then
-the demolitions, each as if it had been drawn live. Roads are laid and
-draw their materials; buildings become sites; demolitions come down. What
-the stock cannot cover the bill offers to order, with when it would land,
-and what no longer fits (someone built there meanwhile) stays a draft,
-marked. Undo takes back the last stroke and discard the lot. A draft is
-the player's own and outlives a restart.
+- **What an action is.** A drag is one: every step of a drag of road
+  or of the demolisher's drag, each from where the last ended, is one
+  action; a building placed, or a tap of the demolisher, another.
+- **It gives back what was paid.** The stone a road took goes back on
+  the shelves it came off, and the coins it paid express go back to
+  the purse. A building taken back gives what its site had been
+  brought, and what was on a van on its way to it, to the nearest
+  depot, and what no shelf has room for in coins at the world's price;
+  one that stood, all it took, unless it stood for nothing (the town's
+  first depot). A demolition taken back stands the building again as
+  it stood, its stock and its rules, for nothing.
+- **For five minutes.** An action can be taken back for a quarter of the
+  town's day, five minutes of play. Not a count: what makes an action
+  no longer a slip is that the town has started to use it, and that
+  takes time, not other actions. Five minutes is long enough to see a
+  mistake and short enough that undo is never a demolition with all
+  the materials back.
+- **In order, or not at all.** Undo takes back only the newest action,
+  so what a player built on their own road goes before the road does.
+  What someone else did since is never taken back with it: an action
+  something since rests on is refused, with why, and stays (a street
+  another player's building now opens onto; ground a demolition would
+  stand again on, built on since). A building someone else took down
+  meanwhile has nothing left to undo: it goes from the history, said so,
+  and the next press goes on before it.
+- **Per player, on the server, and only while it runs.** Each player's
+  history is the server's (`server/src/undo.rs`, `World::undo`), and a
+  restart forgets it. What it says, done or refused, comes back to that
+  player alone, as a line of news.
 
-Why it is back after being shelved (`shelved.md`): once building costs
-materials the second step buys something, the bill; and this one is
-lighter. A draft only takes up space. It is never part of the road graph,
-a draft building has no door, and so nothing that runs the town has to
-know drafts exist.
+`bun run act undo` presses it.
 
 ## Buildings
 
 **You place every building, and every building is built from materials
-delivered to it.** Pick a kind from a hotkey menu, tap beside a street,
-and it snaps to the frontage with its lot behind. What stands is a site:
+delivered to it.** A building is a fixed shape, its kind's plot: the
+building and, for a kind with vehicles, its yard on the street side
+(`blueprint.rs` `size` and `lot`). The toolbar's Build opens a menu of
+every kind, each with a picture of it as the town draws it, its name and
+what it is built of. Press on one and drag it onto the map: the menu
+goes, and where it was is a place to let it go and put it back. While
+it is in hand the dots show every place it fits; it turns itself to face
+the nearest street, a harbour to face the sea, and R, the wheel or two
+fingers twisting turn it by hand; the town is drawn as it would be with
+it standing, its drive joined and its pavement laid, the building in
+blue (`TownLayer.hold`); and beside it are what it takes against what
+the depots hold, and, where it may not go, why ("No street before its
+yard", "No berth: its back is not on the sea"). Let go where it fits
+and it is placed at once, a site; anywhere else, nothing happens. The
+rule of where it fits is the server's (`World::fit`), mirrored by the
+hand (`may.ts` `fit`). It is taken down whole, with one tap of the
+demolisher. Its look still joins it to what is round it: a house beside
+a house is a row (`town/layer.ts`).
+
+What stands is a site:
 a dotted outline with one stock, the materials it needs, and a call like
 a shop with an empty shelf. Deliveries land on it, and when the stock is
 full the building stands. Build time is the deliveries. The materials
@@ -148,7 +183,12 @@ play to say, and the rows are where it is tuned.
 **Nobody waits on a mechanic they were not taught.** The first depot
 comes with a top-up rule already on it, drawn over it like any rule:
 keep above so much timber, from the world. The player sees automation
-before they need to understand it, and can change it. And anything that
+before they need to understand it, and can change it; it spends nothing
+until the player gives the depot standing orders, whose switch says it
+buys by the rules, and every box a rule buys is in the news with its
+price ("Depot ordered 100 crates: under its keep line of 80, −44"). A
+town that buys things on its own is automation the player has turned
+on, never a purse that falls by itself. And anything that
 stalls says why where it stalls, with the fix beside it: a site's card
 says "waiting on 12 timber, none in stock" and offers the order, with
 when it would land.
@@ -264,7 +304,7 @@ anything the map cannot show by hand.
 
 ## The opening
 
-1. Build a harbour on the coast.
+1. Build a harbour on the coast: dragged there whole, with its own street.
 2. Build a depot.
 3. Connect them with a road.
 4. A shipment arrives: the starter pack, trailers off the first ferry.
@@ -279,6 +319,29 @@ here, roads move them, this is what arriving looks like. The manual phase
 is the town's one lorry, tapped by hand, until the first lorry with
 standing orders; the lorry stays for good, a slump you can dig out of by
 hand, never a chore.
+
+The opening is the first mission (`missions.md`): its steps are facts
+the server reads off the town and ticks as they come true, and it pays
+when the last is done. The trunk follows it, standing orders, a rule
+for stone, a box sold, and after it the town's situation opens a
+mission when something first matters: a site short of stone asks for a
+quarry.
+
+**What pulls you on after it** is the order board (`missions.md`
+§Orders). The playtest of 2026-10-10 found that once the opening was
+done nothing asked anything of the town, and coins only fell. Now,
+from the first ferry after it, letters come: four mayors of towns
+beyond the map's edge, each a person with a voice, a direction and
+the goods they want, ask for boxes of what the town makes, and every
+third time for something a building it has not built would make. A
+box sold while one is open is marked for that town, rides the lorry
+to the park with the town's crest on it, and sails with the ferry to
+the edge, and the mayor's coins land at the harbour as it casts off,
+over what the world pays. Filling them raises the mayor's standing,
+and so their orders and prices; and Port Aldra, the big city, writes
+only once the town stands well with someone. It is income the player
+earns by choosing what to make, and every bit of it is a box you can
+watch go.
 
 ## Out
 

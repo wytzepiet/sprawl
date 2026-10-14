@@ -43,20 +43,10 @@ pub fn handle_resident_wake(
 ) {
     let Some(r) = resident(world, id).cloned() else { return };
 
-    // Off-map: someone who has not driven in yet. They enter the way
-    // everyone enters — by road, in at the nearest road exit, car and all.
-    let Some(mut at) = r.at else {
-        let entry = position_of(world, r.home)
-            .and_then(|(x, y)| world.entry_node_near(crate::protocol::GridCoord { x, y }));
-        let started = match entry {
-            Some(node) => start_trip(world, events, r.car, node, r.home, now, GameTime::MAX),
-            None => false,
-        };
-        if !started {
-            events.wake(RETRY_MS, id);
-        }
-        return;
-    };
+    // Beyond the sea: someone who has not come yet. They come the way
+    // everyone comes, on the ferry, car and all (`world/sea.rs`), and the
+    // ferry sets them driving.
+    let Some(mut at) = r.at else { return };
 
     // Riding: the trip's arrival is what wakes us next, not the clock.
     if matches!(world.objects.get(at).map(|e| &e.object), Some(GameObject::Car(_))) {
@@ -93,6 +83,9 @@ pub fn handle_resident_wake(
         };
     }
     store(world, id, r.car, &buckets);
+    if buckets.iter().zip(&verdicts).any(|(b, v)| b.need == Need::Fuel && matches!(v, Verdict::Nothing) && b.stock.level < b.stock.cap / 4.0) {
+        crate::missions::sense(world, crate::missions::When::Dry, now);
+    }
 
     // Actionable: can be set out for now, or is right here — where waiting
     // for it to open is the action. Waiting for somewhere else is not; that
@@ -259,7 +252,7 @@ fn verdict_at(
 fn search(world: &World, r: &Resident, at: EntityId, b: &Bucket, now: GameTime, crowd: &Crowd, routes: &mut Option<Routes>) -> Verdict {
     let need = b.need;
     let mut heap: BinaryHeap<Candidate> = world
-        .revealed
+        .built
         .iter()
         .flat_map(|&c| world.buildings_in(c))
         // A home's kitchen is its residents' alone.

@@ -50,15 +50,21 @@ that assert old design are rewritten, not obeyed.
 - Milestone 0 is done (`roadmap.md`): no prices inside a town, the nearest
   seller with stock, people stay in their town, coins only at the border,
   the level as GDP.
-- A ferry harbour was being built in another session when this was
-  written. If it is on `main`, build on it; if it is on an unmerged
-  branch, read it and decide.
-- The road's edge, the generated roads and the fog are still in the code,
-  though shelved; the old port's call-driven world ship is in `sea.rs`.
-- The skill tree is old and is to be switched off.
-- The terrain is about half land, mostly one continent.
-- The client renders with Babylon Lite on WebGPU only, which a cloud
-  container cannot run (`canvas.md`).
+- The ferry harbour is the only door (`shipping.md` §Built): a ferry on a
+  timetable, a tug, a trailer park, boxes hauled by depots' lorries, the
+  starter pack, top-up rules, exports paid as the ferry sails. The edge,
+  the generated roads, the fog and the port's world ship are gone.
+- Goods are split from needs: crates, fuel, timber. Buildings cost timber,
+  not coins, and stand as sites until a van has brought it.
+- The skill tree is switched off: everything unlocked, its screen gone.
+- What the hand lays is laid at once, a building placed whole from the
+  build menu, and undo takes back the last few minutes (`game.md`
+  §Buildings, §Undo); drafts came and went (`shelved.md`).
+- The terrain is islands in one ocean, a fifth of the map land.
+- The client renders with Babylon Lite on WebGPU only, and a cloud
+  container can run it: headless Chromium draws WebGPU in software
+  (SwiftShader), so `look` and `shots` photograph the real game
+  (`canvas.md`).
 
 ## The work
 
@@ -67,8 +73,9 @@ on its own, and is done when it is tested, seen (in the flat view's
 pictures, at least), and its documents say what was built.
 
 1. **The flat view** (`canvas.md`): the game drawn on a 2D canvas from the
-   same state, a script that photographs it headless, and the minimap. Do
-   this first: everything after it can then be seen from the cloud.
+   same state, a script that photographs it headless, and the minimap.
+   Set aside for now: the cloud sees the real game (see above), which was
+   its first reason; the minimap and the far zoom remain its case.
 2. **Terrain** (`game.md` §The island and the door): mostly sea, several
    islands, one connected ocean, a coast with room for a harbour and a
    starting town on each; checked on twenty seeds.
@@ -77,26 +84,32 @@ pictures, at least), and its documents say what was built.
 4. **The ferry harbour as the only door** (`shipping.md` §Harbours): the
    edge, the generated roads and the fog go; the ferry on a timetable, its
    deck as what fits; settlers drive off; the tug; the trailer park; the
-   town's lorries hitch boxes; empties ride back, filled with exports.
-5. **Drafts** (`game.md` §Drafts): placing and demolishing as drafts,
-   reserved, drawn blue and red, with the bill; commit, undo, discard.
+   town's lorries hitch boxes; exports go out the same way (empties
+   were built, then deleted 2026-10-11: a box is only ever full).
+5. **Drafts** (`game.md` §Undo): built, then replaced by placing at once
+   and undo after the player's playtest (`shelved.md`).
 6. **Goods and materials** (`buildings.md`): goods split from needs; the
    general depot; sites that wait for their materials and go up as lorries
    bring them; building costs as rows, timber first; the first depot's
    top-up rule; the stalled site that offers its fix; roads drawing
-   materials from stock once there are any.
+   materials from stock once there are any. *Built 2026-10-10:* costs are
+   rows (`Blueprint::materials`), stone the second material; a site waits
+   for every row and its card offers the fix; roads draw stone from the
+   nearest depots, the rest express from the world (`trade.md` §Building
+   materials). Left: demolition giving back, and asphalt.
 7. **The world as a trader** (`trade.md`): ordering by hand at the harbour,
    top-up rules on depots booking the ferry, the pending shipments as a
    list and pins, the coins landing as the boxes do.
 8. **The starter pack and the tapped lorry**: the opening's four beats from
    nothing (`game.md` §The opening), and standing orders for the lorry.
-9. **Chains** (`buildings.md`): sawmill, quarry, mine, cement works,
+9. **Chains** (`buildings.md`): sawmill and quarry built; mine, cement works,
    steelworks, refinery, the specialist depots; the office and the
    factory go once the chains give the town its work.
 10. **The container port and the network** (`shipping.md`): the Exchange,
     container ships, lines between harbours, the planner with transfers,
     hubs and dues, charters for tankers and bulkers; ships routed over the
-    sea with lanes and blocks.
+    sea with lanes and blocks. Planned in stages in `plan-sea.md`, which
+    cuts the Exchange, charters and dues from this item and says why.
 11. **The new tree**, designed from the roster, with a look of its own.
 
 Further than that is `roadmap.md`: roads that are roads, other players,

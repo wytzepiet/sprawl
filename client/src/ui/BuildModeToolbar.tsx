@@ -1,47 +1,38 @@
 import { createEffect, createSignal, For, indexArray, on, Show } from "solid-js";
 import { follow, LOOSE } from "../engine/spring";
-import { setTool, tool } from "./buildMode";
+import { held, hold, setTool, tool } from "./buildMode";
+import { BLUEPRINTS, GoodIcon } from "../blueprints";
 import { useGame } from "../state/gameObjects";
-import { tree, unlocked } from "../state/tree";
-import { BLUEPRINTS, KINDS, plot, TABS } from "../blueprints";
 import type { Tool } from "../generated";
+import { BuildMenu, menuOpen, setMenuOpen } from "./BuildMenu";
 
-/** What the road shelf holds; all but the street are opened on the tree by name. */
+/** What the road shelf holds. */
 const ROAD_KINDS = [
   { id: "Street", label: "Street", color: "#8FA39A", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM10.75 2h2.5v4.5h-2.5zM10.75 9.75h2.5v4.5h-2.5zM10.75 17.5h2.5V22h-2.5z" },
   { id: "OneWay", label: "One-way", color: "#7A8F86", glyph: "M3 2h2.5v20H3zM18.5 2H21v20h-2.5zM12 3l5.5 6.5h-4V21h-3V9.5h-4z" },
   { id: "Road", label: "Road", color: "#E0B443", glyph: "M2 2h2v20H2zM20 2h2v20h-2zM7.5 2h2.2v4.5H7.5zM7.5 9.75h2.2v4.5H7.5zM7.5 17.5h2.2V22H7.5zM14.3 2h2.2v4.5h-2.2zM14.3 9.75h2.2v4.5h-2.2zM14.3 17.5h2.2V22h-2.2z" },
 ] as const;
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
+const BUILD = "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z";
 const DEMOLISH = "M9 2h6l1 2h4v2.5H4V4h4zM5.5 8h13l-1.2 14H6.7zM9 11v8h2v-8zm4 0v8h2v-8z";
+const UNDO = "M9.5 4 3 10l6.5 6v-4h5a4.5 4.5 0 0 1 0 9H11v3h3.5a7.5 7.5 0 0 0 0-15h-5z";
 const DEMOLISH_COLOR = "#D9483B";
 
-/** A shelf: the roads, or one tab of buildings. Each tool is a `Tool`. */
-type Shelf = "road" | (typeof TABS)[number];
-const SHELVES: { id: Shelf; key: string; label: string }[] = [
-  { id: "road", key: "R", label: "Roads" },
-  { id: "homes", key: "1", label: "Homes" },
-  { id: "shops", key: "2", label: "Shops" },
-  { id: "work", key: "3", label: "Work" },
-  { id: "services", key: "4", label: "Services" },
-];
-
-/** The dock's measure: a slot every 52px, the bar 60 tall; a shelf's
- *  rows rise every 56px above it. */
+/** The dock's measure: a slot every 52px, the bar 60 tall; the road
+ *  shelf's rows rise every 56px above it. */
 const SLOT = 52;
 const BAR = 60;
 const ROW = 56;
 const FIRST_ROW = 86;
 const cx = (j: number) => 30 + SLOT * j;
+/** The slots: the bare hand, the roads, the build menu, the demolisher,
+ *  undo. */
+const SLOTS = ["select", "roads", "build", "demolish", "undo"] as const;
+const at = (s: (typeof SLOTS)[number]) => SLOTS.indexOf(s);
 
-const same = (a: Tool | null, b: Tool | null) => JSON.stringify(a) === JSON.stringify(b);
-const shelfOf = (t: Tool | null): Shelf | null =>
-  t === null || t === "Demolish" ? null : typeof t === "string" ? "road" : BLUEPRINTS[t.Building].tab;
 const road = (t: Tool) => ROAD_KINDS.find((r) => r.id === t)!;
-const label = (t: Tool) => (typeof t === "string" ? road(t).label : BLUEPRINTS[t.Building].label);
-const color = (t: Tool) => (typeof t === "string" ? road(t).color : BLUEPRINTS[t.Building].color);
-const price = (t: Tool) => (typeof t === "string" ? "" : `${BLUEPRINTS[t.Building].price} h`);
-const glyph = (t: Tool) => (typeof t === "string" ? road(t).glyph : BLUEPRINTS[t.Building].glyph);
+/** What a road takes, said under its "i". */
+const ROAD_ABOUT = "Laid at once, on a stone a tile from the nearest depot; with none in stock, the world sends it express, at twice the ferry's price.";
 
 function Glyph(props: { d: string; size: number }) {
   return (
@@ -52,103 +43,79 @@ function Glyph(props: { d: string; size: number }) {
 }
 
 /**
- * The tools, a shelf at a time, as a drawing program groups them: the bare
- * hand, the roads, four shelves of buildings, the demolisher. A shelf
- * shows the last thing taken from it, and picking it up takes that again;
- * its key pressed again takes the next. The bump over it opens the whole
- * shelf, and each thing on it says what it is.
+ * The tools, as a drawing program groups them: the bare hand, the roads
+ * (the last one taken shows, its key again takes the next, the bump over
+ * it opens them all), the build menu, the demolisher, and undo.
  *
  * Drawn as glass that runs together like the hand's dots: the bar, its
- * bumps and a shelf's rows in one goo, under one opacity so it stays
- * glassy; what is built, in its colour, in another at full strength.
+ * bump and the road shelf's rows in one goo, under one opacity so it
+ * stays glassy; what is built, in its colour, in another at full strength.
  */
 export default function BuildModeToolbar() {
-  const { growth } = useGame();
-  const may = (t: Tool) =>
-    t === "Street" ||
-    unlocked(tree(), growth().taken, (e) => (typeof t === "string" ? e.kind === t : e.kind === "Building" && e.building === t.Building));
-  const afford = (t: Tool) => typeof t === "string" || growth().treasury >= BLUEPRINTS[t.Building].price;
+  const { send } = useGame();
+  const [lastRoad, setLastRoad] = createSignal<Tool>("Street");
+  createEffect(() => { const t = tool(); if (t !== null && t !== "Demolish") setLastRoad(t); });
+  const roadInHand = () => tool() !== null && tool() !== "Demolish";
 
-  /** What a shelf holds that the tree has opened. */
-  const tools = (s: Shelf): Tool[] =>
-    (s === "road" ? ROAD_KINDS.map((r) => r.id as Tool) : KINDS.filter((k) => BLUEPRINTS[k].tab === s).map((k) => ({ Building: k }))).filter(may);
-  const shelves = () => SHELVES.filter((s) => tools(s.id).length > 0);
-
-  // The last thing in hand from each shelf, however it got there, which its button shows.
-  const [last, setLast] = createSignal<Partial<Record<Shelf, Tool>>>({});
-  createEffect(() => { const t = tool(), s = shelfOf(t); if (s) setLast((l) => ({ ...l, [s]: t! })); });
-  const face = (s: Shelf) => { const t = last()[s]; return t && may(t) ? t : tools(s)[0]; };
-  /** Picking up a shelf takes its face, or else the first on it the purse covers. */
-  const pick = (s: Shelf) => take(afford(face(s)) ? face(s) : tools(s).find(afford) ?? face(s));
-  const take = (t: Tool) => {
-    if (afford(t)) setTool(t);
-  };
-
-  // The shelf whose menu is open, and the thing on it whose card is.
-  // A press outside the dock puts the menu away.
-  const [menu, setMenu] = createSignal<Shelf | null>(null);
+  // The road shelf, open or not, and the road whose card is.
+  const [shelf, setShelf] = createSignal(false);
   const [about, setAbout] = createSignal<Tool | null>(null);
-  const open = (s: Shelf | null) => { setAbout(null); setMenu(s); };
-  // Whatever picks up another tool — a slot, a key, the eyedropper — puts the menu away.
-  createEffect(on(tool, () => open(null), { defer: true }));
+  const open = (o: boolean) => { setAbout(null); setShelf(o); };
+  // Whatever takes up another tool puts the shelf and the menu away, and
+  // a press anywhere else.
+  createEffect(on(tool, (t) => (open(false), t !== null && setMenuOpen(false)), { defer: true }));
+  createEffect(on(held, (h) => h && setMenuOpen(false), { defer: true }));
   let dock!: HTMLDivElement;
-  window.addEventListener("pointerdown", (e) => { if (!dock.contains(e.target as Node)) open(null); }, { capture: true });
+  window.addEventListener("pointerdown", (e) => {
+    if (dock.contains(e.target as Node)) return;
+    open(false);
+    if (!(e.target as HTMLElement).closest?.("[data-menu]")) setMenuOpen(false);
+  }, { capture: true });
 
+  const undo = () => send({ type: "Undo" });
   const onKey = (e: KeyboardEvent) => {
+    if ((e.target as HTMLElement)?.closest?.("input, textarea")) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") return e.preventDefault(), undo();
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toUpperCase();
-    if (e.key === "Escape") open(null);
-    if (e.key === "Escape" || key === "V") return setTool(null);
+    if (e.key === "Escape") return open(false), setMenuOpen(false), setTool(null);
+    if (key === "V") return setTool(null);
     if (key === "X") return setTool("Demolish");
-    const s = shelves().find((s) => s.key === key);
-    if (!s) return;
-    const all = tools(s.id);
-    if (shelfOf(tool()) !== s.id) return pick(s.id);
-    // Again: the next on the shelf that can be had.
-    const i = all.findIndex((t) => same(t, tool()));
-    const next = [...all.slice(i + 1), ...all.slice(0, i)].find(afford);
-    if (next) take(next);
+    if (key === "B") return hold(null), setMenuOpen(!menuOpen());
+    if (key !== "R") return;
+    if (!roadInHand()) return setTool(lastRoad());
+    // Again: the next road.
+    const i = ROAD_KINDS.findIndex((r) => r.id === tool());
+    setTool(ROAD_KINDS[(i + 1) % ROAD_KINDS.length].id);
   };
   window.addEventListener("keydown", onKey);
 
-  /** The slots: the hand, each shelf, the demolisher. */
-  const slots = () => [null, ...shelves().map((s) => s.id), "Demolish" as const];
-  const width = () => SLOT * slots().length + 8;
-  const active = () => {
-    const t = tool();
-    return t === null ? 0 : t === "Demolish" ? slots().length - 1 : 1 + shelves().findIndex((s) => s.id === shelfOf(t));
+  const width = SLOT * SLOTS.length + 8;
+  const active = () => (held() || menuOpen() ? at("build") : tool() === null ? at("select") : tool() === "Demolish" ? at("demolish") : at("roads"));
+  const lit = () => held() !== null || tool() !== null;
+  const bead = () => {
+    const h = held(), t = tool();
+    return h ? BLUEPRINTS[h.kind].color : t === null ? undefined : t === "Demolish" ? DEMOLISH_COLOR : road(t).color;
   };
-  const held = () => tool() !== null;
-  const bead = () => { const t = tool(); return t === null ? undefined : t === "Demolish" ? DEMOLISH_COLOR : color(t); };
   // The bead slides on a spring, and is drawn out by its own speed: long
   // and thin as it goes, round again as it lands.
   const [beadX, beadV] = follow(() => cx(active()) - 20);
-  const [beadSize] = follow(() => (held() ? 1 : 0.2), { rest: 0.002 });
+  const [beadSize] = follow(() => (lit() ? 1 : 0.2), { rest: 0.002 });
   const stretch = () => Math.min(0.45, Math.abs(beadV()) / 1400);
 
-  /** What the tree says of a thing, and its size; the card's height guessed from their length. */
-  const blurb = (t: Tool) =>
-    Object.values(tree()?.legend ?? {}).find((r) => (typeof t === "string" ? r.effect.kind === t : r.effect.kind === "Building" && r.effect.building === t.Building))?.blurb ?? "";
-  const size = (t: Tool) => (typeof t === "string" ? "" : `${plot(t.Building, 0).size.join("×")} tiles.`);
-  const cardHeight = (t: Tool) => 56 + Math.ceil((blurb(t).length + size(t).length + 1) / 40) * 20;
-
-  /** Every row of every shelf, placed: risen above its shelf when open, sunk into it when not. */
-  const rows = () =>
-    shelves().flatMap((s, si) => {
-      const all = tools(s.id);
-      const isOpen = menu() === s.id;
-      const at = all.findIndex((t) => same(t, about()));
-      return all.map((t, i) => {
-        const info = isOpen && i === at;
-        return {
-          t, open: isOpen, info,
-          w: info ? 300 : 240,
-          h: info ? cardHeight(t) : 44,
-          x: cx(si + 1),
-          bottom: isOpen ? FIRST_ROW + i * ROW + (at >= 0 && at < i ? cardHeight(all[at]) - 44 : 0) : 10,
-          delay: isOpen ? i * 52 : (all.length - 1 - i) * 28,
-        };
-      });
-    });
+  const cardHeight = 56 + Math.ceil(ROAD_ABOUT.length / 38) * 20;
+  /** Every road on the shelf, placed: risen above it when open, sunk into it when not. */
+  const rows = () => {
+    const i = ROAD_KINDS.findIndex((r) => r.id === about());
+    return ROAD_KINDS.map((r, k) => ({
+      t: r.id as Tool, open: shelf(), info: shelf() && k === i,
+      w: shelf() && k === i ? 300 : 240,
+      h: shelf() && k === i ? cardHeight : 44,
+      x: cx(at("roads")),
+      bottom: shelf() ? FIRST_ROW + k * ROW + (i >= 0 && i < k ? cardHeight - 44 : 0) : 10,
+      delay: shelf() ? k * 52 : (ROAD_KINDS.length - 1 - k) * 28,
+    }));
+  };
   /** Each row on its springs, kept by place so a row moves rather than being made again. */
   const sprung = indexArray(rows, (r) => {
     const delay = () => r().delay;
@@ -158,123 +125,111 @@ export default function BuildModeToolbar() {
     const [shown] = follow(() => (r().open ? 1 : 0), { delay, rest: 0.002, feel: LOOSE });
     return { r, bottom, h, w, shown, fade: () => Math.max(0, Math.min(1, shown())) };
   });
-  /** A shelf's bump, risen while its menu is open. */
-  const bumps = indexArray(shelves, (s) => follow(() => (menu() === s().id ? 60 : 50))[0]);
+  /** The road shelf's bump, risen while it is open. */
+  const [bump] = follow(() => (shelf() ? 60 : 50));
 
   return (
-    <div ref={dock} class="fixed bottom-7 left-1/2 -translate-x-1/2 select-none" style={{ width: `${width()}px`, height: `${BAR}px` }}>
-      {/* The glass: bar, bumps, rows, run together (`engine/glass.ts`). */}
-      <div data-glass="dock" class="absolute bottom-0 left-0 rounded-[30px] pointer-events-none" style={{ width: `${width()}px`, height: `${BAR}px` }} />
-      <For each={bumps()}>
-        {(bump, si) => <div data-glass="dock" class="absolute rounded-[9px] pointer-events-none" style={{ left: `${cx(si() + 1) - 11}px`, bottom: `${bump()}px`, width: "22px", height: "18px" }} />}
-      </For>
-      <For each={sprung()}>
-        {(m) => (
-          <div
-            data-glass="dock"
-            class="absolute rounded-[22px] pointer-events-none"
-            style={{ left: `${m.r().x - 22}px`, bottom: `${m.bottom()}px`, width: `${Math.max(0, m.w() * m.shown())}px`, height: `${m.h()}px`, opacity: m.fade() }}
-          />
-        )}
-      </For>
+    <>
+      <BuildMenu />
+      <div ref={dock} class="fixed bottom-7 left-1/2 -translate-x-1/2 select-none" style={{ width: `${width}px`, height: `${BAR}px` }}>
+        {/* The glass: bar, bump, rows, run together (`engine/glass.ts`). */}
+        <div data-glass="dock" class="absolute bottom-0 left-0 rounded-[30px] pointer-events-none" style={{ width: `${width}px`, height: `${BAR}px` }} />
+        <div data-glass="dock" class="absolute rounded-[9px] pointer-events-none" style={{ left: `${cx(at("roads")) - 11}px`, bottom: `${bump()}px`, width: "22px", height: "18px" }} />
+        <For each={sprung()}>
+          {(m) => (
+            <div
+              data-glass="dock"
+              class="absolute rounded-[22px] pointer-events-none"
+              style={{ left: `${m.r().x - 22}px`, bottom: `${m.bottom()}px`, width: `${Math.max(0, m.w() * m.shown())}px`, height: `${m.h()}px`, opacity: m.fade() }}
+            />
+          )}
+        </For>
 
-      {/* What is built, in its colour, as tinted glass of its own on the
-          bar and the rows: the bead in hand, and the open shelf's drops. */}
-      <div
-        data-glass={bead() ? "beads" : undefined}
-        data-dye={bead()}
-        class="absolute rounded-full pointer-events-none"
-        style={{ left: `${beadX()}px`, bottom: "10px", width: "40px", height: "40px", transform: `scale(${beadSize() * (1 + stretch())}, ${beadSize() * (1 - stretch() / 2)})` }}
-      />
-      <For each={sprung()}>
-        {(m) => (
-          <div
-            data-glass="beads"
-            data-dye={color(m.r().t)}
-            class="absolute rounded-full pointer-events-none"
-            style={{ left: `${m.r().x - 18}px`, bottom: `${m.bottom() + m.h() - 40}px`, width: "36px", height: "36px", opacity: m.fade(), transform: `scale(${0.3 + 0.7 * Math.max(0, m.shown())})` }}
-          />
-        )}
-      </For>
+        {/* What is in hand, in its colour, as tinted glass of its own on the
+            bar and the rows: the bead, and the open shelf's drops. */}
+        <div
+          data-glass={bead() ? "beads" : undefined}
+          data-dye={bead()}
+          class="absolute rounded-full pointer-events-none"
+          style={{ left: `${beadX()}px`, bottom: "10px", width: "40px", height: "40px", transform: `scale(${beadSize() * (1 + stretch())}, ${beadSize() * (1 - stretch() / 2)})` }}
+        />
+        <For each={sprung()}>
+          {(m) => (
+            <div
+              data-glass="beads"
+              data-dye={road(m.r().t).color}
+              class="absolute rounded-full pointer-events-none"
+              style={{ left: `${m.r().x - 18}px`, bottom: `${m.bottom() + m.h() - 40}px`, width: "36px", height: "36px", opacity: m.fade(), transform: `scale(${0.3 + 0.7 * Math.max(0, m.shown())})` }}
+            />
+          )}
+        </For>
 
-      {/* What is read and pressed. */}
-      <For each={sprung()}>
-        {(m) => (
-          <div
-            class="absolute overflow-hidden rounded-[22px]"
-            style={{ left: `${m.r().x - 22}px`, bottom: `${m.bottom()}px`, width: `${m.w()}px`, height: `${m.h()}px`, opacity: m.fade(), "pointer-events": m.r().open ? "auto" : "none" }}
-          >
-            <button
-              onClick={() => { take(m.r().t); open(null); }}
-              class={`absolute left-0 top-0 h-11 right-11 flex items-center gap-2.5 text-left ${afford(m.r().t) ? "cursor-pointer" : "opacity-40 cursor-not-allowed"}`}
+        {/* What is read and pressed. */}
+        <For each={sprung()}>
+          {(m) => (
+            <div
+              class="absolute overflow-hidden rounded-[22px]"
+              style={{ left: `${m.r().x - 22}px`, bottom: `${m.bottom()}px`, width: `${m.w()}px`, height: `${m.h()}px`, opacity: m.fade(), "pointer-events": m.r().open ? "auto" : "none" }}
             >
-              <span class="grid w-11 h-11 shrink-0 place-items-center text-white"><Glyph d={glyph(m.r().t)} size={17} /></span>
-              <span class="ink text-[15px] font-semibold whitespace-nowrap">{label(m.r().t)}</span>
-              <span class="soft serif italic font-light text-[15px] whitespace-nowrap">{price(m.r().t)}</span>
-            </button>
-            <button
-              onClick={() => setAbout((a) => (same(a, m.r().t) ? null : m.r().t))}
-              class="press soft serif italic absolute right-2 top-2 w-7 h-7 rounded-full cursor-pointer text-sm"
-              style={{ border: `1.5px solid rgb(var(--ink) / ${m.r().info ? 0.6 : 0.15})` }}
-              aria-label="What is it?"
-            >
-              i
-            </button>
-            <Show when={m.r().info}>
-              <p class="appear soft absolute left-[18px] right-4 top-[46px] m-0 text-[13.5px] leading-[1.45] font-medium">
-                {blurb(m.r().t)} <span class="serif italic">{size(m.r().t)}</span>
-              </p>
-            </Show>
-          </div>
-        )}
-      </For>
-      {/* What the build still allows to be laid, over the road shelf's rows. */}
-      <Show when={menu() === "road"}>
-        <span
-          class="appear serif italic absolute text-sm whitespace-nowrap"
-          classList={{ soft: growth().road_tiles_left > 0, "text-red-500": growth().road_tiles_left === 0 }}
-          style={{ left: `${cx(1) - 14}px`, bottom: `${FIRST_ROW + tools("road").length * ROW}px` }}
+              <button onClick={() => { setTool(m.r().t); open(false); }} class="absolute left-0 top-0 h-11 right-11 flex items-center gap-2.5 text-left cursor-pointer">
+                <span class="grid w-11 h-11 shrink-0 place-items-center text-white"><Glyph d={road(m.r().t).glyph} size={17} /></span>
+                <span class="ink text-[15px] font-semibold whitespace-nowrap">{road(m.r().t).label}</span>
+                <span class="soft inline-flex items-center gap-0.5 serif italic font-light text-[15px] whitespace-nowrap" title="Built of a stone a tile">
+                  <GoodIcon good="Stone" width="13" height="13" />1
+                </span>
+              </button>
+              <button
+                onClick={() => setAbout((a) => (a === m.r().t ? null : m.r().t))}
+                class="press soft serif italic absolute right-2 top-2 w-7 h-7 rounded-full cursor-pointer text-sm"
+                style={{ border: `1.5px solid rgb(var(--ink) / ${m.r().info ? 0.6 : 0.15})` }}
+                aria-label="What is it?"
+              >
+                i
+              </button>
+              <Show when={m.r().info}>
+                <p class="appear soft absolute left-[18px] right-4 top-[46px] m-0 text-[13.5px] leading-[1.45] font-medium">
+                  <span class="serif italic">{ROAD_ABOUT}</span>
+                </p>
+              </Show>
+            </div>
+          )}
+        </For>
+
+        <button
+          onClick={() => open(!shelf())}
+          class="soft absolute grid place-items-center cursor-pointer"
+          style={{ left: `${cx(at("roads")) - 11}px`, bottom: `${bump()}px`, width: "22px", height: "18px" }}
+          aria-label="All roads"
         >
-          {growth().road_tiles_left} tiles left
-        </span>
-      </Show>
-
-      <For each={shelves()}>
-        {(s, si) => (
-          <button
-            onClick={() => open(menu() === s.id ? null : s.id)}
-            class="soft absolute grid place-items-center cursor-pointer"
-            style={{ left: `${cx(si() + 1) - 11}px`, bottom: `${bumps()[si()]?.() ?? 50}px`, width: "22px", height: "18px" }}
-            aria-label={`All ${s.label.toLowerCase()}`}
-          >
-            <svg
-              viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-              style={{ transform: `rotate(${((bumps()[si()]?.() ?? 50) - 50) * 18}deg)` }}
-            >
-              <path d="M6 15l6-6 6 6" />
-            </svg>
-          </button>
-        )}
-      </For>
-      <For each={slots()}>
-        {(s, j) => {
-          const on = () => j() === active();
-          const shelf = s === null || s === "Demolish" ? null : SHELVES.find((x) => x.id === s)!;
-          const d = () => (s === null ? SELECT : s === "Demolish" ? DEMOLISH : glyph(face(s)));
-          const act = () => (s === null ? setTool(null) : s === "Demolish" ? setTool("Demolish") : pick(s));
-          return (
-            <button
-              onClick={act}
-              class="press absolute bottom-2 grid w-11 h-11 place-items-center rounded-full cursor-pointer"
-              classList={{ "text-white": on() && held(), ink: on() && !held(), soft: !on() }}
-              style={{ left: `${cx(j()) - 22}px` }}
-              title={s === null ? "Select (V)" : s === "Demolish" ? "Demolish (X)" : `${shelf!.label} (${shelf!.key})`}
-            >
-              <Glyph d={d()} size={21} />
-            </button>
-          );
-        }}
-      </For>
-    </div>
+          <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style={{ transform: `rotate(${(bump() - 50) * 18}deg)` }}>
+            <path d="M6 15l6-6 6 6" />
+          </svg>
+        </button>
+        <For each={[...SLOTS]}>
+          {(s, j) => {
+            const on = () => j() === active() && s !== "undo";
+            const d = () => (s === "select" ? SELECT : s === "roads" ? road(lastRoad()).glyph : s === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : BUILD) : s === "demolish" ? DEMOLISH : UNDO);
+            const act = () =>
+              s === "select" ? setTool(null)
+              : s === "roads" ? setTool(lastRoad())
+              : s === "build" ? (hold(null), setTool(null), setMenuOpen(!menuOpen()))
+              : s === "demolish" ? setTool("Demolish")
+              : undo();
+            const title = { select: "Select (V)", roads: "Roads (R)", build: "Build (B)", demolish: "Demolish (X)", undo: "Undo (Ctrl Z)" }[s];
+            return (
+              <button
+                onClick={act}
+                class="press absolute bottom-2 grid w-11 h-11 place-items-center rounded-full cursor-pointer"
+                classList={{ "text-white": on() && lit(), ink: on() && !lit(), soft: !on() }}
+                style={{ left: `${cx(j()) - 22}px` }}
+                title={title}
+              >
+                <Glyph d={d()} size={21} />
+              </button>
+            );
+          }}
+        </For>
+      </div>
+    </>
   );
 }

@@ -189,12 +189,75 @@ for its owner. Last lived at `dd53fbe`.
 **Brought back, 2026-10-10.** Once building costs materials, the second
 step buys something: the bill, what a draft takes against what is in
 stock, and a swipe of the demolisher that is not instant ruin. The new
-one is meant to be lighter (`game.md` §Drafts): there is one world, not a
-"now" and an "after". A draft takes up its tiles and reserves them, but
-is never wired into anything: a drafted road is in no edge and in no live
-node's links until commit, a drafted building has no door, and a drafted
-demolition is a mark on the live thing. Commit replays the strokes through
-the handlers that build live.
+one is lighter (`game.md` §Drafts): there is one world, not a "now" and
+an "after". A draft is only the steps of the hand, kept per player; it
+takes up its tiles and reserves them, but is never wired into anything,
+and no road node or building stands for it. Commit replays the steps
+through the handler that builds live. What came back of the old version
+is the reservation and the toolbar's commit; what did not is
+`acting_as`, the `now`/`after` split, `draftLook.ts`'s four looks and
+every check of "is this a draft" in the simulation. What made the old
+one unintuitive is answered by the bill appearing the moment anything is
+drawn, with Build on Enter: whether that is enough is for play to say.
+
+**Shelved again, 2026-10-10.** Play said it was not enough. The player
+tested the opening by hand and found every build a two-step act again,
+the bill or no bill, and twice took a blue draft for something built.
+And the drafted world was a second world after all: the hand's dots had
+to see the player's own draft as standing and everyone else's as taken,
+the bill had to guess what a commit would found, and a stroke had to
+replay as a chain. What replaced it is undo (`game.md` §Undo): a road
+is laid as it is drawn and a building placed as it is let go, and the
+player's last few minutes can be taken back, with what they paid. The
+bill's one good idea, what a building takes against what the depots
+hold, is the tag beside a building in hand. `drafts.rs`, `Bill.tsx`,
+`Ghosts.tsx` and the drafts table last lived at `34a0320`.
+
+## Painting buildings tile by tile (2026-10-04 to 2026-10-10)
+
+**What.** A building was the tiles the brush painted, a step at a time:
+a kind that grows one building as far as its stroke ran, a house a tile
+each and linked to its row (`Building::joined`), a building cut in two
+by taking a tile out, two joined by a step across. Its yard and its
+door were read off whatever shape it had, and one short of its kind's
+smallest plot stood and did not work (`World::paint`, `unpaint`,
+`works`; `look.md` §Into the game).
+
+**Why shelved.** Painting passes through every half-built state on the
+way to a building, and every rule, door, yard, berth, joins, bill, had
+to hold in each of them. They did not: a depot would not take its road,
+a harbour would only face south and a half-painted one crashed the
+server, and removing a building a tile at a time was unreliable. A
+building is now its kind's plot, placed whole from the build menu and
+taken down whole (`game.md` §Buildings); its look still joins it to
+its neighbours, and a fixture may still draw any shape.
+
+**To bring back.** Only with the ladders (`look.md` §The ladders), if a
+kind's size is to mean something in play, and then as size variants
+placed whole before any free shape. The code last lived at `34a0320`.
+
+## The look's own yards: car parks, loading bays, the quiet end (2026-10-02 to 2026-10-11)
+
+**What.** The town grid worked out a building's yard from the streets
+round it (`facts.ts`): tiles beside a street in one run from its quiet
+end (a depot's docks) or its busy one (a supermarket's car park, three
+cars to a tile of shop), until it held enough; and a supermarket two
+tiles each way took deliveries in a lorry-sized corner cut from it, the
+corner picked by which side had a street (`sketches/loading-bay.svg`).
+
+**Why shelved.** The server lays a building's lot out by its own rule,
+by the way it faces, and the two disagreed: a street laid beside a
+standing building moved the drawn yard while the cars kept parking in
+the old one, and a supermarket's car park was drawn where the game
+parked nobody (its customers stand at the kerb). The yards cut L-shapes
+out of buildings, joined on the diagonal across the gap, which drew the
+diagonal walls the playtest found. A yard is now the server's, drawn
+where its lot is (`look.md` §Facts), and a supermarket is a box.
+
+**To bring back.** A car park as the server's own lot, laid out as
+aisles for both (`parking.md` §3.9, `look.md` §Into the game step 5);
+a loading bay as a stop of `network.md`. Never the look's guess again.
+The code last lived at `a501124`.
 
 ## Pedestrians, transit, walkability
 
@@ -449,3 +512,41 @@ rule: automatic on the island, explicit only between islands.
 **To bring back.** Lines, later, for the few big pipes only: a ship
 between two ports on a schedule, a siding from a quarry to a works.
 Never the last mile.
+
+## Faces: the mayors' and the players' avatars
+
+**What.** Characters for the mayors beyond the map edge who send the town
+orders, and later the players' own avatars: stylised, warm, toy-like,
+with expressions (asks, delighted, worried, cross) and customisation. The
+player's aim is Apple's Memoji: a 3D face halfway between an emoji and a
+person.
+
+**Why parked.** Not the game's problem yet. Looked at 2026-10-10:
+- **2D libraries** do expressions for free. DiceBear has about 30 styles,
+  SVG from a seed, and its Micah style reads moods best. Sheets are in
+  `.dev/avatars.png` and `.dev/moods.png`. The player wants 3D.
+- **Memoji-like services:**
+  - Ready Player Me shut down on 2026-01-31.
+  - Genies is Unity only.
+  - Bitmoji for Games went to selected partners, on Unity, Unreal and
+    PlayCanvas.
+  - Avatar SDK's MetaPerson (a cartoon style, GLB, web) and Streamoji
+    (web, 52 expressions) are photo-first and priced by contract.
+- **Open:** VRM is a standard 3D avatar format with expressions built in.
+  CharacterStudio (MIT, three.js) is a creator over it. Whether Lite loads
+  VRM is untested.
+- **The Nintendo way** (Mii, Animal Crossing): a simple 3D head with the
+  eyes, brows and mouth as 2D pictures on it, an expression being a
+  swap. Charming, customisable, no facial rig.
+
+**What can be made here.** Mii-level faces built in code (parts,
+expressions as moving parts, portraits rendered once and cached) are
+within reach. Memoji's polish is sculpted organic meshes and hand-made
+blend shapes: an artist's work, or bought assets, with the code around
+them made here.
+
+**To bring back.** A mayor carries a plain description (features, mood)
+and one function draws it; missions and orders never know how. Start
+with the Nintendo way, or VRM if Lite loads it. The seam is built
+(2026-10-12): `Neighbour.looks` is the description, and
+`client/src/flat/crest.ts` the one function, drawing a crest for now.

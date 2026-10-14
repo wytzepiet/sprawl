@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::engine::GameTime;
-use crate::protocol::DAY_MS;
+use crate::protocol::{Good, DAY_MS};
 use curve::Curve;
 
 const H: u32 = DAY_MS / 24;
 const HOUR: f64 = H as f64;
 
-/// Something a resident has to do, and so a good: what a tap serves, what
-/// a shelf holds, what the world prices a unit of. Three kinds, by where the
+/// Something a resident has to do: what a tap serves, some of it drawn
+/// off a shelf of a good (`good`). Three kinds, by where the
 /// timing lives: a **timed** need is used up by the passage of time and
 /// carries it in `drain`; a **constant** need is imposed by the world and
 /// carries it in the curve of whatever serves it, holding a fixed level
@@ -33,21 +33,14 @@ pub enum Need {
     Fuel,
 }
 
-/// How a good is handled on its way through a door: boxed, or liquid.
-/// A port is per class (docs/economy.md §12.10).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cargo {
-    Box,
-    Liquid,
-}
-
 impl Need {
-    /// The class a good is handled in: crates come boxed, a tank's litres
-    /// are liquid, and labour is people and has none. docs/trade.md.
-    pub fn cargo(self) -> Option<Cargo> {
+    /// The good a counter serves this from: a meal off a shelf of crates,
+    /// a tank off the station's fuel. Being home, working and sleeping
+    /// draw no shelf.
+    pub fn good(self) -> Option<Good> {
         match self {
-            Need::Eat => Some(Cargo::Box),
-            Need::Fuel => Some(Cargo::Liquid),
+            Need::Eat => Some(Good::Crates),
+            Need::Fuel => Some(Good::Fuel),
             _ => None,
         }
     }
@@ -189,9 +182,6 @@ pub struct Stock {
 }
 
 impl Stock {
-    pub fn full(cap: f64) -> Stock {
-        Stock { level: cap, cap }
-    }
 
     /// What is missing.
     pub fn short(&self) -> f64 {
@@ -318,7 +308,7 @@ mod tests {
 
     #[test]
     fn a_stock_runs_down_and_refills_within_its_cap() {
-        let mut s = Stock::full(10.0);
+        let mut s = Stock { level: 10.0, cap: 10.0 };
         s.take(4.0);
         assert_eq!((s.level, s.short(), s.weight()), (6.0, 4.0, 0.4));
         s.take(100.0);
