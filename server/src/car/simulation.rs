@@ -572,7 +572,9 @@ fn getting_in(world: &World, trip: &Trip, ri: usize, edge: EdgeKey, mine: &[usiz
     // This car's lane there: where it drives now, on its stretch; past a
     // junction, the one it comes out of it in.
     let there = if one_stretch(world, &trip.route, ri, k) { mine.to_vec() } else { vec![trip.lanes[k] as usize] };
-    world.edges.get(&edge).is_some_and(|s| s.lanes > 1) && world.edges.get(&on).is_some_and(|seg| seg.lanes > 1 && !there.iter().any(|&l| seg.in_lane(lead, l)))
+    // Onto a road of one, only one signalling to change lanes for it: the
+    // rest are two lanes becoming one, which the first through takes.
+    (world.edges.get(&edge).is_some_and(|s| s.lanes > 1) || t.signal.is_some()) && world.edges.get(&on).is_some_and(|seg| seg.lanes > 1 && !there.iter().any(|&l| seg.in_lane(lead, l)))
 }
 
 /// Whether two edges of a route, by index, are on one stretch of it: no
@@ -935,8 +937,11 @@ pub fn handle_car_wake_up(
         if trip.segment_lengths[1..k].iter().sum::<f64>() - cur_progress > COURTESY {
             break;
         }
+        // Along its way, queued there yet or not: one that looked only as
+        // far as it had passage saw a car waiting past a junction too late
+        // to drop back for it.
         let edge: EdgeKey = (trip.route[k - 1], trip.route[k]);
-        let Some(seg) = world.edges.get(&edge).filter(|s| s.lanes > 1 && s.contains(car_id)) else { break };
+        let Some(seg) = world.edges.get(&edge).filter(|s| s.lanes > 1) else { break };
         let mine = trip.lanes[k];
         for o in seg.lane(1 - mine as usize).filter(|&o| o != car_id && signalling(world, o) == Some(mine)) {
             let Some(GameObject::Car(c)) = world.objects.get(o).map(|e| &e.object) else { continue };
@@ -1332,7 +1337,28 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
     let to_end = trip.segment_lengths[1..=end].iter().sum::<f64>() - p;
     let lane = trip.lanes[ri];
     let other = 1 - lane;
-    let want = world.turn_lane(&trip.route, end);
+    // The lane the next way out that asks for one does, as far ahead as it
+    // gets into lanes for, through the junctions it goes on through on the
+    // road of two: a way out a junction past a short stretch is got into
+    // the lane for on the long one before it.
+    let (want, to_want) = {
+        let (mut k, mut found) = (end, (None, to_end));
+        loop {
+            let d = trip.segment_lengths[1..=k].iter().sum::<f64>() - p;
+            if d > GET_IN {
+                break;
+            }
+            if let Some(l) = world.turn_lane(&trip.route, k) {
+                found = (Some(l), d);
+                break;
+            }
+            match (k + 1..len).find(|&i| i + 1 == len || world.network.is_junction(trip.route[i])) {
+                Some(next) if (k + 1..=next).all(wide) => k = next,
+                _ => break,
+            }
+        }
+        found
+    };
     // How far a change carries: along the road of two, through whatever
     // junctions it goes on through in it.
     let mut carry = ri;
@@ -1348,13 +1374,13 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
     let slow = ahead(lane).filter(|&(d, vo, ..)| d < OVERTAKE && vo < v - 0.1);
     let to = if to_end < 0.8 {
         None
-    } else if let Some(w) = want.filter(|&w| w != lane && to_end < GET_IN) {
+    } else if let Some(w) = want.filter(|&w| w != lane && to_want < GET_IN) {
         Some(w)
     } else if merging(lane) && want != Some(lane) {
         Some(other)
     } else if v < 0.5 {
         None
-    } else if let Some((d, vo, ..)) = slow.filter(|_| want.is_none_or(|w| w == other || to_end > GET_IN)) {
+    } else if let Some((d, vo, ..)) = slow.filter(|_| want.is_none_or(|w| w == other || to_want > GET_IN)) {
         ahead(other).is_none_or(|(e, wo, ..)| e > d + 1.0 || wo > vo + 0.2).then_some(other)
     } else if lane == 1 && want != Some(1) && !merging(0) {
         ahead(0).is_none_or(|(d, vo, ..)| d > KEEP_RIGHT || vo >= v).then_some(0)
@@ -1381,7 +1407,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, car_id: EntityId, ro
         for b in coming(world, car_id, trip, ri, p, to as usize, now) {
             events.wake(0, b);
         }
-        let mut hold = vec![(Obstacle::MustStop { distance: (to_end - 1.0).max(0.0) }, Cause::GettingIn(blocker))];
+        let mut hold = vec![(Obstacle::MustStop { distance: (to_want - 1.0).max(0.0) }, Cause::GettingIn(blocker))];
         // Behind the car ahead there, where it can fall in without braking
         // hard; one beside it it lets go by.
         if let Some((d, vo, ro, _)) = ahead(to)

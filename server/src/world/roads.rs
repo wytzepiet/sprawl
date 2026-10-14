@@ -157,18 +157,37 @@ impl World {
         lanes
     }
 
-    /// The lane the turn at node `j` of a route asks for, coming to it on a
-    /// road of two: the right lane for a right turn, the left for a left,
-    /// where the road splits there; straight on, where it only bends or
-    /// others join it, or at the route's end, either. A bend asked for a
-    /// lane, and cars stood waiting for one that took them nowhere else.
+    /// The lane the way out at node `j` of a route asks for, coming to it
+    /// on a road of two, where the road splits there: the right lane for
+    /// the way out furthest right, the left for the one furthest left. Not
+    /// where it only bends or others join it, nor onto a road of two where
+    /// the others are roads of one, as staying on a motorway past a ramp
+    /// off it is from either lane; nor at the route's end. A bend asked for
+    /// a lane, and cars stood waiting for one that took them nowhere else.
     pub fn turn_lane(&self, route: &[EntityId], j: usize) -> Option<u8> {
         let pos = |id: EntityId| self.objects.get(id).and_then(|e| e.position);
         let (from, at, to) = (*route.get(j.checked_sub(1)?)?, route[j], *route.get(j + 1)?);
-        let (a, b, c) = (pos(from)?, pos(at)?, pos(to)?);
-        let t = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
-        let splits = self.arms_of(at, true).into_iter().any(|o| o != from && o != to);
-        (t != 0 && splits).then_some(u8::from(t < 0))
+        let (a, b) = (pos(from)?, pos(at)?);
+        let wide = |o: EntityId| self.edges.get(&(at, o)).is_some_and(|s| s.lanes > 1);
+        // How far round to the right a way out turns, as the lanes count
+        // them: lane 0 the right.
+        let right = |o: EntityId| {
+            let c = pos(o)?;
+            let (ix, iy, ox, oy) = ((b.x - a.x) as f64, (b.y - a.y) as f64, (c.x - b.x) as f64, (c.y - b.y) as f64);
+            Some((ix * oy - iy * ox).atan2(ix * ox + iy * oy))
+        };
+        let others: Vec<EntityId> = self.arms_of(at, true).into_iter().filter(|&o| o != from && o != to).collect();
+        if others.is_empty() || (wide(to) && !others.iter().any(|&o| wide(o))) {
+            return None;
+        }
+        let (mine, theirs) = (right(to)?, others.iter().filter_map(|&o| right(o)).collect::<Vec<_>>());
+        if theirs.iter().all(|&t| mine > t) {
+            Some(0)
+        } else if theirs.iter().all(|&t| mine < t) {
+            Some(1)
+        } else {
+            None
+        }
     }
 
     /// The road between two nodes given priority, or its priority taken:

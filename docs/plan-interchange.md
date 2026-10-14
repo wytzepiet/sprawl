@@ -582,8 +582,13 @@ What runs, and where; the rest of the order above is still to come.
   (`getting_in`: on its own stretch the lane it is in now, past a
   junction the lane it comes out in) is no car to follow but one to let in
   or not; it keeps its lane through junctions, off a road of two onto
-  another, and a turn asks for a lane only where the road splits, so a
-  bend or a ramp joining never stops it to get into one; where two lanes
+  another, and a way out asks for a lane only where the road splits and
+  the other ways out are as wide (`World::turn_lane`: the ramp off a
+  motorway asks for its side, staying on it from either lane), so a
+  bend or a ramp joining never stops it to get into one; it looks for the
+  next lane asked for up to `GET_IN` ahead, through the junctions it goes
+  on through, and whoever is coming looks that far along its own way for
+  one signalling, queued there yet or not; where two lanes
   of an arm still go out in one, they zip (`merging_ahead`). Only the
   lane a turn asks for is worth stopping for: making room, overtaking and
   keeping right are taken when there is room or not at all. On screen the

@@ -96,6 +96,14 @@ fn main() {
     for (_, line) in cars {
         println!("{line}");
     }
+    // Where the followed car goes from here.
+    if let Some(GameObject::Car(c)) = car.and_then(|c| s.game.world.objects.get(c)).map(|e| &e.object)
+        && let Some(t) = c.trip.as_ref()
+    {
+        let at = |n: EntityId| s.game.world.objects.get(n).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
+        let ahead: Vec<String> = (t.route_index..t.route.len()).take(8).map(|k| format!("{} (lane {})", at(t.route[k]), t.lanes[k])).collect();
+        println!("car {} goes on to {}", car.unwrap(), ahead.join(", "));
+    }
 }
 
 /// What a car slows or stops for, said.
