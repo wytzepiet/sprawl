@@ -86,9 +86,10 @@ fn main() {
         .filter(|(_, t)| near(s.game.world.objects.get(t.route[t.route_index]).and_then(|e| e.position)))
         .map(|(id, t)| {
             let (_, v) = sprawl::car::physics::catch_up(t.progress, t.speed, t.acceleration, (s.game.now - t.updated_at) as f64 / 1000.0);
-            let tile = s.game.world.objects.get(t.route[t.route_index]).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
+            let at = |n: EntityId| s.game.world.objects.get(n).and_then(|e| e.position).map_or("?".into(), |p| format!("{},{}", p.x, p.y));
+            let tile = format!("{} {} → {}", t.route[t.route_index], at(t.route[t.route_index - 1]), at(t.route[t.route_index]));
             let lane = t.lanes.get(t.route_index).copied().unwrap_or(0);
-            (id, format!("car {id} to {tile} lane {lane} v {v:.2} a {:.2}: {}", t.acceleration, why(&s.game, id).unwrap_or_else(|| "free".into())))
+            (id, format!("car {id} {tile} lane {lane} v {v:.2} a {:.2}: {}", t.acceleration, why(&s.game, id).unwrap_or_else(|| "free".into())))
         })
         .collect();
     cars.sort();
@@ -110,6 +111,7 @@ fn why(game: &Game, car: EntityId) -> Option<String> {
             format!("no passage at {} (through {through:?}, waiting {waiting:?})", pos(j))
         }
         Cause::Turn(o) => format!("car {o} turning across"),
+        Cause::GettingIn(o) => format!("getting into the other lane, car {o} in the way"),
         c => format!("{c:?}"),
     };
     Some(format!("{what}, {accel:+.2}"))

@@ -43,7 +43,13 @@ impl EdgeSegment {
 
     /// The car ahead of this one in each lane it stands in.
     pub fn ahead(&self, car_id: EntityId) -> Vec<EntityId> {
-        self.places(car_id).filter_map(|(lane, i)| i.checked_sub(1).map(|j| self.queues[lane][j])).collect()
+        self.ahead_but(car_id, |_, _| false)
+    }
+
+    /// The nearest car ahead of this one in each lane it stands in, past
+    /// any it is told to look past in that lane.
+    pub fn ahead_but(&self, car_id: EntityId, past: impl Fn(usize, EntityId) -> bool) -> Vec<EntityId> {
+        self.places(car_id).filter_map(|(lane, i)| self.queues[lane].iter().take(i).rev().copied().find(|&o| !past(lane, o))).collect()
     }
 
     /// The car behind this one in each lane it stands in.

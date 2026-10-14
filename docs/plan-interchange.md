@@ -576,7 +576,14 @@ What runs, and where; the rest of the order above is still to come.
   behind the car there where it can without braking hard, else waiting
   short of the junction and signalling (`Trip::signal`), when the first
   car coming along that lane that can drop back for it without braking
-  hard does, to the gap `room` asks (`headway`); out
+  hard does, to the gap `room` asks (`headway`); two side by side each
+  waiting for the other's lane, the one further back lets it go; a car
+  queued ahead further on but not yet in the lane this one drives in there
+  (`getting_in`: on its own stretch the lane it is in now, past a
+  junction the lane it comes out in) is no car to follow but one to let in
+  or not; onto a road of two it gets into the lane it comes out of the
+  junction in before it, not inside it, and if it cannot, the cars from
+  its arm's other lane zip with it there (`merging_ahead`); out
   of the lane a car at the junction ahead waits to merge into; round a
   slower car close ahead; and back to the right lane when that is clear.
   A change takes a second and a half (`Trip::shift`, which the client
