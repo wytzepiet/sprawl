@@ -188,7 +188,10 @@ impl<'a> Playback<'a> {
 
 /// What looks wrong in a game as it plays, said once each: two cars in one
 /// lane closer than their lengths, one driving through the other; a car
-/// standing for longer than `STUCK_MS`, waiting for what never comes.
+/// standing for longer than `STUCK_MS`, waiting for what never comes; a car
+/// on a priority road made to wait, braking to a crawl, at a junction one
+/// off a minor road holds. Slowing for one that pulled out, and going on,
+/// is only driving.
 #[derive(Default)]
 pub struct Watch {
     standing: HashMap<EntityId, GameTime>,
@@ -234,6 +237,17 @@ impl Watch {
                 self.standing.remove(&e.id);
                 continue;
             };
+            if let Some(&(crate::car::Cause::Junction(j), a)) = world.why.get(&e.id)
+                && a < -0.3
+                && at(t).1 < crate::car::CRUISE_SPEED / 4.0
+                && on_priority(world, e.id, j) == Some(true)
+            {
+                for o in game.intersections.who(j).0.into_iter().filter(|&o| on_priority(world, o, j) == Some(false)) {
+                    if self.said.insert((e.id, o)) {
+                        out.push(format!("{}: car {} on the priority road brakes for car {o} off a minor one, at {}", clock(game.now), e.id, place(world, j)));
+                    }
+                }
+            }
             if at(t).1 > 0.01 {
                 self.standing.remove(&e.id);
                 continue;
@@ -252,6 +266,15 @@ impl Watch {
 pub fn clock(now: GameTime) -> String {
     let s = now.saturating_sub(DAY_MS as u64 / 2) / 1000;
     format!("{}:{:02}.{}", s / 60, s % 60, now % 1000 / 100)
+}
+
+/// Whether a car comes to junction `j` on a priority road, if it comes to
+/// it at all.
+fn on_priority(world: &crate::world::World, car: EntityId, j: EntityId) -> Option<bool> {
+    let Some(GameObject::Car(c)) = world.objects.get(car).map(|e| &e.object) else { return None };
+    let t = c.trip.as_ref()?;
+    let k = (1..t.route.len()).find(|&k| t.route[k] == j)?;
+    Some(world.is_road(j) && world.is_road(t.route[k - 1]))
 }
 
 /// Where a node is, as a tile.

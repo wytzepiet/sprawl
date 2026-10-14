@@ -59,8 +59,6 @@ pub enum Cause {
     Junction(crate::protocol::EntityId),
     /// A car turning into or out of a lot across its way.
     Turn(crate::protocol::EntityId),
-    /// Its lane ends, and the car beside it goes first.
-    GiveWay,
     /// Its give-way line out of a lot, with no gap yet.
     Line,
     /// About to turn into a lot across the oncoming lane.

@@ -965,8 +965,9 @@ mod tests {
     #[test]
     fn two_lanes_carry_side_by_side() {
         // Into one lane, as many as it carries a tile from the gate, each
-        // its gap behind the one ahead: a hundred a minute it carried only
-        // while cars out of the merge kept on closer than that.
+        // in at the gap it takes there (`headway`): about forty-five a
+        // minute. A hundred it carried only while cars out of the merge kept
+        // on closer than any gap.
         let run = |tool: Tool, per_min: u32| {
             let (mut level, mut game) = play(&format!("# Two lanes\n@gate 1 in2\n@gate 2 out2\n@want 1 2 {per_min}\n..........\n1........2\n..........\n"));
             for x in (1..=9).rev() {
@@ -974,34 +975,23 @@ mod tests {
                 assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
             }
             level.test(&mut game);
-            let (mut both, mut closest) = (false, f64::MAX);
+            let (mut both, mut watch) = (false, crate::replay::Watch::default());
             while level.phase == Phase::Test {
                 level.step(&mut game);
                 game.step();
+                // Never one through another (`Watch`).
+                let wrong = watch.look(&game);
+                assert!(wrong.is_empty(), "{tool:?}: {}", wrong.join("; "));
                 let node = |x| game.world.road_node_at(GridCoord { x, y: -1 }).unwrap();
                 let Some(seg) = game.world.edges.get(&(node(5), node(4))) else { continue };
                 both |= seg.all().any(|c| seg.lane_of(c) == Some(1)) && seg.all().any(|c| seg.lane_of(c) == Some(0));
-                // How close two cars in one lane come, by their progress.
-                for lane in 0..2 {
-                    let mut at: Vec<f64> = seg.all().filter(|&c| seg.lane_of(c) == Some(lane)).filter_map(|c| match game.world.objects.get(c).map(|e| &e.object) {
-                        Some(GameObject::Car(car)) => car.trip.as_ref().map(|t| crate::car::physics::catch_up(t.progress, t.speed, t.acceleration, (game.now - t.updated_at) as f64 / 1000.0).0 - t.segment_lengths[..t.route.iter().position(|&n| n == node(5)).unwrap_or(0) + 1].iter().sum::<f64>()),
-                        _ => None,
-                    }).collect();
-                    at.sort_by(f64::total_cmp);
-                    for w in at.windows(2) {
-                        closest = closest.min(w[1] - w[0]);
-                    }
-                }
             }
-            (level.phase, both, closest)
+            (level.phase, both)
         };
-        let (phase, both, _) = run(Tool::Wide, 100);
+        let (phase, both) = run(Tool::Wide, 100);
         assert_eq!(phase, Phase::Done);
         assert!(both, "cars side by side in the two lanes");
-        let (phase, _, closest) = run(Tool::OneWay, 60);
-        assert_eq!(phase, Phase::Done);
-        let length = crate::car::nose(CarRole::Private) + crate::car::tail(CarRole::Private);
-        assert!(closest > length * 0.9, "two lanes into one: cars {closest:.2} apart");
+        assert_eq!(run(Tool::OneWay, 40).0, Phase::Done);
     }
 
     /// Lay a road along tiles, a step at a time, each step taken.

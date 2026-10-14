@@ -457,9 +457,13 @@ impl World {
         self.unsettle_round(pos);
     }
 
-    /// Check if a node is an intersection (>2 unique connections).
+    /// Whether ways meet at a node: more than two roads, or more lanes in
+    /// than out, as where two lanes become one. There who goes first is
+    /// the junction's and the merge's to say, as anywhere ways meet.
     pub fn is_intersection(&self, node_id: EntityId) -> bool {
-        self.unique_connection_count(node_id) > 2
+        let lanes = |edges: Vec<(EntityId, EntityId)>| edges.iter().filter_map(|e| self.edges.get(e)).map(|s| s.lanes as usize).sum::<usize>();
+        let arms = self.arms_of(node_id, false);
+        self.unique_connection_count(node_id) > 2 || lanes(arms.iter().map(|&n| (n, node_id)).collect()) > lanes(arms.iter().map(|&n| (node_id, n)).collect())
     }
 
     /// Count what the mayor has laid, from the nodes' own flags.

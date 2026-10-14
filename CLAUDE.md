@@ -209,7 +209,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   Pasted to you, save it as `server/replays/<name>.json` and `cargo run
   --bin replay -- <file> --flag 1 --at x,y --car id` plays it to the flag:
   whether it still plays as it was played, what went wrong on the way (a
-  car through another, one standing for good: `Watch`), and every car
+  car through another, one standing for good, one on a priority road
+  made to wait for a minor one: `Watch`), and every car
   there, how fast and what it slows or stops for (`World::why`). `cargo
   test replay` plays every kept one on today's game and asserts nothing
   goes wrong in it; once fixed, it stays fixed.

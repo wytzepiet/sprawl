@@ -547,7 +547,19 @@ What runs, and where; the rest of the order above is still to come.
   come a minute; dashed while no road joins them.
 - **The look tool** (V): nothing in hand, no streaks, every deck solid.
 - **Priority**: a through road is let through first at a junction.
-  Priority is the hand's, not a kind of road (`Build.road`): any road
+  Cars book a junction by time, not by nodes (`car::simulation`'s
+  `BOOK_S`): on the priority road, or where none has it, three seconds
+  before they are due at the line, about what one pulling out from
+  standing takes to be clear; giving way to one, only a second before,
+  so a stream off a side road holds no claim open against it. A claim
+  is held only while the car is due within that time, so one stood in a
+  queue far back holds none. One let out of a side road that can still
+  stop short of its line gives the claim back to one on the priority
+  road waiting to cross it (`IntersectionManager::give_way`), and one
+  held at its line for a car merging in on the priority road books
+  nothing meanwhile. A side road so wants a gap of about three seconds;
+  one pulling out from standing at the edge of that may have the car
+  on the priority road ease off, never wait. Priority is the hand's, not a kind of road (`Build.road`): any road
   drawn with it on has it, and drawn along again, gains or loses it.
   The town's Road is a street drawn with it.
 - **Overpasses** (`world/decks.rs`, `client/src/engine/decks.ts`): node
@@ -560,17 +572,20 @@ What runs, and where; the rest of the order above is still to come.
   drawn the slope to it, where it may be one; where not, the next tile
   drawn is.
 
-- **Merging** eases in: cars bound for the same exit from equal roads
-  are let through together and follow each other onto the road out
-  (`intersection::paths_cross`, `join_run`); onto a priority road the
-  minor still gives way. Not the shadow list of §3: the road out's queue
+- **Merging** eases in: cars bound for the same exit are let through
+  together and follow each other onto the road out by the gaps between
+  them (`merging_ahead`, `join_run`): onto a priority road the minor
+  goes ahead only of one on it that can follow it without braking hard,
+  else holds short of its line until it is by. Where more lanes come in
+  than go out, a narrowing, the node is a junction like any other
+  (`World::is_intersection`), and the lanes zip there the same way. Not the shadow list of §3: the road out's queue
   is the virtual lead, and its car behind is woken as its own road's is.
 - **Lights** (`intersection::Signal`): phases from the arms, adaptive
   with a gap-out, all red between, ticking on the junction's own wake.
 - **Two lanes** (`Tool::Wide`, `EdgeSegment`'s lanes, `World::lanes_for`,
   `car::simulation::change_lanes`); gates `in2`/`out2`. A car joining a
   road of two from the side comes into the lane on its side, and the
-  junction ranks it only against cars going out by that lane. Along a
+  junction lets it through with anyone whose way it does not cross. Along a
   stretch a car changes lanes, event-driven, at whatever wakes it: into
   the lane its turn at the end asks for (`World::turn_lane`), falling in
   behind the car there where it can without braking hard, else waiting
@@ -617,6 +632,9 @@ What runs, and where; the rest of the order above is still to come.
   (`Session`, driving the browser's worker and a replay alike), F flags a
   moment, "Copy replay" hands it over, and `cargo run --bin replay` plays
   it to the flag and says what each car there slows for (`World::why`).
+  What it watches for (`Watch`): a car through another, one standing
+  for good, and one on a priority road made to wait for one off a minor
+  road; every level's solve and every kept replay is played against it.
 
 Not yet: the scores endpoint and its
 chart (a replay is what a server would check a score by), the overworld
