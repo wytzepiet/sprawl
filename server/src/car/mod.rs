@@ -42,6 +42,36 @@ pub fn tail(role: crate::protocol::CarRole) -> f64 {
     }
 }
 
+/// What a car slows or stops for (`World::why`): read by a replay, to
+/// say what a car was doing, never by the game.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Cause {
+    /// The car ahead in its lane.
+    Ahead(crate::protocol::EntityId),
+    /// A car coming into its lane at the junction ahead from another arm.
+    Merging(crate::protocol::EntityId),
+    /// A car in the other lane it lets in ahead of it.
+    LettingIn(crate::protocol::EntityId),
+    /// The lane its turn asks for, with no room in it yet.
+    GettingIn,
+    /// A junction or crossing it has no passage at yet.
+    Junction(crate::protocol::EntityId),
+    /// A car turning into or out of a lot across its way.
+    Turn(crate::protocol::EntityId),
+    /// Its lane ends, and the car beside it goes first.
+    GiveWay,
+    /// Its give-way line out of a lot, with no gap yet.
+    Line,
+    /// About to turn into a lot across the oncoming lane.
+    TurningIn,
+    /// A bend.
+    Bend,
+    /// A lot, or backing.
+    Slow,
+    /// A stop it plans: where the gear changes, or its way's end.
+    Stop,
+}
+
 #[derive(Clone, Copy)]
 pub enum Obstacle {
     SpeedLimit {

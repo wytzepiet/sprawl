@@ -1,4 +1,5 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+use crate::fixed::HashMap;
 
 use crate::engine::GameTime;
 use crate::protocol::EntityId;
@@ -352,7 +353,7 @@ pub struct IntersectionRegistry {
 impl IntersectionRegistry {
     pub fn new() -> Self {
         Self {
-            managers: HashMap::new(),
+            managers: HashMap::default(),
             lapses: 0,
         }
     }
@@ -390,6 +391,11 @@ impl IntersectionRegistry {
 
     pub fn has_passage(&self, node_id: EntityId, car_id: EntityId) -> bool {
         self.managers.get(&node_id).is_some_and(|m| m.has_passage(car_id))
+    }
+
+    /// Who is through a junction, and who waits at it, in order.
+    pub fn who(&self, node_id: EntityId) -> (Vec<EntityId>, Vec<EntityId>) {
+        self.managers.get(&node_id).map_or_else(Default::default, |m| (m.passing.iter().map(|e| e.car_id).collect(), m.queue.iter().map(|e| e.car_id).collect()))
     }
 
     /// Queued at a junction and not let through: held at its line.

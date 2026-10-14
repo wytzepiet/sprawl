@@ -283,11 +283,11 @@ pub fn timetable(lines: &[Line], from: GameTime, until: GameTime) -> Vec<Connect
 /// box changing ship at a call needs `transfer` there between landing and
 /// sailing on; staying aboard costs nothing.
 pub fn earliest(conns: &[Connection], from: Call, to: Call, ready: GameTime) -> Option<Journey> {
-    use std::collections::HashMap;
+    use crate::fixed::HashMap;
     // The earliest at each call, and the ride that got there: its ship's
     // first connection boarded, and the one it was left from.
-    let mut at: HashMap<Call, (GameTime, Option<(usize, usize)>)> = HashMap::from([(from, (ready, None))]);
-    let mut boarded: HashMap<u64, usize> = HashMap::new();
+    let mut at: HashMap<Call, (GameTime, Option<(usize, usize)>)> = HashMap::from_iter([(from, (ready, None))]);
+    let mut boarded: HashMap<u64, usize> = HashMap::default();
     for (k, c) in conns.iter().enumerate() {
         if c.departs < ready {
             continue;

@@ -19,6 +19,7 @@ ts-rs = { version = "10", features = ["serde-compat"] }
 rand = { version = "0.9", default-features = false, features = ["std", "small_rng"] }
 noise = "0.9"
 serde_bytes = "0.11.19"
+rand_xoshiro = "0.7"
 
 # The suite simulates days of a town, and a day at opt-level 0 takes a
 # minute. Assertions and overflow checks stay on: it checks the same things,

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use crate::fixed::HashSet;
 
 use crate::protocol::{EntityId, GameObject, GridCoord, RoadNode};
 use crate::world::World;

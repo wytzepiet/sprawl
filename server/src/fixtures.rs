@@ -152,7 +152,7 @@ pub fn lay(world: &mut World, text: &str, x0: i32, name: &str) -> (i32, i32, Str
     // Each run of a letter, beside or diagonal, is one building, a
     // kind one tile big a building a tile: a row of houses is houses.
     // Its front faces the first street it has, its back the sea.
-    let mut built = std::collections::HashSet::new();
+    let mut built = crate::fixed::HashSet::default();
     for row in 0..h {
         for col in 0..w {
             let Some(kind) = building(char_at(col, row)) else { continue };

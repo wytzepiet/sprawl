@@ -200,6 +200,19 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   level's own solve and asserts it scores 100. A new level file needs
   Vite restarted to be listed (it is a glob import). `docs/plan-interchange.md`
   is what it is and what is built.
+- **A replay of what went wrong:** in a level, F flags the moment and the
+  tile under the pointer, and "Copy replay" puts everything played since
+  the level opened on the clipboard (`server/src/replay.rs`): the
+  player's inputs at the moments they came, and nothing else, since the
+  game is the same from the same inputs on every machine (`fixed.rs`: no
+  `std` HashMap or `SmallRng`; settling by the steps, not the ticks).
+  Pasted to you, save it as `server/replays/<name>.json` and `cargo run
+  --bin replay -- <file> --flag 1 --at x,y --car id` plays it to the flag:
+  whether it still plays as it was played, what went wrong on the way (a
+  car through another, one standing for good: `Watch`), and every car
+  there, how fast and what it slows or stops for (`World::why`). `cargo
+  test replay` plays every kept one on today's game and asserts nothing
+  goes wrong in it; once fixed, it stays fixed.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads and forest to build into — enough to

@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::BinaryHeap;
+use crate::fixed::{HashMap, HashSet};
 
 use crate::car::CRUISE_SPEED;
 use crate::protocol::{EntityId, GridCoord};
@@ -109,10 +110,10 @@ impl<'w> Routes<'w> {
         let mut routes = Routes {
             world,
             start,
-            cost: HashMap::new(),
-            via: HashMap::new(),
-            settled: HashSet::new(),
-            settled_at: HashMap::new(),
+            cost: HashMap::default(),
+            via: HashMap::default(),
+            settled: HashSet::default(),
+            settled_at: HashMap::default(),
             open: BinaryHeap::new(),
         };
         // A car does not have to be standing at a junction — anyone arriving
@@ -371,8 +372,8 @@ mod tests {
             }
         };
         let mut open = BinaryHeap::new();
-        let mut g: HashMap<EntityId, f64> = HashMap::new();
-        let mut came_from: HashMap<EntityId, EntityId> = HashMap::new();
+        let mut g: HashMap<EntityId, f64> = HashMap::default();
+        let mut came_from: HashMap<EntityId, EntityId> = HashMap::default();
         g.insert(start, 0.0);
         open.push(Node { at: (start, start), f: heuristic(start) });
 

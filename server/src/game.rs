@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use crate::fixed::{HashMap, HashSet};
 
 use crate::car::simulation::{handle_car_wake_up, park_at_home};
 use crate::car::ACCELERATION;
@@ -27,6 +27,9 @@ struct ClientState {
 /// Simulated milliseconds per step. Fixed: speed adds steps rather than making
 /// them longer, so running fast cannot change what the simulation does.
 pub const STEP_MS: GameTime = 10;
+/// How often the game settles with nothing built: sites call for timber,
+/// ferries look at the time.
+const SETTLE_MS: GameTime = 500;
 /// Guards against a speed that would peg the loop and stall the socket.
 const MAX_SPEED: u32 = 50;
 
@@ -53,6 +56,8 @@ pub struct Game {
     pub speed: u32,
     clients: HashMap<ClientId, ClientState>,
     outbox: Vec<(ClientId, ServerMessage)>,
+    /// A command changed the world since the last step: it settles.
+    stirred: bool,
     /// The world a reset starts again from: the server's makes a new island,
     /// a level its own map.
     fresh: Box<dyn FnMut() -> World + Send>,
@@ -68,8 +73,9 @@ impl Game {
             intersections: IntersectionRegistry::new(),
             now,
             speed,
-            clients: HashMap::new(),
+            clients: HashMap::default(),
             outbox: Vec::new(),
+            stirred: false,
             fresh,
         };
         game.events.set_now(now);
@@ -117,7 +123,7 @@ impl Game {
         // Objects come with the first SetChunks.
         let update = state_update(&self.world, vec![], vec![], self.clock());
         self.send(id, update);
-        self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::new(), known: HashSet::new() });
+        self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::default(), known: HashSet::default() });
     }
 
     pub fn disconnect(&mut self, id: ClientId) {
@@ -154,6 +160,7 @@ impl Game {
             }
             message => {
                 let Some(owner) = self.clients.get(&client_id).map(|cs| cs.owner) else { return };
+                self.stirred = true;
                 // What the hand did, said to its owner alone: an undo, or a
                 // building refused.
                 if let Some(reply) = handle_player_action(&mut self.world, &mut self.events, &mut self.intersections, owner, message, self.now) {
@@ -207,23 +214,27 @@ impl Game {
     /// A tick with something done before each step: a level setting off
     /// whoever is due.
     pub fn tick_with(&mut self, mut before: impl FnMut(&mut Game)) -> u32 {
-        // Whatever the commands built, reached, cut off or took away
-        // settles once for the batch: the road brush sends a command a tile.
-        settle_and_wake(&mut self.world, &mut self.events);
         let mut wakes = 0;
         for _ in 0..self.speed {
             before(self);
             wakes += self.step();
         }
-        // Before the flush, which takes the lumps a mission reads.
-        crate::missions::check(&mut self.world, self.now);
         let clk = self.clock();
         flush_dirty(&mut self.world, &mut self.clients, &mut self.outbox, clk);
         wakes
     }
 
     /// One step of simulated time, and everything due in it. How many wakes.
+    ///
+    /// Whatever the commands built, reached, cut off or took away settles
+    /// at the step after them, once for the batch (the road brush sends a
+    /// command a tile); else every `SETTLE_MS`. By the steps, not by the
+    /// ticks: a tick is as many steps as the clock's speed, and what the
+    /// game does must not depend on how fast it is watched (`replay.rs`).
     pub fn step(&mut self) -> u32 {
+        if std::mem::take(&mut self.stirred) || !self.world.unsettled.is_empty() || self.now % SETTLE_MS == 0 {
+            settle_and_wake(&mut self.world, &mut self.events);
+        }
         self.now += STEP_MS;
         self.events.set_now(self.now);
         let mut wakes = 0;
@@ -231,6 +242,8 @@ impl Game {
             handle_wake(&mut self.world, &mut self.events, &mut self.intersections, id, self.now);
             wakes += 1;
         }
+        // Before the flush, which takes the lumps a mission reads.
+        crate::missions::check(&mut self.world, self.now);
         wakes
     }
 }
@@ -883,7 +896,7 @@ fn flush_dirty(
     // Group by chunk so a client walks the chunks it subscribes to rather than
     // every entity that changed. A client sees a handful of chunks; the world
     // can have hundreds of moving cars.
-    let mut by_chunk: HashMap<ChunkCoord, Vec<GameObjectEntry>> = HashMap::new();
+    let mut by_chunk: HashMap<ChunkCoord, Vec<GameObjectEntry>> = HashMap::default();
     for id in &changed {
         if let Some(entry) = world.objects.get(*id)
             && let Some(pos) = entry.position

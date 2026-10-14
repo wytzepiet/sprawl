@@ -23,7 +23,7 @@
 //! bend or parting; a slope over a road, clear only where it is a level
 //! up; a ramp beside a road on one tile.
 
-use std::collections::HashMap;
+use crate::fixed::HashMap;
 
 use super::decks::{spot, Side, MIDDLE};
 use super::World;
@@ -294,7 +294,7 @@ impl World {
         if near.iter().all(|(_, os)| os.iter().all(|&o| drawn.new_end(o).is_some())) {
             return true;
         }
-        let mut shapes: HashMap<EntityId, Shape> = HashMap::new();
+        let mut shapes: HashMap<EntityId, Shape> = HashMap::default();
         for (c, os) in near {
             for id in std::iter::once(c).chain(os.iter().copied()) {
                 shapes.entry(id).or_insert_with(|| Shape::of(drawn.pieces(id)));

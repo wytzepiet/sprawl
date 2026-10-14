@@ -8,7 +8,7 @@ import World from "../engine/World";
 import { eachEntity, GameProvider, getEntity } from "../state/gameObjects";
 import { ThemeProvider } from "../engine/theme";
 import Glass from "../ui/Glass";
-import { projector } from "../engine/view";
+import { projector, screenToWorld } from "../engine/view";
 import { climb, pen, priority, setPen, setPriority, setTool, tool } from "../ui/buildMode";
 import type { LevelState, Tool } from "../generated";
 import { connectLevel, type LevelConnection } from "./connection";
@@ -129,7 +129,7 @@ function Play(props: { level: LevelText; back: () => void; next: () => void }) {
             <DayNightLights>
               <Registered>
                 <InstancePoolProvider>
-                  <World brush={() => <RoadBrush />} />
+                  <World brush={() => (<><RoadBrush /><Flagger line={() => line} /></>)} />
                 </InstancePoolProvider>
               </Registered>
             </DayNightLights>
@@ -194,6 +194,54 @@ function Signs() {
  * gate's label at its stub with how many wait there, and where a test
  * jammed.
  */
+/** Something said for a moment at the foot of the screen. */
+const [told, setTold] = createSignal<string | null>(null);
+let toldTimer: ReturnType<typeof setTimeout> | undefined;
+const tell = (text: string) => {
+  setTold(text);
+  clearTimeout(toldTimer);
+  toldTimer = setTimeout(() => setTold(null), 4000);
+};
+
+/** F: this moment, and the tile under the pointer, marked as something
+ *  wrong in the replay the level keeps (`server/src/replay.rs`), and then
+ *  what. */
+function Flagger(props: { line: () => LevelConnection | null }) {
+  const { scene, canvas } = useEngine();
+  let at: { clientX: number; clientY: number } | null = null;
+  const move = (e: PointerEvent) => (at = { clientX: e.clientX, clientY: e.clientY });
+  const key = (e: KeyboardEvent) => {
+    if (e.key.toLowerCase() !== "f" || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    const w = at && screenToWorld(scene, canvas, at);
+    const tile: [number, number] | null = w ? [Math.floor(w.wx), Math.floor(w.wy)] : null;
+    props.line()?.flag(tile);
+    const note = prompt("Flagged. What looks wrong here?");
+    if (note) props.line()?.note(note);
+    tell(`Flagged${tile ? ` at ${tile[0]},${tile[1]}` : ""}: copy the replay to send it`);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("keydown", key);
+  onCleanup(() => (window.removeEventListener("pointermove", move), window.removeEventListener("keydown", key)));
+  return null;
+}
+
+/** Everything played since the level opened, onto the clipboard to paste
+ *  to Claude; or, where the clipboard will not have it, as a file. */
+async function copyReplay(line: LevelConnection | null, name: string) {
+  if (!line) return;
+  const json = await line.replay();
+  try {
+    await navigator.clipboard.writeText(json);
+    tell(`Replay copied (${Math.ceil(json.length / 1024)} KB): paste it to Claude`);
+  } catch {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    a.download = `${name}-replay.json`;
+    a.click();
+    tell("Replay saved as a file");
+  }
+}
+
 function Frame(props: { state: () => LevelState | null }) {
   const { scene, canvas, afterRender } = useEngine();
   const el = document.createElement("canvas");
@@ -304,6 +352,9 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
   const dark = { background: "rgb(var(--ink))", color: "rgb(var(--glass))" };
   return (
     <>
+      <Show when={told()}>
+        {(t) => <div data-glass="panel" class="ink fixed bottom-28 left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-[13px] select-none">{t()}</div>}
+      </Show>
       {/* The level and its traffic. */}
       <div data-glass="panel" class="ink fixed top-6 left-6 z-50 w-72 rounded-3xl px-5 py-4 select-none">
         <div class="flex items-center gap-3">
@@ -336,8 +387,11 @@ function Hud(props: { level: LevelText; state: () => LevelState | null; line: ()
           </span>
         </div>
         <div class="soft mt-2 text-[11px] leading-snug">
-          V look · drag to draw · 1–4 roads and lights · X bulldoze (or hold Shift) · P priority · ↑↓ height · Z undo · Space test · right-drag to pan
+          V look · drag to draw · 1–4 roads and lights · X bulldoze (or hold Shift) · P priority · ↑↓ height · Z undo · Space test · right-drag to pan · F flag something wrong
         </div>
+        <button class="press soft mt-2 mr-3 text-[12px] underline cursor-pointer" title="Everything played here, to paste to Claude: flag the moment first (F)" onClick={() => copyReplay(props.line(), props.level.name)}>
+          Copy replay
+        </button>
         <Show when={s()?.phase === "Build" && (s()?.cost ?? 0) > 0}>
           <button class="press soft mt-2 text-[12px] underline cursor-pointer" onClick={() => confirm("Take up every road you built here?") && props.line()?.send({ type: "ResetWorld" })}>
             Start over

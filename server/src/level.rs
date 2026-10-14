@@ -37,9 +37,10 @@
 //! builds, the traffic runs for the sight of it; a test runs it for
 //! `TEST_MS` from empty roads, every car counted, and ends early in a jam.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
+use crate::fixed::HashMap;
 
-use rand::rngs::SmallRng;
+use crate::fixed::SmallRng;
 use rand::{Rng, SeedableRng};
 use serde::Serialize;
 use ts_rs::TS;
@@ -250,7 +251,7 @@ impl Level {
         world.treasury = f64::MAX / 4.0;
         world.missions.list.clear();
 
-        let mut gates_said: HashMap<char, (Way, Lanes)> = HashMap::new();
+        let mut gates_said: HashMap<char, (Way, Lanes)> = HashMap::default();
         let mut wants_said: Vec<(char, char, f64)> = Vec::new();
         for line in text.lines().filter_map(|l| l.trim().strip_prefix('@')) {
             let words: Vec<&str> = line.split_whitespace().collect();
@@ -339,7 +340,7 @@ impl Level {
             .filter_map(|&(a, b, n)| Some(Want { from: index(a)?, to: index(b)?, per_min: n }))
             .collect();
         let (mut solution, mut priority, mut lights, mut arrows) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-        let mut rows_at: HashMap<u8, i32> = HashMap::new();
+        let mut rows_at: HashMap<u8, i32> = HashMap::default();
         for (height, line) in &solve {
             let row = rows_at.entry(*height).or_insert(0);
             if *height == PRIORITY {
@@ -398,7 +399,7 @@ impl Level {
             seed,
             next: vec![0; n],
             queue: vec![VecDeque::new(); n],
-            live: HashMap::new(),
+            live: HashMap::default(),
             tally: vec![Tally::default(); n],
             started: 0,
             last_arrival: 0,
@@ -897,7 +898,16 @@ mod tests {
             assert!(s.wants.iter().all(|w| w.joined), "{name}: the solve leaves a want with no road");
             assert_eq!(Some(s.cost), s.par, "{name}: the solve costs other than its par");
             level.test(&mut game);
-            run(&mut level, &mut game, TEST_MS + 1000);
+            // Nothing going wrong on the way (`Watch`): no car through
+            // another, none standing for good.
+            let mut watch = crate::replay::Watch::default();
+            let end = game.now + TEST_MS + 1000;
+            while game.now < end {
+                level.step(&mut game);
+                game.step();
+                let wrong = watch.look(&game);
+                assert!(wrong.is_empty(), "{name}: {}", wrong.join("; "));
+            }
             let s = level.state(&game);
             assert_eq!(s.phase, Phase::Done, "{name}: {} at {:?}", s.message, s.jam);
             eprintln!("{name}: efficiency {:.1}, flow {:.2}, cost {}", s.efficiency, s.flow, s.cost);
@@ -1000,44 +1010,6 @@ mod tests {
         }
     }
 
-    /// Two cars in one lane of a road of two closer than their lengths: one
-    /// driving through the other, which a change of lanes must never make.
-    fn overlap(game: &Game) -> Option<String> {
-        let world = &game.world;
-        for (edge, seg) in world.edges.iter().filter(|(_, s)| s.lanes > 1) {
-            for lane in 0..2 {
-                let mut at: Vec<(f64, EntityId, CarRole)> = seg
-                    .lane(lane)
-                    .filter_map(|c| match world.objects.get(c).map(|e| &e.object) {
-                        Some(GameObject::Car(car)) => {
-                            let t = car.trip.as_ref()?;
-                            // On it, not yet coming to it by another road.
-                            let i = t.route_index;
-                            if (t.route[i - 1], t.route[i]) != *edge {
-                                return None;
-                            }
-                            let (p, _) = crate::car::physics::catch_up(t.progress, t.speed, t.acceleration, (game.now - t.updated_at) as f64 / 1000.0);
-                            Some((p - t.segment_lengths[1..i].iter().sum::<f64>(), c, car.role))
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                at.sort_by(|a, b| a.0.total_cmp(&b.0));
-                for w in at.windows(2) {
-                    let ((p, a, ra), (q, b, rb)) = (w[0], w[1]);
-                    if q - p < crate::car::nose(ra) + crate::car::tail(rb) - 0.02 {
-                        let say = |c: EntityId| match world.objects.get(c).map(|e| &e.object) {
-                            Some(GameObject::Car(car)) => car.trip.as_ref().map(|t| format!("{c}: ri {} v {:.2} a {:.2} shift {:?} lanes {:?} at {} route {:?}", t.route_index, t.speed, t.acceleration, t.shift, t.lanes, t.updated_at, t.route)).unwrap_or_default(),
-                            _ => String::new(),
-                        };
-                        return Some(format!("cars {a} and {b} {:.2} apart in lane {lane} of {edge:?} at {}\n{}\n{}\nlanes {:?} {:?}\nat {at:?}", q - p, game.now, say(a), say(b), seg.lane(0).collect::<Vec<_>>(), seg.lane(1).collect::<Vec<_>>()));
-                    }
-                }
-            }
-        }
-        None
-    }
-
     /// The cars on the road, with their trips.
     fn trips(game: &Game) -> Vec<(EntityId, crate::protocol::Trip)> {
         game.world.objects.iter().filter_map(|e| match &e.object {
@@ -1058,13 +1030,13 @@ mod tests {
         draw_road(&mut game, Tool::OneWay, &[(9, -6), (9, -5), (9, -4), (9, -3)]);
         let junction = game.world.road_node_at(GridCoord { x: 9, y: -3 }).unwrap();
         level.test(&mut game);
-        let (mut changes, mut merged_into) = (std::collections::HashSet::new(), std::collections::HashSet::new());
+        let (mut changes, mut merged_into) = (crate::fixed::HashSet::default(), crate::fixed::HashSet::default());
+        let mut watch = crate::replay::Watch::default();
         while level.phase == Phase::Test {
             level.step(&mut game);
             game.step();
-            if let Some(o) = overlap(&game) {
-                panic!("{o}");
-            }
+            let wrong = watch.look(&game);
+            assert!(wrong.is_empty(), "{}", wrong.join("\n"));
             for (id, t) in trips(&game) {
                 if let Some(s) = t.shift {
                     changes.insert((id, s.at));
@@ -1078,7 +1050,7 @@ mod tests {
             }
         }
         assert_eq!(level.phase, Phase::Done, "{}", level.message);
-        assert_eq!(merged_into, std::collections::HashSet::from([0]), "joining from the right, into the right lane");
+        assert_eq!(merged_into, crate::fixed::HashSet::from_iter([0]), "joining from the right, into the right lane");
         assert!(changes.len() > 10, "{} changes of lane", changes.len());
     }
 
@@ -1095,13 +1067,13 @@ mod tests {
         let out = game.world.road_node_at(GridCoord { x: 0, y: -3 }).unwrap();
         level.test(&mut game);
         let (mut turning, mut through) = (Vec::new(), Vec::new());
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = crate::fixed::HashSet::default();
+        let mut watch = crate::replay::Watch::default();
         while level.phase == Phase::Test {
             level.step(&mut game);
             game.step();
-            if let Some(o) = overlap(&game) {
-                panic!("{o}");
-            }
+            let wrong = watch.look(&game);
+            assert!(wrong.is_empty(), "{}", wrong.join("\n"));
             for (id, t) in trips(&game) {
                 let ri = t.route_index;
                 // Coming to the turn, its last edge before it; at the far end, the last edge.
@@ -1132,22 +1104,12 @@ mod tests {
         draw_road(&mut game, Tool::OneWay, &[(5, -3), (5, -2), (5, -1), (5, 0)]);
         draw_road(&mut game, Tool::OneWay, &[(9, -3), (9, -4), (9, -5), (9, -6)]);
         level.test(&mut game);
-        let mut standing: std::collections::HashMap<EntityId, GameTime> = std::collections::HashMap::new();
+        let mut watch = crate::replay::Watch::default();
         while level.phase == Phase::Test {
             level.step(&mut game);
             game.step();
-            if let Some(o) = overlap(&game) {
-                panic!("{o}");
-            }
-            for (id, t) in trips(&game) {
-                let (_, v) = crate::car::physics::catch_up(t.progress, t.speed, t.acceleration, (game.now - t.updated_at) as f64 / 1000.0);
-                if v > 0.01 {
-                    standing.remove(&id);
-                } else {
-                    let since = *standing.entry(id).or_insert(game.now);
-                    assert!(game.now - since < 30_000, "car {id} standing since {since} at {:?}, lanes {:?}", game.world.objects.get(t.route[t.route_index]).and_then(|e| e.position), t.lanes);
-                }
-            }
+            let wrong = watch.look(&game);
+            assert!(wrong.is_empty(), "{}", wrong.join("\n"));
         }
         assert_eq!(level.phase, Phase::Done, "{}", level.message);
     }

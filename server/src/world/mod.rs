@@ -13,7 +13,8 @@ pub mod roads;
 pub mod sea;
 pub mod segments;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
+use crate::fixed::{HashMap, HashSet};
 
 use crate::engine::GameTime;
 
@@ -59,6 +60,9 @@ pub struct World {
     pub manoeuvres: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
     /// Vehicles standing where their gear changes, and until when.
     pub cusps: HashMap<EntityId, crate::engine::GameTime>,
+    /// What each car last slowed or stopped for, and how hard
+    /// (`car::Cause`): for a replay to read, never the game.
+    pub why: HashMap<EntityId, (crate::car::Cause, f64)>,
     pub terrain_seed: u32,
     /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
     /// starts counting afresh.
@@ -164,18 +168,19 @@ impl World {
     pub fn new() -> Self {
         Self {
             objects: Tracked::new(),
-            spatial: HashMap::new(),
-            edges: HashMap::new(),
-            lots: HashMap::new(),
-            lot_nodes: HashMap::new(),
-            claims: HashMap::new(),
+            spatial: HashMap::default(),
+            edges: HashMap::default(),
+            lots: HashMap::default(),
+            lot_nodes: HashMap::default(),
+            claims: HashMap::default(),
             network: RoadNetwork::default(),
-            car_segment: HashMap::new(),
-            node_cars: HashMap::new(),
-            manoeuvres: HashMap::new(),
-            cusps: HashMap::new(),
+            car_segment: HashMap::default(),
+            node_cars: HashMap::default(),
+            manoeuvres: HashMap::default(),
+            cusps: HashMap::default(),
+            why: HashMap::default(),
             terrain_seed: 0,
-            books: HashMap::new(),
+            books: HashMap::default(),
             town: Default::default(),
             gdp: 0.0,
             treasury: crate::economy::STAKE,
@@ -184,43 +189,44 @@ impl World {
             build: Default::default(),
             laid: 0,
             frame: None,
-            terrain: HashMap::new(),
+            terrain: HashMap::default(),
             peaks: Default::default(),
             water: Default::default(),
             lines: Default::default(),
             lanes: None,
             junctions: crate::intersection::IntersectionRegistry::new(),
-            voyages: HashMap::new(),
+            voyages: HashMap::default(),
             chunk_crossings: Vec::new(),
-            built: HashSet::new(),
-            occupied: HashMap::new(),
-            roads: HashMap::new(),
-            decks: HashMap::new(),
+            built: HashSet::default(),
+            occupied: HashMap::default(),
+            roads: HashMap::default(),
+            decks: HashMap::default(),
             calls: Vec::new(),
             harbours: Default::default(),
-            aims: HashMap::new(),
-            sent: HashSet::new(),
-            people: HashMap::new(),
+            aims: HashMap::default(),
+            sent: HashSet::default(),
+            people: HashMap::default(),
             unsettled: BTreeSet::new(),
-            undo: HashMap::new(),
+            undo: HashMap::default(),
             missions: Default::default(),
         }
     }
 
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
         let mut world = Self {
-            spatial: HashMap::new(),
-            edges: HashMap::new(),
-            lots: HashMap::new(),
-            lot_nodes: HashMap::new(),
-            claims: HashMap::new(),
+            spatial: HashMap::default(),
+            edges: HashMap::default(),
+            lots: HashMap::default(),
+            lot_nodes: HashMap::default(),
+            claims: HashMap::default(),
             network: RoadNetwork::default(),
-            car_segment: HashMap::new(),
-            node_cars: HashMap::new(),
-            manoeuvres: HashMap::new(),
-            cusps: HashMap::new(),
+            car_segment: HashMap::default(),
+            node_cars: HashMap::default(),
+            manoeuvres: HashMap::default(),
+            cusps: HashMap::default(),
+            why: HashMap::default(),
             terrain_seed,
-            books: HashMap::new(),
+            books: HashMap::default(),
             town: Default::default(),
             gdp: 0.0,
             treasury: 0.0,
@@ -229,25 +235,25 @@ impl World {
             build: Default::default(),
             laid: 0,
             frame: None,
-            terrain: HashMap::new(),
+            terrain: HashMap::default(),
             peaks: Default::default(),
             water: Default::default(),
             lines: Default::default(),
             lanes: None,
             junctions: crate::intersection::IntersectionRegistry::new(),
-            voyages: HashMap::new(),
+            voyages: HashMap::default(),
             chunk_crossings: Vec::new(),
-            built: HashSet::new(),
-            occupied: HashMap::new(),
-            roads: HashMap::new(),
-            decks: HashMap::new(),
+            built: HashSet::default(),
+            occupied: HashMap::default(),
+            roads: HashMap::default(),
+            decks: HashMap::default(),
             calls: Vec::new(),
             harbours: Default::default(),
-            aims: HashMap::new(),
-            sent: HashSet::new(),
-            people: HashMap::new(),
+            aims: HashMap::default(),
+            sent: HashSet::default(),
+            people: HashMap::default(),
             unsettled: BTreeSet::new(),
-            undo: HashMap::new(),
+            undo: HashMap::default(),
             missions: Default::default(),
             objects,
         };
@@ -516,7 +522,7 @@ impl World {
 
     /// Every entity in the given chunks.
     pub fn entities_in_chunks(&self, chunks: &HashSet<ChunkCoord>) -> HashSet<EntityId> {
-        let mut result = HashSet::new();
+        let mut result = HashSet::default();
         for coord in chunks {
             if let Some(ids) = self.spatial.get(coord) {
                 result.extend(ids);

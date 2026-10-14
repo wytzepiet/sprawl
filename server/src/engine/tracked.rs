@@ -1,4 +1,5 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
+use crate::fixed::{HashMap, HashSet};
 
 use crate::protocol::{EntityId, GameObjectEntry, GameObject, GridCoord};
 
@@ -20,12 +21,12 @@ pub struct Tracked {
 impl Tracked {
     pub fn new() -> Self {
         Self {
-            data: HashMap::new(),
+            data: HashMap::default(),
             roads: BTreeSet::new(),
             things: BTreeSet::new(),
-            dirty: HashSet::new(),
+            dirty: HashSet::default(),
             removed: Vec::new(),
-            persist_dirty: HashSet::new(),
+            persist_dirty: HashSet::default(),
             persist_removed: Vec::new(),
             next_id: 1,
         }

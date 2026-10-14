@@ -12,7 +12,7 @@
 //! run between road nodes, and a ship takes a junction as a car takes a
 //! road junction (`intersection`), by the junction's own rule (`Kind`).
 
-use std::collections::HashMap;
+use crate::fixed::HashMap;
 
 use crate::intersection::{paths_conflict, Dir, Rule};
 use crate::protocol::{Lane, LaneKind};
@@ -127,7 +127,7 @@ pub struct Lanes {
 
 impl Lanes {
     pub fn new(water: &Water) -> Lanes {
-        Lanes { x0: water.x0, y0: water.y0, w: water.w, h: water.h, marks: vec![0; water.clearance.len()], junctions: HashMap::new() }
+        Lanes { x0: water.x0, y0: water.y0, w: water.w, h: water.h, marks: vec![0; water.clearance.len()], junctions: HashMap::default() }
     }
 
     fn index(&self, x: i32, y: i32) -> Option<usize> {

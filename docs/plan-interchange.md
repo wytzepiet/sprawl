@@ -594,11 +594,16 @@ What runs, and where; the rest of the order above is still to come.
   roundabout.
 - **The map of levels** and **kept layouts** (`Map.tsx`, `progress.ts`,
   `Level::layout`).
+- **Replays** (`replay.rs`): the sim is the same from the same inputs on
+  every machine (`fixed.rs`; settling paced by steps), checked by a
+  fingerprint every five sim seconds; a level keeps its inputs as played
+  (`Session`, driving the browser's worker and a replay alike), F flags a
+  moment, "Copy replay" hands it over, and `cargo run --bin replay` plays
+  it to the flag and says what each car there slows for (`World::why`).
 
 Not yet: the scores endpoint and its
-chart, the overworld as one terrain with shared gates and cars crossing
+chart (a replay is what a server would check a score by), the overworld
+as one terrain with shared gates and cars crossing
 between levels (the map's levels are made separately, and their gates do
-not yet agree), auto-bridging, flipping a one-way in place. The sim is
-not yet the same from run to run on different machines: some of what it
-decides follows a `HashMap`'s order, which is random per process natively
-and fixed in wasm; a score checked on the server needs that gone first.
+not yet agree), auto-bridging, flipping a one-way in place; replays in
+the client, scrubbed and inspected; replays of the town.

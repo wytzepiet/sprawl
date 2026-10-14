@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
+use crate::fixed::HashMap;
 
 use crate::protocol::EntityId;
 use crate::engine::GameTime;
@@ -57,7 +58,7 @@ impl EventQueue {
         Self {
             heap: BinaryHeap::new(),
             now: 0,
-            dedup: HashMap::new(),
+            dedup: HashMap::default(),
             next_generation: 0,
         }
     }

@@ -1,4 +1,5 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
+use crate::fixed::HashSet;
 
 use crate::blueprint::blueprint;
 use crate::economy;
@@ -142,7 +143,7 @@ impl World {
         // (the drive to this line, who)
         let mut offers: Vec<(f64, EntityId)> = self.staff(line).into_iter().filter_map(|id| Some((self.commute(id, line)?, id))).collect();
         let rings = self.rings_from(crate::world::chunk_of(at));
-        let mut seen = HashSet::new();
+        let mut seen = HashSet::default();
         for (k, ring) in rings.into_iter().enumerate() {
             // The nearest a home in this ring stands, and so the shortest
             // drive anyone there could have.

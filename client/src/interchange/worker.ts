@@ -13,9 +13,16 @@ export type ToWorker =
   | { type: "test" }
   | { type: "finish" }
   | { type: "build" }
-  | { type: "solve" };
+  | { type: "solve" }
+  | { type: "flag"; tile: [number, number] | null }
+  | { type: "note"; note: string }
+  | { type: "replay" };
 
-export type FromWorker = { type: "out"; msgs: Uint8Array[] } | { type: "level"; json: string } | { type: "layout"; json: string };
+export type FromWorker =
+  | { type: "out"; msgs: Uint8Array[] }
+  | { type: "level"; json: string }
+  | { type: "layout"; json: string }
+  | { type: "replay"; json: string };
 
 let web: Web | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -63,5 +70,8 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
   else if (m.type === "finish") web.finish();
   else if (m.type === "build") web.build();
   else if (m.type === "solve") web.solve();
+  else if (m.type === "flag") web.flag(m.tile?.[0], m.tile?.[1], "");
+  else if (m.type === "note") web.note(m.note);
+  else if (m.type === "replay") return post({ type: "replay", json: web.replay() });
   if (m.type !== "msg") flush(true);
 };

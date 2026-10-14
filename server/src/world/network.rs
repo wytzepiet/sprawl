@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+use crate::fixed::{HashMap, HashSet};
 
 use crate::protocol::EntityId;
 
@@ -279,8 +280,8 @@ impl RoadNetwork {
     /// some other path still joins them. Otherwise the side that closed first.
     fn smaller_half(&self, a: EntityId, b: EntityId) -> Option<HashSet<EntityId>> {
         let mut sides = [
-            (HashSet::from([a]), VecDeque::from([a])),
-            (HashSet::from([b]), VecDeque::from([b])),
+            (HashSet::from_iter([a]), VecDeque::from([a])),
+            (HashSet::from_iter([b]), VecDeque::from([b])),
         ];
         loop {
             let mut both_closed = true;
@@ -417,11 +418,11 @@ impl RoadNetwork {
     /// neighbour count did not move is still an intersection, or still not one,
     /// so the segments beyond are unaffected and are left alone.
     fn take_segments_around(&mut self, nodes: &[EntityId]) -> HashSet<Link> {
-        let mut doomed: HashSet<SegmentId> = HashSet::new();
+        let mut doomed: HashSet<SegmentId> = HashSet::default();
         for node in nodes {
             doomed.extend(self.on_node.get(node).into_iter().flatten().copied());
         }
-        let mut links = HashSet::new();
+        let mut links = HashSet::default();
         for id in doomed {
             let Some(seg) = self.segments.remove(&id) else { continue };
             for pair in seg.nodes.windows(2) {
@@ -548,7 +549,7 @@ impl RoadNetwork {
         }
         let c = self.fresh();
         self.component.insert(node, c);
-        self.members.insert(c, HashSet::from([node]));
+        self.members.insert(c, HashSet::from_iter([node]));
         self.exit_count.insert(c, self.exits.contains(&node) as u32);
         c
     }
@@ -578,7 +579,7 @@ mod tests {
     /// road, contracted from nothing. An index that is *updated* fails by
     /// drifting, so this is the test that matters.
     fn segments_agree(net: &RoadNetwork) {
-        let mut links: HashSet<Link> = HashSet::new();
+        let mut links: HashSet<Link> = HashSet::default();
         for (&a, ns) in &net.adj {
             for &b in ns.keys() {
                 links.insert(link_key(a, b));
@@ -613,15 +614,15 @@ mod tests {
     /// shares the production reasoning would share its mistakes.
     fn reference_segments(adj: &HashMap<EntityId, HashMap<EntityId, f64>>) -> HashSet<Vec<Link>> {
         let deg = |n: EntityId| adj.get(&n).map_or(0, |a| a.len());
-        let mut all: HashSet<Link> = HashSet::new();
+        let mut all: HashSet<Link> = HashSet::default();
         for (&a, ns) in adj {
             for &b in ns.keys() {
                 all.insert(link_key(a, b));
             }
         }
 
-        let mut out: HashSet<Vec<Link>> = HashSet::new();
-        let mut used: HashSet<Link> = HashSet::new();
+        let mut out: HashSet<Vec<Link>> = HashSet::default();
+        let mut used: HashSet<Link> = HashSet::default();
 
         let mut ends: Vec<EntityId> = adj.keys().copied().filter(|&n| deg(n) != 2).collect();
         ends.sort_unstable();
@@ -694,7 +695,7 @@ mod tests {
         };
 
         let mut net = RoadNetwork::default();
-        let mut laid: HashSet<Link> = HashSet::new();
+        let mut laid: HashSet<Link> = HashSet::default();
         let (mut saw_ring, mut saw_crossroads, mut saw_split) = (false, false, false);
         // A small grid, so junctions, rings and dead ends all turn up often.
         const W: i32 = 5;

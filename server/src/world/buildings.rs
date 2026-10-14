@@ -505,7 +505,7 @@ impl World {
     /// the order they are laid.
     pub fn stub(&self, kind: BuildingKind, tiles: &[GridCoord], facing: u8) -> Vec<(GridCoord, GridCoord)> {
         use std::cmp::Reverse;
-        use std::collections::HashMap;
+        use crate::fixed::HashMap;
         /// How far it looks for a street to join, in tiles each way; and
         /// how far it runs inland where there is none.
         const REACH: i32 = 12;
@@ -525,8 +525,8 @@ impl World {
         // Fewest bends, then fewest tiles: a step costs two, a bend five
         // more. A state is a tile and the way in to it.
         type State = (i32, i32, usize);
-        let mut came: HashMap<State, State> = HashMap::new();
-        let mut cost: HashMap<State, u32> = HashMap::new();
+        let mut came: HashMap<State, State> = HashMap::default();
+        let mut cost: HashMap<State, u32> = HashMap::default();
         let mut heap = std::collections::BinaryHeap::new();
         if open(front) || street(front) {
             for d in 0..4 {
@@ -686,7 +686,7 @@ impl World {
         let tiles = b.tiles.clone();
         // Its fleet goes with it: what stands in the yard now, and what is
         // out when it gets back (`park_car`). Its people go at `settle`.
-        let chunks: std::collections::HashSet<_> = tiles.iter().map(|&t| crate::world::chunk_of(t)).collect();
+        let chunks: crate::fixed::HashSet<_> = tiles.iter().map(|&t| crate::world::chunk_of(t)).collect();
         let yard: Vec<EntityId> = chunks
             .iter()
             .flat_map(|c| self.spatial.get(c))
@@ -719,7 +719,7 @@ impl World {
                 _ => None,
             })
             .collect();
-        let mut gone: std::collections::HashSet<EntityId> = Default::default();
+        let mut gone: crate::fixed::HashSet<EntityId> = Default::default();
         for (id, tiles) in buildings {
             for tile in tiles {
                 let Some(node) = self.road_node_at(tile) else { continue };
@@ -762,7 +762,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use crate::fixed::HashSet;
 
     /// A world with nothing in it but grass and the given road path.
     fn world_with_road(path: &[(i32, i32)]) -> World {
@@ -892,15 +892,15 @@ mod tests {
     /// so the thing worth testing is that it never drifts from the graph it
     /// claims to describe. Brute-forces the answer and demands agreement.
     fn agrees_with_the_edges(world: &World) {
-        let mut adj: std::collections::HashMap<EntityId, Vec<EntityId>> =
-            std::collections::HashMap::new();
+        let mut adj: crate::fixed::HashMap<EntityId, Vec<EntityId>> =
+            crate::fixed::HashMap::default();
         for &(a, b) in world.edges.keys() {
             adj.entry(a).or_default().push(b);
             adj.entry(b).or_default().push(a);
         }
         let nodes: Vec<EntityId> = adj.keys().copied().collect();
         for &from in &nodes {
-            let mut seen = HashSet::from([from]);
+            let mut seen = HashSet::from_iter([from]);
             let mut stack = vec![from];
             while let Some(n) = stack.pop() {
                 for &next in adj.get(&n).into_iter().flatten() {
