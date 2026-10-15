@@ -1051,17 +1051,21 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
         }
         None
     };
-    // In order. It holds no junction while it waits at another: past one
-    // it is not let through, or in one it would stop in, at the line of
-    // the next, it is out of a junction only when the one it waits at lets
-    // it go, which is not yet known. So it goes in after whoever it would
-    // hold up there, and is not let through ahead of whoever waits; but
-    // they see it coming. Holding it, it would hold the junction against
-    // everyone it waits on in turn, round a ring for good.
+    // In order. It is let through no junction while it waits at another:
+    // past one it is not let through, or in one it would stop in, at the
+    // line of the next, it is out of a junction only when the one it waits
+    // at lets it go, which is not yet known. Those it waits behind see it
+    // coming, but it holds none: holding them, it held each against
+    // everyone it waited on in turn, round a ring for good. Junctions it
+    // would stop between, each in the line of the next, are one: it waits
+    // for none of them but the furthest, and is let into the nearer as
+    // that one lets it go.
     let waits = |i: usize, intersections: &IntersectionRegistry| {
         let (k, _, out, _, claim) = &wants[i];
-        wants[..i].iter().any(|w| !intersections.has_passage(w.3.id, car_id))
-            || !claim.committed && wants[i + 1..].iter().any(|(j, line, _, h, _)| j > k && line < out && !intersections.has_passage(h.id, car_id))
+        let joined = (0..i).rev().take_while(|&m| wants[m].2 > wants[m + 1].1).count();
+        !claim.committed
+            && (wants[..i - joined].iter().any(|w| !intersections.has_passage(w.3.id, car_id))
+                || wants[i + 1..].iter().any(|(j, line, _, h, _)| j > k && line < out && !intersections.has_passage(h.id, car_id)))
     };
     let mut waiting = Vec::new();
     for made in 0..wants.len() {

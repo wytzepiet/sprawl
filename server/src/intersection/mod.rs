@@ -71,6 +71,12 @@ impl QueueEntry {
     fn ahead(&self, now: GameTime) -> GameTime {
         self.claim.ahead.saturating_add(self.late(now))
     }
+    /// It cannot say when it will be out, waiting at another junction
+    /// first: those it would hold up see it coming, but it is not let
+    /// through. A ship, which cannot say either, is let through.
+    fn waits(&self) -> bool {
+        self.claim.ahead == GameTime::MAX && !self.claim.committed
+    }
 }
 
 /// How far ahead of its line a car may hold a junction: claimed further
@@ -254,7 +260,7 @@ impl IntersectionManager {
             // again for a new way through, into another lane.
             let e = &self.passing[i];
             let held = self.passing.iter().any(|p| (p.since, p.car_id) < (e.since, e.car_id) && self.held_by(e, p, now));
-            if !claim.committed && (moved || claim.due > now + HOLD || held || (self.signal.is_none() && self.queue.iter().any(|q| self.yields(e, q, now)))) {
+            if !claim.committed && (moved || claim.due > now + HOLD || held || e.waits() || (self.signal.is_none() && self.queue.iter().any(|q| self.yields(e, q, now)))) {
                 let mut e = self.passing.remove(i);
                 e.since = now;
                 self.queue.push_back(e);
@@ -299,7 +305,7 @@ impl IntersectionManager {
                 return newly_granted;
             }
             let green = signal.phases.get(signal.phase).cloned().unwrap_or_default();
-            while let Some(i) = self.queue.iter().position(|e| green.contains(&e.claim.from) && e.due(now) <= now + HOLD) {
+            while let Some(i) = self.queue.iter().position(|e| green.contains(&e.claim.from) && !e.waits() && e.due(now) <= now + HOLD) {
                 let next = self.queue[i];
                 if self.passing.iter().any(|p| self.held_by(&next, p, now)) {
                     break;
@@ -318,7 +324,7 @@ impl IntersectionManager {
         let mut order: Vec<QueueEntry> = self.queue.iter().copied().collect();
         order.sort_by_key(|e| self.first(e));
         for e in order {
-            if e.due(now) > now + HOLD || self.queue.iter().any(|q| self.yields(&e, q, now)) || self.passing.iter().any(|p| self.held_by(&e, p, now)) {
+            if e.waits() || e.due(now) > now + HOLD || self.queue.iter().any(|q| self.yields(&e, q, now)) || self.passing.iter().any(|p| self.held_by(&e, p, now)) {
                 continue;
             }
             self.queue.retain(|q| q.car_id != e.car_id);

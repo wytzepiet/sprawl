@@ -243,9 +243,14 @@ impl Watch {
             };
             // Held at a junction, or for one let in there before it that is
             // standing at its line, not coming in ahead of it.
-            let standing = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
-                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| at(t).1 < 0.01),
-                _ => false,
+            let speed = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+                Some(GameObject::Car(c)) => c.trip.as_ref().map_or(0.0, |t| at(t).1),
+                _ => 0.0,
+            };
+            // Standing, and not behind one on its way.
+            let standing = |o: EntityId| {
+                speed(o) < 0.01
+                    && !matches!(world.why.get(&o), Some(&(crate::car::Cause::Ahead(a) | crate::car::Cause::Merging(a), _)) if speed(a) >= 0.01)
             };
             let held = match world.why.get(&e.id) {
                 Some(&(crate::car::Cause::Junction(j), a)) => Some((j, a, game.intersections.who(j).0)),
