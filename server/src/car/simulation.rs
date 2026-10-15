@@ -253,7 +253,7 @@ const START: f64 = 0.02;
 /// How far behind the car ahead a driver keeps, in time, besides the
 /// gap it stands at: further the faster they go, so a slowing at the
 /// front reaches each one behind a little harder, and a jam spreads back.
-const FOLLOW_S: f64 = 0.4;
+const FOLLOW_S: f64 = 0.25;
 
 /// How long a driver allows for seeing a car pull out and braking for it.
 const REACTION: f64 = 0.5;
