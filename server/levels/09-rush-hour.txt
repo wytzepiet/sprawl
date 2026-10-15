@@ -5,10 +5,10 @@
 @gate 2 both
 @gate 3 both
 @gate 4 both
-@want 1 2 15
-@want 2 1 15
-@want 3 4 15
-@want 4 3 15
+@want 1 2 12
+@want 2 1 12
+@want 3 4 12
+@want 4 3 12
 .........3.........
 ...................
 ..TT...........T...

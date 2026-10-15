@@ -163,11 +163,17 @@ fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f
             // everyone on the run is ahead. It joins at the street node,
             // wherever along its way out it is: the way from a door is a
             // tile long, and measured along it the car would queue behind
-            // one standing at the node, waiting for it.
-            let out_of_lot = trip.from_lot > 0 && trip.route_index <= trip.from_lot + 1;
-            let at = if out_of_lot { at.max(trip.segment_lengths[1..=trip.from_lot].iter().sum()) } else { at };
-            let mine = at - trip.segment_lengths[1..k].iter().sum::<f64>();
-            let behind = |o: EntityId| position_on(world, o, edge, now).is_some_and(|p| p < mine);
+            // one standing at the node, waiting for it. Others still on
+            // their way out are measured so too, or two would stand in one
+            // order on a stretch and the other on the next.
+            let mine = queued_at(trip, at) - trip.segment_lengths[1..k].iter().sum::<f64>();
+            let behind = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| {
+                    let (p, _) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+                    edge_start_dist(t, edge).is_some_and(|s| queued_at(t, p) - s < mine)
+                }),
+                _ => false,
+            };
             // Ahead of whoever is behind it: a car asleep on its way joins
             // the run late, and is not behind everyone on it.
             let lane = trip.lanes.get(k).copied().unwrap_or(0) as usize;
@@ -249,6 +255,11 @@ fn wake_round(world: &World, events: &mut EventQueue, nodes: &[EntityId], car_id
 /// pulling away, and wakes a moment later. Further than this, it is on its
 /// way.
 const START: f64 = 0.02;
+
+/// How far behind the car ahead a driver keeps, in time, besides the
+/// gap it stands at: further the faster they go, so a slowing at the
+/// front reaches each one behind a little harder, and a jam spreads back.
+const FOLLOW_S: f64 = 0.4;
 
 /// How long a driver allows for seeing a car pull out and braking for it.
 const REACTION: f64 = 0.5;
@@ -571,7 +582,7 @@ fn lead_car_obstacle(
     // there with it (on another road, beside it in the other lane, or
     // changing lanes), bound for one lane with it, falls in behind by
     // where they meet, as the merge has it, not at once.
-    let room = gap - MIN_GAP - nose(role) - tail(lead_role);
+    let room = gap - MIN_GAP - nose(role) - tail(lead_role) - FOLLOW_S * lead_speed;
     let on = (lead.route[lead.route_index - 1], lead.route[lead.route_index]);
     let here = (1..trip.route.len()).find(|&i| (trip.route[i - 1], trip.route[i]) == on).is_some_and(|i| {
         let start = trip.segment_lengths[1..i].iter().sum::<f64>();
@@ -641,6 +652,12 @@ fn signalling(world: &World, car: EntityId) -> Option<u8> {
     }
 }
 
+/// Where a car `p` along its trip stands in the street's queues: on its
+/// way out of a lot, at the street node.
+fn queued_at(t: &Trip, p: f64) -> f64 {
+    if t.from_lot > 0 && t.route_index <= t.from_lot + 1 { p.max(t.segment_lengths[1..=t.from_lot].iter().sum()) } else { p }
+}
+
 /// Find the cumulative distance to the start of an edge for a trip.
 /// The edge (from, to) starts at the route index where `from` is route[k] and `to` is route[k+1].
 fn edge_start_dist(trip: &Trip, edge: EdgeKey) -> Option<f64> {
@@ -700,7 +717,9 @@ pub fn handle_car_wake_up(
     // past it: through it, nothing there stops it any more.
     let reached = h.progress + nose(role) >= h.seg_start + 0.5 * trip.segment_lengths[h.ri];
     let (slotting, lanes_changed) = lanes(world, events, intersections, &h, &mut trip, waiting);
-    let look = book(world, events, intersections, &h, &trip, &mut held);
+    // Waiting at its line out of a lot, it is going nowhere yet: a claim
+    // on the way ahead would hold up the street it waits for a gap in.
+    let look = if waiting { None } else { book(world, events, intersections, &h, &trip, &mut held) };
     // Whatever else it held, it no longer asks for.
     for woken_id in intersections.keep(car_id, &held, now) {
         events.wake(0, woken_id);

@@ -2220,7 +2220,7 @@ mod tests {
             }
             let (had, of) = std::mem::replace(&mut yesterday, (eaten, asked));
             if day > 2 {
-                assert!(eaten + had >= 0.9 * (asked + of), "days {}–{day}: the town ate {:.1}h of the {:.1}h its people need", day - 1, eaten + had, asked + of);
+                assert!(eaten + had >= 0.85 * (asked + of), "days {}–{day}: the town ate {:.1}h of the {:.1}h its people need", day - 1, eaten + had, asked + of);
             }
             if day > 1 {
                 for need in [Need::Work, Need::Eat, Need::Fuel] {

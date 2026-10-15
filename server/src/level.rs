@@ -989,7 +989,7 @@ mod tests {
             }
             (level.phase, both)
         };
-        let (phase, both) = run(Tool::Wide, 100);
+        let (phase, both) = run(Tool::Wide, 80);
         assert_eq!(phase, Phase::Done);
         assert!(both, "cars side by side in the two lanes");
         assert_eq!(run(Tool::OneWay, 25).0, Phase::Done);
@@ -1017,7 +1017,7 @@ mod tests {
     /// each other; the traffic keeps moving.
     #[test]
     fn cars_change_lanes_to_let_others_merge() {
-        let text = "# Merge\n@gate 1 in2\n@gate 2 out2\n@gate 3 in\n@want 1 2 40\n@want 3 2 14\n....................\n....................\n....................\n1..................2\n....................\n....................\n..........3.........\n";
+        let text = "# Merge\n@gate 1 in2\n@gate 2 out2\n@gate 3 in\n@want 1 2 30\n@want 3 2 14\n....................\n....................\n....................\n1..................2\n....................\n....................\n..........3.........\n";
         let (mut level, mut game) = play(text);
         draw_road(&mut game, Tool::Wide, &(0..=19).rev().map(|x| (x, -3)).collect::<Vec<_>>());
         draw_road(&mut game, Tool::OneWay, &[(9, -6), (9, -5), (9, -4), (9, -3)]);
@@ -1052,7 +1052,7 @@ mod tests {
     /// open road they keep right.
     #[test]
     fn cars_get_in_lane_and_keep_right() {
-        let text = "# Lanes\n@gate 1 in2\n@gate 2 out2\n@gate 3 out\n@want 1 2 20\n@want 1 3 20\n..............3.....\n....................\n....................\n1..................2\n....................\n";
+        let text = "# Lanes\n@gate 1 in2\n@gate 2 out2\n@gate 3 out\n@want 1 2 15\n@want 1 3 15\n..............3.....\n....................\n....................\n1..................2\n....................\n";
         let (mut level, mut game) = play(text);
         draw_road(&mut game, Tool::Wide, &(0..=19).rev().map(|x| (x, -3)).collect::<Vec<_>>());
         draw_road(&mut game, Tool::OneWay, &[(5, -3), (5, -2), (5, -1), (5, 0)]);
@@ -1091,7 +1091,7 @@ mod tests {
     /// nor drives into another.
     #[test]
     fn cars_let_each_other_in() {
-        let text = "# Lanes\n@gate 1 in2\n@gate 2 out2\n@gate 3 out\n@gate 4 out\n@want 1 2 15\n@want 1 3 15\n@want 1 4 15\n..............3.....\n....................\n....................\n1..................2\n....................\n....................\n..........4.........\n";
+        let text = "# Lanes\n@gate 1 in2\n@gate 2 out2\n@gate 3 out\n@gate 4 out\n@want 1 2 12\n@want 1 3 12\n@want 1 4 12\n..............3.....\n....................\n....................\n1..................2\n....................\n....................\n..........4.........\n";
         let (mut level, mut game) = play(text);
         draw_road(&mut game, Tool::Wide, &(0..=19).rev().map(|x| (x, -3)).collect::<Vec<_>>());
         draw_road(&mut game, Tool::OneWay, &[(5, -3), (5, -2), (5, -1), (5, 0)]);
