@@ -12,6 +12,12 @@ pub const REVERSE_SPEED: f64 = 0.2;
 /// it pulls the other way, as a driver does.
 pub const CUSP_MS: u64 = 500;
 pub const MIN_GAP: f64 = 0.5;
+/// How far behind the car ahead a driver likes to keep, in time, besides
+/// `MIN_GAP`: further the faster they go, so a slowing at the front
+/// reaches each one behind a little harder, and a jam spreads back. Not a
+/// wall: caught inside it, a driver brakes only as hard as keeping clear
+/// of `MIN_GAP` asks.
+pub const FOLLOW_S: f64 = 0.25;
 pub const MIN_TURN_SPEED: f64 = 0.5;
 pub const ACCELERATION: f64 = 0.45;
 pub const DECELERATION: f64 = 0.4;
@@ -77,6 +83,7 @@ pub enum Obstacle {
         distance: f64,
         speed: f64,
     },
+    /// `distance` to where it would be `MIN_GAP` behind the car ahead.
     LeadCar {
         distance: f64,
         speed: f64,

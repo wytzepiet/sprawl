@@ -257,7 +257,15 @@ impl Watch {
                 && at(t).1 < crate::car::CRUISE_SPEED / 4.0
                 && on_priority(world, e.id, j) == Some(true)
             {
-                for o in them.into_iter().filter(|&o| on_priority(world, o, j) == Some(false)) {
+                // Not one in the junction already, past its line, held up on
+                // its way out: the jam holds them both, not the junction.
+                let inside = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+                    Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| {
+                        (1..t.route.len()).find(|&k| t.route[k] == j).is_none_or(|k| t.segment_lengths[1..=k].iter().sum::<f64>() - at(t).0 < t.segment_lengths[k] / 2.0)
+                    }),
+                    _ => false,
+                };
+                for o in them.into_iter().filter(|&o| on_priority(world, o, j) == Some(false) && !inside(o)) {
                     if self.said.insert((e.id, o)) {
                         out.push(format!("{}: car {} on the priority road brakes for car {o} off a minor one, at {}", clock(game.now), e.id, place(world, j)));
                     }

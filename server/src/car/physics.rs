@@ -1,4 +1,4 @@
-use super::{ACCELERATION, CRUISE_SPEED, DECELERATION, HALT, MIN_TURN_SPEED, Obstacle};
+use super::{ACCELERATION, CRUISE_SPEED, DECELERATION, FOLLOW_S, HALT, MIN_TURN_SPEED, Obstacle};
 
 /// Max speed allowed at a node given the cosine of the turn angle.
 pub fn turn_speed(cos_angle: f64) -> f64 {
@@ -118,7 +118,15 @@ impl Obstacle {
                 } else {
                     speed
                 };
-                (distance, effective)
+                // Inside the gap it likes, it does not snap back to it: it
+                // brakes as hard as coming to the car's speed short of
+                // `MIN_GAP` asks, which is little from well back and all
+                // it has at the last, and else keeps the gap it has.
+                let liked = distance - FOLLOW_S * speed;
+                if liked < 0.01 && distance >= 0.01 {
+                    return if my_speed > effective { -(my_speed * my_speed - effective * effective) / (2.0 * distance) } else { accel.min(0.0) };
+                }
+                (liked.max(0.0), effective)
             }
             Obstacle::MustStop { distance } | Obstacle::Halt { distance } => (distance, 0.0),
         };
@@ -163,9 +171,11 @@ impl Obstacle {
         let decel = if matches!(self, Obstacle::Halt { .. }) { HALT } else { DECELERATION };
         let (distance, target_speed) = match *self {
             Obstacle::SpeedLimit { distance, speed } => (distance, speed),
+            // Its braking point for the gap it likes, or, inside that, for
+            // `MIN_GAP`.
             Obstacle::LeadCar {
                 distance, speed, ..
-            } => (distance, speed),
+            } => (if distance - FOLLOW_S * speed >= 0.01 { distance - FOLLOW_S * speed } else { distance }, speed),
             Obstacle::MustStop { distance } | Obstacle::Halt { distance } => (distance, 0.0),
         };
 

@@ -250,11 +250,6 @@ fn wake_round(world: &World, events: &mut EventQueue, nodes: &[EntityId], car_id
 /// way.
 const START: f64 = 0.02;
 
-/// How far behind the car ahead a driver keeps, in time, besides the
-/// gap it stands at: further the faster they go, so a slowing at the
-/// front reaches each one behind a little harder, and a jam spreads back.
-const FOLLOW_S: f64 = 0.25;
-
 /// How long a driver allows for seeing a car pull out and braking for it.
 const REACTION: f64 = 0.5;
 
@@ -576,7 +571,7 @@ fn lead_car_obstacle(
     // there with it (on another road, beside it in the other lane, or
     // changing lanes), bound for one lane with it, falls in behind by
     // where they meet, as the merge has it, not at once.
-    let room = gap - MIN_GAP - nose(role) - tail(lead_role) - FOLLOW_S * lead_speed;
+    let room = gap - MIN_GAP - nose(role) - tail(lead_role);
     let on = (lead.route[lead.route_index - 1], lead.route[lead.route_index]);
     let here = (1..trip.route.len()).find(|&i| (trip.route[i - 1], trip.route[i]) == on).is_some_and(|i| {
         let start = trip.segment_lengths[1..i].iter().sum::<f64>();
@@ -1056,23 +1051,22 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
         }
         None
     };
-    // In order, and none past one it is not let through: it holds no
-    // junction while it waits at another. One it would stop in, at the
-    // line of the next, which it is not let through yet, it is out of only
-    // when that one lets it go, which is not yet known: it goes in after
-    // whoever it would hold up; else it would hold the junction against
+    // In order. It holds no junction while it waits at another: past one
+    // it is not let through, or in one it would stop in, at the line of
+    // the next, it is out of a junction only when the one it waits at lets
+    // it go, which is not yet known. So it goes in after whoever it would
+    // hold up there, and is not let through ahead of whoever waits; but
+    // they see it coming. Holding it, it would hold the junction against
     // everyone it waits on in turn, round a ring for good.
-    let boxed = |i: usize, intersections: &IntersectionRegistry| {
+    let waits = |i: usize, intersections: &IntersectionRegistry| {
         let (k, _, out, _, claim) = &wants[i];
-        !claim.committed && wants[i + 1..].iter().any(|(j, line, _, h, _)| j > k && line < out && !intersections.has_passage(h.id, car_id))
+        wants[..i].iter().any(|w| !intersections.has_passage(w.3.id, car_id))
+            || !claim.committed && wants[i + 1..].iter().any(|(j, line, _, h, _)| j > k && line < out && !intersections.has_passage(h.id, car_id))
     };
-    let (mut made, mut waiting) = (0, Vec::new());
-    while made < wants.len() {
+    let mut waiting = Vec::new();
+    for made in 0..wants.len() {
         let (k, _, _, ref g, mut claim) = wants[made];
-        if made > 0 && !intersections.has_passage(wants[made - 1].3.id, car_id) {
-            break;
-        }
-        if boxed(made, intersections) {
+        if waits(made, intersections) {
             waiting.push(made);
             claim.ahead = GameTime::MAX;
             claim.clear = GameTime::MAX;
@@ -1103,14 +1097,11 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
                 events.wake(0, woken_id);
             }
         }
-        made += 1;
     }
-    // Let through the next one after all, it says when it is out of the
-    // last, back from the furthest.
-    for &i in waiting.iter().rev() {
-        if boxed(i, intersections) {
-            continue;
-        }
+    // Let through where it waited after all, it says when it will be out
+    // of each it no longer waits for, as far as that lets it.
+    while let Some(i) = waiting.iter().position(|&i| !waits(i, intersections)) {
+        let i = waiting.remove(i);
         for woken_id in intersections.claim(wants[i].3.id, car_id, wants[i].4, now) {
             if woken_id != car_id {
                 events.wake(0, woken_id);
