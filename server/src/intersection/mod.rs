@@ -245,11 +245,13 @@ impl IntersectionManager {
         if let Some(e) = self.queue.iter_mut().find(|e| e.car_id == car_id) {
             update(e);
         } else if let Some(i) = self.passing.iter().position(|e| e.car_id == car_id) {
+            let moved = self.passing[i].claim.track != claim.track;
             update(&mut self.passing[i]);
-            // Not yet on its way, it gives way to whoever it must after all,
-            // and holds nothing it is no longer due at: one stood in a queue
-            // back from it would hold it against everyone crossing.
-            if !claim.committed && (claim.due > now + HOLD || (self.signal.is_none() && self.queue.iter().any(|q| self.yields(&self.passing[i], q, now)))) {
+            // Not yet on its way, it gives way to whoever it must after all;
+            // holds nothing it is no longer due at, as one stood in a queue
+            // back from it would hold it against everyone crossing; and asks
+            // again for a new way through, into another lane.
+            if !claim.committed && (moved || claim.due > now + HOLD || (self.signal.is_none() && self.queue.iter().any(|q| self.yields(&self.passing[i], q, now)))) {
                 let mut e = self.passing.remove(i);
                 e.since = now;
                 self.queue.push_back(e);
@@ -385,12 +387,11 @@ impl IntersectionManager {
         }
     }
 
-    /// Who else let through comes out into a car's lane from another way,
-    /// and whether before it: it follows whichever of them is ahead of it,
-    /// and lets one let through first go first.
-    fn merging(&self, car_id: EntityId) -> Vec<(EntityId, bool)> {
+    /// Who else let through comes out into a car's lane from another way:
+    /// it follows whichever of them is ahead of it.
+    fn merging(&self, car_id: EntityId) -> Vec<EntityId> {
         let Some(e) = self.passing.iter().find(|e| e.car_id == car_id) else { return Vec::new() };
-        self.passing.iter().filter(|p| p.car_id != car_id && matches!(self.meet(e, p), Meet::Merge)).map(|p| (p.car_id, (p.since, p.car_id) < (e.since, e.car_id))).collect()
+        self.passing.iter().filter(|p| p.car_id != car_id && matches!(self.meet(e, p), Meet::Merge)).map(|p| p.car_id).collect()
     }
 
     /// Lights at this junction, with these arms; or none. Lights already
@@ -472,6 +473,8 @@ pub struct IntersectionRegistry {
     /// How many claims have lapsed: the gauge of how often the street
     /// locks. A handful a day is a jam; a climb is the street model.
     pub lapses: u64,
+    /// Where each car has a claim.
+    held: HashMap<EntityId, Vec<EntityId>>,
 }
 
 impl IntersectionRegistry {
@@ -479,6 +482,7 @@ impl IntersectionRegistry {
         Self {
             managers: HashMap::default(),
             lapses: 0,
+            held: HashMap::default(),
         }
     }
 
@@ -492,6 +496,24 @@ impl IntersectionRegistry {
             self.lapses += 1;
         }
         woken
+    }
+
+    /// A car says when it will be at a junction (`IntersectionManager::claim`).
+    pub fn claim(&mut self, node_id: EntityId, car_id: EntityId, claim: Claim, now: GameTime) -> Vec<EntityId> {
+        let held = self.held.entry(car_id).or_default();
+        if !held.contains(&node_id) {
+            held.push(node_id);
+        }
+        self.get_or_create(node_id).claim(car_id, claim, now)
+    }
+
+    /// A car still asks for these junctions and no others: anything else
+    /// it claimed, it no longer needs. Returns whoever that lets through.
+    pub fn keep(&mut self, car_id: EntityId, nodes: &[EntityId], now: GameTime) -> Vec<EntityId> {
+        let Some(held) = self.held.get_mut(&car_id) else { return Vec::new() };
+        let gone: Vec<EntityId> = held.iter().copied().filter(|n| !nodes.contains(n)).collect();
+        held.retain(|n| nodes.contains(n));
+        gone.into_iter().flat_map(|n| self.remove_car(n, car_id, now)).collect()
     }
 
     pub fn get_or_create(&mut self, node_id: EntityId) -> &mut IntersectionManager {
@@ -532,7 +554,7 @@ impl IntersectionRegistry {
 
     /// Who else let through a junction comes out into a car's lane
     /// (`IntersectionManager::merging`).
-    pub fn merging(&self, node_id: EntityId, car_id: EntityId) -> Vec<(EntityId, bool)> {
+    pub fn merging(&self, node_id: EntityId, car_id: EntityId) -> Vec<EntityId> {
         self.managers.get(&node_id).map_or_else(Vec::new, |m| m.merging(car_id))
     }
 
@@ -543,6 +565,7 @@ impl IntersectionRegistry {
 
     /// Remove a car from all intersections. Returns list of (node, woken_car) pairs.
     pub fn remove_car_from_all(&mut self, car_id: EntityId, now: GameTime) -> Vec<(EntityId, EntityId)> {
+        self.held.remove(&car_id);
         let mut results = Vec::new();
         for (&node_id, manager) in &mut self.managers {
             for woken in manager.remove_car(car_id, now) {
