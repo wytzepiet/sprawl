@@ -167,13 +167,7 @@ fn join_run(world: &mut World, car_id: EntityId, trip: &Trip, from: usize, at: f
             // their way out are measured so too, or two would stand in one
             // order on a stretch and the other on the next.
             let mine = queued_at(trip, at) - trip.segment_lengths[1..k].iter().sum::<f64>();
-            let behind = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
-                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| {
-                    let (p, _) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
-                    edge_start_dist(t, edge).is_some_and(|s| queued_at(t, p) - s < mine)
-                }),
-                _ => false,
-            };
+            let behind = |o: EntityId| position_on(world, o, edge, now).is_some_and(|p| p < mine);
             // Ahead of whoever is behind it: a car asleep on its way joins
             // the run late, and is not behind everyone on it.
             let lane = trip.lanes.get(k).copied().unwrap_or(0) as usize;
@@ -221,7 +215,7 @@ fn position_on(world: &World, car_id: EntityId, edge: EdgeKey, now: GameTime) ->
     let GameObject::Car(ref c) = world.objects.get(car_id)?.object else { return None };
     let t = c.trip.as_ref()?;
     let (p, _) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
-    Some(p - edge_start_dist(t, edge)?)
+    Some(queued_at(t, p) - edge_start_dist(t, edge)?)
 }
 
 /// The cars on the street at a node: everyone queued on an edge into or
@@ -1006,8 +1000,13 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
     // there; else the last into its lane on the next.
     let after = |k: usize| {
         (ri..=k).find_map(|j| {
-            let s = world.edges.get(&(trip.route[j - 1], trip.route[j]))?;
-            if s.contains(car_id) { s.ahead(car_id).first().copied() } else { s.back(trip.lanes[j] as usize) }
+            let edge = (trip.route[j - 1], trip.route[j]);
+            let s = world.edges.get(&edge)?;
+            let a = if s.contains(car_id) { s.ahead(car_id).first().copied() } else { s.back(trip.lanes[j] as usize) }?;
+            // Ahead of it on the road, not only in a queue that has them
+            // the other way about on another stretch.
+            let mine = cur_progress - edge_start_dist(trip, edge)?;
+            position_on(world, a, edge, now).is_some_and(|p| p > mine).then_some(a)
         })
     };
     let mut to_k = seg_start - cur_progress;
