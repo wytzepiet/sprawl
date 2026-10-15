@@ -1191,7 +1191,17 @@ fn leads(world: &World, intersections: &IntersectionRegistry, h: &Here, trip: &T
             let Some(mine) = edge_start_dist(trip, out).map(|s| cur_progress - s) else { continue };
             for l in intersections.merging(g.id, car_id) {
                 if position_on(world, l, out, now).is_some_and(|p| p > mine) {
-                    obstacles.extend(lead_car_obstacle(world, car_id, trip, role, out, cur_progress, l, now).map(|o| (o, Cause::Merging(l))));
+                    // The gap is wanted at the merge, not yet: short of it, it
+                    // drops back over the way there, braking as it would for
+                    // a stop, not at once.
+                    let ease = |o: Obstacle| match o {
+                        Obstacle::LeadCar { distance, speed, accel } => {
+                            let enough = physics::braking_distance(cur_speed, speed).min(distance + (-mine).max(0.0));
+                            Obstacle::LeadCar { distance: distance.max(enough), speed, accel }
+                        }
+                        o => o,
+                    };
+                    obstacles.extend(lead_car_obstacle(world, car_id, trip, role, out, cur_progress, l, now).map(|o| (ease(o), Cause::Merging(l))));
                 }
             }
         }
