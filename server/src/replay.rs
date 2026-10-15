@@ -241,12 +241,23 @@ impl Watch {
                 self.standing.remove(&e.id);
                 continue;
             };
-            if let Some(&(crate::car::Cause::Junction(j), a)) = world.why.get(&e.id)
+            // Held at a junction, or for one let in there before it that is
+            // standing at its line, not coming in ahead of it.
+            let standing = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| at(t).1 < 0.01),
+                _ => false,
+            };
+            let held = match world.why.get(&e.id) {
+                Some(&(crate::car::Cause::Junction(j), a)) => Some((j, a, game.intersections.who(j).0)),
+                Some(&(crate::car::Cause::Merging(l), a)) if standing(l) => t.route[t.route_index..].iter().find(|&&j| game.intersections.has_passage(j, e.id) && game.intersections.has_passage(j, l)).map(|&j| (j, a, vec![l])),
+                _ => None,
+            };
+            if let Some((j, a, them)) = held
                 && a < -0.3
                 && at(t).1 < crate::car::CRUISE_SPEED / 4.0
                 && on_priority(world, e.id, j) == Some(true)
             {
-                for o in game.intersections.who(j).0.into_iter().filter(|&o| on_priority(world, o, j) == Some(false)) {
+                for o in them.into_iter().filter(|&o| on_priority(world, o, j) == Some(false)) {
                     if self.said.insert((e.id, o)) {
                         out.push(format!("{}: car {} on the priority road brakes for car {o} off a minor one, at {}", clock(game.now), e.id, place(world, j)));
                     }

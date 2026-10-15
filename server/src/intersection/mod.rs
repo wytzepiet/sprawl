@@ -247,11 +247,14 @@ impl IntersectionManager {
         } else if let Some(i) = self.passing.iter().position(|e| e.car_id == car_id) {
             let moved = self.passing[i].claim.track != claim.track;
             update(&mut self.passing[i]);
-            // Not yet on its way, it gives way to whoever it must after all;
+            // Not yet on its way, it gives way to whoever it must after all,
+            // and waits for one let through before it that has fallen behind;
             // holds nothing it is no longer due at, as one stood in a queue
             // back from it would hold it against everyone crossing; and asks
             // again for a new way through, into another lane.
-            if !claim.committed && (moved || claim.due > now + HOLD || (self.signal.is_none() && self.queue.iter().any(|q| self.yields(&self.passing[i], q, now)))) {
+            let e = &self.passing[i];
+            let held = self.passing.iter().any(|p| (p.since, p.car_id) < (e.since, e.car_id) && self.held_by(e, p, now));
+            if !claim.committed && (moved || claim.due > now + HOLD || held || (self.signal.is_none() && self.queue.iter().any(|q| self.yields(e, q, now)))) {
                 let mut e = self.passing.remove(i);
                 e.since = now;
                 self.queue.push_back(e);

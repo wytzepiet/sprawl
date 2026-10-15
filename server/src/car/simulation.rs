@@ -1009,77 +1009,92 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
             position_on(world, a, edge, now).is_some_and(|p| p > mine).then_some(a)
         })
     };
+    // Each junction it would claim, and how far on it is clear of it.
+    let mut wants = Vec::new();
     let mut to_k = seg_start - cur_progress;
-    'ahead: for k in ri..trip.route.len() {
-        to_k += trip.segment_lengths[k];
-        let line_at = |k: usize, to_k: f64| to_k - trip.segment_lengths[k] / 2.0 - nose(role) - INTERSECTION_STOP_MARGIN;
-        let line = line_at(k, to_k);
-        if getting_in.is_some_and(|d| to_k >= d - 1e-6) {
-            return None;
+    let next = 'scan: {
+        for k in ri..trip.route.len() {
+            to_k += trip.segment_lengths[k];
+            let line_at = |k: usize, to_k: f64| to_k - trip.segment_lengths[k] / 2.0 - nose(role) - INTERSECTION_STOP_MARGIN;
+            let line = line_at(k, to_k);
+            if getting_in.is_some_and(|d| to_k >= d - 1e-6) {
+                break 'scan None;
+            }
+            if k > ri && line > ANNOUNCE {
+                // The next junction on, to look again where it comes near.
+                let mut to_j = to_k;
+                for j in k..trip.route.len().min(k + LOOKAHEAD) {
+                    to_j += if j > k { trip.segment_lengths[j] } else { 0.0 };
+                    if gates(world, trip, j).iter().any(|g| !g.crossing()) {
+                        break 'scan Some(cur_progress + line_at(j, to_j) - ANNOUNCE);
+                    }
+                }
+                break 'scan None;
+            }
+            // A crossing only from the link before it on: everyone crosses
+            // everyone there, and one claimed from further off is held all
+            // that way. None its tail is through already (`clear_behind`).
+            for g in gates(world, trip, k).into_iter().filter(|g| (k <= ri + 1 || !g.crossing()) && to_k + g.past + tail(role) > 0.0) {
+                let limit = bend(world, &trip.route, k).unwrap_or(CRUISE_SPEED);
+                let (due, clear) = through(line, to_k + g.past + tail(role), cur_speed, limit);
+                // Far enough on to be followed: its tail a gap past its line,
+                // where the nose of one behind it stops.
+                let (_, ahead) = through(line, line.max(0.0) + tail(role) + MIN_GAP, cur_speed, limit);
+                let claim = crate::intersection::Claim {
+                    from: g.from,
+                    to: g.to,
+                    track: g.track,
+                    major: world.is_road(trip.route[k - 1]) && world.is_road(trip.route[k]),
+                    due: ms(due),
+                    ahead: ms(ahead),
+                    clear: ms(clear) + CLEAR_MS,
+                    committed: physics::braking_distance(cur_speed, 0.0) >= line,
+                    after: after(k),
+                };
+                wants.push((k, line, to_k + g.past + tail(role), g, claim));
+            }
         }
-        if k > ri && line > ANNOUNCE {
-            // The next junction on, to look again where it comes near.
-            let mut to_j = to_k;
-            for j in k..trip.route.len().min(k + LOOKAHEAD) {
-                to_j += if j > k { trip.segment_lengths[j] } else { 0.0 };
-                if gates(world, trip, j).iter().any(|g| !g.crossing()) {
-                    return Some(cur_progress + line_at(j, to_j) - ANNOUNCE);
-                }
-            }
-            return None;
+        None
+    };
+    // The furthest first: one that would stop in a junction, at the line
+    // of the next, which it is not let through yet, is out of it when that
+    // one lets it go, which is not yet known. It goes in after whoever it
+    // would hold up; else, let through all the same, it would hold the
+    // junction against everyone it waits on in turn, round a ring for good.
+    for i in (0..wants.len()).rev() {
+        let (k, _, out, ref g, mut claim) = wants[i];
+        if !claim.committed && wants[i + 1..].iter().any(|&(j, line, _, ref h, _)| j > k && line < out && !intersections.has_passage(h.id, car_id)) {
+            claim.ahead = GameTime::MAX;
+            claim.clear = GameTime::MAX;
         }
-        // A crossing only from the link before it on: everyone crosses
-        // everyone there, and one claimed from further off is held all
-        // that way. None its tail is through already (`clear_behind`).
-        for g in gates(world, trip, k).into_iter().filter(|g| (k <= ri + 1 || !g.crossing()) && to_k + g.past + tail(role) > 0.0) {
-            let lit = light_arms(world, g.id);
-            let new = !intersections.knows(g.id, car_id);
-            if lit.is_some() {
-                intersections.get_or_create(g.id).set_signal(lit.as_deref(), now);
-                events.wake(crate::intersection::SIGNAL_TICK, g.id);
+        let lit = light_arms(world, g.id);
+        let new = !intersections.knows(g.id, car_id);
+        if lit.is_some() {
+            intersections.get_or_create(g.id).set_signal(lit.as_deref(), now);
+            events.wake(crate::intersection::SIGNAL_TICK, g.id);
+        }
+        held.push(g.id);
+        for woken_id in intersections.claim(g.id, car_id, claim, now) {
+            if woken_id != car_id {
+                events.wake(0, woken_id);
             }
-            let limit = bend(world, &trip.route, k).unwrap_or(CRUISE_SPEED);
-            let (due, clear) = through(line, to_k + g.past + tail(role), cur_speed, limit);
-            // Far enough on to be followed: its tail a gap past its line,
-            // where the nose of one behind it stops.
-            let (_, ahead) = through(line, line.max(0.0) + tail(role) + MIN_GAP, cur_speed, limit);
-            let claim = crate::intersection::Claim {
-                from: g.from,
-                to: g.to,
-                track: g.track,
-                major: world.is_road(trip.route[k - 1]) && world.is_road(trip.route[k]),
-                due: ms(due),
-                ahead: ms(ahead),
-                clear: ms(clear) + CLEAR_MS,
-                committed: physics::braking_distance(cur_speed, 0.0) >= line,
-                after: after(k),
-            };
-            held.push(g.id);
-            for woken_id in intersections.claim(g.id, car_id, claim, now) {
-                if woken_id != car_id {
-                    events.wake(0, woken_id);
-                }
-            }
-            // In from the side onto a road of two, a merge, which those
-            // coming along it may make room for.
-            if new && !g.crossing() && g.from != (-g.to.0, -g.to.1) && world.edges.get(&(trip.route[k], trip.route[k + 1])).is_some_and(|s| s.lanes > 1) {
-                wake_round(world, events, &[g.id], car_id);
-            }
-            // Holding the junction and going nowhere: after a few seconds
-            // of that, wave the others through and queue again. Standing
-            // is a crawl under a hundredth of a tile a second, since a
-            // car held at a gap never quite reads zero.
-            if cur_speed < 0.01 {
-                for woken_id in intersections.lapse(g.id, car_id, now) {
-                    events.wake(0, woken_id);
-                }
-            }
-            if !intersections.has_passage(g.id, car_id) {
-                break 'ahead;
+        }
+        // In from the side onto a road of two, a merge, which those
+        // coming along it may make room for.
+        if new && !g.crossing() && g.from != (-g.to.0, -g.to.1) && world.edges.get(&(trip.route[k], trip.route[k + 1])).is_some_and(|s| s.lanes > 1) {
+            wake_round(world, events, &[g.id], car_id);
+        }
+        // Holding the junction and going nowhere: after a few seconds
+        // of that, wave the others through and queue again. Standing
+        // is a crawl under a hundredth of a tile a second, since a
+        // car held at a gap never quite reads zero.
+        if cur_speed < 0.01 {
+            for woken_id in intersections.lapse(g.id, car_id, now) {
+                events.wake(0, woken_id);
             }
         }
     }
-    None
+    next
 }
 
 /// The cars it follows: ahead of it in its lanes, along its way as far as
