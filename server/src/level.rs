@@ -964,10 +964,11 @@ mod tests {
     /// lanes become one, they fall in behind each other, never through.
     #[test]
     fn two_lanes_carry_side_by_side() {
-        // Into one lane, as many as it carries a tile from the gate, each
-        // in at the gap it takes there (`headway`): about forty-five a
-        // minute. A hundred it carried only while cars out of the merge kept
-        // on closer than any gap.
+        // Into one lane a tile from the gate, where cars come from standing:
+        // each in only once the one before it is a car's length and a gap
+        // on (`Claim::ahead`), about two seconds from standing, so some
+        // twenty-five a minute. Forty-five it carried only while cars squeezed
+        // in closer than they could follow.
         let run = |tool: Tool, per_min: u32| {
             let (mut level, mut game) = play(&format!("# Two lanes\n@gate 1 in2\n@gate 2 out2\n@want 1 2 {per_min}\n..........\n1........2\n..........\n"));
             for x in (1..=9).rev() {
@@ -991,7 +992,7 @@ mod tests {
         let (phase, both) = run(Tool::Wide, 100);
         assert_eq!(phase, Phase::Done);
         assert!(both, "cars side by side in the two lanes");
-        assert_eq!(run(Tool::OneWay, 40).0, Phase::Done);
+        assert_eq!(run(Tool::OneWay, 25).0, Phase::Done);
     }
 
     /// Lay a road along tiles, a step at a time, each step taken.

@@ -188,13 +188,17 @@ impl<'a> Playback<'a> {
 
 /// What looks wrong in a game as it plays, said once each: two cars in one
 /// lane closer than their lengths, one driving through the other; a car
-/// standing for longer than `STUCK_MS`, waiting for what never comes; a car
+/// standing for longer than `STUCK_MS`, waiting for what never comes: at a
+/// junction, or behind cars at one, that has let nobody through meanwhile
+/// (one waiting for a gap in a road that keeps coming is a road full); a car
 /// on a priority road made to wait, braking to a crawl, at a junction one
 /// off a minor road holds. Slowing for one that pulled out, and going on,
 /// is only driving.
 #[derive(Default)]
 pub struct Watch {
     standing: HashMap<EntityId, GameTime>,
+    /// Who each junction a car stands for has let through, and since when.
+    through: HashMap<EntityId, (Vec<EntityId>, GameTime)>,
     said: HashSet<(EntityId, EntityId)>,
 }
 
@@ -253,7 +257,28 @@ impl Watch {
                 continue;
             }
             let since = *self.standing.entry(e.id).or_insert(game.now);
-            if game.now - since >= STUCK_MS && self.said.insert((e.id, e.id)) {
+            // The junction it waits at, itself or behind those ahead of it.
+            let mut waits = Some(e.id);
+            let mut at_junction = None;
+            for _ in 0..64 {
+                match waits.and_then(|w| world.why.get(&w)) {
+                    Some(&(crate::car::Cause::Junction(j), _)) => {
+                        at_junction = Some(j);
+                        break;
+                    }
+                    Some(&(crate::car::Cause::Ahead(o) | crate::car::Cause::Merging(o), _)) => waits = Some(o),
+                    _ => break,
+                }
+            }
+            let moving = at_junction.map_or(since, |j| {
+                let now_through = game.intersections.who(j).0;
+                let seen = self.through.entry(j).or_insert((now_through.clone(), game.now));
+                if seen.0 != now_through {
+                    *seen = (now_through, game.now);
+                }
+                seen.1.max(since)
+            });
+            if game.now - moving >= STUCK_MS && self.said.insert((e.id, e.id)) {
                 out.push(format!("{}: car {} standing since {}, at {}", clock(game.now), e.id, clock(since), place(world, t.route[t.route_index])));
             }
         }
