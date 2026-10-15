@@ -1056,14 +1056,24 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
         }
         None
     };
-    // The furthest first: one that would stop in a junction, at the line
-    // of the next, which it is not let through yet, is out of it when that
-    // one lets it go, which is not yet known. It goes in after whoever it
-    // would hold up; else, let through all the same, it would hold the
-    // junction against everyone it waits on in turn, round a ring for good.
-    for i in (0..wants.len()).rev() {
-        let (k, _, out, ref g, mut claim) = wants[i];
-        if !claim.committed && wants[i + 1..].iter().any(|&(j, line, _, ref h, _)| j > k && line < out && !intersections.has_passage(h.id, car_id)) {
+    // In order, and none past one it is not let through: it holds no
+    // junction while it waits at another. One it would stop in, at the
+    // line of the next, which it is not let through yet, it is out of only
+    // when that one lets it go, which is not yet known: it goes in after
+    // whoever it would hold up; else it would hold the junction against
+    // everyone it waits on in turn, round a ring for good.
+    let boxed = |i: usize, intersections: &IntersectionRegistry| {
+        let (k, _, out, _, claim) = &wants[i];
+        !claim.committed && wants[i + 1..].iter().any(|(j, line, _, h, _)| j > k && line < out && !intersections.has_passage(h.id, car_id))
+    };
+    let (mut made, mut waiting) = (0, Vec::new());
+    while made < wants.len() {
+        let (k, _, _, ref g, mut claim) = wants[made];
+        if made > 0 && !intersections.has_passage(wants[made - 1].3.id, car_id) {
+            break;
+        }
+        if boxed(made, intersections) {
+            waiting.push(made);
             claim.ahead = GameTime::MAX;
             claim.clear = GameTime::MAX;
         }
@@ -1090,6 +1100,19 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
         // car held at a gap never quite reads zero.
         if cur_speed < 0.01 {
             for woken_id in intersections.lapse(g.id, car_id, now) {
+                events.wake(0, woken_id);
+            }
+        }
+        made += 1;
+    }
+    // Let through the next one after all, it says when it is out of the
+    // last, back from the furthest.
+    for &i in waiting.iter().rev() {
+        if boxed(i, intersections) {
+            continue;
+        }
+        for woken_id in intersections.claim(wants[i].3.id, car_id, wants[i].4, now) {
+            if woken_id != car_id {
                 events.wake(0, woken_id);
             }
         }
