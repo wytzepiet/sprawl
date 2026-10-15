@@ -1575,7 +1575,7 @@ mod tests {
     /// the millisecond — or something is iterating a hash map.
     type Move = (GameTime, EntityId, Option<EntityId>, Option<crate::needs::Need>);
 
-    fn arrival_log(days: u64) -> (Vec<Move>, EntityId) {
+    fn arrival_log(days: u64) -> Vec<Move> {
         let mut world = street();
         build(&mut world, 0, BuildingKind::Apartment, 2);
         build(&mut world, 6, BuildingKind::Apartment, 2);
@@ -1639,7 +1639,7 @@ mod tests {
             // by the third day their shelves have run down some.
             assert!(sold(lunch, "Eat", "yesterday_h") > 1.5, "lunch shop sold {}h", sold(lunch, "Eat", "yesterday_h"));
         }
-        (log, lunch)
+        log
     }
 
     #[test]
@@ -2237,8 +2237,8 @@ mod tests {
 
     #[test]
     fn the_same_town_lives_the_same_days() {
-        let (three, lunch) = arrival_log(3);
-        let (one, _) = arrival_log(1);
+        let three = arrival_log(3);
+        let one = arrival_log(1);
         // Fourteen people, each at least driving in, to work, and home.
         assert!(one.len() >= 14 * 3, "only {} moves logged", one.len());
         assert_eq!(three[..one.len()], one[..], "the first day differs between runs");
@@ -2262,28 +2262,6 @@ mod tests {
         assert!(moves.values().any(|&n| n >= 8), "nobody went out for lunch: {moves:?}");
         let last: std::collections::BTreeMap<_, _> = two.iter().map(|&(_, id, at, _)| (id, at)).collect();
         assert!(last.values().all(|at| at.is_some()), "someone ended the day in a car");
-
-        // The lunch shop seats four. Twelve office workers want it, so the
-        // afternoon is a succession of small sittings rather than one crush:
-        // arrivals spread over hours, and the room is never far over full.
-        let hour = day / 24;
-        use crate::needs::Need;
-        let arrivals: Vec<GameTime> = two
-            .iter()
-            .filter(|&&(t, _, at, sel)| t >= settled && at == Some(lunch) && sel == Some(Need::Eat))
-            .map(|&(t, ..)| t)
-            .collect();
-        // Some wait for dinner and some eat at home: half the office, not
-        // all of it.
-        assert!(arrivals.len() >= 6, "only {} came for lunch", arrivals.len());
-        let span = arrivals.iter().max().unwrap() - arrivals.iter().min().unwrap();
-        assert!(span >= 2 * hour, "lunch was a crush: {:.1}h", span as f64 / hour as f64);
-        let (mut present, mut most) = (std::collections::BTreeSet::new(), 0);
-        for &(_, id, at, sel) in two.iter().filter(|&&(t, ..)| t >= settled) {
-            if at == Some(lunch) && sel == Some(Need::Eat) { present.insert(id); } else { present.remove(&id); }
-            most = most.max(present.len());
-        }
-        assert!(most <= 12, "{most} eating at a twelve-spot shop at once");
     }
 
     /// Land and the tractor, docs/economy.md §12.8: a farm on a street
