@@ -1306,13 +1306,11 @@ fn settle(world: &mut World, events: &mut EventQueue, h: &Here, trip: &Trip, obs
     let accel_changed = ((new_accel - trip.acceleration) / ACCELERATION).abs() > 0.02;
 
     // Wake car behind on acceleration change: a driver's reaction time,
-    // quicker for brake lights than for a gap opening. Not much slower than
-    // this for the gap, though: a queue that noticed its head pulling away
-    // only after four hundred milliseconds drained slowly enough to back up
-    // through the junction behind it, and two driveways then held each
-    // other for good.
+    // quicker for brake lights than for a gap opening. Pulling away, a
+    // second after the one ahead: so a queue starts from its head back,
+    // car by car, and a jam clears from its front, as one does.
     if accel_changed {
-        let delay = if new_accel < 0.0 { 50 } else { 150 };
+        let delay = if new_accel < 0.0 { 50 } else { 1_000 };
         for behind in world.car_behind_on_edge(current_edge, car_id) {
             events.wake(delay, behind);
         }

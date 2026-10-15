@@ -252,15 +252,24 @@ impl Watch {
                     }
                 }
             }
-            if at(t).1 > 0.01 {
+            if at(t).1 > 0.01 || t.acceleration > 0.0 {
                 self.standing.remove(&e.id);
                 continue;
             }
-            let since = *self.standing.entry(e.id).or_insert(game.now);
-            // The junction it waits at, itself or behind those ahead of it.
+            self.standing.entry(e.id).or_insert(game.now);
+            // The junction it waits at, itself or behind those ahead of it;
+            // none, if one ahead of it is on its way.
             let mut waits = Some(e.id);
             let mut at_junction = None;
+            let going = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+                Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| at(t).1 > 0.01 || t.acceleration > 0.0),
+                _ => false,
+            };
             for _ in 0..64 {
+                if waits.is_some_and(|w| w != e.id && going(w)) {
+                    self.standing.insert(e.id, game.now);
+                    break;
+                }
                 match waits.and_then(|w| world.why.get(&w)) {
                     Some(&(crate::car::Cause::Junction(j), _)) => {
                         at_junction = Some(j);
@@ -270,6 +279,7 @@ impl Watch {
                     _ => break,
                 }
             }
+            let since = self.standing[&e.id];
             let moving = at_junction.map_or(since, |j| {
                 let now_through = game.intersections.who(j).0;
                 let seen = self.through.entry(j).or_insert((now_through.clone(), game.now));
