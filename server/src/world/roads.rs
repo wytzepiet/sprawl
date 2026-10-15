@@ -113,7 +113,8 @@ impl World {
     /// The lane a car enters each stretch of a route by, on the edge into
     /// each node of it, where the road has two: off a road of two, the lane
     /// it was in, bend as the road may; in from a road of one beside it,
-    /// the lane on that side, as a car joining a road takes the near lane;
+    /// the lane on that side, as a car joining a road takes the near lane,
+    /// or where roads of one join into it, its own (`branch_lane`);
     /// setting out, the emptier. It keeps it until it changes lanes
     /// (`car::simulation`), never inside a junction.
     pub fn lanes_for(&self, route: &[EntityId]) -> Vec<u8> {
@@ -137,6 +138,7 @@ impl World {
                 };
                 let lane = match side {
                     _ if k >= 2 && wide(k - 1) => lanes[k - 1],
+                    _ if let Some(l) = k.checked_sub(2).and_then(|p| self.branch_lane(route[p], route[k - 1], route[k])) => l,
                     Some(s) if s > 0 => 0,
                     Some(s) if s < 0 => 1,
                     Some(_) => lanes[k - 1],
@@ -157,6 +159,38 @@ impl World {
         lanes
     }
 
+    /// The lane of a road of two that a road of one goes on from, where
+    /// the road of two splits into roads of one at `at` (`from` on it), or
+    /// they join into it (`to` on it): each its own lane, as far as two go
+    /// round. Ranked from the right, the right lane takes the right half of
+    /// them, the left the rest: of three, the right lane the right and the
+    /// straight on, the left lane the left, as a road of two comes to a
+    /// crossroads. None where it is not such a node.
+    pub fn branch_lane(&self, from: EntityId, at: EntityId, to: EntityId) -> Option<u8> {
+        let pos = |id: EntityId| self.objects.get(id).and_then(|e| e.position);
+        let lanes = |a: EntityId, b: EntityId| self.edges.get(&(a, b)).map(|s| s.lanes);
+        let turn = |p: EntityId, n: EntityId| {
+            let (a, b, c) = (pos(p)?, pos(at)?, pos(n)?);
+            let (ix, iy, ox, oy) = ((b.x - a.x) as f64, (b.y - a.y) as f64, (c.x - b.x) as f64, (c.y - b.y) as f64);
+            Some((ix * oy - iy * ox).atan2(ix * ox + iy * oy))
+        };
+        let arms = self.arms_of(at, false);
+        // Each branch and how far right it lies, seen along the road of two.
+        let (mine, branches): (EntityId, Vec<(EntityId, f64)>) = if lanes(from, at) == Some(2) {
+            (to, arms.iter().filter(|&&o| o != from && self.edges.contains_key(&(at, o))).map(|&o| Some((o, turn(from, o)?))).collect::<Option<_>>()?)
+        } else if lanes(at, to) == Some(2) {
+            (from, arms.iter().filter(|&&o| o != to && self.edges.contains_key(&(o, at))).map(|&o| Some((o, turn(o, to)?))).collect::<Option<_>>()?)
+        } else {
+            return None;
+        };
+        let wide = |&(o, _): &(EntityId, f64)| if mine == to { lanes(at, o) } else { lanes(o, at) } != Some(1);
+        if branches.len() < 2 || branches.iter().any(wide) {
+            return None;
+        }
+        let rank = branches.iter().filter(|&&(o, r)| o != mine && r > branches.iter().find(|b| b.0 == mine).map_or(0.0, |b| b.1)).count();
+        Some(u8::from(rank >= branches.len().div_ceil(2)))
+    }
+
     /// The lane the way out at node `j` of a route asks for, coming to it
     /// on a road of two, where the road splits there: the right lane for
     /// the way out furthest right, the left for the one furthest left. Not
@@ -167,6 +201,9 @@ impl World {
     pub fn turn_lane(&self, route: &[EntityId], j: usize) -> Option<u8> {
         let pos = |id: EntityId| self.objects.get(id).and_then(|e| e.position);
         let (from, at, to) = (*route.get(j.checked_sub(1)?)?, route[j], *route.get(j + 1)?);
+        if let Some(l) = self.branch_lane(from, at, to) {
+            return Some(l);
+        }
         let (a, b) = (pos(from)?, pos(at)?);
         let wide = |o: EntityId| self.edges.get(&(at, o)).is_some_and(|s| s.lanes > 1);
         // How far round to the right a way out turns, as the lanes count

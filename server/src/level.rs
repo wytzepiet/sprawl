@@ -995,6 +995,38 @@ mod tests {
         assert_eq!(run(Tool::OneWay, 25).0, Phase::Done);
     }
 
+    /// A one-way road of two splitting into roads of one, or roads of one
+    /// joining into it: each its own lane, as far as two go round. Of
+    /// three, the right lane goes on into the right and the straight on,
+    /// the left lane into the left; of two, one each.
+    #[test]
+    fn roads_of_one_each_take_a_lane_of_two() {
+        let ask = |split: bool, straight: bool| {
+            let (_, mut game) = play("# Fork\n..........\n..........\n..........\n..........\n..........\n..........\n..........\n");
+            let trunk: Vec<(i32, i32)> = (0..=5).map(|x| (x, -3)).collect();
+            let mut branches = vec![vec![(5, -3), (6, -4), (7, -5)], vec![(5, -3), (6, -2), (7, -1)]];
+            if straight {
+                branches.push(vec![(5, -3), (6, -3), (7, -3)]);
+            }
+            let flip = |t: &[(i32, i32)]| if split { t.to_vec() } else { t.iter().map(|&(x, y)| (9 - x, y)).rev().collect::<Vec<_>>() };
+            draw_road(&mut game, Tool::Wide, &flip(&trunk));
+            for b in &branches {
+                draw_road(&mut game, Tool::OneWay, &flip(b));
+            }
+            let node = |(x, y): (i32, i32)| game.world.road_node_at(GridCoord { x: if split { x } else { 9 - x }, y }).unwrap();
+            let (wide, at) = (node((4, -3)), node((5, -3)));
+            branches.iter().map(|b| if split { game.world.branch_lane(wide, at, node(b[1])) } else { game.world.branch_lane(node(b[1]), at, wide) }).collect::<Vec<_>>()
+        };
+        for split in [true, false] {
+            // The road runs east, its right toward y + 1 (`lanes_for`): the
+            // first branch is on its left.
+            let two = ask(split, false);
+            assert_eq!(two, vec![Some(1), Some(0)], "split {split}");
+            let three = ask(split, true);
+            assert_eq!(three, vec![two[0], two[1], Some(0)], "split {split}: the straight on shares the right lane");
+        }
+    }
+
     /// Lay a road along tiles, a step at a time, each step taken.
     fn draw_road(game: &mut Game, tool: Tool, tiles: &[(i32, i32)]) {
         for w in tiles.windows(2) {
