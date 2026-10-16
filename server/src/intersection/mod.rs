@@ -342,6 +342,9 @@ impl IntersectionManager {
         e.claim.after == Some(q.car_id)
             || e.car_id != q.car_id
                 && self.first(q) < self.first(e)
+                // One waiting at another junction first, it goes before
+                // only by priority: one waiting on a car that waits.
+                && (!q.waits() || q.claim.major && !e.claim.major)
                 && match self.meet(e, q) {
                     Meet::Apart => false,
                     Meet::Cross => q.due(now) + patience < e.clear(now),
