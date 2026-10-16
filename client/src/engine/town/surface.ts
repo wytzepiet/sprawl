@@ -3,7 +3,7 @@ import { BLUEPRINTS, FACINGS, kerbed, sideOf } from "../../blueprints";
 import { isBuilt, townOf, type Flow, type RoadView, type Tile, type Town } from "./grid";
 import { isYard } from "./mass";
 import { buildRoadGeometry, CAR, HALF_W, type ArmInfo } from "../objects/roadGeometry";
-import { area, defaultJoins, footprints, INSET, shrink, soften, type Polygon, type Pt } from "./footprint";
+import { area, defaultJoins, ease, footprints, INSET, shrink, soften, type Polygon, type Pt } from "./footprint";
 
 /**
  * The town's ground is two surfaces. Pavement is the base: every road,
@@ -527,7 +527,10 @@ export function shapeOf(surface: Surface): Polygon[] {
   // All wound one way, so none is taken for a hole in another; grown a
   // hair and drawn back, so no seam is left between them.
   const wound = parts.map(([ring]) => [area(ring) < 0 ? [...ring].reverse() : ring]);
-  const out = soften(shrink(shrink(wound, -1e-3), 1e-3), ROUND);
+  // Its outward corners rounded, not its inward ones: between two arms
+  // the asphalt is where cars turn, a turning lane's curve, and where none
+  // may, the corner is square, a kerb's, and plainly no way through.
+  const out = ease(shrink(shrink(wound, -1e-3), 1e-3), ROUND);
   shapes.set(key, out);
   return out;
 }

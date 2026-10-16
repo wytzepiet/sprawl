@@ -140,7 +140,9 @@ The code is `client/src/engine/town/`:
   the water; and a row of bays where the server lays them, a lane along
   the kerb before flats, a forecourt nose in before shops, the cars close
   to the road and a strip of pavement between them and the wall. Each tile's asphalt is
-  one outline, its corners rounded in and out, carried over the seam
+  one outline, its outward corners rounded, its inward ones not: between
+  two arms it is a turning lane's curve, and where no car may turn, a
+  square kerb (2026-10-16), carried over the seam
   where the next tile carries it on, so a street flows into a yard or a
   forecourt as one shape. The pavement is cut to it, a kerb stone where
   they meet (`kerbs.ts`), and the game draws it as it draws its road

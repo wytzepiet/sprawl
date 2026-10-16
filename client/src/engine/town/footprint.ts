@@ -290,6 +290,11 @@ export function soften(region: Polygon[], r: number): Polygon[] {
   return polygons(round(round(round(round(paths(region.flat()), -r), r), r), -r));
 }
 
+/** A region's outward corners rounded by `r`, its inward ones left. */
+export function ease(region: Polygon[], r: number): Polygon[] {
+  return polygons(round(round(paths(region.flat()), -r), r));
+}
+
 function round(ps: Paths, by: number) {
   const o = new ClipperLib.ClipperOffset(2, 0.002 * S);
   o.AddPaths(ps, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
