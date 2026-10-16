@@ -1,10 +1,10 @@
 import type { EngineContext, Mesh, SceneContext } from "@babylonjs/lite";
 import { drop, meshOf, show, type MeshGeometry } from "./geometry";
 import { setTint, townMaterial } from "./material";
-import { rgb } from "./rgb";
+import { rgb, type Rgb } from "./rgb";
 import { ROAD_Z } from "./objects/roadGeometry";
-import { flatPolygons, PAVED_Z } from "./town/draw";
-import { runsOn, shapeOf, type Surface } from "./town/surface";
+import { flatPolygons, KERB_Z, PAVED_Z } from "./town/draw";
+import { runsOn, shapeOf, VERGE_KERB, type Surface } from "./town/surface";
 import { area, type Pt } from "./town/footprint";
 import type { Casters } from "./DayNightCycle";
 
@@ -15,17 +15,19 @@ import type { Casters } from "./DayNightCycle";
  * up across its own tile, from the edge it comes in by at the level below
  * to the edge it goes out by at the level above, and slopes one after
  * another as one climb, eased (`heightAlong`). Under it, here: its
- * concrete, the road's own outline carried down a deck's thickness and up
- * a parapet's, the parapet round every edge that does not run on into
- * the next tile's road; the deck's underside, which casts its shadow; and
- * a pier under every node a level or more up.
+ * concrete, the road's own outline grown a kerb's width (`VERGE_KERB`)
+ * round every edge that does not run on into the next tile's road, the
+ * kerb paved and a step up, as round a junction out of town, the side
+ * carried down a deck's thickness; the deck's underside, which casts its
+ * shadow; and a pier under every node a level or more up.
  */
 
 /** How high a half-level is: a level is a storey and a bit. */
 export const HALF_LEVEL = 0.175;
-/** The deck's thickness under its road, and the parapet's height and width. */
+/** The deck's thickness under its road. */
 const DECK = 0.09;
-const PARAPET: [number, number] = [0.045, 0.03];
+/** A kerb's step up from the road, as the ground's pavement stands. */
+const STEP_UP = KERB_Z - ROAD_Z - PAVED_Z;
 /** A pier's side. */
 const PIER = 0.14;
 const CONCRETE = rgb(0.74, 0.73, 0.7);
@@ -96,33 +98,40 @@ export interface DeckPiece {
 }
 
 export class Decks {
-  private mesh: Mesh | null = null;
+  private meshes: Mesh[] = [];
   private material = townMaterial([], 0.95);
+  private paving = townMaterial([], 0.95);
 
   constructor(
     private engine: EngineContext,
     private scene: SceneContext,
     private casters: Casters | undefined,
+    private paved: () => Rgb,
   ) {
     setTint(this.material, CONCRETE);
   }
 
-  /** The concrete under every deck tile drawn again. */
+  /** The concrete under every deck tile drawn again, and its kerbs. */
   rebuild(pieces: Iterable<DeckPiece>) {
     const g: MeshGeometry = { positions: [], normals: [], indices: [] };
-    for (const { x, y, surface } of pieces) concrete(g, surface, x + 1, y + 1);
+    const kerbs: MeshGeometry = { positions: [], normals: [], indices: [] };
+    for (const { x, y, surface } of pieces) concrete(g, kerbs, surface, x + 1, y + 1);
     this.clear();
-    if (!g.indices.length) return;
-    this.mesh = meshOf(this.engine, "deck_concrete", g);
-    this.mesh.material = this.material;
-    this.mesh.receiveShadows = true;
-    show(this.scene, this.mesh);
-    this.casters?.add(this.mesh);
+    setTint(this.paving, this.paved());
+    for (const [name, geo, material] of [["deck_concrete", g, this.material], ["deck_kerbs", kerbs, this.paving]] as const) {
+      if (!geo.indices.length) continue;
+      const mesh = meshOf(this.engine, name, geo);
+      mesh.material = material;
+      mesh.receiveShadows = true;
+      show(this.scene, mesh);
+      this.casters?.add(mesh);
+      this.meshes.push(mesh);
+    }
   }
 
   private clear() {
-    if (this.mesh) (this.casters?.remove(this.mesh), drop(this.scene, this.mesh));
-    this.mesh = null;
+    for (const mesh of this.meshes) (this.casters?.remove(mesh), drop(this.scene, mesh));
+    this.meshes = [];
   }
 
   dispose() {
@@ -157,10 +166,11 @@ function finer(ring: Pt[]): Pt[] {
 }
 
 /** A deck tile's concrete, placed at (ox, oy): its road's outline in the
- *  tile's frame, as `roads.ts` draws it, carried down to the underside and
- *  up a parapet where it does not run on; the underside; and a pier under
- *  its node, a level or more up. */
-function concrete(g: MeshGeometry, surface: Surface, ox: number, oy: number) {
+ *  tile's frame, as `roads.ts` draws it, grown a kerb's width where it
+ *  does not run on, the kerb a step up (into `kerbs`), its side carried
+ *  down to the underside; the underside; and a pier under its node, a
+ *  level or more up. */
+function concrete(g: MeshGeometry, kerbs: MeshGeometry, surface: Surface, ox: number, oy: number) {
   const lift = liftOf(surface);
   const past = runsOn(surface);
   // The road frame: the tile's turned half round, its middle at -0.5.
@@ -169,17 +179,33 @@ function concrete(g: MeshGeometry, surface: Surface, ox: number, oy: number) {
   for (const [k, ring] of polys.flatMap((poly) => poly.map((ring, k) => [k, ring] as const))) {
     // Inward is to the left of an outline wound one way, of a hole the other.
     const turn = (area(ring) > 0) === (k === 0) ? 1 : -1;
-    for (let i = 0; i < ring.length; i++) {
-      const [a, b] = [ring[i], ring[(i + 1) % ring.length]];
-      if (past([-a[0], -a[1]], [-b[0], -b[1]])) continue;
+    const n = ring.length;
+    const edge = (i: number) => [ring[i], ring[(i + 1) % n]] as const;
+    const kept = ring.map((_, i) => !past(...(edge(i).map(([x, y]) => [-x, -y]) as [Pt, Pt])));
+    // Each edge's outward way, a unit long; at a corner, the two edges'
+    // between them, as far out as keeps each a kerb's width off.
+    const outward = (i: number): Pt => {
+      const [a, b] = edge(i);
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-      const [nx, ny] = [(-(b[1] - a[1]) / len) * turn * PARAPET[1], ((b[0] - a[0]) / len) * turn * PARAPET[1]];
-      const [ai, bi]: Pt[] = [[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny]];
-      // The side, from under the deck up to the parapet's top, facing out;
-      // the parapet's top; its face to the road.
-      quad(g, top(b, -DECK), top(a, -DECK), top(a, PARAPET[0]), top(b, PARAPET[0]));
-      quad(g, top(b, PARAPET[0]), top(a, PARAPET[0]), top(ai, PARAPET[0]), top(bi, PARAPET[0]));
-      quad(g, top(bi, PARAPET[0]), top(ai, PARAPET[0]), top(ai), top(bi));
+      return [((b[1] - a[1]) / len) * turn, (-(b[0] - a[0]) / len) * turn];
+    };
+    const out = ring.map((p, i): Pt => {
+      const [u, v] = [outward((i + n - 1) % n), outward(i)];
+      const [before, after] = [kept[(i + n - 1) % n], kept[i]];
+      const [mx, my] = before && after ? [u[0] + v[0], u[1] + v[1]] : before ? u : v;
+      const dot = (mx * v[0] + my * v[1]) / (Math.hypot(mx, my) || 1);
+      const w = VERGE_KERB / Math.max(dot, 0.5) / (Math.hypot(mx, my) || 1);
+      return [p[0] + mx * w, p[1] + my * w];
+    });
+    for (let i = 0; i < n; i++) {
+      if (!kept[i]) continue;
+      const [a, b] = edge(i);
+      const [ao, bo] = [out[i], out[(i + 1) % n]];
+      // The side, from under the deck up to the kerb's top, facing out;
+      // the kerb's top; its face to the road.
+      quad(g, top(bo, -DECK), top(ao, -DECK), top(ao, STEP_UP), top(bo, STEP_UP));
+      quad(kerbs, top(bo, STEP_UP), top(ao, STEP_UP), top(a, STEP_UP), top(b, STEP_UP));
+      quad(g, top(b, STEP_UP), top(a, STEP_UP), top(a), top(b));
     }
   }
   // The underside, a deck's thickness down, as the road above it lies.
