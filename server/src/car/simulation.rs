@@ -989,7 +989,7 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
     // Not yet in the lane its way out ahead asks for, it does not know its
     // way through there yet: a claim from the lane it is leaving would hold
     // up the lane it waits to get into.
-    let getting_in = exit_lane(world, trip, ri, cur_progress).filter(|&(w, _)| w != trip.lanes[ri] && !trip.shift.is_some_and(|s| s.from != s.to && s.to == w)).map(|(_, d)| d);
+    let getting_in = not_in_lane(world, car_id, role, trip, ri, cur_progress, cur_speed, now).map(|(_, d)| d);
     // Whoever is just ahead of it in its lane, on its way to a gate, goes
     // through it before it: queued with it on a stretch, the one ahead
     // there; else the last into its lane on the next.
@@ -1442,6 +1442,8 @@ const SETTLE_MS: GameTime = 2500;
 /// its turn there asks for; and how near it a car makes room for one
 /// waiting there to merge into its lane.
 const GET_IN: f64 = 12.0;
+/// How near the end of a road of two a car may still change lanes.
+const LAST_CHANGE: f64 = 0.8;
 const MAKE_ROOM: f64 = 4.0;
 /// How near the car ahead must be for a car to go round it, if it is
 /// slower; and how clear the right lane must be ahead to go back to it.
@@ -1473,9 +1475,11 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, intersections: &Inte
     // short of it if it must, wherever it cannot try to get in just now
     // too (by a junction, or changing lanes): one that forgot meanwhile
     // came to the way out too fast to take a gap, braking hard.
-    let exit = exit_lane(world, trip, ri, p);
-    let short: Vec<(Obstacle, Cause)> = exit
-        .filter(|&(w, _)| w != trip.lanes[ri] && !trip.shift.is_some_and(|s| s.from != s.to && s.to == w))
+    // One that goes on from the lane it is in after all (`not_in_lane`)
+    // no longer wants another.
+    let getting = not_in_lane(world, car_id, role, trip, ri, p, v, now);
+    let exit = exit_lane(world, trip, ri, p).filter(|&(w, _)| w == trip.lanes[ri] || trip.shift.is_some_and(|s| s.to == w) || getting.is_some());
+    let short: Vec<(Obstacle, Cause)> = getting
         .map(|(_, d)| (Obstacle::MustStop { distance: (d - 1.0).max(0.0) }, Cause::GettingIn(None)))
         .into_iter()
         .collect();
@@ -1526,7 +1530,7 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, intersections: &Inte
     let merging = |l: u8| to_end < MAKE_ROOM && end + 1 < len && trip.lanes[end + 1] == l && joining;
     let ahead = |l: u8| near[l as usize][0];
     let slow = ahead(lane).filter(|&(d, vo, ..)| d < OVERTAKE && vo < v - 0.1);
-    let to = if to_end < 0.8 {
+    let to = if to_end < LAST_CHANGE {
         None
     } else if let Some(w) = want.filter(|&w| w != lane && to_want < GET_IN) {
         Some(w)
@@ -1542,6 +1546,12 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, intersections: &Inte
         None
     };
     let Some(to) = to.filter(|&t| want == Some(t) || clear_there) else { return short };
+    // Nor into a lane someone is still to come out into at the junction it
+    // has just come through, in by another arm: not behind it on this car's
+    // way, it is not seen there, and came on it braking hard, or into it.
+    if gates(world, &moved, ri - 1).iter().any(|g| !g.crossing() && g.track.is_some_and(|t| intersections.joins(g.id, car_id, &t, g.from))) {
+        return short;
+    }
     if let Some(blocker) = in_the_way(role, v, near[to as usize]) {
         // No room in the lane its turn needs: it falls in behind the car
         // ahead there, and short of the junction it waits for a gap.
@@ -1593,6 +1603,28 @@ fn change_lanes(world: &mut World, events: &mut EventQueue, intersections: &Inte
     let over = (v * SHIFT_MS as f64 / 1000.0).max(0.5);
     trip.shift = Some(Shift { from: lane, to, at: now, until: now + SHIFT_MS, along: p, over });
     Vec::new()
+}
+
+/// The lane the way out ahead asks for and how far off it is, if the car
+/// is not in it, nor moving over into it. Not if it is too near to change
+/// lanes any more (`LAST_CHANGE`), nor if the car in its way in that lane
+/// wants this one's: each waited for a change it could never make. The one
+/// with the lower id of the two goes on from the lane it is in, across the
+/// junction, and the other moves over behind it.
+#[allow(clippy::too_many_arguments)]
+fn not_in_lane(world: &World, car_id: EntityId, role: CarRole, trip: &Trip, ri: usize, p: f64, v: f64, now: GameTime) -> Option<(u8, f64)> {
+    let (want, d) = exit_lane(world, trip, ri, p).filter(|&(w, _)| w != trip.lanes[ri] && !trip.shift.is_some_and(|s| s.from != s.to && s.to == w))?;
+    let mine = trip.lanes[ri];
+    let swaps = |o: EntityId| match world.objects.get(o).map(|e| &e.object) {
+        Some(GameObject::Car(c)) => c.trip.as_ref().is_some_and(|t| {
+            let (q, _) = physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0);
+            t.lanes.get(t.route_index) == Some(&want) && exit_lane(world, t, t.route_index, q).is_some_and(|(w, _)| w == mine)
+        }),
+        _ => false,
+    };
+    let carry = (ri..trip.route.len()).take_while(|&k| world.edges.get(&(trip.route[k - 1], trip.route[k])).is_some_and(|s| s.lanes > 1)).last().unwrap_or(ri);
+    let swap = in_the_way(role, v, neighbours(world, car_id, trip, ri, carry, p, want as usize, now)).is_some_and(|o| car_id < o && swaps(o));
+    (!swap && d >= LAST_CHANGE).then_some((want, d))
 }
 
 /// The lane the next way out that asks for one does (`World::turn_lane`),

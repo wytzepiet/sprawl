@@ -561,6 +561,13 @@ impl IntersectionRegistry {
         m.queue.iter().chain(&m.passing).filter(|e| e.car_id != car_id).filter_map(|e| e.claim.track).any(|t| t[0] != track[0] && if into { t[TRACK_POINTS - 1] == track[TRACK_POINTS - 1] } else { apart(&t, track) < CLEAR })
     }
 
+    /// Is anyone coming in by another arm than `from` to come out where a
+    /// car's way (`track`) does.
+    pub fn joins(&self, node_id: EntityId, car_id: EntityId, track: &Track, from: Dir) -> bool {
+        let Some(m) = self.managers.get(&node_id) else { return false };
+        m.queue.iter().chain(&m.passing).any(|e| e.car_id != car_id && e.claim.from != from && e.claim.track.is_some_and(|t| t[TRACK_POINTS - 1] == track[TRACK_POINTS - 1]))
+    }
+
     /// Who else let through a junction comes out into a car's lane
     /// (`IntersectionManager::merging`).
     pub fn merging(&self, node_id: EntityId, car_id: EntityId) -> Vec<EntityId> {
