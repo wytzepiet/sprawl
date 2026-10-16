@@ -1,7 +1,9 @@
 import type { EngineContext, Mesh, SceneContext } from "@babylonjs/lite";
 import { drop, meshOf, show, type MeshGeometry } from "./geometry";
 import { setTint, townMaterial } from "./material";
-import { rgb, type Rgb } from "./rgb";
+import { rgb } from "./rgb";
+import { bevelled, giveBevel } from "./bevel";
+import type { TownMaterial } from "./material";
 import { ROAD_Z } from "./objects/roadGeometry";
 import { flatPolygons, KERB_Z, PAVED_Z } from "./town/draw";
 import { runsOn, shapeOf, VERGE_KERB, type Surface } from "./town/surface";
@@ -100,13 +102,14 @@ export interface DeckPiece {
 export class Decks {
   private meshes: Mesh[] = [];
   private material = townMaterial([], 0.95);
-  private paving = townMaterial([], 0.95);
 
+  /** `paving`: the ground's pavement's own material, so a deck's kerb is
+   *  the ground's. */
   constructor(
     private engine: EngineContext,
     private scene: SceneContext,
     private casters: Casters | undefined,
-    private paved: () => Rgb,
+    private paving: TownMaterial,
   ) {
     setTint(this.material, CONCRETE);
   }
@@ -117,10 +120,10 @@ export class Decks {
     const kerbs: MeshGeometry = { positions: [], normals: [], indices: [] };
     for (const { x, y, surface } of pieces) concrete(g, kerbs, surface, x + 1, y + 1);
     this.clear();
-    setTint(this.paving, this.paved());
-    for (const [name, geo, material] of [["deck_concrete", g, this.material], ["deck_kerbs", kerbs, this.paving]] as const) {
+    for (const [name, geo, material] of [["deck_concrete", g, this.material], ["deck_kerbs", bevelled(kerbs), this.paving]] as const) {
       if (!geo.indices.length) continue;
       const mesh = meshOf(this.engine, name, geo);
+      if ("reach" in geo) giveBevel(this.engine, mesh, geo);
       mesh.material = material;
       mesh.receiveShadows = true;
       show(this.scene, mesh);
@@ -201,11 +204,11 @@ function concrete(g: MeshGeometry, kerbs: MeshGeometry, surface: Surface, ox: nu
       if (!kept[i]) continue;
       const [a, b] = edge(i);
       const [ao, bo] = [out[i], out[(i + 1) % n]];
-      // The side, from under the deck up to the kerb's top, facing out;
-      // the kerb's top; its face to the road.
+      // The side, from under the deck up to the kerb's top, facing out; the
+      // kerb, paved as the ground's, its top and its face to the road.
       quad(g, top(bo, -DECK), top(ao, -DECK), top(ao, STEP_UP), top(bo, STEP_UP));
       quad(kerbs, top(bo, STEP_UP), top(ao, STEP_UP), top(a, STEP_UP), top(b, STEP_UP));
-      quad(g, top(b, STEP_UP), top(a, STEP_UP), top(a), top(b));
+      quad(kerbs, top(b, STEP_UP), top(a, STEP_UP), top(a), top(b));
     }
   }
   // The underside, a deck's thickness down, as the road above it lies.

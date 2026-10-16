@@ -134,10 +134,8 @@ export class TownLayer {
     const bevel: Bevel = { width: 0.05, soft: null };
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF]), "building", bevel);
     this.roads = new RoadTiles(ctx.engine, ctx.scene, () => this.theme().road);
-    this.concrete = new Decks(ctx.engine, ctx.scene, casters, () => {
-      const { r, g, b } = this.theme().paved;
-      return rgb(r, g, b);
-    });
+    const { r, g, b } = this.theme().paved;
+    this.concrete = new Decks(ctx.engine, ctx.scene, casters, this.pavement(rgb(r, g, b), null));
   }
 
   /** A piece's material, made once for its name and colour. */
