@@ -207,7 +207,7 @@ function concrete(g: MeshGeometry, kerbs: MeshGeometry, surface: Surface, ox: nu
       // The side, from under the deck up to the kerb's top, facing out; the
       // kerb, paved as the ground's, its top and its face to the road.
       quad(g, top(bo, -DECK), top(ao, -DECK), top(ao, STEP_UP), top(bo, STEP_UP));
-      quad(kerbs, top(bo, STEP_UP), top(ao, STEP_UP), top(a, STEP_UP), top(b, STEP_UP));
+      quad(kerbs, top(b, STEP_UP), top(a, STEP_UP), top(ao, STEP_UP), top(bo, STEP_UP));
       quad(kerbs, top(b, STEP_UP), top(a, STEP_UP), top(a), top(b));
     }
   }
