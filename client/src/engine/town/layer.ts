@@ -6,7 +6,7 @@ import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
 import { asphalt } from "./surface";
 import type { Pt } from "./footprint";
 import { facts, windowFacts } from "./facts";
-import { storeysOf, windowOf, type Tile, type Town } from "./grid";
+import { storeysOf, windowOf, type RoadView, type Tile, type Town } from "./grid";
 import { PROP_KINDS, type Paint } from "./roof";
 
 /**
@@ -42,6 +42,10 @@ export interface Snapshot {
   /** Every road tile: x, y, its node, whether a road rather than a street,
    *  and the nodes it leads to and from. */
   roads: [number, number, number, boolean, number[], number[]][];
+  /** The roads on each road tile as the main thread draws them
+   *  (`Town.roadsOn`): so the paving is cut to the asphalt drawn, whatever
+   *  its shape, one-way, beside another, a lane or two. */
+  views: [number, number, RoadView[]][];
   /** Each building's door: its tile, and the way to its street. */
   doors: [number, number, number, number][];
   /** Lines painted on the yards where the game says, on the map: a
@@ -100,6 +104,7 @@ export function drawChunks(s: Snapshot): Drawing {
     roads.set(`${x},${y}`, { id, road, outgoing, incoming });
     if (!tiles.has(`${x},${y}`)) tiles.set(`${x},${y}`, ROAD);
   }
+  const views = new Map(s.views.map(([x, y, v]) => [`${x},${y}`, v]));
   const doors = new Map(s.doors.map(([x, y, dx, dy]) => [`${x},${y}`, [dx, dy] as [number, number]]));
   const [bw] = [box[2] - box[0] + 1];
   const groundAt = (x: number, y: number) => s.kinds[s.ground[(y - box[1]) * bw + (x - box[0])]];
@@ -142,6 +147,7 @@ export function drawChunks(s: Snapshot): Drawing {
     tile,
     linked,
     through: (c, r) => !!road(c, r)?.road,
+    roadsOn: (c, r) => views.get(`${x1 - c},${y1 - r}`) ?? [],
     bare: (c, r) => !inTown(x1 - c, y1 - r) && !knots.has(`${x1 - c},${y1 - r}`),
     // Turned half round, so the way to the street is too.
     door: (c, r) => turned(doors.get(`${x1 - c},${y1 - r}`)),

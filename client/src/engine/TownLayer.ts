@@ -241,6 +241,16 @@ export class TownLayer {
     return g;
   }
 
+  /** The roads on each of these road tiles, as they are drawn here. */
+  private views(roads: Snapshot["roads"]): Snapshot["views"] {
+    const world = this.world();
+    const tiles = new Set(roads.map(([x, y]) => `${x},${y}`));
+    return [...tiles].map((k) => {
+      const [x, y] = k.split(",").map(Number);
+      return [x, y, world.roadsOn!(-x, -y)];
+    });
+  }
+
   /** The ground under a box, as the worker cannot ask the terrain. */
   private groundUnder([x0, y0, x1, y1]: Bounds): Uint8Array {
     const ground = new Uint8Array((x1 - x0 + 1) * (y1 - y0 + 1)).fill(255);
@@ -274,7 +284,7 @@ export class TownLayer {
     const g = this.gather(held);
     const inside = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
     const snapshot: Snapshot = {
-      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme(),
+      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside)), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme(),
     };
     // Kept, in development, to time the drawing alone, off the page.
     if (import.meta.env.DEV) Object.assign(window, { sprawlHeldSnapshot: { ...snapshot, ground: [...snapshot.ground] } });
@@ -341,7 +351,8 @@ export class TownLayer {
     this.stale.clear();
     if (!todo.length) return;
 
-    const snapshot: Snapshot = { box, town, todo, buildings, roads, doors, marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme() };
+    const near = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
+    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near)), doors, marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme() };
     const gathered = performance.now() - started;
     this.drawing = true;
     this.builder
