@@ -790,7 +790,8 @@ export function pavement(town: Town): Polygon[] {
       if (!on(c, r)) continue;
       for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
         const [x, y] = [c + dc, r + dr];
-        if (!street(x, y)) continue;
+        // On its corner only where the road does not run past its side.
+        if (!street(x, y) || (dc && dr && (street(x, r) || street(c, y)))) continue;
         const [x0, x1] = dc > 0 ? [x, x + 0.5] : dc < 0 ? [x + 0.5, x + 1] : [x, x + 1];
         const [y0, y1] = dr > 0 ? [y, y + 0.5] : dr < 0 ? [y + 0.5, y + 1] : [y, y + 1];
         between.push([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]]);
