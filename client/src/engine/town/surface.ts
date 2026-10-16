@@ -742,18 +742,16 @@ const SCRAP = 0.5;
 
 /** A sidewalk's width, out from the asphalt's edge. */
 const SIDEWALK = 0.15;
-/** How far a building and a road may stand apart and still be paved
- *  between, each: up to twice this. */
-const REACH = 0.5;
 
 /**
  * The pavement: a sidewalk along every road but a bare one (`Town.bare`),
  * its asphalt grown out by `SIDEWALK`, whatever the road's shape; and
  * every building and yard's ground: its tiles, square; by the water, the
  * buildings' own rule (the terrain's corners, a diagonal as far out as a
- * straight edge) at full size, so a quay keeps to the shore. Where a building and a road stand near each other, the
- * ground between them is paved too, so a shop is paved to its kerb and a
- * town centre shop to shop; elsewhere the sidewalk is a border, the grass
+ * straight edge) at full size, so a quay keeps to the shore. Where a
+ * building stands beside a road, the ground between them is paved too,
+ * straight from its front to the kerb, so a shop is paved to its kerb and
+ * a town centre shop to shop; elsewhere the sidewalk is a border, the grass
  * behind it. Its corners are rounded a little, and grass left shut in,
  * too small to be anything, is paved. The asphalt is cut into it.
  */
@@ -782,7 +780,23 @@ export function pavement(town: Town): Polygon[] {
     }
   }
   const border = shrink(unite(roads), -SIDEWALK);
-  const between = ground.length && border.length ? intersect(shrink(ground, -REACH), shrink(border, -REACH)) : [];
+  // From a building's tile to the road beside it: the half of the road's
+  // tile toward it, straight from its front to the road's middle, or of
+  // one only on its corner, the quarter toward it. The asphalt is cut out.
+  const street = (c: number, r: number) => town.tile(c, r).kind === "road" && !town.bare?.(c, r);
+  const between: Polygon[] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (!on(c, r)) continue;
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const [x, y] = [c + dc, r + dr];
+        if (!street(x, y)) continue;
+        const [x0, x1] = dc > 0 ? [x, x + 0.5] : dc < 0 ? [x + 0.5, x + 1] : [x, x + 1];
+        const [y0, y1] = dr > 0 ? [y, y + 0.5] : dr < 0 ? [y + 0.5, y + 1] : [y, y + 1];
+        between.push([[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]]);
+      }
+    }
+  }
   const whole = unite([...ground, ...border, ...between]).map(([outline, ...holes]) => [outline, ...holes.filter((h) => Math.abs(area(h)) / 2 >= SCRAP)]);
   return soften(whole, PAVEMENT_ROUND);
 }
