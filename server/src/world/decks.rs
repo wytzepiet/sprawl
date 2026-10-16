@@ -174,7 +174,7 @@ impl World {
             self.move_to(id, side);
         }
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![], side, banned: vec![] }),
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![], side }),
             Some(coord),
         );
         self.decks.entry((coord.x, coord.y)).or_default().push(id);

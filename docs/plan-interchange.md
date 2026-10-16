@@ -514,19 +514,19 @@ What runs, and where; the rest of the order above is still to come.
   rules pick. One drag, one undo. `pen.test.ts` plays drags through the
   brush against the game in wasm, and checks after each what may never
   be: no two roads running into each other (`World::clashing`).
-- **A drag joins only at its ends** (`RoadNode::banned`): where it starts
-  it branches off what is there,
-  where it is let go it joins what is there; between, it turns only as
-  it went. Straight over a road, a crossing with no turns; up to a road
-  and on along it, that one turn; a full crossroads is drawn up to the
-  road and away from it, two drags. A one-way that meets a one-way and
+- **A drag joins what it meets** (2026-10-16): wherever roads meet on
+  one level they make a junction, with every turn its angles allow; a turn
+  that may not be taken is one no road gives, as a divided road's median
+  gives none across it, and a road to cross with no turns goes over or
+  under. (Drags once joined only at their ends, crossing with no turns
+  between: a crossroads that looked whole but was not, which nothing on
+  the ground showed.) A one-way that meets a one-way and
   goes on against it runs beside it: on the side it is on, else on the
   side it came from, else on its right; along a pair, into the one
   running its way; into a pair from the side, right in and there it
   ends. No paint says which turns a junction has: the
   asphalt is worn, two wheel tracks down each lane along the curve its
-  cars drive (`wearOf`), so through a junction only the ways its cars
-  may go are worn.
+  cars drive (`wearOf`), and a corner no car goes round is square.
 - **Right of way from the lanes' shapes** (`intersection::track`): a car
   at a junction gives its way through, its lane's curve from seam to seam
   as the client draws it (`laneOf`), and gives way to those whose ways

@@ -37,10 +37,4 @@ wide: Array<number>,
  * moved by, or none, the middle. Two one-ways share a tile side by
  * side, each a thin road beside the other (`world/decks.rs`).
  */
-side: [number, number], 
-/**
- * The turns no drag drew through it: from one neighbour to another
- * (`World::drawn`). A drag passing over a road joins it only as it
- * went; everywhere else, every turn the links allow.
- */
-banned: Array<[number, number]>, };
+side: [number, number], };

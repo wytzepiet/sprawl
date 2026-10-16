@@ -492,9 +492,6 @@ export class TownLayer {
         built.has(key(c, r))
           ? []
           : (onTile.get(key(c, r)) ?? []).map((n) => {
-              // The way from a node to another, in the town's frame.
-              const way = (from: { x: number; y: number }, to: { x: number; y: number }) => `${from.x - to.x},${from.y - to.y}`;
-              const here = byId.get(n.id)!;
               const arms = [...new Set([...n.outgoing, ...n.incoming])].flatMap((id) => {
                 const o = byId.get(id);
                 if (!o || Math.abs(o.x + c) > 1 || Math.abs(o.y + r) > 1) return [];
@@ -502,8 +499,7 @@ export class TownLayer {
               });
               // A slope climbs toward its arm above it, one of a run.
               const up = n.height % 2 ? arms.find((a) => a.height > n.height) : undefined;
-              const banned = n.banned.flatMap(([a, b]) => (byId.has(a) && byId.has(b) ? [`${way(here, byId.get(a)!)}>${way(here, byId.get(b)!)}`] : []));
-              return { shift: shiftOf(n), through: n.road, light: n.light != null, arms, banned, height: n.height, climb: up && ([up.dc, up.dr] as [number, number]), run: up && runOf(n) };
+              return { shift: shiftOf(n), through: n.road, light: n.light != null, arms, height: n.height, climb: up && ([up.dc, up.dr] as [number, number]), run: up && runOf(n) };
             }),
       door: (c, r) => turned(doors.get(key(c, r))),
     };

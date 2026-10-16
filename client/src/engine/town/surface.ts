@@ -52,9 +52,6 @@ export interface Surface {
   height?: number;
   climb?: Pt;
   run?: [number, number, number, number];
-  /** The turns not drawn through it, from one arm's way to another's,
-   *  `"dc,dr>dc,dr"`: no lane is laid for them. */
-  banned?: string[];
 }
 
 /** How round the asphalt's corners are, in and out. */
@@ -233,10 +230,9 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
       arms: EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr)).map(([dc, dr]) => ({ dc, dr, flow: town.flow?.(c, r, c + dc, r + dr) ?? "t", shift: [0, 0], through: town.through(c + dc, r + dr) })),
     },
   ];
-  return views.map(({ shift, through, light, arms, height = 0, climb, run, banned }) => {
+  return views.map(({ shift, through, light, arms, height = 0, climb, run }) => {
     const own: Way[] = arms.map(({ dc, dr, flow, shift: there, through: on }) => [dc, dr, on === through, flow, there]);
-    const turns = banned?.length ? { banned } : {};
-    if (shift[0] || shift[1] || height) return { through, light, ways: own, rects: [], shift, height, climb, run, ...turns };
+    if (shift[0] || shift[1] || height) return { through, light, ways: own, rects: [], shift, height, climb, run };
     // The middle's: out to the doors that open onto it, and its bays.
     for (const [dc, dr] of EIGHT) {
       const back = drive(town, c + dc, r + dr);
@@ -247,7 +243,7 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
       const mine = bays.filter((b) => b.side[0] === sx && b.side[1] === sy);
       if (mine.length) rects.push(bayRect(town, c, r, mine));
     }
-    return { through, light, ways: own, rects, ...turns };
+    return { through, light, ways: own, rects };
   });
 }
 
@@ -272,11 +268,11 @@ function yardRect(town: Town, c: number, r: number): Rect {
 }
 
 /** The key a surface's shape is known by: the same parts, the same shape. */
-export function keyOf({ through, ways, rects, light, shift, banned = [] }: Surface): string {
+export function keyOf({ through, ways, rects, light, shift }: Surface): string {
   const at = (p?: Pt) => (p && (p[0] || p[1]) ? `@${p.map((v) => +v.toFixed(3)).join(";")}` : "");
   const w = ways.map(([dc, dr, on, flow, there]) => `${dc}${dr}${on ? "+" : ""}${flow ?? ""}${at(there)}`).sort();
   const q = rects.map((rect) => `[${rect.map((v) => +v.toFixed(3)).join(",")}]`).sort();
-  return [...w, ...q, ...[...banned].sort().map((b) => `!${b}`), light ? "L" : "", through ? "T" : "", at(shift)].join(",");
+  return [...w, ...q, light ? "L" : "", through ? "T" : "", at(shift)].join(",");
 }
 
 /** Where a surface's road stands in its tile: the middle, moved by its
@@ -406,13 +402,12 @@ function strip(path: Path, lane: (t: number) => Lane): Polygon {
 
 /** The ways through a junction its cars may go, each from the arm it
  *  comes in by to the one it goes out by, and its path: every turn its
- *  lanes allow, but those not drawn (`Surface::banned`) and those sharper
- *  than a right angle, which no car makes (`pathfinding::may_turn`). */
-function movesOf(surface: Surface, p: Pt, roads: Way[]): [Way, Way, Path][] {
-  const banned = new Set(surface.banned);
+ *  lanes allow, but those sharper than a right angle, which no car makes
+ *  (`pathfinding::may_turn`). */
+function movesOf(p: Pt, roads: Way[]): [Way, Way, Path][] {
   const sharp = (a: Way, b: Way) => a[0] * b[0] + a[1] * b[1] > 0;
   return roads.flatMap((a) => roads.flatMap((b): [Way, Way, Path][] =>
-    a === b || sharp(a, b) || banned.has(`${a[0]},${a[1]}>${b[0]},${b[1]}`) || !lanesOf(a[3], true).length || !lanesOf(b[3], false).length ? [] : [[a, b, pathOf(p, a, b, false)]],
+    a === b || sharp(a, b) || !lanesOf(a[3], true).length || !lanesOf(b[3], false).length ? [] : [[a, b, pathOf(p, a, b, false)]],
   ));
 }
 
@@ -420,7 +415,7 @@ function movesOf(surface: Surface, p: Pt, roads: Way[]): [Way, Way, Path][] {
  *  it goes out by (`m`), along its own curve (`laneOf`), its half-width
  *  going from the one's to the other's. */
 function lanesThrough(surface: Surface, p: Pt, roads: Way[]): { a: Way; b: Way; l: Lane; m: Lane; i: number; j: number; path: Path }[] {
-  return movesOf(surface, p, roads).flatMap(([a, b]) =>
+  return movesOf(p, roads).flatMap(([a, b]) =>
     lanesOf(a[3], true).flatMap((l, i) => lanesOf(b[3], false).map((m, j) => ({ a, b, l, m, i, j, path: laneOf(p, a, l, b, m) }))),
   );
 }

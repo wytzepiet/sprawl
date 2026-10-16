@@ -17,15 +17,14 @@
 //! nothing may, the drag stops there. Where roads may stand is the world's
 //! one rule of their shapes (`world/clear.rs`), not the plan's.
 //!
-//! The drag joins what it meets where it starts and where it ends: in
-//! between, it turns only as it went (`RoadNode::banned`): its new links
-//! turn to no other road on the tiles it passes through, nor any other
-//! road to them. A drag is one action to undo (`undo::Act::Drawn`).
+//! Wherever the drag meets a road on its level, it joins it: a junction,
+//! with every turn its angles allow. A road to cross with no turns goes
+//! over or under. A drag is one action to undo (`undo::Act::Drawn`).
 
 use crate::engine::event_queue::EventQueue;
 use crate::engine::GameTime;
 use crate::intersection::IntersectionRegistry;
-use crate::protocol::{Build, EntityId, GameObject, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
+use crate::protocol::{Build, EntityId, GridCoord, News, OwnerId, Spot, Stand, Stroke, Tool};
 use crate::undo::{Act, Done, Laid, Link, Purse, WINDOW};
 use crate::world::decks::{across, other, toward, Side, MIDDLE};
 use crate::world::clear::End;
@@ -106,7 +105,6 @@ pub fn draw(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
     let gone = steps.split_off(steps.len().min(same.saturating_sub(2)));
     crate::undo::take_back(world, events, intersections, &gone, now);
     lay_on(world, &stroke, &mut steps, now);
-    turns(world, &steps);
     let coins = express(&steps);
     world.undo.entry(owner).or_default().push(Done { act: Act::Drawn { stroke, steps }, at: now, after });
     (paid_before == 0.0 && coins > 0.0).then(|| News {
@@ -323,38 +321,6 @@ fn may(world: &World, stroke: &Stroke, from: GridCoord, pf: Place, to: GridCoord
     crate::game::may_step_on(world, Build { tool: stroke.tool, from, to, up, sides, road: stroke.road }, on, then)
 }
 
-/// The turns the drag drew, on the tiles it passes through: its new links
-/// turn to no other road there, nor any other road to them; where it starts
-/// and ends, they join what is there.
-fn turns(world: &mut World, steps: &[Laid]) {
-    let Some(first) = steps.first() else { return };
-    let nodes: Vec<EntityId> = std::iter::once(first.nodes[0]).chain(steps.iter().map(|s| s.nodes[1])).collect();
-    for (k, &x) in nodes.iter().enumerate() {
-        let came = k.checked_sub(1).map(|j| (steps[j].nodes[0], steps[j].fresh));
-        let goes = steps.get(k).map(|s| (s.nodes[1], s.fresh));
-        let ends: Vec<EntityId> = [came, goes].into_iter().flatten().map(|(n, _)| n).collect();
-        let fresh: Vec<EntityId> = [came, goes].into_iter().flatten().filter(|&(_, f)| f).map(|(n, _)| n).collect();
-        let mut others = world.arms_of(x, false);
-        others.sort_unstable();
-        others.dedup();
-        others.retain(|o| !ends.contains(o));
-        let through = came.is_some() && goes.is_some();
-        let Some(GameObject::RoadNode(n)) = world.objects.get_mut(x).map(|e| &mut e.object) else { continue };
-        let was = n.banned.clone();
-        n.banned.retain(|t| !fresh.iter().any(|f| t.contains(f)));
-        for &f in fresh.iter().filter(|_| through) {
-            for &o in &others {
-                n.banned.extend([[f, o], [o, f]]);
-            }
-        }
-        if n.banned != was
-            && let Some(at) = world.objects.get(x).and_then(|e| e.position)
-        {
-            world.unsettle_round(at);
-        }
-    }
-}
-
 fn linked(world: &World, a: EntityId, b: EntityId) -> bool {
     world.edges.contains_key(&(a, b)) || world.edges.contains_key(&(b, a))
 }
@@ -417,27 +383,17 @@ mod tests {
         }
     }
 
-    /// A drag joins the roads it meets where it starts and where it ends;
-    /// between, it turns only as it went: straight over a road, a
-    /// crossing; along one, from where it came to where it went on.
+    /// A drag joins every road it meets on its level: straight over one, a
+    /// crossroads, every turn there.
     #[test]
-    fn a_drag_joins_only_at_its_ends() {
+    fn a_drag_joins_what_it_meets() {
         let mut f = Field::new();
-        let row: Vec<(i32, i32)> = (0..9).map(|x| (x, 0)).collect();
+        let row: Vec<(i32, i32)> = (0..5).map(|x| (x, 0)).collect();
         f.drag(Tool::Street, &row);
-        // Straight over it, and up to it and away from it, two drags.
         f.drag(Tool::Street, &[(2, 3), (2, 2), (2, 1), (2, 0), (2, -1), (2, -2)]);
-        f.drag(Tool::Street, &[(4, 3), (4, 2), (4, 1), (4, 0)]);
-        f.drag(Tool::Street, &[(4, 0), (4, -1), (4, -2)]);
-        // Up to it and on along it, one drag.
-        f.drag(Tool::Street, &[(6, 3), (6, 2), (6, 1), (6, 0), (7, 0)]);
-        assert!(f.turn((2, 1), (2, 0), (2, -1)) && f.turn((1, 0), (2, 0), (3, 0)), "a crossing goes straight on");
-        assert!(!f.turn((2, 1), (2, 0), (1, 0)) && !f.turn((1, 0), (2, 0), (2, -1)), "a crossing turns");
-        for (a, c) in [((4, 1), (3, 0)), ((4, 1), (5, 0)), ((3, 0), (4, -1)), ((4, 1), (4, -1))] {
-            assert!(f.turn(a, (4, 0), c), "the drags that end and start at (4, 0) do not join it: {a:?} to {c:?}");
+        for (a, c) in [((2, 1), (2, -1)), ((1, 0), (3, 0)), ((2, 1), (1, 0)), ((2, 1), (3, 0)), ((1, 0), (2, -1)), ((3, 0), (2, 1))] {
+            assert!(f.turn(a, (2, 0), c), "no way from {a:?} to {c:?} at the crossroads");
         }
-        assert!(f.turn((6, 1), (6, 0), (7, 0)) && f.turn((7, 0), (6, 0), (6, 1)) && f.turn((5, 0), (6, 0), (7, 0)), "the drag along the road does not go as it went");
-        assert!(!f.turn((6, 1), (6, 0), (5, 0)) && !f.turn((5, 0), (6, 0), (6, 1)), "the drag along the road turns as it did not");
     }
 
     /// Drawn on a tile at a time, a drag keeps what it laid: only the
@@ -472,14 +428,13 @@ mod tests {
     }
 
     /// Two one-ways bending through one tile, each round its own corner:
-    /// one junction, each turning only as it was drawn.
+    /// one junction, its bends driven.
     #[test]
-    fn two_bends_through_one_tile_keep_to_their_corners() {
+    fn two_bends_through_one_tile_meet_in_a_junction() {
         let mut f = Field::new();
         f.drag(Tool::OneWay, &[(0, 0), (1, 0), (2, 0), (2, -1), (2, -2)]);
         f.drag(Tool::OneWay, &[(2, 2), (2, 1), (2, 0), (3, 0), (4, 0)]);
         assert!(f.turn((1, 0), (2, 0), (2, -1)) && f.turn((2, 1), (2, 0), (3, 0)), "the bends are not driven");
-        assert!(!f.turn((1, 0), (2, 0), (3, 0)) && !f.turn((2, 1), (2, 0), (2, -1)), "a bend turns into the other");
     }
 
     /// A diagonal past a one-way's bend, its cars arriving where the bend

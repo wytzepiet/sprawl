@@ -29,7 +29,6 @@ impl World {
                 light: None,
                 wide: vec![],
                 side: super::decks::MIDDLE,
-                banned: vec![],
             }),
             Some(coord),
         );
@@ -442,7 +441,6 @@ impl World {
             if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(x).map(|e| &mut e.object) {
                 n.outgoing.retain(|&o| o != y);
                 n.incoming.retain(|&i| i != y);
-                n.banned.retain(|t| !t.contains(&y));
             }
         }
         for (x, y) in [(a, b), (b, a)] {
@@ -478,7 +476,6 @@ impl World {
                 && let GameObject::RoadNode(ref mut node) = entry.object {
                     node.outgoing.retain(|&x| x != id);
                     node.incoming.retain(|&x| x != id);
-                    node.banned.retain(|t| !t.contains(&id));
                 }
         }
 

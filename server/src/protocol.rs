@@ -199,12 +199,6 @@ pub struct RoadNode {
     /// side, each a thin road beside the other (`world/decks.rs`).
     #[serde(default)]
     pub side: [i8; 2],
-    /// The turns no drag drew through it: from one neighbour to another
-    /// (`World::drawn`). A drag passing over a road joins it only as it
-    /// went; everywhere else, every turn the links allow.
-    #[serde(default)]
-    #[ts(type = "Array<[number, number]>")]
-    pub banned: Vec<[EntityId; 2]>,
 }
 
 /// A junction's lights between phases, none green.
