@@ -741,11 +741,15 @@ const PAVEMENT_ROUND = 0.12;
 const SCRAP = 0.5;
 
 /** A sidewalk's width, out from the asphalt's edge. */
-const SIDEWALK = 0.15;
+export const SIDEWALK = 0.15;
+/** A kerb's width out from the asphalt's edge, where nobody walks: round a
+ *  junction out of town. */
+export const VERGE_KERB = 0.05;
 
 /**
- * The pavement: a sidewalk along every road but a bare one (`Town.bare`),
- * its asphalt grown out by `SIDEWALK`, whatever the road's shape; and
+ * The pavement: along every road its asphalt grown out by its sidewalk
+ * (`Town.sidewalk`), whatever the road's shape: in town a sidewalk, out
+ * of it a kerb round a junction, else nothing; and
  * every building and yard's ground: its tiles, square; by the water, the
  * buildings' own rule (the terrain's corners, a diagonal as far out as a
  * straight edge) at full size, so a quay keeps to the shore. Where a
@@ -772,18 +776,21 @@ export function pavement(town: Town): Polygon[] {
   const paved = townOf(tiles, () => false, [], (c, r, x, y) => (x === c || y === r || (!on(x, r) && !on(c, y))) && kin(c, r, x, y));
   const quay = shore.length ? intersect(footprints(paved, 0).flatMap((m) => m.polygons), unite(shore)) : [];
   const ground = unite([...squares, ...quay]);
-  const roads: Polygon[] = [];
+  const width = (c: number, r: number) => (town.tile(c, r).kind === "road" ? (town.sidewalk?.(c, r) ?? SIDEWALK) : 0);
+  const roads = new Map<number, Polygon[]>();
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
-      if (town.tile(c, r).kind !== "road" || town.bare?.(c, r)) continue;
-      for (const at of surfacesAt(town, c, r)) for (const poly of shapeOf(at)) roads.push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
+      const w = width(c, r);
+      if (!w) continue;
+      const by = roads.get(w) ?? roads.set(w, []).get(w)!;
+      for (const at of surfacesAt(town, c, r)) for (const poly of shapeOf(at)) by.push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
     }
   }
-  const border = shrink(unite(roads), -SIDEWALK);
+  const border = unite([...roads].flatMap(([w, ps]) => shrink(unite(ps), -w)));
   // From a building's tile to the road beside it: the half of the road's
   // tile toward it, straight from its front to the road's middle, or of
   // one only on its corner, the quarter toward it. The asphalt is cut out.
-  const street = (c: number, r: number) => town.tile(c, r).kind === "road" && !town.bare?.(c, r);
+  const street = (c: number, r: number) => width(c, r) > 0;
   const between: Polygon[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {

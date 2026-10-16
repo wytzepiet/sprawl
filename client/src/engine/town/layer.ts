@@ -3,7 +3,7 @@ import { kerbsOf, kerbTexels, roadsOf, type KerbTexels } from "../kerbLines";
 import type { Theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
-import { asphalt } from "./surface";
+import { asphalt, SIDEWALK, VERGE_KERB } from "./surface";
 import type { Pt } from "./footprint";
 import { facts, windowFacts } from "./facts";
 import { storeysOf, windowOf, type RoadView, type Tile, type Town } from "./grid";
@@ -31,8 +31,8 @@ export type Bounds = [number, number, number, number];
 /** The world as the town is drawn from it, within `box`. */
 export interface Snapshot {
   box: Bounds;
-  /** The town, round what is built: every road in it is paved, and out
-   *  of it only a junction's tile (`Town.bare`). */
+  /** The town, round what is built: every road in it has its sidewalk,
+   *  and out of it only a junction's tile its kerb (`Town.sidewalk`). */
   town: Bounds | null;
   /** The chunks to draw. */
   todo: string[];
@@ -148,7 +148,7 @@ export function drawChunks(s: Snapshot): Drawing {
     linked,
     through: (c, r) => !!road(c, r)?.road,
     roadsOn: (c, r) => views.get(`${x1 - c},${y1 - r}`) ?? [],
-    bare: (c, r) => !inTown(x1 - c, y1 - r) && !knots.has(`${x1 - c},${y1 - r}`),
+    sidewalk: (c, r) => (inTown(x1 - c, y1 - r) ? SIDEWALK : knots.has(`${x1 - c},${y1 - r}`) ? VERGE_KERB : 0),
     // Turned half round, so the way to the street is too.
     door: (c, r) => turned(doors.get(`${x1 - c},${y1 - r}`)),
     at: (c, r) => [x1 - c, y1 - r],
