@@ -5,7 +5,7 @@ use crate::car::{
 };
 use crate::engine::GameTime;
 use crate::engine::event_queue::EventQueue;
-use crate::intersection::IntersectionRegistry;
+use crate::intersection::{IntersectionRegistry, TRACK_POINTS};
 use crate::protocol::{Shift, CarRole, EdgeKey, EntityId, GameObject, Trip};
 use crate::world::{World, chunk_of};
 
@@ -375,9 +375,6 @@ fn bend(world: &World, route: &[EntityId], k: usize) -> Option<f64> {
 /// cruising, well over what one pulling out from standing takes to be
 /// clear of it, so none pulls out in front of one due there sooner.
 const ANNOUNCE: f64 = 6.0 * CRUISE_SPEED;
-/// What a car takes over being clear of a junction, beyond driving
-/// through it as fast as it may: following whoever is ahead of it there.
-const CLEAR_MS: GameTime = 500;
 
 /// How long a car takes to cover `d` from `v`, speeding up as it may to
 /// `top`: its time to a junction, if nothing stops it.
@@ -447,6 +444,8 @@ struct Gate {
     from: (i32, i32),
     to: (i32, i32),
     track: Option<crate::intersection::Track>,
+    /// How far before the node its track begins.
+    start: f64,
     past: f64,
 }
 
@@ -470,14 +469,15 @@ fn gates(world: &World, trip: &Trip, k: usize) -> Vec<Gate> {
         let (dx, dy) = ((b[0] - a[0]).signum() as i32, (b[1] - a[1]).signum() as i32);
         let corner = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0].map(f64::round);
         let track = crate::intersection::straight([a[0] - corner[0], a[1] - corner[1]], [b[0] - corner[0], b[1] - corner[1]], lane_offset(world, prev, at, lanes[k]));
-        out.push(Gate { id, from: (-dx, -dy), to: (dx, dy), track: Some(track), past: -world.segment_length(prev, at) / 2.0 });
+        let seg = world.segment_length(prev, at);
+        out.push(Gate { id, from: (-dx, -dy), to: (dx, dy), track: Some(track), start: seg, past: -seg / 2.0 });
     }
     if k + 1 < route.len()
         && world.is_intersection(at)
         && let (Some(from), Some(to)) = (arm(world, at, prev), arm(world, at, route[k + 1]))
     {
         let track = (|| Some(crate::intersection::track(world.node_pos(prev)?, world.node_pos(at)?, world.node_pos(route[k + 1])?, lane_offset(world, prev, at, lanes[k]), lane_offset(world, at, route[k + 1], lanes[k + 1]))))();
-        out.push(Gate { id: at, from, to, track, past: 0.0 });
+        out.push(Gate { id: at, from, to, track, start: world.segment_length(prev, at) / 2.0, past: 0.0 });
     }
     out
 }
@@ -1031,18 +1031,27 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
             // that way. None its tail is through already (`clear_behind`).
             for g in gates(world, trip, k).into_iter().filter(|g| (k <= ri + 1 || !g.crossing()) && to_k + g.past + tail(role) > 0.0) {
                 let limit = bend(world, &trip.route, k).unwrap_or(CRUISE_SPEED);
-                let (due, clear) = through(line, to_k + g.past + tail(role), cur_speed, limit);
-                // Far enough on to be followed: its tail a gap past its line,
-                // where the nose of one behind it stops.
-                let (_, ahead) = through(line, line.max(0.0) + tail(role) + MIN_GAP, cur_speed, limit);
+                let due = through(line, line, cur_speed, limit).0;
+                // When its nose comes to each point of its track, and its
+                // tail is past it: along the track from where it begins, as
+                // fast as it may go there.
+                let time = |d: f64| ms(if d <= line { eta(d.max(0.0), cur_speed, CRUISE_SPEED) } else { through(line, d, cur_speed, limit).1 });
+                let along = g.track.map_or_else(|| std::array::from_fn(|i| 2.0 * g.start * i as f64 / (TRACK_POINTS - 1) as f64), |t| {
+                    let mut s = [0.0; TRACK_POINTS];
+                    for i in 1..TRACK_POINTS {
+                        s[i] = s[i - 1] + ((t[i][0] - t[i - 1][0]) as f64).hypot((t[i][1] - t[i - 1][1]) as f64);
+                    }
+                    s
+                });
+                let begins = to_k - g.start;
                 let claim = crate::intersection::Claim {
                     from: g.from,
                     to: g.to,
                     track: g.track,
                     major: world.is_road_between(trip.route[k - 1], trip.route[k]),
                     due: ms(due),
-                    ahead: ms(ahead),
-                    clear: ms(clear) + CLEAR_MS,
+                    nose: along.map(|s| time(begins + s - nose(role))),
+                    tail: along.map(|s| time(begins + s + tail(role))),
                     committed: physics::braking_distance(cur_speed, 0.0) >= line,
                     after: after(k),
                 };
@@ -1072,8 +1081,7 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
         let (k, _, _, ref g, mut claim) = wants[made];
         if waits(made, intersections) {
             waiting.push(made);
-            claim.ahead = GameTime::MAX;
-            claim.clear = GameTime::MAX;
+            claim.tail = [GameTime::MAX; TRACK_POINTS];
         }
         let lit = light_arms(world, g.id);
         let new = !intersections.knows(g.id, car_id);

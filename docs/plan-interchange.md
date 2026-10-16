@@ -356,6 +356,13 @@ Priority changes who is granted, not what conflicts:
   already registers cars three nodes out). **Merging** into one: the
   virtual lead, above.
 - **Roundabouts** fall out: a ring of one-way major road and minor arms.
+- **Where ways meet, not the box.** Each claim says when its nose comes
+  to each point of its track and when its tail is past it. Two ways
+  across each other meet over a stretch of each; one goes after the
+  other once the other's tail is out of that stretch, or, at its line,
+  first, if it will be out before the other comes (`SPARE` either way).
+  A merge is ordered as before: in behind once the one ahead is in, and
+  the following keeps the gap.
 
 A busy major road starves its side road. That's the puzzle: the answer is
 a light, a bridge or a better merge.

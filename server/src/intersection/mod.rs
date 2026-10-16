@@ -32,12 +32,13 @@ pub struct Claim {
     pub track: Option<Track>,
     /// Coming in on a priority road: it goes before anyone on a minor one.
     pub major: bool,
-    /// When it comes to the line, when it is far enough on for one to
-    /// follow it into its lane, and when it will be clear of the
-    /// junction, going as it can.
+    /// When it comes to the line; and at each point of its track, when its
+    /// nose comes to it, and when its tail is past it, going as it can.
+    /// Waiting at another junction first, it cannot say when it will be
+    /// past anything: its tails are never.
     pub due: GameTime,
-    pub ahead: GameTime,
-    pub clear: GameTime,
+    pub nose: [GameTime; TRACK_POINTS],
+    pub tail: [GameTime; TRACK_POINTS],
     /// Too near its line to stop short of it: whatever it holds, it keeps.
     pub committed: bool,
     /// The one ahead of it in its lane: through the junction before it.
@@ -65,17 +66,17 @@ impl QueueEntry {
     fn due(&self, now: GameTime) -> GameTime {
         self.claim.due.saturating_add(self.late(now))
     }
-    fn clear(&self, now: GameTime) -> GameTime {
-        self.claim.clear.saturating_add(self.late(now))
+    fn nose(&self, i: usize, now: GameTime) -> GameTime {
+        self.claim.nose[i].saturating_add(self.late(now))
     }
-    fn ahead(&self, now: GameTime) -> GameTime {
-        self.claim.ahead.saturating_add(self.late(now))
+    fn tail(&self, i: usize, now: GameTime) -> GameTime {
+        self.claim.tail[i].saturating_add(self.late(now))
     }
     /// It cannot say when it will be out, waiting at another junction
     /// first: those it would hold up see it coming, but it is not let
     /// through. A ship, which cannot say either, is let through.
     fn waits(&self) -> bool {
-        self.claim.ahead == GameTime::MAX && !self.claim.committed
+        self.claim.tail[0] == GameTime::MAX && !self.claim.committed
     }
 }
 
@@ -83,17 +84,22 @@ impl QueueEntry {
 /// off, it would hold it against everyone crossing for longer than it
 /// takes to come.
 pub const HOLD: GameTime = 3_000;
-/// How long one waiting at its line takes to come into the box: it pulls
-/// away that long before the one crossing it in the box is out, not after.
-pub const LEAD: GameTime = 800;
+/// What two ways across each other keep between one's tail out of where
+/// they meet and the other's nose into it: each says when it will be there
+/// going as fast as it may, and may be slower.
+const SPARE: GameTime = 1_000;
 /// How much shorter a gap one waiting at its line takes, at most: a tenth
 /// of the time it has waited.
 pub const IMPATIENCE: GameTime = 1_500;
-/// How two ways through a junction meet.
+/// How two ways through a junction meet: not at all; across each other,
+/// over a stretch of each track (from the point its nose comes into the
+/// other's way, to the one its tail is out of it at); into one lane; or, a
+/// way unknown, as the junction's rule says, across the whole of it.
 enum Meet {
     Apart,
-    Cross,
+    Cross([usize; 2], [usize; 2]),
     Merge,
+    Rule,
 }
 
 /// How long a car holds a junction it cannot use before it waves the others
@@ -234,7 +240,7 @@ impl IntersectionManager {
     /// Queue a ship, from its arm to its exit: here now, and holding the
     /// junction until it is through.
     pub fn register(&mut self, car_id: EntityId, from: Dir, to: Dir, now: GameTime) {
-        self.claim(car_id, Claim { from, to, track: None, major: false, due: now, ahead: GameTime::MAX, clear: GameTime::MAX, committed: true, after: None }, now);
+        self.claim(car_id, Claim { from, to, track: None, major: false, due: now, nose: [now; TRACK_POINTS], tail: [GameTime::MAX; TRACK_POINTS], committed: true, after: None }, now);
     }
 
     /// Say when a party will be at the junction, the first time or again
@@ -335,8 +341,9 @@ impl IntersectionManager {
     }
 
     /// Must `e` let `q` go first: `q` is ahead of it in its lane; or their
-    /// ways cross or merge, `q` comes before it, and is due before `e`
-    /// would be out of its way.
+    /// ways meet, `q` comes before it, and `q` would come into `e`'s way
+    /// before `e` were past it: across, out the far side; merging, before
+    /// `e` is in, so `q` would not follow it.
     fn yields(&self, e: &QueueEntry, q: &QueueEntry, now: GameTime) -> bool {
         let patience = Self::patience(e, now);
         e.claim.after == Some(q.car_id)
@@ -347,22 +354,24 @@ impl IntersectionManager {
                 && (!q.waits() || q.claim.major && !e.claim.major)
                 && match self.meet(e, q) {
                     Meet::Apart => false,
-                    Meet::Cross => q.due(now) + patience < e.clear(now),
-                    Meet::Merge => q.due(now) + patience < e.ahead(now),
+                    Meet::Cross([_, i1], [j0, _]) => q.nose(j0, now) + patience < e.tail(i1, now) + SPARE,
+                    Meet::Merge => q.due(now) + patience < e.tail(0, now),
+                    Meet::Rule => true,
                 }
     }
 
-    /// Is `e` held up by `p`, through already: across its way, until it is
-    /// out, or, `e` at its line, nearly out (`LEAD`), or `e` would be out
-    /// before `p` can come (`due` is the soonest it can); into its lane,
-    /// until it will be far enough on for `e` to follow it in when `e`
-    /// comes to its line.
+    /// Is `e` held up by `p`, through already: across its way, unless
+    /// `p`'s tail will be past where their ways meet when `e`'s nose comes
+    /// there, or, `e` at its line, `e` would be past before `p` can come
+    /// (`nose` is the soonest it can); into its lane, until `p` is in, for
+    /// `e` to follow it, when `e` comes to its line.
     fn held_by(&self, e: &QueueEntry, p: &QueueEntry, now: GameTime) -> bool {
         let at_line = e.claim.due <= now;
         match self.meet(e, p) {
             Meet::Apart => false,
-            Meet::Cross => !(at_line && (p.claim.due <= now && p.clear(now) <= now + LEAD || e.clear(now).saturating_add(LEAD) <= p.due(now))),
-            Meet::Merge => e.due(now) < p.ahead(now),
+            Meet::Cross([i0, i1], [j0, j1]) => e.nose(i0, now) < p.tail(j1, now) + SPARE / 2 && !(at_line && e.tail(i1, now) + SPARE <= p.nose(j0, now)),
+            Meet::Merge => e.due(now) < p.tail(0, now),
+            Meet::Rule => true,
         }
     }
 
@@ -391,10 +400,13 @@ impl IntersectionManager {
     /// the junction's rule.
     fn meet(&self, a: &QueueEntry, b: &QueueEntry) -> Meet {
         match (&a.claim.track, &b.claim.track) {
-            (Some(x), Some(y)) if x[0] == y[0] || apart(x, y) >= CLEAR => Meet::Apart,
-            (Some(x), Some(y)) if x[TRACK_POINTS - 1] == y[TRACK_POINTS - 1] => Meet::Merge,
-            (Some(_), Some(_)) => Meet::Cross,
-            _ if (self.rule)((a.claim.from, a.claim.to), (b.claim.from, b.claim.to)) => Meet::Cross,
+            (Some(x), Some(y)) if x[0] == y[0] => Meet::Apart,
+            (Some(x), Some(y)) => match near(x, y) {
+                None => Meet::Apart,
+                Some(_) if x[TRACK_POINTS - 1] == y[TRACK_POINTS - 1] => Meet::Merge,
+                Some((i, j)) => Meet::Cross(i, j),
+            },
+            _ if (self.rule)((a.claim.from, a.claim.to), (b.claim.from, b.claim.to)) => Meet::Rule,
             _ => Meet::Apart,
         }
     }
@@ -657,6 +669,21 @@ pub fn straight(a: [f64; 2], b: [f64; 2], lane: f64) -> Track {
     })
 }
 
+/// Where two tracks come nearer than `CLEAR`: on each, from the first
+/// point of the first stretch that does to the last point of the last.
+fn near(a: &Track, b: &Track) -> Option<([usize; 2], [usize; 2])> {
+    let (mut i, mut j) = ([usize::MAX, 0], [usize::MAX, 0]);
+    for (k, p) in a.windows(2).enumerate() {
+        for (l, q) in b.windows(2).enumerate() {
+            if between(p[0], p[1], q[0], q[1]) < CLEAR {
+                (i[0], i[1]) = (i[0].min(k), i[1].max(k + 1));
+                (j[0], j[1]) = (j[0].min(l), j[1].max(l + 1));
+            }
+        }
+    }
+    (i[0] != usize::MAX).then_some((i, j))
+}
+
 /// How near two tracks come.
 fn apart(a: &Track, b: &Track) -> f32 {
     let mut near = f32::MAX;
@@ -693,9 +720,12 @@ mod tests {
         track([from.0 as f64, from.1 as f64], [0.0, 0.0], [to.0 as f64, to.1 as f64], lane, lane)
     }
 
-    /// A car's claim: due at `due`, a second through.
+    /// A car's claim: due at `due`, a second through, its tail half a
+    /// second behind its nose.
     fn come(j: &mut super::IntersectionManager, car: u64, from: super::Dir, to: super::Dir, track: Option<super::Track>, major: bool, due: u64) {
-        j.claim(car, super::Claim { from, to, track, major, due, ahead: due + 500, clear: due + 1_000, committed: false, after: None }, due);
+        let nose = std::array::from_fn(|i| due + 1_000 * i as u64 / (super::TRACK_POINTS - 1) as u64);
+        let tail = nose.map(|t| t + 500);
+        j.claim(car, super::Claim { from, to, track, major, due, nose, tail, committed: false, after: None }, due);
     }
 
     /// Cars on two bends round opposite corners of one junction go at
