@@ -147,19 +147,18 @@ The code is `client/src/engine/town/`:
   forecourt as one shape. The pavement is cut to it, a kerb stone where
   they meet (`kerbs.ts`), and the game draws it as it draws its road
   tiles (`roads.ts`). A yard's lines are painted on its asphalt. The
-  pavement is
-  ground: every road, yard and building but a house makes paved ground, shaped by the
-  buildings' own rule run on it at full size (the terrain's corners in
-  straight lines, a diagonal as far out as a straight edge, so a diagonal
-  street is as wide as a straight one; but never on the diagonal from a
-  building to a road, so a building's corner by a street stays square),
-  then every corner rounded a little, a kerb's corner rather than a
-  shore's (`soften`, tighter since 2026-10-11); a building that touches a street only on the diagonal is paved through to it, unless a tile beside them both is paved already (its corner then stays square), and grass shut in smaller than half a tile is paved. So a street's pavement is its sidewalk,
-  a town centre is paved shop to shop, a suburb is green with a sidewalk
-  round each block, and the grass left between blocks has soft edges.
-  Out of town a road is bare asphalt on the grass, but for its junctions:
-  each junction's tile is paved, an island its asphalt is cut into
-  (`Town.bare`, 2026-10-16). Where a tree stands comes
+  pavement is ground: a sidewalk along every road, its asphalt grown out
+  a sidewalk's width whatever the road's shape (2026-10-16), and every
+  yard and building's ground, shaped by the buildings' own rule run on it
+  at full size (the terrain's corners in straight lines, a diagonal as far
+  out as a straight edge). Where a building and a road stand within a
+  tile of each other, the ground between them is paved too: a shop is
+  paved to its kerb, a town centre shop to shop; elsewhere the sidewalk is
+  a border with grass behind it. Then every corner rounded a little, a
+  kerb's corner rather than a shore's (`soften`); and grass shut in
+  smaller than half a tile is paved. Out of town a road is bare asphalt
+  on the grass, but for its junctions, each bordered by its sidewalk
+  (`Town.bare`). Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted** in the sandbox, a tile at a time as roads
   are drawn, with a brush per kind (`town/brush.ts`); in the game a

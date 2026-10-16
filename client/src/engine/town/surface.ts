@@ -3,7 +3,7 @@ import { BLUEPRINTS, FACINGS, kerbed, sideOf } from "../../blueprints";
 import { isBuilt, townOf, type Flow, type RoadView, type Tile, type Town } from "./grid";
 import { isYard } from "./mass";
 import { buildRoadGeometry, CAR, HALF_W, type ArmInfo } from "../objects/roadGeometry";
-import { area, defaultJoins, ease, footprints, INSET, shrink, soften, type Polygon, type Pt } from "./footprint";
+import { area, defaultJoins, ease, footprints, INSET, intersect, shrink, soften, unite, type Polygon, type Pt } from "./footprint";
 
 /**
  * The town's ground is two surfaces. Pavement is the base: every road,
@@ -740,30 +740,46 @@ const PAVEMENT_ROUND = 0.12;
  *  scraps between diagonal streets side by side, not a block's middle. */
 const SCRAP = 0.5;
 
+/** A sidewalk's width, out from the asphalt's edge. */
+const SIDEWALK = 0.15;
+/** How far a building and a road may stand apart and still be paved
+ *  between, each: up to twice this. */
+const REACH = 0.5;
+
 /**
- * The pavement: every road but a bare one (`Town.bare`), building and
- * yard makes paved ground, shaped
- * by the buildings' own rule (the terrain's corners, a diagonal as far out
- * as a straight edge) at full size, then its corners rounded a little. A
- * street's pavement is its sidewalk. A diagonal street is as wide as a
- * straight one. Paved tiles touching only on the diagonal are paved
- * through, road or not, so a house a diagonal step off a street is on its
- * sidewalk; but a building's corner by a street stays square: where a
+ * The pavement: a sidewalk along every road but a bare one (`Town.bare`),
+ * its asphalt grown out by `SIDEWALK`, whatever the road's shape; and
+ * every building and yard's ground, shaped by the buildings' own rule
+ * (the terrain's corners, a diagonal as far out as a straight edge) at
+ * full size. Where a building and a road stand near each other, the
+ * ground between them is paved too, so a shop is paved to its kerb and a
+ * town centre shop to shop; elsewhere the sidewalk is a border, the grass
+ * behind it. Paved tiles touching only on the diagonal are paved through,
+ * so a house a diagonal step off a street is on its sidewalk; but where a
  * tile beside the two is paved already, they join through it, not across
- * the corner. And grass left shut in, too small to be anything, is paved.
- * The asphalt is cut into it.
+ * the corner. Its corners are rounded a little, and grass left shut in,
+ * too small to be anything, is paved. The asphalt is cut into it.
  */
 export function pavement(town: Town): Polygon[] {
   const PAVING: Tile = { kind: "Shop", storeys: 1 };
   const tiles = Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
     const t = town.tile(c, r);
-    return (t.kind === "road" && !town.bare?.(c, r)) || t.kind === "paved" || isBuilt(t) ? PAVING : t;
+    return t.kind === "paved" || isBuilt(t) ? PAVING : t;
   }));
   const plain = townOf(tiles, () => false);
   const kin = defaultJoins(plain);
-  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
   const on = (c: number, r: number) => plain.tile(c, r) === PAVING;
-  const paved = townOf(tiles, () => false, [], (c, r, x, y) => (x === c || y === r || road(c, r) === road(x, y) || (!on(x, r) && !on(c, y))) && kin(c, r, x, y));
-  const whole = footprints(paved, 0).flatMap((m) => m.polygons).map(([outline, ...holes]) => [outline, ...holes.filter((h) => Math.abs(area(h)) / 2 >= SCRAP)]);
+  const paved = townOf(tiles, () => false, [], (c, r, x, y) => (x === c || y === r || (!on(x, r) && !on(c, y))) && kin(c, r, x, y));
+  const ground = footprints(paved, 0).flatMap((m) => m.polygons);
+  const roads: Polygon[] = [];
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (town.tile(c, r).kind !== "road" || town.bare?.(c, r)) continue;
+      for (const at of surfacesAt(town, c, r)) for (const poly of shapeOf(at)) roads.push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
+    }
+  }
+  const border = shrink(unite(roads), -SIDEWALK);
+  const between = ground.length && border.length ? intersect(shrink(ground, -REACH), shrink(border, -REACH)) : [];
+  const whole = unite([...ground, ...border, ...between]).map(([outline, ...holes]) => [outline, ...holes.filter((h) => Math.abs(area(h)) / 2 >= SCRAP)]);
   return soften(whole, PAVEMENT_ROUND);
 }
