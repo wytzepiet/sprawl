@@ -363,6 +363,13 @@ Priority changes who is granted, not what conflicts:
   first, if it will be out before the other comes (`SPARE` either way).
   A merge is ordered as before: in behind once the one ahead is in, and
   the following keeps the gap.
+- **No priority, you look.** Into a junction off a road without priority,
+  where a car may come in by another way and go on, and no lights say
+  who goes, a car comes no faster than `LOOK` (0.7, under half
+  cruising), as a driver at an equal crossing does. A bare crossroads
+  costs every car that; a priority road, lights or a bridge are taken at
+  speed. Crossroads 0.91 -> 0.71, the roundabout 0.62 as it was; a town
+  runs about a tenth slower for its cars braking at its junctions.
 
 A busy major road starves its side road. That's the puzzle: the answer is
 a light, a bridge or a better merge.

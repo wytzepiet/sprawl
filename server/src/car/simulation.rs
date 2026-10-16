@@ -366,10 +366,29 @@ fn clear_to_turn_in(world: &World, car_id: EntityId, trip: &Trip, now: GameTime)
 
 /// The speed the bend at route[k] allows, if that is less than cruising. A
 /// straight node limits nothing, and so is nothing to slow for or wake at.
+/// Into a junction off a road without priority, where cars may come in by
+/// another way and on, and no lights say who goes, no faster than a driver
+/// who looks (`LOOK`): only a priority road, lights or a bridge are taken
+/// at speed. Not where lanes of one road join (`World::is_intersection`'s
+/// other half): no way crosses there.
 fn bend(world: &World, route: &[EntityId], k: usize) -> Option<f64> {
-    let limit = physics::turn_speed(world.turn_cos_angle(route, k));
+    let mut limit = physics::turn_speed(world.turn_cos_angle(route, k));
+    if k > 0
+        && k + 1 < route.len()
+        && let Some(GameObject::RoadNode(n)) = world.objects.get(route[k]).map(|e| &e.object)
+        && n.outgoing.len() + n.incoming.len() >= 3
+        && n.light.is_none()
+        && !n.road.contains(&route[k - 1])
+        && n.outgoing.iter().chain(&n.incoming).any(|&m| m != route[k - 1] && world.edges.contains_key(&(m, route[k])) && n.outgoing.iter().any(|&o| o != m))
+    {
+        limit = limit.min(LOOK);
+    }
     (limit < CRUISE_SPEED - 1e-9).then_some(limit)
 }
+
+/// How fast a driver comes into a junction they have no priority at,
+/// looking whether anyone comes: under a third of cruising.
+const LOOK: f64 = 0.7;
 
 /// How far ahead a car says when it will be at a junction: six seconds at
 /// cruising, well over what one pulling out from standing takes to be
