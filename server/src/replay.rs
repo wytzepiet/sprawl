@@ -333,7 +333,7 @@ fn on_priority(world: &crate::world::World, car: EntityId, j: EntityId) -> Optio
     let Some(GameObject::Car(c)) = world.objects.get(car).map(|e| &e.object) else { return None };
     let t = c.trip.as_ref()?;
     let k = (1..t.route.len()).find(|&k| t.route[k] == j)?;
-    Some(world.is_road(j) && world.is_road(t.route[k - 1]))
+    Some(world.is_road_between(t.route[k - 1], j))
 }
 
 /// Where a node is, as a tile.

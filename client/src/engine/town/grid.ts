@@ -20,7 +20,8 @@ export type Flow = "t" | "o" | "i" | "O" | "I";
 /** A road on a tile, one of the two where two share it side by side
  *  (`decks.rs`): how far it stands moved from the tile's middle, in the
  *  tile's frame; and its links, each to the tile (dc, dr) away, driven so,
- *  to the road there moved so far from that tile's middle. */
+ *  to the road there moved so far from that tile's middle, a through
+ *  road's or a street's. */
 export interface RoadView {
   shift: [number, number];
   through: boolean;

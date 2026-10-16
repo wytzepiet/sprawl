@@ -178,7 +178,7 @@ fn link_of(world: &World, a: EntityId, b: EntityId) -> Option<Link> {
         from: at(a)?,
         to: at(b)?,
         one_way: out != back,
-        road: world.is_road(a) && world.is_road(b),
+        road: world.is_road_between(a, b),
         up: [world.height_of(a), world.height_of(b)],
         sides: [world.side_of(a), world.side_of(b)],
         wide: world.is_wide(a, b),

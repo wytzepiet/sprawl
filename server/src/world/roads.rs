@@ -13,7 +13,7 @@ impl World {
     /// standing here, whatever kind it is. `laid` is the mayor's own hand,
     /// counted against the build; the survey's roads and driveways are
     /// streets, laid by nobody, and free.
-    fn place_road_of(&mut self, coord: GridCoord, road: bool, laid: bool) -> EntityId {
+    fn place_road_of(&mut self, coord: GridCoord, laid: bool) -> EntityId {
         if let Some(id) = self.road_node_at(coord) {
             return id;
         }
@@ -23,7 +23,7 @@ impl World {
                 outgoing: vec![],
                 incoming: vec![],
                 joined: false,
-                road,
+                road: vec![],
                 laid,
                 height: 0,
                 light: None,
@@ -226,22 +226,27 @@ impl World {
         }
     }
 
-    /// The road between two nodes given priority, or its priority taken:
-    /// both ends made through road's, or each end that no other through
-    /// road reaches made a street's, so the rest of a priority road it
-    /// runs off keeps it.
+    /// The way between two nodes made a through road's, or a street's.
     pub fn set_priority(&mut self, a: EntityId, b: EntityId, road: bool) {
         for (n, other) in [(a, b), (b, a)] {
-            let kept = road || self.arms_of(n, false).into_iter().any(|m| m != other && self.is_road(m));
             if let Some(GameObject::RoadNode(node)) = self.objects.get_mut(n).map(|e| &mut e.object) {
-                node.road = kept && (road || node.road);
+                node.road.retain(|&x| x != other);
+                if road {
+                    node.road.push(other);
+                }
             }
         }
     }
 
-    /// A through road, which has priority over the streets that meet it.
+    /// The way between two nodes is a through road, which has priority over
+    /// the streets that meet it.
+    pub fn is_road_between(&self, a: EntityId, b: EntityId) -> bool {
+        matches!(self.objects.get(a).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road.contains(&b))
+    }
+
+    /// A node on a through road.
     pub fn is_road(&self, id: EntityId) -> bool {
-        matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if n.road)
+        matches!(self.objects.get(id).map(|e| &e.object), Some(GameObject::RoadNode(n)) if !n.road.is_empty())
     }
 
     /// Check if two nodes at the given coords are connected as outgoing.
@@ -309,7 +314,7 @@ impl World {
         // Into a building is its door, moved here: the street it runs
         // from is laid, and nothing on the building's tile.
         if let Some(id) = self.claimed_plot_at(to) {
-            self.place_road_of(from, road, true);
+            self.place_road_of(from, true);
             self.door_through(id, from, to);
             // Reached, as by a survey road: a depot's fleet and a farm's
             // land come with the door, not with the first call.
@@ -317,20 +322,10 @@ impl World {
             return;
         }
 
-        let from_id = self.place_road_of(from, road, true);
-        let to_id = self.place_road_of(to, road, true);
-        // A through road drawn across a street makes the tiles it crosses
-        // its own, so it keeps its priority there; unless a building stands
-        // beside the street, which fronts it.
+        let from_id = self.place_road_of(from, true);
+        let to_id = self.place_road_of(to, true);
         if road {
-            for (id, at) in [(from_id, from), (to_id, to)] {
-                let fronted = (-1..=1).any(|dy| (-1..=1).any(|dx| self.occupied.contains_key(&(at.x + dx, at.y + dy))));
-                if !fronted
-                    && let Some(GameObject::RoadNode(node)) = self.objects.get_mut(id).map(|e| &mut e.object)
-                {
-                    node.road = true;
-                }
-            }
+            self.set_priority(from_id, to_id, true);
         }
 
         if let Some(entry) = self.objects.get_mut(from_id)
@@ -385,9 +380,12 @@ impl World {
             }
             expanded.push(b);
         }
-        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, road, false)).collect();
+        let ids: Vec<_> = expanded.iter().map(|&c| self.place_road_of(c, false)).collect();
         for pair in ids.windows(2) {
             let (a, b) = (pair[0], pair[1]);
+            if road {
+                self.set_priority(a, b, true);
+            }
             // Add outgoing a→b
             if let Some(entry) = self.objects.get_mut(a)
                 && let GameObject::RoadNode(ref mut node) = entry.object
@@ -410,16 +408,19 @@ impl World {
     }
 
     /// A ground node for the mayor's road, or the one there.
-    pub(super) fn place_ground(&mut self, coord: GridCoord, road: bool) -> EntityId {
-        self.place_road_of(coord, road, true)
+    pub(super) fn place_ground(&mut self, coord: GridCoord) -> EntityId {
+        self.place_road_of(coord, true)
     }
 
     /// Lay a one-way along a path, the way it runs, with no player-input
     /// checks: a level's gates. Free, as a fixture's roads are.
     pub fn place_one_way_of(&mut self, path: &[GridCoord], road: bool) {
-        let ids: Vec<_> = path.iter().map(|&c| self.place_road_of(c, road, false)).collect();
+        let ids: Vec<_> = path.iter().map(|&c| self.place_road_of(c, false)).collect();
         for pair in ids.windows(2) {
             let (a, b) = (pair[0], pair[1]);
+            if road {
+                self.set_priority(a, b, true);
+            }
             if let Some(GameObject::RoadNode(node)) = self.objects.get_mut(a).map(|e| &mut e.object)
                 && !node.outgoing.contains(&b)
             {
@@ -441,6 +442,7 @@ impl World {
             if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(x).map(|e| &mut e.object) {
                 n.outgoing.retain(|&o| o != y);
                 n.incoming.retain(|&i| i != y);
+                n.road.retain(|&r| r != y);
             }
         }
         for (x, y) in [(a, b), (b, a)] {
@@ -476,6 +478,7 @@ impl World {
                 && let GameObject::RoadNode(ref mut node) = entry.object {
                     node.outgoing.retain(|&x| x != id);
                     node.incoming.retain(|&x| x != id);
+                    node.road.retain(|&x| x != id);
                 }
         }
 

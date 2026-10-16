@@ -104,7 +104,7 @@ export function reached(entry: GameObjectEntry): boolean {
   if (!door || !b.tiles.some((t) => t.x === door.tile.x && t.y === door.tile.y)) return false;
   return (spatial.get(posKey(door.street.x, door.street.y)) ?? []).some((id) => {
     const o = entities.get(String(id))?.object;
-    return o?.kind === "RoadNode" && o.data.joined && !o.data.road;
+    return o?.kind === "RoadNode" && o.data.joined && !o.data.road.length;
   });
 }
 

@@ -457,13 +457,13 @@ impl Level {
     pub fn layout(world: &World) -> Vec<Build> {
         let mut steps = Vec::new();
         let node = |id: EntityId| match world.objects.get(id).map(|e| (e.position, &e.object)) {
-            Some((Some(p), GameObject::RoadNode(n))) => Some((p, n.height, n.road, n.laid)),
+            Some((Some(p), GameObject::RoadNode(n))) => Some((p, n.height, n.laid)),
             _ => None,
         };
         let mut edges: Vec<_> = world.edges.keys().copied().collect();
         edges.sort_unstable();
         for (a, b) in edges {
-            let (Some((pa, ha, ra, la)), Some((pb, hb, rb, lb))) = (node(a), node(b)) else { continue };
+            let (Some((pa, ha, la)), Some((pb, hb, lb))) = (node(a), node(b)) else { continue };
             if !la && !lb {
                 continue;
             }
@@ -480,7 +480,7 @@ impl Level {
                 Tool::OneWay
             };
             let sides = [world.side_of(a), world.side_of(b)];
-            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]), sides: (sides != [MIDDLE; 2]).then_some(sides), road: ra && rb });
+            steps.push(Build { tool, from: pa, to: pb, up: (ha > 0 || hb > 0).then_some([ha, hb]), sides: (sides != [MIDDLE; 2]).then_some(sides), road: world.is_road_between(a, b) });
         }
         // And the lights, once their junctions stand.
         for e in world.objects.roads() {
@@ -1148,27 +1148,30 @@ mod tests {
         assert!(!crate::game::may_step(&game.world, gate));
     }
 
-    /// Priority is the hand's, whatever road it draws: a one-way laid with
-    /// it has it, and drawn along again without it, loses it, all but
-    /// where it runs off another priority road.
+    /// Priority is the hand's, whatever road it draws, a stretch at a
+    /// time: a one-way laid with it has it, and one stretch drawn along
+    /// again without it loses it, between two that keep it.
     #[test]
     fn any_road_may_have_priority() {
         let (_, mut game) = play(CROSSING);
-        let road = |game: &Game, x| game.world.is_road(game.world.road_node_at(GridCoord { x, y: -1 }).unwrap());
-        let mut step = |game: &mut Game, tool, x, priority| {
+        let road = |game: &Game, x| {
+            let at = |x| game.world.road_node_at(GridCoord { x, y: -1 }).unwrap();
+            game.world.is_road_between(at(x), at(x + 1))
+        };
+        let step = |game: &mut Game, tool, x, priority| {
             let step = Build { tool, from: GridCoord { x, y: -1 }, to: GridCoord { x: x + 1, y: -1 }, up: None, sides: None, road: priority };
             assert!(crate::game::take_step(&mut game.world, &mut game.events, &mut game.intersections, step, game.now), "{step:?}");
         };
         for x in 0..9 {
             step(&mut game, Tool::OneWay, x, true);
         }
-        assert!((0..=9).all(|x| road(&game, x)), "a one-way with priority");
+        assert!((0..9).all(|x| road(&game, x)), "a one-way with priority");
         step(&mut game, Tool::OneWay, 4, false);
-        assert!(road(&game, 4) && road(&game, 5), "both ends run on along priority road");
-        for x in 0..9 {
+        assert!(!road(&game, 4) && road(&game, 3) && road(&game, 5), "one stretch a street between two of road");
+        for x in (0..9).filter(|&x| x != 4) {
             step(&mut game, Tool::OneWay, x, false);
         }
-        assert!((0..=9).all(|x| !road(&game, x)), "drawn again without it, it has none");
+        assert!((0..9).all(|x| !road(&game, x)), "drawn again without it, it has none");
         assert!(game.world.edges.contains_key(&(game.world.road_node_at(GridCoord { x: 3, y: -1 }).unwrap(), game.world.road_node_at(GridCoord { x: 4, y: -1 }).unwrap())), "and is still there");
     }
 }

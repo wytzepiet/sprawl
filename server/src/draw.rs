@@ -132,7 +132,7 @@ fn lay_on(world: &mut World, stroke: &Stroke, steps: &mut Vec<Laid>, now: GameTi
             let laid = crate::game::lay(world, link);
             crate::economy::paved(world, to, laid, now);
         } else if let Some((a, b)) = world.link_between_at(from, pf.h, pf.s, to, pt.h, pt.s)
-            && (world.is_road(a) && world.is_road(b)) != stroke.road
+            && world.is_road_between(a, b) != stroke.road
         {
             world.set_priority(a, b, stroke.road);
         }

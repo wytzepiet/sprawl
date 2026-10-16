@@ -54,7 +54,7 @@ impl World {
     pub fn is_street(&self, id: EntityId) -> bool {
         let Some(entry) = self.objects.get(id) else { return false };
         let (Some(pos), GameObject::RoadNode(node)) = (entry.position, &entry.object) else { return false };
-        !node.road && !self.occupied.contains_key(&(pos.x, pos.y))
+        node.road.is_empty() && !self.occupied.contains_key(&(pos.x, pos.y))
     }
 
     /// Is the only thing standing here a road that dead-ends on this tile?

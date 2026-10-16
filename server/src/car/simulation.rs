@@ -1039,7 +1039,7 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
                     from: g.from,
                     to: g.to,
                     track: g.track,
-                    major: world.is_road(trip.route[k - 1]) && world.is_road(trip.route[k]),
+                    major: world.is_road_between(trip.route[k - 1], trip.route[k]),
                     due: ms(due),
                     ahead: ms(ahead),
                     clear: ms(clear) + CLEAR_MS,

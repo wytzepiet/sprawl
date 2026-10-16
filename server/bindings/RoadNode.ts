@@ -7,10 +7,12 @@ export type RoadNode = { outgoing: Array<number>, incoming: Array<number>,
  */
 joined: boolean, 
 /**
- * A road rather than a street. Buildings front streets only: no driveway
+ * The neighbours the way to is a road rather than a street: a through
+ * road, which the streets that meet it give way to. Both ends hold it.
+ * A node on one is a road's: buildings front streets only, no driveway
  * is ever laid onto a road, and nothing arrives beside one.
  */
-road: boolean, 
+road: Array<number>, 
 /**
  * Laid by the mayor, so it counts against the build's road tiles. The
  * survey's own roads, and driveways, are free.

@@ -227,7 +227,7 @@ export function surfacesAt(town: Town, c: number, r: number): Surface[] {
       shift: [0, 0],
       through: town.through(c, r),
       light: !!town.light?.(c, r),
-      arms: EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr)).map(([dc, dr]) => ({ dc, dr, flow: town.flow?.(c, r, c + dc, r + dr) ?? "t", shift: [0, 0], through: town.through(c + dc, r + dr) })),
+      arms: EIGHT.filter(([dc, dr]) => town.linked(c, r, c + dc, r + dr)).map(([dc, dr]) => ({ dc, dr, flow: town.flow?.(c, r, c + dc, r + dr) ?? "t", shift: [0, 0], through: town.through(c, r) && town.through(c + dc, r + dr) })),
     },
   ];
   return views.map(({ shift, through, light, arms, height = 0, climb, run }) => {

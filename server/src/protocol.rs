@@ -172,10 +172,13 @@ pub struct RoadNode {
     /// in and goes out by. Otherwise an island: drawn red, driven by nobody.
     #[serde(default)]
     pub joined: bool,
-    /// A road rather than a street. Buildings front streets only: no driveway
+    /// The neighbours the way to is a road rather than a street: a through
+    /// road, which the streets that meet it give way to. Both ends hold it.
+    /// A node on one is a road's: buildings front streets only, no driveway
     /// is ever laid onto a road, and nothing arrives beside one.
     #[serde(default)]
-    pub road: bool,
+    #[ts(type = "Array<number>")]
+    pub road: Vec<EntityId>,
     /// Laid by the mayor, so it counts against the build's road tiles. The
     /// survey's own roads, and driveways, are free.
     #[serde(default)]

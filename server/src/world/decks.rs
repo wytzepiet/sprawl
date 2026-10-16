@@ -163,9 +163,9 @@ impl World {
     /// Lay a road node on a tile at a height and side, or find the one
     /// there; a one-way in the middle there moves over to the other side.
     /// The mayor's.
-    pub(super) fn place_node_of(&mut self, coord: GridCoord, height: u8, side: Side, road: bool) -> EntityId {
+    pub(super) fn place_node_of(&mut self, coord: GridCoord, height: u8, side: Side) -> EntityId {
         if height == 0 && side == MIDDLE {
-            return self.place_ground(coord, road);
+            return self.place_ground(coord);
         }
         if let Some(id) = self.node_in(coord, height, side) {
             return id;
@@ -174,7 +174,7 @@ impl World {
             self.move_to(id, side);
         }
         let id = self.insert_at(
-            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road, laid: true, height, light: None, wide: vec![], side }),
+            GameObject::RoadNode(RoadNode { outgoing: vec![], incoming: vec![], joined: false, road: vec![], laid: true, height, light: None, wide: vec![], side }),
             Some(coord),
         );
         self.decks.entry((coord.x, coord.y)).or_default().push(id);
@@ -299,8 +299,11 @@ impl World {
     /// may be.
     #[allow(clippy::too_many_arguments)]
     pub fn place_road_at(&mut self, from: GridCoord, hf: u8, sf: Side, to: GridCoord, ht: u8, st: Side, one_way: bool, road: bool) {
-        let a = self.place_node_of(from, hf, sf, road);
-        let b = self.place_node_of(to, ht, st, road);
+        let a = self.place_node_of(from, hf, sf);
+        let b = self.place_node_of(to, ht, st);
+        if road {
+            self.set_priority(a, b, true);
+        }
         if let Some(GameObject::RoadNode(n)) = self.objects.get_mut(a).map(|e| &mut e.object)
             && !n.outgoing.contains(&b)
         {

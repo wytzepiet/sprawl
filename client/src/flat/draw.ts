@@ -167,18 +167,19 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
   const mid = (e: GameObjectEntry): [number, number] => [e.position!.x + 0.5, e.position!.y + 0.5];
   for (const [e, n] of roads) {
     if (!on(e.position!.x, e.position!.y)) continue;
-    g.strokeStyle = !n.joined ? RED : css(n.road ? theme.highway : theme.road);
     const [ax, ay] = mid(e);
-    g.beginPath();
-    g.moveTo(ax, ay);
-    g.lineTo(ax, ay);
+    const line = (road: boolean, to: [number, number]) => {
+      g.strokeStyle = !n.joined ? RED : css(road ? theme.highway : theme.road);
+      g.beginPath();
+      g.moveTo(ax, ay);
+      g.lineTo(...to);
+      g.stroke();
+    };
+    line(n.road.length > 0, [ax, ay]);
     for (const id of n.outgoing) {
       const to = byId.get(id);
-      if (!to?.position) continue;
-      g.moveTo(ax, ay);
-      g.lineTo(...mid(to));
+      if (to?.position) line(n.road.includes(id), mid(to));
     }
-    g.stroke();
   }
   for (const [e, n] of roads) {
     if (!on(e.position!.x, e.position!.y)) continue;

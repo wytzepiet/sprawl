@@ -216,7 +216,7 @@ export class TownLayer {
       if (e.object.kind === "RoadNode" && e.position) {
         const n = e.object.data as RoadNode;
         if (n.height) return;
-        g.roads.push([e.position.x, e.position.y, e.id, n.road, n.outgoing, n.incoming]);
+        g.roads.push([e.position.x, e.position.y, e.id, n.road.length > 0, n.outgoing, n.incoming]);
       } else if (e.object.kind === "Building") {
         const b = e.object.data as Building;
         g.byId.set(e.id, e);
@@ -485,7 +485,7 @@ export class TownLayer {
         const [a, b] = [road(c0, r0), road(c1, r1)];
         return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
       },
-      through: (c, r) => !!road(c, r)?.road,
+      through: (c, r) => !!road(c, r)?.road.length,
       light: (c, r) => road(c, r)?.light != null,
       flow: (c0, r0, c1, r1) => flowOf(road(c0, r0)!, road(c1, r1)!),
       roadsOn: (c, r): RoadView[] =>
@@ -495,11 +495,11 @@ export class TownLayer {
               const arms = [...new Set([...n.outgoing, ...n.incoming])].flatMap((id) => {
                 const o = byId.get(id);
                 if (!o || Math.abs(o.x + c) > 1 || Math.abs(o.y + r) > 1) return [];
-                return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: o.n.road, height: o.n.height }];
+                return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: n.road.includes(id), height: o.n.height }];
               });
               // A slope climbs toward its arm above it, one of a run.
               const up = n.height % 2 ? arms.find((a) => a.height > n.height) : undefined;
-              return { shift: shiftOf(n), through: n.road, light: n.light != null, arms, height: n.height, climb: up && ([up.dc, up.dr] as [number, number]), run: up && runOf(n) };
+              return { shift: shiftOf(n), through: n.road.length > 0, light: n.light != null, arms, height: n.height, climb: up && ([up.dc, up.dr] as [number, number]), run: up && runOf(n) };
             }),
       door: (c, r) => turned(doors.get(key(c, r))),
     };

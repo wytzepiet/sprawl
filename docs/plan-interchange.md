@@ -348,7 +348,9 @@ Priority changes who is granted, not what conflicts:
 
 - Each arm is **major** or **minor**, from the road kinds that meet
   (a road over a street; equal kinds FIFO, as today) or the player's
-  toggle.
+  toggle. Priority is the stretch's, between two nodes, not a node's
+  (`RoadNode::road`, both ends holding it): a street one stretch long
+  between two priority roads is still a street.
 - **Crossing** a major flow: a minor car is granted only if no conflicting
   major car is registered and due within a gap time (`QUEUE_AHEAD`
   already registers cars three nodes out). **Merging** into one: the

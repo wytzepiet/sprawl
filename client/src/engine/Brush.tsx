@@ -127,7 +127,7 @@ export function Brush() {
     if (e?.object.kind !== "RoadNode") return null;
     const n = e.object.data;
     const oneWay = n.outgoing.some((o) => !n.incoming.includes(o)) || n.incoming.some((i) => !n.outgoing.includes(i));
-    return [oneWay ? "OneWay" : "Street", n.road];
+    return [oneWay ? "OneWay" : "Street", n.road.length > 0];
   };
   // The eyedropper: with the bare hand, Alt on a road picks up what laid
   // it, before the camera or the picker see the press, so the same drag

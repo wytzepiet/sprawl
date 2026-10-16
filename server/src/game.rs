@@ -482,7 +482,7 @@ pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }:
                 return tool != Tool::Wide || (sf == MIDDLE && st == MIDDLE);
             }
             // Along a road, priority it has not, or has and the hand not.
-            if world.link_between_at(from, hf, sf, to, ht, st).is_some_and(|(a, b)| (world.is_road(a) && world.is_road(b)) != road) {
+            if world.link_between_at(from, hf, sf, to, ht, st).is_some_and(|(a, b)| world.is_road_between(a, b) != road) {
                 return true;
             }
             // Into a building is its door: nothing is laid on its tile, and

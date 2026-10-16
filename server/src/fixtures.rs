@@ -238,7 +238,7 @@ pub fn draw(world: &World, x: i32, y: i32, r: i32) -> String {
                     Some(yard) if yard.contains(&GridCoord { x: tx, y: ty }) => letter(b.kind).to_ascii_lowercase(),
                     _ => letter(b.kind),
                 },
-                (Some(GameObject::RoadNode(n)), _) => if n.road { '#' } else { '=' },
+                (Some(GameObject::RoadNode(n)), _) => if n.road.is_empty() { '=' } else { '#' },
                 _ => match world.terrain.get(&(tx, ty)) {
                     Some(TerrainType::Sea | TerrainType::Water) => '~',
                     Some(TerrainType::Forest) => 'T',
