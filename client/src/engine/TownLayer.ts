@@ -9,7 +9,7 @@ import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, show } from "./geometry";
 import { hex, rgb, WHITE, type Rgb } from "./rgb";
 import * as Comlink from "comlink";
-import { CHUNK, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
+import { CHUNK, kerbed, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
 import type { TownApi } from "./townWorker";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
@@ -334,14 +334,14 @@ export class TownLayer {
 
     // The town, paved and dressed, only round what is built: a road
     // across open country is asphalt, and the town is what is paved; and
-    // out in the country, each junction's tile, on a paved island. The
+    // out in the country, the kerbs round a junction and down a divided
+    // road's middle (`kerbed`). The
     // chunks they cover; those no longer covered go, those newly are drawn.
     const town = townOf(built);
     const box: Bounds = town ?? [Infinity, Infinity, -Infinity, -Infinity];
     const covered = new Set<string>();
     if (town) for (let cy = Math.floor(town[1] / CHUNK); cy <= Math.floor(town[3] / CHUNK); cy++) for (let cx = Math.floor(town[0] / CHUNK); cx <= Math.floor(town[2] / CHUNK); cx++) covered.add(`${cx},${cy}`);
-    for (const [x, y, , , o, i] of roads) {
-      if (new Set([...o, ...i]).size < 3) continue;
+    for (const [x, y] of [...kerbed(roads)].map((k) => k.split(",").map(Number))) {
       grow(box, x - 1, y - 1);
       grow(box, x + 1, y + 1);
       for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) covered.add(chunkOf(x + dx, y + dy));

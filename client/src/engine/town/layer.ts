@@ -90,6 +90,19 @@ const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - b
 /** A way on the map as the town grid's frame has it, turned half round. */
 const turned = (d: [number, number] | undefined): [number, number] | undefined => d && [-d[0], -d[1]];
 
+/** The road tiles kerbed out of town (`Town.sidewalk`): a junction's, a
+ *  node with three ways or more; and two roads side by side, a divided
+ *  road, its middle kerbed, which no car crosses. */
+export function kerbed(roads: Snapshot["roads"]): Set<string> {
+  const seen = new Set<string>(), out = new Set<string>();
+  for (const [x, y, , , o, i] of roads) {
+    const k = `${x},${y}`;
+    if (seen.has(k) || new Set([...o, ...i]).size >= 3) out.add(k);
+    seen.add(k);
+  }
+  return out;
+}
+
 /** The snapshot's chunks, drawn. */
 export function drawChunks(s: Snapshot): Drawing {
   const box = s.box;
@@ -138,8 +151,7 @@ export function drawChunks(s: Snapshot): Drawing {
     const [a, b] = [road(c0, r0), road(c1, r1)];
     return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
   };
-  // A junction: a node with three ways or more, of the nodes on its tile.
-  const knots = new Set(s.roads.filter(([, , , , o, i]) => new Set([...o, ...i]).size >= 3).map(([x, y]) => `${x},${y}`));
+  const knots = kerbed(s.roads);
   const inTown = (x: number, y: number) => !!s.town && x >= s.town[0] && x <= s.town[2] && y >= s.town[1] && y <= s.town[3];
   const whole: Town = {
     w,
