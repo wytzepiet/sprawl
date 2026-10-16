@@ -735,9 +735,9 @@ const PAVEMENT_ROUND = 0.12;
 /** A sidewalk's width, out from the asphalt's edge. */
 export const SIDEWALK = 0.15;
 /** A kerb's width out from the asphalt's edge, where nobody walks: round a
- *  junction out of town. With the sheet's reach over the road's edge, it
- *  is two kerb stones wide (`kerbs.ts`: CUT and BAND). */
-export const VERGE_KERB = 0.04;
+ *  junction out of town. With the sheet's reach over the road's edge
+ *  (`kerbs.ts`: CUT), it shows 0.06 wide. */
+export const VERGE_KERB = 0.02;
 
 /**
  * The pavement: along every road its asphalt grown out by its sidewalk
