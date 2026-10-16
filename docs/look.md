@@ -157,10 +157,10 @@ The code is `client/src/engine/town/`:
   (the half of the road's tile toward it): a shop is
   paved to its kerb, a town centre shop to shop; elsewhere the sidewalk is
   a border with grass behind it. Then every corner rounded a little, a
-  kerb's corner rather than a shore's (`soften`); and grass shut in
-  smaller than half a tile is paved. Out of town a road is bare asphalt
+  kerb's corner rather than a shore's (`soften`); grass shut in, a
+  roundabout's island, stays grass. Out of town a road is bare asphalt
   on the grass, but for its junctions and a divided road, two one-ways
-  side by side, each bordered by a kerb, thinner than a sidewalk, since
+  side by side, each bordered by a kerb two kerb stones wide, since
   nobody walks there: a divided road's middle kerbed both sides, which
   no car crosses; and the one or two tiles of plain road between two
   of those, so a kerb runs on rather than on and off (`Town.sidewalk`,

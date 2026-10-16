@@ -731,15 +731,13 @@ export function asphalt(town: Town): { street: Polygon[]; through: Polygon[] } {
 /** How round the pavement's corners are: a little, a kerb's corner, not
  *  a shore's (2026-10-11, the mayor: tighter reads better). */
 const PAVEMENT_ROUND = 0.12;
-/** Grass shut in by pavement smaller than this, in tiles, is paved: the
- *  scraps between diagonal streets side by side, not a block's middle. */
-const SCRAP = 0.5;
 
 /** A sidewalk's width, out from the asphalt's edge. */
 export const SIDEWALK = 0.15;
 /** A kerb's width out from the asphalt's edge, where nobody walks: round a
- *  junction out of town. */
-export const VERGE_KERB = 0.05;
+ *  junction out of town. With the sheet's reach over the road's edge, it
+ *  is two kerb stones wide (`kerbs.ts`: CUT and BAND). */
+export const VERGE_KERB = 0.04;
 
 /**
  * The pavement: along every road its asphalt grown out by its sidewalk
@@ -751,8 +749,7 @@ export const VERGE_KERB = 0.05;
  * building stands beside a road, the ground between them is paved too,
  * straight from its front to the kerb, so a shop is paved to its kerb and
  * a town centre shop to shop; elsewhere the sidewalk is a border, the grass
- * behind it. Its corners are rounded a little, and grass left shut in,
- * too small to be anything, is paved. The asphalt is cut into it.
+ * behind it. Its corners are rounded a little. The asphalt is cut into it.
  */
 export function pavement(town: Town): Polygon[] {
   const PAVING: Tile = { kind: "Shop", storeys: 1 };
@@ -800,6 +797,5 @@ export function pavement(town: Town): Polygon[] {
       }
     }
   }
-  const whole = unite([...ground, ...border, ...between]).map(([outline, ...holes]) => [outline, ...holes.filter((h) => Math.abs(area(h)) / 2 >= SCRAP)]);
-  return soften(whole, PAVEMENT_ROUND);
+  return soften(unite([...ground, ...border, ...between]), PAVEMENT_ROUND);
 }
