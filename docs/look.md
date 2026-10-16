@@ -149,9 +149,10 @@ The code is `client/src/engine/town/`:
   tiles (`roads.ts`). A yard's lines are painted on its asphalt. The
   pavement is ground: a sidewalk along every road, its asphalt grown out
   a sidewalk's width whatever the road's shape (2026-10-16), and every
-  yard and building's ground, shaped by the buildings' own rule run on it
-  at full size (the terrain's corners in straight lines, a diagonal as far
-  out as a straight edge). Where a building and a road stand within a
+  yard and building's ground: its tiles, square (2026-10-16); by the
+  water, the buildings' own rule run on it at full size (the terrain's
+  corners in straight lines, a diagonal as far out as a straight edge), so
+  a quay keeps to the shore the terrain draws. Where a building and a road stand within a
   tile of each other, the ground between them is paved too: a shop is
   paved to its kerb, a town centre shop to shop; elsewhere the sidewalk is
   a border with grass behind it. Then every corner rounded a little, a

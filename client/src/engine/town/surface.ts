@@ -749,15 +749,12 @@ const REACH = 0.5;
 /**
  * The pavement: a sidewalk along every road but a bare one (`Town.bare`),
  * its asphalt grown out by `SIDEWALK`, whatever the road's shape; and
- * every building and yard's ground, shaped by the buildings' own rule
- * (the terrain's corners, a diagonal as far out as a straight edge) at
- * full size. Where a building and a road stand near each other, the
+ * every building and yard's ground: its tiles, square; by the water, the
+ * buildings' own rule (the terrain's corners, a diagonal as far out as a
+ * straight edge) at full size, so a quay keeps to the shore. Where a building and a road stand near each other, the
  * ground between them is paved too, so a shop is paved to its kerb and a
  * town centre shop to shop; elsewhere the sidewalk is a border, the grass
- * behind it. Paved tiles touching only on the diagonal are paved through,
- * so a house a diagonal step off a street is on its sidewalk; but where a
- * tile beside the two is paved already, they join through it, not across
- * the corner. Its corners are rounded a little, and grass left shut in,
+ * behind it. Its corners are rounded a little, and grass left shut in,
  * too small to be anything, is paved. The asphalt is cut into it.
  */
 export function pavement(town: Town): Polygon[] {
@@ -769,8 +766,14 @@ export function pavement(town: Town): Polygon[] {
   const plain = townOf(tiles, () => false);
   const kin = defaultJoins(plain);
   const on = (c: number, r: number) => plain.tile(c, r) === PAVING;
+  // A tile's ground a square; by the water, the buildings' own rule, the
+  // terrain's corners, so a quay keeps to the shore the terrain draws.
+  const wet = (c: number, r: number) => [-1, 0, 1].some((dr) => [-1, 0, 1].some((dc) => town.tile(c + dc, r + dr).kind === "water"));
+  const squares: Polygon[] = [], shore: Polygon[] = [];
+  for (let r = 0; r < town.h; r++) for (let c = 0; c < town.w; c++) if (on(c, r)) (wet(c, r) ? shore : squares).push([[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]]]);
   const paved = townOf(tiles, () => false, [], (c, r, x, y) => (x === c || y === r || (!on(x, r) && !on(c, y))) && kin(c, r, x, y));
-  const ground = footprints(paved, 0).flatMap((m) => m.polygons);
+  const quay = shore.length ? intersect(footprints(paved, 0).flatMap((m) => m.polygons), unite(shore)) : [];
+  const ground = unite([...squares, ...quay]);
   const roads: Polygon[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
