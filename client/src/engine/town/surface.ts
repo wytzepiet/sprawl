@@ -738,7 +738,8 @@ const PAVEMENT_ROUND = 0.12;
 const SCRAP = 0.5;
 
 /**
- * The pavement: every road, building and yard makes paved ground, shaped
+ * The pavement: every road but a bare one (`Town.bare`), building and
+ * yard makes paved ground, shaped
  * by the buildings' own rule (the terrain's corners, a diagonal as far out
  * as a straight edge) at full size, then its corners rounded a little. A
  * street's pavement is its sidewalk. A diagonal street is as wide as a
@@ -753,7 +754,7 @@ export function pavement(town: Town): Polygon[] {
   const PAVING: Tile = { kind: "Shop", storeys: 1 };
   const tiles = Array.from({ length: town.h }, (_, r) => Array.from({ length: town.w }, (_, c) => {
     const t = town.tile(c, r);
-    return t.kind === "road" || t.kind === "paved" || isBuilt(t) ? PAVING : t;
+    return (t.kind === "road" && !town.bare?.(c, r)) || t.kind === "paved" || isBuilt(t) ? PAVING : t;
   }));
   const plain = townOf(tiles, () => false);
   const kin = defaultJoins(plain);

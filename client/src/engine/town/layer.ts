@@ -31,6 +31,9 @@ export type Bounds = [number, number, number, number];
 /** The world as the town is drawn from it, within `box`. */
 export interface Snapshot {
   box: Bounds;
+  /** The town, round what is built: every road in it is paved, and out
+   *  of it only a junction's tile (`Town.bare`). */
+  town: Bounds | null;
   /** The chunks to draw. */
   todo: string[];
   /** Every built tile: x, y, its building, the building's kind, and
@@ -130,12 +133,16 @@ export function drawChunks(s: Snapshot): Drawing {
     const [a, b] = [road(c0, r0), road(c1, r1)];
     return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
   };
+  // A junction: a node with three ways or more, of the nodes on its tile.
+  const knots = new Set(s.roads.filter(([, , , , o, i]) => new Set([...o, ...i]).size >= 3).map(([x, y]) => `${x},${y}`));
+  const inTown = (x: number, y: number) => !!s.town && x >= s.town[0] && x <= s.town[2] && y >= s.town[1] && y <= s.town[3];
   const whole: Town = {
     w,
     h,
     tile,
     linked,
     through: (c, r) => !!road(c, r)?.road,
+    bare: (c, r) => !inTown(x1 - c, y1 - r) && !knots.has(`${x1 - c},${y1 - r}`),
     // Turned half round, so the way to the street is too.
     door: (c, r) => turned(doors.get(`${x1 - c},${y1 - r}`)),
     at: (c, r) => [x1 - c, y1 - r],

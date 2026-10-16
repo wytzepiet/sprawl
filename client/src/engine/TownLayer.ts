@@ -40,6 +40,8 @@ const ROADS_A_TILE = 8;
 /** Ground round what is built the town is drawn over: its pavement and
  *  its trees. */
 const TOWN_MARGIN = 4;
+/** The town round what is built, a margin wider; none, where nothing is. */
+const townOf = (built: Bounds): Bounds | null => (built[0] <= built[2] ? widen(built, TOWN_MARGIN) : null);
 /** A drawing slower than this is said so in the console, in development. */
 const SLOW_MS = 50;
 /** The ground as the town worker is told it, by index. */
@@ -229,7 +231,10 @@ export class TownLayer {
     });
     if (held) {
       const yard = yardTiles(held.tiles, held.kind, held.facing);
-      for (const t of held.tiles) g.buildings.push([t.x, t.y, HELD, held.kind, yard.has(`${t.x},${t.y}`)]);
+      for (const t of held.tiles) {
+        g.buildings.push([t.x, t.y, HELD, held.kind, yard.has(`${t.x},${t.y}`)]);
+        grow(g.built, t.x, t.y);
+      }
       if (held.door) g.doors.push([held.door.tile.x, held.door.tile.y, held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
     }
     g.marks = [...marks.values()];
@@ -269,7 +274,7 @@ export class TownLayer {
     const g = this.gather(held);
     const inside = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
     const snapshot: Snapshot = {
-      box, todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme(),
+      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme(),
     };
     // Kept, in development, to time the drawing alone, off the page.
     if (import.meta.env.DEV) Object.assign(window, { sprawlHeldSnapshot: { ...snapshot, ground: [...snapshot.ground] } });
@@ -317,19 +322,26 @@ export class TownLayer {
     const { buildings, roads, doors, marks, byId, built } = this.gather(null);
 
     // The town, paved and dressed, only round what is built: a road
-    // across open country is asphalt, and the town is what is paved. The
-    // chunks it covers; those it no longer does go, those it newly does are
-    // drawn.
-    const box = built[0] <= built[2] ? widen(built, TOWN_MARGIN) : null;
+    // across open country is asphalt, and the town is what is paved; and
+    // out in the country, each junction's tile, on a paved island. The
+    // chunks they cover; those no longer covered go, those newly are drawn.
+    const town = townOf(built);
+    const box: Bounds = town ?? [Infinity, Infinity, -Infinity, -Infinity];
     const covered = new Set<string>();
-    if (box) for (let cy = Math.floor(box[1] / CHUNK); cy <= Math.floor(box[3] / CHUNK); cy++) for (let cx = Math.floor(box[0] / CHUNK); cx <= Math.floor(box[2] / CHUNK); cx++) covered.add(`${cx},${cy}`);
+    if (town) for (let cy = Math.floor(town[1] / CHUNK); cy <= Math.floor(town[3] / CHUNK); cy++) for (let cx = Math.floor(town[0] / CHUNK); cx <= Math.floor(town[2] / CHUNK); cx++) covered.add(`${cx},${cy}`);
+    for (const [x, y, , , o, i] of roads) {
+      if (new Set([...o, ...i]).size < 3) continue;
+      grow(box, x - 1, y - 1);
+      grow(box, x + 1, y + 1);
+      for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) covered.add(chunkOf(x + dx, y + dy));
+    }
     for (const key of [...this.chunks.keys()]) if (!covered.has(key)) this.drop(key);
     for (const key of covered) if (!this.chunks.has(key)) this.stale.add(key);
     const todo = [...this.stale].filter((key) => covered.has(key));
     this.stale.clear();
-    if (!box || !todo.length) return;
+    if (!todo.length) return;
 
-    const snapshot: Snapshot = { box, todo, buildings, roads, doors, marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme() };
+    const snapshot: Snapshot = { box, town, todo, buildings, roads, doors, marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme() };
     const gathered = performance.now() - started;
     this.drawing = true;
     this.builder

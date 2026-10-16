@@ -154,7 +154,10 @@ The code is `client/src/engine/town/`:
   then every corner rounded a little, a kerb's corner rather than a
   shore's (`soften`, tighter since 2026-10-11); a building that touches a street only on the diagonal is paved through to it, unless a tile beside them both is paved already (its corner then stays square), and grass shut in smaller than half a tile is paved. So a street's pavement is its sidewalk,
   a town centre is paved shop to shop, a suburb is green with a sidewalk
-  round each block, and the grass left between blocks has soft edges. Where a tree stands comes
+  round each block, and the grass left between blocks has soft edges.
+  Out of town a road is bare asphalt on the grass, but for its junctions:
+  each junction's tile is paved, an island its asphalt is cut into
+  (`Town.bare`, 2026-10-16). Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted** in the sandbox, a tile at a time as roads
   are drawn, with a brush per kind (`town/brush.ts`); in the game a
