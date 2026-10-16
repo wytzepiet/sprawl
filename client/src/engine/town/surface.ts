@@ -742,14 +742,40 @@ const SCRAP = 0.5;
 
 /** A sidewalk's width, out from the asphalt's edge. */
 export const SIDEWALK = 0.15;
-/** A kerb's width out from the asphalt's edge, where nobody walks: round a
- *  junction out of town. */
+/** A kerb's width out from the asphalt's edge, where nobody walks: in a
+ *  junction's corners out of town (`kerbOf`), and along a deck. */
 export const VERGE_KERB = 0.05;
+
+/**
+ * A junction's kerb out of town: its asphalt grown a kerb's width, in each
+ * corner between two neighbouring arms that no car goes round, either way:
+ * a turn not allowed, against a one-way, or sharper than a car takes; so a
+ * roundabout's middle and a split's gore are kerbed, and a crossroads
+ * every car may turn at is asphalt on the grass; and its islands, too
+ * small to be anything (`pavement`). A kerb says no way here.
+ */
+function kerbOf(surface: Surface): Polygon[] {
+  const p = pointOf(surface);
+  const roads = roadsOf(carried(surface));
+  if (roads.length < 3) return [];
+  const turns = lanesThrough(surface, p, roads);
+  const arms = roads.map((w) => ({ w, angle: Math.atan2(seamOf(p, w).u[1], seamOf(p, w).u[0]) })).sort((x, y) => x.angle - y.angle);
+  const grown = shrink(shapeOf(surface), -VERGE_KERB);
+  const out: Polygon[] = [];
+  for (const [i, from] of arms.entries()) {
+    const to = arms[(i + 1) % arms.length];
+    if (turns.some(({ a, b }) => (a === from.w && b === to.w) || (a === to.w && b === from.w))) continue;
+    const span = (to.angle - from.angle + 2 * Math.PI) % (2 * Math.PI) || 2 * Math.PI;
+    const wedge: Pt[] = [p, ...Array.from({ length: 9 }, (_, k): Pt => [p[0] + 2 * Math.cos(from.angle + (span * k) / 8), p[1] + 2 * Math.sin(from.angle + (span * k) / 8)])];
+    out.push(...intersect(grown, [[wedge]]));
+  }
+  return out;
+}
 
 /**
  * The pavement: along every road its asphalt grown out by its sidewalk
  * (`Town.sidewalk`), whatever the road's shape: in town a sidewalk, out
- * of it a kerb round a junction, else nothing; and
+ * of it nothing, but a junction's kerbed corners (`Town.kerbed`, `kerbOf`); and
  * every building and yard's ground: its tiles, square; by the water, the
  * buildings' own rule (the terrain's corners, a diagonal as far out as a
  * straight edge) at full size, so a quay keeps to the shore. Where a
@@ -786,7 +812,26 @@ export function pavement(town: Town): Polygon[] {
       for (const at of surfacesAt(town, c, r)) for (const poly of shapeOf(at)) by.push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
     }
   }
-  const border = unite([...roads].flatMap(([w, ps]) => shrink(unite(ps), -w)));
+  const kerbs: Polygon[] = [];
+  // And an island the asphalt round a junction shuts in, too small to be
+  // anything but a kerb's: no car goes there either.
+  const near = new Set<string>();
+  for (let r = 0; r < town.h; r++) {
+    for (let c = 0; c < town.w; c++) {
+      if (!town.kerbed?.(c, r)) continue;
+      for (const at of surfacesAt(town, c, r)) for (const poly of kerbOf(at)) kerbs.push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) near.add(`${c + dc},${r + dr}`);
+    }
+  }
+  const round: Polygon[] = [];
+  for (const k of near) {
+    const [c, r] = k.split(",").map(Number);
+    if (town.tile(c, r).kind !== "road") continue;
+    for (const at of surfacesAt(town, c, r)) for (const poly of shapeOf(at)) round.push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
+  }
+  const islands = unite(round).flatMap(([, ...holes]) => holes.filter((h) => Math.abs(area(h)) / 2 < SCRAP).map((h): Polygon => [[...h].reverse()]));
+  kerbs.push(...shrink(islands, -VERGE_KERB));
+  const border = unite([...[...roads].flatMap(([w, ps]) => shrink(unite(ps), -w)), ...kerbs]);
   // From a building's tile to the road beside it: the half of the road's
   // tile toward it, straight from its front to the road's middle, or of
   // one only on its corner, the quarter toward it. The asphalt is cut out.
