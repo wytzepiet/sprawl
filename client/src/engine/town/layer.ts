@@ -91,14 +91,31 @@ const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - b
 const turned = (d: [number, number] | undefined): [number, number] | undefined => d && [-d[0], -d[1]];
 
 /** The road tiles kerbed out of town (`Town.sidewalk`): a junction's, a
- *  node with three ways or more; and two roads side by side, a divided
- *  road, its middle kerbed, which no car crosses. */
+ *  node with three ways or more; two roads side by side, a divided road,
+ *  its middle kerbed, which no car crosses; and a gap of one or two plain
+ *  nodes along a road between two of those, so its kerb runs on rather
+ *  than on and off. */
 export function kerbed(roads: Snapshot["roads"]): Set<string> {
+  const nodes = new Map(roads.map(([x, y, id, , o, i]) => [id, { at: `${x},${y}`, ways: [...new Set([...o, ...i])] }]));
   const seen = new Set<string>(), out = new Set<string>();
   for (const [x, y, , , o, i] of roads) {
     const k = `${x},${y}`;
     if (seen.has(k) || new Set([...o, ...i]).size >= 3) out.add(k);
     seen.add(k);
+  }
+  const seeds = new Set([...nodes].filter(([, n]) => out.has(n.at)).map(([id]) => id));
+  for (const id of seeds) {
+    for (const first of nodes.get(id)!.ways) {
+      const gap: string[] = [];
+      let [from, at] = [id, first];
+      while (gap.length < 3 && !seeds.has(at)) {
+        const n = nodes.get(at);
+        if (!n || n.ways.length !== 2) break;
+        gap.push(n.at);
+        [from, at] = [at, n.ways[0] === from ? n.ways[1] : n.ways[0]];
+      }
+      if (seeds.has(at) && gap.length <= 2) for (const k of gap) out.add(k);
+    }
   }
   return out;
 }

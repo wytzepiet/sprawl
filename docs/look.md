@@ -162,7 +162,9 @@ The code is `client/src/engine/town/`:
   on the grass, but for its junctions and a divided road, two one-ways
   side by side, each bordered by a kerb, thinner than a sidewalk, since
   nobody walks there: a divided road's middle kerbed both sides, which
-  no car crosses (`Town.sidewalk`, `kerbed`). Where a tree stands comes
+  no car crosses; and the one or two tiles of plain road between two
+  of those, so a kerb runs on rather than on and off (`Town.sidewalk`,
+  `kerbed`). Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted** in the sandbox, a tile at a time as roads
   are drawn, with a brush per kind (`town/brush.ts`); in the game a
