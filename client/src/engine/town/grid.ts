@@ -56,11 +56,9 @@ export interface Town {
   /** A road tile on a through road. */
   through(c: number, r: number): boolean;
   /** How wide the pavement along a road tile is: in town a sidewalk; out
-   *  of it none, the road bare on the grass. Unset, a town's sidewalk
-   *  (`SIDEWALK`). */
+   *  of it, at a junction a kerb, else none, the road bare on the grass.
+   *  Unset, a town's sidewalk (`SIDEWALK`). */
   sidewalk?(c: number, r: number): number;
-  /** A junction out of town, kerbed in the corners no car goes round. */
-  kerbed?(c: number, r: number): boolean;
   /** Which way traffic runs on the link from one road tile to the next
    *  (`Flow`). Unset, both. */
   flow?(c0: number, r0: number, c1: number, r1: number): Flow;
@@ -254,7 +252,6 @@ export function windowOf(town: Town, x0: number, y0: number, w: number, h: numbe
     linked: (a, b, c, d) => inside(a, b) && inside(c, d) && town.linked(a + x0, b + y0, c + x0, d + y0),
     through: (c, r) => inside(c, r) && town.through(c + x0, r + y0),
     sidewalk: town.sidewalk && ((c, r) => (inside(c, r) ? town.sidewalk!(c + x0, r + y0) : 0)),
-    kerbed: town.kerbed && ((c, r) => inside(c, r) && town.kerbed!(c + x0, r + y0)),
     flow: town.flow && ((a, b, c, d) => town.flow!(a + x0, b + y0, c + x0, d + y0)),
     roadsOn: town.roadsOn && ((c, r) => town.roadsOn!(c + x0, r + y0)),
     joins: town.joins && ((a, b, c, d) => inside(a, b) && inside(c, d) && town.joins!(a + x0, b + y0, c + x0, d + y0)),

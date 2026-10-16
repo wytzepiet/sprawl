@@ -159,13 +159,8 @@ The code is `client/src/engine/town/`:
   a border with grass behind it. Then every corner rounded a little, a
   kerb's corner rather than a shore's (`soften`); and grass shut in
   smaller than half a tile is paved. Out of town a road is bare asphalt
-  on the grass, and a junction is kerbed only where no car goes: in each
-  corner between two neighbouring arms that no car goes round, either way
-  (a turn not allowed, against a one-way, sharper than a car takes), and
-  round the small islands its asphalt shuts in; a crossroads every car may
-  turn at is plain asphalt. A kerb is thinner than a sidewalk, since
-  nobody walks there (`Town.kerbed`, `kerbOf`). A raised road has it all
-  along (`decks.ts`). Where a tree stands comes
+  on the grass, but for its junctions, each bordered by a kerb, thinner
+  than a sidewalk, since nobody walks there (`Town.sidewalk`). Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted** in the sandbox, a tile at a time as roads
   are drawn, with a brush per kind (`town/brush.ts`); in the game a
