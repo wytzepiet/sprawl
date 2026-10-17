@@ -41,12 +41,19 @@ export function colourOf(id: number): number {
   return Math.floor((((h ^ (h >>> 16)) >>> 0) / 0xffffffff) * PALETTE.length);
 }
 
+/** The fastest a vehicle goes, in tiles a second: `car::CRUISE_SPEED`. */
+const CRUISE = 1.5;
+
 /** How far along its route a trip's physics has a vehicle at `now`, and
- *  how fast it goes there. */
+ *  how fast it goes there, as the server has it (`physics::catch_up`):
+ *  braking stops at a standstill, pulling away at cruising speed. */
 export function travelled(t: Trip, now: number): [number, number] {
-  let dt = Math.max(0, (now - t.updated_at) / 1000);
-  if (t.acceleration < 0) dt = Math.min(dt, -t.speed / t.acceleration);
-  return [t.progress + t.speed * dt + 0.5 * t.acceleration * dt * dt, t.speed + t.acceleration * dt];
+  const dt = Math.max(0, (now - t.updated_at) / 1000);
+  const a = t.acceleration;
+  const until = a < 0 ? -t.speed / a : a > 0 ? Math.max(0, (CRUISE - t.speed) / a) : Infinity;
+  const s = Math.min(dt, until);
+  const [p, v] = [t.progress + t.speed * s + 0.5 * a * s * s, t.speed + a * s];
+  return a > 0 && dt > until ? [p + CRUISE * (dt - until), CRUISE] : [p, v];
 }
 
 /** The rig a vehicle steers as: a lorry's cab and the box on its hitch, a
