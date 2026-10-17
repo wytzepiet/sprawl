@@ -272,13 +272,15 @@ impl IntersectionManager {
                 self.queue.push_back(e);
             }
         } else {
-            // New, and someone through holds it up whom it comes before:
-            // that one looks again.
-            let entry = QueueEntry { car_id, claim, arrived: claim.due, since: now };
-            if self.signal.is_none() {
-                woken.extend(self.passing.iter().filter(|p| !p.claim.committed && self.yields(p, &entry, now)).map(|p| p.car_id));
-            }
-            self.queue.push_back(entry);
+            self.queue.push_back(QueueEntry { car_id, claim, arrived: claim.due, since: now });
+        }
+        // Waiting, and someone let through who can still stop must let it go
+        // first, as it now comes: that one looks again, and gives its passage
+        // back (above). Not only when it first comes: then it may be far off.
+        if self.signal.is_none()
+            && let Some(q) = self.queue.iter().find(|e| e.car_id == car_id)
+        {
+            woken.extend(self.passing.iter().filter(|p| !p.claim.committed && self.yields(p, q, now)).map(|p| p.car_id));
         }
         woken.extend(self.grant_passage(now));
         woken

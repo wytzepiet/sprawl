@@ -305,7 +305,10 @@ impl Watch {
             }
             let since = self.standing[&e.id];
             let moving = at_junction.map_or(since, |j| {
-                let now_through = game.intersections.who(j).0;
+                // Who, not in what order: cars let through, giving it back
+                // and let through again, go nowhere.
+                let mut now_through = game.intersections.who(j).0;
+                now_through.sort_unstable();
                 let seen = self.through.entry(j).or_insert((now_through.clone(), game.now));
                 if seen.0 != now_through {
                     *seen = (now_through, game.now);

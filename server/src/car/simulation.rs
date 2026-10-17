@@ -733,10 +733,19 @@ pub fn handle_car_wake_up(
         events.wake(0, woken_id);
     }
 
-    // Queue for the run beyond the gates once passage through them is granted
+    // Queue for the run beyond the gates once passage through them is
+    // granted; and out of it again, passage given back, or whoever comes
+    // through behind it would queue behind a car that is not there.
     if h.ri + 1 < trip.route.len() {
         if gates(world, &trip, h.ri).iter().filter(|g| !g.crossing() || !reached).all(|g| intersections.has_passage(g.id, car_id)) {
             join_run(world, car_id, &trip, h.ri + 1, h.progress, now, !waiting);
+        } else {
+            for k in h.ri + 1..trip.route.len() {
+                match world.edges.get_mut(&(trip.route[k - 1], trip.route[k])) {
+                    Some(s) if s.contains(car_id) => s.remove(car_id),
+                    _ => break,
+                }
+            }
         }
     }
 
