@@ -275,12 +275,19 @@ impl IntersectionManager {
             self.queue.push_back(QueueEntry { car_id, claim, arrived: claim.due, since: now });
         }
         // Waiting, and someone let through who can still stop must let it go
-        // first, as it now comes: that one looks again, and gives its passage
-        // back (above). Not only when it first comes: then it may be far off.
+        // first, as it now comes: that one gives its passage back, and is
+        // told. Not only when it first comes: then it may be far off yet.
         if self.signal.is_none()
-            && let Some(q) = self.queue.iter().find(|e| e.car_id == car_id)
+            && let Some(q) = self.queue.iter().find(|e| e.car_id == car_id).copied()
         {
-            woken.extend(self.passing.iter().filter(|p| !p.claim.committed && self.yields(p, q, now)).map(|p| p.car_id));
+            let back: Vec<EntityId> = self.passing.iter().filter(|p| !p.claim.committed && self.yields(p, &q, now)).map(|p| p.car_id).collect();
+            for &id in &back {
+                let i = self.passing.iter().position(|p| p.car_id == id).unwrap();
+                let mut e = self.passing.remove(i);
+                e.since = now;
+                self.queue.push_back(e);
+            }
+            woken.extend(back);
         }
         woken.extend(self.grant_passage(now));
         woken
