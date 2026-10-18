@@ -3,6 +3,7 @@ import { drop, meshOf, show, type MeshGeometry } from "./geometry";
 import { setTint, townMaterial } from "./material";
 import { rgb } from "./rgb";
 import { bevelled, giveBevel } from "./bevel";
+import { CUT } from "./kerbs";
 import type { TownMaterial } from "./material";
 import { ROAD_Z } from "./objects/roadGeometry";
 import { flatPolygons, KERB_Z, PAVED_Z } from "./town/draw";
@@ -192,17 +193,20 @@ function concrete(g: MeshGeometry, kerbs: MeshGeometry, surface: Surface, ox: nu
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
       return [((b[1] - a[1]) / len) * turn, (-(b[0] - a[0]) / len) * turn];
     };
-    const out = ring.map((p, i): Pt => {
+    const off = (by: number) => ring.map((p, i): Pt => {
       const [u, v] = [outward((i + n - 1) % n), outward(i)];
       const [before, after] = [kept[(i + n - 1) % n], kept[i]];
       const [mx, my] = before && after ? [u[0] + v[0], u[1] + v[1]] : before ? u : v;
       const dot = (mx * v[0] + my * v[1]) / (Math.hypot(mx, my) || 1);
-      const w = VERGE_KERB / Math.max(dot, 0.5) / (Math.hypot(mx, my) || 1);
+      const w = by / Math.max(dot, 0.5) / (Math.hypot(mx, my) || 1);
       return [p[0] + mx * w, p[1] + my * w];
     });
+    // Out a kerb's width, and in over the road's crumbled edge as far as
+    // the ground's pavement reaches over it (`CUT`): the ground's kerb.
+    const [out, inn] = [off(VERGE_KERB), off(-CUT)];
     for (let i = 0; i < n; i++) {
       if (!kept[i]) continue;
-      const [a, b] = edge(i);
+      const [a, b] = [inn[i], inn[(i + 1) % n]];
       const [ao, bo] = [out[i], out[(i + 1) % n]];
       // The side, from under the deck up to the kerb's top, facing out; the
       // kerb, paved as the ground's, its top and its face to the road.

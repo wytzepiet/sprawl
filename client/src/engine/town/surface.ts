@@ -3,7 +3,7 @@ import { BLUEPRINTS, FACINGS, kerbed, sideOf } from "../../blueprints";
 import { isBuilt, townOf, type Flow, type RoadView, type Tile, type Town } from "./grid";
 import { isYard } from "./mass";
 import { buildRoadGeometry, CAR, HALF_W, type ArmInfo } from "../objects/roadGeometry";
-import { area, defaultJoins, ease, footprints, INSET, intersect, shrink, soften, unite, type Polygon, type Pt } from "./footprint";
+import { area, defaultJoins, ease, footprints, INSET, intersect, shrink, soften, subtract, unite, type Polygon, type Pt } from "./footprint";
 
 /**
  * The town's ground is two surfaces. Pavement is the base: every road,
@@ -769,16 +769,24 @@ export function pavement(town: Town): Polygon[] {
   const quay = shore.length ? intersect(footprints(paved, 0).flatMap((m) => m.polygons), unite(shore)) : [];
   const ground = unite([...squares, ...quay]);
   const width = (c: number, r: number) => (town.tile(c, r).kind === "road" ? (town.sidewalk?.(c, r) ?? SIDEWALK) : 0);
+  // The ground's roads, grown; not a deck's, which has its own kerb
+  // (`decks.ts`). Where one goes up a slope, its tile is cut out: the
+  // ground's kerb ends where the slope's begins, not across its foot.
   const roads = new Map<number, Polygon[]>();
+  const feet: Polygon[] = [];
   for (let r = 0; r < town.h; r++) {
     for (let c = 0; c < town.w; c++) {
       const w = width(c, r);
       if (!w) continue;
       const by = roads.get(w) ?? roads.set(w, []).get(w)!;
-      for (const at of surfacesAt(town, c, r)) for (const poly of shapeOf(at)) by.push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
+      for (const at of surfacesAt(town, c, r)) if (!at.height) for (const poly of shapeOf(at)) by.push(poly.map((ring) => ring.map(([x, y]): Pt => [c + x, r + y])));
+      for (const v of town.roadsOn?.(c, r) ?? []) {
+        if (v.height) continue;
+        for (const { dc, dr, height } of v.arms) if (height) feet.push([[[c + dc, r + dr], [c + dc + 1, r + dr], [c + dc + 1, r + dr + 1], [c + dc, r + dr + 1]]]);
+      }
     }
   }
-  const border = unite([...roads].flatMap(([w, ps]) => shrink(unite(ps), -w)));
+  const border = subtract(unite([...roads].flatMap(([w, ps]) => shrink(unite(ps), -w))), feet);
   // From a building's tile to the road beside it: the half of the road's
   // tile toward it, straight from its front to the road's middle, or of
   // one only on its corner, the quarter toward it. The asphalt is cut out.

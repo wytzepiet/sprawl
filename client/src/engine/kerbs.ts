@@ -40,7 +40,7 @@ export interface KerbField {
  *  reaches this far over a road's edge, in tiles, over the crumbled fringe
  *  of its asphalt (`roads.ts`), and its kerb stone rounds down to the road
  *  over this far. */
-const CUT = 0.04;
+export const CUT = 0.04;
 const STONE = 0.035;
 /** A sheet's kerb stones, along every edge of it, onto the roads cut into
  *  it and onto what lies round it: a row this wide, this much lighter than
