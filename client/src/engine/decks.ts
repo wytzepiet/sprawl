@@ -2,7 +2,7 @@ import type { EngineContext, Mesh, SceneContext } from "@babylonjs/lite";
 import { drop, meshOf, show, type MeshGeometry } from "./geometry";
 import { setTint, townMaterial, type TownMaterial } from "./material";
 import { rgb, type Rgb } from "./rgb";
-import { CUT } from "./kerbs";
+import { CHAMFER, CUT } from "./kerbs";
 import { ROAD_Z } from "./objects/roadGeometry";
 import { flatPolygons, PAVED_Z } from "./town/draw";
 import { seams, shapeOf, type Surface } from "./town/surface";
@@ -40,8 +40,6 @@ const FOOT = 0.045;
 /** A parapet's least height: at a slope's foot, a little over the
  *  ground's kerb (`KERB_Z`, 0.012 over the road) it runs onto. */
 const LOW = 0.02;
-/** How much of a parapet's top edges is cut off, across and down. */
-const CHAMFER = 0.01;
 /** A pier's side. */
 const PIER = 0.14;
 const CONCRETE = rgb(0.74, 0.73, 0.7);
@@ -193,11 +191,11 @@ function cap(g: MeshGeometry, tops: MeshGeometry, top: (p: Pt, dz?: number) => V
     // way round the arc runs.
     if ((p[0] - c[0]) * (q[1] - c[1]) - (p[1] - c[1]) * (q[0] - c[0]) < 0) {
       quad(tops, top(qi, h), top(pi, h), top(c, h), top(c, h));
-      quad(tops, top(qi, h), top(pi, h), top(p, low), top(q, low));
+      quad(tops, top(pi, h), top(qi, h), top(q, low), top(p, low));
       quad(g, top(p, 0), top(q, 0), top(q, low), top(p, low));
     } else {
       quad(tops, top(pi, h), top(qi, h), top(c, h), top(c, h));
-      quad(tops, top(pi, h), top(qi, h), top(q, low), top(p, low));
+      quad(tops, top(qi, h), top(pi, h), top(p, low), top(q, low));
       quad(g, top(q, 0), top(p, 0), top(p, low), top(q, low));
     }
   }
