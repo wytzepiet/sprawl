@@ -40,6 +40,8 @@ const FOOT = 0.045;
 /** A parapet's least height: at a slope's foot, a little over the
  *  ground's kerb (`KERB_Z`, 0.012 over the road) it runs onto. */
 const LOW = 0.02;
+/** How much of a parapet's top edges is cut off, across and down. */
+const CHAMFER = 0.01;
 /** A pier's side. */
 const PIER = 0.14;
 const CONCRETE = rgb(0.74, 0.73, 0.7);
@@ -262,17 +264,21 @@ function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: n
     });
     // Out past the edge, and in over the road's crumbled edge as far as
     // the ground's pavement reaches over it (`CUT`).
-    const [out, inn] = [off(WALL_OUT), off(-CUT)];
+    // And its top, a chamfer in from each.
+    const [out, inn, outTop, innTop] = [off(WALL_OUT), off(-CUT), off(WALL_OUT - CHAMFER), off(CHAMFER - CUT)];
     for (let i = 0; i < n; i++) {
       if (!kept[i]) continue;
-      const [a, b] = [inn[i], inn[(i + 1) % n]];
-      const [ao, bo] = [out[i], out[(i + 1) % n]];
-      const [ha, hb] = [wall(ring[i]), wall(ring[(i + 1) % n])];
-      // The side, from under the deck up to the wall's top, facing out;
-      // its top, lighter; its face to the road.
-      quad(g, top(bo, -DECK), top(ao, -DECK), top(ao, ha), top(bo, hb));
-      quad(tops, top(b, hb), top(a, ha), top(ao, ha), top(bo, hb));
-      quad(g, top(b, hb), top(a, ha), top(a), top(b));
+      const j = (i + 1) % n;
+      const [a, b, ao, bo, at, bt, aot, bot] = [inn[i], inn[j], out[i], out[j], innTop[i], innTop[j], outTop[i], outTop[j]];
+      const [ha, hb] = [wall(ring[i]), wall(ring[j])];
+      const [la, lb] = [ha - CHAMFER, hb - CHAMFER];
+      // The side, from under the deck up to the chamfer, facing out; the
+      // top, its edges cut off, in the kerb's colour; its face to the road.
+      quad(g, top(bo, -DECK), top(ao, -DECK), top(ao, la), top(bo, lb));
+      quad(tops, top(bot, hb), top(aot, ha), top(ao, la), top(bo, lb));
+      quad(tops, top(bt, hb), top(at, ha), top(aot, ha), top(bot, hb));
+      quad(tops, top(b, lb), top(a, la), top(at, ha), top(bt, hb));
+      quad(g, top(b, lb), top(a, la), top(a), top(b));
       // Its end on the ground, at a slope's foot, round.
       for (const [end, from, at] of [[!kept[(i + 1) % n], ring[i], (i + 1) % n], [!kept[(i + n - 1) % n], ring[(i + 1) % n], i]] as const) {
         if (end && rise(ring[at]) < 0.005) cap(g, tops, top, inn[at], out[at], from, ring[at], wall(ring[at]));
