@@ -2,9 +2,10 @@ import { createEffect, createMemo, For, on, onCleanup, Show } from "solid-js";
 import { render } from "solid-js/web";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
+import { underGlass } from "./glass";
 import { projector, screenToWorld, viewExtent, rectOf } from "./view";
 import { builtVersion, eachEntity, getObjectsAt, listenHints, roadsAt, useGame } from "../state/gameObjects";
-import { aim, held, hold, priority, setAim, setPriority, setTool, tool, turn } from "../ui/buildMode";
+import { aim, held, hold, priority, setAim, setPlaced, setPriority, setTool, tool, turn } from "../ui/buildMode";
 import { snap, STEPS } from "./tiles";
 import { Pen } from "./pen";
 import { BLUEPRINTS, GoodIcon, GOODS } from "../blueprints";
@@ -144,6 +145,7 @@ export function Brush() {
     const p = aim();
     if (!p || p.why) return;
     send({ type: "Place", data: { kind: p.kind, at: p.at, facing: p.facing } });
+    setPlaced(p);
     if (!shift) hold(null);
   };
 
@@ -287,6 +289,7 @@ export function Brush() {
     }
     if (p.why) g.fill();
     g.stroke();
+    underGlass(g);
   });
   document.body.appendChild(label);
 

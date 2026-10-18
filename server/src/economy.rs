@@ -433,10 +433,10 @@ pub fn landed(world: &mut World, harbour: EntityId, good: Good, units: f64, now:
     door(world, harbour, good, -import(good, units), now);
 }
 
-/// A box went out on the ferry: the world pays for what is in it, at the
-/// harbour, as the ferry casts off.
-pub fn exported(world: &mut World, harbour: EntityId, good: Good, units: f64, now: GameTime) {
-    door(world, harbour, good, export(good, units), now);
+/// A box went out on the ferry: the world, or the town it was marked
+/// for, pays `coins` for it at the harbour as the ferry casts off.
+pub fn exported(world: &mut World, harbour: EntityId, good: Good, coins: f64, now: GameTime) {
+    door(world, harbour, good, coins, now);
 }
 
 /// What a van carries of a good: a shop's shelf of crates or a station's
@@ -680,7 +680,7 @@ mod tests {
         assert!(matches!(world.lumps[..], [Lump { building, coins, .. }] if building == depot && coins < 0.0), "no lump where it landed");
         assert!((world.town.on(0).bought[&Good::Crates] - import(Good::Crates, 100.0)).abs() < 1e-9, "the town's page");
         let before = world.treasury;
-        exported(&mut world, depot, Good::Timber, 20.0, 0);
+        exported(&mut world, depot, Good::Timber, export(Good::Timber, 20.0), 0);
         assert!((world.treasury - before - export(Good::Timber, 20.0)).abs() < 1e-9);
         // The world buys for less than it sells.
         assert!(export(Good::Crates, 1.0) < world_price(Good::Crates) && world_price(Good::Crates) < import(Good::Crates, 1.0));

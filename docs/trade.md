@@ -3,8 +3,10 @@
 Status: direction, 2026-10-10. Built: coins at the border, GDP, the
 world's two prices (`economy.rs`), orders by hand and top-up rules on
 depots (keep, fill, sell) booking the ferry, with the world as the only
-source (`haul.rs`, `shipping.md` §Built). Not built: the Exchange,
-listings, standing offers, contracts. Replaces the price economy
+source (`haul.rs`, `shipping.md` §Built); the order board, letters
+from the mayors of the towns beyond the edge, paid as their boxes sail
+(`orders.rs`, `missions.md` §Orders, 2026-10-12). Not built: the
+Exchange, listings, standing offers, contracts. Replaces the price economy
 of `economy.md` as the game's economy: what goes and what stays is at the
 end, and `shelved.md` has the price economy under that date. `game.md` is
 the short version; this is the detail.
@@ -285,11 +287,14 @@ People stay in their own town; only goods cross its border.
    the seller's account, or through the seller's depot.
 2. Who drives a listing's shipment, the seller's lorries or the
    buyer's. Seller to begin with.
-3. The order board: what the world and computer towns want, so a single
-   player has goals and income. Ideas: orders drawn from what the town
-   makes, with one thing it lacks; big contracts announced days ahead
-   that every town on the island fills together; demand that softens
-   when everyone ships the same good.
+3. The order board. Built as letters from four mayors beyond the edge
+   (`missions.md` §Orders): drawn from what the town makes or sells,
+   every third from a building it lacks; a box sold while one wants
+   its good is marked for it and paid at the mayor's price, over the
+   world's, as it sails with the ferry. Still open: big contracts
+   announced days ahead that every town on the island fills together;
+   demand that softens when everyone ships the same good; ships toward
+   a town's own edge, if direction should ever cost.
 4. What a town wants from inside: whether houses climb a ladder of wants
    (Caesar III, Anno), and so what a night at home is worth in GDP
    (nothing yet).

@@ -15,6 +15,7 @@ pub mod level;
 pub mod missions;
 pub mod mountains;
 pub mod needs;
+pub mod orders;
 pub mod protocol;
 pub mod replay;
 pub mod resident;

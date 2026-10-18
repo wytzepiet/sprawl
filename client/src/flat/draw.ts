@@ -7,6 +7,9 @@ import { carried, colourOf, LIVERY, type Load, moment, PALETTE, type Moment, VAN
 import type { Rgb } from "../engine/rgb";
 import type { Building, Car, GameObjectEntry, Good, Lane, RoadNode, Stock, TerrainType, Trailer } from "../generated";
 import type { Pose as Stand } from "../generated/Pose";
+import type { Compass } from "../generated/Compass";
+import type { Neighbour } from "../generated/Neighbour";
+import { crest } from "./crest";
 
 /**
  * The game drawn flat, on a 2D canvas: the browser's (the minimap) or
@@ -27,6 +30,10 @@ export interface World {
   ground(cx: number, cy: number): Uint8Array | undefined;
   /** The sea's lanes (`Sea.lanes`), drawn faint on the water. */
   lanes?: Lane[];
+  /** The towns beyond the edge, each a pin on the view's edge its way. */
+  neighbours?: Neighbour[];
+  /** The town a box is marked for, by the box's order. */
+  marked?: (order: number) => Neighbour | undefined;
   now: number;
   dayMs: number;
 }
@@ -191,6 +198,8 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     }
   }
 
+  // Boxes in a park marked for a town beyond the edge: its crest on them.
+  const crested: [Stand, Neighbour][] = [];
   // Buildings: their tiles in their kind's colour, outlined; a site an
   // outline, filled from the bottom as its timber comes; the drive from
   // the street to the door.
@@ -222,6 +231,8 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     for (const slot of b.park) {
       dock(g, slot.pose);
       if (slot.trailer) box(g, slot.pose, slot.trailer);
+      const town = slot.trailer && world.marked?.(slot.trailer.order);
+      if (town) crested.push([slot.pose, town]);
     }
   }
 
@@ -245,11 +256,25 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     vehicle(g, e.id, car, m);
   }
 
-  if (!labels) return;
-
-  // Labels, upright, in pixels: buildings' kinds and ids; vehicles' ids,
-  // close enough to read; what each ferry has aboard.
+  // Upright, in pixels: the crests on marked boxes; and, over everything,
+  // each town beyond the edge a pin on the view's edge its way, as the map
+  // lies, north up and east to the right, named when labelled.
   g.setTransform(1, 0, 0, 1, 0, 0);
+  for (const [p, n] of crested) crest(g, n, ...screen(p.at[0], p.at[1]), Math.max(4, S * 0.16));
+  const pins = (bottom = view.h) => {
+    const r = Math.max(7, Math.min(view.w, view.h) / 34);
+    const edge: Record<Compass, [number, number, CanvasTextAlign, number, number]> = {
+      North: [view.w / 2, r + 4, "center", 0, r + 9],
+      South: [view.w / 2, bottom - r - 4, "center", 0, -r - 9],
+      East: [view.w - r - 4, view.h / 2, "right", r, r + 9],
+      West: [r + 4, view.h / 2, "left", -r, r + 9],
+    };
+    for (const n of world.neighbours ?? []) {
+      const [px, py, align, dx, dy] = edge[n.toward];
+      crest(g, n, px, py, r);
+      if (labels) text(`${n.town}${n.writes ? "" : " (silent)"}`, px + dx, py + dy, 11, INK, align);
+    }
+  };
   const text = (s: string, x: number, y: number, size: number, colour = INK, align: CanvasTextAlign = "center") => {
     g.font = `${size}px sans-serif`;
     g.textAlign = align;
@@ -260,6 +285,10 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
     g.fillStyle = colour;
     g.fillText(s, x, y);
   };
+  if (!labels) return pins();
+
+  // Labels, upright, in pixels: buildings' kinds and ids; vehicles' ids,
+  // close enough to read; what each ferry has aboard.
   if (S >= 12)
     for (const [e, b] of buildings) {
       const [mx, my] = middle(b);
@@ -275,7 +304,8 @@ export function drawFlat(g: CanvasRenderingContext2D, world: World, view: View, 
       else text(`${e.id}`, sx, sy - 9, 9, "#334");
     }
   grid(g, view, x0, x1, y0, y1, screen);
-  legend(g, world, cars, byId, view.h);
+  // The south pin stands over the legend.
+  pins(legend(g, world, cars, byId, view.h));
 }
 
 /** An arrow at (x, y) pointing along `angle`, `size` long. */
@@ -426,8 +456,8 @@ function grid(g: CanvasRenderingContext2D, view: View, x0: number, x1: number, y
 }
 
 /** The key, in the bottom left: the clock, each good's box, the
- *  vehicles by role; and each ferry's state. */
-function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntry, Car][], byId: Map<number, GameObjectEntry>, height: number) {
+ *  vehicles by role; and each ferry's state. Returns its top. */
+function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntry, Car][], byId: Map<number, GameObjectEntry>, height: number): number {
   const day = world.now / world.dayMs;
   const t = day % 1;
   const clock = `day ${Math.floor(day) + 1}  ${String(Math.floor(t * 24)).padStart(2, "0")}:${String(Math.floor((t * 1440) % 60)).padStart(2, "0")}  (${world.now} ms)`;
@@ -469,6 +499,7 @@ function legend(g: CanvasRenderingContext2D, world: World, cars: [GameObjectEntr
     g.fillText(label, kx + 18, ky);
     kx += 30 + g.measureText(label).width;
   }
+  return y;
 }
 
 function swatch(g: CanvasRenderingContext2D, x: number, y: number, fill: string, line = 1) {

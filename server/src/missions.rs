@@ -7,7 +7,9 @@
 //! that could have done one happened (`stir`): a build settled, a command,
 //! a box unloaded, coins in, a settler off the ferry. A situation is
 //! sensed where the server already finds it (`sense`): a call nothing in
-//! town can answer, a car low on fuel with nowhere to fill.
+//! town can answer, a car low on fuel with nowhere to fill. An order from
+//! a town beyond the edge is a mission too, written by its mayor
+//! (`orders.rs`).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -28,10 +30,13 @@ pub enum Key {
     Quarry,
     Sawmill,
     Farm,
+    /// An order from a town beyond the edge, by its number: the number
+    /// its boxes carry as their shipment's.
+    Order(#[ts(type = "number")] u64),
 }
 
 /// What a step asks of the town: a fact read off the world.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "kind", content = "data")]
 pub enum Goal {
@@ -49,6 +54,9 @@ pub enum Goal {
     Keeps(Good),
     /// Something sold to the world.
     Sold,
+    /// So many units of a good sailed for an order's town: counted by the
+    /// ferry as it casts off (`orders::sailed`).
+    Delivered { good: Good, units: f64, sailed: f64 },
 }
 
 /// What finishing a mission pays. Coins for now; XP once the level means
@@ -58,6 +66,9 @@ pub enum Goal {
 #[serde(tag = "kind", content = "data")]
 pub enum Reward {
     Coins(f64),
+    /// An order's: its coins paid a box at a time as each sails, and
+    /// standing with its mayor once the last has.
+    Order { coins: f64, standing: f64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -84,8 +95,17 @@ pub struct Mission {
     pub reward: Reward,
     #[ts(type = "number")]
     pub opened: GameTime,
+    /// Finished, its steps done; or, for an order, given up on with a
+    /// step not done.
     #[ts(type = "number | null")]
     pub finished: Option<GameTime>,
+    /// Who asked, for an order.
+    #[serde(default)]
+    pub from: Option<crate::orders::Mayor>,
+    /// When an order lapses.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub due: Option<GameTime>,
 }
 
 /// When a mission opens.
@@ -207,7 +227,7 @@ impl Missions {
         self.list.iter().any(|m| m.key == key)
     }
 
-    fn finished(&self, key: Key) -> bool {
+    pub fn finished(&self, key: Key) -> bool {
         self.list.iter().any(|m| m.key == key && m.finished.is_some())
     }
 
@@ -226,15 +246,21 @@ fn open(row: &Row, now: GameTime) -> Mission {
         reward: row.reward,
         opened: now,
         finished: None,
+        from: None,
+        due: None,
     }
 }
 
 /// The standing depots, by id.
-fn depots(world: &World) -> impl Iterator<Item = (EntityId, &Building)> {
+pub fn depots(world: &World) -> impl Iterator<Item = (EntityId, &Building)> {
     world.objects.iter().filter_map(|e| match e.object {
         GameObject::Building(ref b) if b.site.is_none() && crate::economy::depot(b.kind) => Some((e.id, b)),
         _ => None,
     })
+}
+
+fn level(b: &Building, good: Good) -> f64 {
+    b.stocks.get(&good).map_or(0.0, |s| s.level)
 }
 
 /// Is the fact true of the town now.
@@ -247,6 +273,7 @@ fn met(world: &World, goal: Goal) -> bool {
         Goal::Standing => depots(world).any(|(_, b)| b.standing),
         Goal::Keeps(good) => depots(world).any(|(_, b)| b.rules.contains_key(&good)),
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
+        Goal::Delivered { units, sailed, .. } => sailed >= units - 1e-6,
     }
 }
 
@@ -254,6 +281,8 @@ fn met(world: &World, goal: Goal) -> bool {
 fn at(world: &World, goal: Goal) -> Option<EntityId> {
     match goal {
         Goal::Stands(_) | Goal::Settled => None,
+        // The depot with the most of it, to sell from.
+        Goal::Delivered { good, .. } => depots(world).max_by(|a, b| level(a.1, good).total_cmp(&level(b.1, good))).map(|(id, _)| id),
         _ => depots(world).next().map(|(id, _)| id),
     }
 }
@@ -279,8 +308,9 @@ pub fn check(world: &mut World, now: GameTime) {
             }
             if world.missions.list[i].steps.iter().all(|s| s.done) {
                 world.missions.list[i].finished = Some(now);
-                let Reward::Coins(coins) = world.missions.list[i].reward;
-                pay(world, coins, now);
+                if let Reward::Coins(coins) = world.missions.list[i].reward {
+                    pay(world, coins, now);
+                }
             }
         }
         let next: Vec<Mission> = ROWS.iter().filter(|r| matches!(r.when, When::After(k) if world.missions.finished(k)) && !world.missions.has(r.key)).map(|r| open(r, now)).collect();

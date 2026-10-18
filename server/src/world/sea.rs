@@ -479,6 +479,8 @@ impl World {
             c.spot = Some(sail.pose(sail.ends));
             c.due = now + DWELL;
             self.update_position(ferry, tile(sail.ends));
+            // The post comes with it.
+            crate::orders::post(self, harbour, now);
             events.wake(0, ferry);
             if let Some(tug) = self.tug_of(harbour) {
                 events.wake(0, tug);
@@ -503,15 +505,17 @@ impl World {
         let mut sold = Vec::new();
         for slot in c.deck.iter_mut() {
             if slot.is_some_and(|t| t.outbound) {
-                let t = slot.take().unwrap();
-                sold.push((t.good, t.units));
+                sold.push(slot.take().unwrap());
             }
         }
         c.passengers.clear();
         c.spot = None;
         c.due = now + turn;
-        for (good, units) in sold {
-            crate::economy::exported(self, harbour, good, units, now);
+        // A box marked for a town beyond the edge is its mayor's to pay
+        // for; any other, the world's.
+        for t in sold {
+            let coins = crate::orders::sailed(self, &t).unwrap_or_else(|| crate::economy::export(t.good, t.units));
+            crate::economy::exported(self, harbour, t.good, coins, now);
         }
         self.set_out(events, ferry, way, true, now);
     }

@@ -1,8 +1,9 @@
 # Missions
 
 Status: built 2026-10-10 for the opening, the trunk and the town's
-situation (`server/src/missions.rs`, `client/src/ui/Missions.tsx`).
-Orders from other towns and dailies are designed here, not built.
+situation (`server/src/missions.rs`, `client/src/ui/Missions.tsx`);
+orders from the towns beyond the edge built 2026-10-12
+(`server/src/orders.rs`, §Orders). Dailies are designed here, not built.
 
 ## What a mission is
 
@@ -49,12 +50,89 @@ together.
    a farm); a car is low on fuel with nowhere in town to fill it (a gas
    station). Each opens once, and not at all if the town already has
    what it asks for.
-4. **Orders from other towns** (next, not built): a step is "these boxes
-   delivered to <town>", rewarded by that town. It is a `Mission` made
-   by the order, not a row: its own key (`Key::Order(id)` when it
-   comes), a `Goal::Delivered { town, good, boxes }`, its words written
-   when the order is placed, and its reward the town's.
+4. **Orders from the towns beyond the edge**: a letter from a mayor,
+   by ferry, asking for boxes of a good. It is a `Mission` made by the
+   letter, not a row: its key `Key::Order(id)`, one step
+   `Goal::Delivered { good, units, sailed }`, its words written when the
+   letter is, its mayor in `from`, its day in `due`, and its reward
+   `Reward::Order { coins, standing }`. §Orders.
 5. **Dailies** (later): see below.
+
+## Orders
+
+Four mayors write, each a person with a town beyond one edge of the map,
+the goods they want, a price over the world's, and a voice: Old Tam of
+Saltmere (west, fishing: a box of crates or fuel, the first to trust
+you), Mira of Northgate (north, mining: timber for pit props, curt),
+Bess of Fernhollow (south, farming: stone and timber for barns,
+cheerful), and Lord Aldra of Port Aldra (east, a big city: four boxes
+at a time, the best price, and silent until the town stands well, at
+3, with someone else). The table is `WHO` in `orders.rs`.
+
+**A letter comes by ferry.** As a ferry berths (`orders::post`), what is
+overdue lapses, and a letter may come: after the opening, at most three
+open, one a third of a day at most, a mayor with an order open not
+writing another. Each is a line of news pinned to the harbour. It
+reads as the mayor: "Mira, mayor of Northgate: We're short of timber
+before winter. Can you send 2 boxes?", the boxes, the coins, the day
+it is wanted by (two of the town's days on), and "Northgate · north,
+beyond the sea".
+
+**What they ask.** Only what the town can send (`orders::sourceable`):
+a good a maker in town makes and the depots hold two boxes of, or a
+good a depot holds over a line to sell. Every third letter reaches one
+step further, for a good a kind of building the town has not built
+would make (crates for a farm, stone for a quarry): the tutorial after
+the tutorial, a nudge and never a path. A town that makes nothing
+gets only those, so the first letter after the opening is Tam's, for
+the crates a farm would make. Nothing else: no letter beats one that
+must lapse. Fuel has no maker, so it is asked for only once a depot
+sells it. The world sells everything, dearly, so nothing asked is
+impossible.
+
+**Filled physically.** A box loaded to go out, by hand ("Send a box",
+the panel's button, is the depot's Sell) or by a sell line, while an
+open order wants its good, is marked for that order (`orders::bound`,
+in `haul::new_box`): it carries the order's number as its shipment's,
+drives to the park, shows its town's crest there, and sails with the
+ferry to the edge. As the ferry casts off, the mayor pays for it, a
+lump of coins at the harbour as any export lands (`orders::sailed`); the
+last box ticks the step, and standing rises.
+
+Why the ferry, and not a ship toward each town: every harbour's line
+already sails to the map's edge, and the world beyond it is where the
+towns are. A box for Northgate leaves the map exactly as a box for the
+world does, so nothing new is built or drawn, and the card says so:
+"sails with the ferry to the edge". Direction is the town's character
+and its pin, not a route; a ship toward the north edge is a line the
+shipping company might run later, and orders would ride it unchanged.
+
+**Paid a box at a time**, at the mayor's price: units × the world's
+price × the mayor's price level (Tam 1.25, Mira and Bess 1.5, Aldra 2)
+× (1 + a tenth a point of standing), against the world's 0.9. So a box
+is never lost to an order given up on; what sailed was paid for.
+
+**Standing** is read off the orders, never kept: where the mayor
+started (Tam 1, the others 0), a point for each filled, half one off
+for each that lapsed, between 0 and 5. It buys bigger letters (half a
+box more a point), better prices, and a warmer voice from 2. An order
+lapses when a ferry berths after its day: the mayor gives up (news),
+standing falls, and boxes still marked for it sail for the world.
+
+**Faces.** A mayor carries a plain description (`looks`), and one
+function draws them (`client/src/flat/crest.ts`): for now the town's
+crest, its initials on a disc of its colour, on the panel, on the pin
+at the edge of the minimap and the flat view in its direction, and on
+a box in the park marked for it. A portrait replaces it there
+(`shelved.md` §Faces).
+
+The panel shows the town's own missions first, then the orders by
+mayor: crest, name, town and direction, standing as pips, and each
+order with its boxes, coins and, at hand, the letter, how many have
+gone, when it is wanted, and the button. Tests: the `orders_` and
+`port_aldra_` tests and `an_order_filled_pays_coins_and_standing_once`
+in `game_loop`; the season fills them by hand at each midnight
+(§Checking).
 
 ## Dailies
 
@@ -110,5 +188,17 @@ its mission has opened.
 
 `the_opening_from_the_harbour` asserts the opening's steps tick one by
 one as the town does them, the reward, and the trunk walked to its end.
-`bun run act missions` lists the missions, and every `act` command says
-the steps it saw done and the missions it saw open or finish.
+`bun run act missions` lists the mayors and how they stand, then the
+missions, and every `act` command says the steps it saw done and the
+missions it saw open, finish or lapse.
+
+The season (`cargo test season -- --ignored --nocapture`) reads the
+letters at each midnight and sells from the depot a box for each box an
+order still wants, keeping one back for the sites, and prints what was
+asked, filled and lapsed, by mayor, and what the orders paid. On
+2026-10-12: 36 letters, 15 filled and 18 lapsed (a town building flats
+every day spares little timber or stone, which is the nudge to build a
+second sawmill); 2,057 coins paid, 1,027 of them over what the world
+would have paid; the treasury 3,119 at the end against 2,650 without
+orders, the rest of the difference being timber and stone sold and
+bought back.

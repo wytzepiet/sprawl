@@ -327,6 +327,22 @@ for stone, a box sold, and after it the town's situation opens a
 mission when something first matters: a site short of stone asks for a
 quarry.
 
+**What pulls you on after it** is the order board (`missions.md`
+§Orders). The playtest of 2026-10-10 found that once the opening was
+done nothing asked anything of the town, and coins only fell. Now,
+from the first ferry after it, letters come: four mayors of towns
+beyond the map's edge, each a person with a voice, a direction and
+the goods they want, ask for boxes of what the town makes, and every
+third time for something a building it has not built would make. A
+box sold while one is open is marked for that town, rides the lorry
+to the park with the town's crest on it, and sails with the ferry to
+the edge, and the mayor's coins land at the harbour as it casts off,
+over what the world pays. Filling them raises the mayor's standing,
+and so their orders and prices; and Port Aldra, the big city, writes
+only once the town stands well with someone. It is income the player
+earns by choosing what to make, and every bit of it is a box you can
+watch go.
+
 ## Out
 
 Pedestrians, transit, water, sewage, garbage, zoning, sliders, policies,

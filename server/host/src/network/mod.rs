@@ -105,6 +105,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
             let mut growth = Growth::default();
             let mut sea = sprawl::protocol::Sea::default();
             let mut missions = Vec::new();
+            let mut neighbours = Vec::new();
             let mut terrain_seed: u32 = 0;
             let mut island = ChunkBounds { min_cx: 0, min_cy: 0, max_cx: -1, max_cy: -1 };
             let mut has_update = false;
@@ -119,6 +120,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                         growth = su.growth.clone();
                         sea = su.sea;
                         missions = su.missions;
+                        neighbours = su.neighbours;
                         terrain_seed = su.terrain_seed;
                         island = su.island;
                     }
@@ -139,6 +141,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
                     growth,
                     sea,
                     missions,
+                    neighbours,
                     terrain_seed,
                     island,
                 });
