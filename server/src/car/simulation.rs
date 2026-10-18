@@ -308,8 +308,8 @@ fn let_go(world: &mut World, events: &mut EventQueue, car_id: EntityId) {
 
 /// Is the street clear for a car to pull out of its lot onto it? Everyone
 /// on the street either past the node or far enough off to see the car and
-/// stop short of it; one waiting to pull out of a lot of its own is not on
-/// the street yet.
+/// stop short of it; one still at its line in a lot of its own is not on
+/// the street yet, but one that has pulled out is.
 fn gap_at(world: &World, car_id: EntityId, trip: &Trip, now: GameTime) -> bool {
     // Nobody else turning here, nor just ahead on its way: two cars
     // pulling out of doors side by side, each across the other's way,
@@ -323,7 +323,7 @@ fn gap_at(world: &World, car_id: EntityId, trip: &Trip, now: GameTime) -> bool {
         on_street(world, street).into_iter().all(|o| {
             let Some(GameObject::Car(c)) = world.objects.get(o).map(|e| &e.object) else { return true };
             let Some(t) = c.trip.as_ref().filter(|_| o != car_id) else { return true };
-            if t.from_lot > 0 && t.route_index <= t.from_lot {
+            if t.from_lot > 0 && t.route_index == 1 && t.progress < START {
                 return true;
             }
             let Some(k) = (t.route_index - 1..t.route.len()).find(|&k| t.route[k] == street) else { return true };
@@ -1029,8 +1029,9 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
             let s = world.edges.get(&edge)?;
             let a = if s.contains(car_id) { s.ahead(car_id).first().copied() } else { s.back(trip.lanes[j] as usize) }?;
             // Ahead of it on the road, not only in a queue that has them
-            // the other way about on another stretch.
-            let mine = cur_progress - edge_start_dist(trip, edge)?;
+            // the other way about on another stretch; each measured alike,
+            // one still in its lot at the lot's mouth.
+            let mine = queued_at(trip, cur_progress) - edge_start_dist(trip, edge)?;
             position_on(world, a, edge, now).is_some_and(|p| p > mine).then_some(a)
         })
     };

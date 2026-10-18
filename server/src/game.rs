@@ -2127,12 +2127,13 @@ mod tests {
             ];
             let depot = world.objects.iter().find(|e| matches!(e.object, GameObject::Building(ref b) if b.kind == BuildingKind::Depot)).map(|e| e.id).unwrap();
             let boxes = crate::haul::boxes(world);
-            let queued = |g: Good| building_of(world, depot).selling.iter().filter(|&&s| s == g).count() as f64;
+            // Queued at the depot, and tonight for an order before this one.
+            let queued = |g: Good, steps: &Steps| (building_of(world, depot).selling.iter().filter(|&&s| s == g).count() + steps.iter().filter(|d| matches!(d, Do::Sell(_, s) if *s == g)).count()) as f64;
             for m in world.missions.list.iter().filter(|m| m.finished.is_none()) {
                 let (crate::missions::Key::Order(id), crate::missions::Goal::Delivered { good, units, sailed }) = (m.key, m.steps[0].goal) else { continue };
                 let going: f64 = boxes.iter().filter(|(t, ..)| t.outbound && t.order == id).map(|(t, ..)| t.units).sum();
-                let wanted = ((units - sailed - going) / good.per_box()).ceil() - queued(good);
-                let spare = (building_of(world, depot).stocks[&good].level / good.per_box()).floor() - 1.0 - queued(good);
+                let wanted = ((units - sailed - going) / good.per_box()).ceil() - queued(good, &Vec::new());
+                let spare = (building_of(world, depot).stocks[&good].level / good.per_box()).floor() - 1.0 - queued(good, &steps);
                 steps.extend((0..wanted.min(spare).max(0.0) as usize).map(|_| Do::Sell(depot, good)));
             }
             steps
