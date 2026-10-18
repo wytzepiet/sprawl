@@ -275,6 +275,10 @@ function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: n
       // The side, from under the deck up to the chamfer, facing out; the
       // top, its edges cut off, in the kerb's colour; its face to the road.
       quad(g, top(bo, -DECK), top(ao, -DECK), top(ao, la), top(bo, lb));
+      // Its underside, from the road's edge out to its side, the deck's
+      // own underside carried on: shut, so its shadow and the deck's are
+      // one, with no light between.
+      quad(g, top(ring[j], -DECK), top(ring[i], -DECK), top(ao, -DECK), top(bo, -DECK));
       quad(tops, top(bot, hb), top(aot, ha), top(ao, la), top(bo, lb));
       quad(tops, top(bt, hb), top(at, ha), top(aot, ha), top(bot, hb));
       quad(tops, top(b, lb), top(a, la), top(at, ha), top(bt, hb));
