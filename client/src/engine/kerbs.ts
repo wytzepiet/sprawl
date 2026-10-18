@@ -41,7 +41,7 @@ export interface KerbField {
 export const CUT = 0.04;
 /** How much of a kerb's edges is cut off, across and down, at both its
  *  edges: a flat face at forty-five degrees, as a parapet's (`decks.ts`). */
-export const CHAMFER = 0.01;
+export const CHAMFER = 0.015;
 /** A sheet's kerb stones, along every edge of it, onto the roads cut into
  *  it and onto what lies round it: a row this wide, this much lighter than
  *  the sheet, set off from it by a joint the stone and the sheet each round
