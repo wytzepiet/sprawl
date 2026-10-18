@@ -703,12 +703,7 @@ const TOOTH: [number, number] = [0.105, 0.13];
  *  bulges out past its square, between its arms, it keeps its kerb too. */
 export const runsOn = (surface: Surface) => (a: number[], b: number[]) => {
   const { rects } = surface;
-  const arm = carried(surface).some(([dc, dr, on]) => {
-    if (!on) return false;
-    const len = Math.hypot(dc, dr);
-    const along = (p: number[]) => ((p[0] + 0.5) * -dc + (p[1] + 0.5) * -dr) / len;
-    return Math.min(along(a), along(b)) > len / 2 - 0.01;
-  });
+  const arm = seams(surface).some((past) => Math.min(past(a), past(b)) > -0.01);
   // Past a rectangle's side that runs on: beyond the tile's edge there.
   const past = (p: number[], side: number) => {
     const [x, y] = [-p[0], -p[1]];
@@ -716,6 +711,17 @@ export const runsOn = (surface: Surface) => (a: number[], b: number[]) => {
   };
   return arm || rects.some((rect) => [0, 1, 2, 3].some((side) => rect[4] & (1 << side) && past(a, side) && past(b, side)));
 };
+
+/** Each seam a tile's road runs on over, as how far past it a point of
+ *  the road frame (the tile's turned half round, its middle at -0.5)
+ *  stands, along the arm: below nought, short of it. */
+export const seams = (surface: Surface) =>
+  carried(surface)
+    .filter(([, , on]) => on)
+    .map(([dc, dr]) => {
+      const len = Math.hypot(dc, dr);
+      return (p: number[]) => ((p[0] + 0.5) * -dc + (p[1] + 0.5) * -dr) / len - len / 2;
+    });
 
 /** The asphalt of a whole town, a piece a tile, the through roads apart. */
 export function asphalt(town: Town): { street: Polygon[]; through: Polygon[] } {
