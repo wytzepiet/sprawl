@@ -174,29 +174,31 @@ function quad(g: MeshGeometry, a: V3, b: V3, c: V3, d: V3) {
 }
 
 /** A parapet's round end at `at`, come from `from`: a half disc from its
- *  inner corner to its outer, out the way it ran, at height `h`, its side
- *  down to the road. */
+ *  inner corner to its outer, out the way it ran, at height `h`, its edge
+ *  cut off as the wall's is (`CHAMFER`), its side down to the road. */
 function cap(g: MeshGeometry, tops: MeshGeometry, top: (p: Pt, dz?: number) => V3, inner: Pt, outer: Pt, from: Pt, at: Pt, h: number) {
   const c: Pt = [(inner[0] + outer[0]) / 2, (inner[1] + outer[1]) / 2];
   const r = Math.hypot(outer[0] - c[0], outer[1] - c[1]);
   const l = Math.hypot(at[0] - from[0], at[1] - from[1]) || 1;
   const f: Pt = [(at[0] - from[0]) / l, (at[1] - from[1]) / l];
   const s: Pt = [(inner[0] - c[0]) / (r || 1), (inner[1] - c[1]) / (r || 1)];
-  const arc: Pt[] = Array.from({ length: 9 }, (_, k) => {
+  const arc = (rr: number): Pt[] => Array.from({ length: 9 }, (_, k) => {
     const t = (Math.PI * k) / 8;
-    return [c[0] + r * (Math.cos(t) * s[0] + Math.sin(t) * f[0]), c[1] + r * (Math.sin(t) * f[1] + Math.cos(t) * s[1])];
+    return [c[0] + rr * (Math.cos(t) * s[0] + Math.sin(t) * f[0]), c[1] + rr * (Math.sin(t) * f[1] + Math.cos(t) * s[1])];
   });
+  const [edge, rim, low] = [arc(r), arc(r - CHAMFER), h - CHAMFER];
   for (let k = 0; k < 8; k++) {
-    const [p, q] = [arc[k], arc[k + 1]];
+    const [p, q, pi, qi] = [edge[k], edge[k + 1], rim[k], rim[k + 1]];
     // Wound as the wall's own top and side are (`concrete`'s), whichever
     // way round the arc runs.
-    const up = (p[0] - c[0]) * (q[1] - c[1]) - (p[1] - c[1]) * (q[0] - c[0]) < 0;
-    if (up) {
-      quad(tops, top(q, h), top(p, h), top(c, h), top(c, h));
-      quad(g, top(p, 0), top(q, 0), top(q, h), top(p, h));
+    if ((p[0] - c[0]) * (q[1] - c[1]) - (p[1] - c[1]) * (q[0] - c[0]) < 0) {
+      quad(tops, top(qi, h), top(pi, h), top(c, h), top(c, h));
+      quad(tops, top(qi, h), top(pi, h), top(p, low), top(q, low));
+      quad(g, top(p, 0), top(q, 0), top(q, low), top(p, low));
     } else {
-      quad(tops, top(p, h), top(q, h), top(c, h), top(c, h));
-      quad(g, top(q, 0), top(p, 0), top(p, h), top(q, h));
+      quad(tops, top(pi, h), top(qi, h), top(c, h), top(c, h));
+      quad(tops, top(pi, h), top(qi, h), top(q, low), top(p, low));
+      quad(g, top(q, 0), top(p, 0), top(p, low), top(q, low));
     }
   }
 }
