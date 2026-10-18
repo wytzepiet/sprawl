@@ -32,8 +32,13 @@ const DECK = 0.09;
  *  stands (in over the edge, `CUT`, as the ground's pavement reaches). */
 const WALL = 0.05;
 const WALL_OUT = 0.035;
-/** How far a parapet runs on past its tile's seam, under the next one's. */
+/** How far a parapet runs on past its tile's seam, under the next one's;
+ *  and onto the ground's, at a slope's foot, over the end of its kerb
+ *  (short of the road's own end past the seam, `carried`'s 0.05). */
 const OVERLAP = 0.015;
+const FOOT = 0.045;
+/** A parapet's least height: at a slope's foot, a kerb's. */
+const LOW = 0.012;
 const TOP = rgb(0.86, 0.85, 0.82);
 /** A pier's side. */
 const PIER = 0.14;
@@ -161,6 +166,34 @@ function quad(g: MeshGeometry, a: V3, b: V3, c: V3, d: V3) {
   g.indices.push(i, i + 2, i + 1, i, i + 3, i + 2);
 }
 
+/** A parapet's round end at `at`, come from `from`: a half disc from its
+ *  inner corner to its outer, out the way it ran, at height `h`, its side
+ *  down to the road. */
+function cap(g: MeshGeometry, tops: MeshGeometry, top: (p: Pt, dz?: number) => V3, inner: Pt, outer: Pt, from: Pt, at: Pt, h: number) {
+  const c: Pt = [(inner[0] + outer[0]) / 2, (inner[1] + outer[1]) / 2];
+  const r = Math.hypot(outer[0] - c[0], outer[1] - c[1]);
+  const l = Math.hypot(at[0] - from[0], at[1] - from[1]) || 1;
+  const f: Pt = [(at[0] - from[0]) / l, (at[1] - from[1]) / l];
+  const s: Pt = [(inner[0] - c[0]) / (r || 1), (inner[1] - c[1]) / (r || 1)];
+  const arc: Pt[] = Array.from({ length: 9 }, (_, k) => {
+    const t = (Math.PI * k) / 8;
+    return [c[0] + r * (Math.cos(t) * s[0] + Math.sin(t) * f[0]), c[1] + r * (Math.sin(t) * f[1] + Math.cos(t) * s[1])];
+  });
+  for (let k = 0; k < 8; k++) {
+    const [p, q] = [arc[k], arc[k + 1]];
+    // Wound as the wall's own top and side are (`concrete`'s), whichever
+    // way round the arc runs.
+    const up = (p[0] - c[0]) * (q[1] - c[1]) - (p[1] - c[1]) * (q[0] - c[0]) < 0;
+    if (up) {
+      quad(tops, top(q, h), top(p, h), top(c, h), top(c, h));
+      quad(g, top(p, 0), top(q, 0), top(q, h), top(p, h));
+    } else {
+      quad(tops, top(p, h), top(q, h), top(c, h), top(c, h));
+      quad(g, top(q, 0), top(p, 0), top(p, h), top(q, h));
+    }
+  }
+}
+
 /** A ring cut so no edge is longer than `STEP`. */
 function finer(ring: Pt[]): Pt[] {
   const out: Pt[] = [];
@@ -179,20 +212,21 @@ function finer(ring: Pt[]): Pt[] {
  *  up. */
 function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: number) {
   const lift = liftOf(surface);
-  // As high as the road has risen off the ground, at most, and as wide
-  // for its height: out of the ground at a slope's foot, to a point.
-  const wall = ([x, y]: Pt) => Math.max(0, Math.min(WALL, liftAt(lift, -x, -y) - ROAD_Z - PAVED_Z));
+  // As high as the road has risen off the ground, down to a kerb's.
+  const rise = ([x, y]: Pt) => liftAt(lift, -x, -y) - ROAD_Z - PAVED_Z;
+  const wall = (p: Pt) => Math.max(LOW, Math.min(WALL, rise(p)));
   // The road frame: the tile's turned half round, its middle at -0.5.
   const top = ([x, y]: Pt, dz = 0): V3 => [ox - x, oy - y, liftAt(lift, -x, -y) + dz];
   // Cut just past each seam it runs on over (`OVERLAP`), so a parapet
-  // ends there, square, under the end of the next tile's: not a piece of
-  // edge further on, nor short of it with a crack between.
-  const cuts = seams(surface);
+  // ends there, under the end of the next tile's: not a piece of edge
+  // further on, nor short of it with a crack between. Onto the ground, at
+  // a slope's foot, further (`FOOT`), its end round.
+  const cuts = seams(surface).map(({ way: [dc, dr], past }) => ({ past, reach: rise([0.5 + dc / 2, 0.5 + dr / 2]) < 0.005 ? FOOT : OVERLAP }));
   const atSeams = (ring: Pt[]) => ring.flatMap((a, i): Pt[] => {
     const b = ring[(i + 1) % ring.length];
     const out: Pt[] = [a];
-    for (const past of cuts) {
-      const [fa, fb] = [past([-a[0], -a[1]]) - OVERLAP, past([-b[0], -b[1]]) - OVERLAP];
+    for (const { past, reach } of cuts) {
+      const [fa, fb] = [past([-a[0], -a[1]]) - reach, past([-b[0], -b[1]]) - reach];
       if (fa * fb < 0) out.push([a[0] + ((b[0] - a[0]) * fa) / (fa - fb), a[1] + ((b[1] - a[1]) * fa) / (fa - fb)]);
     }
     return out;
@@ -205,7 +239,7 @@ function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: n
     const edge = (i: number) => [ring[i], ring[(i + 1) % n]] as const;
     // Along an edge short of the cut, not one past it (none shorter: a
     // piece of edge just short of the seam is wall too).
-    const kept = ring.map((_, i) => !cuts.some((past) => Math.min(...edge(i).map(([x, y]) => past([-x, -y]))) > OVERLAP / 2));
+    const kept = ring.map((_, i) => !cuts.some(({ past, reach }) => Math.min(...edge(i).map(([x, y]) => past([-x, -y]))) > reach / 2));
     // Each edge's outward way, a unit long; at a corner, the two edges'
     // between them, as far out as keeps each a kerb's width off.
     const outward = (i: number): Pt => {
@@ -214,12 +248,11 @@ function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: n
       return [((b[1] - a[1]) / len) * turn, (-(b[0] - a[0]) / len) * turn];
     };
     const off = (by: number) => ring.map((p, i): Pt => {
-      const grown = by * (wall(p) / WALL);
       const [u, v] = [outward((i + n - 1) % n), outward(i)];
       const [before, after] = [kept[(i + n - 1) % n], kept[i]];
       const [mx, my] = before && after ? [u[0] + v[0], u[1] + v[1]] : before ? u : v;
       const dot = (mx * v[0] + my * v[1]) / (Math.hypot(mx, my) || 1);
-      const w = grown / Math.max(dot, 0.5) / (Math.hypot(mx, my) || 1);
+      const w = by / Math.max(dot, 0.5) / (Math.hypot(mx, my) || 1);
       return [p[0] + mx * w, p[1] + my * w];
     });
     // Out past the edge, and in over the road's crumbled edge as far as
@@ -235,6 +268,10 @@ function concrete([g, tops]: MeshGeometry[], surface: Surface, ox: number, oy: n
       quad(g, top(bo, -DECK), top(ao, -DECK), top(ao, ha), top(bo, hb));
       quad(tops, top(b, hb), top(a, ha), top(ao, ha), top(bo, hb));
       quad(g, top(b, hb), top(a, ha), top(a), top(b));
+      // Its end on the ground, at a slope's foot, round.
+      for (const [end, from, at] of [[!kept[(i + 1) % n], ring[i], (i + 1) % n], [!kept[(i + n - 1) % n], ring[(i + 1) % n], i]] as const) {
+        if (end && rise(ring[at]) < 0.005) cap(g, tops, top, inn[at], out[at], from, ring[at], wall(ring[at]));
+      }
     }
   }
   // The underside, a deck's thickness down, as the road above it lies.
