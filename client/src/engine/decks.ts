@@ -1,7 +1,7 @@
 import type { EngineContext, Mesh, SceneContext } from "@babylonjs/lite";
 import { drop, meshOf, show, type MeshGeometry } from "./geometry";
-import { setTint, townMaterial } from "./material";
-import { rgb } from "./rgb";
+import { setTint, townMaterial, type TownMaterial } from "./material";
+import { rgb, type Rgb } from "./rgb";
 import { CUT } from "./kerbs";
 import { ROAD_Z } from "./objects/roadGeometry";
 import { flatPolygons, PAVED_Z } from "./town/draw";
@@ -37,9 +37,9 @@ const WALL_OUT = 0.035;
  *  (short of the road's own end past the seam, `carried`'s 0.05). */
 const OVERLAP = 0.015;
 const FOOT = 0.045;
-/** A parapet's least height: at a slope's foot, a kerb's. */
-const LOW = 0.012;
-const TOP = rgb(0.86, 0.85, 0.82);
+/** A parapet's least height: at a slope's foot, a little over the
+ *  ground's kerb (`KERB_Z`, 0.012 over the road) it runs onto. */
+const LOW = 0.02;
 /** A pier's side. */
 const PIER = 0.14;
 const CONCRETE = rgb(0.74, 0.73, 0.7);
@@ -111,17 +111,22 @@ export interface DeckPiece {
 
 export class Decks {
   private meshes: Mesh[] = [];
-  private materials = [CONCRETE, TOP].map((c) => {
-    const m = townMaterial([], 0.95);
-    setTint(m, c);
-    return m;
-  });
+  private materials: TownMaterial[];
 
+  /** `top`: a parapet's top, the ground's pavement's colour, so where one
+   *  runs onto a kerb they are one stone. */
   constructor(
     private engine: EngineContext,
     private scene: SceneContext,
     private casters: Casters | undefined,
-  ) {}
+    top: Rgb,
+  ) {
+    this.materials = [CONCRETE, top].map((c) => {
+      const m = townMaterial([], 0.95);
+      setTint(m, c);
+      return m;
+    });
+  }
 
   /** The concrete under every deck tile drawn again: its sides and its
    *  parapets' tops. */
