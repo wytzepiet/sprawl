@@ -103,3 +103,6 @@ export function Crest(props: { n: Pick<Neighbour, "town" | "colour">; size: numb
 
 /** A small glyph drawn as lines, the way the page's icons were. */
 export const Line = (props: { d: string; size: number; width?: number; ink?: string }) => <icon d={props.d} size={props.size} stroke={props.width ?? 2} ink={props.ink} />;
+
+/** The ferry, side on: news of it, and the dock's new deal. */
+export const FERRY = "M2 14h20l-2.5 5.5h-15zM6 9h9v4H6zM8 5.5h4V9H8z";

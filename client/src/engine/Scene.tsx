@@ -18,9 +18,7 @@ import Card from "../ui/Card";
 import Board from "../ui/Board";
 import Glass from "../ui/Glass";
 import Shipments, { BoxPins } from "../ui/Shipments";
-import Feed from "../ui/Feed";
 import Hud from "./Hud";
-import { gpuUi } from "~ui";
 
 function SceneInner() {
   return (
@@ -43,13 +41,12 @@ function SceneInner() {
         <GrowthMeter />
         <Card />
         <Board />
-        {gpuUi && <Hud />}
+        <Hud />
       </Canvas>
       <Glass />
       <BuildModeToolbar />
       <TimeControls />
       <Shipments />
-      {!gpuUi && <Feed />}
       {/* <DebugOverlay /> */}
     </DayNightProvider>
   );

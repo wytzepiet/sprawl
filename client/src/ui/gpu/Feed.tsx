@@ -1,19 +1,19 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createSignal, For, Index, onCleanup, Show } from "solid-js";
-import { eachEntity, useGame } from "../../state/gameObjects";
-import { neighbours } from "../../state/missions";
+import { eachEntity, groundOf, useGame } from "../../state/gameObjects";
+import { missionKey, neighbours, shownMissions } from "../../state/missions";
 import { clockAt, news, sea, until, type News } from "../../state/sea";
 import { setFollowing } from "../../state/selection";
 import { deals, GOOD_ORDER, home, offerOf, picking, setPicking, setSpread, spread, stepsOf, type Deal } from "../../state/deals";
 import { BLUEPRINTS, GOODS } from "../../blueprints";
-import { GROUND, missionKey, shownMissions, toward } from "../Missions";
+import { eye } from "../../engine/OrthoCamera";
+import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../../engine/objects/terrainGeometry";
 import { hold, setTool } from "../buildMode";
 import { track } from "../Shipments";
 import { coins } from "../kit";
-import { FERRY } from "../Feed";
-import { Appear, Btn, Crest, GoodDot, Line, Pop, Press, StepBar } from "./kit";
+import { Appear, Btn, Crest, FERRY, GoodDot, Line, Pop, Press, StepBar } from "./kit";
 import { Stack } from "./stack";
-import type { Good, Mission, Offer, Step } from "../../generated";
+import type { BuildingKind, Good, Mission, Offer, Step, TerrainType } from "../../generated";
 import type { Mayor } from "../../generated/Mayor";
 import type { JSX } from "~ui/jsx-runtime";
 
@@ -324,6 +324,25 @@ function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
       </Show>
     </box>
   );
+}
+
+/** Where a kind is built: the harbour on the coast, the quarry at the
+ *  mountain's foot, the sawmill at the forest's edge. */
+const GROUND: Partial<Record<BuildingKind, TerrainType>> = { Harbour: "Sea", Quarry: "Mountain", Sawmill: "Forest" };
+
+/** The camera to the nearest ground of a type it has, stopping a few
+ *  tiles short so its edge fills the view: the town opens inland. */
+function toward(ground: TerrainType) {
+  const sea = (x: number, y: number) => {
+    const [cx, cy] = [Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE)];
+    const tiles = groundOf(cx, cy);
+    return !!tiles && TYPE_BY_BYTE[tiles[(y - cy * CHUNK_SIZE + CHUNK_SKIRT) * CHUNK_STRIDE + x - cx * CHUNK_SIZE + CHUNK_SKIRT]] === ground;
+  };
+  const [x0, y0] = [Math.round(eye.x), Math.round(eye.y)];
+  for (let r = 1; r < 96; r++)
+    for (let d = -r; d <= r; d++)
+      for (const [x, y] of [[x0 + d, y0 - r], [x0 + d, y0 + r], [x0 - r, y0 + d], [x0 + r, y0 + d]])
+        if (sea(x, y)) return eye.go(x0 + ((x - x0) * (r - 4)) / r, y0 + ((y - y0) * (r - 4)) / r);
 }
 
 /** What the step at hand offers to do: a tool to take, a lorry to ride

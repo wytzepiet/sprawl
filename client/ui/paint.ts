@@ -328,7 +328,7 @@ export function createPaint(engine: EngineContext, colours: Palette) {
       boxCount = glyphCount = 0;
       layers = [{ panes: [], boxes: [0, 0], glyphs: [0, 0] }];
       hits = [];
-      walk(root, 0, 0, 1, 1, OPEN, k, new Map());
+      walk(root, 0, 0, 1, root.props.opacity ?? 1, OPEN, k, new Map());
       close();
       boxBuf = fit(boxBuf, boxCount * BOX_FLOATS * 4);
       glyphBuf = fit(glyphBuf, glyphCount * GLYPH_FLOATS * 4);

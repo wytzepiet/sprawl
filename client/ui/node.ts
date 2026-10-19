@@ -34,9 +34,6 @@ const moved = (layout: boolean) => {
   if (layout) dirt.layout++;
 };
 
-/** Whether the UI is drawn by the GPU: `?ui=gpu`, while it is tried. */
-export const gpuUi = typeof location !== "undefined" && new URLSearchParams(location.search).get("ui") === "gpu";
-
 export const node = (tag: UiNode["tag"], value = ""): UiNode => ({ tag, props: {}, parent: null, kids: [], value, x: 0, y: 0, w: 0, h: 0 });
 
 export const {
