@@ -5,7 +5,7 @@ import { selected, select, setFollowing, setSubject } from "../state/selection";
 import { getEntity } from "../state/gameObjects";
 import { now, sailingOf } from "../state/sea";
 import { missionsUp } from "./Missions";
-import { HarbourPanel, Timetable, type DepotLine } from "./Harbour";
+import { HarbourPanel, type DepotLine } from "./Harbour";
 import { Deck } from "./Deck";
 import { DepotPanel } from "./Depot";
 import { SitePanel, type MakerLine } from "./Site";
@@ -194,7 +194,7 @@ function CarCard(c: Extract<Card, { kind: "car" }>) {
   return (
     <>
       <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : c.role === "Ferry" ? `of the harbour` : "parked out of sight"} />
-      <Show when={sailing()}>{(s) => <><Section title="Timetable"><Timetable sailing={s()} /></Section><Deck harbour={s().harbour} /></>}</Show>
+      <Show when={sailing()}>{(s) => <Deck harbour={s().harbour} />}</Show>
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
         <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
@@ -282,7 +282,7 @@ function BuildingCard(props: { id: number; card: () => BuildingCard }) {
           </For>
         </Section>
       </Show>
-      <Show when={c().fleet.length > 0}>
+      <Show when={c().fleet.length > 0 && kind() !== "Harbour"}>
         <Section title="Fleet">
           <For each={c().fleet}>{(l) => <div class="py-0.5"><To link={l} /></div>}</For>
         </Section>
