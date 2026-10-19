@@ -25,10 +25,9 @@ import { drawnPath, type DrawnPath, type P } from "./drawnPath";
  * tractor's own arc, and the lands' passes stop where they turned.
  *
  * Across each strip a height (`fieldHeight`), by stage: furrow slices
- * turned up in ridges; a drill's rows, the crop coming up along them a
- * plant at a time, each a small crown as a tree's is, a star of leaves
- * filling out to a dome and closing over the rows, green, then gold, its
- * wheel tracks left open; the stubble after the combine, bare ground
+ * turned up in ridges; a drill's rows, the wheat coming up along them a
+ * tuft of thin blades at a time and closing over the rows, green, then
+ * gold, its wheel tracks left open; the stubble after the combine, bare ground
  * again with a stalk where most plants stood. Each stage one clean
  * colour on a dark grey earth, as the town's are: its texture is all
  * light, the ridges and plants tilting its facing and casting their
@@ -360,10 +359,9 @@ function plugin(engine: Engine, scene: SceneContext, paint: Paint, colours: Rgb[
  *  the field's height at a point of a pass, `u` across it 0 to 1, `v`
  *  along it in tiles, by stage, and of that how much is crop: the furrow
  *  slices, each turned over against the last, rising across it and
- *  falling steep to the next; the drill's seven rows, ridged, and the crop
- *  along them a plant at a time, each its own small crown as a tree's
- *  is: a seedling a star of pointed leaves, a grown plant a leafy dome,
- *  the plants closing over the rows as they grow; its tramlines, the
+ *  falling steep to the next; the drill's ten rows, ridged, and the crop
+ *  along them a tuft at a time, a few thin blades, closing over the
+ *  rows as they grow; its tramlines, the
  *  wheel tracks, as far apart as the tractor's wheels and as thin as a
  *  lane's line, in the gaps either side of the middle row, left open to
  *  the earth; the stubble, the rows' ridges again with a stalk left
@@ -371,51 +369,56 @@ function plugin(engine: Engine, scene: SceneContext, paint: Paint, colours: Rgb[
  *  and as deep as the shadows cast into it. */
 const DEFINITIONS = `fn fieldNoise(p: vec2f) -> f32 { return textureSample(fieldGrain, fieldGrainSampler, p / 256.).r; }
 fn fieldHash(p: vec2f) -> vec2f { return fract(sin(vec2f(dot(p, vec2f(127.1, 311.7)), dot(p, vec2f(269.5, 183.3)))) * 43758.5453); }
-// A plant at o from its middle, r its reach, a its turn: its height, 0
-// to 1, by how grown: five leaves pointing out from its heart, filling
-// out to a dome.
+// A tuft of wheat at o from its middle, r its reach, a its turn: its
+// height, 0 to 1: five thin blades out from its heart, each its own
+// length, tapering to its tip; broader as it grows.
 fn fieldPlant(o: vec2f, r: f32, a: f32, grown: f32) -> f32 {
   let d = length(o) / r;
   if (d >= 1.) { return 0.; }
-  let lobe = abs(cos((atan2(o.y, o.x) + a) * 2.5));
-  let t = d / mix(0.3 + 0.7 * pow(lobe, 2.), 0.78 + 0.22 * lobe, grown);
-  return mix(max(0., 1. - t) * (0.6 + 0.4 * lobe), sqrt(max(0., 1. - t * t)), grown);
+  let turn = (atan2(o.y, o.x) + a) * 0.7957747 + 10.;
+  let blade = floor(turn + 0.5);
+  let side = d * abs(turn - blade) * 1.2566371;
+  let t = d / (0.55 + 0.45 * fieldHash(vec2f(blade, a)).x);
+  let w = mix(0.07, 0.13, grown) * (1. - 0.6 * t);
+  if (t >= 1. || side >= w) { return 0.; }
+  return (1. - 0.6 * t) * (1. - side / w);
 }
-// The tallest of the plants near (u, v), of the two rows and two along
-// either side of it: their reach and how far grown, and how many of them
-// stand (1 all, less some gone).
+// The tallest of the tufts near (u, v): of the two rows either side of
+// it, ten to a pass, and the four along either side of it, 28 to a tile;
+// their reach and how far grown, and how many of them stand (1 all,
+// less some gone).
 fn fieldPlants(u: f32, v: f32, r: f32, grown: f32, stand: f32) -> f32 {
-  let x = u * 7. - 0.5;
-  let r0 = clamp(floor(x), 0., 5.);
+  let x = u * 10. - 0.5;
+  let r0 = clamp(floor(x), 0., 8.);
   var h = 0.;
   for (var i = 0; i < 2; i++) {
     let row = r0 + f32(i);
-    let y = v * 9. + fieldHash(vec2f(row, 17.)).x;
-    let c0 = floor(y - 0.5);
-    for (var j = 0; j < 2; j++) {
+    let y = v * 28. + fieldHash(vec2f(row, 17.)).x;
+    let c0 = floor(y - 0.5) - 1.;
+    for (var j = 0; j < 4; j++) {
       let c = c0 + f32(j);
       let seed = fieldHash(vec2f(row * 131. + c, 7.));
       if (seed.y > stand) { continue; }
-      let o = vec2f((x - row) / 7., (y - c - 0.5 - (seed.x - 0.5) * 0.35) / 9.);
-      h = max(h, fieldPlant(o, r * (0.8 + 0.4 * seed.y / stand), seed.x * 6.2831853, grown));
+      let o = vec2f((x - row) / 10., (y - c - 0.5 - (seed.x - 0.5) * 0.5) / 28.);
+      h = max(h, fieldPlant(o, r * (0.75 + 0.5 * seed.y / stand), seed.x * 6.2831853, grown));
     }
   }
   return h;
 }
 fn fieldHeight(u: f32, v: f32, stage: u32, k: f32) -> vec2f {
   let p = fract(u);
-  let row = 1. - abs(fract(u * 7.) - 0.5) * 2.;
-  let tram = 1. - smoothstep(0.01, 0.02, min(abs(p - 0.4286), abs(p - 0.5714)));
-  let ridge = 0.012 * row * (1. - tram);
+  let row = 1. - abs(fract(u * 10.) - 0.5) * 2.;
+  let tram = 1. - smoothstep(0.01, 0.02, min(abs(p - 0.4), abs(p - 0.6)));
+  let ridge = 0.008 * row * (1. - tram);
   if (stage == 1u) { let q = fract(u * 4.); return vec2f(0.035 * pow(q, 0.6) * (1. - smoothstep(0.78, 1., q)), 0.); }
   if (stage == 2u) {
     let grown = smoothstep(0.03, 0.6, k);
     let tall = smoothstep(0.01, 0.05, k) * (0.15 + 0.85 * grown) * ${CROP_H.toFixed(3)};
-    let crop = tall * fieldPlants(u, v, 0.035 + 0.065 * grown, grown, 1.) * (1. - tram);
+    let crop = tall * fieldPlants(u, v, 0.03 + 0.045 * grown, grown, 1.) * (1. - tram);
     return vec2f(max(ridge, crop + ridge * 0.5), step(ridge, crop + ridge * 0.5) * step(0.001, crop));
   }
   if (stage == 3u) {
-    let stalk = step(0.2, fieldPlants(u, v, 0.022, 1., 0.7)) * (1. - tram);
+    let stalk = step(0.2, fieldPlants(u, v, 0.022, 0., 0.6)) * (1. - tram);
     return vec2f(ridge + 0.012 * stalk, stalk);
   }
   return vec2f(0.);
@@ -490,7 +493,9 @@ if (fieldStage == 1u) {
   let leaf = material.fieldGrowing.rgb;
   let green = mix(leaf, vec3f(dot(leaf, vec3f(0.3, 0.55, 0.15))), 0.3) * vec3f(0.56, 0.62, 0.52);
   let crop = mix(green, material.fieldRipe.rgb * vec3f(0.86, 0.8, 0.66), smoothstep(0.6, 1., fieldGrown));
-  fieldColour = mix(fieldSoil, crop, mix(fieldHC.y, smoothstep(0.1, 0.5, fieldGrown), fieldFar));
+  // Between the tufts, as it grows, the crop's own shade, too fine to draw.
+  let under = mix(fieldSoil, crop * 0.7, smoothstep(0.25, 0.7, fieldGrown) * (1. - smoothstep(0.01, 0.02, min(abs(fract(fieldU) - 0.4), abs(fract(fieldU) - 0.6)))));
+  fieldColour = mix(under, crop, mix(fieldHC.y, smoothstep(0.1, 0.5, fieldGrown), fieldFar));
   fieldTop = mix(fieldHC.x / ${CROP_H.toFixed(3)} / max(0.15 + 0.85 * smoothstep(0.03, 0.6, fieldGrown), 0.15), 1., 1. - fieldHC.y);
   fieldJumble = 0.15 + 0.2 * fieldHC.y;
 } else if (fieldStage == 3u) {
