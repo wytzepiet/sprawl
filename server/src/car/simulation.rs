@@ -1110,6 +1110,9 @@ fn book(world: &World, events: &mut EventQueue, intersections: &mut Intersection
     let mut waiting = Vec::new();
     for made in 0..wants.len() {
         let (k, _, _, ref g, mut claim) = wants[made];
+        // Still behind a give-way line short of it, it is not on the
+        // priority road yet, and comes to the next junction as anyone does.
+        claim.major &= !wants[..made].iter().any(|w| !w.4.major && !intersections.has_passage(w.3.id, car_id));
         if waits(made, intersections) {
             waiting.push(made);
             claim.tail = [GameTime::MAX; TRACK_POINTS];
