@@ -265,8 +265,9 @@ export class Field {
  *  that how much is crop: the furrow slices, each turned over against the
  *  last, rising across it and falling steep to the next; the drill rows,
  *  the crop up along them, closing over them, the tramlines, the wheel
- *  tracks of every other pass, cut down to the earth; the stubble, its
- *  straw in a windrow down the middle of each pass. As high as the crop
+ *  tracks of every other pass, cut down to the earth; the stubble, the
+ *  stalks cut short in the rows they grew in, the tramlines still open,
+ *  the straw in a windrow down the middle of each pass. As high as the crop
  *  stands (CROP_H) and as deep as the shadows cast into it. */
 const DEFINITIONS = `fn fieldNoise(p: vec2f) -> f32 { return textureSample(fieldGrain, fieldGrainSampler, p / 256.).r; }
 fn fieldHeight(u: f32, stage: u32, k: f32) -> vec2f {
@@ -279,7 +280,13 @@ fn fieldHeight(u: f32, stage: u32, k: f32) -> vec2f {
     let crop = smoothstep(1. - grown * 1.5, 1.25 - grown * 1.5, row) * smoothstep(0., 0.05, k) * (1. - tram);
     return vec2f(${CROP_H.toFixed(3)} * crop * (0.15 + 0.85 * grown) + 0.014 * row * (1. - tram), crop);
   }
-  if (stage == 3u) { let s = 1. - smoothstep(0.05, 0.13, abs(p - 0.5)); return vec2f(0.01 + 0.025 * s * s, s); }
+  if (stage == 3u) {
+    let row = 1. - abs(fract(u * 6.) - 0.5) * 2.;
+    let tram = select(0., 1., fract(floor(u) * 0.5) < 0.25) * (1. - smoothstep(0.035, 0.05, min(abs(p - 0.4), abs(p - 0.6))));
+    let stalks = smoothstep(0.05, 0.3, row) * (1. - tram);
+    let swath = 1. - smoothstep(0.04, 0.15, abs(p - 0.5));
+    return vec2f(max(0.018 * stalks, 0.05 * swath * swath), max(0.75 * stalks, swath));
+  }
   return vec2f(0.);
 }`;
 
@@ -385,11 +392,12 @@ if (fieldStage == 1u) {
   fieldLean = fieldHC.y * (0.25 * (fieldStreak2 - fieldStreak) * 6. + 0.2 * fieldWay);
   fieldJumble = 0.15 + 0.15 * fieldHC.y;
 } else if (fieldStage == 3u) {
-  // Stubble: straw cut short, each pass leaning the way the combine went;
-  // the windrow paler.
-  fieldColour = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.35 + 0.25 * fieldHC.y);
-  fieldTop = 0.5 + 0.5 * fieldHC.y;
-  fieldLean = 0.45 * fieldWay + fieldHC.y * 0.5 * (fieldStreak2 - fieldStreak) * 6.;
+  // Stubble: pale stalks in their rows over the soil, each pass leaning
+  // the way the combine went; the windrow's straw brighter, a gold.
+  let straw = mix(mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.3), material.fieldRipe.rgb * vec3f(1.05, 0.98, 0.85), smoothstep(0.8, 1., fieldHC.y));
+  fieldColour = mix(mix(fieldSoil, straw, 0.4), straw, mix(fieldHC.y, 0.75, fieldFar));
+  fieldTop = fieldHC.y;
+  fieldLean = 0.3 * fieldWay * fieldHC.y + fieldHC.y * 0.4 * (fieldStreak2 - fieldStreak) * 6.;
   fieldJumble = 0.3;
 }
 fieldColour = fieldColour * fieldTint * mix(0.72, 1.05, mix(clamp(fieldTop, 0., 1.), 0.7, fieldFar)) * mix(0.62, 1., fieldLit);
