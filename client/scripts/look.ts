@@ -14,6 +14,10 @@
  *   --tap '[title=Fold]'      a tap on what that selector finds, after the
  *                             settle, and as long again for it to move;
  *                             again for each (and --ui)
+ *   --click 900,60            a tap at that point of the window, as --tap
+ *   --gpu                     with the UI the GPU draws (`?ui=gpu`)
+ *   --eval 'js'               run in the page after the settle, before the taps:
+ *                             `await import("/src/state/sea.ts")` reaches the game's modules
  *   --frames 8 --every 250    eight frames a quarter second apart, and a strip
  *                             of them side by side
  *   T=0.7 bun run look ...    at this time of day (0 midnight, 0.5 noon)
@@ -56,14 +60,19 @@ const menu = args.includes("--menu") && !!args.splice(args.indexOf("--menu"), 1)
 const size = word("--size")?.split("x").map(Number) ?? [1280, 860];
 const taps: string[] = [];
 for (let t = word("--tap"); t; t = word("--tap")) taps.push(t);
-const ui = (args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1)) || chosen >= 0 || !!held || menu || taps.length > 0;
+for (let t = word("--click"); t; t = word("--click")) taps.push(`@${t}`);
+const evals: string[] = [];
+for (let t = word("--eval"); t; t = word("--eval")) evals.push(t);
+const gpu = args.includes("--gpu") && !!args.splice(args.indexOf("--gpu"), 1);
+const ui = (args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1)) || chosen >= 0 || !!held || menu || taps.length > 0 || gpu;
 const browser = await launch();
 const page = ui ? await open(browser, { width: size[0], height: size[1] }) : await browser.newPage({ viewport: VIEW });
 // As that player.
 if (process.env.PLAYER) await page.addInitScript((p) => localStorage.setItem("sprawl.player", p), process.env.PLAYER);
 page.on("pageerror",(e) => console.log(`page error: ${e.message}`));
 page.on("console", (m) => m.type() === "error" && console.log(`console: ${m.text().slice(0, 300)}`));
-await page.goto(process.env.T ? `${CLIENT}/?t=${process.env.T}` : CLIENT);
+const query = new URLSearchParams({ ...(process.env.T ? { t: process.env.T } : {}), ...(gpu ? { ui: "gpu" } : {}) });
+await page.goto(`${CLIENT}/${query.size ? `?${query}` : ""}`);
 await page.waitForFunction(() => "sprawlCamera" in window, null, { timeout: 60_000 });
 // The map alone: no toolbar, dials or pins over it, unless asked for.
 if (!ui) await page.addStyleTag({ content: "#root * { visibility: hidden } #root canvas { visibility: visible }" });
@@ -75,8 +84,13 @@ await page.waitForTimeout(held || menu ? SETTLE_MS / 2 : 0);
 if (held) await page.evaluate(([k, x, y, f]) => (window as any).sprawlHold(k, Number(x), Number(y), f === undefined ? null : Number(f)), held.slice(1));
 if (menu) await page.keyboard.press("b");
 await page.waitForTimeout(SETTLE_MS);
+for (const js of evals) await page.evaluate(`(async () => { ${js} })()`);
+if (evals.length) await page.waitForTimeout(4000);
 for (const t of taps) {
-  await page.locator(t).first().click({ force: true });
+  if (t.startsWith("@")) {
+    const [cx, cy] = t.slice(1).split(",").map(Number);
+    await page.mouse.click(cx, cy);
+  } else await page.locator(t).first().click({ force: true });
   await page.waitForTimeout(SETTLE_MS);
 }
 for (let n = 0; n < frames; n++) {

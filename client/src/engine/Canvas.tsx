@@ -25,7 +25,10 @@ import {
 import { useTheme } from "./theme";
 import { Culler } from "./cull";
 import { createOutline, type Outline } from "./outline";
-import { createGlass } from "./glass";
+import { createGlass, light } from "./glass";
+import { createPaint } from "~ui/paint";
+import { createHand } from "~ui/hand";
+import { gpuUi } from "~ui";
 
 export type EngineContext = {
   engine: Engine;
@@ -137,7 +140,10 @@ export default function Canvas(props: ParentProps) {
     setCtx({ engine, scene, canvas: el, beforeRender: before.add, afterRender: after.add, cull, outline, registered, prepare: (work) => preparing.push(work) });
     await Promise.all(preparing);
     await registerSceneWithShadowSupport(scene);
-    const glass = createGlass(engine, scene);
+    // The UI the GPU draws (`ui/`), behind `?ui=gpu` while it is tried.
+    const paint = gpuUi ? createPaint(engine, light) : undefined;
+    const glass = createGlass(engine, scene, paint);
+    const stopHand = paint ? createHand(el, paint.hits, glass.touchAt) : () => {};
     setRegistered(true);
 
     // Ticks that come much sooner than a frame are skipped. Ticks jitter,
@@ -156,7 +162,7 @@ export default function Canvas(props: ParentProps) {
     // The glass moving counts too: the UI's springs move at the moving rate.
     const where = () => {
       const c = scene.camera;
-      return c ? `${c.worldMatrixVersion},${c.ortho?.halfHeight},${glass.key()}` : "";
+      return c ? `${c.worldMatrixVersion},${c.ortho?.halfHeight},${glass.key()},${paint?.key()}` : "";
     };
     const frame = (now: number) => {
       if (!running) return;
@@ -191,6 +197,7 @@ export default function Canvas(props: ParentProps) {
 
     stop = () => {
       running = false;
+      stopHand();
       stopResizing();
       disposeEngine(engine);
     };

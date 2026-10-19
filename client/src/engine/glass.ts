@@ -1,4 +1,5 @@
 import { addTask, buildFrameGraphTask, getFrameGraph, type EngineContext, type SceneContext, type Task } from "@babylonjs/lite";
+import type { Layer, Pane } from "~ui/paint";
 
 /**
  * The UI's glass, drawn by the GPU over the frame it lies on, not by the
@@ -72,6 +73,8 @@ export const light = {
   sky: [1, 1, 1] as [number, number, number],
   /** How dark the far edge's shade is, and the shadow: the ink's colour. */
   ink: [0.18, 0.24, 0.22] as [number, number, number],
+  /** What is written on the glass: black on light glass, white on dark. */
+  text: [0, 0, 0] as [number, number, number],
 };
 
 const WGSL = /* wgsl */ `
@@ -281,8 +284,11 @@ export function underGlass(ctx: CanvasRenderingContext2D) {
   ctx.restore();
 }
 
-/** The glass task, after the scene, and how to read the page's panes. */
-export function createGlass(engine: EngineContext, scene: SceneContext) {
+/** The glass task, after the scene, and how to read the page's panes.
+ *  `ui` is the UI the GPU draws (`ui/paint.ts`): its layers go over the
+ *  page's glass, each drawn on its own panes, so a later one frosts what
+ *  lies on an earlier one. */
+export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { read(): Layer[]; ink(pass: GPURenderPassEncoder, l: Layer): void }) {
   const device = engine._device;
   const surface = engine.surfaces[0];
   const format = surface._configureFormat;
@@ -369,60 +375,65 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
   window.addEventListener("pointerup", lift, true);
   window.addEventListener("pointercancel", lift, true);
 
-  // The runs of glass this frame, in device pixels, each with room round it.
+  // The runs of glass this frame, in device pixels, each with room round it;
+  // and the groups they are drawn in: the page's all at once, then each of
+  // the UI's layers, its run and what lies on it.
   let runs: Box[] = [];
+  let groups: { runs: Box[]; layer: Layer | null }[] = [];
   let seen = "";
   const radii = new WeakMap<Element, { key: string; r: number }>();
 
-  /** Read the page's panes: their boxes, rounding, fade and dye. Returns a
-   *  key that changes when any of them moved. */
+  /** Read the panes, the page's and the UI's: their boxes, rounding, fade
+   *  and dye. Returns a key that changes when any of them moved. */
   const read = (): string => {
     const canvas = surface.canvas as HTMLCanvasElement;
     const dpr = canvas.width / Math.max(1, canvas.clientWidth);
-    const byRun = new Map<string, { el: HTMLElement; r: DOMRect }[]>();
+    const byRun = new Map<string, Pane[]>();
     for (const el of document.querySelectorAll<HTMLElement>("[data-glass]")) {
       const r = el.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) continue;
+      const style = getComputedStyle(el);
+      const fade = Number(style.opacity);
+      if (fade <= 0.002) continue;
+      let cached = radii.get(el);
+      if (!cached || cached.key !== el.className) radii.set(el, (cached = { key: el.className, r: parseFloat(style.borderTopLeftRadius) || 0 }));
       const name = el.dataset.glass || `pane${byRun.size}`;
       if (!byRun.has(name)) byRun.set(name, []);
-      byRun.get(name)!.push({ el, r });
+      byRun.get(name)!.push({ x: r.left, y: r.top, w: r.width, h: r.height, r: Math.min(cached.r, r.width / 2, r.height / 2), fade, dye: el.dataset.dye });
     }
     data.fill(0);
     runs = [];
+    groups = [];
     glazed.length = 0;
     let i = 0;
     let key = "";
-    for (const panes of byRun.values()) {
-      if (runs.length === RUNS) break;
+    /** A run of panes that melt together, into the uniforms; whether there was room. */
+    const run = (panes: Pane[]) => {
+      if (runs.length === RUNS) return false;
       const first = i;
       const box: Box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
-      for (const { el, r } of panes) {
+      for (const p of panes) {
         if (i === PANES) break;
-        const style = getComputedStyle(el);
-        const fade = Number(style.opacity);
-        if (fade <= 0.002) continue;
-        let cached = radii.get(el);
-        if (!cached || cached.key !== el.className) radii.set(el, (cached = { key: el.className, r: parseFloat(style.borderTopLeftRadius) || 0 }));
-        glazed.push({ x: r.left, y: r.top, w: r.width, h: r.height, r: Math.min(cached.r, r.width / 2, r.height / 2) });
-        const [hx, hy] = [(r.width / 2) * dpr, (r.height / 2) * dpr];
+        glazed.push({ x: p.x, y: p.y, w: p.w, h: p.h, r: p.r });
+        const [hx, hy] = [(p.w / 2) * dpr, (p.h / 2) * dpr];
         const o = i * 12;
-        data[o] = (r.left + r.width / 2) * dpr;
-        data[o + 1] = (r.top + r.height / 2) * dpr;
+        data[o] = (p.x + p.w / 2) * dpr;
+        data[o + 1] = (p.y + p.h / 2) * dpr;
         data[o + 2] = hx;
         data[o + 3] = hy;
-        data[o + 4] = Math.min(cached.r * dpr, hx, hy);
-        data[o + 5] = fade;
+        data[o + 4] = Math.min(p.r * dpr, hx, hy);
+        data[o + 5] = p.fade;
         data[o + 6] = Math.min(hx, hy);
-        const dye = el.dataset.dye ? hexRgb(el.dataset.dye) : null;
+        const dye = p.dye ? hexRgb(p.dye) : null;
         if (dye) data.set([...dye, 1], o + 8);
-        box.x0 = Math.min(box.x0, r.left * dpr);
-        box.y0 = Math.min(box.y0, r.top * dpr);
-        box.x1 = Math.max(box.x1, r.right * dpr);
-        box.y1 = Math.max(box.y1, r.bottom * dpr);
-        key += `${Math.round(data[o])},${Math.round(data[o + 1])},${Math.round(hx)},${Math.round(hy)},${fade.toFixed(2)},${el.dataset.dye ?? ""};`;
+        box.x0 = Math.min(box.x0, p.x * dpr);
+        box.y0 = Math.min(box.y0, p.y * dpr);
+        box.x1 = Math.max(box.x1, (p.x + p.w) * dpr);
+        box.y1 = Math.max(box.y1, (p.y + p.h) * dpr);
+        key += `${Math.round(data[o])},${Math.round(data[o + 1])},${Math.round(hx)},${Math.round(hy)},${p.fade.toFixed(2)},${p.dye ?? ""};`;
         i++;
       }
-      if (i === first) continue;
+      if (i === first) return false;
       const o = PANES * 12 + runs.length * 4;
       ints[o] = first;
       ints[o + 1] = i - first;
@@ -432,7 +443,11 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
         x1: Math.min(canvas.width, Math.ceil(box.x1 + ROOM)),
         y1: Math.min(canvas.height, Math.ceil(box.y1 + ROOM)),
       });
-    }
+      return true;
+    };
+    for (const panes of byRun.values()) run(panes);
+    groups.push({ runs: runs.slice(), layer: null });
+    for (const layer of ui?.read() ?? []) groups.push({ runs: layer.panes.length && run(layer.panes) ? [runs[runs.length - 1]] : [], layer });
     const o = PANES * 12 + RUNS * 4;
     data.set([...light.tint.map((v, k) => v * (1 - COLOUR + COLOUR * SEA_GLASS[k])), WASH], o);
     data.set([...light.sun, light.sunStrength], o + 4);
@@ -461,19 +476,21 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
       const frame = surface.scRT._colorTexture;
       // A swapchain that is no copy source (a Lite without `copySource`)
       // has no glass rather than no frame.
-      if (!runs.length || !frame || !(frame.usage & GPUTextureUsage.COPY_SRC)) return 0;
+      if (!groups.some((g) => g.runs.length || g.layer) || !frame || !(frame.usage & GPUTextureUsage.COPY_SRC)) return 0;
       const [w, h] = [frame.width, frame.height];
       fit(w, h);
       const encoder = engine._currentEncoder;
       device.queue.writeBuffer(uniforms, 0, data);
-      const clipped = runs.map((b) => ({ x0: Math.min(b.x0, w), y0: Math.min(b.y0, h), x1: Math.min(b.x1, w), y1: Math.min(b.y1, h) })).filter((b) => b.x1 > b.x0 && b.y1 > b.y0);
-      // What lies under each run, out of the frame.
+      let draws = 0;
+      // What lies under the glass, out of the frame as the town drew it:
+      // glass sees through to the town and never through other glass, so
+      // a card over another is frosted as if it were the only one.
+      const clipped = runs.map((b, run) => ({ x0: Math.min(b.x0, w), y0: Math.min(b.y0, h), x1: Math.min(b.x1, w), y1: Math.min(b.y1, h), run })).filter((b) => b.x1 > b.x0 && b.y1 > b.y0);
       for (const b of clipped) {
         encoder.copyTextureToTexture({ texture: frame, origin: { x: b.x0, y: b.y0 } }, { texture: under!, origin: { x: b.x0, y: b.y0 } }, { width: b.x1 - b.x0, height: b.y1 - b.y0 });
       }
       // Halved, level by level, within each run's box.
-      let draws = 0;
-      for (let level = 1; level < levels.length; level++) {
+      for (let level = 1; clipped.length && level < levels.length; level++) {
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: levels[level], loadOp: "load", storeOp: "store" }] });
         pass.setPipeline(halfPipeline);
         pass.setBindGroup(0, halves[level - 1]);
@@ -490,17 +507,23 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
         }
         pass.end();
       }
-      // The glass, over the frame.
+      // The glass over the frame, group by group, each with what lies on it.
       const pass = encoder.beginRenderPass({ colorAttachments: [{ view: surface.scRT._colorView!, loadOp: "load", storeOp: "store" }] });
-      pass.setPipeline(panePipeline);
-      pass.setBindGroup(0, paneGroup!);
-      runs.forEach((b, run) => {
-        const c = { x0: Math.min(b.x0, w), y0: Math.min(b.y0, h), x1: Math.min(b.x1, w), y1: Math.min(b.y1, h) };
-        if (c.x1 <= c.x0 || c.y1 <= c.y0) return;
-        pass.setScissorRect(c.x0, c.y0, c.x1 - c.x0, c.y1 - c.y0);
-        pass.draw(3, 1, 0, run);
-        draws++;
-      });
+      for (const g of groups) {
+        pass.setPipeline(panePipeline);
+        pass.setBindGroup(0, paneGroup!);
+        for (const b of clipped) {
+          if (!g.runs.includes(runs[b.run])) continue;
+          pass.setScissorRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+          pass.draw(3, 1, 0, b.run);
+          draws++;
+        }
+        if (g.layer) {
+          pass.setScissorRect(0, 0, w, h);
+          ui!.ink(pass, g.layer);
+          draws += 2;
+        }
+      }
       pass.end();
       return draws;
     },
@@ -516,7 +539,11 @@ export function createGlass(engine: EngineContext, scene: SceneContext) {
   if (import.meta.env.DEV) (window as unknown as { sprawlGlass: unknown }).sprawlGlass = light;
   addTask(scene, task);
   buildFrameGraphTask(getFrameGraph(scene), task);
-  return { read, key: () => seen };
+  /** A press on the UI the GPU draws, which lights the glass as one on the page does. */
+  const touchAt = (x: number, y: number, down: boolean) => {
+    [touch.x, touch.y, touch.down] = [x, y, down];
+  };
+  return { read, key: () => seen, touchAt };
 }
 
 /** "#rrggbb" as 0–1. */
