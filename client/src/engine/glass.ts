@@ -12,6 +12,12 @@ import { addTask, buildFrameGraphTask, getFrameGraph, type EngineContext, type S
  * into a pane. The element itself draws nothing of the glass, only what
  * sits on it.
  *
+ * Runs lie in the order the page paints them, the first pane of each
+ * found first: a later run is drawn over an earlier one, with its shadow
+ * on it, so a pane of its own name later in the page is a layer above
+ * (a stack of cards, `ui/stack.tsx`). Melting is within a layer, never
+ * between them.
+ *
  * Each frame the frame loop reads the panes (`read`), once, after the
  * springs have moved them and before the frame is drawn. Then, after the
  * scene, this task copies what lies under each run of glass out of the
@@ -22,8 +28,8 @@ import { addTask, buildFrameGraphTask, getFrameGraph, type EngineContext, type S
  */
 
 /** The most panes, and runs of them, drawn. */
-const PANES = 48;
-const RUNS = 8;
+const PANES = 64;
+const RUNS = 16;
 /** How far panes melt into each other, in CSS pixels: the goo. */
 const MELT = 12;
 /** How deep the rim's rounding goes, in CSS pixels: the lens. */

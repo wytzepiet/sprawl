@@ -3,7 +3,7 @@ import { useGame } from "../state/gameObjects";
 import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/sea";
 import { setFollowing } from "../state/selection";
 import { BLUEPRINTS, GOODS } from "../blueprints";
-import { cheapest } from "./Deck";
+import { cheapest } from "../state/deals";
 import type { DepotLine } from "./Harbour";
 import { Btn, coins, GoodDot, Section, type Link } from "./kit";
 import type { Building, BuildingKind, Good, Stock } from "../generated";

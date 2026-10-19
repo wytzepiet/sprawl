@@ -3,10 +3,9 @@ import type { JSX } from "solid-js";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
 import { getEntity } from "../state/gameObjects";
-import { now, sailingOf } from "../state/sea";
+import { now } from "../state/sea";
 import { missionsUp } from "./Missions";
-import { HarbourPanel, type DepotLine } from "./Harbour";
-import { Deck } from "./Deck";
+import { type DepotLine } from "./Harbour";
 import { DepotPanel } from "./Depot";
 import { SitePanel, type MakerLine } from "./Site";
 import { Bar, Row, Section, To, type Link } from "./kit";
@@ -190,11 +189,9 @@ const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Va
 
 function CarCard(c: Extract<Card, { kind: "car" }>) {
   const what = ROLE[c.role];
-  const sailing = () => (c.role === "Ferry" ? sailingOf(c.owner.id) : undefined);
   return (
     <>
       <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : c.role === "Ferry" ? `of the harbour` : "parked out of sight"} />
-      <Show when={sailing()}>{(s) => <Deck harbour={s().harbour} />}</Show>
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
         <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
@@ -250,9 +247,6 @@ function BuildingCard(props: { id: number; card: () => BuildingCard }) {
         }
       />
       <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
-      <Show when={!site() && kind() === "Harbour"}>
-        <HarbourPanel id={props.id} />
-      </Show>
       <Show when={!site() && kind() === "Depot"}>
         <DepotPanel id={props.id} lorries={lorries()} />
       </Show>

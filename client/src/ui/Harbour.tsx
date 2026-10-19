@@ -2,7 +2,6 @@ import { createMemo } from "solid-js";
 import { buildingAt, getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
 import { setFollowing } from "../state/selection";
-import { Deck } from "./Deck";
 import { type Link } from "./kit";
 import type { Building, Good } from "../generated";
 
@@ -21,11 +20,6 @@ export const building = (id: number) =>
     const e = getEntity(id);
     return e?.object.kind === "Building" ? (e.object.data as Building) : null;
   });
-
-/** The harbour's card: the ferry, its deck and the quay, drawn. */
-export function HarbourPanel(props: { id: number }) {
-  return <Deck harbour={props.id} />;
-}
 
 /** The eye: the camera to it, and after it as it goes. */
 export function FollowBtn(props: { id: number; fallback?: number }) {

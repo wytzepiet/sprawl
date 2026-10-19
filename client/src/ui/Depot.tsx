@@ -3,7 +3,7 @@ import { getEntity, useGame } from "../state/gameObjects";
 import { load, now, sea, until } from "../state/sea";
 import { GOODS } from "../blueprints";
 import { atHarbour, building, FollowBtn } from "./Harbour";
-import { GOOD_ORDER } from "./Deck";
+import { GOOD_ORDER } from "../state/deals";
 import { Btn, coins, GoodDot, Section } from "./kit";
 import type { Car, Good } from "../generated";
 

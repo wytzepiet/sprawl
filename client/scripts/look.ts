@@ -11,6 +11,9 @@
  *   --hold Depot@5,86[,1]     with a depot in hand over that tile, as if
  *                             dragged there, turned that way or left to
  *                             turn itself (and --ui)
+ *   --tap '[title=Fold]'      a tap on what that selector finds, after the
+ *                             settle, and as long again for it to move;
+ *                             again for each (and --ui)
  *   --frames 8 --every 250    eight frames a quarter second apart, and a strip
  *                             of them side by side
  *   T=0.7 bun run look ...    at this time of day (0 midnight, 0.5 noon)
@@ -51,7 +54,9 @@ const word = (name: string) => {
 const held = word("--hold")?.match(/^(\w+)@(-?\d+),(-?\d+)(?:,(\d))?$/);
 const menu = args.includes("--menu") && !!args.splice(args.indexOf("--menu"), 1);
 const size = word("--size")?.split("x").map(Number) ?? [1280, 860];
-const ui = (args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1)) || chosen >= 0 || !!held || menu;
+const taps: string[] = [];
+for (let t = word("--tap"); t; t = word("--tap")) taps.push(t);
+const ui = (args.includes("--ui") && !!args.splice(args.indexOf("--ui"), 1)) || chosen >= 0 || !!held || menu || taps.length > 0;
 const browser = await launch();
 const page = ui ? await open(browser, { width: size[0], height: size[1] }) : await browser.newPage({ viewport: VIEW });
 // As that player.
@@ -70,6 +75,10 @@ await page.waitForTimeout(held || menu ? SETTLE_MS / 2 : 0);
 if (held) await page.evaluate(([k, x, y, f]) => (window as any).sprawlHold(k, Number(x), Number(y), f === undefined ? null : Number(f)), held.slice(1));
 if (menu) await page.keyboard.press("b");
 await page.waitForTimeout(SETTLE_MS);
+for (const t of taps) {
+  await page.locator(t).first().click();
+  await page.waitForTimeout(SETTLE_MS);
+}
 for (let n = 0; n < frames; n++) {
   await page.screenshot({ path: `${OUT}/frame-${n}.png` });
   if (n + 1 < frames) await page.waitForTimeout(every);

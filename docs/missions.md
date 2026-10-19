@@ -90,8 +90,9 @@ must lapse. Fuel has no maker, so nobody asks for it. The world sells everything
 impossible.
 
 **Filled physically.** While an order wants more, its mayor is a
-partner on the deck's picker for a slot going out, at the letter's
-price ("Book a box", the panel's button, books one): the box carries
+partner for a slot going out, at the letter's price: the letter is a
+card in the deals stack, the boxes it wants, and a tap on its envelope
+books them all. The box carries
 the order's number as its shipment's, is loaded by a depot's lorry,
 drives to the park, shows its town's crest there, and sails with the
 ferry to the edge. As the ferry casts off, the mayor pays for it, a

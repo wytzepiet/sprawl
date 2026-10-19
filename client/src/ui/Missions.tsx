@@ -1,17 +1,17 @@
-import { createEffect, createSignal, For, Index, Show } from "solid-js";
-import { eachEntity, groundOf, useGame } from "../state/gameObjects";
+import { createEffect, createSignal, Index, Show } from "solid-js";
+import { eachEntity, groundOf } from "../state/gameObjects";
 import { eye } from "../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
 import { clockAt, sea, until } from "../state/sea";
-import { missions, neighbours } from "../state/missions";
+import { missions } from "../state/missions";
 import { crest } from "../flat/crest";
 import { hold, setTool } from "./buildMode";
-import { select, selected } from "../state/selection";
+import { selected } from "../state/selection";
 import { track } from "./Shipments";
+import { setPicking, setSpread } from "../state/deals";
 import { Btn } from "./kit";
-import { BLUEPRINTS, GOODS } from "../blueprints";
+import { BLUEPRINTS } from "../blueprints";
 import type { BuildingKind, Mission, Step, TerrainType } from "../generated";
-import type { Compass } from "../generated/Compass";
 import type { Neighbour } from "../generated/Neighbour";
 
 /** Folded to its pill: the card above it keeps clear of it while it is not. */
@@ -59,8 +59,7 @@ const keyOf = (m: Mission) => (typeof m.key === "object" ? `order ${m.key.Order}
 /**
  * The town's missions (docs/missions.md), in a pane of glass in the
  * corner: the opening pinned while it runs, then every open mission and
- * those just finished, and under them the orders from the towns beyond
- * the edge, by the mayor who wrote them. The server reads every step and
+ * those just finished. A mayor's letter is a deal in the deals stack. The server reads every step and
  * pays the reward; this only shows them, the step at hand with what to do
  * and, where one helps, the button that does it. A step done ticks
  * itself; a reward drips into the purse. Folded to a pill with a tap,
@@ -68,10 +67,8 @@ const keyOf = (m: Mission) => (typeof m.key === "object" ? `order ${m.key.Order}
  */
 export default function Missions() {
   const opening = () => missions().find((m) => m.key === "Opening" && m.finished === null);
-  const list = () => (opening() ? [opening()!] : missions());
-  const own = () => list().filter((m) => m.from === null);
-  /** The mayors with orders shown, in the order they write. */
-  const writers = () => neighbours().filter((n) => list().some((m) => m.from === n.mayor));
+  /** The town's own: a mayor's letter is a deal in the stack. */
+  const list = () => (opening() ? [opening()!] : missions().filter((m) => m.from === null));
   const open = () => list().filter((m) => m.finished === null).length;
   /** The mission whose step at hand is spelled out: the one tapped, or the first open. */
   const [chosen, setChosen] = createSignal<string | null>(null);
@@ -99,7 +96,7 @@ export default function Missions() {
             <Show when={opening()}>{(m) => <Reward m={m()} />}</Show>
             <button class="soft press px-1 text-lg leading-none cursor-pointer" onClick={() => fold(true)} title="Fold the missions away">×</button>
           </div>
-          <Index each={own()}>
+          <Index each={list()}>
             {(m) => (
               <div class="mt-1.5">
                 <Show when={!opening()}>
@@ -113,20 +110,6 @@ export default function Missions() {
               </div>
             )}
           </Index>
-          <For each={writers()}>
-            {(n) => (
-              <div class="mt-2.5" classList={{ hidden: brief() && focus()?.from !== n.mayor }}>
-                <Mayor n={n} />
-                <Index each={list().filter((m) => m.from === n.mayor)}>
-                  {(m) => (
-                    <div class="ml-1 cursor-pointer" onClick={() => setChosen(keyOf(m()))}>
-                      <Steps m={m()} open={m() === focus()} brief={brief()} reward />
-                    </div>
-                  )}
-                </Index>
-              </div>
-            )}
-          </For>
         </div>
       </Show>
     </Show>
@@ -134,9 +117,6 @@ export default function Missions() {
 }
 
 const done = (m: Mission) => m.steps.filter((s) => s.done).length;
-
-/** Which way a town lies, in words. */
-const WAY: Record<Compass, string> = { North: "north", East: "east", South: "south", West: "west" };
 
 /** A town's crest, drawn by the one function that draws a mayor. */
 export function Crest(props: { n: Neighbour; size: number }) {
@@ -148,24 +128,6 @@ export function Crest(props: { n: Neighbour; size: number }) {
     crest(c.getContext("2d")!, props.n, c.width / 2, c.height / 2, c.width / 2 - k);
   });
   return <canvas ref={c} class="shrink-0" style={{ width: `${props.size}px`, height: `${props.size}px` }} />;
-}
-
-/** A mayor who writes: their crest, who and where, and how they stand
- *  with the town, a pip a point. */
-function Mayor(props: { n: Neighbour }) {
-  return (
-    <div class="flex items-center gap-2">
-      <Crest n={props.n} size={26} />
-      <div class="min-w-0 flex-1 leading-tight">
-        <div class="serif text-[15px]">{props.n.name} of {props.n.town}</div>
-        <div class="soft text-[11px]">{props.n.town} · {WAY[props.n.toward]}, beyond the sea</div>
-      </div>
-      <span class="text-[11px] tracking-[1px]" style={{ color: props.n.colour }} title={`Standing ${props.n.standing}`}>
-        {"●".repeat(Math.floor(props.n.standing))}
-        <span class="opacity-25">{"●".repeat(5 - Math.floor(props.n.standing))}</span>
-      </span>
-    </div>
-  );
 }
 
 /** What finishing pays; landed, once it is finished. An order's coins
@@ -187,14 +149,14 @@ function Reward(props: { m: Mission }) {
 
 /** A mission's steps, each ticked as the server finds it done, and the
  *  step at hand spelled out with its button. */
-function Steps(props: { m: Mission; open: boolean; brief: boolean; reward?: boolean }) {
+function Steps(props: { m: Mission; open: boolean; brief: boolean }) {
   const at = () => props.m.steps.findIndex((s) => !s.done);
   const many = () => props.m.steps.length > 1;
   return (
     <ol class="mt-1">
       <Index each={props.m.steps}>
         {(s, i) => (
-          <li classList={{ "py-1": !props.brief || i === at(), hidden: (props.brief && (i !== at() || !props.open)) || (!many() && !props.open && s().done && !props.reward) }}>
+          <li classList={{ "py-1": !props.brief || i === at(), hidden: (props.brief && (i !== at() || !props.open)) || (!many() && !props.open && s().done) }}>
             <div class="flex items-center gap-2" classList={{ "opacity-45": i > at() && at() >= 0 }}>
               <span
                 class="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-colors duration-500"
@@ -205,10 +167,6 @@ function Steps(props: { m: Mission; open: boolean; brief: boolean; reward?: bool
                 </Show>
               </span>
               <span class="font-semibold" classList={{ "line-through decoration-1 opacity-60": s().done }}>{s().title}</span>
-              <Show when={props.reward}>
-                <span class="flex-1" />
-                <Reward m={props.m} />
-              </Show>
             </div>
             <Show when={props.open && i === at() && !props.brief}>
               <div class="appear soft ml-7 mt-1 flex flex-col items-start gap-2 text-[12.5px] leading-snug [&_p]:m-0">
@@ -224,13 +182,10 @@ function Steps(props: { m: Mission; open: boolean; brief: boolean; reward?: bool
 }
 
 /** What the step at hand offers to do: a tool to take, a lorry to ride
- *  with, the harbour's deck to open, a box to book for a letter. */
+ *  with, a new deal to make. */
 function Act(props: { step: Step; m: Mission }) {
-  const { send } = useGame();
   const g = () => props.step.goal;
   const depot = () => props.step.at;
-  /** The card the step's goal is on: the harbour's, for the deck. */
-  const open = () => depot() !== null && select(depot());
   const gift = () => sea.shipments.filter((s) => s.order === 0);
   const parked = () => gift().filter((s) => s.leg === "Parked");
   const next = () => gift().find((s) => s.eta !== null);
@@ -270,21 +225,7 @@ function Act(props: { step: Step; m: Mission }) {
     case "Booked":
     case "Pinned":
     case "Sold":
-      return <Btn big onClick={open} color={BLUEPRINTS.Harbour.color} disabled={depot() === null}>Open the deck</Btn>;
-    case "Delivered": {
-      const { good, units, sailed } = goal.data;
-      const box = GOODS[good].box;
-      const due = props.m.due;
-      return (
-        <>
-          <p>
-            Sails with the ferry to the edge: <b class="tabular-nums">{Math.floor(sailed / box)} of {Math.round(units / box)}</b> gone.
-            <Show when={due !== null}> Wanted by {clockAt(due!)}, <b class="tabular-nums">{until(due!)}</b> from now.</Show>
-          </p>
-          <Btn big onClick={() => (send({ type: "Book", data: { harbour: depot()!, good, partner: props.m.from, out: true } }), open())} color={BLUEPRINTS.Harbour.color} disabled={depot() === null || !sea.offers.some((o) => o.out && o.partner === props.m.from && o.good === good)}>Book a box of {GOODS[good].label}</Btn>
-        </>
-      );
-    }
+      return <Btn big onClick={() => (goal.kind === "Pinned" ? setSpread(true) : setPicking(goal.kind === "Sold"))} color={BLUEPRINTS.Harbour.color}>{goal.kind === "Pinned" ? "Open the deals" : "A new deal"}</Btn>;
   }
   }}</>;
 }

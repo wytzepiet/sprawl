@@ -138,10 +138,22 @@ notice, so no town starves overnight.
 
 ## The deck
 
-Everything the town trades over the sea is a slot on the ferry's deck,
-on the harbour's card and the ferry's (2026-10-19). It replaced the
-depot's rules, its standing-orders switch, its sell buttons and the
-order form, a wall of panels that each did a little of one job.
+Everything the town trades over the sea is a slot on the ferry's deck
+(2026-10-19). It replaced the depot's rules, its standing-orders switch,
+its sell buttons and the order form, a wall of panels that each did a
+little of one job.
+
+The player sees it as **deals**, a stack of cards in the corner like a
+phone's notifications (`ui/Deals.tsx`, on `ui/stack.tsx`): a card is
+every box of one good from or for one partner, its crest, the good with
+an arrow in or out, how many boxes, a ring of how far along they are and
+the time to their next move. Folded, the newest is on top and two more
+peek under it; a tap spreads them out, a tap on one opens it to its
+boxes, each followed by the camera with a tap, a box more, and its pin.
+A deal done shows its coins and slides away. A mayor's letter arrives
+as a deal of the boxes it wants, accepted with a tap. No harbour is
+ever named: the town trades through its harbour, and the game picks the
+way. No harbour's or ferry's card trades.
 
 - **A slot is a deal with a partner.** Coming in: a box of a good from
   someone, at their price a unit. Going out: a box for someone. The
@@ -153,9 +165,8 @@ order form, a wall of panels that each did a little of one job.
   slot the player booked, so where the money came from is never a
   mystery: that was the price economy's flaw, and the reason trade is
   manual at all.
-- **The picker** opens from an empty slot: a good, then who, cheapest
-  in or dearest out first, each with its price a box. A letter's mayor
-  shows how many boxes they still want.
+- **The picker** opens from the stack's +: in or out, a good, then who,
+  cheapest in or dearest out first, each with its price a box.
 - **Coming in** rides the next ferry and is paid for as it lands. It is
   for the town, not a depot: the nearest depot with room sends its
   lorry, so the player never chooses where a box goes.

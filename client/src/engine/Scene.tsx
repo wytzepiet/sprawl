@@ -21,6 +21,7 @@ import Shipments, { BoxPins } from "../ui/Shipments";
 import News from "../ui/News";
 import Missions from "../ui/Missions";
 import Minimap from "../ui/Minimap";
+import Deals from "../ui/Deals";
 
 function SceneInner() {
   return (
@@ -48,6 +49,7 @@ function SceneInner() {
       <BuildModeToolbar />
       <TimeControls />
       <Shipments />
+      <Deals />
       <News />
       <Missions />
       <Minimap />
