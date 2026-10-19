@@ -60,6 +60,8 @@ const ROUND = 0.05;
  *  little more than the rounding, so the rounding leaves the run across
  *  it straight. */
 const RUN = 0.1;
+/** How far short of that an island between lanes parting ends. */
+const TIP = 0.02;
 /** How far a yard reaches under its building's wall: past it, so its
  *  asphalt meets the wall, where the docks are. */
 const UNDER = INSET + 0.02;
@@ -501,7 +503,16 @@ export function shapeOf(surface: Surface): Polygon[] {
         }
       }
     }
-    for (const w of carried(surface).filter(([, , on]) => on)) arm(w, seamOf(p, w).len / 2 - 0.05, RUN);
+    for (const w of carried(surface).filter(([, , on]) => on)) {
+      arm(w, seamOf(p, w).len / 2 - 0.05, RUN);
+      // Down its middle from the seam to a point short of where the next
+      // tile's asphalt runs on over it: an island between lanes parting
+      // there ends in that point, not cut off blunt by the next tile's.
+      const { u: [ux, uy], len } = seamOf(p, w);
+      const [nx, ny, tip] = [-uy * halfOf(w[3]), ux * halfOf(w[3]), len / 2 - RUN - TIP];
+      const ring: Pt[] = [[p[0] + ux * tip, p[1] + uy * tip], [p[0] + (ux * len) / 2 + nx, p[1] + (uy * len) / 2 + ny], [p[0] + (ux * len) / 2 - nx, p[1] + (uy * len) / 2 - ny]];
+      parts.push([area(ring) < 0 ? ring.reverse() : ring]);
+    }
     for (const d of ways.filter(([, , , flow]) => flow === "d")) arm(d, -HALF_W, d[2] ? RUN : 0);
   } else {
     const geoArms: ArmInfo[] = ways.map((w) => {
