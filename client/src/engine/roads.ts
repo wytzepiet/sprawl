@@ -6,7 +6,7 @@ import { Atlas } from "./atlas";
 import { grain } from "./ground";
 import { bevelled, bevelPlugin, giveBevel } from "./bevel";
 import { coverage, kerbDistances, kerbsOf } from "./kerbLines";
-import { flatPolygons, PAVED_Z, RIM } from "./town/draw";
+import { flatPolygons, LAYER_ORDER, PAVED_Z, RIM } from "./town/draw";
 import { keyOf, paintOf, runsOn, shapeOf, wearOf, type Surface } from "./town/surface";
 import { ROAD_Z } from "./objects/roadGeometry";
 import type { Lift } from "./decks";
@@ -234,6 +234,7 @@ export class RoadTiles {
       // Worn to a sheen by traffic, and the stones in it glint (`townShine`).
       const material = townMaterial([bevelPlugin(), roadPlugin(engine, this.atlas, deck)], 0.7);
       mesh.material = material;
+      mesh.renderOrder = LAYER_ORDER.road;
       mesh.receiveShadows = true;
       const [matrices, slots, lifts] = [new Float32Array(64 * 16), new Float32Array(64), deck ? new Float32Array(64 * LIFT) : null];
       setThinInstances(mesh, matrices, 64);
