@@ -1,6 +1,8 @@
 /** @jsxImportSource ~ui */
-import { createRoot, createSignal, For, onCleanup } from "solid-js";
+import { createRoot, createSignal, For, onCleanup, Show } from "solid-js";
 import { follow, LOOSE } from "../../engine/spring";
+import { getEntity } from "../../state/gameObjects";
+import { select, setFollowing } from "../../state/selection";
 import { GOODS } from "../../blueprints";
 import type { Good } from "../../generated";
 import type { Neighbour } from "../../generated/Neighbour";
@@ -134,3 +136,70 @@ export function keys(t: number, at: [number, number][]) {
   const [[k0, v0], [k1, v1]] = [at[i - 1], at[i]];
   return v0 + ((v1 - v0) * (t - k0)) / (k1 - k0);
 }
+
+/** Coins, signed and whole: "−22", "+18". */
+export const coins = (v: number) => `${v < 0 ? "−" : v > 0 ? "+" : ""}${Math.abs(Math.round(v)).toLocaleString()}`;
+
+/** A line that points at something else on the map. */
+export interface Link {
+  id: number;
+  label: string;
+  kind: "resident" | "building" | "car" | "gone";
+}
+
+/** A part of a card under a line saying what it is, ruled off the part above. */
+export function Section(props: { title: string; children: JSX.Element }) {
+  return (
+    <box pad={{ x: 16, y: 10 }} gap={4}>
+      <box at={{ left: 16, top: 0, right: 16 }} h={1} fill="ink/0.08" />
+      <text size={12} weight={600} soft>{props.title}</text>
+      {props.children}
+    </box>
+  );
+}
+
+/** A label and its value, on one line. */
+export function Row(props: { label: string; children: JSX.Element }) {
+  return (
+    <box dir="row" align="center" justify="between" gap={8} minH={22}>
+      <text size={13.5} soft lines={1}>{props.label}</text>
+      <box dir="row" align="center" gap={6}>{props.children}</box>
+    </box>
+  );
+}
+
+/** A gauge: how full, in a colour, filling on a spring. */
+export function Bar(props: { value: number; color?: string; w?: number; h?: number }) {
+  const w = () => props.w ?? 80;
+  const h = () => props.h ?? 6;
+  const [v] = follow(() => Math.max(0, Math.min(1, props.value)), { rest: 0.001 });
+  return (
+    <box w={w()} h={h()} round={h() / 2} fill="ink/0.1">
+      <box at={{ left: 0, top: 0 }} w={w() * Math.max(0, v())} h={h()} round={h() / 2} fill={props.color ?? "#7B77E0"} />
+    </box>
+  );
+}
+
+/** A line you can go to: a tap opens its card. */
+export function To(props: { link: Link | null | undefined; fallback?: string }) {
+  return (
+    <Show when={props.link} fallback={<text size={13.5} soft>{props.fallback ?? "—"}</text>}>
+      {(l) => (
+        <text size={13.5} weight={600} lines={1} onTap={() => select(l().id)}>
+          {l().label}
+        </text>
+      )}
+    </Show>
+  );
+}
+
+/** The eye: the camera to it, and after it as it goes. */
+export function Follow(props: { id: number; fallback?: number }) {
+  return (
+    <Press dir="row" align="center" gap={4} h={24} pad={{ x: 8 }} round={12} stroke={[1.5, "ink/0.15"]} onTap={() => setFollowing(getEntity(props.id)?.position || !props.fallback ? props.id : props.fallback)}>
+      <Line d={EYE} size={12} width={2.4} ink="ink/0.6" />
+      <text size={11} weight={600} soft>follow</text>
+    </Press>
+  );
+}
+export const EYE = "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0";

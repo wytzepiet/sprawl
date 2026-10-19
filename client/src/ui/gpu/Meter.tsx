@@ -2,7 +2,7 @@
 import { createEffect, createSignal, For, on, Show } from "solid-js";
 import { useGame } from "../../state/gameObjects";
 import { follow } from "../../engine/spring";
-import { setBoardOpen } from "../Board";
+import { setBoardOpen } from "./Board";
 import { elapsed, keys, wide } from "./kit";
 
 /** The level's ring, in its own 56-unit box, and how finely its arc is

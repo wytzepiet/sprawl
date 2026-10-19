@@ -11,8 +11,6 @@ import DebugOverlay from "../ui/DebugOverlay";
 import PerfReport from "./PerfReport";
 import Pins from "./Pins";
 import LumpLayer from "../ui/LumpLayer";
-import Card from "../ui/Card";
-import Board from "../ui/Board";
 import Glass from "../ui/Glass";
 import Shipments, { BoxPins } from "../ui/Shipments";
 import Hud from "./Hud";
@@ -35,8 +33,6 @@ function SceneInner() {
         </DayNightLights>
         <LumpLayer />
         <BoxPins />
-        <Card />
-        <Board />
         <Hud />
       </Canvas>
       <Glass />

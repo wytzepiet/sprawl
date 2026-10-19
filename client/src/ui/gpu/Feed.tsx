@@ -10,8 +10,7 @@ import { eye } from "../../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../../engine/objects/terrainGeometry";
 import { hold, setTool } from "../buildMode";
 import { track } from "../Shipments";
-import { coins } from "../kit";
-import { Appear, Btn, Crest, FERRY, GoodDot, Line, Pop, Press, StepBar, view, wide } from "./kit";
+import { Appear, Btn, coins, Crest, EYE, FERRY, GoodDot, Line, Pop, Press, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
 import type { BuildingKind, Good, Mission, Offer, Step, TerrainType } from "../../generated";
 import type { Mayor } from "../../generated/Mayor";
@@ -103,7 +102,6 @@ function NewsCard(props: { news: News }) {
 const COINS = "M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 9.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12c0 1.7-3.6 3-8 3s-8-1.3-8-3zM4 15.5c0 1.7 3.6 3 8 3s8-1.3 8-3V18c0 1.7-3.6 3-8 3s-8-1.3-8-3z";
 const PIN = "M15 3l6 6-3 1-4 4 1 5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 5 1 4-4z";
 const GLOBE = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18";
-const EYE = "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0";
 const LETTER = "M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2zM3 7l9 6 9-6";
 const FLAG = "M5 3h2v18H5zM7 4h11l-2.5 4L18 12H7z";
 
