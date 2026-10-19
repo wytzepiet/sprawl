@@ -23,8 +23,10 @@ import type { Tile } from "../../generated/Tile";
  * take a low sun; a drill's rows, the crop coming up along them and
  * closing over them, green, then gold, its wheel tracks left open; the
  * stubble after the combine, its straw spread down the middle of each
- * pass. Painted in a shader over one quad a tile, from a fine noise (the
- * land's grain, `ground.ts`), so it has no edges of its own to show.
+ * pass. Each stage one clean colour, as the town's are: its texture is
+ * all light, a fine noise (the land's grain, `ground.ts`) and the ridges
+ * and rows tilting its facing. Painted in a shader over one quad a tile,
+ * so it has no edges of its own to show.
  *
  * A standing crop stands: the field is lifted by its height, so it throws
  * a shadow onto the grass beside it and onto the stubble behind the
@@ -298,9 +300,6 @@ let fieldV = dot(input.worldPos.xy, fieldAlong);
 let fieldW = input.worldPos.xy;
 let fieldN1 = fieldNoise(fieldW * 48.);
 let fieldN2 = fieldNoise(fieldW * 48. + vec2f(97., 41.));
-let fieldSpeck = fieldNoise(fieldW * 96. + vec2f(23., 151.));
-let fieldMottle = 0.6 * fieldNoise(fieldW * 2. + vec2f(61., 7.)) + 0.4 * fieldNoise(fieldW * 6. + vec2f(13., 89.));
-let fieldPatch = fieldNoise(fieldW * 7. + vec2f(173., 211.));
 let fieldStreak = fieldNoise(vec2f(fieldU * 72., fieldV * 5.));
 let fieldStreak2 = fieldNoise(vec2f(fieldU * 72. + 1.5, fieldV * 5.));
 // How many drill rows to a pixel: past about one, they are drawn as the
@@ -316,53 +315,43 @@ let fieldStage = u32(fieldLook.x + 0.5);
 if (fieldStage == 0u || fieldD < 0.03 + 0.07 * fieldEdge) { discard; }`;
 
 /**
- * The paint, by stage, from the noise read above: a colour, and a slope
+ * The paint, by stage, from the noise read above: one colour, and a slope
  * across the passes, and a jumble, that tilt the facing so the ridges and
  * clods and the crop's ears take the light.
  */
 const DIFFUSE = `let fieldPass = fract(fieldU);
 // The wheel tracks of each pass, a pair either side of its middle.
 let fieldTrack = 1. - smoothstep(0.012, 0.03, min(abs(fieldPass - 0.41), abs(fieldPass - 0.59)));
-let fieldMottled = 0.88 + 0.22 * fieldMottle;
+// Clods, ears, stalks: a jumble of facings, the fine grain's.
+let fieldBumps = (vec2f(fieldN1, fieldN2) - 0.5) * 2.;
 var fieldColour = material.fieldEarth.rgb;
 var fieldSlope = 0.;
 var fieldJumble = 0.;
 if (fieldStage == 1u) {
-  // Ploughed: four furrow slices a pass, each a ridge turned up, its
-  // back dark and moist, and clods all over it.
-  let ph = fract(fieldU * 4.);
-  let h = fieldHump(fieldU * 4.);
-  fieldSlope = 0.4 * sin(6.2831853 * ph);
-  fieldJumble = 0.45;
-  let wet = smoothstep(0.35, 0.75, fieldMottle);
-  fieldColour = material.fieldEarth.rgb * vec3f(0.6, 0.53, 0.48) * (0.8 + 0.22 * h) * (0.78 + 0.4 * fieldN1 * fieldSpeck) * (1.05 - 0.2 * wet);
+  // Ploughed: turned earth, four furrow slices a pass, each a ridge the
+  // sun lights on one side and shades on the other, clods all over.
+  fieldColour = material.fieldEarth.rgb * vec3f(0.68, 0.6, 0.54);
+  fieldSlope = 0.7 * sin(6.2831853 * fieldU * 4.);
+  fieldJumble = 0.4;
 } else if (fieldStage == 2u) {
-  // Sown: harrowed earth, smoother and drier, its drill rows a dozen to
-  // a pass; the crop up along them, patchily, closing over them, then
-  // ripening, earlier in patches, gold streaked along the rows; the wheel
-  // tracks left bare.
+  // Sown: harrowed earth, its drill rows a dozen to a pass; the crop up
+  // along them and closing over them, green, then gold; the wheel tracks
+  // left bare.
   let k = fieldLook.y;
-  let soil = material.fieldEarth.rgb * vec3f(0.84, 0.78, 0.72) * (0.84 + 0.2 * fieldN1) * (1. - 0.12 * (1. - fieldFine) * (1. - smoothstep(0., 0.35, abs(fract(fieldU * 12.) - 0.5) * 2.))) * fieldMottled;
-  let width = smoothstep(0.04, 0.5, k + (fieldPatch - 0.5) * 0.12) * 1.2;
+  let width = smoothstep(0.04, 0.5, k) * 1.2;
   let row = abs(fract(fieldU * 12.) - 0.5) * 2.;
   let cover = mix(1. - smoothstep(width - 0.25, width, row), clamp(width - 0.1, 0., 1.), fieldFine) * (1. - fieldTrack * smoothstep(0.2, 0.4, k));
-  let ripe = smoothstep(0.6, 1., k + (fieldPatch - 0.5) * 0.25);
-  let green = material.fieldGrowing.rgb * vec3f(0.5, 0.64, 0.46);
-  let crop = mix(green, material.fieldRipe.rgb * vec3f(0.9, 0.84, 0.66), ripe) * (0.88 + 0.22 * fieldStreak) * (0.84 + 0.3 * fieldMottle);
-  fieldColour = mix(soil, crop, cover);
-  fieldSlope = 0.35 * (fieldStreak2 - fieldStreak) * cover * 6. + (1. - cover) * (1. - fieldFine) * 0.1 * sin(6.2831853 * fieldU * 12.);
-  fieldJumble = 0.12 + 0.2 * cover * ripe;
+  let crop = mix(material.fieldGrowing.rgb * vec3f(0.62, 0.78, 0.55), material.fieldRipe.rgb * vec3f(0.95, 0.88, 0.7), smoothstep(0.6, 1., k));
+  fieldColour = mix(material.fieldEarth.rgb * vec3f(0.86, 0.8, 0.75), crop, cover);
+  fieldSlope = (1. - fieldFine) * 0.25 * sin(6.2831853 * fieldU * 12.) + cover * 0.6 * (fieldStreak2 - fieldStreak) * 6.;
+  fieldJumble = 0.15 + 0.15 * cover;
 } else if (fieldStage == 3u) {
-  // Stubble: pale straw cut short in its rows, earth between; the straw
-  // the combine let fall spread in a band down the middle of each pass;
-  // its wheel tracks pressed darker.
-  let straw = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.45) * vec3f(0.95, 0.9, 0.8);
-  let stalks = mix(material.fieldEarth.rgb * vec3f(0.7, 0.62, 0.55), straw, smoothstep(0.2, 0.45, fieldSpeck));
+  // Stubble: straw cut short; the straw the combine let fall lies in a
+  // raised band down the middle of each pass.
+  fieldColour = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.35);
   let swath = 1. - smoothstep(0.1, 0.2, abs(fieldPass - 0.5) + (fieldStreak - 0.5) * 0.12);
-  let rows = 1. - 0.1 * (1. - fieldFine) * (1. - smoothstep(0., 0.4, abs(fract(fieldU * 12.) - 0.5) * 2.));
-  fieldColour = stalks * rows * mix(1., 1.12 * (0.8 + 0.4 * fieldStreak), swath) * (1. - 0.18 * fieldTrack) * fieldMottled;
-  fieldSlope = 0.25 * (fieldStreak2 - fieldStreak) * 6. * swath;
-  fieldJumble = 0.25;
+  fieldSlope = (1. - fieldFine) * 0.2 * sin(6.2831853 * fieldU * 12.) + swath * 0.5 * (fieldStreak2 - fieldStreak) * 6.;
+  fieldJumble = 0.3;
 }
 baseColor = fieldColour;
-N = normalize(N - vec3f(fieldAcross * fieldSlope, 0.) + vec3f((vec2f(fieldN1, fieldN2) - 0.5) * 2. * fieldJumble, 0.));`;
+N = normalize(N - vec3f(fieldAcross * fieldSlope, 0.) + vec3f(fieldBumps * fieldJumble, 0.));`;
