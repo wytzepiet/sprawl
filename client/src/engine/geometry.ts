@@ -1,4 +1,5 @@
 import { addToScene, createMeshFromData, disposeMeshGpu, releaseTexture, removeFromScene, type EngineContext, type Mesh, type SceneContext, type Texture2D } from "@babylonjs/lite";
+import { lightUp } from "./lights";
 
 /** A shape as the town's code builds it, before it is a mesh. */
 export interface MeshGeometry {
@@ -57,6 +58,7 @@ export function meshOf(engine: EngineContext, name: string, geo: { positions: Nu
 
 /** A mesh shown. */
 export function show(scene: SceneContext, mesh: Mesh) {
+  lightUp(mesh);
   addToScene(scene, mesh);
 }
 

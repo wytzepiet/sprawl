@@ -7,6 +7,7 @@ import { setTint, townMaterial, type TownMaterial } from "./material";
 import { PROP_FLOATS } from "./town/layer";
 import { PROP_KINDS } from "./town/roof";
 import { shownTimeOfDay } from "./DayNightCycle";
+import { lamps, night } from "./lights";
 
 /**
  * What stands on the town's roofs, drawn as props of their own, each part
@@ -22,6 +23,10 @@ import { shownTimeOfDay } from "./DayNightCycle";
  * and from a start of its own, by where it stands, through the working
  * day and still at night. The turning is the shader's, so a unit stands
  * still for the shadows.
+ *
+ * And the street lamps the dressing puts up (`town/dressing.ts`): a pole,
+ * an arm out over the kerb, and a head that glows at night and is one of
+ * the night's lights (`lights.ts`).
  */
 
 /** A shape a unit across, standing a unit high from z = 0. */
@@ -44,6 +49,22 @@ const BLADES = 5;
 const GRILLE = 0.09;
 const METAL = 0.28;
 const [TURNS, TURNS_SPREAD] = [1.6, 0.8];
+/** A street lamp: how tall, its pole's breadth, its arm's, and its head,
+ *  long along the arm, broad and deep. */
+const LAMP = { high: 0.28, pole: 0.022, arm: 0.012, head: [0.075, 0.036, 0.018] };
+/** The head's glow at night, linear, before the eye's exposure: the
+ *  lights' own warm colour, bright enough to burn near white. */
+const GLOW = [1.6, 1.0, 0.5];
+
+/** A lamp's head: lit as anything is, and glowing as the night comes on. */
+const HEAD: MaterialPlugin = {
+  name: "LampHead",
+  priority: 220,
+  getUniforms: () => ({ ubo: [{ name: "lampGlow", type: "f32" }] }),
+  writeUbo: (data, offsets) => void (data[offsets.get("lampGlow")! / 4] = night.on),
+  getCustomCode: (stage) =>
+    stage === "fragment" ? { CUSTOM_FRAGMENT_BEFORE_FINALCOLORCOMPOSITION: `color += vec3f(${GLOW.map((v) => v.toFixed(3)).join(", ")}) * material.lampGlow;` } : null,
+};
 
 /** The fans' turn so far, in turns at the middle speed: run up by the
  *  hour, so a fan slows and stops rather than jumping when it is switched
@@ -155,6 +176,8 @@ interface Kit {
   cap: TownMaterial;
   dish: TownMaterial;
   dome: TownMaterial;
+  pole: TownMaterial;
+  head: TownMaterial;
 }
 const KITS = new WeakMap<object, Kit>();
 
@@ -162,7 +185,8 @@ const KITS = new WeakMap<object, Kit>();
 function kitOf(ctx: EngineContext): Kit {
   let kit = KITS.get(ctx.engine);
   if (kit) return kit;
-  const grey = (m: TownMaterial, v: number) => (setTint(m, { r: v, g: v, b: v }), m);
+  const shade = (m: TownMaterial, c: { r: number; g: number; b: number }) => (setTint(m, c), m);
+  const grey = (m: TownMaterial, v: number) => shade(m, { r: v, g: v, b: v });
   /** Galvanised steel: metal, the sky in it and a hard glint. */
   const steel = (m: TownMaterial) => ((m.metallicFactor = 1), markMaterialUboDirty(m), m);
   kit = {
@@ -177,15 +201,20 @@ function kitOf(ctx: EngineContext): Kit {
     cap: steel(townMaterial([VENT_CAP], GALVANISED)),
     dish: townMaterial([DISH], PAINTED),
     dome: townMaterial([DOME], 0.6),
+    // A lamp's pole painted a dark green-grey, its head pale.
+    pole: shade(townMaterial([], PAINTED), { r: 0.22, g: 0.25, b: 0.24 }),
+    head: grey(townMaterial([HEAD], PAINTED), 0.9),
   };
   KITS.set(ctx.engine, kit);
-  const fan = kit.fan;
+  const { fan, head } = kit;
   let last = performance.now();
+  let glow = -1;
   ctx.beforeRender(() => {
     const now = performance.now();
     fans.turn = (fans.turn + ((now - last) / 1000) * TURNS * running(shownTimeOfDay())) % 3600;
     last = now;
     markMaterialUboDirty(fan);
+    if (night.on !== glow) markMaterialUboDirty(head), (glow = night.on);
   });
   return kit;
 }
@@ -207,7 +236,12 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
     dish: part(CARD, kit.dish, false),
     frame: part(box(SQUARE), kit.body.frame, true),
     dome: part(CARD, kit.dome, false),
+    pole: part(box(ROUND), kit.pole, true),
+    arm: part(box(SQUARE), kit.pole, true),
+    head: part(box(SQUARE), kit.head, true),
   };
+  /** Each lamp's light: its head's place on the map, and a rank. */
+  const heads: number[] = [];
   /** A matrix: its x axis (ax, ay), its y axis (bx, by), its height, at a spot. */
   const put = (out: number[], x: number, y: number, z: number, ax: number, ay: number, bx: number, by: number, sz: number) => out.push(ax, ay, 0, 0, bx, by, 0, 0, 0, 0, sz, 0, x, y, z, 1);
   const upright = (out: number[], x: number, y: number, z: number, s: number, sz: number) => put(out, x, y, z, s, 0, 0, s, sz);
@@ -243,6 +277,20 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
         upright(parts.frame.m, x, y, z, size, high * 0.5);
         upright(parts.dome.m, x, y, z + high * 0.5, size * 0.86, 1);
         break;
+      case "lamp": {
+        // Up from (x, y), and out along the arm to its head at (tx, ty).
+        const [dx, dy] = [tx - x, ty - y];
+        const l = Math.hypot(dx, dy) || 1;
+        const [ux, uy] = [dx / l, dy / l];
+        const top = z + LAMP.high;
+        upright(parts.pole.m, x, y, z, LAMP.pole, LAMP.high);
+        put(parts.arm.m, (x + tx) / 2, (y + ty) / 2, top - LAMP.arm, ux * l, uy * l, -uy * LAMP.arm, ux * LAMP.arm, LAMP.arm);
+        const [hl, hw, hd] = LAMP.head;
+        put(parts.head.m, tx, ty, top - hd, ux * hl, uy * hl, -uy * hw, ux * hw, hd);
+        const [wx, wy] = [ox + tx, oy + ty];
+        heads.push(wx, wy, top - hd - 0.01, rank(wx, wy));
+        break;
+      }
     }
   }
   const meshes: Mesh[] = [];
@@ -259,11 +307,20 @@ export function placeProps(ctx: EngineContext, name: string, props: Float32Array
     if (cast) casters?.add(mesh);
     meshes.push(mesh);
   }
+  if (heads.length) lamps.set(meshes, new Float32Array(heads));
   return meshes;
+}
+
+/** A lamp's rank among the lights, the same every time for where it stands. */
+function rank(x: number, y: number) {
+  let s = (Math.round(x * 100) * 374761393 + Math.round(y * 100) * 668265263) | 0;
+  s = Math.imul(s ^ (s >>> 13), 1274126177);
+  return ((s ^ (s >>> 16)) >>> 0) / 4294967296;
 }
 
 /** A chunk's props gone. */
 export function clearProps(ctx: EngineContext, meshes: Mesh[], casters: Casters | undefined) {
+  lamps.delete(meshes);
   for (const mesh of meshes) {
     casters?.remove(mesh);
     ctx.cull.forget(mesh);

@@ -69,8 +69,8 @@ export function drawRoads(town: Town, theme: Theme): Piece[] {
  * Geometry alone, in the same frame, and the lines painted on the yards'
  * asphalt: the docks', and the game's own `marks`, a harbour's trailer
  * park's slots. The trees the dressing plants are the caller's to plant
- * (`treeInstances`), and what stands on its roofs the props'
- * (`props.ts`), as is what stands on it that moves, the
+ * (`treeInstances`), and what stands on its roofs and its street lamps the
+ * props' (`props.ts`), as is what stands on it that moves, the
  * cars, lorries and ferries the dressing would put there: the game draws
  * its own, the sandbox the dressing's.
  */
@@ -100,7 +100,9 @@ export function drawTown(town: Town, theme: Theme, paint: Paint, known = facts(t
   add("canopyPosts", posts, POST);
   // Each wound as the sheets' outlines are.
   add("lines", flatPolygons([...dressing.yardLines, ...marks].map((q) => [area(q) < 0 ? [...q].reverse() : q]), LINE_Z), LINE);
-  return { pieces, dressing, props: mass.props };
+  // A street lamp stands on the pavement, a prop like what stands on a roof.
+  const lamps = dressing.lamps.map((l): Prop => ({ kind: "lamp", x: -l.x, y: -l.y, z: KERB_Z, size: 0, high: 0, tx: -l.hx, ty: -l.hy }));
+  return { pieces, dressing, props: [...mass.props, ...lamps] };
 }
 
 /**

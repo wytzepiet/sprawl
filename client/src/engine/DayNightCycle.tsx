@@ -22,6 +22,7 @@ import { AGX_PUNCHY } from "./toneMap";
 import { groundCover } from "./view";
 import { skyEnvironment, type SkyLight } from "./sky";
 import { linear, lerp, mul, rgb, scale, tuple, type Rgb } from "./rgb";
+import { nightLights } from "./lights";
 
 // ---------------------------------------------------------------------------
 // Time config
@@ -387,7 +388,8 @@ export function DayNightProvider(props: ParentProps) {
 // ---------------------------------------------------------------------------
 
 export default function DayNightLights(props: ParentProps) {
-  const { engine, scene, canvas, beforeRender, prepare } = useEngine();
+  const ctx = useEngine();
+  const { engine, scene, canvas, beforeRender, prepare } = ctx;
   const { _setTimeOfDay: setTimeOfDay, _setAmbient: setAmbient, _setCasters: setCasters } = useDayNight();
 
   // --- Lights ---
@@ -503,6 +505,13 @@ export default function DayNightLights(props: ParentProps) {
   });
 
   onCleanup(stop);
+
+  // The street lamps and the headlights, on from a little before the sun
+  // sets until a little after it rises (`lights.ts`).
+  onCleanup(nightLights(ctx, () => {
+    const t = shownTimeOfDay();
+    return Math.min(1, Math.max(0, (SUNRISE + 0.03 - t) / 0.04, (t - (SUNSET - 0.04)) / 0.04));
+  }));
 
   return <>{props.children}</>;
 }
