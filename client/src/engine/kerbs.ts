@@ -1,17 +1,16 @@
 import { createTexture2DFromPixels, type EngineContext, type MaterialPlugin, type Texture2D } from "@babylonjs/lite";
 import { retire } from "./geometry";
-import { RIM } from "./town/draw";
 import type { KerbTexels } from "./kerbLines";
 
 /**
- * Kerbs rounded from a texture rather than a rim of triangles. A flat sheet
+ * Kerbs edged from a texture rather than a rim of triangles. A flat sheet
  * (paving, a road) gets a texture over its own extent holding, at every
  * texel, how far it lies inside the sheet's kerbs: positive within,
  * negative beyond. Distance to a straight edge changes evenly and the
  * texture is read between texels evenly, so a kerb comes out exact even
- * where texels are coarser than the round. Drawing the sheet, a pixel
- * within reach of a kerb turns its facing outward as a rim's would: halfway
- * out at the edge, up again at the round's inner side. However the sheet is
+ * where texels are coarser than its edge. Drawing the sheet, a pixel
+ * within a chamfer's width of a kerb (`CHAMFER`) faces halfway out, as a
+ * face cut off at forty-five degrees would. However the sheet is
  * cut into triangles, and however many kerbs come near one.
  *
  * Of a sheet whose every edge is a kerb, as the paving's, the texture can
@@ -38,10 +37,11 @@ export interface KerbField {
 
 /** Where roads are cut into a sheet (`kerbTexels`' roads): the sheet
  *  reaches this far over a road's edge, in tiles, over the crumbled fringe
- *  of its asphalt (`roads.ts`), and its kerb stone rounds down to the road
- *  over this far. */
-const CUT = 0.04;
-const STONE = 0.035;
+ *  of its asphalt (`roads.ts`). */
+export const CUT = 0.04;
+/** How much of a kerb's edges is cut off, across and down, at both its
+ *  edges: a flat face at forty-five degrees, as a parapet's (`decks.ts`). */
+export const CHAMFER = 0.015;
 /** A sheet's kerb stones, along every edge of it, onto the roads cut into
  *  it and onto what lies round it: a row this wide, this much lighter than
  *  the sheet, set off from it by a joint the stone and the sheet each round
@@ -53,7 +53,7 @@ const JOINT = 0.008;
 const JOINT_DEPTH = 0.6;
 const n = (x: number) => x.toFixed(4);
 
-/** Kerbs rounded from a sheet's kerb texture, on its material. Its
+/** Kerbs edged from a sheet's kerb texture, on its material. Its
  *  texture is let go with `unkerb`. The sheet's own frame is carried to every pixel: a sheet is
  *  moved, never turned, so its ways are the world's. */
 export function kerbPlugin(field: KerbField): MaterialPlugin {
@@ -68,7 +68,6 @@ export function kerbPlugin(field: KerbField): MaterialPlugin {
         { name: "kerbOrigin", type: "vec2<f32>" },
         { name: "kerbSize", type: "vec2<f32>" },
         { name: "kerbTexel", type: "vec2<f32>" },
-        { name: "kerbWidth", type: "f32" },
       ],
     }),
     writeUbo: (data, offsets) => {
@@ -76,7 +75,6 @@ export function kerbPlugin(field: KerbField): MaterialPlugin {
       data.set(field.origin, at("kerbOrigin"));
       data.set(field.size, at("kerbSize"));
       data.set([1 / field.texels[0], 1 / field.texels[1]], at("kerbTexel"));
-      data[at("kerbWidth")] = RIM;
     },
     getCustomCode: (stage) =>
       stage === "vertex"
@@ -94,14 +92,12 @@ let kerbBand = 1. - step(${n(BAND)}, kerbEdge);
 baseColor *= mix(1., ${n(BAND_LIGHT)}, kerbBand);
 let kerbDx = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.).r;
 let kerbDy = textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.).r - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.).r;
-if (kerbD >= 0. && kerbD < material.kerbWidth && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {
-  let kerbOut = normalize(vec3f(-kerbDx, -kerbDy, 0.));
-  N = normalize(mix(N, normalize(N + kerbOut), 1. - kerbD / material.kerbWidth));
+if (kerbD >= 0. && kerbD < ${n(CHAMFER)} && kerbDx * kerbDx + kerbDy * kerbDy > 0.) {
+  N = normalize(N + normalize(vec3f(-kerbDx, -kerbDy, 0.)));
 }
-let kerbStone = (${n(CUT)} - kerbAt.a) / ${n(STONE)};
 let kerbToRoad = vec2f(textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTx, 0.).a - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTx, 0.).a, textureSampleLevel(kerbField, kerbFieldSampler, kerbUv + kerbTy, 0.).a - textureSampleLevel(kerbField, kerbFieldSampler, kerbUv - kerbTy, 0.).a);
-if (kerbStone < 1. && dot(kerbToRoad, kerbToRoad) > 0.) {
-  N = normalize(mix(N, normalize(N + vec3f(normalize(kerbToRoad), 0.)), 1. - kerbStone));
+if (${n(CUT)} - kerbAt.a < ${n(CHAMFER)} && dot(kerbToRoad, kerbToRoad) > 0.) {
+  N = normalize(N + vec3f(normalize(kerbToRoad), 0.));
 }
 // The joint behind the kerb stones: in from whichever edge is nearer, the
 // stone on its one side and the sheet on the other rounding down into it.

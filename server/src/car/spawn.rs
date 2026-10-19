@@ -59,23 +59,8 @@ pub fn depart(
         0 | 1 => (ways.street[0], ways.street[1]),
         _ => (out[0], out[1]),
     };
-    if let Some(seg) = world.edges.get(&first_edge)
-        && let Some(&last_id) = seg.cars.back()
-        && let Some(entry) = world.objects.get(last_id)
-        && let GameObject::Car(ref blocker) = entry.object
-        && let Some(ref blocker_trip) = blocker.trip
-        && let Some(edge_start) = blocker_edge_start(blocker_trip, first_edge)
-    {
-        let dt = (now - blocker_trip.updated_at) as f64 / 1000.0;
-        let (bp, _) = physics::catch_up(
-            blocker_trip.progress,
-            blocker_trip.speed,
-            blocker_trip.acceleration,
-            dt,
-        );
-        if bp - edge_start < MIN_GAP + nose(role) + tail(blocker.role) {
-            return false;
-        }
+    if !room_at_start(world, first_edge, 0, role, now) {
+        return false;
     }
 
     // Nothing else can refuse the trip now, so the place at the far end is
@@ -115,6 +100,9 @@ fn launch(
         + segment_lengths[segment_lengths.len() - to_lot..].iter().sum::<f64>();
     let street_len = total_len - lot_len;
     let route_positions = world.route_positions(&route);
+    let route_heights = route.iter().map(|&n| world.height_of(n)).collect();
+    let lanes = world.lanes_for(&route);
+    let first_lane = lanes.get(1).copied().unwrap_or(0) as usize;
     let route_nodes = route.clone();
 
     if let Some(start_pos) = world.objects.get(route_nodes[0]).and_then(|e| e.position) {
@@ -129,6 +117,8 @@ fn launch(
             eta: now + promised,
             route,
             route_positions,
+            route_heights,
+            lanes,
             from_lot,
             to_lot,
             cusps: cusps(&backing, &segment_lengths),
@@ -146,6 +136,8 @@ fn launch(
             seg_start_dist: 0.0,
             segment_lengths,
             stretches,
+            shift: None,
+            signal: None,
         });
     }
 
@@ -165,9 +157,65 @@ fn launch(
     world.car_segment.insert(car_id, (route_nodes[0], route_nodes[1], now));
     world.register_car_route(car_id, &route_nodes);
     if let Some(seg) = world.edges.get_mut(&first_edge) {
-        seg.cars.push_back(car_id);
+        seg.push_back(car_id, first_lane);
     }
     events.wake(0, car_id);
+}
+
+/// Is the start of this edge clear of the last car to set off along it, by
+/// a car's length and a gap?
+fn room_at_start(world: &World, first_edge: (EntityId, EntityId), lane: usize, role: crate::protocol::CarRole, now: GameTime) -> bool {
+    if let Some(seg) = world.edges.get(&first_edge)
+        && let Some(last_id) = seg.back(lane)
+        && let Some(entry) = world.objects.get(last_id)
+        && let GameObject::Car(ref blocker) = entry.object
+        && let Some(ref blocker_trip) = blocker.trip
+        && let Some(edge_start) = blocker_edge_start(blocker_trip, first_edge)
+    {
+        let dt = (now - blocker_trip.updated_at) as f64 / 1000.0;
+        let (bp, _) = physics::catch_up(
+            blocker_trip.progress,
+            blocker_trip.speed,
+            blocker_trip.acceleration,
+            dt,
+        );
+        if bp - edge_start < MIN_GAP + nose(role) + tail(blocker.role) {
+            return false;
+        }
+    }
+    true
+}
+
+/// A car with nowhere to park, set off along a route of road nodes from
+/// its first to its last: it is gone when it gets there. A level's traffic,
+/// in at one gate and out at another. False when the start of the road is
+/// taken.
+pub fn drive_through(world: &mut World, events: &mut EventQueue, car_id: EntityId, route: Vec<EntityId>, now: GameTime) -> bool {
+    let (owner, role) = match world.objects.get(car_id).map(|e| &e.object) {
+        Some(GameObject::Car(c)) if c.trip.is_none() && route.len() >= 2 => (c.owner, c.role),
+        _ => return false,
+    };
+    let lane = world.lanes_for(&route).get(1).copied().unwrap_or(0) as usize;
+    if !room_at_start(world, (route[0], route[1]), lane, role, now) {
+        return false;
+    }
+    // It comes from off the map, so it comes at speed: the road's, or the
+    // car ahead's if that is slower.
+    let ahead = world.edges.get(&(route[0], route[1])).and_then(|seg| seg.back(lane));
+    let speed = ahead
+        .and_then(|id| match world.objects.get(id).map(|e| &e.object) {
+            Some(GameObject::Car(c)) => c.trip.as_ref().map(|t| physics::catch_up(t.progress, t.speed, t.acceleration, (now - t.updated_at) as f64 / 1000.0).1),
+            _ => None,
+        })
+        .map_or(CRUISE_SPEED, |v| v.min(CRUISE_SPEED));
+    let end = route[route.len() - 1];
+    launch(world, events, car_id, owner, end, route, 0, 0, Vec::new(), [Vec::new(), Vec::new()], None, now);
+    if let Some(GameObject::Car(c)) = world.objects.get_mut(car_id).map(|e| &mut e.object)
+        && let Some(trip) = c.trip.as_mut()
+    {
+        trip.speed = speed;
+    }
+    true
 }
 
 /// The stretches of a route of `len` nodes driven backwards: its first

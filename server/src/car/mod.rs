@@ -12,6 +12,12 @@ pub const REVERSE_SPEED: f64 = 0.2;
 /// it pulls the other way, as a driver does.
 pub const CUSP_MS: u64 = 500;
 pub const MIN_GAP: f64 = 0.5;
+/// How far behind the car ahead a driver likes to keep, in time, besides
+/// `MIN_GAP`: further the faster they go, so a slowing at the front
+/// reaches each one behind a little harder, and a jam spreads back. Not a
+/// wall: caught inside it, a driver brakes only as hard as keeping clear
+/// of `MIN_GAP` asks.
+pub const FOLLOW_S: f64 = 0.25;
 pub const MIN_TURN_SPEED: f64 = 0.5;
 pub const ACCELERATION: f64 = 0.45;
 pub const DECELERATION: f64 = 0.4;
@@ -42,11 +48,42 @@ pub fn tail(role: crate::protocol::CarRole) -> f64 {
     }
 }
 
+/// What a car slows or stops for (`World::why`): read by a replay, to
+/// say what a car was doing, never by the game.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Cause {
+    /// The car ahead in its lane.
+    Ahead(crate::protocol::EntityId),
+    /// A car coming into its lane at the junction ahead from another arm.
+    Merging(crate::protocol::EntityId),
+    /// A car in the other lane it lets in ahead of it.
+    LettingIn(crate::protocol::EntityId),
+    /// The lane its way out asks for, not yet got into: the car in the way
+    /// there, if it has tried.
+    GettingIn(Option<crate::protocol::EntityId>),
+    /// A junction or crossing it has no passage at yet.
+    Junction(crate::protocol::EntityId),
+    /// A car turning into or out of a lot across its way.
+    Turn(crate::protocol::EntityId),
+    /// Its give-way line out of a lot, with no gap yet.
+    Line,
+    /// About to turn into a lot across the oncoming lane.
+    TurningIn,
+    /// A bend.
+    Bend,
+    /// A lot, or backing.
+    Slow,
+    /// A stop it plans: where the gear changes, or its way's end.
+    Stop,
+}
+
+#[derive(Clone, Copy)]
 pub enum Obstacle {
     SpeedLimit {
         distance: f64,
         speed: f64,
     },
+    /// `distance` to where it would be `MIN_GAP` behind the car ahead.
     LeadCar {
         distance: f64,
         speed: f64,

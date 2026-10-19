@@ -5,13 +5,17 @@ import {
   onCleanup,
   type ParentProps,
 } from "solid-js";
-import { createConnection } from "../network/connection";
+import type { Connection } from "../network/connection";
 import { spread } from "../engine/budget";
 import { syncClock, syncFromClock } from "../network/clock";
 import { hearSea, tell } from "./sea";
 import { hearMissions } from "./missions";
+import type { Place } from "../engine/pen";
+import type { Side } from "../engine/tiles";
 import type { Building,
   GameObjectEntry,
+  GridCoord,
+  Hint,
   ClientMessage,
   ChunkBounds,
   Growth,
@@ -19,6 +23,7 @@ import type { Building,
   Operation,
   Lump,
   TerrainChunk,
+  ServerMessage,
 } from "../generated";
 
 function posKey(x: number, y: number): string {
@@ -99,7 +104,7 @@ export function reached(entry: GameObjectEntry): boolean {
   if (!door || !b.tiles.some((t) => t.x === door.tile.x && t.y === door.tile.y)) return false;
   return (spatial.get(posKey(door.street.x, door.street.y)) ?? []).some((id) => {
     const o = entities.get(String(id))?.object;
-    return o?.kind === "RoadNode" && o.data.joined && !o.data.road;
+    return o?.kind === "RoadNode" && o.data.joined && !o.data.road.length;
   });
 }
 
@@ -122,6 +127,22 @@ export function getObjectsAt(x: number, y: number): GameObjectEntry[] {
   return (spatial.get(posKey(x, y)) ?? [])
     .map((id) => entities.get(String(id)))
     .filter((e): e is GameObjectEntry => !!e);
+}
+
+/** Where each road on a tile stands: its height and side. */
+export function roadsAt(t: GridCoord): Place[] {
+  return getObjectsAt(t.x, t.y).flatMap((e) => (e.object.kind === "RoadNode" ? [{ h: e.object.data.height, s: e.object.data.side as Side }] : []));
+}
+
+// --- The game's answers to the hand (`Ask`) ---
+
+type HintListener = (h: Hint) => void;
+const hintListeners = new Set<HintListener>();
+/** Told each answer to the hand's asks while listening; stop with what
+ *  this returns. */
+export function listenHints(fn: HintListener): () => void {
+  hintListeners.add(fn);
+  return () => void hintListeners.delete(fn);
 }
 
 // --- Ops listener for ECS ---
@@ -249,7 +270,11 @@ interface GameContext {
 
 const Ctx = createContext<GameContext>();
 
-export function GameProvider(props: ParentProps & { wsUrl: string }) {
+/** Opens the line to the game: a socket to the server, or a worker running
+ *  a level in the browser. Told where to send what the game says. */
+export type Connect = (onMessage: (msg: ServerMessage) => void) => Connection;
+
+export function GameProvider(props: ParentProps & { connect: Connect }) {
   const [terrainSeed, setTerrainSeed] = createSignal(0);
   const [growth, setGrowth] = createSignal<Growth>({
     level: 0,
@@ -269,8 +294,7 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
     max_cy: -1,
   });
 
-  const wsUrl = props.wsUrl;
-  const { send, close } = createConnection(wsUrl, (msg) => {
+  const { send, close } = props.connect((msg) => {
     switch (msg.type) {
       case "Update":
         syncFromClock(msg.data.clock);
@@ -300,6 +324,9 @@ export function GameProvider(props: ParentProps & { wsUrl: string }) {
         break;
       case "Pong":
         syncClock(msg.data);
+        break;
+      case "Hint":
+        for (const f of hintListeners) f(msg.data);
         break;
     }
   });

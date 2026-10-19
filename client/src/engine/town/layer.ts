@@ -3,10 +3,10 @@ import { kerbsOf, kerbTexels, roadsOf, type KerbTexels } from "../kerbLines";
 import type { Theme } from "../theme";
 import { clipTo, fileBy, type Box } from "./clip";
 import { drawTown, flatPolygons, treeInstances, type Piece } from "./draw";
-import { asphalt } from "./surface";
+import { asphalt, SIDEWALK, VERGE_KERB } from "./surface";
 import type { Pt } from "./footprint";
 import { facts, windowFacts } from "./facts";
-import { storeysOf, windowOf, type Tile, type Town } from "./grid";
+import { storeysOf, windowOf, type RoadView, type Tile, type Town } from "./grid";
 import { PROP_KINDS, type Paint } from "./roof";
 
 /**
@@ -31,6 +31,9 @@ export type Bounds = [number, number, number, number];
 /** The world as the town is drawn from it, within `box`. */
 export interface Snapshot {
   box: Bounds;
+  /** The town, round what is built: every road in it has its sidewalk,
+   *  and out of it only a junction's tile its kerb (`Town.sidewalk`). */
+  town: Bounds | null;
   /** The chunks to draw. */
   todo: string[];
   /** Every built tile: x, y, its building, the building's kind, and
@@ -39,6 +42,10 @@ export interface Snapshot {
   /** Every road tile: x, y, its node, whether a road rather than a street,
    *  and the nodes it leads to and from. */
   roads: [number, number, number, boolean, number[], number[]][];
+  /** The roads on each road tile as the main thread draws them
+   *  (`Town.roadsOn`): so the paving is cut to the asphalt drawn, whatever
+   *  its shape, one-way, beside another, a lane or two. */
+  views: [number, number, RoadView[]][];
   /** Each building's door: its tile, and the way to its street. */
   doors: [number, number, number, number][];
   /** Lines painted on the yards where the game says, on the map: a
@@ -83,6 +90,36 @@ const widen = ([x0, y0, x1, y1]: Bounds, by: number): Bounds => [x0 - by, y0 - b
 /** A way on the map as the town grid's frame has it, turned half round. */
 const turned = (d: [number, number] | undefined): [number, number] | undefined => d && [-d[0], -d[1]];
 
+/** The road tiles kerbed out of town (`Town.sidewalk`): a junction's, a
+ *  node with three ways or more; two roads side by side, a divided road,
+ *  its middle kerbed, which no car crosses; and a gap of one or two plain
+ *  nodes along a road between two of those, so its kerb runs on rather
+ *  than on and off. */
+export function kerbed(roads: Snapshot["roads"]): Set<string> {
+  const nodes = new Map(roads.map(([x, y, id, , o, i]) => [id, { at: `${x},${y}`, ways: [...new Set([...o, ...i])] }]));
+  const seen = new Set<string>(), out = new Set<string>();
+  for (const [x, y, , , o, i] of roads) {
+    const k = `${x},${y}`;
+    if (seen.has(k) || new Set([...o, ...i]).size >= 3) out.add(k);
+    seen.add(k);
+  }
+  const seeds = new Set([...nodes].filter(([, n]) => out.has(n.at)).map(([id]) => id));
+  for (const id of seeds) {
+    for (const first of nodes.get(id)!.ways) {
+      const gap: string[] = [];
+      let [from, at] = [id, first];
+      while (gap.length < 3 && !seeds.has(at)) {
+        const n = nodes.get(at);
+        if (!n || n.ways.length !== 2) break;
+        gap.push(n.at);
+        [from, at] = [at, n.ways[0] === from ? n.ways[1] : n.ways[0]];
+      }
+      if (seeds.has(at) && gap.length <= 2) for (const k of gap) out.add(k);
+    }
+  }
+  return out;
+}
+
 /** The snapshot's chunks, drawn. */
 export function drawChunks(s: Snapshot): Drawing {
   const box = s.box;
@@ -97,6 +134,7 @@ export function drawChunks(s: Snapshot): Drawing {
     roads.set(`${x},${y}`, { id, road, outgoing, incoming });
     if (!tiles.has(`${x},${y}`)) tiles.set(`${x},${y}`, ROAD);
   }
+  const views = new Map(s.views.map(([x, y, v]) => [`${x},${y}`, v]));
   const doors = new Map(s.doors.map(([x, y, dx, dy]) => [`${x},${y}`, [dx, dy] as [number, number]]));
   const [bw] = [box[2] - box[0] + 1];
   const groundAt = (x: number, y: number) => s.kinds[s.ground[(y - box[1]) * bw + (x - box[0])]];
@@ -130,12 +168,16 @@ export function drawChunks(s: Snapshot): Drawing {
     const [a, b] = [road(c0, r0), road(c1, r1)];
     return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
   };
+  const knots = kerbed(s.roads);
+  const inTown = (x: number, y: number) => !!s.town && x >= s.town[0] && x <= s.town[2] && y >= s.town[1] && y <= s.town[3];
   const whole: Town = {
     w,
     h,
     tile,
     linked,
     through: (c, r) => !!road(c, r)?.road,
+    roadsOn: (c, r) => views.get(`${x1 - c},${y1 - r}`) ?? [],
+    sidewalk: (c, r) => (inTown(x1 - c, y1 - r) ? SIDEWALK : knots.has(`${x1 - c},${y1 - r}`) ? VERGE_KERB : 0),
     // Turned half round, so the way to the street is too.
     door: (c, r) => turned(doors.get(`${x1 - c},${y1 - r}`)),
     at: (c, r) => [x1 - c, y1 - r],

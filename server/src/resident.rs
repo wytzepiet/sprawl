@@ -10,7 +10,8 @@ use crate::protocol::{BuildingKind, ChunkCoord, EntityId, GameObject, GridCoord,
 use crate::world::World;
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
+use crate::fixed::HashMap;
 
 /// Real roads bend; the crow does not. Straight-line travel time is scaled up
 /// by this before promising to be anywhere. Being systematically a little
@@ -500,7 +501,7 @@ fn settle(world: &mut World, id: EntityId, at: EntityId, now: GameTime, crowd: &
 /// Who is where, for what: present and selected, or aboard a car bound
 /// there. One pass over everyone.
 fn headcount(world: &World) -> Crowd {
-    let mut crowd = Crowd::new();
+    let mut crowd = Crowd::default();
     for id in world.resident_ids() {
         let Some(r) = resident(world, id) else { continue };
         let (Some(at), Some(need)) = (r.at, r.selected) else { continue };
@@ -656,7 +657,7 @@ fn wants(world: &World) -> impl Iterator<Item = Want> + '_ {
 /// the demand readout names as missing; a shop that is merely far or full
 /// weighs on `pressure` without showing up here.
 pub fn unmet(world: &World) -> HashMap<(ChunkCoord, Need), (u32, f64)> {
-    let mut unmet: HashMap<(ChunkCoord, Need), (u32, f64)> = HashMap::new();
+    let mut unmet: HashMap<(ChunkCoord, Need), (u32, f64)> = HashMap::default();
     for w in wants(world).filter(|w| w.shortfall >= 1.0) {
         let e = unmet.entry((crate::world::chunk_of(w.home), w.need)).or_default();
         e.0 += 1;

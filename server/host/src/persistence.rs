@@ -2,9 +2,9 @@ use std::path::Path;
 
 use rusqlite::Connection;
 
-use crate::protocol::{GameObjectEntry, GameObject};
+use sprawl::protocol::{GameObjectEntry, GameObject};
 
-use crate::tree::Cell;
+use sprawl::tree::Cell;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS objects (
@@ -41,7 +41,7 @@ pub struct Meta {
     /// The nodes of the tree taken, one metadata row each.
     pub taken: Vec<Cell>,
     /// The town's missions, open and finished, a row each in order.
-    pub missions: Vec<crate::missions::Mission>,
+    pub missions: Vec<sprawl::missions::Mission>,
 }
 
 /// A whole number of hundredths, which is what the metadata table can hold.
@@ -208,7 +208,7 @@ pub fn save(path: &Path, changed: &[GameObjectEntry], removed: &[u64], meta: Met
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Car, CarRole, GameObject, GridCoord, Sail};
+    use sprawl::protocol::{Car, CarRole, GameObject, GridCoord, Sail};
 
     /// A ship saved mid-voyage comes back as it was last seen at the quay:
     /// the wakes that time a voyage die with the process, so a saved one
@@ -241,7 +241,7 @@ mod tests {
     fn missions_are_saved() {
         let path = std::env::temp_dir().join(format!("sprawl-missions-{}", std::process::id()));
         let _ = std::fs::remove_file(&path);
-        let mut missions = crate::missions::Missions::default().list;
+        let mut missions = sprawl::missions::Missions::default().list;
         missions[0].steps[1].done = true;
         missions[0].finished = Some(7);
         save(&path, &[], &[], Meta { missions: missions.clone(), ..Meta::default() });

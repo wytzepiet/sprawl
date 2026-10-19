@@ -20,6 +20,7 @@ import { getEntity } from "../../state/gameObjects";
 import type { Building, Car, GameObjectEntry } from "../../generated";
 import type { Pose as Stand } from "../../generated/Pose";
 import { carPoses, parts } from "../../state/selection";
+import { HALF_LEVEL, heightAlong } from "../decks";
 
 const carGeo = carShape(CAR.w, CAR.l, CAR.h);
 const vanGeo = boxGeometry(VAN.w, VAN.l, VAN.h);
@@ -55,8 +56,16 @@ export function paint(pool: InstancePool, name: string, geo: MeshGeometry, colou
   return key;
 }
 
-/** A car's bucket, its colour its own, parked or not (`mountCar`). */
-function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look): string {
+/** A car's colour where a level gives it one (`setCarColour`): the
+ *  interchange's cars in the colour of the gate they are bound for. */
+let carColour: ((car: Car) => Rgb | null) | null = null;
+export const setCarColour = (f: typeof carColour) => (carColour = f);
+
+/** A car's bucket, its colour its own, or the level's for it, parked or
+ *  not (`mountCar`). */
+function carBucket(pool: InstancePool, id: number, parked: boolean, look: Look, car?: Car): string {
+  const given = car && carColour?.(car);
+  if (given) return paint(pool, `car_x${[given.r, given.g, given.b].map((v) => Math.round(v * 255)).join("_")}${parked ? "p" : ""}`, carGeo, given, look, CLEAR_COAT);
   const c = colourOf(id);
   return paint(pool, `car_c${c}${parked ? "p" : ""}`, carGeo, PALETTE[c], look, CLEAR_COAT);
 }
@@ -93,7 +102,7 @@ export function mountCar(
   // Parked cars in buckets of their own: a bucket where one car moves is
   // drawn into the shadow map every frame, and one that stands still is not.
   const parked = !car.trip && !car.run;
-  const bucket = van ? paint(pool, "tractor" + (parked ? "p" : ""), vanGeo, LIVERY.tractor, look) : carBucket(pool, entry.id, parked, look);
+  const bucket = van ? paint(pool, "tractor" + (parked ? "p" : ""), vanGeo, LIVERY.tractor, look) : carBucket(pool, entry.id, parked, look, car);
   const z = CAR_Z;
 
   // Parked: in its spot, as the server placed it. No spot is a full lot,
@@ -115,8 +124,8 @@ export function mountCar(
   const trip = car.run ? null : follow(entry.id, car);
   const f = run ? { now: () => run.at(simNow(), z) } : trip && {
     now: (): Fix => {
-      const { body } = trip.now();
-      return { pos: [body.x, body.y, z], rot: [0, 0, body.heading - Math.PI / 2], dist: 0 };
+      const { body, lift } = trip.now();
+      return { pos: [body.x, body.y, z + lift], rot: [0, 0, body.heading - Math.PI / 2], dist: 0 };
     },
   };
   if (!f) return () => {};
@@ -260,6 +269,7 @@ function follow(id: number, car: Car) {
   const drive = driveOf(id, car);
   if (!drive) return void easing.delete(id), null;
   const t = car.trip!;
+  const up = liftOf(t);
   let me = easing.get(id);
   if (me?.drive !== drive) easing.set(id, (me = { drive, x: Number.NaN, v: 0, then: simNow() }));
   const state = me;
@@ -277,8 +287,29 @@ function follow(id: number, car: Car) {
         state.v = Math.max(0, state.v + (EASE * EASE * (goal - state.x) + 2 * EASE * (speed - state.v)) * dt);
         state.x += state.v * dt;
       }
-      return drive.at(Math.min(state.x, drive.length));
+      return { ...drive.at(Math.min(state.x, drive.length)), lift: up(state.x) };
     },
+  };
+}
+
+/** How high a trip's car is lifted, by how far along it is: over a deck,
+ *  up a slope (`decks.ts`). The route's own nodes, centre to centre, put
+ *  each node's height where it is along the way. */
+function liftOf(t: Car["trip"] & {}): (dist: number) => number {
+  const heights = t.route_heights ?? [];
+  if (!heights.some((h) => h > 0)) return () => 0;
+  const at = [0];
+  for (let k = 1; k < t.route_positions.length; k++) {
+    const [[x0, y0], [x1, y1]] = [t.route_positions[k - 1], t.route_positions[k]];
+    at.push(at[k - 1] + Math.hypot(x1 - x0, y1 - y0));
+  }
+  const scale = at[at.length - 1] / Math.max(1e-9, t.total_route_length);
+  return (dist) => {
+    const d = dist * scale;
+    let k = 0;
+    while (k < at.length - 2 && at[k + 1] < d) k++;
+    const f = Math.max(0, Math.min(1, (d - at[k]) / Math.max(1e-9, at[k + 1] - at[k])));
+    return heightAlong(heights, k + f) * HALF_LEVEL;
   };
 }
 

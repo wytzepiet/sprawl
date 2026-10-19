@@ -10,7 +10,8 @@
 use std::cmp::Reverse;
 
 use super::lanes::{Lanes, WAYS};
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
+use crate::fixed::HashMap;
 
 use crate::protocol::{GridCoord, Pose, TerrainType};
 use crate::world::sea::FERRY_LENGTH;
@@ -617,7 +618,7 @@ mod tests {
                 // Lanes are one-way in open water: past the berths'
                 // approaches the way back runs over none of the way out's
                 // water, but to cross it, where the two change sides.
-                let out: std::collections::HashSet<(i32, i32)> = under(way).into_iter().collect();
+                let out: crate::fixed::HashSet<(i32, i32)> = under(way).into_iter().collect();
                 let (mut run, mut longest, mut crossings) = (0, 0, 0);
                 for t in under(back) {
                     let shared = out.contains(&t) && water.clear(t.0, t.1) > NARROW && !matches!(lanes.junction_at(t.0, t.1), Some((_, Kind::Berth)));

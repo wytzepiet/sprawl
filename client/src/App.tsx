@@ -1,5 +1,6 @@
 import "./app.css";
 import Scene from "./engine/Scene";
+import { createConnection } from "./network/connection";
 import { playerId } from "./network/playerId";
 
 // Identity travels with the connection rather than being handed out by the
@@ -9,5 +10,5 @@ const wsUrl =
   `?player=${playerId()}`;
 
 export default function App() {
-  return <Scene wsUrl={wsUrl} />;
+  return <Scene connect={(on) => createConnection(wsUrl, on)} />;
 }

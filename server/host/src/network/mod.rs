@@ -6,12 +6,12 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 
-use crate::protocol::{
+use sprawl::protocol::{
     ChunkBounds, ClientMessage, Clock, DAY_MS, EntityId, Growth, Operation, OwnerId, Lump, ServerMessage, StateUpdate,
 };
 
 /// One socket. Dies with the connection.
-pub type ClientId = u64;
+pub use sprawl::game::ClientId;
 
 pub enum Command {
     PlayerAction { client_id: ClientId, message: ClientMessage },
@@ -103,7 +103,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, owner: Option<OwnerId
             let mut lumps: Vec<Lump> = Vec::new();
             let mut clock = Clock { now: 0, speed: 1, day_ms: DAY_MS };
             let mut growth = Growth::default();
-            let mut sea = crate::protocol::Sea::default();
+            let mut sea = sprawl::protocol::Sea::default();
             let mut missions = Vec::new();
             let mut neighbours = Vec::new();
             let mut terrain_seed: u32 = 0;

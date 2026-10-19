@@ -154,8 +154,8 @@ blue (`TownLayer.hold`); and beside it are what it takes against what
 the depots hold, and, where it may not go, why ("No street before its
 yard", "No berth: its back is not on the sea"). Let go where it fits
 and it is placed at once, a site; anywhere else, nothing happens. The
-rule of where it fits is the server's (`World::fit`), mirrored by the
-hand (`may.ts` `fit`). It is taken down whole, with one tap of the
+rule of where it fits is the server's (`World::fit`), and the hand
+asks it (`World::placing`). It is taken down whole, with one tap of the
 demolisher. Its look still joins it to what is round it: a house beside
 a house is a row (`town/layer.ts`).
 

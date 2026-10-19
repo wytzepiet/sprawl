@@ -21,7 +21,8 @@
 //! The tractor's last path stays on the farm's record: it is where the
 //! field is drawn.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
+use crate::fixed::HashSet;
 
 
 use crate::economy;
@@ -123,7 +124,7 @@ impl World {
         let yard = self.yard_tiles(farm);
         let mut seen: HashSet<(i32, i32)> = yard.iter().map(|t| (t.x, t.y)).collect();
         let mut queue: VecDeque<GridCoord> = yard.iter().copied().collect();
-        let mut reached: HashSet<(i32, i32)> = HashSet::new();
+        let mut reached: HashSet<(i32, i32)> = HashSet::default();
         while let Some(t) = queue.pop_front() {
             for (dx, dy) in AROUND[..4].iter() {
                 let n = GridCoord { x: t.x + dx, y: t.y + dy };
@@ -272,8 +273,8 @@ impl World {
     /// The lane: the open ground round the plot, which is how the tractor
     /// gets from the yard at the street to the field behind the barn.
     fn lane(&self, farm: EntityId) -> HashSet<(i32, i32)> {
-        let Some(e) = self.objects.get(farm) else { return HashSet::new() };
-        let GameObject::Building(b) = &e.object else { return HashSet::new() };
+        let Some(e) = self.objects.get(farm) else { return HashSet::default() };
+        let GameObject::Building(b) = &e.object else { return HashSet::default() };
         b.tiles.iter()
             .flat_map(|t| AROUND.iter().map(move |(dx, dy)| GridCoord { x: t.x + dx, y: t.y + dy }))
             .filter(|&n| self.is_open(n))
@@ -444,7 +445,7 @@ impl World {
             _ => true,
         };
         let start: State = ((from.x, from.y), heading);
-        let mut came: std::collections::HashMap<State, State> = std::collections::HashMap::from([(start, start)]);
+        let mut came: crate::fixed::HashMap<State, State> = crate::fixed::HashMap::from_iter([(start, start)]);
         let mut queue = VecDeque::from([start]);
         while let Some(state @ ((x, y), way)) = queue.pop_front() {
             if (x, y) == (to.x, to.y) && arrived(way) && way.is_none_or(|_| safe.contains(&state)) {
@@ -753,7 +754,7 @@ mod tests {
                 assert!(!sharp(path), "{name} {job}: a turn sharper than a right angle");
                 assert!(batch.iter().all(|t| path.contains(t)), "{name} {job}: the sweep missed a tile");
                 let turns = path.windows(3).filter(|w| (w[1].x - w[0].x, w[1].y - w[0].y) != (w[2].x - w[1].x, w[2].y - w[1].y)).count();
-                let mut seen = HashSet::new();
+                let mut seen = HashSet::default();
                 let again = path.iter().filter(|t| !seen.insert((t.x, t.y))).count();
                 println!("  {job}: {turns} turns over {} steps, {again} tiles driven twice", path.len());
                 assert!(again * 3 < path.len(), "{name} {job}: {again} of {} steps retrace", path.len());

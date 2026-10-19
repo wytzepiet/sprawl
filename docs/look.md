@@ -140,21 +140,31 @@ The code is `client/src/engine/town/`:
   the water; and a row of bays where the server lays them, a lane along
   the kerb before flats, a forecourt nose in before shops, the cars close
   to the road and a strip of pavement between them and the wall. Each tile's asphalt is
-  one outline, its corners rounded in and out, carried over the seam
+  one outline, its outward corners rounded, its inward ones not: between
+  two arms it is a turning lane's curve, and where no car may turn, a
+  square kerb (2026-10-16), carried over the seam
   where the next tile carries it on, so a street flows into a yard or a
   forecourt as one shape. The pavement is cut to it, a kerb stone where
   they meet (`kerbs.ts`), and the game draws it as it draws its road
   tiles (`roads.ts`). A yard's lines are painted on its asphalt. The
-  pavement is
-  ground: every road, yard and building but a house makes paved ground, shaped by the
-  buildings' own rule run on it at full size (the terrain's corners in
-  straight lines, a diagonal as far out as a straight edge, so a diagonal
-  street is as wide as a straight one; but never on the diagonal from a
-  building to a road, so a building's corner by a street stays square),
-  then every corner rounded a little, a kerb's corner rather than a
-  shore's (`soften`, tighter since 2026-10-11); a building that touches a street only on the diagonal is paved through to it, unless a tile beside them both is paved already (its corner then stays square), and grass shut in smaller than half a tile is paved. So a street's pavement is its sidewalk,
-  a town centre is paved shop to shop, a suburb is green with a sidewalk
-  round each block, and the grass left between blocks has soft edges. Where a tree stands comes
+  pavement is ground: a sidewalk along every road, its asphalt grown out
+  a sidewalk's width whatever the road's shape (2026-10-16), and every
+  yard and building's ground: its tiles, square (2026-10-16); by the
+  water, the buildings' own rule run on it at full size (the terrain's
+  corners in straight lines, a diagonal as far out as a straight edge), so
+  a quay keeps to the shore the terrain draws. Where a building stands beside a road, the
+  ground between them is paved too, straight from its front to the kerb
+  (the half of the road's tile toward it): a shop is
+  paved to its kerb, a town centre shop to shop; elsewhere the sidewalk is
+  a border with grass behind it. Then every corner rounded a little, a
+  kerb's corner rather than a shore's (`soften`); grass shut in, a
+  roundabout's island, stays grass. Out of town a road is bare asphalt
+  on the grass, but for its junctions and a divided road, two one-ways
+  side by side, each bordered by a narrow kerb, since
+  nobody walks there: a divided road's middle kerbed both sides, which
+  no car crosses; and the one or two tiles of plain road between two
+  of those, so a kerb runs on rather than on and off (`Town.sidewalk`,
+  `kerbed`). Where a tree stands comes
   from the tile's place alone, so a town is always dressed the same.
 - **Buildings are painted** in the sandbox, a tile at a time as roads
   are drawn, with a brush per kind (`town/brush.ts`); in the game a
@@ -324,7 +334,7 @@ Built 2026-10-04, steps 1 to 4: one command and a toolbar, a building
 its tiles, the rings gone, and the game drawn by the town grid, a road
 an instance a tile and the town round what is built drawn whole. The
 same day: the hand builds only what can work, and shows where with dots
-it works out itself (`engine/may.ts`, the server's rule mirrored), on a
+the game works out for it (`server/src/hint.rs`), on a
 canvas of their own that runs together like liquid as it drags
 (`engine/dots.ts`), the grid gone; houses drawn in a row are linked, a
 row (`Building::joined`); a drive is the building's door, not a road

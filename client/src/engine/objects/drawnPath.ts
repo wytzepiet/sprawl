@@ -69,7 +69,7 @@ function quadBezier(a: P, control: P, b: P, t: number): P {
  * a route — the spot pulled out of, the spot driven into — are where they
  * are, and the car slides onto the lane between them and the street.
  */
-function offsetNodes(nodes: P[], offset: number, fromLot: number, toLot: number): P[] {
+function offsetNodes(nodes: P[], offsets: number | number[], fromLot: number, toLot: number): P[] {
   const result: P[] = [];
   for (let i = 0; i < nodes.length; i++) {
     if (i < fromLot || i >= nodes.length - toLot) {
@@ -91,6 +91,7 @@ function offsetNodes(nodes: P[], offset: number, fromLot: number, toLot: number)
       result.push({ ...nodes[i] });
       continue;
     }
+    const offset = typeof offsets === "number" ? offsets : offsets[i];
     const rx = (-dy / len) * offset;
     const ry = (dx / len) * offset;
     result.push({ x: nodes[i].x + rx, y: nodes[i].y + ry });
@@ -100,7 +101,7 @@ function offsetNodes(nodes: P[], offset: number, fromLot: number, toLot: number)
 
 /** The path a car is drawn on: the nodes, offset onto the lane, the
  *  corners rounded. */
-export function drawnPath(centerNodes: P[], offset: number, fromLot: number, toLot: number): DrawnPath | null {
+export function drawnPath(centerNodes: P[], offset: number | number[], fromLot: number, toLot: number): DrawnPath | null {
   const nodes = offsetNodes(centerNodes, offset, fromLot, toLot);
   const points: P[] = [];
   const nodeIndex: number[] = [];

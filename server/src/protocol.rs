@@ -20,6 +20,128 @@ pub struct Build {
     pub tool: Tool,
     pub from: GridCoord,
     pub to: GridCoord,
+    /// How high each end stands, in half-levels (`RoadNode::height`);
+    /// none, both on the ground.
+    #[serde(default)]
+    #[ts(optional)]
+    pub up: Option<[u8; 2]>,
+    /// Which side of its tile each end stands (`RoadNode::side`); none,
+    /// both in the middle.
+    #[serde(default)]
+    #[ts(optional)]
+    pub sides: Option<[[i8; 2]; 2]>,
+    /// The road laid has priority (`RoadNode::road`): whoever joins or
+    /// crosses it gives way. Along a road already there, it gains or loses
+    /// it.
+    #[serde(default)]
+    pub road: bool,
+}
+
+/// A drag of road, the whole of it so far (`draw.rs`): sent again as it
+/// goes on, and laid as a whole, the server keeping what it laid of it
+/// before where that still stands as planned.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Stroke {
+    /// Which drag this is: the same as the last sent, that drag drawn on;
+    /// another, a new one.
+    pub id: u32,
+    /// Street, OneWay or Wide.
+    pub tool: Tool,
+    /// The road laid has priority (`RoadNode::road`).
+    #[serde(default)]
+    pub road: bool,
+    /// The tiles the drag has been through, the first where it was
+    /// pressed, each a step from the one before; and with each, the pen's
+    /// height, in half-levels, as the drag reached it.
+    pub tiles: Vec<Spot>,
+    /// Where on the first tile it was pressed: the road there it starts
+    /// on, its height and side; none, at the pen's height in the middle.
+    #[serde(default)]
+    #[ts(optional)]
+    pub start: Option<Stand>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct Spot {
+    pub at: GridCoord,
+    pub want: u8,
+}
+
+/// Where on a tile a road stands: its height and side.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[ts(export)]
+pub struct Stand {
+    pub h: u8,
+    pub side: [i8; 2],
+}
+
+/// What the hand asks before it acts, to show where it may (`hint.rs`):
+/// answered with a `Hint`, to the asking client alone.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "type", content = "data")]
+pub enum Ask {
+    /// Which tiles in this area a drag with the tool in hand may start
+    /// from, or the building in hand stand round.
+    Starts { hand: Holding, area: Area },
+    /// Where a drag may go on from the last tile of this one: for a road,
+    /// the drag as drawn so far; for the eraser, the tile it is on and
+    /// where on it it stands (`Stroke::start`).
+    Reach(Stroke),
+    /// Where the building in hand, held over this tile, would be placed.
+    Placing { kind: BuildingKind, at: GridCoord, facing: Option<u8> },
+}
+
+/// What the hand holds, for `Ask::Starts`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "type", content = "data")]
+pub enum Holding {
+    /// A tool, with priority or not, the pen at this height in half-levels.
+    Tool { tool: Tool, road: bool, want: u8 },
+    /// A building, turned this way, or left to find its way.
+    Building { kind: BuildingKind, facing: Option<u8> },
+}
+
+/// Tiles from one corner to the other, both in.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Area {
+    pub x0: i32,
+    pub y0: i32,
+    pub x1: i32,
+    pub y1: i32,
+}
+
+/// The game's answer to an `Ask`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "type", content = "data")]
+pub enum Hint {
+    Starts { hand: Holding, area: Area, tiles: Vec<GridCoord> },
+    /// For the drag `id`, `len` tiles long: the eight steps on from its
+    /// last tile (east, then on round toward +y), each where it would
+    /// stand, or none where it may not go.
+    Reach { id: u32, len: u32, ways: Vec<Option<Stand>> },
+    Placing(Placing),
+}
+
+/// A building held over the map: where letting go would place it, the
+/// way it would face, its door if it has one, and, if it may not go
+/// there, why, in words.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Placing {
+    pub kind: BuildingKind,
+    /// The tile it is placed round.
+    pub at: GridCoord,
+    pub tiles: Vec<GridCoord>,
+    pub facing: u8,
+    /// The tile its drive runs onto, and the street it runs from.
+    pub door: Option<Door>,
+    pub why: Option<String>,
 }
 
 /// What the mayor's hand holds.
@@ -30,11 +152,13 @@ pub enum Tool {
     Street,
     /// A street one way, `from` to `to`.
     OneWay,
-    /// A road: a through route nothing fronts onto.
-    Road,
     /// Whatever stands on `to`, a building whole; a drag cuts the road
     /// between its tiles.
     Demolish,
+    /// Traffic lights at the junction on `to`, or none where it has them.
+    Light,
+    /// A road of two lanes, one way, `from` to `to`.
+    Wide,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -48,15 +172,40 @@ pub struct RoadNode {
     /// in and goes out by. Otherwise an island: drawn red, driven by nobody.
     #[serde(default)]
     pub joined: bool,
-    /// A road rather than a street. Buildings front streets only: no driveway
+    /// The neighbours the way to is a road rather than a street: a through
+    /// road, which the streets that meet it give way to. Both ends hold it.
+    /// A node on one is a road's: buildings front streets only, no driveway
     /// is ever laid onto a road, and nothing arrives beside one.
     #[serde(default)]
-    pub road: bool,
+    #[ts(type = "Array<number>")]
+    pub road: Vec<EntityId>,
     /// Laid by the mayor, so it counts against the build's road tiles. The
     /// survey's own roads, and driveways, are free.
     #[serde(default)]
     pub laid: bool,
+    /// How high it stands, in half-levels: 0 the ground, 2 a level up, 4
+    /// two, 6 three; odd, a slope between the level below and the one
+    /// above (`world/decks.rs`).
+    #[serde(default)]
+    pub height: u8,
+    /// Traffic lights, if the junction has them: which phase is green
+    /// (`intersection::phases_of`), or `ALL_RED` between phases.
+    #[serde(default)]
+    pub light: Option<u8>,
+    /// The neighbours the road out to has two lanes, one way: a two-lane
+    /// one-way (`Tool::Wide`).
+    #[serde(default)]
+    #[ts(type = "Array<number>")]
+    pub wide: Vec<EntityId>,
+    /// Which side of its tile it stands: the step across its road it is
+    /// moved by, or none, the middle. Two one-ways share a tile side by
+    /// side, each a thin road beside the other (`world/decks.rs`).
+    #[serde(default)]
+    pub side: [i8; 2],
 }
+
+/// A junction's lights between phases, none green.
+pub const ALL_RED: u8 = u8::MAX;
 
 /// What stands on a plot. The kind follows from the footprint the layout chose,
 /// so a wide plot becomes an Apartment where a single tile becomes a House.
@@ -615,6 +764,14 @@ pub struct Trip {
     #[ts(skip)]
     pub route: Vec<EntityId>,
     pub route_positions: Vec<[f64; 2]>,
+    /// How high each node of the route stands (`RoadNode::height`): the
+    /// client lifts the car over a deck, and finds which node it is on.
+    #[serde(default)]
+    pub route_heights: Vec<u8>,
+    /// The lane kept on the edge into each node of the route
+    /// (`World::lanes_for`): 0 the right, 1 the left of a road of two.
+    #[serde(default)]
+    pub lanes: Vec<u8>,
     /// How many nodes at either end of the route are in a lot rather than on
     /// the street: the spot pulled out of, the spot driven into. Lot nodes
     /// are drawn where they are, not offset onto a lane.
@@ -666,6 +823,30 @@ pub struct Trip {
     #[serde(skip)]
     #[ts(skip)]
     pub stretches: [Vec<EntityId>; 2],
+    /// Its last change of lanes along a road of two (`car::simulation`):
+    /// for the client to slide it across while it lasts.
+    #[serde(default)]
+    pub shift: Option<Shift>,
+    /// The lane it waits to get into, with no room there yet: whoever
+    /// comes along behind in it may drop back and let it in.
+    #[serde(default)]
+    pub signal: Option<u8>,
+}
+
+/// A change of lanes: from one to the other, from `at` until `until`, in
+/// sim ms. While it lasts the car stands in both. It steers across from
+/// `along` its way, over `over` of it (the client's path bends there).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq)]
+#[ts(export)]
+pub struct Shift {
+    pub from: u8,
+    pub to: u8,
+    #[ts(type = "number")]
+    pub at: u64,
+    #[ts(type = "number")]
+    pub until: u64,
+    pub along: f64,
+    pub over: f64,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, PartialEq, Eq)]
@@ -826,6 +1007,10 @@ impl ChunkBounds {
 pub enum ClientMessage {
     /// A step of a road or the demolisher, built as it is sent.
     Build(Build),
+    /// A drag of road, the whole of it so far (`draw.rs`).
+    Draw(Stroke),
+    /// Where the hand may go (`hint.rs`).
+    Ask(Ask),
     /// A building placed whole round `at`, its front this way
     /// (`blueprint::FACINGS`); none, the first way it fits.
     Place { kind: BuildingKind, at: GridCoord, facing: Option<u8> },
@@ -974,6 +1159,8 @@ pub enum ServerMessage {
     /// than it was asked: a box a rule bought, stone bought express. And
     /// what the hand did, to its player alone: an undo, a building refused.
     News(Vec<News>),
+    /// The answer to an `Ask`.
+    Hint(Hint),
 }
 
 /// A line of news, and the building a tap on it goes to.

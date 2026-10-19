@@ -8,7 +8,9 @@ import type { MeshGeometry } from "../geometry";
  */
 
 export type Flow = "twoway" | "out" | "in";
-export type ArmInfo = { angle: number; flow: Flow };
+/** An arm of a node's road: the way it goes, how it is driven, and, if
+ *  not the node's, how wide it is either side of its middle. */
+export type ArmInfo = { angle: number; flow: Flow; hw?: number };
 type Point = { x: number; y: number };
 
 /** A road is its asphalt alone, two lanes: the pavement beside it is its
@@ -108,21 +110,25 @@ function edgePoints(a: number, hw: number): { right: Point; left: Point } {
   };
 }
 
+/** Where one arm's left edge meets the next arm's right edge, each its
+ *  own half-width out from its middle. */
 function curveControlPoint(
   aCurr: number,
   aNext: number,
   start: Point,
   end: Point,
-  hw: number,
+  hwCurr: number,
+  hwNext: number,
 ): Point {
   const det = Math.sin(aNext - aCurr);
   if (Math.abs(det) < 1e-6) {
     return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
   }
-  return {
-    x: (hw * (Math.cos(aNext) + Math.cos(aCurr))) / det,
-    y: (hw * (Math.sin(aCurr) + Math.sin(aNext))) / det,
-  };
+  // s·d1 + h1·n1 = u·d2 − h2·n2, d the arm's way and n its left.
+  const [d1x, d1y, d2x, d2y] = [Math.cos(aCurr), Math.sin(aCurr), Math.cos(aNext), Math.sin(aNext)];
+  const [rx, ry] = [-hwNext * -d2y - hwCurr * -d1y, -hwNext * d2x - hwCurr * d1x];
+  const s = (rx * -d2y - ry * -d2x) / (d1x * -d2y - d1y * -d2x);
+  return { x: s * d1x - hwCurr * d1y, y: s * d1y + hwCurr * d1x };
 }
 
 // --- Gap fill strategies ---
@@ -132,11 +138,12 @@ function smoothCurve(
   aNext: number,
   currEdge: { left: Point },
   nextEdge: { right: Point },
-  hw: number,
+  hwCurr: number,
+  hwNext: number,
 ): Point[] {
   let gap = aNext - aCurr;
   if (gap <= 0) gap += 2 * Math.PI;
-  const cp = curveControlPoint(aCurr, aNext, currEdge.left, nextEdge.right, hw);
+  const cp = curveControlPoint(aCurr, aNext, currEdge.left, nextEdge.right, hwCurr, hwNext);
   const numSegs = Math.max(
     2,
     Math.round((gap / (Math.PI / 2)) * CURVE_SEGMENTS),
@@ -182,19 +189,20 @@ function roadBoundary(arms: ArmInfo[], hw: number): Point[] | null {
   const sorted = [...arms].sort((a, b) => a.angle - b.angle);
   const boundary: Point[] = [];
 
+  const half = (arm: ArmInfo) => arm.hw ?? hw;
   if (sorted.length === 1) {
     const a = sorted[0].angle;
-    const edge = edgePoints(a, hw);
+    const edge = edgePoints(a, half(sorted[0]));
     boundary.push(edge.right, edge.left);
-    boundary.push(...arcPoints(a + Math.PI / 2, a + (3 * Math.PI) / 2, hw));
+    boundary.push(...arcPoints(a + Math.PI / 2, a + (3 * Math.PI) / 2, half(sorted[0])));
   } else {
     for (let i = 0; i < sorted.length; i++) {
       const curr = sorted[i];
       const next = sorted[(i + 1) % sorted.length];
       const aCurr = curr.angle;
       const aNext = next.angle;
-      const currEdge = edgePoints(aCurr, hw);
-      const nextEdge = edgePoints(aNext, hw);
+      const currEdge = edgePoints(aCurr, half(curr));
+      const nextEdge = edgePoints(aNext, half(next));
 
       boundary.push(currEdge.right, currEdge.left);
 
@@ -212,9 +220,9 @@ function roadBoundary(arms: ArmInfo[], hw: number): Point[] | null {
         curr.flow !== next.flow;
 
       if (gap > Math.PI && !isContinuous) {
-        boundary.push(...deadEndCap(aCurr, aNext, hw));
+        boundary.push(...deadEndCap(aCurr, aNext, (half(curr) + half(next)) / 2));
       } else if (isDrivable) {
-        boundary.push(...smoothCurve(aCurr, aNext, currEdge, nextEdge, hw));
+        boundary.push(...smoothCurve(aCurr, aNext, currEdge, nextEdge, half(curr), half(next)));
       } else {
         boundary.push(
           ...sharpCorner(aCurr, aNext, currEdge.left, nextEdge.right),

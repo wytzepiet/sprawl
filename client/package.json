@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "generate": "cd ../server && TS_RS_EXPORT_DIR=../client/src/generated cargo test",
-    "start": "vite",
-    "dev": "vite",
-    "build": "vite build",
-    "serve": "vite preview"
+    "start": "bun run wasm && vite",
+    "dev": "bun run wasm && vite",
+    "build": "bun run wasm && vite build",
+    "serve": "vite preview",
+    "wasm": "cd ../server && cargo build -q -p sprawl-web --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-dir ../client/src/wasm target/wasm32-unknown-unknown/release/sprawl_web.wasm"
   },
   "license": "MIT",
   "devDependencies": {

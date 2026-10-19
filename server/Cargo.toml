@@ -1,21 +1,25 @@
+# The game itself: the world, its cars and people, as a library with no
+# clock on the wall and no IO, so the server (host/) and a browser (web/)
+# drive the same simulation.
 [package]
-name = "sprawl-server"
+name = "sprawl"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["host", "web"]
+default-members = [".", "host"]
+
 [dependencies]
-tokio = { version = "1", features = ["full"] }
-axum = { version = "0.8", features = ["ws"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rmp-serde = "1"
 ts-rs = { version = "10", features = ["serde-compat"] }
-tower-http = { version = "0.6", features = ["cors", "fs"] }
-futures = "0.3"
-rand = "0.9"
-rusqlite = { version = "0.34", features = ["bundled"] }
+# Seeded generators only: nothing in the game rolls from the OS, which is
+# also what lets it build for the browser.
+rand = { version = "0.9", default-features = false, features = ["std", "small_rng"] }
 noise = "0.9"
 serde_bytes = "0.11.19"
+rand_xoshiro = "0.7"
 
 # The suite simulates days of a town, and a day at opt-level 0 takes a
 # minute. Assertions and overflow checks stay on: it checks the same things,

@@ -1,4 +1,4 @@
-import { onCleanup, createEffect, createMemo, on } from "solid-js";
+import { onCleanup, createEffect, createMemo, on, type JSX } from "solid-js";
 import { perfCount } from "./PerfReport";
 import { useInstancePool } from "./InstancePool";
 import { useEngine } from "./Canvas";
@@ -17,7 +17,7 @@ import {
 import { SOLID, DORMANT, EMPTY } from "./objects/look";
 import type { Operation, GameObjectEntry } from "../generated";
 
-import type { Building, RoadNode } from "../generated";
+import type { Building, RoadNode, TerrainType } from "../generated";
 
 import { mountBuilding } from "./objects/BuildingObject";
 import { mountCar } from "./objects/CarObject";
@@ -34,7 +34,9 @@ interface MountedEntry {
   covers?: string[];
 }
 
-export default function World() {
+/** The town as the server has it, drawn; and the hand over it: the
+ *  town's brush, or the one given (a level's). */
+export default function World(props: { brush?: () => JSX.Element }) {
   const pool = useInstancePool();
   const ctx = useEngine();
   const { casters } = useDayNight();
@@ -190,7 +192,7 @@ export default function World() {
   function drawnOf(entry: GameObjectEntry): string | undefined {
     if (entry.object.kind === "RoadNode") {
       const n = entry.object.data as RoadNode;
-      return JSON.stringify([entry.position, n.road, n.outgoing, n.incoming]);
+      return JSON.stringify([entry.position, n.road, n.outgoing, n.incoming, n.light != null]);
     }
     if (entry.object.kind !== "Building") return undefined;
     const b = entry.object.data as Building;
@@ -216,9 +218,5 @@ export default function World() {
     terrain.dispose();
   });
 
-  return (
-    <>
-      <Brush ground={(x, y) => terrain.typeAt(x, y)} />
-    </>
-  );
+  return <>{props.brush ? props.brush() : <Brush />}</>;
 }

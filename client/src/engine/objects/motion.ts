@@ -2,8 +2,10 @@ import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
 import { CAR_RIG, driveTrip, LORRY_RIG, straight, type Drive, type Pose, type Rig } from "./driver";
 import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
-import { CAB, TRAILER, VAN } from "./roadGeometry";
-import type { Car, GridCoord, Trailer, Trip } from "../../generated";
+import { CAB, LANE_OFFSET, TRAILER, VAN } from "./roadGeometry";
+import { spot } from "../tiles";
+import type { Car, GridCoord, RoadNode, Trailer, Trip } from "../../generated";
+import { getObjectsAt } from "../../state/gameObjects";
 import type { Pose as Stand } from "../../generated/Pose";
 
 /**
@@ -39,29 +41,81 @@ export function colourOf(id: number): number {
   return Math.floor((((h ^ (h >>> 16)) >>> 0) / 0xffffffff) * PALETTE.length);
 }
 
+/** The fastest a vehicle goes, in tiles a second: `car::CRUISE_SPEED`. */
+const CRUISE = 1.5;
+
 /** How far along its route a trip's physics has a vehicle at `now`, and
- *  how fast it goes there. */
+ *  how fast it goes there, as the server has it (`physics::catch_up`):
+ *  braking stops at a standstill, pulling away at cruising speed. */
 export function travelled(t: Trip, now: number): [number, number] {
-  let dt = Math.max(0, (now - t.updated_at) / 1000);
-  if (t.acceleration < 0) dt = Math.min(dt, -t.speed / t.acceleration);
-  return [t.progress + t.speed * dt + 0.5 * t.acceleration * dt * dt, t.speed + t.acceleration * dt];
+  const dt = Math.max(0, (now - t.updated_at) / 1000);
+  const a = t.acceleration;
+  const until = a < 0 ? -t.speed / a : a > 0 ? Math.max(0, (CRUISE - t.speed) / a) : Infinity;
+  const s = Math.min(dt, until);
+  const [p, v] = [t.progress + t.speed * s + 0.5 * a * s * s, t.speed + a * s];
+  return a > 0 && dt > until ? [p + CRUISE * (dt - until), CRUISE] : [p, v];
 }
 
 /** The rig a vehicle steers as: a lorry's cab and the box on its hitch, a
  *  bobtail cab, or a car. */
 export const rigOf = (car: Car): Rig => (car.role !== "Truck" ? CAR_RIG : car.hitched ? LORRY_RIG : { axle: LORRY_RIG.axle });
 
-/** Each vehicle's drive, kept while its trip's route is the same. */
-const drives = new Map<number, { route: string; drive: Drive | null }>();
-/** A vehicle's trip, driven as `driver.ts` steers it; none off a trip. */
+/** Each vehicle's drive, kept while its trip's route and lanes are the
+ *  same; a change of lanes, driven across from the lanes it left. */
+const drives = new Map<number, { key: string; lanes: number[]; drive: Drive | null }>();
 export function driveOf(id: number, car: Car): Drive | null {
   const t = car.trip;
   if (!t) return void drives.delete(id), null;
   const rig = rigOf(car);
-  const route = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, t.cusps, t.leaves, t.stands, rig]);
-  let me = drives.get(id);
-  if (me?.route !== route) drives.set(id, (me = { route, drive: driveTrip(t, rig) }));
-  return me.drive;
+  const key = JSON.stringify([t.route_positions, t.from_lot, t.to_lot, t.backing, t.cusps, t.leaves, t.stands, rig, t.lanes, t.shift?.along]);
+  const me = drives.get(id);
+  if (me?.key === key) return me.drive;
+  const lanes = lanesOf(t.route_positions, t.route_heights ?? [], t.lanes ?? []);
+  const sh = t.shift;
+  const was = me && sh && sh.from !== sh.to && me.lanes.length === lanes.length ? { lanes: me.lanes, along: sh.along, over: sh.over } : undefined;
+  const drive = driveTrip(t, rig, lanes, was);
+  drives.set(id, { key, lanes, drive });
+  return drive;
+}
+
+/** Where a lane runs from the road's middle, by what kind of link it is
+ *  on: a two-way's to the right of the middle, a one-way's down it. A
+ *  road on a side of its tiles is a one-way, its nodes already moved over
+ *  (`route_positions`, `World::node_pos`). */
+const LANES = { t: LANE_OFFSET, o: 0 };
+
+/** The lane at each node of a route: its links', the two either side of
+ *  it met halfway. Read off the road nodes the client holds, where it holds
+ *  them; else a two-way's. */
+function lanesOf(route: [number, number][], heights: number[], lanes: number[]): number[] {
+  const link = route.slice(1).map(([x, y], k) => {
+    const [px, py] = route[k];
+    const [a, b] = [roadAt(px, py, heights[k] ?? 0), roadAt(x, y, heights[k + 1] ?? 0)];
+    if (!a || !b) return LANES.t;
+    const [out, back] = [a.data.outgoing.includes(b.id), a.data.incoming.includes(b.id) || b.data.outgoing.includes(a.id)];
+    // A road of two lanes, one way: the right lane or the left (`lanes_for`).
+    if (out && a.data.wide.includes(b.id)) return lanes[k + 1] ? -LANE_OFFSET : LANE_OFFSET;
+    return out && back ? LANES.t : LANES.o;
+  });
+  return route.map((_, k) => {
+    const near = [link[k - 1], link[k]].filter((l) => l !== undefined);
+    return near.length ? near.reduce((s, l) => s + l, 0) / near.length : LANES.t;
+  });
+}
+
+/** The road node a route passes through here: of those on its tile at its
+ *  height, the one standing nearest, where two share it side by side. */
+function roadAt(x: number, y: number, height: number): { id: number; data: RoadNode } | undefined {
+  const t = { x: Math.floor(x), y: Math.floor(y) };
+  let best: { id: number; data: RoadNode } | undefined;
+  let near = Infinity;
+  for (const o of getObjectsAt(t.x, t.y)) {
+    if (o.object.kind !== "RoadNode" || (o.object.data.height ?? 0) !== height) continue;
+    const [sx, sy] = spot(t, o.object.data.side);
+    const d = Math.hypot(sx - x, sy - y);
+    if (d < near) [best, near] = [{ id: o.id, data: o.object.data }, d];
+  }
+  return best;
 }
 
 /** A parked lorry's box, straight behind its cab. */

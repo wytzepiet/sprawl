@@ -1,5 +1,5 @@
 import type { SceneContext } from "@babylonjs/lite";
-import { snap, STEPS } from "./may";
+import { snap, STEPS } from "./tiles";
 import { projector } from "./view";
 import { step, type Sprung } from "./spring";
 import { glazedAt, underGlass } from "./glass";

@@ -19,8 +19,8 @@
 //! stops at the door, unseen. See `docs/parking.md`.
 
 use rand::{Rng, SeedableRng};
-use rand::rngs::SmallRng;
-use std::collections::HashMap;
+use crate::fixed::SmallRng;
+use crate::fixed::HashMap;
 
 use crate::blueprint::FACINGS;
 use crate::engine::GameTime;
@@ -407,7 +407,7 @@ impl World {
         let mut edge = |world: &mut World, a: EntityId, b: EntityId| {
             let (pa, pb) = (world.node_pos(a).unwrap(), world.node_pos(b).unwrap());
             let len = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2)).sqrt();
-            world.edges.insert((a, b), EdgeSegment::new(len));
+            world.edges.insert((a, b), EdgeSegment::new(len, 1));
             edges.push((a, b));
         };
         let (tiles, kind, facing) = self.building_of(building)?;
@@ -804,13 +804,15 @@ impl World {
         lot.spots.iter().position(|s| s.holder(car).is_some()).map(Claim::Spot)
     }
 
-    /// Where a route node is: a road node's tile centre, or a lot node's own
-    /// position.
+    /// Where a route node is: a road node's tile centre, moved to its side
+    /// if it stands on one (`decks.rs`), or a lot node's own position.
     pub fn node_pos(&self, id: EntityId) -> Option<[f64; 2]> {
         if let Some(&p) = self.lot_nodes.get(&id) {
             return Some(p);
         }
-        self.objects.get(id)?.position.map(|p| [p.x as f64 + 0.5, p.y as f64 + 0.5])
+        let [sx, sy] = self.side_of(id).map(f64::from);
+        let by = if sx == 0.0 && sy == 0.0 { 0.0 } else { super::decks::SIDE_OFFSET / (sx * sx + sy * sy).sqrt() };
+        self.objects.get(id)?.position.map(|p| [p.x as f64 + 0.5 + sx * by, p.y as f64 + 0.5 + sy * by])
     }
 
     /// Hold a place at a building for a car over a window: the one it

@@ -366,7 +366,7 @@ impl World {
     /// nowhere, waiting for a ferry, and none is aboard one. With more than
     /// one harbour, each comes in by the nearest to their home.
     pub fn waiting_settlers(&self, harbour: EntityId) -> Vec<EntityId> {
-        let aboard: std::collections::HashSet<EntityId> = self
+        let aboard: crate::fixed::HashSet<EntityId> = self
             .objects
             .iter()
             .filter_map(|e| match e.object {

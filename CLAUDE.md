@@ -31,7 +31,13 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 
 ## Structure
 
-- `server/` — Rust (DES, WebSocket, SQLite)
+- `server/` — Rust, a workspace of three:
+  - `server/` itself, the `sprawl` library: the game (DES, world, cars,
+    town) as `game::Game`, with no clock on the wall and no IO.
+  - `server/host/` — the server binary: `Game` on a tokio loop, over
+    WebSocket, saved to SQLite. `cargo run` in `server/` runs it.
+  - `server/web/` — `Game` for a Web Worker, built for wasm
+    (`cargo build -p sprawl-web --target wasm32-unknown-unknown`).
 - `client/` — SolidJS 1.x + Babylon Lite (Vite), WebGPU only. Lite is our
   fork, read from its source beside this repo: clone
   `github.com/wytzepiet/Babylon-Lite` (branch `sprawl`) to `../Babylon-Lite`
@@ -65,7 +71,7 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
 - **Does the town still keep?** `cargo test season -- --ignored
   --nocapture` runs the same town for thirty days and asserts that its
   shelves stay stocked and its residents fed: no shelf and no tank empty
-  two midnights running, nine meals in ten eaten over any two days, and coins left at
+  two midnights running, seventeen meals in twenty eaten over any two days, and coins left at
   the end. It prints each day's hours worked, eaten out and filled up,
   GDP by building, and coins across the border. Its town's only door is a
   harbour: everything it buys comes by ferry and its depot's lorry, and
@@ -82,7 +88,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the running server (`samply setup` once, first) and opens a flame graph in
   the browser.
 - **Does it still hold?** `cd server && cargo test && cargo check`, then
-  `cd client && bunx tsc --noEmit -p .`. Nothing runs these but you, so run
+  `cd client && bunx tsc --noEmit -p . && bun test` (`bun run wasm` first
+  after changing the server: `pen.test.ts` plays drags against it). Nothing runs these but you, so run
   them before you push. The suite takes about ten seconds: the test profile
   is optimised (`[profile.test]` in `Cargo.toml`, assertions and overflow
   checks still on) and the town tests skip the ticks nothing is due at. A
@@ -179,6 +186,34 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   the saved answer instead of the point; `bun run osm <name>` alone makes
   it again from the answer kept in `.dev/osm/`. What becomes what is at
   the top of `client/scripts/osm.ts`.
+- **Where the hand may go** is the game's to say, never the client's:
+  the brush asks (`Ask`, `server/src/hint.rs`) and the game answers by
+  the rules it builds by. Where roads may stand is one rule of their
+  shapes (`server/src/world/clear.rs`). `cargo test starts_over_a_view
+  -- --ignored --nocapture` times the dots for a large view, which the
+  town's server answers as the camera moves.
+- **Interchange, the puzzle:** `/interchange` on the dev client, the
+  levels run in the browser on the sim compiled to wasm (`server/web`):
+  `cd client && bun run wasm` after changing the server (`bun run dev`
+  does it on start). A level is `server/levels/<name>.txt` (the format at
+  the top of `server/src/level.rs`); `cargo test level` runs every
+  level's own solve and asserts it scores 100. A new level file needs
+  Vite restarted to be listed (it is a glob import). `docs/plan-interchange.md`
+  is what it is and what is built.
+- **A replay of what went wrong:** in a level, F flags the moment and the
+  tile under the pointer, and "Copy replay" puts everything played since
+  the level opened on the clipboard (`server/src/replay.rs`): the
+  player's inputs at the moments they came, and nothing else, since the
+  game is the same from the same inputs on every machine (`fixed.rs`: no
+  `std` HashMap or `SmallRng`; settling by the steps, not the ticks).
+  Pasted to you, save it as `server/replays/<name>.json` and `cargo run
+  --bin replay -- <file> --flag 1 --at x,y --car id` plays it to the flag:
+  whether it still plays as it was played, what went wrong on the way (a
+  car through another, one standing for good, one on a priority road
+  made to wait for a minor one: `Watch`), and every car
+  there, how fast and what it slows or stops for (`World::why`). `cargo
+  test replay` plays every kept one on today's game and asserts nothing
+  goes wrong in it; once fixed, it stays fixed.
 - **Generated types:** `cd client && bun run generate`
 - **Test world:** `rm server/sprawl.db && SPRAWL_SEED=7 bun run dev`. Seed 7 has
   open land beside the starting roads and forest to build into — enough to

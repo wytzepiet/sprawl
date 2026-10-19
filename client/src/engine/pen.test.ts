@@ -1,0 +1,480 @@
+import { beforeAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { decode, encode } from "@msgpack/msgpack";
+import init, { Web } from "../wasm/sprawl_web.js";
+import type { ClientMessage, GameObjectEntry, GridCoord, RoadNode, ServerMessage, Tool } from "../generated";
+import { Pen, type Place } from "./pen";
+import type { Side } from "./tiles";
+
+/**
+ * Drags played through the pen (`pen.ts`) against the game itself, the
+ * sim compiled to wasm (`cd client && bun run wasm` after changing the
+ * server), as the level's worker runs it: each step sent, the world heard
+ * back before the next. After every drag the roads are checked for what
+ * may never be (`broken`); each case then for what it should have made.
+ */
+
+beforeAll(async () => {
+  await init({ module_or_path: readFileSync(new URL("../wasm/sprawl_web_bg.wasm", import.meta.url)) });
+});
+
+/** Open grass, a gate on its west edge so it is a level. Its rows run
+ *  down from y 0 to -20; a case's tiles are written down the page, y
+ *  for -y. */
+const FIELD = ["# Field", "@gate 1 both", ...Array.from({ length: 21 }, (_, r) => (r === 10 ? "1" : ".") + ".".repeat(20))].join("\n");
+
+type Entry = GameObjectEntry & { object: { kind: "RoadNode"; data: RoadNode } };
+
+class Table {
+  web = new Web("field", FIELD);
+  entities = new Map<number, GameObjectEntry>();
+  tool: Tool = "OneWay";
+  pen = 0;
+  hand = new Pen({
+    roads: (t) => this.roads().filter((e) => e.position!.x === t.x && e.position!.y === t.y).map((e): Place => ({ h: e.object.data.height, s: e.object.data.side as Side })),
+    tool: () => this.tool,
+    want: () => this.pen * 2,
+    priority: () => false,
+    send: (msg) => this.send(msg),
+    lift: (levels) => (this.pen = levels),
+  });
+
+  constructor() {
+    // What a client is sent is what it looks at, as the camera asks.
+    this.web.send(encode({ type: "SetChunks", data: { min_cx: -4, min_cy: -4, max_cx: 4, max_cy: 4 } }));
+    this.hear();
+  }
+
+  send(msg: ClientMessage) {
+    this.web.send(encode(msg));
+    this.hear();
+  }
+
+  hear() {
+    this.web.tick();
+    for (const bytes of this.web.drain() as Uint8Array[]) {
+      const msg = decode(bytes) as ServerMessage;
+      if (msg.type === "Hint") this.hand.hear(msg.data);
+      if (msg.type !== "Update") continue;
+      for (const op of msg.data.ops) {
+        if (op.op === "Upsert") this.entities.set(op.data.id, op.data);
+        else this.entities.delete(op.data);
+      }
+    }
+  }
+
+  /** A drag through these tiles, corner to corner, a step at a time; how
+   *  many steps were left when one was refused, as the pointer would go
+   *  on and the road not. */
+  drag(tool: Tool, ...corners: [number, number][]): number {
+    this.tool = tool;
+    const [x0, y0] = corners[0];
+    this.hand.press({ x: x0, y: -y0 }, x0 + 0.5, -y0 + 0.5);
+    const steps: GridCoord[] = [];
+    let [x, y] = [x0, y0];
+    for (const [cx, cy] of corners.slice(1)) {
+      while (x !== cx || y !== cy) {
+        [x, y] = [x + Math.sign(cx - x), y + Math.sign(cy - y)];
+        steps.push({ x, y: -y });
+      }
+    }
+    const taken = steps.findIndex((s) => !this.hand.step(s));
+    this.hand.release();
+    return taken < 0 ? 0 : steps.length - taken;
+  }
+
+  roads(): Entry[] {
+    return [...this.entities.values()].filter((e): e is Entry => e.object.kind === "RoadNode" && !!e.position);
+  }
+
+  /** The roads on a tile: side and links, as `x,y:side>outs<ins`. */
+  on(x: number, y: number): { side: [number, number]; h: number; n: RoadNode; id: number }[] {
+    return this.roads().filter((e) => e.position!.x === x && e.position!.y === -y).map((e) => ({ side: e.object.data.side as [number, number], h: e.object.data.height, n: e.object.data, id: e.id }));
+  }
+
+  /** What may never be, said; none, nothing. */
+  broken(): string[] {
+    const out: string[] = [];
+    const roads = this.roads();
+    if (!roads.some((e) => e.object.data.laid)) out.push("no road laid at all");
+    const byId = new Map(roads.map((e) => [e.id, e]));
+    const at = (id: number) => byId.get(id)?.position as GridCoord | undefined;
+    const tiles = new Map<string, Entry[]>();
+    for (const e of roads) {
+      const k = `${e.position!.x},${e.position!.y}`;
+      (tiles.get(k) ?? tiles.set(k, []).get(k)!).push(e);
+    }
+    for (const [k, here] of tiles) {
+      const places = here.map((e) => `${e.object.data.height}:${e.object.data.side}`);
+      if (new Set(places).size !== places.length) out.push(`${k}: two roads in one place ${places}`);
+    }
+    // Roads that run into each other, as the game judges it (`clear.rs`).
+    for (const [a, b] of JSON.parse(this.web.clashing()) as [number, number][]) out.push(`${at(a)?.x},${at(a)?.y} runs into ${at(b)?.x},${at(b)?.y}`);
+    for (const e of roads) {
+      const n = e.object.data;
+      const p = e.position!;
+      const arms = [...new Set([...n.outgoing, ...n.incoming])];
+      for (const o of arms) {
+        const q = at(o);
+        if (!q) out.push(`${p.x},${p.y}: a link to nothing`);
+        else if (Math.abs(q.x - p.x) > 1 || Math.abs(q.y - p.y) > 1 || (q.x === p.x && q.y === p.y)) out.push(`${p.x},${p.y}: a link to ${q.x},${q.y}`);
+      }
+      // A road through a tile runs through it: in by one way, out by
+      // another, unless it ends there.
+      const ins = arms.filter((o) => byId.get(o)?.object.data.outgoing.includes(e.id));
+      const outs = n.outgoing;
+      if (arms.length >= 2 && (!ins.length || !outs.length) && n.laid) out.push(`${p.x},${p.y}${n.side.join() !== "0,0" ? `(${n.side})` : ""}: ${ins.length ? "nowhere to go" : "no way in"}`);
+      // A road on a side is its run beside the other, and one road joining
+      // it at most (`World::may_lay_at`).
+      if ((n.side[0] || n.side[1]) && arms.length > 3) out.push(`${p.x},${p.y}(${n.side}): a road on a side with ${arms.length} arms`);
+    }
+    return [...new Set(out)];
+  }
+}
+
+const sideOf = (t: Table, x: number, y: number) => t.on(x, y).map((r) => r.side.join()).sort();
+
+describe("one-ways side by side", () => {
+  test("opposing one-ways down the same tiles go side by side", () => {
+    const t = new Table();
+    expect(t.drag("OneWay", [2, 5], [10, 5])).toBe(0);
+    expect(t.drag("OneWay", [10, 5], [2, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    for (let x = 3; x <= 9; x++) expect(sideOf(t, x, 5)).toEqual(["0,-1", "0,1"]);
+  });
+
+  test("a pair round a bend", () => {
+    const t = new Table();
+    expect(t.drag("OneWay", [3, 2], [3, 8], [9, 8])).toBe(0);
+    expect(t.drag("OneWay", [9, 8], [3, 8], [3, 2])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    expect(t.on(3, 8)).toHaveLength(2);
+  });
+
+  // A one-way round a corner, then one back against it along the same
+  // tiles: the second goes round the inside of the corner or the outside,
+  // as it keeps to its own side, and either way all the way round.
+  for (const [name, path] of [["left", [[3, 2], [3, 8], [9, 8]]], ["right", [[9, 8], [3, 8], [3, 2]]]] as [string, [number, number][]][])
+    test(`a pair round a ${name}-hand corner, the second drawn on after`, () => {
+      const t = new Table();
+      expect(t.drag("OneWay", ...path)).toBe(0);
+      expect(t.drag("OneWay", ...[...path].reverse())).toBe(0);
+      expect(t.broken()).toEqual([]);
+      for (const [x, y] of [[3, 3], [3, 7], [3, 8], [4, 8], [8, 8]]) expect(t.on(x, y)).toHaveLength(2);
+    });
+
+  // A two-way street split into a divided road: a one-way out of its end,
+  // and one back in beside it along the same tiles, both joined to it.
+  for (const outFirst of [true, false])
+    test(`a street split into a pair, the way ${outFirst ? "out" : "in"} first`, () => {
+      const t = new Table();
+      t.drag("Street", [2, 5], [6, 5]);
+      const out = (): number => t.drag("OneWay", [6, 5], [12, 5]);
+      const back = (): number => t.drag("OneWay", [12, 5], [6, 5]);
+      for (const d of outFirst ? [out, back] : [back, out]) expect(d()).toBe(0);
+      expect(t.broken()).toEqual([]);
+      for (let x = 7; x <= 11; x++) expect(t.on(x, 5)).toHaveLength(2);
+      const end = t.on(6, 5)[0];
+      expect(t.on(6, 5)).toHaveLength(1);
+      expect(new Set([...end.n.outgoing, ...end.n.incoming]).size).toBe(3);
+    });
+
+  test("a pair drawn on: the drag starts at one's end and goes on", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [8, 5]);
+    t.drag("OneWay", [8, 5], [2, 5]);
+    expect(t.drag("OneWay", [8, 5], [12, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("against a one-way met from the side: beside it", () => {
+    const t = new Table();
+    t.drag("OneWay", [12, 5], [2, 5]);
+    expect(t.drag("OneWay", [5, 9], [5, 5], [9, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    for (let x = 5; x <= 9; x++) expect(t.on(x, 5)).toHaveLength(2);
+  });
+
+  test("with a one-way met from the side: joined", () => {
+    const t = new Table();
+    t.drag("OneWay", [12, 5], [2, 5]);
+    expect(t.drag("OneWay", [8, 9], [8, 5], [5, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    for (let x = 2; x <= 12; x++) expect(t.on(x, 5)).toHaveLength(1);
+  });
+
+  test("a diagonal over a pair's bend", () => {
+    const t = new Table();
+    t.drag("OneWay", [5, 2], [5, 8], [11, 8]);
+    t.drag("OneWay", [11, 8], [5, 8], [5, 2]);
+    t.drag("OneWay", [2, 11], [8, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("a diagonal over a one-way's bend", () => {
+    const t = new Table();
+    t.drag("OneWay", [5, 2], [5, 8], [11, 8]);
+    t.drag("OneWay", [2, 11], [8, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("two opposing one-ways into a two-way", () => {
+    const t = new Table();
+    t.drag("Street", [6, 16], [6, 10]);
+    t.drag("OneWay", [6, 10], [6, 3]);
+    t.drag("OneWay", [6, 3], [6, 10]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("a third one-way down a pair", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [10, 5]);
+    t.drag("OneWay", [10, 5], [2, 5]);
+    t.drag("OneWay", [2, 5], [10, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("across a pair, a two-way and a one-way stop at it: right in, right out", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [12, 5]);
+    t.drag("OneWay", [12, 5], [2, 5]);
+    t.drag("Street", [5, 1], [5, 9]);
+    t.drag("OneWay", [9, 1], [9, 9]);
+    expect(t.broken()).toEqual([]);
+    for (const x of [5, 9]) for (let y = 6; y <= 9; y++) expect(t.on(x, y)).toHaveLength(0);
+  });
+
+  test("one of a pair taken up: the other back to the middle", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [10, 5]);
+    t.drag("OneWay", [10, 5], [2, 5]);
+    t.drag("Demolish", [2, 5], [10, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("a one-way that turns back on itself", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [10, 5], [10, 6], [2, 6]);
+    t.drag("OneWay", [4, 3], [4, 5], [8, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("a one-way back down its own tiles in one drag", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [10, 5], [2, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("along a pair, a one-way the way one of them runs: it follows it", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [10, 5]);
+    t.drag("OneWay", [10, 5], [2, 5]);
+    t.drag("OneWay", [2, 5], [10, 5]);
+    expect(t.broken()).toEqual([]);
+    for (let x = 3; x <= 9; x++) expect(t.on(x, 5)).toHaveLength(2);
+  });
+
+  test("along a pair, a two-way", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [10, 5]);
+    t.drag("OneWay", [10, 5], [2, 5]);
+    t.drag("Street", [2, 5], [10, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("started on a one-way's middle, against it: beside it from there", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [12, 5]);
+    expect(t.drag("OneWay", [8, 5], [4, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    for (let x = 4; x <= 8; x++) expect(t.on(x, 5)).toHaveLength(2);
+  });
+
+  test("a pair down a diagonal", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 2], [9, 9]);
+    t.drag("OneWay", [9, 9], [2, 2]);
+    expect(t.broken()).toEqual([]);
+    for (let k = 3; k <= 8; k++) expect(t.on(k, k)).toHaveLength(2);
+  });
+
+  test("a pair down a diagonal and round a bend", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 2], [6, 6], [12, 6]);
+    t.drag("OneWay", [12, 6], [6, 6], [2, 2]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("a pair's other one drawn on", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [8, 5]);
+    t.drag("OneWay", [8, 5], [2, 5]);
+    t.drag("OneWay", [12, 5], [8, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("into a pair from the side, ending there; out of it from the side", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [12, 5]);
+    t.drag("OneWay", [12, 5], [2, 5]);
+    t.drag("OneWay", [5, 9], [5, 5]);
+    t.drag("OneWay", [9, 5], [9, 9]);
+    t.drag("OneWay", [7, 1], [7, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("a pair, one tile of one taken up", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [10, 5]);
+    t.drag("OneWay", [10, 5], [2, 5]);
+    t.drag("Demolish", [6, 5], [6, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("a pair drawn and undone", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [10, 5]);
+    t.drag("OneWay", [10, 5], [2, 5]);
+    t.web.send(encode({ type: "Undo" }));
+    t.hear();
+    expect(t.broken()).toEqual([]);
+    for (let x = 3; x <= 9; x++) expect(t.on(x, 5)).toHaveLength(1);
+  });
+
+  test("a pair over a pair, a level up", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 8], [14, 8]);
+    t.drag("OneWay", [14, 8], [2, 8]);
+    t.pen = 1;
+    t.drag("OneWay", [8, 2], [8, 14]);
+    t.drag("OneWay", [8, 14], [8, 2]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("a one-way across a one-way's bend, and a diagonal across its corner", () => {
+    const t = new Table();
+    t.drag("OneWay", [5, 2], [5, 8], [11, 8]);
+    t.drag("OneWay", [2, 8], [8, 8]);
+    t.drag("OneWay", [2, 12], [9, 5]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("zigzags beside a one-way", () => {
+    const t = new Table();
+    t.drag("OneWay", [14, 5], [2, 5]);
+    t.drag("OneWay", [3, 6], [4, 5], [6, 5], [7, 4], [8, 5], [11, 5], [12, 6]);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("on into a one-way's end, its way: joined, not beside it", () => {
+    const t = new Table();
+    t.drag("OneWay", [10, 5], [14, 5]);
+    expect(t.drag("OneWay", [4, 5], [10, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    for (let x = 4; x <= 14; x++) expect(t.on(x, 5)).toHaveLength(1);
+  });
+
+  test("on into a one-way's end, against it: beside it", () => {
+    const t = new Table();
+    t.drag("OneWay", [14, 5], [10, 5]);
+    expect(t.drag("OneWay", [4, 5], [12, 5])).toBe(0);
+    expect(t.broken()).toEqual([]);
+  });
+
+  test("the pen raised mid-drag: the tile it is on climbs, and on, a level up", () => {
+    const t = new Table();
+    t.tool = "Street";
+    t.hand.press({ x: 2, y: -5 }, 2.5, -4.5);
+    for (let x = 3; x <= 5; x++) t.hand.step({ x, y: -5 });
+    t.hand.climb(1)!();
+    for (let x = 6; x <= 9; x++) t.hand.step({ x, y: -5 });
+    t.hand.release();
+    expect(t.broken()).toEqual([]);
+    expect([2, 3, 4, 5, 6, 7].map((x) => t.on(x, 5)[0]?.h)).toEqual([0, 0, 0, 1, 2, 2]);
+  });
+
+  test("a ramp beside a road: a one-way climbing away along one against it", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 5], [14, 5]);
+    t.hand.press({ x: 14, y: -5 }, 14.5, -4.5);
+    for (let x = 13; x >= 10; x--) expect(t.hand.step({ x, y: -5 })).toBe(true);
+    t.hand.climb(1)!();
+    for (let x = 9; x >= 5; x--) expect(t.hand.step({ x, y: -5 })).toBe(true);
+    t.hand.release();
+    expect(t.broken()).toEqual([]);
+    // Beside the road below while it climbs, then over it.
+    expect(t.on(10, 5).map((r) => r.h).sort()).toEqual([0, 1]);
+    expect(t.on(10, 5).every((r) => r.side[1] !== 0)).toBe(true);
+    expect(t.on(6, 5).map((r) => r.h).sort()).toEqual([0, 2]);
+  });
+
+  test("raised after it is let go: the drag's end is the slope", () => {
+    const t = new Table();
+    t.drag("Street", [2, 5], [8, 5]);
+    t.hand.climb(1)!();
+    expect(t.broken()).toEqual([]);
+    expect([6, 7, 8].map((x) => t.on(x, 5)[0]?.h)).toEqual([0, 0, 1]);
+  });
+
+  test("a street onto a street at 45 degrees, and a one-way", () => {
+    const t = new Table();
+    t.drag("Street", [2, 5], [12, 5]);
+    t.drag("Street", [2, 1], [6, 5]);
+    t.drag("OneWay", [12, 1], [8, 5]);
+    expect(t.broken()).toEqual([]);
+    expect(t.on(5, 4)).toHaveLength(1);
+    expect(t.on(9, 4)).toHaveLength(1);
+  });
+
+  test("a diagonal past a one-way's bend that turns back: it goes on past", () => {
+    const t = new Table();
+    t.drag("OneWay", [6, 2], [6, 5], [2, 5]);
+    expect(t.drag("OneWay", [3, 8], [9, 2])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    expect(t.on(9, 2)).toHaveLength(1);
+  });
+
+  test("two diagonals across each other: an X, no junction", () => {
+    const t = new Table();
+    t.drag("OneWay", [2, 2], [8, 8]);
+    expect(t.drag("OneWay", [2, 8], [8, 2])).toBe(0);
+    expect(t.broken()).toEqual([]);
+    expect(t.on(8, 2)).toHaveLength(1);
+  });
+
+  test("the outer road of a pair round a bend, drawn on past it", () => {
+    const t = new Table();
+    t.drag("OneWay", [8, 5], [4, 5], [4, 9]);
+    t.drag("OneWay", [4, 9], [4, 5], [8, 5]);
+    expect(t.on(4, 5)).toHaveLength(2);
+    // Pressed on the outer one, in the corner away from the bend, and on.
+    t.hand.press({ x: 4, y: -5 }, 4.2, -4.2);
+    expect([3, 2].every((x) => t.hand.step({ x, y: -5 }))).toBe(true);
+    t.hand.release();
+    expect(t.broken()).toEqual([]);
+    expect(t.on(2, 5)).toHaveLength(1);
+    expect(t.on(4, 5)).toHaveLength(2);
+  });
+
+  // Two pairs a row apart, and between them, from the lower pair's
+  // westbound road, one up a step and east along the upper pair, and from
+  // the upper pair's westbound road, one on west and down a diagonal to
+  // the lower's: on the tile they share, each keeps to its own side.
+  for (const first of ["up", "down"])
+    test(`a pair parting, one round a bend and one down a diagonal, ${first} first`, () => {
+      const t = new Table();
+      t.drag("OneWay", [0, 4], [10, 4]);
+      t.drag("OneWay", [10, 4], [0, 4]);
+      const up = () => {
+        // Pressed on the westbound road, on the north of its tile.
+        t.hand.press({ x: 4, y: -4 }, 4.5, -3.67);
+        expect([{ x: 4, y: -5 }, ...[5, 6, 7, 8, 9].map((x) => ({ x, y: -5 }))].every((s) => t.hand.step(s))).toBe(true);
+        t.hand.release();
+      };
+      const down = () => expect(t.drag("OneWay", [9, 5], [4, 5], [3, 4])).toBe(0);
+      for (const d of first === "up" ? [up, down] : [down, up]) d();
+      expect(t.broken()).toEqual([]);
+      expect(t.on(4, 5)).toHaveLength(2);
+      expect(t.on(9, 5)).toHaveLength(2);
+    });
+});

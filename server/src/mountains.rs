@@ -8,7 +8,7 @@
 //! terrain alone, and sent to the client a chunk at a time
 //! (`TerrainChunk::heights`).
 
-use std::collections::{HashMap, HashSet};
+use crate::fixed::{HashMap, HashSet};
 
 use crate::protocol::{ChunkCoord, TerrainType, CHUNK_SIZE};
 use crate::terrain::Ground;
@@ -74,7 +74,7 @@ impl Peaks {
         let ground = Ground::new(seed);
         let mut peaks = Peaks::default();
         let rock = |x: i32, y: i32| terrain.get(&(x, y)) == Some(&TerrainType::Mountain);
-        let mut seen: HashSet<(i32, i32)> = HashSet::new();
+        let mut seen: HashSet<(i32, i32)> = HashSet::default();
         let mut tiles: Vec<(i32, i32)> = terrain.iter().filter(|(_, t)| **t == TerrainType::Mountain).map(|(&p, _)| p).collect();
         tiles.sort();
         let mut ranges: Vec<Vec<(i32, i32)>> = Vec::new();
@@ -99,10 +99,16 @@ impl Peaks {
             }
             ranges.push(range);
         }
-        // The ranges worn side by side, the biggest first, a thread a core.
+        // The ranges worn side by side, the biggest first, a thread a core;
+        // where there are no threads to have (a browser), one after another.
         ranges.sort_by_key(|r| std::cmp::Reverse(r.len()));
-        let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
         let next = std::sync::atomic::AtomicUsize::new(0);
+        let Ok(threads) = std::thread::available_parallelism().map(|n| n.get()) else {
+            for range in &ranges {
+                peaks.raise(range, &rock, &ground);
+            }
+            return peaks;
+        };
         let worn: Vec<Peaks> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..threads)
                 .map(|_| {
@@ -340,7 +346,7 @@ mod tests {
     /// A block of rock rises in its middle and is at the ground off it.
     #[test]
     fn a_range_rises_in_its_middle() {
-        let mut terrain = HashMap::new();
+        let mut terrain = HashMap::default();
         for y in -12i32..12 {
             for x in -12i32..12 {
                 terrain.insert((x, y), if x.abs() < 8 && y.abs() < 8 { TerrainType::Mountain } else { TerrainType::Grass });

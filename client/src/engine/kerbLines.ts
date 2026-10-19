@@ -16,6 +16,9 @@ export type KerbRule = (a: number[], b: number[], out: number[]) => boolean;
 /** A kerb: an edge of a sheet, and the way into the sheet. */
 export type Kerb = { a: number[]; b: number[]; inward: number[] };
 
+/** How long a piece of an edge `kerbsOf` asks its rule about, at most. */
+const PIECE = 0.05;
+
 /** A sheet's kerbs: each edge only one of its triangles has, where `kerb`
  *  says it is one, with the way into the sheet. */
 export function kerbsOf(g: MeshGeometry, kerb: KerbRule = () => true): Kerb[] {
@@ -41,8 +44,16 @@ export function kerbsOf(g: MeshGeometry, kerb: KerbRule = () => true): Kerb[] {
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
       let o = [(b[1] - a[1]) / len, -(b[0] - a[0]) / len];
       if ((a[0] - c[0]) * o[0] + (a[1] - c[1]) * o[1] < 0) o = [-o[0], -o[1]];
-      if (!kerb(a, b, o)) continue;
-      out.push({ a, b, inward: [-o[0], -o[1]] });
+      // Asked a piece at a time, so an edge that runs on over most of its
+      // length and not the rest, as a street's end over an island's tip,
+      // is a kerb only where it does not.
+      const n = Math.ceil(len / PIECE);
+      const at = (t: number) => [a[0] + ((b[0] - a[0]) * t) / n, a[1] + ((b[1] - a[1]) * t) / n, a[2]];
+      for (let i = 0, from = -1; i <= n; i++) {
+        const is = i < n && kerb(at(i), at(i + 1), o);
+        if (is && from < 0) from = i;
+        if (!is && from >= 0) out.push({ a: at(from), b: at(i), inward: [-o[0], -o[1]] }), (from = -1);
+      }
     }
   }
   return out;

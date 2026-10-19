@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use tokio::sync::oneshot;
 
 use crate::network::{AppState, Command, Ask};
-use crate::protocol::EntityId;
+use sprawl::protocol::EntityId;
 
 /// Simulated time, as of the last tick. Published here rather than asked for
 /// over the command channel: the question this answers is "is the game loop
@@ -61,7 +61,7 @@ pub async fn inspect_demand(State(state): State<AppState>) -> String {
 
 /// Every kind of building: what it holds, serves, and where it belongs.
 pub async fn inspect_blueprints() -> String {
-    format!("{:#}\n", crate::blueprint::inspect())
+    format!("{:#}\n", sprawl::blueprint::inspect())
 }
 
 /// A building's lot: spots, windows, and what it has seen.

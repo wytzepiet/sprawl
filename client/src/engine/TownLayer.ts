@@ -9,7 +9,7 @@ import { setTint, townMaterial, type TownMaterial } from "./material";
 import { drop, meshOf, show } from "./geometry";
 import { hex, rgb, WHITE, type Rgb } from "./rgb";
 import * as Comlink from "comlink";
-import { CHUNK, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
+import { CHUNK, kerbed, MARGIN, type Bounds, type ChunkDrawing, type Snapshot } from "./town/layer";
 import type { TownApi } from "./townWorker";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
@@ -17,8 +17,9 @@ import { BLUEPRINTS, yardOf } from "../blueprints";
 import { KERB_Z } from "./town/draw";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
-import { surfaceAt } from "./town/surface";
-import { storeysOf, type Tile, type Town } from "./town/grid";
+import { surfacesAt } from "./town/surface";
+import { Decks, liftOf, type DeckPiece } from "./decks";
+import { storeysOf, type Flow, type RoadView, type Tile, type Town } from "./town/grid";
 import type { Box } from "./town/clip";
 import { kerbField, kerbPlugin, unkerb, type KerbField } from "./kerbs";
 import { pavingPlugin, ROUGHNESS as PAVING_ROUGHNESS } from "./paving";
@@ -27,14 +28,20 @@ import { grove, plant, uproot, type Grove } from "./trees";
 import { clearProps, placeProps } from "./props";
 import type { RGB } from "./town/mass";
 import type { Building, BuildingKind, GameObjectEntry, GridCoord, RoadNode, TerrainType } from "../generated";
-import type { Placing } from "./may";
+import { SIDE_OFFSET } from "./tiles";
+import type { Placing } from "../generated";
 import type { Pose } from "../generated/Pose";
 import type { Pt } from "./town/footprint";
 import { TRAILER } from "./objects/roadGeometry";
 
+/** How many roads one tile may hold: the ground's two side by side, and
+ *  the decks' over them. */
+const ROADS_A_TILE = 8;
 /** Ground round what is built the town is drawn over: its pavement and
  *  its trees. */
 const TOWN_MARGIN = 4;
+/** The town round what is built, a margin wider; none, where nothing is. */
+const townOf = (built: Bounds): Bounds | null => (built[0] <= built[2] ? widen(built, TOWN_MARGIN) : null);
 /** A drawing slower than this is said so in the console, in development. */
 const SLOW_MS = 50;
 /** The ground as the town worker is told it, by index. */
@@ -84,6 +91,9 @@ export class TownLayer {
   private stale = new Set<string>();
   /** The road tiles, and the tiles to draw again. */
   private roads: RoadTiles;
+  /** The decks' road tiles, by key, and the concrete under them. */
+  private decks = new Map<string, DeckPiece>();
+  private concrete: Decks;
   private dirty = new Set<string>();
   private frame: number | null = null;
   private tints: Tints;
@@ -123,7 +133,9 @@ export class TownLayer {
     this.stopTints = ctx.beforeRender(() => this.tints.upload());
     const bevel: Bevel = { width: 0.05, soft: null };
     this.masses = lacquer(townMaterial([bevelPlugin(bevel), tintPlugin(this.tints), ROOF]), "building", bevel);
-    this.roads = new RoadTiles(ctx.engine, ctx.scene, (through) => (through ? this.theme().highway : this.theme().road));
+    this.roads = new RoadTiles(ctx.engine, ctx.scene, () => this.theme().road);
+    const { r, g, b } = this.theme().paved;
+    this.concrete = new Decks(ctx.engine, ctx.scene, casters, rgb(r, g, b));
   }
 
   /** A piece's material, made once for its name and colour. */
@@ -167,7 +179,7 @@ export class TownLayer {
 
   /** Everything drawn again: the theme changed. */
   repaint() {
-    for (const key of this.roads.tiles()) this.dirty.add(key);
+    for (const key of this.roads.tiles()) this.dirty.add(key.split("#")[0]);
     for (const key of this.chunks.keys()) this.stale.add(key);
     this.settle();
   }
@@ -200,9 +212,11 @@ export class TownLayer {
     const g: Gathered = { buildings: [], roads: [], doors: [], marks: [], byId: new Map(), built: [Infinity, Infinity, -Infinity, -Infinity] };
     const marks = new Map<string, Snapshot["marks"][number]>();
     this.entities((e) => {
+      // The ground's roads: what is above it is drawn as decks (`decks.ts`).
       if (e.object.kind === "RoadNode" && e.position) {
         const n = e.object.data as RoadNode;
-        g.roads.push([e.position.x, e.position.y, e.id, n.road, n.outgoing, n.incoming]);
+        if (n.height) return;
+        g.roads.push([e.position.x, e.position.y, e.id, n.road.length > 0, n.outgoing, n.incoming]);
       } else if (e.object.kind === "Building") {
         const b = e.object.data as Building;
         g.byId.set(e.id, e);
@@ -218,11 +232,24 @@ export class TownLayer {
     });
     if (held) {
       const yard = yardTiles(held.tiles, held.kind, held.facing);
-      for (const t of held.tiles) g.buildings.push([t.x, t.y, HELD, held.kind, yard.has(`${t.x},${t.y}`)]);
+      for (const t of held.tiles) {
+        g.buildings.push([t.x, t.y, HELD, held.kind, yard.has(`${t.x},${t.y}`)]);
+        grow(g.built, t.x, t.y);
+      }
       if (held.door) g.doors.push([held.door.tile.x, held.door.tile.y, held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
     }
     g.marks = [...marks.values()];
     return g;
+  }
+
+  /** The roads on each of these road tiles, as they are drawn here. */
+  private views(roads: Snapshot["roads"]): Snapshot["views"] {
+    const world = this.world();
+    const tiles = new Set(roads.map(([x, y]) => `${x},${y}`));
+    return [...tiles].map((k) => {
+      const [x, y] = k.split(",").map(Number);
+      return [x, y, world.roadsOn!(-x, -y)];
+    });
   }
 
   /** The ground under a box, as the worker cannot ask the terrain. */
@@ -261,7 +288,7 @@ export class TownLayer {
     const g = this.gather(held);
     const inside = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
     const snapshot: Snapshot = {
-      box, todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme(),
+      box, town: townOf(g.built), todo: [...todo], buildings: g.buildings.filter(inside), roads: g.roads.filter(inside), views: this.views(g.roads.filter(inside)), doors: g.doors.filter(inside), marks: g.marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme(),
     };
     // Kept, in development, to time the drawing alone, off the page.
     if (import.meta.env.DEV) Object.assign(window, { sprawlHeldSnapshot: { ...snapshot, ground: [...snapshot.ground] } });
@@ -309,19 +336,27 @@ export class TownLayer {
     const { buildings, roads, doors, marks, byId, built } = this.gather(null);
 
     // The town, paved and dressed, only round what is built: a road
-    // across open country is asphalt, and the town is what is paved. The
-    // chunks it covers; those it no longer does go, those it newly does are
-    // drawn.
-    const box = built[0] <= built[2] ? widen(built, TOWN_MARGIN) : null;
+    // across open country is asphalt, and the town is what is paved; and
+    // out in the country, the kerbs round a junction and down a divided
+    // road's middle (`kerbed`). The
+    // chunks they cover; those no longer covered go, those newly are drawn.
+    const town = townOf(built);
+    const box: Bounds = town ?? [Infinity, Infinity, -Infinity, -Infinity];
     const covered = new Set<string>();
-    if (box) for (let cy = Math.floor(box[1] / CHUNK); cy <= Math.floor(box[3] / CHUNK); cy++) for (let cx = Math.floor(box[0] / CHUNK); cx <= Math.floor(box[2] / CHUNK); cx++) covered.add(`${cx},${cy}`);
+    if (town) for (let cy = Math.floor(town[1] / CHUNK); cy <= Math.floor(town[3] / CHUNK); cy++) for (let cx = Math.floor(town[0] / CHUNK); cx <= Math.floor(town[2] / CHUNK); cx++) covered.add(`${cx},${cy}`);
+    for (const [x, y] of [...kerbed(roads)].map((k) => k.split(",").map(Number))) {
+      grow(box, x - 1, y - 1);
+      grow(box, x + 1, y + 1);
+      for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) covered.add(chunkOf(x + dx, y + dy));
+    }
     for (const key of [...this.chunks.keys()]) if (!covered.has(key)) this.drop(key);
     for (const key of covered) if (!this.chunks.has(key)) this.stale.add(key);
     const todo = [...this.stale].filter((key) => covered.has(key));
     this.stale.clear();
-    if (!box || !todo.length) return;
+    if (!todo.length) return;
 
-    const snapshot: Snapshot = { box, todo, buildings, roads, doors, marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme() };
+    const near = ([x, y]: [number, number, ...unknown[]]) => x >= box[0] - 1 && x <= box[2] + 1 && y >= box[1] - 1 && y <= box[3] + 1;
+    const snapshot: Snapshot = { box, town, todo, buildings, roads, views: this.views(roads.filter(near)), doors, marks, ground: this.groundUnder(box), kinds: KINDS, theme: this.theme() };
     const gathered = performance.now() - started;
     this.drawing = true;
     this.builder
@@ -362,17 +397,30 @@ export class TownLayer {
       });
   }
 
-  /** The road on each tile that changed, the shape its arms make:
-   *  the world as a town in the fixture's frame round the map's origin,
-   *  asked about those tiles alone. */
+  /** The roads on each tile that changed, the shape each one's arms
+   *  make: the world as a town in the fixture's frame round the map's
+   *  origin, asked about those tiles alone. Two roads may share a tile,
+   *  side by side, each its own: `x,y#0` and `x,y#1`. */
   private retile() {
     const world = this.world();
+    let decked = false;
     for (const key of this.dirty) {
       const [x, y] = key.split(",").map(Number);
-      const at = surfaceAt(world, -x, -y);
-      if (at) this.roads.set(key, x, y, at);
-      else this.roads.delete(key);
+      const surfaces = surfacesAt(world, -x, -y);
+      for (let i = 0; i < ROADS_A_TILE; i++) {
+        const k = `${key}#${i}`;
+        const s = surfaces[i];
+        decked ||= this.decks.has(k) || !!s?.height;
+        this.decks.delete(k);
+        if (!s) {
+          this.roads.delete(k);
+          continue;
+        }
+        this.roads.set(k, x, y, s, s.height ? liftOf(s) : undefined);
+        if (s.height) this.decks.set(k, { x, y, surface: s });
+      }
     }
+    if (decked) this.concrete.rebuild(this.decks.values());
     this.dirty.clear();
     this.roads.flush();
   }
@@ -381,7 +429,10 @@ export class TownLayer {
    *  about the map's origin: column -x, row -y. A building's tiles carry
    *  which building and whether its yard, as the chunks' do. */
   private world(): Town {
+    // The ground's roads: the middle's by tile, every one by tile and by id.
     const nodes = new Map<string, RoadNode & { id: number }>();
+    const onTile = new Map<string, (RoadNode & { id: number })[]>();
+    const byId = new Map<number, { n: RoadNode & { id: number }; x: number; y: number }>();
     const built = new Map<string, Tile>();
     const doors = doorsOf(this.entities);
     const raise = (id: number, { tiles, kind, facing, site }: Pick<Building, "tiles" | "kind" | "facing"> & { site?: unknown }) => {
@@ -389,7 +440,13 @@ export class TownLayer {
       for (const t of tiles) built.set(`${t.x},${t.y}`, { kind, storeys: storeysOf(kind), id, yard: yard.has(`${t.x},${t.y}`) });
     };
     this.entities((e) => {
-      if (e.object.kind === "RoadNode" && e.position) nodes.set(`${e.position.x},${e.position.y}`, { ...e.object.data, id: e.id });
+      if (e.object.kind === "RoadNode" && e.position) {
+        const n = { ...e.object.data, id: e.id };
+        const k = `${e.position.x},${e.position.y}`;
+        byId.set(e.id, { n, x: e.position.x, y: e.position.y });
+        if (!n.height && !n.side?.[0] && !n.side?.[1]) nodes.set(k, n);
+        (onTile.get(k) ?? onTile.set(k, []).get(k)!).push(n);
+      }
       else if (e.object.kind === "Building") raise(e.id, e.object.data as Building);
     });
     // And the building held, its drive on its street.
@@ -397,16 +454,56 @@ export class TownLayer {
     if (held) raise(HELD, held);
     if (held?.door) doors.set(`${held.door.tile.x},${held.door.tile.y}`, [held.door.street.x - held.door.tile.x, held.door.street.y - held.door.tile.y]);
     const key = (c: number, r: number) => `${-c},${-r}`;
-    const road = (c: number, r: number) => (built.has(key(c, r)) ? undefined : nodes.get(key(c, r)));
+    // The tile's road on the ground, for what the ground asks of it; a tile
+    // with only a deck over it is a road tile too, so its deck is drawn.
+    const road = (c: number, r: number) => (built.has(key(c, r)) ? undefined : nodes.get(key(c, r)) ?? onTile.get(key(c, r))?.find((n) => !n.height));
+    const flowOf = (a: RoadNode & { id: number }, b: RoadNode & { id: number }): Flow => {
+      if (a.wide.includes(b.id)) return "O";
+      if (b.wide.includes(a.id)) return "I";
+      const [out, back] = [a.outgoing.includes(b.id) || b.incoming.includes(a.id), b.outgoing.includes(a.id) || a.incoming.includes(b.id)];
+      return out && back ? "t" : out ? "o" : "i";
+    };
+    // A slope's run, the slopes one after another it climbs with: which of
+    // them it is from the low end, how many, and the heights from and to.
+    const runOf = (n: RoadNode & { id: number }): [number, number, number, number] => {
+      const next = (m: RoadNode & { id: number }, higher: boolean) =>
+        [...m.outgoing, ...m.incoming].map((id) => byId.get(id)?.n).find((o) => o && (higher ? o.height > m.height : o.height < m.height));
+      let [low, below] = [n, 0];
+      for (let o = next(low, false); o && o.height % 2; o = next(low, false)) [low, below] = [o, below + 1];
+      let [high, above] = [n, 0];
+      for (let o = next(high, true); o && o.height % 2; o = next(high, true)) [high, above] = [o, above + 1];
+      return [below, below + above + 1, low.height - 1, high.height + 1];
+    };
+    // A road moved to a side of its tile, in the town's frame, turned.
+    const shiftOf = ({ side }: RoadNode): [number, number] => {
+      const [sx, sy] = side ?? [0, 0];
+      const by = sx || sy ? SIDE_OFFSET / Math.hypot(sx, sy) : 0;
+      return [-sx * by, -sy * by];
+    };
     return {
       w: Infinity,
       h: Infinity,
-      tile: (c, r) => built.get(key(c, r)) ?? (road(c, r) ? { kind: "road", storeys: 0 } : { kind: "open", storeys: 0 }),
+      tile: (c, r) => built.get(key(c, r)) ?? (onTile.has(key(c, r)) ? { kind: "road", storeys: 0 } : { kind: "open", storeys: 0 }),
       linked: (c0, r0, c1, r1) => {
         const [a, b] = [road(c0, r0), road(c1, r1)];
         return !!a && !!b && (a.outgoing.includes(b.id) || a.incoming.includes(b.id));
       },
-      through: (c, r) => !!road(c, r)?.road,
+      through: (c, r) => !!road(c, r)?.road.length,
+      light: (c, r) => road(c, r)?.light != null,
+      flow: (c0, r0, c1, r1) => flowOf(road(c0, r0)!, road(c1, r1)!),
+      roadsOn: (c, r): RoadView[] =>
+        built.has(key(c, r))
+          ? []
+          : (onTile.get(key(c, r)) ?? []).map((n) => {
+              const arms = [...new Set([...n.outgoing, ...n.incoming])].flatMap((id) => {
+                const o = byId.get(id);
+                if (!o || Math.abs(o.x + c) > 1 || Math.abs(o.y + r) > 1) return [];
+                return [{ dc: -(o.x + c), dr: -(o.y + r), flow: flowOf(n, o.n), shift: shiftOf(o.n), through: n.road.includes(id), height: o.n.height }];
+              });
+              // A slope climbs toward its arm above it, one of a run.
+              const up = n.height % 2 ? arms.find((a) => a.height > n.height) : undefined;
+              return { shift: shiftOf(n), through: n.road.length > 0, light: n.light != null, arms, height: n.height, climb: up && ([up.dc, up.dr] as [number, number]), run: up && runOf(n) };
+            }),
       door: (c, r) => turned(doors.get(key(c, r))),
     };
   }
@@ -487,6 +584,7 @@ export class TownLayer {
     for (const key of [...this.chunks.keys()]) this.drop(key);
     this.unhold();
     this.roads.dispose();
+    this.concrete.dispose();
     this.stopTints();
     this.worker.terminate();
     this.heldWorker.terminate();

@@ -7,12 +7,36 @@ export type RoadNode = { outgoing: Array<number>, incoming: Array<number>,
  */
 joined: boolean, 
 /**
- * A road rather than a street. Buildings front streets only: no driveway
+ * The neighbours the way to is a road rather than a street: a through
+ * road, which the streets that meet it give way to. Both ends hold it.
+ * A node on one is a road's: buildings front streets only, no driveway
  * is ever laid onto a road, and nothing arrives beside one.
  */
-road: boolean, 
+road: Array<number>, 
 /**
  * Laid by the mayor, so it counts against the build's road tiles. The
  * survey's own roads, and driveways, are free.
  */
-laid: boolean, };
+laid: boolean, 
+/**
+ * How high it stands, in half-levels: 0 the ground, 2 a level up, 4
+ * two, 6 three; odd, a slope between the level below and the one
+ * above (`world/decks.rs`).
+ */
+height: number, 
+/**
+ * Traffic lights, if the junction has them: which phase is green
+ * (`intersection::phases_of`), or `ALL_RED` between phases.
+ */
+light: number | null, 
+/**
+ * The neighbours the road out to has two lanes, one way: a two-lane
+ * one-way (`Tool::Wide`).
+ */
+wide: Array<number>, 
+/**
+ * Which side of its tile it stands: the step across its road it is
+ * moved by, or none, the middle. Two one-ways share a tile side by
+ * side, each a thin road beside the other (`world/decks.rs`).
+ */
+side: [number, number], };

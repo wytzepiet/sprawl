@@ -13,6 +13,27 @@ import { FACINGS, gateOf, kerbed, plot, yardOf } from "../../blueprints";
  */
 export type Ground = "open" | "paved" | "road" | "water" | "wood";
 
+/** Which way a link is driven, from where it is seen: both ways, out, in;
+ *  out or in on two lanes (`O`, `I`). */
+export type Flow = "t" | "o" | "i" | "O" | "I";
+
+/** A road on a tile, one of the two where two share it side by side
+ *  (`decks.rs`): how far it stands moved from the tile's middle, in the
+ *  tile's frame; and its links, each to the tile (dc, dr) away, driven so,
+ *  to the road there moved so far from that tile's middle, a through
+ *  road's or a street's. */
+export interface RoadView {
+  shift: [number, number];
+  through: boolean;
+  light: boolean;
+  /** How high it stands, in half-levels; a slope, the way to the arm it
+   *  climbs to. */
+  height?: number;
+  climb?: [number, number];
+  run?: [number, number, number, number];
+  arms: { dc: number; dr: number; flow: Flow; shift: [number, number]; through: boolean; height?: number }[];
+}
+
 export interface Tile {
   /** A building's kind, or the ground's. */
   kind: BuildingKind | Ground;
@@ -32,6 +53,18 @@ export interface Town {
   linked(c0: number, r0: number, c1: number, r1: number): boolean;
   /** A road tile on a through road. */
   through(c: number, r: number): boolean;
+  /** How wide the pavement along a road tile is: in town a sidewalk; out
+   *  of it, at a junction a kerb, else none, the road bare on the grass.
+   *  Unset, a town's sidewalk (`SIDEWALK`). */
+  sidewalk?(c: number, r: number): number;
+  /** Which way traffic runs on the link from one road tile to the next
+   *  (`Flow`). Unset, both. */
+  flow?(c0: number, r0: number, c1: number, r1: number): Flow;
+  /** A junction with traffic lights. */
+  light?(c: number, r: number): boolean;
+  /** The roads on a road tile, each its own (`RoadView`); unset, the
+   *  tile's one road, read off `linked`, `through`, `flow` and `light`. */
+  roadsOn?(c: number, r: number): RoadView[];
   /** Two built tiles, beside or diagonal, joined into one building, as the
    *  brush stroke that painted them ran; unset, the look joins tiles of a
    *  kind by its own rule (`footprint.ts`). */
@@ -216,6 +249,9 @@ export function windowOf(town: Town, x0: number, y0: number, w: number, h: numbe
     tile: (c, r) => (inside(c, r) ? town.tile(c + x0, r + y0) : OPEN),
     linked: (a, b, c, d) => inside(a, b) && inside(c, d) && town.linked(a + x0, b + y0, c + x0, d + y0),
     through: (c, r) => inside(c, r) && town.through(c + x0, r + y0),
+    sidewalk: town.sidewalk && ((c, r) => (inside(c, r) ? town.sidewalk!(c + x0, r + y0) : 0)),
+    flow: town.flow && ((a, b, c, d) => town.flow!(a + x0, b + y0, c + x0, d + y0)),
+    roadsOn: town.roadsOn && ((c, r) => town.roadsOn!(c + x0, r + y0)),
     joins: town.joins && ((a, b, c, d) => inside(a, b) && inside(c, d) && town.joins!(a + x0, b + y0, c + x0, d + y0)),
     door: town.door && ((c, r) => (inside(c, r) ? town.door!(c + x0, r + y0) : undefined)),
     at: (c, r) => (town.at ? town.at(c + x0, r + y0) : [c + x0, r + y0]),

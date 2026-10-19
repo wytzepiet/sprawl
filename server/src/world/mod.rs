@@ -1,5 +1,7 @@
 pub mod bezier;
 mod buildings;
+pub mod clear;
+pub mod decks;
 
 pub mod fields;
 mod geometry;
@@ -11,7 +13,8 @@ pub mod roads;
 pub mod sea;
 pub mod segments;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
+use crate::fixed::{HashMap, HashSet};
 
 use crate::engine::GameTime;
 
@@ -57,6 +60,9 @@ pub struct World {
     pub manoeuvres: HashMap<EntityId, (EntityId, crate::engine::GameTime)>,
     /// Vehicles standing where their gear changes, and until when.
     pub cusps: HashMap<EntityId, crate::engine::GameTime>,
+    /// What each car last slowed or stopped for, and how hard
+    /// (`car::Cause`): for a replay to read, never the game.
+    pub why: HashMap<EntityId, (crate::car::Cause, f64)>,
     pub terrain_seed: u32,
     /// Every building's books: what its taps served, a season of days. Learned, not saved — a loaded world
     /// starts counting afresh.
@@ -81,6 +87,9 @@ pub struct World {
     /// Tiles of road the mayor has laid, against the build's allowance.
     /// Derived at startup from the nodes' own flag, like every other index.
     pub laid: u32,
+    /// A level's map, corner to corner: no road is laid off it, and the
+    /// roads it came with (`RoadNode::laid` false) stay.
+    pub frame: Option<(GridCoord, GridCoord)>,
     /// Tile types for the whole world, regenerated from the seed at startup.
     pub terrain: HashMap<(i32, i32), TerrainType>,
     /// The mountains' heights, eroded, made from the terrain the first time
@@ -117,6 +126,9 @@ pub struct World {
     /// check, every bend, every site the placer tries — and a chunk's
     /// entity set was being walked for each answer. Derived at load.
     pub roads: HashMap<(i32, i32), EntityId>,
+    /// Every other road node on a tile, above the ground or beside its
+    /// middle (`decks.rs`).
+    pub decks: HashMap<(i32, i32), Vec<EntityId>>,
     /// Every harbour, and the street node it is reached by: a way out of
     /// the town, so what reaches it is joined. Derived by `mark_harbours`,
     /// never saved.
@@ -156,18 +168,19 @@ impl World {
     pub fn new() -> Self {
         Self {
             objects: Tracked::new(),
-            spatial: HashMap::new(),
-            edges: HashMap::new(),
-            lots: HashMap::new(),
-            lot_nodes: HashMap::new(),
-            claims: HashMap::new(),
+            spatial: HashMap::default(),
+            edges: HashMap::default(),
+            lots: HashMap::default(),
+            lot_nodes: HashMap::default(),
+            claims: HashMap::default(),
             network: RoadNetwork::default(),
-            car_segment: HashMap::new(),
-            node_cars: HashMap::new(),
-            manoeuvres: HashMap::new(),
-            cusps: HashMap::new(),
+            car_segment: HashMap::default(),
+            node_cars: HashMap::default(),
+            manoeuvres: HashMap::default(),
+            cusps: HashMap::default(),
+            why: HashMap::default(),
             terrain_seed: 0,
-            books: HashMap::new(),
+            books: HashMap::default(),
             town: Default::default(),
             gdp: 0.0,
             treasury: crate::economy::STAKE,
@@ -175,42 +188,45 @@ impl World {
             news: Vec::new(),
             build: Default::default(),
             laid: 0,
-            terrain: HashMap::new(),
+            frame: None,
+            terrain: HashMap::default(),
             peaks: Default::default(),
             water: Default::default(),
             lines: Default::default(),
             lanes: None,
             junctions: crate::intersection::IntersectionRegistry::new(),
-            voyages: HashMap::new(),
+            voyages: HashMap::default(),
             chunk_crossings: Vec::new(),
-            built: HashSet::new(),
-            occupied: HashMap::new(),
-            roads: HashMap::new(),
+            built: HashSet::default(),
+            occupied: HashMap::default(),
+            roads: HashMap::default(),
+            decks: HashMap::default(),
             calls: Vec::new(),
             harbours: Default::default(),
-            aims: HashMap::new(),
-            sent: HashSet::new(),
-            people: HashMap::new(),
+            aims: HashMap::default(),
+            sent: HashSet::default(),
+            people: HashMap::default(),
             unsettled: BTreeSet::new(),
-            undo: HashMap::new(),
+            undo: HashMap::default(),
             missions: Default::default(),
         }
     }
 
     pub fn from_loaded(objects: Tracked, terrain_seed: u32) -> Self {
         let mut world = Self {
-            spatial: HashMap::new(),
-            edges: HashMap::new(),
-            lots: HashMap::new(),
-            lot_nodes: HashMap::new(),
-            claims: HashMap::new(),
+            spatial: HashMap::default(),
+            edges: HashMap::default(),
+            lots: HashMap::default(),
+            lot_nodes: HashMap::default(),
+            claims: HashMap::default(),
             network: RoadNetwork::default(),
-            car_segment: HashMap::new(),
-            node_cars: HashMap::new(),
-            manoeuvres: HashMap::new(),
-            cusps: HashMap::new(),
+            car_segment: HashMap::default(),
+            node_cars: HashMap::default(),
+            manoeuvres: HashMap::default(),
+            cusps: HashMap::default(),
+            why: HashMap::default(),
             terrain_seed,
-            books: HashMap::new(),
+            books: HashMap::default(),
             town: Default::default(),
             gdp: 0.0,
             treasury: 0.0,
@@ -218,24 +234,26 @@ impl World {
             news: Vec::new(),
             build: Default::default(),
             laid: 0,
-            terrain: HashMap::new(),
+            frame: None,
+            terrain: HashMap::default(),
             peaks: Default::default(),
             water: Default::default(),
             lines: Default::default(),
             lanes: None,
             junctions: crate::intersection::IntersectionRegistry::new(),
-            voyages: HashMap::new(),
+            voyages: HashMap::default(),
             chunk_crossings: Vec::new(),
-            built: HashSet::new(),
-            occupied: HashMap::new(),
-            roads: HashMap::new(),
+            built: HashSet::default(),
+            occupied: HashMap::default(),
+            roads: HashMap::default(),
+            decks: HashMap::default(),
             calls: Vec::new(),
             harbours: Default::default(),
-            aims: HashMap::new(),
-            sent: HashSet::new(),
-            people: HashMap::new(),
+            aims: HashMap::default(),
+            sent: HashSet::default(),
+            people: HashMap::default(),
             unsettled: BTreeSet::new(),
-            undo: HashMap::new(),
+            undo: HashMap::default(),
             missions: Default::default(),
             objects,
         };
@@ -243,8 +261,14 @@ impl World {
         for entry in world.objects.iter().chain(world.objects.roads()) {
             if let Some(pos) = entry.position {
                 world.spatial.entry(chunk_of(pos)).or_default().insert(entry.id);
-                if matches!(entry.object, GameObject::RoadNode(_)) {
-                    world.roads.insert((pos.x, pos.y), entry.id);
+                match entry.object {
+                    GameObject::RoadNode(ref n) if n.height > 0 || n.side != decks::MIDDLE => {
+                        world.decks.entry((pos.x, pos.y)).or_default().push(entry.id);
+                    }
+                    GameObject::RoadNode(_) => {
+                        world.roads.insert((pos.x, pos.y), entry.id);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -267,7 +291,8 @@ impl World {
         for (id, outgoing) in &entries {
             for neighbor in outgoing {
                 let len = self.segment_length(*id, *neighbor);
-                self.edges.insert((*id, *neighbor), EdgeSegment::new(len));
+                let lanes = if self.is_wide(*id, *neighbor) { 2 } else { 1 };
+                self.edges.insert((*id, *neighbor), EdgeSegment::new(len, lanes));
                 self.network.link(*id, *neighbor, len);
             }
         }
@@ -285,7 +310,7 @@ impl World {
         {
             for w in trip.route.windows(2) {
                 if let Some(seg) = self.edges.get_mut(&(w[0], w[1])) {
-                    seg.cars.retain(|&id| id != car_id);
+                    seg.remove(car_id);
                 }
             }
             self.manoeuvres.retain(|_, (c, _)| *c != car_id);
@@ -396,14 +421,9 @@ impl World {
     }
 
     /// Find the car behind a given car on the same edge.
-    pub fn car_behind_on_edge(&self, edge: EdgeKey, car_id: EntityId) -> Option<EntityId> {
-        let seg = self.edges.get(&edge)?;
-        let pos = seg.car_position(car_id)?;
-        if pos + 1 < seg.cars.len() {
-            Some(seg.cars[pos + 1])
-        } else {
-            None
-        }
+    /// The car behind this one on an edge, in each lane it stands in.
+    pub fn car_behind_on_edge(&self, edge: EdgeKey, car_id: EntityId) -> Vec<EntityId> {
+        self.edges.get(&edge).map_or_else(Vec::new, |s| s.behind(car_id))
     }
 
     /// Insert an edge for a directed connection between two nodes.
@@ -411,7 +431,8 @@ impl World {
     /// `edges` is what traffic reads.
     pub fn insert_edge(&mut self, from: EntityId, to: EntityId) {
         let len = self.segment_length(from, to);
-        self.edges.insert((from, to), EdgeSegment::new(len));
+        let lanes = if self.is_wide(from, to) { 2 } else { 1 };
+        self.edges.insert((from, to), EdgeSegment::new(len, lanes));
         let turning = self.network.link(from, to, len);
         self.mark_joined(turning.into_iter().chain([from, to]));
     }
@@ -441,7 +462,9 @@ impl World {
     /// so it only comes apart once the last direction is gone.
     pub fn remove_edge(&mut self, from: EntityId, to: EntityId) {
         self.edges.remove(&(from, to));
-        if !self.edges.contains_key(&(to, from)) {
+        if self.edges.contains_key(&(to, from)) {
+            self.network.close_way(from, to);
+        } else {
             let turning = self.network.unlink(from, to);
             self.mark_joined(turning.into_iter().chain([from, to]));
         }
@@ -494,17 +517,12 @@ impl World {
     /// are asked for: at startup, after the terrain is made, so no player
     /// waits on them.
     pub fn raise_mountains(&self) -> &crate::mountains::Peaks {
-        self.peaks.get_or_init(|| {
-            let started = std::time::Instant::now();
-            let peaks = crate::mountains::Peaks::new(&self.terrain, self.terrain_seed);
-            println!("mountains: worn in {:.1}s", started.elapsed().as_secs_f32());
-            peaks
-        })
+        self.peaks.get_or_init(|| crate::mountains::Peaks::new(&self.terrain, self.terrain_seed))
     }
 
     /// Every entity in the given chunks.
     pub fn entities_in_chunks(&self, chunks: &HashSet<ChunkCoord>) -> HashSet<EntityId> {
-        let mut result = HashSet::new();
+        let mut result = HashSet::default();
         for coord in chunks {
             if let Some(ids) = self.spatial.get(coord) {
                 result.extend(ids);

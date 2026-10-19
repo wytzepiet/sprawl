@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use crate::fixed::HashMap;
 use std::f64::consts::{PI, TAU};
 
 use noise::{NoiseFn, Simplex};
-use rand::rngs::SmallRng;
+use crate::fixed::SmallRng;
 use rand::{Rng, SeedableRng};
 
 use crate::protocol::{ChunkCoord, TerrainType, CHUNK_SIZE};
@@ -292,7 +292,7 @@ pub fn generate(seed: u32) -> HashMap<(i32, i32), TerrainType> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use crate::fixed::HashSet;
 
     use super::*;
 
@@ -383,7 +383,7 @@ mod tests {
                 faults.push("a lake on the sea".into());
             }
             // Islands: everything not sea, lakes and all, joined.
-            let mut counted: HashSet<(i32, i32)> = HashSet::new();
+            let mut counted: HashSet<(i32, i32)> = HashSet::default();
             let (mut islands, mut islets) = (0, 0);
             let mut tiles: Vec<_> = land.keys().copied().collect();
             tiles.sort();

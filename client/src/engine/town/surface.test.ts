@@ -26,15 +26,16 @@ function onAsphalt(t: Town) {
 }
 
 describe("asphalt and pavement", () => {
-  test("whatever is paved and touches on the diagonal is paved through", () => {
+  test("a house a diagonal step off a street is on its sidewalk; two streets keep the grass between them", () => {
     // Two diagonal streets side by side, laid apart, each joined only
-    // along itself; a house a diagonal step off one.
+    // along itself; a house a diagonal step off one: two sidewalks, the
+    // house on the one, none of it holed.
     const t = town(["..........", ".=.=......", "..=.=.....", "...=.=....", "....=.=...", ".....=.=..", "......=.=.", ".....H....", ".........."]);
     const along = (c0: number, r0: number, c1: number, r1: number) => c1 - c0 === r1 - r0 && Math.abs(c1 - c0) === 1;
     const apart = { ...t, linked: (c0: number, r0: number, c1: number, r1: number) => t.linked(c0, r0, c1, r1) && along(c0, r0, c1, r1) };
     const paved = pavement(apart);
-    expect(paved.length).toBe(1);
-    expect(paved[0].length).toBe(1);
+    expect(paved.length).toBe(2);
+    expect(paved.every((p) => p.length === 1)).toBe(true);
   });
 
   test("a building's corner by a street stays square", () => {

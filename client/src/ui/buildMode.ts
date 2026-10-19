@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import type { BuildingKind, Tool } from "../generated";
-import type { Placing } from "../engine/may";
+import type { Placing } from "../generated";
 
 /** What the mayor's hand holds: a kind of road or the demolisher; `null`
  *  is the bare hand, which selects. A drag with a tool lays it a step at
@@ -34,12 +34,12 @@ export const turn = (by: number) => {
 export const inHand = () => tool() !== null || held() !== null;
 
 /** The tools that lay road. */
-export const ROADS = ["Street", "OneWay", "Road"] as const;
+export const ROADS = ["Street", "OneWay", "Wide"] as const;
 export const isRoad = (t: Tool | null) => (ROADS as readonly unknown[]).includes(t);
 
 /** Where the building in hand would be placed if let go now, which way
- *  it would face, and why it may not, if it may not (`may.ts`
- *  `placing`). The brush sets it; the town draws it, and the hand's label
+ *  it would face, and why it may not, if it may not, as the game says
+ *  (`World::placing`). The brush sets it; the town draws it, and the hand's label
  *  says it. */
 const [aim, setAim] = createSignal<Placing | null>(null);
 export { aim, setAim };
@@ -54,3 +54,22 @@ export { placed, setPlaced };
  *  letting go there puts it back. */
 const [overCancel, setOverCancel] = createSignal(false);
 export { overCancel, setOverCancel };
+
+/** How high the hand draws road, in levels: 0 the ground, up to 3. The
+ *  decks above it are seen through (`decks.ts`). */
+const [pen, setPen] = createSignal(0);
+export { pen, setPen };
+
+/** The hand's height changed a level up or down (↑ ↓), or null where it
+ *  may not be: the road brush sets these, turning the end of the road it
+ *  last laid into the slope to the new level (`interchange/RoadBrush`).
+ *  With no brush, the pen alone. */
+const free = (by: number) => () => setPen(Math.max(0, Math.min(3, pen() + by)));
+const [climb, setClimb] = createSignal<{ up: (() => void) | null; down: (() => void) | null }>({ up: free(1), down: free(-1) });
+export { climb, setClimb, free };
+
+/** Whether the road the hand lays has priority (`Build.road`): whoever
+ *  joins or crosses it gives way. Drawn along a road, it gives it that, or
+ *  takes it. */
+const [priority, setPriority] = createSignal(false);
+export { priority, setPriority };
