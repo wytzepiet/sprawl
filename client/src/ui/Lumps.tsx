@@ -1,9 +1,9 @@
 /** @jsxImportSource ~ui */
 import { createSignal, For, Show } from "solid-js";
-import { getEntity, recentLumps } from "../../state/gameObjects";
-import { GOODS, middle } from "../../blueprints";
+import { getEntity, recentLumps } from "../state/gameObjects";
+import { GOODS, middle } from "../blueprints";
 import { elapsed, keys, onMap } from "./kit";
-import type { Building, Lump } from "../../generated";
+import type { Building, Lump } from "../generated";
 
 /**
  * What lands on the map: coins as goods cross the border, a box landing

@@ -1,11 +1,11 @@
 /** @jsxImportSource ~ui */
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { getEntity } from "../../state/gameObjects";
-import { sea } from "../../state/sea";
-import { positionOf } from "../../state/selection";
-import { track } from "../Shipments";
+import { getEntity } from "../state/gameObjects";
+import { sea } from "../state/sea";
+import { positionOf } from "../state/selection";
+import { track } from "./Shipments";
 import { GoodDot, onMap } from "./kit";
-import type { Good, Shipment } from "../../generated";
+import type { Good, Shipment } from "../generated";
 
 /**
  * Boxes on the map: over whatever carries them, the ferry, the tug, a

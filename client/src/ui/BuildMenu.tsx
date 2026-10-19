@@ -1,12 +1,12 @@
 /** @jsxImportSource ~ui */
 import { createSignal, For, Index, Show } from "solid-js";
-import { BLUEPRINTS, GOODS, KINDS, plot, TABS } from "../../blueprints";
-import { LETTERS } from "../../engine/town/grid";
-import { planSvg } from "../../../scripts/planDraw";
-import { held, hold } from "../buildMode";
-import { selected } from "../../state/selection";
+import { BLUEPRINTS, GOODS, KINDS, plot, TABS } from "../blueprints";
+import { LETTERS } from "../engine/town/grid";
+import { planSvg } from "../../scripts/planDraw";
+import { held, hold } from "./buildMode";
+import { selected } from "../state/selection";
 import { Appear, view, wide } from "./kit";
-import type { BuildingKind, Good } from "../../generated";
+import type { BuildingKind, Good } from "../generated";
 
 /** The build menu, open or not. */
 const [menuOpen, setMenuOpen] = createSignal(false);

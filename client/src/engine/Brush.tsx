@@ -19,7 +19,7 @@ import type { Area, Building, GridCoord, Tool } from "../generated";
  * it is let go (`Place`): shown where it would stand as the town would be
  * drawn with it (`TownLayer.hold`), turned to the nearest street or, a
  * harbour, the sea, unless the hand turns it (R, the wheel, two fingers);
- * beside it (`ui/gpu/Held.tsx`), what it is built of against what the
+ * beside it (`ui/Held.tsx`), what it is built of against what the
  * town has, or why it may not go there.
  *
  * Where the hand may go is the game's to say (`server/src/hint.rs`), and
@@ -252,7 +252,7 @@ export function Brush() {
     });
 
   // The plot of the building in hand, flat on the ground; its tiles in
-  // red where it may not stand. Its label is the UI's (`ui/gpu/Held.tsx`).
+  // red where it may not stand. Its label is the UI's (`ui/Held.tsx`).
   const plot = document.createElement("canvas");
   plot.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none";
   const stopLabel = afterRender(() => {

@@ -1,7 +1,7 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createSignal, For, on, Show } from "solid-js";
-import { useGame } from "../../state/gameObjects";
-import { follow } from "../../engine/spring";
+import { useGame } from "../state/gameObjects";
+import { follow } from "../engine/spring";
 import { setBoardOpen } from "./Board";
 import { elapsed, keys, wide } from "./kit";
 

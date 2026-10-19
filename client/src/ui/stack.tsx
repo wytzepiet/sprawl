@@ -1,7 +1,7 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createMemo, createSignal, For, onCleanup, untrack, type Accessor } from "solid-js";
 import { createStore } from "solid-js/store";
-import { follow, LOOSE } from "../../engine/spring";
+import { follow, LOOSE } from "../engine/spring";
 import type { JSX } from "~ui/jsx-runtime";
 
 /** How far each card behind shows under the one in front, folded; how

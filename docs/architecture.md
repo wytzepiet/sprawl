@@ -79,9 +79,15 @@ instance pool, one bucket per material, so a city is a handful of draw
 calls. Cars extrapolate along their routes every frame with the server's
 own kinematics; buildings and roads are remounted only when they change.
 
-HTML over the canvas for what HTML is good at: pins, the toolbar, the
-tree, the build menu. Pins are positioned per frame through the scene's
-projection.
+The UI is drawn by the GPU into the same frame (2026-10-19): Solid's
+universal renderer keeps a tree of boxes, glass, text and icons
+(`client/ui/`, imported as `~ui`), laid out by a small flexbox, its text
+and icons outlines in one glyph atlas, its glass the frame's own
+(`engine/glass.ts`). The game's UI is written in those elements
+(`client/src/ui/`, every `.tsx` there compiled for them). What is
+pinned to the map is placed before each frame through the scene's
+projection, after the camera has moved. The interchange's panels are
+still the page's, glass under `data-glass` elements.
 
 ## Deployment (plan)
 

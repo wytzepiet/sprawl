@@ -33,7 +33,7 @@ export function track(trailer: number, lorry: number | null = null) {
 /**
  * The camera after the box tracked, handed from carrier to carrier: from
  * ferry to tug to lorry, until the mayor pans or it lands. What is on its
- * way is drawn where it is (`gpu/Pins.tsx`).
+ * way is drawn where it is (`Pins.tsx`).
  */
 export default function Shipments() {
   createEffect(() => {

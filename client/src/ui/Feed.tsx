@@ -1,19 +1,19 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createSignal, For, Index, Show } from "solid-js";
-import { eachEntity, groundOf, useGame } from "../../state/gameObjects";
-import { missionKey, neighbours, shownMissions } from "../../state/missions";
-import { clockAt, news, sea, until, type News } from "../../state/sea";
-import { setFollowing } from "../../state/selection";
-import { deals, GOOD_ORDER, home, offerOf, picking, setPicking, setSpread, spread, stepsOf, type Deal } from "../../state/deals";
-import { BLUEPRINTS, GOODS } from "../../blueprints";
-import { eye } from "../../engine/OrthoCamera";
-import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../../engine/objects/terrainGeometry";
-import { hold, setTool } from "../buildMode";
-import { track } from "../Shipments";
+import { eachEntity, groundOf, useGame } from "../state/gameObjects";
+import { missionKey, neighbours, shownMissions } from "../state/missions";
+import { clockAt, news, sea, until, type News } from "../state/sea";
+import { setFollowing } from "../state/selection";
+import { deals, GOOD_ORDER, home, offerOf, picking, setPicking, setSpread, spread, stepsOf, type Deal } from "../state/deals";
+import { BLUEPRINTS, GOODS } from "../blueprints";
+import { eye } from "../engine/OrthoCamera";
+import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
+import { hold, setTool } from "./buildMode";
+import { track } from "./Shipments";
 import { Appear, Btn, coins, Crest, EYE, FERRY, GoodDot, Line, Pop, Press, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
-import type { BuildingKind, Good, Mission, Offer, Step, TerrainType } from "../../generated";
-import type { Mayor } from "../../generated/Mayor";
+import type { BuildingKind, Good, Mission, Offer, Step, TerrainType } from "../generated";
+import type { Mayor } from "../generated/Mayor";
 import type { JSX } from "~ui/jsx-runtime";
 
 /** Room the feed leaves below it: the dock and the corners, and on a
@@ -28,7 +28,7 @@ type Note =
   | { key: string; kind: "picker" };
 
 /**
- * The feed (`ui/Feed.tsx`), drawn by the GPU: everything that happens to
+ * The feed: everything that happens to
  * the town as a phone's notifications, top right, or across the top of a
  * phone. News drops in on top and goes by itself; a mission is pinned
  * while it is open; a deal stays while its boxes are on their way. Folded,
@@ -286,7 +286,7 @@ function Reward(props: { m: Mission }) {
   );
 }
 
-/** A mission as a card (`ui/Missions.tsx`): its title, the step at hand,
+/** A mission as a card (docs/missions.md): its title, the step at hand,
  *  a bar of its steps and what it pays; opened, the step spelled out, with
  *  the button that does it. */
 function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {

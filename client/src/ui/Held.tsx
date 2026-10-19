@@ -1,10 +1,10 @@
 /** @jsxImportSource ~ui */
 import { createMemo, createSignal, For, Show } from "solid-js";
-import { builtVersion, eachEntity } from "../../state/gameObjects";
-import { aim } from "../buildMode";
-import { BLUEPRINTS, GOODS } from "../../blueprints";
+import { builtVersion, eachEntity } from "../state/gameObjects";
+import { aim } from "./buildMode";
+import { BLUEPRINTS, GOODS } from "../blueprints";
 import { onMap } from "./kit";
-import type { Good } from "../../generated";
+import type { Good } from "../generated";
 
 /** What the town has of a good: on its standing depots' shelves; or,
  *  asked of none, how many depots stand. */

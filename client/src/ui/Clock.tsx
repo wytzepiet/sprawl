@@ -1,8 +1,8 @@
 /** @jsxImportSource ~ui */
 import { For, Show } from "solid-js";
-import { useGame } from "../../state/gameObjects";
-import { simSpeed } from "../../network/clock";
-import { useDayNight } from "../../engine/DayNightCycle";
+import { useGame } from "../state/gameObjects";
+import { simSpeed } from "../network/clock";
+import { useDayNight } from "../engine/DayNightCycle";
 import { Line, Press, wide } from "./kit";
 
 /** Dev speeds, in sim steps per tick. 0 pauses the world for everyone. */

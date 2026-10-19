@@ -7,7 +7,6 @@ import { Highlight } from "./Highlight";
 import World from "./World";
 import { GameProvider, type Connect } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
-import DebugOverlay from "../ui/DebugOverlay";
 import PerfReport from "./PerfReport";
 import Pins from "./Pins";
 import Glass from "../ui/Glass";
@@ -34,7 +33,6 @@ function SceneInner() {
       </Canvas>
       <Glass />
       <Shipments />
-      {/* <DebugOverlay /> */}
     </DayNightProvider>
   );
 }

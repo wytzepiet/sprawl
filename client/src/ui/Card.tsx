@@ -1,14 +1,14 @@
 /** @jsxImportSource ~ui */
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
-import { BLUEPRINTS } from "../../blueprints";
-import { selected, select, setFollowing, setSubject } from "../../state/selection";
-import { getEntity } from "../../state/gameObjects";
-import { now } from "../../state/sea";
+import { BLUEPRINTS } from "../blueprints";
+import { selected, select, setFollowing, setSubject } from "../state/selection";
+import { getEntity } from "../state/gameObjects";
+import { now } from "../state/sea";
 import { DepotPanel } from "./Depot";
 import { SitePanel, type DepotLine, type MakerLine } from "./Site";
 import { Bar, Press, Row, Section, To, view, wide, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
-import type { Building, BuildingKind, CarRole, Good, Need } from "../../generated";
+import type { Building, BuildingKind, CarRole, Good, Need } from "../generated";
 
 interface Bucket {
   need: Need;

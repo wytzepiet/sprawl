@@ -1,11 +1,11 @@
 /** @jsxImportSource ~ui */
 import { createMemo, createSignal, For, Index, Show } from "solid-js";
-import { buildingAt, getEntity, useGame } from "../../state/gameObjects";
-import { load, now, sea, until } from "../../state/sea";
-import { GOODS } from "../../blueprints";
-import { GOOD_ORDER } from "../../state/deals";
+import { buildingAt, getEntity, useGame } from "../state/gameObjects";
+import { load, now, sea, until } from "../state/sea";
+import { GOODS } from "../blueprints";
+import { GOOD_ORDER } from "../state/deals";
 import { coins, Follow, GoodDot, Pop, Press, Section } from "./kit";
-import type { Building, Car, Good } from "../../generated";
+import type { Building, Car, Good } from "../generated";
 
 /** What another lorry costs from the world, and how many a depot may buy (`haul.rs`). */
 const LORRY_PRICE = 40;

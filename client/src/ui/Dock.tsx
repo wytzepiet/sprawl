@@ -1,11 +1,11 @@
 /** @jsxImportSource ~ui */
 import { createEffect, createSignal, For, indexArray, on, onCleanup, Show } from "solid-js";
-import { follow, LOOSE } from "../../engine/spring";
-import { useEngine } from "../../engine/Canvas";
-import { held, hold, priority, setPriority, setTool, tool } from "../buildMode";
-import { BLUEPRINTS, GOODS } from "../../blueprints";
-import { useGame } from "../../state/gameObjects";
-import { picking, setPicking } from "../../state/deals";
+import { follow, LOOSE } from "../engine/spring";
+import { useEngine } from "../engine/Canvas";
+import { held, hold, priority, setPriority, setTool, tool } from "./buildMode";
+import { BLUEPRINTS, GOODS } from "../blueprints";
+import { useGame } from "../state/gameObjects";
+import { picking, setPicking } from "../state/deals";
 import BuildMenu, { menuOpen, setMenuOpen } from "./BuildMenu";
 import { FERRY, Line, Press, wide } from "./kit";
 

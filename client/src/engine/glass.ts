@@ -6,21 +6,21 @@ import type { Layer, Pane } from "~ui/paint";
  * page: a CSS filter over a live canvas is run again on every frame the
  * canvas draws, and the goo's took most of the laptop's GPU.
  *
- * The page says where the glass is. Every element marked `data-glass` is
- * a pane, a rounded box as the page lays it out; panes of one name
- * (`data-glass="dock"`) run together like liquid, a smooth union of their
- * shapes, and panes of different names do not. `data-dye` lays a colour
- * into a pane. The element itself draws nothing of the glass, only what
- * sits on it.
+ * The UI says where the glass is: each `glass` of the UI the GPU draws
+ * (`ui/paint.ts`) is a pane, and so, for the interchange's panels, is
+ * every element of the page marked `data-glass`. Panes of one layer
+ * (`layer="dock"`, `data-glass="dock"`) run together like liquid, a
+ * smooth union of their shapes, and panes of different layers do not.
+ * A dye lays a colour into a pane.
  *
- * Runs lie in the order the page paints them, the first pane of each
- * found first: a later run is drawn over an earlier one, with its shadow
- * on it, so a pane of its own name later in the page is a layer above
- * (a stack of cards, `ui/stack.tsx`). Melting is within a layer, never
- * between them.
+ * The page's runs lie first, then the UI's layers in the order its tree
+ * gives them: a later layer is drawn over an earlier one, with its shadow
+ * on it, and what the UI writes on a layer over its panes (a stack of
+ * cards, `ui/stack.tsx`). Melting is within a layer, never between them.
  *
- * Each frame the frame loop reads the panes (`read`), once, after the
- * springs have moved them and before the frame is drawn. Then, after the
+ * Each frame the frame loop reads the panes (`read`), after the springs
+ * have moved them, and again once the camera has moved, for what is
+ * pinned to the map, before the frame is drawn. Then, after the
  * scene, this task copies what lies under each run of glass out of the
  * frame, halves it a few times for the frost, and draws the glass over
  * it: the town seen through it blurred and bent at the rim, its body lit

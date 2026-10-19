@@ -4,7 +4,7 @@ import type { UiNode } from "./node";
 /**
  * The elements the GPU draws, and what each takes: a file that starts
  * `@jsxImportSource ~ui` is written in these and no others (`vite.config.ts`
- * compiles `src/ui/gpu/` for them). Sizes are CSS pixels; colours are
+ * compiles `src/ui/` for them). Sizes are CSS pixels; colours are
  * "#rrggbb", "#rrggbbaa", or the glass's own: "ink", "glass", with a share
  * after a slash ("ink/0.1").
  */

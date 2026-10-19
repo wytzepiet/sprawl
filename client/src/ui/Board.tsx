@@ -1,10 +1,10 @@
 /** @jsxImportSource ~ui */
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
-import { BLUEPRINTS, GOODS } from "../../blueprints";
+import { BLUEPRINTS, GOODS } from "../blueprints";
 import { Header, Sheet } from "./Card";
 import { view, wide } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
-import type { BuildingKind, Good } from "../../generated";
+import type { BuildingKind, Good } from "../generated";
 
 /** One day of the town's books: GDP, per kind of building it was added
  *  at, and coins across the border, per good. */

@@ -45,11 +45,11 @@ export default defineConfig({
   // behind, and the game goes blank. A reload costs a second and is always
   // right; the server holds the game, so the page comes back as it was.
   //
-  // The UI the GPU draws (`src/ui/gpu/`) is compiled for Solid's universal
+  // The UI (`src/ui/`) is drawn by the GPU: compiled for Solid's universal
   // renderer, its elements made by `ui/node.ts` rather than the page.
   plugins: [
-    solidPlugin({ hot: false, exclude: [/src\/ui\/gpu\//] }),
-    solidPlugin({ hot: false, include: [/src\/ui\/gpu\/.*\.tsx$/], solid: { generate: "universal", moduleName: "~ui" } }),
+    solidPlugin({ hot: false, exclude: [/src\/ui\/.*\.tsx$/] }),
+    solidPlugin({ hot: false, include: [/src\/ui\/.*\.tsx$/], solid: { generate: "universal", moduleName: "~ui" } }),
     perfLog(),
   ],
   resolve: {

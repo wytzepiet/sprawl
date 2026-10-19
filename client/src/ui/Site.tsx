@@ -1,13 +1,13 @@
 /** @jsxImportSource ~ui */
 import { createSignal, For, Show } from "solid-js";
-import { useGame } from "../../state/gameObjects";
-import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../../state/sea";
-import { setFollowing } from "../../state/selection";
-import { BLUEPRINTS, GOODS } from "../../blueprints";
-import { cheapest } from "../../state/deals";
+import { useGame } from "../state/gameObjects";
+import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/sea";
+import { setFollowing } from "../state/selection";
+import { BLUEPRINTS, GOODS } from "../blueprints";
+import { cheapest } from "../state/deals";
 import { Btn, coins, GoodDot, Section, StepBar, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
-import type { Building, BuildingKind, Good, Stock } from "../../generated";
+import type { Building, BuildingKind, Good, Stock } from "../generated";
 
 /** A depot as a site's card lists it (`card.rs`). */
 export interface DepotLine {

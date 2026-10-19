@@ -1,7 +1,7 @@
 # Missions
 
 Status: built 2026-10-10 for the opening, the trunk and the town's
-situation (`server/src/missions.rs`, `client/src/ui/Missions.tsx`);
+situation (`server/src/missions.rs`, `client/src/ui/Feed.tsx`);
 orders from the towns beyond the edge built 2026-10-12
 (`server/src/orders.rs`, §Orders). Dailies are designed here, not built.
 
@@ -175,7 +175,7 @@ its mission has opened.
   reward. Add the key to `Key`.
 - **A new goal:** a variant of `Goal`, a line in `met` saying when it is
   true, a line in `at` if its button acts on a building, and a case in
-  the card's `Act` (`Missions.tsx`) for the button, if it has one.
+  the card's `Act` (`ui/Feed.tsx`) for the button, if it has one.
 - **A new situation:** a variant of `When`, and a call to
   `missions::sense` where the server finds it, on an event, never on a
   scan of its own. If what makes it real is narrower than the event
