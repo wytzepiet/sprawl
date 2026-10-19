@@ -15,7 +15,9 @@ const up = (n: UiNode | null, prop: string): UiNode | null => (!n || n.props[pro
  * reaches the town under it. Found front to back (`hits`, painted last
  * first); a tap goes to the nearest node that takes one, a drag or the
  * wheel to the nearest that scrolls. A press that starts on the town is
- * the town's to the end.
+ * the town's to the end, and one dragged off a node that lets go of it
+ * (`onDrag`: a building out of the build menu) is the town's from there;
+ * either, let go over a node that takes a drop, is that node's.
  */
 export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (x: number, y: number, down: boolean) => void) {
   const at = (x: number, y: number) => {
@@ -33,7 +35,7 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
   const hover = (n: UiNode | null) => {
     if (n === over) return;
     over?.props.onHover?.(false);
-    (over = n)?.props.onHover(true);
+    (over = n)?.props.onHover?.(true);
   };
 
   const down = (e: PointerEvent) => {
@@ -48,21 +50,38 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
   const move = (e: PointerEvent) => {
     if (press && e.pointerId === press.id) {
       e.stopPropagation();
-      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > SLOP) press.dragged = true;
+      if (!press.dragged && Math.hypot(e.clientX - press.x, e.clientY - press.y) > SLOP) {
+        press.dragged = true;
+        const out = up(press.node, "onDrag");
+        if (out) {
+          up(press.node, "onPress")?.props.onPress(false);
+          glow(e.clientX, e.clientY, false);
+          press = null;
+          town = true;
+          return out.props.onDrag();
+        }
+      }
       const s = up(press.node, "onScroll");
       if (press.dragged && s) s.props.onScroll(press.last - e.clientY);
       press.last = e.clientY;
       glow(e.clientX, e.clientY, true);
       return;
     }
-    if (town || e.target !== canvas) return void hover(null);
+    if (town) return void hover(up(at(e.clientX, e.clientY), "onDrop"));
+    if (e.target !== canvas) return void hover(null);
     const n = at(e.clientX, e.clientY);
     canvas.style.cursor = up(n, "onTap") ? "pointer" : "";
     if (e.pointerType === "mouse") hover(up(n, "onHover"));
     if (n) e.stopPropagation();
   };
   const lift = (e: PointerEvent) => {
-    town = false;
+    if (town) {
+      town = false;
+      const drop = up(at(e.clientX, e.clientY), "onDrop");
+      hover(null);
+      if (drop && e.type === "pointerup") e.stopPropagation(), drop.props.onDrop();
+      return;
+    }
     if (!press || e.pointerId !== press.id) return;
     e.stopPropagation();
     const p = press;

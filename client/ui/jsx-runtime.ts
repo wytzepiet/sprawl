@@ -46,6 +46,10 @@ export declare namespace JSX {
     onHover?: (over: boolean) => void;
     /** Pressed, and let go. */
     onPress?: (down: boolean) => void;
+    /** Pressed and dragged off it: the town has the pointer from here. */
+    onDrag?: () => void;
+    /** A drag the town has let go over it. */
+    onDrop?: () => void;
     /** Laid out at this size: told every time the tree is laid out. */
     onSize?: (w: number, h: number) => void;
   }

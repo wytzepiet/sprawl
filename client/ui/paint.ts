@@ -295,7 +295,7 @@ export function createPaint(engine: EngineContext, colours: Palette) {
         const slot = icon(p.d, p.stroke, view);
         if (slot >= 0) glyph(x, y + h, ((ICON_UNIT * (p.size ?? 16)) / view) * cs, slot, rgba(p.ink ?? "ink", f), clip, k);
       }
-      if (p.onTap || p.onScroll || p.onPress || p.onHover || c.tag === "glass" || p.fill) hits.push({ node: c, x, y, w, h, r, clip });
+      if (p.onTap || p.onScroll || p.onPress || p.onHover || p.onDrag || p.onDrop || c.tag === "glass" || p.fill) hits.push({ node: c, x, y, w, h, r, clip });
       const inner: Clip = p.clip ? [Math.max(clip[0], x), Math.max(clip[1], y), Math.min(clip[2], x + w), Math.min(clip[3], y + h), r] : clip;
       walk(c, x, y, cs, f, inner, k, layer);
     }
