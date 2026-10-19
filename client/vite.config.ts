@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import solidPlugin from "vite-plugin-solid";
 
@@ -43,8 +44,22 @@ export default defineConfig({
   // tears the engine down under the rest, or builds on state the swap left
   // behind, and the game goes blank. A reload costs a second and is always
   // right; the server holds the game, so the page comes back as it was.
-  plugins: [solidPlugin({ hot: false }), perfLog()],
-  resolve: { alias: { "@babylonjs/lite": `${lite}src/index.ts` } },
+  //
+  // The UI the GPU draws (`src/ui/gpu/`) is compiled for Solid's universal
+  // renderer, its elements made by `engine/ui/node.ts` rather than the page.
+  plugins: [
+    solidPlugin({ hot: false, exclude: [/src\/ui\/gpu\//] }),
+    solidPlugin({ hot: false, include: [/src\/ui\/gpu\/.*\.tsx$/], solid: { generate: "universal", moduleName: "~ui" } }),
+    perfLog(),
+  ],
+  resolve: {
+    alias: [
+      { find: /^@babylonjs\/lite$/, replacement: `${lite}src/index.ts` },
+      // A few of Lite's insides, until it exports them: its text's layout, atlas and shader.
+      { find: /^@babylonjs\/lite\/src\/(.*)$/, replacement: `${lite}src/$1.ts` },
+      { find: /^~ui$/, replacement: fileURLToPath(new URL("./src/engine/ui/node.ts", import.meta.url)) },
+    ],
+  },
   server: {
     port,
     // Fail rather than wander. Vite's default is to take the next free port,

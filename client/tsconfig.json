@@ -14,7 +14,13 @@
     "noEmit": true,
     // The renderer is our fork of Babylon Lite beside this repo; its types are built there
     // (`tsc -p . --emitDeclarationOnly --outDir build/types` in packages/babylon-lite).
-    "paths": { "@babylonjs/lite": ["../../Babylon-Lite/packages/babylon-lite/build/types/index.d.ts"] },
+    // Lite's insides, `@babylonjs/lite/src/…`, until it exports them; and the
+    // UI the GPU draws: `@jsxImportSource ~ui` takes its elements from `~ui/`.
+    "paths": {
+      "@babylonjs/lite": ["../../Babylon-Lite/packages/babylon-lite/build/types/index.d.ts"],
+      "@babylonjs/lite/src/*": ["../../Babylon-Lite/packages/babylon-lite/build/types/*"],
+      "~ui/*": ["./src/engine/ui/*"]
+    },
 
     // Type Checking & Safety
     "strict": true,

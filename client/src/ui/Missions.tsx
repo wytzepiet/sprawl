@@ -15,11 +15,11 @@ import type { Neighbour } from "../generated/Neighbour";
 
 /** Where a kind is built: the harbour on the coast, the quarry at the
  *  mountain's foot, the sawmill at the forest's edge. */
-const GROUND: Partial<Record<BuildingKind, TerrainType>> = { Harbour: "Sea", Quarry: "Mountain", Sawmill: "Forest" };
+export const GROUND: Partial<Record<BuildingKind, TerrainType>> = { Harbour: "Sea", Quarry: "Mountain", Sawmill: "Forest" };
 
 /** The camera to the nearest ground of a type it has, stopping a few
  *  tiles short so its edge fills the view: the town opens inland. */
-function toward(ground: TerrainType) {
+export function toward(ground: TerrainType) {
   const sea = (x: number, y: number) => {
     const [cx, cy] = [Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE)];
     const tiles = groundOf(cx, cy);

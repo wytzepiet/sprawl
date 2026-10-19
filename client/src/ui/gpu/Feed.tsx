@@ -1,0 +1,384 @@
+/** @jsxImportSource ~ui */
+import { createEffect, createSignal, For, Index, onCleanup, Show } from "solid-js";
+import { eachEntity, useGame } from "../../state/gameObjects";
+import { neighbours } from "../../state/missions";
+import { clockAt, news, sea, until, type News } from "../../state/sea";
+import { setFollowing } from "../../state/selection";
+import { deals, GOOD_ORDER, home, offerOf, picking, setPicking, setSpread, spread, stepsOf, type Deal } from "../../state/deals";
+import { BLUEPRINTS, GOODS } from "../../blueprints";
+import { GROUND, missionKey, shownMissions, toward } from "../Missions";
+import { hold, setTool } from "../buildMode";
+import { track } from "../Shipments";
+import { coins } from "../kit";
+import { FERRY } from "../Feed";
+import { Btn, Crest, GoodDot, Line, Press, StepBar } from "./kit";
+import { Stack } from "./stack";
+import type { Good, Mission, Offer, Step } from "../../generated";
+import type { Mayor } from "../../generated/Mayor";
+import type { JSX } from "~ui/jsx-runtime";
+
+/** Room the feed leaves below it: the dock and the corners, and on a
+ *  phone the corners under the dock. */
+const BELOW = () => (window.innerWidth < 720 ? 172 : 112);
+
+/** A card of the feed: a line of news, a mission, a deal, or the picker. */
+type Note =
+  | { key: string; kind: "news"; news: News }
+  | { key: string; kind: "mission"; m: Mission }
+  | { key: string; kind: "deal"; deal: Deal }
+  | { key: string; kind: "picker" };
+
+/**
+ * The feed (`ui/Feed.tsx`), drawn by the GPU: everything that happens to
+ * the town as a phone's notifications, top right, or across the top of a
+ * phone. News drops in on top and goes by itself; a mission is pinned
+ * while it is open; a deal stays while its boxes are on their way. Folded,
+ * the newest is in front and two more peek out under it, under its glass;
+ * a tap spreads them out, a tap on one opens it.
+ */
+export default function Feed() {
+  const [size, setSize] = createSignal([window.innerWidth, window.innerHeight]);
+  const fit = () => setSize([window.innerWidth, window.innerHeight]);
+  window.addEventListener("resize", fit);
+  onCleanup(() => window.removeEventListener("resize", fit));
+  const wide = () => size()[0] >= 768;
+  const room = () => size()[1] - BELOW() - 16;
+  const notes = (): Note[] => [
+    ...(picking() === null || home() === null ? [] : [{ key: "picker", kind: "picker" as const }]),
+    ...[...news()].reverse().map((n) => ({ key: `news:${n.key}`, kind: "news" as const, news: n })),
+    ...shownMissions().map((m) => ({ key: missionKey(m), kind: "mission" as const, m })),
+    ...deals().map((d) => ({ key: `deal:${d.key}`, kind: "deal" as const, deal: d })),
+  ];
+  const [focus, setFocus] = createSignal<string | null>(null);
+  /** Folded, a tap spreads the stack; spread, it opens the card tapped. */
+  const tap = (key: string) => {
+    if (!spread() && notes().length > 1 && picking() === null) return setSpread(true);
+    setFocus(focus() === key ? null : key);
+  };
+  createEffect(() => notes().length < 2 && setSpread(false));
+  return (
+    <box at={wide() ? { right: 24, top: 24 } : { left: 12, right: 12, top: 12 }} w={wide() ? 340 : undefined} gap={8}>
+      <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={20}>
+        {(n) => {
+          const note = n();
+          switch (note.kind) {
+            case "picker":
+              return <Picker onDeal={(key) => (setPicking(null), setFocus(`deal:${key}`))} />;
+            case "news":
+              return <NewsCard news={note.news} />;
+            case "mission":
+              return <MissionCard m={(n() as typeof note).m} open={focus() === note.key} onTap={() => tap(note.key)} />;
+            case "deal":
+              return <Card deal={(n() as typeof note).deal} open={focus() === note.key} onTap={() => tap(note.key)} />;
+          }
+        }}
+      </Stack>
+      <Show when={spread()}>
+        <box align="center">
+          <glass layer="note-fold" round={16} w={56} h={32} align="center" justify="center" onTap={() => (setSpread(false), setFocus(null))}>
+            <Line d="M6 15l6-6 6 6" size={17} width={2.6} />
+          </glass>
+        </box>
+      </Show>
+    </box>
+  );
+}
+
+/** A square of colour with a glyph on it: what a card is about. */
+const Tile = (props: { color: string; d: string; children?: JSX.Element }) => (
+  <box w={36} h={36} round={11} fill={props.color} align="center" justify="center">
+    <icon d={props.d} size={20} ink="white" />
+    {props.children}
+  </box>
+);
+
+/** A line of news: the ferry in, the ferry gone, coins spent; a tap goes there. */
+function NewsCard(props: { news: News }) {
+  return (
+    <box dir="row" align="center" gap={10} pad={[10, 12]} onTap={() => setFollowing(props.news.at)}>
+      <Tile color={props.news.coins ? "#B7791F" : "#2B6CA3"} d={props.news.coins ? COINS : FERRY} />
+      <box grow={1} gap={2}>
+        <text size={14.5} weight={600} lines={1}>{props.news.text}</text>
+        <text size={12.5} soft lines={1}>{props.news.sub}</text>
+      </box>
+    </box>
+  );
+}
+
+const COINS = "M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 9.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12c0 1.7-3.6 3-8 3s-8-1.3-8-3zM4 15.5c0 1.7 3.6 3 8 3s8-1.3 8-3V18c0 1.7-3.6 3-8 3s-8-1.3-8-3z";
+const PIN = "M15 3l6 6-3 1-4 4 1 5-2 2-4-4-5 5-1-1 5-5-4-4 2-2 5 1 4-4z";
+const GLOBE = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18";
+const EYE = "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0";
+const LETTER = "M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2zM3 7l9 6 9-6";
+const FLAG = "M5 3h2v18H5zM7 4h11l-2.5 4L18 12H7z";
+
+/** A partner's crest, or the world's globe; an envelope on it for a letter's deal. */
+function Who(props: { partner: Mayor | null; size: number; letter?: boolean; ink?: string }) {
+  const n = () => props.partner && neighbours().find((n) => n.mayor === props.partner);
+  return (
+    <box w={props.size} h={props.size}>
+      <Show when={n()} fallback={<box w={props.size} h={props.size} round={props.size / 2} fill="ink/0.1" align="center" justify="center"><Line d={GLOBE} size={props.size * 0.6} ink={props.ink} /></box>}>
+        {(n) => <Crest n={n()} size={props.size} />}
+      </Show>
+      <Show when={props.letter}>
+        <box at={{ right: -6, bottom: -4 }} w={17} h={17} round={8.5} fill="#B7791F" align="center" justify="center">
+          <Line d={LETTER} size={11} width={2.2} ink="white" />
+        </box>
+      </Show>
+    </box>
+  );
+}
+
+/** Who a deal is with, in words: a mayor's name, or the world. */
+const nameOf = (partner: Mayor | null) => (partner && neighbours().find((n) => n.mayor === partner)?.name) ?? "the world";
+
+function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
+  const { send } = useGame();
+  const d = () => props.deal;
+  const color = () => (d().done ? "#57A773" : GOODS[d().good].color);
+  const lead = () => d().boxes[0];
+  const count = () => d().boxes.length + d().wanted;
+  const offer = () => offerOf(d().good, d().partner, d().out);
+  const title = () => (d().key === "gift" ? "The starter pack" : `${GOODS[d().good].label[0].toUpperCase()}${GOODS[d().good].label.slice(1)} ${d().out ? "for" : "from"} ${nameOf(d().partner)}`);
+  /** Where it is, in words: its furthest box, or what it waits for. */
+  const status = () => {
+    if (d().done) return d().out ? "sold, and paid for" : "in the depot";
+    const l = lead();
+    if (l) return l.words;
+    if (d().wanted) return `wants ${d().wanted} ${d().wanted === 1 ? "box" : "boxes"}`;
+    return "booked again as the ferry sails";
+  };
+  const when = () => (d().done ? null : lead()?.eta ?? (lead() ? null : d().due));
+  const book = (n: number) => {
+    const h = home();
+    if (h === null) return;
+    for (let i = 0; i < n; i++) send({ type: "Book", data: { harbour: h, good: d().good, partner: d().partner, out: d().out } });
+  };
+  const pin = () => {
+    const h = home();
+    if (h === null) return;
+    const p = d().pin;
+    if (p !== null) send({ type: "Unpin", data: { harbour: h, pin: p } });
+    else send({ type: "Pin", data: { harbour: h, good: d().good, partner: d().partner, out: d().out } });
+  };
+  const money = () => (d().coins >= 0 ? "#3F8F5C" : "ink");
+  return (
+    <box>
+      <box pad={[10, 12, 12, 12]} gap={8} onTap={props.onTap}>
+        <box dir="row" align="center" gap={10}>
+          <Tile color={GOODS[d().good].color} d={GOODS[d().good].glyph}>
+            <box at={{ right: -6, bottom: -6 }}>
+              <Who partner={d().partner} size={20} letter={d().letter !== null} ink="white" />
+            </box>
+          </Tile>
+          <box grow={1} gap={2}>
+            <box dir="row" align="center" gap={6}>
+              <text size={14.5} weight={600} lines={1}>{title()}</text>
+              <Show when={count() > 1}><text size={14.5} weight={600} soft>×{count()}</text></Show>
+              <Show when={d().pin !== null}><icon d={PIN} size={13} ink="ink/0.72" /></Show>
+            </box>
+            <text size={12.5} soft lines={1}>{status()}</text>
+          </box>
+          <Show when={d().done} fallback={<Show when={when()}>{(t) => <text serif size={17}>{until(t())}</text>}</Show>}>
+            <text serif size={18} ink={money()}>{coins(d().coins)}</text>
+          </Show>
+        </box>
+        <StepBar steps={stepsOf(d().out)} at={d().done ? Infinity : lead()?.step ?? -1} color={color()} />
+      </box>
+      <Show when={props.open && !d().done}>
+        <box pad={[0, 12, 12, 12]} gap={8}>
+          <box>
+            <For each={d().boxes}>
+              {(b) => (
+                <box dir="row" align="center" gap={8} pad={4} round={12} onTap={b.seen ? () => track(b.trailer) : undefined}>
+                  <GoodDot good={d().good} size={20} />
+                  <text size={13} lines={1} grow={1}>{b.words}</text>
+                  <Show when={b.eta}>{(t) => <text serif size={13}>{until(t())}</text>}</Show>
+                  <Show when={b.seen}><Line d={EYE} size={14} width={2.4} ink="ink/0.72" /></Show>
+                </box>
+              )}
+            </For>
+          </box>
+          <box dir="row" align="center" gap={6}>
+            <Show when={d().boxes.length}>
+              <text serif size={17} ink={money()}>{coins(d().coins)}</text>
+            </Show>
+            <box grow={1} />
+            <Show when={d().wanted > 0 && offer()}>
+              <Press dir="row" align="center" gap={6} h={36} pad={[0, 14]} round={18} fill="#B7791F" onTap={() => book(d().wanted)}>
+                <text size={14} weight={600} ink="white">Send {d().wanted}</text>
+                <text serif size={14} ink="white">{coins(offer()!.price * GOODS[d().good].box * d().wanted)}</text>
+              </Press>
+            </Show>
+            <Show when={d().wanted === 0 && offer() && d().key !== "gift"}>
+              <Press dir="row" align="center" gap={4} h={36} pad={[0, 12]} round={18} stroke={[2, "ink/0.15"]} onTap={() => book(1)}>
+                <text size={14} weight={600} soft>+ Box</text>
+                <text serif size={14} soft>{coins((d().out ? 1 : -1) * offer()!.price * GOODS[d().good].box)}</text>
+              </Press>
+            </Show>
+            <Show when={d().letter === null && offer() && d().key !== "gift"}>
+              <Press dir="row" align="center" gap={6} h={36} pad={[0, 12]} round={18} fill={d().pin !== null ? "ink/0.85" : undefined} stroke={d().pin !== null ? undefined : [2, "ink/0.15"]} onTap={pin}>
+                <icon d={PIN} size={14} ink={d().pin !== null ? "glass" : "ink/0.6"} />
+                <text size={14} weight={600} ink={d().pin !== null ? "glass" : "ink/0.6"}>Every sailing</text>
+              </Press>
+            </Show>
+          </box>
+        </box>
+      </Show>
+    </box>
+  );
+}
+
+/** New deals: which way, a good, then who from or for, each at its price
+ *  a box; a tap books one. */
+function Picker(props: { onDeal: (key: string) => void }) {
+  const { send, growth } = useGame();
+  const out = () => picking() === true;
+  const [good, setGood] = createSignal<Good>("Timber");
+  const offers = () => sea.offers.filter((o) => o.good === good() && o.out === out());
+  const owed = () => sea.shipments.filter((s) => !s.outbound && (s.leg === "Booked" || s.leg === "Aboard")).reduce((a, s) => a + s.price * s.units, 0);
+  const box = (o: Offer) => o.price * GOODS[o.good].box;
+  const afford = (o: Offer) => o.out || growth().treasury - owed() >= box(o);
+  const deal = (o: Offer) => {
+    const h = home();
+    if (h === null) return;
+    send({ type: "Book", data: { harbour: h, good: o.good, partner: o.partner, out: o.out } });
+    props.onDeal(`${o.out ? "out" : "in"}:${o.partner ?? "world"}:${o.good}`);
+  };
+  const Way = (p: { out: boolean }) => (
+    <Press h={32} pad={[0, 14]} round={16} justify="center" fill={out() === p.out ? "ink/0.85" : undefined} onTap={() => setPicking(p.out)}>
+      <text size={14} weight={600} ink={out() === p.out ? "glass" : "ink/0.6"}>{p.out ? "Sell" : "Buy"}</text>
+    </Press>
+  );
+  return (
+    <box pad={12} gap={10}>
+      <box dir="row" align="center" gap={6}>
+        <box dir="row" pad={2} round={18} fill="ink/0.07"><Way out={false} /><Way out /></box>
+        <box grow={1} />
+        <For each={GOOD_ORDER}>
+          {(g) => (
+            <Press w={36} h={36} round={10} align="center" justify="center" fill={good() === g ? GOODS[g].color : `${GOODS[g].color}2a`} onTap={() => setGood(g)}>
+              <icon d={GOODS[g].glyph} size={20} ink={good() === g ? "white" : GOODS[g].color} />
+            </Press>
+          )}
+        </For>
+      </box>
+      <box gap={6}>
+        <For each={offers()}>
+          {(o) => (
+            <Press dir="row" align="center" gap={6} h={36} pad={[0, 12, 0, 4]} round={18} fill="glass" shadow opacity={afford(o) ? 1 : 0.35} onTap={() => afford(o) && deal(o)}>
+              <Who partner={o.partner} size={28} letter={o.letter !== null} />
+              <text size={14} weight={600} grow={1}>{o.partner ? nameOf(o.partner) : "World"}</text>
+              <text serif size={15}>{coins(o.out ? box(o) : -box(o))}</text>
+            </Press>
+          )}
+        </For>
+      </box>
+    </box>
+  );
+}
+
+/** What finishing a mission pays; landed, once it is finished. */
+function Reward(props: { m: Mission }) {
+  const coins = () => (props.m.reward.kind === "Coins" ? props.m.reward.data : props.m.reward.data.coins);
+  const lapsed = () => props.m.finished !== null && props.m.steps.some((s) => !s.done);
+  return (
+    <Show when={props.m.finished !== null} fallback={<text size={12} weight={600} soft>+{coins()}</text>}>
+      <Show when={!lapsed()} fallback={<text size={11} weight={600} soft>lapsed</text>}>
+        <box pad={[2, 8]} round={10} fill="#57A773">
+          <text size={11} weight={700} ink="white">+{coins()} coins{props.m.reward.kind === "Order" ? `, +${props.m.reward.data.standing} standing` : ""}</text>
+        </box>
+      </Show>
+    </Show>
+  );
+}
+
+/** A mission as a card (`ui/Missions.tsx`): its title, the step at hand,
+ *  a bar of its steps and what it pays; opened, the step spelled out, with
+ *  the button that does it. */
+function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
+  const at = () => props.m.steps.findIndex((s) => !s.done);
+  const step = () => props.m.steps[at()];
+  const done = () => props.m.steps.filter((s) => s.done).length;
+  const color = () => (props.m.finished !== null ? "#57A773" : "#7B77E0");
+  return (
+    <box>
+      <box pad={[10, 12, 12, 12]} gap={8} onTap={props.onTap}>
+        <box dir="row" align="center" gap={10}>
+          <Tile color={color()} d={FLAG} />
+          <box grow={1} gap={2}>
+            <text size={14.5} weight={600} lines={1}>{props.m.title}</text>
+            <text size={12.5} soft lines={1}>{step()?.title ?? "Done"}</text>
+          </box>
+          <Reward m={props.m} />
+        </box>
+        <StepBar steps={props.m.steps.length} at={done() - 1} color={color()} />
+      </box>
+      <Show when={props.open && step()}>
+        {(s) => (
+          <box pad={[0, 12, 12, 12]} gap={8} align="start">
+            <Index each={s().text.split("\n\n")}>{(p) => <text size={12.5} soft lead={1.375}>{p()}</text>}</Index>
+            <Act step={s()} />
+          </box>
+        )}
+      </Show>
+    </box>
+  );
+}
+
+/** What the step at hand offers to do: a tool to take, a lorry to ride
+ *  with, a new deal to make. */
+function Act(props: { step: Step }) {
+  const gift = () => sea.shipments.filter((s) => s.order === 0);
+  const parked = () => gift().filter((s) => s.leg === "Parked");
+  const next = () => gift().find((s) => s.eta !== null);
+  const ride = () => {
+    const d = props.step.at;
+    if (d === null) return;
+    let lorry: number | null = null;
+    eachEntity((e) => {
+      if (e.object.kind === "Car" && e.object.data.role === "Truck" && e.object.data.owner === d) lorry = e.id;
+    });
+    const box = parked()[0];
+    if (box) track(box.trailer, lorry);
+  };
+  return (
+    <>
+      {() => {
+        const goal = props.step.goal;
+        switch (goal.kind) {
+          case "Stands": {
+            const kind = goal.data;
+            return <Btn onTap={() => (GROUND[kind] && toward(GROUND[kind]!), hold(kind))}>Take the {BLUEPRINTS[kind].label.toLowerCase()}</Btn>;
+          }
+          case "Joined":
+            return <Btn onTap={() => setTool("Street")}>Take the street</Btn>;
+          case "Fetched":
+            return (
+              <Show
+                when={parked().length > 0}
+                fallback={
+                  <Show when={next()}>
+                    {(s) => (
+                      <text size={12.5} soft>
+                        The first ferry is in at {clockAt(s().eta!)}, <text weight={700}>{until(s().eta!)}</text> from now.
+                      </text>
+                    )}
+                  </Show>
+                }
+              >
+                <text size={12.5} soft>{parked().length === 1 ? "A box is" : `${parked().length} boxes are`} in the trailer park.</text>
+                <Btn big onTap={ride} color={BLUEPRINTS.Depot.color} disabled={props.step.at === null}>Ride with the lorry</Btn>
+              </Show>
+            );
+          case "Settled":
+            return <Btn onTap={() => hold("House")}>Take a house</Btn>;
+          case "Booked":
+          case "Pinned":
+          case "Sold":
+            return <Btn big onTap={() => (goal.kind === "Pinned" ? setSpread(true) : setPicking(goal.kind === "Sold"))} color={BLUEPRINTS.Harbour.color}>{goal.kind === "Pinned" ? "Open the deals" : "A new deal"}</Btn>;
+        }
+      }}
+    </>
+  );
+}

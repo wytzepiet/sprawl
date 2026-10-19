@@ -47,6 +47,7 @@ export default function Glass() {
     last = key;
     light.tint = glass.map((v) => v / 255) as Rgb;
     light.ink = mix(glass, [0, 0, 0], 0.7).map((v) => v / 255) as Rgb;
+    light.text = ink.map((v) => v / 255) as Rgb;
     const s = document.documentElement.style;
     s.setProperty("--glass", glass.join(" "));
     s.setProperty("--ink", ink.join(" "));
