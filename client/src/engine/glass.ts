@@ -482,35 +482,38 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
       const encoder = engine._currentEncoder;
       device.queue.writeBuffer(uniforms, 0, data);
       let draws = 0;
-      for (const g of groups) {
-        const clipped = g.runs.map((b) => ({ x0: Math.min(b.x0, w), y0: Math.min(b.y0, h), x1: Math.min(b.x1, w), y1: Math.min(b.y1, h), run: runs.indexOf(b) })).filter((b) => b.x1 > b.x0 && b.y1 > b.y0);
-        // What lies under each run, out of the frame as drawn so far.
+      // What lies under the glass, out of the frame as the town drew it:
+      // glass sees through to the town and never through other glass, so
+      // a card over another is frosted as if it were the only one.
+      const clipped = runs.map((b, run) => ({ x0: Math.min(b.x0, w), y0: Math.min(b.y0, h), x1: Math.min(b.x1, w), y1: Math.min(b.y1, h), run })).filter((b) => b.x1 > b.x0 && b.y1 > b.y0);
+      for (const b of clipped) {
+        encoder.copyTextureToTexture({ texture: frame, origin: { x: b.x0, y: b.y0 } }, { texture: under!, origin: { x: b.x0, y: b.y0 } }, { width: b.x1 - b.x0, height: b.y1 - b.y0 });
+      }
+      // Halved, level by level, within each run's box.
+      for (let level = 1; clipped.length && level < levels.length; level++) {
+        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: levels[level], loadOp: "load", storeOp: "store" }] });
+        pass.setPipeline(halfPipeline);
+        pass.setBindGroup(0, halves[level - 1]);
+        const [lw, lh] = [Math.max(1, w >> level), Math.max(1, h >> level)];
         for (const b of clipped) {
-          encoder.copyTextureToTexture({ texture: frame, origin: { x: b.x0, y: b.y0 } }, { texture: under!, origin: { x: b.x0, y: b.y0 } }, { width: b.x1 - b.x0, height: b.y1 - b.y0 });
+          const x0 = b.x0 >> level;
+          const y0 = b.y0 >> level;
+          const x1 = Math.min(lw, (b.x1 >> level) + 1);
+          const y1 = Math.min(lh, (b.y1 >> level) + 1);
+          if (x1 <= x0 || y1 <= y0) continue;
+          pass.setScissorRect(x0, y0, x1 - x0, y1 - y0);
+          pass.draw(3);
+          draws++;
         }
-        // Halved, level by level, within each run's box.
-        for (let level = 1; clipped.length && level < levels.length; level++) {
-          const pass = encoder.beginRenderPass({ colorAttachments: [{ view: levels[level], loadOp: "load", storeOp: "store" }] });
-          pass.setPipeline(halfPipeline);
-          pass.setBindGroup(0, halves[level - 1]);
-          const [lw, lh] = [Math.max(1, w >> level), Math.max(1, h >> level)];
-          for (const b of clipped) {
-            const x0 = b.x0 >> level;
-            const y0 = b.y0 >> level;
-            const x1 = Math.min(lw, (b.x1 >> level) + 1);
-            const y1 = Math.min(lh, (b.y1 >> level) + 1);
-            if (x1 <= x0 || y1 <= y0) continue;
-            pass.setScissorRect(x0, y0, x1 - x0, y1 - y0);
-            pass.draw(3);
-            draws++;
-          }
-          pass.end();
-        }
-        // The glass, over the frame, and what lies on it.
-        const pass = encoder.beginRenderPass({ colorAttachments: [{ view: surface.scRT._colorView!, loadOp: "load", storeOp: "store" }] });
+        pass.end();
+      }
+      // The glass over the frame, group by group, each with what lies on it.
+      const pass = encoder.beginRenderPass({ colorAttachments: [{ view: surface.scRT._colorView!, loadOp: "load", storeOp: "store" }] });
+      for (const g of groups) {
         pass.setPipeline(panePipeline);
         pass.setBindGroup(0, paneGroup!);
         for (const b of clipped) {
+          if (!g.runs.includes(runs[b.run])) continue;
           pass.setScissorRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
           pass.draw(3, 1, 0, b.run);
           draws++;
@@ -520,8 +523,8 @@ export function createGlass(engine: EngineContext, scene: SceneContext, ui?: { r
           ui!.ink(pass, g.layer);
           draws += 2;
         }
-        pass.end();
       }
+      pass.end();
       return draws;
     },
     dispose() {
