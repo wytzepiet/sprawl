@@ -78,7 +78,7 @@ export default function Meter() {
       <For each={drips()}>{(d) => <Drip n={d.n} />}</For>
       {/* What the day has done, above. */}
       <Show when={wide()}>
-        <text at={{ right: 20, bottom: 60 }} serif size={13} soft>{day()}</text>
+        <text at={{ right: 20, bottom: 60 }} size={12.5} weight={600} soft>{day()}</text>
       </Show>
     </box>
   );
