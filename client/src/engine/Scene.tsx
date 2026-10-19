@@ -20,7 +20,7 @@ import Glass from "../ui/Glass";
 import Shipments, { BoxPins } from "../ui/Shipments";
 import Feed from "../ui/Feed";
 import Hud from "./Hud";
-import { gpuUi } from "./ui/node";
+import { gpuUi } from "~ui";
 
 function SceneInner() {
   return (

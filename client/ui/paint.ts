@@ -1,7 +1,6 @@
 import type { EngineContext } from "@babylonjs/lite";
 import { composeSlugShader } from "@babylonjs/lite/src/text/shaders/slug-shader";
 import { ensureSharedAtlasGpu } from "@babylonjs/lite/src/text/_gpu/text-textures";
-import { light } from "../glass";
 import { atlas, icon, ICON_UNIT, type Laid } from "./glyphs";
 import { layout } from "./layout";
 import { dirt, node, type UiNode } from "./node";
@@ -48,6 +47,16 @@ const OPEN: Clip = [-1e6, -1e6, 1e6, 1e6, 0];
 
 export const root = node("root");
 
+/** The glass's colours, 0–1, as the light has them now: its own (`tint`),
+ *  the ink written on it (`text`), and its shadow's (`ink`). The game's to
+ *  give (`createPaint`), read at every paint. */
+export interface Palette {
+  tint: [number, number, number];
+  text: [number, number, number];
+  ink: [number, number, number];
+}
+let palette: Palette = { tint: [1, 1, 1], text: [0, 0, 0], ink: [0, 0, 0] };
+
 const BOX_FLOATS = 24;
 const GLYPH_FLOATS = 16;
 
@@ -56,8 +65,8 @@ function rgba(c: string | undefined, fade: number): [number, number, number, num
   if (!c) return [0, 0, 0, 0];
   const [name, share] = c.split("/");
   let [r, g, b, a] = [0, 0, 0, Number(share ?? 1)];
-  if (name === "ink") [r, g, b] = light.text;
-  else if (name === "glass") [r, g, b] = light.tint;
+  if (name === "ink") [r, g, b] = palette.text;
+  else if (name === "glass") [r, g, b] = palette.tint;
   else if (name === "white") [r, g, b] = [1, 1, 1];
   else {
     let h = name.slice(1);
@@ -155,7 +164,8 @@ struct V {
 
 /** The UI's drawing: the tree laid out and walked each frame it moved,
  *  its instances written, and each layer drawn when the glass asks. */
-export function createPaint(engine: EngineContext) {
+export function createPaint(engine: EngineContext, colours: Palette) {
+  palette = colours;
   const device = engine._device;
   const surface = engine.surfaces[0];
   const blend: GPUBlendState = { color: { srcFactor: "one", dstFactor: "one-minus-src-alpha" }, alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" } };
@@ -311,7 +321,7 @@ export function createPaint(engine: EngineContext) {
         dirt.paint++;
       }
       // The ink takes the light: a turn of the day draws the UI again.
-      const painted = `${dirt.paint}|${k}|${light.text}|${light.tint}`;
+      const painted = `${dirt.paint}|${k}|${palette.text}|${palette.tint}`;
       if (painted === paintedAt) return layers;
       paintedAt = painted;
       seen++;
@@ -324,7 +334,7 @@ export function createPaint(engine: EngineContext) {
       glyphBuf = fit(glyphBuf, glyphCount * GLYPH_FLOATS * 4);
       if (boxCount) device.queue.writeBuffer(boxBuf, 0, boxes, 0, boxCount * BOX_FLOATS);
       if (glyphCount) device.queue.writeBuffer(glyphBuf, 0, glyphs, 0, glyphCount * GLYPH_FLOATS);
-      device.queue.writeBuffer(boxU, 0, new Float32Array([canvas.width, canvas.height, 0, 0, ...light.ink, 0.22]));
+      device.queue.writeBuffer(boxU, 0, new Float32Array([canvas.width, canvas.height, 0, 0, ...palette.ink, 0.22]));
       device.queue.writeBuffer(glyphU, 64, new Float32Array([canvas.width, canvas.height, 0, 0, 1, 1, 1, 1]));
       // New letters go up to the atlas, and a grown atlas is bound anew.
       const a = atlas();

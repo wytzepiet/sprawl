@@ -4,7 +4,9 @@ import { createRenderer } from "solid-js/universal";
  * The UI the GPU draws (`paint.ts`), as a tree Solid keeps
  * (`solid-js/universal`): the four elements of `jsx-runtime.ts` and the
  * words in them. A node holds what it was given; layout (`layout.ts`)
- * writes where it lies; paint reads both, a frame at a time.
+ * writes where it lies; paint reads both, a frame at a time. It knows
+ * nothing of the game, which gives it the glass's colours (`createPaint`)
+ * and mounts what it draws on `root`.
  */
 export interface UiNode {
   tag: "box" | "glass" | "text" | "icon" | "#text" | "root";
@@ -18,7 +20,7 @@ export interface UiNode {
   y: number;
   w: number;
   h: number;
-  /** Lines of a text, as laid out (`text.ts`). */
+  /** Lines of a text, as laid out (`glyphs.ts`). */
   lines?: unknown;
 }
 

@@ -1,5 +1,5 @@
 import { addTask, buildFrameGraphTask, getFrameGraph, type EngineContext, type SceneContext, type Task } from "@babylonjs/lite";
-import type { Layer, Pane } from "./ui/paint";
+import type { Layer, Pane } from "~ui/paint";
 
 /**
  * The UI's glass, drawn by the GPU over the frame it lies on, not by the

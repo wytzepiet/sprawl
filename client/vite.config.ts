@@ -46,7 +46,7 @@ export default defineConfig({
   // right; the server holds the game, so the page comes back as it was.
   //
   // The UI the GPU draws (`src/ui/gpu/`) is compiled for Solid's universal
-  // renderer, its elements made by `engine/ui/node.ts` rather than the page.
+  // renderer, its elements made by `ui/node.ts` rather than the page.
   plugins: [
     solidPlugin({ hot: false, exclude: [/src\/ui\/gpu\//] }),
     solidPlugin({ hot: false, include: [/src\/ui\/gpu\/.*\.tsx$/], solid: { generate: "universal", moduleName: "~ui" } }),
@@ -57,7 +57,8 @@ export default defineConfig({
       { find: /^@babylonjs\/lite$/, replacement: `${lite}src/index.ts` },
       // A few of Lite's insides, until it exports them: its text's layout, atlas and shader.
       { find: /^@babylonjs\/lite\/src\/(.*)$/, replacement: `${lite}src/$1.ts` },
-      { find: /^~ui$/, replacement: fileURLToPath(new URL("./src/engine/ui/node.ts", import.meta.url)) },
+      { find: /^~ui$/, replacement: fileURLToPath(new URL("./ui/node.ts", import.meta.url)) },
+      { find: /^~ui\/(.*)$/, replacement: fileURLToPath(new URL("./ui/", import.meta.url)) + "$1" },
     ],
   },
   server: {

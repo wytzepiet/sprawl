@@ -19,7 +19,8 @@
     "paths": {
       "@babylonjs/lite": ["../../Babylon-Lite/packages/babylon-lite/build/types/index.d.ts"],
       "@babylonjs/lite/src/*": ["../../Babylon-Lite/packages/babylon-lite/build/types/*"],
-      "~ui/*": ["./src/engine/ui/*"]
+      "~ui": ["./ui/node.ts"],
+      "~ui/*": ["./ui/*"]
     },
 
     // Type Checking & Safety

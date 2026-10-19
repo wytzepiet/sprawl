@@ -25,10 +25,10 @@ import {
 import { useTheme } from "./theme";
 import { Culler } from "./cull";
 import { createOutline, type Outline } from "./outline";
-import { createGlass } from "./glass";
-import { createPaint } from "./ui/paint";
-import { createHand } from "./ui/hand";
-import { gpuUi } from "./ui/node";
+import { createGlass, light } from "./glass";
+import { createPaint } from "~ui/paint";
+import { createHand } from "~ui/hand";
+import { gpuUi } from "~ui";
 
 export type EngineContext = {
   engine: Engine;
@@ -141,7 +141,7 @@ export default function Canvas(props: ParentProps) {
     await Promise.all(preparing);
     await registerSceneWithShadowSupport(scene);
     // The UI the GPU draws (`ui/`), behind `?ui=gpu` while it is tried.
-    const paint = gpuUi ? createPaint(engine) : undefined;
+    const paint = gpuUi ? createPaint(engine, light) : undefined;
     const glass = createGlass(engine, scene, paint);
     const stopHand = paint ? createHand(el, paint.hits, glass.touchAt) : () => {};
     setRegistered(true);
