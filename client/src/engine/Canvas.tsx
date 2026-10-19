@@ -128,6 +128,8 @@ export default function Canvas(props: ParentProps) {
     onBeforeRender(scene, () => {
       before.run();
       cull.update();
+      // What the UI pins to the map was placed just now, for this frame's camera.
+      glass.read();
     });
 
     // The children set the scene up — the camera, the sun and its shadows,

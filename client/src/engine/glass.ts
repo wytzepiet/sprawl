@@ -264,9 +264,6 @@ type Box = { x0: number; y0: number; x1: number; y1: number };
 const glazed: { x: number; y: number; w: number; h: number; r: number }[] = [];
 let glazedKey = "";
 export const glazedAt = () => glazedKey;
-/** Whether a point of the page lies under glass: what the page draws
- *  there sits on the glass or is hidden by it, never under it shown. */
-export const glazes = (x: number, y: number) => glazed.some((p) => x >= p.x && x <= p.x + p.w && y >= p.y && y <= p.y + p.h);
 
 /**
  * Take the glass out of a flat overlay over the page, the hand's dots and

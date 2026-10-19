@@ -2,6 +2,8 @@
 import { createRoot, createSignal, For, onCleanup, Show } from "solid-js";
 import { follow, LOOSE } from "../../engine/spring";
 import { getEntity } from "../../state/gameObjects";
+import { useEngine } from "../../engine/Canvas";
+import { projector } from "../../engine/view";
 import { select, setFollowing } from "../../state/selection";
 import { GOODS } from "../../blueprints";
 import type { Good } from "../../generated";
@@ -203,3 +205,16 @@ export function Follow(props: { id: number; fallback?: number }) {
   );
 }
 export const EYE = "M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0";
+
+/** Where a point of the map is on the screen this frame, for what is
+ *  pinned to it: asked before each frame is drawn, after the camera has
+ *  moved, so it is drawn where the town is. */
+export function onMap(at: () => [number, number, number] | null) {
+  const { scene, canvas, beforeRender } = useEngine();
+  const [p, set] = createSignal<{ sx: number; sy: number } | null>(null, { equals: (a, b) => a?.sx === b?.sx && a?.sy === b?.sy });
+  onCleanup(beforeRender(() => {
+    const w = scene.camera && at();
+    set(w ? projector(scene, canvas).at(...w) : null);
+  }));
+  return p;
+}

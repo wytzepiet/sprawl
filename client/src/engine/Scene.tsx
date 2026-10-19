@@ -10,9 +10,8 @@ import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
 import PerfReport from "./PerfReport";
 import Pins from "./Pins";
-import LumpLayer from "../ui/LumpLayer";
 import Glass from "../ui/Glass";
-import Shipments, { BoxPins } from "../ui/Shipments";
+import Shipments from "../ui/Shipments";
 import Hud from "./Hud";
 
 function SceneInner() {
@@ -31,8 +30,6 @@ function SceneInner() {
             </InstancePoolProvider>
           </Registered>
         </DayNightLights>
-        <LumpLayer />
-        <BoxPins />
         <Hud />
       </Canvas>
       <Glass />
