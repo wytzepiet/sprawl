@@ -28,8 +28,11 @@ import { groundCover } from "./view";
 const SLOTS = 192;
 const BEAMS = 128;
 /** The screen's tiles, about as many as this; each a mask of 32 lights a
- *  batch per tile, read by every pixel in it. */
-const TILES = 512;
+ *  batch per tile, read by every pixel in it. A pixel shades every light
+ *  its tile is touched by, so a smaller tile shades fewer: at 512 the
+ *  lights cost twice what they do here (`bun run cost`, at night, every
+ *  slot lit); finer than this gains little. */
+const TILES = 2048;
 
 /** A street lamp: warm, the sodium of an old town. A lamp's reflector
  *  spreads its light wide across the street, as a bare bulb at its head
