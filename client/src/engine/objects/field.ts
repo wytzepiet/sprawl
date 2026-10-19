@@ -304,7 +304,9 @@ let fieldStreak = fieldNoise(vec2f(fieldU * 72., fieldV * 5.));
 let fieldStreak2 = fieldNoise(vec2f(fieldU * 72. + 1.5, fieldV * 5.));
 // How many drill rows to a pixel: past about one, they are drawn as the
 // crop they add up to, or they shimmer.
-let fieldFine = smoothstep(0.2, 0.5, fwidth(fieldU * 12.));
+let fieldFine = smoothstep(0.2, 0.5, fwidth(fieldU * 6.));
+// Broad, soft patches: wetter earth, a crop a little ahead or behind.
+let fieldMottle = 0.6 * fieldNoise(fieldW * 2. + vec2f(61., 7.)) + 0.4 * fieldNoise(fieldW * 6. + vec2f(13., 89.));
 let fieldEdge = 0.5 * fieldNoise(fieldW * 24. + vec2f(31., 5.)) + 0.5 * fieldNoise(fieldW * 6. + vec2f(3., 201.));
 // The tractor's job is done here, or not yet.
 let fieldK = input.vFieldA.y;
@@ -324,33 +326,38 @@ const DIFFUSE = `let fieldPass = fract(fieldU);
 let fieldTrack = 1. - smoothstep(0.012, 0.03, min(abs(fieldPass - 0.41), abs(fieldPass - 0.59)));
 // Clods, ears, stalks: a jumble of facings, the fine grain's.
 let fieldBumps = (vec2f(fieldN1, fieldN2) - 0.5) * 2.;
+// Out and back: each pass leans the other way, as a mown lawn's stripes.
+let fieldWay = select(-1., 1., fract(floor(fieldU) * 0.5) < 0.25);
+// A gentle tint, a few in a hundred either way, and no more.
+let fieldTint = 0.94 + 0.12 * fieldMottle;
 var fieldColour = material.fieldEarth.rgb;
 var fieldSlope = 0.;
 var fieldJumble = 0.;
 if (fieldStage == 1u) {
   // Ploughed: turned earth, four furrow slices a pass, each a ridge the
   // sun lights on one side and shades on the other, clods all over.
-  fieldColour = material.fieldEarth.rgb * vec3f(0.68, 0.6, 0.54);
+  fieldColour = material.fieldEarth.rgb * vec3f(0.68, 0.6, 0.54) * fieldTint;
   fieldSlope = 0.7 * sin(6.2831853 * fieldU * 4.);
   fieldJumble = 0.4;
 } else if (fieldStage == 2u) {
-  // Sown: harrowed earth, its drill rows a dozen to a pass; the crop up
-  // along them and closing over them, green, then gold; the wheel tracks
-  // left bare.
+  // Sown: harrowed earth, its drill rows six to a pass, each a ridge; the
+  // crop comes up along them in patches and closes over them, green, then
+  // gold; the wheel tracks left bare.
   let k = fieldLook.y;
-  let width = smoothstep(0.04, 0.5, k) * 1.2;
-  let row = abs(fract(fieldU * 12.) - 0.5) * 2.;
-  let cover = mix(1. - smoothstep(width - 0.25, width, row), clamp(width - 0.1, 0., 1.), fieldFine) * (1. - fieldTrack * smoothstep(0.2, 0.4, k));
-  let crop = mix(material.fieldGrowing.rgb * vec3f(0.62, 0.78, 0.55), material.fieldRipe.rgb * vec3f(0.95, 0.88, 0.7), smoothstep(0.6, 1., k));
-  fieldColour = mix(material.fieldEarth.rgb * vec3f(0.86, 0.8, 0.75), crop, cover);
-  fieldSlope = (1. - fieldFine) * 0.25 * sin(6.2831853 * fieldU * 12.) + cover * 0.6 * (fieldStreak2 - fieldStreak) * 6.;
+  let grown = clamp(k + (fieldMottle - 0.5) * 0.25, 0., 1.);
+  let width = smoothstep(0.04, 0.5, grown) * 1.2;
+  let row = abs(fract(fieldU * 6.) - 0.5) * 2.;
+  let cover = mix(1. - smoothstep(width - 0.2, width, row), clamp(width - 0.1, 0., 1.), fieldFine) * (1. - fieldTrack * smoothstep(0.2, 0.4, k));
+  let crop = mix(material.fieldGrowing.rgb * vec3f(0.62, 0.78, 0.55), material.fieldRipe.rgb * vec3f(0.95, 0.88, 0.7), smoothstep(0.6, 1., grown));
+  fieldColour = mix(material.fieldEarth.rgb * vec3f(0.86, 0.8, 0.75), crop * (0.97 + 0.06 * fieldStreak), cover) * fieldTint;
+  fieldSlope = (1. - fieldFine) * 0.45 * sin(6.2831853 * fieldU * 6.) * (1. - cover) + cover * (0.6 * (fieldStreak2 - fieldStreak) * 6. + 0.25 * fieldWay);
   fieldJumble = 0.15 + 0.15 * cover;
 } else if (fieldStage == 3u) {
-  // Stubble: straw cut short; the straw the combine let fall lies in a
-  // raised band down the middle of each pass.
-  fieldColour = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.35);
+  // Stubble: straw cut short, each pass leaning the way the combine went;
+  // the straw it let fall lies in a raised, paler band down the middle.
   let swath = 1. - smoothstep(0.1, 0.2, abs(fieldPass - 0.5) + (fieldStreak - 0.5) * 0.12);
-  fieldSlope = (1. - fieldFine) * 0.2 * sin(6.2831853 * fieldU * 12.) + swath * 0.5 * (fieldStreak2 - fieldStreak) * 6.;
+  fieldColour = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.35 + 0.25 * swath) * fieldTint;
+  fieldSlope = 0.45 * fieldWay + swath * 0.5 * (fieldStreak2 - fieldStreak) * 6.;
   fieldJumble = 0.3;
 }
 baseColor = fieldColour;
