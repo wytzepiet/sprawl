@@ -13,7 +13,7 @@ mkdir -p .dev
 
 # The server rebuilds and restarts on save. A binary that falls behind its
 # source looks exactly like a fix that did not work, which has cost real time.
-SERVER_CMD="cd server && cargo watch -q -w src -w host/src -x run"
+SERVER_CMD="cd server && cargo watch -q -w src -w host/src -x 'run -p sprawl-server'"
 CLIENT_CMD="cd client && bun run dev"
 
 # Stop anything from a previous run. An orphan holding a port makes the next
