@@ -16,7 +16,7 @@ import type { Tile } from "../../generated/Tile";
  * A farm's field, as it is seen from the air: every tile of its land
  * covered, worked as a farmer works one. Round the edge the headland, a
  * tile wide, its lines running parallel to whatever the field ends at and
- * meeting in a mitre at each corner, as a plough leaves them going round;
+ * turning round each outside corner on an arc, as a tractor going round does;
  * inside, the lands in straight lines along the grain the tractor drove,
  * stopping at the headland where it turned. The lines are a tractor's
  * passes: furrows turned up in ridges, a tile across four of them, that
@@ -278,6 +278,18 @@ for (var b = 4u; b < 8u; b++) {
   let off = fieldAt - corner;
   let d = length(off);
   if ((fieldMask & (1u << b)) != 0u && d < fieldD) { fieldD = d; fieldAcross = off / max(d, 1e-4); }
+}
+// An outside corner, field on two sides of it, is turned round on an arc
+// a tile across, as a tractor turns, about the corner of the tile inside
+// it; past the arc, grass.
+let fieldSideX = fieldMask & 3u;
+let fieldSideY = (fieldMask >> 2u) & 3u;
+if ((fieldSideX == 1u || fieldSideX == 2u) && (fieldSideY == 1u || fieldSideY == 2u)) {
+  let inner = vec2f(select(1., 0., fieldSideX == 1u), select(1., 0., fieldSideY == 1u));
+  let off = fieldAt - inner;
+  let r = length(off);
+  fieldD = 1. - r;
+  fieldAcross = -off / max(r, 1e-4);
 }
 let fieldHead = fieldMask != 0u;
 let fieldU = select(dot(input.worldPos.xy, fieldAcross), fieldD, fieldHead);
