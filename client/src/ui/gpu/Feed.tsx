@@ -1,5 +1,5 @@
 /** @jsxImportSource ~ui */
-import { createEffect, createSignal, For, Index, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, Index, Show } from "solid-js";
 import { eachEntity, groundOf, useGame } from "../../state/gameObjects";
 import { missionKey, neighbours, shownMissions } from "../../state/missions";
 import { clockAt, news, sea, until, type News } from "../../state/sea";
@@ -11,7 +11,7 @@ import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../../engin
 import { hold, setTool } from "../buildMode";
 import { track } from "../Shipments";
 import { coins } from "../kit";
-import { Appear, Btn, Crest, FERRY, GoodDot, Line, Pop, Press, StepBar } from "./kit";
+import { Appear, Btn, Crest, FERRY, GoodDot, Line, Pop, Press, StepBar, view, wide } from "./kit";
 import { Stack } from "./stack";
 import type { BuildingKind, Good, Mission, Offer, Step, TerrainType } from "../../generated";
 import type { Mayor } from "../../generated/Mayor";
@@ -19,7 +19,7 @@ import type { JSX } from "~ui/jsx-runtime";
 
 /** Room the feed leaves below it: the dock and the corners, and on a
  *  phone the corners under the dock. */
-const BELOW = () => (window.innerWidth < 720 ? 172 : 112);
+const BELOW = () => (wide() ? 112 : 172);
 
 /** A card of the feed: a line of news, a mission, a deal, or the picker. */
 type Note =
@@ -37,12 +37,7 @@ type Note =
  * a tap spreads them out, a tap on one opens it.
  */
 export default function Feed() {
-  const [size, setSize] = createSignal([window.innerWidth, window.innerHeight]);
-  const fit = () => setSize([window.innerWidth, window.innerHeight]);
-  window.addEventListener("resize", fit);
-  onCleanup(() => window.removeEventListener("resize", fit));
-  const wide = () => size()[0] >= 768;
-  const room = () => size()[1] - BELOW() - 16;
+  const room = () => view().h - BELOW() - 16;
   const notes = (): Note[] => [
     ...(picking() === null || home() === null ? [] : [{ key: "picker", kind: "picker" as const }]),
     ...[...news()].reverse().map((n) => ({ key: `news:${n.key}`, kind: "news" as const, news: n })),

@@ -5,15 +5,12 @@ import { InstancePoolProvider } from "./InstancePool";
 import { Picker } from "./Picker";
 import { Highlight } from "./Highlight";
 import World from "./World";
-import BuildModeToolbar from "../ui/BuildModeToolbar";
-import TimeControls from "../ui/TimeControls";
 import { GameProvider, type Connect } from "../state/gameObjects";
 import { ThemeProvider } from "./theme";
 import DebugOverlay from "../ui/DebugOverlay";
 import PerfReport from "./PerfReport";
 import Pins from "./Pins";
 import LumpLayer from "../ui/LumpLayer";
-import GrowthMeter from "../ui/GrowthMeter";
 import Card from "../ui/Card";
 import Board from "../ui/Board";
 import Glass from "../ui/Glass";
@@ -38,14 +35,11 @@ function SceneInner() {
         </DayNightLights>
         <LumpLayer />
         <BoxPins />
-        <GrowthMeter />
         <Card />
         <Board />
         <Hud />
       </Canvas>
       <Glass />
-      <BuildModeToolbar />
-      <TimeControls />
       <Shipments />
       {/* <DebugOverlay /> */}
     </DayNightProvider>

@@ -1,5 +1,5 @@
 /** @jsxImportSource ~ui */
-import { createSignal, For, onCleanup } from "solid-js";
+import { createRoot, createSignal, For, onCleanup } from "solid-js";
 import { follow, LOOSE } from "../../engine/spring";
 import { GOODS } from "../../blueprints";
 import type { Good } from "../../generated";
@@ -106,3 +106,31 @@ export const Line = (props: { d: string; size: number; width?: number; ink?: str
 
 /** The ferry, side on: news of it, and the dock's new deal. */
 export const FERRY = "M2 14h20l-2.5 5.5h-15zM6 9h9v4H6zM8 5.5h4V9H8z";
+
+/** The window's size, and whether it is wide: a phone's is not. */
+export const { view, wide } = createRoot(() => {
+  const [view, setView] = createSignal({ w: window.innerWidth, h: window.innerHeight });
+  window.addEventListener("resize", () => setView({ w: window.innerWidth, h: window.innerHeight }));
+  return { view, wide: () => view().w >= 768 };
+});
+
+/** How far a moment has run since it was made, 0 to 1 over `ms`: what a
+ *  thing that comes, does its turn and goes is drawn by. */
+export function elapsed(ms: number) {
+  const [t, set] = createSignal(0);
+  const start = performance.now();
+  let frame = requestAnimationFrame(function tick(now) {
+    set(Math.min(1, (now - start) / ms));
+    if (now - start < ms) frame = requestAnimationFrame(tick);
+  });
+  onCleanup(() => cancelAnimationFrame(frame));
+  return t;
+}
+
+/** A value along keys of [when, what], straight between them. */
+export function keys(t: number, at: [number, number][]) {
+  const i = at.findIndex(([k]) => k >= t);
+  if (i <= 0) return at[i < 0 ? at.length - 1 : 0][1];
+  const [[k0, v0], [k1, v1]] = [at[i - 1], at[i]];
+  return v0 + ((v1 - v0) * (t - k0)) / (k1 - k0);
+}
