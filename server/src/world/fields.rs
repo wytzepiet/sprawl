@@ -259,6 +259,50 @@ impl World {
         events.wake(PACE, tractor);
     }
 
+    /// The cycle played at once, for a fixture to show: each job a whole
+    /// run over the tiles it wants, done at the time given, the last run's
+    /// path the farm's ruts; then, if given, the tractor out on the next
+    /// job, that share of its run driven, the tiles behind it done.
+    pub fn play(&mut self, farm: EntityId, jobs: &[(Job, GameTime)], going: Option<(Job, f64)>, now: GameTime) {
+        let wants = |job: Job, stage: Stage| matches!((job, stage), (Job::Plough, Stage::Grass | Stage::Cut) | (Job::Seed, Stage::Ploughed) | (Job::Harvest, Stage::Sown));
+        let done = |job: Job| match job {
+            Job::Plough => Stage::Ploughed,
+            Job::Seed => Stage::Sown,
+            Job::Harvest => Stage::Cut,
+        };
+        let run = |world: &World, job: Job| {
+            let Some(GameObject::Building(b)) = world.objects.get(farm).map(|e| &e.object) else { return None };
+            let batch: Vec<GridCoord> = b.land.iter().filter(|t| wants(job, t.stage)).map(|t| t.at).collect();
+            let yard = world.yard_gate(farm, &batch)?;
+            world.sweep(farm, yard, &batch, job).map(|(path, _)| path)
+        };
+        let work = |world: &mut World, job: Job, tiles: &[GridCoord], at: GameTime| {
+            if let Some(GameObject::Building(b)) = world.objects.get_mut(farm).map(|e| &mut e.object) {
+                for t in b.land.iter_mut().filter(|t| wants(job, t.stage) && tiles.contains(&t.at)) {
+                    (t.stage, t.since) = (done(job), at);
+                }
+            }
+        };
+        for &(job, at) in jobs {
+            let Some(path) = run(self, job) else { return };
+            work(self, job, &path, at);
+            if let Some(GameObject::Building(b)) = self.objects.get_mut(farm).map(|e| &mut e.object) {
+                b.ruts = path;
+            }
+        }
+        let Some((job, share)) = going else { return };
+        let Some(path) = run(self, job) else { return };
+        let k = ((path.len() - 1) as f64 * share) as usize;
+        work(self, job, &path[..=k], now);
+        let Some(tractor) = self.objects.iter().find(|e| matches!(e.object, GameObject::Car(ref c) if c.owner == farm && c.role == CarRole::Tractor)).map(|e| e.id) else { return };
+        self.release_spot(tractor);
+        self.update_position(tractor, path[k]);
+        if let Some(GameObject::Car(c)) = self.objects.get_mut(tractor).map(|e| &mut e.object) {
+            c.spot = None;
+            c.run = Some(Run { job, path, started: now - k as GameTime * PACE, pace: PACE });
+        }
+    }
+
     /// The tiles the tractor may drive: the farm's land, its yard, and the
     /// lane. Never the barn.
     fn drivable(&self, farm: EntityId) -> HashSet<(i32, i32)> {
