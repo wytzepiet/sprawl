@@ -145,9 +145,10 @@ little of one job.
 
 The player sees it as **deals**, a stack of cards in the corner like a
 phone's notifications (`ui/Deals.tsx`, on `ui/stack.tsx`): a card is
-every box of one good from or for one partner, its crest, the good with
-an arrow in or out, how many boxes, a ring of how far along they are and
-the time to their next move. Folded, the newest is on top and two more
+every box of one good from or for one partner, said plainly ("Timber
+from the world ×2"), where its furthest box is in words and on a bar of
+the steps of its way, and the time to its next move. Words say what an
+icon cannot; none is decoration. Folded, the newest is on top and two more
 peek under it; a tap spreads them out, a tap on one opens it to its
 boxes, each followed by the camera with a tap, a box more, and its pin.
 A deal done shows its coins and slides away. A mayor's letter arrives

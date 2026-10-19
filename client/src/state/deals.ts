@@ -1,16 +1,27 @@
 import { createMemo, createRoot, createSignal } from "solid-js";
-import { now, sea, voyage } from "./sea";
+import { now, sea } from "./sea";
 import { missions } from "./missions";
-import type { Good, Leg, Offer, Shipment } from "../generated";
+import type { Good, Offer, Shipment } from "../generated";
 import type { Mayor } from "../generated/Mayor";
 
 export const GOOD_ORDER: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
 
-/** A box of a deal: one on its way, or a slot on the quay not yet
- *  loaded (no leg). */
+/** The steps a box takes, in from the world and out to it: what a
+ *  deal's bar is cut into. */
+const IN_STEPS = ["booked on the next ferry", "at sea", "in the trailer park", "on a lorry to the depot", "unloading at the depot"];
+const OUT_STEPS = ["waiting for a lorry to load it", "on a lorry to the harbour", "on the quay for the ferry", "on the ferry"];
+export const stepsOf = (out: boolean) => (out ? OUT_STEPS : IN_STEPS).length;
+
+/** A box of a deal, where it is: its step along the way, that step in
+ *  words, and when it moves on, if the game knows. A slot going out not
+ *  yet loaded is a box at its first step. */
 export interface Box {
   trailer: number;
-  leg: Leg | null;
+  step: number;
+  words: string;
+  eta: number | null;
+  /** On the map, for the camera to follow. */
+  seen: boolean;
 }
 
 /**
@@ -26,31 +37,51 @@ export interface Deal {
   good: Good;
   partner: Mayor | null;
   out: boolean;
+  /** Furthest along first. */
   boxes: Box[];
   pin: number | null;
-  /** The letter it fills, and boxes it still wants not yet booked. */
+  /** The letter it fills, the boxes it still wants not yet booked, and
+   *  when it is due. */
   letter: number | null;
   wanted: number;
+  due: number | null;
   /** Coins it pays, or costs, all told. */
   coins: number;
-  /** 0 to 1 along the way, all its boxes together; and when the next of
-   *  them moves on, or the letter is due. */
-  progress: number;
-  eta: number | null;
   /** Finished: its last box in, or gone. */
   done: boolean;
 }
 
 const keyOf = (out: boolean, partner: Mayor | null, good: Good) => `${out ? "out" : "in"}:${partner ?? "world"}:${good}`;
 
-/** How far along a box is, 0 to 1. */
-function along(s: Shipment): number {
-  if (s.outbound) return { Booked: 0, Yard: 0, Hauled: 0.3, Parked: 0.55, Aboard: 0.8 }[s.leg];
-  if (s.leg === "Aboard") {
-    const sailing = sea.sailings.find((x) => x.ferry === s.carrier);
-    return sailing && !sailing.berthed ? 0.1 + 0.4 * voyage(sailing) : 0.5;
+/** Where a box is on its way, and when it moves on. */
+function boxOf(s: Shipment): Box {
+  const sailing = sea.sailings.find((x) => x.ferry === s.carrier) ?? sea.sailings[0];
+  const box = (step: number, eta: number | null, words = (s.outbound ? OUT_STEPS : IN_STEPS)[step]): Box => ({ trailer: s.trailer, step, words, eta, seen: step > 0 });
+  if (s.outbound) {
+    switch (s.leg) {
+      case "Booked":
+      case "Yard":
+        return box(0, null);
+      case "Hauled":
+        return box(1, s.eta);
+      case "Parked":
+        return box(2, sailing?.departs ?? null);
+      case "Aboard":
+        return box(3, sailing?.departs ?? null);
+    }
   }
-  return { Booked: 0.05, Parked: 0.6, Hauled: 0.75, Yard: 0.9 }[s.leg];
+  switch (s.leg) {
+    case "Booked":
+      return box(0, sailing?.lands ?? s.eta);
+    case "Aboard":
+      return s.eta ? box(1, s.eta) : box(1, null, "coming off the ferry");
+    case "Parked":
+      return box(2, null);
+    case "Hauled":
+      return box(3, s.eta);
+    case "Yard":
+      return box(4, null);
+  }
 }
 
 /** The deals the town has going, as the sea has them now. */
@@ -59,26 +90,20 @@ function live(): Deal[] {
   const deals = new Map<string, Deal>();
   const deal = (out: boolean, partner: Mayor | null, good: Good, key = keyOf(out, partner, good)) => {
     let d = deals.get(key);
-    if (!d) deals.set(key, (d = { key, good, partner, out, boxes: [], pin: null, letter: null, wanted: 0, coins: 0, progress: 0, eta: null, done: false }));
+    if (!d) deals.set(key, (d = { key, good, partner, out, boxes: [], pin: null, letter: null, wanted: 0, due: null, coins: 0, done: false }));
     return d;
   };
-  const soonest = (d: Deal, t: number | null) => t !== null && (d.eta === null || t < d.eta) && (d.eta = t);
-  const sum = new Map<string, number>();
   for (const s of sea.shipments) {
     // A box going out not yet loaded is the quay's slot, below.
     if (s.outbound && s.leg === "Booked") continue;
     const d = s.order === 0 ? deal(false, null, s.good, "gift") : deal(s.outbound, s.partner, s.good);
-    d.boxes.push({ trailer: s.trailer, leg: s.leg });
+    d.boxes.push(boxOf(s));
     d.coins += (s.outbound ? 1 : -1) * s.price * s.units;
-    sum.set(d.key, (sum.get(d.key) ?? 0) + along(s));
-    const sailing = sea.sailings.find((x) => x.ferry === s.carrier) ?? sea.sailings[0];
-    if (s.outbound) soonest(d, s.leg === "Aboard" || s.leg === "Parked" ? sailing?.departs ?? null : null);
-    else soonest(d, s.leg === "Booked" ? sailing?.lands ?? s.eta : s.eta);
   }
   for (const x of sea.sailings) {
     for (const t of x.outgoing) {
       const d = deal(true, t.partner, t.good);
-      d.boxes.push({ trailer: t.id, leg: null });
+      d.boxes.push({ trailer: t.id, step: 0, words: OUT_STEPS[0], eta: null, seen: false });
       d.coins += t.price * t.units;
     }
     for (const p of x.pins) deal(p.out, p.partner, p.good).pin = p.id;
@@ -88,9 +113,9 @@ function live(): Deal[] {
     const d = deal(o.out, o.partner, o.good);
     d.letter = o.letter;
     d.wanted = o.boxes;
-    if (!d.boxes.length) soonest(d, missions().find((m) => typeof m.key === "object" && m.key.Order === o.letter)?.due ?? null);
+    d.due = missions().find((m) => typeof m.key === "object" && m.key.Order === o.letter)?.due ?? null;
   }
-  for (const d of deals.values()) d.progress = (sum.get(d.key) ?? 0) / Math.max(1, d.boxes.length + d.wanted);
+  for (const d of deals.values()) d.boxes.sort((a, b) => b.step - a.step || (a.eta ?? Infinity) - (b.eta ?? Infinity));
   return [...deals.values()];
 }
 
@@ -107,9 +132,9 @@ export const { deals } = createRoot(() => {
     const l = live();
     const keys = new Set(l.map((d) => d.key));
     // Gone with boxes still on it: its last box is in, or sailed.
-    const ended = last.filter((d) => !keys.has(d.key) && d.boxes.some((b) => b.leg !== null));
+    const ended = last.filter((d) => !keys.has(d.key) && d.boxes.some((b) => b.seen));
     if (ended.length) {
-      const done: Deal[] = ended.map((d) => ({ ...d, done: true, progress: 1, eta: null }));
+      const done: Deal[] = ended.map((d) => ({ ...d, done: true }));
       setFinished((f) => [...f.filter((x) => !keys.has(x.key)), ...done]);
       setTimeout(() => setFinished((f) => f.filter((x) => !done.includes(x))), DONE_MS);
     }

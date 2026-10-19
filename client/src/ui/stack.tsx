@@ -37,6 +37,8 @@ export function Stack<T>(props: {
   /** The most height there is: spread taller, the column scrolls, and a
    *  card going out over an edge fades and shrinks as it goes. */
   room: number;
+  /** A card to keep in sight, spread: the one opened, as it grows. */
+  keep?: string | null;
   /** The glass's name: each card is a layer of it. */
   glass: string;
   /** A card's own look: its width, rounding, ink. */
@@ -97,6 +99,15 @@ export function Stack<T>(props: {
   const [scroll, setScroll] = createSignal(0);
   const roll = (by: number) => setScroll(Math.max(0, Math.min(tall() - props.room, scroll() + by)));
   createEffect(() => (props.open ? roll(0) : setScroll(0)));
+  createEffect(() => {
+    const d = live().findIndex((c) => c.key === props.keep);
+    if (!props.open || d < 0) return;
+    let y = 0;
+    for (const x of live().slice(0, d)) y += h(x) + GAP;
+    const s = untrack(scroll);
+    if (y < s) roll(y - s);
+    else if (y + h(live()[d]) > s + props.room) roll(y + h(live()[d]) - s - props.room);
+  });
   const [tallness] = follow(() => Math.min(tall(), props.room), { feel: LOOSE });
 
   return (
