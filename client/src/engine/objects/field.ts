@@ -27,7 +27,8 @@ import { drawnPath, type DrawnPath, type P } from "./drawnPath";
  * Across each strip a height (`fieldHeight`), by stage: furrow slices
  * turned up in ridges; a drill's rows, the crop coming up along them and
  * closing over them, green, then gold, its wheel tracks left open; the
- * stubble after the combine, standing in the rows it grew in. Each stage
+ * stubble after the combine, bare ground again with stalks standing in
+ * its rows here and there and straw lying every which way. Each stage
  * one clean colour, as the town's are: its texture is all light, the
  * ridges and rows tilting its facing and casting their shade into the
  * furrows and tracks beside them, as a low sun shows a field from the
@@ -361,8 +362,8 @@ function plugin(engine: Engine, scene: SceneContext, paint: Paint, colours: Rgb[
  *  the crop up along them, closing over them, its tramlines, the wheel
  *  tracks, as far apart as the tractor's wheels and as thin as a lane's
  *  line, in the gaps either side of the row down the pass's middle, left
- *  open to the earth; the stubble, the stalks cut short in the rows they grew in, the tramlines
- *  still open. As high as the crop stands (CROP_H) and as deep as the
+ *  open to the earth; the stubble, the drill rows' ridges again, which
+ *  of each row stalks are left in, the tramlines still open. As high as the crop stands (CROP_H) and as deep as the
  *  shadows cast into it. */
 const DEFINITIONS = `fn fieldNoise(p: vec2f) -> f32 { return textureSample(fieldGrain, fieldGrainSampler, p / 256.).r; }
 fn fieldHeight(u: f32, stage: u32, k: f32) -> vec2f {
@@ -375,7 +376,7 @@ fn fieldHeight(u: f32, stage: u32, k: f32) -> vec2f {
     let crop = smoothstep(1. - grown * 1.5, 1.25 - grown * 1.5, row) * smoothstep(0., 0.05, k) * (1. - tram);
     return vec2f(${CROP_H.toFixed(3)} * crop * (0.15 + 0.85 * grown) + 0.014 * row * (1. - tram), crop);
   }
-  if (stage == 3u) { let stalks = smoothstep(0.05, 0.3, row) * (1. - tram); return vec2f(0.018 * stalks, stalks); }
+  if (stage == 3u) { return vec2f(0.014 * row * (1. - tram), smoothstep(0.55, 0.8, row) * (1. - tram)); }
   return vec2f(0.);
 }`;
 
@@ -393,6 +394,10 @@ let fieldN1 = fieldNoise(fieldW * 48.);
 let fieldN2 = fieldNoise(fieldW * 48. + vec2f(97., 41.));
 let fieldStreak = fieldNoise(vec2f(fieldU * 72., fieldV * 5.));
 let fieldStreak2 = fieldNoise(vec2f(fieldU * 72. + 1.5, fieldV * 5.));
+// The stubble: stalks left standing here and there along the rows, and
+// straw dropped every which way, in thin streaks at two slants.
+let fieldStalk = fieldNoise(vec2f(fieldU * 48., fieldV * 40.) + vec2f(7., 133.));
+let fieldLie = max(fieldNoise(vec2f(dot(fieldW, vec2f(0.8, 0.6)) * 40., dot(fieldW, vec2f(-0.6, 0.8)) * 5.) + vec2f(19., 71.)), fieldNoise(vec2f(dot(fieldW, vec2f(0.3, -0.95)) * 40., dot(fieldW, vec2f(0.95, 0.3)) * 5.) + vec2f(57., 11.)));
 // How far off the field is: as a pass shrinks to a few pixels, its
 // ridges and rows and shade are drawn as what they add up to, or shimmer.
 let fieldFar = smoothstep(0.03, 0.1, fwidth(fieldU));
@@ -448,12 +453,13 @@ if (fieldStage == 1u) {
   fieldLean = fieldHC.y * (0.25 * (fieldStreak2 - fieldStreak) * 6. + 0.2);
   fieldJumble = 0.15 + 0.15 * fieldHC.y;
 } else if (fieldStage == 3u) {
-  // Stubble: pale stalks in their rows over the soil, each pass leaning
-  // the way the combine went, as a mown lawn's stripes.
+  // Stubble: the harrowed ground of the sowing, drier, paler; pale stalks
+  // standing in its rows here and there, and straw lying across it.
   let straw = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.3);
-  fieldColour = mix(mix(fieldSoil, straw, 0.4), straw, mix(fieldHC.y, 0.75, fieldFar));
-  fieldTop = fieldHC.y;
-  fieldLean = 0.3 * fieldHC.y + fieldHC.y * 0.4 * (fieldStreak2 - fieldStreak) * 6.;
+  let stalks = fieldHC.y * smoothstep(0.4, 0.55, fieldStalk);
+  let lying = smoothstep(0.72, 0.8, fieldLie) * (0.3 + 0.7 * fieldMottle);
+  fieldColour = mix(mix(fieldSoil, material.fieldStubble.rgb, 0.3), straw, mix(max(stalks, lying * 0.7), 0.3, fieldFar));
+  fieldTop = 0.6 + 0.4 * max(stalks, lying);
   fieldJumble = 0.3;
 }
 fieldColour = fieldColour * fieldTint * mix(0.72, 1.05, mix(clamp(fieldTop, 0., 1.), 0.7, fieldFar)) * mix(0.62, 1., fieldLit);
