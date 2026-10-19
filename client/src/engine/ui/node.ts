@@ -23,7 +23,7 @@ export interface UiNode {
 }
 
 /** Props that move what is laid out; the rest only change how it is drawn. */
-const LAYOUT = new Set(["dir", "gap", "pad", "align", "justify", "grow", "w", "h", "at", "size", "weight", "serif", "lines", "lead", "d"]);
+const LAYOUT = new Set(["dir", "gap", "pad", "align", "justify", "grow", "wrap", "w", "h", "minW", "maxW", "minH", "maxH", "at", "size", "weight", "serif", "lines", "lead", "d"]);
 
 /** What changed since the tree was last laid out and drawn. */
 export const dirt = { layout: 1, paint: 1 };

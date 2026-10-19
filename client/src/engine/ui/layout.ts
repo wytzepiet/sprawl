@@ -6,12 +6,16 @@ import type { UiNode } from "./node";
  * more. A box runs its children down (`col`, the default) or across
  * (`row`), with `gap` between and `pad` round; in a column each child is
  * as wide as the column, in a row as wide as what is in it, and those that
- * `grow` share what is left; a row too wide takes it out of its texts. A text is as tall as its lines at the width
- * it is given. A child placed `at` its parent's edges is out of the flow.
+ * `grow` share what is left; a row too wide takes it out of its texts, or,
+ * if it may `wrap`, goes on in another line. A text is as tall as its lines
+ * at the width it is given. A child placed `at` its parent's edges is out of the flow.
  */
 
+/** Top, right, bottom, left: a side named, else its axis, else none. */
 const pads = (p: UiNode["props"]["pad"]): [number, number, number, number] =>
-  p === undefined ? [0, 0, 0, 0] : typeof p === "number" ? [p, p, p, p] : p.length === 2 ? [p[0], p[1], p[0], p[1]] : p;
+  typeof p === "number" ? [p, p, p, p] : [p?.top ?? p?.y ?? 0, p?.right ?? p?.x ?? 0, p?.bottom ?? p?.y ?? 0, p?.left ?? p?.x ?? 0];
+/** A size kept between its least and its most. */
+const fit = (v: number, lo = 0, hi = Infinity) => Math.min(Math.max(v, lo), hi);
 
 /** The runs of a text: its own words and those of the texts in it, each in the style it inherits. */
 function runs(n: UiNode, up: Omit<Run, "text">, out: Run[] = []): Run[] {
@@ -45,6 +49,9 @@ const flows = (n: UiNode) => n.kids.filter((k) => k.tag !== "#text" && !k.props.
 
 /** How wide it would be with all the room it wants. */
 function natural(n: UiNode, v: number): number {
+  return fit(bare(n, v), n.props.minW, n.props.maxW);
+}
+function bare(n: UiNode, v: number): number {
   const p = n.props;
   if (p.w !== undefined) return p.w;
   if (n.tag === "icon") return p.size ?? 16;
@@ -58,16 +65,38 @@ function natural(n: UiNode, v: number): number {
 /** Lay it out at a width; its height follows. */
 function place(n: UiNode, width: number, v: number) {
   const p = n.props;
-  n.w = width;
+  n.w = width = fit(width, p.minW, p.maxW);
   if (n.tag === "icon") return void (n.h = p.size ?? 16);
-  if (n.tag === "text") return void (n.h = p.h ?? set(n, width, v).h);
+  if (n.tag === "text") return void (n.h = fit(p.h ?? set(n, width, v).h, p.minH, p.maxH));
   const [t, r, b, l] = pads(p.pad);
   const inner = Math.max(0, width - l - r);
   const gap = p.gap ?? 0;
   const kids = flows(n);
   const align = p.align ?? "stretch";
   let tall: number;
-  if (p.dir === "row") {
+  if (p.dir === "row" && p.wrap) {
+    // Each as wide as it wants, a line ending where the next would not fit.
+    for (const k of kids) place(k, Math.min(natural(k, v), inner), v);
+    const lines: UiNode[][] = [];
+    let run = Infinity;
+    for (const k of kids) {
+      if (run + gap + k.w > inner) lines.push([]), (run = -gap);
+      lines[lines.length - 1].push(k);
+      run += gap + k.w;
+    }
+    let y = t;
+    for (const line of lines) {
+      const high = Math.max(...line.map((k) => k.h));
+      let x = l + lead(p.justify, inner - line.reduce((a, k) => a + k.w + gap, -gap));
+      for (const k of line) {
+        k.x = x;
+        k.y = y + cross(align, high - k.h);
+        x += k.w + gap;
+      }
+      y += high + gap;
+    }
+    tall = p.h !== undefined ? p.h - t - b : Math.max(0, y - gap - t);
+  } else if (p.dir === "row") {
     const fixed = kids.map((k) => (k.props.grow ? 0 : Math.min(natural(k, v), inner)));
     const grows = kids.reduce((a, k) => a + (k.props.grow ?? 0), 0);
     const spare = inner - fixed.reduce((a, b) => a + b, 0) - gap * Math.max(0, kids.length - 1);
@@ -98,7 +127,7 @@ function place(n: UiNode, width: number, v: number) {
       y += k.h + gap + step;
     }
   }
-  n.h = p.h ?? tall + t + b;
+  n.h = fit(p.h ?? tall + t + b, p.minH, p.maxH);
   for (const k of n.kids) if (k.props.at && k.tag !== "#text") pin(k, n.w, n.h, v);
   if (p.onSize) sized.push(n);
 }

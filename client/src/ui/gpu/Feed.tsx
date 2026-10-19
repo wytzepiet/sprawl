@@ -11,7 +11,7 @@ import { hold, setTool } from "../buildMode";
 import { track } from "../Shipments";
 import { coins } from "../kit";
 import { FERRY } from "../Feed";
-import { Btn, Crest, GoodDot, Line, Press, StepBar } from "./kit";
+import { Appear, Btn, Crest, GoodDot, Line, Pop, Press, StepBar } from "./kit";
 import { Stack } from "./stack";
 import type { Good, Mission, Offer, Step } from "../../generated";
 import type { Mayor } from "../../generated/Mayor";
@@ -95,7 +95,7 @@ const Tile = (props: { color: string; d: string; children?: JSX.Element }) => (
 /** A line of news: the ferry in, the ferry gone, coins spent; a tap goes there. */
 function NewsCard(props: { news: News }) {
   return (
-    <box dir="row" align="center" gap={10} pad={[10, 12]} onTap={() => setFollowing(props.news.at)}>
+    <box dir="row" align="center" gap={10} pad={{ y: 10, x: 12 }} onTap={() => setFollowing(props.news.at)}>
       <Tile color={props.news.coins ? "#B7791F" : "#2B6CA3"} d={props.news.coins ? COINS : FERRY} />
       <box grow={1} gap={2}>
         <text size={14.5} weight={600} lines={1}>{props.news.text}</text>
@@ -164,7 +164,7 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
   const money = () => (d().coins >= 0 ? "#3F8F5C" : "ink");
   return (
     <box>
-      <box pad={[10, 12, 12, 12]} gap={8} onTap={props.onTap}>
+      <box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>
         <box dir="row" align="center" gap={10}>
           <Tile color={GOODS[d().good].color} d={GOODS[d().good].glyph}>
             <box at={{ right: -6, bottom: -6 }}>
@@ -180,13 +180,13 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
             <text size={12.5} soft lines={1}>{status()}</text>
           </box>
           <Show when={d().done} fallback={<Show when={when()}>{(t) => <text serif size={17}>{until(t())}</text>}</Show>}>
-            <text serif size={18} ink={money()}>{coins(d().coins)}</text>
+            <Pop><text serif size={18} ink={money()}>{coins(d().coins)}</text></Pop>
           </Show>
         </box>
         <StepBar steps={stepsOf(d().out)} at={d().done ? Infinity : lead()?.step ?? -1} color={color()} />
       </box>
       <Show when={props.open && !d().done}>
-        <box pad={[0, 12, 12, 12]} gap={8}>
+        <Appear pad={{ x: 12, bottom: 12 }} gap={8}>
           <box>
             <For each={d().boxes}>
               {(b) => (
@@ -205,25 +205,25 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
             </Show>
             <box grow={1} />
             <Show when={d().wanted > 0 && offer()}>
-              <Press dir="row" align="center" gap={6} h={36} pad={[0, 14]} round={18} fill="#B7791F" onTap={() => book(d().wanted)}>
+              <Press dir="row" align="center" gap={6} h={36} pad={{ x: 14 }} round={18} fill="#B7791F" onTap={() => book(d().wanted)}>
                 <text size={14} weight={600} ink="white">Send {d().wanted}</text>
                 <text serif size={14} ink="white">{coins(offer()!.price * GOODS[d().good].box * d().wanted)}</text>
               </Press>
             </Show>
             <Show when={d().wanted === 0 && offer() && d().key !== "gift"}>
-              <Press dir="row" align="center" gap={4} h={36} pad={[0, 12]} round={18} stroke={[2, "ink/0.15"]} onTap={() => book(1)}>
+              <Press dir="row" align="center" gap={4} h={36} pad={{ x: 12 }} round={18} stroke={[2, "ink/0.15"]} onTap={() => book(1)}>
                 <text size={14} weight={600} soft>+ Box</text>
                 <text serif size={14} soft>{coins((d().out ? 1 : -1) * offer()!.price * GOODS[d().good].box)}</text>
               </Press>
             </Show>
             <Show when={d().letter === null && offer() && d().key !== "gift"}>
-              <Press dir="row" align="center" gap={6} h={36} pad={[0, 12]} round={18} fill={d().pin !== null ? "ink/0.85" : undefined} stroke={d().pin !== null ? undefined : [2, "ink/0.15"]} onTap={pin}>
+              <Press dir="row" align="center" gap={6} h={36} pad={{ x: 12 }} round={18} fill={d().pin !== null ? "ink/0.85" : undefined} stroke={d().pin !== null ? undefined : [2, "ink/0.15"]} onTap={pin}>
                 <icon d={PIN} size={14} ink={d().pin !== null ? "glass" : "ink/0.6"} />
                 <text size={14} weight={600} ink={d().pin !== null ? "glass" : "ink/0.6"}>Every sailing</text>
               </Press>
             </Show>
           </box>
-        </box>
+        </Appear>
       </Show>
     </box>
   );
@@ -246,7 +246,7 @@ function Picker(props: { onDeal: (key: string) => void }) {
     props.onDeal(`${o.out ? "out" : "in"}:${o.partner ?? "world"}:${o.good}`);
   };
   const Way = (p: { out: boolean }) => (
-    <Press h={32} pad={[0, 14]} round={16} justify="center" fill={out() === p.out ? "ink/0.85" : undefined} onTap={() => setPicking(p.out)}>
+    <Press h={32} pad={{ x: 14 }} round={16} justify="center" fill={out() === p.out ? "ink/0.85" : undefined} onTap={() => setPicking(p.out)}>
       <text size={14} weight={600} ink={out() === p.out ? "glass" : "ink/0.6"}>{p.out ? "Sell" : "Buy"}</text>
     </Press>
   );
@@ -263,12 +263,12 @@ function Picker(props: { onDeal: (key: string) => void }) {
           )}
         </For>
       </box>
-      <box gap={6}>
+      <box dir="row" wrap gap={6} minH={36}>
         <For each={offers()}>
           {(o) => (
-            <Press dir="row" align="center" gap={6} h={36} pad={[0, 12, 0, 4]} round={18} fill="glass" shadow opacity={afford(o) ? 1 : 0.35} onTap={() => afford(o) && deal(o)}>
+            <Press dir="row" align="center" gap={6} h={36} pad={{ right: 12, left: 4 }} round={18} fill="glass" shadow opacity={afford(o) ? 1 : 0.35} onTap={() => afford(o) && deal(o)}>
               <Who partner={o.partner} size={28} letter={o.letter !== null} />
-              <text size={14} weight={600} grow={1}>{o.partner ? nameOf(o.partner) : "World"}</text>
+              <text size={14} weight={600}>{o.partner ? nameOf(o.partner) : "World"}</text>
               <text serif size={15}>{coins(o.out ? box(o) : -box(o))}</text>
             </Press>
           )}
@@ -285,9 +285,9 @@ function Reward(props: { m: Mission }) {
   return (
     <Show when={props.m.finished !== null} fallback={<text size={12} weight={600} soft>+{coins()}</text>}>
       <Show when={!lapsed()} fallback={<text size={11} weight={600} soft>lapsed</text>}>
-        <box pad={[2, 8]} round={10} fill="#57A773">
+        <Appear pad={{ y: 2, x: 8 }} round={10} fill="#57A773">
           <text size={11} weight={700} ink="white">+{coins()} coins{props.m.reward.kind === "Order" ? `, +${props.m.reward.data.standing} standing` : ""}</text>
-        </box>
+        </Appear>
       </Show>
     </Show>
   );
@@ -303,7 +303,7 @@ function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
   const color = () => (props.m.finished !== null ? "#57A773" : "#7B77E0");
   return (
     <box>
-      <box pad={[10, 12, 12, 12]} gap={8} onTap={props.onTap}>
+      <box pad={{ x: 12, top: 10, bottom: 12 }} gap={8} onTap={props.onTap}>
         <box dir="row" align="center" gap={10}>
           <Tile color={color()} d={FLAG} />
           <box grow={1} gap={2}>
@@ -316,10 +316,10 @@ function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
       </box>
       <Show when={props.open && step()}>
         {(s) => (
-          <box pad={[0, 12, 12, 12]} gap={8} align="start">
+          <Appear pad={{ x: 12, bottom: 12 }} gap={8} align="start">
             <Index each={s().text.split("\n\n")}>{(p) => <text size={12.5} soft lead={1.375}>{p()}</text>}</Index>
             <Act step={s()} />
-          </box>
+          </Appear>
         )}
       </Show>
     </box>

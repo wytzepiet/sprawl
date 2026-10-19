@@ -22,6 +22,11 @@ export declare namespace JSX {
     /** A fixed size; without it, as big as what is in it (a row's), or as wide as its parent (a column's). */
     w?: number;
     h?: number;
+    /** The least and the most it may be, whatever its size would be. */
+    minW?: number;
+    maxW?: number;
+    minH?: number;
+    maxH?: number;
     /** A share of a row's room left over. */
     grow?: number;
     /** Out of its parent's flow, at these distances from its edges. */
@@ -37,6 +42,8 @@ export declare namespace JSX {
     onTap?: () => void;
     /** The wheel over it, or a drag of a finger: how far, down positive. */
     onScroll?: (dy: number) => void;
+    /** The pointer come over it, and gone. */
+    onHover?: (over: boolean) => void;
     /** Pressed, and let go. */
     onPress?: (down: boolean) => void;
     /** Laid out at this size: told every time the tree is laid out. */
@@ -46,8 +53,10 @@ export declare namespace JSX {
   interface Box extends Common {
     dir?: "row" | "col";
     gap?: number;
-    /** All round, [up and down, either side], or [top, right, bottom, left]. */
-    pad?: number | [number, number] | [number, number, number, number];
+    /** All round, or by side: a side named wins over its axis. */
+    pad?: number | { x?: number; y?: number; top?: number; right?: number; bottom?: number; left?: number };
+    /** A row too wide for its room goes on in another line, `gap` below. */
+    wrap?: boolean;
     /** Across the way it runs. */
     align?: "start" | "center" | "end" | "stretch";
     /** Along it. */

@@ -29,6 +29,12 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
   };
   let press: { id: number; node: UiNode; x: number; y: number; last: number; dragged: boolean } | null = null;
   let town = false;
+  let over: UiNode | null = null;
+  const hover = (n: UiNode | null) => {
+    if (n === over) return;
+    over?.props.onHover?.(false);
+    (over = n)?.props.onHover(true);
+  };
 
   const down = (e: PointerEvent) => {
     if (e.target !== canvas) return;
@@ -49,9 +55,10 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
       glow(e.clientX, e.clientY, true);
       return;
     }
-    if (town || e.target !== canvas) return;
+    if (town || e.target !== canvas) return void hover(null);
     const n = at(e.clientX, e.clientY);
     canvas.style.cursor = up(n, "onTap") ? "pointer" : "";
+    if (e.pointerType === "mouse") hover(up(n, "onHover"));
     if (n) e.stopPropagation();
   };
   const lift = (e: PointerEvent) => {
