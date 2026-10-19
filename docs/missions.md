@@ -91,7 +91,7 @@ impossible.
 
 **Filled physically.** While an order wants more, its mayor is a
 partner for a slot going out, at the letter's price: the letter is a
-card in the deals stack, the boxes it wants, and a tap on its envelope
+card in the feed, the boxes it wants, and a tap on its envelope
 books them all. The box carries
 the order's number as its shipment's, is loaded by a depot's lorry,
 drives to the park, shows its town's crest there, and sails with the
@@ -175,7 +175,7 @@ its mission has opened.
   reward. Add the key to `Key`.
 - **A new goal:** a variant of `Goal`, a line in `met` saying when it is
   true, a line in `at` if its button acts on a building, and a case in
-  the panel's `Act` (`Missions.tsx`) for the button, if it has one.
+  the card's `Act` (`Missions.tsx`) for the button, if it has one.
 - **A new situation:** a variant of `When`, and a call to
   `missions::sense` where the server finds it, on an event, never on a
   scan of its own. If what makes it real is narrower than the event

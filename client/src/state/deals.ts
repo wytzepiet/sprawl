@@ -151,7 +151,7 @@ export const { deals } = createRoot(() => {
 });
 
 /** The picker open, for deals coming in (false) or going out (true):
- *  from the stack's + or a mission's step. */
+ *  from the dock's ferry or a mission's step. */
 const [picking, setPicking] = createSignal<boolean | null>(null);
 /** The stack spread out, every deal to see. */
 const [spread, setSpread] = createSignal(false);

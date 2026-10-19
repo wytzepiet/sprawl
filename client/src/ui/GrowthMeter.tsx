@@ -9,8 +9,8 @@ const CIRCUMFERENCE = 2 * Math.PI * R;
 const DRIP_MS = 1600;
 
 /**
- * The city's two dials, run together into one shape in the top right
- * corner: the level, a ring closing on the next, and the purse.
+ * The city's two dials, run together into one shape in the bottom
+ * right corner: the level, a ring closing on the next, and the purse.
  *
  * The level is the town's GDP to date: the value it adds, landing as
  * each meal is served, each tank filled, each crop cut and each shift at
@@ -38,7 +38,7 @@ export default function GrowthMeter() {
   }));
 
   return (
-    <div class="fixed top-6 right-6 z-30 h-[120px] w-[260px] select-none">
+    <div class="fixed bottom-3 right-3 z-30 h-[52px] w-[230px] select-none md:bottom-7 md:right-6">
       {/* The glass, one shape, the drips running out of it (`engine/glass.ts`). */}
       <div data-glass="meter" class="absolute right-0 top-0 h-[52px] w-[190px] rounded-full pointer-events-none" />
       <div data-glass="meter" class="absolute right-[168px] top-[-2px] h-14 w-14 rounded-full pointer-events-none" />
@@ -64,8 +64,8 @@ export default function GrowthMeter() {
       <For each={drips()}>
         {(d) => <span class="drip pointer-events-none absolute right-[70px] top-3 grid h-7 w-[38px] place-items-center text-xs font-bold text-white">+{d.n}</span>}
       </For>
-      {/* What the day has done, beneath. */}
-      <div class="soft serif italic absolute right-5 top-[58px] text-[13px] whitespace-nowrap">
+      {/* What the day has done, above. */}
+      <div class="soft serif italic absolute bottom-[60px] right-5 text-[13px] whitespace-nowrap max-md:hidden">
         {low() && Number.isFinite(cover()) ? `${cover().toFixed(1)} days of imports` : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today`} · GDP today {Math.floor(growth().gdp)}
       </div>
     </div>

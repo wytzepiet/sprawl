@@ -1,4 +1,4 @@
-import { For } from "solid-js";
+import { For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { simSpeed } from "../network/clock";
 import { useDayNight } from "../engine/DayNightCycle";
@@ -24,8 +24,11 @@ export default function TimeControls() {
   const { timeOfDay } = useDayNight();
 
   return (
-    <div data-glass="clock" class="fixed top-6 left-6 z-50 flex h-12 items-center gap-1 rounded-full pl-5 pr-2 select-none">
-      <span class="serif mr-2.5 text-[26px] font-light tabular-nums">{clock(timeOfDay())}</span>
+    <div data-glass="clock" class="fixed bottom-3 left-3 z-30 flex h-12 items-center gap-1 rounded-full px-4 select-none md:bottom-7 md:left-6">
+      <span class="serif text-[26px] font-light tabular-nums">{clock(timeOfDay())}</span>
+      {/* The developer's hand: the world's speed, and starting it over. */}
+      <Show when={import.meta.env.DEV && innerWidth >= 720}>
+      <span class="w-1.5" />
       <For each={SPEEDS}>
         {(speed) => (
           <button
@@ -47,6 +50,7 @@ export default function TimeControls() {
       <button onClick={() => send({ type: "ResetWorld" })} class="press soft p-1.5 rounded-full hover:!text-red-500 cursor-pointer" title="Reset server">
         <RotateCcw size={14} stroke-width={1.5} />
       </button>
+      </Show>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { BLUEPRINTS, GoodIcon } from "../blueprints";
 import { useGame } from "../state/gameObjects";
 import type { Tool } from "../generated";
 import { BuildMenu, menuOpen, setMenuOpen } from "./BuildMenu";
+import { picking, setPicking } from "../state/deals";
 
 /** What the road shelf holds. */
 const ROAD_KINDS = [
@@ -15,6 +16,7 @@ const ROAD_KINDS = [
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 const BUILD = "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z";
 const DEMOLISH = "M3.5 16.5h11a2.25 2.25 0 0 1 0 4.5h-11a2.25 2.25 0 0 1 0-4.5zM5 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM9 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM13 17.75a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM4 12h11v3.5H4zM5.5 6.5h5l1.2 4.5H5.5zM6.7 7.7h3l.6 2.3H6.7zM15.5 13h2.5v1.5h-2.5zM18.5 10l3-1v12.5h-3z";
+const TRADE = "M2 14h20l-2.5 5.5h-15zM6 9h9v4H6zM8 5.5h4V9H8z";
 const UNDO = "M9.5 4 3 10l6.5 6v-4h5a4.5 4.5 0 0 1 0 9H11v3h3.5a7.5 7.5 0 0 0 0-15h-5z";
 const DEMOLISH_COLOR = "#D9483B";
 
@@ -26,8 +28,8 @@ const ROW = 56;
 const FIRST_ROW = 86;
 const cx = (j: number) => 30 + SLOT * j;
 /** The slots: the bare hand, the roads, the build menu, the demolisher,
- *  undo. */
-const SLOTS = ["select", "roads", "build", "demolish", "undo"] as const;
+ *  a new deal on the ferry, undo. */
+const SLOTS = ["select", "roads", "build", "demolish", "trade", "undo"] as const;
 const at = (s: (typeof SLOTS)[number]) => SLOTS.indexOf(s);
 
 /** The roads on the shelf: a road is a street with priority. */
@@ -52,7 +54,7 @@ function Glyph(props: { d: string; size: number }) {
 /**
  * The tools, as a drawing program groups them: the bare hand, the roads
  * (the last one taken shows, its key again takes the next, the bump over
- * it opens them all), the build menu, the demolisher, and undo.
+ * it opens them all), the build menu, the demolisher, a new deal, and undo.
  *
  * Drawn as glass that runs together like the hand's dots: the bar, its
  * bump and the road shelf's rows in one goo, under one opacity so it
@@ -89,6 +91,7 @@ export default function BuildModeToolbar() {
     if (key === "V") return setTool(null);
     if (key === "X") return setTool("Demolish");
     if (key === "B") return hold(null), setMenuOpen(!menuOpen());
+    if (key === "T") return setPicking(picking() === null ? false : null);
     if (key !== "R") return;
     if (!roadInHand()) return take(lastRoad());
     // Again: the next road.
@@ -138,7 +141,7 @@ export default function BuildModeToolbar() {
   return (
     <>
       <BuildMenu />
-      <div ref={dock} class="fixed bottom-7 left-1/2 -translate-x-1/2 select-none" style={{ width: `${width}px`, height: `${BAR}px` }}>
+      <div ref={dock} class="fixed bottom-[76px] left-1/2 -translate-x-1/2 select-none md:bottom-7" style={{ width: `${width}px`, height: `${BAR}px` }}>
         {/* The glass: bar, bump, rows, run together (`engine/glass.ts`). */}
         <div data-glass="dock" class="absolute bottom-0 left-0 rounded-[30px] pointer-events-none" style={{ width: `${width}px`, height: `${BAR}px` }} />
         <div data-glass="dock" class="absolute rounded-[9px] pointer-events-none" style={{ left: `${cx(at("roads")) - 11}px`, bottom: `${bump()}px`, width: "22px", height: "18px" }} />
@@ -214,15 +217,16 @@ export default function BuildModeToolbar() {
         </button>
         <For each={[...SLOTS]}>
           {(s, j) => {
-            const on = () => j() === active() && s !== "undo";
-            const d = () => (s === "select" ? SELECT : s === "roads" ? road(lastRoad()).glyph : s === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : BUILD) : s === "demolish" ? DEMOLISH : UNDO);
+            const on = () => (s === "trade" ? picking() !== null : j() === active() && s !== "undo");
+            const d = () => (s === "select" ? SELECT : s === "roads" ? road(lastRoad()).glyph : s === "build" ? (held() ? BLUEPRINTS[held()!.kind].glyph : BUILD) : s === "demolish" ? DEMOLISH : s === "trade" ? TRADE : UNDO);
             const act = () =>
               s === "select" ? setTool(null)
               : s === "roads" ? take(lastRoad())
               : s === "build" ? (hold(null), setTool(null), setMenuOpen(!menuOpen()))
               : s === "demolish" ? setTool("Demolish")
+              : s === "trade" ? setPicking(picking() === null ? false : null)
               : undo();
-            const title = { select: "Select (V)", roads: "Roads (R)", build: "Build (B)", demolish: "Demolish (X)", undo: "Undo (Ctrl Z)" }[s];
+            const title = { select: "Select (V)", roads: "Roads (R)", build: "Build (B)", demolish: "Demolish (X)", trade: "A new deal (T)", undo: "Undo (Ctrl Z)" }[s];
             return (
               <button
                 onClick={act}

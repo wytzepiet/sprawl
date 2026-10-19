@@ -18,10 +18,7 @@ import Card from "../ui/Card";
 import Board from "../ui/Board";
 import Glass from "../ui/Glass";
 import Shipments, { BoxPins } from "../ui/Shipments";
-import News from "../ui/News";
-import Missions from "../ui/Missions";
-import Minimap from "../ui/Minimap";
-import Deals from "../ui/Deals";
+import Feed from "../ui/Feed";
 
 function SceneInner() {
   return (
@@ -49,10 +46,7 @@ function SceneInner() {
       <BuildModeToolbar />
       <TimeControls />
       <Shipments />
-      <Deals />
-      <News />
-      <Missions />
-      <Minimap />
+      <Feed />
       {/* <DebugOverlay /> */}
     </DayNightProvider>
   );

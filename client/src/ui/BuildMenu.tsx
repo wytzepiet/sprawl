@@ -3,7 +3,6 @@ import { BLUEPRINTS, BuildingIcon, GoodIcon, GOODS, KINDS, plot, TABS } from "..
 import { LETTERS } from "../engine/town/grid";
 import { planSvg } from "../../scripts/planDraw";
 import { held, hold, overCancel, setOverCancel } from "./buildMode";
-import { missionsUp } from "./Missions";
 import { selected } from "../state/selection";
 import type { BuildingKind, Good } from "../generated";
 
@@ -45,11 +44,9 @@ function picture(kind: BuildingKind): string | null {
   return svg;
 }
 
-/** Where the menu lies: over the toolbar, in the band between the left
- *  column (the missions, or a card, 320 wide at 24 from the edge) and the
- *  minimap (196 at 24), centred in it by its margins, so no glass lies on
- *  other glass at any width. */
-const band = () => ({ left: `${missionsUp() || selected() !== null ? 360 : 16}px`, right: "236px" });
+/** Where the menu lies: over the toolbar, right of a card while one is
+ *  open (320 wide at 24 from the edge), centred in what is left. */
+const band = () => ({ left: `${selected() !== null && window.innerWidth >= 720 ? 360 : 16}px`, right: "16px" });
 
 const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materials) as [Good, number][];
 
@@ -82,7 +79,7 @@ export function BuildMenu() {
   return (
     <>
       <Show when={menuOpen()}>
-        <div data-menu data-glass="dock" class="appear fixed bottom-[104px] z-40 mx-auto max-h-[calc(100vh-200px)] max-w-[720px] overflow-y-auto rounded-[26px] p-3 select-none" style={band()}>
+        <div data-menu data-glass="dock" class="appear fixed bottom-[150px] z-40 mx-auto max-h-[calc(100vh-200px)] md:bottom-[104px] max-w-[720px] overflow-y-auto rounded-[26px] p-3 select-none" style={band()}>
           <div class="grid gap-1.5" style={{ "grid-template-columns": "repeat(auto-fill, minmax(96px, 1fr))" }}>
             <For each={kinds()}>
               {(kind) => (
@@ -112,7 +109,7 @@ export function BuildMenu() {
       <Show when={held()}>
         <div
           data-glass="dock"
-          class="appear fixed bottom-[104px] z-40 mx-auto grid h-[84px] max-w-[420px] place-items-center rounded-[26px] border-2 border-dashed text-center text-[13px] font-semibold uppercase tracking-wide select-none"
+          class="appear fixed bottom-[150px] z-40 mx-auto grid h-[84px] md:bottom-[104px] max-w-[420px] place-items-center rounded-[26px] border-2 border-dashed text-center text-[13px] font-semibold uppercase tracking-wide select-none"
           style={{ ...band(), "border-color": overCancel() ? "#D9483B" : "rgb(var(--ink) / 0.2)", color: overCancel() ? "#D9483B" : undefined }}
           classList={{ soft: !overCancel() }}
           onPointerEnter={() => setOverCancel(true)}

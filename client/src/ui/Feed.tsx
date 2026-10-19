@@ -1,71 +1,109 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { neighbours } from "../state/missions";
-import { sea, until } from "../state/sea";
+import { news, sea, until, type News } from "../state/sea";
+import { setFollowing } from "../state/selection";
 import { deals, GOOD_ORDER, home, offerOf, picking, setPicking, setSpread, spread, stepsOf, type Deal } from "../state/deals";
 import { GoodIcon, GOODS } from "../blueprints";
-import { Crest } from "./Missions";
+import { Crest, MissionCard, missionKey, shownMissions } from "./Missions";
 import { track } from "./Shipments";
-import { coins, GoodDot } from "./kit";
+import { coins, GoodDot, StepBar } from "./kit";
 import { Stack } from "./stack";
-import type { Good, Offer } from "../generated";
+import type { Good, Mission, Offer } from "../generated";
 import type { Mayor } from "../generated/Mayor";
 
-const PICKER = "picker";
-/** The page's height not the stack's: above it, the coins and the +;
- *  below it, the minimap. */
-const ROOM_BELOW = 156 + 48 + 248;
-type Item = Deal | { key: typeof PICKER };
+/** Room the feed leaves below it: the dock and the corners, and on a
+ *  phone the corners under the dock. */
+const BELOW = () => (window.innerWidth < 720 ? 172 : 112);
+
+/** A card of the feed: a line of news, a mission, a deal, or the picker. */
+type Note =
+  | { key: string; kind: "news"; news: News }
+  | { key: string; kind: "mission"; m: Mission }
+  | { key: string; kind: "deal"; deal: Deal }
+  | { key: string; kind: "picker" };
 
 /**
- * The town's trade as a stack of cards in the corner (docs/trade.md §The
- * deck), a card a deal: what, from or for whom, where its furthest box
- * is, in words and on a bar of the steps of its way, and the time to its
- * next move. Folded, the newest on
- * top and the rest peeking under it; a tap spreads them out, a tap on one
- * opens it to its boxes, each followed with a tap, and what can be done
- * with it: a box more, a pin to book it every sailing, a letter's boxes
- * accepted. A deal done shows its coins and slides away. The + opens a
- * card of new deals: a good, then who from or for, at their price.
+ * Everything that happens to the town, as a phone's notifications, top
+ * right, or across the top of a phone: the only thing at the top of the
+ * screen. News (the ferry in, the ferry gone) drops in on top and goes
+ * by itself; a mission is pinned while it is open, its step at hand to
+ * do; a deal (docs/trade.md §The deck) stays while its boxes are on
+ * their way, says what it is, where its furthest box is, on a bar of the
+ * steps of its way, and when it moves on, and once done shows its coins
+ * and slides away. The dock's ferry opens the picker on top: buy or
+ * sell, a good, then who from or for, at their price.
+ *
+ * Folded, the newest is in front and two more peek out under it; a tap
+ * spreads them out, a tap on one opens it: a mission's step, a deal's
+ * boxes, each followed with a tap, a box more, a pin to book it every
+ * sailing, a letter's boxes sent.
  */
-export default function Deals() {
-  // Down to the minimap's top, and no further.
-  const [room, setRoom] = createSignal(window.innerHeight - ROOM_BELOW);
-  const fit = () => setRoom(window.innerHeight - ROOM_BELOW);
+export default function Feed() {
+  const [room, setRoom] = createSignal(window.innerHeight - BELOW() - 16);
+  const fit = () => setRoom(window.innerHeight - BELOW() - 16);
   window.addEventListener("resize", fit);
   onCleanup(() => window.removeEventListener("resize", fit));
-  const items = (): Item[] => (picking() === null ? deals() : [{ key: PICKER }, ...deals()]);
+  const notes = (): Note[] => [
+    ...(picking() === null || home() === null ? [] : [{ key: "picker", kind: "picker" as const }]),
+    ...[...news()].reverse().map((n) => ({ key: `news:${n.key}`, kind: "news" as const, news: n })),
+    ...shownMissions().map((m) => ({ key: missionKey(m), kind: "mission" as const, m })),
+    ...deals().map((d) => ({ key: `deal:${d.key}`, kind: "deal" as const, deal: d })),
+  ];
   const [focus, setFocus] = createSignal<string | null>(null);
   /** Folded, a tap spreads the stack; spread, it opens the card tapped. */
   const tap = (key: string) => {
-    if (!spread() && deals().length > 1 && picking() === null) return setSpread(true);
+    if (!spread() && notes().length > 1 && picking() === null) return setSpread(true);
     setFocus(focus() === key ? null : key);
   };
-  createEffect(() => deals().length < 2 && setSpread(false));
+  createEffect(() => notes().length < 2 && setSpread(false));
   return (
-    <Show when={home() !== null}>
-      <div class="pointer-events-none fixed right-6 top-[156px] z-30 w-[300px] select-none">
-        <div class="mb-2 flex justify-end gap-1.5">
-          <Show when={spread()}>
-            <button data-glass="deals-bar" class="ink press pointer-events-auto grid h-10 w-10 place-items-center rounded-full cursor-pointer" onClick={() => (setSpread(false), setFocus(null))} title="Fold">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6" /></svg>
-            </button>
-          </Show>
-          <button data-glass="deals-bar" class="ink press pointer-events-auto grid h-10 w-10 place-items-center rounded-full text-[24px] font-light leading-none cursor-pointer" onClick={() => setPicking(picking() === null ? false : null)} title="A new deal">
-            <span class="transition-transform duration-300" style={{ transform: picking() === null ? "none" : "rotate(45deg)" }}>+</span>
+    <div class="pointer-events-none fixed left-3 right-3 top-3 z-30 select-none md:left-auto md:right-6 md:top-6 md:w-[340px]">
+      <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" class="ink pointer-events-auto rounded-[20px]">
+        {(n) => {
+          const note = n();
+          switch (note.kind) {
+            case "picker":
+              return <Picker onDeal={(key) => (setPicking(null), setFocus(`deal:${key}`))} />;
+            case "news":
+              return <NewsCard news={note.news} />;
+            case "mission":
+              return <MissionCard m={(n() as typeof note).m} open={focus() === note.key} onTap={() => tap(note.key)} />;
+            case "deal":
+              return <Card deal={(n() as typeof note).deal} open={focus() === note.key} onTap={() => tap(note.key)} />;
+          }
+        }}
+      </Stack>
+      <Show when={spread()}>
+        <div class="mt-2 flex justify-center">
+          <button data-glass="note-fold" class="ink press pointer-events-auto grid h-8 w-14 place-items-center rounded-full cursor-pointer" onClick={() => (setSpread(false), setFocus(null))} title="Fold">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6" /></svg>
           </button>
         </div>
-        <Stack each={items()} key={(i) => i.key} open={spread()} room={room()} keep={focus()} glass="deal" class="ink pointer-events-auto rounded-[20px]">
-          {(item) => (
-            <Show when={item().key !== PICKER} fallback={<Picker onDeal={(key) => (setPicking(null), setFocus(key))} />}>
-              <Card deal={item() as Deal} open={focus() === item().key} onTap={() => tap(item().key)} />
-            </Show>
-          )}
-        </Stack>
-      </div>
-    </Show>
+      </Show>
+    </div>
   );
 }
+
+/** A line of news: the ferry in, the ferry gone, coins spent; a tap goes there. */
+function NewsCard(props: { news: News }) {
+  return (
+    <button class="flex w-full items-center gap-2.5 px-3 py-2.5 text-left cursor-pointer" onClick={() => setFollowing(props.news.at)}>
+      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] text-white" style={{ background: props.news.coins ? "#B7791F" : "#2B6CA3" }}>
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor">
+          <path d={props.news.coins ? COINS : FERRY} />
+        </svg>
+      </span>
+      <span class="min-w-0 flex-1 leading-tight">
+        <span class="block truncate text-[14.5px] font-semibold">{props.news.text}</span>
+        <span class="soft mt-0.5 block truncate text-[12.5px]">{props.news.sub}</span>
+      </span>
+    </button>
+  );
+}
+
+export const FERRY = "M2 14h20l-2.5 5.5h-15zM6 9h9v4H6zM8 5.5h4V9H8z";
+const COINS = "M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 9.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12c0 1.7-3.6 3-8 3s-8-1.3-8-3zM4 15.5c0 1.7 3.6 3 8 3s8-1.3 8-3V18c0 1.7-3.6 3-8 3s-8-1.3-8-3z";
 
 /** A partner's crest, or the world's globe; an envelope on it for a letter's deal. */
 function Who(props: { partner: Mayor | null; size: number; letter?: boolean }) {
@@ -84,17 +122,6 @@ function Who(props: { partner: Mayor | null; size: number; letter?: boolean }) {
 
 /** Who a deal is with, in words: a mayor's name, or the world. */
 const nameOf = (partner: Mayor | null) => (partner && neighbours().find((n) => n.mayor === partner)?.name) ?? "the world";
-
-/** A deal's way, cut into its steps, filled to where its furthest box is. */
-function Steps(props: { steps: number; at: number; color: string }) {
-  return (
-    <div class="flex gap-[3px]">
-      <For each={Array.from({ length: props.steps })}>
-        {(_, i) => <span class="h-1.5 flex-1 rounded-full transition-colors duration-500" style={{ background: i() <= props.at ? props.color : "rgb(var(--ink) / 0.1)" }} />}
-      </For>
-    </div>
-  );
-}
 
 function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
   const { send } = useGame();
@@ -145,7 +172,7 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
             <span class="pop serif shrink-0 text-[18px] font-semibold tabular-nums" style={{ color: d().coins >= 0 ? "#3F8F5C" : "rgb(var(--ink))" }}>{coins(d().coins)}</span>
           </Show>
         </div>
-        <div class="mt-2"><Steps steps={stepsOf(d().out)} at={d().done ? Infinity : lead()?.step ?? -1} color={color()} /></div>
+        <div class="mt-2"><StepBar steps={stepsOf(d().out)} at={d().done ? Infinity : lead()?.step ?? -1} color={color()} /></div>
       </button>
       <Show when={props.open && !d().done}>
         <div class="appear px-3 pb-3">

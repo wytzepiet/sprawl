@@ -156,7 +156,6 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--frames 8 --every 500` a run of them and a strip, `--follow <id>` a
   vehicle kept in the middle, `--px` the scale, `--name`. Reach for this
   first after a change to what moves; `look` is for light and material.
-  The drawing (`client/src/flat/draw.ts`) is the minimap's too.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container, as for `shots`.

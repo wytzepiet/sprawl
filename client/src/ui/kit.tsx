@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { For, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { select } from "../state/selection";
 import { GoodIcon, GOODS } from "../blueprints";
@@ -112,3 +112,15 @@ export function Stepper(props: { value: number; set: (v: number) => void; min: n
 
 /** Coins, signed and whole: "−22", "+18". */
 export const coins = (v: number) => `${v < 0 ? "−" : v > 0 ? "+" : ""}${Math.abs(Math.round(v)).toLocaleString()}`;
+
+/** A way cut into its steps, filled up to the step at `at`: a deal's
+ *  boxes on their way, a mission's steps done. */
+export function StepBar(props: { steps: number; at: number; color: string }) {
+  return (
+    <div class="flex gap-[3px]">
+      <For each={Array.from({ length: props.steps })}>
+        {(_, i) => <span class="h-1.5 flex-1 rounded-full transition-colors duration-500" style={{ background: i() <= props.at ? props.color : "rgb(var(--ink) / 0.1)" }} />}
+      </For>
+    </div>
+  );
+}

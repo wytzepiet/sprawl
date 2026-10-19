@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import { useEngine } from "../engine/Canvas";
 import { projector } from "../engine/view";
+import { glazes } from "../engine/glass";
 import { getEntity } from "../state/gameObjects";
 import { now, sea, tripOf } from "../state/sea";
 import { following, positionOf, setFollowing } from "../state/selection";
@@ -90,7 +91,8 @@ export function BoxPins() {
       }
       // Over a building's roof, or a vehicle's.
       const { sx, sy } = project.at(at[0], at[1], e.object.kind === "Building" ? 0.6 : 0.3);
-      el.style.opacity = "1";
+      // Under a card of glass, hidden: the glass is over the map.
+      el.style.opacity = glazes(sx, sy) ? "0" : "1";
       el.style.transform = `translate(${sx}px, ${sy}px)`;
     }
   };

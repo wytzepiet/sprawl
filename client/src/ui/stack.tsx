@@ -28,7 +28,8 @@ interface Card<T> {
  * out of nothing; a card taken out slides away and fades; one that
  * changes height, or moves in the column, gets there on a spring; a
  * column too tall for its room scrolls under the wheel. What
- * is on a card is the caller's: `children` draws it, told how deep it is.
+ * is on a card is the caller's: `children` draws it, once, told how deep
+ * it is; what changes on it, it reads from the item.
  */
 export function Stack<T>(props: {
   each: readonly T[];
@@ -147,7 +148,7 @@ export function Stack<T>(props: {
               }}
             >
               <div ref={inner} style={{ opacity: Math.max(0, Math.min(1, ink())) }}>
-                {props.children(c.item, depth)}
+                {untrack(() => props.children(c.item, depth))}
               </div>
             </div>
           );

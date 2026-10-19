@@ -1,4 +1,4 @@
-import { createEffect, createSignal, Index, Show } from "solid-js";
+import { createEffect, Index, Show } from "solid-js";
 import { eachEntity, groundOf } from "../state/gameObjects";
 import { eye } from "../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
@@ -6,33 +6,12 @@ import { clockAt, sea, until } from "../state/sea";
 import { missions } from "../state/missions";
 import { crest } from "../flat/crest";
 import { hold, setTool } from "./buildMode";
-import { selected } from "../state/selection";
 import { track } from "./Shipments";
 import { setPicking, setSpread } from "../state/deals";
-import { Btn } from "./kit";
+import { Btn, StepBar } from "./kit";
 import { BLUEPRINTS } from "../blueprints";
 import type { BuildingKind, Mission, Step, TerrainType } from "../generated";
 import type { Neighbour } from "../generated/Neighbour";
-
-/** Folded to its pill: the card above it keeps clear of it while it is not. */
-const FOLDED = "sprawl.missions.folded";
-const [folded, setFolded] = createSignal((() => {
-  try {
-    return localStorage.getItem(FOLDED) === "1";
-  } catch {
-    return false;
-  }
-})());
-const fold = (f: boolean) => {
-  setFolded(f);
-  try {
-    localStorage.setItem(FOLDED, f ? "1" : "0");
-  } catch {
-    // A private window keeps nothing; the fold still holds for the visit.
-  }
-};
-const [up, setUp] = createSignal(false);
-export { up as missionsUp };
 
 /** Where a kind is built: the harbour on the coast, the quarry at the
  *  mountain's foot, the sawmill at the forest's edge. */
@@ -56,67 +35,52 @@ function toward(ground: TerrainType) {
 /** A mission's key as a name: an order's is its number. */
 const keyOf = (m: Mission) => (typeof m.key === "object" ? `order ${m.key.Order}` : m.key);
 
-/**
- * The town's missions (docs/missions.md), in a pane of glass in the
- * corner: the opening pinned while it runs, then every open mission and
- * those just finished. A mayor's letter is a deal in the deals stack. The server reads every step and
- * pays the reward; this only shows them, the step at hand with what to do
- * and, where one helps, the button that does it. A step done ticks
- * itself; a reward drips into the purse. Folded to a pill with a tap,
- * never in the way.
- */
-export default function Missions() {
-  const opening = () => missions().find((m) => m.key === "Opening" && m.finished === null);
-  /** The town's own: a mayor's letter is a deal in the stack. */
-  const list = () => (opening() ? [opening()!] : missions().filter((m) => m.from === null));
-  const open = () => list().filter((m) => m.finished === null).length;
-  /** The mission whose step at hand is spelled out: the one tapped, or the first open. */
-  const [chosen, setChosen] = createSignal<string | null>(null);
-  const focus = () => list().find((m) => keyOf(m) === chosen() && m.finished === null) ?? list().find((m) => m.finished === null);
-  /** With a card open, only the step at hand: the card has the room. */
-  const brief = () => selected() !== null;
-  createEffect(() => setUp(list().length > 0 && !folded()));
+/** The missions the feed shows: the opening while it runs, else the
+ *  town's own, open and just finished. A mayor's letter is a deal. */
+export const shownMissions = () => {
+  const opening = missions().find((m) => m.key === "Opening" && m.finished === null);
+  return opening ? [opening] : missions().filter((m) => m.from === null);
+};
+export const missionKey = (m: Mission) => `mission:${keyOf(m)}`;
 
+/**
+ * A mission as a card of the feed (docs/missions.md), pinned while it is
+ * open: its title, the step at hand, a bar of its steps and what it pays.
+ * Opened, the step at hand spelled out, with the button that does it,
+ * where one helps. The server reads every step and pays the reward; a
+ * step done fills the bar; a reward drips into the purse.
+ */
+export function MissionCard(props: { m: Mission; open: boolean; onTap: () => void }) {
+  const at = () => props.m.steps.findIndex((s) => !s.done);
+  const step = () => props.m.steps[at()];
+  const done = () => props.m.steps.filter((s) => s.done).length;
+  const color = () => (props.m.finished !== null ? "#57A773" : "#7B77E0");
   return (
-    <Show when={list().length > 0}>
-      <Show
-        when={!folded()}
-        fallback={
-          <button data-glass="guide" class="ink press fixed bottom-7 left-6 z-30 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold cursor-pointer select-none" onClick={() => fold(false)} title="Show the missions">
-            <span class="serif text-[17px] font-normal">{opening() ? "The opening" : "Missions"}</span>
-            <span class="soft text-xs tabular-nums">{opening() ? `${done(opening()!)} of ${opening()!.steps.length}` : open()}</span>
-          </button>
-        }
-      >
-        <div data-glass="guide" class="ink fixed bottom-7 left-6 z-30 w-[300px] rounded-[22px] px-4 pt-3 pb-3.5 text-sm select-none">
-          <div class="flex items-baseline gap-2">
-            <span class="serif text-[19px]">{opening() ? "The opening" : "Missions"}</span>
-            <span class="soft text-xs tabular-nums">{opening() ? `${done(opening()!)} of ${opening()!.steps.length}` : ""}</span>
-            <span class="flex-1" />
-            <Show when={opening()}>{(m) => <Reward m={m()} />}</Show>
-            <button class="soft press px-1 text-lg leading-none cursor-pointer" onClick={() => fold(true)} title="Fold the missions away">×</button>
+    <div>
+      <button class="block w-full px-3 pb-3 pt-2.5 text-left cursor-pointer" onClick={props.onTap}>
+        <div class="flex items-center gap-2.5">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-[11px] text-white" style={{ background: color() }}>
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor"><path d="M5 3h2v18H5zM7 4h11l-2.5 4L18 12H7z" /></svg>
+          </span>
+          <div class="min-w-0 flex-1 leading-tight">
+            <div class="truncate text-[14.5px] font-semibold">{props.m.title}</div>
+            <div class="soft mt-0.5 truncate text-[12.5px]">{step()?.title ?? "Done"}</div>
           </div>
-          <Index each={list()}>
-            {(m) => (
-              <div class="mt-1.5">
-                <Show when={!opening()}>
-                  <button class="flex w-full items-baseline gap-2 text-left cursor-pointer" classList={{ hidden: brief() && m() !== focus() }} onClick={() => setChosen(keyOf(m()))}>
-                    <span class="font-semibold" classList={{ "opacity-60": m().finished !== null }}>{m().title}</span>
-                    <span class="flex-1" />
-                    <Reward m={m()} />
-                  </button>
-                </Show>
-                <Steps m={m()} open={m() === focus()} brief={brief()} />
-              </div>
-            )}
-          </Index>
+          <Reward m={props.m} />
         </div>
+        <div class="mt-2"><StepBar steps={props.m.steps.length} at={done() - 1} color={color()} /></div>
+      </button>
+      <Show when={props.open && step()}>
+        {(s) => (
+          <div class="appear soft flex flex-col items-start gap-2 px-3 pb-3 text-[12.5px] leading-snug [&_p]:m-0">
+            <Index each={s().text.split("\n\n")}>{(p) => <p>{p()}</p>}</Index>
+            <Act step={s()} m={props.m} />
+          </div>
+        )}
       </Show>
-    </Show>
+    </div>
   );
 }
-
-const done = (m: Mission) => m.steps.filter((s) => s.done).length;
 
 /** A town's crest, drawn by the one function that draws a mayor. */
 export function Crest(props: { n: Neighbour; size: number }) {
@@ -144,40 +108,6 @@ function Reward(props: { m: Mission }) {
         </span>
       </Show>
     </Show>
-  );
-}
-
-/** A mission's steps, each ticked as the server finds it done, and the
- *  step at hand spelled out with its button. */
-function Steps(props: { m: Mission; open: boolean; brief: boolean }) {
-  const at = () => props.m.steps.findIndex((s) => !s.done);
-  const many = () => props.m.steps.length > 1;
-  return (
-    <ol class="mt-1">
-      <Index each={props.m.steps}>
-        {(s, i) => (
-          <li classList={{ "py-1": !props.brief || i === at(), hidden: (props.brief && (i !== at() || !props.open)) || (!many() && !props.open && s().done) }}>
-            <div class="flex items-center gap-2" classList={{ "opacity-45": i > at() && at() >= 0 }}>
-              <span
-                class="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-colors duration-500"
-                style={s().done ? { background: "#57A773", color: "white" } : i === at() ? { background: "rgb(var(--ink))", color: "rgb(var(--glass))" } : { border: "1.5px solid rgb(var(--ink) / 0.3)" }}
-              >
-                <Show when={s().done} fallback={many() ? i + 1 : ""}>
-                  <svg class="tick" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-                </Show>
-              </span>
-              <span class="font-semibold" classList={{ "line-through decoration-1 opacity-60": s().done }}>{s().title}</span>
-            </div>
-            <Show when={props.open && i === at() && !props.brief}>
-              <div class="appear soft ml-7 mt-1 flex flex-col items-start gap-2 text-[12.5px] leading-snug [&_p]:m-0">
-                <Index each={s().text.split("\n\n")}>{(p) => <p>{p()}</p>}</Index>
-                <Act step={s()} m={props.m} />
-              </div>
-            </Show>
-          </li>
-        )}
-      </Index>
-    </ol>
   );
 }
 

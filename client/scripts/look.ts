@@ -76,7 +76,7 @@ if (held) await page.evaluate(([k, x, y, f]) => (window as any).sprawlHold(k, Nu
 if (menu) await page.keyboard.press("b");
 await page.waitForTimeout(SETTLE_MS);
 for (const t of taps) {
-  await page.locator(t).first().click();
+  await page.locator(t).first().click({ force: true });
   await page.waitForTimeout(SETTLE_MS);
 }
 for (let n = 0; n < frames; n++) {
