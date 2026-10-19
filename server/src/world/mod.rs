@@ -136,8 +136,6 @@ pub struct World {
     /// The dock a lorry is on its way to back under, to hook the box in it
     /// (`haul`). Trips are not saved, and neither is this.
     pub aims: HashMap<EntityId, (EntityId, usize)>,
-    /// Lorries the mayor has tapped and that have not set out yet.
-    pub sent: HashSet<EntityId>,
     /// Who lives or works at each building. Derived from the residents at
     /// startup (`resettle`), and kept by the only code that moves anyone.
     pub people: HashMap<EntityId, BTreeSet<EntityId>>,
@@ -204,7 +202,6 @@ impl World {
             calls: Vec::new(),
             harbours: Default::default(),
             aims: HashMap::default(),
-            sent: HashSet::default(),
             people: HashMap::default(),
             unsettled: BTreeSet::new(),
             undo: HashMap::default(),
@@ -250,7 +247,6 @@ impl World {
             calls: Vec::new(),
             harbours: Default::default(),
             aims: HashMap::default(),
-            sent: HashSet::default(),
             people: HashMap::default(),
             unsettled: BTreeSet::new(),
             undo: HashMap::default(),

@@ -115,7 +115,7 @@ placed, or a demolition. Pressed again, the one before, and so on back.
   depot, and what no shelf has room for in coins at the world's price;
   one that stood, all it took, unless it stood for nothing (the town's
   first depot). A demolition taken back stands the building again as
-  it stood, its stock and its rules, for nothing.
+  it stood, its stock and all, for nothing.
 - **For five minutes.** An action can be taken back for a quarter of the
   town's day, five minutes of play. Not a count: what makes an action
   no longer a slip is that the town has started to use it, and that
@@ -180,18 +180,13 @@ water. More materials are more to trade and more ways to specialise, and
 more to keep stocked; whether three feels like depth or a chore is for
 play to say, and the rows are where it is tuned.
 
-**Nobody waits on a mechanic they were not taught.** The first depot
-comes with a top-up rule already on it, drawn over it like any rule:
-keep above so much timber, from the world. The player sees automation
-before they need to understand it, and can change it; it spends nothing
-until the player gives the depot standing orders, whose switch says it
-buys by the rules, and every box a rule buys is in the news with its
-price ("Depot ordered 100 crates: under its keep line of 80, −44"). A
-town that buys things on its own is automation the player has turned
-on, never a purse that falls by itself. And anything that
-stalls says why where it stalls, with the fix beside it: a site's card
-says "waiting on 12 timber, none in stock" and offers the order, with
-when it would land.
+**Nobody waits on a mechanic they were not taught.** Every box the town
+buys or sells is a slot on the ferry's deck the player booked, with a
+named partner and a price (`trade.md` §The deck); a pin repeats a slot
+every sailing, automation the player has turned on, never a purse that
+falls by itself. And anything that stalls says why where it stalls,
+with the fix beside it: a site's card says "waiting on 12 timber, none
+in stock" and offers to book it, with when it would land.
 
 There is no line between placeables and the rest. A depot, a pump, a works
 and a house are all placed the same way; they differ in what they need and
@@ -257,7 +252,7 @@ goods cross the town's border: in when it sells, out when it buys. There
 are no prices, wages or taxes inside a town.
 
 **Across the border every trade is the player's** (`trade.md`): bought
-or sold by hand at the harbour, or by a top-up rule on a depot. Trading
+or sold on the ferry's deck, a slot at a time or pinned. Trading
 with other players comes later, with the Exchange, which is the
 container port: listings, standing offers and contracts. Each is a shipment that drives or sails and can
 be followed, and the coins land when it does.
@@ -308,22 +303,19 @@ anything the map cannot show by hand.
 2. Build a depot.
 3. Connect them with a road.
 4. A shipment arrives: the starter pack, trailers off the first ferry.
-   You tap the town's one lorry to fetch them, and the camera follows it
-   from the harbour to the depot the first time; the crates stack in its
-   yard.
+   The town's one lorry fetches them, and you can ride along from the
+   harbour to the depot; the crates stack in its yard.
 5. Build. A house is a site; a lorry brings its timber from the depot,
    and it goes up. The next boat brings its people.
 
 Four beats, each teaching one thing: ships come here, things are kept
-here, roads move them, this is what arriving looks like. The manual phase
-is the town's one lorry, tapped by hand, until the first lorry with
-standing orders; the lorry stays for good, a slump you can dig out of by
-hand, never a chore.
+here, roads move them, this is what arriving looks like. The manual
+phase is the deck, a slot booked by hand, until the first pin.
 
 The opening is the first mission (`missions.md`): its steps are facts
 the server reads off the town and ticks as they come true, and it pays
-when the last is done. The trunk follows it, standing orders, a rule
-for stone, a box sold, and after it the town's situation opens a
+when the last is done. The trunk follows it on the ferry's deck: a box
+booked, a slot of stone pinned, a box sold, and after it the town's situation opens a
 mission when something first matters: a site short of stone asks for a
 quarry.
 

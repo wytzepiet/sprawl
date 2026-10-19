@@ -5,4 +5,4 @@ import type { Good } from "./Good";
 /**
  * What a step asks of the town: a fact read off the world.
  */
-export type Goal = { "kind": "Stands", "data": BuildingKind } | { "kind": "Joined" } | { "kind": "Fetched" } | { "kind": "Settled" } | { "kind": "Standing" } | { "kind": "Keeps", "data": Good } | { "kind": "Sold" } | { "kind": "Delivered", "data": { good: Good, units: number, sailed: number, } };
+export type Goal = { "kind": "Stands", "data": BuildingKind } | { "kind": "Joined" } | { "kind": "Fetched" } | { "kind": "Settled" } | { "kind": "Booked" } | { "kind": "Pinned" } | { "kind": "Sold" } | { "kind": "Delivered", "data": { good: Good, units: number, sailed: number, } };

@@ -3,4 +3,4 @@
 /**
  * Which mission this is: each opens once.
  */
-export type Key = "Opening" | "Standing" | "Stone" | "Sell" | "Pump" | "Quarry" | "Sawmill" | "Farm" | { "Order": number };
+export type Key = "Opening" | "Book" | "Pin" | "Sell" | "Pump" | "Quarry" | "Sawmill" | "Farm" | { "Order": number };

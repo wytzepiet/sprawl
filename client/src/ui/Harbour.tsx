@@ -1,19 +1,17 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
-import { buildingAt, getEntity, useGame } from "../state/gameObjects";
-import { clockAt, landsAt, now, plural, room, sailingOf, sea, until, voyage } from "../state/sea";
+import { createMemo, For, Show } from "solid-js";
+import { buildingAt, getEntity } from "../state/gameObjects";
+import { clockAt, now, sailingOf, until, voyage } from "../state/sea";
 import { setFollowing } from "../state/selection";
-import { boxCost, GOODS } from "../blueprints";
-import { Btn, coins, GoodDot, Section, Stepper, type Link } from "./kit";
-import type { Building, Good, Rule, Sailing } from "../generated";
+import { GOODS } from "../blueprints";
+import { Deck } from "./Deck";
+import { GoodDot, Section, type Link } from "./kit";
+import type { Building, Good, Sailing } from "../generated";
 
 /** A depot as a harbour's or a site's card lists it (`card.rs`). */
 export interface DepotLine {
   depot: Link;
   tiles: number;
   joined: boolean;
-  /** Its lorry fetches without being sent. */
-  standing: boolean;
-  rules: Partial<Record<Good, Rule>>;
   stocks: Partial<Record<Good, number>>;
 }
 
@@ -24,11 +22,6 @@ export const building = (id: number) =>
     const e = getEntity(id);
     return e?.object.kind === "Building" ? (e.object.data as Building) : null;
   });
-
-export const ORDER: Good[] = ["Timber", "Stone", "Crates", "Fuel"];
-
-/** What the town owes for boxes booked and at sea, paid as each lands. */
-const owed = () => sea.shipments.filter((s) => !s.outbound && s.order !== 0 && (s.leg === "Booked" || s.leg === "Aboard") && s.good).reduce((a, s) => a + (s.units * GOODS[s.good!].price * 1.1), 0);
 
 /** The ferry's timetable: where it is, when it moves, and a line of its voyage. */
 export function Timetable(props: { sailing: Sailing }) {
@@ -80,11 +73,10 @@ export function Timetable(props: { sailing: Sailing }) {
 }
 
 /**
- * The harbour's card: the ferry's timetable, what stands in the trailer
- * park, and the order: a good, how many boxes, which depot, what it costs
- * and when it lands.
+ * The harbour's card: the ferry's timetable, its deck, and what stands in
+ * the trailer park.
  */
-export function HarbourPanel(props: { id: number; depots: DepotLine[] }) {
+export function HarbourPanel(props: { id: number }) {
   const b = building(props.id);
   const sailing = () => sailingOf(props.id);
   /** The park's boxes, by good. */
@@ -111,6 +103,7 @@ export function HarbourPanel(props: { id: number; depots: DepotLine[] }) {
           </Section>
         )}
       </Show>
+      <Deck harbour={props.id} />
       <Section title={`Trailer park · ${park().reduce((a, [, e]) => a + e.boxes, 0)} of ${docks()}`}>
         <Show when={park().length > 0} fallback={<div class="soft text-[13px]">Empty. Boxes off the ferry stand here till a lorry fetches them.</div>}>
           <div class="flex flex-wrap gap-1.5">
@@ -126,7 +119,6 @@ export function HarbourPanel(props: { id: number; depots: DepotLine[] }) {
           </div>
         </Show>
       </Section>
-      <Order depots={props.depots} sailing={sailing()} />
     </>
   );
 }
@@ -143,84 +135,6 @@ export function FollowBtn(props: { id: number; fallback?: number }) {
       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
       follow
     </button>
-  );
-}
-
-/**
- * An order from the world: a good, a number of boxes, a depot, its price
- * and when it lands. Sent as `Order`; the boxes are on the shipments list
- * with the next update. The world takes no order the treasury cannot pay
- * for when it lands, so neither does the button.
- */
-export function Order(props: { depots: DepotLine[]; sailing: Sailing | undefined; depot?: number; good?: Good; title?: string }) {
-  const { send, growth } = useGame();
-  const [good, setGood] = createSignal<Good>(props.good ?? "Timber");
-  const [boxes, setBoxes] = createSignal(1);
-  const [chosen, setChosen] = createSignal<number | null>(null);
-  const depot = () => props.depot ?? chosen() ?? props.depots[0]?.depot.id ?? null;
-  const cost = () => boxes() * boxCost(good());
-  const can = () => Math.max(0, Math.floor((growth().treasury - owed()) / boxCost(good())));
-  const [sent, setSent] = createSignal(0);
-  const order = () => {
-    const d = depot();
-    if (d === null) return;
-    send({ type: "Order", data: { depot: d, good: good(), boxes: boxes() } });
-    setSent((n) => n + 1);
-    setTimeout(() => setSent((n) => n - 1), 1600);
-  };
-  return (
-    <Section title={props.title ?? "Order from the world"}>
-      <Show when={depot() !== null} fallback={<div class="soft text-[13px]">Build a depot to order into: its lorry fetches what lands.</div>}>
-        <div class="mb-2 flex gap-1.5">
-          <For each={ORDER}>
-            {(g) => (
-              <button
-                class="press flex flex-1 flex-col items-center gap-0.5 rounded-2xl py-1.5 text-[12px] font-semibold cursor-pointer"
-                style={{ background: good() === g ? `${GOODS[g].color}33` : "rgb(var(--ink) / 0.05)", "box-shadow": good() === g ? `inset 0 0 0 2px ${GOODS[g].color}` : "none" }}
-                onClick={() => setGood(g)}
-              >
-                <GoodDot good={g} size={26} />
-                {GOODS[g].label}
-                <span class="soft text-[10px] font-medium">{GOODS[g].box} a box</span>
-              </button>
-            )}
-          </For>
-        </div>
-        <div class="flex items-center justify-between gap-2 py-1">
-          <Stepper value={boxes()} set={setBoxes} min={1} max={15} />
-          <span class="soft text-[13px]">
-            {plural(boxes(), "box", "boxes")} · {boxes() * GOODS[good()].box} {GOODS[good()].label}
-          </span>
-        </div>
-        <Show when={!props.depot && props.depots.length > 1}>
-          <div class="flex items-center justify-between gap-2 py-1 text-[13px]">
-            <span class="soft">to</span>
-            <select
-              class="rounded-full bg-transparent px-2 py-0.5 text-[13px] font-semibold cursor-pointer"
-              style={{ border: "1.5px solid rgb(var(--ink) / 0.18)", color: "inherit" }}
-              onChange={(e) => setChosen(Number(e.currentTarget.value))}
-            >
-              <For each={props.depots}>{(d, i) => <option value={d.depot.id} selected={d.depot.id === depot()}>Depot #{d.depot.id}{i() === 0 ? " (nearest)" : ""}, {d.tiles} tiles</option>}</For>
-            </select>
-          </div>
-        </Show>
-        <div class="mt-1 flex items-center justify-between gap-2">
-          <div class="leading-tight">
-            <div class="serif text-[20px] tabular-nums" classList={{ "text-red-500": boxes() > can() }}>{coins(-cost())}</div>
-            <div class="soft text-[11px]">{props.sailing ? `lands ${clockAt(landsAt(props.sailing))}, in ${until(landsAt(props.sailing))}` : "no ferry yet"}</div>
-          </div>
-          <Btn big color={GOODS[good()].color} onClick={order} disabled={boxes() > can() || !props.sailing} title={boxes() > can() ? `The treasury pays for ${can()} now` : undefined}>
-            <span class={sent() ? "pop" : ""}>{sent() ? "Booked ✓" : "Order"}</span>
-          </Btn>
-        </div>
-        <Show when={boxes() > can()}>
-          <div class="mt-1 text-[11px] text-red-500">The treasury pays for {plural(can(), "box", "boxes")} now.</div>
-        </Show>
-        <Show when={boxes() <= can() && room(depot(), good()) < boxes() * GOODS[good()].box}>
-          <div class="soft mt-1 text-[11px]">The depot has room for {Math.max(0, Math.floor(room(depot(), good())))} {GOODS[good()].label}: the rest waits in the park.</div>
-        </Show>
-      </Show>
-    </Section>
   );
 }
 

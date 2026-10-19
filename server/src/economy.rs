@@ -426,15 +426,15 @@ pub fn refunded(world: &mut World, at: EntityId, coins: f64, now: GameTime) {
     world.lumps.push(Lump { building: at, coins, gdp: 0.0, at: now, good: None, units: 0.0 });
 }
 
-/// A box from the world landed in a harbour's park: the town pays for
-/// what is in it, at the harbour, as far as the treasury goes. The
-/// starter pack is the world's gift and costs nothing.
-pub fn landed(world: &mut World, harbour: EntityId, good: Good, units: f64, now: GameTime) {
-    door(world, harbour, good, -import(good, units), now);
+/// A box landed in a harbour's park: the town pays its partner `coins`
+/// for it, at the harbour, as far as the treasury goes. The starter pack
+/// is the world's gift and costs nothing.
+pub fn landed(world: &mut World, harbour: EntityId, good: Good, coins: f64, now: GameTime) {
+    door(world, harbour, good, -coins, now);
 }
 
-/// A box went out on the ferry: the world, or the town it was marked
-/// for, pays `coins` for it at the harbour as the ferry casts off.
+/// A box went out on the ferry: its partner pays `coins` for it at the
+/// harbour as the ferry casts off.
 pub fn exported(world: &mut World, harbour: EntityId, good: Good, coins: f64, now: GameTime) {
     door(world, harbour, good, coins, now);
 }
@@ -675,7 +675,7 @@ mod tests {
         // What does not fit comes back.
         assert_eq!(delivered(&mut world, shop, Good::Crates, 5.0), 5.0);
         // A box lands at the harbour, which here is the depot: paid for.
-        landed(&mut world, depot, Good::Crates, 100.0, 0);
+        landed(&mut world, depot, Good::Crates, import(Good::Crates, 100.0), 0);
         assert!((100.0 - world.treasury - import(Good::Crates, 100.0)).abs() < 1e-9, "the box cost {}", 100.0 - world.treasury);
         assert!(matches!(world.lumps[..], [Lump { building, coins, .. }] if building == depot && coins < 0.0), "no lump where it landed");
         assert!((world.town.on(0).bought[&Good::Crates] - import(Good::Crates, 100.0)).abs() < 1e-9, "the town's page");
@@ -685,7 +685,7 @@ mod tests {
         // The world buys for less than it sells.
         assert!(export(Good::Crates, 1.0) < world_price(Good::Crates) && world_price(Good::Crates) < import(Good::Crates, 1.0));
         world.treasury = 1.0;
-        landed(&mut world, depot, Good::Fuel, 50.0, 0);
+        landed(&mut world, depot, Good::Fuel, import(Good::Fuel, 50.0), 0);
         assert_eq!(world.treasury, 0.0, "an import went under zero");
     }
 

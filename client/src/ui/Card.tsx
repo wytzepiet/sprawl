@@ -2,14 +2,14 @@ import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from
 import type { JSX } from "solid-js";
 import { BLUEPRINTS, BuildingIcon } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
-import { getEntity, useGame } from "../state/gameObjects";
-import { now, sailingOf, sea } from "../state/sea";
-import { track } from "./Shipments";
+import { getEntity } from "../state/gameObjects";
+import { now, sailingOf } from "../state/sea";
 import { missionsUp } from "./Missions";
 import { HarbourPanel, Timetable, type DepotLine } from "./Harbour";
+import { Deck } from "./Deck";
 import { DepotPanel } from "./Depot";
 import { SitePanel, type MakerLine } from "./Site";
-import { Bar, Btn, Row, Section, To, type Link } from "./kit";
+import { Bar, Row, Section, To, type Link } from "./kit";
 import type { Building, BuildingKind, CarRole, Good, Need } from "../generated";
 
 interface Bucket {
@@ -189,25 +189,12 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
 const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry", Tug: "Tug" };
 
 function CarCard(c: Extract<Card, { kind: "car" }>) {
-  const { send } = useGame();
   const what = ROLE[c.role];
   const sailing = () => (c.role === "Ferry" ? sailingOf(c.owner.id) : undefined);
-  /** The tap the opening asks for: a depot's lorry, standing, sent to the
-   *  harbour, the camera riding along with it to the first box for it. */
-  const go = () => {
-    send({ type: "Send", data: { depot: c.owner.id } });
-    const box = sea.shipments.find((s) => s.leg === "Parked" && !s.outbound && (s.to === c.owner.id || s.to === null));
-    if (box) track(box.trailer, c.id);
-  };
   return (
     <>
       <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : c.role === "Ferry" ? `of the harbour` : "parked out of sight"} />
-      <Show when={c.role === "Truck" && !c.trip}>
-        <div class="px-4 pb-3">
-          <Btn big color="#A0714A" class="w-full" onClick={go}>Send to the harbour</Btn>
-        </div>
-      </Show>
-      <Show when={sailing()}>{(s) => <Section title="Timetable"><Timetable sailing={s()} /></Section>}</Show>
+      <Show when={sailing()}>{(s) => <><Section title="Timetable"><Timetable sailing={s()} /></Section><Deck harbour={s().harbour} /></>}</Show>
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
         <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
@@ -264,10 +251,10 @@ function BuildingCard(props: { id: number; card: () => BuildingCard }) {
       />
       <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
       <Show when={!site() && kind() === "Harbour"}>
-        <HarbourPanel id={props.id} depots={c().depots} />
+        <HarbourPanel id={props.id} />
       </Show>
       <Show when={!site() && kind() === "Depot"}>
-        <DepotPanel id={props.id} lorries={lorries()} depots={[]} />
+        <DepotPanel id={props.id} lorries={lorries()} />
       </Show>
       <Show when={kind() !== "Depot" && c().stocks.length > 0}>
         <Section title="Stocks">

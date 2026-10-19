@@ -79,10 +79,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   border: the park, the deck, the lorries and the yards. A chain that
   stops delivering shows here before it shows in play.
 - **The opening, end to end:** `cargo test the_opening` plays it: the
-  starter pack lands, the tapped lorry fetches, a house waits for its
-  timber, its settlers come on the next ferry, a box sold is paid for.
+  starter pack lands, the lorry fetches, a house waits for its timber,
+  its settlers come on the next ferry, a slot booked and one pinned, a
+  box sold is paid for.
   In a running game, `curl localhost:4801/sea` is the border as the server
-  has it, and `bun run act send|standing|order|sell|rule` work it by hand;
+  has it, and `bun run act book|pin|unpin` work the deck by hand;
   `bun run act missions` lists the town's missions (`docs/missions.md`).
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in

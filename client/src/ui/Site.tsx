@@ -2,7 +2,8 @@ import { createSignal, For, Show, type JSX } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/sea";
 import { setFollowing } from "../state/selection";
-import { BLUEPRINTS, boxCost, GOODS } from "../blueprints";
+import { BLUEPRINTS, GOODS } from "../blueprints";
+import { cheapest } from "./Deck";
 import type { DepotLine } from "./Harbour";
 import { Btn, coins, GoodDot, Section, type Link } from "./kit";
 import type { Building, BuildingKind, Good, Stock } from "../generated";
@@ -21,9 +22,9 @@ type Call = { good: Good; answered_by: Link | null };
 /**
  * A site's card: each material it waits on, and where that is — on the
  * van, in stock at the depot, in a maker's yard, in the trailer park, on
- * the boat — and, where it is stuck, the one tap that frees it: send the
- * lorry for the box in the park, order a box on the next ferry, give the
- * depot a rule so the next site does not wait. docs/game.md §Buildings.
+ * the boat — and, where it is stuck, the one tap that frees it: a box
+ * booked on the next ferry, from whoever sells it cheapest.
+ * docs/game.md §Buildings.
  */
 export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: Call[] }) {
   const materials = () => (Object.entries(props.site) as [Good, Stock][]).filter(([, s]) => s);
@@ -81,25 +82,17 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   };
   const coming = () => inbound().find((s) => s.leg !== "Parked") ?? null;
   const boxes = () => Math.max(1, Math.ceil(props.short / box()));
-  const cost = () => boxes() * boxCost(g());
+  const offer = () => cheapest(g());
+  const cost = () => boxes() * box() * (offer()?.price ?? 0);
   const sailing = () => sea.sailings[0];
   const [ordered, setOrdered] = createSignal(false);
-  const [sent, setSent] = createSignal(false);
-  const [ruled, setRuled] = createSignal(false);
   const order = () => {
-    const d = nearest();
-    if (!d) return;
-    send({ type: "Order", data: { depot: d.depot.id, good: g(), boxes: boxes() } });
+    const o = offer();
+    const s = sailing();
+    if (!o || !s) return;
+    for (let i = 0; i < boxes(); i++) send({ type: "Book", data: { harbour: s.harbour, good: g(), partner: o.partner, out: false } });
     setOrdered(true);
   };
-  /** The rule a depot's card offers: a box kept, two filled to. */
-  const rule = () => {
-    const d = nearest();
-    if (!d) return;
-    send({ type: "SetRule", data: { depot: d.depot.id, good: g(), rule: { keep: box(), fill: 2 * box(), sell: null } } });
-    setRuled(true);
-  };
-  const ruleless = () => nearest() && !nearest()!.rules[g()];
   return (
     <div class="mt-1.5 pl-[36px]">
       <Show when={van()}>
@@ -113,14 +106,7 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
       </Show>
       <Show when={!van() && !stocked() && !maker() && parked()}>
         {(p) => (
-          <Show when={!p().d.standing} fallback={<Line dot="#2B6CA3" text={`${Math.round(p().s.units)} ${label()} in the trailer park`} sub="the lorry fetches it: it has standing orders" />}>
-            <Line
-              dot="#E0A030"
-              text={`${Math.round(p().s.units)} ${label()} in the trailer park`}
-              sub={sent() ? "the lorry is on its way" : p().d.joined ? "the lorry waits to be sent" : "no road joins the depot to the harbour"}
-              act={<Btn big color="#A0714A" onClick={() => (send({ type: "Send", data: { depot: p().d.depot.id } }), setSent(true))} disabled={sent() || !p().d.joined}>{sent() ? "Sent ✓" : "Send the lorry"}</Btn>}
-            />
-          </Show>
+          <Line dot={p().d.joined ? "#2B6CA3" : "#E0A030"} text={`${Math.round(p().s.units)} ${label()} in the trailer park`} sub={p().d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />
         )}
       </Show>
       <Show when={!van() && !stocked() && !maker() && !parked() && coming()}>
@@ -133,23 +119,15 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
         <Show when={nearest()} fallback={<Line dot="#D9483B" text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />}>
           <Line
             dot="#D9483B"
-            text={ordered() ? `Ordered: lands ${sailing() ? clockAt(landsAt(sailing()!)) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
+            text={ordered() ? `Booked: lands ${sailing() ? clockAt(landsAt(sailing()!)) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
             sub={sailing() ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(landsAt(sailing()!))}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
             act={
-              <Btn big color={GOODS[g()].color} onClick={order} disabled={ordered() || !sailing() || growth().treasury < cost()} title={growth().treasury < cost() ? "The treasury cannot pay for it" : undefined}>
-                {ordered() ? "Ordered ✓" : `Order ${label()}`}
+              <Btn big color={GOODS[g()].color} onClick={order} disabled={ordered() || !sailing() || !offer() || growth().treasury < cost()} title={growth().treasury < cost() ? "The treasury cannot pay for it" : undefined}>
+                {ordered() ? "Booked ✓" : `Book ${label()}`}
               </Btn>
             }
           />
         </Show>
-      </Show>
-      <Show when={ruleless() && !van() && !stocked() && !maker() && !parked() && !coming()}>
-        <Line
-          dot="rgb(var(--ink) / 0.3)"
-          text={ruled() ? `The depot keeps ${label()} now` : `The depot keeps no ${label()} of its own`}
-          sub={ruled() ? `a box kept, two filled to, ordered when it runs low` : `give it a rule, and the next site waits on nothing`}
-          act={<Btn onClick={rule} disabled={ruled()}>{ruled() ? "Ruled ✓" : `Keep ${box()} in stock`}</Btn>}
-        />
       </Show>
     </div>
   );

@@ -332,9 +332,6 @@ impl World {
         let first_depot = crate::economy::depot(kind)
             && !self.objects.iter().any(|e| e.id != id && matches!(e.object, GameObject::Building(ref o) if o.kind == kind && o.site.is_none()));
         if let Some(GameObject::Building(b)) = self.objects.get_mut(id).map(|e| &mut e.object) {
-            if crate::economy::depot(kind) {
-                b.rules = crate::haul::first_rules();
-            }
             if first_depot {
                 b.site = None;
             }

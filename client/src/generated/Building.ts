@@ -3,10 +3,11 @@ import type { BuildingKind } from "./BuildingKind";
 import type { Door } from "./Door";
 import type { Good } from "./Good";
 import type { GridCoord } from "./GridCoord";
-import type { Rule } from "./Rule";
+import type { Pin } from "./Pin";
 import type { Slot } from "./Slot";
 import type { Stock } from "./Stock";
 import type { Tile } from "./Tile";
+import type { Trailer } from "./Trailer";
 
 export type Building = { kind: BuildingKind, 
 /**
@@ -41,20 +42,15 @@ site: { [key in Good]?: Stock } | null,
  */
 park: Array<Slot>, 
 /**
- * A depot's top-up rules, by good (docs/trade.md §Top-up).
+ * A harbour's slots going out, booked and not yet loaded: a box
+ * each, its good, partner and price, for the first depot's lorry
+ * with the good to fill (`haul::lorry_wake`).
  */
-rules: { [key in Good]?: Rule }, 
+outgoing: Array<Trailer>, 
 /**
- * A depot's lorry has standing orders: it fetches what lands for the
- * depot at the harbour and takes out what the rules sell, without
- * being sent. Off, it goes when the mayor taps it.
+ * A harbour's pinned slots, booked again for every sailing.
  */
-standing: boolean, 
-/**
- * Boxes the mayor has sold from a depot and its lorry has yet to take
- * to the harbour, a good a box.
- */
-selling: Array<Good>, 
+pins: Array<Pin>, 
 /**
  * Lorries bought for it beyond the one its row comes with.
  */

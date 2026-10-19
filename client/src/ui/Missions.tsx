@@ -223,24 +223,20 @@ function Steps(props: { m: Mission; open: boolean; brief: boolean; reward?: bool
   );
 }
 
-/** What the step at hand offers to do: a tool to take, a lorry to send,
- *  a switch on the depot it names. */
+/** What the step at hand offers to do: a tool to take, a lorry to ride
+ *  with, the harbour's deck to open, a box to book for a letter. */
 function Act(props: { step: Step; m: Mission }) {
   const { send } = useGame();
   const g = () => props.step.goal;
   const depot = () => props.step.at;
-  /** The depot's card, open on what the step changed there. */
-  const on = (message: Parameters<typeof send>[0]) => () => {
-    send(message);
-    if (depot() !== null) select(depot());
-  };
+  /** The card the step's goal is on: the harbour's, for the deck. */
+  const open = () => depot() !== null && select(depot());
   const gift = () => sea.shipments.filter((s) => s.order === 0);
   const parked = () => gift().filter((s) => s.leg === "Parked");
   const next = () => gift().find((s) => s.eta !== null);
-  const fetch1 = () => {
+  const ride = () => {
     const d = depot();
     if (d === null) return;
-    send({ type: "Send", data: { depot: d } });
     // Ride with the depot's lorry to the park, and home with the box.
     let lorry: number | null = null;
     eachEntity((e) => {
@@ -266,19 +262,15 @@ function Act(props: { step: Step; m: Mission }) {
           fallback={<Show when={next()}>{(s) => <p>The first ferry is in at {clockAt(s().eta!)}, <b class="tabular-nums">{until(s().eta!)}</b> from now.</p>}</Show>}
         >
           <p>{parked().length === 1 ? "A box is" : `${parked().length} boxes are`} in the trailer park.</p>
-          <Btn big onClick={fetch1} color={BLUEPRINTS.Depot.color} disabled={depot() === null}>Send the lorry</Btn>
+          <Btn big onClick={ride} color={BLUEPRINTS.Depot.color} disabled={depot() === null}>Ride with the lorry</Btn>
         </Show>
       );
     case "Settled":
       return <Btn onClick={() => hold("House")}>Take a house</Btn>;
-    case "Standing":
-      return <Btn big onClick={on({ type: "Standing", data: { depot: depot()!, on: true } })} color={BLUEPRINTS.Depot.color} disabled={depot() === null}>Give it standing orders</Btn>;
-    case "Keeps": {
-      const box = GOODS[goal.data].box;
-      return <Btn big onClick={on({ type: "SetRule", data: { depot: depot()!, good: goal.data, rule: { keep: box, fill: 2 * box, sell: null } } })} color={BLUEPRINTS.Depot.color} disabled={depot() === null}>Keep {box} {GOODS[goal.data].label}</Btn>;
-    }
+    case "Booked":
+    case "Pinned":
     case "Sold":
-      return <Btn big onClick={on({ type: "Sell", data: { depot: depot()!, good: "Crates" } })} color={BLUEPRINTS.Depot.color} disabled={depot() === null}>Sell a box of crates</Btn>;
+      return <Btn big onClick={open} color={BLUEPRINTS.Harbour.color} disabled={depot() === null}>Open the deck</Btn>;
     case "Delivered": {
       const { good, units, sailed } = goal.data;
       const box = GOODS[good].box;
@@ -289,7 +281,7 @@ function Act(props: { step: Step; m: Mission }) {
             Sails with the ferry to the edge: <b class="tabular-nums">{Math.floor(sailed / box)} of {Math.round(units / box)}</b> gone.
             <Show when={due !== null}> Wanted by {clockAt(due!)}, <b class="tabular-nums">{until(due!)}</b> from now.</Show>
           </p>
-          <Btn big onClick={on({ type: "Sell", data: { depot: depot()!, good } })} color={BLUEPRINTS.Depot.color} disabled={depot() === null}>Send a box of {GOODS[good].label}</Btn>
+          <Btn big onClick={() => (send({ type: "Book", data: { harbour: depot()!, good, partner: props.m.from, out: true } }), open())} color={BLUEPRINTS.Harbour.color} disabled={depot() === null || !sea.offers.some((o) => o.out && o.partner === props.m.from && o.good === good)}>Book a box of {GOODS[good].label}</Btn>
         </>
       );
     }

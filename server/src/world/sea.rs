@@ -246,7 +246,7 @@ impl World {
             if first && k == 0 {
                 for good in STARTER {
                     let id = self.objects.reserve_id();
-                    ferry.booked.push(Trailer { id, good, units: good.per_box(), to: None, outbound: false, order: GIFT });
+                    ferry.booked.push(Trailer { id, good, units: good.per_box(), to: None, outbound: false, order: GIFT, partner: None, price: 0.0 });
                 }
             }
             self.insert_at(GameObject::Car(ferry), None);
@@ -511,12 +511,13 @@ impl World {
         c.passengers.clear();
         c.spot = None;
         c.due = now + turn;
-        // A box marked for a town beyond the edge is its mayor's to pay
-        // for; any other, the world's.
+        // Each box is paid for at its slot's price, by its partner; one
+        // for a letter counts to it. The pinned slots are booked again.
         for t in sold {
-            let coins = crate::orders::sailed(self, &t).unwrap_or_else(|| crate::economy::export(t.good, t.units));
-            crate::economy::exported(self, harbour, t.good, coins, now);
+            crate::orders::sailed(self, &t);
+            crate::economy::exported(self, harbour, t.good, t.price * t.units, now);
         }
+        crate::orders::repeat(self, harbour);
         self.set_out(events, ferry, way, true, now);
     }
 
@@ -716,12 +717,12 @@ impl World {
                 }
                 self.unhold_dock(harbour, tug);
                 self.set_hitch(tug, None);
-                // A box from the world landed: the town pays for what is in
-                // it, unless it is the world's gift; and the lorries that
-                // fetch for the town hear of it.
+                // A box landed: the town pays its partner for it, unless it
+                // is the world's gift; and the lorries that fetch for the
+                // town hear of it.
                 if !t.outbound {
                     if t.order != GIFT {
-                        crate::economy::landed(self, harbour, t.good, t.units, now);
+                        crate::economy::landed(self, harbour, t.good, t.price * t.units, now);
                     }
                     crate::haul::call_lorries(self, events);
                 }

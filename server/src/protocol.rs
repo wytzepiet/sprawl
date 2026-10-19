@@ -297,18 +297,14 @@ pub struct Building {
     /// lot's, laid when the lot is.
     #[serde(default)]
     pub park: Vec<Slot>,
-    /// A depot's top-up rules, by good (docs/trade.md §Top-up).
+    /// A harbour's slots going out, booked and not yet loaded: a box
+    /// each, its good, partner and price, for the first depot's lorry
+    /// with the good to fill (`haul::lorry_wake`).
     #[serde(default)]
-    pub rules: std::collections::BTreeMap<Good, Rule>,
-    /// A depot's lorry has standing orders: it fetches what lands for the
-    /// depot at the harbour and takes out what the rules sell, without
-    /// being sent. Off, it goes when the mayor taps it.
+    pub outgoing: Vec<Trailer>,
+    /// A harbour's pinned slots, booked again for every sailing.
     #[serde(default)]
-    pub standing: bool,
-    /// Boxes the mayor has sold from a depot and its lorry has yet to take
-    /// to the harbour, a good a box.
-    #[serde(default)]
-    pub selling: Vec<Good>,
+    pub pins: Vec<Pin>,
     /// Lorries bought for it beyond the one its row comes with.
     #[serde(default)]
     pub lorries: u8,
@@ -419,9 +415,8 @@ impl Building {
             stocks: Default::default(),
             site: (!materials.is_empty()).then(|| materials.iter().map(|&(g, n)| (g, crate::needs::Stock { level: 0.0, cap: n as f64 })).collect()),
             park: Vec::new(),
-            rules: Default::default(),
-            standing: false,
-            selling: Vec::new(),
+            outgoing: Vec::new(),
+            pins: Vec::new(),
             lorries: 0,
             land: Vec::new(),
             ruts: Vec::new(),
@@ -586,10 +581,29 @@ pub struct Trailer {
     pub to: Option<EntityId>,
     /// Going out: an export, dropped at a harbour for the ferry.
     pub outbound: bool,
-    /// The shipment it is part of: an order, a top-up, an export, the
+    /// The shipment it is part of: a booking, a pin's, a letter's, the
     /// starter pack.
     #[ts(type = "number")]
     pub order: u64,
+    /// Who it is from or for: a mayor beyond the edge, or None, the world.
+    #[serde(default)]
+    pub partner: Option<crate::orders::Mayor>,
+    /// The deal: coins a unit, paid as it lands or as it sails.
+    #[serde(default)]
+    pub price: f64,
+}
+
+/// A slot of the ferry's deck the mayor has pinned: a box of this good
+/// from or for this partner, booked again for every sailing
+/// (docs/trade.md §The deck).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Pin {
+    #[ts(type = "number")]
+    pub id: u64,
+    pub good: Good,
+    pub partner: Option<crate::orders::Mayor>,
+    pub out: bool,
 }
 
 /// A dock of a harbour's trailer park: where a box stands in it, a
@@ -599,17 +613,6 @@ pub struct Trailer {
 pub struct Slot {
     pub pose: Pose,
     pub trailer: Option<Trailer>,
-}
-
-/// A depot's top-up rule for one good: keep above `keep`, fill up to
-/// `fill`, from the world on the next ferry; and sell what is over `sell`,
-/// a box at a time, when there is one.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct Rule {
-    pub keep: f64,
-    pub fill: f64,
-    pub sell: Option<f64>,
 }
 
 /// A tug's move: along a path between two moments, a box on its hitch or
@@ -666,6 +669,8 @@ pub enum Leg {
 pub struct Shipment {
     #[ts(type = "number")]
     pub order: u64,
+    pub partner: Option<crate::orders::Mayor>,
+    pub price: f64,
     #[ts(type = "number")]
     pub trailer: u64,
     pub good: Good,
@@ -715,6 +720,9 @@ pub struct Sailing {
     /// From casting off to berthing again, by the line's timetable.
     #[ts(type = "number")]
     pub turn: u64,
+    /// Slots going out not yet filled, and the pinned slots.
+    pub outgoing: Vec<Trailer>,
+    pub pins: Vec<Pin>,
 }
 
 /// The sea's part of an update: every shipment on its way, every
@@ -727,6 +735,9 @@ pub struct Sea {
     pub sailings: Vec<Sailing>,
     #[serde(default)]
     pub lanes: Vec<Lane>,
+    /// Every deal on offer for a slot of the deck.
+    #[serde(default)]
+    pub offers: Vec<crate::orders::Offer>,
 }
 
 /// A stretch of a line's way as it lies on the map (`shipping::lanes`):
@@ -1019,17 +1030,12 @@ pub enum ClientMessage {
     /// Spend a point on a node of the tree.
     Take(crate::tree::Cell),
     DespawnAllCars,
-    /// Buy boxes of a good from the world, for a depot, on the next ferry.
-    Order { #[ts(type = "number")] depot: EntityId, good: Good, boxes: u32 },
-    /// Set a depot's top-up rule for a good, or clear it.
-    SetRule { #[ts(type = "number")] depot: EntityId, good: Good, rule: Option<Rule> },
-    /// Give a depot's lorry standing orders, or take them away.
-    Standing { #[ts(type = "number")] depot: EntityId, on: bool },
-    /// Send a depot's lorry to the harbour now: the tap.
-    Send { #[ts(type = "number")] depot: EntityId },
-    /// Sell a box of a good from a depot to the world: the lorry takes it
-    /// to the harbour for the next ferry.
-    Sell { #[ts(type = "number")] depot: EntityId, good: Good },
+    /// A box on a harbour's next sailing: of this good, from or for this
+    /// partner (None, the world), in or out (`orders::book`).
+    Book { #[ts(type = "number")] harbour: EntityId, good: Good, partner: Option<crate::orders::Mayor>, out: bool },
+    /// The same, booked again for every sailing.
+    Pin { #[ts(type = "number")] harbour: EntityId, good: Good, partner: Option<crate::orders::Mayor>, out: bool },
+    Unpin { #[ts(type = "number")] harbour: EntityId, #[ts(type = "number")] pin: u64 },
     /// Buy a depot another lorry from the world.
     BuyLorry { #[ts(type = "number")] depot: EntityId },
     /// Sim steps per tick. 0 pauses; dev-only, and it moves the whole world.

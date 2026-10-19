@@ -320,17 +320,15 @@ export function BuildingIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { kind
 
 /**
  * Every good, as the client shows it: its name, its colour, its glyph, and
- * what the world trades it at (`economy.rs`): `price` a unit, `box` units
- * to a box (`Good::per_box`), and a tenth over to buy, a tenth under to
- * sell (`MARGIN`).
+ * `box` units to a box (`Good::per_box`). What it trades at is the
+ * server's, a deal at a time (`Sea::offers`).
  */
-export const GOODS: Record<Good, { label: string; color: string; glyph: string; price: number; box: number }> = {
+export const GOODS: Record<Good, { label: string; color: string; glyph: string; box: number }> = {
   Timber: {
     label: "timber",
     color: "#B07A3E",
     // Three logs stacked, their ends ringed.
     glyph: "M7 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM17 13.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8zM12 4.5a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z",
-    price: 1.0,
     box: 20,
   },
   Crates: {
@@ -338,7 +336,6 @@ export const GOODS: Record<Good, { label: string; color: string; glyph: string; 
     color: "#5E9E52",
     // A crate: its lid and two slats.
     glyph: "M3 4h18v4H3zM4 9.5h16V21H4zm3 2.5v6.5h2V12zm4 0v6.5h2V12zm4 0v6.5h2V12z",
-    price: 0.2,
     box: 100,
   },
   Stone: {
@@ -346,7 +343,6 @@ export const GOODS: Record<Good, { label: string; color: string; glyph: string; 
     color: "#737A83",
     // A heap of broken rock, three stones on a pile.
     glyph: "M2 21l3.5-6 4 1 2.5-5 4 2 2.5 3.5L22 21zM7 9.5l3-3 3.5 1.5L12 11l-4 .5zM14.5 6.5 17 4l3 2-1 3.5-3 .5z",
-    price: 0.5,
     box: 20,
   },
   Fuel: {
@@ -354,16 +350,10 @@ export const GOODS: Record<Good, { label: string; color: string; glyph: string; 
     color: "#D4513B",
     // A jerrycan: its handle and spout.
     glyph: "M8 2h6v3h-6zM5 6h11l3 3v13H5zm3 5v8h8v-8zM17 2.5l3 3-1.5 1.5-3-3z",
-    price: 1.0,
     box: 50,
   },
 };
 
-/** The world's margin each way (`economy::MARGIN`). */
-const MARGIN = 0.1;
-/** What a box of a good costs from the world, and fetches sold to it. */
-export const boxCost = (good: Good) => GOODS[good].box * GOODS[good].price * (1 + MARGIN);
-export const boxSale = (good: Good) => GOODS[good].box * GOODS[good].price * (1 - MARGIN);
 
 /** A good's glyph, as an SVG that takes the current colour. */
 export function GoodIcon(props: JSX.SvgSVGAttributes<SVGSVGElement> & { good: Good }) {
