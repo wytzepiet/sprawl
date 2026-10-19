@@ -1,4 +1,4 @@
-import { markMaterialUboDirty, setMeshAttribute, setThinInstances, updateMeshPositions, type DirectionalLight, type EngineContext as Engine, type MaterialPlugin, type Mesh, type SceneContext } from "@babylonjs/lite";
+import { createTexture2DFromPixels, markMaterialUboDirty, setMeshAttribute, setThinInstances, updateMeshPositions, updateTexture2DFromPixels, type EngineContext as Engine, type MaterialPlugin, type Mesh, type Texture2D } from "@babylonjs/lite";
 import type { EngineContext } from "../Canvas";
 import type { Casters } from "../DayNightCycle";
 import { drop, meshOf, show } from "../geometry";
@@ -12,6 +12,9 @@ import type { Job } from "../../generated/Job";
 import type { Run } from "../../generated/Run";
 import type { Tile } from "../../generated/Tile";
 import { drawnPath, type DrawnPath, type P } from "./drawnPath";
+import { baked } from "../bakeCache";
+import { WHEAT_MARGIN, WHEAT_STAGES, WHEAT_STRIDE, WHEAT_TEXELS } from "../wheat";
+import recipe from "../wheat.ts?raw";
 
 /**
  * A farm's field, as it is seen from the air: the strips its tractor laid,
@@ -24,16 +27,14 @@ import { drawnPath, type DrawnPath, type P } from "./drawnPath";
  * So the headland ring runs on unbroken round its corners on the
  * tractor's own arc, and the lands' passes stop where they turned.
  *
- * Across each strip a height (`fieldHeight`), by stage: furrow slices
- * turned up in ridges; a drill's rows, the wheat coming up along them a
- * tuft of thin blades at a time and closing over the rows, green, then
- * gold, its wheel tracks left open; the stubble after the combine, bare ground
- * again with a stalk where most plants stood. Each stage one clean
- * colour on a dark grey earth, as the town's are: its texture is all
- * light, the ridges and plants tilting its facing and casting their
- * shade into the furrows and tracks beside them, as a low sun shows a
- * field from the air. The strip's edge on the field's border is ragged,
- * a margin of grass between field and hedge.
+ * Along each strip, a stage of the wheat, baked once (`wheat.ts`) and
+ * read as a texture: furrow slices; a drill's rows; the wheat coming up
+ * along them, closing over them, in ear, ripe, its wheel tracks left
+ * open; the stubble after the combine. Each stage one clean colour on a
+ * dark grey earth, as the town's are: its texture is all light, baked
+ * into how light each texel is and which way it faces. The strip's edge
+ * on the field's border is ragged, a margin of grass between field and
+ * hedge.
  *
  * Between runs the field is the last run's strips (the farm's `ruts`) in
  * the look it left. On a run (`running`), the run's strips are laid over
@@ -304,7 +305,7 @@ export class Field {
   }
 
   private material(paint: Paint): TownMaterial {
-    return townMaterial([plugin(this.ctx.engine, this.ctx.scene, paint, this.colours)], 0.95);
+    return townMaterial([plugin(this.ctx.engine, paint, this.colours)], 0.95);
   }
 
   dispose(): void {
@@ -315,9 +316,29 @@ export class Field {
   }
 }
 
+/** The wheat's stages, an engine's: bare earth until the worker has
+ *  baked them, or read back from the last bake (`bakeCache.ts`). */
+const WHEATS = new WeakMap<Engine, Texture2D>();
+function wheat(engine: Engine): Texture2D {
+  let texture = WHEATS.get(engine);
+  if (!texture) {
+    const bare = new Uint8Array(WHEAT_TEXELS * WHEAT_STRIDE * WHEAT_STAGES * 4);
+    for (let k = 0; k < bare.length; k += 4) bare.set([128, 128, 200, 0], k);
+    const made = createTexture2DFromPixels(engine, bare, WHEAT_TEXELS, WHEAT_STRIDE * WHEAT_STAGES, {
+      mipmaps: true,
+      minFilter: "linear",
+      magFilter: "linear",
+      addressModeU: "repeat",
+    });
+    WHEATS.set(engine, (texture = made));
+    void baked("wheat", recipe, () => new Worker(new URL("../wheatWorker.ts", import.meta.url), { type: "module" })).then((data) => updateTexture2DFromPixels(engine, made, data));
+  }
+  return texture;
+}
+
 /** The field's paint (see the top), where across and along its strip a
  *  vertex is, which way across is, and which edges are the border. */
-function plugin(engine: Engine, scene: SceneContext, paint: Paint, colours: Rgb[]): MaterialPlugin {
+function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
   return {
     name: "Field",
     priority: 210,
@@ -329,8 +350,11 @@ function plugin(engine: Engine, scene: SceneContext, paint: Paint, colours: Rgb[
       { name: "vStripA", type: "vec4f" },
       { name: "vStripB", type: "vec4f" },
     ],
-    getSamplers: () => [{ texture: "fieldGrain", sampler: "fieldGrainSampler" }],
-    bindTextures: (out) => out.push({ texture: grain(engine) }),
+    getSamplers: () => [
+      { texture: "fieldGrain", sampler: "fieldGrainSampler" },
+      { texture: "fieldWheat", sampler: "fieldWheatSampler" },
+    ],
+    bindTextures: (out) => out.push({ texture: grain(engine) }, { texture: wheat(engine) }),
     getUniforms: () => ({
       ubo: [
         { name: "fieldLook", type: "vec4<f32>" },
@@ -338,15 +362,12 @@ function plugin(engine: Engine, scene: SceneContext, paint: Paint, colours: Rgb[
         { name: "fieldGrowing", type: "vec4<f32>" },
         { name: "fieldRipe", type: "vec4<f32>" },
         { name: "fieldStubble", type: "vec4<f32>" },
-        { name: "fieldSun", type: "vec4<f32>" },
       ],
     }),
     writeUbo: (data, offsets) => {
       const put = (name: string, v: number[]) => data.set(v, offsets.get(name)! / 4);
-      put("fieldLook", [paint.look[0], paint.look[1], paint.reach, 0]);
+      put("fieldLook", [paint.look[0], paint.look[1], paint.reach, (performance.now() / 1000) % 3600]);
       ["fieldEarth", "fieldGrowing", "fieldRipe", "fieldStubble"].forEach((name, i) => put(name, [colours[i].r, colours[i].g, colours[i].b, 1]));
-      const d = (scene.lights.find((l) => l.shadowGenerator) as DirectionalLight | undefined)?.direction ?? { x: 0, y: 0, z: -1 };
-      put("fieldSun", [-d.x, -d.y, -d.z, 0]);
     },
     getCustomCode: (stage) =>
       stage === "vertex"
@@ -355,158 +376,81 @@ function plugin(engine: Engine, scene: SceneContext, paint: Paint, colours: Rgb[
   };
 }
 
-/** The grain, as value noise: `p` in its texels, 256 to its side. And
- *  the field's height at a point of a pass, `u` across it 0 to 1, `v`
- *  along it in tiles, by stage, and of that how much is crop: the furrow
- *  slices, each turned over against the last, rising across it and
- *  falling steep to the next; the drill's ten rows, ridged, and the crop
- *  along them a tuft at a time, a few thin blades, closing over the
- *  rows as they grow; its tramlines, the
- *  wheel tracks, as far apart as the tractor's wheels and as thin as a
- *  lane's line, in the gaps either side of the middle row, left open to
- *  the earth; the stubble, the rows' ridges again with a stalk left
- *  standing where most plants stood. As high as the crop stands (CROP_H)
- *  and as deep as the shadows cast into it. */
+/** The grain, as value noise: `p` in its texels, 256 to its side. And a
+ *  stage of the wheat (`wheat.ts`) at a point of a pass, `u` across it 0
+ *  to 1, `v` along it in tiles, read as from a texture of its own, with
+ *  how fast `u` and `v` change across the screen, so far off it is read
+ *  from a smaller copy, as what it adds up to. */
 const DEFINITIONS = `fn fieldNoise(p: vec2f) -> f32 { return textureSample(fieldGrain, fieldGrainSampler, p / 256.).r; }
-fn fieldHash(p: vec2f) -> vec2f { return fract(sin(vec2f(dot(p, vec2f(127.1, 311.7)), dot(p, vec2f(269.5, 183.3)))) * 43758.5453); }
-// A tuft of wheat at o from its middle, r its reach, a its turn: its
-// height, 0 to 1: five thin blades out from its heart, each its own
-// length, tapering to its tip; broader as it grows.
-fn fieldPlant(o: vec2f, r: f32, a: f32, grown: f32) -> f32 {
-  let d = length(o) / r;
-  if (d >= 1.) { return 0.; }
-  let turn = (atan2(o.y, o.x) + a) * 0.7957747 + 10.;
-  let blade = floor(turn + 0.5);
-  let side = d * abs(turn - blade) * 1.2566371;
-  let t = d / (0.55 + 0.45 * fieldHash(vec2f(blade, a)).x);
-  let w = mix(0.07, 0.13, grown) * (1. - 0.6 * t);
-  if (t >= 1. || side >= w) { return 0.; }
-  return (1. - 0.6 * t) * (1. - side / w);
-}
-// The tallest of the tufts near (u, v): of the two rows either side of
-// it, ten to a pass, and the four along either side of it, 28 to a tile;
-// their reach and how far grown, and how many of them stand (1 all,
-// less some gone).
-fn fieldPlants(u: f32, v: f32, r: f32, grown: f32, stand: f32) -> f32 {
-  let x = u * 10. - 0.5;
-  let r0 = clamp(floor(x), 0., 8.);
-  var h = 0.;
-  for (var i = 0; i < 2; i++) {
-    let row = r0 + f32(i);
-    let y = v * 28. + fieldHash(vec2f(row, 17.)).x;
-    let c0 = floor(y - 0.5) - 1.;
-    for (var j = 0; j < 4; j++) {
-      let c = c0 + f32(j);
-      let seed = fieldHash(vec2f(row * 131. + c, 7.));
-      if (seed.y > stand) { continue; }
-      let o = vec2f((x - row) / 10., (y - c - 0.5 - (seed.x - 0.5) * 0.5) / 28.);
-      h = max(h, fieldPlant(o, r * (0.75 + 0.5 * seed.y / stand), seed.x * 6.2831853, grown));
-    }
-  }
-  return h;
-}
-fn fieldHeight(u: f32, v: f32, stage: u32, k: f32) -> vec2f {
-  let p = fract(u);
-  let row = 1. - abs(fract(u * 10.) - 0.5) * 2.;
-  let tram = 1. - smoothstep(0.01, 0.02, min(abs(p - 0.4), abs(p - 0.6)));
-  let ridge = 0.008 * row * (1. - tram);
-  if (stage == 1u) { let q = fract(u * 4.); return vec2f(0.035 * pow(q, 0.6) * (1. - smoothstep(0.78, 1., q)), 0.); }
-  if (stage == 2u) {
-    let grown = smoothstep(0.03, 0.6, k);
-    let tall = smoothstep(0.01, 0.05, k) * (0.15 + 0.85 * grown) * ${CROP_H.toFixed(3)};
-    let crop = tall * fieldPlants(u, v, 0.03 + 0.045 * grown, grown, 1.) * (1. - tram);
-    return vec2f(max(ridge, crop + ridge * 0.5), step(ridge, crop + ridge * 0.5) * step(0.001, crop));
-  }
-  if (stage == 3u) {
-    let stalk = step(0.2, fieldPlants(u, v, 0.022, 0., 0.6)) * (1. - tram);
-    return vec2f(ridge + 0.012 * stalk, stalk);
-  }
-  return vec2f(0.);
+fn fieldWheatAt(stage: f32, u: f32, v: f32, du: vec2f, dv: vec2f) -> vec4f {
+  let tall = ${WHEAT_STRIDE * WHEAT_STAGES}.;
+  let y = (stage * ${WHEAT_STRIDE}. + ${WHEAT_MARGIN}. + fract(v) * ${WHEAT_TEXELS}.) / tall;
+  return textureSampleGrad(fieldWheat, fieldWheatSampler, vec2f(u, y), vec2f(du.x, dv.x * ${WHEAT_TEXELS}. / tall), vec2f(du.y, dv.y * ${WHEAT_TEXELS}. / tall));
 }`;
 
 /**
  * Where on its strip a pixel is: `fieldU` across the pass, 0 to 1, and
- * the way that runs (`fieldAcross`); `fieldV` along it. Every texture
- * read here, before anything branches, as WGSL wants. Then not drawn: a
- * strip not yet laid, grass, and a ragged margin along the border.
+ * the way that runs (`fieldAcross`); `fieldV` along it, and how fast both
+ * change across the screen. Every texture read and every rate of change
+ * here, before anything branches, as WGSL wants. Then not drawn: a strip
+ * not yet laid, grass, and a ragged margin along the border.
  */
 const BEGIN = `let fieldU = input.vStripA.x + 0.5;
 let fieldV = input.vStripA.y;
 let fieldAcross = normalize(input.vStripA.zw);
+let fieldDu = vec2f(dpdx(fieldU), dpdy(fieldU));
+let fieldDv = vec2f(dpdx(fieldV), dpdy(fieldV));
 let fieldW = input.worldPos.xy;
-let fieldN1 = fieldNoise(fieldW * 48.);
-let fieldN2 = fieldNoise(fieldW * 48. + vec2f(97., 41.));
-// How far off the field is: as a pass shrinks to a few pixels, its
-// ridges and rows and shade are drawn as what they add up to, or shimmer.
-let fieldFar = smoothstep(0.03, 0.1, fwidth(fieldU));
+let fieldLook = material.fieldLook;
 // Broad, soft patches: wetter earth, a crop a little ahead or behind.
 let fieldMottle = 0.6 * fieldNoise(fieldW * 2. + vec2f(61., 7.)) + 0.4 * fieldNoise(fieldW * 6. + vec2f(13., 89.));
 let fieldEdge = 0.5 * fieldNoise(fieldW * 24. + vec2f(31., 5.)) + 0.5 * fieldNoise(fieldW * 6. + vec2f(3., 201.));
-let fieldLook = material.fieldLook;
+// The wind over the standing crop: broad bands, lighter where the ears
+// bow and show their sides, rolling slowly downwind.
+let fieldWind = fieldNoise(vec2f(fieldW.x * 0.5 + fieldW.y * 0.2, fieldW.y * 0.25 - fieldW.x * 0.1) - vec2f(0.6, 0.25) * fieldLook.w);
 let fieldStage = u32(fieldLook.x + 0.5);
 let fieldBorder = select(input.vStripB.y, input.vStripB.x, fieldU < 0.5) > 0.5;
 if (fieldStage == 0u || fieldV > fieldLook.z || (fieldBorder && 0.5 - abs(fieldU - 0.5) < 0.03 + 0.07 * fieldEdge)) { discard; }`;
 
 /**
- * The paint, by stage: a colour, the crop's from the earth's by how much
- * of the height is crop; the height's slope, across and along, tilting
- * the facing, so the ridges, the leaves and the walls of the tramlines
- * take the light; the shade a ridge or a plant casts, found by stepping
- * toward the sun until something stands higher than the ray (fades out
- * where a pass is a few pixels, and at night); the low of the crop and
- * the bottoms of the furrows and tracks a little darker than the tops,
- * as between a tree's clumps. Over it a jumble, the fine grain's, of
- * clods and leaves.
+ * The paint: the stage of the wheat the field is at (ploughed; sown, by
+ * how far grown, drilled, seedlings, grown, in ear, ripe; stubble), and
+ * between two, the next showing through in patches as it comes, so a
+ * field ripens in waves, not all at once. Each texel its earth's colour
+ * or the crop's, as light as it was baked, its facing turned as baked;
+ * the standing crop lighter where the wind bows it.
  */
-const DIFFUSE = `let fieldGrown = fieldLook.y;
-let fieldHC = fieldHeight(fieldU, fieldV, fieldStage, fieldGrown);
-let fieldE = 0.003;
-let fieldSlope = clamp(vec2f(fieldHeight(fieldU + fieldE, fieldV, fieldStage, fieldGrown).x - fieldHC.x, fieldHeight(fieldU, fieldV + fieldE, fieldStage, fieldGrown).x - fieldHC.x) / fieldE, vec2f(-3.), vec2f(3.));
-let fieldAlong = vec2f(fieldAcross.y, -fieldAcross.x);
-let fieldSun = material.fieldSun.xyz;
-let fieldFlat = vec2f(dot(fieldSun.xy, fieldAcross), dot(fieldSun.xy, fieldAlong));
-let fieldStep = fieldFlat / max(length(fieldFlat), 1e-4);
-let fieldRise = max(fieldSun.z, 0.05) / max(length(fieldFlat), 0.05);
-var fieldOver = 0.;
-for (var i = 1; i <= 8; i++) {
-  let du = f32(i) * 0.015;
-  fieldOver = max(fieldOver, fieldHeight(fieldU + fieldStep.x * du, fieldV + fieldStep.y * du, fieldStage, fieldGrown).x - fieldHC.x - du * fieldRise);
-}
-let fieldLit = mix(1. - smoothstep(0., 0.006, fieldOver), 0.85, fieldFar) * smoothstep(0., 0.1, fieldSun.z) + 1. - smoothstep(0., 0.1, fieldSun.z);
-let fieldBumps = (vec2f(fieldN1, fieldN2) - 0.5) * 2.;
-// A gentle tint, a few in a hundred either way, and no more.
-let fieldTint = 0.94 + 0.12 * fieldMottle;
+const DIFFUSE = `let fieldDirt = material.fieldEarth.rgb;
 // The earth: a dark grey-brown, the field's earth greyed and darkened.
-let fieldDirt = material.fieldEarth.rgb;
 let fieldSoil = mix(fieldDirt, vec3f(dot(fieldDirt, vec3f(0.3, 0.55, 0.15))), 0.45) * 0.55;
-var fieldColour = fieldSoil;
-var fieldTop = 1.;
-var fieldJumble = 0.;
-if (fieldStage == 1u) {
-  // Ploughed: turned earth, four furrow slices a pass, clods all over.
-  fieldColour = fieldSoil * 0.9;
-  fieldTop = fieldHC.x / 0.035;
-  fieldJumble = 0.55;
-} else if (fieldStage == 2u) {
-  // Sown: a soft green, the tree's sort and not the grass's, then gold;
-  // each plant's heart and the crop's low darker than its tops.
-  let leaf = material.fieldGrowing.rgb;
-  let green = mix(leaf, vec3f(dot(leaf, vec3f(0.3, 0.55, 0.15))), 0.3) * vec3f(0.56, 0.62, 0.52);
-  let crop = mix(green, material.fieldRipe.rgb * vec3f(0.86, 0.8, 0.66), smoothstep(0.6, 1., fieldGrown));
-  // Between the tufts, as it grows, the crop's own shade, too fine to draw.
-  let under = mix(fieldSoil, crop * 0.7, smoothstep(0.25, 0.7, fieldGrown) * (1. - smoothstep(0.01, 0.02, min(abs(fract(fieldU) - 0.4), abs(fract(fieldU) - 0.6)))));
-  fieldColour = mix(under, crop, mix(fieldHC.y, smoothstep(0.1, 0.5, fieldGrown), fieldFar));
-  fieldTop = mix(fieldHC.x / ${CROP_H.toFixed(3)} / max(0.15 + 0.85 * smoothstep(0.03, 0.6, fieldGrown), 0.15), 1., 1. - fieldHC.y);
-  fieldJumble = 0.15 + 0.2 * fieldHC.y;
-} else if (fieldStage == 3u) {
-  // Stubble: the harrowed ground of the sowing, the earth the crop stood
-  // in, as its tramlines show it; a pale stalk standing where most plants
-  // stood.
-  let straw = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.4) * 0.85;
-  fieldColour = mix(fieldSoil * 0.8, straw, mix(fieldHC.y, 0.2, fieldFar));
-  fieldTop = 0.5 + 0.5 * fieldHC.y;
-  fieldJumble = 0.3;
+let fieldLeaf = material.fieldGrowing.rgb;
+let fieldGreen = mix(fieldLeaf, vec3f(dot(fieldLeaf, vec3f(0.3, 0.55, 0.15))), 0.3) * vec3f(0.56, 0.62, 0.52);
+let fieldGold = material.fieldRipe.rgb * vec3f(0.86, 0.8, 0.66);
+let fieldStraw = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.4) * 0.85;
+var fieldAt = 0.;
+if (fieldStage == 2u) { fieldAt = 1. + 4. * clamp(fieldLook.y, 0., 1.); }
+if (fieldStage == 3u) { fieldAt = 6.; }
+let fieldFrom = floor(fieldAt);
+let fieldTo = min(fieldFrom + 1., 6.);
+let fieldPatch = 0.2 + 0.6 * fieldMottle;
+let fieldAhead = smoothstep(fieldPatch - 0.2, fieldPatch + 0.2, fieldAt - fieldFrom);
+var fieldColour = vec3f(0.);
+var fieldFacing = vec3f(0.);
+for (var i = 0; i < 2; i++) {
+  let st = select(fieldFrom, fieldTo, i == 1);
+  let t = fieldWheatAt(st, fieldU, fieldV, fieldDu, fieldDv);
+  let soil = fieldSoil * select(select(1., 0.8, st > 5.5), 0.9, st < 0.5);
+  var crop = fieldGreen;
+  if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
+  if (st > 4.5) { crop = fieldGold; }
+  if (st > 5.5) { crop = fieldStraw; }
+  let standing = select(0., 1., st > 2.5 && st < 5.5) * t.a;
+  let c = mix(soil, crop, t.a) * t.b * 1.25 * (1. + 0.16 * (fieldWind - 0.5) * standing);
+  let w = select(1. - fieldAhead, fieldAhead, i == 1);
+  fieldColour += c * w;
+  fieldFacing += vec3f(t.rg * 2. - 1., 0.) * w;
 }
-fieldColour = fieldColour * fieldTint * mix(0.72, 1.05, mix(clamp(fieldTop, 0., 1.), 0.7, fieldFar)) * mix(0.62, 1., fieldLit);
-baseColor = fieldColour;
-N = normalize(N - vec3f((fieldAcross * fieldSlope.x + fieldAlong * fieldSlope.y) * (1. - fieldFar), 0.) + vec3f(fieldBumps * fieldJumble, 0.));`;
+let fieldN = vec3f(fieldFacing.xy, sqrt(max(0.05, 1. - dot(fieldFacing.xy, fieldFacing.xy))));
+// A gentle tint, a few in a hundred either way, and no more.
+baseColor = fieldColour * (0.94 + 0.12 * fieldMottle);
+N = normalize(vec3f(fieldAcross * fieldN.x + vec2f(fieldAcross.y, -fieldAcross.x) * fieldN.y, fieldN.z));`;
