@@ -359,15 +359,16 @@ function plugin(engine: Engine, scene: SceneContext, paint: Paint, colours: Rgb[
  *  how much is crop: the furrow slices, each turned over against the
  *  last, rising across it and falling steep to the next; the drill rows,
  *  the crop up along them, closing over them, its tramlines, the wheel
- *  tracks a third of a pass apart either side of its middle, in the gaps
- *  between the rows, left open to the earth; the stubble, the stalks cut short in the rows they grew in, the tramlines
+ *  tracks, as far apart as the tractor's wheels and as thin as a lane's
+ *  line, in the gaps either side of the row down the pass's middle, left
+ *  open to the earth; the stubble, the stalks cut short in the rows they grew in, the tramlines
  *  still open. As high as the crop stands (CROP_H) and as deep as the
  *  shadows cast into it. */
 const DEFINITIONS = `fn fieldNoise(p: vec2f) -> f32 { return textureSample(fieldGrain, fieldGrainSampler, p / 256.).r; }
 fn fieldHeight(u: f32, stage: u32, k: f32) -> vec2f {
   let p = fract(u);
-  let row = 1. - abs(fract(u * 6.) - 0.5) * 2.;
-  let tram = 1. - smoothstep(0.035, 0.05, min(abs(p - 0.3333), abs(p - 0.6667)));
+  let row = 1. - abs(fract(u * 6. + 0.5) - 0.5) * 2.;
+  let tram = 1. - smoothstep(0.01, 0.02, min(abs(p - 0.4167), abs(p - 0.5833)));
   if (stage == 1u) { let q = fract(u * 4.); return vec2f(0.035 * pow(q, 0.6) * (1. - smoothstep(0.78, 1., q)), 0.); }
   if (stage == 2u) {
     let grown = smoothstep(0.03, 0.6, k);
