@@ -405,7 +405,7 @@ impl World {
         let field: HashSet<(i32, i32)> = ground.iter().copied().filter(|t| !yard_tiles.iter().any(|y| (y.x, y.y) == *t)).collect();
         // A run of tiles driven on from the path's end, each arrived at
         // heading for the tile after when that is a step away, so the row
-        // runs straight — else any way it can; over the run's own ground
+        // runs straight — else any way it can; over the given ground
         // first, then any. The tiles it never reached.
         let drive = |path: &mut Vec<GridCoord>, run: &[GridCoord], over: &HashSet<(i32, i32)>| -> usize {
             let mut skipped = 0;
@@ -449,7 +449,17 @@ impl World {
                 if from_end {
                     run.reverse();
                 }
-                skipped += drive(path, &run, &field);
+                // Out onto the headland to turn, and back in: in from the
+                // headland tile the row points at, over the headland and
+                // the row, where it can.
+                if let [a, b, ..] = run[..] {
+                    let out = GridCoord { x: 2 * a.x - b.x, y: 2 * a.y - b.y };
+                    if head.contains(&(out.x, out.y)) && field.contains(&(out.x, out.y)) {
+                        run.insert(0, out);
+                    }
+                }
+                let turn: HashSet<(i32, i32)> = head.iter().copied().chain(run.iter().map(|t| (t.x, t.y))).filter(|t| field.contains(t)).collect();
+                skipped += drive(path, &run, &turn);
             }
             skipped
         };
