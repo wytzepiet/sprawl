@@ -453,13 +453,14 @@ if (fieldStage == 1u) {
   fieldLean = fieldHC.y * (0.25 * (fieldStreak2 - fieldStreak) * 6. + 0.2);
   fieldJumble = 0.15 + 0.15 * fieldHC.y;
 } else if (fieldStage == 3u) {
-  // Stubble: the harrowed ground of the sowing, dark earth; pale stalks
+  // Stubble: the harrowed ground of the sowing, the earth the crop stood
+  // in, as its tramlines show it; pale stalks
   // standing in its rows here and there, and straw lying across it.
   let straw = mix(material.fieldStubble.rgb, material.fieldRipe.rgb, 0.3);
   let stalks = fieldHC.y * smoothstep(0.4, 0.55, fieldStalk);
   let lying = smoothstep(0.72, 0.8, fieldLie) * (0.3 + 0.7 * fieldMottle);
-  fieldColour = mix(material.fieldEarth.rgb * vec3f(0.72, 0.64, 0.58), straw, mix(max(stalks, lying * 0.8), 0.3, fieldFar));
-  fieldTop = 0.6 + 0.4 * max(stalks, lying);
+  fieldColour = mix(fieldSoil * 0.72, straw, mix(max(stalks, lying * 0.8), 0.3, fieldFar));
+  fieldTop = max(stalks, lying);
   fieldJumble = 0.3;
 }
 fieldColour = fieldColour * fieldTint * mix(0.72, 1.05, mix(clamp(fieldTop, 0., 1.), 0.7, fieldFar)) * mix(0.62, 1., fieldLit);
