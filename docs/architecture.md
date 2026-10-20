@@ -86,14 +86,15 @@ and icons outlines in one glyph atlas, its glass the frame's own
 (`engine/glass.ts`). The game's UI is written in those elements
 (`client/src/ui/`, every `.tsx` there compiled for them). What is
 pinned to the map is placed before each frame through the scene's
-projection, after the camera has moved. The tools are a tab bar along
-the bottom with a sheet over it, as the Find My app has one
+projection, after the camera has moved. The tools are one sheet at the
+bottom, its tabs fixed along its foot and the shown tab grown up out of
+it, as the Find My app has it
 (`ui/sheet.ts`, 2026-10-20): the bare hand's sheet is the card of what
 it tapped, the roads' their tools and the demolisher, the build menu's
 its buildings, the ferry's new deals, the stock's every depot's shelves
-as one. A building's own ring, its card and taking it down, opens on a
+as one; with nothing to show, it is the bar alone. A building's own ring, its card and taking it down, opens on a
 long press or a right click. The clock and the level are along the top,
-undo at the side. The interchange's panels are still the page's, glass
+undo at the side (on a phone, over the sheet). The interchange's panels are still the page's, glass
 under `data-glass` elements.
 
 ## Deployment (plan)

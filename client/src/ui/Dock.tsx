@@ -21,11 +21,9 @@ const BUILD = "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z";
 const STOCK = "M3 13h8v8H3zM13 13h8v8h-8zM8 3.5h8v8H8z";
 const UNDO = "M9.5 4 3 10l6.5 6v-4h5a4.5 4.5 0 0 1 0 9H11v3h3.5a7.5 7.5 0 0 0 0-15h-5z";
 
-/** The dock's measure: a tab every 52px, the bar 60 tall, the sheet 8
- *  over it. */
+/** The dock's measure: a tab every 52px, the bar 60 tall. */
 const SLOT = 52;
 const BAR = 60;
-const GAP = 8;
 const WIDTH = SLOT * TABS.length + 8;
 const cx = (j: number) => 30 + SLOT * j;
 const barBottom = () => (wide() ? 28 : 20);
@@ -40,8 +38,11 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
 };
 
 /**
- * The dock: the tabs along the bottom, and over them the shown tab's
- * sheet, as the Find My app has it (`sheet.ts`). The bare hand, whose
+ * The dock: one sheet, the tabs fixed along its foot, the shown tab's
+ * content grown up out of the bar over them, as the Find My app has it
+ * (`sheet.ts`): its head peeking, drawn up by a finger or a tap, the
+ * rest under it as tall as it is up to its room, and taller scrolls;
+ * dragged down from its top, it sinks again. The bare hand, whose
  * sheet is the card of what it tapped; the roads, and the demolisher
  * with them; the build menu; new deals on the ferry; the town's stock.
  * Undo stands apart, at the side.
@@ -103,52 +104,19 @@ export default function Dock() {
     : t === "trade" ? FERRY
     : STOCK;
 
-  return (
-    <>
-      <Sheet />
-      <box at={{ left: 0, right: 0, bottom: barBottom() }} align="center">
-        <box w={WIDTH} h={BAR}>
-          <glass layer="dock" at={{ left: 0, bottom: 0 }} w={WIDTH} h={BAR} round={30} />
-          <Show when={bead()}>
-            {(dye) => <glass layer="beads" dye={dye()} at={{ left: beadX() - beadW() / 2, bottom: 30 - beadH() / 2 }} w={beadW()} h={beadH()} round={beadH() / 2} />}
-          </Show>
-          <For each={[...TABS]}>
-            {(t, j) => {
-              const on = () => tab() === t;
-              return (
-                <Press at={{ left: cx(j()) - 22, bottom: 8 }} w={44} h={44} round={22} align="center" justify="center" onTap={() => press(t)}>
-                  <icon d={glyph(t)} size={21} ink={on() && bead() ? "white" : on() ? "ink" : "ink/0.6"} />
-                </Press>
-              );
-            }}
-          </For>
-        </box>
-      </box>
-      {/* Undo, apart at the side. */}
-      <glass layer="undo" at={wide() ? { left: 24, bottom: barBottom() + 6 } : { left: 12, bottom: barBottom() + 8 }} w={wide() ? 48 : 44} h={wide() ? 48 : 44} round={24} align="center" justify="center" onTap={undo}>
-        <icon d={UNDO} size={20} ink="ink/0.72" />
-      </glass>
-    </>
-  );
-}
-
-/**
- * The shown tab's sheet over the dock: its head always, a grabber over
- * it; drawn up by a finger or a tap, the rest under it, as tall as it is
- * up to its room, and taller scrolls. Dragged down from its top, it
- * sinks again. The bare hand's sheet is only there while a card is.
- */
-function Sheet() {
+  // The sheet's content, its height and the room it may take; with
+  // nothing to show the dock is the bar alone, as narrow as its tabs.
   const [headH, setHeadH] = createSignal(0);
   const [bodyH, setBodyH] = createSignal(0);
   const [scroll, setScroll] = createSignal(0);
-  /** Where a finger holds the sheet's height, while it does. */
+  /** Where a finger holds the content's height, while it does. */
   const [pull, setPull] = createSignal<number | null>(null);
+  const shown = () => tab() !== "select" || selected() !== null;
   const room = () => Math.max(0, (wide() ? Math.min(560, view().h - 240) : view().h * 0.62) - headH());
   const openH = () => headH() + Math.min(bodyH(), room());
-  const [h] = follow(() => pull() ?? (open() ? openH() : headH()), { rest: 0.2 });
-  const shown = () => tab() !== "select" || selected() !== null;
-  createEffect(() => (eye.below = shown() ? barBottom() + BAR + GAP + h() : 0));
+  const [h] = follow(() => (shown() ? pull() ?? (open() ? openH() : headH()) : 0), { rest: 0.2 });
+  const [w] = follow(() => (shown() ? sheetWidth() : WIDTH), { rest: 0.2 });
+  createEffect(() => (eye.below = barBottom() + BAR + h()));
 
   const roll = (by: number) => setScroll(Math.max(0, Math.min(bodyH() - room(), scroll() + by)));
   /** A finger on the sheet: up draws it up, down sinks it; let go, it
@@ -163,18 +131,47 @@ function Sheet() {
   const scrolled = (by: number, held?: boolean) => (held !== undefined && (pull() !== null || (by < 0 && scroll() <= 0)) ? drag(by, held) : roll(by));
 
   return (
-    <Show when={shown()}>
-      <glass layer="sheet" at={{ left: (view().w - sheetWidth()) / 2, bottom: barBottom() + BAR + GAP }} w={sheetWidth()} h={h()} round={26} clip>
-        <box at={{ left: sheetWidth() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" />
-        <box onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
-          <Show when={tab()} keyed>{(t) => SHEETS[t].head()}</Show>
-        </box>
-        <box h={Math.max(0, h() - headH())} clip onScroll={scrolled}>
-          <box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
-            <Show when={tab()} keyed>{(t) => SHEETS[t].body()}</Show>
+    <>
+      <box at={{ left: 0, right: 0, bottom: barBottom() }} align="center">
+        <box w={w()} h={h() + BAR}>
+          {/* One glass: the shown tab's sheet, grown up out of the bar. */}
+          <glass layer="dock" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR} round={30} clip>
+            <Show when={shown()}>
+              <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" />
+              <box w={sheetWidth()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
+                <Show when={tab()} keyed>{(t) => SHEETS[t].head()}</Show>
+              </box>
+              <box w={sheetWidth()} h={Math.max(0, h() - headH())} clip onScroll={scrolled}>
+                <box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
+                  <Show when={tab()} keyed>{(t) => SHEETS[t].body()}</Show>
+                </box>
+              </box>
+              <box at={{ left: 16, right: 16, bottom: BAR }} h={1} fill="ink/0.08" opacity={Math.min(1, h() / 24)} />
+            </Show>
+          </glass>
+          {/* The tabs, fixed along its foot. */}
+          <box at={{ left: (w() - WIDTH) / 2, bottom: 0 }} w={WIDTH} h={BAR}>
+            <Show when={bead()}>
+              {(dye) => <glass layer="beads" dye={dye()} at={{ left: beadX() - beadW() / 2, bottom: 30 - beadH() / 2 }} w={beadW()} h={beadH()} round={beadH() / 2} />}
+            </Show>
+            <For each={[...TABS]}>
+              {(t, j) => {
+                const on = () => tab() === t;
+                return (
+                  <Press at={{ left: cx(j()) - 22, bottom: 8 }} w={44} h={44} round={22} align="center" justify="center" onTap={() => press(t)}>
+                    <icon d={glyph(t)} size={21} ink={on() && bead() ? "white" : on() ? "ink" : "ink/0.6"} />
+                  </Press>
+                );
+              }}
+            </For>
           </box>
         </box>
+      </box>
+      {/* Undo, apart: at the side on a wide screen; on a phone, riding
+          over the sheet at its right. */}
+      <glass layer="undo" at={wide() ? { left: 24, bottom: barBottom() + 6 } : { right: 12, bottom: barBottom() + BAR + h() + 10 }} w={wide() ? 48 : 44} h={wide() ? 48 : 44} round={24} align="center" justify="center" onTap={undo}>
+        <icon d={UNDO} size={20} ink="ink/0.72" />
       </glass>
-    </Show>
+    </>
   );
 }
