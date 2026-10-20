@@ -120,13 +120,25 @@ class Strips {
     const last = nodes.length - 1;
     const bound = (k: number) => (atNode[k - 1] + atNode[k]) / 2;
     // The drawn path between two distances along it, ends included.
+    // The first point at or past a distance, found by halves.
+    const past = (d: number) => {
+      let [lo, hi] = [0, distances.length];
+      while (lo < hi) {
+        const m = (lo + hi) >> 1;
+        if (distances[m] < d) lo = m + 1;
+        else hi = m;
+      }
+      return lo;
+    };
     const along = (d0: number, d1: number): { p: P; d: number }[] => {
       const at = (d: number) => {
-        const i = Math.max(0, distances.findIndex((x) => x >= d) - 1);
+        const i = Math.min(Math.max(0, past(d) - 1), distances.length - 2);
         const t = (d - distances[i]) / (distances[i + 1] - distances[i] || 1);
         return { p: { x: points[i].x + (points[i + 1].x - points[i].x) * t, y: points[i].y + (points[i + 1].y - points[i].y) * t }, d };
       };
-      const run = [at(d0), ...points.flatMap((p, i) => (distances[i] > d0 && distances[i] < d1 ? [{ p, d: distances[i] }] : [])), at(d1)];
+      const run = [at(d0)];
+      for (let i = past(d0); i < distances.length && distances[i] < d1; i++) if (distances[i] > d0) run.push({ p: points[i], d: distances[i] });
+      run.push(at(d1));
       // A hair on past each end, to meet the piece beside it.
       const on = (a: { p: P; d: number }, b: { p: P; d: number }) => {
         const l = Math.hypot(b.p.x - a.p.x, b.p.y - a.p.y) || 1;
@@ -213,7 +225,7 @@ class Strips {
 const SPILL = 0.16;
 const HAIR = 0.03;
 
-export class Field {
+class Field {
   private ruts: Strips | null = null;
   /** The run out now, or the last one, just over: the look it leaves,
    *  its strips, which step works each tile. */
@@ -329,6 +341,33 @@ export class Field {
     this.casters.remove(this.sheet);
     drop(this.ctx.scene, this.sheet);
   }
+}
+
+/**
+ * Each farm's field, kept while its land and ruts are as they were: the
+ * farm's record comes again with every crate and every worker, and a field
+ * made again for each would stall the frame. Let go, it is dropped once the
+ * batch that let it go has passed without taking it up again.
+ */
+const FIELDS = new Map<number, { field: Field; was: string; theme: Theme; held: boolean }>();
+export function keepField(ctx: EngineContext, casters: Casters, farm: number, tiles: Tile[], ruts: GridCoord[], theme: Theme): () => void {
+  const was = JSON.stringify([tiles, ruts]);
+  let kept = FIELDS.get(farm);
+  if (!kept || kept.was !== was || kept.theme !== theme) {
+    kept?.field.dispose();
+    kept = { field: new Field(ctx, casters, farm, tiles, ruts, theme), was, theme, held: true };
+    FIELDS.set(farm, kept);
+  }
+  const mine = kept;
+  mine.held = true;
+  return () => {
+    mine.held = false;
+    queueMicrotask(() => {
+      if (mine.held || FIELDS.get(farm) !== mine) return;
+      mine.field.dispose();
+      FIELDS.delete(farm);
+    });
+  };
 }
 
 /** The wheat's stages, an engine's: bare earth until the worker has

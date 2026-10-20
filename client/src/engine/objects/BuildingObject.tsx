@@ -9,7 +9,7 @@ import { KERB_Z } from "../town/draw";
 import { INSET } from "../town/footprint";
 import { eaves } from "../town/mass";
 import { storeysOf } from "../town/grid";
-import { Field } from "./field";
+import { keepField } from "./field";
 import type { Look } from "./look";
 import type { Theme } from "../theme";
 import type { Building, GameObjectEntry } from "../../generated";
@@ -142,11 +142,11 @@ export function mountBuilding(
 
   // A farm's field: its land, worked as its tractor last left it, or as
   // it is working it now.
-  const field = data.land.length ? new Field(ctx, pool.casters, entry.id, data.land, data.ruts, theme) : null;
+  const field = data.land.length ? keepField(ctx, pool.casters, entry.id, data.land, data.ruts, theme) : null;
 
   return () => {
     for (const { key, id } of placed) pool.removeInstance(key, id);
     for (const box of boxes) box.remove();
-    field?.dispose();
+    field?.();
   };
 }
