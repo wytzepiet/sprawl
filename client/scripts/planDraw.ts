@@ -82,6 +82,8 @@ export function planSvg(text: string, { crop, px, paths }: { crop?: [number, num
     if (height > 0) for (const face of roofFaces(polygon, height / pitch)) fill(face.region, "none", `stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.02"`);
   }
 
+  // The street lamps: the pool each throws, its arm and its head.
+  for (const l of dressing.lamps) out.push(`<circle cx="${f(l.hx)}" cy="${f(l.hy)}" r="0.9" fill="#ffb347" fill-opacity="0.18"/><line x1="${f(l.x)}" y1="${f(l.y)}" x2="${f(l.hx)}" y2="${f(l.hy)}" stroke="#333" stroke-width="0.03"/><circle cx="${f(l.hx)}" cy="${f(l.hy)}" r="0.05" fill="#ffa000"/>`);
   for (const t of dressing.trees) out.push(`<circle cx="${f(t.x)}" cy="${f(t.y)}" r="${f(0.2 * t.scale)}" fill="${hex(T.crowns[t.shade])}"/>`);
 
   // Vehicles' paths, in the game's tiles: a column on is a tile less of x.

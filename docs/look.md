@@ -255,7 +255,12 @@ What each kind becomes as it does well, and with its neighbours:
 - **Streets**: take their character from what fronts them. Homes: trees,
   bays, quiet. Shops: wide pavement, lamps, awnings, crossings. Industry:
   wide, bare, loading bays. Nobody places street furniture. Lamps are the
-  one that matters most: the night lights them.
+  one that matters most: the night lights them. Built 2026-10-19 for every
+  street with a pavement, the same lamp everywhere: marching squares over
+  the road tiles put one on each corner a street turns or meets another,
+  and along a straight edge every fourth tile, the far side's staggered
+  halfway (`town/dressing.ts`: `lamps`). Each head is a light at night,
+  and every moving car throws a headlight ahead of it (`lights.ts`).
 
 ## Rules for the drawings
 

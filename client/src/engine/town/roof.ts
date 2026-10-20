@@ -84,7 +84,7 @@ export interface Prop {
   ty: number;
 }
 /** The props there are, in the order their codes cross from the worker. */
-export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight"] as const;
+export const PROP_KINDS = ["ac", "vent", "duct", "stack", "dish", "rooflight", "lamp"] as const;
 export type PropKind = (typeof PROP_KINDS)[number];
 
 export function townMesh(painted: Town, paint: Paint, only?: Set<string>, known = facts(painted)): MeshGeometry & { colors: number[]; props: Prop[] } {

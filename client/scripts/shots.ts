@@ -40,7 +40,7 @@ mkdirSync(OUT, { recursive: true });
 rmSync(`${ROOT}/.dev/fixtures.db`, { force: true });
 
 const env = { ...process.env, SPRAWL_PORT: String(SERVER_PORT), SPRAWL_CLIENT_PORT: String(CLIENT_PORT) };
-const server = sandbox ? null : Bun.spawn(["cargo", "run", "-q"], {
+const server = sandbox ? null : Bun.spawn(["cargo", "run", "-q", "-p", "sprawl-server"], {
   cwd: `${ROOT}/server`,
   env: { ...env, SPRAWL_FIXTURES: process.env.FIXTURES ?? "fixtures", SPRAWL_DB: `${ROOT}/.dev/fixtures.db` },
   stdout: Bun.file(`${ROOT}/.dev/fixtures-server.log`),

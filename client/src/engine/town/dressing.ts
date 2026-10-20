@@ -3,7 +3,7 @@ import type { Facts } from "./facts";
 import { formOf } from "./mass";
 import { HALF_W } from "../objects/roadGeometry";
 import { INSET } from "./footprint";
-import { baysAt, drive } from "./surface";
+import { baysAt, drive, SIDEWALK } from "./surface";
 
 /**
  * The free ground, dressed: what stands on a tile that is no building's,
@@ -17,6 +17,8 @@ import { baysAt, drive } from "./surface";
  * - Cars stand where the game parks them: on a house's drive, and in the
  *   bays at the kerb before anything else that parks there (`baysAt`),
  *   with a gap here and there.
+ *
+ * - Street lamps stand where the road's edge runs (`lamps`).
  *
  * Which tiles get a tree or a car, and where, comes from the place alone,
  * so the same town is always dressed the same.
@@ -59,8 +61,18 @@ export interface Car {
 
 type Pt = [number, number];
 
+/** A street lamp: its foot on the pavement, and its head, out over the
+ *  kerb on its arm. */
+export interface Lamp {
+  x: number;
+  y: number;
+  hx: number;
+  hy: number;
+}
+
 export interface Dressing {
   trees: Tree[];
+  lamps: Lamp[];
   cars: Car[];
   docks: Dock[];
   canopies: Canopy[];
@@ -124,9 +136,93 @@ export function dress(town: Town, facts: Facts): Dressing {
   const lorries = docks(town, facts);
   return {
     trees: trees.filter((t) => !onDrive(t)),
+    lamps: lamps(town).filter((l) => !onDrive({ x: l.x, y: l.y, scale: 0, shade: 0 })),
     cars: [...park(town), ...drives.cars],
     docks: lorries.docks, canopies: lorries.canopies, yardLines: lorries.lines,
   };
+}
+
+/** How far out from a road's middle a lamp stands: on the pavement, just
+ *  past the kerb; how far its arm reaches back over the road. */
+const LAMP_OUT = HALF_W + 0.07;
+/** And from a diagonal street's, whose asphalt is wider across. */
+const DIAGONAL_OUT = 0.42;
+const ARM = 0.1;
+/** A lamp to every this many tiles along each side of a straight street,
+ *  the two sides staggered by half of it. */
+const LAMP_EVERY = 4;
+const mod = (a: number, n: number) => ((a % n) + n) % n;
+
+/**
+ * Street lamps, by marching squares over the road. Each square of four
+ * tiles' middles is one of sixteen cases of road and not; the road's edge
+ * runs through it as the case says, and the case says where a lamp goes:
+ *
+ * - three of road, a street turning a corner or a junction's: a lamp on the
+ *   corner of the pavement, its arm out over the crossing;
+ * - two side by side, the edge running straight: a lamp every
+ *   `LAMP_EVERY` tiles, the far side's halfway between, and none beside a
+ *   junction's mouth, where the corner's lamp stands;
+ * - two across the diagonal, a diagonal street: a lamp each side by turns;
+ * - one, the outside of a bend or a dead end, none or four, none.
+ *
+ * Only roads with a pavement are lit: in town, and out of it a junction.
+ * By where the square is on the map, so the town is lit the same however
+ * it is framed.
+ */
+function lamps(town: Town): Lamp[] {
+  const out: Lamp[] = [];
+  const at = (c: number, r: number) => (town.at ? town.at(c, r) : [c, r]);
+  const road = (c: number, r: number) => town.tile(c, r).kind === "road";
+  const lit = (c: number, r: number) => road(c, r) && (town.sidewalk?.(c, r) ?? SIDEWALK) > 0;
+  /** A lamp at (x, y), its arm toward (dx, dy), a unit step. */
+  const lamp = (x: number, y: number, dx: number, dy: number) => out.push({ x, y, hx: x + dx * ARM, hy: y + dy * ARM });
+  for (let r = -1; r < town.h; r++) {
+    for (let c = -1; c < town.w; c++) {
+      const corners = [road(c, r), road(c + 1, r), road(c, r + 1), road(c + 1, r + 1)];
+      const n = corners.filter(Boolean).length;
+      if (n === 3) {
+        // The corner tile across from the one that is not road: the
+        // street turns there, both its arms joined to it.
+        const gone = corners.indexOf(false);
+        const [sx, sy] = [gone % 2 ? 1 : -1, gone > 1 ? 1 : -1];
+        const [jc, jr] = [c + (gone % 2 ? 0 : 1), r + (gone > 1 ? 0 : 1)];
+        if (!lit(jc, jr) || !town.linked(jc, jr, jc + sx, jr) || !town.linked(jc, jr, jc, jr + sy)) continue;
+        lamp(jc + 0.5 + sx * LAMP_OUT, jr + 0.5 + sy * LAMP_OUT, -sx * Math.SQRT1_2, -sy * Math.SQRT1_2);
+      } else if (n === 2 && corners[0] === corners[3]) {
+        // A diagonal street, from the corner tile (c0, r0) on.
+        const [c0, d] = corners[0] ? [c, 1] : [c + 1, -1];
+        if (!lit(c0, r) || !town.linked(c0, r, c0 + d, r + 1)) continue;
+        const side = mod(at(c0, r)[0], LAMP_EVERY);
+        if (side !== 0 && side !== LAMP_EVERY / 2) continue;
+        // Across the street from its middle, to one side or the other.
+        const s = side ? -1 : 1;
+        const [px, py] = [(s * Math.SQRT1_2), (-s * d * Math.SQRT1_2)];
+        lamp(c0 + 0.5 + px * DIAGONAL_OUT, r + 0.5 + py * DIAGONAL_OUT, -px, -py);
+      } else if (n === 2) {
+        // A straight edge: the street along (ux, uy) from tile (c0, r0),
+        // the pavement toward (nx, ny).
+        const [c0, r0, ux, uy, nx, ny] =
+          corners[0] && corners[1] ? [c, r, 1, 0, 0, 1]
+          : corners[2] && corners[3] ? [c, r + 1, 1, 0, 0, -1]
+          : corners[0] && corners[2] ? [c, r, 0, 1, 1, 0]
+          : [c + 1, r, 0, 1, -1, 0];
+        const along = (k: number) => [c0 + ux * k, r0 + uy * k];
+        // Straight a tile either way too: not at a junction's mouth.
+        const straight = [-1, 0, 1, 2].every((k) => {
+          const [tc, tr] = along(k);
+          return lit(tc, tr) && !road(tc + nx, tr + ny) && (k === 2 || town.linked(tc, tr, tc + ux, tr + uy));
+        });
+        if (!straight) continue;
+        const [mc, mr] = at(c0, r0);
+        if (mod((ux ? mc : mr) + ((nx || ny) > 0 ? 0 : LAMP_EVERY / 2), LAMP_EVERY)) continue;
+        if ([0, 1].some((k) => baysAt(town, ...(along(k) as [number, number])).some((b) => b.side[0] === nx && b.side[1] === ny))) continue;
+        // On the line between the two tiles, out on the pavement.
+        lamp(c0 + 0.5 + ux * 0.5 + nx * LAMP_OUT, r0 + 0.5 + uy * 0.5 + ny * LAMP_OUT, -nx, -ny);
+      }
+    }
+  }
+  return out;
 }
 
 /** A driveway: as wide as two cars side by side with a little room, the

@@ -11,6 +11,7 @@ import { SPAN as SLATE_SPAN } from "./slate";
 import { RIPPLE_SIDE, RIPPLE_TILES } from "./ripples";
 import recipe from "./ripples.ts?raw";
 import { baked } from "./bakeCache";
+import { LAYER_ORDER } from "./town/draw";
 import { CHUNK_SIZE, LAYERS, nearLines, outlineOf, parseShape, shapeGeometry, type LayerTiles } from "./objects/terrainGeometry";
 import { fillTriangles } from "./raster";
 
@@ -383,6 +384,7 @@ export class GroundTiles {
     }
     const mesh = meshOf(this.engine, `ground_${key}`, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
     mesh.material = this.material;
+    mesh.renderOrder = LAYER_ORDER.ground;
     mesh.receiveShadows = true;
     setThinInstances(mesh, matrices, count);
     setMeshAttribute(this.engine, mesh, "ground", data);

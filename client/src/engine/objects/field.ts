@@ -4,6 +4,7 @@ import type { Casters } from "../DayNightCycle";
 import { drop, meshOf, show } from "../geometry";
 import { grain } from "../ground";
 import { CAST_ONLY, townMaterial, type TownMaterial } from "../material";
+import { LAYER_ORDER } from "../town/draw";
 import type { Rgb } from "../rgb";
 import type { Theme } from "../theme";
 import { simNow } from "../../network/clock";
@@ -206,6 +207,7 @@ class Strips {
     this.mesh = meshOf(ctx.engine, name, { positions: this.positions, normals: Array.from({ length: count * 2 }, () => [0, 0, 1]).flat(), indices });
     this.mesh.material = material(this.paint);
     this.mesh.receiveShadows = true;
+    this.mesh.renderOrder = LAYER_ORDER.field;
     setMeshAttribute(ctx.engine, this.mesh, "strip", data);
     show(ctx.scene, this.mesh);
   }

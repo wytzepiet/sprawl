@@ -14,7 +14,7 @@ import type { TownApi } from "./townWorker";
 import type { Theme } from "./theme";
 import type { Look } from "./objects/look";
 import { BLUEPRINTS, yardOf } from "../blueprints";
-import { KERB_Z } from "./town/draw";
+import { KERB_Z, LAYER_ORDER } from "./town/draw";
 import type { MeshGeometry } from "./geometry";
 import { bevelled, bevelPlugin, giveBevel, lacquer, type Bevel } from "./bevel";
 import { surfacesAt } from "./town/surface";
@@ -530,6 +530,7 @@ export class TownLayer {
       giveBevel(engine, mesh, geo);
       const colour = p.colour ? rgb(p.colour.r, p.colour.g, p.colour.b) : WHITE;
       mesh.material = p.name === "mass" ? this.masses : paved ? this.pavement(colour, kerbs) : this.pieceMaterial(p.name, colour);
+      if (p.name === "mass" || paved) mesh.renderOrder = paved ? LAYER_ORDER.pavement : LAYER_ORDER.mass;
       mesh.position.x = ox;
       mesh.position.y = oy;
       mesh.receiveShadows = true;

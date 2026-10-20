@@ -19,6 +19,7 @@ import type { Car, GameObjectEntry } from "../../generated";
 import type { Pose as Stand } from "../../generated/Pose";
 import { carPoses, parts } from "../../state/selection";
 import { HALF_LEVEL, heightAlong } from "../decks";
+import { beam, unbeam } from "../lights";
 
 const carGeo = carShape(CAR.w, CAR.l, CAR.h);
 const vanGeo = boxGeometry(VAN.w, VAN.l, VAN.h);
@@ -26,6 +27,9 @@ const vanGeo = boxGeometry(VAN.w, VAN.l, VAN.h);
 /** A box sits on the road: its centre is half its height up. */
 const CAR_Z = ROAD_Z + CAR.h / 2;
 const GROUND = ROAD_Z;
+/** How high a cab's headlight hangs, inside it, so it lights the road
+ *  ahead and none of the cab (`lights.ts`). */
+const CAB_LIGHT = 0.09;
 
 /** A vehicle's finish: its paint a clear coat, glossier than the town's
  *  lacquer, and its glass (the shape's darker vertices, `carShape.ts`) all
@@ -137,9 +141,11 @@ export function mountCar(
     const result = f.now();
     pool.updateInstance(bucket, instanceId, result.pos, result.rot);
     carPoses.set(entry.id, [result.pos[0], result.pos[1]]);
+    beam(entry.id, result.pos[0], result.pos[1], result.pos[2], result.rot[2] + Math.PI / 2);
   });
   return () => {
     stop();
+    unbeam(entry.id);
     pool.removeInstance(bucket, instanceId);
     if (car.run && runs.get(car.owner) === car.run) runs.delete(car.owner);
     carPoses.delete(entry.id);
@@ -171,11 +177,13 @@ function mountLorry(id: number, car: Car, pool: InstancePool, ctx: EngineContext
   const stop = drive && ctx.beforeRender(() => {
     const p = pose();
     carPoses.set(id, p.body.at);
+    beam(id, p.body.at[0], p.body.at[1], GROUND + CAB_LIGHT, p.body.heading);
     pool.updateInstance(cab, a, ...placed(p.body));
     if (box) box.move(p.box);
   });
   return () => {
     if (stop) stop();
+    unbeam(id);
     pool.removeInstance(cab, a);
     if (box) box.remove();
     carPoses.delete(id);
