@@ -112,6 +112,9 @@ class Strips {
   readonly drawn: DrawnPath;
   readonly paint: Paint;
   private positions: Float32Array;
+  /** Each vertex out past its piece's tile, a little lower, so that where a
+   *  piece's spill lies over a tile another piece works, that piece shows. */
+  private sunk: Float32Array;
   private z = -1;
 
   constructor(ctx: EngineContext, name: string, nodes: P[], drawn: DrawnPath, works: (k: number) => boolean, land: Set<string>, material: (paint: Paint) => TownMaterial, look: Look) {
@@ -185,6 +188,7 @@ class Strips {
     }
     const count = pieces.reduce((n, piece) => n + piece.samples.length, 0);
     this.positions = new Float32Array(count * 6);
+    this.sunk = new Float32Array(count * 2);
     const data = new Float32Array(count * 16);
     const indices: number[] = [];
     let v = 0;
@@ -198,6 +202,7 @@ class Strips {
         sides.forEach((spill, s) => {
           const out = (s ? 1 : -1) * (0.5 + (spill ? SPILL : HAIR));
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
+          this.sunk[v + s] = spill || d < from || d > to ? SUNK : 0;
           data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
@@ -216,7 +221,7 @@ class Strips {
   lift(engine: Engine, z: number) {
     if (Math.abs(z - this.z) < 0.001) return;
     this.z = z;
-    for (let i = 2; i < this.positions.length; i += 3) this.positions[i] = z;
+    for (let i = 0; i < this.sunk.length; i++) this.positions[i * 3 + 2] = z - this.sunk[i];
     updateMeshPositions(engine, this.mesh, this.positions);
   }
 }
@@ -225,6 +230,7 @@ class Strips {
  *  edge and the crumbs of earth beyond it; and where it meets another
  *  piece, a hair over, so the two meet with no seam between. */
 const SPILL = 0.16;
+const SUNK = 0.0015;
 const HAIR = 0.03;
 
 class Field {
@@ -506,10 +512,12 @@ for (var i = 0; i < 2; i++) {
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
   if (st > 4.5) { crop = fieldGold; }
   if (st > 5.5) { crop = fieldStraw; }
-  let c = mix(soil, crop, t.a) * t.b * 1.25;
+  // Past its own tile, the spilled earth: bare, nothing grows on it.
+  let a = select(t.a, 0., fieldOut > 0.);
+  let c = mix(soil, crop, a) * t.b * 1.25;
   let w = select(1. - fieldAhead, fieldAhead, i == 1);
   fieldColour += c * w;
-  fieldFacing += vec3f(t.rg * 2. - 1., 0.) * w;
+  fieldFacing += vec3f(select(t.rg * 2. - 1., vec2f(0.), fieldOut > 0.), 0.) * w;
 }
 let fieldN = vec3f(fieldFacing.xy, sqrt(max(0.05, 1. - dot(fieldFacing.xy, fieldFacing.xy))));
 // A gentle tint, a few in a hundred either way, and no more.
