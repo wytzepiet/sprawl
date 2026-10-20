@@ -43,7 +43,10 @@ not the plan. The first version is:
 
 The world stays the shipping company, and freight leaves the game.
 Waiting, until play asks for them: contracts, floors, every-sailing
-orders, embassies, exchanges run by mayors, freight carried by players.
+orders, embassies, exchanges run by mayors. Out for good: freight
+carried by players. A mayor earns from what stands in their town, and a
+shipping line is ships between other people's harbours; a shipyard
+passes (the ships are built on your slip and sold), the fleet does not.
 
 ## Prices
 
