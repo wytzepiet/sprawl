@@ -153,6 +153,21 @@ What a tree gave, guidance, comes from elsewhere:
   first, then each of the rest with what it still lacks, a recipe book
   rather than a wall of forty buildings.
 
+## Simple on top, deep underneath
+
+Wytze, 2026-10-20: the surface is a good's graph, Buy and Sell, and
+nothing else. Depth comes as buildings, each adding one thing to that
+surface where it stands:
+
+- **A tank farm or a warehouse** lets you hold enough to bet.
+- **An exchange** adds contracts (a price for a month, with a named
+  partner) and orders that wait ("sell when oil passes 90").
+- **An embassy for another mayor**, their flag on a building in your
+  town, opens trade with them directly: past the world's spread, their
+  prices and stock in sight, contracts with them alone. Its standing
+  grows with the trade between you (`orders.rs`'s trust, made a place).
+  The partners you have are the embassies on your map.
+
 ## It needs other mayors
 
 A market is only as alive as the towns in it, which is the point:
