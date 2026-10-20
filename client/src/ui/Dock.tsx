@@ -132,10 +132,10 @@ export default function Dock() {
           <glass layer="dock" at={{ left: 0, top: 0 }} w={w()} h={h() + BAR} round={30} clip>
             <Show when={shown()}>
               <box at={{ left: w() / 2 - 18, top: 6 }} w={36} h={5} round={2.5} fill="ink/0.18" />
-              <box w={sheetWidth()} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
+              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} onSize={(_, y) => setHeadH(y)} onTap={() => setOpen(!open())} onScroll={drag}>
                 <Show when={tab()} keyed>{(t) => SHEETS[t].head()}</Show>
               </box>
-              <box w={sheetWidth()} h={Math.max(0, h() - headH())} clip onScroll={scrolled}>
+              <box w={sheetWidth()} x={(w() - sheetWidth()) / 2} h={Math.max(0, h() - headH())} clip onScroll={scrolled}>
                 <box y={-scroll()} onSize={(_, y) => (setBodyH(y), y <= room() && setScroll(0))}>
                   <Show when={tab()} keyed>{(t) => SHEETS[t].body()}</Show>
                 </box>
