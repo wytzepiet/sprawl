@@ -168,6 +168,16 @@ surface where it stands:
   grows with the trade between you (`orders.rs`'s trust, made a place).
   The partners you have are the embassies on your map.
 
+**A building decides what may be done, the tab is where it is done, the
+map is where it is seen.** Wytze tried stock on each depot alone, and
+you want the total; a building with a trade panel is only a button. So
+the goods tab is one, global: a good's graph, the town's total (as Anno
+tops its warehouses' sum), Buy, Sell. A building changes what that tab
+can do, never gets a panel of its own: a tank farm raises the ceiling
+it shows, an exchange adds its contracts, an embassy its mayor's row.
+The map shows the result: tanks filling, a ship at the bulk berth, a
+flag. A tap on the building opens the tab on what it holds.
+
 ## It needs other mayors
 
 A market is only as alive as the towns in it, which is the point:
