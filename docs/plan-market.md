@@ -50,6 +50,23 @@ harbours; a ship is a one-off, not a good.
 
 ## Prices
 
+**The world is a band that does not move; the market moves inside it.**
+The world always sells, dear, and always buys, cheap (`trade.md`'s rule
+that "now" is always possible and always dear), and those two prices
+are fixed. A town is a small open economy, a taker of the world's
+prices: coins in and out change how rich it is, not what oil costs, so
+nothing can spiral. Between the two, mayors trading with each other
+move the market's price: a glut toward the floor, a shortage toward the
+ceiling. How lively a good is is how wide its band is: stone narrow,
+oil wide. Freight widens it further, so a remote island's prices swing
+with every glut and a town on the world's lanes is calm. Rarely an event
+moves the band itself. The graph draws the band faintly above and below.
+
+The one risk is coins piling up with nothing to buy (mudflation). Coins
+enter only when the world buys; freight, the world's margin, and the big
+things to build take them out, and the season test's coins at the end
+are the number to watch.
+
 - **One world price per good, and a graph of it.** It moves with what
   every town sells and buys (in multiplayer a neighbour's glut is your
   crash), with events (a storm shuts the oil fields), and with seasons.
