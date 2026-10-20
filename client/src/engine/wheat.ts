@@ -143,14 +143,15 @@ function ears(s: Stage, p: (typeof plants)[number], count: number, long: number,
 function stage(i: number): Stage {
   switch (i) {
     case 0: {
-      // Ploughed: four furrow slices a pass, each rising across it and
-      // falling steep to the next, clods all over.
+      // Ploughed: four furrow slices a pass, broad and rounded, a narrow
+      // furrow between each and the next, the same whichever way the
+      // tractor went; clods all over.
       const s = earth(0);
       for (let y = 0; y < n; y++) {
         for (let x = 0; x < n; x++) {
           const q = ((x / n) * 4) % 1;
           const k = y * n + x;
-          s.height[k] = 0.03 * Math.pow(q, 0.6) * (1 - Math.min(1, Math.max(0, (q - 0.78) / 0.22)) ** 2) + 0.008 * noise(x, y, 10) + 0.004 * noise(x, y, 4);
+          s.height[k] = 0.025 * (1 - Math.abs(2 * q - 1) ** 3) + 0.008 * noise(x, y, 10) + 0.004 * noise(x, y, 4);
         }
       }
       return s;

@@ -102,7 +102,8 @@ type Paint = { look: number[]; reach: number };
  * a row off the headland, out of one onto it — the piece runs straight
  * across the tile, the way the work went, and does not curl after the
  * tractor. Each vertex knows where across the strip it is, how far along,
- * which way across is, and whether either edge is the field's border.
+ * which way across is, its tile, and which sides of it are the field's
+ * border.
  */
 class Strips {
   readonly mesh: Mesh;
@@ -164,15 +165,16 @@ class Strips {
     const indices: number[] = [];
     let v = 0;
     for (const { at, samples } of pieces) {
+      // Which sides of the piece's own tile are the field's border, one
+      // bit each: west, east, south, north.
+      const border = [[-1, 0], [1, 0], [0, -1], [0, 1]].reduce((m, [dx, dy], b) => m + (off(at.x + dx, at.y + dy) ? 1 << b : 0), 0);
       samples.forEach(({ p, d }, i) => {
         const [a, b] = [samples[Math.max(0, i - 1)].p, samples[Math.min(samples.length - 1, i + 1)].p];
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
         const n = { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
-        // Which side is the border: the tile beside the piece's own, that way.
-        const edges = [off(at.x - n.x, at.y - n.y) ? 1 : 0, off(at.x + n.x, at.y + n.y) ? 1 : 0];
         [-0.5, 0.5].forEach((a, s) => {
           this.positions.set([p.x + n.x * a * WIDE, p.y + n.y * a * WIDE, 0], (v + s) * 3);
-          data.set([a, d, n.x, n.y, edges[0], edges[1], 0, 0], (v + s) * 8);
+          data.set([a, d, n.x, n.y, Math.floor(at.x), Math.floor(at.y), border, 0], (v + s) * 8);
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
@@ -337,7 +339,8 @@ function wheat(engine: Engine): Texture2D {
 }
 
 /** The field's paint (see the top), where across and along its strip a
- *  vertex is, which way across is, and which edges are the border. */
+ *  vertex is, which way across is, its tile, and which sides of it are
+ *  the border. */
 function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
   return {
     name: "Field",
@@ -393,7 +396,8 @@ fn fieldWheatAt(stage: f32, u: f32, v: f32, du: vec2f, dv: vec2f) -> vec4f {
  * the way that runs (`fieldAcross`); `fieldV` along it, and how fast both
  * change across the screen. Every texture read and every rate of change
  * here, before anything branches, as WGSL wants. Then not drawn: a strip
- * not yet laid, grass, and a ragged margin along the border.
+ * not yet laid, grass, and a ragged margin along the border, crumbs of
+ * earth in the grass beyond it.
  */
 const BEGIN = `let fieldU = input.vStripA.x + 0.5;
 let fieldV = input.vStripA.y;
@@ -409,8 +413,20 @@ let fieldEdge = 0.5 * fieldNoise(fieldW * 24. + vec2f(31., 5.)) + 0.5 * fieldNoi
 // bow and show their sides, rolling slowly downwind.
 let fieldWind = fieldNoise(vec2f(fieldW.x * 0.5 + fieldW.y * 0.2, fieldW.y * 0.25 - fieldW.x * 0.1) - vec2f(0.6, 0.25) * fieldLook.w);
 let fieldStage = u32(fieldLook.x + 0.5);
-let fieldBorder = select(input.vStripB.y, input.vStripB.x, fieldU < 0.5) > 0.5;
-if (fieldStage == 0u || fieldV > fieldLook.z || (fieldBorder && 0.5 - abs(fieldU - 0.5) < 0.03 + 0.07 * fieldEdge)) { discard; }`;
+// How far in from the field's border: the sides of the tile that are
+// border, whichever way the strip runs.
+let fieldIn = input.worldPos.xy - input.vStripB.xy;
+let fieldSides = u32(input.vStripB.z + 0.5);
+var fieldDepth = 1.;
+if ((fieldSides & 1u) != 0u) { fieldDepth = min(fieldDepth, fieldIn.x); }
+if ((fieldSides & 2u) != 0u) { fieldDepth = min(fieldDepth, 1. - fieldIn.x); }
+if ((fieldSides & 4u) != 0u) { fieldDepth = min(fieldDepth, fieldIn.y); }
+if ((fieldSides & 8u) != 0u) { fieldDepth = min(fieldDepth, 1. - fieldIn.y); }
+// Ragged, and crumbled: past the field's own edge, only crumbs of its
+// earth, fewer further out, in the grass.
+let fieldCrumb = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
+let fieldRag = 0.05 + 0.13 * fieldEdge;
+if (fieldStage == 0u || fieldV > fieldLook.z || fieldDepth < fieldRag - 0.12 || (fieldDepth < fieldRag && fieldCrumb < 0.56 + 2.5 * (fieldRag - fieldDepth))) { discard; }`;
 
 /**
  * The paint: the stage of the wheat the field is at (ploughed; sown, by
