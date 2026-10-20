@@ -98,25 +98,26 @@ punished; it does not yet.
 
 ## Undo
 
-**What the hand does is done at once, and the last few things it did can
-be taken back.** A road is laid as it is drawn and a building is a site
-the moment it is let go; there is no draft and no second step. Instead,
-an Undo button by the toolbar, and Ctrl or Cmd Z, take back the
-player's last action: everything one drag of road laid, a building
-placed, or a demolition. Pressed again, the one before, and so on back.
+**What the hand does is done at once, and what it did lately is taken
+back by taking it down.** A road is laid as it is drawn and a building
+is a site the moment it is let go; there is no draft and no second
+step, and no undo button (2026-10-20): a road or a building taken down
+while it is new is the slip undone, and gives back what it cost. Taken
+down later, it gives back nothing. (The interchange keeps its Z, the
+last action taken back, a demolition stood again among them.)
 
 - **What an action is.** A drag is one: every step of a drag of road
   or of the demolisher's drag, each from where the last ended, is one
   action; a building placed, a tap of the demolisher, or a building
   taken down (a long press on it), another.
-- **It gives back what was paid.** The stone a road took goes back on
+- **Taken back, it gives back what was paid.** The stone a road took goes back on
   the shelves it came off, and the coins it paid express go back to
   the purse. A building taken back gives what its site had been
   brought, and what was on a van on its way to it, to the nearest
   depot, and what no shelf has room for in coins at the world's price;
   one that stood, all it took, unless it stood for nothing (the town's
-  first depot). A demolition taken back stands the building again as
-  it stood, its stock and all, for nothing.
+  first depot). A demolition taken back (the interchange's Z) stands
+  the building again as it stood, its stock and all, for nothing.
 - **For five minutes.** An action can be taken back for a quarter of the
   town's day, five minutes of play. Not a count: what makes an action
   no longer a slip is that the town has started to use it, and that

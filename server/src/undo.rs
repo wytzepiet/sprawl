@@ -49,6 +49,17 @@ pub struct Paid {
 }
 
 impl Paid {
+    /// One of `n` even parts, taken off.
+    fn part(&mut self, n: usize) -> Paid {
+        let f = 1.0 / n.max(1) as f64;
+        let part = Paid { coins: self.coins * f, stone: self.stone.iter().map(|&(d, u)| (d, u * f)).collect() };
+        self.coins -= part.coins;
+        for (s, p) in self.stone.iter_mut().zip(&part.stone) {
+            s.1 -= p.1;
+        }
+        part
+    }
+
     pub fn add(&mut self, more: Paid) {
         self.coins += more.coins;
         for (depot, units) in more.stone {
@@ -185,7 +196,7 @@ fn link_of(world: &World, a: EntityId, b: EntityId) -> Option<Link> {
 /// carries the same drag on, else an action of its own. Says so, the
 /// first time a drag of road has to buy its stone express.
 pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act>, paid: Paid, after: EntityId, now: GameTime) -> Option<News> {
-    if step.tool == Tool::Light {
+    if step.tool == Tool::Light || (step.tool == Tool::Demolish && taken.is_none()) {
         return None;
     }
     let road = matches!(step.tool, Tool::Street | Tool::OneWay | Tool::Wide);
@@ -227,13 +238,74 @@ pub fn placed(world: &mut World, owner: OwnerId, id: EntityId, laid: Vec<Link>, 
     done(world, owner, act, after, now);
 }
 
-/// A building taken down whole, kept to undo.
-pub fn raze(world: &mut World, owner: OwnerId, id: EntityId, now: GameTime) {
-    let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return };
+/// A building taken down whole. Placed lately, it is as if it never
+/// was, and gives back what it cost (`unplace`): what the mayor takes
+/// down of their own slip is the slip undone. Else it is kept to undo.
+pub fn raze(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, owner: OwnerId, id: EntityId, now: GameTime) -> Option<News> {
+    let lately = world.undo.values_mut().find_map(|h| {
+        let i = h.iter().position(|d| now.saturating_sub(d.at) <= WINDOW && matches!(d.act, Act::Placed { id: placed, .. } if placed == id))?;
+        Some(h.remove(i))
+    });
+    if let Some(Done { act: Act::Placed { kind, laid, paid, free, .. }, after, .. }) = lately {
+        // The street it brought stays if a building since opens onto it.
+        let (laid, paid) = if rests_on(world, &laid, after).is_some() { (Vec::new(), Paid::default()) } else { (laid, paid) };
+        let back = unplace(world, events, intersections, id, kind, &laid, &paid, free, now);
+        return Some(News { text: format!("The {} taken back", label(kind)), sub: back, at: 0 });
+    }
+    let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return None };
     let act = Act::Razed(id, b.clone());
     let after = world.objects.next_id();
     world.remove_building(id);
     done(world, owner, act, after, now);
+    None
+}
+
+/// Road the demolisher took up: what of it was laid lately given back
+/// what it paid, as if it never was, and gone from what it was laid in;
+/// the rest, to keep to undo. What was given back, said.
+pub fn recoup(world: &mut World, links: Vec<Link>, now: GameTime) -> (Vec<Link>, String) {
+    let mut paid = Paid::default();
+    let mut kept = Vec::new();
+    for l in links {
+        match laid_lately(world, &l, now) {
+            Some(p) => paid.add(p),
+            None => kept.push(l),
+        }
+    }
+    // A drag all taken back is nothing left to undo.
+    for h in world.undo.values_mut() {
+        h.retain(|d| !matches!(&d.act, Act::Laid { links, .. } if links.is_empty()) && !matches!(&d.act, Act::Drawn { steps, .. } if steps.is_empty()));
+    }
+    let back = if paid.coins > 0.0 || !paid.stone.is_empty() { refund(world, &paid, now) } else { String::new() };
+    (kept, back)
+}
+
+/// What a link laid lately paid, taken off the record of the drag that
+/// laid it; none if it was not laid lately.
+fn laid_lately(world: &mut World, l: &Link, now: GameTime) -> Option<Paid> {
+    let ends = |a: &Link| [(a.from, a.up[0], a.sides[0]), (a.to, a.up[1], a.sides[1])];
+    let same = |a: &Link| {
+        let ([a0, a1], [l0, l1]) = (ends(a), ends(l));
+        (a0, a1) == (l0, l1) || (a0, a1) == (l1, l0)
+    };
+    for d in world.undo.values_mut().flatten().filter(|d| now.saturating_sub(d.at) <= WINDOW) {
+        match &mut d.act {
+            Act::Laid { links, paid } => {
+                if let Some(i) = links.iter().position(same) {
+                    let share = paid.part(links.len());
+                    links.remove(i);
+                    return Some(share);
+                }
+            }
+            Act::Drawn { steps, .. } => {
+                if let Some(i) = steps.iter().position(|s| s.fresh && same(&s.link)) {
+                    return Some(steps.remove(i).paid);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn done(world: &mut World, owner: OwnerId, act: Act, after: EntityId, now: GameTime) {
@@ -277,30 +349,8 @@ pub fn undo(world: &mut World, events: &mut EventQueue, intersections: &mut Inte
             say(format!("Undone: {}", tiles(&links)), back, 0)
         }
         Act::Placed { id, kind, laid, paid, free } => {
-            let site = match world.objects.get(id).map(|e| &e.object) {
-                Some(GameObject::Building(b)) => b.site.clone(),
-                _ => None,
-            };
-            let at = world.objects.get(id).and_then(|e| e.position).unwrap_or(GridCoord { x: 0, y: 0 });
-            // What its site was brought, or all it took if it stands; none
-            // if it stood for nothing.
-            let mut materials: Vec<(Good, f64)> = match site {
-                Some(site) => site.iter().map(|(&g, s)| (g, s.level)).collect(),
-                None if free => Vec::new(),
-                None => crate::blueprint::takes(kind),
-            };
-            // And what is on a van on its way to it: the van arrives empty.
-            let vans: Vec<EntityId> = world.calls.iter().filter(|c| c.at == id).filter_map(|c| c.answered_by).collect();
-            materials.extend(vans.into_iter().filter_map(|van| crate::calls::load(world, van, None)));
-            world.remove_building(id);
-            take_up(world, events, intersections, &laid, now);
-            let mut back = vec![refund(world, &paid, now)];
-            back.push(give_back(world, &materials, at, now));
-            back.retain(|s| !s.is_empty());
-            if back.is_empty() {
-                back.push("it had taken nothing yet".into());
-            }
-            say(format!("Undone: the {}", label(kind)), back.join("; "), 0)
+            let back = unplace(world, events, intersections, id, kind, &laid, &paid, free, now);
+            say(format!("Undone: the {}", label(kind)), back, 0)
         }
         Act::Razed(was, b) => {
             let kind = b.kind;
@@ -338,6 +388,37 @@ fn rests_on(world: &World, links: &[Link], after: EntityId) -> Option<&'static s
         .iter()
         .any(|e| e.id >= after && matches!(e.object, GameObject::Building(ref b) if b.door.is_some_and(|d| laid.contains(&d.street))))
         .then_some("A building placed since opens onto that street")
+}
+
+/// A building placed taken away as if it never was: what its site was
+/// brought, or all it took if it stands, given back, and what is on a
+/// van on its way to it; the street it brought taken up, and what that
+/// paid given back. What was given back, said.
+#[allow(clippy::too_many_arguments)]
+fn unplace(world: &mut World, events: &mut EventQueue, intersections: &mut IntersectionRegistry, id: EntityId, kind: BuildingKind, laid: &[Link], paid: &Paid, free: bool, now: GameTime) -> String {
+    let site = match world.objects.get(id).map(|e| &e.object) {
+        Some(GameObject::Building(b)) => b.site.clone(),
+        _ => None,
+    };
+    let at = world.objects.get(id).and_then(|e| e.position).unwrap_or(GridCoord { x: 0, y: 0 });
+    // None if it stood for nothing.
+    let mut materials: Vec<(Good, f64)> = match site {
+        Some(site) => site.iter().map(|(&g, s)| (g, s.level)).collect(),
+        None if free => Vec::new(),
+        None => crate::blueprint::takes(kind),
+    };
+    // The van arrives empty.
+    let vans: Vec<EntityId> = world.calls.iter().filter(|c| c.at == id).filter_map(|c| c.answered_by).collect();
+    materials.extend(vans.into_iter().filter_map(|van| crate::calls::load(world, van, None)));
+    world.remove_building(id);
+    take_up(world, events, intersections, laid, now);
+    let mut back = vec![refund(world, paid, now)];
+    back.push(give_back(world, &materials, at, now));
+    back.retain(|s| !s.is_empty());
+    if back.is_empty() {
+        back.push("it had taken nothing yet".into());
+    }
+    back.join("; ")
 }
 
 /// The links taken up, newest first, as the demolisher would.

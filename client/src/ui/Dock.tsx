@@ -5,7 +5,6 @@ import { useEngine } from "../engine/Canvas";
 import { eye } from "../engine/OrthoCamera";
 import { held, hold, setTool, tool } from "./buildMode";
 import { BLUEPRINTS } from "../blueprints";
-import { useGame } from "../state/gameObjects";
 import { select, selected } from "../state/selection";
 import { InspectBody, InspectHead } from "./Card";
 import { inHand as roadInHand, lastRoad, road, ROAD_KINDS, RoadsBody, RoadsHead, take } from "./Roads";
@@ -19,7 +18,6 @@ import type { JSX } from "~ui/jsx-runtime";
 const SELECT = "M4 2.5l16 8-7 2-2.6 7.5z";
 const BUILD = "M12 2.5 1.5 11.5H4.5V21.5H19.5V11.5H22.5ZM10 14h4v7.5h-4z";
 const STOCK = "M3 13h8v8H3zM13 13h8v8h-8zM8 3.5h8v8H8z";
-const UNDO = "M9.5 4 3 10l6.5 6v-4h5a4.5 4.5 0 0 1 0 9H11v3h3.5a7.5 7.5 0 0 0 0-15h-5z";
 
 /** The dock's measure: a tab every 52px, the bar 60 tall. */
 const SLOT = 52;
@@ -45,12 +43,10 @@ const SHEETS: Record<Tab, { head: () => JSX.Element; body: () => JSX.Element }> 
  * dragged down from its top, it sinks again. The bare hand, whose
  * sheet is the card of what it tapped; the roads, and the demolisher
  * with them; the build menu; new deals on the ferry; the town's stock.
- * Undo stands apart, at the side.
  *
  * What is in hand, in its colour, rides under its tab as dyed glass.
  */
 export default function Dock() {
-  const { send } = useGame();
   const { canvas } = useEngine();
 
   // A press on the town sinks the sheet to its head.
@@ -58,7 +54,6 @@ export default function Dock() {
   canvas.addEventListener("pointerdown", away);
   onCleanup(() => canvas.removeEventListener("pointerdown", away));
 
-  const undo = () => send({ type: "Undo" });
   /** A tab pressed: shown, or, shown already, drawn up or sunk. The roads
    *  take up the last tool again; the bare hand puts down what it holds. */
   const press = (t: Tab) => {
@@ -67,7 +62,6 @@ export default function Dock() {
   };
   const onKey = (e: KeyboardEvent) => {
     if ((e.target as HTMLElement)?.closest?.("input, textarea")) return;
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") return e.preventDefault(), undo();
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const key = e.key.toUpperCase();
     if (e.key === "Escape") return tool() || held() ? setTool(null) : open() && tab() !== "select" ? setOpen(false) : select(null);
@@ -167,11 +161,6 @@ export default function Dock() {
           </box>
         </box>
       </box>
-      {/* Undo, apart: at the side on a wide screen; on a phone, riding
-          over the sheet at its right. */}
-      <glass layer="undo" at={wide() ? { left: 24, bottom: barBottom() + 6 } : { right: 12, bottom: barBottom() + BAR + h() + 10 }} w={wide() ? 48 : 44} h={wide() ? 48 : 44} round={24} align="center" justify="center" onTap={undo}>
-        <icon d={UNDO} size={20} ink="ink/0.72" />
-      </glass>
     </>
   );
 }

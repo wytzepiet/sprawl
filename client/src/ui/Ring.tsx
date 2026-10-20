@@ -16,7 +16,8 @@ const STILL_PX = 8;
 /**
  * A building's ring: a long press on it with the bare hand, or a right
  * click, opens two buttons round the pointer, its card and taking it
- * down. Taken down, undo puts it back. Any other press closes it.
+ * down: built lately, it gives back what it cost. Any other press
+ * closes it.
  */
 export default function Ring() {
   const { scene, canvas } = useEngine();
