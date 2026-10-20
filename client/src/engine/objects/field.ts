@@ -98,11 +98,10 @@ type Paint = { look: number[]; reach: number };
 
 /**
  * A run's strips: a tile wide along the drawn path, a piece for each step
- * on the land, from halfway back to the step before to halfway on to the
- * next, following the tractor wherever it drove, round turns and off rows
- * onto the headland alike, and again wherever it drove again: what it
- * worked and nothing it did not. A turn cuts its tile's outer corner; the
- * headland, gone round after, covers it, as on a real field. Each vertex knows where across the strip it is, how far along,
+ * that works its tile, from halfway back to the step before to halfway on
+ * to the next, following the tractor wherever it drove, round turns and
+ * off rows onto the headland alike: what it worked and nothing it did
+ * not. Each vertex knows where across the strip it is, how far along,
  * which way across is, and where along the piece's own tile begins and
  * ends.
  */
@@ -111,10 +110,9 @@ class Strips {
   readonly drawn: DrawnPath;
   readonly paint: Paint;
   private positions: Float32Array;
-  /** Each piece a little over the one before, so that where the tractor
-   *  goes over ground again, or a piece spills onto a tile it works
-   *  after, the later pass shows. */
-  private rise: Float32Array;
+  /** Each vertex out past its piece's tile, a little lower, so that where a
+   *  piece's spill lies over a tile another piece works, that piece shows. */
+  private sunk: Float32Array;
   private z = -1;
 
   constructor(ctx: EngineContext, name: string, nodes: P[], drawn: DrawnPath, works: (k: number) => boolean, land: Set<string>, material: (paint: Paint) => TownMaterial, look: Look) {
@@ -169,7 +167,7 @@ class Strips {
     }
     const count = pieces.reduce((n, piece) => n + piece.samples.length, 0);
     this.positions = new Float32Array(count * 6);
-    this.rise = new Float32Array(count * 2);
+    this.sunk = new Float32Array(count * 2);
     const data = new Float32Array(count * 16);
     const indices: number[] = [];
     let v = 0;
@@ -183,7 +181,7 @@ class Strips {
         sides.forEach((spill, s) => {
           const out = (s ? 1 : -1) * (0.5 + (spill ? SPILL : HAIR));
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
-          this.rise[v + s] = (RISE * k) / last;
+          this.sunk[v + s] = spill || d < from || d > to ? SUNK : 0;
           data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
@@ -202,7 +200,7 @@ class Strips {
   lift(engine: Engine, z: number) {
     if (Math.abs(z - this.z) < 0.001) return;
     this.z = z;
-    for (let i = 0; i < this.rise.length; i++) this.positions[i * 3 + 2] = z + this.rise[i];
+    for (let i = 0; i < this.sunk.length; i++) this.positions[i * 3 + 2] = z - this.sunk[i];
     updateMeshPositions(engine, this.mesh, this.positions);
   }
 }
@@ -211,8 +209,8 @@ class Strips {
  *  edge and the crumbs of earth beyond it; and where it meets another
  *  piece, a hair over, so the two meet with no seam between. */
 const SPILL = 0.16;
+const SUNK = 0.0015;
 const HAIR = 0.03;
-const RISE = 0.0015;
 
 class Field {
   private ruts: Strips | null = null;
@@ -261,7 +259,8 @@ class Field {
     const nodes = path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 }));
     const drawn = path.length > 1 && job ? drawnPath(nodes, 0, 0, 0) : null;
     if (!drawn || !job) return null;
-    return new Strips(this.ctx, `field_${name}`, nodes, drawn, (k) => this.land.has(key(path[k])), this.land, (paint) => this.material(paint), look);
+    const worked = workedAt(path, this.land, this.head, job);
+    return new Strips(this.ctx, `field_${name}`, nodes, drawn, (k) => worked.get(key(path[k])) === k, this.land, (paint) => this.material(paint), look);
   }
 
   /** A run out over the field, or none: its strips laid over the last
