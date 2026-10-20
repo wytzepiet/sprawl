@@ -502,6 +502,11 @@ let fieldFrom = floor(fieldAt);
 let fieldTo = min(fieldFrom + 1., 6.);
 let fieldPatch = 0.2 + 0.6 * fieldMottle;
 let fieldAhead = smoothstep(fieldPatch - 0.2, fieldPatch + 0.2, fieldAt - fieldFrom);
+// The crop stops short of the field's edge, on a jagged line of its own a
+// little in from where the spilled earth ends: bare earth between, in
+// clods, nothing growing on it.
+let fieldBare = fieldOut > -0.05 + 0.1 * (fieldEdge - 0.5) + 0.06 * (fieldCrumb - 0.5);
+let fieldClod = 0.8 + 0.4 * fieldCrumb;
 var fieldColour = vec3f(0.);
 var fieldFacing = vec3f(0.);
 for (var i = 0; i < 2; i++) {
@@ -512,12 +517,11 @@ for (var i = 0; i < 2; i++) {
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
   if (st > 4.5) { crop = fieldGold; }
   if (st > 5.5) { crop = fieldStraw; }
-  // Past its own tile, the spilled earth: bare, nothing grows on it.
-  let a = select(t.a, 0., fieldOut > 0.);
-  let c = mix(soil, crop, a) * t.b * 1.25;
+  let a = select(t.a, 0., fieldBare);
+  let c = select(mix(soil, crop, a) * t.b * 1.25, soil * fieldClod, fieldBare);
   let w = select(1. - fieldAhead, fieldAhead, i == 1);
   fieldColour += c * w;
-  fieldFacing += vec3f(select(t.rg * 2. - 1., vec2f(0.), fieldOut > 0.), 0.) * w;
+  fieldFacing += vec3f(select(t.rg * 2. - 1., vec2f(0.), fieldBare), 0.) * w;
 }
 let fieldN = vec3f(fieldFacing.xy, sqrt(max(0.05, 1. - dot(fieldFacing.xy, fieldFacing.xy))));
 // A gentle tint, a few in a hundred either way, and no more.
