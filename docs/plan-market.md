@@ -44,9 +44,9 @@ not the plan. The first version is:
 The world stays the shipping company, and freight leaves the game.
 Waiting, until play asks for them: contracts, floors, every-sailing
 orders, embassies, exchanges run by mayors. Out for good: freight
-carried by players. A mayor earns from what stands in their town, and a
-shipping line is ships between other people's harbours; a shipyard
-passes (the ships are built on your slip and sold), the fleet does not.
+carried by players, and shipyards. A mayor earns from what stands in
+their town, and a shipping line is ships between other people's
+harbours; a ship is a one-off, not a good.
 
 ## Prices
 
@@ -73,7 +73,7 @@ in sight.
 trade; a direct deal does not. In a shortage the market sells to the
 highest bidder; a contract holds its price and amount (Japan's long
 iron-ore deals with Australia). Some things are only had by asking: a
-frontier good, a whole bulk load, a ship from their yard. An embassy
+frontier good, a whole bulk load. An embassy
 shows their stock, so you see who is about to run short. And two mayors
 can act together: hold back, or join their islands by a bridge.
 
@@ -149,12 +149,11 @@ way to go wrong. Every one is a real country.
   mistakes.
 
 - **The maker of what others need to make.** Chips (Taiwan: decades of
-  research, one light, dear good the whole world needs), vehicles
-  (Germany, Japan: a buyer of steel, glass, rubber and electronics),
-  heavy equipment (the extractor's diggers and rigs), ships (Korea: steel
-  in, and out a ship that makes its buyer's freight cheaper). These are
-  sold to other mayors as things they build with, so towns come to
-  depend on each other.
+  research, one light, dear good the whole world needs) and machinery:
+  goods by the crate like any other, that other towns' buildings are
+  built of, so towns come to depend on each other. A ship, a rig or a
+  vehicle is not: it is one thing, bought once, with no price to chart,
+  and so not on the market (Wytze, 2026-10-20).
 - **The exchange.** A town whose harbour other mayors trade through,
   for a fee on each trade (London, Chicago, Rotterdam): the hub that sets
   the region's price because the region's goods pass through it.
