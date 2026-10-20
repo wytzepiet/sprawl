@@ -504,26 +504,24 @@ let fieldPatch = 0.2 + 0.6 * fieldMottle;
 let fieldAhead = smoothstep(fieldPatch - 0.2, fieldPatch + 0.2, fieldAt - fieldFrom);
 // Out over the land's edge, the crop reaches a little past its tile, on
 // a jagged line of its own, short of where the spilled earth ends: bare
-// earth between, in clods, nothing growing on it. Over the field's own
+// earth between, ploughed as the ploughed field is, nothing growing on it. Over the field's own
 // tiles the crop goes on, so no seam of earth shows between passes.
 let fieldOff = max(select(-1., -fieldU, input.vStripB.z > 1.5), select(-1., fieldU - 1., input.vStripB.w > 1.5));
 let fieldBare = fieldOff > 0.04 + 0.06 * (fieldEdge - 0.5) + 0.04 * (fieldCrumb - 0.5);
-let fieldClod = 0.8 + 0.4 * fieldCrumb;
 var fieldColour = vec3f(0.);
 var fieldFacing = vec3f(0.);
 for (var i = 0; i < 2; i++) {
-  let st = select(fieldFrom, fieldTo, i == 1);
+  let st = select(select(fieldFrom, fieldTo, i == 1), 0., fieldBare);
   let t = fieldWheatAt(st, fieldU, fieldTexV, fieldDu, fieldDv);
   let soil = fieldSoil * select(select(1., 0.8, st > 5.5), 0.9, st < 0.5);
   var crop = fieldGreen;
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
   if (st > 4.5) { crop = fieldGold; }
   if (st > 5.5) { crop = fieldStraw; }
-  let a = select(t.a, 0., fieldBare);
-  let c = select(mix(soil, crop, a) * t.b * 1.25, soil * fieldClod, fieldBare);
+  let c = mix(soil, crop, t.a) * t.b * 1.25;
   let w = select(1. - fieldAhead, fieldAhead, i == 1);
   fieldColour += c * w;
-  fieldFacing += vec3f(select(t.rg * 2. - 1., vec2f(0.), fieldBare), 0.) * w;
+  fieldFacing += vec3f(t.rg * 2. - 1., 0.) * w;
 }
 let fieldN = vec3f(fieldFacing.xy, sqrt(max(0.05, 1. - dot(fieldFacing.xy, fieldFacing.xy))));
 // A gentle tint, a few in a hundred either way, and no more.
