@@ -284,6 +284,7 @@ fn handle_player_action(
         ClientMessage::Build(step) => return build(world, events, intersections, owner, step, now),
         ClientMessage::Draw(stroke) => return crate::draw::draw(world, events, intersections, owner, stroke, now),
         ClientMessage::Place { kind, at, facing } => return place(world, events, intersections, owner, kind, at, facing, now),
+        ClientMessage::Raze { building } => crate::undo::raze(world, owner, building, now),
         ClientMessage::Undo => return Some(crate::undo::undo(world, events, intersections, owner, now)),
         ClientMessage::DespawnAllCars => {
             let car_ids: Vec<EntityId> = world.objects.iter()
@@ -389,17 +390,12 @@ pub fn take_step(world: &mut World, events: &mut EventQueue, intersections: &mut
             }
         }
         Tool::Demolish => {
-            // A tap takes everything at the tile and height: a building
-            // whole, or its road and all its links, the cars on it
-            // rerouted. A drag cuts only the road between the two tiles.
+            // A tap takes the road at the tile and height, all its links,
+            // the cars on it rerouted. A drag cuts only the road between
+            // the two tiles.
             if from == to {
                 if let Some(id) = world.node_in(to, ht, st) {
                     handle_road_demolish(world, events, intersections, id, now);
-                }
-                if ht == 0
-                    && let Some(&id) = world.occupied.get(&(to.x, to.y))
-                {
-                    world.remove_building(id);
                 }
             } else if let Some((a, b)) = world.link_between_at(from, hf, sf, to, ht, st) {
                 handle_link_demolish(world, events, intersections, a, b, now);
@@ -502,7 +498,7 @@ pub fn may_step_on(world: &World, Build { tool, from, to, up, sides, road, .. }:
                 && world.may_lay_at_on(from, hf, sf, to, ht, st, tool, on, then)
         }
         Tool::Light => from == to && b.is_some_and(|id| world.is_intersection(id)),
-        Tool::Demolish if from == to => b.is_some() || (ht == 0 && world.occupied.contains_key(&(to.x, to.y))),
+        Tool::Demolish if from == to => b.is_some(),
         Tool::Demolish => world.link_between_at(from, hf, sf, to, ht, st).is_some(),
     }
 }
@@ -974,6 +970,8 @@ mod tests {
     enum Do {
         Step(Tool, GridCoord, GridCoord),
         Place(BuildingKind, GridCoord),
+        /// The building on a tile taken down whole.
+        Raze(GridCoord),
         /// A slot of a harbour's deck booked: a good, a partner, going out.
         Book(EntityId, Good, Option<crate::orders::Mayor>, bool),
     }
@@ -989,6 +987,7 @@ mod tests {
                 crate::orders::book(world, harbour, good, partner, out);
                 crate::haul::call_lorries(world, events);
             }
+            Do::Raze(at) => crate::undo::raze(world, 0, world.occupied[&(at.x, at.y)], now),
             Do::Place(kind, at) => {
                 if let Some(no) = place(world, events, intersections, 0, kind, at, None, now) {
                     panic!("{kind:?} at {at:?} refused: {}", no.sub);
@@ -1208,7 +1207,7 @@ mod tests {
         if let Some(GameObject::Building(b)) = world.objects.get_mut(house).map(|e| &mut e.object) {
             b.site.as_mut().unwrap().get_mut(&Good::Timber).unwrap().level = 2.0;
         }
-        hand(&mut world, ClientMessage::Build(Build { tool: Tool::Demolish, from: at(12, 1), to: at(12, 1), up: None, sides: None, road: false }));
+        hand(&mut world, ClientMessage::Raze { building: shop });
         assert!(world.objects.get(shop).is_none(), "the shop stands");
         assert!(hand(&mut world, ClientMessage::Undo).unwrap().text.contains("stands again"));
         let again = world.occupied[&(12, 1)];
@@ -1277,9 +1276,8 @@ mod tests {
         let mut events = EventQueue::new();
         settle_and_wake(&mut world, &mut events);
         assert!(world.lines.contains_key(&id), "no ferry line");
-        // One tap is the harbour gone, whole.
-        let mut intersections = IntersectionRegistry::new();
-        take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Demolish, from: at(8, 2), to: at(8, 2), up: None, sides: None, road: false }, 0);
+        // Razed, the harbour is gone whole.
+        crate::undo::raze(&mut world, 1, id, 0);
         assert!((8..11).all(|x| (1..3).all(|y| !world.occupied.contains_key(&(x, y)))), "part of the harbour stands");
         settle_and_wake(&mut world, &mut events);
     }
@@ -1299,10 +1297,10 @@ mod tests {
         take_step(&mut world, &mut events, &mut intersections, Build { tool: Tool::Street, from: at(30, 2), to: at(30, 1), up: None, sides: None, road: false }, 0);
     }
 
-    /// One tap of the demolisher takes a house, its drive with it: the
-    /// drive is the house's, not a road on its tile.
+    /// A house razed takes its drive with it: the drive is the house's,
+    /// not a road on its tile.
     #[test]
-    fn one_tap_takes_a_house_and_its_drive_with_it() {
+    fn a_house_razed_takes_its_drive_with_it() {
         let mut world = street();
         world.build = crate::tree::Build::all();
         world.treasury = 1e9;
@@ -1312,13 +1310,14 @@ mod tests {
         does(&mut world, &mut events, &mut intersections, Do::Place(BuildingKind::House, at), 0);
         let house = world.occupied[&(5, 1)];
         assert!(world.door_of(house).is_some() && world.road_node_at(at).is_none(), "a house with its door, and no road on its tile");
-        does(&mut world, &mut events, &mut intersections, Do::Step(Tool::Demolish, at, at), 0);
+        does(&mut world, &mut events, &mut intersections, Do::Raze(at), 0);
         assert!(!world.occupied.contains_key(&(5, 1)), "the house is gone");
         assert!(world.road_node_at(GridCoord { x: 5, y: 0 }).is_some(), "and the street stands");
     }
 
     /// A drag of the demolisher cuts only the road between the tiles it
-    /// crosses. A tap takes everything at the point: a building whole.
+    /// crosses. A tap takes the road at the point; a building is not the
+    /// demolisher's to take.
     #[test]
     fn a_drag_cuts_a_link_and_a_tap_takes_the_point() {
         let mut world = street();
@@ -1335,12 +1334,10 @@ mod tests {
         assert!(!world.are_connected(at(5, 1), at(5, 2)), "the link is cut");
         assert!(world.road_node_at(at(5, 2)).is_none(), "and the end left with no road goes");
         assert!(world.are_connected(at(5, 0), at(5, 1)), "the rest stands");
-        // A tap on any tile of a building takes it whole.
         hand(&mut world, Do::Place(BuildingKind::Depot, at(9, 3)));
         let depot = world.occupied[&(9, 3)];
-        assert_eq!(building_of(&world, depot).tiles.len(), 12);
         hand(&mut world, Do::Step(Tool::Demolish, at(10, 4), at(10, 4)));
-        assert!(world.objects.get(depot).is_none(), "the depot stands");
+        assert!(world.objects.get(depot).is_some(), "the demolisher took the depot");
         // A tap takes the point and every link at it.
         hand(&mut world, Do::Step(Tool::Demolish, at(5, 0), at(5, 0)));
         assert!(world.road_node_at(at(5, 0)).is_none());
@@ -1955,8 +1952,8 @@ mod tests {
                 costs[2 * k].1.push(placed + stood);
                 let bp = crate::blueprint::blueprint(kind);
                 assert_eq!((world.household(id).len(), world.staff(id).len()), (bp.homes as usize, bp.jobs as usize), "the {kind:?} filled");
-                // Taken down with a tap.
-                costs[2 * k + 1].1.push(timed(&mut world, vec![Do::Step(Tool::Demolish, at(x, -1), at(x, -1))]));
+                // Taken down.
+                costs[2 * k + 1].1.push(timed(&mut world, vec![Do::Raze(at(x, -1))]));
                 assert!(world.objects.get(id).is_none(), "the {kind:?} came down");
             }
             let steps = (0..4).map(|y| Do::Step(Tool::Street, at(x + 6, -y), at(x + 6, -y - 1))).collect();
@@ -2052,9 +2049,9 @@ mod tests {
         act(&mut world, Do::Place(BuildingKind::Office, at(41, -1)));
         // The office and a house taken down, and the street before a third
         // taken up and laid again.
-        act(&mut world, Do::Step(Tool::Demolish, at(40, -1), at(40, -1)));
+        act(&mut world, Do::Raze(at(40, -1)));
         assert!(!world.occupied.contains_key(&(41, -1)), "the office stands");
-        act(&mut world, Do::Step(Tool::Demolish, at(0, 1), at(0, 1)));
+        act(&mut world, Do::Raze(at(0, 1)));
         let street_of = |world: &World, x, y| {
             let (_, street) = world.door_of(*world.occupied.get(&(x, y)).unwrap()).expect("placed with a door");
             world.objects.get(street).unwrap().position.unwrap()

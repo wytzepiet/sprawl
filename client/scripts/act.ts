@@ -10,9 +10,11 @@
  *       build Depot 12,5 0              tile, its front the first way it fits,
  *                                       or this way (0 toward -y, 1 +x, 2 +y,
  *                                       3 -x); a harbour brings its street
- *   bun run act demolish 12,5 14,5      a tap takes what stands on a tile, a
- *                                       building whole; more tiles, the road
- *                                       a drag through them cuts
+ *   bun run act demolish 12,5 14,5      a tap takes the road on a tile; more
+ *                                       tiles, the road a drag through them
+ *                                       cuts
+ *   bun run act raze 12,5               the building on that tile taken down
+ *                                       whole
  *   bun run act undo                    the hand's last action taken back
  *   bun run act speed 0                 sim steps per tick; 0 pauses
  *   bun run act book 7 in Timber        a slot of harbour 7's deck: a box of
@@ -207,7 +209,7 @@ changes(await settled());
 
 /** A drag through these tiles with this in hand, straight or diagonal: a
  *  road sent whole, as the brush sends it; the demolisher a step at a
- *  time, its tap, one tile alone, taking what stands there. */
+ *  time, its tap, one tile alone, taking the road there. */
 function stroke(tool: unknown, pts: Pt[]) {
   if (pts.length === 1) return send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
   const tiles = [{ at: at(pts[0]), want: 0 }];
@@ -242,6 +244,13 @@ for (const line of lines) {
     case "demolish":
       stroke("Demolish", args.map(tile));
       break;
+    case "raze": {
+      const [x, y] = tile(args[0]);
+      const b = [...known.values()].find((e) => e.object.kind === "Building" && e.object.data.tiles.some((t) => t.x === x && t.y === y));
+      if (b) send("Raze", { building: b.id });
+      else report.push(`nothing stands at ${x},${y}`);
+      break;
+    }
     case "undo":
       send("Undo");
       break;

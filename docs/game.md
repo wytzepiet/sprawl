@@ -107,7 +107,8 @@ placed, or a demolition. Pressed again, the one before, and so on back.
 
 - **What an action is.** A drag is one: every step of a drag of road
   or of the demolisher's drag, each from where the last ended, is one
-  action; a building placed, or a tap of the demolisher, another.
+  action; a building placed, a tap of the demolisher, or a building
+  taken down (a long press on it), another.
 - **It gives back what was paid.** The stone a road took goes back on
   the shelves it came off, and the coins it paid express go back to
   the purse. A building taken back gives what its site had been

@@ -1025,6 +1025,8 @@ pub enum ClientMessage {
     /// A building placed whole round `at`, its front this way
     /// (`blueprint::FACINGS`); none, the first way it fits.
     Place { kind: BuildingKind, at: GridCoord, facing: Option<u8> },
+    /// A building taken down whole, kept to undo.
+    Raze { #[ts(type = "number")] building: EntityId },
     /// The player's last action taken back (`undo.rs`).
     Undo,
     /// Spend a point on a node of the tree.

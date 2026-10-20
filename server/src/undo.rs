@@ -147,16 +147,12 @@ pub struct Done {
     pub after: EntityId,
 }
 
-/// What a step of the demolisher is about to take: a building whole, or
-/// the road on a tile or between two. Read before, to put back after.
+/// What a step of the demolisher is about to take: the road on a tile or
+/// between two. Read before, to put back after.
 pub fn doomed(world: &World, step: Build) -> Option<Act> {
     let Build { from, to, .. } = step;
     let [h0, h1] = step.up.unwrap_or_default();
     if from == to {
-        if h1 == 0
-            && let Some(GameObject::Building(b)) = world.occupied.get(&(to.x, to.y)).and_then(|&id| world.objects.get(id)).map(|e| &e.object) {
-            return Some(Act::Razed(world.occupied[&(to.x, to.y)], b.clone()));
-        }
         let node = world.node_in(to, h1, step.sides.unwrap_or_default()[1])?;
         let mut arms = world.arms_of(node, false);
         arms.sort_unstable();
@@ -228,6 +224,19 @@ pub fn stepped(world: &mut World, owner: OwnerId, step: Build, taken: Option<Act
 pub fn placed(world: &mut World, owner: OwnerId, id: EntityId, laid: Vec<Link>, paid: Paid, after: EntityId, now: GameTime) {
     let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return };
     let act = Act::Placed { id, kind: b.kind, free: b.site.is_none(), laid, paid };
+    done(world, owner, act, after, now);
+}
+
+/// A building taken down whole, kept to undo.
+pub fn raze(world: &mut World, owner: OwnerId, id: EntityId, now: GameTime) {
+    let Some(GameObject::Building(b)) = world.objects.get(id).map(|e| &e.object) else { return };
+    let act = Act::Razed(id, b.clone());
+    let after = world.objects.next_id();
+    world.remove_building(id);
+    done(world, owner, act, after, now);
+}
+
+fn done(world: &mut World, owner: OwnerId, act: Act, after: EntityId, now: GameTime) {
     let history = world.undo.entry(owner).or_default();
     history.retain(|d| now.saturating_sub(d.at) <= WINDOW);
     history.push(Done { act, at: now, after });
