@@ -62,7 +62,7 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
         }
       }
       const s = up(press.node, "onScroll");
-      if (press.dragged && s) s.props.onScroll(press.last - e.clientY);
+      if (press.dragged && s) s.props.onScroll(press.last - e.clientY, true);
       press.last = e.clientY;
       glow(e.clientX, e.clientY, true);
       return;
@@ -88,7 +88,8 @@ export function createHand(canvas: HTMLCanvasElement, hits: () => Hit[], glow: (
     press = null;
     up(p.node, "onPress")?.props.onPress(false);
     glow(e.clientX, e.clientY, false);
-    if (p.dragged || e.type === "pointercancel") return;
+    if (p.dragged) return void up(p.node, "onScroll")?.props.onScroll(0, false);
+    if (e.type === "pointercancel") return;
     const tap = up(p.node, "onTap");
     if (tap && up(at(e.clientX, e.clientY), "onTap") === tap) tap.props.onTap();
   };

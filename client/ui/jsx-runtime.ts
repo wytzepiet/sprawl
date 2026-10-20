@@ -40,8 +40,9 @@ export declare namespace JSX {
     opacity?: number;
     /** A tap: down and up on it, and not dragged between. */
     onTap?: () => void;
-    /** The wheel over it, or a drag of a finger: how far, down positive. */
-    onScroll?: (dy: number) => void;
+    /** The wheel over it, or a drag of a finger (`held`): how far, down
+     *  positive. A drag let go says so once more, by 0 and not held. */
+    onScroll?: (dy: number, held?: boolean) => void;
     /** The pointer come over it, and gone. */
     onHover?: (over: boolean) => void;
     /** Pressed, and let go. */
