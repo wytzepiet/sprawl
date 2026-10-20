@@ -138,6 +138,14 @@ them, as nothing in Minecraft locks the diamond pick but the diamonds.
 Specialising is what a chain costs to build and run, and pivoting is
 buying different materials.
 
+It also opens the hail mary: spend everything early on something too
+dear for the town, and be its only maker for a while (ASML is the one
+maker of the machines that print the newest chips). What a sole maker
+may charge is capped by the world: it sells everything, dear, so a
+monopoly earns up to the world's price plus its long freight, which is
+regional and fair. A few frontier goods the world sells scarcely or not
+at all are where a true monopoly lives, and the bet that can ruin a town.
+
 What a tree gave, guidance, comes from elsewhere:
 
 - **Missions** say what is next (`missions.md`), early and plainly.
