@@ -99,7 +99,7 @@ function stroke(s: Stage, x: number, y: number, angle: number, long: number, wid
       if (h <= s.height[k]) continue;
       s.height[k] = h;
       s.crop[k] = 1;
-      s.tone[k] = tone * (round ? 0.84 + 0.16 * (1 - across * across) : 0.88 + 0.12 * (1 - across));
+      s.tone[k] = tone * (round ? 0.9 + 0.1 * (1 - across * across) : 0.88 + 0.12 * (1 - across));
     }
   }
 }
@@ -132,8 +132,9 @@ function tuft(s: Stage, p: (typeof plants)[number], blades: number, long: [numbe
 }
 
 /**
- * Its ears: this many, standing near its heart, each this long and wide.
- * An ear is its spikelets, grains in pairs either side of its stem one
+ * Its ears: this many, round its heart, nodding every way, each this
+ * long and wide.
+ * An ear is its spikelets on a body, grains in pairs either side of its stem one
  * over the next, tipped out a little, the top ones smaller; and from
  * each, an awn, a whisker on along the ear and past its tip, thin and
  * pale, under the grains.
@@ -141,11 +142,12 @@ function tuft(s: Stage, p: (typeof plants)[number], blades: number, long: [numbe
 function ears(s: Stage, p: (typeof plants)[number], count: number, long: number, wide: number, h: number, tone: number, awns: number) {
   for (let e = 0; e < count; e++) {
     const r = p.r.slice(36 + e * 4, 40 + e * 4);
-    const [angle, l] = [ALONG + (r[2] - 0.5) * 0.9, long * (0.85 + 0.3 * r[3])];
+    const [angle, l] = [r[2] * Math.PI * 2, long * (0.85 + 0.3 * r[3])];
     const [dx, dy] = [Math.cos(angle), Math.sin(angle)];
-    const [ex, ey] = [p.x + (r[0] - 0.5) * 44 - dx * l * 0.5, p.y + (r[1] - 0.5) * 18 - dy * l * 0.5];
+    const [ex, ey] = [p.x + (r[0] - 0.5) * 52 - dx * l * 0.5, p.y + (r[1] - 0.5) * 24 - dy * l * 0.5];
     const top = h + 0.004 * (r[3] - 0.5);
-    const spikelets = Math.max(4, Math.round(l / (wide * 0.6)));
+    const spikelets = Math.max(4, Math.round(l / (wide * 0.75)));
+    stroke(s, ex, ey, angle, l, wide * 0.55, top - 0.001, top - 0.001, tone * 0.95, true);
     for (let j = 0; j < spikelets; j++) {
       const t = (j + 0.5) / spikelets;
       const side = j % 2 ? 1 : -1;
@@ -191,7 +193,7 @@ function stage(i: number): Stage {
       const ripe = i === 5;
       const s = earth(0.006);
       for (const p of plants) tuft(s, p, 9, [24, 44], 3, 1.3, 0.05, 0.03, ripe ? 0.55 : 0.8);
-      for (const p of plants) ears(s, p, ripe ? 10 : 8, ripe ? 18 : 16, ripe ? 4.4 : 4, 0.075, ripe ? 1.15 : 1.05, ripe ? 8 : 5);
+      for (const p of plants) ears(s, p, ripe ? 7 : 6, ripe ? 19 : 17, ripe ? 5.2 : 4.6, 0.075, ripe ? 1.15 : 1.05, ripe ? 4 : 0);
       return s;
     }
     default: {
