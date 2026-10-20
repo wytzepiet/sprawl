@@ -167,8 +167,8 @@ way. No harbour's or ferry's card trades.
   slot the player booked, so where the money came from is never a
   mystery: that was the price economy's flaw, and the reason trade is
   manual at all.
-- **The picker** opens from the stack's +: in or out, a good, then who,
-  cheapest in or dearest out first, each with its price a box.
+- **New deals** are the dock's trade tab: buy or sell, a good, then
+  who, cheapest in or dearest out first, each with its price a box.
 - **Coming in** rides the next ferry and is paid for as it lands. It is
   for the town, not a depot: the nearest depot with room sends its
   lorry, so the player never chooses where a box goes.

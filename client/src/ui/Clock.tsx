@@ -16,14 +16,14 @@ const clock = (t: number) => {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 };
 
-/** The time of day, bottom left; on a wide screen in development, the
- *  world's speed and the developer's two resets beside it. */
+/** The time of day; on a wide screen in development, the world's speed
+ *  and the developer's two resets beside it. */
 export default function Clock() {
   const { send } = useGame();
   // Already advanced every frame by the day/night cycle.
   const { timeOfDay } = useDayNight();
   return (
-    <glass layer="clock" at={wide() ? { left: 24, bottom: 28 } : { left: 12, bottom: 12 }} h={48} round={24} pad={{ x: 16 }} dir="row" align="center" gap={4}>
+    <glass layer="clock" h={48} round={24} pad={{ x: 16 }} dir="row" align="center" gap={4}>
       <text serif size={26} w={68}>{clock(timeOfDay())}</text>
       <Show when={import.meta.env.DEV && wide()}>
         <box w={6} />

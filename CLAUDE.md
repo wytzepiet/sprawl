@@ -135,7 +135,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   layout questions need only this; photographs are for light and height.
 - **The mayor's hand:** `bun run act road 7,78 7,85 0,85`, `build House
   5,86` (placed whole round the tile, the first way it fits; `build
-  Depot 5,86 1` turned that way), `demolish 5,86` (a building whole),
+  Depot 5,86 1` turned that way), `demolish 5,86` (the road there),
+  `raze 5,86` (the building there, whole),
   `undo`, `speed 0`, `run 2` (hours, or `--to 0.83` of a day), `reset`;
   `bun run act - < steps` reads one a line. Each says what it made and
   took away, and a building refused or an undo says why; a road step

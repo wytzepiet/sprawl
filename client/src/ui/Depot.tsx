@@ -77,7 +77,7 @@ export function DepotPanel(props: { id: number; lorries: number[] }) {
             </box>
           </Section>
           <Section title="Stock">
-            <For each={GOOD_ORDER.filter((g) => d().stocks[g])}>{(g) => <Shelf depot={props.id} good={g} level={d().stocks[g]!.level} cap={d().stocks[g]!.cap} />}</For>
+            <For each={GOOD_ORDER.filter((g) => d().stocks[g])}>{(g) => <Shelf good={g} level={d().stocks[g]!.level} cap={d().stocks[g]!.cap} incoming={incoming(props.id, g)} />}</For>
           </Section>
         </>
       )}
@@ -99,9 +99,11 @@ function doing(depot: number, car: Car | null, at: { x: number; y: number } | nu
   return { words: box ? `in the yard with ${load(box)}` : "in the yard", eta: null };
 }
 
+/** What is on its way in of a good to a depot, or to whichever takes it, in units. */
+const incoming = (depot: number, good: Good) => sea.shipments.filter((s) => (s.to === depot || s.to === null) && s.good === good && !s.outbound).reduce((a, s) => a + s.units, 0);
+
 /** A good's shelf: how full, and what is on its way drawn faint beyond it. */
-function Shelf(props: { depot: number; good: Good; level: number; cap: number }) {
-  const incoming = () => sea.shipments.filter((s) => (s.to === props.depot || s.to === null) && s.good === props.good && !s.outbound).reduce((a, s) => a + s.units, 0);
+export function Shelf(props: { good: Good; level: number; cap: number; incoming: number }) {
   const share = (v: number) => Math.max(0, Math.min(1, v / props.cap));
   const [w, setW] = createSignal(0);
   const color = () => GOODS[props.good].color;
@@ -114,12 +116,12 @@ function Shelf(props: { depot: number; good: Good; level: number; cap: number })
           <text serif size={13.5}>{Math.floor(props.level)}</text>
           <text serif size={12} soft>/ {props.cap}</text>
         </box>
-        <Show when={incoming() > 0}>
-          <text size={11} soft>+{Math.round(incoming())} coming</text>
+        <Show when={props.incoming > 0}>
+          <text size={11} soft>+{Math.round(props.incoming)} coming</text>
         </Show>
       </box>
       <box h={14} round={7} fill="ink/0.09" onSize={(x) => setW(x)}>
-        <box at={{ left: 0, top: 0 }} w={w() * share(props.level + incoming())} h={14} round={7} fill={`${color()}55`} />
+        <box at={{ left: 0, top: 0 }} w={w() * share(props.level + props.incoming)} h={14} round={7} fill={`${color()}55`} />
         <box at={{ left: 0, top: 0 }} w={w() * share(props.level)} h={14} round={7} fill={color()} />
       </box>
     </box>

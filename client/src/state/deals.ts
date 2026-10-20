@@ -150,12 +150,9 @@ export const { deals } = createRoot(() => {
   return { deals };
 });
 
-/** The picker open, for deals coming in (false) or going out (true):
- *  from the dock's ferry or a mission's step. */
-const [picking, setPicking] = createSignal<boolean | null>(null);
 /** The stack spread out, every deal to see. */
 const [spread, setSpread] = createSignal(false);
-export { picking, setPicking, spread, setSpread };
+export { spread, setSpread };
 
 /** The harbour the town trades through: the game picks the way, the
  *  mayor never names a port. */

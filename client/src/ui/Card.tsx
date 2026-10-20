@@ -1,12 +1,12 @@
 /** @jsxImportSource ~ui */
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, createRoot, createSignal, on, onCleanup } from "solid-js";
 import { BLUEPRINTS } from "../blueprints";
 import { selected, select, setFollowing, setSubject } from "../state/selection";
 import { getEntity } from "../state/gameObjects";
 import { now } from "../state/sea";
 import { DepotPanel } from "./Depot";
 import { SitePanel, type DepotLine, type MakerLine } from "./Site";
-import { Bar, Press, Row, Section, To, view, wide, type Link } from "./kit";
+import { Bar, Press, Row, Section, To, type Link } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { Building, BuildingKind, CarRole, Good, Need } from "../generated";
 
@@ -64,18 +64,13 @@ type BuildingCard = Extract<Card, { kind: "building" }>;
 const REFRESH_MS = 1000;
 const CLOSE = "M6 6l12 12M18 6L6 18";
 
-/**
- * The card for whatever was tapped: who is in it, where it is going, what it
- * owes, each line a thing on the map you can go to; and, for a depot and a
- * site, what the mayor does there. Top left on a wide screen; on a phone,
- * a sheet over the dock. Taller than its room, it scrolls.
- */
-export default function Card() {
+/** The card of whatever is selected, asked again every second. */
+const card = createRoot(() => {
   const [card, setCard] = createSignal<Card | null>(null);
-
+  // The card before stays until the next comes, so the sheet does not
+  // sink and rise again between them.
   createEffect(on(selected, (id) => {
-    setCard(null);
-    if (id === null) return;
+    if (id === null) return setCard(null);
     let live = true;
     const fetchCard = async () => {
       const r = await fetch(`/inspect/${id}`);
@@ -105,56 +100,91 @@ export default function Card() {
   };
   fromHash();
   window.addEventListener("hashchange", fromHash);
-  onCleanup(() => window.removeEventListener("hashchange", fromHash));
+  return card;
+});
+export { card };
 
-  const onKey = (e: KeyboardEvent) => e.key === "Escape" && select(null);
-  window.addEventListener("keydown", onKey);
-  onCleanup(() => window.removeEventListener("keydown", onKey));
+/** The client's own record of a building, read again with the sea. */
+const buildingOf = (id: number) => {
+  now();
+  const e = getEntity(id);
+  return e?.object.kind === "Building" ? (e.object.data as Building) : null;
+};
 
+/**
+ * The card for whatever was tapped, as the select tab's sheet: its head
+ * the thing's name and where it is, peeking over the dock; drawn up,
+ * who is in it, where it is going, what it owes, each line a thing on the
+ * map you can go to; and, for a depot and a site, what the mayor does
+ * there.
+ */
+export function InspectHead() {
+  return (
+    <Show when={card()}>
+      {(c) => {
+        const head = () => {
+          const k = c();
+          switch (k.kind) {
+            case "resident":
+              return { title: k.name, sub: k.at ? `at ${k.at.label}` : "off the map" };
+            case "car": {
+              const what = ROLE[k.role];
+              return { title: k.rider ? `${k.rider.label}'s ${what.toLowerCase()}` : what, sub: k.trip ? `to ${k.trip.to.label}` : k.parked_at ? `parked at ${k.parked_at.label}` : k.role === "Ferry" ? "of the harbour" : "parked out of sight" };
+            }
+            case "building": {
+              const bp = BLUEPRINTS[k.building_kind];
+              const site = buildingOf(k.id)?.site;
+              return {
+                title: site ? `${bp.label} · a site` : bp.label,
+                sub: k.reached ? (site ? "going up as its materials land" : undefined) : "no road reaches it",
+                icon: (
+                  <box w={36} h={36} round={18} fill={bp.color} opacity={site ? 0.65 : 1} align="center" justify="center">
+                    <icon d={bp.glyph} size={19} ink="white" />
+                  </box>
+                ),
+              };
+            }
+            case "gone":
+              return { title: "Gone", sub: "Nothing stands here any more" };
+          }
+        };
+        return <Header title={head().title} sub={head().sub} icon={(head() as { icon?: JSX.Element }).icon} />;
+      }}
+    </Show>
+  );
+}
+
+export function InspectBody() {
   /** The building whose card is open, by id alone: what the mayor works
    *  with on it is made once, not again with every refresh. */
   const building = createMemo(() => {
     const c = card();
     return c?.kind === "building" ? c.id : null;
   });
-  const asBuilding = () => card() as BuildingCard;
-
   return (
     <Show when={card()}>
       {(c) => (
-        <Sheet>
+        <>
           <Show when={c().kind === "resident"}>{ResidentCard(c() as Extract<Card, { kind: "resident" }>)}</Show>
           <Show when={c().kind === "car"}>{CarCard(c() as Extract<Card, { kind: "car" }>)}</Show>
           <Show when={building()} keyed>
-            {(id) => <BuildingCard id={id} card={asBuilding} />}
+            {(id) => <BuildingCard id={id} card={() => card() as BuildingCard} />}
           </Show>
-          <Show when={c().kind === "gone"}>
-            <Header title="Gone" sub="Nothing stands here any more" />
-          </Show>
-        </Sheet>
+        </>
       )}
     </Show>
   );
 }
 
-/** A card's glass, where it lies, at most as tall as its room; what is
+/** A pane of glass where it lies, at most as tall as its room; what is
  *  taller scrolls under the wheel or a finger. */
-export function Sheet(props: { children: JSX.Element; layer?: string; at?: JSX.Box["at"]; w?: number; room?: number }) {
+export function Pane(props: { children: JSX.Element; layer: string; at: JSX.Box["at"]; w?: number; room: number }) {
   const [tall, setTall] = createSignal(0);
   const [scroll, setScroll] = createSignal(0);
-  const room = () => props.room ?? (wide() ? view().h - 144 : view().h * 0.45);
-  const roll = (by: number) => setScroll(Math.max(0, Math.min(tall() - room(), scroll() + by)));
-  createEffect(() => tall() <= room() && setScroll(0));
+  const roll = (by: number) => setScroll(Math.max(0, Math.min(tall() - props.room, scroll() + by)));
+  createEffect(() => tall() <= props.room && setScroll(0));
   return (
-    <glass
-      layer={props.layer ?? "card"}
-      at={props.at ?? (wide() ? { left: 24, top: 24 } : { left: 12, right: 12, bottom: 148 })}
-      w={props.w ?? (wide() ? 320 : undefined)}
-      h={Math.min(tall(), room())}
-      round={22}
-      clip
-      onScroll={roll}
-    >
+    <glass layer={props.layer} at={props.at} w={props.w} h={Math.min(tall(), props.room)} round={22} clip onScroll={roll}>
       <box y={-scroll()} pad={{ bottom: 6 }} onSize={(_, h) => setTall(h)}>
         {props.children}
       </box>
@@ -182,7 +212,6 @@ export function Header(props: { title: string; sub?: string; icon?: JSX.Element;
 function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
   return (
     <>
-      <Header title={c.name} sub={c.at ? `at ${c.at.label}` : "off the map"} />
       <Section title="Where">
         <Row label="Now"><To link={c.at} fallback="off the map" /></Row>
         <Row label="Home"><To link={c.home} /></Row>
@@ -210,10 +239,8 @@ function ResidentCard(c: Extract<Card, { kind: "resident" }>) {
 const ROLE: Record<CarRole, string> = { Private: "Car", Truck: "Lorry", Van: "Van", Tractor: "Tractor", Ferry: "Ferry", Tug: "Tug" };
 
 function CarCard(c: Extract<Card, { kind: "car" }>) {
-  const what = ROLE[c.role];
   return (
     <>
-      <Header title={c.rider ? `${c.rider.label}'s ${what.toLowerCase()}` : what} sub={c.trip ? `to ${c.trip.to.label}` : c.parked_at ? `parked at ${c.parked_at.label}` : c.role === "Ferry" ? `of the harbour` : "parked out of sight"} />
       <Section title="Who">
         <Row label="Aboard"><To link={c.rider} fallback="nobody" /></Row>
         <Row label={c.role === "Private" ? "Owner" : "Of"}><To link={c.owner} /></Row>
@@ -257,25 +284,11 @@ const Links = (props: { each: Link[] }) => <For each={props.each}>{(l) => <box m
 function BuildingCard(props: { id: number; card: () => BuildingCard }) {
   const c = props.card;
   const kind = () => c().building_kind;
-  const bp = () => BLUEPRINTS[kind()];
   /** Still going up: the client's own record of the site. */
-  const site = createMemo(() => {
-    now();
-    const e = getEntity(props.id);
-    return e?.object.kind === "Building" ? (e.object.data as Building).site : null;
-  });
+  const site = createMemo(() => buildingOf(props.id)?.site ?? null);
   const lorries = () => c().fleet.filter((l) => l.label === "Lorry").map((l) => l.id);
   return (
     <>
-      <Header
-        title={site() ? `${bp().label} · a site` : bp().label}
-        sub={c().reached ? (site() ? "going up as its materials land" : undefined) : "no road reaches it"}
-        icon={
-          <box w={36} h={36} round={18} fill={bp().color} opacity={site() ? 0.65 : 1} align="center" justify="center">
-            <icon d={bp().glyph} size={19} ink="white" />
-          </box>
-        }
-      />
       <Show when={site()}>{(s) => <SitePanel site={s()} depots={c().depots} makers={c().makers} calls={c().calls} />}</Show>
       <Show when={!site() && kind() === "Depot"}>
         <DepotPanel id={props.id} lorries={lorries()} />

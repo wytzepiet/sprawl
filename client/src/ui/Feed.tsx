@@ -4,7 +4,8 @@ import { eachEntity, groundOf, useGame } from "../state/gameObjects";
 import { missionKey, neighbours, shownMissions } from "../state/missions";
 import { clockAt, news, sea, until, type News } from "../state/sea";
 import { setFollowing } from "../state/selection";
-import { deals, GOOD_ORDER, home, offerOf, picking, setPicking, setSpread, spread, stepsOf, type Deal } from "../state/deals";
+import { deals, home, offerOf, setSpread, spread, stepsOf, type Deal } from "../state/deals";
+import { trade } from "./sheet";
 import { BLUEPRINTS, GOODS } from "../blueprints";
 import { eye } from "../engine/OrthoCamera";
 import { CHUNK_SIZE, CHUNK_SKIRT, CHUNK_STRIDE, TYPE_BY_BYTE } from "../engine/objects/terrainGeometry";
@@ -16,16 +17,17 @@ import type { BuildingKind, Good, Mission, Offer, Step, TerrainType } from "../g
 import type { Mayor } from "../generated/Mayor";
 import type { JSX } from "~ui/jsx-runtime";
 
-/** Room the feed leaves below it: the dock and the corners, and on a
- *  phone the corners under the dock. */
-const BELOW = () => (wide() ? 112 : 172);
+/** Where the feed starts, and the room it leaves below it: on a wide
+ *  screen the dock; on a phone the dial's row over it, and the dock and
+ *  the sheet's head under it. */
+const TOP = () => (wide() ? 24 : 76);
+const BELOW = () => (wide() ? 112 : 180);
 
-/** A card of the feed: a line of news, a mission, a deal, or the picker. */
+/** A card of the feed: a line of news, a mission, or a deal. */
 type Note =
   | { key: string; kind: "news"; news: News }
   | { key: string; kind: "mission"; m: Mission }
-  | { key: string; kind: "deal"; deal: Deal }
-  | { key: string; kind: "picker" };
+  | { key: string; kind: "deal"; deal: Deal };
 
 /**
  * The feed: everything that happens to
@@ -36,9 +38,8 @@ type Note =
  * a tap spreads them out, a tap on one opens it.
  */
 export default function Feed() {
-  const room = () => view().h - BELOW() - 16;
+  const room = () => view().h - TOP() - BELOW();
   const notes = (): Note[] => [
-    ...(picking() === null || home() === null ? [] : [{ key: "picker", kind: "picker" as const }]),
     ...[...news()].reverse().map((n) => ({ key: `news:${n.key}`, kind: "news" as const, news: n })),
     ...shownMissions().map((m) => ({ key: missionKey(m), kind: "mission" as const, m })),
     ...deals().map((d) => ({ key: `deal:${d.key}`, kind: "deal" as const, deal: d })),
@@ -46,18 +47,16 @@ export default function Feed() {
   const [focus, setFocus] = createSignal<string | null>(null);
   /** Folded, a tap spreads the stack; spread, it opens the card tapped. */
   const tap = (key: string) => {
-    if (!spread() && notes().length > 1 && picking() === null) return setSpread(true);
+    if (!spread() && notes().length > 1) return setSpread(true);
     setFocus(focus() === key ? null : key);
   };
   createEffect(() => notes().length < 2 && setSpread(false));
   return (
-    <box at={wide() ? { right: 24, top: 24 } : { left: 12, right: 12, top: 12 }} w={wide() ? 340 : undefined} gap={8}>
+    <box at={wide() ? { right: 24, top: TOP() } : { left: 12, right: 12, top: TOP() }} w={wide() ? 340 : undefined} gap={8}>
       <Stack each={notes()} key={(n) => n.key} open={spread()} room={room()} keep={focus()} glass="note" round={20}>
         {(n) => {
           const note = n();
           switch (note.kind) {
-            case "picker":
-              return <Picker onDeal={(key) => (setPicking(null), setFocus(`deal:${key}`))} />;
             case "news":
               return <NewsCard news={note.news} />;
             case "mission":
@@ -106,7 +105,7 @@ const LETTER = "M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 
 const FLAG = "M5 3h2v18H5zM7 4h11l-2.5 4L18 12H7z";
 
 /** A partner's crest, or the world's globe; an envelope on it for a letter's deal. */
-function Who(props: { partner: Mayor | null; size: number; letter?: boolean; ink?: string }) {
+export function Who(props: { partner: Mayor | null; size: number; letter?: boolean; ink?: string }) {
   const n = () => props.partner && neighbours().find((n) => n.mayor === props.partner);
   return (
     <box w={props.size} h={props.size}>
@@ -123,7 +122,7 @@ function Who(props: { partner: Mayor | null; size: number; letter?: boolean; ink
 }
 
 /** Who a deal is with, in words: a mayor's name, or the world. */
-const nameOf = (partner: Mayor | null) => (partner && neighbours().find((n) => n.mayor === partner)?.name) ?? "the world";
+export const nameOf = (partner: Mayor | null) => (partner && neighbours().find((n) => n.mayor === partner)?.name) ?? "the world";
 
 function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
   const { send } = useGame();
@@ -218,55 +217,6 @@ function Card(props: { deal: Deal; open: boolean; onTap: () => void }) {
           </box>
         </Appear>
       </Show>
-    </box>
-  );
-}
-
-/** New deals: which way, a good, then who from or for, each at its price
- *  a box; a tap books one. */
-function Picker(props: { onDeal: (key: string) => void }) {
-  const { send, growth } = useGame();
-  const out = () => picking() === true;
-  const [good, setGood] = createSignal<Good>("Timber");
-  const offers = () => sea.offers.filter((o) => o.good === good() && o.out === out());
-  const owed = () => sea.shipments.filter((s) => !s.outbound && (s.leg === "Booked" || s.leg === "Aboard")).reduce((a, s) => a + s.price * s.units, 0);
-  const box = (o: Offer) => o.price * GOODS[o.good].box;
-  const afford = (o: Offer) => o.out || growth().treasury - owed() >= box(o);
-  const deal = (o: Offer) => {
-    const h = home();
-    if (h === null) return;
-    send({ type: "Book", data: { harbour: h, good: o.good, partner: o.partner, out: o.out } });
-    props.onDeal(`${o.out ? "out" : "in"}:${o.partner ?? "world"}:${o.good}`);
-  };
-  const Way = (p: { out: boolean }) => (
-    <Press h={32} pad={{ x: 14 }} round={16} justify="center" fill={out() === p.out ? "ink/0.85" : undefined} onTap={() => setPicking(p.out)}>
-      <text size={14} weight={600} ink={out() === p.out ? "glass" : "ink/0.6"}>{p.out ? "Sell" : "Buy"}</text>
-    </Press>
-  );
-  return (
-    <box pad={12} gap={10}>
-      <box dir="row" align="center" gap={6}>
-        <box dir="row" pad={2} round={18} fill="ink/0.07"><Way out={false} /><Way out /></box>
-        <box grow={1} />
-        <For each={GOOD_ORDER}>
-          {(g) => (
-            <Press w={36} h={36} round={10} align="center" justify="center" fill={good() === g ? GOODS[g].color : `${GOODS[g].color}2a`} onTap={() => setGood(g)}>
-              <icon d={GOODS[g].glyph} size={20} ink={good() === g ? "white" : GOODS[g].color} />
-            </Press>
-          )}
-        </For>
-      </box>
-      <box dir="row" wrap gap={6} minH={36}>
-        <For each={offers()}>
-          {(o) => (
-            <Press dir="row" align="center" gap={6} h={36} pad={{ right: 12, left: 4 }} round={18} fill="glass" shadow opacity={afford(o) ? 1 : 0.35} onTap={() => afford(o) && deal(o)}>
-              <Who partner={o.partner} size={28} letter={o.letter !== null} />
-              <text size={14} weight={600}>{o.partner ? nameOf(o.partner) : "World"}</text>
-              <text serif size={15}>{coins(o.out ? box(o) : -box(o))}</text>
-            </Press>
-          )}
-        </For>
-      </box>
     </box>
   );
 }
@@ -388,7 +338,7 @@ function Act(props: { step: Step }) {
           case "Booked":
           case "Pinned":
           case "Sold":
-            return <Btn big onTap={() => (goal.kind === "Pinned" ? setSpread(true) : setPicking(goal.kind === "Sold"))} color={BLUEPRINTS.Harbour.color}>{goal.kind === "Pinned" ? "Open the deals" : "A new deal"}</Btn>;
+            return <Btn big onTap={() => (goal.kind === "Pinned" ? setSpread(true) : trade(goal.kind === "Sold"))} color={BLUEPRINTS.Harbour.color}>{goal.kind === "Pinned" ? "Open the deals" : "A new deal"}</Btn>;
         }
       }}
     </>

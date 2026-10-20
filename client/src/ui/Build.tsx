@@ -1,16 +1,12 @@
 /** @jsxImportSource ~ui */
 import { createSignal, For, Index, Show } from "solid-js";
-import { BLUEPRINTS, GOODS, KINDS, plot, TABS } from "../blueprints";
+import { BLUEPRINTS, GOODS, KINDS, plot, TABS, type Tab } from "../blueprints";
 import { LETTERS } from "../engine/town/grid";
 import { planSvg } from "../../scripts/planDraw";
 import { held, hold } from "./buildMode";
-import { selected } from "../state/selection";
-import { Appear, view, wide } from "./kit";
+import { Press } from "./kit";
+import { open, setOpen, sheetWidth } from "./sheet";
 import type { BuildingKind, Good } from "../generated";
-
-/** The build menu, open or not. */
-const [menuOpen, setMenuOpen] = createSignal(false);
-export { menuOpen, setMenuOpen };
 
 /** A picture's side, a cell's least width and the room between cells. */
 const PIC = 76;
@@ -83,80 +79,77 @@ function picture(kind: BuildingKind) {
 
 const materials = (kind: BuildingKind) => Object.entries(BLUEPRINTS[kind].materials) as [Good, number][];
 
-/** Where the menu lies: over the dock, right of a card while one is
- *  open on a wide screen, as wide as it may be up to its most. */
-const band = () => {
-  const left = selected() !== null && wide() ? 360 : 16;
-  const w = Math.min(720, view().w - left - 16);
-  return { left: left + (view().w - left - 16 - w) / 2, w, bottom: wide() ? 104 : 150 };
-};
+/** The kinds of building opened, by the menu's own groups. */
+const groups = TABS.map((t) => ({ tab: t, kinds: KINDS.filter((k) => BLUEPRINTS[k].tab === t) })).filter((g) => g.kinds.length);
+/** The group shown. */
+const [group, setGroup] = createSignal<Tab>(groups[0].tab);
 
 /**
- * The build menu: every kind of building, a picture of it as it stands,
- * its name and what it is built of. Press on one and drag it onto the
- * map: the menu goes, and where it was a place to let it go and put it
- * back. A tap takes it up to place with a click.
+ * The build tab's head: the menu's groups, a tap on one drawing it up.
+ * While a building is in hand, a place to let it go and put it back.
  */
-export default function BuildMenu() {
-  const kinds = TABS.flatMap((t) => KINDS.filter((k) => BLUEPRINTS[k].tab === t));
-  const take = (kind: BuildingKind) => (hold(kind), setMenuOpen(false));
-  const across = () => Math.max(1, Math.floor((band().w - 24 + GAP) / (CELL + GAP)));
-  const cell = () => Math.floor((band().w - 24 - GAP * (across() - 1)) / across());
-  const [tall, setTall] = createSignal(0);
-  const [scroll, setScroll] = createSignal(0);
-  const room = () => Math.max(120, view().h - 200);
-  const roll = (by: number) => setScroll(Math.max(0, Math.min(tall() - room(), scroll() + by)));
+export function BuildHead() {
   const [over, setOver] = createSignal(false);
   return (
-    <>
-      <Show when={menuOpen()}>
-        <glass layer="menu" at={{ left: band().left, bottom: band().bottom }} w={band().w} h={Math.min(tall(), room())} round={26} clip onScroll={roll}>
-          <Appear>
-            <box y={-scroll()} pad={12} dir="row" wrap gap={GAP} onSize={(_, h) => setTall(h)}>
-            <For each={kinds}>
-              {(kind) => (
-                <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => take(kind)} onDrag={() => take(kind)}>
-                  <Picture kind={kind} />
-                  <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
-                  <box dir="row" align="center" gap={6}>
-                    <Show when={materials(kind).length} fallback={<text serif size={12} soft>at once</text>}>
-                      <For each={materials(kind)}>
-                        {([g, n]) => (
-                          <box dir="row" align="center" gap={2}>
-                            <icon d={GOODS[g].glyph} size={12} ink="ink/0.6" />
-                            <text serif size={12} soft>{n}</text>
-                          </box>
-                        )}
-                      </For>
-                    </Show>
-                  </box>
-                </box>
-              )}
-            </For>
+    <Show
+      when={held()}
+      fallback={
+        <box dir="row" gap={6} pad={{ x: 12, top: 14, bottom: 12 }}>
+          <For each={groups}>
+            {(g) => {
+              const on = () => group() === g.tab && open();
+              return (
+                <Press grow={1} h={36} round={18} align="center" justify="center" fill={on() ? "ink/0.85" : "ink/0.05"} onTap={() => (setGroup(g.tab), setOpen(true))}>
+                  <text size={13} weight={600} ink={on() ? "glass" : "ink/0.72"}>{g.tab[0].toUpperCase() + g.tab.slice(1)}</text>
+                </Press>
+              );
+            }}
+          </For>
+        </box>
+      }
+    >
+      <box pad={{ x: 12, top: 14, bottom: 12 }} onHover={setOver} onDrop={() => (setOver(false), hold(null))} onTap={() => hold(null)}>
+        <box h={44} round={16} align="center" justify="center" stroke={[2, over() ? "#D9483B" : "ink/0.2"]}>
+          <text size={13} weight={600} ink={over() ? "#D9483B" : "ink/0.6"}>Drop here to put it back</text>
+        </box>
+      </box>
+    </Show>
+  );
+}
+
+/**
+ * The build menu, drawn up: every kind of building in the group, a
+ * picture of it as it stands, its name and what it is built of. Press on
+ * one and drag it onto the map: the sheet sinks to its head, a place to
+ * let it go and put it back. A tap takes it up to place with a click.
+ */
+export function BuildBody() {
+  const across = () => Math.max(1, Math.floor((sheetWidth() - 24 + GAP) / (CELL + GAP)));
+  const cell = () => Math.floor((sheetWidth() - 24 - GAP * (across() - 1)) / across());
+  const kinds = () => groups.find((g) => g.tab === group())!.kinds;
+  return (
+    <box pad={{ x: 12, bottom: 12 }} dir="row" wrap gap={GAP}>
+      <For each={kinds()}>
+        {(kind) => (
+          <box w={cell()} pad={{ x: 6, top: 6, bottom: 8 }} gap={4} align="center" round={18} fill="ink/0.04" onTap={() => hold(kind)} onDrag={() => hold(kind)}>
+            <Picture kind={kind} />
+            <text size={13} weight={600} lines={1}>{BLUEPRINTS[kind].label}</text>
+            <box dir="row" align="center" gap={6}>
+              <Show when={materials(kind).length} fallback={<text serif size={12} soft>at once</text>}>
+                <For each={materials(kind)}>
+                  {([g, n]) => (
+                    <box dir="row" align="center" gap={2}>
+                      <icon d={GOODS[g].glyph} size={12} ink="ink/0.6" />
+                      <text serif size={12} soft>{n}</text>
+                    </box>
+                  )}
+                </For>
+              </Show>
             </box>
-          </Appear>
-        </glass>
-      </Show>
-      {/* Where the menu was, while a building is in hand: let go here to
-          put it back. */}
-      <Show when={held()}>
-        <glass
-          layer="menu"
-          at={{ left: band().left + Math.max(0, (band().w - 420) / 2), bottom: band().bottom }}
-          w={Math.min(420, band().w)}
-          h={84}
-          round={26}
-          align="center"
-          justify="center"
-          onHover={setOver}
-          onDrop={() => (setOver(false), hold(null))}
-          onTap={() => hold(null)}
-        >
-          <box at={{ left: 6, top: 6 }} w={Math.min(420, band().w) - 12} h={72} round={20} stroke={[2, over() ? "#D9483B" : "ink/0.2"]} />
-          <text size={13} weight={600} ink={over() ? "#D9483B" : "ink/0.6"}>Drop here to put it back · Esc</text>
-        </glass>
-      </Show>
-    </>
+          </box>
+        )}
+      </For>
+    </box>
   );
 }
 

@@ -9,7 +9,7 @@ import { elapsed, keys, wide } from "./kit";
  *  cut: each cut is a glyph of its own. */
 const R = 24;
 const CUTS = 48;
-/** How long a lump takes to drip up out of the purse. */
+/** How long a lump takes to drip out of the purse. */
 const DRIP_MS = 1600;
 
 /** The ring's arc, from the top round to a share of the way. */
@@ -21,15 +21,15 @@ function arc(share: number) {
 const RING = `M28 ${28 - R}A${R} ${R} 0 1 1 28 ${28 + R}A${R} ${R} 0 1 1 28 ${28 - R}`;
 
 /**
- * The city's two dials, run together into one shape in the bottom
- * right corner: the level, a ring closing on the next, and the purse.
+ * The city's two dials, run together into one shape at the top: the
+ * level, a ring closing on the next, and the purse.
  *
  * The level is the town's GDP to date: the value it adds, landing as
  * each meal is served, each tank filled, each crop cut and each shift at
  * a desk worked. The purse is the town's coins, stepped at the border: a
  * box sold to the world as the ferry casts off, a box bought from it as
  * it lands; a tap opens the town's books. The coins are on the map first,
- * so what comes into the purse drips up out of it as it lands: an event
+ * so what comes into the purse drips out of it as it lands: an event
  * you could have watched, never a rate.
  */
 export default function Meter() {
@@ -58,7 +58,7 @@ export default function Meter() {
       : `${growth().income >= 0 ? "+" : "−"}${Math.abs(Math.floor(growth().income))} today · GDP today ${Math.floor(growth().gdp)}`;
 
   return (
-    <box at={wide() ? { right: 24, bottom: 28 } : { right: 12, bottom: 12 }} w={purse() + 64} h={52}>
+    <box w={purse() + 64} h={52}>
       {/* The glass, one shape, the drips running out of it. */}
       <glass layer="meter" at={{ right: 0, top: 0 }} w={purse() + 24} h={52} round={26} />
       <glass layer="meter" at={{ right: purse() + 2, top: -2 }} w={56} h={56} round={28} />
@@ -76,20 +76,20 @@ export default function Meter() {
         <text size={12} weight={600} soft>coins</text>
       </box>
       <For each={drips()}>{(d) => <Drip n={d.n} />}</For>
-      {/* What the day has done, above. */}
+      {/* What the day has done, under it. */}
       <Show when={wide()}>
-        <text at={{ right: 20, bottom: 60 }} size={12.5} weight={600} soft>{day()}</text>
+        <text at={{ right: 20, top: 60 }} size={12.5} weight={600} soft>{day()}</text>
       </Show>
     </box>
   );
 }
 
-/** A lump into the purse, dripping up out of it: its glass, or, given
+/** A lump into the purse, dripping out under it: its glass, or, given
  *  how many, its coins on it. */
 function Drip(props: { n?: number }) {
   const t = elapsed(DRIP_MS);
   const motion = {
-    get y() { return keys(t(), [[0, 0], [0.12, 0], [0.7, -40], [1, -52]]); },
+    get y() { return keys(t(), [[0, 0], [0.12, 0], [0.7, 40], [1, 52]]); },
     get scale() { return keys(t(), [[0, 0.2], [0.12, 1], [0.7, 0.85], [1, 0.3]]); },
     get opacity() { return keys(t(), [[0, 0], [0.12, 1], [0.7, 1], [1, 0]]); },
   };

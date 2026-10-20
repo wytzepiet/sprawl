@@ -1,7 +1,7 @@
 /** @jsxImportSource ~ui */
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import { BLUEPRINTS, GOODS } from "../blueprints";
-import { Header, Sheet } from "./Card";
+import { Header, Pane } from "./Card";
 import { view, wide } from "./kit";
 import type { JSX } from "~ui/jsx-runtime";
 import type { BuildingKind, Good } from "../generated";
@@ -33,7 +33,7 @@ const mean = (pages: TownPage[], f: (p: TownPage) => number) => (pages.length ? 
 const num = (v: number) => `${v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}`;
 
 /**
- * The town's books, over the purse: the two dials read back by building
+ * The town's books, under the purse: the two dials read back by building
  * and by good. The GDP added today, per kind of building, adds up to the
  * level's step; the coins that crossed the border, per good, in and out,
  * add up to the treasury's. Beside each line, the same a day over the
@@ -69,7 +69,7 @@ export default function Board() {
   return (
     <Show when={open() && town()}>
       {(t) => (
-        <Sheet layer="books" at={wide() ? { right: 24, bottom: 112 } : { left: 12, right: 12, bottom: 76 }} w={wide() ? 288 : undefined} room={view().h - (wide() ? 144 : 100)}>
+        <Pane layer="books" at={wide() ? { left: 24, top: 112 } : { left: 12, right: 12, top: 76 }} w={wide() ? 288 : undefined} room={view().h - (wide() ? 240 : 260)}>
           <Header title="The town" sub={`${t().season.length} ${t().season.length === 1 ? "day" : "days"} of books`} onClose={() => setOpen(false)} />
           <Part title="GDP" today={sum(t().today.gdp)} season={mean(t().season, (p) => sum(p.gdp))}>
             <For each={keys(t(), (p) => p.gdp)}>{(kind) => <Line label={BLUEPRINTS[kind].label} today={t().today.gdp[kind] ?? 0} season={mean(t().season, (p) => p.gdp[kind] ?? 0)} />}</For>
@@ -83,7 +83,7 @@ export default function Board() {
           <Part title="Treasury" today={sum(t().today.sold) - sum(t().today.bought)} season={mean(t().season, (p) => sum(p.sold) - sum(p.bought))}>
             <Line label="Holds" today={t().treasury} />
           </Part>
-        </Sheet>
+        </Pane>
       )}
     </Show>
   );
