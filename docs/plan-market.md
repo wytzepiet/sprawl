@@ -30,6 +30,21 @@ raise residents); a Factorio of belts and lines drawn between buildings
 (very satisfying, and a second game on top of a simple one; kept as an
 idea, not a plan).
 
+## The first version, and what waits
+
+Wytze, 2026-10-20: keep the game simple. Everything below is the ceiling,
+not the plan. The first version is:
+
+- a world price per good that moves, oil the one that swings;
+- freight from the real distance, so Buy and Sell differ by it;
+- the market tab: the list, a good's graph, Buy, Sell, and "when";
+- tanks and depots as what you can hold;
+- the computer's mayors making and buying, which moves the price.
+
+The world stays the shipping company, and freight leaves the game.
+Waiting, until play asks for them: contracts, floors, every-sailing
+orders, embassies, exchanges run by mayors, freight carried by players.
+
 ## Prices
 
 - **One world price per good, and a graph of it.** It moves with what
