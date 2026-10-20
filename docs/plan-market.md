@@ -128,15 +128,22 @@ way to go wrong. Every one is a real country.
 Mixed towns are the usual, and switching is the drama: the extractor
 whose price collapses builds a refinery and climbs the chain.
 
-## Research is the specialisation
+## No tree: what it is built from is the gate
 
-The tree (`game.md` §The build, switched off) comes back as research:
-paid for, in coins and goods, and slow at the frontier. It specialises
-by what it costs, not by a cap: no rule says you cannot be both, only
-that both is twice the bill. Refunding is cheap, since the real sunk
-cost is the buildings; what cannot be refunded is the time. A frontier
-researched first is a lead (the first shipyard sells the region's
-ships), and following is cheaper than leading, as it is in the world.
+Wytze, 2026-10-20: any building, any time, if you have what it takes.
+The tree (`game.md` §The build, switched off) is not coming back. The
+order is in the materials: a chip fab is built of machinery,
+electronics and concrete, so it waits on a town that makes or buys
+them, as nothing in Minecraft locks the diamond pick but the diamonds.
+Specialising is what a chain costs to build and run, and pivoting is
+buying different materials.
+
+What a tree gave, guidance, comes from elsewhere:
+
+- **Missions** say what is next (`missions.md`), early and plainly.
+- **The build menu leads with what is in reach**: what can be built now
+  first, then each of the rest with what it still lacks, a recipe book
+  rather than a wall of forty buildings.
 
 ## It needs other mayors
 
