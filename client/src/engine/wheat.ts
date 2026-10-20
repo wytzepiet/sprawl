@@ -132,19 +132,20 @@ function tuft(s: Stage, p: (typeof plants)[number], blades: number, long: [numbe
 }
 
 /**
- * Its ears: this many, round its heart, nodding every way, each this
- * long and wide.
- * An ear is its spikelets on a body, grains in pairs either side of its stem one
- * over the next, tipped out a little, the top ones smaller; and from
- * each, an awn, a whisker on along the ear and past its tip, thin and
- * pale, under the grains.
+ * Its ears: this many, each anywhere over the field, not by its own row,
+ * since over a closed crop the ears lean every way and hide the rows;
+ * nodding every way, each this long and wide. An ear is its spikelets on
+ * a body, grains in pairs either side of its stem one over the next,
+ * tipped out a little, the top ones smaller; and from each, an awn, a
+ * whisker on along the ear and past its tip, thin and pale, under the
+ * grains.
  */
 function ears(s: Stage, p: (typeof plants)[number], count: number, long: number, wide: number, h: number, tone: number, awns: number) {
   for (let e = 0; e < count; e++) {
     const r = p.r.slice(36 + e * 4, 40 + e * 4);
     const [angle, l] = [r[2] * Math.PI * 2, long * (0.85 + 0.3 * r[3])];
     const [dx, dy] = [Math.cos(angle), Math.sin(angle)];
-    const [ex, ey] = [p.x + (r[0] - 0.5) * 52 - dx * l * 0.5, p.y + (r[1] - 0.5) * 24 - dy * l * 0.5];
+    const [ex, ey] = [r[0] * n - dx * l * 0.5, r[1] * n - dy * l * 0.5];
     const top = h + 0.004 * (r[3] - 0.5);
     const spikelets = Math.max(4, Math.round(l / (wide * 0.75)));
     stroke(s, ex, ey, angle, l, wide * 0.55, top - 0.001, top - 0.001, tone * 0.95, true);
@@ -193,7 +194,7 @@ function stage(i: number): Stage {
       const ripe = i === 5;
       const s = earth(0.006);
       for (const p of plants) tuft(s, p, 9, [24, 44], 3, 1.3, 0.05, 0.03, ripe ? 0.55 : 0.8);
-      for (const p of plants) ears(s, p, ripe ? 7 : 6, ripe ? 19 : 17, ripe ? 5.2 : 4.6, 0.075, ripe ? 1.15 : 1.05, ripe ? 4 : 0);
+      for (const p of plants) ears(s, p, ripe ? 14 : 12, ripe ? 9 : 8, ripe ? 5.2 : 4.6, 0.075, ripe ? 1.15 : 1.05, ripe ? 4 : 0);
       return s;
     }
     default: {
