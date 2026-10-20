@@ -12,7 +12,7 @@ import type { GridCoord } from "../../generated/GridCoord";
 import type { Job } from "../../generated/Job";
 import type { Run } from "../../generated/Run";
 import type { Tile } from "../../generated/Tile";
-import { drawnPath, type DrawnPath, type P } from "./drawnPath";
+import { squarePath, type DrawnPath, type P } from "./drawnPath";
 import { baked } from "../bakeCache";
 import { WHEAT_MARGIN, WHEAT_STAGES, WHEAT_STRIDE, WHEAT_TEXELS } from "../wheat";
 import recipe from "../wheat.ts?raw";
@@ -177,10 +177,16 @@ class Strips {
         const [a, b] = [samples[Math.max(0, i - 1)].p, samples[Math.min(samples.length - 1, i + 1)].p];
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
         const n = { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
+        // At a corner, out along the bisector as far as makes the strip's
+        // edges meet square: the corner worked whole.
+        const c = i > 0 ? a : p;
+        const e = i > 0 ? p : b;
+        const le = Math.hypot(e.x - c.x, e.y - c.y);
+        const mitre = le > 1e-6 ? 1 / Math.max(0.5, (n.x * -(e.y - c.y) + n.y * (e.x - c.x)) / le) : 1;
         const sides = [-1, 1].map((side) => (spills(k, at.x + n.x * side, at.y + n.y * side) ? (off(at.x + n.x * side, at.y + n.y * side) ? 2 : 1) : 0));
         sides.forEach((spill, s) => {
           const out = (s ? 1 : -1) * (0.5 + (spill ? SPILL : HAIR));
-          this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
+          this.positions.set([p.x + n.x * out * mitre, p.y + n.y * out * mitre, 0], (v + s) * 3);
           this.sunk[v + s] = spill || d < from || d > to ? SUNK : 0;
           data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
         });
@@ -257,7 +263,7 @@ class Field {
    *  path too short to draw, or grass. */
   private strips(name: string, path: GridCoord[], look: Look, job: Job | null): Strips | null {
     const nodes = path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 }));
-    const drawn = path.length > 1 && job ? drawnPath(nodes, 0, 0, 0) : null;
+    const drawn = path.length > 1 && job ? squarePath(nodes) : null;
     if (!drawn || !job) return null;
     const worked = workedAt(path, this.land, this.head, job);
     return new Strips(this.ctx, `field_${name}`, nodes, drawn, (k) => worked.get(key(path[k])) === k, this.land, (paint) => this.material(paint), look);

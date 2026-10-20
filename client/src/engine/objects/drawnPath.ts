@@ -142,6 +142,18 @@ export function drawnPath(centerNodes: P[], offset: number | number[], fromLot: 
     }
   }
 
+  return drawnOf(points, nodeIndex);
+}
+
+/** A path drawn straight from node to node, turning on the spot at each:
+ *  a tractor's over its land, which squares its corners as a ploughman
+ *  does, so what it works is the tiles it drove, whole. */
+export function squarePath(nodes: P[]): DrawnPath | null {
+  return drawnOf(nodes, nodes.map((_, i) => i));
+}
+
+/** Points drawn through, and which of them is each node. */
+function drawnOf(points: P[], nodeIndex: number[]): DrawnPath | null {
   if (points.length < 2) return null;
   const path = new Polyline(points);
   const { distances, length } = path;

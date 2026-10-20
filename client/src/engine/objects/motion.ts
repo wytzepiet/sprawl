@@ -1,4 +1,4 @@
-import { drawnPath, type DrawnPath, type Fix } from "./drawnPath";
+import { squarePath, type DrawnPath, type Fix } from "./drawnPath";
 import { CAR_RIG, driveTrip, LORRY_RIG, straight, type Drive, type Pose, type Rig } from "./driver";
 import { behind, CAB_BLOCK, deckPose, sailing, shunting } from "./sea";
 import { rgb } from "../rgb";
@@ -122,14 +122,14 @@ function roadAt(x: number, y: number, height: number): { id: number; data: RoadN
 export const straightBehind = (p: Pose): Pose => straight(p, LORRY_RIG)!;
 
 /** A tractor on its run over the land (a ferry's is `sailing`): the
- *  planned tiles, centre to centre with no lane, on the same rounded path
- *  as a trip so it corners like anything else — but by the server's
+ *  planned tiles, centre to centre with no lane, turning on the spot at
+ *  each corner as a ploughman squares one — and by the server's
  *  clock, not by its own physics: on the run's `k`th tile `k` paces after
  *  it started, wherever the corners put that on the path, so it is where
  *  the server has it when the job is done there. */
 export function running(car: Car): { drawn: DrawnPath; at(now: number, z: number): Fix } | null {
   const run = car.run!;
-  const drawn = drawnPath(run.path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 })), 0, 0, 0);
+  const drawn = squarePath(run.path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 })));
   if (!drawn) return null;
   const { atNode } = drawn;
   return {
