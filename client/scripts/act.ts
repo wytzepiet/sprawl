@@ -246,7 +246,7 @@ for (const line of lines) {
       break;
     case "raze": {
       const [x, y] = tile(args[0]);
-      const b = [...known.values()].find((e) => e.object.kind === "Building" && e.object.data.tiles.some((t) => t.x === x && t.y === y));
+      const b = [...known.values()].find((e) => e.object.kind === "Building" && e.object.data.tiles.some((t: { x: number; y: number }) => t.x === x && t.y === y));
       if (b) send("Raze", { building: b.id });
       else report.push(`nothing stands at ${x},${y}`);
       break;
