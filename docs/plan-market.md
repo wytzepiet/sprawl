@@ -114,8 +114,29 @@ way to go wrong. Every one is a real country.
   Lives on storage, contracts and timing, and on the other mayors'
   mistakes.
 
+- **The maker of what others need to make.** Chips (Taiwan: decades of
+  research, one light, dear good the whole world needs), vehicles
+  (Germany, Japan: a buyer of steel, glass, rubber and electronics),
+  heavy equipment (the extractor's diggers and rigs), ships (Korea: steel
+  in, and out a ship that makes its buyer's freight cheaper). These are
+  sold to other mayors as things they build with, so towns come to
+  depend on each other.
+- **The exchange.** A town whose harbour other mayors trade through,
+  for a fee on each trade (London, Chicago, Rotterdam): the hub that sets
+  the region's price because the region's goods pass through it.
+
 Mixed towns are the usual, and switching is the drama: the extractor
 whose price collapses builds a refinery and climbs the chain.
+
+## Research is the specialisation
+
+The tree (`game.md` §The build, switched off) comes back as research:
+paid for, in coins and goods, and slow at the frontier. It specialises
+by what it costs, not by a cap: no rule says you cannot be both, only
+that both is twice the bill. Refunding is cheap, since the real sunk
+cost is the buildings; what cannot be refunded is the time. A frontier
+researched first is a lead (the first shipyard sells the region's
+ships), and following is cheaper than leading, as it is in the world.
 
 ## It needs other mayors
 
