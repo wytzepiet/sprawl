@@ -115,7 +115,7 @@ class Strips {
   private sunk: Float32Array;
   private z = -1;
 
-  constructor(ctx: EngineContext, name: string, nodes: P[], drawn: DrawnPath, works: (k: number) => boolean, land: Set<string>, material: (paint: Paint) => TownMaterial, look: Look) {
+  constructor(ctx: EngineContext, name: string, nodes: P[], drawn: DrawnPath, works: (k: number) => boolean, land: Set<string>, under: GridCoord[], material: (paint: Paint) => TownMaterial, look: Look) {
     this.drawn = drawn;
     this.paint = { look: vec(look), reach: 1e9 };
     const { points, distances, atNode } = drawn;
@@ -165,7 +165,7 @@ class Strips {
       const [back, on] = [spills(k, behind.x, behind.y), spills(k, ahead.x, ahead.y)];
       pieces.push({ k, from: back ? d0 : -1e9, to: on ? d1 : 1e9, samples: along(d0, d1, back ? SPILL : HAIR, on ? SPILL : HAIR) });
     }
-    const count = pieces.reduce((n, piece) => n + piece.samples.length, 0);
+    const count = pieces.reduce((n, piece) => n + piece.samples.length, 0) + under.length * 2;
     this.positions = new Float32Array(count * 6);
     this.sunk = new Float32Array(count * 2);
     const data = new Float32Array(count * 16);
@@ -183,6 +183,19 @@ class Strips {
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
           this.sunk[v + s] = spill || d < from || d > to ? SUNK : 0;
           data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
+        });
+        if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
+        v += 2;
+      });
+    }
+    // Under it all, each tile given bare, ploughed earth, lowest of all:
+    // what shows where a turn cut a tile's corner.
+    for (const t of under) {
+      [t.y, t.y + 1].forEach((y, i) => {
+        [-0.5, 0.5].forEach((out, s) => {
+          this.positions.set([t.x + 0.5 - out, y, 0], (v + s) * 3);
+          this.sunk[v + s] = 2 * SUNK;
+          data.set([out, y, -1, 0, -1e9, 1e9, BARE, BARE], (v + s) * 8);
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
@@ -211,6 +224,8 @@ class Strips {
 const SPILL = 0.16;
 const SUNK = 0.0015;
 const HAIR = 0.03;
+/** A side flag past spilling onto land (1) or off it (2): bare all over. */
+const BARE = 3;
 
 class Field {
   private ruts: Strips | null = null;
@@ -231,7 +246,7 @@ class Field {
     this.land = new Set(tiles.map((t) => key(t.at)));
     this.head = (t) => [-1, 0, 1].some((dx) => [-1, 0, 1].some((dy) => !this.land.has(`${t.x + dx},${t.y + dy}`)));
     this.look = lookOf(tiles);
-    this.ruts = this.strips("ruts", ruts, this.look, JOB_OF[this.look.stage]);
+    this.ruts = this.strips("ruts", ruts, tiles.map((t) => t.at), this.look, JOB_OF[this.look.stage]);
     this.sheet = meshOf(ctx.engine, `field_${farm}`, { positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 2, 1, 0, 3, 2] });
     this.sheet.material = townMaterial([CAST_ONLY]);
     this.heights = tiles.map(() => -1);
@@ -253,14 +268,15 @@ class Field {
     });
   }
 
-  /** A path's strips in a look, worked as the job works it; none for a
-   *  path too short to draw, or grass. */
-  private strips(name: string, path: GridCoord[], look: Look, job: Job | null): Strips | null {
+  /** A path's strips in a look, worked as the job works it, over bare
+   *  earth on the tiles under them; none for a path too short to draw,
+   *  or grass. */
+  private strips(name: string, path: GridCoord[], under: GridCoord[], look: Look, job: Job | null): Strips | null {
     const nodes = path.map(({ x, y }) => ({ x: x + 0.5, y: y + 0.5 }));
     const drawn = path.length > 1 && job ? drawnPath(nodes, 0, 0, 0) : null;
     if (!drawn || !job) return null;
     const worked = workedAt(path, this.land, this.head, job);
-    return new Strips(this.ctx, `field_${name}`, nodes, drawn, (k) => worked.get(key(path[k])) === k, this.land, (paint) => this.material(paint), look);
+    return new Strips(this.ctx, `field_${name}`, nodes, drawn, (k) => worked.get(key(path[k])) === k, this.land, under, (paint) => this.material(paint), look);
   }
 
   /** A run out over the field, or none: its strips laid over the last
@@ -274,7 +290,7 @@ class Field {
     }
     if (this.out?.strips) drop(this.ctx.scene, this.out.strips.mesh);
     const after = leaves(run.job, this.look);
-    this.out = { run, after, strips: this.strips("run", run.path, after, run.job), worked: workedAt(run.path, this.land, this.head, run.job) };
+    this.out = { run, after, strips: this.strips("run", run.path, [], after, run.job), worked: workedAt(run.path, this.land, this.head, run.job) };
   }
 
   /** The tractor's progress, in steps of its path, now. */
@@ -486,7 +502,7 @@ let fieldAhead = smoothstep(fieldPatch - 0.2, fieldPatch + 0.2, fieldAt - fieldF
 // earth between, ploughed as the ploughed field is, nothing growing on it. Over the field's own
 // tiles the crop goes on, so no seam of earth shows between passes.
 let fieldOff = max(select(-1., -fieldU, input.vStripB.z > 1.5), select(-1., fieldU - 1., input.vStripB.w > 1.5));
-let fieldBare = fieldOff > 0.04 + 0.06 * (fieldEdge - 0.5) + 0.04 * (fieldCrumb - 0.5);
+let fieldBare = fieldOff > 0.04 + 0.06 * (fieldEdge - 0.5) + 0.04 * (fieldCrumb - 0.5) || input.vStripB.z > 2.5;
 var fieldColour = vec3f(0.);
 var fieldFacing = vec3f(0.);
 for (var i = 0; i < 2; i++) {
