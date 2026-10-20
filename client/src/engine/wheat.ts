@@ -30,6 +30,7 @@ const TRAMS = [0.4, 0.6];
 const TRAM_WIDE = 0.012;
 const SHADE = 18;
 const SLOPE = 3;
+const STEEP = 1;
 
 const n = WHEAT_TEXELS;
 
@@ -94,11 +95,11 @@ function stroke(s: Stage, x: number, y: number, angle: number, long: number, wid
       if (tram(cx)) continue;
       const k = cy * n + cx;
       const across = side / w;
-      const h = h0 + (h1 - h0) * t + (round ? 0.006 : 0.002) * (1 - across * across);
+      const h = h0 + (h1 - h0) * t + (round ? 0.0015 : 0.002) * (1 - across * across);
       if (h <= s.height[k]) continue;
       s.height[k] = h;
       s.crop[k] = 1;
-      s.tone[k] = tone * (0.88 + 0.12 * (1 - across));
+      s.tone[k] = tone * (round ? 0.84 + 0.16 * (1 - across * across) : 0.88 + 0.12 * (1 - across));
     }
   }
 }
@@ -130,13 +131,30 @@ function tuft(s: Stage, p: (typeof plants)[number], blades: number, long: [numbe
   }
 }
 
-/** Its ears: this many, standing near its heart, each this long. */
-function ears(s: Stage, p: (typeof plants)[number], count: number, long: number, wide: number, h: number, tone: number) {
+/**
+ * Its ears: this many, standing near its heart, each this long and wide.
+ * An ear is its spikelets, grains in pairs either side of its stem one
+ * over the next, tipped out a little, the top ones smaller; and from
+ * each, an awn, a whisker on along the ear and past its tip, thin and
+ * pale, under the grains.
+ */
+function ears(s: Stage, p: (typeof plants)[number], count: number, long: number, wide: number, h: number, tone: number, awns: number) {
   for (let e = 0; e < count; e++) {
     const r = p.r.slice(36 + e * 4, 40 + e * 4);
     const [angle, l] = [ALONG + (r[2] - 0.5) * 0.9, long * (0.85 + 0.3 * r[3])];
-    const [ex, ey] = [p.x + (r[0] - 0.5) * 44 - Math.cos(angle) * l * 0.5, p.y + (r[1] - 0.5) * 18 - Math.sin(angle) * l * 0.5];
-    stroke(s, ex, ey, angle, l, wide, h, h, tone, true);
+    const [dx, dy] = [Math.cos(angle), Math.sin(angle)];
+    const [ex, ey] = [p.x + (r[0] - 0.5) * 44 - dx * l * 0.5, p.y + (r[1] - 0.5) * 18 - dy * l * 0.5];
+    const top = h + 0.004 * (r[3] - 0.5);
+    const spikelets = Math.max(4, Math.round(l / (wide * 0.6)));
+    for (let j = 0; j < spikelets; j++) {
+      const t = (j + 0.5) / spikelets;
+      const side = j % 2 ? 1 : -1;
+      const small = 1 - 0.35 * t * t;
+      const [cx, cy] = [ex + dx * l * t - dy * side * wide * 0.25, ey + dy * l * t + dx * side * wide * 0.25];
+      const tip = angle + side * 0.45;
+      if (awns && t > 0.4) stroke(s, cx, cy, angle + side * 0.15 * (1 + t), awns * t, 1.2, top - 0.002, top - 0.006, tone * 1.05);
+      stroke(s, cx - Math.cos(tip) * wide * 0.45, cy - Math.sin(tip) * wide * 0.45, tip, wide * 0.9 * small, wide * 0.42 * small, top, top, tone * (0.92 + 0.12 * ((j * 7 + e) % 3) / 2), true);
+    }
   }
 }
 
@@ -173,7 +191,7 @@ function stage(i: number): Stage {
       const ripe = i === 5;
       const s = earth(0.006);
       for (const p of plants) tuft(s, p, 9, [24, 44], 3, 1.3, 0.05, 0.03, ripe ? 0.55 : 0.8);
-      for (const p of plants) ears(s, p, ripe ? 8 : 6, ripe ? 15 : 13, ripe ? 4.5 : 3.8, 0.075, ripe ? 1.15 : 1.05);
+      for (const p of plants) ears(s, p, ripe ? 10 : 8, ripe ? 18 : 16, ripe ? 4.4 : 4, 0.075, ripe ? 1.15 : 1.05, ripe ? 8 : 5);
       return s;
     }
     default: {
@@ -220,7 +238,11 @@ export function bakeWheat(): Uint8Array {
     for (let y = -WHEAT_MARGIN; y < n + WHEAT_MARGIN; y++) {
       for (let x = 0; x < n; x++) {
         const k = wrap(y) * n + x;
-        const [sx, sy] = [(at(x + 1, y) - at(x - 1, y)) * n * 0.5 * SLOPE, (at(x, y + 1) - at(x, y - 1)) * n * 0.5 * SLOPE];
+        // Facing from the slope, a cliff a texel high no steeper than a
+        // bank, so the edge of every grain does not turn it dark.
+        const [gx, gy] = [(at(x + 1, y) - at(x - 1, y)) * n * 0.5 * SLOPE, (at(x, y + 1) - at(x, y - 1)) * n * 0.5 * SLOPE];
+        const steep = Math.min(1, STEEP / (Math.hypot(gx, gy) || 1));
+        const [sx, sy] = [gx * steep, gy * steep];
         const l = Math.hypot(sx, sy, 1);
         const shade = Math.min(1, Math.max(0.35, 1 - (around[k] - h[k]) * SHADE));
         const o = ((i * WHEAT_STRIDE + y + WHEAT_MARGIN) * n + x) * 4;
