@@ -81,12 +81,12 @@ const vec = (l: Look) => [STAGES.indexOf(l.stage), l.growth, 0, 0];
 const key = (t: GridCoord) => `${t.x},${t.y}`;
 
 /** Which step of a path works each tile of the land: the first over it,
- *  but for the headland when ploughing, worked on the pass round after
- *  the last land tile is first reached. */
+ *  but for the headland when ploughing or sowing, worked on the pass
+ *  round after the last land tile is first reached. */
 function workedAt(path: GridCoord[], land: Set<string>, head: (t: GridCoord) => boolean, job: Job): Map<string, number> {
   const firsts = new Map<string, number>();
   path.forEach((t, k) => { if (land.has(key(t)) && !firsts.has(key(t))) firsts.set(key(t), k); });
-  const ring = job === "Plough" ? Math.max(0, ...path.flatMap((t, k) => (firsts.get(key(t)) === k && !head(t) ? [k] : []))) : 0;
+  const ring = job !== "Harvest" ? Math.max(0, ...path.flatMap((t, k) => (firsts.get(key(t)) === k && !head(t) ? [k] : []))) : 0;
   const worked = new Map<string, number>();
   path.forEach((t, k) => { if (land.has(key(t)) && !worked.has(key(t)) && !(head(t) && k < ring)) worked.set(key(t), k); });
   return worked;

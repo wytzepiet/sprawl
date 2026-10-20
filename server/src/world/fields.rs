@@ -12,7 +12,7 @@
 //! a tile's crop in the yard. It works a field as a farmer does: the
 //! headland — every tile touching something not field — driven round as
 //! a ring, the inside in straight rows turning on the headland, the
-//! plough taking the rows first and the ring last, the drill and the
+//! plough and the drill taking the rows first and the ring last, the
 //! harvest the ring first; and home along the headland, never turning
 //! sharper than a right angle. Off the roads
 //! entirely: a run is a list of tiles and a pace, no route, no claims, no
@@ -353,9 +353,10 @@ impl World {
     /// alternate and every turn is made on the headland, a step out, a
     /// step along, a step back in. A strip two tiles wide is all headland
     /// and gets no rows; a strip three wide gets one down its spine. The
-    /// plough does the rows first and the headland last, as a ploughman
-    /// does, so the scuffs of the turns are turned under; the drill and
-    /// the harvest do the headland first, to have room to turn. Then home
+    /// plough and the drill do the rows first and the headland last, as a
+    /// farmer does, so the scuffs of the turns are turned under and no
+    /// turn is made on fresh seed; the harvest does the headland first,
+    /// to have room to turn. Then home
     /// along the headland. Never a turn sharper than a right angle:
     /// between one tile and the next the shortest way that keeps to that,
     /// looping round over worked ground where a ragged edge leaves no
@@ -465,12 +466,12 @@ impl World {
         };
         let mut path = vec![yard];
         let mut skipped = 0;
-        if job == Job::Plough {
-            skipped += inside_pass(&mut path);
+        if job == Job::Harvest {
             skipped += ring(&mut path);
+            skipped += inside_pass(&mut path);
         } else {
-            skipped += ring(&mut path);
             skipped += inside_pass(&mut path);
+            skipped += ring(&mut path);
         }
         // Home along the headland.
         let home = self.over(&head, &safe, &path, yard, None, &AROUND).or_else(|| self.over(&ground, &safe, &path, yard, None, &AROUND))?;
@@ -768,9 +769,9 @@ mod tests {
             }
             let batch: Vec<GridCoord> = tiles(&world, farm).iter().map(|t| t.at).collect();
             let gate = world.yard_gate(farm, &batch).unwrap();
-            let (path, left) = world.sweep(farm, gate, &batch, Job::Seed).expect("a sweep");
+            let (path, left) = world.sweep(farm, gate, &batch, Job::Harvest).expect("a sweep");
             assert!(left.is_empty(), "{name}: tiles left: {left:?}");
-            println!("{name}: {} tiles, {} steps seeding (drawn 130 at a time, 0-9a-z then round again, first visit only)", batch.len(), path.len());
+            println!("{name}: {} tiles, {} steps harvesting (drawn 130 at a time, 0-9a-z then round again, first visit only)", batch.len(), path.len());
             for from in (0..path.len()).step_by(130) {
             let mut grid: Vec<Vec<char>> = (0..20).map(|_| vec!['.'; 44]).collect();
             for t in &batch {
@@ -802,7 +803,7 @@ mod tests {
             // The headland is every tile touching something not field.
             let head = |t: &GridCoord| AROUND.iter().any(|(dx, dy)| !set.contains(&(t.x + dx, t.y + dy)));
             let (ploughing, _) = world.sweep(farm, gate, &batch, Job::Plough).expect("a sweep");
-            for (job, path) in [("seeding", &path), ("ploughing", &ploughing)] {
+            for (job, path) in [("harvesting", &path), ("ploughing", &ploughing)] {
                 assert!(path.windows(2).all(|w| dist(w[0], w[1]) == 1), "{name} {job}: a step is not to a neighbour");
                 assert!(path.iter().all(|t| ground.contains(&(t.x, t.y))), "{name} {job}: the tractor left the farm's ground");
                 assert!(!sharp(path), "{name} {job}: a turn sharper than a right angle");
@@ -813,10 +814,10 @@ mod tests {
                 println!("  {job}: {turns} turns over {} steps, {again} tiles driven twice", path.len());
                 assert!(again * 3 < path.len(), "{name} {job}: {again} of {} steps retrace", path.len());
             }
-            // Seeding: the headland first, every tile of it — the coast and
+            // Harvesting: the headland first, every tile of it — the coast and
             // the barn's edge with the outline — before the rows; the few
             // inside tiles crossed on the way to a ring round a house are
-            // transit, with the drill up.
+            // transit, with the header up.
             let ring_done = batch.iter().filter(|t| head(t)).map(|t| path.iter().position(|p| p == t).unwrap()).max().unwrap();
             let crossed: HashSet<(i32, i32)> = path[..ring_done].iter().filter(|t| !head(t)).map(|t| (t.x, t.y)).collect();
             let inside = batch.iter().filter(|t| !head(t)).count();
