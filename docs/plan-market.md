@@ -95,6 +95,28 @@ ship needs a deeper berth and room ashore for a whole load.
 
 The long goal, then, has a shape: from a ferry pier to the region's port.
 
+## Ways to get rich
+
+The market is good if each of these is a whole game, and each has its own
+way to go wrong. Every one is a real country.
+
+- **The refiner.** No oil nearby: crude in by bulk, refined, sold on to
+  the neighbours (Singapore). Lives on the margin between crude and
+  fuel, the crack spread, which can close.
+- **The breadbasket.** Land to spare: fill it with farms, export food
+  (the Netherlands, small and the world's second exporter of it). Lives
+  on land and seasons; food is heavy, so the neighbours are the market.
+- **The extractor.** Sitting on a resource: dig it, pump it, sell it
+  (Norway, Saudi Arabia). Rich while the price is high, and exposed to
+  every crash; the town is only as good as one graph.
+- **The trader.** Makes little, buys and sells everything (Geneva, where
+  Vitol, Glencore and Trafigura trade more oil than most nations use).
+  Lives on storage, contracts and timing, and on the other mayors'
+  mistakes.
+
+Mixed towns are the usual, and switching is the drama: the extractor
+whose price collapses builds a refinery and climbs the chain.
+
 ## It needs other mayors
 
 A market is only as alive as the towns in it, which is the point:
