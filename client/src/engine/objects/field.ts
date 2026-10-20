@@ -99,11 +99,9 @@ type Paint = { look: number[]; reach: number };
 /**
  * A run's strips: a tile wide along the drawn path, a piece for each step
  * that works its tile, from halfway back to the step before to halfway on
- * to the next. Where the work goes on through a turn the piece follows
- * the tractor round it; where the implement comes up or goes down — into
- * a row off the headland, out of one onto it — the piece runs straight
- * across the tile, the way the work went, and does not curl after the
- * tractor. Each vertex knows where across the strip it is, how far along,
+ * to the next, following the tractor wherever it drove, round turns and
+ * off rows onto the headland alike: what it worked and nothing it did
+ * not. Each vertex knows where across the strip it is, how far along,
  * which way across is, and where along the piece's own tile begins and
  * ends.
  */
@@ -123,7 +121,6 @@ class Strips {
     const { points, distances, atNode } = drawn;
     const last = nodes.length - 1;
     const bound = (k: number) => (atNode[k - 1] + atNode[k]) / 2;
-    // The drawn path between two distances along it, ends included.
     // The first point at or past a distance, found by halves.
     const past = (d: number) => {
       let [lo, hi] = [0, distances.length];
@@ -134,7 +131,8 @@ class Strips {
       }
       return lo;
     };
-    const along = (d0: number, d1: number): { p: P; d: number }[] => {
+    // The drawn path between two distances along it, ends included.
+    const along = (d0: number, d1: number, back: number, on: number): { p: P; d: number }[] => {
       const at = (d: number) => {
         const i = Math.min(Math.max(0, past(d) - 1), distances.length - 2);
         const t = (d - distances[i]) / (distances[i + 1] - distances[i] || 1);
@@ -143,12 +141,12 @@ class Strips {
       const run = [at(d0)];
       for (let i = past(d0); i < distances.length && distances[i] < d1; i++) if (distances[i] > d0) run.push({ p: points[i], d: distances[i] });
       run.push(at(d1));
-      // A hair on past each end, to meet the piece beside it.
-      const on = (a: { p: P; d: number }, b: { p: P; d: number }) => {
+      // On past each end, straight, this far.
+      const beyond = (a: { p: P; d: number }, b: { p: P; d: number }, far: number) => {
         const l = Math.hypot(b.p.x - a.p.x, b.p.y - a.p.y) || 1;
-        return { p: { x: b.p.x + ((b.p.x - a.p.x) / l) * HAIR, y: b.p.y + ((b.p.y - a.p.y) / l) * HAIR }, d: b.d + Math.sign(b.d - a.d) * HAIR };
+        return { p: { x: b.p.x + ((b.p.x - a.p.x) / l) * far, y: b.p.y + ((b.p.y - a.p.y) / l) * far }, d: b.d + Math.sign(b.d - a.d) * far };
       };
-      return [on(run[1], run[0]), ...run, on(run[run.length - 2], run[run.length - 1])];
+      return [beyond(run[1], run[0], back), ...run, beyond(run[run.length - 2], run[run.length - 1], on)];
     };
     const off = (x: number, y: number) => !land.has(`${Math.floor(x)},${Math.floor(y)}`);
     // Where the earth spills past a piece's tile: onto any tile this run
@@ -159,32 +157,13 @@ class Strips {
     const pieces: { k: number; from: number; to: number; samples: { p: P; d: number }[] }[] = [];
     for (let k = 0; k <= last; k++) {
       if (!works(k)) continue;
-      const [before, after] = [k > 0 && works(k - 1), k < last && works(k + 1)];
-      // A tile across the way from a to b, and on past either end, far
-      // where it spills, a hair where it meets a piece.
-      const straight = (a: P, b: P, spill = true) => {
-        const l = Math.hypot(b.x - a.x, b.y - a.y);
-        const [ux, uy, c] = [(b.x - a.x) / l, (b.y - a.y) / l, nodes[k]];
-        const [back, on] = [spill && spills(k, c.x - ux, c.y - uy) ? SPILL : HAIR, spill && spills(k, c.x + ux, c.y + uy) ? SPILL : HAIR];
-        pieces.push({
-          k,
-          from: back === SPILL ? atNode[k] - 0.5 : -1e9,
-          to: on === SPILL ? atNode[k] + 0.5 : 1e9,
-          samples: [{ p: { x: c.x - ux * (0.5 + back), y: c.y - uy * (0.5 + back) }, d: atNode[k] - 0.5 - back }, { p: { x: c.x + ux * (0.5 + on), y: c.y + uy * (0.5 + on) }, d: atNode[k] + 0.5 + on }],
-        });
-      };
-      if (before && after) {
-        // A turn with field on its outside, as round the farmstead, is
-        // worked square underneath, so its corner is not left bare.
-        const [a, c, b] = [nodes[k - 1], nodes[k], nodes[k + 1]];
-        const ahead = { x: 2 * c.x - a.x, y: 2 * c.y - a.y };
-        const behind = { x: 2 * c.x - b.x, y: 2 * c.y - b.y };
-        if ((c.x - a.x) * (b.y - c.y) - (c.y - a.y) * (b.x - c.x) !== 0 && !off(ahead.x, ahead.y) && !off(behind.x, behind.y)) straight(a, c, false);
-        pieces.push({ k, from: -1e9, to: 1e9, samples: along(bound(k), bound(k + 1)) });
-        continue;
-      }
-      if (after || k === 0) straight(nodes[k], nodes[k + 1]);
-      else straight(nodes[k - 1], nodes[k]);
+      const [d0, d1] = [k > 0 ? bound(k) : atNode[0] - 0.5, k < last ? bound(k + 1) : atNode[last] + 0.5];
+      // Each end on past where the work stops, far where it spills, a
+      // hair where it meets the piece before or after.
+      const behind = k > 0 ? nodes[k - 1] : { x: 2 * nodes[0].x - nodes[1].x, y: 2 * nodes[0].y - nodes[1].y };
+      const ahead = k < last ? nodes[k + 1] : { x: 2 * nodes[last].x - nodes[last - 1].x, y: 2 * nodes[last].y - nodes[last - 1].y };
+      const [back, on] = [spills(k, behind.x, behind.y), spills(k, ahead.x, ahead.y)];
+      pieces.push({ k, from: back ? d0 : -1e9, to: on ? d1 : 1e9, samples: along(d0, d1, back ? SPILL : HAIR, on ? SPILL : HAIR) });
     }
     const count = pieces.reduce((n, piece) => n + piece.samples.length, 0);
     this.positions = new Float32Array(count * 6);
