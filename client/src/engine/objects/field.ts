@@ -198,7 +198,7 @@ class Strips {
         const [a, b] = [samples[Math.max(0, i - 1)].p, samples[Math.min(samples.length - 1, i + 1)].p];
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
         const n = { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
-        const sides = [-1, 1].map((side) => (spills(k, at.x + n.x * side, at.y + n.y * side) ? 1 : 0));
+        const sides = [-1, 1].map((side) => (spills(k, at.x + n.x * side, at.y + n.y * side) ? (off(at.x + n.x * side, at.y + n.y * side) ? 2 : 1) : 0));
         sides.forEach((spill, s) => {
           const out = (s ? 1 : -1) * (0.5 + (spill ? SPILL : HAIR));
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
@@ -478,7 +478,7 @@ let fieldStage = u32(fieldLook.x + 0.5);
 // that only crumbs of it, fewer further out, over what lies beside.
 let fieldOut = max(max(select(-1., -fieldU, input.vStripB.z > 0.5), select(-1., fieldU - 1., input.vStripB.w > 0.5)), max(fieldV - fieldLook.z, max(input.vStripB.x - fieldV, fieldV - input.vStripB.y)));
 let fieldCrumb = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
-let fieldRag = 0.07 * fieldEdge;
+let fieldRag = 0.09 + 0.06 * fieldEdge;
 if (fieldStage == 0u || (fieldOut > fieldRag && fieldCrumb < 0.56 + 3. * (fieldOut - fieldRag))) { discard; }`;
 
 /**
@@ -502,10 +502,12 @@ let fieldFrom = floor(fieldAt);
 let fieldTo = min(fieldFrom + 1., 6.);
 let fieldPatch = 0.2 + 0.6 * fieldMottle;
 let fieldAhead = smoothstep(fieldPatch - 0.2, fieldPatch + 0.2, fieldAt - fieldFrom);
-// The crop stops short of the field's edge, on a jagged line of its own a
-// little in from where the spilled earth ends: bare earth between, in
-// clods, nothing growing on it.
-let fieldBare = fieldOut > -0.05 + 0.1 * (fieldEdge - 0.5) + 0.06 * (fieldCrumb - 0.5);
+// Out over the land's edge, the crop reaches a little past its tile, on
+// a jagged line of its own, short of where the spilled earth ends: bare
+// earth between, in clods, nothing growing on it. Over the field's own
+// tiles the crop goes on, so no seam of earth shows between passes.
+let fieldOff = max(select(-1., -fieldU, input.vStripB.z > 1.5), select(-1., fieldU - 1., input.vStripB.w > 1.5));
+let fieldBare = fieldOff > 0.04 + 0.06 * (fieldEdge - 0.5) + 0.04 * (fieldCrumb - 0.5);
 let fieldClod = 0.8 + 0.4 * fieldCrumb;
 var fieldColour = vec3f(0.);
 var fieldFacing = vec3f(0.);
