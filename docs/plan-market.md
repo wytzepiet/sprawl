@@ -43,6 +43,22 @@ idea, not a plan).
   a real move pays. `trade.md`'s world premium and discount are this,
   already, with freight in place of a fixed tenth.
 
+**Who you buy from, and which price you see.** You buy from the market,
+as on an exchange, and name no seller: it fills from the cheapest
+delivered to you, and the ferry says after where it came from. The graph,
+the list and orders are in the world price, the one number every mayor
+shares ("oil's at 84"); Buy and Sell show what you pay or get at your
+harbour, the world's price with freight on or off, so the gap is always
+in sight.
+
+**Why deal with a mayor directly.** The market takes a fee on every
+trade; a direct deal does not. In a shortage the market sells to the
+highest bidder; a contract holds its price and amount (Japan's long
+iron-ore deals with Australia). Some things are only had by asking: a
+frontier good, a whole bulk load, a ship from their yard. An embassy
+shows their stock, so you see who is about to run short. And two mayors
+can act together: hold back, or join their islands by a bridge.
+
 ## Distance is the moat
 
 As with real commodities, a local price is a world benchmark plus the
