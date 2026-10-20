@@ -171,6 +171,19 @@ class Strips {
     const data = new Float32Array(count * 16);
     const indices: number[] = [];
     let v = 0;
+    // Under it all, each tile given bare, ploughed earth, drawn first:
+    // what shows where a turn cut a tile's corner.
+    for (const t of under) {
+      [t.y, t.y + 1].forEach((y, i) => {
+        [-0.5, 0.5].forEach((out, s) => {
+          this.positions.set([t.x + 0.5 - out, y, 0], (v + s) * 3);
+          this.sunk[v + s] = 2 * SUNK;
+          data.set([out, y, -1, 0, -1e9, 1e9, BARE, BARE], (v + s) * 8);
+        });
+        if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
+        v += 2;
+      });
+    }
     for (const { k, from, to, samples } of pieces) {
       const at = nodes[k];
       samples.forEach(({ p, d }, i) => {
@@ -183,19 +196,6 @@ class Strips {
           this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
           this.sunk[v + s] = spill || d < from || d > to ? SUNK : 0;
           data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
-        });
-        if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
-        v += 2;
-      });
-    }
-    // Under it all, each tile given bare, ploughed earth, lowest of all:
-    // what shows where a turn cut a tile's corner.
-    for (const t of under) {
-      [t.y, t.y + 1].forEach((y, i) => {
-        [-0.5, 0.5].forEach((out, s) => {
-          this.positions.set([t.x + 0.5 - out, y, 0], (v + s) * 3);
-          this.sunk[v + s] = 2 * SUNK;
-          data.set([out, y, -1, 0, -1e9, 1e9, BARE, BARE], (v + s) * 8);
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
