@@ -456,8 +456,12 @@ const BEGIN = `let fieldU = input.vStripA.x + 0.5;
 let fieldV = input.vStripA.y;
 let fieldAcross = normalize(input.vStripA.zw);
 let fieldDu = vec2f(dpdx(fieldU), dpdy(fieldU));
-let fieldDv = vec2f(dpdx(fieldV), dpdy(fieldV));
 let fieldW = input.worldPos.xy;
+// Where along the wheat's texture: slid on by a slow swell across the
+// land, a few tiles from one to the next, so the same tile of it does not
+// come round on a grid; never across, where the rows and tramlines lie.
+let fieldTexV = fieldV + 0.7 * fieldNoise(fieldW * 0.3 + vec2f(97., 43.));
+let fieldDv = vec2f(dpdx(fieldTexV), dpdy(fieldTexV));
 let fieldLook = material.fieldLook;
 // Broad, soft patches: wetter earth, a crop a little ahead or behind.
 let fieldMottle = 0.6 * fieldNoise(fieldW * 2. + vec2f(61., 7.)) + 0.4 * fieldNoise(fieldW * 6. + vec2f(13., 89.));
@@ -496,7 +500,7 @@ var fieldColour = vec3f(0.);
 var fieldFacing = vec3f(0.);
 for (var i = 0; i < 2; i++) {
   let st = select(fieldFrom, fieldTo, i == 1);
-  let t = fieldWheatAt(st, fieldU, fieldV, fieldDu, fieldDv);
+  let t = fieldWheatAt(st, fieldU, fieldTexV, fieldDu, fieldDv);
   let soil = fieldSoil * select(select(1., 0.8, st > 5.5), 0.9, st < 0.5);
   var crop = fieldGreen;
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
