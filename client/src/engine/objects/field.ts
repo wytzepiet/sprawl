@@ -32,9 +32,10 @@ import recipe from "../wheat.ts?raw";
  * along them, closing over them, in ear, ripe, its wheel tracks left
  * open; the stubble after the combine. Each stage one clean colour on a
  * dark grey earth, as the town's are: its texture is all light, baked
- * into how light each texel is and which way it faces. The strip's edge
- * on the field's border is ragged, a margin of grass between field and
- * hedge.
+ * into how light each texel is and which way it faces. Each piece
+ * covers its tile and spills a little past it all round, raggedly, with
+ * crumbs of its earth beyond, onto the grass or the field beside, and
+ * ahead of the tractor as it goes.
  *
  * Between runs the field is the last run's strips (the farm's `ruts`) in
  * the look it left. On a run (`running`), the run's strips are laid over
@@ -102,8 +103,8 @@ type Paint = { look: number[]; reach: number };
  * a row off the headland, out of one onto it — the piece runs straight
  * across the tile, the way the work went, and does not curl after the
  * tractor. Each vertex knows where across the strip it is, how far along,
- * which way across is, its tile, and which sides of it are the field's
- * border.
+ * which way across is, and where along the piece's own tile begins and
+ * ends.
  */
 class Strips {
   readonly mesh: Mesh;
@@ -126,25 +127,25 @@ class Strips {
         return { p: { x: points[i].x + (points[i + 1].x - points[i].x) * t, y: points[i].y + (points[i + 1].y - points[i].y) * t }, d };
       };
       const run = [at(d0), ...points.flatMap((p, i) => (distances[i] > d0 && distances[i] < d1 ? [{ p, d: distances[i] }] : [])), at(d1)];
-      // A hair over at each end, to meet the piece beside it.
+      // On past each end, for its ragged edge.
       const on = (a: { p: P; d: number }, b: { p: P; d: number }) => {
         const l = Math.hypot(b.p.x - a.p.x, b.p.y - a.p.y) || 1;
-        return { p: { x: b.p.x + ((b.p.x - a.p.x) / l) * 0.03, y: b.p.y + ((b.p.y - a.p.y) / l) * 0.03 }, d: b.d + Math.sign(b.d - a.d) * 0.03 };
+        return { p: { x: b.p.x + ((b.p.x - a.p.x) / l) * SPILL, y: b.p.y + ((b.p.y - a.p.y) / l) * SPILL }, d: b.d + Math.sign(b.d - a.d) * SPILL };
       };
       return [on(run[1], run[0]), ...run, on(run[run.length - 2], run[run.length - 1])];
     };
     const off = (x: number, y: number) => !land.has(`${Math.floor(x)},${Math.floor(y)}`);
-    const pieces: { at: P; samples: { p: P; d: number }[] }[] = [];
+    const pieces: { from: number; to: number; samples: { p: P; d: number }[] }[] = [];
     for (let k = 0; k <= last; k++) {
       if (!works(k)) continue;
       const [before, after] = [k > 0 && works(k - 1), k < last && works(k + 1)];
-      // A tile across the way from a to b, and a hair over, to meet the
-      // piece beside it.
+      // A tile across the way from a to b, and on past it, for its
+      // ragged edge.
       const straight = (a: P, b: P) => {
-        const stretch = 0.5 + 0.03 / Math.hypot(b.x - a.x, b.y - a.y);
+        const stretch = 0.5 + SPILL / Math.hypot(b.x - a.x, b.y - a.y);
         const [hx, hy] = [(b.x - a.x) * stretch, (b.y - a.y) * stretch];
         const [c, half] = [nodes[k], Math.hypot(hx, hy)];
-        pieces.push({ at: c, samples: [{ p: { x: c.x - hx, y: c.y - hy }, d: atNode[k] - half }, { p: { x: c.x + hx, y: c.y + hy }, d: atNode[k] + half }] });
+        pieces.push({ from: atNode[k] - half + SPILL, to: atNode[k] + half - SPILL, samples: [{ p: { x: c.x - hx, y: c.y - hy }, d: atNode[k] - half }, { p: { x: c.x + hx, y: c.y + hy }, d: atNode[k] + half }] });
       };
       if (before && after) {
         // A turn with field on its outside, as round the farmstead, is
@@ -153,7 +154,7 @@ class Strips {
         const ahead = { x: 2 * c.x - a.x, y: 2 * c.y - a.y };
         const behind = { x: 2 * c.x - b.x, y: 2 * c.y - b.y };
         if ((c.x - a.x) * (b.y - c.y) - (c.y - a.y) * (b.x - c.x) !== 0 && !off(ahead.x, ahead.y) && !off(behind.x, behind.y)) straight(a, c);
-        pieces.push({ at: nodes[k], samples: along(bound(k), bound(k + 1)) });
+        pieces.push({ from: bound(k), to: bound(k + 1), samples: along(bound(k), bound(k + 1)) });
         continue;
       }
       if (after || k === 0) straight(nodes[k], nodes[k + 1]);
@@ -164,17 +165,14 @@ class Strips {
     const data = new Float32Array(count * 16);
     const indices: number[] = [];
     let v = 0;
-    for (const { at, samples } of pieces) {
-      // Which sides of the piece's own tile are the field's border, one
-      // bit each: west, east, south, north.
-      const border = [[-1, 0], [1, 0], [0, -1], [0, 1]].reduce((m, [dx, dy], b) => m + (off(at.x + dx, at.y + dy) ? 1 << b : 0), 0);
+    for (const { from, to, samples } of pieces) {
       samples.forEach(({ p, d }, i) => {
         const [a, b] = [samples[Math.max(0, i - 1)].p, samples[Math.min(samples.length - 1, i + 1)].p];
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
         const n = { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
         [-0.5, 0.5].forEach((a, s) => {
           this.positions.set([p.x + n.x * a * WIDE, p.y + n.y * a * WIDE, 0], (v + s) * 3);
-          data.set([a, d, n.x, n.y, Math.floor(at.x), Math.floor(at.y), border, 0], (v + s) * 8);
+          data.set([a * WIDE, d, n.x, n.y, from, to, 0, 0], (v + s) * 8);
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
@@ -196,9 +194,11 @@ class Strips {
   }
 }
 
-/** A strip as wide as a pass, a hair over, so passes side by side meet
- *  with no seam between. */
-const WIDE = 1.02;
+/** How far past its tile a piece goes, for its ragged edge and the
+ *  crumbs of earth beyond it: its strip as wide as a pass and this much
+ *  more each side, and on this far past either end. */
+const SPILL = 0.16;
+const WIDE = 1 + 2 * SPILL;
 
 export class Field {
   private ruts: Strips | null = null;
@@ -339,8 +339,8 @@ function wheat(engine: Engine): Texture2D {
 }
 
 /** The field's paint (see the top), where across and along its strip a
- *  vertex is, which way across is, its tile, and which sides of it are
- *  the border. */
+ *  vertex is, which way across is, and where its piece's tile begins and
+ *  ends along it. */
 function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
   return {
     name: "Field",
@@ -395,9 +395,8 @@ fn fieldWheatAt(stage: f32, u: f32, v: f32, du: vec2f, dv: vec2f) -> vec4f {
  * Where on its strip a pixel is: `fieldU` across the pass, 0 to 1, and
  * the way that runs (`fieldAcross`); `fieldV` along it, and how fast both
  * change across the screen. Every texture read and every rate of change
- * here, before anything branches, as WGSL wants. Then not drawn: a strip
- * not yet laid, grass, and a ragged margin along the border, crumbs of
- * earth in the grass beyond it.
+ * here, before anything branches, as WGSL wants. Then not drawn: grass,
+ * and past the piece's tile, all but a ragged edge and crumbs.
  */
 const BEGIN = `let fieldU = input.vStripA.x + 0.5;
 let fieldV = input.vStripA.y;
@@ -413,20 +412,13 @@ let fieldEdge = 0.5 * fieldNoise(fieldW * 24. + vec2f(31., 5.)) + 0.5 * fieldNoi
 // bow and show their sides, rolling slowly downwind.
 let fieldWind = fieldNoise(vec2f(fieldW.x * 0.5 + fieldW.y * 0.2, fieldW.y * 0.25 - fieldW.x * 0.1) - vec2f(0.6, 0.25) * fieldLook.w);
 let fieldStage = u32(fieldLook.x + 0.5);
-// How far in from the field's border: the sides of the tile that are
-// border, whichever way the strip runs.
-let fieldIn = input.worldPos.xy - input.vStripB.xy;
-let fieldSides = u32(input.vStripB.z + 0.5);
-var fieldDepth = 1.;
-if ((fieldSides & 1u) != 0u) { fieldDepth = min(fieldDepth, fieldIn.x); }
-if ((fieldSides & 2u) != 0u) { fieldDepth = min(fieldDepth, 1. - fieldIn.x); }
-if ((fieldSides & 4u) != 0u) { fieldDepth = min(fieldDepth, fieldIn.y); }
-if ((fieldSides & 8u) != 0u) { fieldDepth = min(fieldDepth, 1. - fieldIn.y); }
-// Ragged, and crumbled: past the field's own edge, only crumbs of its
-// earth, fewer further out, in the grass.
+// How far past its own tile the pixel is, across, past either end, or
+// ahead of the tractor: out to here the earth reaches, raggedly, and past
+// that only crumbs of it, fewer further out, over what lies beside.
+let fieldOut = max(max(abs(fieldU - 0.5) - 0.5, fieldV - fieldLook.z), max(input.vStripB.x - fieldV, fieldV - input.vStripB.y));
 let fieldCrumb = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
-let fieldRag = 0.05 + 0.13 * fieldEdge;
-if (fieldStage == 0u || fieldV > fieldLook.z || fieldDepth < fieldRag - 0.12 || (fieldDepth < fieldRag && fieldCrumb < 0.56 + 2.5 * (fieldRag - fieldDepth))) { discard; }`;
+let fieldRag = 0.07 * fieldEdge;
+if (fieldStage == 0u || (fieldOut > fieldRag && fieldCrumb < 0.56 + 3. * (fieldOut - fieldRag))) { discard; }`;
 
 /**
  * The paint: the stage of the wheat the field is at (ploughed; sown, by
