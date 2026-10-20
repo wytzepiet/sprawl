@@ -73,17 +73,14 @@ fn wants(world: &World, building: EntityId) -> Vec<Good> {
     if let Some(site) = &b.site {
         return site.iter().filter(|(_, s)| s.short() > 0.0).map(|(&g, _)| g).collect();
     }
-    // A depot that sells a good fetches it whenever it has room for a
-    // load, so what makers make goes through it and out to the world.
-    let selling = |g: &Good, s: &crate::needs::Stock| b.rules.get(g).is_some_and(|r| r.sell.is_some()) && s.short() >= g.per_box() / 2.0;
-    b.stocks.iter().filter(|&(&g, s)| economy::buys(b.kind, g) && (s.level < economy::reorder(world, building, g) || selling(&g, s))).map(|(&g, _)| g).collect()
+    b.stocks.iter().filter(|&(&g, s)| economy::buys(b.kind, g) && s.level < economy::reorder(world, building, g)).map(|(&g, _)| g).collect()
 }
 
 /// A stock changed, or time passed: the building takes its turn. A
 /// stock at its reorder point calls — a depot's own shelf of what a maker
-/// in town makes for a fetch, anything else for a delivery; a depot reads
-/// its rules (`haul::top_up`); and a farm with a hand on shift, room in
-/// the yard and a ripe field sends the tractor.
+/// in town makes for a fetch, anything else for a delivery; a depot wakes
+/// its lorries; and a farm with a hand on shift, room in the yard and a
+/// ripe field sends the tractor.
 pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now: GameTime) {
     let Some(GameObject::Building(b)) = world.objects.get(building).map(|e| &e.object) else { return };
     let kind = b.kind;
@@ -93,7 +90,7 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
     let mut calls = Vec::new();
     for good in wants(world, building) {
         // A depot fetches only what a maker in town makes; what the town
-        // buys comes by sea, booked by its rules.
+        // buys comes by sea, booked on the deck.
         let depot = economy::depot(kind);
         if depot && !crate::protocol::BuildingKind::ALL.into_iter().any(|k| economy::makes(k, good)) {
             continue;
@@ -102,7 +99,6 @@ pub fn turn(world: &mut World, events: &mut EventQueue, building: EntityId, now:
         calls.push(Call { kind: kind_of_call, good, at: building, raised: now, answered_by: None, from: None });
     }
     if economy::depot(kind) {
-        crate::haul::top_up(world, building);
         crate::haul::call_lorries(world, events);
     }
     // One call a good a building: a vehicle already on its way keeps its

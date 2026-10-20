@@ -23,8 +23,8 @@ use crate::world::World;
 #[ts(export)]
 pub enum Key {
     Opening,
-    Standing,
-    Stone,
+    Book,
+    Pin,
     Sell,
     Pump,
     Quarry,
@@ -48,11 +48,11 @@ pub enum Goal {
     Fetched,
     /// Settlers in town: someone has driven off the ferry.
     Settled,
-    /// A depot's lorries on standing orders.
-    Standing,
-    /// A depot keeps this good by a rule.
-    Keeps(Good),
-    /// Something sold to the world.
+    /// A box booked to come in on the deck.
+    Booked,
+    /// A slot of the deck pinned.
+    Pinned,
+    /// Something sold over the sea.
     Sold,
     /// So many units of a good sailed for an order's town: counted by the
     /// ferry as it casts off (`orders::sailed`).
@@ -140,30 +140,30 @@ const ROWS: &[Row] = &[
             (Goal::Stands(BuildingKind::Harbour), "Build a harbour on the coast", "Take the harbour and drag it onto the coast. It turns its back to the sea and shows how it would stand, or, in red, why it cannot: the ferry needs open sea straight out behind it.\n\nLet go, and it stands at once, with a street of its own."),
             (Goal::Stands(BuildingKind::Depot), "Build a depot", "Where the town keeps what lands: drag it from the build menu beside the harbour's street, its yard to the street. Its lorry fetches boxes; its vans take timber and stone to the sites, and roads are laid on its stone."),
             (Goal::Joined, "Join them with a street", "From the depot's yard to the harbour's park. A street that reaches nothing is drawn red.\n\nA street is laid on stone, a unit a tile, off the depot's shelf. Till the starter pack's stone is in, the world sends it express, about a coin a tile."),
-            (Goal::Fetched, "Fetch the starter pack", "Timber, stone, crates and fuel, the world's gift, come on the first ferry, and the tug lands them in the trailer park. Tap the depot's lorry to fetch them, and ride along."),
-            (Goal::Settled, "Build houses", "Drag them from the build menu onto a street, side by side: each is a site till a van brings its four timber, and beside it as you drag is what the depot has. Then the next ferry brings their people. Ctrl Z takes back the last.\n\nThe rest of the pack: tap the lorry again, or give it standing orders on the depot's card."),
+            (Goal::Fetched, "Fetch the starter pack", "Timber, stone, crates and fuel, the world's gift, come on the first ferry, and the tug lands them in the trailer park. The depot's lorry fetches each box as it lands: tap it, and ride along."),
+            (Goal::Settled, "Build houses", "Drag them from the build menu onto a street, side by side: each is a site till a van brings its four timber, and beside it as you drag is what the depot has. Then the next ferry brings their people. Ctrl Z takes back the last."),
         ],
         reward: Reward::Coins(100.0),
     },
     Row {
-        key: Key::Standing,
+        key: Key::Book,
         when: When::After(Key::Opening),
-        title: "Standing orders",
-        steps: &[(Goal::Standing, "Give the lorry standing orders", "On the depot's card: its lorry fetches each box as it lands, and you need not tap it again. And the depot's rules start to buy from the world, each order in the news with its price.")],
+        title: "Book the ferry",
+        steps: &[(Goal::Booked, "Book a box of timber", "Tap the harbour: the ferry's deck has slots coming in and going out. Tap an empty slot coming in, pick timber, and pick who from: the world, or a mayor whose town makes it, for less. It lands on the next sailing, and the nearest depot with room fetches it.")],
         reward: Reward::Coins(25.0),
     },
     Row {
-        key: Key::Stone,
-        when: When::After(Key::Standing),
-        title: "Keep stone in stock",
-        steps: &[(Goal::Keeps(Good::Stone), "Keep stone at the depot", "Roads are laid on stone, and what the depot lacks comes express, at twice the price. A rule on the depot keeps a box in: under the line, it orders more on the next ferry.")],
+        key: Key::Pin,
+        when: When::After(Key::Book),
+        title: "Pin a slot",
+        steps: &[(Goal::Pinned, "Pin a box of stone", "Roads are laid on stone, and what the depot lacks comes express, at twice the price. Pin a slot of stone coming in, and it is booked again every sailing: one less thing to think of. Unpin it when the town makes its own.")],
         reward: Reward::Coins(25.0),
     },
     Row {
         key: Key::Sell,
-        when: When::After(Key::Stone),
-        title: "Sell to the world",
-        steps: &[(Goal::Sold, "Sell a box of crates", "Sell a box of crates from the depot: its lorry takes it to the ferry, and the coins land as it casts off. What the town makes, it can sell.")],
+        when: When::After(Key::Pin),
+        title: "Sell over the sea",
+        steps: &[(Goal::Sold, "Sell a box of crates", "Book a slot going out: crates, for the world, or for a mayor whose letter asks for them, at a better price. A depot's lorry takes a box to the park, and the coins land as the ferry casts off.")],
         reward: Reward::Coins(25.0),
     },
     Row {
@@ -259,8 +259,11 @@ pub fn depots(world: &World) -> impl Iterator<Item = (EntityId, &Building)> {
     })
 }
 
-fn level(b: &Building, good: Good) -> f64 {
-    b.stocks.get(&good).map_or(0.0, |s| s.level)
+fn harbours(world: &World) -> impl Iterator<Item = &Building> {
+    world.harbours.keys().filter_map(|&h| match world.objects.get(h).map(|e| &e.object) {
+        Some(GameObject::Building(b)) => Some(b),
+        _ => None,
+    })
 }
 
 /// Is the fact true of the town now.
@@ -270,8 +273,8 @@ fn met(world: &World, goal: Goal) -> bool {
         Goal::Joined => depots(world).any(|(id, _)| world.street_of(id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined))),
         Goal::Fetched => depots(world).any(|(_, b)| b.stocks.values().any(|s| s.level > 0.0)),
         Goal::Settled => world.objects.iter().any(|e| matches!(e.object, GameObject::Resident(ref r) if r.at.is_some())),
-        Goal::Standing => depots(world).any(|(_, b)| b.standing),
-        Goal::Keeps(good) => depots(world).any(|(_, b)| b.rules.contains_key(&good)),
+        Goal::Booked => crate::haul::boxes(world).iter().any(|(t, ..)| !t.outbound && t.price > 0.0),
+        Goal::Pinned => harbours(world).any(|b| !b.pins.is_empty()),
         Goal::Sold => world.town.season().any(|p| p.sold.values().any(|&c| c > 0.0)),
         Goal::Delivered { units, sailed, .. } => sailed >= units - 1e-6,
     }
@@ -281,8 +284,8 @@ fn met(world: &World, goal: Goal) -> bool {
 fn at(world: &World, goal: Goal) -> Option<EntityId> {
     match goal {
         Goal::Stands(_) | Goal::Settled => None,
-        // The depot with the most of it, to sell from.
-        Goal::Delivered { good, .. } => depots(world).max_by(|a, b| level(a.1, good).total_cmp(&level(b.1, good))).map(|(id, _)| id),
+        // The deck is the harbour's.
+        Goal::Booked | Goal::Pinned | Goal::Sold | Goal::Delivered { .. } => world.harbours.keys().next().copied(),
         _ => depots(world).next().map(|(id, _)| id),
     }
 }

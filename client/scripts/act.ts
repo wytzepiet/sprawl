@@ -10,17 +10,19 @@
  *       build Depot 12,5 0              tile, its front the first way it fits,
  *                                       or this way (0 toward -y, 1 +x, 2 +y,
  *                                       3 -x); a harbour brings its street
- *   bun run act demolish 12,5 14,5      a tap takes what stands on a tile, a
- *                                       building whole; more tiles, the road
- *                                       a drag through them cuts
+ *   bun run act demolish 12,5 14,5      a tap takes the road on a tile; more
+ *                                       tiles, the road a drag through them
+ *                                       cuts
+ *   bun run act raze 12,5               the building on that tile taken down
+ *                                       whole
  *   bun run act undo                    the hand's last action taken back
  *   bun run act speed 0                 sim steps per tick; 0 pauses
- *   bun run act send 18                 depot 18's lorry to the harbour now
- *   bun run act standing 18 on          its standing orders, on or off
- *   bun run act order 18 Timber 2       two boxes of timber from the world
- *   bun run act sell 18 Crates          a box of crates to the world
- *   bun run act rule 18 Stone 20 40     its rule for stone: keep 20, fill to
- *                                       40 (twice the keep if left out)
+ *   bun run act book 7 in Timber        a slot of harbour 7's deck: a box of
+ *       book 7 out Crates Tam           timber in from the world, or of crates
+ *                                       out for Tam (a mayor: Tam, Mira, Bess,
+ *                                       Aldra; none is the world)
+ *   bun run act pin 7 in Fuel           the same, booked again every sailing
+ *   bun run act unpin 7 42              pin 42 taken off harbour 7's deck
  *   bun run act run 2                   two hours on at full speed, then the
  *       --to 0.83                       speed it had; or on to this time of
  *                                       day (0 midnight, 0.5 noon)
@@ -207,7 +209,7 @@ changes(await settled());
 
 /** A drag through these tiles with this in hand, straight or diagonal: a
  *  road sent whole, as the brush sends it; the demolisher a step at a
- *  time, its tap, one tile alone, taking what stands there. */
+ *  time, its tap, one tile alone, taking the road there. */
 function stroke(tool: unknown, pts: Pt[]) {
   if (pts.length === 1) return send("Build", { tool, from: at(pts[0]), to: at(pts[0]) });
   const tiles = [{ at: at(pts[0]), want: 0 }];
@@ -242,28 +244,27 @@ for (const line of lines) {
     case "demolish":
       stroke("Demolish", args.map(tile));
       break;
+    case "raze": {
+      const [x, y] = tile(args[0]);
+      const b = [...known.values()].find((e) => e.object.kind === "Building" && e.object.data.tiles.some((t: { x: number; y: number }) => t.x === x && t.y === y));
+      if (b) send("Raze", { building: b.id });
+      else report.push(`nothing stands at ${x},${y}`);
+      break;
+    }
     case "undo":
       send("Undo");
       break;
     case "speed":
       send("SetSpeed", Number(args[0]));
       break;
-    // The border: a depot's lorry sent, its standing orders, boxes bought
-    // or a box sold. The sea's state is at /sea.
-    case "send":
-      send("Send", { depot: Number(args[0]) });
+    // The border: a slot of the deck booked or pinned, a pin taken off.
+    // The sea's state is at /sea.
+    case "book":
+    case "pin":
+      send(verb === "book" ? "Book" : "Pin", { harbour: Number(args[0]), out: args[1] === "out", good: args[2], partner: args[3] ?? null });
       break;
-    case "standing":
-      send("Standing", { depot: Number(args[0]), on: args[1] !== "off" });
-      break;
-    case "order":
-      send("Order", { depot: Number(args[0]), good: args[1], boxes: Number(args[2] ?? 1) });
-      break;
-    case "sell":
-      send("Sell", { depot: Number(args[0]), good: args[1] });
-      break;
-    case "rule":
-      send("SetRule", { depot: Number(args[0]), good: args[1], rule: { keep: Number(args[2]), fill: Number(args[3] ?? 2 * Number(args[2])), sell: null } });
+    case "unpin":
+      send("Unpin", { harbour: Number(args[0]), pin: Number(args[1]) });
       break;
     case "reset":
       send("ResetWorld");
@@ -297,6 +298,6 @@ for (const line of lines) {
   const said = [...changes(await settled()), ...(verb === "missions" ? [] : progress(before)), ...told.splice(0), ...report];
   report = [];
   console.log(`${[verb, ...rest].join(" ")}  [${hhmm(timeOfDay())}, speed ${clock.speed}]`);
-  for (const s of said.length ? said : ["time", "speed", "run", "watch", "send", "standing", "order", "sell", "rule", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
+  for (const s of said.length ? said : ["time", "speed", "run", "watch", "book", "pin", "unpin", "missions"].includes(verb) ? [] : ["  nothing changed"]) console.log(`  ${s}`);
 }
 ws.close();

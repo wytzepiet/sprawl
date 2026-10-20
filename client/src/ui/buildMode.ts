@@ -50,11 +50,6 @@ export { aim, setAim };
 const [placed, setPlaced] = createSignal<Placing | null>(null);
 export { placed, setPlaced };
 
-/** The pointer over the build menu's place while a building is held:
- *  letting go there puts it back. */
-const [overCancel, setOverCancel] = createSignal(false);
-export { overCancel, setOverCancel };
-
 /** How high the hand draws road, in levels: 0 the ground, up to 3. The
  *  decks above it are seen through (`decks.ts`). */
 const [pen, setPen] = createSignal(0);

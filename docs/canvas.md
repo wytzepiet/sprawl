@@ -76,7 +76,8 @@ A building, a vehicle, a box that has no flat drawing is not finished.
   --every 500` a run of them and a strip; `--follow <id>` keeps a
   vehicle in the middle; `--px` the scale. About 150 ms a picture in all
   on the opening's harbour, the drawing 40 to 100 ms of it.
-- **The minimap** (`ui/Minimap.tsx`), in the bottom right, on the glass:
+- **The minimap** (removed 2026-10-19: no room on a phone, and the feed
+  took the screen's top; in git before then), in the bottom right, on the glass:
   the drawing round the camera, three times its view or ninety-six tiles,
   every vehicle a dot, the view outlined, drawn again three times a
   second, 1 ms a drawing. A click sends the camera there. Its rim is the

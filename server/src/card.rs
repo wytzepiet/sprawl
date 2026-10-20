@@ -175,7 +175,7 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
             }
             let joined = world.street_of(e.id).and_then(|s| world.objects.get(s)).is_some_and(|s| matches!(s.object, GameObject::RoadNode(ref n) if n.joined));
             let tiles = (at.x - here.x).abs() + (at.y - here.y).abs();
-            depots.push((tiles, json!({ "depot": link(world, e.id), "tiles": tiles, "joined": joined, "standing": d.standing, "rules": d.rules, "stocks": d.stocks.iter().map(|(g, s)| (format!("{g:?}"), json!(s.level))).collect::<serde_json::Map<_, _>>() })));
+            depots.push((tiles, json!({ "depot": link(world, e.id), "tiles": tiles, "joined": joined, "stocks": d.stocks.iter().map(|(g, s)| (format!("{g:?}"), json!(s.level))).collect::<serde_json::Map<_, _>>() })));
         }
     }
     depots.sort_by_key(|(t, _)| *t);
@@ -201,9 +201,6 @@ fn building(world: &World, id: EntityId, b: &Building, now: GameTime) -> Value {
         "reached": world.street_of(id).is_some(),
         "stocks": b.stocks.iter().map(|(good, s)| json!({ "need": good, "good": good, "full": s.level / s.cap, "level": s.level, "cap": s.cap })).collect::<Vec<_>>(),
         "site": b.site,
-        "rules": b.rules,
-        "standing": b.standing,
-        "selling": b.selling,
         "depots": depots.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
         "makers": makers.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
         "here": here,

@@ -1,6 +1,5 @@
 import { encode, decode } from "@msgpack/msgpack";
 import type { ClientMessage, ServerMessage } from "../generated";
-import { trackMessage } from "../ui/DebugOverlay";
 
 export interface Connection {
   /** False when the socket was not open and the message was dropped. */
@@ -24,7 +23,6 @@ export function createConnection(
 
     ws.onmessage = (ev) => {
       const msg = decode(new Uint8Array(ev.data)) as ServerMessage;
-      trackMessage(msg);
       onMessage(msg);
     };
 

@@ -106,7 +106,7 @@ size is the harbour's, and a full yard is a jam you can see.
 ## Planning a shipment
 
 **A shipment is planned, not driven.** The player says what, from where, to
-where and by when: an order by hand, a top-up rule on a depot, a contract
+where and by when: a slot booked on the deck, a pin, a contract
 with a player, a request from the world or someone the world stands for. A
 planner finds its route over the timetables: the sailings, the changes of
 ship at a hub, earliest arrival first. This is a journey planner, the
@@ -215,8 +215,8 @@ is late, visibly, and the planner replans what was booked on it.
    and whether the player can say "cheapest" or "fastest".
 3. Where hubs come from: any port the planner finds useful, or ones the
    player declares; and what the dues are.
-4. How a top-up rule books: "will I be under my floor by the next
-   arrival", and how it avoids booking twice for one shortfall.
+4. How a pin books past one ship: one box in flight per pin today, which
+   a town that eats faster than a sailing outgrows.
 5. How much a box holds, and whether a part-full box sails.
 6. How big an order has to be before a charter is offered, and whether the
    pipe from a berth to a tank farm is drawn or follows from their
@@ -294,37 +294,35 @@ parted from the direction above.
   more, forty coins each (`BuyLorry`): throughput at the border is a
   thing the mayor buys and can see, and four lorries through one
   junction is a jam they made.
-- **A maker's load.** A bobtail lorry, from a depot that sells a good
-  or is short of it, fetches a box of it from a maker's yard (a farm, a
-  sawmill): home while the depot is short, else straight to the harbour.
-- **The lorry** is tapped (`Send`) or has standing orders (`Standing`).
-  With either it goes when a box for its depot, or for the town, stands
-  in a park, or when its depot has something to sell. The first lorry is
-  tapped by hand; standing orders are one toggle on the depot.
+- **A maker's load.** A bobtail lorry, from a depot short of a good or
+  whose harbour has a slot going out for it, fetches a box of it from a
+  maker's yard (a farm, a sawmill): home while the depot is short, else
+  straight to the harbour.
+- **The lorry** goes of its own accord: when a box for the town stands
+  in a park and its depot has room, the nearest depot's first, or when
+  a slot going out at its harbour wants a good it can load.
 - **Coins** cross at the harbour: an import is paid as its box lands in
-  the park, an export as the ferry casts off with it, each a lump on the
-  harbour. Booking checks the treasury against what is already booked.
+  the park, an export as the ferry casts off with it, each at its slot's
+  price, a lump on the harbour. Booking checks the treasury against what
+  is already booked.
 - **The starter pack** is the first harbour's first sailing: three boxes
   of timber, one of crates, one of fuel, every box the town's (for the
   first depot's lorry to come), the world's gift. The town's first depot
   stands at once; everything after it is a site.
-- **Rules** on a depot, a good each: keep above, fill up to, sell over.
-  Under the floor, counting what is booked, at sea, parked or on a hitch
-  for it, boxes enough to fill it are booked on the next sailing. Over the
-  sell line, what is over goes out a box at a time, once it is a quarter
-  of one. A new depot comes with rules for timber, crates and fuel.
+- **The deck** (`trade.md` §The deck, `orders.rs`): slots booked in on
+  the next sailing, slots going out waiting at the harbour for a lorry,
+  each with a partner and a price; pins book a slot again as each ferry
+  casts off, once its last box is off the border.
 - **Stone** (2026-10-10): a bulk good, twenty to a box, carried in the
   same box as everything else and drawn as a tipper heaped grey. The
-  starter pack brings one box of it, for the first streets. A depot's
-  first rules leave stone out: the opening teaches timber, and the first
-  site that takes stone, finding none, offers the order and the rule.
+  starter pack brings one box of it, for the first streets; the trunk
+  asks for a pin of it.
 - **The stalled site offers its fix.** A site's card lists each material
   it waits on and where it is: on a van, in stock at a depot, in a
   maker's yard, in the trailer park, at sea, booked. Where it is stuck,
-  the fix is one tap: a box in the park and no standing orders, "Send
-  the lorry"; nothing in town and nothing coming, "Order stone", with how
-  many boxes, when they land and what they cost; and a depot with no rule
-  for it, "Keep 20 in stock".
+  the fix is one tap: nothing in town and nothing coming, "Book stone",
+  from whoever sells it cheapest, with how many boxes, when they land
+  and what they cost.
 - **Boxes per good**: a hundred crates, fifty tanks of fuel, twenty of
   timber or stone. Nothing is boxed by class yet beyond the drawing: tank boxes
   and lined bulk boxes are the same box.
@@ -357,5 +355,5 @@ parted from the direction above.
   Not built from the design: heading in the search state, the use stock
   that fades, following by tile, the berth as a lot.
 - **Seeing it**: `GET /sea` gives every shipment, timetable, park and
-  lorry; `bun run act send|standing|order|sell` work the border by hand;
+  lorry; `bun run act book|pin|unpin` work the deck by hand;
   `the_opening_from_the_harbour` plays the whole opening as a test.

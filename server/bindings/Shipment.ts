@@ -2,11 +2,12 @@
 import type { Good } from "./Good";
 import type { GridCoord } from "./GridCoord";
 import type { Leg } from "./Leg";
+import type { Mayor } from "./Mayor";
 
 /**
  * A box with an order, where it is: the shipments list and its pins.
  */
-export type Shipment = { order: number, trailer: number, good: Good, units: number, to: number | null, outbound: boolean, leg: Leg, 
+export type Shipment = { order: number, partner: Mayor | null, price: number, trailer: number, good: Good, units: number, to: number | null, outbound: boolean, leg: Leg, 
 /**
  * What it is on or in: the ferry, the lorry, the harbour, the depot.
  */

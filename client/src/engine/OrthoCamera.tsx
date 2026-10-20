@@ -47,8 +47,10 @@ function clampAxis(v: number, lo: number, hi: number, half: number): number {
 }
 
 /** Where the camera looks and how much ground it sees either way, as of
- *  the last frame; and a way to send it somewhere, for the minimap. */
-export const eye = { x: 0, y: 0, halfW: 15, halfH: 15, go(_x: number, _y: number) {} };
+ *  the last frame; and a way to send it somewhere, for the minimap. How
+ *  much of the screen's foot the dock's sheet covers, in CSS pixels: what
+ *  the camera follows sits in the middle of the rest. */
+export const eye = { x: 0, y: 0, halfW: 15, halfH: 15, below: 0, go(_x: number, _y: number) {} };
 
 /** Ground the camera keeps over, in tiles, corners inclusive. */
 export interface Bounds {
@@ -245,7 +247,7 @@ export function OrthoCamera(props: { bounds?: () => Bounds | null }) {
       const at = positionOf(f);
       if (at) {
         targetCamX = at[0];
-        targetCamY = at[1];
+        targetCamY = at[1] - (eye.below * viewHalf) / Math.max(1, canvas.clientHeight);
       }
     }
     const dSize = targetViewHalf - viewHalf;

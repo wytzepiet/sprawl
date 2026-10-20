@@ -1,11 +1,21 @@
-import { createSignal, For, Show, type JSX } from "solid-js";
+/** @jsxImportSource ~ui */
+import { createSignal, For, Show } from "solid-js";
 import { useGame } from "../state/gameObjects";
 import { clockAt, landsAt, legWords, LEGS, plural, sea, until } from "../state/sea";
 import { setFollowing } from "../state/selection";
-import { BLUEPRINTS, boxCost, GOODS } from "../blueprints";
-import type { DepotLine } from "./Harbour";
-import { Btn, coins, GoodDot, Section, type Link } from "./kit";
+import { BLUEPRINTS, GOODS } from "../blueprints";
+import { cheapest } from "../state/deals";
+import { Btn, coins, GoodDot, Section, StepBar, type Link } from "./kit";
+import type { JSX } from "~ui/jsx-runtime";
 import type { Building, BuildingKind, Good, Stock } from "../generated";
+
+/** A depot as a site's card lists it (`card.rs`). */
+export interface DepotLine {
+  depot: Link;
+  tiles: number;
+  joined: boolean;
+  stocks: Partial<Record<Good, number>>;
+}
 
 /** A maker of one of a site's materials, as its card lists it (`card.rs`). */
 export interface MakerLine {
@@ -21,9 +31,9 @@ type Call = { good: Good; answered_by: Link | null };
 /**
  * A site's card: each material it waits on, and where that is — on the
  * van, in stock at the depot, in a maker's yard, in the trailer park, on
- * the boat — and, where it is stuck, the one tap that frees it: send the
- * lorry for the box in the park, order a box on the next ferry, give the
- * depot a rule so the next site does not wait. docs/game.md §Buildings.
+ * the boat — and, where it is stuck, the one tap that frees it: a box
+ * booked on the next ferry, from whoever sells it cheapest.
+ * docs/game.md §Buildings.
  */
 export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: DepotLine[]; makers: MakerLine[]; calls: Call[] }) {
   const materials = () => (Object.entries(props.site) as [Good, Stock][]).filter(([, s]) => s);
@@ -31,30 +41,27 @@ export function SitePanel(props: { site: NonNullable<Building["site"]>; depots: 
   const waiting = () => materials().filter(([, s]) => short(s) > 0);
   return (
     <Section title="Going up">
-      <div class="text-[15px] font-semibold">
-        {waiting().length ? `Waiting on ${waiting().map(([g, s]) => `${short(s)} ${GOODS[g].label}`).join(" and ")}` : "All its materials are here"}
-      </div>
+      <text size={15} weight={600}>{waiting().length ? `Waiting on ${waiting().map(([g, s]) => `${short(s)} ${GOODS[g].label}`).join(" and ")}` : "All its materials are here"}</text>
       <For each={materials()}>
         {([good, stock]) => (
-          <div class="mt-2.5">
-            <div class="flex items-center gap-2.5">
+          <box pad={{ top: 8 }} gap={6}>
+            <box dir="row" align="center" gap={10}>
               <GoodDot good={good} size={26} />
-              <div class="flex-1">
-                <div class="flex items-baseline justify-between text-[13px]">
-                  <span class="font-semibold capitalize">{GOODS[good].label}</span>
-                  <span class="serif tabular-nums">{Math.floor(stock.level)}<span class="soft text-xs"> / {stock.cap}</span></span>
-                </div>
-                <div class="mt-1 flex gap-[3px]">
-                  {Array.from({ length: stock.cap }, (_, i) => (
-                    <span class="h-1.5 flex-1 rounded-full transition-colors duration-500" style={{ background: i < stock.level ? GOODS[good].color : "rgb(var(--ink) / 0.1)" }} />
-                  ))}
-                </div>
-              </div>
-            </div>
+              <box grow={1} gap={4}>
+                <box dir="row" align="end" justify="between">
+                  <text size={13} weight={600}>{GOODS[good].label[0].toUpperCase() + GOODS[good].label.slice(1)}</text>
+                  <box dir="row" align="end" gap={2}>
+                    <text serif size={13}>{Math.floor(stock.level)}</text>
+                    <text serif size={12} soft>/ {stock.cap}</text>
+                  </box>
+                </box>
+                <StepBar steps={stock.cap} at={Math.floor(stock.level) - 1} color={GOODS[good].color} />
+              </box>
+            </box>
             <Show when={short(stock) > 0}>
               <Where good={good} short={short(stock)} depots={props.depots} makers={props.makers} calls={props.calls} />
             </Show>
-          </div>
+          </box>
         )}
       </For>
     </Section>
@@ -81,77 +88,49 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
   };
   const coming = () => inbound().find((s) => s.leg !== "Parked") ?? null;
   const boxes = () => Math.max(1, Math.ceil(props.short / box()));
-  const cost = () => boxes() * boxCost(g());
+  const offer = () => cheapest(g());
+  const cost = () => boxes() * box() * (offer()?.price ?? 0);
   const sailing = () => sea.sailings[0];
   const [ordered, setOrdered] = createSignal(false);
-  const [sent, setSent] = createSignal(false);
-  const [ruled, setRuled] = createSignal(false);
   const order = () => {
-    const d = nearest();
-    if (!d) return;
-    send({ type: "Order", data: { depot: d.depot.id, good: g(), boxes: boxes() } });
+    const o = offer();
+    const s = sailing();
+    if (!o || !s) return;
+    for (let i = 0; i < boxes(); i++) send({ type: "Book", data: { harbour: s.harbour, good: g(), partner: o.partner, out: false } });
     setOrdered(true);
   };
-  /** The rule a depot's card offers: a box kept, two filled to. */
-  const rule = () => {
-    const d = nearest();
-    if (!d) return;
-    send({ type: "SetRule", data: { depot: d.depot.id, good: g(), rule: { keep: box(), fill: 2 * box(), sell: null } } });
-    setRuled(true);
-  };
-  const ruleless = () => nearest() && !nearest()!.rules[g()];
   return (
-    <div class="mt-1.5 pl-[36px]">
-      <Show when={van()}>
-        {(v) => <Line dot="#57A773" text="On the van, on its way" act={<Btn onClick={() => setFollowing(v().id)}>follow</Btn>} />}
-      </Show>
-      <Show when={!van() && stocked()}>
-        {(d) => <Line dot="#57A773" text={`In stock at the depot: ${Math.floor(d().stocks[g()] ?? 0)}`} sub="its van brings it" />}
-      </Show>
-      <Show when={!van() && !stocked() && maker()}>
-        {(m) => <Line dot="#57A773" text={`At the ${BLUEPRINTS[m().kind].label.toLowerCase()}: ${Math.floor(m().level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />}
-      </Show>
-      <Show when={!van() && !stocked() && !maker() && parked()}>
-        {(p) => (
-          <Show when={!p().d.standing} fallback={<Line dot="#2B6CA3" text={`${Math.round(p().s.units)} ${label()} in the trailer park`} sub="the lorry fetches it: it has standing orders" />}>
-            <Line
-              dot="#E0A030"
-              text={`${Math.round(p().s.units)} ${label()} in the trailer park`}
-              sub={sent() ? "the lorry is on its way" : p().d.joined ? "the lorry waits to be sent" : "no road joins the depot to the harbour"}
-              act={<Btn big color="#A0714A" onClick={() => (send({ type: "Send", data: { depot: p().d.depot.id } }), setSent(true))} disabled={sent() || !p().d.joined}>{sent() ? "Sent ✓" : "Send the lorry"}</Btn>}
-            />
-          </Show>
-        )}
-      </Show>
-      <Show when={!van() && !stocked() && !maker() && !parked() && coming()}>
-        {(s) => {
-          const w = () => legWords(s());
-          return <Line dot="#2B6CA3" text={`${Math.round(s().units)} ${label()} ${w().words}`} sub={w().eta ? `in ${until(w().eta!)}` : undefined} />;
-        }}
-      </Show>
-      <Show when={!van() && !stocked() && !maker() && !parked() && !coming()}>
-        <Show when={nearest()} fallback={<Line dot="#D9483B" text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />}>
+    <box pad={{ left: 36 }}>
+      <>{() => {
+        const v = van();
+        if (v) return <Line dot="#57A773" text="On the van, on its way" act={<Btn onTap={() => setFollowing(v.id)}>follow</Btn>} />;
+        const d = stocked();
+        if (d) return <Line dot="#57A773" text={`In stock at the depot: ${Math.floor(d.stocks[g()] ?? 0)}`} sub="its van brings it" />;
+        const m = maker();
+        if (m) return <Line dot="#57A773" text={`At the ${BLUEPRINTS[m.kind].label.toLowerCase()}: ${Math.floor(m.level)} ${label()}`} sub="the depot's lorry fetches it, then its van brings it" />;
+        const p = parked();
+        if (p) return <Line dot={p.d.joined ? "#2B6CA3" : "#E0A030"} text={`${Math.round(p.s.units)} ${label()} in the trailer park`} sub={p.d.joined ? "the lorry fetches it as the depot has room" : "no road joins the depot to the harbour"} />;
+        const s = coming();
+        if (s) {
+          const w = legWords(s);
+          return <Line dot="#2B6CA3" text={`${Math.round(s.units)} ${label()} ${w.words}`} sub={w.eta ? `in ${until(w.eta)}` : undefined} />;
+        }
+        if (!nearest()) return <Line dot="#D9483B" text="No depot yet" sub={`build one by the harbour: its vans bring the ${label()}`} />;
+        const x = sailing();
+        return (
           <Line
             dot="#D9483B"
-            text={ordered() ? `Ordered: lands ${sailing() ? clockAt(landsAt(sailing()!)) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
-            sub={sailing() ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(landsAt(sailing()!))}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
+            text={ordered() ? `Booked: lands ${x ? clockAt(landsAt(x)) : "on the next ferry"}` : `No ${label()} in town, and none coming`}
+            sub={x ? `${plural(boxes(), "box", "boxes")} of ${boxes() * box()} on the next ferry, landing ${clockAt(landsAt(x))}, ${coins(-cost())} coins` : "no harbour: nothing can come"}
             act={
-              <Btn big color={GOODS[g()].color} onClick={order} disabled={ordered() || !sailing() || growth().treasury < cost()} title={growth().treasury < cost() ? "The treasury cannot pay for it" : undefined}>
-                {ordered() ? "Ordered ✓" : `Order ${label()}`}
+              <Btn big color={GOODS[g()].color} onTap={order} disabled={ordered() || !x || !offer() || growth().treasury < cost()}>
+                {ordered() ? "Booked ✓" : `Book ${label()}`}
               </Btn>
             }
           />
-        </Show>
-      </Show>
-      <Show when={ruleless() && !van() && !stocked() && !maker() && !parked() && !coming()}>
-        <Line
-          dot="rgb(var(--ink) / 0.3)"
-          text={ruled() ? `The depot keeps ${label()} now` : `The depot keeps no ${label()} of its own`}
-          sub={ruled() ? `a box kept, two filled to, ordered when it runs low` : `give it a rule, and the next site waits on nothing`}
-          act={<Btn onClick={rule} disabled={ruled()}>{ruled() ? "Ruled ✓" : `Keep ${box()} in stock`}</Btn>}
-        />
-      </Show>
-    </div>
+        );
+      }}</>
+    </box>
   );
 }
 
@@ -159,19 +138,19 @@ function Where(props: { good: Good; short: number; depots: DepotLine[]; makers: 
  *  fix, if there is one, under it, so the words keep the card's width. */
 function Line(props: { dot: string; text: string; sub?: string; act?: JSX.Element }) {
   return (
-    <div class="py-0.5">
-      <div class="flex items-baseline gap-2.5">
-        <span class="h-2.5 w-2.5 shrink-0 translate-y-[1px] rounded-full" style={{ background: props.dot }} />
-        <div class="min-w-0 flex-1 leading-tight">
-          <div class="text-[13.5px] font-semibold">{props.text}</div>
+    <box pad={{ y: 2 }} gap={6}>
+      <box dir="row" align="start" gap={10}>
+        <box w={10} h={10} round={5} fill={props.dot} y={3} />
+        <box grow={1} gap={1}>
+          <text size={13.5} weight={600}>{props.text}</text>
           <Show when={props.sub}>
-            <div class="soft text-[11.5px]">{props.sub}</div>
+            <text size={11.5} soft>{props.sub}</text>
           </Show>
-        </div>
-      </div>
+        </box>
+      </box>
       <Show when={props.act}>
-        <div class="mt-1.5 flex justify-end">{props.act}</div>
+        <box dir="row" justify="end">{props.act}</box>
       </Show>
-    </div>
+    </box>
   );
 }
