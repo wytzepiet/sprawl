@@ -127,25 +127,35 @@ class Strips {
         return { p: { x: points[i].x + (points[i + 1].x - points[i].x) * t, y: points[i].y + (points[i + 1].y - points[i].y) * t }, d };
       };
       const run = [at(d0), ...points.flatMap((p, i) => (distances[i] > d0 && distances[i] < d1 ? [{ p, d: distances[i] }] : [])), at(d1)];
-      // On past each end, for its ragged edge.
+      // A hair on past each end, to meet the piece beside it.
       const on = (a: { p: P; d: number }, b: { p: P; d: number }) => {
         const l = Math.hypot(b.p.x - a.p.x, b.p.y - a.p.y) || 1;
-        return { p: { x: b.p.x + ((b.p.x - a.p.x) / l) * SPILL, y: b.p.y + ((b.p.y - a.p.y) / l) * SPILL }, d: b.d + Math.sign(b.d - a.d) * SPILL };
+        return { p: { x: b.p.x + ((b.p.x - a.p.x) / l) * HAIR, y: b.p.y + ((b.p.y - a.p.y) / l) * HAIR }, d: b.d + Math.sign(b.d - a.d) * HAIR };
       };
       return [on(run[1], run[0]), ...run, on(run[run.length - 2], run[run.length - 1])];
     };
     const off = (x: number, y: number) => !land.has(`${Math.floor(x)},${Math.floor(y)}`);
-    const pieces: { from: number; to: number; samples: { p: P; d: number }[] }[] = [];
+    // Where the earth spills past a piece's tile: onto any tile this run
+    // has not already worked by then. Over one it has, it would never show.
+    const first = new Map<string, number>();
+    nodes.forEach(({ x, y }, k) => { if (works(k) && !first.has(`${Math.floor(x)},${Math.floor(y)}`)) first.set(`${Math.floor(x)},${Math.floor(y)}`, k); });
+    const spills = (k: number, x: number, y: number) => (first.get(`${Math.floor(x)},${Math.floor(y)}`) ?? Infinity) >= k;
+    const pieces: { k: number; from: number; to: number; samples: { p: P; d: number }[] }[] = [];
     for (let k = 0; k <= last; k++) {
       if (!works(k)) continue;
       const [before, after] = [k > 0 && works(k - 1), k < last && works(k + 1)];
-      // A tile across the way from a to b, and on past it, for its
-      // ragged edge.
-      const straight = (a: P, b: P) => {
-        const stretch = 0.5 + SPILL / Math.hypot(b.x - a.x, b.y - a.y);
-        const [hx, hy] = [(b.x - a.x) * stretch, (b.y - a.y) * stretch];
-        const [c, half] = [nodes[k], Math.hypot(hx, hy)];
-        pieces.push({ from: atNode[k] - half + SPILL, to: atNode[k] + half - SPILL, samples: [{ p: { x: c.x - hx, y: c.y - hy }, d: atNode[k] - half }, { p: { x: c.x + hx, y: c.y + hy }, d: atNode[k] + half }] });
+      // A tile across the way from a to b, and on past either end, far
+      // where it spills, a hair where it meets a piece.
+      const straight = (a: P, b: P, spill = true) => {
+        const l = Math.hypot(b.x - a.x, b.y - a.y);
+        const [ux, uy, c] = [(b.x - a.x) / l, (b.y - a.y) / l, nodes[k]];
+        const [back, on] = [spill && spills(k, c.x - ux, c.y - uy) ? SPILL : HAIR, spill && spills(k, c.x + ux, c.y + uy) ? SPILL : HAIR];
+        pieces.push({
+          k,
+          from: back === SPILL ? atNode[k] - 0.5 : -1e9,
+          to: on === SPILL ? atNode[k] + 0.5 : 1e9,
+          samples: [{ p: { x: c.x - ux * (0.5 + back), y: c.y - uy * (0.5 + back) }, d: atNode[k] - 0.5 - back }, { p: { x: c.x + ux * (0.5 + on), y: c.y + uy * (0.5 + on) }, d: atNode[k] + 0.5 + on }],
+        });
       };
       if (before && after) {
         // A turn with field on its outside, as round the farmstead, is
@@ -153,8 +163,8 @@ class Strips {
         const [a, c, b] = [nodes[k - 1], nodes[k], nodes[k + 1]];
         const ahead = { x: 2 * c.x - a.x, y: 2 * c.y - a.y };
         const behind = { x: 2 * c.x - b.x, y: 2 * c.y - b.y };
-        if ((c.x - a.x) * (b.y - c.y) - (c.y - a.y) * (b.x - c.x) !== 0 && !off(ahead.x, ahead.y) && !off(behind.x, behind.y)) straight(a, c);
-        pieces.push({ from: bound(k), to: bound(k + 1), samples: along(bound(k), bound(k + 1)) });
+        if ((c.x - a.x) * (b.y - c.y) - (c.y - a.y) * (b.x - c.x) !== 0 && !off(ahead.x, ahead.y) && !off(behind.x, behind.y)) straight(a, c, false);
+        pieces.push({ k, from: -1e9, to: 1e9, samples: along(bound(k), bound(k + 1)) });
         continue;
       }
       if (after || k === 0) straight(nodes[k], nodes[k + 1]);
@@ -165,14 +175,17 @@ class Strips {
     const data = new Float32Array(count * 16);
     const indices: number[] = [];
     let v = 0;
-    for (const { from, to, samples } of pieces) {
+    for (const { k, from, to, samples } of pieces) {
+      const at = nodes[k];
       samples.forEach(({ p, d }, i) => {
         const [a, b] = [samples[Math.max(0, i - 1)].p, samples[Math.min(samples.length - 1, i + 1)].p];
         const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
         const n = { x: -(b.y - a.y) / l, y: (b.x - a.x) / l };
-        [-0.5, 0.5].forEach((a, s) => {
-          this.positions.set([p.x + n.x * a * WIDE, p.y + n.y * a * WIDE, 0], (v + s) * 3);
-          data.set([a * WIDE, d, n.x, n.y, from, to, 0, 0], (v + s) * 8);
+        const sides = [-1, 1].map((side) => (spills(k, at.x + n.x * side, at.y + n.y * side) ? 1 : 0));
+        sides.forEach((spill, s) => {
+          const out = (s ? 1 : -1) * (0.5 + (spill ? SPILL : HAIR));
+          this.positions.set([p.x + n.x * out, p.y + n.y * out, 0], (v + s) * 3);
+          data.set([out, d, n.x, n.y, from, to, sides[0], sides[1]], (v + s) * 8);
         });
         if (i > 0) indices.push(v - 2, v - 1, v + 1, v - 2, v + 1, v);
         v += 2;
@@ -194,11 +207,11 @@ class Strips {
   }
 }
 
-/** How far past its tile a piece goes, for its ragged edge and the
- *  crumbs of earth beyond it: its strip as wide as a pass and this much
- *  more each side, and on this far past either end. */
+/** How far past its tile a piece goes where it spills, for its ragged
+ *  edge and the crumbs of earth beyond it; and where it meets another
+ *  piece, a hair over, so the two meet with no seam between. */
 const SPILL = 0.16;
-const WIDE = 1 + 2 * SPILL;
+const HAIR = 0.03;
 
 export class Field {
   private ruts: Strips | null = null;
@@ -369,7 +382,7 @@ function plugin(engine: Engine, paint: Paint, colours: Rgb[]): MaterialPlugin {
     }),
     writeUbo: (data, offsets) => {
       const put = (name: string, v: number[]) => data.set(v, offsets.get(name)! / 4);
-      put("fieldLook", [paint.look[0], paint.look[1], paint.reach, (performance.now() / 1000) % 3600]);
+      put("fieldLook", [paint.look[0], paint.look[1], paint.reach, 0]);
       ["fieldEarth", "fieldGrowing", "fieldRipe", "fieldStubble"].forEach((name, i) => put(name, [colours[i].r, colours[i].g, colours[i].b, 1]));
     },
     getCustomCode: (stage) =>
@@ -408,14 +421,11 @@ let fieldLook = material.fieldLook;
 // Broad, soft patches: wetter earth, a crop a little ahead or behind.
 let fieldMottle = 0.6 * fieldNoise(fieldW * 2. + vec2f(61., 7.)) + 0.4 * fieldNoise(fieldW * 6. + vec2f(13., 89.));
 let fieldEdge = 0.5 * fieldNoise(fieldW * 24. + vec2f(31., 5.)) + 0.5 * fieldNoise(fieldW * 6. + vec2f(3., 201.));
-// The wind over the standing crop: broad bands, lighter where the ears
-// bow and show their sides, rolling slowly downwind.
-let fieldWind = fieldNoise(vec2f(fieldW.x * 0.5 + fieldW.y * 0.2, fieldW.y * 0.25 - fieldW.x * 0.1) - vec2f(0.6, 0.25) * fieldLook.w);
 let fieldStage = u32(fieldLook.x + 0.5);
 // How far past its own tile the pixel is, across, past either end, or
 // ahead of the tractor: out to here the earth reaches, raggedly, and past
 // that only crumbs of it, fewer further out, over what lies beside.
-let fieldOut = max(max(abs(fieldU - 0.5) - 0.5, fieldV - fieldLook.z), max(input.vStripB.x - fieldV, fieldV - input.vStripB.y));
+let fieldOut = max(max(select(-1., -fieldU, input.vStripB.z > 0.5), select(-1., fieldU - 1., input.vStripB.w > 0.5)), max(fieldV - fieldLook.z, max(input.vStripB.x - fieldV, fieldV - input.vStripB.y)));
 let fieldCrumb = 0.6 * fieldNoise(fieldW * 40. + vec2f(171., 23.)) + 0.4 * fieldNoise(fieldW * 90. + vec2f(7., 51.));
 let fieldRag = 0.07 * fieldEdge;
 if (fieldStage == 0u || (fieldOut > fieldRag && fieldCrumb < 0.56 + 3. * (fieldOut - fieldRag))) { discard; }`;
@@ -425,8 +435,7 @@ if (fieldStage == 0u || (fieldOut > fieldRag && fieldCrumb < 0.56 + 3. * (fieldO
  * how far grown, drilled, seedlings, grown, in ear, ripe; stubble), and
  * between two, the next showing through in patches as it comes, so a
  * field ripens in waves, not all at once. Each texel its earth's colour
- * or the crop's, as light as it was baked, its facing turned as baked;
- * the standing crop lighter where the wind bows it.
+ * or the crop's, as light as it was baked, its facing turned as baked.
  */
 const DIFFUSE = `let fieldDirt = material.fieldEarth.rgb;
 // The earth: a dark grey-brown, the field's earth greyed and darkened.
@@ -452,8 +461,7 @@ for (var i = 0; i < 2; i++) {
   if (st > 3.5) { crop = mix(fieldGreen, fieldGold, 0.25); }
   if (st > 4.5) { crop = fieldGold; }
   if (st > 5.5) { crop = fieldStraw; }
-  let standing = select(0., 1., st > 2.5 && st < 5.5) * t.a;
-  let c = mix(soil, crop, t.a) * t.b * 1.25 * (1. + 0.16 * (fieldWind - 0.5) * standing);
+  let c = mix(soil, crop, t.a) * t.b * 1.25;
   let w = select(1. - fieldAhead, fieldAhead, i == 1);
   fieldColour += c * w;
   fieldFacing += vec3f(t.rg * 2. - 1., 0.) * w;
