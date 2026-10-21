@@ -1,11 +1,12 @@
 # Trade: depots, shipments, listings and contracts
 
 Status: direction, 2026-10-10. Built: coins at the border, GDP, the
-world's two prices (`economy.rs`), orders by hand and top-up rules on
-depots (keep, fill, sell) booking the ferry, with the world as the only
-source (`haul.rs`, `shipping.md` §Built); the order board, letters
-from the mayors of the towns beyond the edge, paid as their boxes sail
-(`orders.rs`, `missions.md` §Orders, 2026-10-12). Not built: the
+world's two prices (`economy.rs`), the ferry's deck: slots booked in
+and out, each a deal with a partner, the world or a mayor, and pins
+that book a slot again every sailing (`orders.rs`, 2026-10-19, below);
+the order board, letters from the mayors of the towns beyond the edge,
+paid as their boxes sail (`orders.rs`, `missions.md` §Orders,
+2026-10-12). Not built: the
 Exchange, listings, standing offers, contracts. Replaces the price economy
 of `economy.md` as the game's economy: what goes and what stays is at the
 end, and `shelved.md` has the price economy under that date. `game.md` is
@@ -94,9 +95,8 @@ surprises is a chore.
 
 Trading with other players starts with a building: the container port,
 which is the Exchange (`shipping.md`). Until a town has one it trades with
-the world alone, through its ferry harbour, by hand and through its
-depots' top-up rules, which is all a new player needs to learn: the
-harbour, the depot, the road. Trading at scale and trading with players
+the world and the mayors, through its ferry's deck, which is all a new
+player needs to learn: the harbour, the depot, the road. Trading at scale and trading with players
 are the same step, and it is a building you can watch work: the stacks,
 the cranes, the boxes for your neighbour. The Exchange opens the trade
 board, listings to other towns,
@@ -127,8 +127,8 @@ days." Either side proposes it and both accept; it shows on the trade
 board.
 
 A contract is a source, not a schedule. It gives the buyer the right to
-buy up to its amount at its price; the buyer's top-up rules (below)
-decide when.
+buy up to its amount at its price; the buyer's pins (below) decide
+when.
 
 **The seller always delivers.** A seller who cannot fill an order from
 their own stock has it bought from the world at the world's price, and
@@ -136,44 +136,71 @@ pays the difference. The buyer sees one source and one price, and never
 pays for the seller's trouble. Ending a contract early takes a day's
 notice, so no town starves overnight.
 
-## Top-up
+## The deck
 
-A rule on a depot, for one good: keep above so much, fill up to so
-much, from these sources in this order.
+Everything the town trades over the sea is a slot on the ferry's deck
+(2026-10-19). It replaced the depot's rules, its standing-orders switch,
+its sell buttons and the order form, a wall of panels that each did a
+little of one job.
 
-```
-North depot · bread
-  keep above   50
-  fill up to   200
-  from         contracts → listings under 3 → the world
-```
+The player sees it as **deals**, a stack of cards in the corner like a
+phone's notifications (`ui/Feed.tsx`, on `ui/stack.tsx`, drawn by the GPU), the one feed
+at the top of the screen, with the missions and the ferry's news: a card is
+every box of one good from or for one partner, said plainly ("Timber
+from the world ×2"), where its furthest box is in words and on a bar of
+the steps of its way, and the time to its next move. Words say what an
+icon cannot; none is decoration. Folded, the newest is on top and two more
+peek under it; a tap spreads them out, a tap on one opens it to its
+boxes, each followed by the camera with a tap, a box more, and its pin.
+A deal done shows its coins and slides away. A mayor's letter arrives
+as a deal of the boxes it wants, accepted with a tap. No harbour is
+ever named: the town trades through its harbour, and the game picks the
+way. No harbour's or ferry's card trades.
 
-The rule is the depot's own: it is about the depot's stock, shown on
-the depot, and it works from the first depot with the world as its
-source. Listings and contracts join the sources once the town has an
-Exchange. That is the whole rule: when to order, how much, and from
-where. A contract first because it is cheapest, listings next, the world last as
-the net that always holds. A town that makes no food lives this way for
-good, paying for it in coins and in depending on a neighbour, and that
-is a choice against using the land for farms.
+- **A slot is a deal with a partner.** Coming in: a box of a good from
+  someone, at their price a unit. Going out: a box for someone. The
+  partner is named on the slot, with their crest: the world, which
+  sells and buys anything a tenth off its price, or a mayor (`orders.rs`
+  §WHO), who sells what their town makes for less, the better they stand
+  with the town the less, and buys what a letter of theirs asks for.
+  Players join the list with the Exchange. Every coin in or out is a
+  slot the player booked, so where the money came from is never a
+  mystery: that was the price economy's flaw, and the reason trade is
+  manual at all.
+- **New deals** are the dock's trade tab: buy or sell, a good, then
+  who, cheapest in or dearest out first, each with its price a box.
+- **Coming in** rides the next ferry and is paid for as it lands. It is
+  for the town, not a depot: the nearest depot with room sends its
+  lorry, so the player never chooses where a box goes.
+- **Going out** waits at the harbour until a depot's lorry loads it,
+  from what the depot has over its own reorder point, or from a maker's
+  yard, and it is paid for as the ferry casts off. The town's own shelf
+  comes before the world's.
+- **A pin** books the slot again as each ferry casts off, once its last
+  box is off the border (fetched from the park, or loaded for the
+  ferry), so a pin runs only as fast as the town takes it and never
+  floods the park. Pins are the automation: earned by doing a slot by
+  hand first, unpinned with a tap.
+- **Lorries go of their own accord**: to fetch what lands, to load what
+  goes out. There is no switch.
+
+A town that makes no food lives on a pinned slot of crates for good,
+paying for it in coins and in depending on a neighbour, and that is a
+choice against using the land for farms.
 
 ## Automation is seen
 
 Everything is manual first and automatable later, and automation never
 hides. It is a thing on the map:
 
-- **Vehicles with orders.** The first loads are the town's one lorry,
-  tapped by hand. Then the same lorry is given standing orders: every
-  morning, collect at the quay, unload at the north depot. The
-  automation is the lorry; what is automated is what is driving.
-- **Rules live on buildings.** A depot's top-up shows over it as the
-  good and its level; the stack in its yard is the level. Its rules buy
-  only once it has standing orders. When it reorders, its boxes are
-  booked on the next sailing, the news says what it bought, why and for
-  how much, and the ferry that brings them is on the map.
-- **Automation costs capacity.** A standing order needs a lorry, a berth
-  slot, a contract. Automating more is building more, and three lorries
-  on standing orders through one junction is a jam you made.
+- **Vehicles at work.** A depot's lorry fetches what lands and loads
+  what goes out; what is automated is what is driving.
+- **Pins live on the deck.** A pinned slot is drawn with its pin, on
+  the ferry it rides, and its box is on the map from the moment it is
+  booked.
+- **Automation costs capacity.** A pin takes a slot of the deck, and a
+  lorry's time. Automating more is building more, and three lorries
+  through one junction is a jam you made.
 - **Failure is loud and on the map.** A lorry with nothing to collect
   waits with an icon; a depot under its floor glows; a late convoy is
   seen stuck.

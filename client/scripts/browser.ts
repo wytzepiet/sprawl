@@ -28,7 +28,8 @@ export const launch = () =>
  * UI's glass draws nothing behind the cards. Only for photographs.
  */
 export async function open(browser: Awaited<ReturnType<typeof launch>>, viewport: { width: number; height: number }) {
-  const page = await browser.newPage({ viewport });
+  // `DPR=3` for a phone's screen.
+  const page = await browser.newPage({ viewport, deviceScaleFactor: Number(process.env.DPR ?? 1) });
   await page.addInitScript(() => {
     const configure = GPUCanvasContext.prototype.configure;
     GPUCanvasContext.prototype.configure = function (c: GPUCanvasConfiguration) {

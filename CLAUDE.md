@@ -79,10 +79,11 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   border: the park, the deck, the lorries and the yards. A chain that
   stops delivering shows here before it shows in play.
 - **The opening, end to end:** `cargo test the_opening` plays it: the
-  starter pack lands, the tapped lorry fetches, a house waits for its
-  timber, its settlers come on the next ferry, a box sold is paid for.
+  starter pack lands, the lorry fetches, a house waits for its timber,
+  its settlers come on the next ferry, a slot booked and one pinned, a
+  box sold is paid for.
   In a running game, `curl localhost:4801/sea` is the border as the server
-  has it, and `bun run act send|standing|order|sell|rule` work it by hand;
+  has it, and `bun run act book|pin|unpin` work the deck by hand;
   `bun run act missions` lists the town's missions (`docs/missions.md`).
   When one of those says something is wrong, `bun run profile` attaches to
   the running server (`samply setup` once, first) and opens a flame graph in
@@ -134,7 +135,8 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   layout questions need only this; photographs are for light and height.
 - **The mayor's hand:** `bun run act road 7,78 7,85 0,85`, `build House
   5,86` (placed whole round the tile, the first way it fits; `build
-  Depot 5,86 1` turned that way), `demolish 5,86` (a building whole),
+  Depot 5,86 1` turned that way), `demolish 5,86` (the road there),
+  `raze 5,86` (the building there, whole),
   `undo`, `speed 0`, `run 2` (hours, or `--to 0.83` of a day), `reset`;
   `bun run act - < steps` reads one a line. Each says what it made and
   took away, and a building refused or an undo says why; a road step
@@ -155,7 +157,6 @@ If it's not clearly *smaller and clearer*, throw it away and try again.
   `--frames 8 --every 500` a run of them and a strip, `--follow <id>` a
   vehicle kept in the middle, `--px` the scale, `--name`. Reach for this
   first after a change to what moves; `look` is for light and material.
-  The drawing (`client/src/flat/draw.ts`) is the minimap's too.
 - **A photograph of the game:** `bun run look 6,80,4` (a tile, and how
   many tiles each way), `--frames 8 --every 250` a short run of them
   and a strip, in `.dev/look/`; in a cloud container, as for `shots`.

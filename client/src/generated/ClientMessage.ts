@@ -6,7 +6,7 @@ import type { Cell } from "./Cell";
 import type { ChunkBounds } from "./ChunkBounds";
 import type { Good } from "./Good";
 import type { GridCoord } from "./GridCoord";
-import type { Rule } from "./Rule";
+import type { Mayor } from "./Mayor";
 import type { Stroke } from "./Stroke";
 
-export type ClientMessage = { "type": "Build", "data": Build } | { "type": "Draw", "data": Stroke } | { "type": "Ask", "data": Ask } | { "type": "Place", "data": { kind: BuildingKind, at: GridCoord, facing: number | null, } } | { "type": "Undo" } | { "type": "Take", "data": Cell } | { "type": "DespawnAllCars" } | { "type": "Order", "data": { depot: number, good: Good, boxes: number, } } | { "type": "SetRule", "data": { depot: number, good: Good, rule: Rule | null, } } | { "type": "Standing", "data": { depot: number, on: boolean, } } | { "type": "Send", "data": { depot: number, } } | { "type": "Sell", "data": { depot: number, good: Good, } } | { "type": "BuyLorry", "data": { depot: number, } } | { "type": "SetSpeed", "data": number } | { "type": "ResetWorld" } | { "type": "SetChunks", "data": ChunkBounds } | { "type": "Ping" };
+export type ClientMessage = { "type": "Build", "data": Build } | { "type": "Draw", "data": Stroke } | { "type": "Ask", "data": Ask } | { "type": "Place", "data": { kind: BuildingKind, at: GridCoord, facing: number | null, } } | { "type": "Raze", "data": { building: number, } } | { "type": "Undo" } | { "type": "Take", "data": Cell } | { "type": "DespawnAllCars" } | { "type": "Book", "data": { harbour: number, good: Good, partner: Mayor | null, out: boolean, } } | { "type": "Pin", "data": { harbour: number, good: Good, partner: Mayor | null, out: boolean, } } | { "type": "Unpin", "data": { harbour: number, pin: number, } } | { "type": "BuyLorry", "data": { depot: number, } } | { "type": "SetSpeed", "data": number } | { "type": "ResetWorld" } | { "type": "SetChunks", "data": ChunkBounds } | { "type": "Ping" };

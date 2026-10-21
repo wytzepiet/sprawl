@@ -1,15 +1,13 @@
-import { createEffect, createMemo, For, on, onCleanup, Show } from "solid-js";
-import { render } from "solid-js/web";
+import { createEffect, on, onCleanup } from "solid-js";
 import { useEngine } from "./Canvas";
 import { Dots } from "./dots";
 import { underGlass } from "./glass";
 import { projector, screenToWorld, viewExtent, rectOf } from "./view";
-import { builtVersion, eachEntity, getObjectsAt, listenHints, roadsAt, useGame } from "../state/gameObjects";
+import { builtVersion, getObjectsAt, listenHints, roadsAt, useGame } from "../state/gameObjects";
 import { aim, held, hold, priority, setAim, setPlaced, setPriority, setTool, tool, turn } from "../ui/buildMode";
 import { snap, STEPS } from "./tiles";
 import { Pen } from "./pen";
-import { BLUEPRINTS, GoodIcon, GOODS } from "../blueprints";
-import type { Area, Building, Good, GridCoord, Tool } from "../generated";
+import type { Area, Building, GridCoord, Tool } from "../generated";
 
 /**
  * The mayor's hand on the map. A road, the demolisher or lights go by the
@@ -21,8 +19,8 @@ import type { Area, Building, Good, GridCoord, Tool } from "../generated";
  * it is let go (`Place`): shown where it would stand as the town would be
  * drawn with it (`TownLayer.hold`), turned to the nearest street or, a
  * harbour, the sea, unless the hand turns it (R, the wheel, two fingers);
- * beside it, what it is built of against what the town has, or why it
- * may not go there.
+ * beside it (`ui/Held.tsx`), what it is built of against what the
+ * town has, or why it may not go there.
  *
  * Where the hand may go is the game's to say (`server/src/hint.rs`), and
  * the dots show it (`dots.ts`): one on every tile in view a drag may start
@@ -253,15 +251,10 @@ export function Brush() {
       },
     });
 
-  // Beside the building in hand: what it is, what it is built of against
-  // what the town has, and that it may be let go there or why not. Over
-  // a plot that may not stand, its tiles in red, flat on the ground.
-  const label = document.createElement("div");
-  label.className = "fixed inset-0 pointer-events-none";
+  // The plot of the building in hand, flat on the ground; its tiles in
+  // red where it may not stand. Its label is the UI's (`ui/Held.tsx`).
   const plot = document.createElement("canvas");
-  plot.style.cssText = "position:absolute;inset:0;width:100vw;height:100vh";
-  label.appendChild(plot);
-  const unrender = render(() => <HeldLabel />, label);
+  plot.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none";
   const stopLabel = afterRender(() => {
     const p = aim();
     const g = plot.getContext("2d")!;
@@ -270,13 +263,8 @@ export function Brush() {
     if (plot.width !== w || plot.height !== h) [plot.width, plot.height] = [w, h];
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, innerWidth, innerHeight);
-    const tag = label.querySelector<HTMLElement>("[data-held]");
     if (!p) return;
     const project = projector(scene, canvas);
-    const xs = p.tiles.map((t) => t.x), ys = p.tiles.map((t) => t.y);
-    // Over the plot's far edge, clear of it.
-    const top = project.at((Math.min(...xs) + Math.max(...xs) + 1) / 2, Math.max(...ys) + 1.2, 0.6);
-    if (tag) [tag.style.left, tag.style.top] = [`${top.sx}px`, `${top.sy}px`];
     g.fillStyle = p.why ? "rgba(216,67,47,0.42)" : "rgba(47,123,240,0.22)";
     g.strokeStyle = p.why ? "rgba(216,67,47,0.9)" : "rgba(47,123,240,0.85)";
     g.lineWidth = 2;
@@ -291,12 +279,11 @@ export function Brush() {
     g.stroke();
     underGlass(g);
   });
-  document.body.appendChild(label);
+  document.body.appendChild(plot);
 
   onCleanup(() => {
     stopLabel();
-    unrender();
-    label.remove();
+    plot.remove();
     canvas.removeEventListener("pointerleave", onLeave);
     setAim(null);
     canvas.removeEventListener("pointerdown", onEyedrop, { capture: true });
@@ -315,54 +302,4 @@ export function Brush() {
   });
 
   return dots.el;
-}
-
-/** What the town has of a good: on its standing depots' shelves; or,
- *  asked of none, how many depots stand. */
-function inTown(good: Good | null): number {
-  let n = 0;
-  eachEntity((e) => {
-    if (e.object.kind !== "Building") return;
-    const b = e.object.data;
-    if (b.kind === "Depot" && !b.site) n += good ? (b.stocks[good]?.level ?? 0) : 1;
-  });
-  return n;
-}
-
-/** The building in hand's tag: its name, what it takes against what the
- *  town has, and whether it may be let go here, or why not. */
-function HeldLabel() {
-  const lines = createMemo(() => {
-    const p = aim();
-    builtVersion();
-    // The town's first depot stands at once, for nothing.
-    if (!p || (p.kind === "Depot" && !inTown(null))) return [];
-    return (Object.entries(BLUEPRINTS[p.kind].materials) as [Good, number][]).map(([good, n]) => ({ good, n, have: inTown(good) }));
-  });
-  return (
-    <Show when={aim()}>
-      {(p) => (
-        <div data-held data-glass="toast" class="ink absolute rounded-2xl px-3.5 py-2 text-[13px] whitespace-nowrap" style={{ transform: "translate(-50%,-100%)" }}>
-          <div class="flex items-center gap-2.5 font-semibold">
-            <span>{BLUEPRINTS[p().kind].label}</span>
-            <For each={lines()}>
-              {(l) => (
-                <span class="inline-flex items-center gap-1 font-medium" style={{ color: l.have >= l.n ? undefined : "#C2361F" }} title={`${l.n} ${GOODS[l.good].label}; ${Math.floor(l.have)} in the depots`}>
-                  <GoodIcon good={l.good} width="13" height="13" />
-                  {l.n}
-                  <span class="soft font-normal">/ {Math.floor(l.have)}</span>
-                </span>
-              )}
-            </For>
-            <Show when={!lines().length}>
-              <span class="soft font-normal italic">stands at once</span>
-            </Show>
-          </div>
-          <div class="text-[12px]" style={{ color: p().why ? "#C2361F" : "#2E7D4F" }}>
-            {p().why ?? (p().kind === "Harbour" && !p().door ? "The ferry berths here; a street comes with it" : "Let go to build")}
-          </div>
-        </div>
-      )}
-    </Show>
-  );
 }

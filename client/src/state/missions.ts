@@ -23,3 +23,14 @@ export function markedFor(list: Mission[], all: Neighbour[], order: number): Nei
   const m = list.find((m) => typeof m.key === "object" && m.key.Order === order);
   return m?.from ? all.find((n) => n.mayor === m.from) : undefined;
 }
+
+/** A mission's key as a name: an order's is its number. */
+const keyOf = (m: Mission) => (typeof m.key === "object" ? `order ${m.key.Order}` : m.key);
+
+/** The missions the feed shows: the opening while it runs, else the
+ *  town's own, open and just finished. A mayor's letter is a deal. */
+export const shownMissions = () => {
+  const opening = missions().find((m) => m.key === "Opening" && m.finished === null);
+  return opening ? [opening] : missions().filter((m) => m.from === null);
+};
+export const missionKey = (m: Mission) => `mission:${keyOf(m)}`;

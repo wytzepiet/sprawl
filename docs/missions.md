@@ -1,7 +1,7 @@
 # Missions
 
 Status: built 2026-10-10 for the opening, the trunk and the town's
-situation (`server/src/missions.rs`, `client/src/ui/Missions.tsx`);
+situation (`server/src/missions.rs`, `client/src/ui/Feed.tsx`);
 orders from the towns beyond the edge built 2026-10-12
 (`server/src/orders.rs`, §Orders). Dailies are designed here, not built.
 
@@ -35,9 +35,9 @@ together.
 1. **The trunk.** The opening, opened with the town: a harbour, a depot,
    a street between them, the starter pack fetched, houses and their
    settlers (`game.md` §The opening). Then one at a time, each opening
-   as the last finishes, three short missions for the core loop: give
-   the depot's lorry standing orders, keep stone at the depot by a
-   rule, sell a box of crates to the world.
+   as the last finishes, three short missions for the core loop, each
+   on the ferry's deck (`trade.md` §The deck): book a box of timber,
+   pin a box of stone, sell a box of crates over the sea.
 2. **Unlocks.** Each building kind may carry a mission that teaches it,
    opened when the kind is unlocked. Everything is unlocked today (the
    tree is off, `game.md` §The build), so these come from source 3 for
@@ -79,21 +79,21 @@ it is wanted by (two of the town's days on), and "Northgate · north,
 beyond the sea".
 
 **What they ask.** Only what the town can send (`orders::sourceable`):
-a good a maker in town makes and the depots hold two boxes of, or a
-good a depot holds over a line to sell. Every third letter reaches one
+a good a maker in town makes and the depots hold two boxes of. Every
+third letter reaches one
 step further, for a good a kind of building the town has not built
 would make (crates for a farm, stone for a quarry): the tutorial after
 the tutorial, a nudge and never a path. A town that makes nothing
 gets only those, so the first letter after the opening is Tam's, for
 the crates a farm would make. Nothing else: no letter beats one that
-must lapse. Fuel has no maker, so it is asked for only once a depot
-sells it. The world sells everything, dearly, so nothing asked is
+must lapse. Fuel has no maker, so nobody asks for it. The world sells everything, dearly, so nothing asked is
 impossible.
 
-**Filled physically.** A box loaded to go out, by hand ("Send a box",
-the panel's button, is the depot's Sell) or by a sell line, while an
-open order wants its good, is marked for that order (`orders::bound`,
-in `haul::new_box`): it carries the order's number as its shipment's,
+**Filled physically.** While an order wants more, its mayor is a
+partner for a slot going out, at the letter's price: the letter is a
+card in the feed, the boxes it wants, and a tap on its envelope
+books them all. The box carries
+the order's number as its shipment's, is loaded by a depot's lorry,
 drives to the park, shows its town's crest there, and sails with the
 ferry to the edge. As the ferry casts off, the mayor pays for it, a
 lump of coins at the harbour as any export lands (`orders::sailed`); the
@@ -175,7 +175,7 @@ its mission has opened.
   reward. Add the key to `Key`.
 - **A new goal:** a variant of `Goal`, a line in `met` saying when it is
   true, a line in `at` if its button acts on a building, and a case in
-  the panel's `Act` (`Missions.tsx`) for the button, if it has one.
+  the card's `Act` (`ui/Feed.tsx`) for the button, if it has one.
 - **A new situation:** a variant of `When`, and a call to
   `missions::sense` where the server finds it, on an event, never on a
   scan of its own. If what makes it real is narrower than the event
