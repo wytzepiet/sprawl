@@ -6,8 +6,9 @@ type Rgb = [number, number, number];
 
 /** How far the light's colour is softened toward white: a tint, not a gel. */
 const SOFT = 0.66;
-/** How much lighter light glass is made, and how much darker dark glass. */
-const LIFT = 0.18;
+/** How dark the glass is at most by day, and how much darker than the
+ *  light it is by night. */
+const DARK = 0.22;
 const DARKEN = 0.62;
 /** How long the glass takes to come round to a new light, in seconds. */
 const FADE = 0.18;
@@ -19,7 +20,7 @@ const mix = (a: Rgb, b: Rgb, f: number): Rgb => a.map((v, i) => Math.round(v + (
  * The UI is a pane held up in the game's own light (`lightOnPane`): white
  * at noon, rose and gold as the sun goes down, the sky's blue at night. Set
  * as CSS variables (`app.css`) whenever the day turns it a shade: the
- * glass's colour and the ink on it, black on light glass, white on dark.
+ * glass's colour, always dark, and the white ink on it.
  * The glass itself the GPU draws (`engine/glass.ts`), in the same light:
  * its body, the sky round its edges, and the sun's glint on the rim that
  * faces it.
@@ -39,7 +40,7 @@ export default function Glass() {
     light.sky = skyGlint(t);
   });
   // Where the light is going, and where the glass is on its way there:
-  // a turn from light glass to dark fades over a moment, ink and all.
+  // a turn of the light's colour fades over a moment.
   const now = { tint: [...light.tint] as Rgb, ink: [...light.ink] as Rgb, text: [...light.text] as Rgb };
   let goal = now;
   let frame = 0;
@@ -69,12 +70,11 @@ export default function Glass() {
     const lit = lightOnPane(timeOfDay());
     const b = Math.max(...lit);
     const shade = lit.map((v) => Math.round(255 * (v / b + (1 - v / b) * SOFT) * Math.min(1, b) ** 1.5)) as Rgb;
-    const bright = luma(shade) > 0.5;
-    // Light glass a step lighter, dark a step darker, so the turn between
-    // them is a step and not a muddle at the middle; night's the darker.
-    const glass = bright ? mix(shade, [255, 255, 255], LIFT) : (shade.map((v) => Math.round(v * DARKEN)) as Rgb);
-    // What sits on the glass stands off it fully: black on light, white on dark.
-    const ink: Rgb = bright ? [0, 0, 0] : [255, 255, 255];
+    // The glass is always dark, in the light's hue: by day no lighter
+    // than DARK, by night darker than the light still.
+    const glass = shade.map((v) => Math.round(v * Math.min(DARKEN, DARK / Math.max(luma(shade), 1e-3)))) as Rgb;
+    // What sits on it stands off it fully, in white.
+    const ink: Rgb = [255, 255, 255];
     const key = `${glass}`;
     if (key === last) return;
     last = key;
