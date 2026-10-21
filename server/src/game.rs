@@ -110,7 +110,7 @@ impl Game {
     pub fn connect(&mut self, id: ClientId, owner: OwnerId) {
         self.send(id, ServerMessage::Welcome(owner));
         // Objects come with the first SetChunks.
-        let update = state_update(&self.world, vec![], vec![], self.clock());
+        let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
         self.send(id, update);
         self.clients.insert(id, ClientState { owner, subscribed: None, known_chunks: HashSet::default(), known: HashSet::default() });
     }
@@ -127,15 +127,15 @@ impl Game {
                 // Paused, nothing goes dirty and no update would ever be
                 // sent — so clients would keep extrapolating cars against
                 // a stopped world. Push the new clock instead of waiting.
+                let update = Shared::new(&self.world, self.clock()).update(vec![], vec![]);
                 let ids: Vec<ClientId> = self.clients.keys().copied().collect();
                 for id in ids {
-                    let update = state_update(&self.world, vec![], vec![], self.clock());
-                    self.send(id, update);
+                    self.send(id, update.clone());
                 }
             }
             ClientMessage::SetChunks(bounds) => {
-                let clk = self.clock();
-                handle_set_chunks(&self.world, &mut self.clients, &mut self.outbox, client_id, bounds, clk);
+                let mut shared = Shared::new(&self.world, self.clock());
+                handle_set_chunks(&mut shared, &mut self.clients, &mut self.outbox, client_id, bounds);
             }
             ClientMessage::ResetWorld => {
                 let world = (self.fresh)();
@@ -167,13 +167,13 @@ impl Game {
     pub fn replace(&mut self, world: World) {
         let clk = self.clock();
         let ids: Vec<ClientId> = self.clients.keys().copied().collect();
+        let mut shared = Shared::new(&self.world, clk);
         for id in &ids {
             let cs = self.clients.get_mut(id).unwrap();
             let ops: Vec<Operation> = cs.known.drain().map(Operation::Delete).collect();
             let chunks: Vec<ChunkCoord> = cs.known_chunks.drain().collect();
             if !ops.is_empty() {
-                let update = state_update(&self.world, ops, vec![], clk);
-                self.outbox.push((*id, update));
+                self.outbox.push((*id, shared.update(ops, vec![])));
             }
             for coord in chunks {
                 self.outbox.push((*id, ServerMessage::UnloadChunk(coord)));
@@ -184,9 +184,10 @@ impl Game {
         self.events.set_now(self.now);
         self.intersections = IntersectionRegistry::new();
         self.wake_all();
+        let mut shared = Shared::new(&self.world, clk);
         for id in ids {
             if let Some(bounds) = self.clients.get(&id).and_then(|cs| cs.subscribed) {
-                handle_set_chunks(&self.world, &mut self.clients, &mut self.outbox, id, bounds, clk);
+                handle_set_chunks(&mut shared, &mut self.clients, &mut self.outbox, id, bounds);
             }
         }
     }
@@ -241,18 +242,38 @@ pub fn clock(now: GameTime, speed: u32) -> Clock {
 }
 
 /// Every update carries the ambient world state alongside its ops, so a client
-/// never has to ask for the island's extent separately.
-pub fn state_update(world: &World, ops: Vec<Operation>, lumps: Vec<Lump>, clk: Clock) -> ServerMessage {
-    ServerMessage::Update(StateUpdate {
-        ops,
-        lumps,
+/// never has to ask for the island's extent separately: this, its ops and
+/// lumps empty.
+pub fn state_update(world: &World, clk: Clock) -> StateUpdate {
+    StateUpdate {
+        ops: Vec::new(),
+        lumps: Vec::new(),
         clock: clk,
         growth: crate::economy::growth(world, clk.now),
         sea: crate::haul::sea(world),
         missions: world.missions.shown(clk.now),
         neighbours: crate::orders::neighbours(world),
         island: ChunkBounds { min_cx: crate::terrain::CHUNKS_MIN, min_cy: crate::terrain::CHUNKS_MIN, max_cx: crate::terrain::CHUNKS_MAX, max_cy: crate::terrain::CHUNKS_MAX },
-    })
+    }
+}
+
+/// The ambient state of one moment, the same for every client: built the
+/// first time an update needs it, and each update after a copy of it.
+struct Shared<'a> {
+    world: &'a World,
+    clk: Clock,
+    built: Option<StateUpdate>,
+}
+
+impl<'a> Shared<'a> {
+    fn new(world: &'a World, clk: Clock) -> Self {
+        Shared { world, clk, built: None }
+    }
+
+    fn update(&mut self, ops: Vec<Operation>, lumps: Vec<Lump>) -> ServerMessage {
+        let (world, clk) = (self.world, self.clk);
+        ServerMessage::Update(StateUpdate { ops, lumps, ..self.built.get_or_insert_with(|| state_update(world, clk)).clone() })
+    }
 }
 
 /// What a player asked of the town, done. What it has to say back to
@@ -767,13 +788,13 @@ fn wake_resident(world: &World, events: &mut EventQueue, id: EntityId) {
 /// Reconcile a client's subscription. Chunk-granular, so panning within a
 /// chunk produces no work at all — which is why there is no throttle.
 fn handle_set_chunks(
-    world: &World,
+    shared: &mut Shared,
     clients: &mut HashMap<ClientId, ClientState>,
     outbox: &mut Vec<(ClientId, ServerMessage)>,
     client_id: ClientId,
     bounds: ChunkBounds,
-    clk: Clock,
 ) {
+    let world = shared.world;
     let visible_chunks: HashSet<ChunkCoord> = bounds.coords().collect();
     let in_view = world.entities_in_chunks(&visible_chunks);
 
@@ -822,7 +843,7 @@ fn handle_set_chunks(
     cs.known = in_view;
 
     if !ops.is_empty() {
-        outbox.push((client_id, state_update(world, ops, vec![], clk)));
+        outbox.push((client_id, shared.update(ops, vec![])));
     }
 }
 
@@ -858,14 +879,16 @@ fn flush_dirty(
     // Group by chunk so a client walks the chunks it subscribes to rather than
     // every entity that changed. A client sees a handful of chunks; the world
     // can have hundreds of moving cars.
-    let mut by_chunk: HashMap<ChunkCoord, Vec<GameObjectEntry>> = HashMap::default();
+    let world = &*world;
+    let mut by_chunk: HashMap<ChunkCoord, Vec<&GameObjectEntry>> = HashMap::default();
     for id in &changed {
         if let Some(entry) = world.objects.get(*id)
             && let Some(pos) = entry.position
         {
-            by_chunk.entry(chunk_of(pos)).or_default().push(entry.clone());
+            by_chunk.entry(chunk_of(pos)).or_default().push(entry);
         }
     }
+    let mut shared = Shared::new(world, clk);
 
     for (&client_id, cs) in clients.iter_mut() {
         if cs.subscribed.is_none() {
@@ -875,7 +898,7 @@ fn flush_dirty(
         let mut ops = Vec::new();
 
         for coord in &cs.known_chunks {
-            for entry in by_chunk.get(coord).into_iter().flatten() {
+            for &entry in by_chunk.get(coord).into_iter().flatten() {
                 cs.known.insert(entry.id);
                 ops.push(Operation::Upsert(Box::new(entry.clone())));
             }
@@ -906,7 +929,7 @@ fn flush_dirty(
         let lumps: Vec<Lump> = lumps.iter().filter(|(c, _)| cs.known_chunks.contains(c)).map(|(_, s)| *s).collect();
 
         if !ops.is_empty() || !lumps.is_empty() {
-            outbox.push((client_id, state_update(world, ops, lumps, clk)));
+            outbox.push((client_id, shared.update(ops, lumps)));
         }
     }
 }
